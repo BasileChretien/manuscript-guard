@@ -2301,6 +2301,39 @@ def cmd_audit(args: argparse.Namespace) -> int:
     return 1 if args.strict and sections.failed(report) else 0
 
 
+def cmd_compare(args: argparse.Namespace) -> int:
+    """Two versions of a manuscript side by side, for an editor or a referee reading a
+    revision (`comparing`). Exit 0 once the comparison ran, whatever it found; 2 where a
+    file could not be read, or the report's file is there already."""
+    from manuscript_guard.comparing import NOTICE
+    from manuscript_guard.comparing.report import as_json, compare, render
+    from manuscript_guard.comparing.versions import Unreadable
+
+    print(NOTICE, file=sys.stderr)
+    if args.out is not None and args.out.exists():
+        return _audit_refused(args, f"manuscript-guard compare: {args.out} is there already, "
+                              "and compare writes over nothing: name another file")  # fmt: skip
+    try:
+        found = compare(args.old, args.new, args.response, args.comments)
+    except Unreadable as exc:
+        return _audit_refused(args, f"manuscript-guard compare: {exc}")
+    said = as_json(found) if args.json else render(found, Path.cwd())
+    if args.out is None:
+        print(said)
+        return 0
+    try:
+        with args.out.open("x", encoding="utf-8", newline="\n") as handle:
+            handle.write(said + "\n")
+    except FileExistsError:
+        return _audit_refused(args, f"manuscript-guard compare: {args.out} is there already, "
+                              "and compare writes over nothing: name another file")  # fmt: skip
+    except OSError as exc:
+        return _audit_refused(args, f"manuscript-guard compare: {args.out} cannot be written: "
+                              f"{exc.strerror or exc}")  # fmt: skip
+    print(f"manuscript-guard compare: the report is in {args.out} ({len(found.items)} items)")
+    return 0
+
+
 def _reread(project, new: Path, page: str | None = None) -> int:
     """`journal --reread`: the stored page against the page read again, and the rules whose
     quotes it no longer holds. Writes nothing: adopting the page is the author's."""
@@ -5718,6 +5751,7 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
         (
             "check",
             "audit",
+            "compare",
             "explain",
             "bind",
             "impact",
@@ -5913,6 +5947,47 @@ def build_parser() -> argparse.ArgumentParser:
         "document the journal reviews blind; nothing else is counted",
     )
     audit.set_defaults(func=cmd_audit)
+
+    compare = sub.add_parser(
+        "compare",
+        help="set a revised manuscript beside the version before it, for an editor or a "
+        "referee",
+        description="For an editor or a referee reading a revision someone else wrote. Both "
+        "versions are read as audit reads a paper, and set side by side: the sections, the "
+        "tables cell by cell, the figures' captions, the numbers, citations and bindings, "
+        "and the sentences that claim more, less or the opposite. The new version is "
+        "audited, each finding marked new in it or standing in the version before. Nothing "
+        "is sent, and nothing says whether a comment was answered (docs/refereeing.md).",
+    )
+    compare.add_argument("old", type=Path, help="the version before: a .docx, .md or .tex")
+    compare.add_argument("new", type=Path, help="the revised version: a .docx, .md or .tex")
+    compare.add_argument(
+        "--response",
+        type=Path,
+        metavar="LETTER",
+        help="the authors' response letter (.docx, .md or .txt): each quotation of four words "
+        "or more, and each block quotation, looked for in both versions, and each table, "
+        "figure and section it names said to have changed or not",
+    )
+    compare.add_argument(
+        "--comments",
+        type=Path,
+        metavar="MINE",
+        help="your own comments on the version before (.docx, .md or .txt), numbered or a "
+        "paragraph each: each matched to the revision by the passage it quotes or the "
+        "table, figure or section it names, and otherwise listed to read",
+    )
+    compare.add_argument(
+        "--json", action="store_true", help="the report as JSON, in the shape audit --json "
+        "gives, each finding with its section and, for the new version's audit, its mark",
+    )  # fmt: skip
+    compare.add_argument(
+        "--out",
+        type=Path,
+        metavar="FILE",
+        help="write the report to FILE, which must not exist yet, rather than to the screen",
+    )
+    compare.set_defaults(func=cmd_compare)
 
     verify = sub.add_parser(
         "verify",

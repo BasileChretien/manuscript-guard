@@ -13,7 +13,8 @@ the report: do not paste it into a chat with a model, and do not let a coding ag
 audit or read its output. Run it yourself, in a terminal no agent can read. When `--journal`
 or `--authors` is given, the audit says so on stderr, and the plugin's hook asks you before an
 agent runs it. The paper-audit skill tells an agent to stop on a paper you were sent to review
-or to handle, and to give you the commands instead.
+or to handle, and to give you the commands instead. `compare`, which sets a revision beside
+the version before it, says the same every time it runs, and the hook asks about it too.
 
 What leaves the machine: nothing, unless you ask. `--lookup` asks Crossref, OpenAlex,
 DataCite, doi.org and PubMed about each DOI and PMID of the reference list, and sends those
@@ -104,11 +105,68 @@ their own work in the third person. Each one found is listed with its place and 
 `--strict`. Where the review is not blind, nobody is looked for, and the report says so. A
 referee never passes `--authors`.
 
+## A revision
+
+```bash
+manuscript-guard compare paper-v1.docx paper-v2.docx --response letter.docx --comments mine.md
+```
+
+`compare` sets the revised manuscript beside the version you read the first time. Both are
+read as `audit` reads a paper (a .docx, Markdown, or a `.tex` with the files it inputs; not a
+PDF yet), and each line of the report is a fact with its place, never a verdict:
+
+- **Sections**, matched by their titles as printed, without their numbers: the same, changed
+  (with the words in each version), new, gone, or moved out of the order they stood in.
+- **Tables**, matched by their label ("Table 2"; "Supplementary Table 1" and "Table S1" are one
+  table), and one with no label by its caption; then cell by cell, the header by its columns
+  and each row by its first cell, with the rows added and removed. A table renumbered reads as
+  one gone and one new.
+- **Figures**, by their label: their captions the same or changed. A picture is not compared.
+- **Numbers, citations and bindings** of the prose, gone, new or changed, each at its line in
+  the new version. The reference list's and the tables' numbers are left to those.
+- **Claims**: each changed sentence that now claims more, less or the opposite, as `reworded`
+  reads one ("may" gone, "associated" made "increased", a "not" gone or new).
+- **v2 audited**: the audit above, run on the new version, each finding marked "new in v2"
+  where its sentence is not in the first version and "stood in v1" where it is.
+
+**`--response LETTER`** reads the authors' letter (.docx, Markdown or text). Each quotation of
+four words or more, and each block quotation, is looked for in both versions:
+
+| The quotation is | The report says |
+|---|---|
+| in v2 and not in v1 | new as quoted (a note) |
+| in both | quoted as revised, but v1 had it (a warning) |
+| in v1 only | it quotes the first version (a note) |
+| in neither | it quotes text neither version holds (a warning) |
+
+A letter that quotes your own comments block by block gets the last line for each of them,
+unless `--comments` is given and holds the words, when it says so instead. Each "Table N",
+"Figure N" and "Supplementary Table N" the letter names, and each title of a section as the
+paper prints it (in the case it is printed), is a line: where the letter names it, and whether
+it changed between the versions. Whether the change is the one the letter claims is yours to
+read.
+
+**`--comments MINE`** reads your own comments on the first version: numbered entries ("1.",
+"2)", "Comment 3:") where two or more lines open with a number, a paragraph each otherwise.
+A comment is matched to the revision only by a passage it quotes, in double quotation marks or
+as a block quotation, or by a table, a figure or a section it names. A quoted passage is
+unchanged in v2, changed (with the sentence the new version has where it stood), gone, or not
+in v1 either. A comment with neither is listed as not matched, to read. Nothing in the report
+says a comment was answered: a changed sentence may be the change you asked for, or another.
+
+The report goes to the screen, or with `--out FILE` to a file that is not there yet (it writes
+over nothing); `--json` gives it in the audit's shape, each finding with its section and its
+mark. It exits 0 once the comparison ran, whatever it found, and 2 where a file could not be
+read. Nothing is sent: the comparison has no `--lookup`. It prints the confidentiality notice
+every time, and the plugin's hook asks you before an agent runs it, since its report quotes
+both versions.
+
 ## What `--strict` counts
 
 What [Auditing a paper you already wrote](audit.md) lists, and an author named in a document
 the journal reviews blind. Not the journal's limits or missing statements, which a journal
-may count otherwise than this tool does, nor what the Document section counts.
+may count otherwise than this tool does, nor what the Document section counts. `compare` has
+no `--strict`: none of what it reports is counted.
 
 ## What is not checked
 

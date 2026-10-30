@@ -1683,6 +1683,19 @@ def _reworded() -> Reading:
     return reworded
 
 
+@reading("response letter")
+def _response_letter() -> Reading:
+    from manuscript_guard.comparing.letters import held
+
+    def read(given: dict[str, str]) -> list[list[Any]]:
+        """Each quotation of a response letter, where it opens, its words, whether it is a
+        block quotation, and where it stands in the two versions (`compare --response`)."""
+        return [[quote.line, quote.quote, quote.block, outcome]
+                for quote, outcome in held(given["letter"], given["old"], given["new"])]
+
+    return read
+
+
 @reading("title")
 def _title() -> Reading:
     from manuscript_guard.contracts.project import outside_maths

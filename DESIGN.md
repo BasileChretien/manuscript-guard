@@ -8144,6 +8144,63 @@ authority). Later pull requests of the layer add causal words against a declared
 the cited sentences beside their works, `compare` for a revision, a package checked against
 its own manifest, a report draft, and PDF manuscripts.
 
+## A revision read beside the version before it
+
+`compare OLD NEW` is the one new command of the editor and referee layer (decision 1): a referee
+reading a revision has two versions and a letter that says what changed, and `audit` reads one
+paper. It is a command of its own, in the "Checking & Audit" group, and it has no `--strict`:
+nothing it reports is counted (decision 8). It prints the confidentiality notice every time
+(`comparing.NOTICE`, decision 5), and the shell guard asks the person before an agent runs it,
+whatever its options (`hooks._reads_in_confidence`, decision 4). It sends nothing.
+
+**Reading** (`comparing/versions.py`). Each version is read as `audit` reads a paper: a Markdown
+or text file as typed; a .docx through `read_docx_text`, a paragraph a line, its headings by
+their styles and its tables cell by cell, with no pandoc; a LaTeX entry and the files it inputs
+through `auditing.latex.read_latex`, as the Markdown its document prints (`printed`, the
+quoting view), each line placed back at its `.tex` file and line, its tables' cells from the
+audit's reading of the source, and its floats numbered in the order they stand. A PDF is
+refused with a sentence until the PDF reader of the layer is built. A version that holds no
+words is refused: there is nothing to set beside the other. Each version keeps its sections
+(title as printed, `section_names.plain`, and its own text to the next heading), its tables
+(label, caption, rows), its figures (label, caption) and the lines set apart from the prose,
+the reference list's (`audit.bibliography_spans`) and the tables'.
+
+**Setting side by side** (`comparing/differences.py`). Sections are matched by their folded
+titles, a second section of one title with the second; the longest run of matched sections in
+the same order stands, and the others are said to have moved. A table is matched by its label,
+"Supplementary Table 1" and "Table S1" being one label, and one with no label by its caption,
+then by the order of those with neither; its header is compared by column and its rows by
+their first cell. Figures are matched by label and their captions compared. The numbers,
+citation keys and bindings of the prose are `reworded.facts`; the two proses are cut into
+sentences and lined up as `claims.changed` lines them up, and within one changed stretch a
+fact gone and one of its kind new are one fact changed, and so are two in a sentence that
+stands once in each version and reads alike but for its citations and bindings, which a
+sentence's words leave out. What is left over is gone or new, placed where its sentence is
+not in the other version when those places account for it, and at every place it stands
+otherwise. A .docx's paragraphs are set a blank line apart for this, so
+that a heading is no part of the sentence after it, and its lines are read back to the
+paragraph's. The claims are `claims.moved`, its "before the edit" said as "in v1".
+
+**v2 audited** (`comparing/report.py`). `audit` runs on the new version with no outputs, G6 and
+G14 with it, and each finding with a line is marked by its sentence, read in the text its line
+belongs to (the audit's reading, the Markdown pandoc makes of a .docx for G6 and G14, or the
+`.tex` file): "stood in v1" where that sentence is in a reading of the first version, "new in
+v2" where it is in none. A line of several sentences is narrowed to the one holding the
+finding's context, or the one alone holding its first word (a number, a term); otherwise every
+sentence of the line must stand in v1. The mark leans to "new in v2", which sends the reader to
+read, rather than to "stood", which might let one skip it.
+
+**The letter and the referee's comments** (`comparing/letters.py`). The quotations are read as
+G7 reads a prose quotation, four words or more in double marks (`gates.quotations.WORDS`), and
+each paragraph of a block quotation besides; each is looked for in both versions as G13 looks
+for a quoted revision (`revision.as_quoted`, `revision.quoted_in`), with a curly apostrophe
+read as a straight one, and given one of four outcomes (docs/refereeing.md). A quotation in
+neither version that the referee's own comments hold says so, as a note: a letter quotes each
+comment before answering it. The tables, figures and section titles a letter or a comment
+names are facts, changed or the same, never a verdict. A comment is matched only by what it
+quotes or names; the rest are listed to read. No message says a comment was answered, and a
+test holds that.
+
 ## A paper written in Word is brought in through pandoc's tree
 
 The route the skills gave for moving a Word paper into a project was `pandoc paper.docx -t
@@ -19247,6 +19304,35 @@ What papers converted from Word showed (see "What papers converted from Word sho
     that only names the three words (`rg "manuscript-guard report-issue --open" docs`) is
     asked about though nothing would open. Nothing is posted either way until the person
     clicks Submit on the page.
+- **`compare` sets two versions side by side by labels, titles and quoted words, and says
+  nothing of why a change was made.**
+  - Tables are matched by their label number, and one with no label by its caption, so a
+    table renumbered between the versions reads as one gone and one new, and a table whose
+    caption is not found next to it (within three lines above it, or pandoc's `: caption` below) is
+    matched by its caption or its order alone. A row is matched by its first cell, so a row
+    relabelled reads as one gone and one new; a column added in the middle reads as each
+    later cell changed. A LaTeX float is numbered in the order it stands, with a caption, so a
+    numbering the source sets otherwise (`\setcounter`, an appendix's own numbering) is not
+    followed. A figure is found by a caption that opens with its label; its picture is never
+    compared.
+  - Only quoted text, of four words or more in double quotation marks or a block quotation,
+    and a named table, figure or section anchor a line of the letter or a comment to the
+    paper. A comment that says "the second paragraph of the Discussion" or "your new
+    analysis" is listed as not matched. A section is found where the letter writes its title
+    as the paper prints it, in that case: "the results" does not name the Results. A
+    quotation in a .docx letter is read by its quotation marks; a paragraph styled as a
+    quotation is not a block quotation.
+  - "Changed" says nothing of whether the change answers the comment, and "unchanged" says
+    nothing of whether the authors explained why in the letter.
+  - A quotation is looked for word for word, as G13 looks: a quotation the letter retypes with
+    other punctuation, a dash for a hyphen, or words left out with an ellipsis, reads as in
+    neither version.
+  - A finding of v2's audit is marked by its sentence: one whose sentence was reworded reads
+    as new in v2 though the same finding stood in v1, and two versions in different formats
+    (a .docx then a .md) are compared through different readings, so a sentence that stood
+    may read as new. A finding with no line is not marked.
+  - The numbers of the reference list and of the tables are not compared as the prose's: a
+    table's are compared cell by cell, and the reference list's not at all.
 - **A report about a gate checks its snippet for `audit`, G6 and G14 only, and checks the
   snippet, not the manuscript.**
   - The other gates read a project, and a report about one says its snippet was not checked

@@ -62,6 +62,7 @@ from generated import (
     PROOF_TYPOGRAPHY,
     RESIDUE,
     RESIDUE_LOOKALIKES,
+    SHORT_QUOTATION,
     SOURCE_GAPS,
     SOURCE_WORDS,
     STRETCHES,
@@ -148,6 +149,7 @@ from generated import (
     quotations,
     quoted_references,
     reference_titled,
+    response_letters,
     revisions,
     set_hazards,
     share_tables,
@@ -6441,6 +6443,57 @@ def test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else(
     a city, a country, two words of an institution, nor a name a letter away."""
     text, expected = planted
     assert names_in(text, sought(PEOPLE)) == expected, text
+
+
+# ------------------------------------------------------- a response letter quoting a revision
+
+
+@holds(150, response_letters())
+def test_each_quotation_of_a_response_letter_is_held_to_both_versions(
+    drawn: tuple[dict[str, str], list[tuple[int, str]]],
+) -> None:
+    """Every letter quotes words that stand in v2 only, in both versions, in v1 only and in
+    neither, each written in one of four ways: in straight or curly marks, as a block
+    quotation, and across a line break. Each is found on the line it opens on, with where it
+    stands; a quotation of three words is not read (`compare --response`)."""
+    from manuscript_guard.comparing import letters
+
+    given, expected = drawn
+    assert SHORT_QUOTATION in given["letter"]
+    outcomes = {"new": letters.NEW_AS_QUOTED, "both": letters.NOT_NEW,
+                "first": letters.FIRST_VERSION, "neither": letters.NEITHER}  # fmt: skip
+    found = [(quote.line, outcome)
+             for quote, outcome in letters.held(given["letter"], given["old"], given["new"])]
+    assert found == [(line, outcomes[kind]) for line, kind in expected], given["letter"]
+
+
+def _a_quotation_is_looked_for_in_v2_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.comparing import letters
+
+    def outcome(quote: str, old: str, new: str, mine: str | None = None) -> str:
+        return letters.NEW_AS_QUOTED if letters.quoted_in(quote, new) else letters.NEITHER
+
+    patch.setattr(letters, "outcome", outcome)
+
+
+def _a_block_quotation_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.comparing import letters
+
+    patch.setattr(letters, "_BLOCK", re.compile("(?!)"))
+
+
+def _a_quotation_ends_at_its_line(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.comparing import letters
+
+    one_line = letters._QUOTED.pattern.replace(r'(?:\n[^"\n]+)*', "")
+    assert one_line != letters._QUOTED.pattern
+    patch.setattr(letters, "_QUOTED", re.compile(one_line))
+
+
+def _three_words_are_a_quotation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.comparing import letters
+
+    patch.setattr(letters, "WORDS", 3)
 
 
 # --------------------------------------------------------------------------------- spelling
@@ -13549,6 +13602,22 @@ BROKEN = {
     "a link of a post keeps the stop after it": (
         _a_link_keeps_the_stop_after_it,
         test_each_link_of_a_post_is_marked_at_its_bytes_and_without_the_stop_after_it,
+    ),
+    "a response letter's quotation is looked for in v2 only": (
+        _a_quotation_is_looked_for_in_v2_only,
+        test_each_quotation_of_a_response_letter_is_held_to_both_versions,
+    ),
+    "a response letter's block quotation is not read": (
+        _a_block_quotation_is_not_read,
+        test_each_quotation_of_a_response_letter_is_held_to_both_versions,
+    ),
+    "a response letter's quotation ends at its line": (
+        _a_quotation_ends_at_its_line,
+        test_each_quotation_of_a_response_letter_is_held_to_both_versions,
+    ),
+    "a response letter's quotation of three words is read": (
+        _three_words_are_a_quotation,
+        test_each_quotation_of_a_response_letter_is_held_to_both_versions,
     ),
     "a held-back cell of an output is read as its bound": (
         _a_held_back_cell_is_read_as_its_bound,

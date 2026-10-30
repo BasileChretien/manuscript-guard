@@ -60,6 +60,8 @@ class Report:
     #: The file's name, without its folder.
     name: str
     fingerprint: str | None = None
+    #: The label the issue page is asked for: `bug`, or `gate` for a report about a gate.
+    label: str = LABEL
 
 
 def from_record(record: dict, *, with_message: bool, installed: str,
@@ -75,7 +77,7 @@ def from_record(record: dict, *, with_message: bool, installed: str,
         f"**Version:** manuscript-guard {record['version']}, Python {record['python']}, "
         f"{record['system']}.",
         f"**Flags given:** {_flags(record)} (their values are never recorded).",
-        "**Where, innermost last:**\n\n" + _fenced("\n".join(_frame(f) for f in record["frames"])),
+        "**Where, innermost last:**\n\n" + fenced("\n".join(_frame(f) for f in record["frames"])),
         _message(record, with_message),
         "**What I was doing** (what you ran and what you expected; not your manuscript's own "
         "text):\n\n" + (note.strip() if note else ""),
@@ -99,9 +101,14 @@ def general(title: str, note: str | None, *, installed: str) -> Report:
     )
     body = "\n\n".join([HEAD, f"**Summary:** {title.strip()}", text,
                         f"**Version:** manuscript-guard {installed}, Python {python}, {system}."])
-    # The clock alone can give two reports the same name: a random tail keeps both.
-    stamp = f"{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(3)}"
-    return Report(title=title.strip(), body=body + "\n", name=f"report-{stamp}.md")
+    return Report(title=title.strip(), body=body + "\n", name=stamped_name())
+
+
+def stamped_name() -> str:
+    """The name of a report that has no record: the time it was written and a random tail,
+    since the clock alone can give two reports the same name. `write` keeps the newest
+    twenty of these."""
+    return f"report-{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(3)}.md"
 
 
 def issues_page() -> str | None:
@@ -126,7 +133,7 @@ def links(report: Report, page: str | None) -> Links | None:
         return None
 
     def asking(body: str) -> str:
-        asked = {"title": cut_title(report.title), "body": body, "labels": LABEL}
+        asked = {"title": cut_title(report.title), "body": body, "labels": report.label}
         return f"{page}/new?{urlencode(asked, quote_via=quote)}"
 
     whole, short = asking(report.body), asking(SHORTENED)
@@ -255,11 +262,11 @@ def _message(record: dict, with_message: bool) -> str:
                 "authors.yaml replaced.")  # fmt: skip
     return ("**The error's message** (read it: it can quote your files, and only folders, "
             "e-mail addresses, credentials and authors' names were replaced):\n\n"
-            + _fenced(record["message"]))  # fmt: skip
+            + fenced(record["message"]))  # fmt: skip
 
 
-def _fenced(text: str) -> str:
+def fenced(text: str, language: str = "text") -> str:
     """`text` in a code fence longer than any run of backticks inside it."""
     longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
     fence = "`" * max(3, longest + 1)
-    return f"{fence}text\n{text}\n{fence}"
+    return f"{fence}{language}\n{text}\n{fence}"

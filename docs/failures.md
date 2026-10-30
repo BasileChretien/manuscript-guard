@@ -63,8 +63,44 @@ posted until you click Submit.
   to, or, with recording off, from the report printed in the terminal. An address too long to
   hand to a browser opens the page with the title only, and the body is pasted the same way.
 
-[CONTRIBUTING.md](../CONTRIBUTING.md) says what else helps, and how to report a gate that got
-something wrong.
+[CONTRIBUTING.md](../CONTRIBUTING.md) says what else helps.
+
+## Reporting a gate that got something wrong
+
+A gate that flagged what is not a defect, or let one through, has no error to record. Make up
+the smallest text that shows it, then:
+
+```bash
+manuscript-guard report-issue --about G6 --flagged model-artefact --snippet "..."
+manuscript-guard report-issue --about audit --missed --snippet-file smallest.md --note "..."
+```
+
+- `--about` names a gate, `G0` to `G16`, or a command, such as `audit` or `check`.
+- `--flagged` says it reported something that is not a defect, and `--missed` that it let a
+  defect through. Either may name the finding's code, as `check` prints it.
+- `--snippet` gives the text, or `--snippet-file` a UTF-8 file of it. It goes into the report
+  as you wrote it, with only the replacements above (folders, e-mail addresses, credentials,
+  the names in `authors.yaml`): nothing masks its words. Write it rather than copying your
+  manuscript's sentences, or replace their words yourself.
+- `--said` is what manuscript-guard printed, and `--note` what it should have said and why.
+
+For `audit`, G6 and G14, which read a text with no project around it, the snippet is read
+again on this machine, alone, in a temporary folder, and the report says whether it alone
+shows the fault: "reproduced: the snippet alone gives `model-artefact`". A code the snippet
+does not give is said to be not found in its findings, with what it does give, and no verdict:
+check its spelling against what manuscript-guard printed. Cut the snippet down, or change its
+words, and run the command again to see whether the fault survives. Other gates read a
+project, and their snippets are not checked here: the report says so.
+
+The report follows the repository's issue template for a gate, asks for the label `gate`, and
+ends with a test to start from, in the test file and the shape the suite uses for that gate,
+named after the gate, the direction, the code and the snippet: `tests/test_audit.py` for
+`audit`, `tests/test_writing.py` for G6, `tests/test_language.py` for G14, and
+`tests/test_corruption.py` for the rest, where the snippet is added to the example and the
+code is counted before and after. It asserts that the code is absent (or not given more often)
+where the gate flagged it wrongly and present (or given more often) where it let the defect
+through; with no code named, the assertion is left as a TODO. It is a starting point: whoever
+fixes the gate checks that it fails before the fix and passes after.
 
 ## Nothing is sent
 

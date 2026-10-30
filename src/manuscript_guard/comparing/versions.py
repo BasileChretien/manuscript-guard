@@ -341,16 +341,27 @@ def _floats(tree, read: dict) -> tuple[tuple[Display, ...], tuple[Display, ...],
             if step == 0:
                 around = next((d for start, end, d in mine if start <= at < end
                                and d.kind == "t"), inside)  # fmt: skip
+                # A file read already, by another float, or not read at all, gives this one
+                # nothing that is its own.
+                if around is not None and (what in seen or what not in by_path):
+                    around.read = False
                 walk(what, around)
             else:
                 shown.append(what)
-        # A file read inside a float: its tables are that float's.
-        if inside is not None and held[path] and not inside.rows:
-            inside.rows = _rows_of(held[path][0])
-            held[path] = held[path][1:]
+        # A file read inside a float: its one table is that float's; two, or one beside the
+        # float's own, are not told apart, and the float's cells are not read.
+        if inside is not None and held[path]:
+            if len(held[path]) == 1 and not inside.rows and inside.read:
+                inside.rows = _rows_of(held[path][0])
+            else:
+                inside.read = False
+            held[path] = []
 
     if entry is not None:
         walk(entry, None)
+    for display in shown:
+        if display.kind == "t" and not display.rows:
+            display.read = False
     tables = _numbered([d for d in shown if d.kind == "t"], "Table")
     figures = _numbered([d for d in shown if d.kind == "f"], "Figure")
     notes = tuple(NOT_NUMBERED.format(kinds=kinds, kind=kinds[:-1])
@@ -377,9 +388,8 @@ def _numbered(displays: list[_Shown], name: str) -> list[Display]:
 
 def _displays(path: Path, source, held: dict) -> list[tuple[int, int, _Shown]]:
     """Each display one file writes in the printed view G2's pointers read, where it stands
-    in the file, with its caption and, for the first table of a float, the cells of the
-    table in it; a table's cells are not read where the float inputs a file that was not
-    read."""
+    in the file, with its caption and, where the display is a float's one table display and
+    the float holds one table, that table's cells; otherwise its cells are not read."""
     from manuscript_guard.text.latex.printed import (
         DISPLAY,
         MARK_END,
@@ -403,14 +413,17 @@ def _displays(path: Path, source, held: dict) -> list[tuple[int, int, _Shown]]:
         targets = sum(1 for at, _name in source.targets if start <= at < end)
         cells = [table for table in held[path] if table and first <= table[0][0].line <= last]
         held[path] = [table for table in held[path] if table not in cells]
-        filled = False
+        # One table display and one table, its own or the one file it inputs: the table is
+        # the display's. Any other count, two captions over two tables, one over two, is not
+        # one to one, and which table a caption numbers is not read.
+        one = sum(kind in "tT" for kind in kinds) == 1 and (
+            (len(cells) == 1 and not inputs) or (not cells and inputs == targets == 1))
         for at, kind in enumerate(kinds):
             shown = _Shown(kind.lower(), kind.islower(), captions[at] if at < len(captions)
                            else "", path, first)  # fmt: skip
-            if shown.kind == "t" and not filled:
-                filled = True
-                shown.rows = _rows_of(cells[0]) if cells else ()
-                shown.read = bool(cells) or inputs <= targets
+            if shown.kind == "t":
+                shown.read = one
+                shown.rows = _rows_of(cells[0]) if one and cells else ()
             found.append((start, end, shown))
     return found
 

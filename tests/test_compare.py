@@ -636,9 +636,48 @@ def test_a_table_whose_input_is_not_read_is_never_the_same(tmp_path: Path) -> No
     old = read_version(tmp_path / "v1" / "main.tex")
     new = read_version(tmp_path / "v2" / "main.tex")
     said = [item.message for item in differences.tables(old, new)]
-    assert said[0] == ("Table 1: its cells were not read, in a file its float inputs that was "
-                       "not read")  # fmt: skip
+    assert said[0] == ("Table 1: its cells were not read: its float holds no one table this "
+                       "reading pairs with its one caption")  # fmt: skip
     assert letters.status("Table 1", old, new) == "its cells were not read"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # Two captions and two tabulars: which caption numbers which cannot be told here.
+        "!caption{A}TABULAR!caption{B}TABULAR",
+        # One caption over two tabulars, as subtables have.
+        "!caption{A}TABULARTABULAR",
+        # One caption and no tabular: a picture of a table.
+        "!caption{A}!includegraphics{t}",
+    ],
+)
+def test_a_float_whose_captions_and_tables_are_not_one_to_one_is_not_read(
+    tmp_path: Path, body: str
+) -> None:
+    tabular = "\n!begin{tabular}{ll}\nA & CELL !!\n!end{tabular}\n"
+    for name, cell in (("v1", "1"), ("v2", "2")):
+        write(tmp_path / name, "main.tex", tex(
+            "!documentclass{article}\n!begin{document}\nText.\n!begin{table}"
+            + body.replace("TABULAR", tabular.replace("CELL", cell))
+            + "!end{table}\n!end{document}\n"))  # fmt: skip
+    old = read_version(tmp_path / "v1" / "main.tex")
+    new = read_version(tmp_path / "v2" / "main.tex")
+    assert all(not table.read for table in new.tables if table.label)
+    said = [item.message for item in differences.tables(old, new)]
+    assert not any("the same" in one for one in said), said
+    assert all(letters.status(t.label, old, new) == "its cells were not read"
+               for t in new.tables if t.label)  # fmt: skip
+
+
+def test_a_file_two_floats_input_is_read_for_the_first_only(tmp_path: Path) -> None:
+    write(tmp_path, "main.tex", tex(
+        "!documentclass{article}\n!begin{document}\nText.\n"
+        "!begin{table}!caption{One}!input{tab1}!end{table}\n"
+        "!begin{table}!caption{Two}!input{tab1}!end{table}\n!end{document}\n"))  # fmt: skip
+    write(tmp_path, "tab1.tex", TAB1.replace("CELL", "3"))
+    tables = read_version(tmp_path / "main.tex").tables
+    assert [(t.label, t.read) for t in tables] == [("Table 1", True), ("Table 2", False)]
 
 
 def test_a_number_changed_is_paired_with_the_one_in_its_own_sentence() -> None:
@@ -680,14 +719,33 @@ def test_an_unpaired_straight_mark_reads_none_of_its_paragraph(tmp_path: Path) -
     found = letters.letter_items(tmp_path / "l.md", letter, version(OLD_PAPER),
                                  version(NEW_PAPER))  # fmt: skip
     assert [(item.code, item.message, item.line) for item in found][:1] == [
-        ("quotation-unpaired", "a straight quotation mark in paragraph 1 is unpaired; its "
-         "quotations were not read", 1)]
+        ("quotation-unpaired", UNPAIRED_NOTE.format("paragraph 1"), 1)]
 
 
-def test_an_inch_mark_does_not_take_a_quotation_s_mark() -> None:
-    letter = 'A 5" screen. We now write "the rate fell in all sites" here.\n'
-    (quote,) = letters.quotations(letter)
-    assert quote.quote == "the rate fell in all sites"
+UNPAIRED_NOTE = ("the straight quotation marks in {} cannot be paired: one has no partner, or "
+                 "one follows a number, where it may be an inch's mark or a quotation's end; "
+                 "its straight quotations were not read")
+
+
+@pytest.mark.parametrize(
+    "letter",
+    [
+        'A 5" screen. We now write "the rate fell in all sites" here.\n',
+        'We now report "the rate was 12" and "the odds ratio was 2.1" here.\n',
+    ],
+)
+def test_a_straight_mark_after_a_number_leaves_its_paragraph_unread(letter: str) -> None:
+    assert letters.quotations(letter) == []
+    assert letters.unpaired(letter) == [(1, 1)]
+
+
+def test_a_comment_s_unpaired_mark_is_said_of_the_comment(tmp_path: Path) -> None:
+    mine = '1. One.\n\n2. The words "the rate fell were unclear.\n\nMore of it.\n'
+    found = [item.message for item in letters.comment_items(tmp_path / "m.md", mine,
+                                                               version(OLD_PAPER),
+                                                               version(NEW_PAPER))
+             if item.code == "quotation-unpaired"]  # fmt: skip
+    assert found == ["comment 2: " + UNPAIRED_NOTE.format("this comment")]
 
 
 def test_a_docx_comments_file_is_a_comment_a_paragraph(tmp_path: Path) -> None:
@@ -710,11 +768,14 @@ def test_a_docx_comments_file_is_a_comment_a_paragraph(tmp_path: Path) -> None:
     ]  # fmt: skip
 
 
-def test_a_finding_that_names_a_line_stands_where_only_its_line_moved(tmp_path: Path) -> None:
+def test_a_finding_whose_line_moved_reads_as_new(tmp_path: Path) -> None:
+    """A finding stands in v1 only where v1's says the same word for word: one that names a
+    line that moved reads as new, which sends the reader to read it (DESIGN.md, Known gaps);
+    masked, a fence at line 10 of v1 and another at line 50 of v2 were one."""
     old = write(tmp_path, "v1.md", "# Abstract\n\nThe odds ratio was 2.1 (95% CI 1.4 to 3.2)."
                 "\n\n# Results\n\nThe odds ratio was 2.1 (95% CI 1.5 to 3.2).\n")
     new = write(tmp_path, "v2.md", "# Abstract\n\nThe odds ratio was 2.1 (95% CI 1.4 to 3.2)."
                 "\n\n# Results\n\nA new paragraph.\n\n"
                 "The odds ratio was 2.1 (95% CI 1.5 to 3.2).\n")
     marks = [mark for item, mark in compare(old, new).items if item.code == "abstract-conflict"]
-    assert marks == [STOOD_IN_V1]
+    assert marks == [NEW_IN_V2]

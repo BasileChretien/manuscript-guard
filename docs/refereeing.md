@@ -188,9 +188,10 @@ and numbers ("was 2.1" is not found in "was 2.15"):
 | in v1 only | it quotes the first version (a note) |
 | in neither | it quotes text neither version holds (a warning) |
 
-Straight quotation marks are paired within a paragraph, a mark after a digit (5") read as an
-inch's; where a paragraph's are odd in number, none of its straight quotations is read, and
-the report names the paragraph. A letter that quotes your own comments block by block gets
+Straight quotation marks are paired within a paragraph; where a paragraph's are odd in
+number, or one follows a number (an inch's mark, 5", or a quotation that ends in a number),
+none of its straight quotations is read, and the report names the paragraph. Curly marks
+are read whatever they hold. A letter that quotes your own comments block by block gets
 the last line for each of them,
 unless `--comments` is given and holds the words, when it says so instead. Each "Table N",
 "Figure N" and "Supplementary Table N" the letter names, and each title of a section as the

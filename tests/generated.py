@@ -6770,14 +6770,14 @@ _LETTER_TAGS = ("amber", "basalt", "cobalt", "dune", "ember", "fjord", "garnet",
 
 
 @st.composite
-def response_letters(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[int, str]], int]:
+def response_letters(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[int, str]],
+                                                 list[int]]:  # fmt: skip
     """Two versions of a paper, the referee's comments and the authors' letter: in every
     letter one quotation of each outcome, written in the four ways, each way at least once,
-    in an order drawn each time, among sentences that quote nothing, an inch's mark on the
-    line of a quotation in straight marks, a quotation of three words, which is too short to
-    be read, and a paragraph whose straight marks are odd in number; with the line each
-    quotation opens on and its outcome, in the order of the lines, and the line of that
-    paragraph."""
+    in an order drawn each time, among sentences that quote nothing, a quotation of three
+    words, which is too short to be read, and the paragraphs `REFUSED`; with the line each
+    quotation opens on and its outcome, in the order of the lines, and the lines of those
+    paragraphs."""
     tags = draw(st.permutations(_LETTER_TAGS))
 
     def sentence(tag: str) -> str:
@@ -6798,15 +6798,19 @@ def response_letters(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[int, s
     styles = draw(st.permutations(
         (*LETTER_STYLES, draw(st.sampled_from(LETTER_STYLES)))))  # fmt: skip
     short = draw(st.integers(0, len(LETTER_OUTCOMES)))
-    odd = draw(st.integers(0, len(LETTER_OUTCOMES)))
-    unpaired = 0
-    inched = False
+    places = [draw(st.integers(0, len(LETTER_OUTCOMES))) for _refused in REFUSED]
+    unpaired: list[int] = []
+
+    def refused(at: int) -> None:
+        for place, paragraph in zip(places, REFUSED, strict=True):
+            if place == at:
+                lines.extend(["", paragraph, ""])
+                unpaired.append(len(lines) - 1)
+
     for at, (outcome, style) in enumerate(zip(LETTER_OUTCOMES, styles, strict=True)):
         if at == short:
             lines.append(SHORT_QUOTATION)
-        if at == odd:
-            lines += ["", UNPAIRED, ""]
-            unpaired = len(lines) - 1
+        refused(at)
         words = said[outcome].rstrip(".").split()
         quote = words[: draw(st.integers(4, len(words)))]
         if draw(st.booleans()):
@@ -6818,20 +6822,14 @@ def response_letters(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[int, s
         opening, closing = ('"', '"') if style != "curly" else (
             "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}")  # fmt: skip
         cut = draw(st.integers(1, len(quote) - 1)) if style == "wrapped" else len(quote)
-        # An inch's mark on the line of the first quotation in straight marks, which is read
-        # only where the mark is taken for no quotation's.
-        inch = f"{INCH_MARK} " if style != "curly" and not inched else ""
-        inched = inched or bool(inch)
-        lines.append(f"{inch}We {filler()} {opening}" + " ".join(quote[:cut]))
+        lines.append(f"We {filler()} {opening}" + " ".join(quote[:cut]))
         expected.append((len(lines), outcome))
         if cut < len(quote):
             lines.append(" ".join(quote[cut:]))
         lines[-1] += f"{closing} {filler()}."
     if short == len(LETTER_OUTCOMES):
         lines.append(SHORT_QUOTATION)
-    if odd == len(LETTER_OUTCOMES):
-        lines += ["", UNPAIRED, ""]
-        unpaired = len(lines) - 1
+    refused(len(LETTER_OUTCOMES))
     mine = f"{filler().capitalize()}.\n\n1. {said['yours']} {filler()}.\n"
     texts = {"old": "\n\n".join(old) + "\n", "new": "\n\n".join(new) + "\n",
              "letter": "\n".join(lines) + "\n", "mine": mine}  # fmt: skip
@@ -6840,11 +6838,13 @@ def response_letters(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[int, s
 
 #: A quotation of three words, which is no quotation of the paper: it is not read.
 SHORT_QUOTATION = 'And "the cohort was" too short.'
-#: A straight double mark that is an inch's, which pairs with no other.
-INCH_MARK = 'A 5" screen showed it.'
-#: A paragraph of its own whose straight marks are odd in number: none of its quotations is
-#: read, and the paragraph is named.
+#: Paragraphs of their own whose straight quotations are not read, each named instead: one
+#: whose straight marks are odd in number; one with a mark after a number, which may end a
+#: quotation or be an inch's, its marks even; and one with an inch's mark.
 UNPAIRED = 'We wrote "the quarry stays unread here and "the quartz grew in size" too.'
+AFTER_A_NUMBER = 'We now report "the quarry rate was 12" and "the quartz odds were 2" here.'
+INCH_MARK = 'A 5" screen showed "the quarry rate was high" and "the quartz grew in size".'
+REFUSED = (UNPAIRED, AFTER_A_NUMBER, INCH_MARK)
 
 
 # ------------------------------------------------------------- how strongly a sentence claims

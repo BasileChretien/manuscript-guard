@@ -4,9 +4,9 @@
 quotation marks, on one line or across a line break, and each block quotation (`>` lines, a
 paragraph of them each), is looked for in both versions as G13 looks for a quoted revision
 (`gates.revision.as_quoted`), as words of its own, a curly apostrophe read as a straight one.
-Straight marks are paired in order within a paragraph, a mark right after a digit being an
-inch's; a paragraph whose straight marks are odd in number has none of them read, and is
-named in a note instead:
+Straight marks are paired in order within a paragraph; a paragraph whose straight marks are
+odd in number, or one of which follows a digit (an inch's mark, or the end of a quotation
+that ends in a number), has none of them read, and is named in a note instead:
 
 - in v2 and not in v1: new as quoted (a note);
 - in both: quoted as revised, but v1 had it (a warning);
@@ -64,8 +64,14 @@ _QUOTED = re.compile(
     r"\N{LEFT DOUBLE QUOTATION MARK}([^\N{RIGHT DOUBLE QUOTATION MARK}]+)"
     r"\N{RIGHT DOUBLE QUOTATION MARK}"
 )
-#: A straight mark that is no inch's mark: one right after a digit, `5"`, is.
-_STRAIGHT = re.compile(r'(?<!\d)"')
+#: A straight mark; and one right after a digit, which may be an inch's mark, `5"`, or the
+#: end of a quotation that ends in a number, `"the rate was 12"`: which, nothing here tells.
+_STRAIGHT = re.compile('"')
+_AFTER_A_NUMBER = re.compile(r'(?<=\d)"')
+#: What is said of a paragraph whose straight quotations are not read.
+UNPAIRED = ("the straight quotation marks in {} cannot be paired: one has no partner, or one "
+            "follows a number, where it may be an inch's mark or a quotation's end; its "
+            "straight quotations were not read")
 #: What ends a paragraph, inside which the straight marks are paired.
 _PARAGRAPH = re.compile(r"\n[ \t]*\n")
 #: A line of a block quotation, its marks; and the marks a quoted block may be wrapped in.
@@ -166,8 +172,9 @@ def _paired(marks: list[int]) -> list[tuple[int, int]] | None:
 
 def _straight(original: str, text: str) -> tuple[list[tuple[int, str]], list[tuple[int, int]]]:
     """Each quotation between two straight marks of one paragraph, `text` being `original`
-    with its block quotations blanked; and each paragraph whose marks are not paired, by
-    its number among the paragraphs of `original` and where it starts."""
+    with its block quotations blanked; and each paragraph whose marks are not paired, odd
+    in number or one of them after a number, by its number among the paragraphs of
+    `original` and where it starts."""
     ends = [0, *(found.end() for found in _PARAGRAPH.finditer(original))]
     stops = [*(found.start() for found in _PARAGRAPH.finditer(original)), len(original)]
     found: list[tuple[int, str]] = []
@@ -178,7 +185,7 @@ def _straight(original: str, text: str) -> tuple[list[tuple[int, str]], list[tup
             continue
         number += 1
         marks = [mark.start() for mark in _STRAIGHT.finditer(text, low, high)]
-        pairs = _paired(marks)
+        pairs = None if _AFTER_A_NUMBER.search(text, low, high) else _paired(marks)
         if pairs is None:
             odd.append((number, low + len(original[low:high]) - len(original[low:high].lstrip())))
             continue
@@ -294,11 +301,14 @@ def _back(path: Path):
 
 def _unpaired_items(section: str, path: Path, text: str, first: int = 1,
                     name: str = "") -> list[Item]:  # fmt: skip
+    """A note for each paragraph whose straight quotations were not read; in a comment, of
+    the comment, whose paragraphs are not the document's."""
     back = _back(path)
-    return [Item(section, GATE, "quotation-unpaired", f"{name}a straight quotation mark in "
-                 f"paragraph {number} is unpaired; its quotations were not read", INFO, False,
-                 path, back(line))
-            for number, line in unpaired(text, first)]  # fmt: skip
+    found = [Item(section, GATE, "quotation-unpaired",
+                  name + UNPAIRED.format("this comment" if name else f"paragraph {number}"),
+                  INFO, False, path, back(line))
+             for number, line in unpaired(text, first)]  # fmt: skip
+    return found[:1] if name else found
 
 
 def letter_items(path: Path, letter: str, old: Version, new: Version,

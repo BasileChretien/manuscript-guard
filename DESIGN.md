@@ -8232,8 +8232,11 @@ display it cannot count, a `longtable`'s caption, a `\captionof`, a float whose 
 does not read, no table (or figure) of the version is numbered, and a note says so: each is
 then matched by its caption alone (round 2 of #483: a regex of its own missed a
 sidewaystable, counted a float of two captions once and a continued float again). A table
-whose float inputs a file that was not read has its cells "not read", and is never said to
-be the same. A PDF is
+display has the cells of a table only where it is its float's one table display and the
+float holds one table, its own or the one file it inputs, read for no other float; any other
+count (two captions over two tables, one over two, a picture of a table, a file input not
+read or read already) has its cells "not read", and is never said to be the same (the fix
+round of #483: the second of two captions took no cells and read as the same). A PDF is
 refused with a sentence until the PDF reader of the layer is built. A version that holds no
 words is refused: there is nothing to set beside the other. Each version keeps its sections
 (title as printed, `section_names.plain`, and its own text to the next heading), its tables
@@ -8265,10 +8268,9 @@ paragraph's. The claims are `claims.moved`, its "before the edit" said as "in v1
 
 **v2 audited** (`comparing/report.py`). `audit` runs on each version with no outputs, G6 and
 G14 with it, and each finding of v2's is marked "stood in v1" where v1's audit gave one of the
-same gate and code that says the same, word for word and number for number, but for the
-lines it names and the versions' file names ("line 9" and "line 11" are one: a paragraph
-added above the Results moves every line an Abstract conflict names; round 2 of #483), and
-"new in v2" otherwise; two alike in v2 and one in v1 are one of each. Round 1
+same gate and code that says the same, word for word and number for number, the lines and
+files it names included, and "new in v2" otherwise (the fix round of #483: with its lines
+masked, a stray fence at line 10 of v1 and another at line 50 of v2 were one finding); two alike in v2 and one in v1 are one of each. Round 1
 of #483 marked a finding by whether its sentence was in v1, and a finding on a line nobody
 touched can come from a change elsewhere: the Abstract's 12% found nowhere once the Results
 said 13%. The mark leans to "new in v2", which sends the reader to read.
@@ -8276,9 +8278,11 @@ said 13%. The mark leans to "new in v2", which sends the reader to read.
 **The letter and the referee's comments** (`comparing/letters.py`). The quotations are read as
 G7 reads a prose quotation, four words or more in double marks (`gates.quotations.WORDS`), and
 each paragraph of a block quotation besides. Straight marks are paired within a paragraph,
-in order, a mark right after a digit taken for an inch's (a 5" screen) and passed over; where
-a paragraph's are odd in number, which of them is no quotation's cannot be told, and none of
-its straight quotations is read: a note names the paragraph (round 2 of #483: a rule that
+in order; where a paragraph's are odd in number, or one of them follows a digit, where it
+may be an inch's mark (a 5" screen) or the end of a quotation that ends in a number, which
+of them is no quotation's cannot be told, and none of its straight quotations is read: a
+note names the paragraph, or the comment it is in (the fix round of #483 dropped an
+inch's-mark rule that paired the openings of two quotations ending in numbers) (round 2 of #483: a rule that
 took a stop before a capital for a sentence's end read neither quotation of a line that
 quoted "the U.S. Food and Drug Administration"). Each is looked for in both versions as G13 looks
 for a quoted revision (`revision.as_quoted`), as words of its own: not the start or the end of
@@ -19452,18 +19456,24 @@ What papers converted from Word showed (see "What papers converted from Word sho
     neither version.
   - A finding of v2's audit stood in v1 only where v1's audit gave it word for word: a
     finding whose message names a line, a count or a file that moved reads as new in v2 though
-    it stood, and two versions in different formats (a .docx then a .md) read some findings
-    differently. Each version is audited, so `compare` takes about as long as two audits.
+    it stood (an Abstract conflict, which names its line in the Results, once a paragraph is
+    added above the Results), and two versions in different formats (a .docx then a .md) read
+    some findings differently. The mark leans to "new in v2", which sends the reader to read. Each version is audited, so `compare` takes about as long as two audits.
   - Within a changed stretch, a number is paired with one in the sentence most like its own by
     the words they share; two sentences rewritten so that their words change places can pair
     a number with the wrong one.
-  - A straight mark right after a digit is an inch's, so a quotation in straight marks that
-    ends with a number ("the rate was 12") leaves its paragraph's marks odd, and none of that
-    paragraph's straight quotations is read; the note names the paragraph. Curly marks have
-    no such limit.
-  - A LaTeX version holding a display the printed view cannot count (a `longtable`'s caption,
-    a `\captionof`) has none of its tables, or figures, numbered, and a letter's "Table 2" is
-    then said to name a table that is not numbered here.
+  - A paragraph with a straight mark after a digit, an inch's mark or a quotation that ends
+    in a number ("the rate was 12"), has none of its straight quotations read, and nor has
+    one whose straight marks are odd in number; the note names the paragraph. Curly marks
+    have no such limit.
+  - A LaTeX version holding a display the printed view cannot count has none of its tables,
+    or figures, numbered, and a letter's "Table 2" is then said to name a table that is not
+    numbered here: a `longtable`'s caption, a `\captionof` (in a figure float as well), a
+    page `\includepdf` takes in, a float whose caption the view does not read (none, or one
+    a command of the author's or `\captionbox` sets).
+  - A table display's cells are read only where its float holds one table display and one
+    table: subtables, two captions over two tables, a picture of a table, and a file two
+    floats input are "not read"; the caption is still compared.
   - The numbers of the reference list and of the tables are not compared as the prose's: a
     table's are compared cell by cell, and the reference list's not at all.
 - **A report about a gate checks its snippet for `audit`, G6 and G14 only, and checks the

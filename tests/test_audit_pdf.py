@@ -480,6 +480,27 @@ def test_a_wrapped_page_range_opens_no_entry(tmp_path: Path, dash: str) -> None:
                                                        "entry-never-cited"]
 
 
+def test_a_page_range_wrapped_across_a_blank_line_opens_no_entry(tmp_path: Path) -> None:
+    """The last fix-only round: the line before is the entry's last, a blank between them or
+    not."""
+    from manuscript_guard.auditing.references import NUMBERED, census_of_printed
+
+    text = "References\n1. Smith A. 2019;12:112-\n\n118. More.\n2. Jones B. 2020;1:1-9.\n"
+    census = census_of_printed(tmp_path / "p.pdf", text, [(0, 5)], "As [1, 2] show.\n", [])
+    assert census.style == NUMBERED and [e.number for e in census.entries] == [1, 2]
+
+
+def test_an_entry_number_is_not_read_as_a_pmid(tmp_path: Path) -> None:
+    """The last fix-only round: "PMID:" with no digits, the next line opening "4.", reads no
+    PMID 4; the cut "PMID:" is listed."""
+    from manuscript_guard.auditing.references import census_of_printed
+
+    text = "References\n1. A. One.\n2. B. PMID:\n4. D. Four.\n"
+    census = census_of_printed(tmp_path / "p.pdf", text, [(0, 4)], "As [1] [2] [4].\n", [])
+    assert all(not entry.pmids for entry in census.entries)
+    assert census.unsent == [(3, "PMID:")]
+
+
 def test_a_number_that_skips_tells_no_entry_apart(tmp_path: Path) -> None:
     """Round 2: "1. 2. 4. 5." cited [1] [2] [4] [5] was "cites entries 4, 5 ... it has 2
     entries". The list is not told apart, says why, and nothing is held to its count."""

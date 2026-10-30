@@ -287,8 +287,9 @@ def census_of_printed(
 
     The entries are not told apart (`UNTOLD`) where the list's first line carries no number,
     where an entry holds more than one DOI or more than one PMID, or where a line in the list's
-    own form opens with a number above the next one (a skipped entry, or a wrapped page range,
-    "112-" then "118. doi...": which it is cannot be told), and `Census.untold` says why. Each
+    own form opens with a number above the next one (an entry left out, or a number carried onto
+    a line of its own), and `Census.untold` says why. A line after one that ends in a hyphen or
+    a dash goes on that entry ("112-" then "118. doi..." is a page range wrapped). Each
     identifier is then looked up alone, as an entry of its own, so that a retracted work among
     them is asked about, one that ends a line among them (`Entry.ends_line`); and no citation
     is held to an entry, nor to the count of entries.
@@ -312,9 +313,10 @@ def census_of_printed(
             line = lines[index]
             if not line.strip():
                 continue
-            if not first and lines[index - 1].rstrip().endswith(_RANGE_OPEN):
+            if not first and found[-1][1][-1][1].rstrip().endswith(_RANGE_OPEN):
                 # A line that ends in a hyphen or a dash never ends an entry: "112-" then
-                # "118. doi..." is a page range wrapped, neither an entry nor a skip.
+                # "118. doi..." is a page range wrapped, neither an entry nor a skip. The line
+                # before is the entry's last, with or without a blank line between.
                 found[-1][1].append((index + 1, line))
                 continue
             numbered = _NUMBERED_ENTRY.match(line)
@@ -390,7 +392,7 @@ def _identifiers_of(parts: list[tuple[int, str]]) -> list[tuple[int, str, str, b
         # "PMID:" at a line's end, its digits beginning the next line of the entry.
         if not last and _PMID_AT_END.search(line):
             next_at, after = parts[at + 1]
-            digits = _GOES_ON["pmid"].match(after)
+            digits = _goes_on("pmid", after)
             if digits and digits.group(0).strip() not in seen:
                 said = digits.group(0).strip()
                 seen.add(said)
@@ -428,10 +430,18 @@ def _cut_short(parts: list[tuple[int, str]]) -> list[tuple[int, str]]:
         said = found.group(0).strip()
         kind = "pmid" if said.lower().startswith("pmid") else "doi"
         after = parts[index + 1][1] if index + 1 < len(parts) else ""
-        if not said.startswith("10.") and _GOES_ON[kind].match(after):
+        if not said.startswith("10.") and _goes_on(kind, after):
             continue
         cut.append((at, said))
     return cut
+
+
+def _goes_on(kind: str, after: str) -> re.Match[str] | None:
+    """The identifier beginning `after`, the line after its "doi:" or "PMID:". An entry's own
+    number ("4." in a list whose entries are not told apart) is not a PMID's digits."""
+    if kind == "pmid" and _NUMBERED_ENTRY.match(after):
+        return None
+    return _GOES_ON[kind].match(after)
 
 
 def _numbered_by_word(

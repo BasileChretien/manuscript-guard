@@ -1,0 +1,41 @@
+schema: manuscript-guard/data-dictionary/1
+title: A fictional cohort, as both emitters' profiles read it
+variables:
+  - name: patient_id
+    label: Patient
+    definition: The patient's number, PT- and five digits.
+    type: identifier
+  - name: sex
+    label: Sex
+    definition: Sex as recorded.
+    type: binary
+    values:
+      - {code: 1, label: Male}
+      - {code: 2, label: Female}
+    missing:
+      - {code: 9, label: not recorded}
+  - name: age
+    label: Age
+    definition: Age in years at admission.
+    type: count
+    range: {min: 18, max: 110}
+  - name: admitted
+    label: Admitted
+    definition: The day of admission.
+    type: date
+  - name: discharged
+    label: Discharged
+    definition: The day of discharge, written day, month, year.
+    type: date
+  - name: visit_time
+    label: Time of the visit
+    definition: The time of the first visit.
+    type: time
+  - name: note
+    label: Note
+    definition: What the nurse wrote.
+    type: text
+rules:
+  - id: in_before_out
+    says: No one is discharged before they are admitted.
+    order: [admitted, discharged]

@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/data-profile/1",
+  "title": "manuscript-guard data profile",
+  "description": "What the author's script wrote of a file of the vault with `em.profile` (`em$profile` in R), under `vault run`, at profiles/data/<name>.profile.json, and what a person released: for each column its type, its missing values, and its levels or the centiles of its values, each count below the custodian's minimum held back. `vault synthesize` draws the synthetic copy from it and from nothing else.",
+  "type": "object",
+  "required": ["schema", "name", "minimum_cell_count", "rows", "file", "columns"],
+  "additionalProperties": false,
+  "$defs": {
+    "count": {
+      "description": "A count: itself, held back behind the custodian's minimum (\"<5\"), or null where it is held back beside another count that the total would give away.",
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "string", "pattern": "^<[1-9][0-9]*$" },
+        { "type": "null" }
+      ]
+    },
+    "share": { "type": "number", "minimum": 0, "maximum": 1 },
+    "centiles": {
+      "type": "object",
+      "propertyNames": { "enum": ["5", "10", "25", "50", "75", "90", "95"] }
+    }
+  },
+  "properties": {
+    "schema": { "const": "manuscript-guard/data-profile/1" },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!(.*/)?[.][.]?(/|$))[^\\\\:]*$",
+      "description": "The file's label in the vault, and of its synthetic copy in data/synthetic/."
+    },
+    "minimum_cell_count": { "type": "integer", "minimum": 1 },
+    "rows": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "string", "pattern": "^<[1-9][0-9]*$" }
+      ]
+    },
+    "file": {
+      "type": "object",
+      "required": ["format", "delimiter", "decimal", "encoding", "quoting", "newline"],
+      "additionalProperties": false,
+      "properties": {
+        "format": { "type": "string", "description": "The file's extension, in lower case." },
+        "delimiter": { "type": "string", "minLength": 1, "maxLength": 1 },
+        "decimal": { "enum": [".", ","] },
+        "encoding": { "type": "string", "minLength": 1 },
+        "quoting": { "enum": ["minimal", "all"] },
+        "newline": { "enum": ["\n", "\r\n"] }
+      }
+    },
+    "columns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "typed_by", "kind", "missing"],
+        "properties": {
+          "name": { "type": "string" },
+          "type": {
+            "enum": ["binary", "categorical", "ordinal", "continuous", "count", "date",
+                     "datetime", "time", "text", "identifier"]
+          },
+          "typed_by": { "enum": ["dictionary", "values"] },
+          "kind": { "enum": ["levels", "number", "date", "time", "withheld"] },
+          "format": { "type": "string" },
+          "missing": { "$ref": "#/$defs/count" },
+          "missing_share": { "$ref": "#/$defs/share" },
+          "levels": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["level", "count"],
+              "additionalProperties": false,
+              "properties": {
+                "level": { "type": "string" },
+                "count": { "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] }
+              }
+            }
+          },
+          "other": {
+            "type": "object",
+            "required": ["levels", "count"],
+            "additionalProperties": false,
+            "properties": {
+              "levels": { "type": "integer", "minimum": 1 },
+              "count": { "$ref": "#/$defs/count" }
+            }
+          },
+          "unread": { "$ref": "#/$defs/count" },
+          "n": { "$ref": "#/$defs/count" },
+          "mean": { "type": "number" },
+          "sd": { "type": "number", "minimum": 0 },
+          "decimals": { "type": "integer", "minimum": 0, "maximum": 6 },
+          "centiles": { "$ref": "#/$defs/centiles" },
+          "pattern": { "type": "string", "minLength": 1 }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "kind": { "const": "levels" } } },
+            "then": {
+              "required": ["levels"],
+              "properties": { "centiles": false, "n": false, "pattern": false }
+            }
+          },
+          {
+            "if": { "properties": { "kind": { "enum": ["number", "date", "time"] } } },
+            "then": {
+              "required": ["unread", "n", "centiles"],
+              "properties": { "levels": false, "other": false, "pattern": false },
+              "if": { "properties": { "kind": { "const": "number" } } },
+              "then": {
+                "properties": { "centiles": { "additionalProperties": { "type": "number" } } }
+              },
+              "else": {
+                "properties": {
+                  "centiles": {
+                    "additionalProperties": {
+                      "type": "string",
+                      "pattern": "^([0-9]{4}-[0-9]{2}|[0-9]{2}:00)$"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "kind": { "const": "withheld" } } },
+            "then": {
+              "properties": { "levels": false, "other": false, "centiles": false, "n": false }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

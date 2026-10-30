@@ -41,7 +41,7 @@ import os
 import re
 import textwrap
 from collections.abc import Callable, Iterable
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal
 from fractions import Fraction
 from functools import cache
@@ -4814,6 +4814,92 @@ def vault_commands(draw: st.DrawFn) -> tuple[list[str], list[str | None]]:
     return [lines[at] for at in order], [expected[at] for at in order]
 
 
+#: Each kind of column a table to profile holds, once in every table, and the type the data
+#: dictionary gives it, or None where the profile reads the type from the values:
+#: levels some of which are rare; levels whose only count held back is the rare ones', and
+#: the missing values', which the rows would give away; numbers and dates and times, with
+#: the smallest and largest value each held by several rows ("ends"); identifiers and texts,
+#: each value different; and counts some of which are no number.
+PROFILE_KINDS = {
+    "levels": None, "rare closing": None, "missing closing": None, "number": "continuous",
+    "ends": "continuous", "date": "date", "time": "time", "identifier": None, "text": None,
+    "unread": "count",
+}  # fmt: skip
+
+
+def _levels_column(rng: Any, rows: int, minimum: int, rare: int, missing: int) -> list[str]:
+    """Levels: `rare` of them each under `minimum`, `missing` blanks, and the rest in common
+    levels of `minimum` rows or more."""
+    counts = [rng.randint(1, minimum - 1) for _ in range(rare)] if minimum > 1 else []
+    rest = rows - sum(counts) - missing
+    common = max(1, min(4, rest // minimum))
+    shares = [minimum] * common
+    for _ in range(rest - minimum * common):
+        shares[rng.randrange(common)] += 1
+    values = [f"r{at}" for at, count in enumerate(counts) for _ in range(count)]
+    values += [f"L{at}" for at, count in enumerate(shares) for _ in range(count)]
+    values += [""] * missing
+    rng.shuffle(values)
+    return values
+
+
+def _spread_column(rng: Any, rows: int, minimum: int, kind: str, ends: bool) -> list[str]:
+    """Numbers, dates or times, each different but where `ends` holds the smallest and the
+    largest by a twentieth of the rows and one more, and a few missing."""
+    missing = rng.randint(0, min(minimum + 2, rows // 4))
+    count = rows - missing
+    tied = -(-count // 20) + 1 if ends and count > 8 else 0
+    points = sorted(rng.sample(range(10, 10 * count + 10), count - 2 * tied))
+    if tied:
+        points = [points[0] - 7] * tied + points + [points[-1] + 7] * tied
+    shown = {
+        "number": lambda point: f"{point / 10:.1f}",
+        "date": lambda point: (date(2010, 1, 1) + timedelta(days=point * 3)).isoformat(),
+        "time": lambda point: f"{point * 5 // 60 % 24:02d}:{point * 5 % 60:02d}",
+    }[kind]
+    values = [shown(point) for point in points] + [""] * missing
+    rng.shuffle(values)
+    return values
+
+
+def _profile_column(rng: Any, kind: str, rows: int, minimum: int) -> list[str]:
+    if kind == "levels":
+        return _levels_column(rng, rows, minimum, rng.randint(1, 2), rng.randint(0, minimum))
+    if kind == "rare closing":
+        return _levels_column(rng, rows, minimum, 1 if minimum > 1 else 0, 0)
+    if kind == "missing closing":
+        return _levels_column(rng, rows, minimum, 0, rng.randint(1, max(minimum - 1, 1)))
+    if kind in ("number", "ends"):
+        return _spread_column(rng, rows, minimum, "number", kind == "ends")
+    if kind in ("date", "time"):
+        return _spread_column(rng, rows, minimum, kind, rng.random() < 0.5)
+    if kind == "identifier":
+        return [f"ID-{at:05d}" for at in rng.sample(range(100000), rows)]
+    if kind == "text":
+        numbers = rng.sample(range(10**6), rows)
+        return [f"{rng.choice(['seen', 'Left', 'x'])} {at}" for at in numbers]
+    unread = rng.randint(1, max(minimum - 1, 1))
+    values = [str(rng.randint(0, 40)) for _ in range(rows - unread)] + ["n/a"] * unread
+    rng.shuffle(values)
+    return values
+
+
+@st.composite
+def profile_tables(draw: st.DrawFn) -> dict[str, Any]:
+    """A table to profile, with the custodian's minimum and the types the dictionary gives:
+    every kind of `PROFILE_KINDS` once, in an order drawn, so that a rule broken for one meets
+    it in every example. Each value is text, as a CSV file is read."""
+    minimum = draw(st.sampled_from((3, 5, 10, 11)))
+    rows = draw(st.integers(5 * minimum, 12 * minimum))
+    rng = draw(st.randoms(use_true_random=False))
+    kinds = draw(st.permutations(list(PROFILE_KINDS)))
+    return {
+        "minimum": minimum,
+        "types": {kind: PROFILE_KINDS[kind] for kind in kinds if PROFILE_KINDS[kind]},
+        "columns": {kind: _profile_column(rng, kind, rows, minimum) for kind in kinds},
+    }
+
+
 @st.composite
 def deposit_statements(draw: st.DrawFn) -> tuple[str, list[str], list[str]]:
     """Drawn words; the same with each way of naming the deposit put in at a place drawn, one
@@ -8869,6 +8955,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "vault named": vault_commands().flatmap(
         lambda drawn: st.sampled_from([{"command": line} for line in drawn[0]])
     ),
+    "data profile": profile_tables(),
     "count cells": count_cells().map(lambda drawn: [cell for cell, _count in drawn]),
     "harvest cells": harvest_cells().map(
         lambda drawn: [[text, digits] for text, digits, _read in drawn]

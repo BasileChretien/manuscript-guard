@@ -3941,6 +3941,8 @@ def test_a_command_that_only_names_a_run_of_the_vault_is_asked(
         "manuscript-guard vault check",
         "python analysis/run.py && manuscript-guard vault check",
         "manuscript-guard vault init --refresh --as Ada",
+        "manuscript-guard vault synthesize",
+        "mguard vault synthesize cohort.csv && python analysis/01_model.py",
         'grep -rn "vault" docs/',
         "git commit -m \"manuscript-guard vault run is the person's\"",
         "vault read secret/token",  # another tool of the same name
@@ -3984,6 +3986,17 @@ def test_a_command_that_names_the_vault_is_refused_while_the_session_can_read_it
         assert decision(result) == "deny", (command, result)
         assert "can be read from this session" in reason(result), command
         assert "data/synthetic/" in reason(result)
+
+
+def test_the_synthetic_copy_is_drawn_by_an_agent_while_the_vault_can_be_read(
+    in_claude_code: Path, kept_apart: Path, capsys
+) -> None:
+    """`vault synthesize` reads the released profile alone, never the data: the guard lets
+    it through, readable vault or not."""
+    _register(in_claude_code, kept_apart)
+    for command in ("manuscript-guard vault synthesize",
+                    "manuscript-guard vault synthesize cohort.csv --path ."):  # fmt: skip
+        assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
 
 
 def test_a_command_that_names_the_vault_through_a_link_is_refused(

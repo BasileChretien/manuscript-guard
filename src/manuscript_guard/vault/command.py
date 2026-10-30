@@ -1,9 +1,9 @@
-"""`manuscript-guard vault init` and `vault check`.
+"""`manuscript-guard vault init`, `vault check` and `vault synthesize`.
 
-`init` is the person's: it registers the data and prints the agent tool's deny rules, and
-with `--agent-settings` writes them, once the person says yes at a terminal. `check` may be
-run by anyone, the agent included: it reads nothing of the data, and says whether this session
-can.
+`init` is the person's: it registers the data, starts the profile script and prints the
+agent tool's deny rules, and with `--agent-settings` writes them, once the person says yes at a
+terminal. `check` may be run by anyone, the agent included: it reads nothing of the data, and
+says whether this session can. So may `synthesize`, which reads the released profile alone.
 """
 
 from __future__ import annotations
@@ -37,6 +37,10 @@ def cmd_vault(args: argparse.Namespace) -> int:
     try:
         if args.verb == "check":
             return _check(args)
+        if args.verb == "synthesize":
+            from manuscript_guard.vault.synthesize import command
+
+            return command(_root(args), list(args.words))
         return _init(args)
     except VaultFileError as exc:
         print(f"{_PREFIX}: {exc}", file=sys.stderr)
@@ -107,7 +111,21 @@ def _init(args: argparse.Namespace) -> int:
         print(f"{_PREFIX} init: refused, nothing written: {exc}", file=sys.stderr)
         return 2
     _said(done, refreshing=args.refresh)
+    if not args.refresh:
+        _started(root, [*done.added, *done.changed, *done.unchanged])
     return _agent_rules(root, done.folder, write=args.agent_settings)
+
+
+def _started(root: Path, labels: list[str]) -> None:
+    """Start the profile script, where the project has none."""
+    from manuscript_guard.vault import starter
+
+    written = starter.write(root, sorted(labels))
+    if written is not None:
+        print(f"{_PREFIX}: started {written.relative_to(root).as_posix()}, which profiles each "
+              "file for its synthetic copy: read each file there as the analysis does. "
+              "`vault run` runs it on the data; `vault synthesize` draws the copy from the "
+              "profile a person releases.")  # fmt: skip
 
 
 def _said(done, *, refreshing: bool) -> None:

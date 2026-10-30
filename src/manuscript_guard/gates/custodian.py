@@ -36,6 +36,7 @@ import math
 import os
 import re
 import subprocess
+from collections.abc import Sequence
 from decimal import Decimal
 from pathlib import Path
 
@@ -201,6 +202,29 @@ def recoverable(table, minimum: int | None) -> list:
     from manuscript_guard.stats.margins import recovered, table_lines
 
     return [found for found in recovered(table_lines(table)) if _forbidden(found.value, minimum)]
+
+
+def recoverable_counts(total: int, shown: Sequence, minimum: int) -> list[int]:
+    """The places of the counts held back that a total printed beside them gives away, as
+    `recoverable` reads a table's line: the counts are the whole of the total, each printed
+    as itself (an integer), held back behind the minimum ("<5", from nought to four), or not
+    printed at all (None, from nought to the total). A data profile's column is such a line
+    (`vault/profile.py`)."""
+    from manuscript_guard.stats.margins import Count, Line, Member, recovered
+
+    def count(at: int, one: object) -> Member:
+        if isinstance(one, int) and not isinstance(one, bool):
+            return Member(Count(one, one, str(one), at), str(at))
+        high = total if one is None else held_largest(str(one))
+        if high is None:
+            raise ValueError(f"a count printed {one!r} is neither a count nor held back")
+        return Member(Count(0, high, str(one), at, held=True), str(at))
+
+    members = tuple(count(at, one) for at, one in enumerate(shown))
+    line = Line(Member(Count(total, total, str(total), -1), "total"), members, "the total",
+                "count", "counts")  # fmt: skip
+    return [found.member.count.line for found in recovered([line])
+            if _forbidden(found.value, minimum)]  # fmt: skip
 
 
 def _forbidden(value: int, minimum: int | None) -> bool:

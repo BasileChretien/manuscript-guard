@@ -25,10 +25,11 @@ Four things are said plainly here, because each is easy to believe otherwise:
   apply. That is the site's receipt, `verify --receipt SITE` ([harvest](harvest.md)).
 
 What this version holds: registering the data (`vault init`), checking whether this session
-can read them (`vault check`), the line at each session start, the shell guard and the agent
-tool's own deny rules. Running the analysis on the real data (`vault run`), releasing what it
-wrote (`vault release`), and the profile and synthetic copy are later steps; the shell guard
-already refuses `vault run` and `vault release` to an agent.
+can read them (`vault check`), the line at each session start, the shell guard, the agent
+tool's own deny rules, the profile of each file (`em.profile`) and the synthetic copy drawn
+from it (`vault synthesize`). Running the analysis on the real data (`vault run`) and
+releasing what it wrote (`vault release`) are a later step; the shell guard already refuses
+both to an agent.
 
 ## Registering the data: `vault init`
 
@@ -152,6 +153,76 @@ commands it recognises in a shell (`cat`, `head`, `tail`, `sed`, `tee`) and the 
 redirections. Not a command that reads files without naming them, and not a script that opens
 a file itself. They are a second layer, not the separation. Other agent tools have rules of
 their own, or none; see their documentation.
+
+## The profile of each file: `em.profile`
+
+`vault init` starts `analysis/00_profile.py` (`.R` where the analysis is in R), unless one is
+there already. It reads each registered CSV or TSV file from the folder `vault run` gives it in
+`MANUSCRIPT_GUARD_VAULT`, and refuses to run without it. Change its reader to read each file as
+the analysis does; a file in another format gets a comment to fill in. The script hands each
+table to the emitter:
+
+```python
+em.profile(rows, name="cohort.csv", read_as={"header_of": VAULT / "cohort.csv"})
+```
+
+```r
+em$profile(cohort, name = "cohort.csv", read_as = list(header_of = file.path(vault, "cohort.csv")))
+```
+
+`name` is the file's name in the vault. The profile goes to
+`profiles/data/cohort.csv.profile.json`. Run by `vault run`, it stays in the vault until a
+person releases it: read it before you do, as you would any output. With m the custodian's
+minimum cell count from `paper.yaml`, it gives of each column:
+
+- its name, its place, and its type: the data dictionary's where it lists the column, otherwise
+  read from the values;
+- its missing values, "<m" below m, and their share from m;
+- for a coded column (and one the dictionary does not list with 50 values or fewer), each level
+  of m rows or more with its count, the rest folded into "other";
+- for numbers, dates and times, the rows read, a mean and SD (numbers, from m rows and at least
+  three), and each centile from the 5th to the 95th that has m rows below it and m above it.
+  Never the smallest or the largest value. Dates to the month, times to the hour;
+- for an identifier, a text, or a column the dictionary does not list whose values are all
+  different, only its missing values and the pattern its values share ("AA-99999").
+
+Every column's counts add up to the table's rows. Where a count held back could be worked out
+from the rows and the counts beside it, the smallest count beside it is held back as well
+(`null`).
+
+`read_as` says how the file is written, for the synthetic copy to be written alike:
+`delimiter`, `decimal` ("." or ","), `encoding`, `quoting` ("minimal" or "all"), `newline`,
+`dates` (a column's name to its format, made of `%Y %m %d %H %M %S`), and `header_of`, a file
+whose header line is read for its delimiter, a byte-order mark and its line ending. Nothing
+below the header is read for that.
+
+A level's name and a column's name are shown as written. A column of names, or a level that is
+one rare diagnosis's own word, is shown by the profile unless the data dictionary types the
+column `text` or `identifier`.
+
+## The synthetic copy: `vault synthesize`
+
+```bash
+manuscript-guard vault synthesize            # every profile released
+manuscript-guard vault synthesize cohort.csv
+```
+
+It writes `data/synthetic/cohort.csv` from the released profile, the data dictionary and a seed
+kept beside the profile, `profiles/data/cohort.csv.synthetic.yaml`, which the first run writes.
+It reads nothing else: not the data, not the vault. Anyone may run it, the agent included, and
+the shell guard lets it through. The same profile and seed give the same bytes on every machine;
+change the seed, or the rows, in that file to draw another copy.
+
+Each column is drawn alone: levels by their counts ("other" as a level named `other`), numbers
+and dates along straight lines between the centiles and beyond them, missing values at their
+rate, identifiers in their pattern with letters X and digits that begin with 9 (`XX-90001`).
+A row that breaks an order or a unique rule of the data dictionary is drawn again, and after
+1000 tries the copy is refused, naming the rule. Since the columns are drawn apart, a model
+fitted on the copy finds nothing: the copy is for writing and testing the code, not for results.
+A row may still match a real person's by chance.
+
+The copy is written as CSV or TSV. A profile of a `.xlsx`, `.parquet` or `.sas7bdat` file is
+refused: export the extract to CSV inside the vault, register that file, and profile it.
 
 ## Four setups, most separating first
 

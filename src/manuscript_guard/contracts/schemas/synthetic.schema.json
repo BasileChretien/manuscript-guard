@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/synthetic/1",
+  "title": "manuscript-guard synthetic copy's seed",
+  "description": "The seed `vault synthesize` drew data/synthetic/<name> from, and how many rows, at profiles/data/<name>.synthetic.yaml. Written on first use and kept, so that the same profile and seed give the same copy.",
+  "type": "object",
+  "required": ["schema", "seed", "rows"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/synthetic/1" },
+    "seed": { "type": "integer", "minimum": 0 },
+    "rows": { "type": "integer", "minimum": 0 }
+  }
+}

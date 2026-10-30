@@ -1,0 +1,204 @@
+{
+  "schema": "manuscript-guard/data-profile/1",
+  "name": "cohort.csv",
+  "minimum_cell_count": 5,
+  "rows": 88,
+  "file": {
+    "format": "csv",
+    "delimiter": ",",
+    "decimal": ".",
+    "encoding": "utf-8",
+    "quoting": "minimal",
+    "newline": "\n"
+  },
+  "columns": [
+    {
+      "name": "patient_id",
+      "type": "identifier",
+      "typed_by": "dictionary",
+      "kind": "withheld",
+      "missing": 0,
+      "pattern": "AA-99999"
+    },
+    {
+      "name": "sex",
+      "type": "binary",
+      "typed_by": "dictionary",
+      "kind": "levels",
+      "missing": 6,
+      "missing_share": 0.0681818,
+      "levels": [
+        {
+          "level": "1",
+          "count": 43
+        },
+        {
+          "level": "2",
+          "count": 39
+        }
+      ]
+    },
+    {
+      "name": "region",
+      "type": "text",
+      "typed_by": "values",
+      "kind": "levels",
+      "missing": 0,
+      "levels": [
+        {
+          "level": "East",
+          "count": 12
+        },
+        {
+          "level": "North",
+          "count": 24
+        },
+        {
+          "level": "Say \"hi\"",
+          "count": 7
+        },
+        {
+          "level": "South",
+          "count": 23
+        },
+        {
+          "level": "West",
+          "count": 12
+        },
+        {
+          "level": "Île",
+          "count": null
+        }
+      ],
+      "other": {
+        "levels": 2,
+        "count": "<5"
+      }
+    },
+    {
+      "name": "age",
+      "type": "count",
+      "typed_by": "dictionary",
+      "kind": "number",
+      "missing": "<5",
+      "unread": "<5",
+      "n": 81,
+      "mean": 54.3457,
+      "sd": 23.8187,
+      "decimals": 0,
+      "centiles": {
+        "10": 25,
+        "25": 31,
+        "50": 49,
+        "75": 78,
+        "90": 89
+      }
+    },
+    {
+      "name": "weight",
+      "type": "continuous",
+      "typed_by": "values",
+      "kind": "number",
+      "missing": 0,
+      "unread": 0,
+      "n": 88,
+      "mean": 71.0841,
+      "sd": 11.4973,
+      "decimals": 1,
+      "centiles": {
+        "10": 57.6,
+        "25": 63,
+        "50": 70.7,
+        "75": 78.7,
+        "90": 86.5
+      }
+    },
+    {
+      "name": "admitted",
+      "type": "date",
+      "typed_by": "dictionary",
+      "kind": "date",
+      "missing": 0,
+      "unread": 0,
+      "n": 88,
+      "centiles": {
+        "25": "2018-03",
+        "50": "2018-06",
+        "75": "2018-10",
+        "90": "2018-11"
+      }
+    },
+    {
+      "name": "discharged",
+      "type": "date",
+      "typed_by": "dictionary",
+      "kind": "date",
+      "format": "%d/%m/%Y",
+      "missing": 0,
+      "unread": 0,
+      "n": 88,
+      "centiles": {
+        "25": "2018-04",
+        "50": "2018-07",
+        "75": "2018-11",
+        "90": "2018-12"
+      }
+    },
+    {
+      "name": "visit_time",
+      "type": "time",
+      "typed_by": "dictionary",
+      "kind": "time",
+      "missing": 0,
+      "unread": 0,
+      "n": 88,
+      "centiles": {
+        "10": "08:00",
+        "25": "09:00",
+        "50": "12:00",
+        "75": "14:00",
+        "90": "17:00"
+      }
+    },
+    {
+      "name": "stage",
+      "type": "continuous",
+      "typed_by": "values",
+      "kind": "levels",
+      "missing": 0,
+      "levels": [
+        {
+          "level": "1",
+          "count": 22
+        },
+        {
+          "level": "2",
+          "count": 37
+        },
+        {
+          "level": "3",
+          "count": 21
+        },
+        {
+          "level": "4",
+          "count": 8
+        }
+      ]
+    },
+    {
+      "name": "note",
+      "type": "text",
+      "typed_by": "dictionary",
+      "kind": "withheld",
+      "missing": 25,
+      "missing_share": 0.284091
+    },
+    {
+      "name": "code",
+      "type": "text",
+      "typed_by": "values",
+      "kind": "withheld",
+      "missing": 0
+    }
+  ]
+}

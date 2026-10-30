@@ -1534,6 +1534,19 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     invisible(checked$found)
   }
 
+  # Write the profile of a file of the vault, for its synthetic copy, mirroring the Python
+  # `profile()` (profile.R): profiles/data/<name>.profile.json, every count below the
+  # custodian's minimum held back, never the smallest or largest value. `read_as` says how
+  # the file was read: delimiter, decimal, encoding, quoting, newline, dates (a column's
+  # name to its format) and header_of, the file whose header line is read for its shape.
+  profile <- function(data, name, read_as = NULL, dataset = NULL) {
+    path <- file.path(project_root, "design", "data_dictionary.yaml")
+    dictionary <- if (file.exists(path)) mg_read_dictionary(path) else NULL
+    minimum <- mg_minimum_cell_count(project_root)
+    document <- mg_profile(data, name, minimum, dictionary, dataset, read_as)
+    mg_profile_write(project_root, document)
+  }
+
   # Record a fitted model as the fit describes it, mirroring the Python `model()`.
   # `unit` names the column of the data whose values the rows belong to, mirroring the
   # Python `model()`: G15 warns where there are more rows than units and the fit is neither
@@ -2046,6 +2059,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     dataset = dataset,
     variable = variable,
     check_data = check_data,
+    profile = profile,
     model = model,
     step = step,
     interval = interval,

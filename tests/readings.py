@@ -870,6 +870,21 @@ def _vault_named() -> Reading:
     return read
 
 
+@reading("data profile")
+def _data_profile() -> Reading:
+    from manuscript_guard.contracts.dictionary import Dictionary, Variable
+    from manuscript_guard.vault.profile import dumps, profile
+
+    def read(given: dict) -> str:
+        """The profile of a table, as `em.profile` writes it, with the custodian's minimum and
+        the dictionary's types given beside it."""
+        variables = tuple(Variable(name, name, "d", kind) for name, kind in given["types"].items())
+        return dumps(profile(given["columns"], name="table.csv", minimum=given["minimum"],
+                             dictionary=Dictionary(Path("d.yaml"), variables)))  # fmt: skip
+
+    return read
+
+
 @reading("count cells")
 def _count_cells() -> Reading:
     from manuscript_guard.deposit.counts import count_in_cell

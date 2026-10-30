@@ -30,6 +30,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from bisect import bisect_left
 from collections import Counter
 from decimal import Decimal
@@ -148,6 +149,7 @@ from generated import (
     planned_plans,
     post_links,
     printings,
+    profile_tables,
     proofs,
     published_texts,
     quotations,
@@ -3029,6 +3031,136 @@ def test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_besi
     lines, expected = drawn
     read = READINGS["vault named"]()
     assert [read({"command": line}) for line in lines] == expected, lines
+
+
+# ------------------------------------------------------------- the profile of a vault's file
+
+
+def _profiled(drawn: dict) -> dict:
+    return json.loads(READINGS["data profile"]()(drawn))
+
+
+def _profile_cells(column: dict) -> list:
+    """The counts a column of a profile prints, which together are the table's rows."""
+    if column["kind"] == "levels":
+        other = [column["other"]["count"]] if "other" in column else []
+        return [level["count"] for level in column["levels"]] + other + [column["missing"]]
+    if column["kind"] == "withheld":
+        return [column["missing"], None]
+    return [column["missing"], column["unread"], column["n"]]
+
+
+def _profile_points(column: dict, values: list[str]) -> list[float]:
+    """A column's values in the unit its centiles are given in: numbers, months, hours."""
+    kept = [value for value in values if value.strip()]
+    if column["kind"] == "date":
+        return [int(value[:4]) * 12 + int(value[5:7]) - 1 for value in kept]
+    if column["kind"] == "time":
+        return [int(value[:2]) for value in kept]
+    return [float(value) for value in kept if re.fullmatch(r"-?[0-9.]+", value)]
+
+
+def _centile_point(column: dict, shown: object) -> float:
+    if column["kind"] == "date":
+        return int(shown[:4]) * 12 + int(shown[5:7]) - 1
+    if column["kind"] == "time":
+        return int(shown[:2])
+    return float(shown)
+
+
+@holds(60, profile_tables())
+def test_a_profile_prints_no_count_under_the_custodian_minimum(drawn: dict) -> None:
+    """Every count a profile prints is nought or the minimum or more, and is the count; each
+    level given by name has the minimum rows or more; the rest are folded into "other", whose
+    count is printed only from the minimum and held back, "<m", below it (`vault/profile.py`)."""
+    minimum = drawn["minimum"]
+    held = f"<{minimum}"
+    for column in _profiled(drawn)["columns"]:
+        for cell in _profile_cells(column):
+            assert cell in (None, held) or cell == 0 or cell >= minimum, column
+        if column["kind"] != "levels":
+            continue
+        counted = Counter(value for value in drawn["columns"][column["name"]] if value.strip())
+        for level in column["levels"]:
+            assert counted[level["level"]] >= minimum, column
+            assert level["count"] in (None, counted[level["level"]]), column
+        folded = [level for level, count in counted.items() if count < minimum]
+        assert column.get("other", {}).get("levels", 0) == len(folded), column
+        if folded:
+            count = sum(counted[level] for level in folded)
+            assert column["other"]["count"] in (None, count if count >= minimum else held)
+
+
+@holds(60, profile_tables())
+def test_a_profile_gives_no_centile_with_fewer_than_the_minimum_rows_on_a_side(
+    drawn: dict,
+) -> None:
+    """Each centile a profile gives of a number, a date (to the month) or a time (to the hour)
+    has the custodian's minimum of rows below it and as many above it."""
+    minimum = drawn["minimum"]
+    for column in _profiled(drawn)["columns"]:
+        points = _profile_points(column, drawn["columns"][column["name"]])
+        for shown in column.get("centiles", {}).values():
+            at = _centile_point(column, shown)
+            below = sum(1 for point in points if point < at)
+            above = sum(1 for point in points if point > at)
+            assert below >= minimum and above >= minimum, (column["name"], shown, below, above)
+
+
+@holds(60, profile_tables())
+def test_a_profile_gives_no_smallest_or_largest_value(drawn: dict) -> None:
+    """No centile a profile gives is a column's smallest or largest value, in its unit, even
+    where several rows hold it."""
+    for column in _profiled(drawn)["columns"]:
+        points = _profile_points(column, drawn["columns"][column["name"]])
+        for shown in column.get("centiles", {}).values():
+            assert _centile_point(column, shown) not in (min(points), max(points)), column
+
+
+@holds(60, profile_tables())
+def test_no_count_a_profile_holds_back_is_given_away_by_the_rows_it_prints(drawn: dict) -> None:
+    """The counts of each column are the table's rows, which the profile prints: no count it
+    holds back, "<m", can be worked out from them, whatever the others are within what they
+    print (a count held back beside them, unprinted, being any from nought to the rows)."""
+    document = _profiled(drawn)
+    minimum, rows = drawn["minimum"], document["rows"]
+    assert isinstance(rows, int)
+    for column in document["columns"]:
+        cells = _profile_cells(column)
+        lows = [cell if isinstance(cell, int) else 0 for cell in cells]
+        highs = [cell if isinstance(cell, int) else rows if cell is None else minimum - 1
+                 for cell in cells]  # fmt: skip
+        assert sum(lows) <= rows <= sum(highs), column
+        for at, cell in enumerate(cells):
+            if cell != f"<{minimum}":
+                continue
+            low = max(lows[at], rows - (sum(highs) - highs[at]))
+            high = min(highs[at], rows - (sum(lows) - lows[at]))
+            assert not (low == high and 1 <= low < minimum), (column, cell, low)
+
+
+@holds(15, profile_tables(), st.integers(0, 2**31 - 1))
+def test_a_synthetic_copy_is_the_same_bytes_from_the_same_profile_and_seed(
+    drawn: dict, seed: int
+) -> None:
+    """Drawn twice, in two projects, from one profile and one seed, the synthetic copy is the
+    same bytes (`vault synthesize`)."""
+    from manuscript_guard.vault import profile as profiling
+    from manuscript_guard.vault import synthesize
+
+    written = (READINGS["data profile"]()(drawn) + "\n").encode("utf-8")
+    copies = []
+    with tempfile.TemporaryDirectory() as folder:
+        for place in ("one", "two"):
+            root = Path(folder) / place
+            profiled = profiling.path_of(root, "table.csv")
+            profiled.parent.mkdir(parents=True)
+            profiled.write_bytes(written)
+            kept = synthesize.seed_path(root, "table.csv")
+            kept.write_text(f"schema: {synthesize.SEED_SCHEMA}\nseed: {seed}\nrows: 40\n",
+                            encoding="utf-8")  # fmt: skip
+            copies.append(synthesize.synthesize(root, "table.csv").path.read_bytes())
+    assert copies[0] == copies[1]
 
 
 # ------------------------------------------------------------- a count in a deposited table
@@ -13764,9 +13896,64 @@ def _a_quoted_path_is_split_at_its_spaces(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(hooks, "_words", lambda command: list(dict.fromkeys(command.split())))
 
 
+def _a_level_under_the_minimum_is_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.vault import profile
+
+    patch.setattr(profile, "_kept", lambda count, minimum: count >= 1)
+
+
+def _a_centile_needs_one_row_a_side(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.vault import profile
+
+    patch.setattr(profile, "_enough", lambda below, above, minimum: below >= 1 and above >= 1)
+
+
+def _a_centile_is_given_whatever_lies_beside_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.vault import profile
+
+    patch.setattr(profile, "_enough", lambda below, above, minimum: True)
+
+
+def _nothing_is_held_beside_a_count_the_rows_give_away(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.vault import profile
+
+    patch.setattr(profile, "held_beside", lambda counts, total, minimum: [
+        profile._shown(count, minimum) for count in counts])  # fmt: skip
+
+
+def _a_synthetic_copy_is_drawn_unseeded(patch: pytest.MonkeyPatch) -> None:
+    import random
+    import types
+
+    from manuscript_guard.vault import synthesize
+
+    patch.setattr(synthesize, "random", types.SimpleNamespace(
+        Random=lambda _seed: random.Random(), SystemRandom=random.SystemRandom))  # fmt: skip
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a level under the custodian's minimum is given by its name": (
+        _a_level_under_the_minimum_is_kept,
+        test_a_profile_prints_no_count_under_the_custodian_minimum,
+    ),
+    "a centile with one row on each side is given": (
+        _a_centile_needs_one_row_a_side,
+        test_a_profile_gives_no_centile_with_fewer_than_the_minimum_rows_on_a_side,
+    ),
+    "a centile is given whatever lies beside it": (
+        _a_centile_is_given_whatever_lies_beside_it,
+        test_a_profile_gives_no_smallest_or_largest_value,
+    ),
+    "a count the rows give away is printed with nothing held beside it": (
+        _nothing_is_held_beside_a_count_the_rows_give_away,
+        test_no_count_a_profile_holds_back_is_given_away_by_the_rows_it_prints,
+    ),
+    "a synthetic copy is drawn from an unseeded stream": (
+        _a_synthetic_copy_is_drawn_unseeded,
+        test_a_synthetic_copy_is_the_same_bytes_from_the_same_profile_and_seed,
+    ),
     "a folder whose name begins with the vault's is read as inside it": (
         _a_folder_beginning_as_the_vault_is_in_it,
         test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_beside_it,

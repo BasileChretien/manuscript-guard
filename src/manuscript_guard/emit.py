@@ -1652,6 +1652,42 @@ class Emitter:
             self.value(quality.PREFIX + count.key, count.value, display=shown, quoted=False)
         return {count.key: list(count.rows) for count in counts}
 
+    def profile(
+        self,
+        data: object,
+        *,
+        name: str,
+        read_as: Mapping[str, object] | None = None,
+        dataset: str | None = None,
+    ) -> Path:
+        """Write the profile of a file of the vault, for its synthetic copy.
+
+            with open(folder / "cohort.csv", newline="", encoding="utf-8") as handle:
+                em.profile(list(csv.DictReader(handle)), name="cohort.csv",
+                           read_as={"header_of": folder / "cohort.csv"})
+
+        `name` is the file's label in the vault. The profile goes to
+        `profiles/data/<name>.profile.json`: each column's type (the data dictionary's where
+        it has the column), its missing values, and its levels or the centiles of its values,
+        every count below the custodian's minimum (`paper.yaml`,
+        `custodian.minimum_cell_count`) held back, never the smallest or largest value
+        (`vault/profile.py`). `read_as` says how the file was read, for the copy to be
+        written alike: `delimiter`, `decimal`, `encoding`, `quoting` ("minimal" or "all"),
+        `newline`, `dates` (a column's name to its format, of %Y %m %d %H %M %S), and
+        `header_of`, the file whose header line is read for the delimiter, a byte-order mark
+        and the line ending. Run under `vault run`, the profile leaves the vault only when a
+        person releases it; `vault synthesize` then draws the copy from it.
+        """
+        from manuscript_guard.vault import profile as profiling
+
+        assert self.root is not None
+        minimum = profiling.minimum_of(self.root)
+        document = profiling.profile(
+            data, name=name, minimum=minimum, dictionary=profiling.dictionary_of(self.root),
+            dataset=dataset, read_as=read_as,
+        )  # fmt: skip
+        return profiling.write(self.root, document)
+
     def model(
         self,
         key: str,

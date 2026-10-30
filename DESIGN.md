@@ -12303,9 +12303,9 @@ the control. Nothing here makes a setup lawful under GDPR, HIPAA or a data-use a
 that must stay inside a trusted research environment are out of scope: there the site's
 receipt applies (`verify --receipt SITE`). `docs/vault.md` says all of this to the user.
 
-This part holds registration, the check and the guards. `vault run`, `vault release`, the G1
-codes for a result from unregistered, changed or unreleased data, the profile and `vault
-synthesize` are parts 2 and 3; the command group exists, without `run` and `release`.
+This part holds registration, the check and the guards. `vault run`, `vault release` and the G1
+codes for a result from unregistered, changed or unreleased data are part 2; the profile and
+`vault synthesize` are part 3, below; the command group exists, without `run` and `release`.
 
 Basile's decisions of 2026-10-29: the folder is outside the project only (1a); `vault init`
 refuses until `paper.yaml` declares `custodian.minimum_cell_count`, 1 where the custodian has
@@ -12398,6 +12398,106 @@ rule's own syntax reads is not spelt, and neither is a share; `--agent-settings`
 (`ask_at_terminal`; no `--yes`); without a terminal it writes nothing and exits 2. A real
 headless session could not confirm the rule's spelling on 2026-10-30: the `claude` on PATH
 (2.1.310) had no login (Known gaps).
+
+## The profile of a file of the vault, and its synthetic copy (Task F, part 3)
+
+The agent works on `data/synthetic/<label>`, a copy drawn from a profile of the real file. Basile's
+decisions of 2026-10-29: the profile is computed in the author's script (`em.profile`), run by
+`vault run` and released like any output (5a), so the rule that the script reads the data and
+the tool never does holds, any format the author's reader opens can be profiled, and R gives the
+same bytes; the copy's columns are drawn apart, with the data dictionary's rules across
+variables enforced (6a); its rows are drawn from the released profile alone, never compared with
+the data (7a); it is written as CSV or TSV only (8a).
+
+### The profile: `em.profile`
+
+`em.profile(table, name=LABEL, read_as={...}, dataset=None)` (`vault/profile.py`; `em$profile`
+in `r/manuscriptguard/R/profile.R`) reads the table through `quality.Table` and the reading
+rules `quality.py` and `quality.R` share, and writes `profiles/data/<LABEL>.profile.json`
+(`manuscript-guard/data-profile/1`). m is `custodian.minimum_cell_count`, refused where
+`paper.yaml` declares none. For each column, in order: its name, the type read (the
+dictionary's where it has the column, `typed_by: dictionary`; else read from the values: a
+number, a date, a date and time, a time, or text, in that order of trying) and what is given
+of it (`kind`):
+
+- **levels**: a binary, categorical or ordinal column, or one the dictionary does not type with
+  at most 50 different values that is neither a date nor every value different. Each level of
+  m rows or more is given with its count, in the dictionary's order and then by its text's code
+  points; the rest are folded into `other`, how many levels and their rows.
+- **number**, **date**, **time**: the rows read (`n`), the values that do not read as the type
+  (`unread`, for a dictionary's type), and each of the 5th, 10th, 25th, 50th, 75th, 90th and
+  95th centiles that has m rows strictly below it and m strictly above. A centile is the
+  smallest value whose rows at or below it are the centile's share or more, so it is a value
+  some row holds; dates are read and given to the month, times to the hour, and the m rows on
+  each side are counted in those units. A number also gets a mean and SD from max(m, 3) rows
+  (two values and their mean and SD are the two values), and the decimal places it is most
+  often written to. Neither the smallest nor the largest value is given: m ≥ 1 rows lie beyond
+  each centile given.
+- **withheld**: an identifier or a text, and a column the dictionary does not type whose
+  values are all different or that holds more than 50 different values that are neither
+  numbers nor dates. Only its missing values, and the pattern its values share where all of
+  them, m or more, share one (`AA-99999`: 9 a digit, A and a a letter, ? another letter, the
+  rest as written).
+
+Each count is printed as itself, or `quality.held_back`'s "<m" from 1 to m−1, and a missing
+share only from m. The counts of a column are the table's rows, which are printed, so a count
+held back can be the rows less the others. Each column's counts are read as a line of a table
+(`gates.custodian.recoverable_counts`, the reading `recoverable` makes of a table's line), and
+where it gives a count held back away, the smallest count printed beside it is held back too,
+unprinted (`null`), until none is given away. The design said to hold back the total; that
+holds nothing here, because every column's counts add up to the same rows, and any column whose
+counts are all printed gives them back. `vault synthesize` reads a count held back as an even
+share of what the rows leave.
+
+The file's shape is for the copy: the delimiter, decimal mark, encoding, quoting and line ending
+`read_as` says, and where it names `header_of`, the delimiter most often in that file's header
+line, a byte-order mark and the line ending, read from the header and no further. A date format
+in `read_as["dates"]` is of `%Y %m %d %H %M %S`, read exactly in both languages, and the copy
+writes the column in it.
+
+Numbers are written as C's `%.6g`, by a JSON writer of the profile's own in each language
+(`profile.dumps`, `mg_profile_json`), so Python and R write the same bytes: the shared table in
+`tests/data/profile`, read as text and as `read.csv` types it, and drawn tables of every kind
+of column (`tests/test_r_profile.py`). The mean is summed with `math.fsum` in Python and R's
+long-double `sum`, which could differ in a last bit that `%.6g` then rounds apart: no drawn
+table has shown it.
+
+`vault init` starts `analysis/00_profile.py`, or `.R` where `analysis/` holds more R scripts
+than Python ones, and never writes over one. It reads the vault's folder from
+`MANUSCRIPT_GUARD_VAULT`, which `vault run` (part 2) sets, refuses to run without it, reads each
+CSV or TSV with the language's own reader and hands it to `em.profile` with `header_of`; a file
+of another format gets a comment saying to read it as the analysis does, and that the copy needs
+it exported to CSV inside the vault.
+
+### The synthetic copy: `vault synthesize`
+
+`vault synthesize [LABEL ...]` (`vault/synthesize.py`), every profile released by default,
+reads the profile, `design/data_dictionary.yaml` and `profiles/data/<LABEL>.synthetic.yaml`
+(`manuscript-guard/synthetic/1`: a seed, and the rows to draw, the profile's or 1000 where it
+holds them back), written on first use from the system's random source and kept after. It reads
+no data and no vault, so anyone may run it, the agent included; the shell guard lets it through.
+A profile of a format other than CSV or TSV is refused, with the advice to export to CSV inside
+the vault. Each value of a row, column by column:
+
+- a level by the counts, "other" as a level named `other`, a missing value as one more cell;
+- a number, date or time: missing at its rate, else the inverse of the distribution drawn
+  straight between the centiles and continued straight beyond the outer two; a number with
+  fewer than two centiles evenly about its mean (half-width √3 SD), or the one value given;
+  rounded to its decimal places, a count to a whole number from nought, and kept within the
+  dictionary's range; a date's day and a date and time's clock from the fraction left;
+- a withheld column: its pattern, letters X, the last run of digits the row's number after a
+  9 and the runs before it 9s (`AA-99999` gives `XX-90001`); with none, `SYN` and the row's
+  number, a number the row's number, a date from 2000-01-01.
+
+A row that breaks an order or unique rule of the dictionary whose variables are all columns of
+the copy is drawn again, up to 1000 times, and then the copy is refused naming the rule; a
+computed rule is the script's and is said not to be held. A variable that applies only where
+another holds certain codes is left empty elsewhere. Only `random.Random(seed).random()` is drawn
+from, and only exact arithmetic, `math.floor`, `math.sqrt` (correctly rounded) and Python's own
+formatting turn it into text, so the same profile and seed give the same bytes:
+`tests/data/profile/expected.synthetic.csv` holds every platform and Python version CI runs to
+them, and a property holds it over drawn profiles. The copy is written in the profile's shape
+with Python's `csv` writer.
 
 ## Known gaps
 
@@ -19761,6 +19861,33 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - *Records.* `design/vault.yaml` is an unsigned statement, as an approval is. A digest of a
     very small file could be matched by guessing its content. `registered_by` is the name
     given to `--as`, and nothing checks it against `authors.yaml`.
+
+- **The profile and the synthetic copy (Task F, part 3): what they do not hold.**
+  - *Names are shown as written.* A level's name and a column's name are printed as the data
+    and the table hold them: a column of staff names with m rows each, or a level that is a
+    rare diagnosis's own word, is given. The dictionary typing the column `text` or
+    `identifier` withholds it.
+  - *A centile is a row's value.* It has m rows below and m above it, and it is still the
+    value one or more rows hold, to six significant figures, a month or an hour. A mean and SD
+    of a few rows above m say much of each.
+  - *What two profiles say together is not read.* The profile of a slightly changed extract
+    beside an earlier one, two columns that are the same variable, or a profile beside a
+    released result, can give away what neither does alone; each column's counts are read
+    alone, as G2's recoverable check reads a line.
+  - *The type read from values is a reading.* A column the dictionary does not type is read
+    as levels at 50 values or fewer, so an age with 40 values is given as levels and mostly
+    folded into `other`; one whose values are all different is withheld, a measurement to
+    many decimals included. Typing it in the dictionary gives its distribution.
+  - *Python and R agree on drawn tables and the shared one.* A mean summed with `fsum` and
+    with R's long double could round apart in its last figure, and a value R reads as a
+    factor or a date class the profile reads as R reads it.
+  - *The copy is plausible, not realistic.* Its columns are drawn apart, so a model fitted on
+    it finds nothing; the dictionary's order and unique rules are kept, its computed rules are
+    not. Tails are straight lines beyond the outer centiles. A row may by chance equal a real
+    person's (7a). Whether a copy drawn from released aggregates is personal data under a
+    given law is the custodian's call.
+  - *The starter script reads CSV and TSV.* It reads them as UTF-8 text, comma or tab; any
+    other shape, and any other format, is the author's to read in it.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

@@ -12332,7 +12332,12 @@ path inside the folder, with forward slashes, never the absolute path), `sha256`
 `registered_by` and `registered_on`. No row count: a count is a result. Registered again, a
 file whose three values are unchanged keeps who registered it and when.
 `.manuscript-guard/vault.local.yaml` (`manuscript-guard/vault-local/1`) holds the folder's
-absolute path, links followed; it is no secret, and the hooks need it. `vault init --refresh`
+absolute path as typed (`folder`: a mapped drive keeps its letter) and with its links followed
+(`resolved`); it is no secret, and the hooks need it. Both are taken at `init`, so that the
+shell guard compares a command with them and looks nothing of the folder up (round 1 of
+#488). The custodian's minimum has to be an integer of at least 1. Whether git tracks the
+local file is asked before `.gitignore` is touched, and a `.gitignore` line added for a file
+git would track all the same is taken away again, so that a refusal changes nothing. `vault init --refresh`
 digests the registered files again after a new extract and names the labels that changed; a
 registered file no longer there refuses it.
 
@@ -12340,8 +12345,9 @@ registered file no longer there refuses it.
 
 `vault/probe.py` opens each registered file with `os.open(O_RDONLY)` and closes it without a
 read, and lists the folder with `os.scandir`, from the process that asks. Readable means a
-registered file opened (or, with none registered, the folder listed); not reachable means
-none did, refused or not there; not registered means no local file. `vault check` exits 0, 1
+registered file opened, or the folder lists and holds anything (the registered files moved or
+renamed, round 1 of #488); not reachable means neither, an empty folder being the mount point
+of a volume that is not mounted; not registered means no local file. `vault check` exits 0, 1
 and 2 for not reachable, readable and not registered. `os.access` is not used: on Windows it
 reads the read-only attribute and not the access control list. A test denies the account read
 access with `icacls` inside `tmp_path` on Windows, and mode 000 elsewhere.
@@ -12361,13 +12367,21 @@ commands only. The line never holds the folder's path.
 publish --post` read theirs. `vault run` and `vault release`, read exactly in both shells'
 words (`_command_words`, `_tool_words`), are refused: the person runs them at a terminal. A
 command that names them in a form not read exactly, or outside an invocation of the tool, is
-asked. A command that names the vault's folder or a path inside it (`_vault_named`: each word
-`_words` finds, joined to the folder the command was sent from, `~` expanded, Git Bash's
-`/c/...` read as `C:/...` on Windows, `normcase` and `normpath`, and once more with its links
-followed by `os.path.realpath`; a word inside the folder is the folder or a path after its
-separator, so `data2` is not inside `data`) or names `MANUSCRIPT_GUARD_VAULT` in any case, is
-refused while the probe says readable or does not answer within `VAULT_GUARD_LIMIT` (3 s), and
-asked where it says not reachable. `_ask` turns the ask into a refusal where the tool cannot
+asked; the subcommand is the first word after `vault` that is no option and no option's
+value (`--as`, `--path`), so a file or a person named `release` is none. A command that names
+the vault's folder or a path inside it (`_vault_named`: the home as `$HOME`, `${HOME}`,
+`$env:USERPROFILE`, `$env:HOME`, `%USERPROFILE%` or `%HOMEDRIVE%%HOMEPATH%` read as `~`; each
+word `_words` finds, and each piece of it a colon or a semicolon joins (`_pieces`, a drive's
+`C:` kept whole on Windows), joined to the folder the command was sent from, `~` expanded, Git
+Bash's `/c/...` read as `C:/...` on Windows, `normcase` and `normpath`, folded to one case on
+macOS too, and once more with its links followed by `os.path.realpath`; a word inside the
+folder is the folder or a path after its separator, so `data2` is not inside `data`; the
+folder is compared as the local file keeps it, as typed and as resolved) or names
+`MANUSCRIPT_GUARD_VAULT` in any case, is refused while the probe says readable, and asked where
+it says not reachable. Every look on disk, the project's vault files, the links of the words and
+the probe, runs on a thread within `VAULT_GUARD_LIMIT` (3 s); past it, a command in a project
+with a vault registered is refused whatever it named, and one where none is known is let
+through. `_ask` turns the ask into a refusal where the tool cannot
 ask (Codex). The project is the one at the folder the command was sent from; nothing is asked
 of a project with no vault registered on this machine, and a fault of the guard's own costs
 the case, recorded, and nothing else. A word of a command is followed through links on this
@@ -12395,7 +12409,11 @@ patterns are gitignore's, so a path holding `*`, `?`, `[`, `]`, a backslash, or 
 rule's own syntax reads is not spelt, and neither is a share; `--agent-settings` refuses them.
 `--agent-settings` adds the missing rules to `permissions.deny` of the project's
 `.claude/settings.local.json`, every other key kept, once the person types y at a terminal
-(`ask_at_terminal`; no `--yes`); without a terminal it writes nothing and exits 2. A real
+(`ask_at_terminal`; no `--yes`); without a terminal it writes nothing and exits 2, saying
+that the vault's two files were written and the rules were not. Rules are printed for each
+spelling of the folder a rule can name, as typed and as resolved. Where it creates the settings
+file it adds `.claude/settings.local.json` to `.gitignore`, and where git tracks that file the
+whole command is refused before anything is written. A real
 headless session could not confirm the rule's spelling on 2026-10-30: the `claude` on PATH
 (2.1.310) had no login (Known gaps).
 
@@ -19723,18 +19741,21 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - *The probe measures the account and the process it runs in.* It opens files and lists the
     folder; it does not see a sandbox an agent tool applies only to the commands it runs in a
     shell, so an agent under the same account in such a sandbox is reported readable. A
-    registered file that is readable while its folder cannot be listed reads as readable; one
-    folder listable while every registered file is refused reads as not reachable, though its
-    names can be listed. The session-start probe waits 5 s and the shell guard's 3 s; a
-    volume slower than that is said as not known at the start, and taken as readable by the
-    guard.
+    folder that lists and holds anything is readable, though every file in it may be refused;
+    an empty one is not reachable, though a file put there later would be readable. The
+    session-start probe waits 5 s and the shell guard 3 s for all it looks up; a disk slower
+    than that is said as not known at the start, and, in a project with a vault registered
+    here, refuses each command with a slash, a backslash, `~` or `..` in it, whatever it
+    names.
   - *The shell guard reads the words of ordinary commands.* A path built while the command
     runs, held in a variable of the agent's own (`d=/secure; cat $d/x`), computed by a script,
     globbed for the folder itself (`/sec*`), or a command naming a folder above the vault and
     reading down into it (`grep -r x /secure` where the vault is `/secure/extract`), passes. So
     does a path Git Bash writes through a mount other than a drive (`/tmp/...`, `/mnt/c/...`
     under WSL). Only the project at the folder the command was sent from is asked; a command
-    sent from above the project names no vault. A command with no slash, backslash, `~` or
+    sent from above the project names no vault, and a word is read from the folder the
+    command is sent from, so `cd .. && cat study-data/cohort.csv`, the vault beside the
+    project, passes. A command with no slash, backslash, `~` or
     `..` in it is let through before any folder is looked at, the guard firing on every shell
     command; so a link inside the project that leads into the vault, named bare (`ls data`),
     passes, where `ls data/` is refused. A Codex patch that writes into the folder is

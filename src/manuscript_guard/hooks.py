@@ -1702,7 +1702,8 @@ def _posts(command: str) -> tuple[str | None, str | None]:
 # variable a run is given it in, is refused while this session can read the folder, and put
 # to the person otherwise.
 
-#: How long the shell guard waits to learn whether the folder can be read. Past it, the
+#: How long the shell guard waits, from the first look on disk, to learn whether a command
+#: names the folder and whether the folder can be read. Past it, with a vault registered, the
 #: command is taken as one that reads it.
 VAULT_GUARD_LIMIT = 3.0
 #: How long the session start waits for the same, counted from its own start.
@@ -1710,6 +1711,8 @@ VAULT_LIMIT = 5.0
 #: `vault` then `run` or `release`, in one command of the line, to be read closer.
 _VAULT_VERB = re.compile(r"(?i)\bvault\b[^;&|\n]*?\b(?:run|release)\b")
 _VAULT_VERBS = ("run", "release")
+#: The options of `vault` that take a value: what follows one is no subcommand.
+_VAULT_VALUED = ("--as", "--path")
 _RUNS_VAULT = (
     "`manuscript-guard vault run` runs the analysis on the data held in the vault, and `vault "
     "release` lets what it wrote into the project once the custodian's checks pass: each is "
@@ -1725,13 +1728,39 @@ _NAMES_VAULT_RUN = (
 _VAULT_VARIABLE = re.compile(r"manuscript_guard_vault", re.IGNORECASE)
 #: What a word needs to lead out of the folder a command is sent from.
 _MAY_LEAVE = re.compile(r"[/\\~]|\.\.")
+#: The home, as each shell names it where `~` is not written: a POSIX shell's `$HOME` and
+#: `${HOME}`, PowerShell's `$env:USERPROFILE` and `$env:HOME` (braced too), cmd's
+#: `%USERPROFILE%` and `%HOMEDRIVE%%HOMEPATH%`. Each is read as `~` where it begins a path;
+#: in any case, the direction in which a lookalike is refused rather than let through.
+_HOME_VARIABLE = re.compile(
+    r"(?i)(?<![\w$%])(?:\$\{HOME\}|\$HOME|\$\{env:(?:USERPROFILE|HOME)\}|\$env:(?:USERPROFILE|HOME)"
+    r"|%USERPROFILE%|%HOMEDRIVE%%HOMEPATH%)(?![\w%])"
+)
+#: Where a word joins one path to another: a colon (a POSIX search path, a container's
+#: volume, `/secure:/data`) or a semicolon (a Windows search path inside quotes).
+_JOINS = re.compile(r"[:;]")
+
+
+def _vault_subcommand(words: list[str]) -> str | None:
+    """The subcommand of `vault`, as argparse reads it: the first word after `vault` that is
+    neither an option nor the value of one that takes a value."""
+    valued = False
+    for word in words:
+        if valued:
+            valued = False
+        elif word.startswith("-"):
+            valued = word in _VAULT_VALUED
+        else:
+            return word.casefold()
+    return None
 
 
 def _vault_runs(command: str) -> tuple[str | None, str | None]:
     """Why a `vault run` or `vault release` in this command is refused, and why one is put to
     the person, read as `_posts` reads `communicate publish --post`: refused in an invocation
-    of `vault` read exactly, the same words in both shells' reading; asked where the tool,
-    `vault` and the verb are named in a form not read exactly, or outside an invocation."""
+    of `vault` read exactly whose subcommand is one of them, the same words in both shells'
+    reading; asked where the tool, `vault` and the verb are named in a form not read exactly,
+    or outside an invocation. A file or a person named `release` is no subcommand."""
     joined = [re.sub(r"\r(?!\n)", "\n", re.sub(r"[\\`]\r?\n", between, command))
               for between in (" ", "")]  # fmt: skip
     texts = [*joined, *(re.sub("[\\\\`'\"]", "", text) for text in joined)]
@@ -1743,7 +1772,7 @@ def _vault_runs(command: str) -> tuple[str | None, str | None]:
         for words in invocations:
             tool = _tool_words(words)
             if tool and tool[0].casefold() == "vault":
-                running = running or any(word.casefold() in _VAULT_VERBS for word in tool[1:])
+                running = running or _vault_subcommand(tool[1:]) in _VAULT_VERBS
             elif tool is None:
                 said = " ".join(words)
                 named_elsewhere = named_elsewhere or bool(
@@ -1763,14 +1792,35 @@ def _names_vault_variable(command: str) -> bool:
 
 def _comparable(path: str) -> str:
     """A path as two spellings of it compare: `..` and `.` taken out, and on Windows one
-    kind of slash and one case."""
-    return os.path.normcase(os.path.normpath(path))
+    kind of slash and one case. On macOS one case too: its volumes are most often
+    case-insensitive, and on one that is not, a command is refused that need not be."""
+    found = os.path.normcase(os.path.normpath(path))
+    return found.lower() if sys.platform == "darwin" else found
 
 
 def _within(path: str, folder: str) -> bool:
     """Whether `path` is `folder` or inside it, both `_comparable`. A folder whose name
     begins with the vault's, `data2` beside `data`, is not inside it."""
     return path == folder or path.startswith(folder.rstrip(os.sep) + os.sep)
+
+
+def _pieces(word: str) -> list[str]:
+    """The word, then each path it joins to another by a colon or a semicolon, where it joins
+    any: `/opt/lib:/secure/extract` is also `/opt/lib` and `/secure/extract`. On Windows a
+    drive's letter keeps its colon, `C:/tools;D:/secure` being `C:/tools` and `D:/secure`."""
+    parts = _JOINS.split(word)
+    if len(parts) == 1:
+        return [word]
+    if os.name == "nt":
+        kept: list[str] = []
+        for part in parts:
+            # `C` then `/x`: the colon was a drive's. Not after a `;`, which joins no drive.
+            if kept and len(kept[-1]) == 1 and kept[-1].isalpha() and part[:1] in ("/", "\\"):
+                kept[-1] += ":" + part
+            else:
+                kept.append(part)
+        parts = kept
+    return [word, *(part for part in parts if part)]
 
 
 def _vault_spellings(word: str, cwd: Path) -> list[str]:
@@ -1792,36 +1842,41 @@ def _vault_spellings(word: str, cwd: Path) -> list[str]:
     return found
 
 
-def _vault_named(command: str, cwd: Path, folder: Path) -> bool:
+def _vault_named(command: str, cwd: Path, folders: list[str]) -> bool:
     """Whether a word of the command is the vault's folder or a path inside it, in any
-    spelling `_words` finds a path in: quoted or not, after an `=` or an `@`, relative,
-    from the home, as Git Bash writes a drive, with another case on Windows, or through a
-    link. A path held in a variable, built at run time or globbed for the folder itself is
-    not seen (DESIGN.md, Known gaps)."""
-    folders = {_comparable(str(folder))}
-    with contextlib.suppress(OSError, ValueError, RuntimeError):
-        folders.add(_comparable(os.path.realpath(folder)))
+    spelling `_words` finds a path in: quoted or not, after an `=` or an `@`, joined to another
+    by a colon or a semicolon, relative, from the home as `~` or as each shell names it, as
+    Git Bash writes a drive, with another case on Windows and macOS, or through a link of the
+    command's. `folders` are the folder's spellings the registration kept, as typed and as its
+    links lead, so that none of the folder's links is looked up here. A path held in a variable
+    of the agent's own, built at run time or globbed for the folder itself is not seen
+    (DESIGN.md, Known gaps)."""
+    kept = {_comparable(folder) for folder in folders}
+    words = _words(_HOME_VARIABLE.sub("~", command))
     return any(
         _within(spelt, one)
-        for word in _words(command)
-        for spelt in _vault_spellings(word, cwd)
-        for one in folders
+        for word in words
+        for piece in _pieces(word)
+        for spelt in _vault_spellings(piece, cwd)
+        for one in kept
     )
 
 
-def _names_the_vault(command: str, cwd: Path, folder: Path | None) -> str | None:
+def _names_the_vault(command: str, cwd: Path, folders: list[str]) -> str | None:
     """`variable` where the command names MANUSCRIPT_GUARD_VAULT, `folder` where a word of it
     is the vault's folder or a path inside it (`_vault_named`), else None."""
     if _names_vault_variable(command):
         return "variable"
-    if folder is not None and _vault_named(command, cwd, folder):
+    if folders and _vault_named(command, cwd, folders):
         return "folder"
     return None
 
 
-def _vault_reasons(variable: bool, readable: bool) -> str:
-    what = ("names MANUSCRIPT_GUARD_VAULT, the variable a run on the data is given the "
-            "vault's folder in" if variable else "names the vault's folder")  # fmt: skip
+def _vault_reasons(variable: bool | None, readable: bool) -> str:
+    what = {True: "names MANUSCRIPT_GUARD_VAULT, the variable a run on the data is given "
+                  "the vault's folder in",
+            False: "names the vault's folder",
+            None: "may name the vault's folder"}[variable]  # fmt: skip
     if readable:
         return (
             f"This command {what}, and the data there can be read from this session (or "
@@ -1835,39 +1890,69 @@ def _vault_reasons(variable: bool, readable: bool) -> str:
     )
 
 
+def _vault_looked_at(command: str, payload: dict, found: dict) -> None:
+    """What `_guards_vault` asks of the disk, each answer put in `found` as it comes: whether
+    a vault is registered here, what the command names of it, and whether it can be read."""
+    from manuscript_guard.vault import probe
+
+    root = _project_root(payload)
+    if root is None or not probe.local_file(root).is_file():
+        return
+    found["registered"] = True
+    try:
+        spellings = probe.local_spellings(root)
+    except probe.VaultFileError:
+        spellings = []
+    cwd = Path(payload.get("cwd") or Path.cwd()).resolve()
+    found["named"] = _names_the_vault(command, cwd, spellings)
+    if found["named"] is not None:
+        try:
+            found["said"] = probe.state(root)[0]
+        except (probe.VaultFileError, OSError, ValueError):
+            found["said"] = None  # not known: taken as readable
+
+
 def _guards_vault(command: str, payload: dict) -> tuple[str | None, str | None]:
     """Why a command that names the vault's folder or its variable is refused, and why one is
     put to the person: refused while this session can read the folder (decision 3 of the
     vault's design), or where that cannot be learnt in `VAULT_GUARD_LIMIT`; asked where it
     cannot. Nothing is asked of a project with no vault registered on this machine.
 
+    Every look on disk, the project's vault files, the links of the command's words and the
+    probe, is made on a thread within `VAULT_GUARD_LIMIT`. Past it, with a vault registered,
+    the command is refused, whatever it named; with none known, it is let through.
+
     A command with no word that can lead out of the folder it is sent from, no slash, no
     backslash, no `~` and no `..`, names no folder outside the project, and is let through
     before any folder is looked at: the guard fires on every shell command."""
+    import threading
+
     if not _MAY_LEAVE.search(command) and not _names_vault_variable(command):
         return None, None
     from manuscript_guard.vault import probe
 
-    try:
-        root = _project_root(payload)
-        if root is None or not probe.local_file(root).is_file():
-            return None, None
+    found: dict = {}
+
+    def look() -> None:
         try:
-            folder = probe.local_folder(root)
-        except probe.VaultFileError:
-            folder = None
-        cwd = Path(payload.get("cwd") or Path.cwd()).resolve()
-        named = _names_the_vault(command, cwd, folder)
-        if named is None:
+            _vault_looked_at(command, payload, found)
+        except Exception as exc:  # noqa: BLE001 - a hook must never break the session
+            _recorded(exc, "guard-submission: the vault")
+            found["failed"] = True
+
+    worker = threading.Thread(target=look, name="manuscript-guard-vault-guard", daemon=True)
+    worker.start()
+    worker.join(VAULT_GUARD_LIMIT)
+    if worker.is_alive():
+        _LEFT_RUNNING.append(worker)
+        if not found.get("registered") or ("named" in found and found["named"] is None):
             return None, None
-        variable = named == "variable"
-        said, still_asking = probe.state_in_time(root, VAULT_GUARD_LIMIT)
-    except Exception as exc:  # noqa: BLE001 - a hook must never break the session
-        _recorded(exc, "guard-submission: the vault")
+        named = found.get("named")
+        return _vault_reasons(None if named is None else named == "variable", readable=True), None
+    if found.get("failed") or found.get("named") is None:
         return None, None
-    if still_asking is not None:
-        _LEFT_RUNNING.append(still_asking)
-    if said == probe.UNREACHABLE:
+    variable = found["named"] == "variable"
+    if found.get("said") == probe.UNREACHABLE:
         return None, _vault_reasons(variable, readable=False)
     return _vault_reasons(variable, readable=True), None
 

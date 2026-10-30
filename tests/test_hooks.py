@@ -3797,8 +3797,14 @@ def test_a_patch_naming_accented_files_is_read_as_codex_sends_it(
 
 
 @pytest.fixture
-def kept_apart(tmp_path: Path) -> Path:
-    """The vault's folder, outside the project, with one extract in it."""
+def kept_apart(tmp_path: Path, monkeypatch) -> Path:
+    """The vault's folder, outside the project, with one extract in it; the folder above it is
+    the home, for each shell's name of the home (round 1 of #488)."""
+    for name in ("HOME", "USERPROFILE"):
+        monkeypatch.setenv(name, str(tmp_path))
+    drive, rest = os.path.splitdrive(str(tmp_path))
+    monkeypatch.setenv("HOMEDRIVE", drive)
+    monkeypatch.setenv("HOMEPATH", rest)
     folder = tmp_path / "Data held"
     folder.mkdir()
     (folder / "cohort.csv").write_text("id,age\n1,40\n", encoding="utf-8")
@@ -3941,6 +3947,10 @@ def test_a_command_that_only_names_a_run_of_the_vault_is_asked(
         "manuscript-guard vault check",
         "python analysis/run.py && manuscript-guard vault check",
         "manuscript-guard vault init --refresh --as Ada",
+        # Round 1 of #488: `run` or `release` that is not the subcommand.
+        'manuscript-guard vault init /secure/extract "*.csv" --as Run',
+        "manuscript-guard vault init /secure/extract release --as Ada",
+        "manuscript-guard vault check --path release",
         'grep -rn "vault" docs/',
         "git commit -m \"manuscript-guard vault run is the person's\"",
         "vault read secret/token",  # another tool of the same name
@@ -3967,6 +3977,17 @@ def _naming(folder: Path, project: Path) -> list[str]:
         f'cd "{posix}" && ls',
         "echo $MANUSCRIPT_GUARD_VAULT",
         "Get-ChildItem $env:manuscript_guard_vault",
+        # Round 1 of #488 (blocking): the home by each shell's name of it, the folder being
+        # under the home (`kept_apart`), and a path joined to another by `:` or `;`.
+        f'cat "$HOME/{folder.name}/cohort.csv"',
+        "cat ${HOME}/" + folder.name.replace(" ", "\\ ") + "/cohort.csv",
+        f'Get-Content "$env:USERPROFILE{os.sep}{folder.name}{os.sep}cohort.csv"',
+        f'Get-Content "${{env:HOME}}/{folder.name}/cohort.csv"',
+        f'type "%USERPROFILE%{os.sep}{folder.name}{os.sep}cohort.csv"',
+        f'type "%HOMEDRIVE%%HOMEPATH%{os.sep}{folder.name}{os.sep}cohort.csv"',
+        f'docker run -v "{posix}:/data" python:3.12 python /data/x.py',
+        f'PYTHONPATH="/opt/lib:{posix}/lib" python analysis/01_model.py',
+        f'R_LIBS="/opt/r;{posix}/lib" Rscript analysis/02_fit.R',
     ]
     if os.name == "nt":
         drive, rest = posix.split(":", 1)
@@ -4058,8 +4079,83 @@ def test_a_command_that_does_not_name_the_vault_is_untouched(
         'grep -rn "vault" docs/',
         "manuscript-guard vault check",
         'git commit -m "read MANUSCRIPT_GUARD_VAULT in the script"',
+        f'cat "$HOMEDIR/{kept_apart.name}/cohort.csv"',
+        f'docker run -v "{beside.as_posix()}:/data" python:3.12',
+        f'PYTHONPATH="/opt/lib:{beside.as_posix()}" python x.py',
     ):
         assert run("guard-submission", _shell(in_claude_code, command), capsys) is None, command
+
+
+def test_the_guard_reads_the_folder_as_registered_and_follows_no_link_of_it(
+    in_claude_code: Path, kept_apart: Path, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """Round 1 of #488: the folder's spellings, as typed and as its links lead, are taken when
+    it is registered and kept in the local file, so that a command is not compared through a
+    look on disk at the folder. A command naming the folder as it was typed is refused with
+    no link followed."""
+    import yaml
+
+    link = tmp_path / "typed here"
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(kept_apart), str(link))
+    else:
+        link.symlink_to(kept_apart, target_is_directory=True)
+    _register(in_claude_code, kept_apart)
+    kept = in_claude_code / ".manuscript-guard" / "vault.local.yaml"
+    local = yaml.safe_load(kept.read_text(encoding="utf-8"))
+    kept.write_text(yaml.safe_dump({**local, "folder": str(link),
+                                    "resolved": str(kept_apart.resolve())}),
+                    encoding="utf-8")  # fmt: skip
+    monkeypatch.setattr(os.path, "realpath", lambda path, *args, **kwargs: os.fspath(path))
+    result = run("guard-submission", _shell(in_claude_code, f'cat "{link}/cohort.csv"'), capsys)
+    assert decision(result) == "deny"
+    result = run("guard-submission", _shell(in_claude_code, f'cat "{kept_apart}/x.csv"'), capsys)
+    assert decision(result) == "deny"
+
+
+def test_a_look_on_disk_that_does_not_end_in_time_is_taken_as_naming_the_vault(
+    in_claude_code: Path, kept_apart: Path, monkeypatch, capsys
+) -> None:
+    """Round 1 of #488: what the guard reads on disk to know whether a command names the
+    folder is within its limit too; past it, with a vault registered, the command is refused."""
+    _register(in_claude_code, kept_apart)
+    released = threading.Event()
+
+    def stuck(*_args):
+        released.wait(5)
+        return None
+
+    monkeypatch.setattr(hooks, "_names_the_vault", stuck)
+    monkeypatch.setattr(hooks, "VAULT_GUARD_LIMIT", 0.05)
+    monkeypatch.setattr(hooks, "_LEFT_RUNNING", [])
+    try:
+        result = run("guard-submission", _shell(in_claude_code, "cat results/x.json"), capsys)
+    finally:
+        released.set()
+    assert decision(result) == "deny"
+
+
+def test_a_slow_disk_costs_a_project_with_no_vault_nothing(
+    in_claude_code: Path, monkeypatch, capsys
+) -> None:
+    released = threading.Event()
+    monkeypatch.setattr(hooks, "_names_the_vault", lambda *_: released.wait(5) and None)
+    monkeypatch.setattr(hooks, "VAULT_GUARD_LIMIT", 0.05)
+    try:
+        assert run("guard-submission", _shell(in_claude_code, "cat results/x.json"),
+                   capsys) is None  # fmt: skip
+    finally:
+        released.set()
+
+
+def test_the_vault_is_compared_in_one_case_on_macos_too(monkeypatch) -> None:
+    """Round 1 of #488: a Mac volume is most often case-insensitive; refusing on a case-sensitive
+    one is the safe direction."""
+    monkeypatch.setattr(hooks.sys, "platform", "darwin")
+    upper, lower = "/Volumes/Secure/Extract", "/volumes/secure/extract"
+    assert hooks._comparable(upper) == hooks._comparable(lower)
 
 
 def test_a_project_with_no_vault_registered_here_is_untouched(

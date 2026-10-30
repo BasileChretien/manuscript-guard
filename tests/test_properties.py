@@ -3023,9 +3023,11 @@ def test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_besi
 ) -> None:
     """A command names the vault where a word of it is the folder or a path inside it, quoted
     with the space in its name or the space escaped, with either slash, from the project's
-    folder, after an `=` or an `@`, or where it names MANUSCRIPT_GUARD_VAULT; and not where a
-    word is a folder whose name begins with the vault's, the folder above it, a file beside it
-    or the word "vault" (`hooks._names_the_vault`, which the shell guard refuses or asks on)."""
+    folder, after an `=` or an `@`, from the home as each shell names it, or joined to another
+    path by a colon or a semicolon, or where it names MANUSCRIPT_GUARD_VAULT; and not where a
+    word is a folder whose name begins with the vault's (alone or in a search path), the folder
+    above it, a file beside it, another variable or the word "vault" (`hooks._names_the_vault`,
+    which the shell guard refuses or asks on)."""
     lines, expected = drawn
     read = READINGS["vault named"]()
     assert [read({"command": line}) for line in lines] == expected, lines
@@ -13758,6 +13760,18 @@ def _a_folder_beginning_as_the_vault_is_in_it(patch: pytest.MonkeyPatch) -> None
     patch.setattr(hooks, "_within", lambda path, folder: path.startswith(folder))
 
 
+def _the_home_is_read_by_its_tilde_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import hooks
+
+    patch.setattr(hooks, "_HOME_VARIABLE", re.compile("(?!)"))
+
+
+def _a_word_joined_by_colons_is_read_whole(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import hooks
+
+    patch.setattr(hooks, "_pieces", lambda word: [word])
+
+
 def _a_quoted_path_is_split_at_its_spaces(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import hooks
 
@@ -13769,6 +13783,14 @@ def _a_quoted_path_is_split_at_its_spaces(patch: pytest.MonkeyPatch) -> None:
 BROKEN = {
     "a folder whose name begins with the vault's is read as inside it": (
         _a_folder_beginning_as_the_vault_is_in_it,
+        test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_beside_it,
+    ),
+    "the home is read by its tilde only, and not as a shell names it": (
+        _the_home_is_read_by_its_tilde_only,
+        test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_beside_it,
+    ),
+    "a word that joins paths by colons is read whole": (
+        _a_word_joined_by_colons_is_read_whole,
         test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_beside_it,
     ),
     "a path a command quotes is split at its spaces": (

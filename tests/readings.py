@@ -846,11 +846,21 @@ def vault_spelling(kind: str, base: Path) -> str:
         "after an at sign": f'"file=@{posix}/cohort.csv"',
         "escaped space": posix.replace(" ", "\\ ") + "/cohort.csv",
         "variable": "$MANUSCRIPT_GUARD_VAULT",
+        # The home is `base` while the reading reads (`_vault_named`).
+        "the home": '"$HOME/Data held/cohort.csv"',
+        "the home in braces": "${HOME}/Data\\ held/cohort.csv",
+        "PowerShell's home": '"$env:USERPROFILE/Data held/cohort.csv"',
+        "cmd's home": '"%USERPROFILE%/Data held/cohort.csv"',
+        "a volume": f'-v "{posix}:/data"',
+        "a search path": f'"/opt/lib:{posix}/lib"',
+        "a Windows search path": f'"C:/tools;{posix}/bin"',
         # And none of these.
         "a folder beside it": f'"{base / "Data held2" / "cohort.csv"}"',
         "the folder above it": f'"{base}"',
         "a file beside it": f'"{base / "Data held.csv"}"',
         "the word": "vault",
+        "another variable": '"$HOMEDIR/Data held/cohort.csv"',
+        "a search path beside it": f'"/opt/lib:{(base / "Data held2").as_posix()}"',
     }[kind]
 
 
@@ -861,11 +871,24 @@ def _vault_named() -> Reading:
     def read(given: dict[str, str]) -> str | None:
         """What a shell command names of the vault: its variable, its folder, or nothing,
         read from the project beside it, each `<<kind>>` written as `vault_spelling` writes
-        it."""
+        it, with the folder above the vault as the home."""
+        import os
+
         base = vault_place()
         command = re.sub(r"<<([^<>]+)>>", lambda m: vault_spelling(m[1], base),
                          given["command"])  # fmt: skip
-        return _names_the_vault(command, base / "project", base / "Data held")
+        vault = base / "Data held"
+        homes = {name: os.environ.get(name) for name in ("HOME", "USERPROFILE")}
+        try:
+            os.environ.update(dict.fromkeys(homes, str(base)))
+            return _names_the_vault(command, base / "project",
+                                    [str(vault), os.path.realpath(vault)])  # fmt: skip
+        finally:
+            for name, value in homes.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
 
     return read
 

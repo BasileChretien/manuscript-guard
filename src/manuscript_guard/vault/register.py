@@ -46,6 +46,9 @@ class Registered:
     """What `init` or `refresh` did."""
 
     folder: Path
+    #: The folder as the person typed it, a mapped drive with its letter and a link as the
+    #: link; `folder` is where its links lead.
+    typed: Path | None = None
     added: list[str] = field(default_factory=list)
     changed: list[str] = field(default_factory=list)
     unchanged: list[str] = field(default_factory=list)
@@ -81,6 +84,12 @@ def _folder(given: Path, root: Path) -> Path:
     return folder
 
 
+def _typed(given: Path) -> Path:
+    """The folder as typed, made absolute, no link followed: a mapped drive keeps its letter,
+    which the agent tool's rules can spell where its share cannot be."""
+    return Path(os.path.abspath(given.expanduser()))
+
+
 def _minimum(root: Path) -> int:
     from manuscript_guard.contracts import load_project
     from manuscript_guard.gates.custodian import minimum_cell_count
@@ -92,6 +101,11 @@ def _minimum(root: Path) -> int:
             "paper.yaml declares no `custodian: {minimum_cell_count: N}`. Every later check "
             "of what leaves the vault holds counts to it, and custodians differ (5, 10, 11): "
             "write the custodian's, or 1 where there is no rule, and run this again."
+        )
+    if minimum < 1:
+        raise Refused(
+            f"paper.yaml's custodian.minimum_cell_count is {minimum}: the least it can say is "
+            "1, where the custodian has no rule. Write the custodian's, and run this again."
         )
     return minimum
 
@@ -134,38 +148,56 @@ def _digests(folder: Path, label: str) -> dict:
         raise Refused(f"{label} cannot be read here: {exc}") from exc
 
 
-def _gitignored(root: Path) -> list[str]:
-    """Add `.manuscript-guard/` to `.gitignore` where no line of it does, and refuse where git
-    would track the local file all the same. What was done or could not be asked is said."""
+def tracked(root: Path, local: str) -> str | None:
+    """Why git tracking `local` refuses the command, or None: git missing, or no repository,
+    is no reason. Asked before anything is written, so that a refusal changes nothing."""
+    from manuscript_guard.gates.custodian import _git
+
+    try:
+        found = _git(root, "ls-files", "--error-unmatch", "--", local)
+    except (OSError, subprocess.SubprocessError):  # git missing, or it took too long
+        return None
+    if found.returncode == 0:
+        return f"git tracks {local}: `git rm --cached {local}`, then run this again"
+    return None
+
+
+def ignored(root: Path, local: str, lines: tuple[str, ...]) -> list[str]:
+    """Add `lines[0]` to `.gitignore` where none of `lines` is there, and refuse where git
+    would track `local` all the same, the file then as it was. What was done or could not be
+    asked is said."""
     from manuscript_guard.gates.custodian import _git
 
     notes = []
     ignore = root / ".gitignore"
-    data = ignore.read_bytes() if ignore.exists() else b""
-    lines = {line.strip() for line in data.decode("utf-8", "replace").splitlines()}
-    if not lines & set(_IGNORED):
+    existed = ignore.exists()
+    data = ignore.read_bytes() if existed else b""
+    present = {line.strip() for line in data.decode("utf-8", "replace").splitlines()}
+    if not present & set(lines):
         ending = b"\r\n" if b"\r\n" in data else b"\n"
         gap = b"" if not data or data.endswith(b"\n") else ending
-        ignore.write_bytes(data + gap + f"{LOCAL_FOLDER}/".encode() + ending)
-        notes.append(f"added {LOCAL_FOLDER}/ to .gitignore")
-    local = LOCAL.as_posix()
+        ignore.write_bytes(data + gap + lines[0].encode() + ending)
+        notes.append(f"added {lines[0]} to .gitignore")
+
+    def undone(why: str) -> Refused:
+        if existed:
+            ignore.write_bytes(data)
+        else:
+            ignore.unlink(missing_ok=True)
+        return Refused(why)
+
     try:
-        tracked = _git(root, "ls-files", "--error-unmatch", "--", local)
-        ignored = _git(root, "check-ignore", "-q", "--", local)
-    except (OSError, subprocess.SubprocessError) as exc:  # git missing, or it took too long
-        return [*notes, f"git could not be asked whether it tracks {local} ({exc})"]
-    if "not a git repository" in (tracked.stderr + ignored.stderr).lower():
+        found = _git(root, "check-ignore", "-q", "--", local)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return [*notes, f"git could not be asked whether it ignores {local} ({exc})"]
+    if "not a git repository" in found.stderr.lower():
         return notes
-    if tracked.returncode == 0:
-        raise Refused(f"git tracks {local}: `git rm --cached {local}`, then run this again")
-    if ignored.returncode == 1:
-        raise Refused(
-            f"git would track {local}: a rule of .gitignore takes it back in. Make git ignore "
-            f"{LOCAL_FOLDER}/, then run this again"
-        )
-    if ignored.returncode != 0:
+    if found.returncode == 1:
+        raise undone(f"git would track {local}: a rule of .gitignore takes it back in. Make "
+                     f"git ignore it, then run this again")  # fmt: skip
+    if found.returncode != 0:
         return [*notes, f"git could not say whether it ignores {local}: "
-                        f"{ignored.stderr.strip()}"]  # fmt: skip
+                        f"{found.stderr.strip()}"]  # fmt: skip
     return notes
 
 
@@ -198,10 +230,19 @@ def _entries(folder: Path, labels: list[str], before: dict[str, dict], by: str) 
     return entries, done
 
 
-def _record(root: Path, folder: Path, entries: list[dict]) -> None:
+def _record(root: Path, done: Registered, entries: list[dict]) -> None:
     _write_yaml(registry_file(root), {"schema": REGISTRY_SCHEMA, "files": entries}, _HEADER)
-    _write_yaml(local_file(root), {"schema": LOCAL_SCHEMA, "folder": str(folder)},
+    _write_yaml(local_file(root), {"schema": LOCAL_SCHEMA, "folder": str(done.typed),
+                                   "resolved": str(done.folder)},
                 "# This machine's: where the vault's folder is. Not for git.\n")  # fmt: skip
+
+
+def _ignored_here(root: Path) -> list[str]:
+    local = LOCAL.as_posix()
+    refused = tracked(root, local)
+    if refused:
+        raise Refused(refused)
+    return ignored(root, local, (f"{LOCAL_FOLDER}/", *_IGNORED))
 
 
 def init(root: Path, given: Path, patterns: list[str], by: str) -> Registered:
@@ -214,8 +255,9 @@ def init(root: Path, given: Path, patterns: list[str], by: str) -> Registered:
     labels = _files(folder, patterns)
     before = {entry["label"]: entry for entry in registered(root)}
     entries, done = _entries(folder, labels, before, by.strip())
-    done.notes = _gitignored(root)
-    _record(root, folder, entries)
+    done.typed = _typed(given)
+    done.notes = _ignored_here(root)
+    _record(root, done, entries)
     return done
 
 
@@ -230,6 +272,7 @@ def refresh(root: Path, by: str) -> Registered:
             f"no vault is registered on this machine ({LOCAL} and {REGISTRY} are both needed): "
             "run `manuscript-guard vault init <folder> <files>`"
         )
+    typed = folder
     folder = _folder(folder, root)
     _minimum(root)
     missing = [label for label in before if not folder.joinpath(*label.split("/")).is_file()]
@@ -239,6 +282,7 @@ def refresh(root: Path, by: str) -> Registered:
             "now holds"
         )
     entries, done = _entries(folder, list(before), before, by.strip())
-    done.notes = _gitignored(root)
-    _record(root, folder, entries)
+    done.typed = typed
+    done.notes = _ignored_here(root)
+    _record(root, done, entries)
     return done

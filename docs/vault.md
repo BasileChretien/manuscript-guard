@@ -77,8 +77,8 @@ and lists the folder, from the process it runs in. It says one of three things:
 
 | Says | Exit | Means |
 |---|---|---|
-| not reachable from this session | 0 | no registered file could be opened: each was refused, or is not there (an encrypted volume that is not mounted) |
-| readable from this session | 1 | a registered file opened: the account this runs as can read the data |
+| not reachable from this session | 0 | no registered file could be opened, each refused or not there, and the folder could not be listed or is empty (the mount point of an encrypted volume that is not mounted) |
+| readable from this session | 1 | a registered file opened, or the folder lists and holds something (the files moved or renamed): the account this runs as can read what is in it |
 | not registered here | 2 | this machine has no `.manuscript-guard/vault.local.yaml` |
 
 It asks the operating system by trying, not by `os.access`, which on Windows reads the
@@ -106,17 +106,29 @@ PowerShell) and in Codex:
   read exactly, an `echo` or a `bash -c "…"`, is put to the person;
 - for a command that names the vault's folder, or a path inside it, in any spelling it can
   read (quoted or escaped, either slash, relative to the folder the command is sent from,
-  after `=` or `@`, as Git Bash writes a drive, `/c/…`, in any case on Windows, or through a
-  link), or names `MANUSCRIPT_GUARD_VAULT`: refuses it while this session can read the folder,
-  or where that is not found in 3 seconds, and puts it to the person otherwise.
+  after `=` or `@`, from the home as `~`, `$HOME`, `${HOME}`, `$env:USERPROFILE`,
+  `$env:HOME`, `%USERPROFILE%` or `%HOMEDRIVE%%HOMEPATH%`, joined to another path by a colon
+  or a semicolon as in a search path or a container's volume, `-v /secure/extract:/data`, as
+  Git Bash writes a drive, `/c/…`, in any case on Windows and on macOS, or through a link),
+  or names `MANUSCRIPT_GUARD_VAULT`: refuses it while this session can read the folder, or
+  where that is not found in 3 seconds, and puts it to the person otherwise.
+
+The folder is compared as `vault init` was given it and as its links led then, both kept in
+`.manuscript-guard/vault.local.yaml`, so that the guard looks nothing of the folder up on
+disk; each look it does make, at the project's files, at the links of a command's words and
+at the folder for the probe, is within the 3 seconds. On macOS a command that names the
+folder in another case is refused even on a volume that tells cases apart, the safe way
+round.
 
 Where the agent tool cannot put a question to the person (Codex, as of the versions read),
 what would be asked is refused.
 
 It reads the words of ordinary commands. A path built while the command runs, held in a
 variable of the agent's own, or computed by a script, is not seen; neither is a command that
-names a folder above the vault and reads down into it, `grep -r … /secure`. It is a guard
-against an agent's ordinary commands, not against a deliberate evasion.
+names a folder above the vault and reads down into it, `grep -r … /secure`, nor one that
+moves first and names the vault from there, `cd .. && cat study-data/cohort.csv`, since a
+word is read from the folder the command is sent from. It is a guard against an agent's
+ordinary commands, not against a deliberate evasion.
 
 There is no hook on the agent's file-reading tools (Read, Grep, Glob): it would start a Python
 process on every read, for everyone who has the plugin, vault or none. The agent tool's own
@@ -138,9 +150,15 @@ a path in POSIX form before it matches one, `C:\secure\extract` being `/c/secure
 (its permissions documentation, read 2026-10-30). On macOS or Linux the same folder at
 `/secure/extract` is `//secure/extract`.
 
+A mapped drive keeps the letter you typed (`Z:\…`), which a rule can name, beside the share
+its link leads to, which it cannot; a folder reached through a link gets rules for both.
+
 `vault init --agent-settings` writes them into `.claude/settings.local.json` in the project,
-under `permissions.deny`, after you answer y at a terminal; without a terminal it writes
-nothing. `vault init --agent-settings` alone writes them for the vault already registered.
+under `permissions.deny`, after you answer y at a terminal; without a terminal it says what it
+wrote, the vault's two files, and that the rules were not. Where it creates the settings file
+it adds it to `.gitignore`, since it holds this machine's paths; where git tracks it, the
+command is refused before anything is written. `vault init --agent-settings` alone writes them
+for the vault already registered.
 Claude Code reads that file in a session started in the project's folder; where the project
 is a folder inside a larger repository and sessions start at its root, put the rules where
 Claude Code's settings documentation says that session looks.

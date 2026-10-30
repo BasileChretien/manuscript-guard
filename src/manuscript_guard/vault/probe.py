@@ -44,14 +44,15 @@ class Probe:
     opened: tuple[str, ...]
     #: The registered files that could not be opened, each with why.
     refused: tuple[tuple[str, str], ...]
+    #: Whether the folder, listed, holds anything at all.
+    holds: bool = False
 
     @property
     def readable(self) -> bool:
-        """Readable where a registered file opened, or, with none registered, where the
-        folder lists."""
-        if self.opened:
-            return True
-        return self.listed and not self.refused
+        """Readable where a registered file opened, or where the folder lists and holds
+        anything, the registered files moved or renamed (round 1 of #488). An empty folder,
+        the mount point of a volume that is not mounted, is not reachable."""
+        return bool(self.opened) or (self.listed and self.holds)
 
 
 def _structured(path: Path) -> object:
@@ -71,21 +72,41 @@ def registry_file(root: Path) -> Path:
     return root.joinpath(*REGISTRY.parts)
 
 
-def local_folder(root: Path) -> Path | None:
-    """The vault's folder on this machine, as `.manuscript-guard/vault.local.yaml` says, or
-    None where no vault is registered here. A file there that does not say it is refused."""
+def _local(root: Path) -> dict | None:
+    """`.manuscript-guard/vault.local.yaml`, or None where no vault is registered here. A file
+    there that does not name the folder by an absolute path is refused."""
     file = local_file(root)
     if not file.is_file():
         return None
     document = _structured(file)
-    folder = document.get("folder") if isinstance(document, dict) else None
+    folders = [document.get(key) for key in ("folder", "resolved")] if isinstance(
+        document, dict) else [None]  # fmt: skip
     if not (isinstance(document, dict) and document.get("schema") == LOCAL_SCHEMA
-            and isinstance(folder, str) and folder and Path(folder).is_absolute()):  # fmt: skip
+            and isinstance(folders[0], str) and folders[0]
+            and all(one is None or (isinstance(one, str) and Path(one).is_absolute())
+                    for one in folders)):  # fmt: skip
         raise VaultFileError(
             f"{file}: does not name the vault's folder as {LOCAL_SCHEMA} does: run "
             "`manuscript-guard vault init` again"
         )
-    return Path(folder)
+    return document
+
+
+def local_folder(root: Path) -> Path | None:
+    """The vault's folder on this machine, as the person typed it at `vault init`, or None
+    where no vault is registered here."""
+    document = _local(root)
+    return None if document is None else Path(document["folder"])
+
+
+def local_spellings(root: Path) -> list[str]:
+    """The folder as typed and as its links lead, both taken at `vault init`, so that a hook
+    compares a command with them and asks nothing of the folder on disk."""
+    document = _local(root)
+    if document is None:
+        return []
+    return list(dict.fromkeys(one for one in (document["folder"], document.get("resolved"))
+                              if one))  # fmt: skip
 
 
 def registered(root: Path) -> list[dict]:
@@ -114,13 +135,13 @@ def _opens(path: Path) -> str | None:
     return None
 
 
-def _lists(folder: Path) -> bool:
+def _lists(folder: Path) -> tuple[bool, bool]:
+    """Whether the folder lists, and whether it holds anything."""
     try:
         with os.scandir(folder) as entries:
-            next(entries, None)
+            return True, next(entries, None) is not None
     except OSError:
-        return False
-    return True
+        return False, False
 
 
 def probe(folder: Path, labels: list[str]) -> Probe:
@@ -132,7 +153,8 @@ def probe(folder: Path, labels: list[str]) -> Probe:
             opened.append(label)
         else:
             refused.append((label, why))
-    return Probe(folder, _lists(folder), tuple(opened), tuple(refused))
+    listed, holds = _lists(folder)
+    return Probe(folder, listed, tuple(opened), tuple(refused), holds)
 
 
 def state(root: Path) -> tuple[str, Probe | None]:

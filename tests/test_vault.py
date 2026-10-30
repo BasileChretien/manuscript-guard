@@ -215,6 +215,20 @@ def test_a_project_with_no_custodian_minimum_is_refused(
     assert "minimum_cell_count" in said and "1 where there is no rule" in said
 
 
+@pytest.mark.parametrize("minimum", ["0", "-5", "true", "'5'"])
+def test_a_custodian_minimum_below_one_is_refused(
+    tmp_path: Path, data: Path, capsys, minimum: str
+) -> None:
+    """Round 1 of #488: 1 is the least a custodian's minimum can say."""
+    root = tmp_path / "low"
+    assert main(["init", str(root)]) == 0
+    with (root / "paper.yaml").open("a", encoding="utf-8") as file:
+        file.write(f"\ncustodian:\n  minimum_cell_count: {minimum}\n")
+    capsys.readouterr()
+    assert "minimum_cell_count" in _refused(root, capsys, "init", str(data), "cohort.csv",
+                                            "--as", "Ada")  # fmt: skip
+
+
 def test_one_said_on_purpose_is_accepted(tmp_path: Path, data: Path) -> None:
     root = tmp_path / "one"
     assert main(["init", str(root)]) == 0
@@ -274,10 +288,12 @@ def test_a_local_file_git_tracks_is_refused(paper: Path, data: Path, capsys) -> 
     kept.parent.mkdir()
     kept.write_text("schema: x\n", encoding="utf-8")
     _git(paper, "add", "-f", ".manuscript-guard/vault.local.yaml")
+    ignore = (paper / ".gitignore").read_bytes()
     assert vault(paper, "init", str(data), "cohort.csv", "--as", "Ada") == 2
     assert "git tracks .manuscript-guard/vault.local.yaml" in capsys.readouterr().err
     assert kept.read_text(encoding="utf-8") == "schema: x\n"
     assert not (paper / "design" / "vault.yaml").exists()
+    assert (paper / ".gitignore").read_bytes() == ignore, "a refusal changes nothing"
 
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
@@ -328,37 +344,84 @@ def test_check_of_a_folder_that_is_not_there_exits_0(paper: Path, data: Path, ca
     assert "not reachable from this session" in said and "could not be listed" in said
 
 
+def test_check_of_a_folder_that_lists_without_the_files_registered_exits_1(
+    paper: Path, data: Path, capsys
+) -> None:
+    """Round 1 of #488: the folder lists and holds something, though not the files registered
+    (moved, renamed): what is in it can be read."""
+    assert vault(paper, "init", str(data), "cohort.csv", "--as", "Ada") == 0
+    (data / "cohort.csv").rename(data / "cohort-2026.csv")
+    capsys.readouterr()
+    assert vault(paper, "check") == 1
+    assert "readable from this session" in capsys.readouterr().out
+
+
+def test_check_of_an_empty_mount_point_exits_0(paper: Path, data: Path, capsys) -> None:
+    """An encrypted volume's mount point with nothing mounted on it: the folder is there and
+    empty."""
+    assert vault(paper, "init", str(data), "cohort.csv", "--as", "Ada") == 0
+    shutil.rmtree(data)
+    data.mkdir()
+    capsys.readouterr()
+    assert vault(paper, "check") == 0
+    assert "not reachable" in capsys.readouterr().out
+
+
+def test_the_folder_is_kept_as_typed_and_as_its_links_lead(
+    paper: Path, data: Path, tmp_path: Path, capsys
+) -> None:
+    """Round 1 of #488: a mapped drive or a link keeps the spelling the person typed, for the
+    hooks and for the agent tool's rules, beside the one its links lead to."""
+    typed = tmp_path / "typed here"
+    _link(typed, data)
+    assert vault(paper, "init", str(typed), "cohort.csv", "--as", "Ada") == 0
+    said = capsys.readouterr().out
+    kept = local(paper)
+    assert validate(kept, "vault-local", paper / "x").ok
+    assert Path(kept["folder"]) == typed.absolute()
+    assert Path(kept["resolved"]) == data.resolve()
+    for folder in (typed.absolute(), data.resolve()):
+        assert f"Read({agent_rules.rule_path(folder)}/**)" in said
+
+
 @pytest.fixture
 def refused_to_this_account(data: Path):
     """The folder and its files refused to the account the tests run as: a deny ACL on
-    Windows, set and taken away with icacls inside the test's folder; mode 000 elsewhere."""
+    Windows, set and taken away with icacls inside the test's folder; mode 000 elsewhere.
+
+    Taken away in the reverse of the order set, the folder before the file in it: a file in a
+    folder of mode 000 cannot be reached to change its own mode (CI on Ubuntu, 2fe9db87). And
+    taken away whatever was set before a step failed."""
+    targets = [data / "cohort.csv", data]
+    done: list[Path] = []
     if os.name == "nt":
         if shutil.which("icacls") is None:
             pytest.skip("icacls is not on PATH")
         user = getpass.getuser()
-        targets = [data / "cohort.csv", data]
-        for target in targets:
-            done = subprocess.run(["icacls", str(target), "/deny", f"{user}:(R)"],
-                                  capture_output=True, text=True, check=False)  # fmt: skip
-            if done.returncode != 0:
-                pytest.skip(f"icacls could not deny: {done.stdout}{done.stderr}")
         try:
+            for target in targets:
+                denied = subprocess.run(["icacls", str(target), "/deny", f"{user}:(R)"],
+                                        capture_output=True, text=True, check=False)  # fmt: skip
+                if denied.returncode != 0:
+                    pytest.skip(f"icacls could not deny: {denied.stdout}{denied.stderr}")
+                done.append(target)
             yield
         finally:
-            for target in targets:
+            for target in reversed(done):
                 subprocess.run(["icacls", str(target), "/remove:d", user],
                                capture_output=True, check=False)  # fmt: skip
         return
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         pytest.skip("root reads whatever the mode says")
-    modes = {path: path.stat().st_mode for path in (data / "cohort.csv", data)}
-    for path in modes:
-        path.chmod(0)
+    modes = {path: path.stat().st_mode for path in targets}
     try:
+        for path in targets:
+            path.chmod(0)
+            done.append(path)
         yield
     finally:
-        for path, mode in modes.items():
-            path.chmod(mode)
+        for path in reversed(done):
+            path.chmod(modes[path])
 
 
 def test_check_of_files_this_account_is_refused_exits_0(
@@ -430,7 +493,11 @@ def test_a_folder_no_rule_can_name_exactly_is_refused(folder: str, windows: bool
 
 def test_agent_settings_is_refused_without_a_terminal(paper: Path, data: Path, capsys) -> None:
     assert vault(paper, "init", str(data), "cohort.csv", "--as", "Ada", "--agent-settings") == 2
-    assert "asks at a terminal" in capsys.readouterr().err
+    said = capsys.readouterr().err
+    assert "asks at a terminal" in said
+    # Round 1 of #488: what was written is said, and what was not.
+    assert "design/vault.yaml and .manuscript-guard/vault.local.yaml were written" in said
+    assert "the deny rules were not" in said
     assert not (paper / ".claude").exists()
     # The registration itself stands: it was the person's to make, and it is made.
     assert registry(paper)["files"]
@@ -464,6 +531,40 @@ def test_agent_settings_writes_the_rules_after_a_yes(
         assert json.loads(settings.read_text(encoding="utf-8")) == found
     else:
         assert found["permissions"]["deny"] == ["Read(./.env)"]
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_agent_settings_makes_git_ignore_the_settings_file_it_creates(
+    paper: Path, data: Path, monkeypatch
+) -> None:
+    """Round 1 of #488: the file holds this machine's paths, as the local file does."""
+    from manuscript_guard.deposit.remote import command
+
+    monkeypatch.setattr(command, "ask_at_terminal", lambda prompt: "y")
+    assert vault(paper, "init", str(data), "cohort.csv", "--as", "Ada", "--agent-settings") == 0
+    assert (paper / ".claude" / "settings.local.json").is_file()
+    lines = (paper / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert ".claude/settings.local.json" in lines
+    assert _git(paper, "check-ignore", "-q", ".claude/settings.local.json").returncode == 0
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_agent_settings_refuses_a_settings_file_git_tracks_before_writing_anything(
+    paper: Path, data: Path, monkeypatch, capsys
+) -> None:
+    from manuscript_guard.deposit.remote import command
+
+    monkeypatch.setattr(command, "ask_at_terminal", lambda prompt: "y")
+    settings = paper / ".claude" / "settings.local.json"
+    settings.parent.mkdir()
+    settings.write_text("{}\n", encoding="utf-8")
+    _git(paper, "add", "-f", ".claude/settings.local.json")
+    ignore = (paper / ".gitignore").read_bytes()
+    assert vault(paper, "init", str(data), "cohort.csv", "--as", "Ada", "--agent-settings") == 2
+    assert "git tracks .claude/settings.local.json" in capsys.readouterr().err
+    assert nothing_written(paper)
+    assert settings.read_text(encoding="utf-8") == "{}\n"
+    assert (paper / ".gitignore").read_bytes() == ignore
 
 
 def test_agent_settings_refuses_a_settings_file_it_cannot_read(

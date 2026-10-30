@@ -4772,8 +4772,13 @@ DOI_NOT_NAMED = (
 #: that are not it, each as `tests/readings.py` writes it (`vault_spelling`): quoted with its
 #: space or escaped, by the folder or a file inside, from the project or after an `=` or `@`.
 VAULT_NAMED = ("quoted", "single quoted", "forward slashes", "inside", "relative",
-               "after an equals sign", "after an at sign", "escaped space", "variable")  # fmt: skip
-VAULT_NOT_NAMED = ("a folder beside it", "the folder above it", "a file beside it", "the word")
+               "after an equals sign", "after an at sign", "escaped space", "variable",
+               # Round 1 of #488: the home by each shell's name of it, and a path joined to
+               # another by a colon or a semicolon.
+               "the home", "the home in braces", "PowerShell's home", "cmd's home",
+               "a volume", "a search path", "a Windows search path")  # fmt: skip
+VAULT_NOT_NAMED = ("a folder beside it", "the folder above it", "a file beside it", "the word",
+                   "another variable", "a search path beside it")  # fmt: skip
 _SHELL_HEADS = ("cat", "ls -la", "Get-Content", "head -n 5", "wc -l", "Copy-Item", "grep -c id",
                 "python analysis/01_model.py", "Rscript analysis/02_fit.R", "echo")  # fmt: skip
 _SHELL_ARGUMENTS = ("results/model.json", "data/synthetic/cohort.csv", "-n", "--quiet",

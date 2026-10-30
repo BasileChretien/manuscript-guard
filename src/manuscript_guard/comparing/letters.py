@@ -64,10 +64,13 @@ _QUOTED = re.compile(
     r"\N{LEFT DOUBLE QUOTATION MARK}([^\N{RIGHT DOUBLE QUOTATION MARK}]+)"
     r"\N{RIGHT DOUBLE QUOTATION MARK}"
 )
-#: A straight mark; and one right after a digit, which may be an inch's mark, `5"`, or the
-#: end of a quotation that ends in a number, `"the rate was 12"`: which, nothing here tells.
+#: A straight mark; and one right after a digit or a vulgar fraction, which may be an inch's
+#: mark, `5"` or `½"`, or the end of a quotation that ends in a number, `"the rate was 12"`:
+#: which, nothing here tells.
 _STRAIGHT = re.compile('"')
-_AFTER_A_NUMBER = re.compile(r'(?<=\d)"')
+_AFTER_A_NUMBER = re.compile(
+    r'(?<=[\d\N{VULGAR FRACTION ONE QUARTER}-\N{VULGAR FRACTION THREE QUARTERS}'
+    r'\N{VULGAR FRACTION ONE SEVENTH}-\N{VULGAR FRACTION SEVEN EIGHTHS}])"')
 #: What is said of a paragraph whose straight quotations are not read.
 UNPAIRED = ("the straight quotation marks in {} cannot be paired: one has no partner, or one "
             "follows a number, where it may be an inch's mark or a quotation's end; its "
@@ -117,9 +120,9 @@ def quotations(text: str, first: int = 1) -> list[Quotation]:
 
 
 def unpaired(text: str, first: int = 1) -> list[tuple[int, int]]:
-    """Each paragraph of `text` whose straight quotation marks, inch's marks apart, are odd
-    in number, and whose straight quotations are therefore not read: its number among the
-    paragraphs, and the line it opens on."""
+    """Each paragraph of `text` whose straight quotation marks are odd in number, or one of
+    which follows a number, and whose straight quotations are therefore not read: its number
+    among the paragraphs, and the line it opens on."""
     return _quotations(text, first)[1]
 
 

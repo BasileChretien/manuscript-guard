@@ -318,7 +318,8 @@ def _floats(tree, read: dict) -> tuple[tuple[Display, ...], tuple[Display, ...],
     each kind `commands.FLOATS` lists, one display for each caption, none for a float
     continued from the last, and a file input where its `\\input` stands, inside a float as
     that float's. Each table with its cells, its own or those of a file its float inputs,
-    and where a file the float inputs was not read, with none, said so. Where the view
+    where the float holds one table this reading pairs with its one caption; else with
+    none, said so. Where the view
     cannot count a display of a kind, a longtable's caption or a `\\captionof`, none of
     that kind is numbered, and a note says so. A table typed outside every display has no
     label."""

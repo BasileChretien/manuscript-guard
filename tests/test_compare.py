@@ -636,9 +636,22 @@ def test_a_table_whose_input_is_not_read_is_never_the_same(tmp_path: Path) -> No
     old = read_version(tmp_path / "v1" / "main.tex")
     new = read_version(tmp_path / "v2" / "main.tex")
     said = [item.message for item in differences.tables(old, new)]
-    assert said[0] == ("Table 1: its cells were not read: its float holds no one table this "
-                       "reading pairs with its one caption")  # fmt: skip
+    assert said[0] == ("Table 1: its cells in v1 and v2 were not read: the float there holds "
+                       "no one table this reading pairs with its one caption, or a file it "
+                       "inputs was not read")  # fmt: skip
     assert letters.status("Table 1", old, new) == "its cells were not read"
+
+
+def test_a_table_not_read_in_one_version_names_that_version(tmp_path: Path) -> None:
+    tabular = "\n!begin{tabular}{ll}\nA & 1 !!\n!end{tabular}\n"
+    for name, body in (("v1", "!caption{A}TABULARTABULAR"), ("v2", "!caption{A}TABULAR")):
+        write(tmp_path / name, "main.tex", tex(
+            "!documentclass{article}\n!begin{document}\nText.\n!begin{table}"
+            + body.replace("TABULAR", tabular) + "!end{table}\n!end{document}\n"))  # fmt: skip
+    old = read_version(tmp_path / "v1" / "main.tex")
+    new = read_version(tmp_path / "v2" / "main.tex")
+    (said,) = [i.message for i in differences.tables(old, new) if i.code == "table-not-read"]
+    assert said.startswith("Table 1: its cells in v1 were not read")
 
 
 @pytest.mark.parametrize(
@@ -690,7 +703,8 @@ def test_a_number_changed_is_paired_with_the_one_in_its_own_sentence() -> None:
 
 
 def test_a_quotation_matches_only_whole_words_and_numbers() -> None:
-    """In curly marks, which a number may close; a straight mark after a digit is an inch's."""
+    """In curly marks, which a number may close; straight marks, one after a number, are not
+    read at all."""
     letter = ("We now say \N{LEFT DOUBLE QUOTATION MARK}the odds ratio was 2.1"
               "\N{RIGHT DOUBLE QUOTATION MARK} and \"5 sites reported a rise\".\n")  # fmt: skip
     old = "Here the odds ratio was 2.15. And 15 sites reported a rise.\n"
@@ -732,6 +746,8 @@ UNPAIRED_NOTE = ("the straight quotation marks in {} cannot be paired: one has n
     [
         'A 5" screen. We now write "the rate fell in all sites" here.\n',
         'We now report "the rate was 12" and "the odds ratio was 2.1" here.\n',
+        'A \N{VULGAR FRACTION ONE HALF}" screw was fitted to all of "the rate fell in all sites"'
+        ' and a \N{VULGAR FRACTION THREE QUARTERS}" bolt.\n',
     ],
 )
 def test_a_straight_mark_after_a_number_leaves_its_paragraph_unread(letter: str) -> None:

@@ -258,9 +258,12 @@ def tables(old: Version, new: Version) -> list[Item]:
             changes.append(f"{_name(table)}: its caption changed: {shown(was.caption)!r} in "
                            f"v1, {shown(table.caption)!r} in v2")  # fmt: skip
         if not (was.read and table.read):
+            unread = " and ".join(v for v, read in (("v1", was.read), ("v2", table.read))
+                                  if not read)  # fmt: skip
             found.append(_display_item(TABLES, "table-not-read", f"{_name(table)}: its cells "
-                                       "were not read: its float holds no one table this "
-                                       "reading pairs with its one caption", table))  # fmt: skip
+                                       f"in {unread} were not read: the float there holds no "
+                                       "one table this reading pairs with its one caption, or "
+                                       "a file it inputs was not read", table))  # fmt: skip
             found += [_display_item(TABLES, "table-changed", said, table) for said in changes]
             continue
         changes += _cells(_name(table), was.rows, table.rows)

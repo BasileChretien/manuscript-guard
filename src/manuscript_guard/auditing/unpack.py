@@ -61,7 +61,7 @@ def _unsafe(name: str) -> str:
     if not name or name.startswith(("/", "\\")):
         return "is named from the root"
     if PureWindowsPath(name).drive:
-        return "names a Windows drive, where it would be written outside the folder"
+        return "names a Windows drive, which Windows writes outside the folder"
     if any(char in _LINE_BREAKS for char in name):
         return "holds a line break in its name"
     if "\\" in name or "\0" in name:

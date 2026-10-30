@@ -19483,6 +19483,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - The limits on a .zip (50,000 members, 16 GiB) are a guard against an archive made to fill
     the disk, not a judgement: a larger package is refused, and can be unpacked by hand and
     given as a folder. A folder's junction is seen only on Python 3.12 and later.
+  - A name holding a line break is refused in a .zip only. A folder given on POSIX can hold a
+    file whose name has one (U+2028, say), and its line of SHA256SUMS is then read as two,
+    with false warnings that the line is not a digest and a path and that the file is listed
+    nowhere.
 - **The report draft is the report's findings laid out, and says no more than they do.**
   - What a check read is counted where the audit counts it: the tables pandoc reads, the tests
     whose P can be judged, the intervals and the n (%) of tables. A check that read something

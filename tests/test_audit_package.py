@@ -665,13 +665,24 @@ def test_a_lookup_draft_lists_no_asked_bullet(tmp_path, capsys, monkeypatch) -> 
     capsys.readouterr()
     text = target.read_text(encoding="utf-8")
     assert "asked doi" not in text and "asked Crossref" not in text
-    assert "The registries (--lookup): 1 entry asked about" in text
+    # Answered from the records kept, it was not asked about this time.
+    assert "The registries (--lookup): 1 entry looked up, 1 answered from the records kept" in text
+
+
+def test_a_lookup_draft_with_no_reference_list_says_so(tmp_path, capsys) -> None:
+    paper = tmp_path / "paper.md"
+    paper.write_text(PAPER, encoding="utf-8")
+    target = tmp_path / "d.md"
+    assert main(["audit", str(paper), "--lookup", "--report-draft", str(target)]) == 0
+    capsys.readouterr()
+    assert "not asked, since no reference list was read" in target.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("dry_run", [False, True])
 def test_a_lookup_with_nothing_to_ask_says_so(tmp_path, capsys, dry_run: bool) -> None:
     paper = tmp_path / "paper.md"
-    paper.write_text(PAPER, encoding="utf-8")
+    unidentified = "\n# References\n\n1. Example A. A study of urine. J Ex. 2019;1:1-9.\n"
+    paper.write_text(PAPER + unidentified, encoding="utf-8")
     target = tmp_path / "d.md"
     assert main(["audit", str(paper), "--lookup", *(["--dry-run"] if dry_run else []),
                  "--report-draft", str(target)]) == 0  # fmt: skip

@@ -193,7 +193,10 @@ def _unchecked_of_audit(report) -> list[str]:
     if report.lookups is None:
         found.append("The registries: the references were not looked up (`--lookup`).")
     elif not report.lookups:
-        found.append("The registries: not asked, since no reference gives a DOI or a PMID.")
+        found.append("The registries: not asked, since " + (
+            "no reference gives a DOI or a PMID."
+            if any(census.entries for census in report.references)
+            else "no reference list was read."))  # fmt: skip
     elif not any(one.came for one in report.lookups):
         # Round 2 of #487: a dry run asked nothing, and was said to have asked.
         found.append("The registries: not looked up (dry run); what would be asked is listed "
@@ -263,8 +266,10 @@ def _checks_of_audit(report, items: list[Item]) -> list[tuple[str, str, int]]:
     checks.append(("The reference list (G7)", _read(entries, "entry", "entries"),
                    sum(len(census.problems) for census in report.references)))  # fmt: skip
     if report.lookups and any(one.came for one in report.lookups):
-        checks.append(("The registries (--lookup)",
-                       _read(len(report.lookups), "entry", "entries", "asked about"),
+        kept = sum(one.came == "kept" for one in report.lookups)
+        said = _read(len(report.lookups), "entry", "entries", "asked about" if not kept
+                     else f"looked up, {kept} answered from the records kept")  # fmt: skip
+        checks.append(("The registries (--lookup)", said,
                        sum(len(one.problems) for one in report.lookups)))  # fmt: skip
     checks += _reader_checks(report, items)
     return checks

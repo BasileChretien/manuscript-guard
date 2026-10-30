@@ -982,6 +982,40 @@ def test_an_audit_without_a_reader_option_is_let_through(
     assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard compare v1.docx v2.docx",
+        "mguard compare v1.md v2.md --response letter.md --json",
+        "cd round-2 && manuscript-guard compare \\\n  old.tex new.tex --comments mine.md",
+        "python -m manuscript_guard.cli compare a.docx b.docx --out report.txt",
+    ],
+)
+def test_a_comparison_of_two_versions_is_put_to_the_person(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    """Decision 4 of the editor and referee layer: `compare` quotes both versions of a
+    manuscript a journal sent in confidence, whatever its options."""
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "sent in" in reason(result) and "`manuscript-guard compare`" in reason(result)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "grep -rn compare docs/",
+        "manuscript-guard reworded manuscript --before copy.md",
+        "manuscript-guard check --json; echo compare",
+        "git commit -m 'manuscript-guard compare'",
+    ],
+)
+def test_a_command_that_runs_no_comparison_is_let_through(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
+
+
 def test_where_the_tool_cannot_ask_a_reader_s_audit_is_refused(
     in_claude_code: Path, capsys
 ) -> None:

@@ -86,6 +86,10 @@ COMMANDS = {
                   why="exits 1 under --strict when it read no number "
                   "(tests/test_cli.py, `test_audit_strict_fails_a_paper_with_no_number_in_it`); "
                   "and an empty project holds no paper to give it"),
+    # A version that is not there, or holds no words, is refused: there is nothing to set
+    # beside the other.
+    "compare": Zero("two versions of a paper, and the letter and the comments given",
+                    exits=2, argv=("compare", "{project}/v1.md", "{project}/v2.md")),
     "bind": Zero("every unbound number in the manuscript", exits=2, argv=("bind", "{project}")),
     "build": Zero("the manuscript, once the gates pass",
                   why="the gates run first, and an empty manuscript fails them from the drafting "
@@ -257,6 +261,8 @@ LATEX = {
     "approve": ("reads", ("approve", "{project}", "--as", "Nobody Listed")),
     # It reads a `.tex` named with the files it inputs, as G2 reads them (Task 3, PR 1).
     "audit": ("reads", ("audit", "{tex}", "--against", "{project}/results")),
+    # It reads a `.tex` named with the files it inputs, as the Markdown its document prints.
+    "compare": ("reads", ("compare", "{tex}", "{tex}")),
     # It reads each file as G2 does and offers `\\mg{...}` (step 12).
     "bind": ("reads", ("bind", "{project}")),
     # It compiles the PDF with latexmk (step 9).

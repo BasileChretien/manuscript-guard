@@ -1601,11 +1601,21 @@ _READS_IN_CONFIDENCE = (
     "provider, which journals' policies forbid. Run it yourself in a terminal, or say yes if "
     "the paper is your own."
 )
+_COMPARES_IN_CONFIDENCE = (
+    "`manuscript-guard compare` sets a revised manuscript beside the version before it, for an "
+    "editor or a referee reading a paper someone else wrote, which the journal sent in "
+    "confidence; its report quotes both versions, and read by an agent it reaches the agent's "
+    "model provider, which journals' policies forbid. Run it yourself in a terminal, or say "
+    "yes if the paper is your own."
+)
+#: `compare` in one invocation of the tool, whatever follows it.
+_COMPARES = re.compile(_TOOL + r"compare(?![\w-])", re.IGNORECASE)
 
 
 def _reads_in_confidence(command: str) -> str | None:
-    """Why an `audit` with a reader option in this command is put to the person: its output
-    quotes a manuscript the journal sent them in confidence (`auditing.READER_FLAGS`). Read as
+    """Why an `audit` with a reader option, or a `compare`, in this command is put to the
+    person: its output quotes a manuscript the journal sent them in confidence
+    (`auditing.READER_FLAGS`, decision 4 of the editor and referee layer). Read as
     `_approves` reads its commands, in one invocation of the tool, as a guard against an
     agent's ordinary commands."""
     from manuscript_guard.auditing import READER_FLAGS
@@ -1614,7 +1624,9 @@ def _reads_in_confidence(command: str) -> str | None:
     flags = "|".join(re.escape(flag) for flag in READER_FLAGS)
     reading = re.compile(_TOOL + r"audit\b" + _SAME_COMMAND + rf"(?<![\w-])(?:{flags})(?![\w-])",
                          re.IGNORECASE)  # fmt: skip
-    return _READS_IN_CONFIDENCE if reading.search(joined) else None
+    if reading.search(joined):
+        return _READS_IN_CONFIDENCE
+    return _COMPARES_IN_CONFIDENCE if _COMPARES.search(joined) else None
 
 
 #: `communicate approve`, and `communicate … --done`, in one invocation of the command.

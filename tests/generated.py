@@ -6755,6 +6755,98 @@ def edits(draw: st.DrawFn) -> tuple[str, str]:
     return before, "\n\n".join(paragraphs)
 
 
+# ------------------------------------------------------- a response letter quoting a revision
+
+#: Where the words a response letter quotes stand: in v2 only, in both versions, in v1 only,
+#: in neither, and in neither but in the referee's own comments (`comparing.letters`).
+LETTER_OUTCOMES = ("new", "both", "first", "neither", "yours")
+#: How a letter writes a quotation: in straight or curly double marks, as a block quotation,
+#: and in straight marks across a line break.
+LETTER_STYLES = ("straight", "curly", "block", "wrapped")
+#: The word that makes each sentence of the two versions its own, so that a quotation of its
+#: opening words is found where that sentence is and nowhere else.
+_LETTER_TAGS = ("amber", "basalt", "cobalt", "dune", "ember", "fjord", "garnet", "harbour",
+                "indigo", "jasper", "kelp", "lagoon")  # fmt: skip
+
+
+@st.composite
+def response_letters(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[int, str]],
+                                                 list[int]]:  # fmt: skip
+    """Two versions of a paper, the referee's comments and the authors' letter: in every
+    letter one quotation of each outcome, written in the four ways, each way at least once,
+    in an order drawn each time, among sentences that quote nothing, a quotation of three
+    words, which is too short to be read, and the paragraphs `REFUSED`; with the line each
+    quotation opens on and its outcome, in the order of the lines, and the lines of those
+    paragraphs."""
+    tags = draw(st.permutations(_LETTER_TAGS))
+
+    def sentence(tag: str) -> str:
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=3, max_size=8))
+        return f"The {tag} " + " ".join(words) + "."
+
+    said = {outcome: sentence(tag) for outcome, tag in zip(LETTER_OUTCOMES, tags, strict=False)}
+    others = [sentence(tag) for tag in tags[len(LETTER_OUTCOMES) :]]
+    old = [said["both"], said["first"], *others[:4]]
+    new = [said["both"], said["new"], *others[4:]]
+    old, new = draw(st.permutations(old)), draw(st.permutations(new))
+    lines: list[str] = []
+    expected: list[tuple[int, str]] = []
+
+    def filler() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=6)))
+
+    styles = draw(st.permutations(
+        (*LETTER_STYLES, draw(st.sampled_from(LETTER_STYLES)))))  # fmt: skip
+    short = draw(st.integers(0, len(LETTER_OUTCOMES)))
+    places = [draw(st.integers(0, len(LETTER_OUTCOMES))) for _refused in REFUSED]
+    unpaired: list[int] = []
+
+    def refused(at: int) -> None:
+        for place, paragraph in zip(places, REFUSED, strict=True):
+            if place == at:
+                lines.extend(["", paragraph, ""])
+                unpaired.append(len(lines) - 1)
+
+    for at, (outcome, style) in enumerate(zip(LETTER_OUTCOMES, styles, strict=True)):
+        if at == short:
+            lines.append(SHORT_QUOTATION)
+        refused(at)
+        words = said[outcome].rstrip(".").split()
+        quote = words[: draw(st.integers(4, len(words)))]
+        if draw(st.booleans()):
+            lines.append(f"Reply {filler()}.")
+        if style == "block":
+            lines += ["", "> " + " ".join(quote), ""]
+            expected.append((len(lines) - 1, outcome))
+            continue
+        opening, closing = ('"', '"') if style != "curly" else (
+            "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}")  # fmt: skip
+        cut = draw(st.integers(1, len(quote) - 1)) if style == "wrapped" else len(quote)
+        lines.append(f"We {filler()} {opening}" + " ".join(quote[:cut]))
+        expected.append((len(lines), outcome))
+        if cut < len(quote):
+            lines.append(" ".join(quote[cut:]))
+        lines[-1] += f"{closing} {filler()}."
+    if short == len(LETTER_OUTCOMES):
+        lines.append(SHORT_QUOTATION)
+    refused(len(LETTER_OUTCOMES))
+    mine = f"{filler().capitalize()}.\n\n1. {said['yours']} {filler()}.\n"
+    texts = {"old": "\n\n".join(old) + "\n", "new": "\n\n".join(new) + "\n",
+             "letter": "\n".join(lines) + "\n", "mine": mine}  # fmt: skip
+    return texts, expected, unpaired
+
+
+#: A quotation of three words, which is no quotation of the paper: it is not read.
+SHORT_QUOTATION = 'And "the cohort was" too short.'
+#: Paragraphs of their own whose straight quotations are not read, each named instead: one
+#: whose straight marks are odd in number; one with a mark after a number, which may end a
+#: quotation or be an inch's, its marks even; and one with an inch's mark.
+UNPAIRED = 'We wrote "the quarry stays unread here and "the quartz grew in size" too.'
+AFTER_A_NUMBER = 'We now report "the quarry rate was 12" and "the quartz odds were 2" here.'
+INCH_MARK = 'A 5" screen showed "the quarry rate was high" and "the quartz grew in size".'
+REFUSED = (UNPAIRED, AFTER_A_NUMBER, INCH_MARK)
+
+
 # ------------------------------------------------------------- how strongly a sentence claims
 
 #: Words that set how strongly a sentence claims, by what each is: a class, or the rung of
@@ -8802,6 +8894,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "import": sessions(),
     "supplementary methods": supplements().map(lambda drawn: drawn[0]),
     "reworded": edits(),
+    "response letter": response_letters().map(lambda drawn: drawn[0]),
     "marked up": revisions().map(lambda drawn: drawn[0]),
     "paper.yaml set": paper_files().flatmap(
         lambda files: st.sampled_from([

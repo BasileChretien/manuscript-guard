@@ -305,6 +305,12 @@ CHANGED = {
         '        relation = ""\n',
         "reworded",
     ),
+    "a quotation the first version had told as new in the letter": (
+        "comparing/letters.py",
+        "        return NOT_NEW if in_old else NEW_AS_QUOTED\n",
+        "        return NEW_AS_QUOTED\n",
+        "response letter",
+    ),
     "a claim moved both ways told as the first way": (
         "claims.py",
         "    elif MOVED in ways or len(set(ways)) > 1:\n",

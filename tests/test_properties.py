@@ -53,6 +53,7 @@ from generated import (
     FIXED_LINKS,
     FOLDED,
     HELD,
+    INCH_MARK,
     INPUTS,
     LOOKALIKES,
     LOWERED,
@@ -64,6 +65,7 @@ from generated import (
     PROOF_TYPOGRAPHY,
     RESIDUE,
     RESIDUE_LOOKALIKES,
+    SHORT_QUOTATION,
     SOURCE_GAPS,
     SOURCE_WORDS,
     STRETCHES,
@@ -151,6 +153,7 @@ from generated import (
     quotations,
     quoted_references,
     reference_titled,
+    response_letters,
     revisions,
     set_hazards,
     share_tables,
@@ -6556,6 +6559,83 @@ def test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else(
     a city, a country, two words of an institution, nor a name a letter away."""
     text, expected = planted
     assert names_in(text, sought(PEOPLE)) == expected, text
+
+
+# ------------------------------------------------------- a response letter quoting a revision
+
+
+@holds(150, response_letters())
+def test_each_quotation_of_a_response_letter_is_held_to_both_versions(
+    drawn: tuple[dict[str, str], list[tuple[int, str]], list[int]],
+) -> None:
+    """Every letter quotes words that stand in v2 only, in both versions, in v1 only, in
+    neither, and in neither but in the referee's comments, each written in one of four ways,
+    each way at least once: in straight or curly marks, as a block quotation, and across a
+    line break. Each is found on the line it opens on, with where it stands; a quotation of
+    three words is not read, nor the straight quotations of a paragraph whose straight marks
+    are odd in number or one of them after a number, each paragraph named instead (`compare
+    --response`)."""
+    from manuscript_guard.comparing import letters
+
+    given, expected, unpaired = drawn
+    assert SHORT_QUOTATION in given["letter"] and INCH_MARK in given["letter"]
+    assert [line for _number, line in letters.unpaired(given["letter"])] == unpaired
+    outcomes = {"new": letters.NEW_AS_QUOTED, "both": letters.NOT_NEW,
+                "first": letters.FIRST_VERSION, "neither": letters.NEITHER,
+                "yours": letters.YOURS}  # fmt: skip
+    found = [(quote.line, outcome) for quote, outcome
+             in letters.held(given["letter"], given["old"], given["new"], given["mine"])]
+    assert found == [(line, outcomes[kind]) for line, kind in expected], given["letter"]
+
+
+def _a_quotation_is_looked_for_in_v2_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.comparing import letters
+
+    def outcome(quote: str, old: str, new: str, mine: str | None = None) -> str:
+        return letters.NEW_AS_QUOTED if letters.held_in(quote, new) else letters.NEITHER
+
+    patch.setattr(letters, "outcome", outcome)
+
+
+def _the_referee_s_comments_are_not_looked_in(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.comparing import letters
+
+    held = letters.outcome
+    patch.setattr(letters, "outcome",
+                  lambda quote, old, new, mine=None: held(quote, old, new, None))
+
+
+def _a_block_quotation_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.comparing import letters
+
+    patch.setattr(letters, "_BLOCK", re.compile("(?!)"))
+
+
+def _a_quotation_ends_at_its_line(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.comparing import letters
+
+    patch.setattr(letters, "_PARAGRAPH", re.compile(r"\n"))
+
+
+def _a_mark_after_a_number_is_paired_as_any(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.comparing import letters
+
+    patch.setattr(letters, "_AFTER_A_NUMBER", re.compile("(?!)"))
+
+
+def _odd_marks_are_paired_all_the_same(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.comparing import letters
+
+    def paired(marks: list[int]) -> list[tuple[int, int]]:
+        return list(zip(marks[::2], marks[1::2], strict=False))
+
+    patch.setattr(letters, "_paired", paired)
+
+
+def _three_words_are_a_quotation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.comparing import letters
+
+    patch.setattr(letters, "WORDS", 3)
 
 
 # --------------------------------------------------------------------------------- spelling
@@ -13664,6 +13744,34 @@ BROKEN = {
     "a link of a post keeps the stop after it": (
         _a_link_keeps_the_stop_after_it,
         test_each_link_of_a_post_is_marked_at_its_bytes_and_without_the_stop_after_it,
+    ),
+    "a response letter's quotation is looked for in v2 only": (
+        _a_quotation_is_looked_for_in_v2_only,
+        test_each_quotation_of_a_response_letter_is_held_to_both_versions,
+    ),
+    "a response letter's block quotation is not read": (
+        _a_block_quotation_is_not_read,
+        test_each_quotation_of_a_response_letter_is_held_to_both_versions,
+    ),
+    "a response letter's quotation is not looked for in the referee's comments": (
+        _the_referee_s_comments_are_not_looked_in,
+        test_each_quotation_of_a_response_letter_is_held_to_both_versions,
+    ),
+    "a response letter's quotation ends at its line": (
+        _a_quotation_ends_at_its_line,
+        test_each_quotation_of_a_response_letter_is_held_to_both_versions,
+    ),
+    "a response letter's quotation of three words is read": (
+        _three_words_are_a_quotation,
+        test_each_quotation_of_a_response_letter_is_held_to_both_versions,
+    ),
+    "a response letter's mark after a number is paired as any other": (
+        _a_mark_after_a_number_is_paired_as_any,
+        test_each_quotation_of_a_response_letter_is_held_to_both_versions,
+    ),
+    "a response letter's odd straight marks are paired all the same": (
+        _odd_marks_are_paired_all_the_same,
+        test_each_quotation_of_a_response_letter_is_held_to_both_versions,
     ),
     "a held-back cell of an output is read as its bound": (
         _a_held_back_cell_is_read_as_its_bound,

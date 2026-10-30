@@ -1724,6 +1724,24 @@ def _reworded() -> Reading:
     return reworded
 
 
+@reading("response letter")
+def _response_letter() -> Reading:
+    from manuscript_guard.comparing.letters import held, unpaired
+
+    def read(given: dict[str, str]) -> dict[str, Any]:
+        """Each quotation of a response letter, where it opens, its words, whether it is a
+        block quotation, and where it stands in the two versions and the referee's comments;
+        and each paragraph whose straight marks are not paired (`compare --response`)."""
+        return {
+            "quotations": [[quote.line, quote.quote, quote.block, outcome] for quote, outcome
+                           in held(given["letter"], given["old"], given["new"],
+                                   given.get("mine"))],
+            "unpaired": unpaired(given["letter"]),
+        }  # fmt: skip
+
+    return read
+
+
 @reading("title")
 def _title() -> Reading:
     from manuscript_guard.contracts.project import outside_maths

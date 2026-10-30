@@ -145,7 +145,7 @@ COMMANDS = {
                 exits=2, argv=("set", "target_journal", "any-journal", "--path", "{project}")),
     "stages": Zero("nothing: it prints the stages", why="it reads the policy table only"),
     # With nothing recorded it says so and exits 1; the suite records nothing (conftest).
-    "report-issue": Zero("the failures recorded on this machine, or the title it is given",
+    "report-issue": Zero("the failures recorded on this machine, or the title or snippet given",
                          exits=1, argv=("report-issue",)),
     "style": Zero("the citation style the journal's profile names", exits=2,
                   argv=("style", "{project}")),

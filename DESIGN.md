@@ -12023,6 +12023,31 @@ it does not read as the tool (`uv run`, `bash -c`, `py -m`). A `gate-errored` fi
 recorded names the fingerprint in its hint, and the crash sentence and the session start
 point at `report-issue`.
 
+A gate that got something wrong raised nothing, so there is no record to report: `report-issue
+--about <gate|command> --flagged [CODE] | --missed [CODE] --snippet TEXT | --snippet-file F`
+writes that report (`diagnostics/about.py`), under the headings of the issue template
+`gate-got-it-wrong.md` and with the label `gate`. The snippet is the person's text and nothing
+rewrites it but the scrub, which runs on it before anything reads it, so that what is checked,
+tested and posted is one text. Masking its words was weighed and left out (Basile,
+2026-10-29): a second reader of text to get right, for what the person's own edit already
+gives, and the check below tells them whether their edit kept the fault. For `audit`, G6 and G14, the readings
+that need no project, the snippet is read again alone, as `audit` reads a paper, in a
+temporary folder (`auditing.gates.run_gates`, and `audit` for `--about audit`), never in the
+person's project, and the report says "reproduced" or "not reproduced" against the code named;
+with no code it lists what the snippet gives and leaves the verdict to the person. Other gates
+read a project, and the report says the snippet was not checked. The report ends with a test
+to start from, named `test_reported_` and twelve hex digits of the snippet's SHA-256, in the
+file and the shape the suite already uses for that reading: `audit` on `tmp_path / "paper.md"`
+in `tests/test_audit.py`, `written` and `codes` in `tests/test_writing.py` and
+`tests/test_language.py`, and for any other gate the example with the snippet appended to
+`main_md(project)` and `_run_gates` in `tests/test_corruption.py`, the codes taken of that gate
+alone and at every severity (`gate_report` there runs seven of the checks and counts failures
+only, so a warning or another gate's code would not be seen). It asserts the code absent
+(`--flagged`) or present (`--missed`); with no code it stops at `pytest.fail("TODO ...")`
+rather than pass on nothing. `tests/test_report_about.py` runs the test a report writes, in the
+namespace of the file it names, for `audit`, G6, G14 and G2, and holds that it fails or passes
+as the direction says.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -19208,6 +19233,23 @@ What papers converted from Word showed (see "What papers converted from Word sho
     that only names the three words (`rg "manuscript-guard report-issue --open" docs`) is
     asked about though nothing would open. Nothing is posted either way until the person
     clicks Submit on the page.
+- **A report about a gate checks its snippet for `audit`, G6 and G14 only, and checks the
+  snippet, not the manuscript.**
+  - The other gates read a project, and a report about one says its snippet was not checked
+    here; the test it ends with runs it in the example's project, which is the first place
+    the snippet is read by that gate.
+  - The snippet is read alone, as `audit` reads a paper: with an empty `paper.yaml`, so with
+    no declared English, stage, conventions or exemptions. A fault that turns on one of those,
+    or on the rest of the manuscript (an abbreviation defined three sections earlier, a term
+    used elsewhere), may not be reproduced by the snippet alone, and the report then says "not
+    reproduced" of a fault that is real. The test for G6 and G14 runs in the example's
+    project, whose `paper.yaml` does declare them, so it can disagree with the check.
+  - The snippet is scrubbed before it is read, so an address or a name replaced in it is read
+    as `<EMAIL>` or `<AUTHOR-1>`. Nothing else in it is changed, so a sentence copied from the
+    manuscript is posted as it stands: the person reads the report before posting it.
+  - The test is a starting point. It is written in the shape of its file and run in this
+    repository's tests, but a test for a command other than `audit` and `check` leaves the
+    command's words to fill in (`main(["explain"])  # TODO`).
 
 Closed since, and why each mattered (an open gap goes above this line):
 

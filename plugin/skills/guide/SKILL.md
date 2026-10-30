@@ -105,6 +105,9 @@ and line. The skill decides how the work is done. When it is done, come back her
 Where an action names no skill and has a command, the command is the step. Where it has
 neither, say its `title` and `why` to the author and ask how they want to go on.
 
+After a `gate-errored` finding or a sentence saying the tool itself failed, offer `manuscript-guard report-issue --last`.
+For a gate that got something wrong, propose the smallest made-up text that shows it for `report-issue --about`, show it to the author, and never fill `--snippet` with the manuscript's own sentences unasked.
+
 ## Where there is no project to check
 
 - `none` or `authors-only`: the first action is `start`, the author's choice of how to begin:

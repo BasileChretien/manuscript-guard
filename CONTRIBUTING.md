@@ -8,8 +8,10 @@ request against an interface that will change.
 
 Open an issue for a gate that passes what it should have caught, a false alarm, a crash,
 or a document that builds wrong, with the smallest manuscript or fragment that shows it
-and the output of `manuscript-guard check`. A security problem goes through the
-repository's **Security** tab instead, as SECURITY.md says.
+and the output of `manuscript-guard check`. For a gate, `manuscript-guard report-issue
+--about <gate> --flagged` (or `--missed`) writes that report for you to read and post
+([docs/failures.md](docs/failures.md)). A security problem goes through the repository's
+**Security** tab instead, as SECURITY.md says.
 
 ## What is most welcome
 

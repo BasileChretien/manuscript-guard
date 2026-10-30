@@ -1,6 +1,6 @@
 ---
 name: paper-audit
-description: Check the numbers in a paper that was not written with manuscript-guard against the analysis outputs, and report honestly what a match is worth. Use when handed an existing .docx, Markdown or LaTeX manuscript whose numbers were typed by hand, before resubmitting an old paper, or before moving one into a manuscript-guard project. Not for a manuscript-guard project, whose numbers are bound (use results-binding).
+description: Check the numbers in a paper that was not written with manuscript-guard against the analysis outputs, and report honestly what a match is worth. Use when handed an existing .docx, Markdown or LaTeX manuscript whose numbers were typed by hand, before resubmitting an old paper, or before moving one into a manuscript-guard project; and, without reading it, when the paper is one a journal sent the person to review or to handle. Not for a manuscript-guard project, whose numbers are bound (use results-binding).
 ---
 
 # Auditing a paper that was written by hand
@@ -15,6 +15,29 @@ for this particular paper. The measurement is not a footnote. In the project thi
 grew out of, the same question was asked with the analysis outputs as the backing set:
 every integer up to 100 matched by chance, and of fifteen deliberately corrupted headline numbers it caught
 none while reporting success.
+
+## 0. A paper the person was sent to review or to handle
+
+If the person is the paper's editor or one of its referees, the journal sent it to them in
+confidence: stop before you open it. Journals forbid putting a submitted manuscript into an
+AI tool that does not keep it confidential, and whatever you read reaches your model's
+provider: the paper, and `audit`'s report of it, which quotes its lines. Do not open the
+file, run the audit on it, or ask for it to be pasted. Say so, and give the person the
+commands to run themselves, in a terminal you cannot read:
+
+```bash
+manuscript-guard audit paper.docx --journal journal.yaml
+manuscript-guard audit paper.docx --journal journal.yaml --authors authors.yaml
+manuscript-guard audit paper.docx --lookup
+```
+
+The first is the editor's: the paper held to the journal's profile, which the editor keeps.
+The second also looks for the authors' names where the journal reviews blind. The third is
+a referee's: everything else this skill describes, and the registries asked about each
+reference, which sends their DOIs and PMIDs and nothing of the text. The hook asks the
+person before an agent runs `audit` with `--journal` or `--authors`; that question is theirs
+to answer, not yours. The project's documentation, "For editors and reviewers", says what
+each option checks.
 
 ## 1. Choose what to check against
 

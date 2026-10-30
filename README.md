@@ -292,7 +292,7 @@ number in the file and the rule that classified it.
 | Command | What it does |
 |---|---|
 | `check` | run every gate; `--stage submission` holds the manuscript to submission standards |
-| `audit` | check a paper that was not written this way, in Word, Markdown or LaTeX: its numbers against the outputs `--against` names, if any, and against each other, a flow printed as a list, its Abstract against its Results, its words (G6, G14) and its reference list (G7); `--lookup` asks the registries about each DOI and PMID |
+| `audit` | check a paper that was not written this way, in Word, Markdown or LaTeX: its numbers against the outputs `--against` names, if any, and against each other, a flow printed as a list, its Abstract against its Results, its words (G6, G14) and its reference list (G7); `--lookup` asks the registries about each DOI and PMID; for an editor, `--journal` holds the main document to the journal's profile, lists what a .docx holds besides its text, and with `--authors` finds an author named in any document given where the review is blind ([docs/refereeing.md](docs/refereeing.md)) |
 | `explain` | show how each number in a file was classified |
 | `bind` | show every unbound number and how to give it a source; `--pointers` offers the `{{ref.…}}` binding that prints each typed "Table 2" |
 | `impact` | list what depends on a file, or on each file changed since a commit: results, the sentences that bind them, figures, Methods paragraphs, panel readings and co-author answers |
@@ -445,6 +445,7 @@ everywhere.
 | [Depositing the code and the results](docs/deposit.md) | the package, its citation files, its description as an RO-Crate, its companion page, the bundles `deposit` stages, and what it sends to Zenodo and OSF when asked |
 | [Communicating the paper](docs/communicate.md) | the brief of the paper's own sentences, the graphical abstract drawn from it, and every post or summary held to both |
 | [Auditing a paper you already wrote](docs/audit.md) | one command for a manuscript with no bindings, how little a match means, and bringing a Word paper into a project |
+| [For editors and reviewers](docs/refereeing.md) | a manuscript sent in confidence, read on your own computer with nothing sent: a referee's audit, and an editor's against the journal's profile, its tracked changes and the names Word keeps, and the authors named where the review is blind |
 | [When manuscript-guard itself fails](docs/failures.md) | the one sentence a fault of the tool's own ends in, the record kept on your machine, and the variables that turn it off |
 | [DESIGN.md](DESIGN.md) | the architecture, the reasons for its decisions, and the known gaps |
 | [ATTRIBUTION.md](ATTRIBUTION.md) | the reporting guidelines' licences, and the one data file derived from another work |

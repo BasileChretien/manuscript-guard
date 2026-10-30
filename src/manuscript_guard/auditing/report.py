@@ -16,6 +16,10 @@ What was read and what was not comes first, then a section for each kind of chec
   the paper (`auditing.gates`).
 * References (G7): the reference list counted, and the numbered citations held to it; what
   the registries said, with `--lookup`.
+* Journal (G4), with `--journal`: the main document held to the journal's profile, what was
+  not checked, and the profile's rules no gate checks (`auditing.journal`).
+* Document, with `--journal`: what each .docx holds besides its text (`auditing.document`),
+  and with `--authors` each author named where the journal's review is blind.
 
 `--strict` counts the numbers not found in the outputs, a paper or a stretch of one that
 could not be read, an audit that read no number, and what is exact arithmetic: a total that
@@ -24,10 +28,12 @@ n (`over-header-n`), and a count held back that a printed total gives away
 (`count-recoverable`), a flow whose arithmetic does not hold under a heading, a caption or a
 paragraph that names a flow (`flow-broken`; under none it is a note, Basile, 2026-10-29), and an
 interval or a test of the Abstract that differs from its counterpart where the paper reports
-(`abstract-conflict`). Nothing else is counted: the P worked out from a statistic, G6 and
-G14 (the author, 2026-10-28), G7's findings, a count held back that only a column's n
-gives away, which holds only where none of the column lacks the characteristic, and a
-number of the Abstract found nowhere the paper reports (the author, 2026-10-28).
+(`abstract-conflict`); and an author named in a document the journal reviews blind
+(`blind-document-names-author`, Basile, 2026-10-29). Nothing else is counted: the P worked
+out from a statistic, G6 and G14 (the author, 2026-10-28), G7's findings, a count held back
+that only a column's n gives away, which holds only where none of the column lacks the
+characteristic, a number of the Abstract found nowhere the paper reports (the author,
+2026-10-28), G4's findings and the Document section's counts (Basile, 2026-10-29).
 """
 
 from __future__ import annotations
@@ -46,6 +52,8 @@ ABSTRACT = "Abstract against Results"
 WRITING = "Writing (G6)"
 LANGUAGE = "Language (G14)"
 REFERENCES = "References (G7)"
+JOURNAL = "Journal (G4)"
+DOCUMENT = "Document"
 #: What the report says at its top where no outputs were given.
 NO_OUTPUTS = "No outputs given: no number was compared with the analysis"
 #: How many items of one kind are listed for one file before only a count.
@@ -160,6 +168,48 @@ def items(report) -> list[Item]:
             Item(REFERENCES, "G7", p.code, p.message, WARN, False, p.path, p.line)
             for p in looked.problems
         ]  # fmt: skip
+    return found + _journal_items(report.journal) + _document_items(report)
+
+
+def _journal_items(run) -> list[Item]:
+    """G4 held to the journal's profile: its findings, none counted; what it did not check,
+    and the profile's rules no gate checks, as notes."""
+    if run is None:
+        return []
+    if run.note:
+        found = [Item(JOURNAL, "G4", "journal-not-run", run.note, INFO, False, run.paper)]
+    else:
+        found = [_from_finding(JOURNAL, finding) for finding in run.findings]
+    found += [Item(JOURNAL, "G4", "journal-not-checked", f"not checked here: {what}", INFO,
+                   False, run.profile) for what in run.skipped]  # fmt: skip
+    found += [Item(JOURNAL, "G4", "journal-manual-rule", f"to check by hand: {rule}", INFO,
+                   False, run.profile, context=quote or None) for rule, quote in run.manual]
+    found += [Item(JOURNAL, "G4", "journal-not-main-document", f"{other.name} was read as "
+                   "the rest of the submission, and not held to the journal's limits", INFO,
+                   False, other) for other in run.others]  # fmt: skip
+    return found
+
+
+def _document_items(report) -> list[Item]:
+    """What each .docx holds besides its text, none counted; and each author named in a
+    document the journal reviews blind, each counted."""
+    from manuscript_guard.auditing.document import described
+
+    found: list[Item] = []
+    for facts in report.documents:
+        held = facts.insertions + facts.deletions + facts.moves + facts.comments + facts.hidden
+        found.append(Item(DOCUMENT, "audit", "document-unreadable" if facts.note else
+                          "document-holds", described(facts), INFO if facts.note or not held
+                          else WARN, False, facts.path))  # fmt: skip
+        found += [Item(DOCUMENT, "audit", "document-person", f"{where}: {name}", INFO, False,
+                       facts.path) for where, name in facts.people]  # fmt: skip
+    run = report.journal
+    if run is not None:
+        found += [Item(DOCUMENT, "audit", f.code, f.message, FAIL, True, f.path, f.line,
+                       f.context, f.hint) for f in run.named]  # fmt: skip
+        if run.blind_note:
+            found.append(Item(DOCUMENT, "audit", "authors-not-looked-for", run.blind_note,
+                              INFO, False, run.paper))  # fmt: skip
     return found
 
 
@@ -225,6 +275,7 @@ def as_json(report, discrimination) -> str:
         "flows_broken": len(report.flows_broken),
         **_abstract_counts(report.abstract),
         "reference_entries": sum(len(c.entries) for c in report.references),
+        **_reader_counts(report),
     }
     worth = None
     if discrimination is not None and report.compared:
@@ -251,6 +302,22 @@ def as_json(report, discrimination) -> str:
         # As `check --json`: a pipe on Windows is cp1252.
         ensure_ascii=True,
     )
+
+
+def _reader_counts(report) -> dict[str, int]:
+    """The counts of what `--journal` and `--authors` read, where either was given."""
+    counts: dict[str, int] = {}
+    run = report.journal
+    if run is not None:
+        counts["journal_findings"] = len(run.findings)
+        counts["journal_manual_rules"] = len(run.manual)
+        counts["authors_named"] = len(run.named)
+    if report.documents:
+        for key, name in (("tracked_insertions", "insertions"), ("tracked_deletions",
+                          "deletions"), ("tracked_moves", "moves"), ("comments", "comments"),
+                          ("hidden_runs", "hidden")):  # fmt: skip
+            counts[key] = sum(getattr(facts, name) for facts in report.documents)
+    return counts
 
 
 def _abstract_counts(read) -> dict[str, int]:
@@ -311,6 +378,11 @@ def render(report, discrimination, root: Path | None = None) -> str:
     if report.references:
         lines += ["", f"=== {REFERENCES} (not counted by --strict) ===",
                   *_references(report, show)]  # fmt: skip
+    if report.journal is not None:
+        lines += ["", f"=== {JOURNAL} (not counted by --strict) ===",
+                  *_journal(report.journal, root, show)]  # fmt: skip
+    if report.documents or report.journal is not None:
+        lines += ["", f"=== {DOCUMENT} ===", *_document(report, show)]
     lines.append("")
     if report.compared:
         lines.append(
@@ -589,6 +661,67 @@ def _references(report, show) -> list[str]:
             "whether the work was retracted, withdrawn or put under concern, and --lookup "
             "--dry-run shows what would be sent."
         )
+    return lines
+
+
+def _journal(run, root: Path | None, show) -> list[str]:
+    """G4 held to the profile: what it found, what it did not check, and the editor's
+    checklist."""
+    lines = [f"  {show(run.paper)} held to {show(run.profile)}"
+             + ("; lines are those of the text pandoc converts it to" if run.converted
+                else "")]  # fmt: skip
+    if run.note:
+        lines.append(f"  {run.note}")
+    elif run.findings:
+        lines.append(Report(tuple(run.findings)).render(root))
+    elif run.limits_unchecked:
+        # Not "within every limit" where a limit was not checked (round 2 of #478).
+        lines.append("  Nothing found in what was checked; a limit not checked is listed "
+                     "below.")  # fmt: skip
+    else:
+        lines.append("  Within every limit, and every section and statement the profile "
+                     "requires is there.")  # fmt: skip
+    lines += [f"  {other.name}: read as the rest of the submission, not held to the journal's "
+              "limits" for other in run.others]  # fmt: skip
+    lines.append("  Not checked here:")
+    lines += [f"    {what}" for what in run.skipped]
+    if run.manual:
+        lines.append("  The journal's rules no gate checks, for the editor to check by hand:")
+        for rule, quote in run.manual:
+            lines.append(f"    [ ] {rule}")
+            if quote:
+                lines.append(f"        \"{quote}\"")
+    return lines
+
+
+def _document(report, show) -> list[str]:
+    """What each .docx holds besides its text, the names Word keeps, and the authors named in
+    a document the journal reviews blind."""
+    from manuscript_guard.auditing.document import described
+
+    lines: list[str] = []
+    if not report.documents:
+        lines.append("  Not applicable: no .docx was given; tracked changes, comments and the "
+                     "names Word keeps are a Word file's.")  # fmt: skip
+    for facts in report.documents:
+        lines.append(f"  {described(facts)} (not counted by --strict)")
+        if not facts.note:
+            lines += [f"    {where}: {name}" for where, name in facts.people] or [
+                "    no person's name in the fields Word keeps"]
+    run = report.journal
+    if run is None:
+        return lines
+    if run.named:
+        lines.append("AN AUTHOR NAMED IN A DOCUMENT THE JOURNAL REVIEWS BLIND (counted by "
+                     "--strict):")  # fmt: skip
+        lines += [f"  {show(f.path)}: {f.message}" for f in run.named]
+    if run.blind_note:
+        lines.append(f"  {run.blind_note}")
+    elif run.looked and not run.named:
+        # Only where the authors were looked for: a review that is not blind, with no
+        # --authors, is said nothing of (round 1 of #478).
+        lines.append(f"  The journal's review is {run.looked}-blind, and no author was found "
+                     "named in what was read.")  # fmt: skip
     return lines
 
 

@@ -1234,6 +1234,7 @@ def guard_submission(payload: dict) -> int:
     sends = sends or _or_nothing(lambda _path: _approves(command), Path("."))
     sends = sends or _opens_report(command)
     sends = sends or _moves_stage_back(command, payload)
+    sends = sends or _or_nothing(lambda _path: _reads_in_confidence(command), Path("."))
     if not SUBMISSION_MARKERS.search(command):
         return _ask("PreToolUse", sends, payload) if sends else 0
 
@@ -1590,6 +1591,29 @@ def _opens_report(command: str) -> str | None:
                     and re.search(r"(?i)--open(?![\w-])", said))  # fmt: skip
     exact = all(clean for _invocations, clean in readings)
     return _OPENS if opening or named_elsewhere or not exact else None
+
+
+_READS_IN_CONFIDENCE = (
+    "`manuscript-guard audit` with --journal or --authors is an editor's or a referee's "
+    "reading of a manuscript someone else wrote, which the journal sent in confidence; its "
+    "report quotes the manuscript, and read by an agent it reaches the agent's model "
+    "provider, which journals' policies forbid. Run it yourself in a terminal, or say yes if "
+    "the paper is your own."
+)
+
+
+def _reads_in_confidence(command: str) -> str | None:
+    """Why an `audit` with a reader option in this command is put to the person: its output
+    quotes a manuscript the journal sent them in confidence (`auditing.READER_FLAGS`). Read as
+    `_approves` reads its commands, in one invocation of the tool, as a guard against an
+    agent's ordinary commands."""
+    from manuscript_guard.auditing import READER_FLAGS
+
+    joined = re.sub(r"[\\`]\r?\n", " ", command)
+    flags = "|".join(re.escape(flag) for flag in READER_FLAGS)
+    reading = re.compile(_TOOL + r"audit\b" + _SAME_COMMAND + rf"(?<![\w-])(?:{flags})(?![\w-])",
+                         re.IGNORECASE)  # fmt: skip
+    return _READS_IN_CONFIDENCE if reading.search(joined) else None
 
 
 #: `communicate approve`, and `communicate … --done`, in one invocation of the command.

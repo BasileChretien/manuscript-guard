@@ -253,11 +253,19 @@ def check_blinded_latex(project: Project, files: list[Path]) -> Report:
     wanted = sought(project.authors, latex=True)
     if kind not in BLIND or not wanted:
         return Report()
+    document = files[0] if files else project.path("build")
+    return _named(latex_places(files), wanted, kind, document)
+
+
+def latex_places(files: list[Path]) -> list[tuple[str, str]]:
+    """Where in a LaTeX submission's files a name can be, each with the text it holds there:
+    each `.tex` and `.sty` read whole, its `thebibliography` left out, and the text of each
+    PDF or SVG picture."""
     from manuscript_guard.contracts._schema import read_text
     from manuscript_guard.gates.figures import _extract_text
     from manuscript_guard.text.latex.mask import read
 
-    places, document = [], files[0] if files else project.path("build")
+    places = []
     for path in files:
         if path.suffix in (".tex", ".sty"):
             # A reference list typed in `thebibliography` names the authors cited, as the Word
@@ -271,6 +279,35 @@ def check_blinded_latex(project: Project, files: list[Path]) -> Report:
             text = _extract_text(path)
             if text:
                 places.append((f"a figure ({path.name})", text))
+    return places
+
+
+def docx_places(document: Path, *, body: bool = True) -> list[tuple[str, str]]:
+    """Where in a .docx a name can be, each with the text it holds there (`_places`); with
+    `body` False, not the body's paragraphs, which a caller reads its own way (`audit
+    --authors`, its reference list cut as the audit finds it). Raises `UnsafeDocument` where
+    the document cannot be read."""
+    return _places(document) if body else _places(document, body=False)
+
+
+def deleted_text(document: Path) -> str:
+    """What a tracked change deleted in the body of a .docx, a paragraph to a line, outside a
+    reference list styled "Bibliography": a reviewer who shows the changes reads it, and the
+    text as accepted does not hold it."""
+    with open_archive(document) as archive:
+        names = archive.namelist()
+        listed = _bibliography_styles(archive) if "word/styles.xml" in names else set()
+        root = read_part(archive, "word/document.xml")
+    return "\n".join(
+        "".join(node.text or "" for node in paragraph.iter(f"{_W}delText"))
+        for paragraph in root.iter(f"{_W}p") if not _in_reference_list(paragraph, listed)
+    )
+
+
+def found_in(places: list[tuple[str, str]], wanted: list[Sought], kind: str,
+             document: Path) -> Report:  # fmt: skip
+    """A finding for each name of `wanted` in each place of `document`, whose review is
+    `kind`-blind: for a document read elsewhere than the build (`audit --authors`)."""
     return _named(places, wanted, kind, document)
 
 
@@ -320,8 +357,9 @@ _HINTS = {
 }
 
 
-def _places(document: Path) -> list[tuple[str, str]]:
-    """Where in `document` a name can be, each with the text it holds there."""
+def _places(document: Path, *, body: bool = True) -> list[tuple[str, str]]:
+    """Where in `document` a name can be, each with the text it holds there; with `body`
+    False, not the paragraphs of its body (`docx_places`)."""
     places: list[tuple[str, str]] = []
     with open_archive(document) as archive:
         names = archive.namelist()
@@ -331,7 +369,8 @@ def _places(document: Path) -> list[tuple[str, str]]:
         for name in names:
             if _TEXT_PART.fullmatch(name):
                 root = read_part(archive, name)
-                places.append(("the text", "\n".join(_paragraphs(root, listed))))
+                if body or name != "word/document.xml":
+                    places.append(("the text", "\n".join(_paragraphs(root, listed))))
                 authors = {node.get(f"{_W}author") for node in root.iter()} - {None}
                 places += [("the author of a tracked change or a comment", a) for a in authors]
                 # A picture's alternative text, which the build writes from its figure's

@@ -12042,7 +12042,7 @@ person. Other gates read a project, and the report says the snippet was not chec
 parts of the report are scrubbed before it is put together, and the whole is not scrubbed
 again, since the scrub run over the test's literal read an escaped character and the address
 after it as one address. The report ends with a test to start from, named
-`test_reported_<gate or command>_<flagged or missed>_` and twelve hex digits of the
+`test_reported_<gate or command>_<flagged or missed>_<code>_` and twelve hex digits of the
 snippet's SHA-256, in the file and the shape the suite already uses for that reading: `audit`
 on `tmp_path / "paper.md"` in `tests/test_audit.py`, `written` and `codes` in
 `tests/test_writing.py` and `tests/test_language.py`, and for any other gate the example with

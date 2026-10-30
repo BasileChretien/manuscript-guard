@@ -84,7 +84,7 @@ def test_a_report_about_g6_follows_the_template_and_asks_for_the_gate_label(kept
     assert asked["labels"] == ["gate"]
     assert asked["title"] == ["[G6] flagged: model-artefact"]
     name = hashlib.sha256(ARTEFACT.encode("utf-8")).hexdigest()[:12]
-    assert f"def test_reported_g6_flagged_{name}(project: Path) -> None:" in out
+    assert f"def test_reported_g6_flagged_model_artefact_{name}(project: Path) -> None:" in out
     assert "Nothing was sent." in out
     assert len(list(kept.glob("report-*.md"))) == 1
 
@@ -328,3 +328,27 @@ def test_the_skills_name_the_fingerprint_after_a_gate_errored_finding(skill) -> 
                 and "report-issue" in line)  # fmt: skip
     assert "`manuscript-guard report-issue <fingerprint>`" in line
     assert line.index("<fingerprint>") < line.index("--last")
+
+
+def test_two_codes_on_one_snippet_name_two_tests(kept, capsys) -> None:
+    names = {_test_in(_reported(capsys, "--about", "G6", "--flagged", code, "--snippet",
+                                ARTEFACT)).split("(", 1)[0] for code in ("a-b", "c-d")}
+    assert len(names) == 2
+
+
+@pytest.mark.parametrize(("direction", "code", "fails"), [
+    ("--flagged", "unclassified", True), ("--missed", "unclassified", False),
+    # The example's numbers are read by a convention already: the snippet adds none.
+    ("--missed", "convention", True),
+])  # fmt: skip
+def test_a_commands_test_counts_what_the_snippet_adds(kept, capsys, project, monkeypatch,
+                                                      direction, code, fails) -> None:
+    out = _reported(capsys, "--about", "explain", direction, code, "--snippet", UNBOUND)
+    # The words the person gave the command, as the TODO asks for them.
+    out = out.replace('main(["explain"])', 'main(["explain", "manuscript/main.md"])')
+    fixtures = {"project": project, "monkeypatch": monkeypatch, "capsys": capsys}
+    if fails:
+        with pytest.raises(AssertionError):
+            _run(out, "test_corruption", **fixtures)
+    else:
+        _run(out, "test_corruption", **fixtures)

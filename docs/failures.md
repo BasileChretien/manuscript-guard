@@ -94,8 +94,8 @@ project, and their snippets are not checked here: the report says so.
 
 The report follows the repository's issue template for a gate, asks for the label `gate`, and
 ends with a test to start from, in the test file and the shape the suite uses for that gate,
-named after the gate, the direction and the snippet: `tests/test_audit.py` for `audit`,
-`tests/test_writing.py` for G6, `tests/test_language.py` for G14, and
+named after the gate, the direction, the code and the snippet: `tests/test_audit.py` for
+`audit`, `tests/test_writing.py` for G6, `tests/test_language.py` for G14, and
 `tests/test_corruption.py` for the rest, where the snippet is added to the example and the
 code is counted before and after. It asserts that the code is absent (or not given more often)
 where the gate flagged it wrongly and present (or given more often) where it let the defect

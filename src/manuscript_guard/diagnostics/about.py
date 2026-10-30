@@ -206,11 +206,12 @@ def file_for(about: str) -> str:
 
 
 def named_test(asked: Asked) -> str:
-    """`test_reported_g2_missed_<12 hex of the snippet's SHA-256>`."""
-    about = re.sub(r"[^a-z0-9]+", "_", asked.about.lower())
-    direction = "flagged" if asked.flagged else "missed"
+    """`test_reported_g6_flagged_model_artefact_<12 hex of the snippet's SHA-256>`, the code
+    left out where none was named."""
+    words = [asked.about, "flagged" if asked.flagged else "missed", asked.code or ""]
+    named = re.sub(r"[^a-z0-9]+", "_", "_".join(word for word in words if word).lower())
     digest = hashlib.sha256(asked.snippet.encode("utf-8")).hexdigest()[:12]
-    return f"test_reported_{about}_{direction}_{digest}"
+    return f"test_reported_{named}_{digest}"
 
 
 def skeleton(asked: Asked) -> str:
@@ -258,17 +259,21 @@ def skeleton(asked: Asked) -> str:
         ]
     else:
         head = f"def {named_test(asked)}(project: Path, monkeypatch, capsys) -> None:"
+        counted = True
         body = [
             "from manuscript_guard.cli import main",
             "",
+            "def counted() -> str:",
+            f'    main(["{about}"])  # TODO: add the words you gave `{about}` after its name',
+            "    said = capsys.readouterr()",
+            "    return said.out + said.err",
+            "",
             *text,
-            *_appended(),
             "monkeypatch.chdir(project)",
-            f'main(["{about}"])  # TODO: add the words you gave `{about}` after its name',
-            "said = capsys.readouterr()",
-            "found = said.out + said.err",
-            "# The example may print the code already: compare with a run before the snippet",
-            "# is appended.",
+            "before = counted()",
+            *_appended(),
+            "found = counted()",
+            "# The example may print the code already: the test is of what the snippet adds.",
         ]
     inside = [f'"""{_docstring(asked)}"""', *body, *_assertion(asked, counted)]
     return "\n".join([head, *(f"    {line}" if line else "" for line in inside)])

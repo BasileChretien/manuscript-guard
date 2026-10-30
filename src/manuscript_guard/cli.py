@@ -2189,6 +2189,11 @@ def _write_cited(report, args: argparse.Namespace) -> bool:
         cited.write(args.cited, read, [path.name for path in report.papers],
                     report.lookups if args.lookup and not args.dry_run else None,
                     read.fetched if not args.dry_run else None, said, _shown(Path.cwd()))
+    except FileExistsError:
+        # Made while the audit ran: written over, it would lose what it holds.
+        print(f"manuscript-guard audit: --cited {args.cited}: the file is there already, and "
+              "may hold your judgements; it was not written over", file=sys.stderr)
+        return False
     except OSError as exc:
         print(f"manuscript-guard audit: --cited {args.cited} could not be written: {exc}",
               file=sys.stderr)  # fmt: skip

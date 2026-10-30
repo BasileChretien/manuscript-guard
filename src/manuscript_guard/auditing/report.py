@@ -195,6 +195,8 @@ def _causal_items(read) -> list[Item]:
                HINT) for one in read.found),
         *(Item(CAUSAL, "audit", "causal-words-not-read", _unplaced(path), INFO, False, path)
           for path in read.unplaced),
+        *(Item(CAUSAL, "audit", "causal-words-not-read", f"{path.name}: {note}", INFO, False,
+               path) for path, note in read.notes),
     ]  # fmt: skip
 
 
@@ -862,6 +864,7 @@ def _causal(read, show) -> list[str]:
     if not read.found:
         lines.append("  No sentence read claims a cause with no hedge, negation or citation.")
     lines += [f"  {_unplaced(path)}" for path in read.unplaced]
+    lines += [f"  {show(path)}: {note}" for path, note in read.notes]
     return lines
 
 

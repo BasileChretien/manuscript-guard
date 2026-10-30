@@ -44,7 +44,8 @@ does not guess it:
 manuscript-guard audit paper.docx --design observational
 ```
 
-Each sentence of the Abstract, the Discussion and the Conclusion is read for a word that
+Each sentence of the Abstract (every heading under it, and an abstract in a Markdown
+file's front matter), the Discussion and the Conclusion is read for a word that
 claims a cause: cause, causes, caused, causing, causal, causally, "demonstrated that",
 "proved that" and their other tenses. A sentence that holds a hedge ("may", "might",
 "appears") or a negation ("not", "cannot", "no") is passed over, and so is one that carries a
@@ -66,7 +67,7 @@ file, line and section, the citation as typed, and the reference list's entry as
 its DOI and PMID; with `--lookup`, the title, the year and the standing the registries give
 (retracted, withdrawn, under concern), and the abstract Europe PMC holds; and an empty last
 column, "Does it support the sentence? (yours)". A citation typed right after a sentence's
-stop, "X. [3]", is that sentence's. The file quotes the manuscript, so keep it as you keep the
+stop, "X. [3]" or "X.[3]", is that sentence's. The file quotes the manuscript, so keep it as you keep the
 manuscript; the audit's own output gives only the counts. It does not write over a file that
 is already there, which may hold your judgements. It reads a number in brackets where the
 reference list is numbered, and a LaTeX `\cite`; it does not read a citation by author and

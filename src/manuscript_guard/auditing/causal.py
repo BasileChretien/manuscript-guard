@@ -57,6 +57,9 @@ class CausalRead:
     cited: int = 0
     found: list[Causal] = field(default_factory=list)
     unplaced: list[Path] = field(default_factory=list)
+    #: What of a file was not read, each with its file: a front matter's abstract that is
+    #: no plain string.
+    notes: list[tuple[Path, str]] = field(default_factory=list)
 
 
 def causal_words(views: list[View], design: str) -> CausalRead:
@@ -66,14 +69,16 @@ def causal_words(views: list[View], design: str) -> CausalRead:
 
     rung = lists().rungs.index(RUNG)
     found = CausalRead(design)
+    placed: dict[Path, bool] = {}
     for view in views:
         sentences = view.sentences
         citing = {view.owner(cite.start) for cite in view.cites}
-        placed = False
+        found.notes += [(view.path, note) for note in view.notes]
+        placed.setdefault(view.path, False)
         for index, sentence in enumerate(sentences):
             if sentence.place.part not in READ:
                 continue
-            placed = True
+            placed[view.path] = True
             found.read += 1
             # From its first word: a citation of the sentence before may open its piece.
             words = claim_words(view.read, sentence.first, sentence.end)
@@ -90,8 +95,7 @@ def causal_words(views: list[View], design: str) -> CausalRead:
             else:
                 found.found.append(Causal(view.path, sentence.line, causal,
                                           sentence.place.part, sentence.text))  # fmt: skip
-        if not placed:
-            found.unplaced.append(view.path)
+    found.unplaced = [path for path, read in placed.items() if not read]
     return found
 
 

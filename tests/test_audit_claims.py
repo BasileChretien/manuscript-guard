@@ -161,6 +161,112 @@ def test_a_word_document_is_read_a_paragraph_a_sentence_by_its_heading_styles(
     assert "| 2 | paper.docx:9 | Discussion | [2] Coffee may cause alertness. | [2] |" in written
 
 
+def _causal(capsys, paper: Path) -> list[tuple[int, str]]:
+    _code, report, _err = audited(capsys, str(paper), "--design", "observational")
+    return [(f["line"], f["message"].split(" in the ")[1].split(",")[0])
+            for f in section(report, "Causal words") if f["code"] == "causal-word-observational"]
+
+
+@pytest.mark.parametrize("title", ["Abstract", "Summary"])
+@pytest.mark.parametrize("background", [True, False])
+def test_every_heading_of_a_structured_abstract_is_the_abstract_s(
+    tmp_path: Path, capsys, title: str, background: bool
+) -> None:
+    """Round 1 of #482: an Abstract with a Background heading under it was taken for a title
+    over the paper, and its Results were then the Results, not read; the Lancet's "Summary"
+    was a conclusion. Every heading under the Abstract is the Abstract's."""
+    text = (f"# A cohort\n\n## {title}\n\n" + ("### Background\n\n" if background else "")
+            + "Smoking causes cancer.\n\n### Methods\n\nWe drew a causal diagram.\n\n"
+            "### Findings\n\nStatins caused fewer deaths.\n\n### Interpretation\n\n"
+            "Coffee causes alertness.\n\n## Methods\n\nWe drew a causal diagram.\n\n"
+            "## Summary\n\nTea causes calm.\n")  # fmt: skip
+    found = _causal(capsys, paper_md(tmp_path, text))
+    first = 7 if background else 5
+    assert found == [(first, "Abstract"), (first + 4, "Abstract"), (first + 8, "Abstract"),
+                     (first + 12, "Abstract"), (first + 20, "Conclusion")]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "marker", ["[3]", "[3,4]", "[3-5]", "[3, 4]"],
+)
+def test_a_citation_directly_after_a_stop_ends_the_sentence_it_cites_for(
+    tmp_path: Path, capsys, marker: str
+) -> None:
+    """Round 1 of #482: `.[3]` was read on into the sentence after, which then passed as
+    cited."""
+    text = (f"## Discussion\n\nStatins caused fewer deaths.{marker} Coffee causes alertness.\n\n"
+            "## References\n\n" + "".join(f"{n}. Author{n} A. A study. J. 2019;1:1-2.\n"
+                                          for n in range(1, 6)))  # fmt: skip
+    paper = paper_md(tmp_path, text)
+    assert _causal(capsys, paper) == [(3, "Discussion")]
+    table = tmp_path / "cited.md"
+    assert main(["audit", str(paper), "--cited", str(table)]) == 0
+    capsys.readouterr()
+    assert (f"| 1 | paper.md:3 | Discussion | Statins caused fewer deaths.{marker} | {marker} |"
+            in table.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("tie", ["", "~"])
+def test_a_latex_cite_directly_after_a_stop_ends_the_sentence(
+    tmp_path: Path, capsys, tie: str
+) -> None:
+    paper = tmp_path / "paper.tex"
+    paper.write_text(
+        f"{BS}documentclass{{article}}\n{BS}begin{{document}}\n{BS}section{{Discussion}}\n"
+        f"Statins caused fewer deaths.{tie}{BS}cite{{a}} Coffee causes alertness.\n"
+        f"{BS}begin{{thebibliography}}{{9}}\n{BS}bibitem{{a}} A.\n{BS}end{{thebibliography}}\n"
+        f"{BS}end{{document}}\n", encoding="utf-8")  # fmt: skip
+    _code, report, _err = audited(capsys, str(paper), "--design", "observational")
+    assert [f["context"] for f in section(report, "Causal words")] == [
+        "Coffee causes alertness."]
+
+
+@pytest.mark.parametrize(
+    ("front", "said"),
+    [("abstract: Smoking causes cancer. It may harm [1].\n", "Abstract"),
+     ("abstract: |\n  Smoking causes cancer.\n  It may harm [1].\n", "Abstract"),
+     ("abstract:\n  - Smoking causes cancer [1].\n", None)],
+    ids=["one line", "a block", "a list"],
+)  # fmt: skip
+def test_an_abstract_in_the_front_matter_is_read_as_the_abstract(
+    tmp_path: Path, capsys, front: str, said: str | None
+) -> None:
+    """Round 1 of #482: a Markdown abstract in the YAML header was placed under no heading
+    and never read. A plain string is read as the Abstract, at its key's line; any other
+    value is said not to be read."""
+    text = (f"---\ntitle: A cohort\n{front}---\n\n# Methods\n\nWe drew a causal diagram.\n\n"
+            "# References\n\n1. Smith J. A cohort. Lancet. 2019;393:100-10.\n")  # fmt: skip
+    paper = paper_md(tmp_path, text)
+    table = tmp_path / "cited.md"
+    _code, report, _err = audited(capsys, str(paper), "--design", "observational",
+                                  "--cited", str(table))  # fmt: skip
+    found = section(report, "Causal words")
+    if said is None:
+        assert {f["code"] for f in found} == {"causal-words-not-read"}
+        assert any("front matter's abstract is a list or a mapping" in f["message"]
+                   for f in found)
+        assert "| 1 |" not in table.read_text(encoding="utf-8")
+        return
+    assert [(f["line"], f["context"]) for f in found] == [(3, "Smoking causes cancer.")]
+    assert "| 1 | paper.md:3 | Abstract | It may harm [1]. | [1] |" in (
+        table.read_text(encoding="utf-8"))
+
+
+def test_a_file_that_appears_before_the_table_is_written_is_not_written_over(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The table is written only where no file is: one made after the check, between the
+    audit's start and its end, is refused, exit 2."""
+    from manuscript_guard import cli
+
+    table = tmp_path / "cited.md"
+    table.write_text("my judgements\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "_cited_refused", lambda target, given: "")
+    code = main(["audit", str(paper_md(tmp_path)), "--cited", str(table)])
+    assert code == 2 and "is there already" in capsys.readouterr().err
+    assert table.read_text(encoding="utf-8") == "my judgements\n"
+
+
 # --------------------------------------------------------------------- cited sentences
 
 
@@ -475,3 +581,35 @@ def test_a_dry_run_counts_nothing(tmp_path: Path, registries, capsys) -> None:
 )  # fmt: skip
 def test_a_journal_s_name_is_folded(one: str, other: str) -> None:
     assert folded_title(one) == folded_title(other)
+
+
+def test_pubmed_s_qualifier_after_a_journal_s_name_is_no_part_of_it(
+    tmp_path: Path, registries, capsys
+) -> None:
+    """Round 1 of #482: PubMed's full name is "BMJ (Clinical research ed.)", and the BMJ's
+    own papers were not counted."""
+    path = profile(tmp_path)
+    path.write_text(path.read_text(encoding="utf-8").replace("Journal of Examples", "BMJ"),
+                    encoding="utf-8")  # fmt: skip
+    answer = registries.answers["pubmed"][1]
+    answer["result"]["31000001"]["fulljournalname"] = "BMJ (Clinical research ed.)"
+    _code, report, _err = audited(capsys, str(paper_md(tmp_path)), "--journal", str(path),
+                                  "--lookup")  # fmt: skip
+    assert report["counts"]["self_citation_journal"] == 1
+    assert folded_title("BMJ (Clinical research ed.)") == folded_title("BMJ")
+    assert folded_title("Science (New York, N.Y.)") == "science"
+
+
+@pytest.mark.parametrize(
+    ("given", "read"),
+    [("P<0.05 and age>65 in the cohort", "P<0.05 and age>65 in the cohort"),
+     ("P&lt;0.05 and age&gt;65", "P<0.05 and age>65"),
+     ("<h4>Background</h4>Smoking <i>in vivo</i> rose<sup>2</sup>.<br/>It fell",
+      "Background Smoking in vivo rose2. It fell"),
+     ("<p class='x'>A <span style=\"color:red\">red</span> word.</p>", "A red word."),
+     ("A < B and C > D", "A < B and C > D")],
+)  # fmt: skip
+def test_an_abstract_loses_its_markup_and_keeps_its_signs(given: str, read: str) -> None:
+    """Round 1 of #482: every `<...>` was taken for a tag, and "P<0.05 and age>65" lost the
+    words between its signs."""
+    assert search._abstract(given) == read

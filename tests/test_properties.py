@@ -39,6 +39,7 @@ from typing import Any
 
 import pytest
 from generated import (
+    ABSTRACT_BACKGROUND,
     AGREED,
     CAUSAL_PARTS,
     CLAIMED,
@@ -4789,9 +4790,16 @@ def test_a_causal_word_is_warned_of_where_the_paper_sums_up_and_not_hedged_negat
     citation (a number in brackets, inside its stop, after it on its line or on the next
     line, a LaTeX `\\cite`, or by author and year) is passed over, each counted by why; the
     Introduction, the Methods and the Results are not read, nor is a sentence of the effect
-    rung. A paper in LaTeX reads alike (`auditing/causal.py`)."""
+    rung. A stop followed directly by a citation, `.[3]` or `.\\cite{a}`, ends its sentence,
+    and the next is read on its own (round 1 of #482). Every heading of a structured Abstract,
+    "Abstract" or "Summary", with a Background or without, is the Abstract's, its Methods and
+    Results among them (round 1 of #482). A paper in LaTeX reads alike
+    (`auditing/causal.py`)."""
     markdown, latex, in_markdown, in_latex = drawn
-    for text, suffix, wanted in ((markdown, ".md", in_markdown), (latex, ".tex", in_latex)):
+    unopened = markdown.replace(f"\n{ABSTRACT_BACKGROUND}\n", "\n\n", 1)
+    assert unopened != markdown
+    for text, suffix, wanted in ((markdown, ".md", in_markdown), (unopened, ".md", in_markdown),
+                                 (latex, ".tex", in_latex)):  # fmt: skip
         causal = _sentences_read(text, suffix).causal
         found = {"warned": sorted([one.line, one.part] for one in causal.found),
                  "passed": [causal.hedged, causal.negated, causal.cited]}  # fmt: skip
@@ -4836,6 +4844,21 @@ def _a_citation_after_a_stop_is_the_next_sentence_s(patch: pytest.MonkeyPatch) -
 
     patch.setattr(sentences.View, "_after_a_stop",
                   lambda self, before, first, end, starts, ends: first)
+
+
+def _an_abstract_over_its_background_is_a_title(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #482: the Abstract named only where no Background stands under it, and a
+    Summary only as a conclusion."""
+    from manuscript_guard.auditing import sentences
+
+    patch.setattr(sentences, "_summarises", lambda section, below, methods: False)
+
+
+def _a_citation_at_a_stop_ends_no_sentence(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #482: `.[3]` read on into the sentence after."""
+    from manuscript_guard.auditing import sentences
+
+    patch.setattr(sentences.View, "_stop_cuts", lambda self: ())
 
 
 # ----------------------------------------------------------- a LaTeX table's rows and cells
@@ -15358,6 +15381,14 @@ BROKEN = {
     ),
     "a citation after a sentence's stop is read as the next sentence's, for causal words": (
         _a_citation_after_a_stop_is_the_next_sentence_s,
+        test_a_causal_word_is_warned_of_where_the_paper_sums_up_and_not_hedged_negated_or_cited,
+    ),
+    "an Abstract with a Background under it, and a Summary, are read as titles": (
+        _an_abstract_over_its_background_is_a_title,
+        test_a_causal_word_is_warned_of_where_the_paper_sums_up_and_not_hedged_negated_or_cited,
+    ),
+    "a citation directly after a stop ends no sentence": (
+        _a_citation_at_a_stop_ends_no_sentence,
         test_a_causal_word_is_warned_of_where_the_paper_sums_up_and_not_hedged_negated_or_cited,
     ),
     "a citation after a sentence's stop is listed beside the next sentence": (

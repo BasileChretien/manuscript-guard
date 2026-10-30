@@ -459,11 +459,23 @@ def europepmc_work(doi: str | None, pmid: str | None, ask: Ask,
     return {"status": FOUND, **{k: v for k, v in found.items() if v not in (None, "")}}
 
 
+#: The markup Europe PMC leaves in an abstract, opening, closing or empty, with its
+#: attributes: a block's tag, which is a space, and an inline one, which is nothing. Only
+#: these are tags: "P<0.05 and age>65" is text (round 1 of #482).
+_BLOCK_TAG = re.compile(r"</?(?:p|br|div|h[1-6]|li|ul|ol)(?:\s[^<>]*)?/?>", re.IGNORECASE)
+_INLINE_TAG = re.compile(
+    r"</?(?:i|b|u|em|strong|sup|sub|span|sc|small)(?:\s[^<>]*)?/?>", re.IGNORECASE
+)
+
+
 def _abstract(value: Any) -> str | None:
-    """An abstract without the markup Europe PMC leaves in it, each tag a space: its section
-    headings are tags, `<h4>Background</h4>Text`."""
+    """An abstract without the markup Europe PMC leaves in it: its section headings are
+    tags, `<h4>Background</h4>Text`, a space each, and its italics and superscripts are
+    nothing; then its entities, `&lt;`, read as their characters."""
     text = _text(value)
-    return _text(html.unescape(re.sub(r"<[^>]+>", " ", text))) if text else None
+    if not text:
+        return None
+    return _text(html.unescape(_INLINE_TAG.sub("", _BLOCK_TAG.sub(" ", text))))
 
 
 def _listed(item: dict[str, Any], outer: str, inner: str) -> list:

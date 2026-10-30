@@ -5896,7 +5896,7 @@ def _hundredths_of(p: Decimal) -> str:
 #: The parts of a paper `causal_papers` writes, each with the titles it may have, and whether
 #: `audit --design observational` reads its sentences.
 CAUSAL_PARTS = (
-    ("Abstract", ("Abstract",), True),
+    ("Abstract", ("Abstract", "Summary"), True),
     ("Introduction", ("Introduction", "Background"), False),
     ("Methods", ("Methods", "Materials and methods", "2. Methods"), False),
     ("Results", ("Results", "3. Results"), False),
@@ -5927,12 +5927,19 @@ CAUSAL_QUIET = ("{s} reduced {o}", "{s} was associated with {o}", "{s} increased
 CAUSAL_SUBJECTS = ("Smoking", "Statin use", "Exposure to the drug", "Night work")
 CAUSAL_OBJECTS = ("lung cancer", "the bleeding", "fewer deaths", "liver injury")
 #: The kinds of sentence each part of a paper of `causal_papers` holds one of: a causal
-#: claim alone, hedged, negated, cited inside its stop, cited after its stop on its line,
-#: cited on the line below, cited by author and year, and a sentence with no causal word.
-CAUSAL_KINDS = ("plain", "hedged", "negated", "cited", "cited after", "cited below",
-                "author-year", "quiet")  # fmt: skip
+#: claim alone, hedged, negated, cited inside its stop, cited directly after its stop with
+#: another causal claim after it on its line, cited after its stop and a space, cited on the
+#: line below, cited by author and year, and a sentence with no causal word.
+CAUSAL_KINDS = ("plain", "hedged", "negated", "cited", "cited at the stop", "cited after",
+                "cited below", "author-year", "quiet")  # fmt: skip
 #: The sentence that follows a citation typed after a stop.
 AFTER_A_CITATION = "The rate was stable."
+#: The headings of a structured Abstract, each with the titles it may have: the Lancet's
+#: Summary has Findings and an Interpretation.
+ABSTRACT_HEADINGS = (("Background",), ("Methods",), ("Results", "Findings"),
+                     ("Conclusions", "Interpretation"))  # fmt: skip
+#: The Abstract's Background heading, which the properties also take away.
+ABSTRACT_BACKGROUND = "### Background"
 
 
 @st.composite
@@ -5943,7 +5950,11 @@ def causal_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list], dict[str,
     each sentence `--design observational` warns of (a causal claim alone in the Abstract,
     a Discussion or a Conclusion), how many it passes over as hedged, negated and cited,
     and the line of each cited sentence with the entry it cites, a number in Markdown and a
-    key in LaTeX."""
+    key in LaTeX.
+
+    The Markdown Abstract, "Abstract" or "Summary", is structured: its sentences stand under
+    the headings of `ABSTRACT_HEADINGS`, the Background's first (`ABSTRACT_BACKGROUND`), each
+    sentence under one drawn, and every one of them is the Abstract's."""
     rest = draw(st.permutations(CAUSAL_PARTS[1:]))
     md = ["# A study of exposure", ""]
     tex = [BACKSLASH + "documentclass{article}", BACKSLASH + "begin{document}"]
@@ -5953,12 +5964,7 @@ def causal_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list], dict[str,
     passed = [0, 0, 0]
     for name, titles, read in (CAUSAL_PARTS[0], *rest):
         title = draw(st.sampled_from(titles))
-        md += [f"## {title}", ""]
-        if name == "Abstract":
-            tex.append(BACKSLASH + "begin{abstract}")
-        else:
-            bare = re.sub(r"^\d+\.\s+", "", title)
-            tex += ["", f"{BACKSLASH}section{{{bare}}}", ""]
+        items = []
         for kind in draw(st.permutations(CAUSAL_KINDS)):
             s, o = draw(st.sampled_from(CAUSAL_SUBJECTS)), draw(st.sampled_from(CAUSAL_OBJECTS))
             pool = {"hedged": CAUSAL_HEDGED, "negated": CAUSAL_NEGATED,
@@ -5967,29 +5973,55 @@ def causal_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list], dict[str,
             if kind.startswith("cited"):
                 number += 1
             key = f"{BACKSLASH}cite{{r{number}}}"
+            follow = draw(st.sampled_from(CAUSAL_CLAIMS)).format(s=s, o=o)
+            tie = draw(st.sampled_from(("", "~")))
             md_line, tex_line = {
                 "cited": (f"{said} [{number}].", f"{said}~{key}."),
+                "cited at the stop": (f"{said}.[{number}] {follow}.",
+                                      f"{said}.{tie}{key} {follow}."),
                 "cited after": (f"{said}. [{number}] {AFTER_A_CITATION}",
                                 f"{said}. {key} {AFTER_A_CITATION}"),
                 "cited below": (f"{said}.\n[{number}]", f"{said}.\n{key}"),
                 "author-year": (f"{said} (Smith et al., 2019).",) * 2,
             }.get(kind, (f"{said}.",) * 2)  # fmt: skip
-            gap = draw(st.booleans())
-            md += [*md_line.split("\n"), *([""] if gap else [])]
+            under = draw(st.integers(0, len(ABSTRACT_HEADINGS) - 1))
+            items.append((len(items), kind, md_line, tex_line, draw(st.booleans()), number,
+                          under))
+        if name == "Abstract":
+            md += [f"## {title}", ""]
+            tex.append(BACKSLASH + "begin{abstract}")
+            headed = [(heading, [item for item in items if item[6] == at])
+                      for at, heading in enumerate(ABSTRACT_HEADINGS)]  # fmt: skip
+        else:
+            bare = re.sub(r"^\d+\.\s+", "", title)
+            tex += ["", f"{BACKSLASH}section{{{bare}}}", ""]
+            headed = [(None, items)]
+        md_lines: dict[int, int] = {}
+        for heading, under in headed:
+            if heading is not None:
+                # A heading opens a block only after a blank line.
+                md += [*([""] if md[-1] else []), f"### {draw(st.sampled_from(heading))}", ""]
+            elif name != "Abstract":
+                md += [f"## {title}", ""]
+            for item in under:
+                at, _kind, md_line, _tex_line, gap, _number, _under = item
+                md += [*md_line.split("\n"), *([""] if gap else [])]
+                md_lines[at] =len(md) - md_line.count("\n") - gap
+        for item in items:
+            at, kind, _md_line, tex_line, gap, cited, _under = item
             tex += [*tex_line.split("\n"), *([""] if gap else [])]
-            md_at = len(md) - md_line.count("\n") - gap
-            tex_at = len(tex) - tex_line.count("\n") - gap
+            md_at, tex_at = md_lines[at],len(tex) - tex_line.count("\n") - gap
             if kind.startswith("cited"):
-                found_md["cited"].append([md_at, number])
-                found_tex["cited"].append([tex_at, f"r{number}"])
+                found_md["cited"].append([md_at, cited])
+                found_tex["cited"].append([tex_at, f"r{cited}"])
             if not read:
                 continue
-            if kind == "plain":
+            if kind in ("plain", "cited at the stop"):
                 found_md["warned"].append([md_at, name])
                 found_tex["warned"].append([tex_at, name])
-            elif kind in ("hedged", "negated"):
+            if kind in ("hedged", "negated"):
                 passed[kind == "negated"] += 1
-            elif kind != "quiet":
+            elif kind not in ("plain", "quiet"):
                 passed[2] += 1
         if name == "Abstract":
             tex.append(BACKSLASH + "end{abstract}")
@@ -6003,6 +6035,7 @@ def causal_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list], dict[str,
     tex += [BACKSLASH + "end{thebibliography}", BACKSLASH + "end{document}"]
     for found in (found_md, found_tex):
         found["warned"].sort()
+        found["cited"].sort()
         found["passed"] = list(passed)
     return "\n".join(md) + "\n", "\n".join(tex) + "\n", found_md, found_tex
 

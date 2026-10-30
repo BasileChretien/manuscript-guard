@@ -1086,31 +1086,55 @@ def _read_sentences(report: AuditReport, sources: list[_Source], design: str | N
     from manuscript_guard.auditing.causal import causal_words
     from manuscript_guard.auditing.cited import cited_sentences
 
-    views = [_view(source) for source in sources]
+    views = [view for source in sources for view in _views(source)]
     if design is not None:
         report.causal = causal_words(views, design)
     if cited:
         report.cited = cited_sentences(views, _lists(report))
 
 
-def _view(source: _Source):
+#: What is said of a front matter's abstract that is no plain text.
+UNREAD_FRONT_MATTER = ("its front matter's abstract is a list or a mapping, not a plain "
+                       "string, so its sentences were not read")
+
+
+def _views(source: _Source) -> list:
     """One paper as its sentences are read (`auditing.sentences`): a Markdown file as
     pandoc prints it, a Word document a paragraph a line, a LaTeX file what it prints, each
-    with its citations."""
+    with its citations. A Markdown file's front matter is no body text: its abstract, where
+    it is a plain string, is read as a text of its own, as the Abstract, at its key's line
+    (round 1 of #482), and any other abstract there is said not to be read."""
     from manuscript_guard.auditing import sentences
     from manuscript_guard.claims import readable
+    from manuscript_guard.text.masking import front_matter_abstract
 
     if source.latex is not None:
         read = source.hidden.replace("\N{RIGHT SINGLE QUOTATION MARK}", "'")
-        return sentences.View(source.path, source.text, read, place=source.part,
-                              cuts=sentences.latex_cuts(source.latex),
-                              cites=tuple(sentences.latex_cites(source.latex)))  # fmt: skip
+        return [sentences.View(source.path, source.text, read, place=source.part,
+                               cuts=sentences.latex_cuts(source.latex),
+                               cites=tuple(sentences.latex_cites(source.latex)))]  # fmt: skip
     docx = source.lines_are_blocks
     read = (source.hidden.replace("\N{RIGHT SINGLE QUOTATION MARK}", "'") if docx
             else readable(source.text))  # fmt: skip
     cites = sentences.cites_in_text(source.text, source.hidden, _intervals(source.plain))
-    return sentences.View(source.path, source.text, read, lines=docx, place=source.part,
-                          cites=tuple(cites))  # fmt: skip
+    head = 0 if docx else front_matter_end(source.text)
+    found = front_matter_abstract(source.text) if head else None
+    views, notes = [], ()
+    if head:
+        read = "".join(char if char == "\n" else NUL for char in read[:head]) + read[head:]
+        cites = [cite for cite in cites if cite.start >= head]
+    if found is not None and found[1]:
+        line, value = found
+        views.append(sentences.View(
+            source.path, value, readable(value), line_offset=line - 1,
+            place=lambda _line: sentences.Place(sentences.ABSTRACT, sentences.ABSTRACT),
+            cites=tuple(sentences.cites_in_text(value, _masked(value, printed_as_typed=False),
+                                                _intervals(value))),
+        ))  # fmt: skip
+    elif found is not None:
+        notes = (UNREAD_FRONT_MATTER,)
+    return [sentences.View(source.path, source.text, read, lines=docx, place=source.part,
+                           cites=tuple(cites), notes=notes), *views]  # fmt: skip
 
 
 def _lists(report: AuditReport) -> dict[Path, object]:

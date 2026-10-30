@@ -91,6 +91,7 @@ def cited_sentences(views: list[View], lists: Mapping[Path, Census]) -> CitedRea
         by_number = {e.number: e for e in census.entries} if census is not None else {}
         by_key = {e.key: e for e in census.entries if e.key} if census is not None else {}
         skipped = 0
+        read.notes += [(view.path, note) for note in view.notes]
         for cite in view.cites:
             if cite.kind == "author-year":
                 read.author_year += 1
@@ -347,7 +348,8 @@ def preamble(read: CitedRead, papers: list[str], lookup: str,
 def write(path: Path, read: CitedRead, papers: list[str], looked: list | None,
           fetched: list[Abstract] | None, lookup: str,
           show: Callable[[Path], str]) -> None:  # fmt: skip
-    """The table, written to `path` as Markdown or HTML by its suffix."""
+    """The table, written to `path` as Markdown or HTML by its suffix, and only where no file
+    is: one there may hold the referee's judgements (`FileExistsError`)."""
     head = preamble(read, papers, lookup, show)
     shown = columns(looked is not None)
     rows = cells(read, looked, fetched, show)
@@ -355,7 +357,8 @@ def write(path: Path, read: CitedRead, papers: list[str], looked: list | None,
         text = _html(head, shown, rows)
     else:
         text = _markdown(head, shown, rows)
-    path.write_text(text, encoding="utf-8", newline="\n")
+    with path.open("x", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
 
 
 def _md_cell(text: str) -> str:

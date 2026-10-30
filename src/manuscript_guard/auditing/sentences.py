@@ -52,6 +52,14 @@ NUL = "\x00"
 _BLANK = " \t\n" + NUL
 #: The opening of a paper, as G8 reads it: a heading over one of these names no part.
 _OPENING = re.compile(r"(?:introduction|background)\W*$", re.IGNORECASE)
+#: A "Summary" alone, which the Lancet titles its abstract, and the headings of a structured
+#: abstract under it that make it one.
+_SUMMARY = re.compile(r"summary\W*$", re.IGNORECASE)
+_ABSTRACT_HEADING = re.compile(
+    r"(?:background|introduction|objectives?|aims?|purpose|context|methods?|design"
+    r"|setting|participants|results?|findings|interpretation|conclusions?)\W*$",
+    re.IGNORECASE,
+)
 #: A pandoc citation key, as the mask blanks one (`text.masking`): `[@smith2019]`, `@smith`.
 _PANDOC = re.compile(r"(?<![\w`])-?@[A-Za-z][\w:.#$%&+?<>~/-]*")
 #: A sentence's stop at its end, and what may close after it, as `claims` cuts a sentence.
@@ -76,13 +84,19 @@ class Place:
 
 def placing(sections: list[Section]) -> Callable[[int], Place]:
     """Where each line of one file stands, given its headings in order, each with its level
-    and its line. A heading over the opening of the paper (an Introduction, a Background,
-    the Methods or the Abstract under it) is the paper's title, and names no part, as G8
-    reads it; so are the Abstract's own "Results" and "Conclusions" the Abstract's."""
+    and its line. A heading that names the Abstract always names it, and every heading under
+    it is the Abstract's, its Background, Methods, Results and Conclusions among them, as G8's
+    `Walk` reads it; so is a "Summary" over the headings of a structured abstract, as the
+    Lancet titles its abstract (round 1 of #482). Another heading over the opening of the
+    paper (an Introduction, a Background, the Methods or the Abstract under it) is the
+    paper's title, and names no part."""
     methods = {id(section) for section in methods_sections(sections)}
     named: dict[int, str] = {}
     for index, section in enumerate(sections):
         below = subsections(sections, index)[1:]
+        if _summarises(section, below, methods):
+            named[id(section)] = ABSTRACT
+            continue
         if any(other.is_abstract or _OPENING.match(plain(other.title)) or id(other) in methods
                for other in below):  # fmt: skip
             continue
@@ -99,6 +113,15 @@ def placing(sections: list[Section]) -> Callable[[int], Place]:
         starts.append(section.line)
         places.append(Place(part, plain(section.title)))
     return lambda line: places[bisect_right(starts, line) - 1]
+
+
+def _summarises(section: Section, below: list[Section], methods: set[int]) -> bool:
+    """Whether a heading is the Abstract, whatever stands under it: one that names it, or a
+    "Summary" with a heading of a structured abstract under it."""
+    if section.is_abstract:
+        return True
+    return bool(_SUMMARY.match(plain(section.title))) and any(
+        _ABSTRACT_HEADING.match(plain(other.title)) for other in below)
 
 
 def _part(section: Section, methods: set[int]) -> str | None:
@@ -156,6 +179,11 @@ class View:
     place: Callable[[int], Place] | None = None
     cuts: tuple[int, ...] = ()
     cites: tuple[Cite, ...] = field(default=())
+    #: Lines before `text`'s first in the file: a front matter's abstract is read as a text of
+    #: its own, at its key's line.
+    line_offset: int = 0
+    #: What of the file was not read, each a sentence.
+    notes: tuple[str, ...] = ()
 
     @cached_property
     def sentences(self) -> list[Sentence]:
@@ -164,7 +192,8 @@ class View:
         from manuscript_guard.claims import sentence_pieces
 
         breaks = [found.start() for found in re.finditer("\n", self.text)]
-        pieces = sentence_pieces(self.text, self.read, self.lines, self.cuts)
+        pieces = sentence_pieces(self.text, self.read, self.lines,
+                                 (*self.cuts, *self._stop_cuts()))  # fmt: skip
         starts = sorted(cite.start for cite in self.cites)
         ends = {cite.start: cite.end for cite in self.cites}
         found = []
@@ -173,11 +202,40 @@ class View:
                 first = self._after_a_stop(pieces[index - 1], first, end, starts, ends)
             if not _LETTER.search(self.read, first, end):
                 continue
-            line = bisect_right(breaks, first - 1) + 1
-            place = self.place(line) if self.place is not None else Place()
+            line = bisect_right(breaks, first - 1) + 1 + self.line_offset
+            place =self.place(line) if self.place is not None else Place()
             found.append(Sentence(start, first, end, line, quoted(self.text, self.read,
                                                                    first, end), place))
         return found
+
+    def _stop_cuts(self) -> tuple[int, ...]:
+        """Where a sentence ends at a citation typed directly after its stop, with no space
+        between: `.[3]`, `.[3-5]`, `.\\cite{a}`, and `.~\\cite{a}` as LaTeX's view blanks
+        the tie (round 1 of #482). `claims` ends a sentence at a stop followed by a space, and
+        read on past `.[3]` into the next; here the sentence ends after the citation, or
+        after the last of several typed together, `.[3][4]`, unless the next word goes on in
+        lower case, as after "e.g.[3]"."""
+        read = self.read
+        cuts: dict[int, int] = {}
+        for cite in sorted(self.cites, key=lambda one: one.start):
+            back = cite.start
+            while back > 0 and read[back - 1] in NUL + "~[":
+                back -= 1
+            if back == 0:
+                continue
+            after = back in cuts.values()
+            if read[back - 1] not in ".!?" and not after:
+                continue
+            end = cite.end
+            while end < len(read) and read[end] in "])":
+                end += 1
+            follows = re.match(r"[ \t\n\x00]*(\S)", read[end : end + 200])
+            if follows is not None and follows.group(1).islower():
+                continue
+            if after:
+                cuts = {start: stop for start, stop in cuts.items() if stop != back}
+            cuts[cite.start] = end
+        return tuple(cuts.values())
 
     def _after_a_stop(self, before: tuple[int, int, int], first: int, end: int,
                       starts: list[int], ends: dict[int, int]) -> int:  # fmt: skip

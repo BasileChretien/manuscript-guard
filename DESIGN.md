@@ -8159,13 +8159,25 @@ trial. The rest warn, `causal-word-observational`. The Methods, the Results, the
 Introduction and every other part are not read. Where a sentence stands is read as the
 Abstract against Results reads it, each file by its own headings (`auditing.sentences.
 placing`, the outermost heading that names a part deciding, a heading over the opening of
-the paper naming none, `names_discussion` added beside `names_conclusion`); a LaTeX file's
+the paper naming none, `names_discussion` added beside `names_conclusion`). A heading that
+names the Abstract always names it, whatever stands under it, as G8's `Walk` reads it, and
+so does a "Summary" with a heading of a structured abstract under it (Background, Methods,
+Findings, Interpretation and their like), as the Lancet titles one: every heading under
+either is the Abstract's (round 1 of #482: an Abstract over a Background was read as a title
+over the paper, and its Results were not read). A Markdown file's front matter is no body
+text; its abstract, where it is a plain string, is read as the Abstract at its key's line,
+and one that is a list or a mapping is said not to be read. A LaTeX file's
 lines are placed through its printed view, a place in a part kept over one in none where
 two printed lines share a `.tex` line, so the Abstract's last sentence on the line of
 `\end{abstract}` stays the Abstract's. A sentence is cut as `claims` cuts one, on a
 Markdown file as pandoc prints it (`claims.readable`), on a Word document's text with each
 paragraph a block, and on a LaTeX file's printed view with each heading's command and the end
-of its title as cuts.
+of its title as cuts. `claims` ends a sentence at a stop and a space, so a citation typed
+directly after the stop, `.[3]`, `.[3-5]`, `.\cite{a}` or `.~\cite{a}`, read on into the next
+sentence, which then passed as cited (round 1 of #482): there the sentence ends after the
+citation, or the last of several typed together, unless the next word is in lower case
+(`View._stop_cuts`). `claims` itself is unchanged, so `reworded` and `communicate` read as
+before.
 
 **`--cited FILE`** (`auditing.cited`). A row for each work each citation names: a number in
 brackets held by number to a numbered list as G7's census holds it (`references.marker_spans`,
@@ -19222,7 +19234,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     analysis", in the Abstract or the Discussion. A hedge or a negation anywhere in the
     sentence passes it, whatever it bears on ("not all patients; smoking causes cancer"). A
     narrative citation, "Smith et al. showed that X causes Y", carries no citation the reading
-    sees and warns. A structured Abstract's Methods are the Abstract's, and are read. A file
+    sees and warns. A structured Abstract's Methods are the Abstract's, and are read; a
+    "Summary" is the Abstract only with a heading of a structured abstract under it, and
+    otherwise a conclusion, read as one. A file
     with no heading that names a part is not read, and the report says so.
   - The cited-sentences table reads a number in brackets beside a numbered list, and a LaTeX
     `\cite` beside a `thebibliography`. A citation by author and year, a pandoc key, a

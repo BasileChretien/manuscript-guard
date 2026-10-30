@@ -89,9 +89,12 @@ def lists_author(answers: dict, author: Author) -> bool:
 
 
 def folded_title(title: str) -> str:
-    """A journal's name as two are compared: accents, case and punctuation gone, its spaces
-    made one, and a leading "The" left out."""
-    text = unicodedata.normalize("NFKD", title)
+    """A journal's name as two are compared: a qualifier in brackets at its end left out, as
+    PubMed's full names carry one ("BMJ (Clinical research ed.)", "Science (New York,
+    N.Y.)"); accents, case and punctuation gone, its spaces made one, and a leading "The"
+    left out."""
+    text = re.sub(r"\s*\([^()]*\)\s*$", "", title) or title
+    text = unicodedata.normalize("NFKD", text)
     text = "".join(c for c in text if not unicodedata.combining(c)).casefold().replace("&",
                                                                                      " and ")
     text = " ".join(re.findall(r"[^\W_]+", text))

@@ -687,6 +687,19 @@ def test_a_heading_is_no_sentence_of_its_part(tmp_path: Path, capsys, heading: s
     assert _causal(capsys, paper_md(tmp_path, text)) == []
 
 
+@pytest.mark.parametrize("heading", ["### Comparison with Smith et al.", "### Analysis."])
+def test_a_heading_ending_in_a_stop_keeps_no_citation_of_the_line_under_it(
+    tmp_path: Path, capsys, heading: str
+) -> None:
+    """Round 3 of #482: the line under such a heading, opening with a citation, was joined to
+    the heading and dropped, or lost its citation to the sentence before the heading."""
+    text = f"## Discussion\n\nTea was common.\n\n{heading}\n[3] Smoking causes cancer.\n\n"
+    paper = paper_md(tmp_path, text + REFERENCES)
+    assert _causal(capsys, paper) == []
+    rows = _rows(capsys, tmp_path, paper)
+    assert len(rows) == 1 and "Smoking causes cancer." in rows[0] and "| [3] |" in rows[0]
+
+
 def test_a_latex_or_word_heading_is_no_sentence_of_its_part(tmp_path: Path, capsys) -> None:
     paper = tmp_path / "paper.tex"
     paper.write_text(

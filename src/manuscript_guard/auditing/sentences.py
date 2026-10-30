@@ -233,18 +233,21 @@ class View:
         from manuscript_guard.claims import sentence_pieces
 
         breaks = [found.start() for found in re.finditer("\n", self.text)]
+        heads = sorted(self.headings)
         pieces: list[tuple[int, int, int]] = []
         for piece in sentence_pieces(self.text, self.read, self.lines,
                                      (*self.cuts, *self._stop_cuts(),
                                       *(at for span in self.headings for at in span))):  # fmt: skip
-            if pieces and self._continues(pieces[-1], piece):
+            # A heading is a piece of its own: the line under it is never joined to it, nor
+            # does it give the heading a citation it opens with (round 3 of #482).
+            if pieces and not _within(heads, pieces[-1][1]) \
+                    and self._continues(pieces[-1], piece):  # fmt: skip
                 pieces[-1] = (pieces[-1][0], pieces[-1][1], piece[2])
             else:
                 pieces.append(piece)
-        heads = sorted(self.headings)
         found = []
         for index, (start, first, end) in enumerate(pieces):
-            if index:
+            if index and not _within(heads, pieces[index - 1][1]):
                 first = self._after_a_stop(pieces[index - 1], start, first, end)
             if not _LETTER.search(self.read, first, end) or _within(heads, first):
                 continue

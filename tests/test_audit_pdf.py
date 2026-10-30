@@ -466,14 +466,60 @@ def test_compare_sets_a_pdf_beside_a_word_or_markdown_version(tmp_path: Path, ca
 
 
 def test_a_wrapped_page_range_opens_no_entry(tmp_path: Path) -> None:
-    """Note 3 of round 1: "118." after "112-" goes on entry 1; only "2." opens the next."""
-    from manuscript_guard.auditing.references import NUMBERED, census_of_printed
+    """Note 3 of round 1: "118." after "112-" opens no entry 118. It is in the list's own
+    form, and whether it is an entry left out or a page carried over cannot be told (round 2):
+    the entries are not told apart, and nothing is held to them."""
+    from manuscript_guard.auditing.references import UNTOLD, census_of_printed
 
     text = "References\n1. Smith A. A paper. J Things. 2019;12:112-\n118. More of it.\n" \
            "2. Jones B. Another. J Things. 2020;13:1-9.\n"
     census = census_of_printed(tmp_path / "p.pdf", text, [(0, 4)], "Of 4 [1, 2].\n", [])
-    assert census.style == NUMBERED and [e.number for e in census.entries] == [1, 2]
+    assert census.style == UNTOLD and "its numbers go from 1 to 118" in census.untold
     assert not census.problems
+
+
+def test_a_number_that_skips_tells_no_entry_apart(tmp_path: Path) -> None:
+    """Round 2: "1. 2. 4. 5." cited [1] [2] [4] [5] was "cites entries 4, 5 ... it has 2
+    entries". The list is not told apart, says why, and nothing is held to its count."""
+    from manuscript_guard.auditing.references import UNTOLD, census_of_printed
+    from manuscript_guard.auditing.report import _printed_items
+
+    text = "References\n1. A. doi:10.5555/a.1 One.\n2. B. Two.\n4. D. Four.\n5. E. Five.\n"
+    census = census_of_printed(tmp_path / "p.pdf", text, [(0, 5)],
+                               "As [1] [2] [4] [5] show.\n", [])  # fmt: skip
+    assert census.style == UNTOLD and not census.problems
+    assert "its numbers go from 2 to 4, at line 4" in census.untold
+    said = [item.message for item in _printed_items(census)]
+    assert said and "its numbers go from 2 to 4" in said[0], said
+    assert [entry.dois for entry in census.entries] == [("10.5555/a.1",)]
+
+
+def test_an_untold_list_looks_up_each_identifier_ending_a_line(tmp_path: Path) -> None:
+    """Round 2: in an author-year list each DOI ends its line, with more of the list after
+    it; each is looked up all the same."""
+    from manuscript_guard.auditing.references import UNTOLD, census_of_printed, look_up
+
+    text = ("References\nAdams A (2019) A first paper. J X. doi:10.5555/one.1\n"
+            "Brown B (2020) A second paper. J X. doi:10.5555/two.2\n"
+            "Clark C (2021) A third paper. J X. doi:10.5555/three.3\n")
+    census = census_of_printed(tmp_path / "p.pdf", text, [(0, 4)], "As shown.\n", [])
+    assert census.style == UNTOLD and census.unsent == []
+    asked = [one.entry.dois for one in look_up([census], dry_run=True)]
+    assert asked == [("10.5555/one.1",), ("10.5555/two.2",), ("10.5555/three.3",)]
+    assert [entry.ends_line for entry in census.entries] == [True, True, False]
+
+
+def test_an_identifier_cut_before_it_starts_is_listed(tmp_path: Path) -> None:
+    """Round 2, note 4: "doi:10.1016/" or "PMID:" at a line's end is read as no identifier;
+    it is listed as not looked up, never dropped without a word."""
+    from manuscript_guard.auditing.references import NUMBERED, census_of_printed
+
+    text = ("References\n1. Smith A. A paper. doi:10.1016/\nj.x.2020.01.001. More.\n"
+            "2. Jones B. Another. PMID:\n31000001 here.\n")
+    census = census_of_printed(tmp_path / "p.pdf", text, [(0, 5)], "As [1, 2] show.\n", [])
+    assert census.style == NUMBERED
+    assert census.unsent == [(2, "10.1016/"), (4, "PMID:")]
+    assert all(not entry.dois and not entry.pmids for entry in census.entries)
 
 
 def test_entries_not_told_apart_have_each_identifier_looked_up(tmp_path: Path,
@@ -503,6 +549,83 @@ def test_an_author_year_pdf_is_looked_up_one_identifier_at_a_time(tmp_path: Path
     assert len(found(report, "would-ask")) == 3
     assert found(report, "entries-not-told-apart")
     assert not found(report, "entry-never-cited") and not found(report, "citation-not-listed")
+
+
+@needs_pdftotext
+def test_an_untold_identifier_not_found_is_said_as_printed(tmp_path: Path, registries,  # noqa: F811
+                                                           capsys) -> None:  # fmt: skip
+    """Round 2: one that ends a line with more of the list after it is asked about, and a "not
+    found" for it says it may run on, never that no registry has the work's DOI."""
+    registries.answers = {"doi_org": (404, {"responseCode": 100})}
+    lines = ["Results", "Of 412, 77 had it (Adams, 2019).", "References",
+             "Adams A (2019) A first paper. J X. doi:10.5555/one.1",
+             "Brown B (2020) A second paper. J X. doi:10.5555/two.2"]
+    # One page, with no running head or foot, which a one-page PDF does not have taken out.
+    paper = write(tmp_path / "paper.pdf", lines, head=None, foot=None, first_page=None)
+    _code, report, _err = audited(capsys, str(paper), "--lookup")
+    printed = found(report, "not-found-as-printed")
+    assert [f["message"].split(": ", 1)[0] for f in printed] == [
+        "the DOI 10.5555/one.1 of the list"], printed
+    assert "may run on to the next" in printed[0]["message"]
+    assert [f["message"].split(": ", 1)[0] for f in found(report, "doi-unregistered")] == [
+        "the DOI 10.5555/two.2 of the list"]
+    assert main(["audit", str(tmp_path / "paper.pdf")]) == 0
+    assert "2 DOI(s) and 0 PMID(s) read; its entries could not be told apart" in (
+        capsys.readouterr().out)
+
+
+@needs_pdftotext
+def test_an_abbreviations_section_ends_the_abstract(tmp_path: Path, capsys) -> None:
+    """Round 2, note 2: only a structured abstract's own headings go under the Abstract; an
+    "Abbreviations" before the Introduction ends it, and its words are not the Abstract's."""
+    words = " ".join(["word"] * 8)
+    lines = ["Abstract", "Background", "We asked.", "Methods", "We read.", "Abbreviations",
+             *[f"{words}."] * 40, "Introduction", "Drugs harm.", "Methods", "We read 412.",
+             "Results", "Of 412, 77 had it.", "Discussion", "It was so."]  # fmt: skip
+    pdf = reading.read_pdf(write(tmp_path / "paper.pdf", lines, per_column=70))
+    assert [(title, level) for _line, title, level in pdf.placed][:5] == [
+        ("Abstract", 1), ("Background", 2), ("Methods", 2), ("Abbreviations", 1),
+        ("Introduction", 1)]
+    journal = tmp_path / "words.yaml"
+    journal.write_text(profile(tmp_path).read_text(encoding="utf-8").replace(
+        "  tables: 5\n", "  abstract_words: 250\n"), encoding="utf-8")  # fmt: skip
+    _code, report, _err = audited(capsys, str(tmp_path / "paper.pdf"), "--journal", str(journal))
+    assert not [f for f in report["findings"] if f["code"].endswith("journal-limit")
+                and f["message"].startswith("abstract: ")]  # fmt: skip
+
+
+@needs_pdftotext
+def test_compare_places_a_pdfs_structured_abstract_under_it(tmp_path: Path, capsys) -> None:
+    """Round 2, note 3: the PDF's structured abstract's headings sit under its Abstract, as
+    the .docx's styles set them, and each section is matched with its own."""
+    import zipfile
+
+    from manuscript_guard.comparing.versions import read_version
+
+    paper = [("1", "Abstract"), ("2", "Methods"), ("", "We read records."), ("2", "Results"),
+             ("", "Of 412, 77 had it."), ("1", "Introduction"), ("", "Drugs harm."),
+             ("1", "Methods"), ("", "We read 412 records."), ("1", "Results"),
+             ("", "Of 412, 77 had it."), ("1", "Discussion"), ("", "It was so.")]
+    ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    styles = (f"<w:styles {ns}>" + "".join(
+        f"<w:style w:type='paragraph' w:styleId='Heading{n}'><w:name w:val='heading {n}'/>"
+        "</w:style>" for n in (1, 2)) + "</w:styles>")  # fmt: skip
+    body = "".join(
+        (f"<w:p><w:pPr><w:pStyle w:val='Heading{level}'/></w:pPr>" if level else "<w:p>")
+        + f"<w:r><w:t>{text}</w:t></w:r></w:p>" for level, text in paper)
+    old = tmp_path / "v1.docx"
+    with zipfile.ZipFile(old, "w") as archive:
+        archive.writestr("word/document.xml", f"<?xml version='1.0'?><w:document {ns}>"
+                         f"<w:body>{body}</w:body></w:document>")  # fmt: skip
+        archive.writestr("word/styles.xml", styles)
+    new = write(tmp_path / "v2.pdf", [text for _level, text in paper], per_column=40,
+                head=None, foot=None, first_page=None)
+    assert [(h.title, h.level) for h in read_version(new).sections if h.level][:3] == [
+        ("Abstract", 1), ("Methods", 2), ("Results", 2)]
+    assert main(["compare", str(old), str(new), "--json"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    codes = [f["code"] for f in report["findings"] if f["section"] == "Sections"]
+    assert "section-new" not in codes and "section-gone" not in codes, codes
 
 
 @needs_pdftotext

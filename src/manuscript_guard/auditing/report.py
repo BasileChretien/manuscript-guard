@@ -191,7 +191,8 @@ def _printed_items(census) -> list[Item]:
 
     found = []
     if census.style == UNTOLD:
-        found.append(Item(REFERENCES, "G7", "entries-not-told-apart", UNTOLD_SAID, INFO, False,
+        found.append(Item(REFERENCES, "G7", "entries-not-told-apart",
+                          UNTOLD_SAID.format(why=census.untold), INFO, False,
                           census.path))  # fmt: skip
     found += [Item(REFERENCES, "G7", "identifier-not-sent", f"{said}: {NOT_SENT}", INFO,
                    False, census.path, line) for line, said in census.unsent]  # fmt: skip
@@ -199,9 +200,9 @@ def _printed_items(census) -> list[Item]:
 
 
 #: What is said of a PDF's reference list whose entries could not be told apart.
-UNTOLD_SAID = ("its entries could not be told apart (not numbered 1, 2, 3 in turn, or an entry "
-               "holding more than one DOI or PMID): each DOI and PMID is counted and looked up "
-               "alone, and no citation is held to an entry")
+UNTOLD_SAID = ("its entries could not be told apart ({why}): each DOI and PMID is counted and "
+               "looked up alone, one that ends a line among them, and no citation is held to an "
+               "entry or to their count")
 #: What is said of an identifier that ends a line its entry goes on after.
 NOT_SENT = "not looked up: it may continue on the next line"
 
@@ -856,7 +857,7 @@ def _references(report, show) -> list[str]:
         if style == UNTOLD:
             # One "entry" an identifier (`references.census_of_printed`).
             lines.append(f"  {show(census.path)}: {census.dois} DOI(s) and {census.pmids} "
-                         f"PMID(s) read; {UNTOLD_SAID}")  # fmt: skip
+                         f"PMID(s) read; {UNTOLD_SAID.format(why=census.untold)}")  # fmt: skip
         else:
             lines.append(f"  {show(census.path)}: {count} entr{'y' if count == 1 else 'ies'}, "
                          f"{census.dois} with a DOI, {census.pmids} with a PMID; "

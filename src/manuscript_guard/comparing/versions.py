@@ -159,7 +159,11 @@ def _pdf(path: Path) -> Version:
         pdf = read_pdf(path)
     except UnreadablePdf as exc:
         raise Unreadable(str(exc)) from None
-    found = [(title, 1, line) for line, title in pdf.headings]
+    # A structured abstract's headings under the Abstract where they can be placed exactly
+    # (`PdfText.placed`), as a .docx's styles set them.
+    placed = pdf.placed
+    found = ([(title, level, line) for line, title, level in placed] if placed is not None
+             else [(title, 1, line) for line, title in pdf.headings])  # fmt: skip
     references = {line + 1 for start, end in pdf_spans(pdf) for line in range(start, end)}
     return Version(path, "PDF", pdf.text, _sections(pdf.text, found), (), (),
                    frozenset(references), pdf=pdf)

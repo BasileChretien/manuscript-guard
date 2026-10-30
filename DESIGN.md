@@ -8337,8 +8337,10 @@ names and the back matter's), numbered or not, its first letter a capital
 (`heading_title`), and a test names each. A section under any other title is read as the one
 before, and the report says so. A structured abstract's own headings, set on lines of their
 own, are placed exactly where they can be: where the heading after the Abstract's is one a
-structured abstract has (`ABSTRACT_PARTS`) and an Introduction comes after them, those between
-the two are the Abstract's, a level under it (`PdfText.placed`). Where there is no
+structured abstract has (`ABSTRACT_PARTS`) and an Introduction comes after them, the run of
+those names after the Abstract's are the Abstract's, a level under it (`PdfText.placed`);
+another heading before the Introduction ("Abbreviations") ends the Abstract, at the first
+level, and in `compare` too (round 2 of #486). Where there is no
 Introduction after them, or one name stands on two lines among the Abstract's own headings or
 among the rest, which section is the paper's cannot be told from the names: the PDF's lines
 are placed in no section, so the Abstract is not compared with the Results and no causal word
@@ -8357,14 +8359,22 @@ paragraph is.
 
 **The reference list** (`references.census_of_printed`). A PDF's text has no blank line
 between two entries, so an entry is told apart only by its number: the list's first line opens
-one, and a line opens the next only where it starts with the number after the last ("118."
-after a page range "112-" opens none). Where the first carries no number (an author-year
-list), or an entry holds more than one DOI or more than one PMID, the entries are not told
-apart: each identifier is looked up alone, so that a retracted work among them is asked about,
-no citation is held to an entry (no `entry-never-cited`), and the report says so
-(`entries-not-told-apart`). A DOI or a PMID that ends a line its entry goes on after may go on
-on the next line: it is not sent, and is listed as not looked up (`identifier-not-sent`),
-rather than sent cut and reported unregistered (round 1 of #486).
+one, and a line opens the next only where it starts with the number after the last, in the
+form the first's number has. Where the first carries no number (an author-year list), an entry
+holds more than one DOI or more than one PMID, or a line in the list's own form opens with a
+number above the next one (an entry left out, "1. 2. 4.", or a page range carried onto a line,
+"112-" then "118.": which it is cannot be told; round 2 of #486), the entries are not told
+apart, and the report says why, naming the numbers ("its numbers go from 2 to 4"): each
+identifier is looked up alone, one that ends a line among them, so that a retracted work is
+asked about; no citation is held to an entry or to their count (no `entry-never-cited`, no
+`citation-beyond-list`); and the report says so (`entries-not-told-apart`). An identifier of
+such a list that ends a line with more of the list after it may run on to the next: a registry
+that has no record of it is said not to have it "as printed", with that said
+(`not-found-as-printed`), never that the work's DOI is unregistered. In a list whose entries
+are told apart, a DOI or a PMID that ends a line its entry goes on after is not sent, and is
+listed as not looked up (`identifier-not-sent`), rather than sent cut and reported
+unregistered (round 1 of #486); so is one cut before it starts, "10.1016/" or "doi:" alone at
+a line's end, in any list (round 2).
 
 **What does not**, each said in the report: a table's cells (a PDF's table is lines of text;
 its numbers are read as the text's, and no total, share, mean, flow or count held back is
@@ -19503,8 +19513,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     is read as a heading.
   - A reference list whose entries are not told apart is counted by its identifiers, and its
     citations are held to nothing; one numbered entry that holds two DOIs (an article and its
-    data, say) makes the whole list so. An entry whose number does not follow the last one's
-    goes on the entry before.
+    data, say) makes the whole list so, and so does a page range carried onto a line of its
+    own as a number with a stop, "118.". A wrapped line inside an entry that starts with the
+    next number expected ("...Part" then "3. Results of...") opens a phantom entry, and the
+    citations are held to it.
+  - A BMC-style paper, an Abstract and then a main text headed Background, Methods and Results
+    with no Introduction, is read as a structured abstract with no Introduction after it and
+    left unplaced: no Abstract against Results, no causal words and no G4 word limits for
+    it; the report says why.
   - Where one version of `compare` is a PDF, a table's numbers on the other side are read as
     prose too: a number moved between a table and the prose reads as the same.
   - G6 and G14 read the text staged as Markdown, a page's lines one paragraph between two

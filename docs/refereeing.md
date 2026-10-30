@@ -62,9 +62,12 @@ and `--lookup`, the causal words, the cited sentences, and the words (G6, G14). 
   the Results, a journal's limits on the abstract's and the main text's words are not
   checked, and the report says why.
 - **The reference list.** An entry is told apart by its number only, 1, 2, 3 in turn. Where
-  the list is not numbered so, or an entry holds two DOIs, each DOI and PMID is looked up
-  alone and no citation is held to an entry. A DOI or PMID at the end of a line its entry goes
-  on after may be cut by the wrap, and is listed as not looked up rather than sent.
+  the list is not numbered so (author and year, a number skipped), or an entry holds two DOIs,
+  the report says why, each DOI and PMID is looked up alone, and no citation is held to an
+  entry; one that ends a line there may run on to the next, and a registry's "not found" for
+  it is said as not found as printed. In a numbered list, a DOI or PMID at the end of a line
+  its entry goes on after may be cut by the wrap, and is listed as not looked up rather than
+  sent.
 - **Layout.** A number split by a hyphen at a line's end, or set across two columns, may be
   read as two; a running head the reading did not recognise is read as text. The two
   `pdftotext` builds read some PDFs differently, and the report names the one that read it.

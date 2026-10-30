@@ -46,6 +46,9 @@ class Comparison:
     items: list[tuple[Item, str]] = field(default_factory=list)
     letter: Path | None = None
     comments: Path | None = None
+    #: The findings of v2's audit that `audit --strict` would count, each with its mark, for
+    #: the report draft's exact findings; `compare` itself counts none.
+    exact: list[tuple[Item, str]] = field(default_factory=list)
 
 
 def compare(old: Path, new: Path, letter: Path | None = None,
@@ -60,7 +63,7 @@ def compare(old: Path, new: Path, letter: Path | None = None,
                 *differences.sections(was, now), *differences.tables(was, now),
                 *differences.figures(was, now), *differences.numbers(was, now),
                 *differences.claim_moves(was, now)]  # fmt: skip
-    found.items = [(item, "") for item in unmarked] + audited(was, now)
+    found.items = [(item, "") for item in unmarked] + audited(was, now, found.exact)
     if letter_text is not None:
         found.items += [(item, "") for item in letters.letter_items(letter, letter_text, was,
                                                                     now, mine)]  # fmt: skip
@@ -103,8 +106,10 @@ def _audit(version: Version) -> list[Item]:
     return items(report)
 
 
-def audited(old: Version, new: Version) -> list[tuple[Item, str]]:
-    """v2's audit, each finding with its mark: whether v1's audit gave the same finding."""
+def audited(old: Version, new: Version,
+            exact: list[tuple[Item, str]] | None = None) -> list[tuple[Item, str]]:  # fmt: skip
+    """v2's audit, each finding with its mark: whether v1's audit gave the same finding.
+    Each that `audit --strict` would count goes into `exact` as well."""
     stood = Counter((item.gate, item.code, item.message) for item in _audit(old))
     found = []
     for item in _audit(new):
@@ -114,6 +119,8 @@ def audited(old: Version, new: Version) -> list[tuple[Item, str]]:
         found.append((Item(AUDITED, item.gate, item.code, f"{item.section}: {item.message}",
                            item.severity, False, item.path, item.line, item.context, item.hint),
                       mark))  # fmt: skip
+        if item.counted and exact is not None:
+            exact.append(found[-1])
     return found
 
 

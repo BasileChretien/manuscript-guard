@@ -83,6 +83,9 @@ class Version:
     #: The lines of `text` (from 1) of the reference list and the tables, whose numbers are
     #: not compared as the prose's.
     set_apart: frozenset[int] = frozenset()
+    #: Of those, the tables' lines and their captions': read as prose where the other version
+    #: is a PDF, whose tables cannot be set apart (`differences.prose`).
+    table_lines: frozenset[int] = frozenset()
     #: The files read, a LaTeX entry's tree.
     files: tuple[Path, ...] = ()
     #: Where a line of `text` stands in the files, where that is not the line itself.
@@ -202,7 +205,8 @@ def markdown_version(path: Path, text: str) -> Version:
     references = {line + 1 for start, end in bibliography_spans(text)
                   for line in range(start, end)}  # fmt: skip
     return Version(path, "Markdown", text, _sections(text, found), tuple(tables),
-                   _figures(lines, path, in_tables), frozenset(in_tables | references))
+                   _figures(lines, path, in_tables), frozenset(in_tables | references),
+                   table_lines=frozenset(in_tables))
 
 
 def _caption(lines: list[str], first: int, last: int) -> tuple[str | None, str, int]:
@@ -273,7 +277,8 @@ def _word(path: Path) -> Version:
         if at:
             cells.add(at)
     return Version(path, "Word", text, _sections(text, found), tuple(tables),
-                   _figures(lines, path, cells), frozenset(cells | references))
+                   _figures(lines, path, cells), frozenset(cells | references),
+                   table_lines=frozenset(cells))
 
 
 # ------------------------------------------------------------------------------- LaTeX

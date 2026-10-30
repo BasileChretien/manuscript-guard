@@ -32,6 +32,10 @@ from manuscript_guard.cli import main
 sys.path.insert(0, str(Path(__file__).parent))
 from proof_pdf import typeset  # noqa: E402
 
+# The loopback registries, standing in for Crossref, OpenAlex and PubMed: no test here
+# reaches a registry.
+from test_audit_sections import registries  # noqa: E402, F401
+
 needs_pdftotext = pytest.mark.skipif(shutil.which("pdftotext") is None,
                                      reason="pdftotext is not installed")  # fmt: skip
 needs_pdfinfo = pytest.mark.skipif(shutil.which("pdfinfo") is None,
@@ -63,8 +67,9 @@ PAPER = [
 
 def write(path: Path, lines: list[str] = PAPER, **options) -> Path:
     """`lines` set twelve to a page, under a running head, with the page's number under it."""
-    path.write_bytes(typeset(lines, columns=1, per_column=12, head="Journal of Things",
-                             foot="Page", first_page=1, **options))  # fmt: skip
+    options = {"per_column": 12, "head": "Journal of Things", "foot": "Page", "first_page": 1,
+               **options}  # fmt: skip
+    path.write_bytes(typeset(lines, columns=1, **options))
     return path
 
 
@@ -174,14 +179,32 @@ def test_causal_words_and_cited_sentences_read_a_pdf(tmp_path: Path, capsys) -> 
 
 
 @needs_pdftotext
-def test_a_name_on_two_heading_lines_places_nothing(tmp_path: Path, capsys) -> None:
-    """A structured abstract's own headings on lines of their own: which Results are the
-    paper's is not read, the Abstract is not compared, and that is said."""
-    lines = [PAPER[1], "Methods", "We read 412 records.", "Results", PAPER[3], *PAPER[4:]]
+def test_headings_that_cannot_be_placed_place_nothing(tmp_path: Path, capsys) -> None:
+    """A structured abstract's own headings on lines of their own, with no Introduction after
+    them: which Results are the paper's is not read, the Abstract is not compared, and that is
+    said."""
+    lines = [PAPER[1], "Methods", "We read 412 records.", "Results", PAPER[3],
+             *(line for line in PAPER[4:] if line != "Introduction")]  # fmt: skip
     _code, report, _err = audited(capsys, str(write(tmp_path / "paper.pdf", lines)))
     said = " ".join(f["message"] for f in found(report, "not-audited"))
-    assert "its lines were placed in no section" in said and "'methods'" in said
+    assert "its lines were placed in no section" in said and "no Introduction after" in said
     assert found(report, "abstract-not-compared")
+
+
+@needs_pdftotext
+def test_a_structured_abstract_before_an_introduction_is_the_abstracts(
+    tmp_path: Path, capsys
+) -> None:
+    """Its headings between the Abstract's and the Introduction's are placed exactly, under
+    the Abstract: its Results are the Abstract's, and the paper's own are compared with
+    them."""
+    lines = [PAPER[1], "Methods", "We read 412 records.", "Results", PAPER[3], *PAPER[4:]]
+    pdf = reading.read_pdf(write(tmp_path / "paper.pdf", lines))
+    assert [level for _line, _title, level in pdf.placed] == [1, 2, 2, 1, 1, 1, 1, 1]
+    _code, report, _err = audited(capsys, str(tmp_path / "paper.pdf"))
+    assert not found(report, "abstract-not-compared")
+    assert [f["context"] for f in found(report, "abstract-not-found")] == [
+        "The rate was 21.4% in the exposed."]
 
 
 @needs_pdftotext
@@ -237,9 +260,39 @@ def test_pdftotext_and_pdfinfo_are_given_a_limit(
     monkeypatch.setattr(subprocess, "run", run)
     monkeypatch.setattr(shutil, "which", lambda name, *a, **k: f"/bin/{name}")
     assert reading.author(tmp_path / "x.pdf") == (None, "pdfinfo took more than 30 seconds")
-    with pytest.raises(reading.UnreadablePdf, match="holds no text"):
+    with pytest.raises(reading.UnreadablePdf, match="pdftotext did not answer within 120"):
         reading._read(tmp_path / "x.pdf")
     assert asked and all(limit for limit in asked), asked
+
+
+@needs_pdftotext
+def test_a_failing_pdftotext_is_said_to_have_failed(tmp_path: Path, capsys) -> None:
+    """A damaged PDF is no scan: pdftotext failed on it, and that is what is said."""
+    paper = tmp_path / "broken.pdf"
+    paper.write_bytes(b"%PDF-1.4\nnot a PDF at all\n")
+    assert main(["audit", str(paper)]) == 2
+    err = capsys.readouterr().err
+    assert "broken.pdf could not be read: pdftotext failed on it" in err, err
+
+
+@needs_pdftotext
+def test_a_line_number_counted_on_is_not_given_as_the_pdfs(tmp_path: Path) -> None:
+    """The PDF prints each line's number but the seventh's: line 8's is the PDF's, line 7's
+    is only counted on, and is not shown as the PDF's."""
+    from proof_pdf import LEADING, LEFT, TOP, Piece, pdf
+
+    pieces = []
+    for row in range(25):
+        y = TOP - LEADING * row
+        if row != 6:
+            pieces.append(Piece(LEFT - 22, y, str(row + 1), size=6.0))
+        pieces.append(Piece(LEFT, y, f"Line of text {chr(97 + row)} here."))
+    path = tmp_path / "paper.pdf"
+    path.write_bytes(pdf([pieces]))
+    read = reading.read_pdf(path)
+    assert read.numbered, read.reader
+    printed = {place.line: place.printed for place in read.places}
+    assert printed[8] == 8 and printed[7] is None, printed
 
 
 # ---------------------------------------------------------------------------- reader options
@@ -294,6 +347,44 @@ def test_an_author_in_a_blind_pdfs_author_field_is_counted(tmp_path: Path, capsy
 
 
 @needs_pdftotext
+def test_an_author_in_a_blind_pdfs_running_head_is_counted(tmp_path: Path, capsys) -> None:
+    """The reading takes the running head out of the text; the blinding check reads it."""
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(typeset(PAPER, columns=1, per_column=12, head="Ada Example et al.",
+                              foot="Page", first_page=1))  # fmt: skip
+    code, report, _err = audited(capsys, str(paper), "--journal", str(profile(tmp_path)),
+                                 "--authors", str(authors(tmp_path)), "--strict")  # fmt: skip
+    named = found(report, "blind-document-names-author")
+    assert code == 1 and [f["message"].split(" of paper.pdf")[0] for f in named] == [
+        "'Ada Example' is in the running head of page 1 (and of 1 more page)"], named
+
+
+@needs_pdftotext
+def test_word_limits_of_a_pdf_whose_abstract_cannot_be_placed_are_not_checked(
+    tmp_path: Path, capsys
+) -> None:
+    """A 400-word structured abstract against a limit of 250: a finding where its headings
+    are placed exactly, and "not checked" where they are not, never silence."""
+    words = " ".join(["word"] * 8)
+    abstract = ["Abstract", "Background", *[f"{words}."] * 25, "Methods", *[f"{words}."] * 25]
+    body = ["Introduction", "Drugs cause harm.", "Methods", "We read 412 records.", "Results",
+            "Of 412, 77 had it.", "Discussion", "It was so."]  # fmt: skip
+    journal = tmp_path / "words.yaml"
+    journal.write_text(profile(tmp_path).read_text(encoding="utf-8").replace(
+        "  tables: 5\n", "  abstract_words: 250\n"), encoding="utf-8")  # fmt: skip
+    placed = write(tmp_path / "placed.pdf", [*abstract, *body], per_column=70)
+    _code, report, _err = audited(capsys, str(placed), "--journal", str(journal))
+    over = [f["message"] for f in found(report, "over-journal-limit")]
+    assert any(m.startswith("abstract: 4") for m in over), over
+    unplaced = write(tmp_path / "unplaced.pdf", [*abstract, *body[2:]], per_column=70)
+    _code, report, _err = audited(capsys, str(unplaced), "--journal", str(journal))
+    assert not [f for f in found(report, "over-journal-limit")
+                if f["message"].startswith("abstract: ")]  # fmt: skip
+    skipped = [f["message"] for f in found(report, "journal-not-checked")]
+    assert any("headings could not be placed exactly" in m for m in skipped), skipped
+
+
+@needs_pdftotext
 def test_without_pdfinfo_the_author_field_is_said_not_read(
     tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -337,6 +428,28 @@ def test_compare_reads_two_pdfs_and_never_says_a_table_is_the_same(
 
 
 @needs_pdftotext
+def test_a_tables_numbers_are_read_alike_beside_a_pdf(tmp_path: Path, capsys) -> None:
+    """A PDF's table is prose, and so is the other version's where one side is a PDF: 54 and
+    61, in v1's table and in v2's lines, are neither gone nor new."""
+    old = tmp_path / "v1.md"
+    old.write_text("# Results\n\nOf 412 patients, 77 had the event.\n\nTable 1. Baseline\n\n"
+                   "| | Cases |\n|---|---|\n| Age | 54 |\n| Weight | 61 |\n",
+                   encoding="utf-8")  # fmt: skip
+    # One page, with no running head or foot, which a one-page PDF does not have taken out.
+    new = write(tmp_path / "v2.pdf", ["Results", "Of 412 patients, 77 had the event.",
+                                      "Table 1. Baseline", "Cases", "Age 54", "Weight 61"],
+                head=None, foot=None, first_page=None)
+    assert main(["compare", str(old), str(new), "--json"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    moved = [f["message"] for f in report["findings"]
+             if f["code"] in ("fact-new", "fact-gone", "fact-changed")]  # fmt: skip
+    assert moved == [], moved
+    assert [f["message"] for f in found(report, "tables-read-as-prose")] == [
+        "tables are read as prose in both versions, since v2 is a PDF, whose tables cannot be "
+        "set apart"]
+
+
+@needs_pdftotext
 def test_compare_sets_a_pdf_beside_a_word_or_markdown_version(tmp_path: Path, capsys) -> None:
     old = tmp_path / "v1.md"
     old.write_text("# Results\n\n| Age | 54 |\n|---|---|\n| Sex | 61 |\n\nTable 1. Baseline\n",
@@ -347,3 +460,63 @@ def test_compare_sets_a_pdf_beside_a_word_or_markdown_version(tmp_path: Path, ca
     assert "the tables are not compared: v2 is a PDF" in out
     assert "table-gone" not in out and "is gone from v2" not in out.split("Tables")[1].split(
         "Figures")[0]
+
+
+# ---------------------------------------------------------------------------- reference lists
+
+
+def test_a_wrapped_page_range_opens_no_entry(tmp_path: Path) -> None:
+    """Note 3 of round 1: "118." after "112-" goes on entry 1; only "2." opens the next."""
+    from manuscript_guard.auditing.references import NUMBERED, census_of_printed
+
+    text = "References\n1. Smith A. A paper. J Things. 2019;12:112-\n118. More of it.\n" \
+           "2. Jones B. Another. J Things. 2020;13:1-9.\n"
+    census = census_of_printed(tmp_path / "p.pdf", text, [(0, 4)], "Of 4 [1, 2].\n", [])
+    assert census.style == NUMBERED and [e.number for e in census.entries] == [1, 2]
+    assert not census.problems
+
+
+def test_entries_not_told_apart_have_each_identifier_looked_up(tmp_path: Path,
+                                                               capsys) -> None:  # fmt: skip
+    """An author-year list in a PDF is one stretch of lines: each DOI is asked alone, no
+    citation is held to an entry, and the report says why."""
+    from manuscript_guard.auditing.references import UNTOLD, census_of_printed, look_up
+
+    text = ("References\nAdams A (2019) doi:10.5555/one.1 A first paper.\n"
+            "Brown B (2020) doi:10.5555/two.2 A second paper.\n"
+            "Clark C (2021) doi:10.5555/three.3 A third paper.\n")
+    census = census_of_printed(tmp_path / "p.pdf", text, [(0, 4)], "As shown [9].\n", [])
+    assert census.style == UNTOLD and not census.problems
+    asked = [one.entry.dois for one in look_up([census], dry_run=True)]
+    assert asked == [("10.5555/one.1",), ("10.5555/two.2",), ("10.5555/three.3",)]
+
+
+@needs_pdftotext
+def test_an_author_year_pdf_is_looked_up_one_identifier_at_a_time(tmp_path: Path,
+                                                                  capsys) -> None:  # fmt: skip
+    lines = ["Results", "Of 412, 77 had it (Adams, 2019).", "References",
+             "Adams A (2019) doi:10.5555/one.1 A first paper.",
+             "Brown B (2020) doi:10.5555/two.2 A second paper.",
+             "Clark C (2021) doi:10.5555/three.3 A third paper."]
+    paper = write(tmp_path / "paper.pdf", lines)
+    _code, report, _err = audited(capsys, str(paper), "--lookup", "--dry-run")
+    assert len(found(report, "would-ask")) == 3
+    assert found(report, "entries-not-told-apart")
+    assert not found(report, "entry-never-cited") and not found(report, "citation-not-listed")
+
+
+@needs_pdftotext
+def test_a_doi_cut_at_a_lines_end_is_not_sent(tmp_path: Path, registries,  # noqa: F811
+                                             capsys) -> None:  # fmt: skip
+    """Review round 1: "10.1056/NEJMoa20" then "34577" on the next line sent the cut DOI,
+    and the report said no registry had it."""
+    registries.answers = {"doi_org": (404, {"responseCode": 100})}
+    lines = ["Results", "Of 412, 77 had it [1].", "References",
+             "1. Smith A. A paper. N Engl J Med. doi:10.1056/NEJMoa20",
+             "34577. Epub 2020."]
+    paper = write(tmp_path / "paper.pdf", lines)
+    _code, report, _err = audited(capsys, str(paper), "--lookup")
+    assert registries.seen == [], registries.seen
+    assert not found(report, "doi-unregistered")
+    assert [(f["message"], f["page"]) for f in found(report, "identifier-not-sent")] == [
+        ("10.1056/nejmoa20: not looked up: it may continue on the next line", 1)]

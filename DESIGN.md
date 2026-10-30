@@ -8314,15 +8314,18 @@ its drawing order a line a line; poppler 24.04's layout order sets the margin's 
 a column, which `_paged` drops, and its drawing order keeps each in front of its line. Without
 `pdftotext` a PDF is refused with one sentence, exit 2, before anything is read: pypdf is no
 runtime dependency, and a PDF read some other way would not be read as this says. A PDF that
-gives no text, a scan, is refused too. `pdftotext` is waited for 120 seconds, as for `proof`,
-and `pdfinfo` 30; a program that takes longer is said not to have answered. A file read is kept
-while it is unchanged (its path and its bytes' SHA-256), since `compare` reads each version in several
-places, and each reading is two processes.
+gives no text, a scan, is refused too; one `pdftotext` fails on (a damaged or encrypted file)
+or does not answer is refused with that, not called a scan (round 1 of #486). `pdftotext` is
+waited for 120 seconds, as for `proof`, and `pdfinfo` 30; a program that takes longer is said
+not to have answered. A file read is kept while it is unchanged (its path and its bytes'
+SHA-256), since `compare` reads each version in several places, and each reading is two
+processes.
 
 **Places.** The text is a line of the PDF to a line, and each line keeps its page, its line
-counted down that page's text as read, and the number the PDF prints beside it. Every place
-the audit and `compare` give in a PDF is "page 3, line 12", with "(numbered 145)" where the PDF
-numbers the line; in JSON `page`, `line` and `printed_line` (`auditing.report.placed`). The
+counted down that page's text as read, and the number the PDF prints in front of it. Every
+place the audit and `compare` give in a PDF is "page 3, line 12", with "(numbered 145)" where
+the PDF prints that line's number; a number `_paged` counts on between two printed ones is
+not shown as the PDF's (round 1 of #486), since it can be one off; in JSON `page`, `line` and `printed_line` (`auditing.report.placed`). The
 readings that hold a line keep the line of the text, and the report says it as the page's
 (`auditing.report._Show`); G4's, G6's and G14's findings, read on Markdown staged from the
 text, are put back at the text's line (`auditing.gates._staged_pdf`, `_Staged.lines`).
@@ -8332,31 +8335,49 @@ that reads text. So a line is a heading only where it holds a section's name and
 from a closed list (`auditing.pdf.HEADINGS`: the parts of a paper, the reference list's
 names and the back matter's), numbered or not, its first letter a capital
 (`heading_title`), and a test names each. A section under any other title is read as the one
-before, and the report says so. Where one name stands on two such lines (a structured
-abstract's own headings, set on lines of their own), which section is the paper's cannot be
-told from the names: the PDF's lines are placed in no section, so the Abstract is not compared
-with the Results and no causal word is read, and the report names the repeated name. All
-headings are of one level.
+before, and the report says so. A structured abstract's own headings, set on lines of their
+own, are placed exactly where they can be: where the heading after the Abstract's is one a
+structured abstract has (`ABSTRACT_PARTS`) and an Introduction comes after them, those between
+the two are the Abstract's, a level under it (`PdfText.placed`). Where there is no
+Introduction after them, or one name stands on two lines among the Abstract's own headings or
+among the rest, which section is the paper's cannot be told from the names: the PDF's lines
+are placed in no section, so the Abstract is not compared with the Results and no causal word
+is read, G4's limits on the abstract's and the main text's words are said not to be checked
+(never passed or failed: round 1 of #486), and the report says why.
 
 **What runs on the text.** Each P against its statistic, each estimate against its interval,
 the numbers against `--against`, the Abstract against the Results, the reference list (found
 by its heading, as in a .docx, and ended where a list under no heading ends,
-`audit._end_under_no_heading`, at a caption or a title of back matter; an entry starts at a
-line that starts with its number, the number printed being its number,
-`references.census_of_text(printed=True)`) and `--lookup`, the causal words and the cited
+`audit._end_under_no_heading`, at a caption or a title of back matter) and `--lookup`, the
+causal words and the cited
 sentences (a line of a paragraph a line: a sentence goes on from one line to the next,
 `_Source.wrapped`), G6 and G14 on the text staged as Markdown with each heading made one, and
 with `--journal` G4 on the same. Each line is a block to the classifier, as a .docx's
 paragraph is.
 
+**The reference list** (`references.census_of_printed`). A PDF's text has no blank line
+between two entries, so an entry is told apart only by its number: the list's first line opens
+one, and a line opens the next only where it starts with the number after the last ("118."
+after a page range "112-" opens none). Where the first carries no number (an author-year
+list), or an entry holds more than one DOI or more than one PMID, the entries are not told
+apart: each identifier is looked up alone, so that a retracted work among them is asked about,
+no citation is held to an entry (no `entry-never-cited`), and the report says so
+(`entries-not-told-apart`). A DOI or a PMID that ends a line its entry goes on after may go on
+on the next line: it is not sent, and is listed as not looked up (`identifier-not-sent`),
+rather than sent cut and reported unregistered (round 1 of #486).
+
 **What does not**, each said in the report: a table's cells (a PDF's table is lines of text;
 its numbers are read as the text's, and no total, share, mean, flow or count held back is
 read in it), the journal's limits on figures, tables and display items, and in `compare` the
 tables and the figures (`displays-not-compared`, once for each, and a table or a figure the
-letter or the comments name is "not compared": never "the same"). The Document section reads
-a PDF's Author field only, through `pdfinfo` where it is installed, and the blinding check
-reads the text and that field; where `pdfinfo` is not installed both say the field was not
-read. A PDF in a folder given to `audit` is not read and is counted in a note: one there is
+letter or the comments name is "not compared": never "the same"). Where one version is a PDF
+its tables cannot be set apart from its prose, so the other version's are not either: the
+numbers of both are compared the same way, and the report says so once
+(`tables-read-as-prose`; round 1 of #486: v1's table numbers were "new" in v2). The Document
+section reads a PDF's Author field only, through `pdfinfo` where it is installed, and the
+blinding check reads the text, the running heads and feet the reading takes out of it (each
+said as "the running head of page 1", round 1 of #486) and that field; where `pdfinfo` is not
+installed both say the field was not read. A PDF in a folder given to `audit` is not read and is counted in a note: one there is
 as often a figure or a copy of the paper beside its source, and a LaTeX paper's folder holds
 its figures as PDFs.
 
@@ -19461,9 +19482,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     broken by a hyphen at a line's end is read as two, two columns read across the gutter
     put the lines of one beside the other's, a float drawn late stands where it is drawn,
     and a running head or foot `_paged` does not take for one (on fewer than half the pages,
-    or not at a page's edge) is read as text, its numbers among the paper's. A DOI broken
-    across two lines of a reference entry is read to the line's end, and `--lookup` asks for
-    that.
+    or not at a page's edge) is read as text, its numbers among the paper's. A DOI or a PMID
+    that ends a line its entry goes on after is not looked up, whether or not the wrap cut
+    it; one that ends its entry's last line is sent as read.
   - Tables are not read as cells: their numbers are compared and read as the text's, and no
     total, share, mean, flow, count held back or n is held to another in them. A table's
     words count toward G4's word limits.
@@ -19476,8 +19497,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A heading is a line that holds a section's name alone (`HEADINGS`): a section under
     another title is read as the one before, a Results headed "Outcomes" among them, so its
     numbers are the section before's; a structured abstract whose headings stand on lines of
-    their own repeats a name and leaves the PDF's lines unplaced. A wrapped line that holds
-    only "Results", with a capital, is read as a heading.
+    their own with no Introduction after them leaves the PDF's lines unplaced, and so does a
+    paper with no Introduction whose Methods follow its Abstract, and a name on two lines; a structured abstract whose Introduction is headed "Background" makes
+    the paper's Background its own. A wrapped line that holds only "Results", with a capital,
+    is read as a heading.
+  - A reference list whose entries are not told apart is counted by its identifiers, and its
+    citations are held to nothing; one numbered entry that holds two DOIs (an article and its
+    data, say) makes the whole list so. An entry whose number does not follow the last one's
+    goes on the entry before.
+  - Where one version of `compare` is a PDF, a table's numbers on the other side are read as
+    prose too: a number moved between a table and the prose reads as the same.
   - G6 and G14 read the text staged as Markdown, a page's lines one paragraph between two
     headings: a rule that reads a paragraph reads that, and a line Markdown reads as markup (a
     `#`, a list item's number) is read as such.

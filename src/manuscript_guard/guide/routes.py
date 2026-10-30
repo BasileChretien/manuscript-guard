@@ -231,7 +231,9 @@ NO_ACTION = frozenset({"plan-complete", "reference-found", "pointers-unchecked",
                        "section-moved", "table-not-read", "version-not-numbered",
                        "quotation-unpaired",
                        # And of a version that is a PDF (`auditing.pdf`).
-                       "version-pdf", "displays-not-compared"})  # fmt: skip
+                       "version-pdf", "displays-not-compared", "tables-read-as-prose",
+                       # And of a PDF's reference list (`auditing.references`).
+                       "identifier-not-sent", "entries-not-told-apart"})  # fmt: skip
 
 
 #: A finding of a run at the site that holds the data: answered there, by a new run and its

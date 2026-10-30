@@ -72,11 +72,27 @@ class UnreadablePdf(ValueError):
     """A PDF that cannot be read here, or holds no text. The message says why."""
 
 
+#: The names a structured abstract's own headings have where it sets them on lines of their
+#: own, under its Abstract.
+ABSTRACT_PARTS = frozenset({
+    "background", "methods", "method", "methodology", "materials and methods",
+    "material and methods", "methods and materials", "patients and methods",
+    "subjects and methods", "participants and methods", "results", "findings",
+    "results and discussion", "discussion", "conclusion", "conclusions", "limitations",
+})  # fmt: skip
+#: The names of an abstract, and of the Lancet's "Summary".
+_ABSTRACTS = frozenset({"abstract", "structured abstract", "summary"})
+#: What is said where a PDF's headings cannot be placed (`PdfText.placed`).
+UNPLACED = ("a section's name stands alone on two lines or more, or a structured abstract's "
+            "headings stand on lines of their own with no Introduction after them, so which "
+            "section is the paper's is not read")
+
+
 @dataclass(frozen=True)
 class Place:
     """Where a line of a PDF's text stands: its page, from 1; its line counted down that
-    page's text as read, from 1; and the number the PDF prints beside it, where it prints
-    one."""
+    page's text as read, from 1; and the number the PDF prints in front of it, where it prints
+    one there (a number counted on between two the PDF prints is not given)."""
 
     page: int
     line: int
@@ -106,6 +122,9 @@ class PdfText:
     furniture: tuple[str, ...] = ()
     #: Whether the PDF prints line numbers that were read.
     numbered: bool = False
+    #: Each running head and foot taken out, `(page, "head" or "foot", text)`: the blinding
+    #: check reads them (`auditing.journal._pdf_places`).
+    running: tuple[tuple[int, str, str], ...] = ()
 
     def place(self, line: int | None) -> Place | None:
         """Where line `line` of the text stands, None for no line or one not in it."""
@@ -135,18 +154,33 @@ class PdfText:
         return frozenset(line - 1 for line, _title in self.headings)
 
     @property
-    def repeated(self) -> tuple[str, ...]:
-        """The section names that stand on two heading lines or more."""
-        seen: dict[str, int] = {}
-        for _line, title in self.headings:
-            key = _key(title)
-            seen[key] = seen.get(key, 0) + 1
-        return tuple(name for name, count in seen.items() if count > 1)
+    def placed(self) -> tuple[tuple[int, str, int], ...] | None:
+        """Each heading `(line, title, level)`, where the headings can be placed exactly; else
+        None (`UNPLACED`). A structured abstract's headings, on lines of their own, are the
+        Abstract's, level 2, where the heading after the Abstract's is one of
+        `ABSTRACT_PARTS` and an Introduction comes after them: they are those between the two.
+        With no Introduction after them, where they end is not read. A name on two lines
+        among the Abstract's own headings, or among the rest, is not placed either."""
+        keys = [_key(title) for _line, title in self.headings]
+        nested: set[int] = set()
+        first = next((at for at, key in enumerate(keys) if key in _ABSTRACTS), None)
+        if first is not None and first + 1 < len(keys) and keys[first + 1] in ABSTRACT_PARTS:
+            opening = next((at for at in range(first + 1, len(keys))
+                            if keys[at] == "introduction"), None)  # fmt: skip
+            if opening is None:
+                return None
+            nested = set(range(first + 1, opening))
+        for group in (nested, set(range(len(keys))) - nested):
+            names = [keys[at] for at in group]
+            if len(names) != len(set(names)):
+                return None
+        return tuple((line, title, 2 if at in nested else 1)
+                     for at, (line, title) in enumerate(self.headings))  # fmt: skip
 
     def described(self) -> str:
         """What read it and how its places are given, for the report's notes."""
         pages = f"{self.pages} page{'s' if self.pages != 1 else ''}"
-        numbers = (" and, where the PDF numbers its lines, that number" if self.numbered
+        numbers = (" and, where the PDF prints a line's number, that number" if self.numbered
                    else "")  # fmt: skip
         return (f"{self.path.name}: read by {self.reader}, {pages}; each place is a page and a "
                 "line counted down that page's text as read, its running head and page number "
@@ -201,39 +235,80 @@ def read_pdf(path: Path) -> PdfText:
     return _READ[key]
 
 
+def _pdftotext(path: Path, extra: list[str]) -> tuple[str | None, str]:
+    """What `pdftotext` reads in one order, in UTF-8 and read as UTF-8, and "", or None and
+    why it read nothing: it did not answer in time, or failed; an empty reading is "" and
+    ""."""
+    from manuscript_guard.proof.reading import PDFTOTEXT_SECONDS
+
+    try:
+        done = subprocess.run(
+            ["pdftotext", *extra, "-enc", "UTF-8", str(path), "-"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=PDFTOTEXT_SECONDS, check=False,
+        )  # fmt: skip
+    except subprocess.TimeoutExpired:
+        return None, f"pdftotext did not answer within {PDFTOTEXT_SECONDS} seconds"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, f"pdftotext could not be run ({exc})"
+    if done.returncode != 0:
+        said = " ".join((done.stderr or "").split())[:200]
+        return None, f"pdftotext failed on it (exit {done.returncode}{': ' + said if said else ''})"
+    return done.stdout or "", ""
+
+
 def _read(path: Path) -> PdfText:
     from manuscript_guard.proof import reading
 
     if not can_read():
         raise UnreadablePdf(NO_PDFTOTEXT.format(name=path.name))
     name = reading._pdftotext_name()
-    found = []
+    found, failed = [], []
     for order, extra in (("layout order", []), ("drawing order", ["-raw"])):
-        text = reading._pdftotext(path, extra)
-        if text is not None:
-            found.append(reading._paged(f"{name}, {order}", text.split("\f")))
-    found = [one for one in found if one.lines]
+        text, why = _pdftotext(path, extra)
+        if text is None:
+            failed.append(why)
+            continue
+        paged = reading._paged(f"{name}, {order}", text.split("\f"))
+        if paged.lines:
+            found.append((paged, text))
+    if not found and failed:
+        raise UnreadablePdf(f"{path.name} could not be read: {failed[0]}")
     if not found:
         raise UnreadablePdf(f"{path.name} holds no text pdftotext can read: a PDF that is a "
                             "scanned image cannot be audited")  # fmt: skip
     # The margin's numbers read first, then more lines, then the layout order: `max` keeps
     # the first of those that tie.
-    kept = max(found, key=lambda one: (one.numbered, len(one.lines)))
-    return _text_of(path, kept)
+    kept, text = max(found, key=lambda one: (one[0].numbered, len(one[0].lines)))
+    return _text_of(path, kept, text)
 
 
-def _text_of(path: Path, kept) -> PdfText:
+def _text_of(path: Path, kept, raw: str) -> PdfText:
+    """The text of the reading kept, each line placed. `raw` is what `pdftotext` gave, read
+    again for two things `proof.reading` does not keep: whether the PDF printed a line's
+    number in front of it (a number counted on between two printed ones is not shown as the
+    PDF's), and on which page and at which edge each running head and foot stood."""
+    from manuscript_guard.proof.reading import _lines
+
+    pages = [_lines(page) for page in raw.split("\f")]
     places: list[Place] = []
     counted: dict[int, int] = {}
     for line in kept.lines:
         page = line.page or 1
         counted[page] = counted.get(page, 0) + 1
-        places.append(Place(page, counted[page], line.number if kept.numbered else None))
+        typed = pages[page - 1] if page <= len(pages) else []
+        printed = (line.number if kept.numbered and line.number is not None
+                   and f"{line.number} {line.text}" in typed else None)  # fmt: skip
+        places.append(Place(page, counted[page], printed))
     texts = [line.text for line in kept.lines]
     headings = tuple((at, title) for at, text in enumerate(texts, 1)
                      if (title := heading_title(text)) is not None)  # fmt: skip
+    taken = set(kept.furniture)
+    running = tuple((index, "head" if at < len(lines) / 2 else "foot", text)
+                    for index, lines in enumerate(pages, 1)
+                    for at, text in enumerate(lines) if text in taken)  # fmt: skip
     return PdfText(path, kept.reader, kept.pages, "\n".join(texts), tuple(places), headings,
-                   kept.furniture, kept.numbered)  # fmt: skip
+                   kept.furniture, kept.numbered, running)  # fmt: skip
 
 
 #: Where the name `author` gives was read.
@@ -265,9 +340,11 @@ def author(path: Path) -> tuple[str | None, str]:
 
 
 __all__ = [
+    "ABSTRACT_PARTS",
     "AUTHOR_FIELD",
     "HEADINGS",
     "NO_PDFTOTEXT",
+    "UNPLACED",
     "PdfText",
     "Place",
     "UnreadablePdf",

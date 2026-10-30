@@ -163,6 +163,7 @@ def items(report) -> list[Item]:
             Item(REFERENCES, "G7", p.code, p.message, WARN, False, p.path or census.path, p.line)
             for p in census.problems
         ]  # fmt: skip
+        found += _printed_items(census)
     for looked in report.lookups or []:
         entry = looked.entry
         where = entry.path or looked.path
@@ -181,6 +182,28 @@ def items(report) -> list[Item]:
     return (found + _journal_items(report.journal) + _document_items(report)
             + _causal_items(report.causal) + _cited_items(report.cited)
             + _self_citation_items(report.self_citation))  # fmt: skip
+
+
+def _printed_items(census) -> list[Item]:
+    """What is said of a PDF's reference list: entries not told apart, and each identifier
+    not looked up since it may go on on the next line (`references.census_of_printed`)."""
+    from manuscript_guard.auditing.references import UNTOLD
+
+    found = []
+    if census.style == UNTOLD:
+        found.append(Item(REFERENCES, "G7", "entries-not-told-apart", UNTOLD_SAID, INFO, False,
+                          census.path))  # fmt: skip
+    found += [Item(REFERENCES, "G7", "identifier-not-sent", f"{said}: {NOT_SENT}", INFO,
+                   False, census.path, line) for line, said in census.unsent]  # fmt: skip
+    return found
+
+
+#: What is said of a PDF's reference list whose entries could not be told apart.
+UNTOLD_SAID = ("its entries could not be told apart (not numbered 1, 2, 3 in turn, or an entry "
+               "holding more than one DOI or PMID): each DOI and PMID is counted and looked up "
+               "alone, and no citation is held to an entry")
+#: What is said of an identifier that ends a line its entry goes on after.
+NOT_SENT = "not looked up: it may continue on the next line"
 
 
 def _causal_items(read) -> list[Item]:
@@ -816,6 +839,8 @@ def _gates(report, root: Path | None, show: _Show) -> list[str]:
 
 
 def _references(report, show) -> list[str]:
+    from manuscript_guard.auditing.references import UNTOLD
+
     lines: list[str] = []
     looked: dict[Path, list] = {}
     for one in report.lookups or []:
@@ -826,10 +851,18 @@ def _references(report, show) -> list[str]:
             continue
         count = len(census.entries)
         style = census.style
-        if census.markers and style != "not numbered":
+        if census.markers and style not in ("not numbered", UNTOLD):
             style += f", {census.markers} citation{'s' if census.markers != 1 else ''} read"
-        lines.append(f"  {show(census.path)}: {count} entr{'y' if count == 1 else 'ies'}, "
-                     f"{census.dois} with a DOI, {census.pmids} with a PMID; {style}")  # fmt: skip
+        if style == UNTOLD:
+            # One "entry" an identifier (`references.census_of_printed`).
+            lines.append(f"  {show(census.path)}: {census.dois} DOI(s) and {census.pmids} "
+                         f"PMID(s) read; {UNTOLD_SAID}")  # fmt: skip
+        else:
+            lines.append(f"  {show(census.path)}: {count} entr{'y' if count == 1 else 'ies'}, "
+                         f"{census.dois} with a DOI, {census.pmids} with a PMID; "
+                         f"{style}")  # fmt: skip
+        lines += [f"    {show.at(census.path, line)}: {said}: {NOT_SENT}"
+                  for line, said in census.unsent]  # fmt: skip
         for problem in census.problems[:LISTED]:
             lines.append(f"    {_at(problem.path, problem.line, census.path, show)}"
                          f"{problem.message}")  # fmt: skip

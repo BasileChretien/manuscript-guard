@@ -55,10 +55,16 @@ and `--lookup`, the causal words, the cited sentences, and the words (G6, G14). 
   text's, and no total, share, mean or count held back is checked in it.
 - **Headings.** A PDF marks none. A line is read as a heading only where it holds a section's
   name and nothing else, numbered or not ("Methods", "2. Results", "REFERENCES"). A section
-  under any other title is read as part of the one before. Where one name stands alone on two
-  lines, a structured abstract's own headings perhaps, which is the paper's is not read: the
-  lines are placed in no section, the Abstract is not compared with the Results, and the
-  report says why.
+  under any other title is read as part of the one before. A structured abstract's own
+  headings, on lines of their own, are the Abstract's where an Introduction follows them.
+  Where none does, or one name stands alone on two lines otherwise, which section is the
+  paper's is not read: the lines are placed in no section, the Abstract is not compared with
+  the Results, a journal's limits on the abstract's and the main text's words are not
+  checked, and the report says why.
+- **The reference list.** An entry is told apart by its number only, 1, 2, 3 in turn. Where
+  the list is not numbered so, or an entry holds two DOIs, each DOI and PMID is looked up
+  alone and no citation is held to an entry. A DOI or PMID at the end of a line its entry goes
+  on after may be cut by the wrap, and is listed as not looked up rather than sent.
 - **Layout.** A number split by a hyphen at a line's end, or set across two columns, may be
   read as two; a running head the reading did not recognise is read as text. The two
   `pdftotext` builds read some PDFs differently, and the report names the one that read it.
@@ -172,7 +178,7 @@ words or more, is looked for in each document given, the supplement as well as t
 document, where the build looks for them in a blind submission: in a .docx its text, notes,
 comments, tracked deletions, author fields, links' addresses and pictures' text; in Markdown
 its text; in LaTeX each file of its tree and the PDF and SVG pictures it places; in a PDF its
-text and the Author of its Info dictionary. The reference
+text, its running heads and feet, and the Author of its Info dictionary. The reference
 list is left out where the audit finds it, since a blind journal asks its authors to cite
 their own work in the third person. Each one found is listed with its place and counted by
 `--strict`. Where the review is not blind, nobody is looked for, and the report says so. A
@@ -214,6 +220,8 @@ PDF), and each line of the report is a fact with its place, never a verdict:
 Where either version is a PDF, its places are pages and lines, as in the audit, and its
 tables and figures are not compared: the report says so once for each, and never says a table
 is the same. A table or a figure the letter or your comments name is "not compared" there.
+The other version's tables are then read as prose too, so that a number in a table is
+compared the same way on both sides, and the report says so.
 
 **`--response LETTER`** reads the authors' letter (.docx, Markdown or text). Each quotation of
 four words or more, and each block quotation, is looked for in both versions, as whole words

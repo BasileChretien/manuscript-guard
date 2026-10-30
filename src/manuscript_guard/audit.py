@@ -782,7 +782,7 @@ def _read_pdf(report: AuditReport, sources: list[_Source], path: Path) -> None:
     list under no heading ends (`_end_under_no_heading`), at a caption or back matter; and
     what it is not read for said."""
     from manuscript_guard.auditing.pdf import UnreadablePdf, read_pdf
-    from manuscript_guard.auditing.references import census_of_text
+    from manuscript_guard.auditing.references import census_of_printed
 
     try:
         pdf = read_pdf(path)
@@ -799,8 +799,8 @@ def _read_pdf(report: AuditReport, sources: list[_Source], path: Path) -> None:
     report.not_audited += [pdf.described(), *(
         f"{path.name}: {pdf.stretch(start + 1, end)}, read as the reference list"
         for start, end in spans), *(f"{path.name}: {what}" for what in PDF_NOT_READ)]
-    report.references.append(census_of_text(path, text, spans, hidden, _intervals(blanked),
-                                            docx=False, printed=True))  # fmt: skip
+    report.references.append(census_of_printed(path, text, spans, hidden,
+                                               _intervals(blanked)))  # fmt: skip
 
 
 def pdf_spans(pdf) -> list[tuple[int, int]]:
@@ -826,20 +826,19 @@ PDF_NOT_READ = (
 
 def _pdf_structure(report: AuditReport, pdf) -> dict:
     """Where each line of a PDF stands, from the lines that hold a section's name alone
-    (`auditing.pdf.heading_title`); placed nowhere where one name stands on two of them,
-    which is said."""
+    (`auditing.pdf.heading_title`), a structured abstract's under its Abstract
+    (`PdfText.placed`); placed nowhere where they cannot be placed exactly, which is said."""
     from manuscript_guard.auditing.abstract import placed
+    from manuscript_guard.auditing.pdf import UNPLACED
     from manuscript_guard.text.sections import Section
 
     heading_lines = frozenset(line for line, _title in pdf.headings)
-    if pdf.repeated:
-        report.not_audited.append(
-            f"{pdf.path.name}: its lines were placed in no section: "
-            + ", ".join(repr(name) for name in pdf.repeated)
-            + " stands alone on two lines or more (a structured abstract's own headings, "
-            "perhaps), and which is the paper's is not read")  # fmt: skip
+    levels = pdf.placed
+    if levels is None:
+        report.not_audited.append(f"{pdf.path.name}: its lines were placed in no section: "
+                                  f"{UNPLACED}")  # fmt: skip
         return {"heading_lines": heading_lines}
-    sections = [Section(title, 1, "", line) for line, title in pdf.headings]
+    sections = [Section(title, level, "", line) for line, title, level in levels]
     place, abstract, results = placed(sections) if sections else (None, False, False)
     return {"place": place, "abstract": abstract, "results": results,
             "part": _parts(sections, None), "heading_lines": heading_lines}  # fmt: skip

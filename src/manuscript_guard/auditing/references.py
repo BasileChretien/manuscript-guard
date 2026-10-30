@@ -41,6 +41,8 @@ NUMBERED = "numbered"
 BY_PLACE = "numbered by place"
 KEYED = "keyed"
 UNNUMBERED = "not numbered"
+#: A PDF's list whose entries are not told apart (`census_of_printed`).
+UNTOLD = "its entries not told apart"
 
 #: An entry that carries its number: "12." / "12)" / "[12]", or as pandoc writes one it
 #: escapes, which prints as typed: "12\." / "12\)" / "\[12\]". Groups: the bracketed number,
@@ -112,6 +114,9 @@ class Census:
     markers: int = 0
     problems: list[Problem] = field(default_factory=list)
     note: str = ""
+    #: In a PDF's list, each DOI or PMID that ends a line the entry goes on after, `(line,
+    #: identifier as read)`: it may go on on the next line, and is not looked up.
+    unsent: list[tuple[int, str]] = field(default_factory=list)
 
     @property
     def dois(self) -> int:
@@ -143,11 +148,9 @@ def _unopened(doi: str) -> bool:
     return last in _CLOSING and doi.count(last) > doi.count(_CLOSING[last])
 
 
-def _entries_of(lines: list[str], spans: list[tuple[int, int]], paragraphs: bool,
-                printed: bool = False) -> list[Entry]:  # fmt: skip
+def _entries_of(lines: list[str], spans: list[tuple[int, int]], paragraphs: bool) -> list[Entry]:
     """The entries under each list's heading: a paragraph each in a .docx, and in Markdown
-    a block, or a line that starts with its number; with `printed`, each numbered by the
-    number it starts with, not as pandoc counts a list."""
+    a block, or a line that starts with its number."""
     found: list[tuple[int, list[str], int]] = []
     for list_at, (start, end) in enumerate(spans):
         current: list[str] | None = None
@@ -170,7 +173,7 @@ def _entries_of(lines: list[str], spans: list[tuple[int, int]], paragraphs: bool
         text = " ".join(parts)
         numbered = _NUMBERED_ENTRY.match(text)
         number = int(numbered.group(1) or numbered.group(2)) if numbered else None
-        if paragraphs or printed or not _is_list_item(numbered):
+        if paragraphs or not _is_list_item(numbered):
             run = None
         elif run is not None and _same_list(run, numbered.group(4), list_at):
             counted += 1
@@ -235,18 +238,14 @@ def census_of_text(
     *,
     docx: bool,
     numbering: Mapping[int, tuple[str, bool, int]] | None = None,
-    printed: bool = False,
 ) -> Census:
     """A Markdown, text or .docx paper's census: its lists are `spans` of `original`, its
     citations are read in `hidden`, where the lists are blanked. `numbering` is a .docx's
-    Word numbering, by the line it numbers (`text.docx.DocxText.numbering`). `printed` is
-    for a PDF's text: an entry starts at a line that starts with its number, as in Markdown,
-    and that number is the one printed, where pandoc would count a Markdown list on from its
-    first (`auditing.pdf`)."""
+    Word numbering, by the line it numbers (`text.docx.DocxText.numbering`)."""
     if not spans:
         return Census(path, note="no reference list was found under a heading, so none was "
                       "counted")  # fmt: skip
-    entries = _entries_of(original.split("\n"), spans, paragraphs=docx, printed=printed)
+    entries = _entries_of(original.split("\n"), spans, paragraphs=docx)
     census = Census(path, tuple(entries))
     markers = markers_in(hidden, intervals)
     census.markers = len(markers)
@@ -267,6 +266,97 @@ def census_of_text(
         return census
     census.problems = _held_to_numbers(path, entries, markers)
     return census
+
+
+def census_of_printed(
+    path: Path,
+    text: str,
+    spans: list[tuple[int, int]],
+    hidden: str,
+    intervals: list[tuple[int, int]],
+) -> Census:
+    """A PDF's census (`auditing.pdf`). Its text has no blank line between two entries, so an
+    entry is told apart only by its number: the first line of the list opens one, and a line
+    opens the next only where it starts with the number after the last, "2." or "[2]" after
+    1 (a wrapped page range, "112-" then "118. doi...", opens none).
+
+    Where an entry holds more than one DOI or more than one PMID, or the list's first line
+    carries no number, the entries are not told apart (`UNTOLD`): each identifier is then
+    looked up alone, as an entry of its own, so that a retracted work among them is asked
+    about, and no citation is held to an entry. A DOI or a PMID that ends a line the entry
+    goes on after may go on on the next line, cut by the wrap: it is not looked up, and is
+    listed as such (`Census.unsent`), rather than sent cut and reported unregistered."""
+    if not spans:
+        return Census(path, note="no reference list was found under a heading, so none was "
+                      "counted")  # fmt: skip
+    lines = text.split("\n")
+    found: list[tuple[int | None, list[tuple[int, str]]]] = []
+    for start, end in spans:
+        expected: int | None = None
+        first = True
+        for index in range(start + 1, min(end, len(lines))):
+            line = lines[index]
+            if not line.strip():
+                continue
+            numbered = _NUMBERED_ENTRY.match(line)
+            number = int(numbered.group(1) or numbered.group(2)) if numbered else None
+            if first or (number is not None and number == expected):
+                first = False
+                found.append((number, [(index + 1, line)]))
+                expected = number + 1 if number is not None else None
+            else:
+                found[-1][1].append((index + 1, line))
+    census = Census(path)
+    entries: list[Entry] = []
+    untold = any(number is None for number, _parts in found)
+    for number, parts in found:
+        sent, cut = _sent_identifiers(parts)
+        census.unsent += cut
+        dois = tuple(dict.fromkeys(doi for _at, doi, kind in sent if kind == "doi"))
+        pmids = tuple(dict.fromkeys(pmid for _at, pmid, kind in sent if kind == "pmid"))
+        untold = untold or len(dois) > 1 or len(pmids) > 1
+        joined = " ".join(" ".join(line for _at, line in parts).split())
+        entries.append(Entry(f"entry {number}" if number is not None else "an entry",
+                             parts[0][0], number=number, dois=dois, pmids=pmids,
+                             text=joined))  # fmt: skip
+    census.markers = len(markers_in(hidden, intervals))
+    if untold:
+        # One "entry" for each identifier, at its line, so that each is asked about.
+        census.style = UNTOLD
+        census.entries = tuple(
+            Entry(f"the {kind.upper() if kind == 'doi' else 'PMID'} {said} of the list", at,
+                  dois=(said,) if kind == "doi" else (), pmids=(said,) if kind == "pmid" else (),
+                  text=said)
+            for _number, parts in found for at, said, kind in _sent_identifiers(parts)[0])
+        return census
+    census.entries = tuple(entries)
+    if entries:
+        census.style = NUMBERED
+        census.problems = _held_to_numbers(path, entries, markers_in(hidden, intervals))
+    return census
+
+
+def _sent_identifiers(parts: list[tuple[int, str]]) -> tuple[list[tuple[int, str, str]],
+                                                             list[tuple[int, str]]]:  # fmt: skip
+    """Each DOI and PMID typed in an entry's lines, `(line, identifier, kind)`, once each,
+    and apart from them those that end a line the entry goes on after, `(line, as read)`."""
+    sent: list[tuple[int, str, str]] = []
+    cut: list[tuple[int, str]] = []
+    seen: set[str] = set()
+    for at, (line_at, line) in enumerate(parts):
+        last = at == len(parts) - 1
+        for pattern, kind in ((_DOI, "doi"), (_PMID, "pmid")):
+            for match in pattern.finditer(line):
+                said = (_trimmed(normal_doi(match.group(0))).lower() if kind == "doi"
+                        else match.group(1))  # fmt: skip
+                if not said or said in seen:
+                    continue
+                seen.add(said)
+                if not last and not line[match.end():].strip(" .,;"):
+                    cut.append((line_at, said))
+                else:
+                    sent.append((line_at, said, kind))
+    return sent, cut
 
 
 def _numbered_by_word(

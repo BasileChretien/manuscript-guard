@@ -328,14 +328,18 @@ def figures(old: Version, new: Version) -> list[Item]:
 # ----------------------------------------------------------------------------- numbers
 
 
-def prose(version: Version, *, apart: bool = True) -> tuple[str, Callable[[int], int]]:
+def prose(version: Version, *, apart: bool = True,
+          tables: bool = True) -> tuple[str, Callable[[int], int]]:  # fmt: skip
     """The version's text as its sentences are cut, and the line of the version each of its
     lines is: the lines set apart emptied, the reference list's and the tables', unless
     `apart` is false. A .docx's paragraphs, a line each, are set a blank line apart, so that
     a sentence ends where its paragraph does: a heading is no part of the sentence after it."""
     lines = version.text.split("\n")
-    if apart and version.set_apart:
-        lines = ["" if at in version.set_apart else line for at, line in enumerate(lines, 1)]
+    # With `tables` false a table's lines are prose, as a PDF's are, where the other version
+    # is one: set apart on one side only, its numbers would be gone or new on the other.
+    kept = version.set_apart if tables else version.set_apart - version.table_lines
+    if apart and kept:
+        lines = ["" if at in kept else line for at, line in enumerate(lines, 1)]
     if version.kind == "PDF":
         # A PDF's heading is a line of its own, which no sentence goes on through.
         titled = {heading.line for heading in version.sections if heading.level}
@@ -348,9 +352,9 @@ def prose(version: Version, *, apart: bool = True) -> tuple[str, Callable[[int],
 class _Read:
     """A version's prose, its facts and its sentences, each fact with its sentence."""
 
-    def __init__(self, version: Version) -> None:
+    def __init__(self, version: Version, tables: bool = True) -> None:
         self.version = version
-        text, self.line = prose(version)
+        text, self.line = prose(version, tables=tables)
         self.text = text
         self.facts = facts(text)
         self.sentences = claims.sentences(text)
@@ -375,11 +379,17 @@ class _Read:
 
 
 def numbers(old: Version, new: Version) -> list[Item]:
-    """The numbers, citation keys and bindings of the prose gone, new or changed."""
-    was, now = _Read(old), _Read(new)
+    """The numbers, citation keys and bindings of the prose gone, new or changed. Where
+    either version is a PDF, whose tables cannot be set apart, the tables of both are read as
+    prose, and that is said once."""
+    pdf = _pdf_of(old, new)
+    was, now = _Read(old, tables=pdf is None), _Read(new, tables=pdf is None)
     stood, stands = Counter(f.key for f in was.facts), Counter(f.key for f in now.facts)
     gone_left, new_left = stood - stands, stands - stood
-    found: list[Item] = []
+    found: list[Item] = [] if pdf is None else [Item(
+        NUMBERS, GATE, "tables-read-as-prose", "tables are read as prose in both versions, "
+        f"since {'v2' if pdf is new else 'v1'} is a PDF, whose tables cannot be set apart",
+        INFO, False, pdf.path)]  # fmt: skip
     taken_was: set[int] = set()
     taken_now: set[int] = set()
     for before, after in _units(was, now):
@@ -519,7 +529,8 @@ def _alone(read: _Read, left: Counter, taken: set[int], counts: tuple[Counter, C
 
 def claim_moves(old: Version, new: Version) -> list[Item]:
     """Each changed sentence of v2 that claims more, less or the opposite of what it did."""
-    (was, _line), (now, line) = prose(old), prose(new)
+    tables = _pdf_of(old, new) is None
+    (was, _line), (now, line) = prose(old, tables=tables), prose(new, tables=tables)
     return [
         _item(CLAIMS, finding.code, finding.message.replace("before the edit", "in v1"), new,
               line(finding.line), WARN)

@@ -52,26 +52,33 @@ class _Staged:
     #: For a PDF, the line of its text (`auditing.pdf.PdfText.text`) that each line of the
     #: staged `main.md` is, from 1.
     lines: tuple[int, ...] = ()
+    #: For a PDF whose headings cannot be placed exactly (`auditing.pdf.PdfText.placed`):
+    #: where its Abstract ends is not read, so G4's limits on its words are not checked.
+    unplaced: bool = False
 
 
 def _staged_pdf(paper: Path) -> _Staged:
     """A PDF's text as the Markdown G4, G6 and G14 read: each line of it a line, and each line
     that holds a section's name alone (`auditing.pdf.heading_title`) a heading, a blank line
-    before and after it, with the line of the text each line of the Markdown is."""
+    before and after it, a structured abstract's a heading under the Abstract's where it can
+    be placed (`PdfText.placed`), with the line of the text each line of the Markdown is."""
     from manuscript_guard.auditing.pdf import UnreadablePdf, read_pdf
 
     try:
         pdf = read_pdf(paper)
     except UnreadablePdf as exc:
         raise ValueError(str(exc)) from None
-    titles = dict(pdf.headings)
+    placed = pdf.placed
+    levels = ({line: (title, level) for line, title, level in placed} if placed is not None
+              else {line: (title, 1) for line, title in pdf.headings})  # fmt: skip
     staged: list[str] = []
     lines: list[int] = []
     for at, text in enumerate(pdf.text.split("\n"), 1):
-        said = ["", f"# {titles[at]}", ""] if at in titles else [text]
+        said = ["", f"{'#' * levels[at][1]} {levels[at][0]}", ""] if at in levels else [text]
         staged += said
         lines += [at] * len(said)
-    return _Staged({"main.md": "\n".join(staged) + "\n"}, {"main.md": paper}, lines=tuple(lines))
+    return _Staged({"main.md": "\n".join(staged) + "\n"}, {"main.md": paper}, lines=tuple(lines),
+                   unplaced=placed is None)  # fmt: skip
 
 
 def _stage(paper: Path, tree=None) -> _Staged:

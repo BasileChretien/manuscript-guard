@@ -145,8 +145,9 @@ def run_journal(
         return run
     run.converted = staged.converted
     unread = _tables_unread(staged, profile)
-    run.skipped += unread
-    run.limits_unchecked = bool(unread)
+    words = _words_unread(staged, profile)
+    run.skipped += unread + words
+    run.limits_unchecked = bool(unread or words)
     slug = _slug(profile_path)
     with tempfile.TemporaryDirectory(prefix="mg-audit-") as folder:
         root = Path(folder).resolve()
@@ -165,6 +166,8 @@ def run_journal(
         for finding in found:
             if finding.code == "graphical-abstract-missing":
                 continue  # a file of its own, said under what was not checked
+            if words and finding.code in _LIMITS and finding.message.startswith(_PLACED_WORDS):
+                continue  # where the Abstract ends is not read: said as not checked
             if finding.path is not None and Path(finding.path).resolve() == staged_profile:
                 run.findings.append(replace(finding, path=profile_path))
             else:
@@ -187,6 +190,26 @@ INDENTED_TABLES = ("the journal's limits on tables and display items: a table's 
 PDF_DISPLAYS = ("the journal's limits on figures, tables and display items: a PDF's tables "
                 "and figures are not read as such, and the words of its tables are counted "
                 "with its text's")
+
+
+#: Said where a PDF's headings cannot be placed exactly (`auditing.pdf.PdfText.placed`).
+PDF_UNPLACED_WORDS = ("the journal's limits on the abstract's and the main text's words: the "
+                      "PDF's headings could not be placed exactly (a section's name alone on two "
+                      "lines, or a structured abstract's headings with no Introduction after "
+                      "them), so where its Abstract ends is not read")
+#: G4's findings on a limit, and those of them that count words where the Abstract ends
+#: decides (`gates.journal._check_limits`): neither passed nor failed where that is not read.
+_LIMITS = ("over-journal-limit", "near-journal-limit")
+_PLACED_WORDS = ("abstract: ", "main text: ")
+
+
+def _words_unread(staged, profile: dict) -> list[str]:
+    """Why the limits on the abstract's and the main text's words are not checked, where the
+    main document is a PDF whose headings cannot be placed and the profile sets either."""
+    limits = profile.get("limits") or {}
+    if not staged.unplaced or not ({"abstract_words", "main_text_words"} & set(limits)):
+        return []
+    return [PDF_UNPLACED_WORDS]
 
 
 def _tables_unread(staged, profile: dict) -> list[str]:
@@ -245,7 +268,8 @@ DELETED = "the text a tracked change deleted"
 
 def _pdf_places(paper: Path, unread: list[str]) -> list[tuple[str, str]] | str:
     """Where in a PDF a name can be: its text as the audit reads it, its reference list cut
-    (`audit.pdf_spans`), and the Author of its Info dictionary, read by `pdfinfo`; where that
+    (`audit.pdf_spans`), its running heads and feet (`PdfText.running`), which the reading
+    takes out of the text, and the Author of its Info dictionary, read by `pdfinfo`; where that
     could not be read, why, in `unread`. Nothing else the PDF keeps is read: its other
     fields, its XMP metadata, its annotations (DESIGN.md, Known gaps)."""
     from manuscript_guard.audit import _blank, pdf_spans
@@ -256,6 +280,15 @@ def _pdf_places(paper: Path, unread: list[str]) -> list[tuple[str, str]] | str:
     except UnreadablePdf as exc:
         return f"{paper.name} could not be read for the authors' names: {exc}"
     places = [("the text", _blank(pdf.text, pdf_spans(pdf)))]
+    # Each running head and foot the reading took out of the text, once for each wording, at
+    # the first page it stands on.
+    pages: dict[tuple[str, str], list[int]] = {}
+    for page, side, text in pdf.running:
+        pages.setdefault((side, text), []).append(page)
+    for (side, text), on in pages.items():
+        more = (f" (and of {len(on) - 1} more page{'s' if len(on) > 2 else ''})"
+                if len(on) > 1 else "")  # fmt: skip
+        places.append((f"the running {side} of page {on[0]}{more}", text))
     name, why = author(paper)
     if name is None:
         unread.append(f"{paper.name}: its Author field was not read for the authors' names: "

@@ -226,7 +226,7 @@ Some journals ask the authors for the package `manuscript-guard package` writes:
 scripts, the results they wrote and what they ran with, with `MANIFEST.yaml` listing each file
 by its size and SHA-256. `--package` takes the .zip or the unpacked folder. A .zip is read
 member by member before anything is unpacked, and refused whole where a member is named from
-the root or a drive, has `..`, an empty or a `.` part, a backslash or a NUL in its name, is
+the root or a drive, has `..`, an empty or a `.` part, a backslash, a NUL or a line break in its name, is
 both a file and a folder of other members, is a link or encrypted, where two names differ only
 in case, or where the archive holds more than 50,000 members or 16 GiB. On Windows, a name its
 file system cannot hold is refused as well (a colon, one of `<>"|?*`, a control character, a

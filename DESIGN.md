@@ -8216,7 +8216,8 @@ package `manuscript-guard package` writes, which some journals ask authors for. 
 optional with it: alone, the package is read and nothing else. A .zip is opened as an untrusted
 archive: every member is read from its central directory first, and the whole is refused,
 nothing unpacked, on every system, where a member is named from the root or a drive (`/x`,
-`C:x`), has `..`, an empty or a `.` part, a backslash or a NUL in its name, is both a file and
+`C:x`), has `..`, an empty or a `.` part, a backslash, a NUL or a line break (any
+`str.splitlines()` ends a line at, so that no name splits a line of SHA256SUMS) in its name, is both a file and
 a folder of other members, is a symbolic link or encrypted, or shares its name with another
 but for case, or where the archive holds more than 50,000 members or 16 GiB unpacked. A
 backslash is refused everywhere though it is a plain character to POSIX: Windows reads it as a

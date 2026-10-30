@@ -636,3 +636,75 @@ def test_a_folder_named_as_a_results_file_is_not_an_output(tmp_path, capsys) -> 
     paper.write_text(PAPER, encoding="utf-8")
     code, report, _ = audited(capsys, str(paper), "--package", str(root))
     assert code == 0 and report["counts"]["outputs"] == 1
+
+
+# ------------------------------------------------------------------ fix-only round
+
+
+REFERENCED = PAPER + ("\n# References\n\n1. Example A. A study of urine. J Ex. 2019;1:1-9. "
+                      "doi:10.1000/example.1\n")
+
+
+def test_a_lookup_draft_lists_no_asked_bullet(tmp_path, capsys, monkeypatch) -> None:
+    """Fix-only round of #487: what was asked is the report's to list, not the draft's."""
+    import dataclasses
+
+    from manuscript_guard.auditing import references
+
+    real = references.look_up
+
+    def kept(censuses, **kwargs):
+        return [dataclasses.replace(one, came="kept")
+                for one in real(censuses, **{**kwargs, "dry_run": True})]
+
+    monkeypatch.setattr(references, "look_up", kept)
+    paper = tmp_path / "paper.md"
+    paper.write_text(REFERENCED, encoding="utf-8")
+    target = tmp_path / "d.md"
+    assert main(["audit", str(paper), "--lookup", "--report-draft", str(target)]) == 0
+    capsys.readouterr()
+    text = target.read_text(encoding="utf-8")
+    assert "asked doi" not in text and "asked Crossref" not in text
+    assert "The registries (--lookup): 1 entry asked about" in text
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_a_lookup_with_nothing_to_ask_says_so(tmp_path, capsys, dry_run: bool) -> None:
+    paper = tmp_path / "paper.md"
+    paper.write_text(PAPER, encoding="utf-8")
+    target = tmp_path / "d.md"
+    assert main(["audit", str(paper), "--lookup", *(["--dry-run"] if dry_run else []),
+                 "--report-draft", str(target)]) == 0  # fmt: skip
+    capsys.readouterr()
+    unchecked = target.read_text(encoding="utf-8").split("### What was not checked")[1]
+    assert "no reference gives a DOI or a PMID" in unchecked.split("## Exact findings")[0]
+
+
+@pytest.mark.parametrize("code", [10, 13, 11, 12, 0x1C, 0x1D, 0x1E, 0x85, 0x2028, 0x2029])
+def test_a_name_with_a_line_break_is_refused_everywhere(monkeypatch, code: int) -> None:
+    from manuscript_guard.auditing import unpack
+
+    monkeypatch.setattr(unpack, "windows", lambda: False)
+    assert "line break" in unpack._unsafe("pkg/a" + chr(code) + "b.json")
+
+
+def test_a_drive_is_said_to_be_a_drive(monkeypatch) -> None:
+    from manuscript_guard.auditing import unpack
+
+    monkeypatch.setattr(unpack, "windows", lambda: False)
+    for name in ("x:notes", "C:x"):
+        said = unpack._unsafe(name)
+        assert "Windows drive" in said and "root" not in said, name
+    assert "root" in unpack._unsafe("/x")
+
+
+def test_a_verification_digest_that_differs_is_found_in_the_draft(tmp_path, capsys) -> None:
+    root = small_package(tmp_path)
+    record = {"check": {"passed": True, "gates": {}}, "digests": {"results_sha256": "0" * 64}}
+    (root / "VERIFICATION.json").write_text(json.dumps(record), encoding="utf-8")
+    sign(root)
+    target = tmp_path / "d.md"
+    assert main(["audit", "--package", str(root), "--report-draft", str(target)]) == 0
+    capsys.readouterr()
+    nothing = target.read_text(encoding="utf-8").split("## Checks that ran and found nothing")[1]
+    assert "Package results" not in nothing

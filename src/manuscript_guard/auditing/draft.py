@@ -192,7 +192,9 @@ def _unchecked_of_audit(report) -> list[str]:
         found.append(f"The Abstract against Results: not compared, {report.abstract.why_not}.")
     if report.lookups is None:
         found.append("The registries: the references were not looked up (`--lookup`).")
-    elif report.lookups and not any(one.came for one in report.lookups):
+    elif not report.lookups:
+        found.append("The registries: not asked, since no reference gives a DOI or a PMID.")
+    elif not any(one.came for one in report.lookups):
         # Round 2 of #487: a dry run asked nothing, and was said to have asked.
         found.append("The registries: not looked up (dry run); what would be asked is listed "
                      "under References.")  # fmt: skip
@@ -212,8 +214,9 @@ def _references_of_audit(report, items: list[Item], show: Show) -> list[str]:
         else:
             lines.append(f"- {show(census.path)}: {len(census.entries)} entries, {census.dois} "
                          f"with a DOI, {census.pmids} with a PMID; {census.style}")  # fmt: skip
-    # Each item once: what was asked, or would be on a dry run, as the report lists it.
-    shown = [item for item in items if item.section in REFERENCE_SECTIONS]
+    # What was asked is the report's to list; what a dry run would ask is listed, once.
+    shown = [item for item in items if item.section in REFERENCE_SECTIONS
+             and item.code != "looked-up"]  # fmt: skip
     for item in shown:
         lines += _bullet(item, show)
     return lines or ["- No reference list was read."]
@@ -291,7 +294,8 @@ def _package_checks(package) -> list[tuple[str, str, int]]:
         "package-file-unlisted", "package-sums-differ", "package-sums-missing")]  # fmt: skip
     on_results = [i for i in package.found if i.code.startswith("package-result")
                   or i.code == "package-script-missing"
-                  or (i.code.startswith("package-receipt") and i.severity != INFO)]  # fmt: skip
+                  or (i.code.startswith("package-receipt") and i.severity != INFO)
+                  or i.code.startswith("package-verification")]  # fmt: skip
     return [
         ("Package files against MANIFEST.yaml and SHA256SUMS", _read(package.files, "file"),
          len(on_files)),

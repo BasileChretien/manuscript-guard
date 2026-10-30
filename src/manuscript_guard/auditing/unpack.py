@@ -4,7 +4,8 @@ folder it is unpacked into, or the archive is past the limits; a folder is read 
 and refused where it holds a link, which could lead outside it.
 
 What a .zip is refused for, on every system: a member named from the root or a drive (`/x`,
-`C:x`, `\\x`), a name with `..`, an empty or a `.` part, a backslash or a NUL, a name that is
+`C:x`, `\\x`), a name with `..`, an empty or a `.` part, a backslash, a NUL or a line break
+(any `str.splitlines()` ends a line at, so that no name splits a line of SHA256SUMS), a name that is
 both a file and a folder of other members, a symbolic link, an encrypted member, two members
 whose names differ only in case, more than `MAX_MEMBERS` members, or more than `MAX_BYTES`
 once unpacked. On Windows also a name its file system cannot hold: a colon, a control
@@ -38,6 +39,10 @@ _DEVICES = frozenset({"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
                       *(f"COM{n}" for n in _DIGITS), *(f"LPT{n}" for n in _DIGITS)})  # fmt: skip
 #: Characters no Windows file name holds; a control character neither.
 _NOT_IN_A_NAME = frozenset('<>:"|?*')
+#: Each character `str.splitlines()` ends a line at, which no member's name may hold, so that
+#: no name can split a line of SHA256SUMS.
+_LINE_BREAKS = frozenset(chr(code) for code in (10, 11, 12, 13, 0x1C, 0x1D, 0x1E, 0x85, 0x2028,
+                                                0x2029))  # fmt: skip
 _CHUNK = 1 << 20
 
 
@@ -53,8 +58,12 @@ def _unsafe(name: str) -> str:
     `analysis/aux.R` packages, and was refused on Linux too): a colon, `<>"|?*`, a control
     character, a part ending in a stop or a space, and a device's name. Elsewhere a name the
     file system cannot hold refuses the package when it is written."""
-    if not name or name.startswith(("/", "\\")) or PureWindowsPath(name).drive:
+    if not name or name.startswith(("/", "\\")):
         return "is named from the root"
+    if PureWindowsPath(name).drive:
+        return "names a Windows drive, where it would be written outside the folder"
+    if any(char in _LINE_BREAKS for char in name):
+        return "holds a line break in its name"
     if "\\" in name or "\0" in name:
         return "has a backslash or a NUL in its name, which Windows reads otherwise"
     parts = name.removesuffix("/").split("/")

@@ -84,7 +84,7 @@ def test_a_report_about_g6_follows_the_template_and_asks_for_the_gate_label(kept
     assert asked["labels"] == ["gate"]
     assert asked["title"] == ["[G6] flagged: model-artefact"]
     name = hashlib.sha256(ARTEFACT.encode("utf-8")).hexdigest()[:12]
-    assert f"def test_reported_{name}(project: Path) -> None:" in out
+    assert f"def test_reported_g6_flagged_{name}(project: Path) -> None:" in out
     assert "Nothing was sent." in out
     assert len(list(kept.glob("report-*.md"))) == 1
 
@@ -164,17 +164,59 @@ def test_a_command_is_named_by_its_name(kept, capsys) -> None:
      "reproduced: the snippet alone gives `abbreviation-used-before-defined`"),
     (["audit", "--flagged", "does-not-fit", MISFIT],
      "reproduced: the snippet alone gives `does-not-fit`"),
+    # No list of the codes a gate can give is kept, so a code the snippet does not give is
+    # said to be missing from its findings and given no verdict: it may be misspelt.
     (["audit", "--flagged", "does-not-fit", FITS],
-     "not reproduced: the snippet alone does not give `does-not-fit`"),
+     "`does-not-fit` is not found in the snippet's findings"),
     (["audit", "--missed", "does-not-fit", FITS],
-     "reproduced: the snippet alone does not give `does-not-fit` either"),
-    (["G2", "--missed", "unclassified-number", UNBOUND], "not checked here"),
+     "`does-not-fit` is not found in the snippet's findings"),
+    (["G6", "--missed", "model-artifact", ARTEFACT],
+     "`model-artifact` is not found in the snippet's findings"),
+    (["G6", "--flagged", "model-artifact", ARTEFACT],
+     "`model-artifact` is not found in the snippet's findings"),
 ])  # fmt: skip
 def test_the_snippet_alone_is_read_for_audit_g6_and_g14(kept, capsys, argv, said) -> None:
     gate, direction, code, snippet = argv
     out = _reported(capsys, "--about", gate, direction, code, "--snippet", snippet)
-    body, after = out.split("```\n\nThe snippet, read again", 1)
+    body, after = out.split("```\n\nThe snippet, read again on this machine: ", 1)
     assert said in body and said in after
+    if "not found" in said:
+        line = body.split("**Does the snippet alone show it?**", 1)[1].split("\n", 1)[0]
+        assert "reproduced" not in line
+
+
+def test_a_gate_not_checked_here_is_said_so_alone(kept, capsys) -> None:
+    out = _reported(capsys, "--about", "G2", "--missed", "unclassified-number", "--snippet",
+                    UNBOUND)  # fmt: skip
+    assert "read again on this machine" not in out
+    assert "\n```\n\nnot checked here: " in out
+
+
+def _literal_in(out: str) -> str:
+    """The `text = ...` statement of the test the report holds, as it was printed."""
+    lines = [line.strip() for line in _test_in(out).splitlines()]
+    start = next(i for i, line in enumerate(lines) if line.startswith("text = "))
+    end = start if not lines[start].endswith("(") else lines.index(")", start)
+    return "\n".join(lines[start:end + 1])
+
+
+def test_the_snippet_in_the_printed_test_is_the_snippet(kept, capsys) -> None:
+    """The scrub is not run again over the finished report: on the test's literal it read
+    `t@example.org` after an escaped tab as an address, and the literal no longer gave the
+    snippet. (An escaped newline ends its piece of the literal, so the next piece opens on
+    the `@`; a newline is kept in the snippet all the same.)"""
+    snippet = "Line one\n\t@example.org two"
+    out = _reported(capsys, "--about", "G2", "--flagged", "--snippet", snippet)
+    assert f"```markdown\n{snippet}\n```" in out
+    namespace: dict = {}
+    exec(_literal_in(out), namespace)  # noqa: S102 - our own text
+    assert namespace["text"] == snippet
+
+
+def test_the_test_is_named_by_gate_direction_and_snippet(kept, capsys) -> None:
+    out = _reported(capsys, "--about", "sync-bib", "--missed", "--snippet", "x")
+    digest = hashlib.sha256(b"x").hexdigest()[:12]
+    assert f"def test_reported_sync_bib_missed_{digest}(" in out
 
 
 def test_the_check_neither_reads_nor_writes_the_project(kept, capsys, project,
@@ -276,3 +318,13 @@ def test_with_no_code_the_test_stops_at_its_todo(kept, capsys, project) -> None:
     out = _reported(capsys, "--about", "G6", "--flagged", "--snippet", ARTEFACT)
     with pytest.raises(pytest.fail.Exception, match="TODO"):
         _run(out, "test_writing", project=project)
+
+
+@pytest.mark.parametrize("skill", ["guide", "project-setup"])
+def test_the_skills_name_the_fingerprint_after_a_gate_errored_finding(skill) -> None:
+    text = (Path(__file__).resolve().parents[1] / "plugin" / "skills" / skill
+            / "SKILL.md").read_text(encoding="utf-8")  # fmt: skip
+    line = next(line for line in text.splitlines() if "`gate-errored`" in line
+                and "report-issue" in line)  # fmt: skip
+    assert "`manuscript-guard report-issue <fingerprint>`" in line
+    assert line.index("<fingerprint>") < line.index("--last")

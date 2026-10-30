@@ -12033,18 +12033,26 @@ tested and posted is one text. Masking its words was weighed and left out (Basil
 gives, and the check below tells them whether their edit kept the fault. For `audit`, G6 and G14, the readings
 that need no project, the snippet is read again alone, as `audit` reads a paper, in a
 temporary folder (`auditing.gates.run_gates`, and `audit` for `--about audit`), never in the
-person's project, and the report says "reproduced" or "not reproduced" against the code named;
-with no code it lists what the snippet gives and leaves the verdict to the person. Other gates
-read a project, and the report says the snippet was not checked. The report ends with a test
-to start from, named `test_reported_` and twelve hex digits of the snippet's SHA-256, in the
-file and the shape the suite already uses for that reading: `audit` on `tmp_path / "paper.md"`
-in `tests/test_audit.py`, `written` and `codes` in `tests/test_writing.py` and
-`tests/test_language.py`, and for any other gate the example with the snippet appended to
-`main_md(project)` and `_run_gates` in `tests/test_corruption.py`, the codes taken of that gate
-alone and at every severity (`gate_report` there runs seven of the checks and counts failures
-only, so a warning or another gate's code would not be seen). It asserts the code absent
-(`--flagged`) or present (`--missed`); with no code it stops at `pytest.fail("TODO ...")`
-rather than pass on nothing. `tests/test_report_about.py` runs the test a report writes, in the
+person's project. Where the snippet gives the code named, the report says "reproduced"
+(`--flagged`) or "not reproduced" (`--missed`). Where it does not, the report says the code
+is not found in the snippet's findings and lists them, and gives no verdict: no list of the
+codes a gate can give is kept, so a code missing from the findings may be one the gate never
+gives, or misspelt. With no code it lists what the snippet gives and leaves the verdict to the
+person. Other gates read a project, and the report says the snippet was not checked. The
+parts of the report are scrubbed before it is put together, and the whole is not scrubbed
+again, since the scrub run over the test's literal read an escaped character and the address
+after it as one address. The report ends with a test to start from, named
+`test_reported_<gate or command>_<flagged or missed>_` and twelve hex digits of the
+snippet's SHA-256, in the file and the shape the suite already uses for that reading: `audit`
+on `tmp_path / "paper.md"` in `tests/test_audit.py`, `written` and `codes` in
+`tests/test_writing.py` and `tests/test_language.py`, and for any other gate the example with
+the snippet appended to `main_md(project)` and `_run_gates` in `tests/test_corruption.py`, the
+codes taken of that gate alone and at every severity (`gate_report` there runs seven of the
+checks and counts failures only, so a warning or another gate's code would not be seen). It
+asserts the code absent (`--flagged`) or present (`--missed`); on the example, which may give
+the code already, it counts the code before the snippet is appended and after, and asserts
+the count unchanged or raised. With no code it stops at `pytest.fail("TODO ...")` rather than
+pass on nothing. `tests/test_report_about.py` runs the test a report writes, in the
 namespace of the file it names, for `audit`, G6, G14 and G2, and holds that it fails or passes
 as the direction says.
 
@@ -19242,8 +19250,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     no declared English, stage, conventions or exemptions. A fault that turns on one of those,
     or on the rest of the manuscript (an abbreviation defined three sections earlier, a term
     used elsewhere), may not be reproduced by the snippet alone, and the report then says "not
-    reproduced" of a fault that is real. The test for G6 and G14 runs in the example's
-    project, whose `paper.yaml` does declare them, so it can disagree with the check.
+    reproduced", or that the code is not found in the snippet's findings, of a fault that is
+    real. The test for G6 and G14 runs in the example's project, whose `paper.yaml` does
+    declare them, so it can disagree with the check.
+  - No list of the codes each gate can give is kept, so a code the snippet does not give gets
+    no verdict: it is said to be not found in the snippet's findings, which a misspelt code
+    and a defect the gate let through both are.
   - The snippet is scrubbed before it is read, so an address or a name replaced in it is read
     as `<EMAIL>` or `<AUTHOR-1>`. Nothing else in it is changed, so a sentence copied from the
     manuscript is posted as it stands: the person reads the report before posting it.

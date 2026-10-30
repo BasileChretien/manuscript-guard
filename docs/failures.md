@@ -86,16 +86,19 @@ manuscript-guard report-issue --about audit --missed --snippet-file smallest.md 
 
 For `audit`, G6 and G14, which read a text with no project around it, the snippet is read
 again on this machine, alone, in a temporary folder, and the report says whether it alone
-shows the fault: "reproduced: the snippet alone gives `model-artefact`", or "not reproduced"
-where it does not. Cut the snippet down, or change its words, and run the command again to see
-whether the fault survives. Other gates read a project, and their snippets are not checked
-here: the report says so.
+shows the fault: "reproduced: the snippet alone gives `model-artefact`". A code the snippet
+does not give is said to be not found in its findings, with what it does give, and no verdict:
+check its spelling against what manuscript-guard printed. Cut the snippet down, or change its
+words, and run the command again to see whether the fault survives. Other gates read a
+project, and their snippets are not checked here: the report says so.
 
 The report follows the repository's issue template for a gate, asks for the label `gate`, and
 ends with a test to start from, in the test file and the shape the suite uses for that gate,
-named after the snippet: `tests/test_audit.py` for `audit`, `tests/test_writing.py` for G6,
-`tests/test_language.py` for G14, and `tests/test_corruption.py` for the rest. It asserts that
-the code is absent where the gate flagged it wrongly and present where it let the defect
+named after the gate, the direction and the snippet: `tests/test_audit.py` for `audit`,
+`tests/test_writing.py` for G6, `tests/test_language.py` for G14, and
+`tests/test_corruption.py` for the rest, where the snippet is added to the example and the
+code is counted before and after. It asserts that the code is absent (or not given more often)
+where the gate flagged it wrongly and present (or given more often) where it let the defect
 through; with no code named, the assertion is left as a TODO. It is a starting point: whoever
 fixes the gate checks that it fails before the fix and passes after.
 

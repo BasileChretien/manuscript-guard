@@ -59,9 +59,12 @@ class Asked:
 class Checked:
     #: The sentence said in the terminal and in the report.
     line: str
-    #: Whether the snippet alone shows the fault; None where it was not checked, or where no
-    #: code was named to check it by.
+    #: Whether the snippet alone shows the fault; None where it was not checked, where no code
+    #: was named to check it by, or where the code is not among the snippet's findings, since
+    #: no list of the codes a gate can give is kept and the code may be misspelt.
     reproduced: bool | None = None
+    #: Whether the snippet was read here at all.
+    read: bool = False
 
 
 def named(about: str, commands: Iterable[str]) -> str:
@@ -103,19 +106,22 @@ def check(asked: Asked) -> Checked:
 
 
 def _verdict(asked: Asked, found: set[str]) -> Checked:
+    """What the codes the snippet gave say of the fault. Only a code found is a verdict: no
+    list of the codes a gate can give is kept, so a code not found may be one the gate never
+    gives, or misspelt, and "reproduced" would claim what was not shown."""
     listed = ", ".join(f"`{code}`" for code in sorted(found)) or "no finding"
     if asked.code is None:
         return Checked(f"checked: the snippet alone gives {listed}; with no code named, which "
-                       "of these is the fault is for the report to say")  # fmt: skip
+                       "of these is the fault is for the report to say", read=True)  # fmt: skip
     code = f"`{asked.code}`"
-    if asked.flagged:
-        if asked.code in found:
-            return Checked(f"reproduced: the snippet alone gives {code}", True)
-        return Checked(f"not reproduced: the snippet alone does not give {code} (it gives "
-                       f"{listed}); the report says so", False)  # fmt: skip
-    if asked.code not in found:
-        return Checked(f"reproduced: the snippet alone does not give {code} either", True)
-    return Checked(f"not reproduced: the snippet alone gives {code}; the report says so", False)
+    if asked.code in found:
+        if asked.flagged:
+            return Checked(f"reproduced: the snippet alone gives {code}", True, read=True)
+        return Checked(f"not reproduced: the snippet alone gives {code}; the report says so",
+                       False, read=True)  # fmt: skip
+    return Checked(f"{code} is not found in the snippet's findings (it gives {listed}); no "
+                   f"list of the codes {asked.about} can give is kept here, so check its "
+                   "spelling against what manuscript-guard printed", read=True)  # fmt: skip
 
 
 class _NotRun(Exception):
@@ -199,18 +205,26 @@ def file_for(about: str) -> str:
     return {"audit": _AUDIT, "G6": _WRITING, "G14": _LANGUAGE}.get(about, _CORRUPTION)
 
 
-def named_test(snippet: str) -> str:
-    return f"test_reported_{hashlib.sha256(snippet.encode('utf-8')).hexdigest()[:12]}"
+def named_test(asked: Asked) -> str:
+    """`test_reported_g2_missed_<12 hex of the snippet's SHA-256>`."""
+    about = re.sub(r"[^a-z0-9]+", "_", asked.about.lower())
+    direction = "flagged" if asked.flagged else "missed"
+    digest = hashlib.sha256(asked.snippet.encode("utf-8")).hexdigest()[:12]
+    return f"test_reported_{about}_{direction}_{digest}"
 
 
 def skeleton(asked: Asked) -> str:
     """A test of the snippet, in the shape `file_for(asked.about)` uses: the snippet, the
     reading, and an assertion on the code, absent where the gate flagged it wrongly and present
-    where it let the defect through. With no code, the assertion is left to write."""
+    where it let the defect through. Where the snippet is added to the example, which may give
+    the code already, it is held to what the snippet adds: as often as before where the gate
+    flagged it wrongly, more often where it let the defect through. With no code, the
+    assertion is left to write."""
     about = asked.about
     text = _literal(asked.snippet)
+    counted = False
     if about == "audit":
-        head = f"def {named_test(asked.snippet)}(tmp_path: Path) -> None:"
+        head = f"def {named_test(asked)}(tmp_path: Path) -> None:"
         body = [
             "from manuscript_guard.auditing.gates import run_gates",
             "from manuscript_guard.auditing.report import items",
@@ -223,22 +237,27 @@ def skeleton(asked: Asked) -> str:
             "found = {item.code for item in items(report)}",
         ]
     elif about in ("G6", "G14"):
-        head = f"def {named_test(asked.snippet)}(project: Path) -> None:"
+        head = f"def {named_test(asked)}(project: Path) -> None:"
         body = [*text, "found = codes(written(project, text))"]
     elif about in GATES or about == "check":
-        head = f"def {named_test(asked.snippet)}(project: Path) -> None:"
+        head = f"def {named_test(asked)}(project: Path) -> None:"
         which = f' if finding.gate == "{about}"' if about in GATES else ""
+        counted = True
         body = [
             "from manuscript_guard.cli import _run_gates",
             "",
+            "def counted() -> list[str]:",
+            "    report, _project, _chosen, _deferred = _run_gates(project)",
+            f"    return [finding.code for finding in report.findings{which}]",
+            "",
             *text,
+            "before = counted()",
             *_appended(),
-            "report, _project, _chosen, _deferred = _run_gates(project)",
-            f"found = {{finding.code for finding in report.findings{which}}}",
+            "found = counted()",
+            "# The example may give the code already: the test is of what the snippet adds.",
         ]
     else:
-        head = (f"def {named_test(asked.snippet)}(project: Path, monkeypatch, capsys) "
-                "-> None:")  # fmt: skip
+        head = f"def {named_test(asked)}(project: Path, monkeypatch, capsys) -> None:"
         body = [
             "from manuscript_guard.cli import main",
             "",
@@ -248,10 +267,11 @@ def skeleton(asked: Asked) -> str:
             f'main(["{about}"])  # TODO: add the words you gave `{about}` after its name',
             "said = capsys.readouterr()",
             "found = said.out + said.err",
+            "# The example may print the code already: compare with a run before the snippet",
+            "# is appended.",
         ]
-    lines = [head, f'    """{_docstring(asked)}"""', *(f"    {line}" if line else "" for line in
-                                                         [*body, *_assertion(asked)])]  # fmt: skip
-    return "\n".join(lines)
+    inside = [f'"""{_docstring(asked)}"""', *body, *_assertion(asked, counted)]
+    return "\n".join([head, *(f"    {line}" if line else "" for line in inside)])
 
 
 def _docstring(asked: Asked) -> str:
@@ -269,16 +289,21 @@ def _appended() -> list[str]:
     ]
 
 
-def _assertion(asked: Asked) -> list[str]:
-    holds = "not in" if asked.flagged else "in"
+def _assertion(asked: Asked, counted: bool) -> list[str]:
+    code = asked.code or "<code>"
+    if counted:
+        holds = "==" if asked.flagged else ">"
+        said = f'found.count("{code}") {holds} before.count("{code}")'
+    else:
+        said = f'"{code}" {"not in" if asked.flagged else "in"} found'
     if asked.code is None:
         which = "should not have given" if asked.flagged else "should have given"
         return [
             f"# TODO: no finding's code was named. Name the one it {which}:",
-            f'#     assert "<code>" {holds} found',
+            f"#     assert {said}",
             'pytest.fail("TODO: assert on the code of the finding")',
         ]
-    return [f'assert "{asked.code}" {holds} found']
+    return [f"assert {said}"]
 
 
 def _literal(snippet: str) -> list[str]:

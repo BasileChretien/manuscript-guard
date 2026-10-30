@@ -2719,9 +2719,11 @@ def cmd_report_issue(args: argparse.Namespace) -> int:
             return 1
         report = issue.from_record(record, with_message=args.with_message,
                                    installed=__version__, note=args.note)  # fmt: skip
-    # Scrubbed whole, then cut: a cut could split an address the scrub would have caught.
+    # Scrubbed whole, then cut: a cut could split an address the scrub would have caught. A
+    # report about a gate had each part scrubbed before it was put together (`_report_about`).
+    body = report.body if checked is not None else scrub(report.body, root=root)
     report = replace(report, title=issue.cut_title(scrub(report.title, root=root)),
-                     body=issue.printable(scrub(report.body, root=root)))  # fmt: skip
+                     body=issue.printable(body))  # fmt: skip
     _say_report(report, crashes.folder(), args.open, checked)
     return 0
 
@@ -2741,10 +2743,17 @@ def _report_about(args: argparse.Namespace, root: Path | None):
     if code and not about.is_code(code):
         raise ContractError(f"report-issue: {code!r} is not a finding's code; give the code as "
                             "check prints it, such as unclassified-number, or none")  # fmt: skip
-    snippet = issue.printable(scrub(_snippet(args), root=root))
+    def scrubbed(text: str | None) -> str | None:
+        return None if text is None else issue.printable(scrub(text, root=root))
+
+    # Each part is scrubbed before the report is put together, and the report is not scrubbed
+    # again: run over the test's literal, the scrub read `t@x.org` after an escaped tab as an
+    # address, and the literal no longer gave the snippet.
     asked = about.Asked(about=gate, flagged=args.flagged is not None, code=code or None,
-                        snippet=snippet, said=args.said, note=args.note)  # fmt: skip
+                        snippet=scrubbed(_snippet(args)), said=scrubbed(args.said),
+                        note=scrubbed(args.note))  # fmt: skip
     checked = about.check(asked)
+    checked = replace(checked, line=scrubbed(checked.line))
     return about.report(asked, checked, installed=__version__), checked
 
 
@@ -2860,7 +2869,9 @@ def _say_report(report, folder: Path | None, open_page: bool, checked=None) -> N
     print(f"Title: {report.title}\n")
     print(report.body)
     if checked is not None:
-        print(f"The snippet, read again on this machine: {checked.line}.")
+        # Said of a snippet that was read here; one that was not is said to be not checked.
+        lead = "The snippet, read again on this machine: " if checked.read else ""
+        print(f"{lead}{checked.line}.")
     written = None
     if folder is not None:
         from manuscript_guard.diagnostics.crashes import shown

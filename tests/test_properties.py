@@ -167,6 +167,7 @@ from generated import (
     title_pairs,
     typed,
     typed_reference_lists,
+    vault_commands,
     vector_figures,
     vocabularies,
 )
@@ -3011,6 +3012,23 @@ def test_a_deposit_is_named_by_its_doi_however_written_and_by_no_other(
     before = names_doi(text, DEPOSIT_DOI)
     for written in others:
         assert names_doi(written, DEPOSIT_DOI) == before, written
+
+
+# ------------------------------------------------------------- the vault a command names
+
+
+@holds(60, vault_commands())
+def test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_beside_it(
+    drawn: tuple[list[str], list[str | None]],
+) -> None:
+    """A command names the vault where a word of it is the folder or a path inside it, quoted
+    with the space in its name or the space escaped, with either slash, from the project's
+    folder, after an `=` or an `@`, or where it names MANUSCRIPT_GUARD_VAULT; and not where a
+    word is a folder whose name begins with the vault's, the folder above it, a file beside it
+    or the word "vault" (`hooks._names_the_vault`, which the shell guard refuses or asks on)."""
+    lines, expected = drawn
+    read = READINGS["vault named"]()
+    assert [read({"command": line}) for line in lines] == expected, lines
 
 
 # ------------------------------------------------------------- a count in a deposited table
@@ -13734,9 +13752,29 @@ def _a_link_keeps_the_stop_after_it(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(bluesky, "_AFTER_LINK", "")
 
 
+def _a_folder_beginning_as_the_vault_is_in_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import hooks
+
+    patch.setattr(hooks, "_within", lambda path, folder: path.startswith(folder))
+
+
+def _a_quoted_path_is_split_at_its_spaces(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import hooks
+
+    patch.setattr(hooks, "_words", lambda command: list(dict.fromkeys(command.split())))
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a folder whose name begins with the vault's is read as inside it": (
+        _a_folder_beginning_as_the_vault_is_in_it,
+        test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_beside_it,
+    ),
+    "a path a command quotes is split at its spaces": (
+        _a_quoted_path_is_split_at_its_spaces,
+        test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_beside_it,
+    ),
     "a facet of a post is placed in characters, not bytes": (
         _a_facet_is_placed_in_characters,
         test_each_link_of_a_post_is_marked_at_its_bytes_and_without_the_stop_after_it,

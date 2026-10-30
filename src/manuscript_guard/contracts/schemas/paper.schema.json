@@ -86,8 +86,8 @@
       "properties": {
         "minimum_cell_count": {
           "type": "integer",
-          "minimum": 2,
-          "description": "The smallest count that may be published. A count the manuscript binds that is at least one and below it fails G2 from the internal-review stage."
+          "minimum": 1,
+          "description": "The smallest count that may be published. A count the manuscript binds that is at least one and below it fails G2 from the internal-review stage. 1 where the custodian sets no rule, said on purpose: `vault init` asks for it."
         },
         "restricts_sending": {
           "type": "boolean",

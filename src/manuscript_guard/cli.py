@@ -2722,6 +2722,13 @@ def _from_project(root: Path, given: str | Path) -> str:
     return path.as_posix()
 
 
+def cmd_vault(args: argparse.Namespace) -> int:
+    """Register the vault, or say whether this session can read it (`vault/command.py`)."""
+    from manuscript_guard.vault.command import cmd_vault as run
+
+    return run(args)
+
+
 def cmd_harvest(args: argparse.Namespace) -> int:
     """Add an entry to harvest.yaml and harvest it, or harvest every entry again. It reads
     output files and writes results fragments; it runs nothing."""
@@ -5982,7 +5989,8 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     ("Analysis & Data",
-     ("verify", "harvest", "values", "models", "dictionary", "palettes", "related")),  # fmt: skip
+     ("verify", "harvest", "vault", "values", "models", "dictionary", "palettes",
+      "related")),  # fmt: skip
     ("Literature", ("lookup", "search", "sync-bib", "sync-sources", "passages")),
     ("Co-Authors & Review", ("review", "checker", "import", "respond", "approve", "sign")),
     ("Build, Release & Communicate",
@@ -6315,6 +6323,44 @@ def build_parser() -> argparse.ArgumentParser:
         "--path", type=Path, default=Path.cwd(), help="the project (default: the one you are in)"
     )
     harvest.set_defaults(func=cmd_harvest)
+
+    vault = sub.add_parser(
+        "vault",
+        help="register the folder where the data are held, outside the project, and check "
+        "whether this session can read it",
+        description="The vault is the folder where the data are held, which the operating "
+        "system keeps from the agent: a second account, a container or a volume mounted only "
+        "while you run on it (docs/vault.md). `init FOLDER FILE...` registers the files you "
+        "name, or globs for them, by digest in design/vault.yaml, and where the folder is in "
+        ".manuscript-guard/vault.local.yaml, which git ignores; it refuses a folder inside "
+        "the project and a paper.yaml with no custodian.minimum_cell_count, and prints Claude "
+        "Code's deny rules for the folder. `check` opens each registered file without reading "
+        "it, and lists the folder: exit 0 not reachable from this session, 1 readable, 2 not "
+        "registered here. Nothing is sent.",
+    )
+    vault.add_argument("verb", choices=["init", "check"])
+    vault.add_argument(
+        "words", nargs="*", metavar="[FOLDER FILE ...]",
+        help="init: the vault's folder, then the files to register in it, by name or glob",
+    )  # fmt: skip
+    vault.add_argument(
+        "--as", dest="as_", metavar="PERSON",
+        help="init: who registers the files, recorded beside each",
+    )  # fmt: skip
+    vault.add_argument(
+        "--refresh", action="store_true",
+        help="init: digest the registered files again, after a new extract, and say which "
+        "changed",
+    )  # fmt: skip
+    vault.add_argument(
+        "--agent-settings", action="store_true",
+        help="init: also write the deny rules into .claude/settings.local.json, once you say "
+        "yes at a terminal; alone, write them for the vault registered",
+    )  # fmt: skip
+    vault.add_argument(
+        "--path", type=Path, default=Path.cwd(), help="the project (default: the one you are in)"
+    )
+    vault.set_defaults(func=cmd_vault)
 
     package = sub.add_parser(
         "package",

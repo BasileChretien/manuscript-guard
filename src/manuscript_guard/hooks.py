@@ -1226,9 +1226,12 @@ def guard_submission(payload: dict) -> int:
     command = _without_messages(str(payload.get("tool_input", {}).get("command", "")))
     publishes, deposits = _deposits(command)
     posts, names_posting = _posts(command)
-    if publishes or posts:
-        return _deny("PreToolUse", "\n\n".join(one for one in (publishes, posts) if one))
-    sends = deposits or names_posting
+    runs_vault, names_vault_run = _vault_runs(command)
+    reads_vault, names_vault = _guards_vault(command, payload)
+    refused = [one for one in (publishes, posts, runs_vault, reads_vault) if one]
+    if refused:
+        return _deny("PreToolUse", "\n\n".join(refused))
+    sends = deposits or names_posting or names_vault_run or names_vault
     sends = sends or _or_nothing(lambda _path: _sends_without_asking(command, payload),
                                  Path("."))  # fmt: skip
     sends = sends or _or_nothing(lambda _path: _approves(command), Path("."))
@@ -1690,6 +1693,216 @@ def _posts(command: str) -> tuple[str | None, str | None]:
     return None, _NAMES_POST
 
 
+# ---------------------------------------------------------------- the vault
+#
+# The vault is the folder where the data are held, outside the project, which the operating
+# system keeps from the agent (`vault/`, docs/vault.md). Two cases here, both a guard against
+# an agent's ordinary commands and not against a deliberate evasion: `vault run` and `vault
+# release` are the person's, at a terminal; and a command that names the folder, or the
+# variable a run is given it in, is refused while this session can read the folder, and put
+# to the person otherwise.
+
+#: How long the shell guard waits to learn whether the folder can be read. Past it, the
+#: command is taken as one that reads it.
+VAULT_GUARD_LIMIT = 3.0
+#: How long the session start waits for the same, counted from its own start.
+VAULT_LIMIT = 5.0
+#: `vault` then `run` or `release`, in one command of the line, to be read closer.
+_VAULT_VERB = re.compile(r"(?i)\bvault\b[^;&|\n]*?\b(?:run|release)\b")
+_VAULT_VERBS = ("run", "release")
+_RUNS_VAULT = (
+    "`manuscript-guard vault run` runs the analysis on the data held in the vault, and `vault "
+    "release` lets what it wrote into the project once the custodian's checks pass: each is "
+    "the person's to run, at a terminal the agent cannot read, after reading the scripts and "
+    "what they wrote (docs/vault.md). Run it yourself."
+)
+_NAMES_VAULT_RUN = (
+    "this command names `manuscript-guard vault run` or `vault release` in a form the guard "
+    "does not read exactly as an invocation of it. A run on the real data, and what leaves "
+    "the vault, are the person's decision."
+)
+#: The variable a run on the data is given the folder in, however a shell spells it.
+_VAULT_VARIABLE = re.compile(r"manuscript_guard_vault", re.IGNORECASE)
+#: What a word needs to lead out of the folder a command is sent from.
+_MAY_LEAVE = re.compile(r"[/\\~]|\.\.")
+
+
+def _vault_runs(command: str) -> tuple[str | None, str | None]:
+    """Why a `vault run` or `vault release` in this command is refused, and why one is put to
+    the person, read as `_posts` reads `communicate publish --post`: refused in an invocation
+    of `vault` read exactly, the same words in both shells' reading; asked where the tool,
+    `vault` and the verb are named in a form not read exactly, or outside an invocation."""
+    joined = [re.sub(r"\r(?!\n)", "\n", re.sub(r"[\\`]\r?\n", between, command))
+              for between in (" ", "")]  # fmt: skip
+    texts = [*joined, *(re.sub("[\\\\`'\"]", "", text) for text in joined)]
+    if not any(_NAMES_TOOL.search(text) and _VAULT_VERB.search(text) for text in texts):
+        return None, None
+    readings = [_command_words(text, posix=posix) for text in joined for posix in (True, False)]
+    running = named_elsewhere = False
+    for invocations, _clean in readings:
+        for words in invocations:
+            tool = _tool_words(words)
+            if tool and tool[0].casefold() == "vault":
+                running = running or any(word.casefold() in _VAULT_VERBS for word in tool[1:])
+            elif tool is None:
+                said = " ".join(words)
+                named_elsewhere = named_elsewhere or bool(
+                    _NAMES_TOOL.search(said) and _VAULT_VERB.search(said))  # fmt: skip
+    exact = all(clean for _invocations, clean in readings)
+    if exact and running:
+        return _RUNS_VAULT, None
+    if exact and not named_elsewhere:
+        return None, None
+    return None, _NAMES_VAULT_RUN
+
+
+def _names_vault_variable(command: str) -> bool:
+    return bool(_VAULT_VARIABLE.search(command)
+                or _VAULT_VARIABLE.search(re.sub("[\\\\`'\"]", "", command)))  # fmt: skip
+
+
+def _comparable(path: str) -> str:
+    """A path as two spellings of it compare: `..` and `.` taken out, and on Windows one
+    kind of slash and one case."""
+    return os.path.normcase(os.path.normpath(path))
+
+
+def _within(path: str, folder: str) -> bool:
+    """Whether `path` is `folder` or inside it, both `_comparable`. A folder whose name
+    begins with the vault's, `data2` beside `data`, is not inside it."""
+    return path == folder or path.startswith(folder.rstrip(os.sep) + os.sep)
+
+
+def _vault_spellings(word: str, cwd: Path) -> list[str]:
+    """Where a word of a command points, as written and with its links followed: from the
+    folder the command is sent from, `~` as the home, and Git Bash's `/c/...` as `C:/...`."""
+    if len(word) > _LONGEST_PATH:
+        return []
+    if word.startswith("~"):
+        word = os.path.expanduser(word)
+    elif os.name == "nt" and (drive := _GIT_BASH_DRIVE.fullmatch(word)):
+        word = f"{drive[1]}:{drive[2]}"
+    full = os.path.join(cwd, word)
+    found = [_comparable(full)]
+    # Links are followed on this machine only, and not to another one: asking Windows about
+    # `//host/share` waits for the host.
+    if not full.startswith(("\\\\", "//")) and len(Path(full).parts) <= _DEEPEST_PATH:
+        with contextlib.suppress(OSError, ValueError, RuntimeError):
+            found.append(_comparable(os.path.realpath(full)))
+    return found
+
+
+def _vault_named(command: str, cwd: Path, folder: Path) -> bool:
+    """Whether a word of the command is the vault's folder or a path inside it, in any
+    spelling `_words` finds a path in: quoted or not, after an `=` or an `@`, relative,
+    from the home, as Git Bash writes a drive, with another case on Windows, or through a
+    link. A path held in a variable, built at run time or globbed for the folder itself is
+    not seen (DESIGN.md, Known gaps)."""
+    folders = {_comparable(str(folder))}
+    with contextlib.suppress(OSError, ValueError, RuntimeError):
+        folders.add(_comparable(os.path.realpath(folder)))
+    return any(
+        _within(spelt, one)
+        for word in _words(command)
+        for spelt in _vault_spellings(word, cwd)
+        for one in folders
+    )
+
+
+def _names_the_vault(command: str, cwd: Path, folder: Path | None) -> str | None:
+    """`variable` where the command names MANUSCRIPT_GUARD_VAULT, `folder` where a word of it
+    is the vault's folder or a path inside it (`_vault_named`), else None."""
+    if _names_vault_variable(command):
+        return "variable"
+    if folder is not None and _vault_named(command, cwd, folder):
+        return "folder"
+    return None
+
+
+def _vault_reasons(variable: bool, readable: bool) -> str:
+    what = ("names MANUSCRIPT_GUARD_VAULT, the variable a run on the data is given the "
+            "vault's folder in" if variable else "names the vault's folder")  # fmt: skip
+    if readable:
+        return (
+            f"This command {what}, and the data there can be read from this session (or "
+            "whether they can was not found in time): the separation the vault relies on is "
+            "not in place, so the command is refused. Work on data/synthetic/; the person "
+            "runs what reads the data, at a terminal (docs/vault.md)."
+        )
+    return (
+        f"This command {what}. The folder cannot be read from this session now, but what a "
+        "command does there is the person's decision (docs/vault.md)."
+    )
+
+
+def _guards_vault(command: str, payload: dict) -> tuple[str | None, str | None]:
+    """Why a command that names the vault's folder or its variable is refused, and why one is
+    put to the person: refused while this session can read the folder (decision 3 of the
+    vault's design), or where that cannot be learnt in `VAULT_GUARD_LIMIT`; asked where it
+    cannot. Nothing is asked of a project with no vault registered on this machine.
+
+    A command with no word that can lead out of the folder it is sent from, no slash, no
+    backslash, no `~` and no `..`, names no folder outside the project, and is let through
+    before any folder is looked at: the guard fires on every shell command."""
+    if not _MAY_LEAVE.search(command) and not _names_vault_variable(command):
+        return None, None
+    from manuscript_guard.vault import probe
+
+    try:
+        root = _project_root(payload)
+        if root is None or not probe.local_file(root).is_file():
+            return None, None
+        try:
+            folder = probe.local_folder(root)
+        except probe.VaultFileError:
+            folder = None
+        cwd = Path(payload.get("cwd") or Path.cwd()).resolve()
+        named = _names_the_vault(command, cwd, folder)
+        if named is None:
+            return None, None
+        variable = named == "variable"
+        said, still_asking = probe.state_in_time(root, VAULT_GUARD_LIMIT)
+    except Exception as exc:  # noqa: BLE001 - a hook must never break the session
+        _recorded(exc, "guard-submission: the vault")
+        return None, None
+    if still_asking is not None:
+        _LEFT_RUNNING.append(still_asking)
+    if said == probe.UNREACHABLE:
+        return None, _vault_reasons(variable, readable=False)
+    return _vault_reasons(variable, readable=True), None
+
+
+def _vault_line(answer: str | None) -> str:
+    """The session's line on the vault, from what the probe answered."""
+    from manuscript_guard.vault import probe
+
+    if answer == probe.READABLE:
+        return (
+            "manuscript-guard: the data in the vault's folder can be read from this session, "
+            "so the separation the vault relies on is not in place (docs/vault.md). Work on "
+            "data/synthetic/, and do not read the folder, list it or name it in a command: the "
+            "person runs what reads the data, at a terminal."
+        )
+    if answer == probe.UNREACHABLE:
+        return "manuscript-guard: the vault's folder cannot be reached from this session."
+    return (
+        f"manuscript-guard: whether this session can read the vault's folder was not found in "
+        f"{VAULT_LIMIT:g} s, or its files under .manuscript-guard/ and design/ could not be "
+        "read: run `manuscript-guard vault check`. Until it says otherwise, do not read the "
+        "folder or name it in a command."
+    )
+
+
+def _vault_started(payload: dict):
+    """The probe of the vault, started, where the project has one registered here."""
+    from manuscript_guard.vault import probe
+
+    root = _project_root(payload)
+    if root is None or not probe.local_file(root).is_file():
+        return None
+    return probe.Pending(root)
+
+
 def _moves_stage_back(command: str, payload: dict) -> str | None:
     """Why a `set` in this command is put to the author (`set_guard`): it moves the stage
     back, takes a guideline away or replaces the journal, or the guard cannot read what it
@@ -2016,7 +2229,12 @@ def session_start(payload: dict) -> int:
     Also, once at the start of a session, the notice that the installed command line tool is
     older than the plugin. It is said here, where it is heard once, and not by the hooks that
     fire on every edit and every shell command.
+
+    And, where a vault is registered on this machine, whether this session can read it: the
+    agent is told, and where it can, the person too (`_vault_line`).
     """
+    import time
+
     # Each is guarded on its own, so that neither can cost the other: outside a project there
     # is no status line, and a manifest nobody should have written is no reason to lose it.
     source = payload.get("source") if isinstance(payload, dict) else None
@@ -2024,6 +2242,14 @@ def session_start(payload: dict) -> int:
         notice = None if source in QUIET_SOURCES else stale_cli_notice()
     except Exception:  # noqa: BLE001 - a hook must never break the session
         notice = None
+    # The vault's probe first, on a thread of its own, while the gates run: a few file opens,
+    # and a volume that is not mounted is waited for no longer than `VAULT_LIMIT` from here.
+    began = time.monotonic()
+    try:
+        vault = _vault_started(payload)
+    except Exception as exc:  # noqa: BLE001 - a hook must never break the session
+        _recorded(exc, "session-start: the vault")
+        vault = None
     # Before the gates, which may be cut off: the first stop compares with these. A fault here
     # costs the first turn its line, and no more.
     with contextlib.suppress(Exception):
@@ -2033,20 +2259,29 @@ def session_start(payload: dict) -> int:
     except Exception as exc:  # noqa: BLE001 - a fault of the tool's own costs the line, and no more
         _recorded(exc, "session-start: the status line")
         status = None
+    separation = shown = None
+    if vault is not None:
+        from manuscript_guard.vault.probe import READABLE
+
+        answer = vault.answer(VAULT_LIMIT - (time.monotonic() - began))
+        if vault.thread.is_alive():
+            _LEFT_RUNNING.append(vault.thread)
+        separation = _vault_line(answer)
+        # Readable, it is the person's to know as well: what the agent is told to keep away
+        # from is within its reach.
+        shown = separation if answer == READABLE and source not in QUIET_SOURCES else None
     # Said once, so not where nobody reads it (`claude -p`): the next attended session says it.
     failed = None if source in QUIET_SOURCES or _unattended() else _hooks_failed()
     notice = " ".join(part for part in (notice, failed) if part) or None
-    if status is None and notice is None:
+    context = " ".join(part for part in (status, separation, notice) if part)
+    if not context:
         return 0
 
     output: dict = {
-        "hookSpecificOutput": {
-            "hookEventName": "SessionStart",
-            "additionalContext": " ".join(part for part in (status, notice) if part),
-        }
+        "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": context}
     }
-    if notice:
-        output["systemMessage"] = notice
+    if shown or notice:
+        output["systemMessage"] = " ".join(part for part in (shown, notice) if part)
     return _emit(output)
 
 

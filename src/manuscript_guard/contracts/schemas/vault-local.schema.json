@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/vault-local/1",
+  "title": "manuscript-guard vault, on this machine",
+  "description": "Where the vault's folder is on this machine. Written by `manuscript-guard vault init` at .manuscript-guard/vault.local.yaml, which `init` makes git ignore; it refuses to write it where git would track it. The hooks read it to know which folder a command must not name.",
+  "type": "object",
+  "required": ["schema", "folder"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/vault-local/1" },
+    "folder": { "type": "string", "minLength": 1, "description": "The folder's absolute path, links followed." }
+  }
+}

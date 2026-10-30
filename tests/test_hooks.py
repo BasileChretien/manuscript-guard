@@ -3093,6 +3093,11 @@ def test_a_search_for_named_projects_is_made_only_for_a_submission(
     monkeypatch.setattr(hooks, "_project_root", lambda *_: looked.append("at the folder"))
     assert sent("cd paper && ls build", above, capsys) is None
     assert looked == []
+    # A word with a slash may name the vault's folder, outside the project: the project at the
+    # folder is looked for, for a vault registered there, and no other.
+    assert sent("ls build/", above, capsys) is None
+    assert looked == ["at the folder"]
+    looked.clear()
     # And for one that is, the folder first, then the words.
     assert sent("cd paper && manuscript-guard submit", above, capsys) is None
     assert looked == ["at the folder", "named"]
@@ -3781,3 +3786,284 @@ def test_a_patch_naming_accented_files_is_read_as_codex_sends_it(
     event = as_sent(codex_edit(project, edited, "PostToolUse"))
     noted = run_installed("after-edit", event, environment)
     assert "manuscript/méthodes.md has 1 number(s) bound to nothing" in context(noted)
+
+
+# ---------------------------------------------------------------- the vault
+#
+# The folder where the data are held, outside the project (`vault/`, docs/vault.md). The
+# session is told whether it can read it; `vault run` and `vault release` are the person's;
+# a command naming the folder or its variable is refused while the session can read it, and
+# put to the person otherwise.
+
+
+@pytest.fixture
+def kept_apart(tmp_path: Path) -> Path:
+    """The vault's folder, outside the project, with one extract in it."""
+    folder = tmp_path / "Data held"
+    folder.mkdir()
+    (folder / "cohort.csv").write_text("id,age\n1,40\n", encoding="utf-8")
+    return folder
+
+
+def _register(project: Path, folder: Path, labels: tuple[str, ...] = ("cohort.csv",)) -> None:
+    """The two files `vault init` writes, as it writes them."""
+    import yaml
+
+    kept = project / ".manuscript-guard" / "vault.local.yaml"
+    kept.parent.mkdir(exist_ok=True)
+    local = {"schema": "manuscript-guard/vault-local/1", "folder": str(folder.resolve())}
+    kept.write_text(yaml.safe_dump(local), encoding="utf-8")
+    files = [{"label": label, "sha256": "0" * 64, "raw_sha256": "0" * 64, "bytes": 0,
+              "registered_by": "Ada", "registered_on": "2026-10-30T00:00:00+00:00"}
+             for label in labels]  # fmt: skip
+    (project / "design" / "vault.yaml").write_text(
+        yaml.safe_dump({"schema": "manuscript-guard/vault/1", "files": files}), encoding="utf-8")
+
+
+def _unmounted(folder: Path) -> None:
+    """The folder gone, as an encrypted volume that is not mounted."""
+    folder.rename(folder.with_name("elsewhere"))
+
+
+def test_session_start_says_the_vault_can_be_read(project: Path, kept_apart: Path, capsys) -> None:
+    _register(project, kept_apart)
+    result = run("session-start", {"cwd": str(project)}, capsys)
+    said = context(result)
+    assert "stage 'drafting'" in said, "the status line is kept"
+    assert "the vault's folder can be read from this session" in said
+    assert "Work on data/synthetic/" in said
+    # The person is told as well: what the agent keeps away from is within its reach.
+    assert "can be read from this session" in result["systemMessage"]
+    assert str(kept_apart) not in said, "the line does not hand the agent the path"
+
+
+def test_session_start_says_the_vault_cannot_be_reached(
+    project: Path, kept_apart: Path, capsys
+) -> None:
+    _register(project, kept_apart)
+    _unmounted(kept_apart)
+    result = run("session-start", {"cwd": str(project)}, capsys)
+    assert "the vault's folder cannot be reached from this session." in context(result)
+    assert "vault" not in result.get("systemMessage", "")
+
+
+def test_after_a_compaction_the_agent_is_told_and_the_person_is_not(
+    project: Path, kept_apart: Path, capsys
+) -> None:
+    _register(project, kept_apart)
+    result = run("session-start", {"cwd": str(project), "source": "compact"}, capsys)
+    assert "can be read from this session" in context(result)
+    assert "vault" not in result.get("systemMessage", "")
+
+
+def test_session_start_says_nothing_of_a_vault_where_none_is_registered(
+    project: Path, capsys
+) -> None:
+    assert "vault" not in context(run("session-start", {"cwd": str(project)}, capsys))
+
+
+def test_session_start_waits_for_the_vault_no_longer_than_its_limit(
+    project: Path, kept_apart: Path, monkeypatch, capsys
+) -> None:
+    """A volume that does not answer costs the line its answer, not the session its start."""
+    from manuscript_guard.vault import probe
+
+    _register(project, kept_apart)
+    released = threading.Event()
+
+    def stuck(_root):
+        released.wait(30)
+        return probe.READABLE, None
+
+    monkeypatch.setattr(probe, "state", stuck)
+    monkeypatch.setattr(hooks, "VAULT_LIMIT", 0.05)
+    monkeypatch.setattr(hooks, "_LEFT_RUNNING", [])
+    try:
+        said = context(run("session-start", {"cwd": str(project)}, capsys))
+        assert len(hooks._LEFT_RUNNING) == 1, "left for main to end the process without"
+    finally:
+        released.set()
+    assert "was not found in 0.05 s" in said and "run `manuscript-guard vault check`" in said
+    assert "stage 'drafting'" in said
+
+
+def test_a_vault_file_that_cannot_be_read_costs_the_line_and_no_more(
+    project: Path, kept_apart: Path, capsys
+) -> None:
+    _register(project, kept_apart)
+    (project / ".manuscript-guard" / "vault.local.yaml").write_text("folder: [", "utf-8")
+    said = context(run("session-start", {"cwd": str(project)}, capsys))
+    assert "stage 'drafting'" in said and "run `manuscript-guard vault check`" in said
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard vault run",
+        "mguard vault run analysis/01_model.py",
+        "python -m manuscript_guard.cli vault release 3 --as Ada",
+        r'& "C:\Tools\mguard.exe" vault run',
+        "cd paper && LANG=C manuscript-guard vault release 2026-10-30-1",
+        "manuscript-guard vault --path . run",
+        "manuscript-guard check; manuscript-guard vault run",
+    ],
+)
+def test_a_run_or_a_release_of_the_vault_is_refused_to_an_agent(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    """Each reads the real data or lets what it wrote into the project: the person runs it, at
+    a terminal the agent cannot read. No vault need be registered for this."""
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "deny", result
+    assert "Run it yourself" in reason(result)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'echo "manuscript-guard vault run" >> notes.md',
+        "manuscript-guard vault run $(cat scripts.txt)",
+        'bash -c "manuscript-guard vault release 1"',
+    ],
+)
+def test_a_command_that_only_names_a_run_of_the_vault_is_asked(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask", result
+    payload = _shell(in_claude_code, command, turn_id="turn-1", model="gpt-test")
+    assert decision(run("guard-submission", payload, capsys)) == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard vault check",
+        "python analysis/run.py && manuscript-guard vault check",
+        "manuscript-guard vault init --refresh --as Ada",
+        'grep -rn "vault" docs/',
+        "git commit -m \"manuscript-guard vault run is the person's\"",
+        "vault read secret/token",  # another tool of the same name
+    ],
+)
+def test_a_command_that_runs_neither_is_let_through(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
+
+
+def _naming(folder: Path, project: Path) -> list[str]:
+    """The folder written in each way a command names it."""
+    posix = folder.as_posix()
+    spellings = [
+        f'cat "{folder}{os.sep}cohort.csv"',
+        f"Get-Content '{folder}{os.sep}cohort.csv' | Select-Object -First 3",
+        f'ls -la "{posix}"',
+        f'head -n 3 "{posix}/"',
+        f'cat "{os.path.relpath(folder, project)}/cohort.csv"',
+        f'python analysis/01_model.py "--input={posix}/cohort.csv"',
+        f'curl -F "file=@{posix}/cohort.csv" http://localhost:9',
+        "wc -l " + posix.replace(" ", "\\ ") + "/cohort.csv",
+        f'cd "{posix}" && ls',
+        "echo $MANUSCRIPT_GUARD_VAULT",
+        "Get-ChildItem $env:manuscript_guard_vault",
+    ]
+    if os.name == "nt":
+        drive, rest = posix.split(":", 1)
+        spellings += [f'cat "/{drive.lower()}{rest}/cohort.csv"',
+                      f'cat "{posix.swapcase()}/cohort.csv"']  # fmt: skip
+    return spellings
+
+
+def test_a_command_that_names_the_vault_is_refused_while_the_session_can_read_it(
+    in_claude_code: Path, kept_apart: Path, capsys
+) -> None:
+    _register(in_claude_code, kept_apart)
+    for command in _naming(kept_apart, in_claude_code):
+        result = run("guard-submission", _shell(in_claude_code, command), capsys)
+        assert decision(result) == "deny", (command, result)
+        assert "can be read from this session" in reason(result), command
+        assert "data/synthetic/" in reason(result)
+
+
+def test_a_command_that_names_the_vault_through_a_link_is_refused(
+    in_claude_code: Path, kept_apart: Path, tmp_path: Path, capsys
+) -> None:
+    _register(in_claude_code, kept_apart)
+    link = tmp_path / "shortcut"
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(kept_apart), str(link))
+    else:
+        link.symlink_to(kept_apart, target_is_directory=True)
+    result = run("guard-submission", _shell(in_claude_code, f'cat "{link}/cohort.csv"'), capsys)
+    assert decision(result) == "deny"
+
+
+def test_a_command_that_names_a_vault_this_session_cannot_reach_is_asked(
+    in_claude_code: Path, kept_apart: Path, capsys
+) -> None:
+    _register(in_claude_code, kept_apart)
+    named = _naming(kept_apart, in_claude_code)
+    _unmounted(kept_apart)
+    for command in named:
+        result = run("guard-submission", _shell(in_claude_code, command), capsys)
+        assert decision(result) == "ask", (command, result)
+        assert "cannot be read from this session now" in reason(result)
+        payload = _shell(in_claude_code, command, turn_id="turn-1", model="gpt-test")
+        refused = run("guard-submission", payload, capsys)
+        assert decision(refused) == "deny", command
+        assert "makes it themselves" in reason(refused)
+
+
+def test_where_the_tool_cannot_ask_a_readable_vault_is_refused_all_the_same(
+    in_claude_code: Path, kept_apart: Path, capsys
+) -> None:
+    _register(in_claude_code, kept_apart)
+    command = f'cat "{kept_apart}/cohort.csv"'
+    payload = _shell(in_claude_code, command, turn_id="t", model="gpt-test")
+    assert decision(run("guard-submission", payload, capsys)) == "deny"
+
+
+def test_a_vault_that_does_not_answer_in_time_is_taken_as_readable(
+    in_claude_code: Path, kept_apart: Path, monkeypatch, capsys
+) -> None:
+    from manuscript_guard.vault import probe
+
+    _register(in_claude_code, kept_apart)
+    released = threading.Event()
+    monkeypatch.setattr(probe, "state", lambda _root: (released.wait(30), None))
+    monkeypatch.setattr(hooks, "VAULT_GUARD_LIMIT", 0.05)
+    monkeypatch.setattr(hooks, "_LEFT_RUNNING", [])
+    try:
+        result = run("guard-submission", _shell(in_claude_code, f'ls "{kept_apart}"'), capsys)
+    finally:
+        released.set()
+    assert decision(result) == "deny"
+
+
+def test_a_command_that_does_not_name_the_vault_is_untouched(
+    in_claude_code: Path, kept_apart: Path, capsys
+) -> None:
+    _register(in_claude_code, kept_apart)
+    beside = kept_apart.with_name(kept_apart.name + "2")
+    beside.mkdir()
+    for command in (
+        f'ls "{beside}"',
+        f'ls "{kept_apart.parent}"',
+        f'cat "{kept_apart}.csv"',
+        "python analysis/01_model.py",
+        "ls data/synthetic",
+        'grep -rn "vault" docs/',
+        "manuscript-guard vault check",
+        'git commit -m "read MANUSCRIPT_GUARD_VAULT in the script"',
+    ):
+        assert run("guard-submission", _shell(in_claude_code, command), capsys) is None, command
+
+
+def test_a_project_with_no_vault_registered_here_is_untouched(
+    in_claude_code: Path, kept_apart: Path, capsys
+) -> None:
+    for command in (f'cat "{kept_apart}/cohort.csv"', "echo $MANUSCRIPT_GUARD_VAULT"):
+        assert run("guard-submission", _shell(in_claude_code, command), capsys) is None

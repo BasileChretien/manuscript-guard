@@ -309,6 +309,7 @@ number in the file and the rule that classified it.
 |---|---|
 | `verify` | re-run the analysis and check it still produces the recorded results, a harvested output among them; `--receipt SITE`, run where the data are held, runs each harvest entry naming the site and writes `receipts/SITE.receipt.json` of what ran and what came out, by digest, refused where an output holds a count the custodian forbids, and warning where a total may give one away |
 | `harvest` | take in an output a script writes without the emitter (`.csv`, `.tsv`, `.json`) as `results/<key>.json`, its cells as values and its table as `table.<key>`, by `harvest.yaml`, with the columns that are counts (`--counts`) and a table that is working output (`--not-quoted`); it runs nothing, so `check` warns until `verify` or a site's receipt covers it ([docs/harvest.md](docs/harvest.md)) |
+| `vault` | register the folder where the data are held, outside the project, which the operating system keeps from the agent: `init FOLDER FILE...` records each file named by its digest in `design/vault.yaml` and the folder's path in a git-ignored local file, refused for a folder inside the project or a `paper.yaml` with no custodian's minimum cell count, and prints Claude Code's deny rules for the folder (`--agent-settings` writes them, after asking you); `check` says whether this session can read the data, exit 0 not reachable, 1 readable, 2 not registered here; the plugin's hooks say so at each session start, and refuse an agent's command that names the folder while it can be read; it sends nothing ([docs/vault.md](docs/vault.md)) |
 | `values` | write a LaTeX manuscript's values file, `mgvalues.sty`, so that the `.tex` compiles with the results' numbers in it |
 | `models` | print each fitted model as its card, with what G15 says of it |
 | `dictionary` | write the data dictionary out for whoever builds the form: REDCap's data dictionary (`--redcap`), one row per variable (`--csv`), or the form's outline in Markdown (`--outline`) |
@@ -399,7 +400,9 @@ Five hooks: one line on the project's state when a session starts, ending with w
 `manuscript-guard next` puts first, and again at the end of a turn that changed the
 manuscript or what it rests on; a refusal to edit files that are machine-written; a note on
 the numbers just saved in a manuscript file; and the submission check before a command that
-looks like a submission.
+looks like a submission. Where the data are held in a [vault](docs/vault.md), the session's
+first line says whether the agent can read them, and a command that names their folder is
+refused while it can.
 
 ### Codex
 
@@ -447,6 +450,7 @@ everywhere.
 | [Communicating the paper](docs/communicate.md) | the brief of the paper's own sentences, the graphical abstract drawn from it, and every post or summary held to both |
 | [Auditing a paper you already wrote](docs/audit.md) | one command for a manuscript with no bindings, how little a match means, and bringing a Word paper into a project |
 | [For editors and reviewers](docs/refereeing.md) | a manuscript sent in confidence, read on your own computer with nothing sent: a referee's audit, its causal words and its cited sentences, and an editor's against the journal's profile, its tracked changes and the names Word keeps, the authors named where the review is blind, and the self-citations counted; a revision set beside the version before it, with the response letter; the authors' package held to its own manifest; and a draft of your report with the findings and their places |
+| [Data held apart from the agent](docs/vault.md) | the vault: the data in a folder the operating system keeps from the agent, the four setups that do that, most separating first, three traps, what the hooks refuse and what the agent tool's own rules cover |
 | [When manuscript-guard itself fails](docs/failures.md) | the one sentence a fault of the tool's own ends in, the record kept on your machine, and the variables that turn it off |
 | [DESIGN.md](DESIGN.md) | the architecture, the reasons for its decisions, and the known gaps |
 | [ATTRIBUTION.md](ATTRIBUTION.md) | the reporting guidelines' licences, and the one data file derived from another work |

@@ -189,9 +189,14 @@ def _unchecked_of_audit(report) -> list[str]:
     else:
         found.append("The results ledger: each number is only looked for among the outputs "
                      "given, not bound to the place the analysis put it.")  # fmt: skip
-    if not any(path.suffix.lower() in (".svg", ".pdf") for path in report.papers):
-        found.append("Figures: none was given (`--figures`), so no figure's numbers were read.")
-    if any(path.suffix.lower() == ".pdf" for path in report.papers):
+    # A PDF paper is in `report.pdfs` and is no figure; a PDF given with --figures is not in it.
+    figures = [path for path in report.papers
+               if path.suffix.lower() in (".svg", ".pdf") and path not in report.pdfs]
+    if not figures:
+        found.append("Figures: none was given (`--figures`), so no figure's numbers were read"
+                     + (" as a figure's; a PDF's labels drawn as text were read as its text"
+                        if report.pdfs else "") + ".")  # fmt: skip
+    if report.pdfs:
         found.append("A PDF's tables and lists: pdftotext gives their lines, not their cells or "
                      "items, so no total, share, n or flow in them was checked; their numbers "
                      "were read as the text's.")  # fmt: skip

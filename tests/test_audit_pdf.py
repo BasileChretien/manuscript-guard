@@ -477,7 +477,26 @@ def test_an_audit_draft_places_a_pdfs_findings_by_page(tmp_path: Path, capsys) -
     placed = [line for line in text.splitlines()
               if line.startswith(("- paper.pdf line ", "- paper.pdf page "))]  # fmt: skip
     assert placed and all(line.startswith("- paper.pdf page ") for line in placed), placed
-    assert "A PDF's tables and lists:" in text.split("## Exact findings")[0]
+    unchecked = text.split("## Exact findings")[0]
+    assert "A PDF's tables and lists:" in unchecked
+    # The paper is no figure: none was given, though its labels drawn as text were read.
+    assert "Figures: none was given (`--figures`)" in unchecked
+
+
+@needs_pdftotext
+def test_a_pdf_figure_is_no_pdf_paper_in_the_draft(tmp_path: Path, capsys) -> None:
+    """A PDF given with `--figures` is read as a figure, not through pdftotext as a paper: the
+    draft says nothing of a PDF's tables, and that a figure was given."""
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Results\n\nOf 412 patients, 37 had dark urine.\n", encoding="utf-8")
+    figure = write(tmp_path / "forest.pdf", ["Figure 1", "Odds ratio 1.42"])
+    target = tmp_path / "d.md"
+    assert main(["audit", str(paper), "--figures", str(figure),
+                 "--report-draft", str(target)]) in (0, 1)  # fmt: skip
+    capsys.readouterr()
+    unchecked = target.read_text(encoding="utf-8").split("## Exact findings")[0]
+    assert "A PDF's tables and lists:" not in unchecked
+    assert "Figures: none was given" not in unchecked
 
 
 @needs_pdftotext
@@ -535,6 +554,11 @@ def test_an_entry_number_is_not_read_as_a_pmid(tmp_path: Path) -> None:
     census = census_of_printed(tmp_path / "p.pdf", text, [(0, 4)], "As [1] [2] [4].\n", [])
     assert all(not entry.pmids for entry in census.entries)
     assert census.unsent == [(3, "PMID:")]
+    # A PMID that short, a stop after it, is read so too (DESIGN.md, Known gaps).
+    census = census_of_printed(tmp_path / "p.pdf", "References\n1. A. PMID:\n123. Epub.\n",
+                               [(0, 3)], "As [1].\n", [])  # fmt: skip
+    assert all(not entry.pmids for entry in census.entries)
+    assert census.unsent == [(2, "PMID:")]
 
 
 def test_a_number_that_skips_tells_no_entry_apart(tmp_path: Path) -> None:

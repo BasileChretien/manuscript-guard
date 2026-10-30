@@ -40,6 +40,7 @@ from typing import Any
 import pytest
 from generated import (
     AGREED,
+    CAUSAL_PARTS,
     CLAIMED,
     CREDITING,
     DATA_IDENTIFIERS,
@@ -76,6 +77,7 @@ from generated import (
     bindings,
     bold_planted,
     built_briefs,
+    causal_papers,
     claim_edits,
     claim_pairs,
     collection_plans,
@@ -4755,6 +4757,85 @@ def _an_estimates_words_are_not_its_abbreviation(patch: pytest.MonkeyPatch) -> N
     from manuscript_guard.auditing import abstract
 
     patch.setattr(abstract, "_NAMED", {})
+
+
+# ------------------------------------------ causal words, and each citation beside its sentence
+
+
+def _sentences_read(text: str, suffix: str):
+    """What `audit --design observational --cited` makes of one paper, written in Markdown
+    or, with `suffix` ".tex", in LaTeX."""
+    import tempfile
+
+    from manuscript_guard.audit import audit
+    from manuscript_guard.classify import Classifier
+
+    if not _AUDIT_RULES:
+        _AUDIT_RULES.append(Classifier.load(rendered=True))
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / f"paper{suffix}"
+        path.write_text(text, encoding="utf-8")
+        return audit([path], None, classifier=_AUDIT_RULES[0], design="observational",
+                     cited=True)  # fmt: skip
+
+
+@holds(15, causal_papers())
+def test_a_causal_word_is_warned_of_where_the_paper_sums_up_and_not_hedged_negated_or_cited(
+    drawn: tuple[str, str, dict[str, list], dict[str, list]],
+) -> None:
+    """Decision 6 of the editor and referee layer: under `--design observational`, a
+    sentence of the Abstract, a Discussion or a Conclusion that holds a word of the
+    causation rung is a warning, and one that holds a hedge or a negation, or carries a
+    citation (a number in brackets, inside its stop, after it on its line or on the next
+    line, a LaTeX `\\cite`, or by author and year) is passed over, each counted by why; the
+    Introduction, the Methods and the Results are not read, nor is a sentence of the effect
+    rung. A paper in LaTeX reads alike (`auditing/causal.py`)."""
+    markdown, latex, in_markdown, in_latex = drawn
+    for text, suffix, wanted in ((markdown, ".md", in_markdown), (latex, ".tex", in_latex)):
+        causal = _sentences_read(text, suffix).causal
+        found = {"warned": sorted([one.line, one.part] for one in causal.found),
+                 "passed": [causal.hedged, causal.negated, causal.cited]}  # fmt: skip
+        assert found == {key: wanted[key] for key in ("warned", "passed")}, text
+        assert not causal.unplaced, text
+
+
+@holds(15, causal_papers())
+def test_each_citation_is_listed_beside_the_sentence_it_belongs_to(
+    drawn: tuple[str, str, dict[str, list], dict[str, list]],
+) -> None:
+    """Decision 7: `--cited` lists a row for each work each citation names, at the line of
+    its sentence, the entry of the reference list it cites beside it, in every part of the
+    paper: a number in brackets inside its sentence's stop, after the stop on its line, and
+    alone on the line below, and a LaTeX `\\cite` in the same three places. A citation by
+    author and year is seen and not listed (`auditing/cited.py`)."""
+    markdown, latex, in_markdown, in_latex = drawn
+    for text, suffix, wanted in ((markdown, ".md", in_markdown), (latex, ".tex", in_latex)):
+        cited = _sentences_read(text, suffix).cited
+        rows = [[row.line, None if row.entry is None else (
+            row.entry.number if suffix == ".md" else row.entry.key)] for row in cited.rows]
+        assert rows == wanted["cited"], text
+        assert cited.author_year == len(CAUSAL_PARTS), text
+
+
+def _a_negation_does_not_pass_a_causal_word_over(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import causal
+    from manuscript_guard.claims import HEDGE
+
+    patch.setattr(causal, "passed", lambda kinds: "hedged" if HEDGE in kinds else None)
+
+
+def _the_methods_are_read_for_causal_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import causal
+    from manuscript_guard.auditing.sentences import METHODS
+
+    patch.setattr(causal, "READ", (*causal.READ, METHODS))
+
+
+def _a_citation_after_a_stop_is_the_next_sentence_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import sentences
+
+    patch.setattr(sentences.View, "_after_a_stop",
+                  lambda self, before, first, end, starts, ends: first)
 
 
 # ----------------------------------------------------------- a LaTeX table's rows and cells
@@ -15266,6 +15347,22 @@ BROKEN = {
     "an interval after its value is read as a numbered citation": (
         _an_interval_after_its_value_is_a_citation,
         test_a_numbered_citation_is_held_to_the_reference_list_and_an_interval_is_none,
+    ),
+    "a negation does not pass a causal word over": (
+        _a_negation_does_not_pass_a_causal_word_over,
+        test_a_causal_word_is_warned_of_where_the_paper_sums_up_and_not_hedged_negated_or_cited,
+    ),
+    "the Methods are read for causal words": (
+        _the_methods_are_read_for_causal_words,
+        test_a_causal_word_is_warned_of_where_the_paper_sums_up_and_not_hedged_negated_or_cited,
+    ),
+    "a citation after a sentence's stop is read as the next sentence's, for causal words": (
+        _a_citation_after_a_stop_is_the_next_sentence_s,
+        test_a_causal_word_is_warned_of_where_the_paper_sums_up_and_not_hedged_negated_or_cited,
+    ),
+    "a citation after a sentence's stop is listed beside the next sentence": (
+        _a_citation_after_a_stop_is_the_next_sentence_s,
+        test_each_citation_is_listed_beside_the_sentence_it_belongs_to,
     ),
     "a range of numbered citations cites only its ends": (
         _a_range_of_citations_cites_its_ends,

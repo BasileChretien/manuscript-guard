@@ -1398,6 +1398,47 @@ def _abstract_against_results() -> Reading:
     return read
 
 
+@reading("causal words")
+def _causal_words() -> Reading:
+    """What `audit --design observational` says of a Markdown paper: each sentence it warns
+    of, by line, part and words, and how many it read and passed over, and why."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.auditing.causal import causal_words  # noqa: F401 - newer than it
+
+    def read(given: dict[str, str]) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as folder:
+            paper = Path(folder) / "paper.md"
+            paper.write_text(given["paper"], encoding="utf-8")
+            found = audit([paper], None, design="observational").causal
+            return {"found": [[one.line, one.part, list(one.words), one.sentence]
+                              for one in found.found],
+                    "read": found.read, "passed": [found.hedged, found.negated, found.cited],
+                    "unplaced": len(found.unplaced)}  # fmt: skip
+
+    return read
+
+
+@reading("cited sentences")
+def _cited_sentences() -> Reading:
+    """What `audit --cited` lists of a Markdown paper: each row's line, section, sentence,
+    citation and entry, and what was seen and not listed."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.auditing.cited import cited_sentences  # noqa: F401 - newer than it
+
+    def read(given: dict[str, str]) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as folder:
+            paper = Path(folder) / "paper.md"
+            paper.write_text(given["paper"], encoding="utf-8")
+            found = audit([paper], None, cited=True).cited
+            return {"rows": [[row.line, row.section, row.sentence, row.written,
+                              None if row.entry is None else row.entry.label, row.why]
+                             for row in found.rows],
+                    "seen": [found.author_year, found.pandoc],
+                    "notes": [note for _path, note in found.notes]}  # fmt: skip
+
+    return read
+
+
 @reading("whole-number means")
 def _whole_number_means() -> Reading:
     """Each mean in a pipe table's rows the auditor names, as it is printed, with its

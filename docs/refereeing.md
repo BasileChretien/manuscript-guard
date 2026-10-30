@@ -10,16 +10,17 @@ model. This page is about reading a paper someone else wrote. For your own, see
 Journals and publishers forbid putting a submitted manuscript into an AI tool that does not
 keep it confidential. The audit's report quotes the manuscript's lines, so the same holds for
 the report: do not paste it into a chat with a model, and do not let a coding agent run the
-audit or read its output. Run it yourself, in a terminal no agent can read. When `--journal`
-or `--authors` is given, the audit says so on stderr, and the plugin's hook asks you before an
-agent runs it. The paper-audit skill tells an agent to stop on a paper you were sent to review
+audit or read its output. Run it yourself, in a terminal no agent can read. When `--journal`,
+`--authors`, `--design` or `--cited` is given, the audit says so on stderr, and the plugin's
+hook asks you before an agent runs it. The paper-audit skill tells an agent to stop on a paper you were sent to review
 or to handle, and to give you the commands instead.
 
 What leaves the machine: nothing, unless you ask. `--lookup` asks Crossref, OpenAlex,
-DataCite, doi.org and PubMed about each DOI and PMID of the reference list, and sends those
-identifiers and nothing else; `--lookup --dry-run` lists what it would send. The set of DOIs
-a paper cites is a weak fingerprint of it, and a contact address you set in the environment
-for the registries names you to them.
+DataCite, doi.org and PubMed about each DOI and PMID of the reference list, and with
+`--cited` asks Europe PMC for each cited work's abstract by its PMID or DOI; it sends those
+identifiers and nothing else, never a sentence, a title or a name. `--lookup --dry-run` lists
+what it would send. The set of DOIs a paper cites is a weak fingerprint of it, and a contact
+address you set in the environment for the registries names you to them.
 
 ## A referee
 
@@ -34,6 +35,43 @@ Abstract against the Results, a count held back that a total gives away, the wor
 and the reference list, and with `--lookup` each work the registries say was retracted,
 withdrawn or put under concern. It reads a .docx, Markdown and LaTeX; a referee who has only
 the PDF can ask the editor for the source.
+
+**Causal words.** An observational study shows an association, and a sentence that says one
+thing causes another claims more than its design can show. You declare the design; the tool
+does not guess it:
+
+```bash
+manuscript-guard audit paper.docx --design observational
+```
+
+Each sentence of the Abstract, the Discussion and the Conclusion is read for a word that
+claims a cause: cause, causes, caused, causing, causal, causally, "demonstrated that",
+"proved that" and their other tenses. A sentence that holds a hedge ("may", "might",
+"appears") or a negation ("not", "cannot", "no") is passed over, and so is one that carries a
+citation (a number in brackets, a LaTeX `\cite`, an author and a year in brackets), since the
+cause may be a cited trial's. The rest are warnings, `causal-word-observational`, which
+`--strict` does not count. The Methods and the Results are not read: "a causal diagram" there
+describes the analysis. Only those words are read: "reduced the risk" claims an effect, and
+is not.
+
+**Cited sentences.** Whether a cited work says what the sentence says it does is your
+reading, and the tool lays it out for you:
+
+```bash
+manuscript-guard audit paper.docx --cited cited.md --lookup
+```
+
+`cited.md` (or `cited.html`) has a row for each work each citation names: the sentence, its
+file, line and section, the citation as typed, and the reference list's entry as typed with
+its DOI and PMID; with `--lookup`, the title, the year and the standing the registries give
+(retracted, withdrawn, under concern), and the abstract Europe PMC holds; and an empty last
+column, "Does it support the sentence? (yours)". A citation typed right after a sentence's
+stop, "X. [3]", is that sentence's. The file quotes the manuscript, so keep it as you keep the
+manuscript; the audit's own output gives only the counts. It does not write over a file that
+is already there, which may hold your judgements. It reads a number in brackets where the
+reference list is numbered, and a LaTeX `\cite`; it does not read a citation by author and
+year, a superscript number in a .docx, or Word's Zotero and EndNote fields, and the file says
+so. An abstract is kept only in the folder `--lookup-cache` names.
 
 ## An editor
 
@@ -104,11 +142,20 @@ their own work in the third person. Each one found is listed with its place and 
 `--strict`. Where the review is not blind, nobody is looked for, and the report says so. A
 referee never passes `--authors`.
 
+**Self-citation.** With `--authors` and `--lookup`, each author is looked for in the author
+lists the registries keep for each reference, by family name (folded as the reference check
+folds one: accents, case, particles) and first initial; and with `--lookup` the journal's own
+papers among the references are counted, by the profile's `name` against each record's
+journal, folded. The report gives the counts and the entries, never a ratio or a verdict, and
+a namesake counts as much as the author. Without `--lookup` nothing is counted: the reference
+text is not read for names.
+
 ## What `--strict` counts
 
 What [Auditing a paper you already wrote](audit.md) lists, and an author named in a document
 the journal reviews blind. Not the journal's limits or missing statements, which a journal
-may count otherwise than this tool does, nor what the Document section counts.
+may count otherwise than this tool does, nor what the Document section counts, nor the causal
+words, the cited sentences or the self-citation counts.
 
 ## What is not checked
 

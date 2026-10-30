@@ -38,7 +38,7 @@ from __future__ import annotations
 import re
 from bisect import bisect_left
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -201,13 +201,19 @@ def _words(read: str, start: int, end: int) -> tuple[Word, ...]:
     return tuple(found)
 
 
-def _pieces(text: str, read: str) -> list[tuple[int, int, int]]:
+def _pieces(
+    text: str, read: str, lines: bool = False, cuts: Iterable[int] = ()
+) -> list[tuple[int, int, int]]:
     """Where each sentence of `text` stands, as `read` cuts it: its start, the offset of its
     first character that is no space, and its end; a piece with no letter in `read` is none.
-    `text` has its line ends made line feeds."""
-    cuts = {0, len(read)}
+    `text` has its line ends made line feeds. With `lines`, each line is a block of its own,
+    as each paragraph of a Word document read as text is; `cuts` are more places a sentence
+    ends, where a LaTeX heading's command starts and its title ends."""
+    cuts = {0, len(read), *(at for at in cuts if 0 < at < len(read))}
     cuts.update(found.end() for found in _STOP.finditer(read))
     cuts.update(found.start() + 1 for found in _BLOCK.finditer(read))
+    if lines:
+        cuts.update(found.end() for found in re.finditer("\n", read))
     # Each value of the front matter is read apart, and is on its own line. The mask blanks
     # the line ends there with the keys.
     head = front_matter_end(text)
@@ -228,6 +234,29 @@ def sentence_spans(text: str) -> list[tuple[int, int, int]]:
     space after its stop included. `text` has its line ends made line feeds already, so that
     an offset is one of the caller's."""
     return _pieces(text, _readable(text))
+
+
+def readable(text: str) -> str:
+    """`text` as a Markdown manuscript's sentences are read: what prints no prose blanked
+    (`mask`, and inline code), at the same offsets, a curly apostrophe read as a straight
+    one."""
+    return _readable(text)
+
+
+def sentence_pieces(
+    text: str, read: str, lines: bool = False, cuts: Iterable[int] = ()
+) -> list[tuple[int, int, int]]:
+    """`sentence_spans` of a text already read: `read` is `text` with what prints no prose
+    blanked at the same offsets, as `readable` blanks a Markdown file's, or as the audit's
+    reading of a Word document or a LaTeX file does. With `lines`, each line is a block;
+    `cuts` are more places a sentence ends."""
+    return _pieces(text, read, lines, cuts)
+
+
+def claim_words(read: str, start: int, end: int) -> tuple[Word, ...]:
+    """The words of the sentence `read[start:end]` that set how strongly it claims, each
+    with what it is: a class (`HEDGE`, `LIMIT`, `NEGATED`) or the rung of the ladder."""
+    return _words(read, start, end)
 
 
 def sentences(text: str) -> list[Sentence]:

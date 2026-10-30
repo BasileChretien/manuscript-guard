@@ -88,6 +88,8 @@ class Entry:
     dois: tuple[str, ...] = ()
     pmids: tuple[str, ...] = ()
     path: Path | None = None
+    #: The entry as typed, its lines joined: what the cited-sentences table shows of it.
+    text: str = field(default="", compare=False)
 
 
 @dataclass(frozen=True)
@@ -175,7 +177,8 @@ def _entries_of(lines: list[str], spans: list[tuple[int, int]], paragraphs: bool
             run, counted = (number, numbered.group(4), list_at), 0
         dois, pmids = identifiers(text)
         label = f"entry {number}" if number is not None else f"entry {place} of the list"
-        entries.append(Entry(label, line, number=number, dois=dois, pmids=pmids))
+        entries.append(Entry(label, line, number=number, dois=dois, pmids=pmids,
+                             text=" ".join(text.split())))  # fmt: skip
     return entries
 
 
@@ -196,6 +199,15 @@ def markers_in(hidden: str, intervals: list[tuple[int, int]]) -> list[tuple[int,
     """Each bracketed citation of numbers in `hidden`, the text as the audit reads it, with
     the line it is on and the numbers it cites. One inside an interval's span, which runs
     from the value it follows to its closing bracket, is none (`audit._intervals`)."""
+    return [(hidden.count("\n", 0, start) + 1, written, numbers)
+            for start, _end, written, numbers in marker_spans(hidden, intervals)]  # fmt: skip
+
+
+def marker_spans(
+    hidden: str, intervals: list[tuple[int, int]]
+) -> list[tuple[int, int, str, list[int]]]:
+    """`markers_in`, each marker with where it starts and ends in `hidden` instead of its
+    line: what the cited-sentences table finds a marker's sentence by."""
     found = []
     for marker in _MARKER.finditer(hidden):
         if any(start <= marker.start() < end for start, end in intervals):
@@ -208,7 +220,7 @@ def markers_in(hidden: str, intervals: list[tuple[int, int]]) -> list[tuple[int,
                 numbers += range(low, high + 1)
             else:
                 numbers += [low, high]
-        found.append((hidden.count("\n", 0, marker.start()) + 1, marker.group(0), numbers))
+        found.append((marker.start(), marker.end(), marker.group(0), numbers))
     return found
 
 
@@ -240,7 +252,8 @@ def census_of_text(
         # paragraph takes one too (round 2 of #463).
         places = [numbering[entry.line][2] for entry in entries]
         entries = [
-            Entry(f"entry {place}", entry.line, number=place, dois=entry.dois, pmids=entry.pmids)
+            Entry(f"entry {place}", entry.line, number=place, dois=entry.dois, pmids=entry.pmids,
+                  text=entry.text)
             for place, entry in zip(places, entries, strict=True)
         ]
         census.entries = tuple(entries)
@@ -303,6 +316,14 @@ def _held_to_numbers(
     return sorted(problems, key=lambda problem: problem.line or 0)
 
 
+def _typed(body: str) -> str:
+    """A `\\bibitem`'s text as typed, its comments and the `\\end{thebibliography}` after the
+    last entry left out, its lines joined."""
+    kept = "\n".join(re.sub(r"(?<!\\)%.*", "", line) for line in body.split("\n"))
+    kept = re.sub(r"\\end\s*\{thebibliography\}.*", "", kept, flags=re.DOTALL)
+    return " ".join(kept.split())
+
+
 def census_of_latex(path: Path, files: list[tuple[Path, Any]]) -> Census:
     """A LaTeX document's census, its files given as their paths and their `Source`s: the
     `\\bibitem`s of its `thebibliography`, held to the keys its citation commands name."""
@@ -314,11 +335,12 @@ def census_of_latex(path: Path, files: list[tuple[Path, Any]]) -> Census:
             items = list(_BIBITEM.finditer(text, start, end))
             for index, item in enumerate(items):
                 stop = items[index + 1].start() if index + 1 < len(items) else end
-                dois, pmids = identifiers(text[item.end() : stop])
+                body = text[item.end() : stop]
+                dois, pmids = identifiers(body)
                 key = item.group(1).strip()
                 entries.append(Entry(
                     f"\\bibitem{{{key}}}", text.count("\n", 0, item.start()) + 1, key=key,
-                    dois=dois, pmids=pmids, path=where,
+                    dois=dois, pmids=pmids, path=where, text=_typed(body),
                 ))  # fmt: skip
         cited += [(where, text.count("\n", 0, use.offset) + 1, use.key) for use in reading.cited]
     if not entries:
@@ -360,6 +382,10 @@ class Looked:
     came: str = ""
     #: Whether a registry asked knows the work: one found its DOI or its PMID.
     known: bool = False
+    #: What each registry answered, by its name (`lookup.run.look_up`'s `sources`): the
+    #: title, the year, the authors and the journal the cited-sentences table and the
+    #: self-citation count read. Empty for a dry run.
+    answers: Mapping[str, Any] = field(default_factory=dict, compare=False)
 
 
 #: Who is asked of a DOI, in turn: DataCite only where Crossref does not know it, and doi.org
@@ -475,7 +501,7 @@ def look_up(
             )  # fmt: skip
             known = any(isinstance(answer, dict) and answer.get("status") == "found"
                         for answer in answers.values())  # fmt: skip
-            looked.append(Looked(census.path, entry, asked, problems, came, known))
+            looked.append(Looked(census.path, entry, asked, problems, came, known, answers))
     return looked
 
 

@@ -41,9 +41,12 @@ The report comes in sections, after what was read and what was not:
 | References (G7) | the reference list counted, its numbered citations held to it, and with `--lookup` what the registries say | no |
 | Journal (G4), with `--journal` | the main document held to the journal's profile: its limits, abstract, sections, statements, data statement and boxes; what was not checked; the profile's rules no gate checks, as a checklist | no |
 | Document, with `--journal` | each .docx's tracked changes, comments and hidden text, and the names Word keeps; with `--authors`, an author named where the review is blind | an author named where the review is blind |
+| Causal words, with `--design observational` | each sentence of the Abstract, the Discussion and the Conclusion that claims a cause, with no hedge, negation or citation | no |
+| Cited sentences, with `--cited FILE` | how many citations were listed in FILE, each beside its sentence and its entry | no |
+| Self-citation, with `--journal` and `--authors` or `--lookup` | the references whose registry record lists an author, and those the journal published, counted | no |
 
-`--journal` and `--authors` are for an editor or a referee, reading a paper someone else wrote:
-[For editors and reviewers](refereeing.md).
+`--journal`, `--authors`, `--design` and `--cited` are for an editor or a referee, reading a
+paper someone else wrote: [For editors and reviewers](refereeing.md).
 
 `--strict` also counts a paper, a figure or a stretch of one that could not be read, and an
 audit that read no number. Of the arithmetic it counts what is exact, and nothing that rests

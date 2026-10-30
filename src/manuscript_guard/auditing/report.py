@@ -20,6 +20,12 @@ What was read and what was not comes first, then a section for each kind of chec
   not checked, and the profile's rules no gate checks (`auditing.journal`).
 * Document, with `--journal`: what each .docx holds besides its text (`auditing.document`),
   and with `--authors` each author named where the journal's review is blind.
+* Causal words, with `--design`: each sentence of the Abstract, the Discussion and the
+  Conclusion that claims a cause with no hedge, negation or citation (`auditing.causal`).
+* Cited sentences, with `--cited`: how many rows the file holds and what was not read
+  (`auditing.cited`); the sentences themselves are in the file only.
+* Self-citation, with `--journal` and `--authors` or `--lookup`: the references whose
+  registry record lists an author, and those the journal published (`auditing.selfcite`).
 
 `--strict` counts the numbers not found in the outputs, a paper or a stretch of one that
 could not be read, an audit that read no number, and what is exact arithmetic: a total that
@@ -33,7 +39,8 @@ interval or a test of the Abstract that differs from its counterpart where the p
 out from a statistic, G6 and G14 (the author, 2026-10-28), G7's findings, a count held back
 that only a column's n gives away, which holds only where none of the column lacks the
 characteristic, a number of the Abstract found nowhere the paper reports (the author,
-2026-10-28), G4's findings and the Document section's counts (Basile, 2026-10-29).
+2026-10-28), G4's findings and the Document section's counts, the causal words, the cited
+sentences and the self-citation counts (Basile, 2026-10-29).
 """
 
 from __future__ import annotations
@@ -54,6 +61,9 @@ LANGUAGE = "Language (G14)"
 REFERENCES = "References (G7)"
 JOURNAL = "Journal (G4)"
 DOCUMENT = "Document"
+CAUSAL = "Causal words"
+CITED = "Cited sentences"
+SELF_CITATION = "Self-citation"
 #: What the report says at its top where no outputs were given.
 NO_OUTPUTS = "No outputs given: no number was compared with the analysis"
 #: How many items of one kind are listed for one file before only a count.
@@ -168,7 +178,100 @@ def items(report) -> list[Item]:
             Item(REFERENCES, "G7", p.code, p.message, WARN, False, p.path, p.line)
             for p in looked.problems
         ]  # fmt: skip
-    return found + _journal_items(report.journal) + _document_items(report)
+    return (found + _journal_items(report.journal) + _document_items(report)
+            + _causal_items(report.causal) + _cited_items(report.cited)
+            + _self_citation_items(report.self_citation))  # fmt: skip
+
+
+def _causal_items(read) -> list[Item]:
+    """Each sentence that claims a cause, a warning not counted; and each file none of whose
+    sentences was read, as a note."""
+    if read is None:
+        return []
+    from manuscript_guard.auditing.causal import CODE, HINT, said
+
+    return [
+        *(Item(CAUSAL, "audit", CODE, said(one), WARN, False, one.path, one.line, one.sentence,
+               HINT) for one in read.found),
+        *(Item(CAUSAL, "audit", "causal-words-not-read", _unplaced(path), INFO, False, path)
+          for path in read.unplaced),
+    ]  # fmt: skip
+
+
+def _unplaced(path: Path) -> str:
+    return (f"{path.name}: no heading names its Abstract, Discussion or Conclusion, so none of "
+            "its sentences was read for causal words")  # fmt: skip
+
+
+def _cited_items(read) -> list[Item]:
+    """The cited sentences: how many rows the file holds, never a sentence; what was not
+    listed; and what Europe PMC would be asked, on a dry run."""
+    if read is None:
+        return []
+    found = [Item(CITED, "audit", "cited-written", _cited_said(read), INFO, False,
+                  read.written)]  # fmt: skip
+    found += [Item(CITED, "audit", "cited-not-listed", note, INFO, False, path)
+              for path, note in read.notes]  # fmt: skip
+    if read.dry_run:
+        found += [Item(CITED, "audit", "would-ask", f"{one.entry.label}: would ask {one.asked}",
+                       INFO, False, one.entry.path, one.entry.line)
+                  for one in read.fetched or []]  # fmt: skip
+    return found
+
+
+def _cited_said(read) -> str:
+    """How many rows the file holds, and what more is in it."""
+    rows = len(read.rows)
+    sentences = len({(row.path, row.line, row.sentence) for row in read.rows})
+    listed = sum(1 for row in read.rows if row.entry is not None)
+    said = (f"{rows} row{'s' if rows != 1 else ''}, one for each work a citation names, in "
+            f"{sentences} sentence{'s' if sentences != 1 else ''}; {listed} with its entry of "
+            f"the reference list, {rows - listed} with none")
+    if read.written is not None:
+        said += f"; written to {read.written}"
+    fetched = read.fetched
+    if fetched and not read.dry_run:
+        found = sum(1 for one in fetched if one.answer.get("abstract"))
+        said += (f"; Europe PMC asked of {len(fetched)} work"
+                 f"{'s' if len(fetched) != 1 else ''}, {found} with an abstract")  # fmt: skip
+    if read.author_year or read.pandoc:
+        said += (f"; not listed: {read.author_year} citation(s) by author and year, "
+                 f"{read.pandoc} pandoc citation(s) by key")  # fmt: skip
+    return said
+
+
+def _self_citation_items(said) -> list[Item]:
+    """The self-citation counts, each with its list of entries; none counted."""
+    if said is None:
+        return []
+    if said.note:
+        return [Item(SELF_CITATION, "audit", "self-citation-not-counted", said.note, INFO,
+                     False)]  # fmt: skip
+    found = [Item(SELF_CITATION, "audit", "self-citation-read", _looked_said(said), INFO, False)]
+    if said.authors_note:
+        found.append(Item(SELF_CITATION, "audit", "self-citation-not-counted",
+                          said.authors_note, INFO, False))  # fmt: skip
+    found += [Item(SELF_CITATION, "audit", "self-citation-author",
+                   f"{author.shown}: {_entries_said(listed)}, whose registry record lists an "
+                   "author of that family name and first initial", INFO, False)
+              for author, listed in said.authors]  # fmt: skip
+    if said.journal:
+        found.append(Item(SELF_CITATION, "audit", "self-citation-journal",
+                          f"{said.journal}: {_entries_said(said.in_journal)}, published in it "
+                          "by what the registries say", INFO, False))  # fmt: skip
+    return found
+
+
+def _entries_said(listed: list) -> str:
+    count = len(listed)
+    said = f"{count} reference{'s' if count != 1 else ''}"
+    return said + (" (" + ", ".join(one.entry.label for one in listed) + ")" if listed else "")
+
+
+def _looked_said(said) -> str:
+    return (f"{said.looked} entr{'y' if said.looked == 1 else 'ies'} looked up, {said.no_people} "
+            f"of them with no author list from a registry and {said.no_journal} with no "
+            f"journal; {said.unlooked} not looked up, having no DOI or PMID, and not counted")
 
 
 def _journal_items(run) -> list[Item]:
@@ -317,6 +420,18 @@ def _reader_counts(report) -> dict[str, int]:
                           "deletions"), ("tracked_moves", "moves"), ("comments", "comments"),
                           ("hidden_runs", "hidden")):  # fmt: skip
             counts[key] = sum(getattr(facts, name) for facts in report.documents)
+    if report.causal is not None:
+        counts["causal_sentences_read"] = report.causal.read
+        counts["causal_words"] = len(report.causal.found)
+    if report.cited is not None:
+        counts["cited_rows"] = len(report.cited.rows)
+        counts["cited_sentences"] = len({(row.path, row.line, row.sentence)
+                                         for row in report.cited.rows})  # fmt: skip
+    said = report.self_citation
+    if said is not None and not said.note:
+        counts["self_citation_looked_up"] = said.looked
+        if said.journal:
+            counts["self_citation_journal"] = len(said.in_journal)
     return counts
 
 
@@ -383,6 +498,14 @@ def render(report, discrimination, root: Path | None = None) -> str:
                   *_journal(report.journal, root, show)]  # fmt: skip
     if report.documents or report.journal is not None:
         lines += ["", f"=== {DOCUMENT} ===", *_document(report, show)]
+    if report.causal is not None:
+        lines += ["", f"=== {CAUSAL} (--design {report.causal.design}; not counted by "
+                  "--strict) ===", *_causal(report.causal, show)]  # fmt: skip
+    if report.cited is not None:
+        lines += ["", f"=== {CITED} (not counted by --strict) ===", *_cited(report.cited, show)]
+    if report.self_citation is not None:
+        lines += ["", f"=== {SELF_CITATION} (not counted by --strict) ===",
+                  *_self_citation(report.self_citation)]  # fmt: skip
     lines.append("")
     if report.compared:
         lines.append(
@@ -722,6 +845,48 @@ def _document(report, show) -> list[str]:
         # --authors, is said nothing of (round 1 of #478).
         lines.append(f"  The journal's review is {run.looked}-blind, and no author was found "
                      "named in what was read.")  # fmt: skip
+    return lines
+
+
+def _causal(read, show) -> list[str]:
+    """The causal words: what was read, what was passed over and why, and each sentence."""
+    from manuscript_guard.auditing.causal import said
+
+    passed = read.hedged + read.negated + read.cited
+    lines = [f"  {read.read} sentence{'s' if read.read != 1 else ''} read in the Abstract, the "
+             f"Discussion and the Conclusion; {passed} with a causal word passed over: "
+             f"{read.hedged} hedged, {read.negated} negated, {read.cited} cited."]  # fmt: skip
+    found = [_Said(one.path, one.line, said(one), one.sentence) for one in read.found]
+    lines += _listed("A CAUSAL WORD IN A SENTENCE WITH NO HEDGE, NEGATION OR CITATION (not "
+                     "counted by --strict):", found, show)  # fmt: skip
+    if not read.found:
+        lines.append("  No sentence read claims a cause with no hedge, negation or citation.")
+    lines += [f"  {_unplaced(path)}" for path in read.unplaced]
+    return lines
+
+
+def _cited(read, show) -> list[str]:
+    """The cited sentences, as counts: the sentences are in the file only."""
+    lines = [f"  {_cited_said(read)}."]
+    lines += [f"  {show(path)}: {note}." for path, note in read.notes]
+    if read.dry_run:
+        lines += [f"  would ask {one.asked} ({one.entry.label})" for one in read.fetched or []]
+    return lines
+
+
+def _self_citation(said) -> list[str]:
+    """The self-citation counts, each with its entries; never a ratio or a verdict."""
+    if said.note:
+        return [f"  {said.note}."]
+    lines = [f"  {_looked_said(said)}."]
+    if said.authors_note:
+        lines.append(f"  {said.authors_note}.")
+    lines += [f"  {author.shown}: {_entries_said(listed)}, whose registry record lists an author "
+              "of that family name and first initial (a namesake counts too)"
+              for author, listed in said.authors]  # fmt: skip
+    if said.journal:
+        lines.append(f"  {said.journal}: {_entries_said(said.in_journal)}, published in it by "
+                     "what the registries say")  # fmt: skip
     return lines
 
 

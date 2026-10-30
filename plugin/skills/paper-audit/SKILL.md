@@ -35,7 +35,8 @@ The first is the editor's: the paper held to the journal's profile, which the ed
 The second also looks for the authors' names where the journal reviews blind. The third is
 a referee's: everything else this skill describes, and the registries asked about each
 reference, which sends their DOIs and PMIDs and nothing of the text. The hook asks the
-person before an agent runs `audit` with `--journal` or `--authors`; that question is theirs
+person before an agent runs `audit` with `--journal`, `--authors`, `--design` or `--cited`;
+that question is theirs
 to answer, not yours. The project's documentation, "For editors and reviewers", says what
 each option checks.
 

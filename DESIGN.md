@@ -19609,6 +19609,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `#`, a list item's number) is read as such.
   - A figure's labels, where the PDF draws them as text, are read as the paper's text.
   - A PDF in a folder is not read, though it may be the paper; it is counted in a note.
+  - One PDF named as the paper and with `--figures` is read as both, and the report draft says
+    no figure was given.
 - **A package read by `audit --package` is held to its own manifest, which the authors
   wrote.**
   - Anyone who changes a file can write a new manifest and new `.sha256` files: a consistent

@@ -194,8 +194,8 @@ def _unchecked_of_audit(report) -> list[str]:
                if path.suffix.lower() in (".svg", ".pdf") and path not in report.pdfs]
     if not figures:
         found.append("Figures: none was given (`--figures`), so no figure's numbers were read"
-                     + (" as a figure's; a PDF's labels drawn as text were read as its text"
-                        if report.pdfs else "") + ".")  # fmt: skip
+                     + (" as a figure's; the labels a figure in the PDF paper draws as text "
+                        "were read as the paper's text" if report.pdfs else "") + ".")  # fmt: skip
     if report.pdfs:
         found.append("A PDF's tables and lists: pdftotext gives their lines, not their cells or "
                      "items, so no total, share, n or flow in them was checked; their numbers "

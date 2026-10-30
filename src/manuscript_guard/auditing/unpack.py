@@ -3,16 +3,16 @@ member before anything is written, and refused whole where one member could land
 folder it is unpacked into, or the archive is past the limits; a folder is read where it is,
 and refused where it holds a link, which could lead outside it.
 
-What a .zip is refused for: a member named from the root (`/x`, `C:x`, `\\x`), a name with
-`..` among its parts, a backslash or a colon in a name (Windows reads either as a path of its
-own), a name no Windows file system holds (a control character, one of `<>"|?*`, a part ending
-in a stop or a space, an empty or a `.` part), a part Windows keeps for a device (`CON`, `NUL`,
-`COM1`, `COM¹` and their like, spaces before the stop as well), a name that is both a file and
-a folder of other members, a symbolic link, an encrypted member, two members whose names differ
-only in case, more than `MAX_MEMBERS` members, or more than `MAX_BYTES` once unpacked. A member
-that cannot be written all the same refuses the package with a sentence. The members are then
-written into a new temporary folder, each no larger than the archive says it is, and the
-folder is removed when the audit ends. Nothing in the package is run.
+What a .zip is refused for, on every system: a member named from the root or a drive (`/x`,
+`C:x`, `\\x`), a name with `..`, an empty or a `.` part, a backslash or a NUL, a name that is
+both a file and a folder of other members, a symbolic link, an encrypted member, two members
+whose names differ only in case, more than `MAX_MEMBERS` members, or more than `MAX_BYTES`
+once unpacked. On Windows also a name its file system cannot hold: a colon, a control
+character, one of `<>"|?*`, a part ending in a stop or a space, a part kept for a device
+(`CON`, `NUL`, `COM1`, `COM¹` and their like, spaces before the stop as well). A member that
+cannot be written all the same, on any system, refuses the package with a sentence. The
+members are written into a new temporary folder, each no larger than the archive says it is,
+and the folder is removed when the audit ends. Nothing in the package is run.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import tempfile
 import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 #: The most members a package's .zip may hold, and the most bytes they may hold unpacked.
 MAX_MEMBERS = 50_000
@@ -46,19 +46,34 @@ class Refused(Exception):
 
 
 def _unsafe(name: str) -> str:
-    """Why a member's name is refused, or ""."""
-    if not name or name.startswith(("/", "\\")):
+    """Why a member's name is refused, or "". On every system: a name from the root or a
+    drive, a backslash (a separator to Windows, and to `package`'s own reading of a path on
+    any system, so one name would be two paths), a NUL, `..`, an empty or a `.` part. Only on
+    Windows, where the file system cannot hold them (round 2 of #487: a Linux project's
+    `analysis/aux.R` packages, and was refused on Linux too): a colon, `<>"|?*`, a control
+    character, a part ending in a stop or a space, and a device's name. Elsewhere a name the
+    file system cannot hold refuses the package when it is written."""
+    if not name or name.startswith(("/", "\\")) or PureWindowsPath(name).drive:
         return "is named from the root"
-    if "\\" in name or ":" in name or "\0" in name:
-        return "has a backslash, a colon or a NUL in its name, which Windows reads otherwise"
-    if any(char in _NOT_IN_A_NAME or ord(char) < 32 for char in name):
-        return ("has a control character or one of < > \" | ? * in its name, which Windows "
-                "cannot hold")  # fmt: skip
+    if "\\" in name or "\0" in name:
+        return "has a backslash or a NUL in its name, which Windows reads otherwise"
     parts = name.removesuffix("/").split("/")
     if ".." in parts:
         return "has .. among its parts, which leads out of the folder"
     if any(part in ("", ".") for part in parts):
         return "has an empty part or a . part, which names another member's place"
+    return _windows_cannot_hold(parts) if windows() else ""
+
+
+def windows() -> bool:
+    """Whether the package is unpacked on Windows, whose file system holds fewer names."""
+    return os.name == "nt"
+
+
+def _windows_cannot_hold(parts: list[str]) -> str:
+    if any(char in _NOT_IN_A_NAME or ord(char) < 32 for part in parts for char in part):
+        return ("has a colon, a control character or one of < > \" | ? * in its name, which "
+                "Windows cannot hold")  # fmt: skip
     if any(part.endswith((".", " ")) for part in parts):
         return "has a part ending in a stop or a space, which Windows drops"
     if any(part.split(".")[0].rstrip(" ").upper() in _DEVICES for part in parts):

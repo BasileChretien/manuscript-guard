@@ -226,13 +226,14 @@ Some journals ask the authors for the package `manuscript-guard package` writes:
 scripts, the results they wrote and what they ran with, with `MANIFEST.yaml` listing each file
 by its size and SHA-256. `--package` takes the .zip or the unpacked folder. A .zip is read
 member by member before anything is unpacked, and refused whole where a member is named from
-the root, has `..` among its parts, holds a name Windows cannot (a backslash, a colon, one of
-`<>"|?*`, a control character, a part ending in a stop or a space, an empty or a `.` part, a
-device's name such as `CON`), is both a file and a folder of other members, is a link or
-encrypted, where two names differ only in case, or where the archive holds more than 50,000
-members or 16 GiB; the rest is unpacked into a temporary folder that is removed afterwards,
-and a member that cannot be written there all the same refuses the package. A folder holding a
-link is refused.
+the root or a drive, has `..`, an empty or a `.` part, a backslash or a NUL in its name, is
+both a file and a folder of other members, is a link or encrypted, where two names differ only
+in case, or where the archive holds more than 50,000 members or 16 GiB. On Windows, a name its
+file system cannot hold is refused as well (a colon, one of `<>"|?*`, a control character, a
+part ending in a stop or a space, a device's name such as `CON`); elsewhere it is read like any
+other. The rest is unpacked into a temporary folder that is removed afterwards, and a member
+that cannot be written there all the same refuses the package. A folder holding a link is
+refused.
 
 The report gains a section, "Package", which reads:
 

@@ -8215,16 +8215,20 @@ punctuation, "&", a leading "The"). Counts and the entries, never a ratio or a v
 package `manuscript-guard package` writes, which some journals ask authors for. The paper is
 optional with it: alone, the package is read and nothing else. A .zip is opened as an untrusted
 archive: every member is read from its central directory first, and the whole is refused,
-nothing unpacked, where a member is named from the root, has `..` among its parts, holds a
-name a Windows or POSIX file system cannot (a backslash, a colon, one of `<>"|?*`, a control
-character, a part ending in a stop or a space, an empty or a `.` part, a part Windows keeps for
-a device, `COM¹` and spaces before the stop included as Python's own reserved-name check has
-them), is both a file and a folder of other members, is a symbolic link or encrypted, or shares
-its name with another but for case, or where the archive holds more than 50,000 members or 16
-GiB unpacked (round 1 of #487 found a name Windows cannot hold ending in an unexpected error).
-The members are then written into a new temporary folder, each no larger than its entry says,
-a member that cannot be written all the same refusing the package with a sentence, and the
-folder is removed when the audit ends. A folder is
+nothing unpacked, on every system, where a member is named from the root or a drive (`/x`,
+`C:x`), has `..`, an empty or a `.` part, a backslash or a NUL in its name, is both a file and
+a folder of other members, is a symbolic link or encrypted, or shares its name with another
+but for case, or where the archive holds more than 50,000 members or 16 GiB unpacked. A
+backslash is refused everywhere though it is a plain character to POSIX: Windows reads it as a
+separator, and so does `package`'s own reading of a path on any system (`plan.inside`), so one
+name would be two paths. On Windows only, a name its file system cannot hold is refused too: a
+colon, one of `<>"|?*`, a control character, a part ending in a stop or a space, a part kept
+for a device (`COM¹` and spaces before the stop included, as Python's own reserved-name check
+has them). Elsewhere those names are files like any other: a Linux project's `analysis/aux.R`
+packages, and was refused on Linux (round 2 of #487). The members are then written into a new
+temporary folder, each no larger than its entry says, a member the file system cannot hold all
+the same refusing the package with a sentence (round 1 found one ending in an unexpected
+error), and the folder is removed when the audit ends. A folder is
 read where it is, and refused where it holds a link or a junction. The manifest is found at the
 top or in the one folder there, as `package` zips it.
 

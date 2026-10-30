@@ -23,7 +23,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from manuscript_guard.auditing.report import PACKAGE, Item
 from manuscript_guard.auditing.unpack import MANIFEST
@@ -78,8 +78,12 @@ def _digest(path: Path) -> str:
 
 
 def _inside(root: Path, name: str) -> Path | None:
-    """The file `name` stands for in the package, None where it would be outside it."""
-    if not name or name.startswith(("/", "\\")) or "\\" in name or ":" in name:
+    """The file `name` stands for in the package, None where it would be outside it: as
+    `unpack` reads a member's name, a colon refused only on Windows, or as a drive."""
+    from manuscript_guard.auditing.unpack import windows
+
+    if (not name or name.startswith(("/", "\\")) or "\\" in name or "\0" in name
+            or PureWindowsPath(name).drive or (windows() and ":" in name)):  # fmt: skip
         return None
     parts = PurePosixPath(name).parts
     if ".." in parts:

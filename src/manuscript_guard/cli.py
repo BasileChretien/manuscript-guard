@@ -2437,7 +2437,7 @@ def _audit(args: argparse.Namespace, package) -> int:
         )  # fmt: skip
 
     # The package's results files, as --against would name them, beside any it names.
-    packaged = (sorted(package.results_dir.glob("*.json"))
+    packaged = (sorted(p for p in package.results_dir.glob("*.json") if p.is_file())
                 if package is not None and package.results_dir is not None else [])
     against = [*(args.against or []), *packaged] or None
     report = audit(papers, against, figures=figures,

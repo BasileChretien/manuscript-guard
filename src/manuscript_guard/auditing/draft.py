@@ -192,6 +192,10 @@ def _unchecked_of_audit(report) -> list[str]:
         found.append(f"The Abstract against Results: not compared, {report.abstract.why_not}.")
     if report.lookups is None:
         found.append("The registries: the references were not looked up (`--lookup`).")
+    elif report.lookups and not any(one.came for one in report.lookups):
+        # Round 2 of #487: a dry run asked nothing, and was said to have asked.
+        found.append("The registries: not looked up (dry run); what would be asked is listed "
+                     "under References.")  # fmt: skip
     found += [f"The journal's rules read from a project: {what}." for what in
               getattr(report.journal, "skipped", [])]  # fmt: skip
     if report.package is not None:
@@ -208,8 +212,8 @@ def _references_of_audit(report, items: list[Item], show: Show) -> list[str]:
         else:
             lines.append(f"- {show(census.path)}: {len(census.entries)} entries, {census.dois} "
                          f"with a DOI, {census.pmids} with a PMID; {census.style}")  # fmt: skip
-    shown = [item for item in items if item.section in REFERENCE_SECTIONS
-             and item.code not in ("looked-up", "would-ask")]  # fmt: skip
+    # Each item once: what was asked, or would be on a dry run, as the report lists it.
+    shown = [item for item in items if item.section in REFERENCE_SECTIONS]
     for item in shown:
         lines += _bullet(item, show)
     return lines or ["- No reference list was read."]
@@ -245,7 +249,8 @@ def _checks_of_audit(report, items: list[Item]) -> list[tuple[str, str, int]]:
     if abstract is not None and abstract.compared:
         checks.append(("Abstract against Results",
                        _read(abstract.numbers, "number", more="of the Abstract read"),
-                       len(abstract.conflicts) + len(abstract.not_found)))  # fmt: skip
+                       len(abstract.conflicts) + len(abstract.not_found)
+                       + len(abstract.rounded)))  # fmt: skip
     for run in report.gates:
         if not run.note:
             checks += [(f"{name} on {run.paper.name}", "its words read", len(found))
@@ -254,7 +259,7 @@ def _checks_of_audit(report, items: list[Item]) -> list[tuple[str, str, int]]:
     entries = sum(len(census.entries) for census in report.references)
     checks.append(("The reference list (G7)", _read(entries, "entry", "entries"),
                    sum(len(census.problems) for census in report.references)))  # fmt: skip
-    if report.lookups:
+    if report.lookups and any(one.came for one in report.lookups):
         checks.append(("The registries (--lookup)",
                        _read(len(report.lookups), "entry", "entries", "asked about"),
                        sum(len(one.problems) for one in report.lookups)))  # fmt: skip
@@ -285,12 +290,13 @@ def _package_checks(package) -> list[tuple[str, str, int]]:
         "package-manifest-invalid", "package-file-missing", "package-file-changed",
         "package-file-unlisted", "package-sums-differ", "package-sums-missing")]  # fmt: skip
     on_results = [i for i in package.found if i.code.startswith("package-result")
-                  or i.code == "package-script-missing"]  # fmt: skip
+                  or i.code == "package-script-missing"
+                  or (i.code.startswith("package-receipt") and i.severity != INFO)]  # fmt: skip
     return [
-        ("Package files against MANIFEST.yaml and SHA256SUMS", f"{_n(package.files, 'file')} read"
-         if package.files else "", len(on_files)),
-        ("Package results against their scripts", f"{_n(package.results, 'results file')} read"
-         if package.results else "", len(on_results)),
+        ("Package files against MANIFEST.yaml and SHA256SUMS", _read(package.files, "file"),
+         len(on_files)),
+        ("Package results against their scripts and receipts",
+         _read(package.results, "results file"), len(on_results)),
     ]  # fmt: skip
 
 

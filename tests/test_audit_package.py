@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import zipfile
 from pathlib import Path
 
@@ -259,8 +260,11 @@ def test_an_option_that_reads_a_paper_wants_a_paper(tmp_path, capsys) -> None:
 @pytest.mark.parametrize("name", ["../escape.txt", "/escape.txt", "C:escape.txt",
                                   "pkg/a\\..\\..\\escape.txt", "pkg/CON.txt"])
 def test_a_member_that_could_land_outside_is_refused_before_anything_is_written(
-    tmp_path, capsys, name: str
+    tmp_path, capsys, monkeypatch, name: str
 ) -> None:
+    from manuscript_guard.auditing import unpack
+
+    monkeypatch.setattr(unpack, "windows", lambda: True)  # `CON` is a device's on Windows
     root = small_package(tmp_path)
     archive = zipped(root, tmp_path / "bad.zip", [(name, b"x")])
     with pytest.raises(Refused, match="nothing was unpacked"):
@@ -423,7 +427,13 @@ def test_an_edited_manifest_is_one_changed_file(tmp_path, capsys) -> None:
                                   "pkg/x.", "pkg/x ", "pkg/./a", "pkg/a" + chr(7),
                                   "pkg/COM" + chr(0xB9), "pkg/LPT" + chr(0xB3) + ".txt",
                                   "pkg/CON .txt"])
-def test_a_name_a_file_system_cannot_hold_is_refused(tmp_path, capsys, name: str) -> None:
+def test_a_name_a_file_system_cannot_hold_is_refused(tmp_path, capsys, monkeypatch,
+                                                     name: str) -> None:  # fmt: skip
+    """On Windows: elsewhere the names Windows cannot hold are written, or refused when the
+    file system cannot hold one (round 2 of #487)."""
+    from manuscript_guard.auditing import unpack
+
+    monkeypatch.setattr(unpack, "windows", lambda: True)
     archive = zipped(small_package(tmp_path), tmp_path / "bad.zip", [(name, b"x")])
     with pytest.raises(Refused, match="nothing was unpacked"):
         members(archive)
@@ -509,3 +519,120 @@ def test_a_manifest_that_lists_no_file_is_not_said_to_be_whole(tmp_path, capsys)
     out = capsys.readouterr().out
     assert "the manifest lists no file" in out
     assert "Each file listed was read" not in out
+
+
+# ------------------------------------------------------------------- review round 2
+
+
+def test_a_dry_run_draft_says_the_registries_were_not_asked(tmp_path, capsys) -> None:
+    """Round 2 of #487: under --lookup --dry-run the draft said the entries were asked about
+    and nothing was reported; what would be asked is listed, each once."""
+    paper = tmp_path / "paper.md"
+    paper.write_text(PAPER + "\n# References\n\n1. Example A. A study of urine. J Ex. "
+                     "2019;1:1-9. doi:10.1000/example.1\n", encoding="utf-8")  # fmt: skip
+    target = tmp_path / "d.md"
+    assert main(["audit", str(paper), "--lookup", "--dry-run", "--report-draft",
+                 str(target)]) == 0  # fmt: skip
+    capsys.readouterr()
+    text = target.read_text(encoding="utf-8")
+    assert "asked about" not in text
+    assert "not looked up (dry run)" in text
+    references = text.split("## References")[1].split("## Language and notation")[0]
+    assert references.count("would ask") == 1
+
+
+def test_an_abstract_matched_only_as_a_rounding_is_not_said_to_find_nothing(
+    tmp_path, capsys
+) -> None:
+    """Round 2 of #487: a rounded match is a note the check reported."""
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Abstract\n\nOf the patients, 12% had dark urine.\n\n# Methods\n\nWe "
+                     "counted them.\n\n# Results\n\nOf the patients, 12.3% had dark urine.\n",
+                     encoding="utf-8")  # fmt: skip
+    target = tmp_path / "d.md"
+    assert main(["audit", str(paper), "--report-draft", str(target)]) == 0
+    capsys.readouterr()
+    text = target.read_text(encoding="utf-8")
+    assert "abstract" in text.split("## Further findings")[1].lower()
+    assert "Abstract against Results" not in text.split("## Checks that ran and found nothing")[1]
+
+
+def test_a_name_only_windows_cannot_hold_is_refused_only_on_windows(
+    tmp_path, monkeypatch
+) -> None:
+    """Round 2 of #487: a Linux project's `analysis/aux.R` packages, and its package is read
+    on Linux; Windows cannot write it, and says so before anything is unpacked."""
+    from manuscript_guard.auditing import unpack
+
+    archive = zipped(small_package(tmp_path), tmp_path / "pkg.zip",
+                     [("pkg/analysis/aux.R", b"x"), ("pkg/data/a:b?.csv", b"y")])  # fmt: skip
+    monkeypatch.setattr(unpack.os, "name", "posix")
+    assert len(members(archive)) > 2
+    monkeypatch.setattr(unpack.os, "name", "nt")
+    with pytest.raises(Refused, match="Windows"):
+        members(archive)
+    # Wherever it is read, a drive is refused, and a backslash, where zipfile leaves one in a
+    # name: on Windows it reads each as a "/".
+    monkeypatch.setattr(unpack.os, "name", "posix")
+    names = ["C:pkg/a"] + (["pkg/a" + chr(92) + "b"] if os.sep == "/" else [])
+    for at, name in enumerate(names):
+        member = zipfile.ZipInfo("placeholder")
+        member.filename = name  # as written, not as Windows' zipfile turns a backslash
+        bad = zipped(small_package(tmp_path / str(at)), tmp_path / f"{at}.zip",
+                     [(member, b"x")])  # fmt: skip
+        with pytest.raises(Refused):
+            members(bad)
+
+
+def test_a_package_with_a_name_windows_keeps_is_read_as_the_system_can(
+    project: Path, capsys
+) -> None:
+    """The example packaged with `analysis/aux.R`: read whole where the system can hold the
+    name, and refused with the Windows sentence where it cannot."""
+    import os
+
+    (project / "LICENSE").write_text("MIT License\n", encoding="utf-8")
+    if os.name != "nt":
+        (project / "analysis" / "aux.R").write_text("# helpers\n", encoding="utf-8")
+    assert main(["package", str(project)]) == 0, capsys.readouterr().out
+    capsys.readouterr()
+    (folder,) = [p for p in (project / "build" / "package").iterdir() if p.is_dir()]
+    archive = folder.with_suffix(".zip")
+    if os.name == "nt":
+        with zipfile.ZipFile(archive, "a") as out:
+            out.writestr(f"{folder.name}/analysis/aux.R", "# helpers\n")
+        code, _report, err = audited(capsys, "--package", str(archive), "--strict")
+        assert code == 2 and "Windows keeps for a device" in err
+    else:
+        code, report, _err = audited(capsys, "--package", str(archive), "--strict")
+        assert code == 0, report["findings"]
+        assert "package-file-unlisted" not in codes(report)
+
+
+def test_a_receipt_warning_is_not_said_to_find_nothing(tmp_path, capsys) -> None:
+    root = small_package(tmp_path)
+    result = root / "results" / "count.json"
+    document = json.loads(result.read_text(encoding="utf-8"))
+    document["provenance"]["harvested"] = {
+        "output": "output/count.csv", "sha256": "a" * 64, "spec": {"key": "count"},
+        "receipt": {"path": "receipts/site.receipt.json", "sha256": "b" * 64, "site": "site"}}
+    result.write_text(json.dumps(document), encoding="utf-8")
+    write_digest(result)
+    (root / "receipts").mkdir()
+    (root / "receipts" / "site.receipt.json").write_text("{}", encoding="utf-8")
+    sign(root)
+    target = tmp_path / "d.md"
+    assert main(["audit", "--package", str(root), "--report-draft", str(target)]) == 0
+    capsys.readouterr()
+    nothing = target.read_text(encoding="utf-8").split("## Checks that ran and found nothing")[1]
+    assert "Package results" not in nothing
+
+
+def test_a_folder_named_as_a_results_file_is_not_an_output(tmp_path, capsys) -> None:
+    root = small_package(tmp_path)
+    (root / "results" / "odd.json").mkdir()
+    sign(root)
+    paper = tmp_path / "paper.md"
+    paper.write_text(PAPER, encoding="utf-8")
+    code, report, _ = audited(capsys, str(paper), "--package", str(root))
+    assert code == 0 and report["counts"]["outputs"] == 1

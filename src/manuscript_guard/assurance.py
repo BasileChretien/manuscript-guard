@@ -178,8 +178,13 @@ def _harvested(project: Project) -> list[str]:
 
 def fragments_digest(project: Project) -> str:
     """One digest of the results fragments as they are on disk, by name and bytes."""
+    return results_digest(project.path("results"))
+
+
+def results_digest(results: Path) -> str:
+    """`fragments_digest` of a folder of results: what VERIFICATION.json records, which
+    `audit --package` recomputes from the results a package holds."""
     digest = hashlib.sha256()
-    results = project.path("results")
     for path in sorted(results.glob("*.json")) if results.is_dir() else []:
         digest.update(path.name.encode("utf-8") + b"\0" + path.read_bytes() + b"\0")
     return digest.hexdigest()

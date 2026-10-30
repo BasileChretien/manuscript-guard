@@ -1950,6 +1950,63 @@ def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
     assert main(["audit", str(paper), "--strict"]) == 1
 
 
+def _signed_package(root: Path) -> Path:
+    """A package of one script and its result, its MANIFEST.yaml and SHA256SUMS written as
+    `package` writes them, over whatever the folder holds now."""
+    from manuscript_guard.emit import source_digest
+
+    def sha(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    script, result = root / "analysis" / "count.py", root / "results" / "count.json"
+    if not script.exists():
+        script.parent.mkdir(parents=True)
+        script.write_text("print(412)\n", encoding="utf-8", newline="\n")
+        result.parent.mkdir()
+        result.write_text(json.dumps({"provenance": {
+            "generated_by": "analysis/count.py", "generated_at": "2026-01-01",
+            "generated_by_sha256": source_digest(script)}, "values": {"n": {"value": 412}}}),
+            encoding="utf-8")  # fmt: skip
+        write_digest(result)
+    for old in ("MANIFEST.yaml", "SHA256SUMS"):
+        (root / old).unlink(missing_ok=True)
+    files = sorted(p for p in root.rglob("*") if p.is_file())
+    entries = [{"file": p.relative_to(root).as_posix(), "bytes": p.stat().st_size,
+                "sha256": sha(p)} for p in files]  # fmt: skip
+    manifest = root / "MANIFEST.yaml"
+    manifest.write_text(yaml.safe_dump({"schema": "manuscript-guard/package/1", "files": entries,
+                                        "withheld": []}), encoding="utf-8")  # fmt: skip
+    (root / "SHA256SUMS").write_text("".join(
+        f"{digest}  {name}\n" for name, digest in sorted(
+            [(e["file"], e["sha256"]) for e in entries] + [("MANIFEST.yaml", sha(manifest))])),
+        encoding="utf-8")  # fmt: skip
+    return root
+
+
+def test_a_packaged_file_changed_since_its_manifest_fails_an_audit(tmp_path: Path) -> None:
+    """`audit --package`: a file whose bytes are not those MANIFEST.yaml lists is counted by
+    --strict (decision 8 of the editor and referee layer)."""
+    from manuscript_guard.cli import main
+
+    root = _signed_package(tmp_path / "pkg")
+    assert main(["audit", "--package", str(root), "--strict"]) == 0
+    (root / "analysis" / "count.py").write_text("print(421)\n", encoding="utf-8", newline="\n")
+    assert main(["audit", "--package", str(root), "--strict"]) == 1
+
+
+def test_a_packaged_result_not_written_by_its_script_fails_an_audit(tmp_path: Path) -> None:
+    """`audit --package`: the script changed and the manifest written again to match, which
+    makes the package whole as written; the result's own record of its script's digest is
+    what --strict counts then."""
+    from manuscript_guard.cli import main
+
+    root = _signed_package(tmp_path / "pkg")
+    assert main(["audit", "--package", str(root), "--strict"]) == 0
+    (root / "analysis" / "count.py").write_text("print(421)\n", encoding="utf-8", newline="\n")
+    _signed_package(root)
+    assert main(["audit", "--package", str(root), "--strict"]) == 1
+
+
 def test_set_moves_the_stage_and_not_the_lines_that_look_like_it(project: Path) -> None:
     """`set stage` writes the setting at the top level of paper.yaml, and the check then
     holds the paper to it: a small count fails from internal review. A regular expression

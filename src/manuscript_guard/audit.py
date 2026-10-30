@@ -202,6 +202,11 @@ class AuditReport:
     causal: object = None
     cited: object = None
     self_citation: object = None
+    #: The package `--package` names, held to its own manifest (`auditing.package.PackageRead`).
+    package: object = None
+    #: How much of each kind the audit read, for the report draft's checks that found
+    #: nothing: "tables", "headings", "tests", "intervals" and "shares".
+    read: dict = field(default_factory=dict)
 
     @property
     def examined(self) -> int:
@@ -1096,6 +1101,8 @@ def audit(
     report.papers = tuple(source.path for source in sources)
     pieces = []
     for source in sources:
+        report.read["tables"] = report.read.get("tables", 0) + len(source.tables)
+        report.read["headings"] = report.read.get("headings", 0) + len(source.heading_lines)
         atoms = _read_numbers(report, source, classifier, values)
         _flows(report, source)
         pieces.append(_piece(source, atoms))
@@ -1247,7 +1254,7 @@ def _read_numbers(
         _memo={},
     )
     path, text, hidden = source.path, source.text, source.hidden
-    found = _disagreements(path, hidden, list(source.tables))
+    found = _disagreements(path, hidden, list(source.tables), report.read)
     if report.whole_numbers:
         found = sorted(found + _whole_number_means(report, path, list(source.tables)),
                        key=lambda d: d.line)  # fmt: skip
@@ -1344,13 +1351,22 @@ def _margins(report: AuditReport, path: Path, tables: list[Table]) -> None:
                                        found.member.context or found.line.context))  # fmt: skip
 
 
-def _disagreements(path: Path, hidden: str, tables: list[Table]) -> list[Disagreement]:
+def _disagreements(path: Path, hidden: str, tables: list[Table],
+                   read: dict | None = None) -> list[Disagreement]:  # fmt: skip
     """The tests in a paper whose P does not follow from the statistic beside it, the
     estimates whose interval or P does not fit them, and the n (%) in its tables whose share
-    is not what the count gives of its denominator, read in its text as masked (`_masked`)."""
+    is not what the count gives of its denominator, read in its text as masked (`_masked`).
+    `read` counts the tests judged, the intervals and the shares read."""
+    read = {} if read is None else read
+
+    def counted(kind: str) -> None:
+        read[kind] = read.get(kind, 0) + 1
+
     found = []
     for test in reported_tests(hidden):
         verdict = judge(test)
+        if verdict is not None:
+            counted("tests")
         if verdict is None or not verdict.inconsistent:
             continue
         context = " ".join(hidden[test.start : test.end].replace("\x00", " ").split())
@@ -1360,6 +1376,7 @@ def _disagreements(path: Path, hidden: str, tables: list[Table]) -> list[Disagre
         )
     # And each estimate whose interval, or whose P, does not fit it (`stats/intervals.py`).
     for interval in reported_intervals(hidden):
+        counted("intervals")
         context = " ".join(hidden[interval.start : interval.end].replace("\x00", " ").split())
         line = hidden.count("\n", 0, interval.start) + 1
         if outside_interval(interval):
@@ -1373,6 +1390,7 @@ def _disagreements(path: Path, hidden: str, tables: list[Table]) -> list[Disagre
     # And each n (%) in a table against its denominator (`stats/shares.py`).
     for table in tables:
         for share in table_shares(table):
+            counted("shares")
             if off(share):
                 found.append(Disagreement(path, share.line, described_share(share), share.context))
     return sorted(found, key=lambda d: d.line)

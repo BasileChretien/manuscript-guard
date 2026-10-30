@@ -312,6 +312,11 @@ def census_of_printed(
             line = lines[index]
             if not line.strip():
                 continue
+            if not first and lines[index - 1].rstrip().endswith(_RANGE_OPEN):
+                # A line that ends in a hyphen or a dash never ends an entry: "112-" then
+                # "118. doi..." is a page range wrapped, neither an entry nor a skip.
+                found[-1][1].append((index + 1, line))
+                continue
             numbered = _NUMBERED_ENTRY.match(line)
             number = int(numbered.group(1) or numbered.group(2)) if numbered else None
             shape = (bool(numbered.group(1)), numbered.group(4) or "") if numbered else None
@@ -382,9 +387,25 @@ def _identifiers_of(parts: list[tuple[int, str]]) -> list[tuple[int, str, str, b
                 seen.add(said)
                 ends = not last and not line[match.end():].strip(" .,;")
                 found.append((line_at, said, kind, ends))
+        # "PMID:" at a line's end, its digits beginning the next line of the entry.
+        if not last and _PMID_AT_END.search(line):
+            next_at, after = parts[at + 1]
+            digits = _GOES_ON["pmid"].match(after)
+            if digits and digits.group(0).strip() not in seen:
+                said = digits.group(0).strip()
+                seen.add(said)
+                ends = at + 1 < len(parts) - 1 and not after[digits.end():].strip(" .,;")
+                found.append((next_at, said, "pmid", ends))
     return found
 
 
+#: What a line that ends a page range ends with, which no entry ends with.
+_RANGE_OPEN = ("-", "\N{EN DASH}", "\N{EM DASH}")
+#: A line that ends with "PMID", its PMID on the next.
+_PMID_AT_END = re.compile(r"\bPMID\s*:?\s*$", re.IGNORECASE)
+#: What begins the next line where an identifier is introduced at a line's end: the DOI after
+#: "doi:" or a DOI link's prefix, the digits after "PMID:".
+_GOES_ON = {"doi": re.compile(r"\s*10\.\d{4,9}"), "pmid": re.compile(r"\s*\d{1,9}\b")}
 #: An identifier cut before it starts: a DOI's prefix and its slash, or "doi:" or "PMID:",
 #: with nothing after it on its line.
 _CUT_SHORT = re.compile(
@@ -395,9 +416,22 @@ _CUT_SHORT = re.compile(
 
 def _cut_short(parts: list[tuple[int, str]]) -> list[tuple[int, str]]:
     """Each identifier an entry's line ends before its first character, `(line, as read)`:
-    no DOI or PMID is read of it, and it is listed as not looked up rather than dropped."""
-    return [(at, found.group(0).strip()) for at, line in parts
-            if (found := _CUT_SHORT.search(line.rstrip(" .,;")))]
+    no DOI or PMID is read of it, and it is listed as not looked up rather than dropped. A
+    "doi:", a DOI link's prefix or a "PMID:" whose identifier begins the next line of the
+    entry is none: that line's identifier is read there (NLM breaks at the space in "doi:
+    10...")."""
+    cut = []
+    for index, (at, line) in enumerate(parts):
+        found = _CUT_SHORT.search(line.rstrip(" .,;"))
+        if found is None:
+            continue
+        said = found.group(0).strip()
+        kind = "pmid" if said.lower().startswith("pmid") else "doi"
+        after = parts[index + 1][1] if index + 1 < len(parts) else ""
+        if not said.startswith("10.") and _GOES_ON[kind].match(after):
+            continue
+        cut.append((at, said))
+    return cut
 
 
 def _numbered_by_word(

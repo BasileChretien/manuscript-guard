@@ -465,17 +465,19 @@ def test_compare_sets_a_pdf_beside_a_word_or_markdown_version(tmp_path: Path, ca
 # ---------------------------------------------------------------------------- reference lists
 
 
-def test_a_wrapped_page_range_opens_no_entry(tmp_path: Path) -> None:
-    """Note 3 of round 1: "118." after "112-" opens no entry 118. It is in the list's own
-    form, and whether it is an entry left out or a page carried over cannot be told (round 2):
-    the entries are not told apart, and nothing is held to them."""
-    from manuscript_guard.auditing.references import UNTOLD, census_of_printed
+@pytest.mark.parametrize("dash", ["-", "\N{EN DASH}"])
+def test_a_wrapped_page_range_opens_no_entry(tmp_path: Path, dash: str) -> None:
+    """Note 3 of round 1: "118." after "112-" opens no entry 118. A line that ends in a hyphen
+    or a dash never ends an entry (the fix-only round), so the list stays numbered and its
+    citations are held to it."""
+    from manuscript_guard.auditing.references import NUMBERED, census_of_printed
 
-    text = "References\n1. Smith A. A paper. J Things. 2019;12:112-\n118. More of it.\n" \
-           "2. Jones B. Another. J Things. 2020;13:1-9.\n"
-    census = census_of_printed(tmp_path / "p.pdf", text, [(0, 4)], "Of 4 [1, 2].\n", [])
-    assert census.style == UNTOLD and "its numbers go from 1 to 118" in census.untold
-    assert not census.problems
+    text = (f"References\n1. Smith A. A paper. J Things. 2019;12:112{dash}\n118. More of it.\n"
+            "2. Jones B. Another. J Things. 2020;13:1-9.\n")
+    census = census_of_printed(tmp_path / "p.pdf", text, [(0, 4)], "Of 4 [1, 3].\n", [])
+    assert census.style == NUMBERED and [e.number for e in census.entries] == [1, 2]
+    assert sorted(p.code for p in census.problems) == ["citation-beyond-list",
+                                                       "entry-never-cited"]
 
 
 def test_a_number_that_skips_tells_no_entry_apart(tmp_path: Path) -> None:
@@ -509,13 +511,28 @@ def test_an_untold_list_looks_up_each_identifier_ending_a_line(tmp_path: Path) -
     assert [entry.ends_line for entry in census.entries] == [True, True, False]
 
 
+def test_a_doi_on_the_line_after_its_prefix_is_sent(tmp_path: Path) -> None:
+    """The fix-only round: NLM breaks at the space in "doi: 10...", and the DOI on the next
+    line is read and sent; its prefix is not listed as not looked up."""
+    from manuscript_guard.auditing.references import NUMBERED, census_of_printed
+
+    text = ("References\n1. Smith A. A paper. J X. 2020;1:1-9. doi:\n10.1016/j.x.2020.01.001\n"
+            "2. Jones B. Another. PMID:\n31000001\n3. Clark C. https://doi.org/\n"
+            "10.5555/c.3\n")
+    census = census_of_printed(tmp_path / "p.pdf", text, [(0, 7)], "As [1-3] show.\n", [])
+    assert census.style == NUMBERED and census.unsent == []
+    assert [(e.dois, e.pmids) for e in census.entries] == [
+        (("10.1016/j.x.2020.01.001",), ()), ((), ("31000001",)), (("10.5555/c.3",), ())]
+
+
 def test_an_identifier_cut_before_it_starts_is_listed(tmp_path: Path) -> None:
-    """Round 2, note 4: "doi:10.1016/" or "PMID:" at a line's end is read as no identifier;
-    it is listed as not looked up, never dropped without a word."""
+    """Round 2, note 4: "doi:10.1016/" or "PMID:" at a line's end, the rest of the identifier
+    not beginning the next line, is read as no identifier; it is listed as not looked up,
+    never dropped without a word."""
     from manuscript_guard.auditing.references import NUMBERED, census_of_printed
 
     text = ("References\n1. Smith A. A paper. doi:10.1016/\nj.x.2020.01.001. More.\n"
-            "2. Jones B. Another. PMID:\n31000001 here.\n")
+            "2. Jones B. Another. PMID:\nEpub 31000001.\n")
     census = census_of_printed(tmp_path / "p.pdf", text, [(0, 5)], "As [1, 2] show.\n", [])
     assert census.style == NUMBERED
     assert census.unsent == [(2, "10.1016/"), (4, "PMID:")]
@@ -574,24 +591,29 @@ def test_an_untold_identifier_not_found_is_said_as_printed(tmp_path: Path, regis
         capsys.readouterr().out)
 
 
-@needs_pdftotext
-def test_an_abbreviations_section_ends_the_abstract(tmp_path: Path, capsys) -> None:
-    """Round 2, note 2: only a structured abstract's own headings go under the Abstract; an
-    "Abbreviations" before the Introduction ends it, and its words are not the Abstract's."""
-    words = " ".join(["word"] * 8)
-    lines = ["Abstract", "Background", "We asked.", "Methods", "We read.", "Abbreviations",
-             *[f"{words}."] * 40, "Introduction", "Drugs harm.", "Methods", "We read 412.",
-             "Results", "Of 412, 77 had it.", "Discussion", "It was so."]  # fmt: skip
-    pdf = reading.read_pdf(write(tmp_path / "paper.pdf", lines, per_column=70))
-    assert [(title, level) for _line, title, level in pdf.placed][:5] == [
-        ("Abstract", 1), ("Background", 2), ("Methods", 2), ("Abbreviations", 1),
-        ("Introduction", 1)]
-    journal = tmp_path / "words.yaml"
-    journal.write_text(profile(tmp_path).read_text(encoding="utf-8").replace(
-        "  tables: 5\n", "  abstract_words: 250\n"), encoding="utf-8")  # fmt: skip
-    _code, report, _err = audited(capsys, str(tmp_path / "paper.pdf"), "--journal", str(journal))
-    assert not [f for f in report["findings"] if f["code"].endswith("journal-limit")
-                and f["message"].startswith("abstract: ")]  # fmt: skip
+@pytest.mark.parametrize("titles", [
+    # The Lancet's: "Summary", its parts, a Funding line, then the paper's own.
+    ("Summary", "Background", "Methods", "Findings", "Funding", "Introduction", "Methods",
+     "Results", "Discussion", "Funding"),
+    # The BMJ's: its Objectives, Design and Setting are no heading here; its Results are.
+    ("Abstract", "Objectives", "Design", "Setting", "Participants", "Main outcome measures",
+     "Results", "Conclusions", "Introduction", "Methods", "Results", "Discussion"),
+])
+def test_a_structured_abstract_is_placed_under_it(titles: tuple[str, ...]) -> None:
+    """Fix-only round of #486: every heading between the Abstract and the Introduction is the
+    Abstract's, a heading of the main text's name among them."""
+    from manuscript_guard.auditing.pdf import PdfText, Place
+
+    headings = tuple((at, title) for at, title in enumerate(titles, 1)
+                     if heading_title(title) is not None)  # fmt: skip
+    pdf = PdfText(Path("p.pdf"), "test", 1, "\n".join(titles),
+                  tuple(Place(1, at) for at in range(1, len(titles) + 1)), headings)
+    placed = pdf.placed
+    assert placed is not None
+    levels = [(title, level) for _line, title, level in placed]
+    opening = [title for title, _level in levels].index("Introduction")
+    assert {level for _title, level in levels[1:opening]} == {2}, levels
+    assert {level for _title, level in levels[opening:]} == {1}, levels
 
 
 @needs_pdftotext

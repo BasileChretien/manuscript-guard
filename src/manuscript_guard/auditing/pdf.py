@@ -158,11 +158,10 @@ class PdfText:
         """Each heading `(line, title, level)`, where the headings can be placed exactly; else
         None (`UNPLACED`). A structured abstract's headings, on lines of their own, are the
         Abstract's, level 2, where the heading after the Abstract's is one of
-        `ABSTRACT_PARTS` and an Introduction comes after them: they are the run of those
-        names after the Abstract's. Any other heading before the Introduction ("Abbreviations")
-        ends the Abstract, at level 1, as Markdown's reader takes the same heading. With no
-        Introduction after them, where they end is not read. A name on two lines among the
-        Abstract's own headings, or among the rest, is not placed either."""
+        `ABSTRACT_PARTS` and an Introduction comes after them: they are those between the two,
+        an "Abbreviations" among them (DESIGN.md, Known gaps). With no Introduction after them,
+        where they end is not read. A name on two lines among the Abstract's own headings, or
+        among the rest, is not placed either."""
         keys = [_key(title) for _line, title in self.headings]
         nested: set[int] = set()
         first = next((at for at, key in enumerate(keys) if key in _ABSTRACTS), None)
@@ -171,10 +170,7 @@ class PdfText:
                             if keys[at] == "introduction"), None)  # fmt: skip
             if opening is None:
                 return None
-            at = first + 1
-            while at < opening and keys[at] in ABSTRACT_PARTS:
-                nested.add(at)
-                at += 1
+            nested = set(range(first + 1, opening))
         for group in (nested, set(range(len(keys))) - nested):
             names = [keys[at] for at in group]
             if len(names) != len(set(names)):

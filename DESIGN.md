@@ -12384,6 +12384,147 @@ rather than pass on nothing. `tests/test_report_about.py` runs the test a report
 the namespace of the file it names, for `audit`, G6, G14, G2 and `explain`, and holds that it
 fails or passes as the direction says.
 
+## Data held apart from the agent: the vault (Task F, part 1)
+
+The vault is the folder where the data are held, which the operating system keeps from the
+agent. The design (Task F, 2026-10-29) is that the coding agent writes and tests the analysis
+on a synthetic copy, a process the person starts reads the real data, and what it writes waits
+inside the folder until a person releases it after the custodian's checks. The tool does not
+claim that the agent cannot reach the data: the operating system decides that, through a
+second account, a container, permissions or a volume that is not mounted. What the tool does is
+register where the data are, check from the agent's own session whether they can be read, keep
+the agent's ordinary commands away from them, and, in later parts, hold what comes out to the
+custodian's rules and a person's release. Agent-written code run on the real data can put a row
+into any output it writes, a mean of one chosen patient, a coefficient, a figure's point, an
+exit code; counting rules do not catch that, and a person reading the script and the outputs is
+the control. Nothing here makes a setup lawful under GDPR, HIPAA or a data-use agreement. Data
+that must stay inside a trusted research environment are out of scope: there the site's
+receipt applies (`verify --receipt SITE`). `docs/vault.md` says all of this to the user.
+
+This part holds registration, the check and the guards. `vault run`, `vault release`, the G1
+codes for a result from unregistered, changed or unreleased data, the profile and `vault
+synthesize` are parts 2 and 3; the command group exists, without `run` and `release`.
+
+Basile's decisions of 2026-10-29: the folder is outside the project only (1a); `vault init`
+refuses until `paper.yaml` declares `custodian.minimum_cell_count`, 1 where the custodian has
+no rule, said on purpose (2a, and `paper.schema.json`'s minimum is 1 for it); while the
+session can read the folder, the session-start line says so and the shell guard refuses,
+rather than asks, a command naming the folder or `MANUSCRIPT_GUARD_VAULT` (3a); `init` prints
+the agent tool's deny rules, and `--agent-settings` writes them into
+`.claude/settings.local.json` after a y/N at a terminal (4a).
+
+### Registration: `vault init`
+
+`vault init FOLDER FILE... --as PERSON` (`vault/register.py`) takes the files by name or glob
+from inside the folder, so that a whole home folder is not registered by mistake: a folder
+holding other files is fine, and they are not registered. It refuses, writing nothing: a
+folder inside the project or holding it, links followed (`resolve(strict=True)`); a
+`paper.yaml` with no custodian minimum; a name or glob matching no file; a file whose link
+leads out of the folder; and a local file git tracks, or would track because a rule of
+`.gitignore` takes it back in (`git ls-files --error-unmatch`, then `git check-ignore`, after
+`.manuscript-guard/` is added to `.gitignore` where no line of it is there).
+
+`design/vault.yaml` (`manuscript-guard/vault/1`, committed) holds per file its label (the
+path inside the folder, with forward slashes, never the absolute path), `sha256` and
+`raw_sha256` as `emit.input_digest` and `emit.sha256_of` compute them, `bytes`, and
+`registered_by` and `registered_on`. No row count: a count is a result. Registered again, a
+file whose three values are unchanged keeps who registered it and when.
+`.manuscript-guard/vault.local.yaml` (`manuscript-guard/vault-local/1`) holds the folder's
+absolute path as typed (`folder`: a mapped drive keeps its letter) and with its links followed
+(`resolved`); it is no secret, and the hooks need it. Both are taken at `init`, so that the
+shell guard compares a command with them and looks nothing of the folder up (round 1 of
+#488). The custodian's minimum has to be an integer of at least 1. Whether git tracks the
+local file is asked before `.gitignore` is touched, and a `.gitignore` line added for a file
+git would track all the same is taken away again, so that a refusal changes nothing. `vault init --refresh`
+digests the registered files again after a new extract and names the labels that changed; a
+registered file no longer there refuses it.
+
+### Separation, checked: `vault check` and the session start
+
+`vault/probe.py` opens each registered file with `os.open(O_RDONLY)` and closes it without a
+read, and lists the folder with `os.scandir`, from the process that asks. Readable means a
+registered file opened, or the folder lists and holds anything (the registered files moved or
+renamed, round 1 of #488); not reachable means neither, an empty folder being the mount point
+of a volume that is not mounted; not registered means no local file. `vault check` exits 0, 1
+and 2 for not reachable, readable and not registered. `os.access` is not used: on Windows it
+reads the read-only attribute and not the access control list. A test denies the account read
+access with `icacls` inside `tmp_path` on Windows, and mode 000 elsewhere.
+
+The session-start hook starts the same probe on a thread of its own before the gates run, and
+waits for it until `VAULT_LIMIT` (5 s) from its own start. Readable, the session's context is
+told that the separation is not in place, to work on `data/synthetic/` and not to read, list or
+name the folder, and the person is shown the same line (not after a compaction or a clear);
+unreachable, a shorter line; no answer in time, or a vault file that cannot be read, a line
+saying so and naming `vault check`. The hook runs in the agent tool's process, as the agent's
+account, so it measures the separation that holds; it does not see a sandbox applied to shell
+commands only. The line never holds the folder's path.
+
+### The shell guard
+
+`guard_submission` gets two cases, read as the guards of `deposit --publish` and `communicate
+publish --post` read theirs. `vault run` and `vault release`, read exactly in both shells'
+words (`_command_words`, `_tool_words`), are refused: the person runs them at a terminal. A
+command that names them in a form not read exactly, or outside an invocation of the tool, is
+asked where a vault is registered for the project on this machine, and let through where none
+is (round 2 of #488); the subcommand is the first word after `vault` that is no option and no option's
+value (`--as`, `--path`), so a file or a person named `release` is none. A command that names
+the vault's folder or a path inside it (`_vault_named`: the home as `$HOME`, `${HOME}`,
+`$env:USERPROFILE`, `$env:HOME`, `%USERPROFILE%` or `%HOMEDRIVE%%HOMEPATH%` read as `~`, and
+the working folder as `$PWD`, `${PWD}`, `$(pwd)` or `(Get-Location)` read as `.`; each word
+`_words` finds, each part of it between quotes and each word of those parts (`_sub_words`: a
+program the command quotes names its paths inside it, `python -c "pd.read_csv('/x')"`), and
+each piece a colon or a semicolon joins (`_pieces`, a drive's `C:` kept whole on Windows,
+across a colon only), joined to the folder the command was sent from, `~` expanded, Git
+Bash's `/c/...` and `//c/...` read as `C:/...` on Windows, `normcase` and `normpath`, folded to one case on
+macOS too, and once more with its links followed by `os.path.realpath`; a word inside the
+folder is the folder or a path after its separator, so `data2` is not inside `data`; the
+folder is compared as the local file keeps it, as typed and as resolved) or names
+`MANUSCRIPT_GUARD_VAULT` in any case, is refused while the probe says readable, and asked where
+it says not reachable. Every word is compared as written before any is followed through its
+links, and only a word that could be a path (a separator, `~` or `..`) is followed. Every look
+on disk, the project's vault files, the links of the words and the probe, runs on a thread
+within `VAULT_GUARD_LIMIT` (3 s), but for the look for a vault behind a command that names `vault
+run` or `vault release` without running it, made where the command is read. Past it: a command that names the folder as
+written is refused, the probe not having said that the folder cannot be read; one whose words
+were being followed through their links, in a project whose vault is known, is refused as one
+that may name it; one stopped before the vault was found is let through. A local file that is
+there and cannot be read refuses a command with a slash, a backslash, `~` or `..` in it,
+saying to run `vault check` or `vault init --refresh` at a terminal. `_ask` turns the ask into a refusal where the tool cannot
+ask (Codex). The project is the one at the folder the command was sent from; nothing is asked
+of a project with no vault registered on this machine, and a fault of the guard's own costs
+the case, recorded, and nothing else. A word of a command is followed through links on this
+machine only: a word naming a share, `//host/...`, is compared as written.
+
+There is no hook on Read, Grep or Glob: it would start a Python process on every read, for
+every user of the plugin, vault or none. The agent tool's own rules are cheaper and enforced by
+the tool.
+
+### The agent tool's deny rules
+
+`vault init` prints, for Claude Code, `Read(//<path>)`, `Read(//<path>/**)`, `Edit(//<path>)`
+and `Edit(//<path>/**)` (`vault/agent_rules.py`). The spelling is from Claude Code's
+permissions page (https://code.claude.com/docs/en/permissions, read 2026-10-30). Its table of
+path patterns gives `//path` as an absolute path from the root of the file system, and warns
+that a single leading slash anchors at the settings file instead. Of Windows it says: "On
+Windows, paths are normalized to POSIX form before matching." Its example turns
+`C:\Users\alice` into `/c/Users/alice`, the drive letter in lower case. The same page says what
+the rules cover: Claude Code's own file tools, the file commands it recognises in a shell
+(`cat`, `head`, `tail`, `sed`, `tee`) and the targets of redirections; not a command that reads
+files without naming them, and not a script that opens a file itself, for which it points to
+its sandbox. A `Read` deny rule also stops the Write and Edit tools on its path, but not
+NotebookEdit, hence the `Edit` rules beside it. The
+patterns are gitignore's, so a path holding `*`, `?`, `[`, `]`, a backslash, or a bracket the
+rule's own syntax reads is not spelt, and neither is a share; `--agent-settings` refuses them.
+`--agent-settings` adds the missing rules to `permissions.deny` of the project's
+`.claude/settings.local.json`, every other key kept, once the person types y at a terminal
+(`ask_at_terminal`; no `--yes`); without a terminal it writes nothing and exits 2, saying
+that the vault's two files were written and the rules were not. Rules are printed for each
+spelling of the folder a rule can name, as typed and as resolved. Where it creates the settings
+file it adds `.claude/settings.local.json` to `.gitignore`, and where git tracks that file the
+whole command is refused before anything is written. A real
+headless session could not confirm the rule's spelling on 2026-10-30: the `claude` on PATH
+(2.1.310) had no login (Known gaps).
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -19749,6 +19890,56 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - The test is a starting point. It is written in the shape of its file and run in this
     repository's tests, but a test for a command other than `audit` and `check` leaves the
     command's words to fill in (`main(["explain"])  # TODO`).
+
+- **The vault (Task F, part 1): what registration, the probe and the guards do not hold.**
+  - *Encoded outputs.* Agent-written code run on the real data can put any value into any
+    output: a mean of one chosen row, a coefficient, a figure's point, the exit code, an
+    error's line. The later checks of a release read counts. A person's reading of the script
+    and of what is released is the control, and `docs/vault.md` says so.
+  - *The probe measures the account and the process it runs in.* It opens files and lists the
+    folder; it does not see a sandbox an agent tool applies only to the commands it runs in a
+    shell, so an agent under the same account in such a sandbox is reported readable. A
+    folder that lists and holds anything is readable, though every file in it may be refused;
+    an empty one is not reachable, though a file put there later would be readable. The
+    session-start probe waits 5 s and the shell guard 3 s for all it looks up; a disk slower
+    than that is said as not known at the start; the guard refuses a command that names the
+    folder as written, and, in a project with a vault registered here, one whose words it was
+    still following through their links, whatever they lead to.
+  - *The shell guard reads the words of ordinary commands.* A path built while the command
+    runs, held in a variable of the agent's own (`d=/secure; cat $d/x`), computed by a script,
+    globbed for the folder itself (`/sec*`), or a command naming a folder above the vault and
+    reading down into it (`grep -r x /secure` where the vault is `/secure/extract`), passes. So
+    does a path Git Bash writes through a mount other than a drive (`/tmp/...`, `/mnt/c/...`
+    under WSL). Only the project at the folder the command was sent from is asked; a command
+    sent from above the project names no vault, and a word is read from the folder the
+    command is sent from, so `cd .. && cat study-data/cohort.csv`, the vault beside the
+    project, passes. A command with no slash, backslash, `~` or
+    `..` in it is let through before any folder is looked at, the guard firing on every shell
+    command; so a link inside the project that leads into the vault, named bare (`ls data`),
+    passes, where `ls data/` is refused. A Codex patch that writes into the folder is
+    the write guard's, which does not read the vault. It is a guard against an agent's
+    ordinary commands, not against a deliberate evasion, as the other shell guards are.
+  - *No hook on the agent's file-reading tools.* Read, Grep and Glob are held only by the agent
+    tool's own deny rules, and by Claude Code's account those do not cover a command that
+    reads files without naming them, or a script that opens a file itself, unless its sandbox
+    is on. Claude Code reads `.claude/settings.local.json` in a session started in the
+    project's folder; a session started at the root of a larger repository looks elsewhere,
+    and `--agent-settings` writes only the project's. No rule is written for a folder whose
+    path holds a pattern character or a bracket, or that is on a share. Other agent tools get
+    no rules from the tool.
+  - *The rule's spelling was read, not run.* `//c/...` on Windows is from Claude Code's
+    permissions page (2026-10-30); a headless session to confirm it with a real Read could not
+    be started, since the `claude` on PATH (2.1.310) had no login.
+  - *The terminal requirement.* `--agent-settings` asks at a terminal, and an agent can start a
+    pseudo-terminal (`script`, `expect`, `winpty`); the hook's refusal of `vault run` and
+    `vault release` is the other half, and reads ordinary commands only. An agent app's own
+    terminal panel (the Claude desktop app's), or an IDE's beside an agent extension, may be
+    readable by the agent; `docs/vault.md` names it as a trap.
+  - *WSL* mounts the Windows drives under `/mnt/` unless automount is turned off, and the
+    guard does not read `/mnt/c/...` as `C:/...`.
+  - *Records.* `design/vault.yaml` is an unsigned statement, as an approval is. A digest of a
+    very small file could be matched by guessing its content. `registered_by` is the name
+    given to `--as`, and nothing checks it against `authors.yaml`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

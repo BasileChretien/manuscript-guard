@@ -170,6 +170,9 @@ COMMANDS = {
     # Nothing in harvest.yaml, or no file, is said, and nothing is written.
     "harvest": Zero("the outputs harvest.yaml names", exits=2,
                     argv=("harvest", "--path", "{project}")),
+    # No vault registered on this machine: it says so, and exits 2.
+    "vault": Zero("the vault this machine registers: its folder listed, each file opened",
+                  exits=2, argv=("vault", "check", "--path", "{project}")),
     "package": Zero("the results fragments, and the files that made them", exits=2,
                     argv=("package", "{project}")),
     # A plan's deposit with no plan is refused; a release with no results fails its check.
@@ -322,6 +325,7 @@ LATEX = {
     "values": ("reads", ("values", "{project}")),
     "verify": ("no manuscript", ("verify", "{project}")),
     "harvest": ("no manuscript", ("harvest", "--path", "{project}")),
+    "vault": ("no manuscript", ("vault", "check", "--path", "{project}")),
 }
 
 

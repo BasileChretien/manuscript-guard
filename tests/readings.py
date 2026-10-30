@@ -811,6 +811,90 @@ def _deposit_named() -> Reading:
     return read
 
 
+#: Where "vault named" keeps the folders it renders a command against: made once in a process,
+#: and taken away when it ends.
+_VAULT_PLACE: list[Path] = []
+
+
+def vault_place() -> Path:
+    """A folder holding a project and the vault's folder beside it, `Data held`, with a space
+    in its name, and a folder whose name begins with the vault's, `Data held2`."""
+    if not _VAULT_PLACE:
+        import atexit
+
+        base = Path(tempfile.mkdtemp(prefix="mg-vault-")).resolve()
+        atexit.register(shutil.rmtree, base, True)
+        for folder in ("project", "Data held", "Data held2"):
+            (base / folder).mkdir()
+        _VAULT_PLACE.append(base)
+    return _VAULT_PLACE[0]
+
+
+def vault_spelling(kind: str, base: Path) -> str:
+    """The vault's folder, or a path that is not in it, written as `kind` writes it, with the
+    folders of `vault_place` under `base`."""
+    vault = base / "Data held"
+    posix = vault.as_posix()
+    return {
+        # Each of these names the folder or a file in it.
+        "quoted": f'"{vault}"',
+        "single quoted": f"'{vault / 'cohort.csv'}'",
+        "forward slashes": f'"{posix}/cohort.csv"',
+        "inside": f'"{vault / "extract" / "visits.csv"}"',
+        "relative": '"../Data held/cohort.csv"',
+        "after an equals sign": f'"--input={posix}/cohort.csv"',
+        "after an at sign": f'"file=@{posix}/cohort.csv"',
+        "escaped space": posix.replace(" ", "\\ ") + "/cohort.csv",
+        "variable": "$MANUSCRIPT_GUARD_VAULT",
+        # The home is `base` while the reading reads (`_vault_named`).
+        "the home": '"$HOME/Data held/cohort.csv"',
+        "the home in braces": "${HOME}/Data\\ held/cohort.csv",
+        "PowerShell's home": '"$env:USERPROFILE/Data held/cohort.csv"',
+        "cmd's home": '"%USERPROFILE%/Data held/cohort.csv"',
+        "a volume": f'-v "{posix}:/data"',
+        "a search path": f'"/opt/lib:{posix}/lib"',
+        "a Windows search path": f'"C:/tools;{posix}/bin"',
+        # Relative, so that no colon of a drive splits it: inside the quotes, and nowhere else.
+        "a path inside a quoted program": """-c "print(open('../Data held/cohort.csv').read())\"""",
+        # And none of these.
+        "a folder beside it": f'"{base / "Data held2" / "cohort.csv"}"',
+        "the folder above it": f'"{base}"',
+        "a file beside it": f'"{base / "Data held.csv"}"',
+        "the word": "vault",
+        "another variable": '"$HOMEDIR/Data held/cohort.csv"',
+        "a search path beside it": f'"/opt/lib:{(base / "Data held2").as_posix()}"',
+    }[kind]
+
+
+@reading("vault named")
+def _vault_named() -> Reading:
+    from manuscript_guard.hooks import _names_the_vault
+
+    def read(given: dict[str, str]) -> str | None:
+        """What a shell command names of the vault: its variable, its folder, or nothing,
+        read from the project beside it, each `<<kind>>` written as `vault_spelling` writes
+        it, with the folder above the vault as the home."""
+        import os
+
+        base = vault_place()
+        command = re.sub(r"<<([^<>]+)>>", lambda m: vault_spelling(m[1], base),
+                         given["command"])  # fmt: skip
+        vault = base / "Data held"
+        homes = {name: os.environ.get(name) for name in ("HOME", "USERPROFILE")}
+        try:
+            os.environ.update(dict.fromkeys(homes, str(base)))
+            return _names_the_vault(command, base / "project",
+                                    [str(vault), os.path.realpath(vault)])  # fmt: skip
+        finally:
+            for name, value in homes.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+    return read
+
+
 @reading("count cells")
 def _count_cells() -> Reading:
     from manuscript_guard.deposit.counts import count_in_cell

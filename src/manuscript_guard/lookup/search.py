@@ -468,6 +468,12 @@ _INLINE_TAG = re.compile(
 )
 
 
+#: A superscript and a subscript, which keep what they mean: "10^9", "CO_2" (round 2 of
+#: #482); read as text, `10<sup>9</sup>` was 109.
+_SUP = re.compile(r"<sup(?:\s[^<>]*)?>(.*?)</sup>", re.IGNORECASE | re.DOTALL)
+_SUB = re.compile(r"<sub(?:\s[^<>]*)?>(.*?)</sub>", re.IGNORECASE | re.DOTALL)
+
+
 def _abstract(value: Any) -> str | None:
     """An abstract without the markup Europe PMC leaves in it: its section headings are
     tags, `<h4>Background</h4>Text`, a space each, and its italics and superscripts are
@@ -475,7 +481,9 @@ def _abstract(value: Any) -> str | None:
     text = _text(value)
     if not text:
         return None
-    return _text(html.unescape(_INLINE_TAG.sub("", _BLOCK_TAG.sub(" ", text))))
+    raised = _SUP.sub(lambda found: "^" + found.group(1), text)
+    lowered = _SUB.sub(lambda found: "_" + found.group(1), raised)
+    return _text(html.unescape(_INLINE_TAG.sub("", _BLOCK_TAG.sub(" ", lowered))))
 
 
 def _listed(item: dict[str, Any], outer: str, inner: str) -> list:

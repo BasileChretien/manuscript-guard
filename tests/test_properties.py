@@ -4843,7 +4843,18 @@ def _a_citation_after_a_stop_is_the_next_sentence_s(patch: pytest.MonkeyPatch) -
     from manuscript_guard.auditing import sentences
 
     patch.setattr(sentences.View, "_after_a_stop",
-                  lambda self, before, first, end, starts, ends: first)
+                  lambda self, before, start, first, end: first)
+
+
+def _a_citation_after_an_abbreviation_is_the_sentence_before_s(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    """Round 2 of #482: "Smith et al. [3] showed that" gave [3] to "Smith et al.": no stop
+    was an abbreviation's, and any word after a citation began a sentence."""
+    from manuscript_guard.auditing import sentences
+
+    patch.setattr(sentences, "_abbreviated", lambda read, stop: False)
+    patch.setattr(sentences, "_begins", lambda read, at: True)
 
 
 def _an_abstract_over_its_background_is_a_title(patch: pytest.MonkeyPatch) -> None:
@@ -4851,7 +4862,7 @@ def _an_abstract_over_its_background_is_a_title(patch: pytest.MonkeyPatch) -> No
     Summary only as a conclusion."""
     from manuscript_guard.auditing import sentences
 
-    patch.setattr(sentences, "_summarises", lambda section, below, methods: False)
+    patch.setattr(sentences, "_summarises", lambda section, below, methods: None)
 
 
 def _a_citation_at_a_stop_ends_no_sentence(patch: pytest.MonkeyPatch) -> None:
@@ -15385,6 +15396,10 @@ BROKEN = {
     ),
     "an Abstract with a Background under it, and a Summary, are read as titles": (
         _an_abstract_over_its_background_is_a_title,
+        test_a_causal_word_is_warned_of_where_the_paper_sums_up_and_not_hedged_negated_or_cited,
+    ),
+    "a citation after an abbreviation's stop is given to the abbreviation": (
+        _a_citation_after_an_abbreviation_is_the_sentence_before_s,
         test_a_causal_word_is_warned_of_where_the_paper_sums_up_and_not_hedged_negated_or_cited,
     ),
     "a citation directly after a stop ends no sentence": (

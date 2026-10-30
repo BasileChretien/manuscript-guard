@@ -72,7 +72,8 @@ def causal_words(views: list[View], design: str) -> CausalRead:
     placed: dict[Path, bool] = {}
     for view in views:
         sentences = view.sentences
-        citing = {view.owner(cite.start) for cite in view.cites}
+        # A `\nocite` prints no citation in the sentence (round 2 of #482).
+        citing = {view.owner(cite.start) for cite in view.cites if cite.prints}
         found.notes += [(view.path, note) for note in view.notes]
         placed.setdefault(view.path, False)
         for index, sentence in enumerate(sentences):

@@ -101,6 +101,14 @@ def folded_title(title: str) -> str:
     return text.removeprefix("the ").strip()
 
 
+def same_journal(recorded: str, named: str) -> bool:
+    """Whether a record's journal is the one a profile names: its whole title folded, or its
+    part before " : ", as PubMed gives a subtitle ("Journal of X : official journal of the
+    Y Society"), equal to the name folded (round 2 of #482)."""
+    mine = folded_title(named)
+    return mine in {folded_title(recorded), folded_title(recorded.split(" : ")[0])}
+
+
 def _journals(answers: dict) -> list[str]:
     found = []
     for name, key in (("crossref", "container"), ("pubmed", "journal")):
@@ -134,11 +142,10 @@ def count(looked: list | None, census_entries: int, authors: dict | None,
         said.authors = [(author, [one for one in asked if lists_author(one.answers, author)])
                         for author in people]  # fmt: skip
     if journal:
-        mine = folded_title(journal)
         said.in_journal = [one for one in asked
-                           if any(folded_title(t) == mine for t in _journals(one.answers))]
+                           if any(same_journal(t, journal) for t in _journals(one.answers))]
     return said
 
 
 __all__ = ["DRY_RUN", "NOT_LOOKED_UP", "NO_AUTHORS", "Author", "SelfCitation", "count",
-           "folded_title", "lists_author"]  # fmt: skip
+           "folded_title", "lists_author", "same_journal"]  # fmt: skip

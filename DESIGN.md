@@ -8177,7 +8177,16 @@ directly after the stop, `.[3]`, `.[3-5]`, `.\cite{a}` or `.~\cite{a}`, read on 
 sentence, which then passed as cited (round 1 of #482): there the sentence ends after the
 citation, or the last of several typed together, unless the next word is in lower case
 (`View._stop_cuts`). `claims` itself is unchanged, so `reworded` and `communicate` read as
-before.
+before. Citations typed together with only spaces, ties or punctuation between, `[3] [4]`,
+`[3]~[4]`, are one run, and the lower-case rule is the run's. An abbreviation's stop, "Smith
+et al. [3] showed", "e.g. [4]", "cf.", "i.e.", "vs.", "Fig.", "ref.", ends no sentence
+before a citation: the citation and the words after it stay with the sentence they are in;
+and a citation typed after another stop is given to the sentence before only where the word
+after it begins a sentence, in a capital or a figure (round 2 of #482). Headings are no
+sentences of their part, nor are a Word document's footnotes and endnotes, which are read
+after its body and placed in no part. A `\nocite` cites nothing in a sentence, and a
+citation by author and year inside a comment is not read. The rows and the warnings follow
+the files in the order given, a front matter's abstract before its body.
 
 **`--cited FILE`** (`auditing.cited`). A row for each work each citation names: a number in
 brackets held by number to a numbered list as G7's census holds it (`references.marker_spans`,
@@ -19235,8 +19244,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     sentence passes it, whatever it bears on ("not all patients; smoking causes cancer"). A
     narrative citation, "Smith et al. showed that X causes Y", carries no citation the reading
     sees and warns. A structured Abstract's Methods are the Abstract's, and are read; a
-    "Summary" is the Abstract only with a heading of a structured abstract under it, and
-    otherwise a conclusion, read as one. A file
+    "Summary" is the Abstract only with a heading of a structured abstract under it and
+    before the paper's opening (an Introduction, a Background, the Methods), and otherwise a
+    conclusion, read as one. An abbreviation is known by a list (et al., e.g., i.e., cf., vs.,
+    viz., Fig., ref., Eq., approx., ca., suppl.): another before a citation, "see p. [3]
+    showed", ends the sentence there, as `claims` cuts it. A file
     with no heading that names a part is not read, and the report says so.
   - The cited-sentences table reads a number in brackets beside a numbered list, and a LaTeX
     `\cite` beside a `thebibliography`. A citation by author and year, a pandoc key, a
@@ -19246,6 +19258,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     supplement that cites the main document's list by number lists them as unread. A citation
     typed right after a stop is the sentence before's, even where the author meant the next;
     one that opens a paragraph is that paragraph's.
+  - A journal's name is matched folded, whole or before PubMed's " : " subtitle, with a
+    qualifier in brackets at its end left out; an abbreviation (Crossref's short container
+    title) is not matched.
   - Self-citation relies on the registries' author lists: a namesake with the same initial
     counts, a changed surname does not, nor does an author a registry lists in another script
     or with no given name. The journal's titles match by folded name only (the profile holds

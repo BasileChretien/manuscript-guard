@@ -102,7 +102,7 @@ def cited_sentences(views: list[View], lists: Mapping[Path, Census]) -> CitedRea
             if cite.kind == "numbered" and not numbered:
                 skipped += 1
                 continue
-            if cite.kind == "latex" and (cite.key == "*" or _no_text(cite.written)):
+            if cite.kind == "latex" and (cite.key == "*" or not cite.prints):
                 continue
             index = view.owner(cite.start)
             if index is None:
@@ -114,11 +114,6 @@ def cited_sentences(views: list[View], lists: Mapping[Path, Census]) -> CitedRea
         if skipped:
             read.notes.append((view.path, _unlisted(census, skipped)))
     return read
-
-
-def _no_text(written: str) -> bool:
-    """Whether a citation command prints no citation in the sentence: `\\nocite`."""
-    return written.lstrip("\\").lower().startswith("nocite")
 
 
 def _entries(cite, by_number: dict, by_key: dict, census: Census | None):
@@ -161,18 +156,24 @@ class Abstract:
     asked: str
     answer: Mapping[str, Any] = field(default_factory=dict)
     came: str = ""
+    #: The file whose reference list holds the entry.
+    where: Path | None = None
 
 
-def _key(entry: Entry) -> tuple:
-    return (entry.path, entry.line, entry.label)
+def _key(entry: Entry, where: Path | None) -> tuple:
+    """An entry as it is known across the files read: by the file whose list holds it, as
+    well as its line and its label, since entry 1 of two files may stand at one line in
+    each (round 2 of #482). `where` is the census's file, or the row's."""
+    return (entry.path or where, entry.line, entry.label)
 
 
-def wanted(rows: list[Row]) -> list[Entry]:
-    """Each entry a row names that has a DOI or a PMID, once, in the order of the rows."""
-    seen: dict[tuple, Entry] = {}
+def wanted(rows: list[Row]) -> list[tuple[Entry, Path]]:
+    """Each entry a row names that has a DOI or a PMID, once, in the order of the rows,
+    with the file whose list holds it."""
+    seen: dict[tuple, tuple[Entry, Path]] = {}
     for row in rows:
         if row.entry is not None and (row.entry.dois or row.entry.pmids):
-            seen.setdefault(_key(row.entry), row.entry)
+            seen.setdefault(_key(row.entry, row.path), (row.entry, row.path))
     return list(seen.values())
 
 
@@ -220,10 +221,10 @@ def abstracts(
     services = services or search.Services()
     ask = run._asker(transport or default_transport, pacer or run.Pacer(), run.Credentials())
     found: list[Abstract] = []
-    for entry in wanted(rows):
+    for entry, where in wanted(rows):
         asked = _asked(entry)
         if dry_run:
-            found.append(Abstract(entry, asked))
+            found.append(Abstract(entry, asked, where=where))
             continue
         ids = _identifiers(entry)
         kept = cache / _kept_name(entry) if cache is not None else None
@@ -237,7 +238,7 @@ def abstracts(
                 kept.write_text(json.dumps({"source": "europepmc", "identifiers": ids,
                                             "answer": answer}, indent=2, ensure_ascii=True)
                                 + "\n", encoding="utf-8")  # fmt: skip
-        found.append(Abstract(entry, asked, answer, came))
+        found.append(Abstract(entry, asked, answer, came, where))
     return found
 
 
@@ -305,20 +306,21 @@ def columns(lookup: bool) -> list[str]:
 def cells(read: CitedRead, looked: list | None, fetched: list[Abstract] | None,
           show: Callable[[Path], str]) -> list[list[str]]:  # fmt: skip
     """Each row's cells, in the order of `columns`."""
-    by_entry = {_key(one.entry): one for one in looked or []}
-    by_abstract = {_key(one.entry): one for one in fetched or []}
+    by_entry = {_key(one.entry, one.path): one for one in looked or []}
+    by_abstract = {_key(one.entry, one.where): one for one in fetched or []}
     found = []
     for number, row in enumerate(read.rows, 1):
         shown = [str(number), f"{show(row.path)}:{row.line}", row.section, row.sentence,
                  row.written, _entry_said(row)]  # fmt: skip
         if looked is not None:
-            one = by_entry.get(_key(row.entry)) if row.entry is not None else None
+            one = by_entry.get(_key(row.entry, row.path)) if row.entry is not None else None
             registry = registry_of(one) if one is not None and one.came else Registry()
             if one is not None and not one.came:
                 registry = Registry(standing=f"not asked (--dry-run): would ask {one.asked}")
             if one is None and row.entry is not None:
                 registry = Registry(standing="not looked up: no DOI or PMID in the entry")
-            abstract = by_abstract.get(_key(row.entry)) if row.entry is not None else None
+            abstract = (by_abstract.get(_key(row.entry, row.path)) if row.entry is not None
+                        else None)  # fmt: skip
             shown += [registry.title, registry.year, registry.standing, _abstract_said(abstract)]
         found.append([*shown, ""])
     return found

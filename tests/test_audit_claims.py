@@ -116,12 +116,15 @@ def test_a_file_with_no_heading_that_names_a_part_is_said_to_be_unread(
     assert [f["code"] for f in section(report, "Causal words")] == ["causal-words-not-read"]
 
 
-def make_docx(path: Path, paragraphs: list[tuple[str, bool]]) -> Path:
-    """A .docx of paragraphs, each styled as a heading where its flag says so."""
-    styles = (f"<w:styles xmlns:w='{W}'><w:style w:type='paragraph' w:styleId='Heading1'>"
-              "<w:name w:val='heading 1'/></w:style></w:styles>")  # fmt: skip
+def make_docx(path: Path, paragraphs: list[tuple[str, bool | int]]) -> Path:
+    """A .docx of paragraphs, each styled as a heading where its flag says so, of level 1, or
+    of the level it gives."""
+    styles = (f"<w:styles xmlns:w='{W}'>" + "".join(
+        f"<w:style w:type='paragraph' w:styleId='Heading{n}'><w:name w:val='heading {n}'/>"
+        "</w:style>" for n in (1, 2)) + "</w:styles>")  # fmt: skip
     body = "".join(
-        "<w:p>" + ("<w:pPr><w:pStyle w:val='Heading1'/></w:pPr>" if heading else "")
+        "<w:p>" + (f"<w:pPr><w:pStyle w:val='Heading{int(heading)}'/></w:pPr>" if heading
+                   else "")  # fmt: skip
         + f"<w:r><w:t xml:space='preserve'>{text}</w:t></w:r></w:p>"
         for text, heading in paragraphs
     )
@@ -605,7 +608,7 @@ def test_pubmed_s_qualifier_after_a_journal_s_name_is_no_part_of_it(
     [("P<0.05 and age>65 in the cohort", "P<0.05 and age>65 in the cohort"),
      ("P&lt;0.05 and age&gt;65", "P<0.05 and age>65"),
      ("<h4>Background</h4>Smoking <i>in vivo</i> rose<sup>2</sup>.<br/>It fell",
-      "Background Smoking in vivo rose2. It fell"),
+      "Background Smoking in vivo rose^2. It fell"),
      ("<p class='x'>A <span style=\"color:red\">red</span> word.</p>", "A red word."),
      ("A < B and C > D", "A < B and C > D")],
 )  # fmt: skip
@@ -613,3 +616,172 @@ def test_an_abstract_loses_its_markup_and_keeps_its_signs(given: str, read: str)
     """Round 1 of #482: every `<...>` was taken for a tag, and "P<0.05 and age>65" lost the
     words between its signs."""
     assert search._abstract(given) == read
+
+
+# ------------------------------------------------------------------- round 2 of #482
+
+
+REFERENCES = "## References\n\n" + "".join(f"{n}. Author{n} A. A study. J. 2019;1:1-2.\n"
+                                            for n in range(1, 9))  # fmt: skip
+
+
+def _rows(capsys, tmp_path: Path, *papers: Path) -> list[str]:
+    table = tmp_path / "cited.md"
+    if table.exists():
+        table.unlink()
+    assert main(["audit", *map(str, papers), "--cited", str(table)]) == 0
+    capsys.readouterr()
+    return [line for line in table.read_text(encoding="utf-8").splitlines()
+            if line.startswith("| ") and not line.startswith("| #")]  # fmt: skip
+
+
+def test_a_citation_after_an_abbreviation_s_stop_stays_in_its_sentence(
+    tmp_path: Path, capsys
+) -> None:
+    """Round 2 of #482: "Smith et al. [3] showed that X causes Y" gave [3] to "Smith et
+    al." and warned of the rest as uncited."""
+    text = ("## Discussion\n\nSmith et al. [3] showed that smoking causes cancer.\n"
+            "Earlier cohorts, e.g. [4], showed that tea causes calm.\n"
+            "Others (cf. [5]) found that coffee causes alertness.\n"
+            "As in Fig. [6] statins caused fewer deaths.\n\n" + REFERENCES)  # fmt: skip
+    paper = paper_md(tmp_path, text)
+    assert _causal(capsys, paper) == []
+    rows = _rows(capsys, tmp_path, paper)
+    assert [row.split(" | ")[3] for row in rows] == [
+        "Smith et al. [3] showed that smoking causes cancer.",
+        "Earlier cohorts, e.g. [4], showed that tea causes calm.",
+        "Others (cf. [5]) found that coffee causes alertness.",
+        "As in Fig. [6] statins caused fewer deaths.",
+    ]
+
+
+@pytest.mark.parametrize("tie", [" ", "~", ""])
+def test_a_latex_cite_after_et_al_stays_in_its_sentence(tmp_path: Path, capsys, tie: str) -> None:
+    paper = tmp_path / "paper.tex"
+    paper.write_text(
+        f"{BS}documentclass{{article}}\n{BS}begin{{document}}\n{BS}section{{Discussion}}\n"
+        f"Smith et al.{tie}{BS}cite{{a}} showed that smoking causes cancer.\n"
+        f"{BS}begin{{thebibliography}}{{9}}\n{BS}bibitem{{a}} A.\n{BS}end{{thebibliography}}\n"
+        f"{BS}end{{document}}\n", encoding="utf-8")  # fmt: skip
+    _code, report, _err = audited(capsys, str(paper), "--design", "observational")
+    assert section(report, "Causal words") == []
+
+
+@pytest.mark.parametrize(
+    ("given", "read"),
+    [("10<sup>9</sup> cells and 10<sup>-8</sup> M", "10^9 cells and 10^-8 M"),
+     ("CO<sub>2</sub> <i>in vivo</i>", "CO_2 in vivo")],
+)  # fmt: skip
+def test_a_superscript_and_a_subscript_keep_what_they_mean(given: str, read: str) -> None:
+    """Round 2 of #482: "10<sup>9</sup>" read as "109"."""
+    assert search._abstract(given) == read
+
+
+@pytest.mark.parametrize(
+    "heading",
+    ["### Causes of death\n", "Causes of death\n---------------\n"],
+    ids=["atx", "setext"],
+)
+def test_a_heading_is_no_sentence_of_its_part(tmp_path: Path, capsys, heading: str) -> None:
+    text = (f"## Discussion\n\n{heading}\nTea was common.\n\n" + REFERENCES)
+    assert _causal(capsys, paper_md(tmp_path, text)) == []
+
+
+def test_a_latex_or_word_heading_is_no_sentence_of_its_part(tmp_path: Path, capsys) -> None:
+    paper = tmp_path / "paper.tex"
+    paper.write_text(
+        f"{BS}documentclass{{article}}\n{BS}begin{{document}}\n{BS}section{{Discussion}}\n"
+        f"{BS}subsection{{Causes of death}}\nTea was common.\n{BS}end{{document}}\n",
+        encoding="utf-8")  # fmt: skip
+    assert _causal(capsys, paper) == []
+    docx = make_docx(tmp_path / "paper.docx", [("Discussion", True), ("Causes of death", 2),
+                                                ("Tea was common.", False)])
+    assert _causal(capsys, docx) == []
+
+
+@pytest.mark.parametrize(("run", "warned"), [("[3] [4] Coffee", True), ("[3]~[4] Coffee", True),
+                                              ("[3] [4] and coffee", False)])  # fmt: skip
+def test_markers_typed_together_after_a_stop_are_one_run(
+    tmp_path: Path, capsys, run: str, warned: bool
+) -> None:
+    text = (f"## Discussion\n\nStatins caused fewer deaths.{run} causes alertness.\n\n"
+            + REFERENCES)
+    found = _causal(capsys, paper_md(tmp_path, text))
+    assert found == ([(3, "Discussion")] if warned else [])
+
+
+def test_an_entry_is_known_by_its_file_as_well(tmp_path: Path, registries, capsys) -> None:
+    """Round 2 of #482: entry 1 of two files, at one line in each, was one entry."""
+    main_text = ("## Discussion\n\nSmoking was common [1].\n\n## References\n\n"
+                 f"1. Smith J. A cohort. Lancet. 2019;393:100-10. doi:{DOI}\n")
+    supplement = ("## Discussion\n\nDiet was common [1].\n\n## References\n\n"
+                  "1. Jones K. A trial. BMJ 2020;370:m1. PMID: 31000001\n")
+    papers = [paper_md(tmp_path, main_text), paper_md(tmp_path, supplement, "supplement.md")]
+    table = tmp_path / "cited.md"
+    assert main(["audit", *map(str, papers), "--cited", str(table), "--lookup"]) == 0
+    capsys.readouterr()
+    rows = [line for line in table.read_text(encoding="utf-8").splitlines()
+            if line.startswith("| 1 ") or line.startswith("| 2 ")]  # fmt: skip
+    assert "| A cohort |" in rows[0] and "| A trial. |" in rows[1]
+
+
+def test_the_rows_follow_the_files_in_the_order_given(tmp_path: Path, capsys) -> None:
+    """Round 2 of #482: a Markdown paper's rows came before a LaTeX paper named first; and a
+    front matter's abstract comes before its file's body."""
+    tex = tmp_path / "main.tex"
+    tex.write_text(
+        f"{BS}documentclass{{article}}\n{BS}begin{{document}}\n{BS}section{{Discussion}}\n"
+        f"Tea was common~{BS}cite{{a}}.\n{BS}begin{{thebibliography}}{{9}}\n"
+        f"{BS}bibitem{{a}} A.\n{BS}end{{thebibliography}}\n{BS}end{{document}}\n",
+        encoding="utf-8")  # fmt: skip
+    supplement = paper_md(tmp_path, "---\nabstract: Diet was rare [2].\n---\n\n"
+                          "## Discussion\n\nSalt was common [1].\n\n" + REFERENCES)
+    rows = _rows(capsys, tmp_path, tex, supplement)
+    assert [row.split(" | ")[1] for row in rows] == ["main.tex:4", "paper.md:2", "paper.md:7"]
+
+
+def test_a_nocite_and_a_commented_citation_cite_nothing(tmp_path: Path, capsys) -> None:
+    """Round 2 of #482: `\\nocite` and a citation inside a comment passed a causal claim as
+    cited."""
+    paper = paper_md(tmp_path, "## Discussion\n\nSmoking causes cancer. "
+                     "<!-- (Smith et al., 2019) -->\n\n" + REFERENCES)
+    assert _causal(capsys, paper) == [(3, "Discussion")]
+    tex = tmp_path / "paper.tex"
+    tex.write_text(
+        f"{BS}documentclass{{article}}\n{BS}begin{{document}}\n{BS}section{{Discussion}}\n"
+        f"Smoking causes cancer. {BS}nocite{{a}}\nTea causes calm. % (Smith et al., 2019)\n"
+        f"{BS}begin{{thebibliography}}{{9}}\n{BS}bibitem{{a}} A.\n{BS}end{{thebibliography}}\n"
+        f"{BS}end{{document}}\n", encoding="utf-8")  # fmt: skip
+    assert _causal(capsys, tex) == [(4, "Discussion"), (5, "Discussion")]
+
+
+def test_a_word_document_s_notes_are_in_no_part(tmp_path: Path, capsys) -> None:
+    """Round 2 of #482: a footnote, read after the body, was placed under its last
+    heading."""
+    paper = make_docx(tmp_path / "paper.docx", [("Discussion", True),
+                                                 ("Tea was common.", False)])  # fmt: skip
+    notes = (f"<?xml version='1.0'?><w:footnotes xmlns:w='{W}'><w:footnote w:id='1'><w:p><w:r>"
+             "<w:t>Smoking causes cancer.</w:t></w:r></w:p></w:footnote></w:footnotes>")
+    with zipfile.ZipFile(paper, "a") as archive:
+        archive.writestr(zipfile.ZipInfo("word/footnotes.xml", (2020, 1, 1, 0, 0, 0)), notes)
+    from manuscript_guard.text.docx import read_docx_text
+
+    assert "Smoking causes cancer." in read_docx_text(paper).notes
+    assert _causal(capsys, paper) == []
+
+
+def test_a_journal_s_subtitle_after_a_colon_is_no_part_of_its_name() -> None:
+    from manuscript_guard.auditing.selfcite import same_journal
+
+    assert same_journal("Journal of Examples : official journal of the Society",
+                        "Journal of Examples")  # fmt: skip
+    assert same_journal("The Journal of Examples", "Journal of Examples")
+    assert not same_journal("Journal of Other Examples", "Journal of Examples")
+
+
+def test_a_closing_summary_is_the_conclusion(tmp_path: Path, capsys) -> None:
+    """Round 2 of #482: a Summary after the Introduction, with headings under it, is the
+    paper's last section, not its abstract."""
+    text = ("# A cohort\n\n## Introduction\n\nTea was common.\n\n## Summary\n\n"
+            "### Background\n\nSmoking causes cancer.\n")
+    assert _causal(capsys, paper_md(tmp_path, text)) == [(11, "Conclusion")]

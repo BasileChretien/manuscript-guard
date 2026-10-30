@@ -5929,9 +5929,14 @@ CAUSAL_OBJECTS = ("lung cancer", "the bleeding", "fewer deaths", "liver injury")
 #: The kinds of sentence each part of a paper of `causal_papers` holds one of: a causal
 #: claim alone, hedged, negated, cited inside its stop, cited directly after its stop with
 #: another causal claim after it on its line, cited after its stop and a space, cited on the
-#: line below, cited by author and year, and a sentence with no causal word.
+#: line below, cited after an abbreviation's stop and before the claim ("Smith et al. [3]
+#: showed that"), cited by author and year, and a sentence with no causal word.
 CAUSAL_KINDS = ("plain", "hedged", "negated", "cited", "cited at the stop", "cited after",
-                "cited below", "author-year", "quiet")  # fmt: skip
+                "cited below", "cited after an abbreviation", "author-year",
+                "quiet")  # fmt: skip
+#: What opens a sentence that cites after an abbreviation's stop.
+ABBREVIATED = ("Smith et al.", "Earlier cohorts, e.g.", "Others, cf.", "As in Fig.",
+               "Two cohorts, i.e.")  # fmt: skip
 #: The sentence that follows a citation typed after a stop.
 AFTER_A_CITATION = "The rate was stable."
 #: The headings of a structured Abstract, each with the titles it may have: the Lancet's
@@ -5975,6 +5980,8 @@ def causal_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list], dict[str,
             key = f"{BACKSLASH}cite{{r{number}}}"
             follow = draw(st.sampled_from(CAUSAL_CLAIMS)).format(s=s, o=o)
             tie = draw(st.sampled_from(("", "~")))
+            opening = draw(st.sampled_from(ABBREVIATED))
+            claim = said[0].lower() + said[1:]
             md_line, tex_line = {
                 "cited": (f"{said} [{number}].", f"{said}~{key}."),
                 "cited at the stop": (f"{said}.[{number}] {follow}.",
@@ -5982,6 +5989,10 @@ def causal_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list], dict[str,
                 "cited after": (f"{said}. [{number}] {AFTER_A_CITATION}",
                                 f"{said}. {key} {AFTER_A_CITATION}"),
                 "cited below": (f"{said}.\n[{number}]", f"{said}.\n{key}"),
+                "cited after an abbreviation": (
+                    f"{opening} [{number}] showed that {claim}.",
+                    f"{opening}{draw(st.sampled_from((' ', '~', '')))}{key} showed that "
+                    f"{claim}."),
                 "author-year": (f"{said} (Smith et al., 2019).",) * 2,
             }.get(kind, (f"{said}.",) * 2)  # fmt: skip
             under = draw(st.integers(0, len(ABSTRACT_HEADINGS) - 1))

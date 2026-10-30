@@ -645,7 +645,11 @@ REFERENCED = PAPER + ("\n# References\n\n1. Example A. A study of urine. J Ex. 2
                       "doi:10.1000/example.1\n")
 
 
-def test_a_lookup_draft_lists_no_asked_bullet(tmp_path, capsys, monkeypatch) -> None:
+@pytest.mark.parametrize(("came", "said"), [
+    ("kept", "1 entry looked up, 1 answered from the records kept"),
+    ("asked", "1 entry asked about"),
+])  # fmt: skip
+def test_a_lookup_draft_lists_no_asked_bullet(tmp_path, capsys, monkeypatch, came, said) -> None:
     """Fix-only round of #487: what was asked is the report's to list, not the draft's."""
     import dataclasses
 
@@ -654,7 +658,7 @@ def test_a_lookup_draft_lists_no_asked_bullet(tmp_path, capsys, monkeypatch) -> 
     real = references.look_up
 
     def kept(censuses, **kwargs):
-        return [dataclasses.replace(one, came="kept")
+        return [dataclasses.replace(one, came=came)
                 for one in real(censuses, **{**kwargs, "dry_run": True})]
 
     monkeypatch.setattr(references, "look_up", kept)
@@ -666,16 +670,20 @@ def test_a_lookup_draft_lists_no_asked_bullet(tmp_path, capsys, monkeypatch) -> 
     text = target.read_text(encoding="utf-8")
     assert "asked doi" not in text and "asked Crossref" not in text
     # Answered from the records kept, it was not asked about this time.
-    assert "The registries (--lookup): 1 entry looked up, 1 answered from the records kept" in text
+    assert f"The registries (--lookup): {said}" in text
 
 
-def test_a_lookup_draft_with_no_reference_list_says_so(tmp_path, capsys) -> None:
+@pytest.mark.parametrize(("tail", "said"), [
+    ("", "no reference list was read"),
+    ("\n# References\n\n", "no reference gives a DOI or a PMID"),  # a list, no entry read
+])  # fmt: skip
+def test_a_lookup_draft_with_no_reference_list_says_so(tmp_path, capsys, tail, said) -> None:
     paper = tmp_path / "paper.md"
-    paper.write_text(PAPER, encoding="utf-8")
+    paper.write_text(PAPER + tail, encoding="utf-8")
     target = tmp_path / "d.md"
     assert main(["audit", str(paper), "--lookup", "--report-draft", str(target)]) == 0
     capsys.readouterr()
-    assert "not asked, since no reference list was read" in target.read_text(encoding="utf-8")
+    assert f"not asked, since {said}" in target.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("dry_run", [False, True])

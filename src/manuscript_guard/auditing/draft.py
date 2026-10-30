@@ -194,9 +194,8 @@ def _unchecked_of_audit(report) -> list[str]:
         found.append("The registries: the references were not looked up (`--lookup`).")
     elif not report.lookups:
         found.append("The registries: not asked, since " + (
-            "no reference gives a DOI or a PMID."
-            if any(census.entries for census in report.references)
-            else "no reference list was read."))  # fmt: skip
+            "no reference list was read." if all(census.note for census in report.references)
+            else "no reference gives a DOI or a PMID."))  # fmt: skip
     elif not any(one.came for one in report.lookups):
         # Round 2 of #487: a dry run asked nothing, and was said to have asked.
         found.append("The registries: not looked up (dry run); what would be asked is listed "

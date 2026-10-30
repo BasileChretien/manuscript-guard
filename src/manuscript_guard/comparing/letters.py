@@ -3,7 +3,9 @@
 **The letter.** Each quotation of four words or more in it, in straight or curly double
 quotation marks, on one line or across a line break, and each block quotation (`>` lines, a
 paragraph of them each), is looked for in both versions as G13 looks for a quoted revision
-(`gates.revision.as_quoted`, `quoted_in`), a curly apostrophe read as a straight one:
+(`gates.revision.as_quoted`), as words of its own, a curly apostrophe read as a straight one.
+Two straight marks with a sentence's end between them are no pair, so an inch's mark does not
+take a quotation's:
 
 - in v2 and not in v1: new as quoted (a note);
 - in both: quoted as revised, but v1 had it (a warning);
@@ -54,12 +56,17 @@ SAID = {
     YOURS: ("quotes your comments, and neither version holds it", INFO),
 }
 
-#: A quotation in double marks, straight or curly, on one line or across a line break.
+#: A quotation in curly double marks, which open and close, on one line or across a line
+#: break; and a straight double mark, which does both and is an inch's mark as well.
 _QUOTED = re.compile(
-    r'"([^"\n]+(?:\n[^"\n]+)*)"'
-    r"|\N{LEFT DOUBLE QUOTATION MARK}([^\N{RIGHT DOUBLE QUOTATION MARK}]+)"
+    r"\N{LEFT DOUBLE QUOTATION MARK}([^\N{RIGHT DOUBLE QUOTATION MARK}]+)"
     r"\N{RIGHT DOUBLE QUOTATION MARK}"
 )
+_STRAIGHT = re.compile('"')
+#: What a quotation between two straight marks never holds: a sentence's end and the next
+#: one's start, or a blank line. Between an inch's mark and a quotation's opening there is
+#: usually one, and the two marks are then no pair: the second opens the quotation.
+_NO_QUOTATION = re.compile(r"[.!?]\s+(?=[A-Z])|\n[ \t]*\n")
 #: A line of a block quotation, its marks; and the marks a quoted block may be wrapped in.
 _BLOCK = re.compile(r"^[ ]{0,3}>(?:[ \t]?>)*[ \t]?")
 _WRAPPING = "\"'\N{LEFT DOUBLE QUOTATION MARK}\N{RIGHT DOUBLE QUOTATION MARK} "
@@ -124,23 +131,62 @@ def quotations(text: str, first: int = 1) -> list[Quotation]:
         lines[at - 1] = " " * len(line)
     close()
     rest = "\n".join(lines)
-    for match in _QUOTED.finditer(rest):
-        said = match.group(1) or match.group(2)
-        if "\n\n" in said or not _long_enough(said):
-            continue
-        line = rest.count("\n", 0, match.start()) + first
-        found.append(Quotation(line, folded(said)))
+    spans = [(match.start(), match.group(1)) for match in _QUOTED.finditer(rest)
+             if "\n\n" not in match.group(1)]  # fmt: skip
+    spans += _straight(rest)
+    for start, said in spans:
+        if _long_enough(said):
+            line = rest.count("\n", 0, start) + first
+            found.append(Quotation(line, folded(said)))
     return sorted(found, key=lambda q: q.line)
+
+
+def _straight(text: str) -> list[tuple[int, str]]:
+    """Each quotation between two straight marks: each mark with the next, unless what is
+    between them holds what no quotation does (`_NO_QUOTATION`), when the first is passed
+    over, an inch's mark, and the second opens."""
+    marks = [found.start() for found in _STRAIGHT.finditer(text)]
+    found = []
+    at = 0
+    while at + 1 < len(marks):
+        said = text[marks[at] + 1 : marks[at + 1]]
+        if not said.strip() or _NO_QUOTATION.search(said):
+            at += 1
+            continue
+        found.append((marks[at], said))
+        at += 2
+    return found
+
+
+def held_in(quote: str, text: str) -> bool:
+    """Whether `text` holds `quote` as words of its own, both as `folded` gives them: not
+    the start or the end of a longer word or number ("was 2.1" is not in "was 2.15"). A
+    LaTeX paper's cross-reference may stand for a number of the quote, as G13 reads one
+    (`revision.quoted_in`)."""
+    from manuscript_guard.text.latex.printed import POINTER
+
+    at = text.find(quote)
+    while at >= 0:
+        end = at + len(quote)
+        before = text[at - 1] if at else " "
+        after, later = text[end : end + 1] or " ", text[end + 1 : end + 2] or " "
+        joined_before = quote[:1].isalnum() and before.isalnum()
+        joined_after = quote[-1:].isalnum() and (
+            after.isalnum() or (quote[-1].isdigit() and after in ".," and later.isdigit()))
+        if not joined_before and not joined_after:
+            return True
+        at = text.find(quote, at + 1)
+    return POINTER in text and quoted_in(quote, text)
 
 
 def outcome(quote: str, old: str, new: str, mine: str | None = None) -> str:
     """Where a quotation stands: `old`, `new` and `mine` as `folded` gives them."""
-    in_old, in_new = quoted_in(quote, old), quoted_in(quote, new)
+    in_old, in_new = held_in(quote, old), held_in(quote, new)
     if in_new:
         return NOT_NEW if in_old else NEW_AS_QUOTED
     if in_old:
         return FIRST_VERSION
-    return YOURS if mine is not None and quoted_in(quote, mine) else NEITHER
+    return YOURS if mine is not None and held_in(quote, mine) else NEITHER
 
 
 def held(letter: str, old: str, new: str, mine: str | None = None) -> list[tuple[Quotation, str]]:
@@ -288,8 +334,8 @@ def comment_items(path: Path, text: str, old: Version, new: Version) -> list[Ite
     for name, line, said in comment_items_of(text):
         anchors = []
         for quote in quotations(said, line):
-            if quoted_in(quote.quote, olds):
-                if quoted_in(quote.quote, news):
+            if held_in(quote.quote, olds):
+                if held_in(quote.quote, news):
                     anchors.append((quote.line, "comment-quote-unchanged",
                                     "the passage it quotes is unchanged in v2", quote.quote))
                     continue
@@ -298,7 +344,7 @@ def comment_items(path: Path, text: str, old: Version, new: Version) -> list[Ite
                            "the passage it quotes changed in v2" +
                            (f"; v2 has there: {reads!r}" if reads else ""))  # fmt: skip
                 anchors.append((quote.line, f"comment-quote-{how}", message, quote.quote))
-            elif quoted_in(quote.quote, news):
+            elif held_in(quote.quote, news):
                 anchors.append((quote.line, "comment-quote-in-v2", "the passage it quotes is "
                                 "not in v1, and v2 has it", quote.quote))  # fmt: skip
             else:

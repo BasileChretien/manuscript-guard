@@ -6588,8 +6588,8 @@ def edits(draw: st.DrawFn) -> tuple[str, str]:
 # ------------------------------------------------------- a response letter quoting a revision
 
 #: Where the words a response letter quotes stand: in v2 only, in both versions, in v1 only,
-#: in neither (`comparing.letters`).
-LETTER_OUTCOMES = ("new", "both", "first", "neither")
+#: in neither, and in neither but in the referee's own comments (`comparing.letters`).
+LETTER_OUTCOMES = ("new", "both", "first", "neither", "yours")
 #: How a letter writes a quotation: in straight or curly double marks, as a block quotation,
 #: and in straight marks across a line break.
 LETTER_STYLES = ("straight", "curly", "block", "wrapped")
@@ -6601,10 +6601,11 @@ _LETTER_TAGS = ("amber", "basalt", "cobalt", "dune", "ember", "fjord", "garnet",
 
 @st.composite
 def response_letters(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[int, str]]]:
-    """Two versions of a paper and the authors' letter: in every letter one quotation of each
-    outcome, the four written in the four ways in an order drawn each time, among sentences
-    that quote nothing and a quotation of three words, which is too short to be read; with
-    the line each quotation opens on and its outcome, in the order of the lines."""
+    """Two versions of a paper, the referee's comments and the authors' letter: in every
+    letter one quotation of each outcome, written in the four ways, each way at least once,
+    in an order drawn each time, among sentences that quote nothing, an inch's mark, and a
+    quotation of three words, which is too short to be read; with the line each quotation
+    opens on and its outcome, in the order of the lines."""
     tags = draw(st.permutations(_LETTER_TAGS))
 
     def sentence(tag: str) -> str:
@@ -6622,11 +6623,15 @@ def response_letters(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[int, s
     def filler() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=6)))
 
-    styles = draw(st.permutations(LETTER_STYLES))
+    styles = draw(st.permutations(
+        (*LETTER_STYLES, draw(st.sampled_from(LETTER_STYLES)))))  # fmt: skip
     short = draw(st.integers(0, len(LETTER_OUTCOMES)))
+    inch = draw(st.integers(0, len(LETTER_OUTCOMES)))
     for at, (outcome, style) in enumerate(zip(LETTER_OUTCOMES, styles, strict=True)):
         if at == short:
             lines.append(SHORT_QUOTATION)
+        if at == inch:
+            lines.append(INCH_MARK)
         words = said[outcome].rstrip(".").split()
         quote = words[: draw(st.integers(4, len(words)))]
         if draw(st.booleans()):
@@ -6645,13 +6650,18 @@ def response_letters(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[int, s
         lines[-1] += f"{closing} {filler()}."
     if short == len(LETTER_OUTCOMES):
         lines.append(SHORT_QUOTATION)
+    if inch == len(LETTER_OUTCOMES):
+        lines.append(INCH_MARK)
+    mine = f"{filler().capitalize()}.\n\n1. {said['yours']} {filler()}.\n"
     texts = {"old": "\n\n".join(old) + "\n", "new": "\n\n".join(new) + "\n",
-             "letter": "\n".join(lines) + "\n"}  # fmt: skip
+             "letter": "\n".join(lines) + "\n", "mine": mine}  # fmt: skip
     return texts, expected
 
 
 #: A quotation of three words, which is no quotation of the paper: it is not read.
 SHORT_QUOTATION = 'And "the cohort was" too short.'
+#: A straight double mark that is an inch's, which pairs with no other.
+INCH_MARK = 'A 5" screen showed it.'
 
 
 # ------------------------------------------------------------- how strongly a sentence claims

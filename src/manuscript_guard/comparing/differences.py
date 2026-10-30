@@ -4,15 +4,17 @@
   second section of one title with the second. Each is the same, changed (with its words in
   each version), new or gone, and moved where it no longer stands in the order it did.
 - **Tables** are matched by their label, "Table 2" with "Table 2", "Supplementary Table 1"
-  with "Table S1", and one with no label by its caption; then cell by cell, the header by its
-  columns and each row by its first cell. A row added or removed is said. A table renumbered
+  with "Table S1", and one with no label by its caption; then cell by cell, each column by
+  its header where the header is in each version once, by its place among the rest, and
+  each row by its first cell. A column or a row added or removed is said. A table renumbered
   is one gone and one new (DESIGN.md, "Known gaps").
 - **Figures** are matched by their label, and their captions compared. A picture is not.
 - **Numbers**, with citation keys and bindings, as `reworded` reads them (`reworded.facts`),
   in the prose: those of the reference list and of the tables are left to the reference list
-  and the tables. One gone and one new in the same changed sentence (`claims.changed`, which
-  lines the sentences up), or in a sentence that reads alike but for its citations and
-  bindings, is one changed; the rest are gone or new, each where its sentence is not in the
+  and the tables. One gone and one new in two sentences paired within a changed stretch
+  (`claims.changed`, which lines the sentences up), each with the one most like it by the
+  words they share, or in a sentence that reads alike but for its citations and bindings, is
+  one changed; the rest are gone or new, each where its sentence is not in the
   other version.
 - **Claims**: each changed sentence that claims more, less or the opposite (`claims.moved`).
 
@@ -159,31 +161,71 @@ def _rows(rows: Sequence[tuple[str, ...]]) -> dict[tuple[str, int], tuple[str, .
     return keyed
 
 
+def _folded_header(text: str) -> str:
+    return " ".join(text.casefold().split())
+
+
+def _columns(was: Sequence[str], now: Sequence[str]) -> tuple[list[tuple[int, int]], list[int],
+                                                               list[int]]:  # fmt: skip
+    """The columns of a table in the two versions, paired: the first with the first, which
+    holds the rows' labels; one whose header is in each version once, and not empty, with the
+    one of that header, wherever it stands; the rest, with no header or one repeated, by
+    their order among themselves. And the columns of v1 and of v2 that have none."""
+    one = [_folded_header(cell) for cell in was]
+    two = [_folded_header(cell) for cell in now]
+    counted_was, counted_now = Counter(one[1:]), Counter(two[1:])
+    pairs = [(0, 0)] if one and two else []
+    gone, new, rest_was, rest_now = [], [], [], []
+    for at in range(1, len(one)):
+        header = one[at]
+        if header and counted_was[header] == 1 and counted_now[header] <= 1:
+            if counted_now[header]:
+                pairs.append((at, two.index(header, 1)))
+            else:
+                gone.append(at)
+        else:
+            rest_was.append(at)
+    for at in range(1, len(two)):
+        header = two[at]
+        if header and counted_now[header] == 1 and counted_was[header] <= 1:
+            if not counted_was[header]:
+                new.append(at)
+        else:
+            rest_now.append(at)
+    pairs += list(zip(rest_was, rest_now, strict=False))
+    gone += rest_was[len(rest_now) :]
+    new += rest_now[len(rest_was) :]
+    return sorted(pairs, key=lambda pair: pair[1]), gone, new
+
+
+def _title(header: Sequence[str], at: int) -> str:
+    return header[at] if at < len(header) and header[at].strip() else str(at + 1)
+
+
 def _cells(name: str, was: Sequence[tuple[str, ...]], now: Sequence[tuple[str, ...]]) -> list[str]:
-    """What changed in a table, cell by cell: the header by its columns, each row by its
-    first cell."""
-    said = []
-    header = now[0] if now else ()
+    """What changed in a table, cell by cell: each column in one version only, then each row
+    by its first cell, its cells by their columns as `_columns` pairs them. A column in one
+    version only is said once, and its cells are not compared."""
     head_was = was[0] if was else ()
-    for column in range(max(len(header), len(head_was))):
-        one = head_was[column] if column < len(head_was) else ""
-        two = header[column] if column < len(header) else ""
-        if " ".join(one.split()) != " ".join(two.split()):
-            said.append(f"{name}, the header, column {column + 1}: {one!r} in v1, {two!r} in v2")
+    header = now[0] if now else ()
+    pairs, gone, new = _columns(head_was, header)
+    said = [f"{name}: the column {_title(header, at)!r} is new in v2" for at in new]
+    said += [f"{name}: the column {_title(head_was, at)!r} is gone from v2" for at in gone]
     stood, stands = _rows(was[1:]), _rows(now[1:])
     for key, row in stands.items():
         if key not in stood:
             said.append(f"{name}: the row {row[0] if row else ''!r} is new in v2")
             continue
         before = stood[key]
-        for column in range(1, max(len(row), len(before))):
-            one = before[column] if column < len(before) else ""
-            two = row[column] if column < len(row) else ""
+        for one_at, two_at in pairs:
+            if not one_at and not two_at:
+                continue
+            one = before[one_at] if one_at < len(before) else ""
+            two = row[two_at] if two_at < len(row) else ""
             if " ".join(one.split()) == " ".join(two.split()):
                 continue
-            title = header[column] if column < len(header) else str(column + 1)
-            said.append(f"{name}, row {row[0]!r}, column {title!r}: {one!r} in v1, {two!r} "
-                        "in v2")  # fmt: skip
+            said.append(f"{name}, row {row[0]!r}, column {_title(header, two_at)!r}: {one!r} "
+                        f"in v1, {two!r} in v2")  # fmt: skip
     said += [f"{name}: the row {row[0] if row else ''!r} is gone from v2"
              for key, row in stood.items() if key not in stands]  # fmt: skip
     return said
@@ -303,17 +345,14 @@ def numbers(old: Version, new: Version) -> list[Item]:
                       was.facts, gone_left)  # fmt: skip
         came = _taken([k for k in range(len(now.facts)) if now.of[k] in after],
                       now.facts, new_left)  # fmt: skip
-        for kind in dict.fromkeys(was.facts[k].kind for k in lost):
-            pairs = zip([k for k in lost if was.facts[k].kind == kind],
-                        [k for k in came if now.facts[k].kind == kind], strict=False)  # fmt: skip
-            for one, two in pairs:
-                taken_was.add(one)
-                taken_now.add(two)
-                fact = now.facts[two]
-                found.append(_item(NUMBERS, "fact-changed", f"{was.facts[one].shown} on "
-                                   f"{was.said(was.facts[one].line)} of v1 is {fact.shown} in "
-                                   "v2", new, now.line(fact.line),
-                                   context=shown(now.sentence(now.of[two]))))
+        for one, two in _paired(was, now, lost, came):
+            taken_was.add(one)
+            taken_now.add(two)
+            fact = now.facts[two]
+            found.append(_item(NUMBERS, "fact-changed", f"{was.facts[one].shown} on "
+                               f"{was.said(was.facts[one].line)} of v1 is {fact.shown} in "
+                               "v2", new, now.line(fact.line),
+                               context=shown(now.sentence(now.of[two]))))
         # What was taken out of the pools and found no partner goes back to them.
         for k in lost:
             if k not in taken_was:
@@ -341,6 +380,42 @@ def _units(was: _Read, now: _Read) -> list[tuple[set[int], set[int]]]:
     units += [({at}, {where[s.key]}) for at, s in enumerate(was.sentences)
               if keyed_was[s.key] == 1 and keyed_now[s.key] == 1]  # fmt: skip
     return units
+
+
+def _words_of(read: _Read, at: int) -> set[str]:
+    """A sentence's words, without its numbers, as sentences are set side by side."""
+    if not 0 <= at < len(read.sentences):
+        return set()
+    return set(re.findall(r"[^\W\d_]+", read.sentences[at].key.casefold()))
+
+
+def _paired(was: _Read, now: _Read, lost: list[int], came: list[int]) -> list[tuple[int, int]]:
+    """The facts of a changed stretch, one gone with one new: each sentence of v1 with the
+    sentence of v2 most like it, by the share of their words they have in common, each
+    taken once, the likest first; and in each such pair of sentences the facts of one kind,
+    in their order. A fact whose sentence has no counterpart, or none of its kind there, is
+    paired with nothing."""
+    alike = []
+    for one in sorted({was.of[k] for k in lost}):
+        mine = _words_of(was, one)
+        for two in sorted({now.of[k] for k in came}):
+            theirs = _words_of(now, two)
+            shared = len(mine & theirs) / len(mine | theirs) if mine | theirs else 0.0
+            if shared > 0:
+                alike.append((-shared, one, two))
+    used_was: set[int] = set()
+    used_now: set[int] = set()
+    pairs: list[tuple[int, int]] = []
+    for _shared, one, two in sorted(alike):
+        if one in used_was or two in used_now:
+            continue
+        used_was.add(one)
+        used_now.add(two)
+        for kind in dict.fromkeys(was.facts[k].kind for k in lost if was.of[k] == one):
+            pairs += zip([k for k in lost if was.of[k] == one and was.facts[k].kind == kind],
+                         [k for k in came if now.of[k] == two and now.facts[k].kind == kind],
+                         strict=False)  # fmt: skip
+    return pairs
 
 
 def _taken(indices: list[int], found: Sequence[Fact], left: Counter) -> list[int]:

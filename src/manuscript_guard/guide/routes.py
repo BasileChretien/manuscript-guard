@@ -222,7 +222,13 @@ LITERATURE_ROUTES = {
 #: Codes that are only ever said as a note and ask nothing: no action is built for them,
 #: and the test that every code is routed takes them as answered.
 NO_ACTION = frozenset({"plan-complete", "reference-found", "pointers-unchecked",
-                       "tex-not-judged", "tex-words-not-read"})  # fmt: skip
+                       "tex-not-judged", "tex-words-not-read",
+                       # What `compare` says of two versions of someone else's paper, to its
+                       # editor or referee: facts in its own report, which `check` and `next`
+                       # never see and the author has nothing to do about.
+                       *(f"{part}-{what}" for part in ("section", "table", "figure")
+                         for what in ("same", "changed", "new", "gone")),
+                       "section-moved"})  # fmt: skip
 
 
 #: A finding of a run at the site that holds the data: answered there, by a new run and its

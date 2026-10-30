@@ -51,6 +51,7 @@ from generated import (
     FIXED_LINKS,
     FOLDED,
     HELD,
+    INCH_MARK,
     INPUTS,
     LOOKALIKES,
     LOWERED,
@@ -6452,18 +6453,21 @@ def test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else(
 def test_each_quotation_of_a_response_letter_is_held_to_both_versions(
     drawn: tuple[dict[str, str], list[tuple[int, str]]],
 ) -> None:
-    """Every letter quotes words that stand in v2 only, in both versions, in v1 only and in
-    neither, each written in one of four ways: in straight or curly marks, as a block
-    quotation, and across a line break. Each is found on the line it opens on, with where it
-    stands; a quotation of three words is not read (`compare --response`)."""
+    """Every letter quotes words that stand in v2 only, in both versions, in v1 only, in
+    neither, and in neither but in the referee's comments, each written in one of four ways,
+    each way at least once: in straight or curly marks, as a block quotation, and across a
+    line break. Each is found on the line it opens on, with where it stands; a quotation of
+    three words is not read, and an inch's mark takes no quotation's mark (`compare
+    --response`)."""
     from manuscript_guard.comparing import letters
 
     given, expected = drawn
-    assert SHORT_QUOTATION in given["letter"]
+    assert SHORT_QUOTATION in given["letter"] and INCH_MARK in given["letter"]
     outcomes = {"new": letters.NEW_AS_QUOTED, "both": letters.NOT_NEW,
-                "first": letters.FIRST_VERSION, "neither": letters.NEITHER}  # fmt: skip
-    found = [(quote.line, outcome)
-             for quote, outcome in letters.held(given["letter"], given["old"], given["new"])]
+                "first": letters.FIRST_VERSION, "neither": letters.NEITHER,
+                "yours": letters.YOURS}  # fmt: skip
+    found = [(quote.line, outcome) for quote, outcome
+             in letters.held(given["letter"], given["old"], given["new"], given["mine"])]
     assert found == [(line, outcomes[kind]) for line, kind in expected], given["letter"]
 
 
@@ -6471,9 +6475,17 @@ def _a_quotation_is_looked_for_in_v2_only(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.comparing import letters
 
     def outcome(quote: str, old: str, new: str, mine: str | None = None) -> str:
-        return letters.NEW_AS_QUOTED if letters.quoted_in(quote, new) else letters.NEITHER
+        return letters.NEW_AS_QUOTED if letters.held_in(quote, new) else letters.NEITHER
 
     patch.setattr(letters, "outcome", outcome)
+
+
+def _the_referee_s_comments_are_not_looked_in(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.comparing import letters
+
+    held = letters.outcome
+    patch.setattr(letters, "outcome",
+                  lambda quote, old, new, mine=None: held(quote, old, new, None))
 
 
 def _a_block_quotation_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -6485,9 +6497,10 @@ def _a_block_quotation_is_not_read(patch: pytest.MonkeyPatch) -> None:
 def _a_quotation_ends_at_its_line(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.comparing import letters
 
-    one_line = letters._QUOTED.pattern.replace(r'(?:\n[^"\n]+)*', "")
-    assert one_line != letters._QUOTED.pattern
-    patch.setattr(letters, "_QUOTED", re.compile(one_line))
+    patch.setattr(letters, "_NO_QUOTATION", re.compile(r"\n|[.!?]\s+(?=[A-Z])"))
+    patch.setattr(letters, "_QUOTED", re.compile(
+        "\N{LEFT DOUBLE QUOTATION MARK}([^\N{RIGHT DOUBLE QUOTATION MARK}\n]+)"
+        "\N{RIGHT DOUBLE QUOTATION MARK}"))  # fmt: skip
 
 
 def _three_words_are_a_quotation(patch: pytest.MonkeyPatch) -> None:
@@ -13609,6 +13622,10 @@ BROKEN = {
     ),
     "a response letter's block quotation is not read": (
         _a_block_quotation_is_not_read,
+        test_each_quotation_of_a_response_letter_is_held_to_both_versions,
+    ),
+    "a response letter's quotation is not looked for in the referee's comments": (
+        _the_referee_s_comments_are_not_looked_in,
         test_each_quotation_of_a_response_letter_is_held_to_both_versions,
     ),
     "a response letter's quotation ends at its line": (

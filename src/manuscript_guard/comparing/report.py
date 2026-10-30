@@ -1,12 +1,11 @@
 """The comparison of two versions, run and reported, as text and as JSON.
 
 v2 is audited as `audit` audits a paper with no outputs (`audit.audit`, G6 and G14 through
-`auditing.gates.run_gates`), and each finding that has a line is marked by its sentence: "new
-in v2" where that sentence is in no reading of v1, "stood in v1" where it is. The sentence is
-read in the text the finding's line belongs to: the paper as `audit` reads it, the Markdown
-pandoc makes of a .docx for G6 and G14, or the `.tex` file a LaTeX finding names; v1's
-readings are its text, its `.tex` files, and the Markdown pandoc makes of it where it is a
-.docx and a finding needs it. A finding with no line is not marked.
+`auditing.gates.run_gates`), and so is v1, the same way. Each finding of v2's audit is marked
+"stood in v1" where v1's audit gave a finding of the same gate and code that says the same,
+word for word and number for number (v1's file name read as v2's), and "new in v2" where it
+gave none: a finding on a line nobody touched can come from a change elsewhere, a number of
+the Abstract that the Results no longer hold. Two alike in v2 and one in v1 are one of each.
 
 The JSON is the audit's: `ok`, `counts`, and `findings`, each in the shape `check --json` gives
 one, with its section and its mark. Nothing here is counted by `--strict` (decision 8 of the
@@ -16,13 +15,11 @@ editor and referee layer), so `ok` is true wherever the comparison ran.
 from __future__ import annotations
 
 import json
-import re
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from manuscript_guard import claims
-from manuscript_guard.auditing.report import LANGUAGE, WRITING, Item
+from manuscript_guard.auditing.report import Item
 from manuscript_guard.comparing import differences, letters
 from manuscript_guard.comparing.differences import GATE
 from manuscript_guard.comparing.versions import Version, read_version
@@ -87,115 +84,33 @@ def _read(old: Version, new: Version, letter: Path | None, comments: Path | None
 # ------------------------------------------------------------------------ v2 audited
 
 
-def audited(old: Version, new: Version) -> list[tuple[Item, str]]:
-    """v2's audit, each finding with its mark."""
+def _audit(version: Version) -> list[Item]:
+    """A version's audit as `audit` runs it with no outputs, G6 and G14 with it."""
     from manuscript_guard.audit import audit
     from manuscript_guard.auditing.gates import run_gates
     from manuscript_guard.auditing.report import items
 
-    report = audit([new.path], None)
-    if new.kind == "LaTeX":
+    report = audit([version.path], None)
+    if version.kind == "LaTeX":
         report.gates = [run_gates(tree.entry, tree) for tree in report.trees]
-    elif new.path in set(report.papers):
-        report.gates = [run_gates(new.path)]
-    marker = _Marker(old, new)
-    return [(Item(AUDITED, item.gate, item.code, f"{item.section}: {item.message}",
-                  item.severity, False, item.path, item.line, item.context, item.hint),
-             marker.mark(item)) for item in items(report)]  # fmt: skip
+    elif version.path in set(report.papers):
+        report.gates = [run_gates(version.path)]
+    return items(report)
 
 
-class _Marker:
-    """Whether a finding's sentence is in v1."""
-
-    def __init__(self, old: Version, new: Version) -> None:
-        self.old, self.new = old, new
-        self.converted: dict[Path, str | None] = {}
-        self.texts: dict[Path, str] = {}
-        self.held: list[str] | None = None
-
-    def _converted(self, path: Path) -> str | None:
-        """The Markdown pandoc makes of a .docx, as G6 and G14 read it."""
-        if path not in self.converted:
-            from manuscript_guard.auditing.gates import _stage
-
-            try:
-                self.converted[path] = _stage(path).files["main.md"]
-            except ValueError:
-                self.converted[path] = None
-        return self.converted[path]
-
-    def _text(self, path: Path) -> str | None:
-        if path not in self.texts:
-            from manuscript_guard.audit import UnreadableText, read_text
-
-            try:
-                self.texts[path] = read_text(path).replace("\r\n", "\n")
-            except (OSError, UnreadableText):
-                return None
-        return self.texts[path]
-
-    def _v1(self, converted: bool) -> list[str]:
-        """Every reading of v1 a sentence is looked for in."""
-        if self.held is None:
-            self.held = [letters.folded(self.old.text)]
-            for path in self.old.files:
-                text = self._text(path)
-                self.held += [letters.folded(text)] if text else []
-        if converted and self.old.kind == "Word":
-            text = self._converted(self.old.path)
-            if text is not None and letters.folded(text) not in self.held:
-                self.held.append(letters.folded(text))
-        return self.held
-
-    def mark(self, item: Item) -> str:
-        if item.path is None or item.line is None:
-            return ""
-        converted = self.new.kind == "Word" and item.section in (WRITING, LANGUAGE)
-        line = item.line
-        if converted:
-            text = self._converted(self.new.path)
-        elif self.new.kind == "LaTeX":
-            text = self._text(item.path)
-        elif item.path == self.new.path:
-            text, line = self.new.text, item.line
-            if self.new.kind == "Word":
-                text, line = differences.prose(self.new, apart=False)[0], 2 * item.line - 1
-        else:
-            text = None
-        if text is None:
-            return ""
-        said = [letters.folded(one)
-                for one in _sentences_at(text, line, item.context, item.message.split(" ")[0])]
-        said = [one for one in said if one]
-        if not said:
-            return ""
-        held = self._v1(converted)
-        stood = all(any(one in reading for reading in held) for one in said)
-        return STOOD_IN_V1 if stood else NEW_IN_V2
-
-
-def _sentences_at(text: str, line: int, context: str | None, needle: str = "") -> list[str]:
-    """The sentences that stand on `line` of `text`, from 1: the one that holds `context`
-    where one does; else the one sentence that holds `needle`, the finding's first word, a
-    number or a term, where one alone does; else all of them; the line itself where no
-    sentence does."""
-    starts = [0] + [at + 1 for at, char in enumerate(text) if char == "\n"]
-    if line < 1 or line > len(starts):
-        return []
-    low = starts[line - 1]
-    high = starts[line] - 1 if line < len(starts) else len(text)
-    touching = [text[first:end] for _start, first, end in claims.sentence_spans(text)
-                if first < max(high, low + 1) and end > low]  # fmt: skip
-    if context and context.strip():
-        holding = [one for one in touching if letters.folded(context) in letters.folded(one)]
-        if holding:
-            return holding[:1]
-    if needle and len(touching) > 1:
-        pattern = re.compile(r"(?<![\w.])" + re.escape(needle) + r"(?![\w])")
-        holding = [one for one in touching if pattern.search(one)]
-        if len(holding) == 1:
-            return holding
-    return touching or [text[low:high]]
+def audited(old: Version, new: Version) -> list[tuple[Item, str]]:
+    """v2's audit, each finding with its mark: whether v1's audit gave the same finding."""
+    stood = Counter((item.gate, item.code, item.message.replace(old.path.name, new.path.name))
+                    for item in _audit(old))  # fmt: skip
+    found = []
+    for item in _audit(new):
+        key = (item.gate, item.code, item.message)
+        mark = STOOD_IN_V1 if stood[key] > 0 else NEW_IN_V2
+        stood[key] -= 1 if stood[key] > 0 else 0
+        found.append((Item(AUDITED, item.gate, item.code, f"{item.section}: {item.message}",
+                           item.severity, False, item.path, item.line, item.context, item.hint),
+                      mark))  # fmt: skip
+    return found
 
 
 # ------------------------------------------------------------------------------ output

@@ -254,6 +254,11 @@ def _word(path: Path) -> Version:
 #: A float, and a caption in it.
 _FLOAT = re.compile(r"\\begin\s*\{(?P<kind>table|figure)\*?\}(?P<body>.*?)\\end\s*\{(?P=kind)\*?\}",
                     re.DOTALL)  # fmt: skip
+#: A `longtable`, which numbers a table where it has a caption; and a `\\captionof`.
+_LONGTABLE = re.compile(r"\\begin\s*\{longtable\}.*?\\end\s*\{longtable\}", re.DOTALL)
+_CAPTIONOF = re.compile(
+    r"\\captionof\s*\{\s*(?P<kind>table|figure)\s*\}\s*(?:\[[^\]]*\])?\s*\{"
+)
 _CAPTION = re.compile(r"\\caption\s*(?:\[[^\]]*\])?\s*\{")
 _COMMENT = re.compile(r"(?<!\\)%[^\n]*")
 _COMMAND = re.compile(r"\\[A-Za-z@]+\*?(?:\s*\[[^\]]*\])?|[{}~]")
@@ -289,43 +294,88 @@ def _latex(path: Path) -> Version:
 
 
 def _floats(tree, read: dict) -> tuple[tuple[Display, ...], tuple[Display, ...]]:
-    """Each table and figure float of the tree with a caption, numbered as LaTeX numbers
-    them, in the order they stand; each table's cells where the audit read a table in it,
-    and a table typed outside any float, with no label."""
+    """Each table and figure of the tree that LaTeX numbers, in the order the document prints
+    them: a float with a caption, a `longtable` with one, and a `\\captionof{table}` or
+    `{figure}` outside a float, each file read where the file that inputs it inputs it. Each
+    table with its cells where the audit read a table in it; and a table typed outside any
+    of them, with no label."""
+    by_path = {source.path: (path, source) for path, source in tree.files}
+    entry = next((source.path for path, source in tree.files if path == tree.entry),
+                 tree.files[0][1].path if tree.files else None)  # fmt: skip
     tables: list[Display] = []
     figures: list[Display] = []
-    for path, source in tree.files:
+    held = {path: list(read.get(path, ())) for path, _source in tree.files}
+    seen: set[str] = set()
+
+    def walk(name: str) -> None:
+        if name in seen or name not in by_path:
+            return
+        seen.add(name)
+        path, source = by_path[name]
         text = _COMMENT.sub(lambda m: " " * len(m.group()), source.text)
-        held = list(read.get(path, ()))
-        for found in _FLOAT.finditer(text):
-            caption = _caption_of(found["body"])
-            if caption is None:
+        events = [(at, "input", target) for at, target in source.targets]
+        events += [(start, kind, (start, end, caption)) for start, end, kind, caption
+                   in _numbered(text)]  # fmt: skip
+        for _at, kind, what in sorted(events, key=lambda event: event[0]):
+            if kind == "input":
+                walk(what)
                 continue
-            first = text.count("\n", 0, found.start()) + 1
-            last = text.count("\n", 0, found.end()) + 1
-            if found["kind"] == "figure":
+            start, end, caption = what
+            first = text.count("\n", 0, start) + 1
+            last = text.count("\n", 0, end) + 1
+            if kind == "figure":
                 figures.append(Display(f"Figure {len(figures) + 1}", caption, path, first))
                 continue
-            inside = [table for table in held if table and first <= table[0][0].line <= last]
-            held = [table for table in held if table not in inside]
-            rows = tuple(tuple(cell.text.strip() for cell in row) for row in inside[0]) \
-                if inside else ()  # fmt: skip
+            inside = [table for table in held[path] if table and first <= table[0][0].line <= last]
+            held[path] = [table for table in held[path] if table not in inside]
+            rows = (tuple(tuple(cell.text.strip() for cell in row) for row in inside[0])
+                    if inside else ())  # fmt: skip
             tables.append(Display(f"Table {sum(t.label is not None for t in tables) + 1}",
                                   caption, path, first, rows))  # fmt: skip
+
+    if entry is not None:
+        walk(entry)
+    for path, _source in tree.files:
         tables += [Display(None, "", path, table[0][0].line,
                            tuple(tuple(cell.text.strip() for cell in row) for row in table))
-                   for table in held if table]  # fmt: skip
+                   for table in held[path] if table]  # fmt: skip
     return tuple(tables), tuple(figures)
+
+
+def _numbered(text: str) -> list[tuple[int, int, str, str]]:
+    """Where each table and figure LaTeX numbers stands in one file, its kind and caption: a
+    float or a `longtable` with a caption, and a `\\captionof` outside them."""
+    found = []
+    spans = []
+    for match in _FLOAT.finditer(text):
+        spans.append((match.start(), match.end()))
+        caption = _caption_of(match["body"])
+        if caption is not None:
+            found.append((match.start(), match.end(), match["kind"], caption))
+    for match in _LONGTABLE.finditer(text):
+        spans.append((match.start(), match.end()))
+        caption = _caption_of(match.group())
+        if caption is not None:
+            found.append((match.start(), match.end(), "table", caption))
+    for match in _CAPTIONOF.finditer(text):
+        if any(start <= match.start() < end for start, end in spans):
+            continue
+        found.append((match.start(), match.end(), match["kind"], _braced(text, match.end())))
+    return found
 
 
 def _caption_of(body: str) -> str | None:
     """A float's caption, its commands and braces taken out, or None where it has none."""
     found = _CAPTION.search(body)
-    if found is None:
-        return None
-    depth, at = 1, found.end()
-    while at < len(body) and depth:
-        depth += {"{": 1, "}": -1}.get(body[at], 0) if body[at - 1] != "\\" else 0
+    return None if found is None else _braced(body, found.end())
+
+
+def _braced(text: str, opened: int) -> str:
+    """The argument whose brace opens just before `opened`, its commands and braces taken
+    out."""
+    depth, at = 1, opened
+    while at < len(text) and depth:
+        depth += {"{": 1, "}": -1}.get(text[at], 0) if text[at - 1] != "\\" else 0
         at += 1
-    said = re.sub(r"\\(?:label|ref|cite[a-z]*)\s*\{[^{}]*\}", " ", body[found.end() : at - 1])
+    said = re.sub(r"\\(?:label|ref|cite[a-z]*)\s*\{[^{}]*\}", " ", text[opened : at - 1])
     return " ".join(_COMMAND.sub(" ", said).split())

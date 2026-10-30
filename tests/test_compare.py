@@ -510,3 +510,91 @@ def test_a_citation_changed_in_a_sentence_otherwise_the_same_is_one_changed() ->
         # Where it stood in a sentence v2 does not have.
         ("fact-gone", "'12' stood 3 times in v1 and stands twice in v2; on line 5 of v1"),
     ]
+
+
+# ------------------------------------------------------------ round 1 of the review
+
+
+def test_a_finding_stands_in_v1_only_where_v1_s_audit_has_it(tmp_path: Path) -> None:
+    """A finding on a line that did not change can come from a change elsewhere: v2 changes
+    only the Results, and the Abstract's 12% is found nowhere in v2. It is new in v2."""
+    old = write(tmp_path, "v1.md", "# Abstract\n\nMortality was 12% in 412 patients.\n\n"
+                "# Results\n\nMortality was 12%.\n")
+    new = write(tmp_path, "v2.md", "# Abstract\n\nMortality was 12% in 412 patients.\n\n"
+                "# Results\n\nMortality was 13%.\n")
+    marks = {item.message.split(": ", 1)[1]: mark for item, mark in compare(old, new).items
+             if item.code == "abstract-not-found"}  # fmt: skip
+    assert marks == {"12% in the Abstract is found nowhere the paper reports": NEW_IN_V2,
+                     "412 in the Abstract is found nowhere the paper reports": STOOD_IN_V1}
+
+
+def _table(header: str, *rows: str) -> str:
+    columns = header.count("|") - 1
+    return "\n".join(["Table 1. Sites", "", header, "|" + "---|" * columns, *rows, ""])
+
+
+def test_a_column_inserted_is_said_and_the_others_compared_by_their_headers() -> None:
+    old = version(_table("| Site | n | % |", "| North | 10 | 50 |"))
+    new = version(_table("| Site | 95% CI | n | % |", "| North | 1.2-3.4 | 10 | 51 |"))
+    assert [item.message for item in differences.tables(old, new)] == [
+        "Table 1: the column '95% CI' is new in v2",
+        "Table 1, row 'North', column '%': '50' in v1, '51' in v2",
+    ]
+
+
+def test_columns_reordered_are_paired_by_their_headers() -> None:
+    old = version(_table("| Site | n | % |", "| North | 10 | 50 |"))
+    new = version(_table("| Site | % | N |", "| North | 50 | 10 |"))
+    assert [item.message for item in differences.tables(old, new)] == [
+        "Table 1: the same in both versions, cell by cell (6 cells)"]
+
+
+def test_columns_with_no_header_or_one_repeated_are_paired_by_their_place() -> None:
+    old = version(_table("| Site | n | n |", "| North | 10 | 20 |"))
+    new = version(_table("| Site | n | n |", "| North | 10 | 21 |"))
+    assert [item.message for item in differences.tables(old, new)] == [
+        "Table 1, row 'North', column 'n': '20' in v1, '21' in v2"]
+
+
+FLOAT = tex("!begin{table}\n!caption{CAPTION}\n!begin{tabular}{ll}\nA & B !!\n"
+            "!end{tabular}\n!end{table}\n")
+
+
+def test_latex_tables_are_numbered_in_the_order_they_print(tmp_path: Path) -> None:
+    """A float in a file input before main.tex's own float prints first; a longtable's
+    caption and a `!captionof{table}` number a table as a float does."""
+    write(tmp_path, "main.tex", tex(
+        "!documentclass{article}\n!begin{document}\n!section{Results}\nText.\n"
+        "!input{results}\n" + FLOAT.replace("CAPTION", "Main") +
+        "!begin{longtable}{ll}\n!caption{Long}!!\nA & B !!\n!end{longtable}\n"
+        "!begin{minipage}{1cm}!captionof{table}{Boxed}!end{minipage}\n"
+        + FLOAT.replace("CAPTION", "Last") + "!end{document}\n"))  # fmt: skip
+    write(tmp_path, "results.tex", FLOAT.replace("CAPTION", "Input"))
+    tables = read_version(tmp_path / "main.tex").tables
+    assert [(t.label, t.caption) for t in tables] == [
+        ("Table 1", "Input"), ("Table 2", "Main"), ("Table 3", "Long"), ("Table 4", "Boxed"),
+        ("Table 5", "Last"),
+    ]
+
+
+def test_a_number_changed_is_paired_with_the_one_in_its_own_sentence() -> None:
+    old = version("# Results\n\nA came first. B was 7.\n")
+    new = version("# Results\n\nA came first. C was 9. B was 8.\n")
+    assert codes(differences.numbers(old, new)) == [
+        ("fact-changed", "'7' on line 3 of v1 is '8' in v2"),
+        ("fact-new", "'9' is new in v2"),
+    ]
+
+
+def test_a_quotation_matches_only_whole_words_and_numbers() -> None:
+    letter = 'We now say "the odds ratio was 2.1" in the abstract.\n'
+    old, new = "Here the odds ratio was 2.15.\n", "Here the odds ratio was 2.1.\n"
+    assert [outcome for _q, outcome in letters.held(letter, old, new)] == [
+        letters.NEW_AS_QUOTED]
+    assert [outcome for _q, outcome in letters.held(letter, old, old)] == [letters.NEITHER]
+
+
+def test_an_inch_mark_does_not_take_a_quotation_s_mark() -> None:
+    letter = 'A 5" screen. We now write "the rate fell in all sites" here.\n'
+    (quote,) = letters.quotations(letter)
+    assert quote.quote == "the rate fell in all sites"

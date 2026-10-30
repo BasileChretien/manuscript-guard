@@ -118,19 +118,21 @@ PDF yet), and each line of the report is a fact with its place, never a verdict:
 - **Sections**, matched by their titles as printed, without their numbers: the same, changed
   (with the words in each version), new, gone, or moved out of the order they stood in.
 - **Tables**, matched by their label ("Table 2"; "Supplementary Table 1" and "Table S1" are one
-  table), and one with no label by its caption; then cell by cell, the header by its columns
-  and each row by its first cell, with the rows added and removed. A table renumbered reads as
-  one gone and one new.
+  table), and one with no label by its caption; then cell by cell, each column by its header
+  and each row by its first cell, with the columns and rows added and removed. A table
+  renumbered reads as one gone and one new.
 - **Figures**, by their label: their captions the same or changed. A picture is not compared.
 - **Numbers, citations and bindings** of the prose, gone, new or changed, each at its line in
   the new version. The reference list's and the tables' numbers are left to those.
 - **Claims**: each changed sentence that now claims more, less or the opposite, as `reworded`
   reads one ("may" gone, "associated" made "increased", a "not" gone or new).
-- **v2 audited**: the audit above, run on the new version, each finding marked "new in v2"
-  where its sentence is not in the first version and "stood in v1" where it is.
+- **v2 audited**: the audit above, run on both versions, each finding of the new one marked
+  "stood in v1" where the first version's audit gave the same finding, word for word, and
+  "new in v2" otherwise.
 
 **`--response LETTER`** reads the authors' letter (.docx, Markdown or text). Each quotation of
-four words or more, and each block quotation, is looked for in both versions:
+four words or more, and each block quotation, is looked for in both versions, as whole words
+and numbers ("was 2.1" is not found in "was 2.15"):
 
 | The quotation is | The report says |
 |---|---|

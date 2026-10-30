@@ -1689,9 +1689,10 @@ def _response_letter() -> Reading:
 
     def read(given: dict[str, str]) -> list[list[Any]]:
         """Each quotation of a response letter, where it opens, its words, whether it is a
-        block quotation, and where it stands in the two versions (`compare --response`)."""
-        return [[quote.line, quote.quote, quote.block, outcome]
-                for quote, outcome in held(given["letter"], given["old"], given["new"])]
+        block quotation, and where it stands in the two versions and the referee's comments
+        (`compare --response`)."""
+        return [[quote.line, quote.quote, quote.block, outcome] for quote, outcome
+                in held(given["letter"], given["old"], given["new"], given.get("mine"))]
 
     return read
 

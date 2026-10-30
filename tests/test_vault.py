@@ -581,6 +581,12 @@ def test_agent_settings_refuses_a_settings_file_it_cannot_read(
     assert settings.read_text(encoding="utf-8") == "{not json"
 
 
+def test_vault_reads_no_abbreviated_option(paper: Path) -> None:
+    """Round 2 of #488: `--pa` is no `--path`, as the guard reads `vault`'s subcommand."""
+    with pytest.raises(SystemExit):
+        main(["vault", "check", "--pa", str(paper)])
+
+
 def test_vault_offers_no_run_and_no_release_yet() -> None:
     """They read the real data and let what a run wrote into the project: a later step, and
     the shell guard refuses them to an agent already (`tests/test_hooks.py`)."""

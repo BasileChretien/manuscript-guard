@@ -103,20 +103,31 @@ PowerShell) and in Codex:
 
 - refuses `manuscript-guard vault run` and `vault release`, read exactly in either shell's
   words. They are the person's to run. A command that names them in a form the guard cannot
-  read exactly, an `echo` or a `bash -c "…"`, is put to the person;
+  read exactly, an `echo` or a `bash -c "…"`, is put to the person where a vault is
+  registered for the project on this machine, and let through where none is;
 - for a command that names the vault's folder, or a path inside it, in any spelling it can
   read (quoted or escaped, either slash, relative to the folder the command is sent from,
   after `=` or `@`, from the home as `~`, `$HOME`, `${HOME}`, `$env:USERPROFILE`,
   `$env:HOME`, `%USERPROFILE%` or `%HOMEDRIVE%%HOMEPATH%`, joined to another path by a colon
-  or a semicolon as in a search path or a container's volume, `-v /secure/extract:/data`, as
-  Git Bash writes a drive, `/c/…`, in any case on Windows and on macOS, or through a link),
+  or a semicolon as in a search path or a container's volume, `-v /secure/extract:/data`,
+  inside a program the command quotes, `python -c "pd.read_csv('/secure/extract/x.csv')"`,
+  from the working folder as `$PWD`, `${PWD}`, `$(pwd)` or `(Get-Location)`, as Git Bash
+  writes a drive, `/c/…` or `//c/…`, in any case on Windows and on macOS, or through a link),
   or names `MANUSCRIPT_GUARD_VAULT`: refuses it while this session can read the folder, or
   where that is not found in 3 seconds, and puts it to the person otherwise.
 
+Where `.manuscript-guard/vault.local.yaml` is there and cannot be read, which folder holds the
+data is not known, and a command with a slash, a backslash, `~` or `..` in it is refused until
+`vault check` or `vault init --refresh`, run at a terminal, puts it right.
+
 The folder is compared as `vault init` was given it and as its links led then, both kept in
 `.manuscript-guard/vault.local.yaml`, so that the guard looks nothing of the folder up on
-disk; each look it does make, at the project's files, at the links of a command's words and
-at the folder for the probe, is within the 3 seconds. On macOS a command that names the
+disk. A command's words are compared as written first, which needs no look on disk either;
+the looks it does make, at the project's files, at the links of a command's words and at the
+folder for the probe, are within the 3 seconds. Past them, a command that names the folder as
+written is refused; one whose words were still being followed through their links, in a
+project whose vault is known, is refused as one that may name it; one stopped before the vault
+was found is let through. On macOS a command that names the
 folder in another case is refused even on a volume that tells cases apart, the safe way
 round.
 

@@ -3933,8 +3933,12 @@ def test_a_run_or_a_release_of_the_vault_is_refused_to_an_agent(
     ],
 )
 def test_a_command_that_only_names_a_run_of_the_vault_is_asked(
-    in_claude_code: Path, command: str, capsys
+    in_claude_code: Path, kept_apart: Path, command: str, capsys
 ) -> None:
+    """Asked where a vault is registered for the project on this machine; with none, a run
+    would read nothing, and it is let through (round 2 of #488)."""
+    assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
+    _register(in_claude_code, kept_apart)
     result = run("guard-submission", _shell(in_claude_code, command), capsys)
     assert decision(result) == "ask", result
     payload = _shell(in_claude_code, command, turn_id="turn-1", model="gpt-test")
@@ -3988,10 +3992,22 @@ def _naming(folder: Path, project: Path) -> list[str]:
         f'docker run -v "{posix}:/data" python:3.12 python /data/x.py',
         f'PYTHONPATH="/opt/lib:{posix}/lib" python analysis/01_model.py',
         f'R_LIBS="/opt/r;{posix}/lib" Rscript analysis/02_fit.R',
+        # Round 2 of #488 (blocking): a path inside a program the command quotes.
+        f"""python -c "import pandas as pd; print(pd.read_csv('{posix}/cohort.csv').shape)\"""",
+        f"""Rscript -e "x <- read.csv('{posix}/cohort.csv'); nrow(x)\"""",
+        f"""bash -c "cat '{posix}/cohort.csv' | head\"""",
+        f"""python -c "open(r'{folder}{os.sep}cohort.csv').read()\"""",
+        # And the working folder as each shell names it (note 3).
+        f'cat "$PWD/../{folder.name}/cohort.csv"',
+        f'cat "${{PWD}}/../{folder.name}/cohort.csv"',
+        f'cat "$(pwd)/../{folder.name}/cohort.csv"',
+        f'Get-Content "$pwd/../{folder.name}/cohort.csv"',
+        f'Get-Content "$(Get-Location)/../{folder.name}/cohort.csv"',
     ]
     if os.name == "nt":
         drive, rest = posix.split(":", 1)
         spellings += [f'cat "/{drive.lower()}{rest}/cohort.csv"',
+                      f'cat "//{drive.lower()}{rest}/cohort.csv"',  # note 4
                       f'cat "{posix.swapcase()}/cohort.csv"']  # fmt: skip
     return spellings
 
@@ -4123,7 +4139,7 @@ def test_a_look_on_disk_that_does_not_end_in_time_is_taken_as_naming_the_vault(
     _register(in_claude_code, kept_apart)
     released = threading.Event()
 
-    def stuck(*_args):
+    def stuck(*_args, **_kwargs):
         released.wait(5)
         return None
 
@@ -4141,13 +4157,72 @@ def test_a_slow_disk_costs_a_project_with_no_vault_nothing(
     in_claude_code: Path, monkeypatch, capsys
 ) -> None:
     released = threading.Event()
-    monkeypatch.setattr(hooks, "_names_the_vault", lambda *_: released.wait(5) and None)
+    monkeypatch.setattr(hooks, "_names_the_vault",
+                        lambda *_, **__: released.wait(5) and None)  # fmt: skip
     monkeypatch.setattr(hooks, "VAULT_GUARD_LIMIT", 0.05)
     try:
         assert run("guard-submission", _shell(in_claude_code, "cat results/x.json"),
                    capsys) is None  # fmt: skip
     finally:
         released.set()
+
+
+def test_a_semicolon_joins_no_drive() -> None:
+    """Round 2 of #488: only a colon after one letter is a drive's."""
+    assert "C:/tools" not in hooks._pieces("C;/tools")
+    assert hooks._pieces("/opt;C:/tools")[-1] == ("C:/tools" if os.name == "nt" else "/tools")
+
+
+def test_a_vault_local_file_that_cannot_be_read_refuses_a_command_naming_a_path(
+    in_claude_code: Path, kept_apart: Path, capsys
+) -> None:
+    """Round 2 of #488: where the vault's local file is there and cannot be read, which folder
+    it keeps is not known, and a command that could name one is refused."""
+    _register(in_claude_code, kept_apart)
+    (in_claude_code / ".manuscript-guard" / "vault.local.yaml").write_text("folder: [", "utf-8")
+    result = run("guard-submission", _shell(in_claude_code, "cat results/x.json"), capsys)
+    assert decision(result) == "deny"
+    assert "cannot be read" in reason(result) and "vault check" in reason(result)
+    assert run("guard-submission", _shell(in_claude_code, "ls"), capsys) is None
+
+
+def test_a_lexical_match_is_refused_without_waiting_for_a_link(
+    in_claude_code: Path, kept_apart: Path, monkeypatch, capsys
+) -> None:
+    """Round 2 of #488: a word that spells the folder is known to name it with no look on
+    disk; only a word that might reach it through a link waits for one."""
+    _register(in_claude_code, kept_apart)
+    released = threading.Event()
+    real = os.path.realpath
+
+    def slow(path, *args, **kwargs):
+        if "cohort" in os.fspath(path) or "elsewhere" in os.fspath(path):
+            released.wait(5)
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(os.path, "realpath", slow)
+    monkeypatch.setattr(hooks, "VAULT_GUARD_LIMIT", 0.5)
+    monkeypatch.setattr(hooks, "_LEFT_RUNNING", [])
+    try:
+        named = run("guard-submission", _shell(in_claude_code, f'cat "{kept_apart}/cohort.csv"'),
+                    capsys)  # fmt: skip
+        maybe = run("guard-submission", _shell(in_claude_code, "cat elsewhere/cohort.csv"),
+                    capsys)  # fmt: skip
+    finally:
+        released.set()
+    assert decision(named) == "deny" and "names the vault's folder" in reason(named)
+    assert decision(maybe) == "deny" and "may name the vault's folder" in reason(maybe)
+
+
+def test_vault_takes_no_abbreviated_option(capsys) -> None:
+    """Round 2 of #488: `--pa` is not `--path`, so the guard's reading of the subcommand is
+    the command line's."""
+    from manuscript_guard.cli import main as cli
+
+    with pytest.raises(SystemExit) as exit_:
+        cli(["vault", "--pa", "x", "check"])
+    assert exit_.value.code == 2
+    assert hooks._vault_subcommand(["--pa", "x", "run"]) == "x"
 
 
 def test_the_vault_is_compared_in_one_case_on_macos_too(monkeypatch) -> None:

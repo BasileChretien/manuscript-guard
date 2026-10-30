@@ -12465,21 +12465,29 @@ commands only. The line never holds the folder's path.
 publish --post` read theirs. `vault run` and `vault release`, read exactly in both shells'
 words (`_command_words`, `_tool_words`), are refused: the person runs them at a terminal. A
 command that names them in a form not read exactly, or outside an invocation of the tool, is
-asked; the subcommand is the first word after `vault` that is no option and no option's
+asked where a vault is registered for the project on this machine, and let through where none
+is (round 2 of #488); the subcommand is the first word after `vault` that is no option and no option's
 value (`--as`, `--path`), so a file or a person named `release` is none. A command that names
 the vault's folder or a path inside it (`_vault_named`: the home as `$HOME`, `${HOME}`,
-`$env:USERPROFILE`, `$env:HOME`, `%USERPROFILE%` or `%HOMEDRIVE%%HOMEPATH%` read as `~`; each
-word `_words` finds, and each piece of it a colon or a semicolon joins (`_pieces`, a drive's
-`C:` kept whole on Windows), joined to the folder the command was sent from, `~` expanded, Git
-Bash's `/c/...` read as `C:/...` on Windows, `normcase` and `normpath`, folded to one case on
+`$env:USERPROFILE`, `$env:HOME`, `%USERPROFILE%` or `%HOMEDRIVE%%HOMEPATH%` read as `~`, and
+the working folder as `$PWD`, `${PWD}`, `$(pwd)` or `(Get-Location)` read as `.`; each word
+`_words` finds, each part of it between quotes and each word of those parts (`_sub_words`: a
+program the command quotes names its paths inside it, `python -c "pd.read_csv('/x')"`), and
+each piece a colon or a semicolon joins (`_pieces`, a drive's `C:` kept whole on Windows,
+across a colon only), joined to the folder the command was sent from, `~` expanded, Git
+Bash's `/c/...` and `//c/...` read as `C:/...` on Windows, `normcase` and `normpath`, folded to one case on
 macOS too, and once more with its links followed by `os.path.realpath`; a word inside the
 folder is the folder or a path after its separator, so `data2` is not inside `data`; the
 folder is compared as the local file keeps it, as typed and as resolved) or names
 `MANUSCRIPT_GUARD_VAULT` in any case, is refused while the probe says readable, and asked where
-it says not reachable. Every look on disk, the project's vault files, the links of the words and
-the probe, runs on a thread within `VAULT_GUARD_LIMIT` (3 s); past it, a command in a project
-with a vault registered is refused whatever it named, and one where none is known is let
-through. `_ask` turns the ask into a refusal where the tool cannot
+it says not reachable. Every word is compared as written before any is followed through its
+links. Every look on disk, the project's vault files, the links of the words and the probe,
+runs on a thread within `VAULT_GUARD_LIMIT` (3 s). Past it: a command that names the folder as
+written is refused, the probe not having said that the folder cannot be read; one whose words
+were being followed through their links, in a project whose vault is known, is refused as one
+that may name it; one stopped before the vault was found is let through. A local file that is
+there and cannot be read refuses a command with a slash, a backslash, `~` or `..` in it,
+saying to run `vault check` or `vault init --refresh` at a terminal. `_ask` turns the ask into a refusal where the tool cannot
 ask (Codex). The project is the one at the folder the command was sent from; nothing is asked
 of a project with no vault registered on this machine, and a fault of the guard's own costs
 the case, recorded, and nothing else. A word of a command is followed through links on this
@@ -19892,9 +19900,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     folder that lists and holds anything is readable, though every file in it may be refused;
     an empty one is not reachable, though a file put there later would be readable. The
     session-start probe waits 5 s and the shell guard 3 s for all it looks up; a disk slower
-    than that is said as not known at the start, and, in a project with a vault registered
-    here, refuses each command with a slash, a backslash, `~` or `..` in it, whatever it
-    names.
+    than that is said as not known at the start; the guard refuses a command that names the
+    folder as written, and, in a project with a vault registered here, one whose words it was
+    still following through their links, whatever they lead to.
   - *The shell guard reads the words of ordinary commands.* A path built while the command
     runs, held in a variable of the agent's own (`d=/secure; cat $d/x`), computed by a script,
     globbed for the folder itself (`/sec*`), or a command naming a folder above the vault and

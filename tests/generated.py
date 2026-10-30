@@ -4776,7 +4776,9 @@ VAULT_NAMED = ("quoted", "single quoted", "forward slashes", "inside", "relative
                # Round 1 of #488: the home by each shell's name of it, and a path joined to
                # another by a colon or a semicolon.
                "the home", "the home in braces", "PowerShell's home", "cmd's home",
-               "a volume", "a search path", "a Windows search path")  # fmt: skip
+               "a volume", "a search path", "a Windows search path",
+               # Round 2 of #488: a path inside a program the command quotes.
+               "a path inside a quoted program")  # fmt: skip
 VAULT_NOT_NAMED = ("a folder beside it", "the folder above it", "a file beside it", "the word",
                    "another variable", "a search path beside it")  # fmt: skip
 _SHELL_HEADS = ("cat", "ls -la", "Get-Content", "head -n 5", "wc -l", "Copy-Item", "grep -c id",

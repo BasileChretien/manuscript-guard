@@ -854,6 +854,8 @@ def vault_spelling(kind: str, base: Path) -> str:
         "a volume": f'-v "{posix}:/data"',
         "a search path": f'"/opt/lib:{posix}/lib"',
         "a Windows search path": f'"C:/tools;{posix}/bin"',
+        # Relative, so that no colon of a drive splits it: inside the quotes, and nowhere else.
+        "a path inside a quoted program": """-c "print(open('../Data held/cohort.csv').read())\"""",
         # And none of these.
         "a folder beside it": f'"{base / "Data held2" / "cohort.csv"}"',
         "the folder above it": f'"{base}"',

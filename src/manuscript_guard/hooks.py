@@ -1227,6 +1227,7 @@ def guard_submission(payload: dict) -> int:
     publishes, deposits = _deposits(command)
     posts, names_posting = _posts(command)
     runs_vault, names_vault_run = _vault_runs(command)
+    names_vault_run = names_vault_run if names_vault_run and _vault_here(payload) else None
     reads_vault, names_vault = _guards_vault(command, payload)
     refused = [one for one in (publishes, posts, runs_vault, reads_vault) if one]
     if refused:
@@ -1737,8 +1738,24 @@ _HOME_VARIABLE = re.compile(
     r"|%USERPROFILE%|%HOMEDRIVE%%HOMEPATH%)(?![\w%])"
 )
 #: Where a word joins one path to another: a colon (a POSIX search path, a container's
-#: volume, `/secure:/data`) or a semicolon (a Windows search path inside quotes).
-_JOINS = re.compile(r"[:;]")
+#: volume, `/secure:/data`) or a semicolon (a Windows search path inside quotes). Kept, so
+#: that a drive's colon is told from a semicolon.
+_JOINS = re.compile(r"([:;])")
+#: The working folder, as each shell names it: read as `.` where it begins a path.
+_HERE_VARIABLE = re.compile(
+    r"(?i)(?<![\w$%])(?:\$\(pwd\)|\$\(Get-Location\)|\(Get-Location\)|\$\{PWD\}|\$PWD)"
+    r"(?![\w%])"
+)
+#: Inside a quoted word, a program's own quotes, and what ends a word of it besides.
+_QUOTES = re.compile(r"[\"']")
+_INSIDE = re.compile(r"[\s()\[\],=;&|<>`]+")
+#: Git Bash's drive, written with one slash or two: `/c/x`, `//c/x`.
+_GIT_BASH_DRIVES = re.compile(r"//?([A-Za-z])(/.*)")
+_VAULT_UNREADABLE = (
+    "The vault's local file, .manuscript-guard/vault.local.yaml, cannot be read, so which "
+    "folder holds the data is not known here, and a command that names a path is refused. Run "
+    "`manuscript-guard vault check`, or `manuscript-guard vault init --refresh`, at a terminal."
+)
 
 
 def _vault_subcommand(words: list[str]) -> str | None:
@@ -1808,41 +1825,43 @@ def _pieces(word: str) -> list[str]:
     """The word, then each path it joins to another by a colon or a semicolon, where it joins
     any: `/opt/lib:/secure/extract` is also `/opt/lib` and `/secure/extract`. On Windows a
     drive's letter keeps its colon, `C:/tools;D:/secure` being `C:/tools` and `D:/secure`."""
-    parts = _JOINS.split(word)
-    if len(parts) == 1:
+    split = _JOINS.split(word)
+    if len(split) == 1:
         return [word]
-    if os.name == "nt":
-        kept: list[str] = []
-        for part in parts:
-            # `C` then `/x`: the colon was a drive's. Not after a `;`, which joins no drive.
-            if kept and len(kept[-1]) == 1 and kept[-1].isalpha() and part[:1] in ("/", "\\"):
-                kept[-1] += ":" + part
-            else:
-                kept.append(part)
-        parts = kept
+    parts = [split[0]]
+    for join, part in zip(split[1::2], split[2::2], strict=True):
+        # One letter, a colon, then a slash: a drive's colon on Windows. Across a semicolon
+        # there is no drive: `C;/tools` is `C` and `/tools`.
+        if (os.name == "nt" and join == ":" and len(parts[-1]) == 1 and parts[-1].isalpha()
+                and part[:1] in ("/", "\\")):  # fmt: skip
+            parts[-1] += ":" + part
+        else:
+            parts.append(part)
     return [word, *(part for part in parts if part)]
 
 
-def _vault_spellings(word: str, cwd: Path) -> list[str]:
-    """Where a word of a command points, as written and with its links followed: from the
-    folder the command is sent from, `~` as the home, and Git Bash's `/c/...` as `C:/...`."""
+def _sub_words(word: str) -> list[str]:
+    """The word, each part of it between quotes of either kind, and each word of those parts:
+    a quoted program names its paths inside it, `python -c "pd.read_csv('/secure/x.csv')"`.
+    The parts keep their spaces, so that a path with a space in it is read whole too."""
+    parts = [part for part in _QUOTES.split(word) if part]
+    words = [one for part in parts for one in _INSIDE.split(part) if one]
+    return list(dict.fromkeys([word, *parts, *words]))
+
+
+def _vault_path(word: str, cwd: Path) -> str | None:
+    """Where a word of a command points, as written: from the folder the command is sent from,
+    `~` as the home, and Git Bash's `/c/...` and `//c/...` as `C:/...`."""
     if len(word) > _LONGEST_PATH:
-        return []
+        return None
     if word.startswith("~"):
         word = os.path.expanduser(word)
-    elif os.name == "nt" and (drive := _GIT_BASH_DRIVE.fullmatch(word)):
+    elif os.name == "nt" and (drive := _GIT_BASH_DRIVES.fullmatch(word)):
         word = f"{drive[1]}:{drive[2]}"
-    full = os.path.join(cwd, word)
-    found = [_comparable(full)]
-    # Links are followed on this machine only, and not to another one: asking Windows about
-    # `//host/share` waits for the host.
-    if not full.startswith(("\\\\", "//")) and len(Path(full).parts) <= _DEEPEST_PATH:
-        with contextlib.suppress(OSError, ValueError, RuntimeError):
-            found.append(_comparable(os.path.realpath(full)))
-    return found
+    return os.path.join(cwd, word)
 
 
-def _vault_named(command: str, cwd: Path, folders: list[str]) -> bool:
+def _vault_named(command: str, cwd: Path, folders: list[str], *, links: bool = True) -> bool:
     """Whether a word of the command is the vault's folder or a path inside it, in any
     spelling `_words` finds a path in: quoted or not, after an `=` or an `@`, joined to another
     by a colon or a semicolon, relative, from the home as `~` or as each shell names it, as
@@ -1852,22 +1871,31 @@ def _vault_named(command: str, cwd: Path, folders: list[str]) -> bool:
     of the agent's own, built at run time or globbed for the folder itself is not seen
     (DESIGN.md, Known gaps)."""
     kept = {_comparable(folder) for folder in folders}
-    words = _words(_HOME_VARIABLE.sub("~", command))
-    return any(
-        _within(spelt, one)
-        for word in words
-        for piece in _pieces(word)
-        for spelt in _vault_spellings(piece, cwd)
-        for one in kept
-    )
+    text = _HERE_VARIABLE.sub(".", _HOME_VARIABLE.sub("~", command))
+    paths = [path for word in _words(text) for sub in _sub_words(word)
+             for piece in _pieces(sub) if (path := _vault_path(piece, cwd))]  # fmt: skip
+    # Every path as written first, which needs no look on disk; then, with `links`, each
+    # through its links, on this machine only: asking Windows about `//host/share` waits for
+    # the host.
+    if any(_within(_comparable(path), one) for path in paths for one in kept):
+        return True
+    for path in paths if links else ():
+        if path.startswith(("\\\\", "//")) or len(Path(path).parts) > _DEEPEST_PATH:
+            continue
+        with contextlib.suppress(OSError, ValueError, RuntimeError):
+            if any(_within(_comparable(os.path.realpath(path)), one) for one in kept):
+                return True
+    return False
 
 
-def _names_the_vault(command: str, cwd: Path, folders: list[str]) -> str | None:
+def _names_the_vault(command: str, cwd: Path, folders: list[str], *,
+                     links: bool = True) -> str | None:  # fmt: skip
     """`variable` where the command names MANUSCRIPT_GUARD_VAULT, `folder` where a word of it
-    is the vault's folder or a path inside it (`_vault_named`), else None."""
+    is the vault's folder or a path inside it (`_vault_named`; through a link of the command's
+    only with `links`), else None."""
     if _names_vault_variable(command):
         return "variable"
-    if folders and _vault_named(command, cwd, folders):
+    if folders and _vault_named(command, cwd, folders, links=links):
         return "folder"
     return None
 
@@ -1890,6 +1918,18 @@ def _vault_reasons(variable: bool | None, readable: bool) -> str:
     )
 
 
+def _vault_here(payload: dict) -> bool:
+    """Whether a vault is registered on this machine for the project the command is sent
+    from."""
+    from manuscript_guard.vault import probe
+
+    try:
+        root = _project_root(payload)
+        return root is not None and probe.local_file(root).is_file()
+    except (OSError, ValueError):
+        return True  # not known: asked
+
+
 def _vault_looked_at(command: str, payload: dict, found: dict) -> None:
     """What `_guards_vault` asks of the disk, each answer put in `found` as it comes: whether
     a vault is registered here, what the command names of it, and whether it can be read."""
@@ -1902,9 +1942,14 @@ def _vault_looked_at(command: str, payload: dict, found: dict) -> None:
     try:
         spellings = probe.local_spellings(root)
     except probe.VaultFileError:
-        spellings = []
-    cwd = Path(payload.get("cwd") or Path.cwd()).resolve()
-    found["named"] = _names_the_vault(command, cwd, spellings)
+        found["unreadable"] = True
+        return
+    cwd = Path(os.path.abspath(payload.get("cwd") or Path.cwd()))
+    # As written first, with no look on disk; then through the command's links.
+    named = _names_the_vault(command, cwd, spellings, links=False)
+    if named is None:
+        named = _names_the_vault(command, cwd, spellings)
+    found["named"] = named
     if found["named"] is not None:
         try:
             found["said"] = probe.state(root)[0]
@@ -1919,8 +1964,12 @@ def _guards_vault(command: str, payload: dict) -> tuple[str | None, str | None]:
     cannot. Nothing is asked of a project with no vault registered on this machine.
 
     Every look on disk, the project's vault files, the links of the command's words and the
-    probe, is made on a thread within `VAULT_GUARD_LIMIT`. Past it, with a vault registered,
-    the command is refused, whatever it named; with none known, it is let through.
+    probe, is made on a thread within `VAULT_GUARD_LIMIT`. The words are compared as written
+    first, with no look on disk. Past the limit: a command that names the folder as written is
+    refused, the probe not having said it cannot be read; one whose words were being followed
+    through their links, in a project whose vault is known, is refused as one that may name
+    it; one stopped before the vault was found is let through. A vault local file that is
+    there and cannot be read refuses the command.
 
     A command with no word that can lead out of the folder it is sent from, no slash, no
     backslash, no `~` and no `..`, names no folder outside the project, and is let through
@@ -1949,6 +1998,8 @@ def _guards_vault(command: str, payload: dict) -> tuple[str | None, str | None]:
             return None, None
         named = found.get("named")
         return _vault_reasons(None if named is None else named == "variable", readable=True), None
+    if found.get("unreadable"):
+        return _VAULT_UNREADABLE, None
     if found.get("failed") or found.get("named") is None:
         return None, None
     variable = found["named"] == "variable"

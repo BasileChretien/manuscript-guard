@@ -19592,7 +19592,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     next number expected ("...Part" then "3. Results of...") opens a phantom entry, and the
     citations are held to it; an entry whose last line ends in a hyphen or a dash ("pp.
     112-") runs on into the next, whose number then reads as a skip and leaves the list not
-    told apart.
+    told apart, a blank line between them or not. A PMID of three digits or fewer on the line
+    after "PMID:", a stop after it ("123. Epub"), reads as an entry's number: it is listed as
+    not looked up.
   - A heading between a PDF's Abstract and its Introduction that is no part of the abstract,
     an "Abbreviations" or a "Funding" of the paper, is placed under the Abstract, and its
     words count toward the abstract's limit in G4.

@@ -462,6 +462,42 @@ def test_compare_sets_a_pdf_beside_a_word_or_markdown_version(tmp_path: Path, ca
         "Figures")[0]
 
 
+# ---------------------------------------------------------------------- the report draft (#487)
+
+
+@needs_pdftotext
+def test_an_audit_draft_places_a_pdfs_findings_by_page(tmp_path: Path, capsys) -> None:
+    """With #487's `--report-draft`: a finding in a PDF is at its page and line, as the report
+    gives it, and the draft says the PDF's tables and lists were not read as such."""
+    paper = write(tmp_path / "paper.pdf")
+    target = tmp_path / "d.md"
+    assert main(["audit", str(paper), "--report-draft", str(target)]) == 0
+    capsys.readouterr()
+    text = target.read_text(encoding="utf-8")
+    placed = [line for line in text.splitlines()
+              if line.startswith(("- paper.pdf line ", "- paper.pdf page "))]  # fmt: skip
+    assert placed and all(line.startswith("- paper.pdf page ") for line in placed), placed
+    assert "A PDF's tables and lists:" in text.split("## Exact findings")[0]
+
+
+@needs_pdftotext
+def test_a_compare_draft_beside_a_pdf_lists_no_table_or_figure_check(tmp_path: Path,
+                                                                       capsys) -> None:  # fmt: skip
+    """Where either version is a PDF, the tables and the figures are not compared: the draft
+    says so, and does not list them among the checks that found nothing."""
+    old = tmp_path / "v1.md"
+    old.write_text("# Results\n\n| Age | 54 |\n|---|---|\n| Sex | 61 |\n\nTable 1. Baseline\n",
+                   encoding="utf-8")  # fmt: skip
+    new = write(tmp_path / "v2.pdf")
+    target = tmp_path / "d.md"
+    assert main(["compare", str(old), str(new), "--report-draft", str(target)]) == 0
+    capsys.readouterr()
+    text = target.read_text(encoding="utf-8")
+    nothing = text.split("## Checks that ran and found nothing")[1]
+    assert "Tables, cell by cell" not in nothing and "Figures, by their captions" not in nothing
+    assert "The tables and the figures: not compared, since v2 is a PDF" in text
+
+
 # ---------------------------------------------------------------------------- reference lists
 
 

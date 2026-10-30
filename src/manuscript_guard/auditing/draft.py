@@ -82,7 +82,10 @@ def _code(text: str) -> str:
 def _place(item: Item, show: Show) -> str:
     if item.path is None:
         return ""
-    return f"{show(item.path)}" + (f" line {item.line}" if item.line else "")
+    # The report's own `_Show` gives a PDF's line as its page and line.
+    at = getattr(show, "at", None)
+    where = (at(item.path, item.line) if at else f"line {item.line}") if item.line else ""
+    return f"{show(item.path)}" + (f" {where}" if where else "")
 
 
 def _bullet(item: Item, show: Show, mark: str = "") -> list[str]:
@@ -188,6 +191,10 @@ def _unchecked_of_audit(report) -> list[str]:
                      "given, not bound to the place the analysis put it.")  # fmt: skip
     if not any(path.suffix.lower() in (".svg", ".pdf") for path in report.papers):
         found.append("Figures: none was given (`--figures`), so no figure's numbers were read.")
+    if any(path.suffix.lower() == ".pdf" for path in report.papers):
+        found.append("A PDF's tables and lists: pdftotext gives their lines, not their cells or "
+                     "items, so no total, share, n or flow in them was checked; their numbers "
+                     "were read as the text's.")  # fmt: skip
     if report.abstract is not None and not report.abstract.compared:
         found.append(f"The Abstract against Results: not compared, {report.abstract.why_not}.")
     if report.lookups is None:
@@ -345,6 +352,7 @@ def for_audit(report, flags: list[str], show: Show) -> str:
 def for_compare(found, flags: list[str], show: Show) -> str:
     """The draft of a comparison (`comparing.report.Comparison`)."""
     from manuscript_guard.comparing import differences
+    from manuscript_guard.comparing.differences import _pdf_of
     from manuscript_guard.comparing.report import AUDITED, VERSIONS
 
     read = []
@@ -360,6 +368,11 @@ def for_compare(found, flags: list[str], show: Show) -> str:
                  "The results: no number was compared with the analysis's outputs.",
                  "The figures' pictures: a figure is compared by its caption only.",
                  "Whether a change answers a comment: that is yours to read."]  # fmt: skip
+    pdf = _pdf_of(found.old, found.new)
+    if pdf is not None:
+        unchecked.append(f"The tables and the figures: not compared, since "
+                         f"{'v2' if pdf is found.new else 'v1'} is a PDF, which holds no table "
+                         "or figure as one.")  # fmt: skip
     exact = list(found.exact)
     exact_ids = {id(item) for item, _mark in exact}
     same = {f"{part}-same" for part in ("section", "table", "figure")}
@@ -396,6 +409,9 @@ def for_compare(found, flags: list[str], show: Show) -> str:
          counted[differences.CLAIMS]),
         ("v2 audited", "v2 read as `audit` reads a paper", counted[AUDITED]),
     ]  # fmt: skip
+    if pdf is not None:  # the tables and the figures were not compared at all
+        checks = [check for check in checks if check[0] not in (
+            "Tables, cell by cell", "Figures, by their captions")]  # fmt: skip
     return _compose(read, unchecked, exact, further, references, language, _ran(checks), show)
 
 

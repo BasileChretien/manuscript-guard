@@ -2503,7 +2503,8 @@ def _audit(args: argparse.Namespace, package) -> int:
     if args.report_draft is not None:
         from manuscript_guard.auditing.draft import for_audit
 
-        text = for_audit(report, _flags_given(args, _AUDIT_FLAGS), sections._shown(Path.cwd()))
+        text = for_audit(report, _flags_given(args, _AUDIT_FLAGS),
+                         sections._shown(Path.cwd(), report.pdfs))  # fmt: skip
         if not _write_draft(args, text, "audit"):
             return 2
     if args.json:
@@ -2551,8 +2552,10 @@ def cmd_compare(args: argparse.Namespace) -> int:
     if args.report_draft is not None:
         from manuscript_guard.auditing.draft import for_compare
         from manuscript_guard.auditing.report import _shown
+        from manuscript_guard.comparing.report import _pdfs
 
-        text = for_compare(found, _flags_given(args, _COMPARE_FLAGS), _shown(Path.cwd()))
+        text = for_compare(found, _flags_given(args, _COMPARE_FLAGS),
+                           _shown(Path.cwd(), _pdfs(found)))  # fmt: skip
         if not _write_draft(args, text, "compare"):
             return 2
     if args.out is None:

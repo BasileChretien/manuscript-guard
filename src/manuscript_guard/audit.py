@@ -196,6 +196,12 @@ class AuditReport:
     #: What each .docx holds besides its text (`auditing.document.DocumentFacts`), where a
     #: reader option was given.
     documents: list = field(default_factory=list)
+    #: The causal words of `--design` (`auditing.causal.CausalRead`), the cited sentences of
+    #: `--cited` (`auditing.cited.CitedRead`) and the self-citation count
+    #: (`auditing.selfcite.SelfCitation`); None where not asked for.
+    causal: object = None
+    cited: object = None
+    self_citation: object = None
 
     @property
     def examined(self) -> int:
@@ -695,6 +701,12 @@ class _Source:
     table_lines: frozenset[int] = frozenset()
     lists: tuple = ()
     boxed: int = 0
+    #: Where each line stands for the reader options that read sentences, None in a file
+    #: with no headings (`auditing.sentences.placing`), and a LaTeX file's `Source`.
+    part: Callable[[int], object] | None = None
+    latex: object = None
+    #: The lines of a Markdown or a Word paper's headings, which are no sentences.
+    heading_lines: frozenset[int] = frozenset()
 
     def scan(self, classifier: Classifier):
         return classifier.scan(self.scanned, lines_are_blocks=self.lines_are_blocks,
@@ -743,7 +755,7 @@ def _read_sources(
             plain = file.hidden.replace(NUL, " ")
             sources.append(_Source(file.path, file.source.text, file.hidden, file.hidden,
                                    plain, file.tables, False, False, blocks=False,
-                                   layout=file.layout,
+                                   layout=file.layout, latex=file.source,
                                    **structures.get(file.path, {})))  # fmt: skip
         report.trees += latex.trees
         report.references += [census_of_latex(tree.entry, list(tree.files))
@@ -775,16 +787,45 @@ def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
         boxed = boxed_counts(document.boxed)
     place, abstract, results = placed(sections) if sections else (None, False, False)
     return {"place": place, "abstract": abstract, "results": results, "table_lines": lines,
-            "lists": tuple(lists), "boxed": boxed}  # fmt: skip
+            "lists": tuple(lists), "boxed": boxed,
+            "part": _parts(sections, document), "heading_lines": _heading_lines(
+                text, sections)}  # fmt: skip
+
+
+def _parts(sections: list, document) -> Callable[[int], object] | None:
+    """Where each line stands for the reader options that read sentences
+    (`auditing.sentences.placing`); a Word document's footnotes and endnotes, read after its
+    body, in no part, and not under its last heading (round 2 of #482)."""
+    from manuscript_guard.auditing.sentences import Place, placing
+
+    if not sections:
+        return None
+    place = placing(sections)
+    if document is None or not document.notes:
+        return place
+    last = document.body.count("\n") + 1
+    return lambda line: place(line) if line <= last else Place()
+
+
+def _heading_lines(text: str, sections: list) -> frozenset[int]:
+    """The lines a paper's headings stand on, a setext heading's underline among them."""
+    lines = text.split("\n")
+    found = set()
+    for section in sections:
+        found.add(section.line)
+        below = lines[section.line] if section.line < len(lines) else ""
+        if re.fullmatch(r"[ ]{0,3}(?:=+|-+)[ \t]*", below):
+            found.add(section.line + 1)
+    return frozenset(found)
 
 
 def _latex_structure(latex) -> dict[Path, dict]:
     """What each LaTeX file's Abstract against Results and flows are read from: where each
     of its lines stands under the headings its document prints over it (`printed`, read
     back to the `.tex` line by `place_line`), the lines of its tables, and its lists."""
-    from bisect import bisect_right
-
     from manuscript_guard.auditing import abstract as placing
+    from manuscript_guard.auditing import sentences
+    from manuscript_guard.auditing.sentences import place_tex_lines
     from manuscript_guard.stats.flows import latex_lists
     from manuscript_guard.text.latex.printed import printed
     from manuscript_guard.text.sections import scannable, split_sections
@@ -799,24 +840,36 @@ def _latex_structure(latex) -> dict[Path, dict]:
         place, abstract, results = (placing.placed(sections) if sections
                                     else (None, False, False))  # fmt: skip
         by_line = placing.place_lines(view, place) if place is not None else {}
+        parts = (place_tex_lines(view, sentences.placing(sections)) if sections
+                 else {})  # fmt: skip
         for path, source in tree.files:
             if path in found or path not in hidden:
                 continue
-            mapped = by_line.get(source.path, {})
-            ordered = sorted(mapped)
-
-            def at(line: int, mapped=mapped, ordered=ordered) -> object:
-                index = bisect_right(ordered, line) - 1
-                return mapped[ordered[index]] if index >= 0 else None
-
+            at = _at_line(by_line.get(source.path, {}), None)
+            part = _at_line(parts.get(source.path, {}), sentences.Place())
             text = source.text
             lines = frozenset(line for start, end in source.reading.tables
                               for line in range(text.count("\n", 0, start) + 1,
                                                 text.count("\n", 0, end) + 2))  # fmt: skip
             found[path] = {"place": at if place is not None else None, "abstract": abstract,
                            "results": results, "table_lines": lines,
-                           "lists": tuple(latex_lists(source, hidden[path]))}  # fmt: skip
+                           "lists": tuple(latex_lists(source, hidden[path])),
+                           "part": part if sections else None}  # fmt: skip
     return found
+
+
+def _at_line(mapped: dict[int, object], before: object) -> Callable[[int], object]:
+    """Where a line of a LaTeX file stands: as the last line mapped at or before it stands,
+    or `before` above the first."""
+    from bisect import bisect_right
+
+    ordered = sorted(mapped)
+
+    def at(line: int) -> object:
+        index = bisect_right(ordered, line) - 1
+        return mapped[ordered[index]] if index >= 0 else before
+
+    return at
 
 
 def unread_shapes(path: Path, text: str) -> list[str]:
@@ -990,6 +1043,8 @@ def audit(
     passed_over: list[Path] | None = None,
     found_tex: list[Path] | None = None,
     minimum: int | None = None,
+    design: str | None = None,
+    cited: bool = False,
 ) -> AuditReport:
     """`whole_numbers` names the rows of the papers' tables whose cells are means of whole
     numbers, which are held to their column's n (`stats/granularity.py`). `passed_over` is
@@ -997,7 +1052,10 @@ def audit(
     `backing` None is no outputs given: every number is read and classified, and none is
     compared. A `.tex` among `papers` is an entry (`auditing.latex`); `found_tex` are the
     other `.tex` files of a folder given, read where an entry inputs them. `minimum` is the
-    data custodian's, below which a count held back that a total gives away is said."""
+    data custodian's, below which a count held back that a total gives away is said.
+    `design` is the study's design the reader declares, whose causal words are read
+    (`auditing.causal`); `cited` asks for each citation beside its sentence
+    (`auditing.cited`)."""
     # `rendered=True`: an existing paper has been through citeproc, so its citations are
     # "(Smith 2019)" rather than [@key]. That is the one place the audit-only rules apply.
     classifier = classifier or Classifier.load(rendered=True)
@@ -1044,7 +1102,95 @@ def audit(
     from manuscript_guard.auditing.abstract import against_results
 
     report.abstract = against_results(pieces)
+    if design is not None or cited:
+        _read_sentences(report, [s for s in sources if s.path.suffix.lower()
+                                 not in FIGURE_SUFFIXES], papers, design, cited)  # fmt: skip
     return report
+
+
+def _in_order(report: AuditReport, sources: list[_Source], papers: list[Path]) -> list:
+    """The sources in the order the papers were given, a LaTeX file at its entry's place:
+    the Markdown and Word papers are read before the LaTeX ones (round 2 of #482)."""
+    entry_of = {path: tree.entry for tree in report.trees for path, _source in tree.files}
+    given = {path: at for at, path in enumerate(papers)}
+
+    def at(source: _Source) -> int:
+        return given.get(entry_of.get(source.path, source.path), len(given))
+
+    return sorted(sources, key=at)
+
+
+def _read_sentences(report: AuditReport, sources: list[_Source], papers: list[Path],
+                    design: str | None, cited: bool) -> None:  # fmt: skip
+    """The causal words of `design`, and the cited sentences, of every paper read."""
+    from manuscript_guard.auditing.causal import causal_words
+    from manuscript_guard.auditing.cited import cited_sentences
+
+    views = [view for source in _in_order(report, sources, papers)
+             for view in _views(source)]
+    if design is not None:
+        report.causal = causal_words(views, design)
+    if cited:
+        report.cited = cited_sentences(views, _lists(report))
+
+
+#: What is said of a front matter's abstract that is no plain text.
+UNREAD_FRONT_MATTER = ("its front matter's abstract is a list or a mapping, not a plain "
+                       "string, so its sentences were not read")
+
+
+def _views(source: _Source) -> list:
+    """One paper as its sentences are read (`auditing.sentences`): a Markdown file as
+    pandoc prints it, a Word document a paragraph a line, a LaTeX file what it prints, each
+    with its citations. A Markdown file's front matter is no body text: its abstract, where
+    it is a plain string, is read as a text of its own, as the Abstract, at its key's line
+    (round 1 of #482), and any other abstract there is said not to be read."""
+    from manuscript_guard.auditing import sentences
+    from manuscript_guard.claims import readable
+    from manuscript_guard.text.masking import front_matter_abstract
+
+    if source.latex is not None:
+        read = source.hidden.replace("\N{RIGHT SINGLE QUOTATION MARK}", "'")
+        return [sentences.View(source.path, source.text, read, place=source.part,
+                               cuts=sentences.latex_cuts(source.latex),
+                               cites=tuple(sentences.latex_cites(source.latex, read)),
+                               headings=sentences.latex_headings(source.latex))]  # fmt: skip
+    docx = source.lines_are_blocks
+    read = (source.hidden.replace("\N{RIGHT SINGLE QUOTATION MARK}", "'") if docx
+            else readable(source.text))  # fmt: skip
+    cites = sentences.cites_in_text(source.text, source.hidden, _intervals(source.plain))
+    head = 0 if docx else front_matter_end(source.text)
+    found = front_matter_abstract(source.text) if head else None
+    views, notes = [], ()
+    if head:
+        read = "".join(char if char == "\n" else NUL for char in read[:head]) + read[head:]
+        cites = [cite for cite in cites if cite.start >= head]
+    if found is not None and found[1]:
+        line, value = found
+        views.append(sentences.View(
+            source.path, value, readable(value), line_offset=line - 1,
+            place=lambda _line: sentences.Place(sentences.ABSTRACT, sentences.ABSTRACT),
+            cites=tuple(sentences.cites_in_text(value, _masked(value, printed_as_typed=False),
+                                                _intervals(value))),
+        ))  # fmt: skip
+    elif found is not None:
+        notes = (UNREAD_FRONT_MATTER,)
+    # A front matter's abstract first: it stands before the body (round 2 of #482).
+    return [*views, sentences.View(
+        source.path, source.text, read, lines=docx, place=source.part, cites=tuple(cites),
+        notes=notes, headings=sentences.line_spans(source.text, source.heading_lines))]
+
+
+def _lists(report: AuditReport) -> dict[Path, object]:
+    """Each file's reference list: a Markdown or Word paper's own, and for each file of a
+    LaTeX tree its document's."""
+    found: dict[Path, object] = {}
+    trees = {tree.entry: tree for tree in report.trees}
+    for census in report.references:
+        tree = trees.get(census.path)
+        for path in ([path for path, _source in tree.files] if tree else [census.path]):
+            found.setdefault(path, census)
+    return found
 
 
 def _piece(source: _Source, atoms: list[Atom]):

@@ -8140,9 +8140,74 @@ completion file, and reading a manuscript for an item's presence is a heuristic)
 checks (G15 reads model cards), reviewer suggestions (they would send the unpublished paper's
 authors and topic to a registry, and a registry's author disambiguation would make "no
 co-authorship found" a false assurance), and flags of predatory journals (no exact
-authority). Later pull requests of the layer add causal words against a declared design,
-the cited sentences beside their works, `compare` for a revision, a package checked against
-its own manifest, a report draft, and PDF manuscripts.
+authority). Later pull requests of the layer add `compare` for a revision, a package checked
+against its own manifest, a report draft, and PDF manuscripts.
+
+### What is claimed and what is cited (2026-10-30)
+
+Three more readings for the reader who did not write the paper, each a reader option
+(`READER_FLAGS`, so the notice and the hook cover them), none counted by `--strict`
+(decision 8).
+
+**`--design observational`** (`auditing.causal`). The reader declares the design; nothing
+guesses it. Each sentence of the Abstract, the Discussion and the Conclusion is read for a
+word of the causation rung of the claim ladder (`data/claim_strength.yaml`), that rung only
+(decision 6): "reduced the risk" is the effect rung, which every descriptive "the incidence
+increased" would set off. A sentence holding a hedge or a negation of the ladder's lists is
+passed over, and so is one that carries a citation, since "X causes Y [12]" may cite a
+trial. The rest warn, `causal-word-observational`. The Methods, the Results, the
+Introduction and every other part are not read. Where a sentence stands is read as the
+Abstract against Results reads it, each file by its own headings (`auditing.sentences.
+placing`, the outermost heading that names a part deciding, a heading over the opening of
+the paper naming none, `names_discussion` added beside `names_conclusion`). A heading that
+names the Abstract always names it, whatever stands under it, as G8's `Walk` reads it, and
+so does a "Summary" with a heading of a structured abstract under it (Background, Methods,
+Findings, Interpretation and their like), as the Lancet titles one: every heading under
+either is the Abstract's (round 1 of #482: an Abstract over a Background was read as a title
+over the paper, and its Results were not read). A Markdown file's front matter is no body
+text; its abstract, where it is a plain string, is read as the Abstract at its key's line,
+and one that is a list or a mapping is said not to be read. A LaTeX file's
+lines are placed through its printed view, a place in a part kept over one in none where
+two printed lines share a `.tex` line, so the Abstract's last sentence on the line of
+`\end{abstract}` stays the Abstract's. A sentence is cut as `claims` cuts one, on a
+Markdown file as pandoc prints it (`claims.readable`), on a Word document's text with each
+paragraph a block, and on a LaTeX file's printed view with each heading's command and the end
+of its title as cuts. `claims` ends a sentence at a stop and a space, so a citation typed
+directly after the stop, `.[3]`, `.[3-5]`, `.\cite{a}` or `.~\cite{a}`, read on into the next
+sentence, which then passed as cited (round 1 of #482): there the sentence ends after the
+citation, or the last of several typed together, unless the next word is in lower case
+(`View._stop_cuts`). `claims` itself is unchanged, so `reworded` and `communicate` read as
+before. Citations typed together with only spaces, ties or punctuation between, `[3] [4]`,
+`[3]~[4]`, are one run, and the lower-case rule is the run's. An abbreviation's stop, "Smith
+et al. [3] showed", "e.g. [4]", "cf.", "i.e.", "vs.", "Fig.", "ref.", ends no sentence
+before a citation: the citation and the words after it stay with the sentence they are in;
+and a citation typed after another stop is given to the sentence before only where the word
+after it begins a sentence, in a capital or a figure (round 2 of #482). Headings are no
+sentences of their part, nor are a Word document's footnotes and endnotes, which are read
+after its body and placed in no part. A `\nocite` cites nothing in a sentence, and a
+citation by author and year inside a comment is not read. The rows and the warnings follow
+the files in the order given, a front matter's abstract before its body.
+
+**`--cited FILE`** (`auditing.cited`). A row for each work each citation names: a number in
+brackets held by number to a numbered list as G7's census holds it (`references.marker_spans`,
+beside `markers_in`), and a LaTeX `\cite` and its kin held by key to the `thebibliography`;
+the sentence, its line and section, the citation as typed, the entry as typed with its DOI
+and PMID; with `--lookup` the registries' title, year and standing (`Looked.answers`, kept
+beside what G7 already asked) and Europe PMC's abstract (decision 7), asked by the PMID, else
+the DOI, through `lookup.search.europepmc_work`, the client `search` already uses, and kept
+only under `--lookup-cache`; and an empty last column. A citation typed right after a
+sentence's stop, on its line or the next with no blank line between, and in a Word document in
+its paragraph, is that sentence's (`View._after_a_stop`); a heading has no stop. A citation by
+author and year and a pandoc key are counted and not listed. The file is Markdown or HTML by
+its suffix, never one already there (it may hold the referee's judgements), and stdout gives
+counts only, since the file quotes the manuscript.
+
+**Self-citation** (`auditing.selfcite`), with `--journal` and `--authors` or `--lookup`. For
+each author, the references whose Crossref or PubMed record lists a person of the same family
+name, folded as G7 folds one (`gates.authors.same`), and the same first initial; and the
+references whose record's journal is the profile's `name`, both folded (case, accents,
+punctuation, "&", a leading "The"). Counts and the entries, never a ratio or a verdict. With
+`--authors` and no `--lookup`, "not counted": the reference text is not read for names.
 
 ## A paper written in Word is brought in through pandoc's tree
 
@@ -19208,8 +19273,37 @@ What papers converted from Word showed (see "What papers converted from Word sho
     do: an `audit` started from a script, or with its options built at run time, is not
     asked. The notice and the paper-audit skill's stop paragraph are the rest of the control,
     and the person's own judgement the last of it.
-  - `--lookup` sends the reference list's identifiers; the set of DOIs a paper cites is a
-    weak fingerprint of it, and a contact address set for the registries names the reader.
+  - `--lookup` sends the reference list's identifiers, and with `--cited` each cited work's
+    PMID or DOI to Europe PMC; the set of DOIs a paper cites is a weak fingerprint of it, and
+    a contact address set for the registries names the reader.
+  - Causal words read the causation rung only. A causal claim in other words ("X protects
+    against Y", "reduced the risk") passes; "demonstrated that the method..." warns where it
+    claims no cause, and so do "the causes of death" and a method's name, "causal mediation
+    analysis", in the Abstract or the Discussion. A hedge or a negation anywhere in the
+    sentence passes it, whatever it bears on ("not all patients; smoking causes cancer"). A
+    narrative citation, "Smith et al. showed that X causes Y", carries no citation the reading
+    sees and warns. A structured Abstract's Methods are the Abstract's, and are read; a
+    "Summary" is the Abstract only with a heading of a structured abstract under it and
+    before the paper's opening (an Introduction, a Background, the Methods), and otherwise a
+    conclusion, read as one. An abbreviation is known by a list (et al., e.g., i.e., cf., vs.,
+    viz., Fig., ref., Eq., approx., ca., suppl.): another before a citation, "see p. [3]
+    showed", ends the sentence there, as `claims` cuts it. A file
+    with no heading that names a part is not read, and the report says so.
+  - The cited-sentences table reads a number in brackets beside a numbered list, and a LaTeX
+    `\cite` beside a `thebibliography`. A citation by author and year, a pandoc key, a
+    superscript number in a .docx (its text reads the digits run on to the word) and Word's
+    Zotero or EndNote fields are not listed, and the file says so; a `\cite` whose list is a
+    `.bib` is listed without its entry. A file's citations are held to its own list only, so a
+    supplement that cites the main document's list by number lists them as unread. A citation
+    typed right after a stop is the sentence before's, even where the author meant the next;
+    one that opens a paragraph is that paragraph's.
+  - A journal's name is matched folded, whole or before PubMed's " : " subtitle, with a
+    qualifier in brackets at its end left out; an abbreviation (Crossref's short container
+    title) is not matched.
+  - Self-citation relies on the registries' author lists: a namesake with the same initial
+    counts, a changed surname does not, nor does an author a registry lists in another script
+    or with no given name. The journal's titles match by folded name only (the profile holds
+    no ISSN), so an abbreviated container or a renamed journal does not count.
 - **A record of the tool's own failure holds what the scrub caught out of it, and no more.**
   - The scrub replaces exact strings and a few patterns: the project's folder (the one the
     command names, else the working folder's), the home, temp and Python folders in the

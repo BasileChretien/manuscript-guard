@@ -35,6 +35,13 @@ _RESULTS = re.compile(r"(?:results?|findings)\b", re.IGNORECASE)
 _CONCLUSION = re.compile(
     r"conclu(?:sions?|ding\s+remarks)\b|summary(?:\s+and\s+conclusions?)?\W*$", re.IGNORECASE
 )
+#: The Discussion by the words a title opens with: "Discussion", "5. General discussion",
+#: "**Discussion and conclusions**", and the section that holds it with the Results, "Results
+#: and discussion". Not anywhere in it: "Methods for discussion groups" is the Methods'.
+_DISCUSSION = re.compile(
+    r"(?:general\s+)?discussion\b|(?:results?|findings)\s+(?:and|&)\s+discussion\b",
+    re.IGNORECASE,
+)
 
 #: The names of the statements a journal asks for, and of the lists, that are the same from
 #: paper to paper: a pattern to put in another, of no flags, to be read ignoring case. G7's
@@ -112,6 +119,12 @@ def names_conclusion(title: str) -> bool:
     return bool(_CONCLUSION.match(plain(title)))
 
 
+def names_discussion(title: str) -> bool:
+    """Whether a heading names the Discussion, numbered, marked or not: "Discussion", "5.
+    General discussion", "Discussion and conclusions", "Results and discussion"."""
+    return bool(_DISCUSSION.match(plain(title)))
+
+
 def names_methods(title: str) -> bool:
     """Whether a heading can be the Methods: its title holds "methods", the test G4 has
     counted a required Methods section present by since it was written. "2. Methods",
@@ -178,6 +191,7 @@ __all__ = [
     "methods_sections",
     "names_abstract",
     "names_conclusion",
+    "names_discussion",
     "names_methods",
     "names_results",
     "plain",

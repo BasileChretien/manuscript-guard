@@ -164,6 +164,7 @@ def items(report) -> list[Item]:
             Item(REFERENCES, "G7", p.code, p.message, WARN, False, p.path or census.path, p.line)
             for p in census.problems
         ]  # fmt: skip
+        found += _printed_items(census)
     for looked in report.lookups or []:
         entry = looked.entry
         where = entry.path or looked.path
@@ -183,6 +184,29 @@ def items(report) -> list[Item]:
             + _causal_items(report.causal) + _cited_items(report.cited)
             + _self_citation_items(report.self_citation)
             + list(getattr(report.package, "found", [])))  # fmt: skip
+
+
+def _printed_items(census) -> list[Item]:
+    """What is said of a PDF's reference list: entries not told apart, and each identifier
+    not looked up since it may go on on the next line (`references.census_of_printed`)."""
+    from manuscript_guard.auditing.references import UNTOLD
+
+    found = []
+    if census.style == UNTOLD:
+        found.append(Item(REFERENCES, "G7", "entries-not-told-apart",
+                          UNTOLD_SAID.format(why=census.untold), INFO, False,
+                          census.path))  # fmt: skip
+    found += [Item(REFERENCES, "G7", "identifier-not-sent", f"{said}: {NOT_SENT}", INFO,
+                   False, census.path, line) for line, said in census.unsent]  # fmt: skip
+    return found
+
+
+#: What is said of a PDF's reference list whose entries could not be told apart.
+UNTOLD_SAID = ("its entries could not be told apart ({why}): each DOI and PMID is counted and "
+               "looked up alone, one that ends a line among them, and no citation is held to an "
+               "entry or to their count")
+#: What is said of an identifier that ends a line its entry goes on after.
+NOT_SENT = "not looked up: it may continue on the next line"
 
 
 def _causal_items(read) -> list[Item]:
@@ -405,7 +429,8 @@ def as_json(report, discrimination) -> str:
                 "two_decimals": abstract.two_decimals,
                 "verdict": abstract.verdict()},
             **({} if report.package is None else {"package_said": _package_said()}),
-            "findings": [item.as_dict() for item in listed],
+            "findings": [placed(item.as_dict(), item.path, item.line, report.pdfs)
+                         for item in listed],
         },
         indent=2,
         # As `check --json`: a pipe on Windows is cp1252.
@@ -435,11 +460,13 @@ def _reader_counts(report) -> dict[str, int]:
         counts["journal_findings"] = len(run.findings)
         counts["journal_manual_rules"] = len(run.manual)
         counts["authors_named"] = len(run.named)
-    if report.documents:
+    # A PDF's are not read, and are not counted as none (`auditing.document.pdf_facts`).
+    word = [facts for facts in report.documents if not facts.pdf]
+    if word:
         for key, name in (("tracked_insertions", "insertions"), ("tracked_deletions",
                           "deletions"), ("tracked_moves", "moves"), ("comments", "comments"),
                           ("hidden_runs", "hidden")):  # fmt: skip
-            counts[key] = sum(getattr(facts, name) for facts in report.documents)
+            counts[key] = sum(getattr(facts, name) for facts in word)
     if report.causal is not None:
         counts["causal_sentences_read"] = report.causal.read
         counts["causal_words"] = len(report.causal.found)
@@ -467,16 +494,68 @@ def _abstract_counts(read) -> dict[str, int]:
 # ------------------------------------------------------------------------------- the text
 
 
-def _shown(root: Path | None):
-    def show(path: Path) -> str:
-        if root is None:
+class _Show:
+    """How the report names a file and a place in it: a file relative to `root`, a line as
+    "line 12", and a line of a PDF's text as its page and its line (`auditing.pdf`)."""
+
+    def __init__(self, root: Path | None, pdfs: dict | None = None) -> None:
+        self.root = root
+        self.pdfs = pdfs or {}
+
+    def __call__(self, path: Path) -> str:
+        if self.root is None:
             return path.name
         try:
-            return str(path.relative_to(root))
+            return str(path.relative_to(self.root))
         except ValueError:
             return path.name
 
-    return show
+    def pdf(self, path: Path | None):
+        return self.pdfs.get(path) if path is not None else None
+
+    def at(self, path: Path | None, line: int | None) -> str:
+        """"line 12", or "page 3, line 12" in a PDF."""
+        pdf = self.pdf(path)
+        return pdf.said(line) if pdf is not None else f"line {line}"
+
+    def located(self, path: Path, line: int | None) -> str:
+        """"paper.md:12", or "paper.pdf, page 3, line 12"."""
+        pdf = self.pdf(path)
+        if pdf is None:
+            return f"{self(path)}:{line}" if line else self(path)
+        return f"{self(path)}, {pdf.said(line)}" if line else self(path)
+
+
+def _shown(root: Path | None, pdfs: dict | None = None) -> _Show:
+    return _Show(root, pdfs)
+
+
+def placed(item_dict: dict, path: Path | None, line: int | None, pdfs: dict) -> dict:
+    """A finding as JSON, its line given as a page and a line where it is a PDF's
+    (`auditing.pdf.Place`)."""
+    pdf = pdfs.get(path) if path is not None else None
+    place = pdf.place(line) if pdf is not None else None
+    return item_dict if place is None else {**item_dict, **place.as_dict()}
+
+
+def _rendered(found, root: Path | None, show: _Show) -> str:
+    """Findings as `Report.render` gives them, a PDF's at its page and line."""
+    if not any(show.pdf(finding.path) is not None for finding in found):
+        return Report(tuple(found)).render(root)
+    lines: list[str] = []
+    for finding in Report(tuple(found)).sorted().findings:
+        where = finding.located()
+        if show.pdf(finding.path) is not None:
+            where = show.located(finding.path, finding.line)
+        elif root is not None and finding.path is not None and finding.path.is_relative_to(root):
+            where = where.replace(str(finding.path), str(finding.path.relative_to(root)), 1)
+        lines.append(f"  [{finding.severity.upper():4}] {finding.gate} {where}")
+        lines.append(f"         {finding.message}")
+        if finding.context:
+            lines.append(f"         > {finding.context}")
+        if finding.hint:
+            lines.append(f"         hint: {finding.hint}")
+    return "\n".join(lines)
 
 
 def _ranges(numbers: list[int]) -> str:
@@ -492,7 +571,7 @@ def _ranges(numbers: list[int]) -> str:
 
 
 def render(report, discrimination, root: Path | None = None) -> str:
-    show = _shown(root)
+    show = _shown(root, report.pdfs)
     lines = _header(report)
     for heading, said in (
         ("Could not read:", report.unreadable),
@@ -509,7 +588,7 @@ def render(report, discrimination, root: Path | None = None) -> str:
     lines += ["", f"=== {SMALL_CELLS} ===", *_small_cells(report, show)]
     if report.gates:
         lines += ["", f"=== {WRITING} and {LANGUAGE} (not counted by --strict) ===",
-                  *_gates(report, root)]  # fmt: skip
+                  *_gates(report, root, show)]  # fmt: skip
     if report.references:
         lines += ["", f"=== {REFERENCES} (not counted by --strict) ===",
                   *_references(report, show)]  # fmt: skip
@@ -580,7 +659,7 @@ def _membership(report, discrimination, show) -> list[str]:
         for source, listed in by_source.items():
             lines.append(f"  {show(source)}")
             for candidate in listed[:LISTED]:
-                lines.append(f"    line {candidate.line}: {candidate.text}")
+                lines.append(f"    {show.at(source, candidate.line)}: {candidate.text}")
                 lines.append(f"      {candidate.context}")
             if len(listed) > LISTED:
                 lines.append(f"    (+{len(listed) - LISTED} more)")
@@ -598,10 +677,10 @@ def _membership(report, discrimination, show) -> list[str]:
             lines.append(f"  {show(source)}")
             ordered = sorted(numbers)
             for number in ordered[:LISTED]:
-                lines.append(f"    line {number}: {', '.join(numbers[number])}")
+                lines.append(f"    {show.at(source, number)}: {', '.join(numbers[number])}")
             if len(ordered) > LISTED:
-                lines.append(f"    (+{len(ordered) - LISTED} more lines: "
-                             f"{_ranges(ordered[LISTED:])})")  # fmt: skip
+                ranges = "" if show.pdf(source) else f": {_ranges(ordered[LISTED:])}"
+                lines.append(f"    (+{len(ordered) - LISTED} more lines{ranges})")
     if not lines:
         lines.append("  Every number compared is in the outputs.")
     lines += ["", *_worth(discrimination)]
@@ -636,7 +715,7 @@ def _listed(heading: str, found: list, show) -> list[str]:
     for source, listed in by_paper.items():
         lines.append(f"  {show(source)}")
         for item in listed[:LISTED]:
-            lines.append(f"    line {item.line}: {item.message}")
+            lines.append(f"    {show.at(source, item.line)}: {item.message}")
             lines.append(f"      {item.context}")
         if len(listed) > LISTED:
             lines.append(f"    (+{len(listed) - LISTED} more)")
@@ -664,7 +743,7 @@ def _arithmetic(report, show) -> list[str]:
         for source, listed in by_paper.items():
             lines.append(f"  {show(source)}")
             for item in listed:
-                lines.append(f"    line {item.line}: {item.message}")
+                lines.append(f"    {show.at(source, item.line)}: {item.message}")
                 lines.append(f"      {item.context}")
     if report.whole_numbers:
         lines += [""] if lines else []
@@ -679,7 +758,8 @@ def _arithmetic(report, show) -> list[str]:
             apart.setdefault(item.source, []).append(item)
         for source, listed in apart.items():
             lines.append(f"  {show(source)}")
-            lines += [f"    line {item.line}: {item.message}" for item in listed[:LISTED]]
+            lines += [f"    {show.at(source, item.line)}: {item.message}"
+                      for item in listed[:LISTED]]  # fmt: skip
             if len(listed) > LISTED:
                 lines.append(f"    (+{len(listed) - LISTED} more)")
         lines += [
@@ -709,7 +789,8 @@ def _flows(report, show) -> list[str]:
             by_paper.setdefault(item.source, []).append(item)
         for source, listed in by_paper.items():
             lines.append(f"  {show(source)}")
-            lines += [f"    {f'line {item.line}: ' if item.line else ''}{item.message}"
+            lines += [f"    {show.at(source, item.line) + ': ' if item.line else ''}"
+                      f"{item.message}"
                       for item in listed[:LISTED]]  # fmt: skip
             if len(listed) > LISTED:
                 lines.append(f"    (+{len(listed) - LISTED} more)")
@@ -764,23 +845,25 @@ def _small_cells(report, show) -> list[str]:
     return lines
 
 
-def _gates(report, root: Path | None) -> list[str]:
+def _gates(report, root: Path | None, show: _Show) -> list[str]:
     lines: list[str] = []
     for run in report.gates:
         if run.note:
             lines.append(f"  {run.note}")
             continue
-        lines.append(f"  {_shown(root)(run.paper)}: {len(run.writing)} from G6, "
+        lines.append(f"  {show(run.paper)}: {len(run.writing)} from G6, "
                      f"{len(run.language)} from G14"
                      + ("; lines are those of the text pandoc converts it to, as `init "
                         "--from` writes it" if run.converted else ""))  # fmt: skip
         found = (*run.writing, *run.language)
         if found:
-            lines.append(Report(found).render(root))
+            lines.append(_rendered(found, root, show))
     return lines
 
 
 def _references(report, show) -> list[str]:
+    from manuscript_guard.auditing.references import UNTOLD
+
     lines: list[str] = []
     looked: dict[Path, list] = {}
     for one in report.lookups or []:
@@ -791,10 +874,18 @@ def _references(report, show) -> list[str]:
             continue
         count = len(census.entries)
         style = census.style
-        if census.markers and style != "not numbered":
+        if census.markers and style not in ("not numbered", UNTOLD):
             style += f", {census.markers} citation{'s' if census.markers != 1 else ''} read"
-        lines.append(f"  {show(census.path)}: {count} entr{'y' if count == 1 else 'ies'}, "
-                     f"{census.dois} with a DOI, {census.pmids} with a PMID; {style}")  # fmt: skip
+        if style == UNTOLD:
+            # One "entry" an identifier (`references.census_of_printed`).
+            lines.append(f"  {show(census.path)}: {census.dois} DOI(s) and {census.pmids} "
+                         f"PMID(s) read; {UNTOLD_SAID.format(why=census.untold)}")  # fmt: skip
+        else:
+            lines.append(f"  {show(census.path)}: {count} entr{'y' if count == 1 else 'ies'}, "
+                         f"{census.dois} with a DOI, {census.pmids} with a PMID; "
+                         f"{style}")  # fmt: skip
+        lines += [f"    {show.at(census.path, line)}: {said}: {NOT_SENT}"
+                  for line, said in census.unsent]  # fmt: skip
         for problem in census.problems[:LISTED]:
             lines.append(f"    {_at(problem.path, problem.line, census.path, show)}"
                          f"{problem.message}")  # fmt: skip
@@ -820,7 +911,7 @@ def _journal(run, root: Path | None, show) -> list[str]:
     if run.note:
         lines.append(f"  {run.note}")
     elif run.findings:
-        lines.append(Report(tuple(run.findings)).render(root))
+        lines.append(_rendered(run.findings, root, show))
     elif run.limits_unchecked:
         # Not "within every limit" where a limit was not checked (round 2 of #478).
         lines.append("  Nothing found in what was checked; a limit not checked is listed "
@@ -848,13 +939,15 @@ def _document(report, show) -> list[str]:
 
     lines: list[str] = []
     if not report.documents:
-        lines.append("  Not applicable: no .docx was given; tracked changes, comments and the "
-                     "names Word keeps are a Word file's.")  # fmt: skip
+        lines.append("  Not applicable: no .docx was given, nor a PDF; tracked changes, "
+                     "comments and the names Word keeps are a Word file's.")  # fmt: skip
     for facts in report.documents:
         lines.append(f"  {described(facts)} (not counted by --strict)")
-        if not facts.note:
-            lines += [f"    {where}: {name}" for where, name in facts.people] or [
-                "    no person's name in the fields Word keeps"]
+        if facts.note or (facts.pdf and facts.unread):
+            continue
+        fields = "the PDF's Author field" if facts.pdf else "the fields Word keeps"
+        lines += [f"    {where}: {name}" for where, name in facts.people] or [
+            f"    no person's name in {fields}"]
     run = report.journal
     if run is None:
         return lines
@@ -920,8 +1013,8 @@ def _at(path: Path | None, line: int | None, paper: Path, show) -> str:
     a LaTeX paper's `thebibliography` in a file it inputs (round 1 of #463)."""
     if not line:
         return ""
-    return f"{show(path)} line {line}: " if path is not None and path != paper else (
-        f"line {line}: ")  # fmt: skip
+    return (f"{show(path)} {show.at(path, line)}: " if path is not None and path != paper
+            else f"{show.at(paper, line)}: ")  # fmt: skip
 
 
 def _looked(looked: list, paper: Path, show) -> list[str]:

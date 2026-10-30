@@ -2189,7 +2189,8 @@ def _write_cited(report, args: argparse.Namespace) -> bool:
     try:
         cited.write(args.cited, read, [path.name for path in report.papers],
                     report.lookups if args.lookup and not args.dry_run else None,
-                    read.fetched if not args.dry_run else None, said, _shown(Path.cwd()))
+                    read.fetched if not args.dry_run else None, said,
+                    _shown(Path.cwd(), report.pdfs))  # fmt: skip
     except FileExistsError:
         # Made while the audit ran: written over, it would lose what it holds.
         print(f"manuscript-guard audit: --cited {args.cited}: the file is there already, and "
@@ -2208,7 +2209,7 @@ def _read_as_reader(report, reader: _Reader, main: Path, papers: list[Path],
     """G4 held to the journal's profile on the main document, the first paper named; the
     authors looked for in each document read, where the review is blind; and what each
     .docx holds besides its text."""
-    from manuscript_guard.auditing.document import document_facts
+    from manuscript_guard.auditing.document import document_facts, pdf_facts
     from manuscript_guard.auditing.journal import (
         GRAPHICAL,
         JournalRun,
@@ -2219,8 +2220,10 @@ def _read_as_reader(report, reader: _Reader, main: Path, papers: list[Path],
 
     read = {path.resolve() for path in report.papers}
     trees = {tree.entry.resolve(): tree for tree in report.trees}
-    report.documents = [document_facts(path) for path in papers
-                        if path.suffix.lower() == ".docx" and path.resolve() in read]
+    report.documents = [document_facts(path) if path.suffix.lower() == ".docx"
+                        else pdf_facts(path) for path in papers
+                        if path.suffix.lower() in (".docx", ".pdf")
+                        and path.resolve() in read]  # fmt: skip
     tree = trees.get(main.resolve())
     if main.resolve() not in read and tree is None:
         run = JournalRun(main, reader.profile_path, skipped=[*FROM_RECORDS, GRAPHICAL],
@@ -2363,7 +2366,7 @@ def _audit(args: argparse.Namespace, package) -> int:
         return _package_only(args, package)
     from manuscript_guard.audit import (
         FIGURE_SUFFIXES,
-        PAPER_SUFFIXES,
+        FOLDER_SUFFIXES,
         audit,
         doc_passed_over,
         is_lock_file,
@@ -2372,6 +2375,8 @@ def _audit(args: argparse.Namespace, package) -> int:
     from manuscript_guard.auditing import report as sections
     from manuscript_guard.auditing.gates import run_gates
     from manuscript_guard.auditing.latex import is_entry
+    from manuscript_guard.auditing.pdf import NO_PDFTOTEXT, is_pdf
+    from manuscript_guard.auditing.pdf import can_read as can_read_pdf
     from manuscript_guard.auditing.references import look_up
 
     if (args.dry_run or args.lookup_cache) and not args.lookup:
@@ -2427,14 +2432,26 @@ def _audit(args: argparse.Namespace, package) -> int:
         return reader
     english = args.english or (reader.english if reader else None)
 
-    papers = expand(args.paper, PAPER_SUFFIXES)
+    papers = expand(args.paper, FOLDER_SUFFIXES)
     figures = expand(args.figures or [], FIGURE_SUFFIXES)
+    # A PDF is read where it is named: in a folder it is a figure, or a copy of the paper
+    # beside its source, as often as it is the paper (`auditing.pdf`).
+    in_folders = [p for folder in args.paper if folder.is_dir() for p in sorted(folder.rglob("*"))
+                  if p.is_file() and p.suffix.lower() == ".pdf"]  # fmt: skip
+    pdfs_said = [] if not in_folders else [
+        f"{len(in_folders)} PDF file{'s' if len(in_folders) != 1 else ''} in the folder given "
+        "{was} not read: a PDF is audited only where it is named on its own".format(
+            was="was" if len(in_folders) == 1 else "were")]  # fmt: skip
     if not papers and not figures:
         return _audit_refused(
-            args, "nothing to audit: no .docx, .md or .tex that starts a document found in "
-            "what you gave me", *(f"  {doc_passed_over(doc)}" for doc in docs),
-            *(f"  {_no_document(tex)}" for tex in found_tex),
+            args, "nothing to audit: no .docx, .md, .pdf or .tex that starts a document found "
+            "in what you gave me", *(f"  {doc_passed_over(doc)}" for doc in docs),
+            *(f"  {_no_document(tex)}" for tex in found_tex), *(f"  {s}" for s in pdfs_said),
         )  # fmt: skip
+    unread_pdf = next((p for p in papers if is_pdf(p)), None) if not can_read_pdf() else None
+    if unread_pdf is not None:
+        return _audit_refused(args, "manuscript-guard audit: "
+                              + NO_PDFTOTEXT.format(name=unread_pdf.name))  # fmt: skip
 
     # The package's results files, as --against would name them, beside any it names.
     packaged = (sorted(p for p in package.results_dir.glob("*.json") if p.is_file())
@@ -2444,6 +2461,7 @@ def _audit(args: argparse.Namespace, package) -> int:
                    whole_numbers=tuple(args.whole_numbers), passed_over=docs,
                    found_tex=found_tex, minimum=args.minimum_cell_count,
                    design=args.design, cited=args.cited is not None)  # fmt: skip
+    report.passed_over += pdfs_said
     report.package = package
     if args.against and not report.backing_files:
         return _audit_refused(args, "--against gave the audit nothing it can read:",
@@ -2485,7 +2503,8 @@ def _audit(args: argparse.Namespace, package) -> int:
     if args.report_draft is not None:
         from manuscript_guard.auditing.draft import for_audit
 
-        text = for_audit(report, _flags_given(args, _AUDIT_FLAGS), sections._shown(Path.cwd()))
+        text = for_audit(report, _flags_given(args, _AUDIT_FLAGS),
+                         sections._shown(Path.cwd(), report.pdfs))  # fmt: skip
         if not _write_draft(args, text, "audit"):
             return 2
     if args.json:
@@ -2533,8 +2552,10 @@ def cmd_compare(args: argparse.Namespace) -> int:
     if args.report_draft is not None:
         from manuscript_guard.auditing.draft import for_compare
         from manuscript_guard.auditing.report import _shown
+        from manuscript_guard.comparing.report import _pdfs
 
-        text = for_compare(found, _flags_given(args, _COMPARE_FLAGS), _shown(Path.cwd()))
+        text = for_compare(found, _flags_given(args, _COMPARE_FLAGS),
+                           _shown(Path.cwd(), _pdfs(found)))  # fmt: skip
         if not _write_draft(args, text, "compare"):
             return 2
     if args.out is None:
@@ -6072,9 +6093,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     audit.add_argument(
         "paper", nargs="*", type=Path,
-        help=".docx, .md or .tex files, or directories; a .tex is read with the files it "
-        "inputs, and in a directory only a .tex with \\documentclass starts a paper; none "
-        "with --package reads the package alone",
+        help=".docx, .md, .tex or .pdf files, or directories; a .tex is read with the files "
+        "it inputs, and in a directory only a .tex with \\documentclass starts a paper; a .pdf "
+        "is read through pdftotext, and only where it is named; none with --package reads the "
+        "package alone",
     )  # fmt: skip
     audit.add_argument(
         "--against",
@@ -6218,8 +6240,10 @@ def build_parser() -> argparse.ArgumentParser:
         "audited, each finding marked new in it or standing in the version before. Nothing "
         "is sent, and nothing says whether a comment was answered (docs/refereeing.md).",
     )
-    compare.add_argument("old", type=Path, help="the version before: a .docx, .md or .tex")
-    compare.add_argument("new", type=Path, help="the revised version: a .docx, .md or .tex")
+    compare.add_argument("old", type=Path,
+                         help="the version before: a .docx, .md, .tex or .pdf")
+    compare.add_argument("new", type=Path,
+                         help="the revised version: a .docx, .md, .tex or .pdf")
     compare.add_argument(
         "--response",
         type=Path,

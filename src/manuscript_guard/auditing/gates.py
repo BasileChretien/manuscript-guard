@@ -6,8 +6,11 @@ paper as `manuscript/main.md`; a LaTeX entry as `manuscript/main.tex`, beside th
 its tree at their own paths, and the packages and classes its folder holds; a .docx through
 the conversion `init --from` makes (`from_word.convert`), so that its words are read as they
 would be once the paper is brought into a project. Without pandoc a .docx is not converted,
-and the two gates are passed over for it with a note. Each finding's path is put back to the
-paper's, and in a converted .docx its line is a line of the converted text.
+and the two gates are passed over for it with a note. A PDF's text (`auditing.pdf`) is
+staged as Markdown, each line that holds a section's name alone made a heading
+(`_staged_pdf`). Each finding's path is put back to the paper's; in a converted .docx its line
+is a line of the converted text, and in a PDF the line of its text, which the report says as
+a page and a line.
 
 The project's `paper.yaml` is empty but for what the audit is told: `--english` declares the
 paper's English, and `--submission-residue` makes the residue that answers a reviewer a
@@ -46,6 +49,36 @@ class _Staged:
     files: dict[str, str]
     back: dict[str, Path]
     converted: bool = False
+    #: For a PDF, the line of its text (`auditing.pdf.PdfText.text`) that each line of the
+    #: staged `main.md` is, from 1.
+    lines: tuple[int, ...] = ()
+    #: For a PDF whose headings cannot be placed exactly (`auditing.pdf.PdfText.placed`):
+    #: where its Abstract ends is not read, so G4's limits on its words are not checked.
+    unplaced: bool = False
+
+
+def _staged_pdf(paper: Path) -> _Staged:
+    """A PDF's text as the Markdown G4, G6 and G14 read: each line of it a line, and each line
+    that holds a section's name alone (`auditing.pdf.heading_title`) a heading, a blank line
+    before and after it, a structured abstract's a heading under the Abstract's where it can
+    be placed (`PdfText.placed`), with the line of the text each line of the Markdown is."""
+    from manuscript_guard.auditing.pdf import UnreadablePdf, read_pdf
+
+    try:
+        pdf = read_pdf(paper)
+    except UnreadablePdf as exc:
+        raise ValueError(str(exc)) from None
+    placed = pdf.placed
+    levels = ({line: (title, level) for line, title, level in placed} if placed is not None
+              else {line: (title, 1) for line, title in pdf.headings})  # fmt: skip
+    staged: list[str] = []
+    lines: list[int] = []
+    for at, text in enumerate(pdf.text.split("\n"), 1):
+        said = ["", f"{'#' * levels[at][1]} {levels[at][0]}", ""] if at in levels else [text]
+        staged += said
+        lines += [at] * len(said)
+    return _Staged({"main.md": "\n".join(staged) + "\n"}, {"main.md": paper}, lines=tuple(lines),
+                   unplaced=placed is None)  # fmt: skip
 
 
 def _stage(paper: Path, tree=None) -> _Staged:
@@ -55,6 +88,8 @@ def _stage(paper: Path, tree=None) -> _Staged:
     from manuscript_guard.contracts._schema import ContractError
 
     suffix = paper.suffix.lower()
+    if suffix == ".pdf":
+        return _staged_pdf(paper)
     if suffix == ".docx":
         from manuscript_guard.build.document import BuildError, pandoc
         from manuscript_guard.from_word import convert
@@ -119,7 +154,7 @@ def run_gates(
     with tempfile.TemporaryDirectory(prefix="mg-audit-") as folder:
         root = Path(folder).resolve()
         project = audit_project(root, staged, english)
-        put_back = _putting_back(root / "manuscript", staged.back)
+        put_back = _putting_back(root / "manuscript", staged.back, staged.lines)
         try:
             writing = check_writing(project, submission=residue)
             language = check_language(project)
@@ -137,7 +172,11 @@ def run_gates(
         )
 
 
-def _putting_back(manuscript: Path, back: dict[str, Path]) -> Callable[[Finding], Finding]:
+def _putting_back(manuscript: Path, back: dict[str, Path],
+                  lines: tuple[int, ...] = ()) -> Callable[[Finding], Finding]:  # fmt: skip
+    """Each finding at the paper's path; in a PDF at the line of its text, with no column,
+    which is the staged Markdown's (`_staged_pdf`)."""
+
     def put_back(finding: Finding) -> Finding:
         if finding.path is None:
             return finding
@@ -146,6 +185,10 @@ def _putting_back(manuscript: Path, back: dict[str, Path]) -> Callable[[Finding]
         except ValueError:
             # paper.yaml, which the paper has none of.
             return replace(finding, path=None)
+        if lines and name == "main.md":
+            line = finding.line
+            at = lines[line - 1] if line is not None and 0 < line <= len(lines) else None
+            return replace(finding, path=back.get(name), line=at, col=None)
         return replace(finding, path=back.get(name))
 
     return put_back

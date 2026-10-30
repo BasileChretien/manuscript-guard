@@ -304,13 +304,14 @@ def columns(lookup: bool) -> list[str]:
 
 
 def cells(read: CitedRead, looked: list | None, fetched: list[Abstract] | None,
-          show: Callable[[Path], str]) -> list[list[str]]:  # fmt: skip
-    """Each row's cells, in the order of `columns`."""
+          show) -> list[list[str]]:  # fmt: skip
+    """Each row's cells, in the order of `columns`; each place as `show` gives it
+    (`auditing.report._Show.located`), a PDF's as its page and line."""
     by_entry = {_key(one.entry, one.path): one for one in looked or []}
     by_abstract = {_key(one.entry, one.where): one for one in fetched or []}
     found = []
     for number, row in enumerate(read.rows, 1):
-        shown = [str(number), f"{show(row.path)}:{row.line}", row.section, row.sentence,
+        shown = [str(number), show.located(row.path, row.line), row.section, row.sentence,
                  row.written, _entry_said(row)]  # fmt: skip
         if looked is not None:
             one = by_entry.get(_key(row.entry, row.path)) if row.entry is not None else None

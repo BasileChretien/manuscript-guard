@@ -4,7 +4,10 @@ A Markdown or text file is read as it is typed, a .docx as `audit` reads one
 (`text.docx.read_docx_text`: its paragraphs a line each, its headings by their styles, its
 tables cell by cell), and a LaTeX entry with the files it inputs, as the Markdown its document
 prints (`text.latex.printed`), each line of that placed back at its `.tex` file and line, its
-tables read cell by cell from the source (`auditing.latex`). A PDF is not read.
+tables read cell by cell from the source (`auditing.latex`). A PDF is read as `audit` reads
+one (`auditing.pdf`): its text a line of the PDF to a line, its sections from the lines that
+hold a section's name alone, and no table and no figure, which are lines of text there; each
+place in it is a page and a line.
 
 What is kept of each: the text; its sections, each by its title as printed and its own text up
 to the next heading; its tables, each with its label ("Table 2", "Table S1"), its caption and
@@ -22,7 +25,7 @@ from pathlib import Path
 
 #: The formats `compare` reads, by suffix.
 SUFFIXES = {".md": "Markdown", ".markdown": "Markdown", ".txt": "Markdown",
-            ".docx": "Word", ".tex": "LaTeX"}  # fmt: skip
+            ".docx": "Word", ".tex": "LaTeX", ".pdf": "PDF"}  # fmt: skip
 
 #: A display item's label where a caption opens with one: "Table 2.", "**Figure 1**:",
 #: "Supplementary Table 3", "Table S1", "Fig. 4".
@@ -80,6 +83,9 @@ class Version:
     #: The lines of `text` (from 1) of the reference list and the tables, whose numbers are
     #: not compared as the prose's.
     set_apart: frozenset[int] = frozenset()
+    #: Of those, the tables' lines and their captions': read as prose where the other version
+    #: is a PDF, whose tables cannot be set apart (`differences.prose`).
+    table_lines: frozenset[int] = frozenset()
     #: The files read, a LaTeX entry's tree.
     files: tuple[Path, ...] = ()
     #: Where a line of `text` stands in the files, where that is not the line itself.
@@ -88,6 +94,8 @@ class Version:
     notes: tuple[str, ...] = ()
     placed: Callable[[int], tuple[Path, int | None]] | None = field(default=None,
                                                                     compare=False)
+    #: A PDF's text as read (`auditing.pdf.PdfText`), whose lines are said as pages and lines.
+    pdf: object = field(default=None, compare=False)
 
     def place(self, line: int) -> tuple[Path, int | None]:
         return self.placed(line) if self.placed is not None else (self.path, line)
@@ -116,19 +124,18 @@ def read_version(path: Path) -> Version:
     from manuscript_guard.text.docx import NotADocx
 
     suffix = path.suffix.lower()
-    if suffix == ".pdf":
-        raise Unreadable(f"{path} is a PDF, which compare does not read yet: ask the editor for "
-                         "the manuscript's source, a .docx, .md or .tex")  # fmt: skip
     if path.is_dir():
         raise Unreadable(f"{path} is a folder: name the version's file, a .docx, .md or .tex "
                          "(a .tex is read with the files it inputs)")  # fmt: skip
     if not path.is_file():
         raise Unreadable(f"{path} does not exist")
     if suffix not in SUFFIXES:
-        raise Unreadable(f"{path} is not a .docx, .md, .txt or .tex, which is what compare "
-                         "reads")  # fmt: skip
+        raise Unreadable(f"{path} is not a .docx, .md, .txt, .tex or .pdf, which is what "
+                         "compare reads")  # fmt: skip
     try:
-        if suffix == ".docx":
+        if suffix == ".pdf":
+            version = _pdf(path)
+        elif suffix == ".docx":
             version = _word(path)
         elif suffix == ".tex":
             version = _latex(path)
@@ -139,6 +146,27 @@ def read_version(path: Path) -> Version:
     if not re.search(r"[^\W\d_]", version.text):
         raise Unreadable(f"{path} holds no text to compare")
     return version
+
+
+def _pdf(path: Path) -> Version:
+    """A PDF as `audit` reads one (`auditing.pdf`): its sections from the lines that hold a
+    section's name alone, its reference list set apart as the audit finds it, and no table
+    and no figure."""
+    from manuscript_guard.audit import pdf_spans
+    from manuscript_guard.auditing.pdf import UnreadablePdf, read_pdf
+
+    try:
+        pdf = read_pdf(path)
+    except UnreadablePdf as exc:
+        raise Unreadable(str(exc)) from None
+    # A structured abstract's headings under the Abstract where they can be placed exactly
+    # (`PdfText.placed`), as a .docx's styles set them.
+    placed = pdf.placed
+    found = ([(title, level, line) for line, title, level in placed] if placed is not None
+             else [(title, 1, line) for line, title in pdf.headings])  # fmt: skip
+    references = {line + 1 for start, end in pdf_spans(pdf) for line in range(start, end)}
+    return Version(path, "PDF", pdf.text, _sections(pdf.text, found), (), (),
+                   frozenset(references), pdf=pdf)
 
 
 def _sections(text: str, found: list[tuple[str, int, int]]) -> tuple[Heading, ...]:
@@ -181,7 +209,8 @@ def markdown_version(path: Path, text: str) -> Version:
     references = {line + 1 for start, end in bibliography_spans(text)
                   for line in range(start, end)}  # fmt: skip
     return Version(path, "Markdown", text, _sections(text, found), tuple(tables),
-                   _figures(lines, path, in_tables), frozenset(in_tables | references))
+                   _figures(lines, path, in_tables), frozenset(in_tables | references),
+                   table_lines=frozenset(in_tables))
 
 
 def _caption(lines: list[str], first: int, last: int) -> tuple[str | None, str, int]:
@@ -252,7 +281,8 @@ def _word(path: Path) -> Version:
         if at:
             cells.add(at)
     return Version(path, "Word", text, _sections(text, found), tuple(tables),
-                   _figures(lines, path, cells), frozenset(cells | references))
+                   _figures(lines, path, cells), frozenset(cells | references),
+                   table_lines=frozenset(cells))
 
 
 # ------------------------------------------------------------------------------- LaTeX

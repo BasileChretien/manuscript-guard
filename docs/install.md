@@ -81,6 +81,7 @@ particular thing, and the tool tells you which when you reach it.
 | **pandoc** | `build`, `submit`, and what `check` says of TeX in the text | You cannot produce a .docx. Every gate still runs but that one finding: `check` passes, and says in a note that the build judges TeX in the text |
 | **Zotero + Better BibTeX** | live citation fields, `sync-bib`, `sync-sources` | Builds fall back to the committed `references.bib`; citation-key pinning goes unchecked; sources are saved under `literature/sources/` by hand |
 | **poppler** (`pdftotext`) or **pypdf** | reading PDF sources and PDF figures | Those sources are reported as unverifiable rather than passed |
+| **poppler** or **Xpdf** (`pdftotext`, `pdfinfo`) | `audit` and `compare` reading a PDF manuscript; `pdfinfo` reads its Author field for `--journal` | A PDF manuscript is refused with a sentence (pypdf is not used for it); without `pdfinfo` the Author field is said not to be read |
 | **R** (+ `jsonlite`, `digest`) | emitting results from R | Only if your analysis is in R; the Python emitter needs nothing extra |
 | **matplotlib** | the worked example's figure | Only for the example |
 | **A model provider's API key, or Ollama** | `review --run` | The panel is read by people or an agent, and each reading filed with `review --record` |

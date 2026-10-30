@@ -278,7 +278,8 @@ def skeleton(asked: Asked) -> str:
             "before_exits, before = counted()",
             *_appended(),
             "found_exits, found = counted()",
-            "assert found_exits == before_exits",
+            "# A refusal (exit 2) fails the test; a 1 is a command reporting what it found.",
+            "assert 2 not in (before_exits, found_exits)",
             "# The example may print the code already: the test is of what the snippet adds.",
         ]
     inside = [f'"""{_docstring(asked)}"""', *body, *_assertion(asked, counted)]

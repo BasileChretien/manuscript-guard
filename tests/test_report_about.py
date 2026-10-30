@@ -358,3 +358,22 @@ def test_a_commands_test_counts_what_the_snippet_adds(kept, capsys, project, mon
             _run(out, "test_corruption", extra, **fixtures)
     else:
         _run(out, "test_corruption", extra, **fixtures)
+
+
+def test_a_command_that_exits_1_on_what_it_found_passes_once_fixed(kept, capsys, project,
+                                                                   monkeypatch) -> None:
+    """`methods`, `reworded` and the like exit 1 when they report a failure: a fixed command
+    that now reports the code is no refusal, and its test passes."""
+    out = _reported(capsys, "--about", "methods", "--missed", "methods-drift", "--snippet",
+                    UNBOUND)  # fmt: skip
+    runs = iter([(0, ""), (1, "methods-drift")])
+
+    def main(_argv) -> int:
+        exits, said = next(runs)
+        print(said)
+        return exits
+
+    # The test imports `main` from the command line module when it runs.
+    monkeypatch.setattr(cli, "main", main)
+    fixtures = {"project": project, "monkeypatch": monkeypatch, "capsys": capsys}
+    _run(out, "test_corruption", **fixtures)

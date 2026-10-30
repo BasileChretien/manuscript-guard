@@ -12052,9 +12052,10 @@ codes taken of that gate alone and at every severity (`gate_report` there runs s
 checks and counts failures only, so a warning or another gate's code would not be seen). For
 a command other than `audit` and `check` it is `main` with `capsys` in the same file, the
 command's words left as a TODO, its output read before and after the snippet is appended, the
-code counted there as a whole word (not `number` inside `unclassified-number`), and the exit
-code held to be the same in both runs, so that a snippet that makes the command refuse fails
-the test. It asserts the code absent (`--flagged`) or present (`--missed`); on the example,
+code counted there as a whole word (not `number` inside `unclassified-number`), and neither
+run allowed to exit 2, so that a snippet that makes the command refuse fails the test; an exit
+of 1 is a command reporting what it found (`methods`, `reworded`, `communicate check`), and is
+let through. It asserts the code absent (`--flagged`) or present (`--missed`); on the example,
 which may give the code already, it counts the code before the snippet is appended and after,
 and asserts the count unchanged or raised. With no code it stops at `pytest.fail("TODO ...")`
 rather than pass on nothing. `tests/test_report_about.py` runs the test a report writes, in

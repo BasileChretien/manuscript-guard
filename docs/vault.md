@@ -210,20 +210,33 @@ minimum cell count from `paper.yaml`, it gives of each column:
 - for a coded column (and one the dictionary does not list with 50 values or fewer), each level
   of m rows or more with its count, the rest folded into "other";
 - for numbers, dates and times, the rows read, a mean and SD (numbers, from m rows and at least
-  three), and each centile from the 5th to the 95th that has m rows below it and m above it.
-  Never the smallest or the largest value. Dates to the month, times to the hour;
+  three), and each centile from the 5th to the 95th that has m rows below it and m above it,
+  so no centile is the smallest or largest value. Dates to the month, times to the hour;
 - for an identifier, a text, or a column the dictionary does not list whose values are all
   different, only its missing values and the pattern its values share ("AA-99999").
 
-Every column's counts add up to the table's rows. Where a count held back could be worked out
-from the rows and the counts beside it, the smallest count beside it is held back as well
-(`null`).
+Every column's counts add up to the table's rows, and nought is printed as 0, so "<5" is one
+to four, and the levels folded into "other" are as many rows at least. Where a count held back
+could be worked out from the rows and the counts beside it, the smallest count beside it is
+held back as well (`null`). Where none is left to hold back, the column gives nothing of its
+counts and says why (`held`). How many levels "other" folds is not said where that would give
+its count away.
+
+At a minimum of 1 nothing is held back. With few rows, the centiles, the mean and the SD
+together can give the smallest and largest values back: read the profile before releasing it.
+
+`em.profile(..., dataset="visits")` names the data dictionary's dataset the table is; the
+profile records it, and the copy reads only that dataset's entries.
 
 `read_as` says how the file is written, for the synthetic copy to be written alike:
 `delimiter`, `decimal` ("." or ","), `encoding`, `quoting` ("minimal" or "all"), `newline`,
 `dates` (a column's name to its format, made of `%Y %m %d %H %M %S`), and `header_of`, a file
 whose header line is read for its delimiter, a byte-order mark and its line ending. Nothing
-below the header is read for that.
+below the header is read for that. A byte-order mark before the first column's name, as a
+reader that keeps it gives it, is taken off the name and recorded; the copy is written with
+one only where the file had one. The starter script reads with `utf-8-sig`
+(`fileEncoding = "UTF-8-BOM"` in R) and names the file in `header_of`, so the mark is read
+off and still recorded.
 
 A level's name and a column's name are shown as written. A column of names, or a level that is
 one rare diagnosis's own word, is shown by the profile unless the data dictionary types the
@@ -244,7 +257,9 @@ change the seed, or the rows, in that file to draw another copy.
 
 Each column is drawn alone: levels by their counts ("other" as a level named `other`), numbers
 and dates along straight lines between the centiles and beyond them, missing values at their
-rate, identifiers in their pattern with letters X and digits that begin with 9 (`XX-90001`).
+rate, identifiers in their pattern, one to a row, with letters X and the row's number in
+their digits, after a 9 where the digits leave one to spare (`XX-90001`), and `SYN` and the
+row's number where the pattern has too few digits for the rows.
 A row that breaks an order or a unique rule of the data dictionary is drawn again, and after
 1000 tries the copy is refused, naming the rule. Since the columns are drawn apart, a model
 fitted on the copy finds nothing: the copy is for writing and testing the code, not for results.

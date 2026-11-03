@@ -161,6 +161,7 @@ from generated import (
     share_tables,
     signed_ticks,
     signs,
+    small_profile_tables,
     sources,
     suggestion_paragraphs,
     supplements,
@@ -3088,7 +3089,7 @@ def test_a_profile_prints_no_count_under_the_custodian_minimum(drawn: dict) -> N
             assert counted[level["level"]] >= minimum, column
             assert level["count"] in (None, counted[level["level"]]), column
         folded = [level for level, count in counted.items() if count < minimum]
-        assert column.get("other", {}).get("levels", 0) == len(folded), column
+        assert column.get("other", {}).get("levels", 0) in (len(folded), None), column
         if folded:
             count = sum(counted[level] for level in folded)
             assert column["other"]["count"] in (None, count if count >= minimum else held)
@@ -3120,26 +3121,52 @@ def test_a_profile_gives_no_smallest_or_largest_value(drawn: dict) -> None:
             assert _centile_point(column, shown) not in (min(points), max(points)), column
 
 
-@holds(60, profile_tables())
-def test_no_count_a_profile_holds_back_is_given_away_by_the_rows_it_prints(drawn: dict) -> None:
+def _profile_ranges(column: dict, rows: int | None, minimum: int) -> list[tuple[int, float]]:
+    """What a reader knows each count of a column to be: a count printed is itself; "<m" is
+    one to m - 1, since nought is printed as 0; one not printed is nought to the rows; and the
+    k levels "other" folds are k rows at least and k (m - 1) at most."""
+    top = math.inf if rows is None else rows
+
+    def known(cell: object) -> tuple[int, float]:
+        if isinstance(cell, int):
+            return cell, cell
+        return (0, top) if cell is None else (1, minimum - 1)
+
+    ranges = [known(cell) for cell in _profile_cells(column)]
+    folded = column.get("other", {}).get("levels")
+    if folded is not None:
+        at = len(column["levels"])
+        low, high = ranges[at]
+        ranges[at] = max(low, folded), min(high, folded * (minimum - 1))
+    return ranges
+
+
+@holds(60, profile_tables(), small_profile_tables())
+def test_no_count_a_profile_holds_back_is_given_away_by_the_rows_it_prints(
+    drawn: dict, small: dict
+) -> None:
     """The counts of each column are the table's rows, which the profile prints: no count it
-    holds back, "<m", can be worked out from them, whatever the others are within what they
-    print (a count held back beside them, unprinted, being any from nought to the rows)."""
-    document = _profiled(drawn)
-    minimum, rows = drawn["minimum"], document["rows"]
-    assert isinstance(rows, int)
-    for column in document["columns"]:
-        cells = _profile_cells(column)
-        lows = [cell if isinstance(cell, int) else 0 for cell in cells]
-        highs = [cell if isinstance(cell, int) else rows if cell is None else minimum - 1
-                 for cell in cells]  # fmt: skip
-        assert sum(lows) <= rows <= sum(highs), column
-        for at, cell in enumerate(cells):
-            if cell != f"<{minimum}":
-                continue
-            low = max(lows[at], rows - (sum(highs) - highs[at]))
-            high = min(highs[at], rows - (sum(lows) - lows[at]))
-            assert not (low == high and 1 <= low < minimum), (column, cell, low)
+    does not print can be worked out to be one under the minimum, alone or from the rows and
+    the others, whatever they are within what is printed (`_profile_ranges`); in a table so
+    small that nothing can be held back enough, the column's counts are withheld."""
+    for table in (drawn, small):
+        document = _profiled(table)
+        minimum, rows = table["minimum"], document["rows"]
+        for column in document["columns"]:
+            cells = _profile_cells(column)
+            ranges = _profile_ranges(column, rows if isinstance(rows, int) else None, minimum)
+            lows = [low for low, _high in ranges]
+            highs = [max(low, high) for low, high in ranges]
+            if isinstance(rows, int):
+                assert sum(lows) <= rows <= sum(highs), column
+            for at, cell in enumerate(cells):
+                if isinstance(cell, int):
+                    continue
+                low, high = lows[at], highs[at]
+                if isinstance(rows, int):
+                    low = max(low, rows - (sum(highs) - highs[at]))
+                    high = min(high, rows - (sum(lows) - lows[at]))
+                assert not (low == high and 1 <= low < minimum), (column, cell, low)
 
 
 @holds(15, profile_tables(), st.integers(0, 2**31 - 1))
@@ -13938,8 +13965,27 @@ def _a_centile_is_given_whatever_lies_beside_it(patch: pytest.MonkeyPatch) -> No
 def _nothing_is_held_beside_a_count_the_rows_give_away(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.vault import profile
 
-    patch.setattr(profile, "held_beside", lambda counts, total, minimum: [
-        profile._shown(count, minimum) for count in counts])  # fmt: skip
+    patch.setattr(profile, "held_beside", lambda counts, total, minimum, bounds=None, hidden=(): [
+        None if at in hidden else profile._shown(count, minimum)
+        for at, count in enumerate(counts)])  # fmt: skip
+
+
+def _a_count_held_back_may_be_nought(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import custodian
+
+    patch.setattr(custodian, "HELD_LEAST", 0)
+
+
+def _the_levels_folded_say_nothing_of_their_count(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.vault import profile
+
+    patch.setattr(profile, "_other_bounds", lambda levels, count, minimum: (levels, None))
+
+
+def _a_column_nothing_can_be_held_in_is_printed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.vault import profile
+
+    patch.setattr(profile, "_unheld", lambda shown: shown)
 
 
 def _a_synthetic_copy_is_drawn_unseeded(patch: pytest.MonkeyPatch) -> None:
@@ -13969,6 +14015,18 @@ BROKEN = {
     ),
     "a count the rows give away is printed with nothing held beside it": (
         _nothing_is_held_beside_a_count_the_rows_give_away,
+        test_no_count_a_profile_holds_back_is_given_away_by_the_rows_it_prints,
+    ),
+    "a count held back behind the minimum is read as maybe nought": (
+        _a_count_held_back_may_be_nought,
+        test_no_count_a_profile_holds_back_is_given_away_by_the_rows_it_prints,
+    ),
+    "the levels folded into other say nothing of its count": (
+        _the_levels_folded_say_nothing_of_their_count,
+        test_no_count_a_profile_holds_back_is_given_away_by_the_rows_it_prints,
+    ),
+    "a column with nothing left to hold back is printed as it is": (
+        _a_column_nothing_can_be_held_in_is_printed,
         test_no_count_a_profile_holds_back_is_given_away_by_the_rows_it_prints,
     ),
     "a synthetic copy is drawn from an unseeded stream": (

@@ -1670,13 +1670,16 @@ class Emitter:
         `profiles/data/<name>.profile.json`: each column's type (the data dictionary's where
         it has the column), its missing values, and its levels or the centiles of its values,
         every count below the custodian's minimum (`paper.yaml`,
-        `custodian.minimum_cell_count`) held back, never the smallest or largest value
-        (`vault/profile.py`). `read_as` says how the file was read, for the copy to be
-        written alike: `delimiter`, `decimal`, `encoding`, `quoting` ("minimal" or "all"),
-        `newline`, `dates` (a column's name to its format, of %Y %m %d %H %M %S), and
-        `header_of`, the file whose header line is read for the delimiter, a byte-order mark
-        and the line ending. Run under `vault run`, the profile leaves the vault only when a
-        person releases it; `vault synthesize` then draws the copy from it.
+        `custodian.minimum_cell_count`) held back, and no centile that is the smallest or
+        largest value (`vault/profile.py`). At a minimum of 1 nothing is held back, and with
+        few rows the centiles, mean and SD together can give the ends back. `read_as` says
+        how the file was read, for the copy to be written alike: `delimiter`, `decimal`,
+        `encoding`, `quoting` ("minimal" or "all"), `newline`, `dates` (a column's name to its
+        format, of %Y %m %d %H %M %S), and `header_of`, the file whose header line is read for
+        the delimiter, a byte-order mark and the line ending. A byte-order mark before the
+        first column's name is taken off it and recorded. `dataset` is the dictionary's
+        dataset the table is, recorded too. Run under `vault run`, the profile leaves the
+        vault only when a person releases it; `vault synthesize` then draws the copy from it.
         """
         from manuscript_guard.vault import profile as profiling
 

@@ -4,7 +4,7 @@
   "title": "manuscript-guard data profile",
   "description": "What the author's script wrote of a file of the vault with `em.profile` (`em$profile` in R), under `vault run`, at profiles/data/<name>.profile.json, and what a person released: for each column its type, its missing values, and its levels or the centiles of its values, each count below the custodian's minimum held back. `vault synthesize` draws the synthetic copy from it and from nothing else.",
   "type": "object",
-  "required": ["schema", "name", "minimum_cell_count", "rows", "file", "columns"],
+  "required": ["schema", "name", "dataset", "minimum_cell_count", "rows", "file", "columns"],
   "additionalProperties": false,
   "$defs": {
     "count": {
@@ -29,6 +29,10 @@
       "pattern": "^(?!/)(?![A-Za-z]:)(?!(.*/)?[.][.]?(/|$))[^\\\\:]*$",
       "description": "The file's label in the vault, and of its synthetic copy in data/synthetic/."
     },
+    "dataset": {
+      "type": ["string", "null"],
+      "description": "The data dictionary's dataset the table is, as em.profile was given it; null for none."
+    },
     "minimum_cell_count": { "type": "integer", "minimum": 1 },
     "rows": {
       "oneOf": [
@@ -38,7 +42,7 @@
     },
     "file": {
       "type": "object",
-      "required": ["format", "delimiter", "decimal", "encoding", "quoting", "newline"],
+      "required": ["format", "delimiter", "decimal", "encoding", "quoting", "newline", "bom"],
       "additionalProperties": false,
       "properties": {
         "format": { "type": "string", "description": "The file's extension, in lower case." },
@@ -46,7 +50,8 @@
         "decimal": { "enum": [".", ","] },
         "encoding": { "type": "string", "minLength": 1 },
         "quoting": { "enum": ["minimal", "all"] },
-        "newline": { "enum": ["\n", "\r\n"] }
+        "newline": { "enum": ["\n", "\r\n"] },
+        "bom": { "type": "boolean", "description": "Whether the file opens with a byte-order mark." }
       }
     },
     "columns": {
@@ -82,7 +87,10 @@
             "required": ["levels", "count"],
             "additionalProperties": false,
             "properties": {
-              "levels": { "type": "integer", "minimum": 1 },
+              "levels": {
+                "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }],
+                "description": "How many levels are folded; null where saying so would give the count away."
+              },
               "count": { "$ref": "#/$defs/count" }
             }
           },
@@ -92,7 +100,11 @@
           "sd": { "type": "number", "minimum": 0 },
           "decimals": { "type": "integer", "minimum": 0, "maximum": 6 },
           "centiles": { "$ref": "#/$defs/centiles" },
-          "pattern": { "type": "string", "minLength": 1 }
+          "pattern": { "type": "string", "minLength": 1 },
+          "held": {
+            "type": "string",
+            "description": "Why a column's counts are withheld: they would give a count below the minimum away, and none is left to hold back beside it."
+          }
         },
         "allOf": [
           {

@@ -1,6 +1,7 @@
 {
   "schema": "manuscript-guard/data-profile/1",
   "name": "cohort.csv",
+  "dataset": null,
   "minimum_cell_count": 5,
   "rows": 88,
   "file": {
@@ -9,7 +10,8 @@
     "decimal": ".",
     "encoding": "utf-8",
     "quoting": "minimal",
-    "newline": "\n"
+    "newline": "\n",
+    "bom": false
   },
   "columns": [
     {

@@ -136,3 +136,51 @@ for (folder in c({listed})) {{
                  if (Path(folder) / "r.json").read_bytes()
                  != (Path(folder) / "python.json").read_bytes()]  # fmt: skip
     assert not differing, differing[:3]
+
+
+def test_the_centile_index_holds_past_r_s_integers(tmp_path: Path) -> None:
+    """95 times 30 million is past R's largest integer: the place is worked out in doubles."""
+    out = run_r(tmp_path, "cat(format(mg_profile_centile_index(95L, 30000000L), "
+                          "scientific = FALSE))")  # fmt: skip
+    assert int(out.strip()) == profiling._centile_index(95, 30_000_000)
+
+
+#: Tables whose counts a reader could work out but for round 1 of the profile's review: two
+#: counts held back of one row each beside 98; four levels of one row folded; eight rows that
+#: leave nothing to hold back; a minimum of 2; a byte-order mark before the first name, which
+#: R's reader drops and the test puts back. Each has a second column, since `read.csv` skips a
+#: line that is blank.
+SHAPES = [
+    (5, {"x": ["a"] * 98 + ["b"] + [""], "k": ["k"] * 100}),
+    (5, {"x": ["a"] * 96 + ["b", "c", "d", "e"], "k": ["k"] * 100}),
+    (5, {"x": ["a", "a", "b", "b"] + [""] * 4, "n": ["1", "2", "3", "", "", "", "", ""]}),
+    (2, {"x": ["a"] * 9 + ["b"], "k": ["k"] * 10}),
+    (5, {chr(0xFEFF) + "id": [f"P{n}" for n in range(12)], "g": ["a", "b"] * 6}),
+]
+
+
+def test_the_shapes_round_one_found_give_the_same_bytes(tmp_path: Path) -> None:
+    folders = []
+    for at, (minimum, columns) in enumerate(SHAPES):
+        folder = tmp_path / f"s{at}"
+        _project(folder, {"minimum": minimum, "types": {}, "columns": columns})
+        document = profiling.profile(columns, name="table.csv", minimum=minimum)
+        (folder / "python.json").write_bytes((profiling.dumps(document) + "\n").encode("utf-8"))
+        folders.append(folder.as_posix())
+    listed = ", ".join(f'"{folder}"' for folder in folders)
+    run_r(tmp_path, f"""
+for (folder in c({listed})) {{
+  data <- read.csv(file.path(folder, "table.csv"), colClasses = "character", check.names = FALSE,
+                   na.strings = character(), encoding = "UTF-8")
+  marked <- identical(readBin(file.path(folder, "table.csv"), "raw", 3L),
+                      as.raw(c(0xef, 0xbb, 0xbf)))
+  if (marked && !startsWith(names(data)[1], intToUtf8(0xFEFF))) {{
+    names(data)[1] <- paste0(intToUtf8(0xFEFF), names(data)[1])
+  }}
+  document <- mg_profile(data, "table.csv", mg_minimum_cell_count(folder))
+  writeBin(charToRaw(enc2utf8(paste0(mg_profile_json(document), "\\n"))),
+           file.path(folder, "r.json"))
+}}
+""")
+    for folder in folders:
+        assert (Path(folder) / "r.json").read_bytes() == (Path(folder) / "python.json").read_bytes()

@@ -98,8 +98,8 @@ def test_the_seed_is_written_on_first_use_and_kept(released: Path) -> None:
 def test_a_shape_other_than_plain_csv_is_written_as_the_profile_says(released: Path) -> None:
     def shaped(document: dict) -> None:
         document["file"] = {"format": "csv", "delimiter": ";", "decimal": ",",
-                            "encoding": "utf-8-sig", "quoting": "all",
-                            "newline": "\r\n"}  # fmt: skip
+                            "encoding": "utf-8", "quoting": "all", "newline": "\r\n",
+                            "bom": True}  # fmt: skip
 
     edit_profile(released, shaped)
     raw = synthesize(released, "cohort.csv").path.read_bytes()
@@ -187,19 +187,22 @@ def test_synthesize_reads_nothing_of_the_vault(released: Path, monkeypatch) -> N
                for path in opened), opened  # fmt: skip
 
 
-@pytest.mark.parametrize(("pattern", "row", "made"), [
-    ("AA-99999", 1, "XX-90001"),
-    ("99999", 42, "90042"),
-    ("a9", 3, "x3"),
-    ("9", 12, "2"),
-    ("AA", 5, "XX"),
-    ("99-99", 7, "99-97"),
-    (None, 7, "SYN7"),
+@pytest.mark.parametrize(("pattern", "row", "rows", "made"), [
+    ("AA-99999", 1, 60, "XX-90001"),
+    ("99999", 42, 100, "90042"),
+    ("99999", 42, 10000, "00042"),
+    ("a9", 3, 9, "x3"),
+    ("9", 12, 12, "SYN12"),
+    ("AA", 5, 5, "SYN5"),
+    ("99-99", 7, 100, "90-07"),
+    ("A999", 1, 950, "X001"),
+    ("A999", 901, 950, "X901"),
+    (None, 7, 7, "SYN7"),
 ])  # fmt: skip
 def test_an_identifier_follows_its_pattern_and_looks_like_no_real_one(
-    pattern: str | None, row: int, made: str
+    pattern: str | None, row: int, rows: int, made: str
 ) -> None:
-    assert identifier(pattern, row) == made
+    assert identifier(pattern, row, rows) == made
 
 
 def test_a_date_is_written_in_its_format() -> None:
@@ -281,3 +284,58 @@ def test_the_starter_script_profiles_each_file_under_a_vault_run(
         encoding="utf-8"))  # fmt: skip
     assert profile["rows"] == 40 and [c["name"] for c in profile["columns"]] == ["id", "age"]
     assert starter.SCRIPT.name == "00_profile"
+
+
+# ------------------------------------------------- round 1: identifiers, dataset, mark
+
+
+@pytest.mark.parametrize("pattern", ["A999", "99", "9", "AA-99999", "AA", "9a9"])
+@pytest.mark.parametrize("rows", [9, 10, 11, 99, 100, 101, 999, 1000, 1001, 10000, 10001])
+def test_an_identifier_is_one_for_each_row_and_keeps_its_pattern_where_it_holds_them(
+    pattern: str, rows: int
+) -> None:
+    from manuscript_guard.vault.profile import shape_of
+
+    made = [identifier(pattern, row, rows) for row in range(1, rows + 1)]
+    assert len(set(made)) == rows
+    digits = pattern.count("9")
+    if digits and rows < 10**digits:
+        assert all(shape_of(one) == pattern for one in made)
+    else:
+        assert all(one.startswith("SYN") for one in made)
+
+
+def test_a_variable_is_looked_up_in_the_profile_s_dataset(released: Path) -> None:
+    dictionary = released / "design" / "data_dictionary.yaml"
+    document = yaml.safe_load(dictionary.read_text(encoding="utf-8"))
+    """The dictionary's `age` is another dataset's, whose range would raise every age past
+    500: the profile of no dataset draws its ages from its own centiles."""
+    document["datasets"] = [{"id": "other", "label": "Another table"}]
+    for entry in document["variables"]:
+        if entry["name"] == "age":
+            entry.update(dataset="other", range={"min": 500, "max": 600})
+    dictionary.write_text(yaml.safe_dump(document), encoding="utf-8")
+    edit_profile(released, lambda profile: profile.update(dataset=None))
+    rows = rows_of(synthesize(released, "cohort.csv").path)
+    assert any(row["age"] for row in rows)
+    assert all(row["age"] == "" or int(row["age"]) < 500 for row in rows)
+
+
+def test_a_byte_order_mark_is_written_only_where_the_file_had_one(released: Path) -> None:
+    def marked(on: bool):
+        return lambda document: document["file"].update(bom=on)
+
+    edit_profile(released, marked(True))
+    assert synthesize(released, "cohort.csv").path.read_bytes().startswith(b"\xef\xbb\xbf")
+    edit_profile(released, marked(False))
+    assert not synthesize(released, "cohort.csv").path.read_bytes().startswith(b"\xef\xbb\xbf")
+
+
+def test_the_starter_script_reads_a_byte_order_mark(paper: Path, data: Path) -> None:
+    assert main(["vault", "init", str(data), "*.*", "--as", "Ada", "--path", str(paper)]) == 0
+    assert 'encoding="utf-8-sig"' in (paper / "analysis" / "00_profile.py").read_text("utf-8")
+    (paper / "analysis" / "01.R").write_text("", encoding="utf-8")
+    (paper / "analysis" / "02.R").write_text("", encoding="utf-8")
+    (paper / "analysis" / "00_profile.py").unlink()
+    assert main(["vault", "init", str(data), "*.*", "--as", "Ada", "--path", str(paper)]) == 0
+    assert 'fileEncoding = "UTF-8-BOM"' in (paper / "analysis" / "00_profile.R").read_text("utf-8")

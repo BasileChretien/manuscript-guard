@@ -40,7 +40,7 @@ em = Emitter(__file__)
 '''
 
 _PYTHON_FILE = '''
-with open(VAULT / {label!r}, newline="", encoding="utf-8") as handle:
+with open(VAULT / {label!r}, newline="", encoding="utf-8-sig") as handle:
     em.profile(list(csv.DictReader(handle{delimiter})), name={label!r},
                read_as={{"header_of": VAULT / {label!r}}})
 '''
@@ -70,7 +70,7 @@ em <- mg_emitter("analysis/00_profile.R")
 
 _R_FILE = '''
 em$profile(read.csv(file.path(vault, {quoted}), colClasses = "character",
-                    check.names = FALSE, encoding = "UTF-8"{delimiter}),
+                    check.names = FALSE, fileEncoding = "UTF-8-BOM"{delimiter}),
            name = {quoted}, read_as = list(header_of = file.path(vault, {quoted})))
 '''
 

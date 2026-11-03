@@ -12562,8 +12562,9 @@ of it (`kind`):
   some row holds; dates are read and given to the month, times to the hour, and the m rows on
   each side are counted in those units. A number also gets a mean and SD from max(m, 3) rows
   (two values and their mean and SD are the two values), and the decimal places it is most
-  often written to. Neither the smallest nor the largest value is given: m ≥ 1 rows lie beyond
-  each centile given.
+  often written to. No centile is the smallest or largest value: m ≥ 1 rows lie beyond each
+  centile given. At a minimum of 1 nothing is held back, and with few rows the centiles, the
+  mean and the SD together can give the smallest and largest values back.
 - **withheld**: an identifier or a text, and a column the dictionary does not type whose
   values are all different or that holds more than 50 different values that are neither
   numbers nor dates. Only its missing values, and the pattern its values share where all of
@@ -12571,13 +12572,21 @@ of it (`kind`):
   rest as written).
 
 Each count is printed as itself, or `quality.held_back`'s "<m" from 1 to m−1, and a missing
-share only from m. The counts of a column are the table's rows, which are printed, so a count
+share only from m. Nought is printed as 0, so a reader knows "<m" to be one to m−1
+(`custodian.HELD_LEAST`), and the k levels folded into "other" to be k rows at least and
+k(m−1) at most. The counts of a column are the table's rows, which are printed, so a count
 held back can be the rows less the others. Each column's counts are read as a line of a table
-(`gates.custodian.recoverable_counts`, the reading `recoverable` makes of a table's line), and
-where it gives a count held back away, the smallest count printed beside it is held back too,
-unprinted (`null`), until none is given away. The design said to hold back the total; that
+(`gates.custodian.recoverable_counts`, the reading `recoverable` makes of a table's line, with
+what is known of each count as its bounds), and where it gives a count held back away, alone or
+beside the others, the smallest count printed beside it is held back too, unprinted (`null`),
+until none is given away. Where no count is left to hold back, the column is withheld: its
+name, its type and its missing values, with `held` saying why. How many levels "other" folds
+is not said where its count is held back and k = m−1, which would give it away alone. A "<2"
+behind a minimum of 2 can only be 1, and is not printed. Round 1 of the review found each of
+these: 98, "<5" and "<5" of 100 rows are 1 and 1; four levels of one row folded are 4; eight
+rows of four in rare levels and four missing leave each 4. The design said to hold back the total; that
 holds nothing here, because every column's counts add up to the same rows, and any column whose
-counts are all printed gives them back. `vault synthesize` reads a count held back as an even
+counts are all printed gives them back (accepted in round 1). `vault synthesize` reads a count held back as an even
 share of what the rows leave.
 
 The file's shape is for the copy: the delimiter, decimal mark, encoding, quoting and line ending
@@ -12616,9 +12625,11 @@ the vault. Each value of a row, column by column:
   fewer than two centiles evenly about its mean (half-width √3 SD), or the one value given;
   rounded to its decimal places, a count to a whole number from nought, and kept within the
   dictionary's range; a date's day and a date and time's clock from the fraction left;
-- a withheld column: its pattern, letters X, the last run of digits the row's number after a
-  9 and the runs before it 9s (`AA-99999` gives `XX-90001`); with none, `SYN` and the row's
-  number, a number the row's number, a date from 2000-01-01.
+- a withheld column: its pattern, one to a row for any number of rows, letters X and its
+  digits, read as one number, the row's number, after a 9 where the rows leave a digit to spare
+  (`AA-99999` gives `XX-90001`); where the pattern has no digit, or too few for the rows
+  (`A999` beside 1000 rows), or there is none, `SYN` and the row's number; a number the row's
+  number, a date from 2000-01-01.
 
 A row that breaks an order or unique rule of the dictionary whose variables are all columns of
 the copy is drawn again, up to 1000 times, and then the copy is refused naming the rule; a
@@ -12628,7 +12639,10 @@ from, and only exact arithmetic, `math.floor`, `math.sqrt` (correctly rounded) a
 formatting turn it into text, so the same profile and seed give the same bytes:
 `tests/data/profile/expected.synthetic.csv` holds every platform and Python version CI runs to
 them, and a property holds it over drawn profiles. The copy is written in the profile's shape
-with Python's `csv` writer.
+with Python's `csv` writer, a byte-order mark first only where the profile says the file had
+one. Every sum of floats is `math.fsum`, since Python 3.12 changed what `sum` gives of floats.
+The profile records the dictionary's dataset it is of, and the copy reads only that dataset's
+entries.
 
 ## Known gaps
 
@@ -20062,7 +20076,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `identifier` withholds it.
   - *A centile is a row's value.* It has m rows below and m above it, and it is still the
     value one or more rows hold, to six significant figures, a month or an hour. A mean and SD
-    of a few rows above m say much of each.
+    of a few rows above m say much of each, and with few rows the centiles, mean and SD
+    together can give the smallest and largest values back. At a minimum of 1 nothing is held
+    back.
   - *What two profiles say together is not read.* The profile of a slightly changed extract
     beside an earlier one, two columns that are the same variable, or a profile beside a
     released result, can give away what neither does alone; each column's counts are read

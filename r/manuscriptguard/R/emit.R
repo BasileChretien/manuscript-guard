@@ -1536,7 +1536,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
 
   # Write the profile of a file of the vault, for its synthetic copy, mirroring the Python
   # `profile()` (profile.R): profiles/data/<name>.profile.json, every count below the
-  # custodian's minimum held back, never the smallest or largest value. `read_as` says how
+  # custodian's minimum held back, no centile the smallest or largest. `read_as` says how
   # the file was read: delimiter, decimal, encoding, quoting, newline, dates (a column's
   # name to its format) and header_of, the file whose header line is read for its shape.
   profile <- function(data, name, read_as = NULL, dataset = NULL) {

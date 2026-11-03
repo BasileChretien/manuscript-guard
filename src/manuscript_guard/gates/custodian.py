@@ -204,21 +204,32 @@ def recoverable(table, minimum: int | None) -> list:
     return [found for found in recovered(table_lines(table)) if _forbidden(found.value, minimum)]
 
 
-def recoverable_counts(total: int, shown: Sequence, minimum: int) -> list[int]:
+#: The least a count held back behind the minimum can be, where nought is printed as 0: a
+#: data profile prints a count of nought, so its "<5" is one to four (round 1 of Task F, 3).
+HELD_LEAST = 1
+
+
+def recoverable_counts(
+    total: int, shown: Sequence, minimum: int, bounds: Sequence | None = None
+) -> list[int]:
     """The places of the counts held back that a total printed beside them gives away, as
     `recoverable` reads a table's line: the counts are the whole of the total, each printed
-    as itself (an integer), held back behind the minimum ("<5", from nought to four), or not
-    printed at all (None, from nought to the total). A data profile's column is such a line
-    (`vault/profile.py`)."""
+    as itself (an integer), held back behind the minimum ("<5", from `HELD_LEAST` to four,
+    since nought is printed as 0), or not printed at all (None, from nought to the total).
+    `bounds` narrows a count held back where more is known of it: (least, most), or None. A
+    data profile's column is such a line (`vault/profile.py`)."""
     from manuscript_guard.stats.margins import Count, Line, Member, recovered
 
     def count(at: int, one: object) -> Member:
         if isinstance(one, int) and not isinstance(one, bool):
             return Member(Count(one, one, str(one), at), str(at))
-        high = total if one is None else held_largest(str(one))
+        low, high = (0, total) if one is None else (HELD_LEAST, held_largest(str(one)))
         if high is None:
             raise ValueError(f"a count printed {one!r} is neither a count nor held back")
-        return Member(Count(0, high, str(one), at, held=True), str(at))
+        known = bounds[at] if bounds is not None else None
+        if known is not None:
+            low, high = max(low, known[0]), min(high, known[1])
+        return Member(Count(low, max(low, high), str(one), at, held=True), str(at))
 
     members = tuple(count(at, one) for at, one in enumerate(shown))
     line = Line(Member(Count(total, total, str(total), -1), "total"), members, "the total",

@@ -4826,18 +4826,26 @@ def vault_commands(draw: st.DrawFn) -> tuple[list[str], list[str | None]]:
 #: levels some of which are rare; levels whose only count held back is the rare ones', and
 #: the missing values', which the rows would give away; numbers and dates and times, with
 #: the smallest and largest value each held by several rows ("ends"); identifiers and texts,
-#: each value different; and counts some of which are no number.
+#: each value different; counts some of which are no number; a rare level of one row beside
+#: one missing value, which since nought is printed are one each ("two ones"); and a level of
+#: one row for each of the minimum less one, which their number gives away ("folded pin").
 PROFILE_KINDS = {
     "levels": None, "rare closing": None, "missing closing": None, "number": "continuous",
     "ends": "continuous", "date": "date", "time": "time", "identifier": None, "text": None,
-    "unread": "count",
+    "unread": "count", "two ones": None, "folded pin": None,
 }  # fmt: skip
+#: The kinds of a table so small that its counts give one held back away whatever else is
+#: held: as many missing values as rows of one rare level, or as numbers, the minimum less one
+#: each, in a table of twice that many rows.
+SMALL_KINDS = {"tiny levels": None, "tiny number": "continuous"}
 
 
-def _levels_column(rng: Any, rows: int, minimum: int, rare: int, missing: int) -> list[str]:
-    """Levels: `rare` of them each under `minimum`, `missing` blanks, and the rest in common
-    levels of `minimum` rows or more."""
-    counts = [rng.randint(1, minimum - 1) for _ in range(rare)] if minimum > 1 else []
+def _levels_column(rng: Any, rows: int, minimum: int, rare: int, missing: int,
+                   counts: list[int] | None = None) -> list[str]:  # fmt: skip
+    """Levels: `rare` of them each under `minimum` (or of the `counts` given), `missing`
+    blanks, and the rest in common levels of `minimum` rows or more."""
+    if counts is None:
+        counts = [rng.randint(1, minimum - 1) for _ in range(rare)] if minimum > 1 else []
     rest = rows - sum(counts) - missing
     common = max(1, min(4, rest // minimum))
     shares = [minimum] * common
@@ -4870,6 +4878,17 @@ def _spread_column(rng: Any, rows: int, minimum: int, kind: str, ends: bool) -> 
 
 
 def _profile_column(rng: Any, kind: str, rows: int, minimum: int) -> list[str]:
+    if kind == "two ones":
+        return _levels_column(rng, rows, minimum, 0, 1, counts=[1] if minimum > 1 else [])
+    if kind == "folded pin":
+        return _levels_column(rng, rows, minimum, 0, 0, counts=[1] * (minimum - 1))
+    if kind in SMALL_KINDS:
+        held = minimum - 1
+        values = [""] * held
+        values += (["r0"] * held if kind == "tiny levels"
+                   else [str(10 + at) for at in range(held)])  # fmt: skip
+        rng.shuffle(values)
+        return values
     if kind == "levels":
         return _levels_column(rng, rows, minimum, rng.randint(1, 2), rng.randint(0, minimum))
     if kind == "rare closing":
@@ -4904,6 +4923,21 @@ def profile_tables(draw: st.DrawFn) -> dict[str, Any]:
         "minimum": minimum,
         "types": {kind: PROFILE_KINDS[kind] for kind in kinds if PROFILE_KINDS[kind]},
         "columns": {kind: _profile_column(rng, kind, rows, minimum) for kind in kinds},
+    }
+
+
+@st.composite
+def small_profile_tables(draw: st.DrawFn) -> dict[str, Any]:
+    """A table of twice the minimum less one rows, holding each of `SMALL_KINDS`: the minimum
+    less one missing values beside as many rows of one rare level, or of numbers, so that each
+    count is held back and the rows give it away."""
+    minimum = draw(st.sampled_from((3, 5, 10, 11)))
+    rng = draw(st.randoms(use_true_random=False))
+    kinds = draw(st.permutations(list(SMALL_KINDS)))
+    return {
+        "minimum": minimum,
+        "types": {kind: SMALL_KINDS[kind] for kind in kinds if SMALL_KINDS[kind]},
+        "columns": {kind: _profile_column(rng, kind, 2 * minimum - 2, minimum) for kind in kinds},
     }
 
 

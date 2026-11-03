@@ -16,8 +16,9 @@ Each column is drawn alone:
   smallest or largest value is made; with fewer than two centiles, evenly about the mean
   with its SD, or the one value given;
 * a missing value at the released rate;
-* an identifier by its released pattern, its letters X and its last run of digits the row's
-  number after a 9, and with no pattern `SYN` and the row's number.
+* an identifier by its released pattern, one to a row: its letters X and its digits the row's
+  number, after a 9 where the pattern has a digit to spare for it; and `SYN` and the row's
+  number where the pattern has no digit, or too few for the rows, or there is no pattern.
 
 A row that breaks a rule of the dictionary across variables (an order, a key that must be
 unique) is drawn again, up to `REDRAWS` times, and then the copy is refused, naming the
@@ -141,7 +142,7 @@ def _estimates(shown: list, total: int | None, minimum: int) -> list[float]:
             out[at] = min(left / len(held), minimum - 1)
     unbounded = [at for at in held if shown[at] is None]
     if left is not None and unbounded:
-        rest = left - sum(out[at] for at in held if shown[at] is not None)
+        rest = left - math.fsum(out[at] for at in held if shown[at] is not None)
         for at in unbounded:
             out[at] = max(rest, 0.0) / len(unbounded)
     return out
@@ -149,7 +150,7 @@ def _estimates(shown: list, total: int | None, minimum: int) -> list[float]:
 
 def _pick(u: float, weights: list[float]) -> int:
     """The place `u` falls at among the weights, each its share of their sum."""
-    whole = sum(weights)
+    whole = math.fsum(weights)
     if whole <= 0:
         return min(int(u * len(weights)), len(weights) - 1)
     reached = 0.0
@@ -186,6 +187,8 @@ class _Column:
     variable: Variable | None
     minimum: int
     total: int | None
+    #: The rows the copy draws.
+    rows: int = 0
     weights: list[float] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -303,29 +306,24 @@ def _time(column: _Column, u: float) -> _Drawn | None:
     return _Drawn(text, text)
 
 
-def identifier(pattern: str | None, row: int) -> str:
-    """An identifier of the released pattern, or `SYN` and the row's number: its letters X,
-    any other letter X, and in its last run of digits the row's number after a 9, the runs
-    before it 9s."""
-    number = str(row)
-    if not pattern:
-        return f"SYN{number}"
-    runs = [at for at, char in enumerate(pattern) if char == "9"]
-    last: list[int] = []
-    for at in reversed(runs):
-        if last and at != last[-1] - 1:
-            break
-        last.append(at)
-    last.reverse()
-    digits = number.zfill(len(last))[-len(last):] if last else ""
-    if len(last) >= 2 and len(number) < len(last):
-        digits = "9" + number.zfill(len(last) - 1)
-    fill = dict(zip(last, digits, strict=True))
-    return "".join(fill.get(at, {"9": "9", "A": "X", "a": "x", "?": "X"}.get(char, char))
+def identifier(pattern: str | None, row: int, rows: int) -> str:
+    """The identifier of row `row` of `rows`, one to a row for any count of rows. In the
+    released pattern where its digits can hold every row: its letters X (any other letter X
+    too), and its digits, read left to right as one number, the row's number, after a 9 where
+    the rows leave a digit to spare. Otherwise `SYN` and the row's number."""
+    places = [at for at, char in enumerate(pattern or "") if char == "9"]
+    width = len(places)
+    if not pattern or not width or rows >= 10**width:
+        return f"SYN{row}"
+    spare = width >= 2 and rows < 10 ** (width - 1)
+    digits = "9" + str(row).zfill(width - 1) if spare else str(row).zfill(width)
+    fill = dict(zip(places, digits, strict=True))
+    return "".join(fill.get(at, {"A": "X", "a": "x", "?": "X"}.get(char, char))
                    for at, char in enumerate(pattern))  # fmt: skip
 
 
 def _withheld(column: _Column, row: int) -> _Drawn:
+    """A value of a column the profile gives nothing of the values of."""
     kind = column.spec["type"]
     if kind in ("continuous", "count") and "pattern" not in column.spec:
         return _Drawn(float(row), str(row))
@@ -334,7 +332,7 @@ def _withheld(column: _Column, row: int) -> _Drawn:
         return _Drawn(day, day)
     if kind == "time":
         return _Drawn("00:00", "00:00")
-    text = identifier(column.spec.get("pattern"), row)
+    text = identifier(column.spec.get("pattern"), row, column.rows)
     return _Drawn(text, text)
 
 
@@ -392,7 +390,16 @@ class _Rules:
                 self.seen[rule.id].add(key)
 
 
-def _rules(dictionary: Dictionary | None, names: set[str]) -> tuple[_Rules, list[str]]:
+def variable_of(dictionary: Dictionary | None, name: str, dataset: str | None) -> Variable | None:
+    """The dictionary's entry for a column of the profile's dataset."""
+    if dictionary is None:
+        return None
+    return next((variable for variable in dictionary.variables
+                 if variable.name == name and variable.dataset == dataset), None)  # fmt: skip
+
+
+def _rules(dictionary: Dictionary | None, names: set[str],
+           dataset: str | None) -> tuple[_Rules, list[str]]:  # fmt: skip
     rules, notes = _Rules(), []
     if dictionary is None:
         return rules, notes
@@ -401,10 +408,14 @@ def _rules(dictionary: Dictionary | None, names: set[str]) -> tuple[_Rules, list
         if rule.computed:
             notes.append(f"rule {rule.id} is computed by the analysis, and is not held here")
         elif ruled and set(ruled) <= names:
-            variables = [dictionary.variable(name) for name in ruled]
+            variables = [variable_of(dictionary, name, dataset) for name in ruled]
+            if None in variables:
+                continue
             (rules.order if rule.order else rules.unique).append((rule, variables))
             rules.seen.setdefault(rule.id, set())
     for variable in dictionary.variables:
+        if variable.dataset != dataset:
+            continue
         condition = variable.applies_if
         if variable.name in names and condition is not None and condition.variable in names:
             rules.applies.append((variable.name, condition.variable, frozenset(condition.codes)))
@@ -449,8 +460,9 @@ def _written(header: list[str], rows: list[list[str]], shape: dict) -> bytes:
                         lineterminator=shape["newline"])  # fmt: skip
     writer.writerow(header)
     writer.writerows(rows)
+    mark = chr(0xFEFF) if shape.get("bom") else ""
     try:
-        return text.getvalue().encode(shape["encoding"])
+        return (mark + text.getvalue()).encode(shape["encoding"])
     except (LookupError, UnicodeError) as exc:
         raise Refused(f"the copy cannot be written in {shape['encoding']}: {exc}") from exc
 
@@ -474,9 +486,10 @@ def synthesize(root: Path, name: str) -> Copy:
     seed, count, seeded = _seed_of(root, name, document["rows"])
     total = document["rows"] if isinstance(document["rows"], int) else None
     minimum = document["minimum_cell_count"]
-    columns = [_Column(spec, dictionary.variable(spec["name"]) if dictionary else None,
-                       minimum, total) for spec in document["columns"]]  # fmt: skip
-    rules, notes = _rules(dictionary, {column.name for column in columns})
+    dataset = document.get("dataset")
+    columns = [_Column(spec, variable_of(dictionary, spec["name"], dataset), minimum, total,
+                       count) for spec in document["columns"]]  # fmt: skip
+    rules, notes = _rules(dictionary, {column.name for column in columns}, dataset)
     u = random.Random(seed).random
     rows = [_row(columns, rules, row, u, shape) for row in range(1, count + 1)]
     out = root.joinpath(*OUT.parts, *name.split("/"))

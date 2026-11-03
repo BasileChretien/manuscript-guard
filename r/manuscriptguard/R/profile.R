@@ -13,6 +13,8 @@ mg_profile_read_as <- c("delimiter", "decimal", "encoding", "quoting", "newline"
                         "header_of")
 mg_profile_delimiters <- c(",", ";", "\t", "|")
 mg_profile_directives <- c(Y = 4L, m = 2L, d = 2L, H = 2L, M = 2L, S = 2L)
+mg_profile_held <- "held back: its counts would give a count below the minimum away"
+mg_profile_mark <- intToUtf8(0xFEFF)
 
 # What the JSON is made of: an object, an array, a number written as it is, and null.
 mg_obj <- function(...) structure(list(...), class = "mg_obj")
@@ -127,6 +129,9 @@ mg_profile_shape <- function(name, read_as) {
       stop("profile: read_as ", key, " ", shape[[key]], " is not one this reads", call. = FALSE)
     }
   }
+  shape$bom <- gsub("_", "-", tolower(shape$encoding), fixed = TRUE) %in%
+    c("utf-8-sig", "utf8-sig")
+  if (shape$bom) shape$encoding <- "utf-8"
   dates <- if (is.null(given$dates)) list() else as.list(given$dates)
   if (length(dates) && (is.null(names(dates)) ||
                         !all(vapply(dates, is.character, logical(1))))) {
@@ -195,20 +200,32 @@ mg_profile_shown <- function(count, minimum) {
   if (is.null(held)) as.integer(count) else held
 }
 
-# The places of the counts held back that the total gives away, as the Python
-# `custodian.recoverable_counts` reads a line: each count printed (an integer), held back
-# behind the minimum ("<5", nought to four) or not printed (NULL, nought to the total).
-mg_profile_recovered <- function(total, shown, minimum) {
-  low <- vapply(shown, function(one) if (is.numeric(one)) as.numeric(one) else 0, numeric(1))
-  high <- vapply(shown, function(one) {
-    if (is.numeric(one)) as.numeric(one)
-    else if (is.null(one)) as.numeric(total)
-    else as.numeric(sub("^<", "", one)) - 1
-  }, numeric(1))
+# What a count printed as `one` can be: itself; "<m" one to m - 1, since nought is printed
+# as 0; NULL nought to the total (or without end where the total is held back). `bound`
+# narrows it where more is known, as the Python `_range`.
+mg_profile_range <- function(one, total, minimum, bound) {
+  if (is.numeric(one)) return(c(as.numeric(one), as.numeric(one)))
+  range <- if (is.null(one)) c(0, if (is.null(total)) Inf else as.numeric(total))
+           else c(1, as.numeric(sub("^<", "", one)) - 1)
+  if (!is.null(bound)) range <- c(max(range[1], bound[1]), min(range[2], bound[2]))
+  range
+}
+
+# The places of the counts held back that are worked out: alone, by what is known of each, or
+# beside the total and the others, as the Python `custodian.recoverable_counts` reads a line.
+mg_profile_given_away <- function(shown, total, minimum, bounds) {
+  ranges <- lapply(seq_along(shown), function(at) {
+    mg_profile_range(shown[[at]], total, minimum, bounds[[at]])
+  })
+  held <- !vapply(shown, is.numeric, logical(1))
+  alone <- which(held & vapply(ranges, function(r) r[1] == r[2] && r[1] >= 1 && r[1] < minimum,
+                               logical(1)))
+  if (length(alone) || is.null(total)) return(alone)
+  low <- vapply(ranges, function(r) r[1], numeric(1))
+  high <- vapply(ranges, function(r) max(r[1], r[2]), numeric(1))
   if (sum(low) > total || sum(high) < total) return(integer())
   found <- integer()
-  for (at in seq_along(shown)) {
-    if (is.numeric(shown[[at]])) next
+  for (at in which(held)) {
     from <- max(low[at], total - (sum(high) - high[at]))
     to <- min(high[at], total - (sum(low) - low[at]))
     if (from == to && from >= 1 && from < minimum) found <- c(found, at)
@@ -217,17 +234,30 @@ mg_profile_recovered <- function(total, shown, minimum) {
 }
 
 # How each count of a column is printed: itself, "<m" below the minimum, or NULL where it is
-# held back beside a count the total and the others would give away.
-mg_profile_held_beside <- function(counts, total, minimum) {
+# held back beside a count the total and the others would give away, or that gives itself
+# away. NULL in place of the list where none is left to hold back and one is still given
+# away: the column's counts are then withheld.
+mg_profile_held_beside <- function(counts, total, minimum, bounds = NULL, hidden = integer()) {
+  if (is.null(bounds)) bounds <- vector("list", length(counts))
   shown <- lapply(counts, mg_profile_shown, minimum = minimum)
-  while (!is.null(total) && length(mg_profile_recovered(total, shown, minimum))) {
+  for (at in hidden) shown[at] <- list(NULL)
+  for (at in mg_profile_given_away(shown, NULL, minimum, bounds)) shown[at] <- list(NULL)
+  while (length(mg_profile_given_away(shown, total, minimum, bounds))) {
     exact <- which(vapply(shown, is.numeric, logical(1)))
-    if (!length(exact)) break
+    if (!length(exact)) return(NULL)
     some <- exact[counts[exact] > 0]
     if (!length(some)) some <- exact
     shown[some[which.min(counts[some])]] <- list(NULL)
   }
   shown
+}
+
+# How many levels "other" is said to fold, and what that says of its count, as the Python
+# `_other_bounds`.
+mg_profile_other_bounds <- function(levels, count, minimum) {
+  if (count < minimum && levels >= minimum - 1) return(list(said = NULL, bound = NULL))
+  list(said = as.integer(levels),
+       bound = c(as.numeric(levels), as.numeric(levels) * (as.numeric(minimum) - 1)))
 }
 
 mg_profile_json_count <- function(one) if (is.null(one)) mg_null else one
@@ -257,12 +287,18 @@ mg_profile_centiles_of <- function(values, minimum, show) {
   found <- list()
   if (!n) return(structure(found, class = "mg_obj"))
   for (centile in mg_profile_centiles) {
-    value <- ordered[(centile * n + 99L) %/% 100L]
+    value <- ordered[mg_profile_centile_index(centile, n) + 1]
     below <- sum(ordered < value)
     above <- sum(ordered > value)
     if (below >= minimum && above >= minimum) found[[as.character(centile)]] <- show(value)
   }
   structure(found, class = "mg_obj")
+}
+
+# The place, from nought, of the centile's value among `n` sorted, in doubles: an integer
+# product passes R's integers past some 22 million rows.
+mg_profile_centile_index <- function(centile, n) {
+  (as.numeric(centile) * as.numeric(n) + 99) %/% 100 - 1
 }
 
 mg_profile_month <- function(iso) {
@@ -283,6 +319,7 @@ mg_profile_distribution <- function(column, rows, minimum) {
   ok <- !is.na(read)
   values <- read[ok]
   shown <- mg_profile_held_beside(c(column$missing, sum(!ok), sum(ok)), rows, minimum)
+  if (is.null(shown)) return(mg_profile_withheld(column, rows, minimum, held = TRUE))
   out <- mg_profile_missing(column$missing, shown[[1]], rows, minimum)
   out$unread <- mg_profile_json_count(shown[[2]])
   out$n <- mg_profile_json_count(shown[[3]])
@@ -318,14 +355,20 @@ mg_profile_levels <- function(column, rows, minimum, dictionary) {
   kept <- counted >= minimum
   counts <- counted[kept]
   folded <- !kept
-  if (any(folded)) counts <- c(counts, sum(counted[folded]))
-  shown <- mg_profile_held_beside(c(counts, column$missing), rows, minimum)
+  bounds <- vector("list", length(counts))
+  if (any(folded)) {
+    counts <- c(counts, sum(counted[folded]))
+    other <- mg_profile_other_bounds(sum(folded), counts[length(counts)], minimum)
+    bounds <- c(bounds, list(other$bound))
+  }
+  shown <- mg_profile_held_beside(c(counts, column$missing), rows, minimum, c(bounds, list(NULL)))
+  if (is.null(shown)) return(mg_profile_withheld(column, rows, minimum, held = TRUE))
   out <- mg_profile_missing(column$missing, shown[[length(shown)]], rows, minimum)
   out$levels <- mg_arr(lapply(seq_len(sum(kept)), function(at) {
     mg_obj(level = levels[kept][at], count = mg_profile_json_count(shown[[at]]))
   }))
   if (any(folded)) {
-    out$other <- mg_obj(levels = sum(folded),
+    out$other <- mg_obj(levels = mg_profile_json_count(other$said),
                         count = mg_profile_json_count(shown[[length(shown) - 1L]]))
   }
   out
@@ -341,11 +384,19 @@ mg_profile_shape_of <- function(text) {
   gsub("[a-z]", "a", text, perl = TRUE)
 }
 
-mg_profile_withheld <- function(column, rows, minimum) {
-  out <- mg_profile_missing(column$missing, mg_profile_shown(column$missing, minimum), rows,
-                            minimum)
+# A column given nothing of its values: its missing values, and where it is withheld by its
+# kind, the pattern its values share; where by its counts, why.
+mg_profile_withheld <- function(column, rows, minimum, held = FALSE) {
+  present <- length(column$present)
+  shown <- mg_profile_held_beside(c(column$missing, present), rows, minimum, hidden = 2L)
+  out <- if (held) list(kind = "withheld") else list()
+  out <- c(out, mg_profile_missing(column$missing, shown[[1]], rows, minimum))
+  if (held) {
+    out$held <- mg_profile_held
+    return(out)
+  }
   shapes <- unique(mg_profile_shape_of(mg_text_of(column$present)))
-  if (length(column$present) >= minimum && length(shapes) == 1) out$pattern <- shapes
+  if (present >= minimum && length(shapes) == 1) out$pattern <- shapes
   out
 }
 
@@ -353,12 +404,16 @@ mg_profile_column <- function(column, rows, minimum, dictionary) {
   out <- list(name = column$name, type = column$kind,
               typed_by = if (is.null(column$entry)) "values" else "dictionary",
               kind = column$role)
-  if (!is.null(column$form) && column$role == "date") out$format <- column$form
   more <- switch(column$role,
     levels = mg_profile_levels(column, rows, minimum, dictionary),
     withheld = mg_profile_withheld(column, rows, minimum),
     mg_profile_distribution(column, rows, minimum)
   )
+  if (!is.null(more$kind)) {
+    out$kind <- more$kind
+    more$kind <- NULL
+  }
+  if (!is.null(column$form) && out$kind == "date") out$format <- column$form
   structure(c(out, more), class = "mg_obj")
 }
 
@@ -404,20 +459,32 @@ mg_profile <- function(data, name, minimum, dictionary = NULL, dataset = NULL, r
       if (identical(entry$dataset, dataset)) entries[[entry$name]] <- entry
     }
   }
-  unknown <- setdiff(names(read$dates), names(data))
+  unknown <- setdiff(names(read$dates), vapply(names(data), mg_profile_unmarked, character(1)))
   if (length(unknown)) {
     stop("profile: read_as dates names ", paste(sort(unknown, method = "radix"), collapse = ", "),
          ", which the table has no column of", call. = FALSE)
   }
   held <- mg_held_back(total, minimum)
   rows <- if (is.null(held)) total else NULL
-  columns <- lapply(names(data), function(name) {
-    column <- mg_profile_read_column(name, data[[name]], entries[[name]], read$dates)
+  columns_of <- names(data)
+  if (length(columns_of) && startsWith(enc2utf8(columns_of[1]), mg_profile_mark)) {
+    read$shape$bom <- TRUE
+    read$shape$encoding <- "utf-8"
+  }
+  columns <- lapply(columns_of, function(name) {
+    shown <- mg_profile_unmarked(name)
+    column <- mg_profile_read_column(shown, data[[name]], entries[[shown]], read$dates)
     mg_profile_column(column, rows, minimum, dictionary)
   })
-  mg_obj(schema = mg_profile_schema, name = name, minimum_cell_count = minimum,
+  mg_obj(schema = mg_profile_schema, name = name,
+         dataset = if (is.null(dataset)) mg_null else dataset, minimum_cell_count = minimum,
          rows = if (is.null(held)) as.integer(total) else held,
          file = structure(read$shape, class = "mg_obj"), columns = mg_arr(columns))
+}
+
+mg_profile_unmarked <- function(name) {
+  name <- enc2utf8(name)
+  if (startsWith(name, mg_profile_mark)) substring(name, 2L) else name
 }
 
 # --------------------------------------------------------------------------- the JSON

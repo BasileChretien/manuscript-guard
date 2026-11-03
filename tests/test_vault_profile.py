@@ -209,7 +209,8 @@ def test_the_header_is_sniffed_and_read_as_says_the_rest(tmp_path: Path) -> None
     file.write_bytes(b"\xef\xbb\xbfa;b;c\r\n1,5;2;3\r\n")
     shape, _ = profiling.file_shape("x.csv", {"header_of": file, "decimal": ","})
     assert shape == {"format": "csv", "delimiter": ";", "decimal": ",",
-                     "encoding": "utf-8-sig", "quoting": "minimal", "newline": "\r\n"}  # fmt: skip
+                     "encoding": "utf-8", "quoting": "minimal", "newline": "\r\n",
+                     "bom": True}  # fmt: skip
     assert profiling.file_shape("x.tsv", None)[0]["delimiter"] == "\t"
     assert profiling.file_shape("x.xlsx", None)[0]["format"] == "xlsx"
 
@@ -260,3 +261,57 @@ def test_a_count_held_back_is_given_away_only_by_a_line_that_closes_on_it(
     total: int, shown: list, found: list
 ) -> None:
     assert recoverable_counts(total, shown, 5) == found
+
+
+# ------------------------------------------------- round 1: counts a reader can work out
+
+
+def test_a_count_held_back_is_one_or_more_since_nought_is_printed() -> None:
+    """98, "<5" and "<5" of 100 rows: nought is printed as 0, so each "<5" is one to four, and
+    the two make 2: each is 1. The 98 is held back beside them."""
+    assert recoverable_counts(100, [98, "<5", "<5"], 5) == [1, 2]
+    found = column(made(x=["a"] * 98 + ["b"] + [""]), "x")
+    assert found["levels"] == [{"level": "a", "count": None}]
+    assert found["other"]["count"] == "<5" and found["missing"] == "<5"
+
+
+def test_the_levels_folded_into_other_bound_its_count_from_below() -> None:
+    """Four levels of one row each, "<5": the count is four, so how many levels is not said,
+    and the 96 beside it, which the rows would give it away by, is held back."""
+    found = column(made(x=["a"] * 96 + ["b", "c", "d", "e"]), "x")
+    assert found["other"] == {"levels": None, "count": "<5"}
+    assert found["levels"] == [{"level": "a", "count": None}]
+
+
+def test_a_column_whose_counts_cannot_be_held_enough_is_withheld() -> None:
+    """Eight rows, two levels of two and four blanks: "<5" and "<5" make 8, each 4, and no
+    count is printed that could be held back beside them."""
+    found = column(made(x=["a", "a", "b", "b"] + [""] * 4), "x")
+    assert found["kind"] == "withheld" and found["missing"] == "<5"
+    assert "levels" not in found and "other" not in found
+    assert "give" in found["held"]
+
+
+def test_a_held_count_of_a_minimum_of_two_is_not_printed_as_one() -> None:
+    """Behind a minimum of 2, "<2" can only be 1."""
+    document = profiling.profile({"x": ["a"] * 9 + ["b"]}, name="t.csv", minimum=2)
+    found = column(document, "x")
+    assert found["other"]["count"] is None or found["kind"] == "withheld"
+
+
+def test_the_profile_records_its_dataset_and_a_byte_order_mark(tmp_path: Path) -> None:
+    file = tmp_path / "x.csv"
+    file.write_bytes(b"\xef\xbb\xbfid,age\n1,2\n")
+    mark = chr(0xFEFF)
+    document = profiling.profile({mark + "id": ["1"] * 6, "age": ["2"] * 6}, name="x.csv",
+                                 minimum=5, read_as={"header_of": file})  # fmt: skip
+    assert document["dataset"] is None
+    assert [one["name"] for one in document["columns"]] == ["id", "age"]
+    assert document["file"]["bom"] is True and document["file"]["encoding"] == "utf-8"
+    plain = profiling.profile({"id": ["1"] * 6}, name="x.csv", minimum=5)
+    assert plain["file"]["bom"] is False
+
+
+def test_the_centile_index_is_exact_for_a_large_table() -> None:
+    assert profiling._centile_index(95, 30_000_000) == 28_500_000 - 1
+    assert profiling._centile_index(5, 21) == 1

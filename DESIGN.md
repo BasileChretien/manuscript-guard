@@ -12485,7 +12485,8 @@ links. Every piece that could be a path (a separator, `~`, `..` or a drive) is f
 its links, from the whole words, the pieces split from them and the words inside their quoted
 parts alike; a bare name only where the working folder holds a link of that name (a symbolic
 link, a junction or another reparse point), the folder listed once (`_links_held`); and the
-working folder itself is resolved once, a folder inside the vault refusing every name. Every look
+working folder itself is resolved once, a folder inside the vault refusing every name the guard
+reads (a command the pre-filter lets through is not read: see Known gaps). Every look
 on disk, the project's vault files, the links of the words and the probe, runs on a thread
 within `VAULT_GUARD_LIMIT` (3 s), but for the look for a vault behind a command that names `vault
 run` or `vault release` without running it, made where the command is read. Past it: a command that names the folder as
@@ -19919,7 +19920,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     command is sent from, so `cd .. && cat study-data/cohort.csv`, the vault beside the
     project, passes. A command with no slash, backslash, `~` or
     `..` in it is let through before any folder is looked at, the guard firing on every shell
-    command; so `ls data` alone passes, `data` a link into the vault. In a command the guard
+    command; so `ls data` alone passes, `data` a link into the vault, and so does `cat
+    cohort.csv` from a working folder reached through a link into the vault. A bare name
+    is matched to a link by its spelling, case-folded on Windows and macOS and on Windows
+    without trailing dots and spaces; a case-insensitive mount on Linux (WSL's `/mnt/c`) is
+    not folded. Where the working folder is reached through a link and both it and the link's
+    target lie in projects, the project above the folder as written is the one whose vault is
+    guarded. In a command the guard
     reads, a link the working folder holds is followed wherever it is named, bare, quoted, in
     a quoted program or joined by a colon (`cp -r data /tmp/out`). A link deeper in a folder the
     command names, read recursively (`cp -r notes /tmp/out` where `notes/data` leads into the

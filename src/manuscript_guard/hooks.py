@@ -1900,7 +1900,8 @@ def _vault_named(command: str, cwd: Path, folders: list[str], *, links: bool = T
     held = _links_held(cwd)
     followed = dict.fromkeys(
         path for piece in pieces
-        if (_MAY_LEAVE.search(piece) or _DRIVE.match(piece) or _comparable(piece) in held)
+        if (_MAY_LEAVE.search(piece) or (os.name == "nt" and _DRIVE.match(piece))
+            or _bare(piece) in held)
         and (path := _vault_path(piece, cwd))
     )  # fmt: skip
     for path in followed:
@@ -1913,9 +1914,9 @@ def _vault_named(command: str, cwd: Path, folders: list[str], *, links: bool = T
 
 
 def _links_held(folder: Path) -> set[str]:
-    """The names of the entries of `folder` that are links, as `_comparable` writes a name: a
-    symbolic link, and on Windows a junction or any other reparse point, which `is_symlink`
-    misses before Python 3.12. None where the folder cannot be listed."""
+    """The names of the entries of `folder` that are links, as `_bare` writes a name: a symbolic
+    link, and on Windows a junction or any other reparse point, which `is_symlink` misses.
+    Empty where the folder cannot be listed."""
     import stat
 
     held: set[str] = set()
@@ -1926,8 +1927,14 @@ def _links_held(folder: Path) -> set[str]:
                     getattr(entry.stat(follow_symlinks=False), "st_file_attributes", 0)
                     & stat.FILE_ATTRIBUTE_REPARSE_POINT)  # fmt: skip
                 if entry.is_symlink() or reparse:
-                    held.add(_comparable(entry.name))
+                    held.add(_bare(entry.name))
     return held
+
+
+def _bare(name: str) -> str:
+    """A bare name as the file system matches it: as `_comparable` writes it, and on Windows
+    without the trailing dots and spaces Win32 drops (`extract.` is `extract`)."""
+    return _comparable(name.rstrip(". ") if os.name == "nt" else name)
 
 
 def _names_the_vault(command: str, cwd: Path, folders: list[str], *,
@@ -1980,8 +1987,11 @@ def _vault_looked_at(command: str, payload: dict, found: dict) -> None:
     here = Path(os.path.abspath(payload.get("cwd") or Path.cwd()))
     # Upwards from the folder as written first: one reached through a link into the vault
     # resolves to a folder above which there is no project.
-    root = next((up for up in (here, *here.parents) if (up / "paper.yaml").is_file()),
-                None) or _project_root(payload)  # fmt: skip
+    try:
+        root = next((up for up in (here, *here.parents) if (up / "paper.yaml").is_file()),
+                    None) or _project_root(payload)  # fmt: skip
+    except (OSError, ValueError):
+        root = _project_root(payload)
     if root is None or not probe.local_file(root).is_file():
         return
     found["registered"] = True

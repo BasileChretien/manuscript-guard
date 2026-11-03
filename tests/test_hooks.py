@@ -4112,7 +4112,10 @@ def test_a_link_named_bare_beside_a_path_is_followed(
                     # And wherever the link is named: in a quoted program, joined by a colon,
                     # quoted with a space in its name (after 166ce24d).
                     'bash -c "cp -r extract /tmp/out"', 'sh -c "tar czf /tmp/x.tgz extract"',
-                    "PATH=/a:extract cmd", 'cp -r "My Data" /tmp'):  # fmt: skip
+                    "PATH=/a:extract cmd", 'cp -r "My Data" /tmp',
+                    # Win32 drops a trailing dot or space (after 976964fb).
+                    *(["cp -r extract. /tmp/out", 'cp -r "extract " /tmp/out']
+                      if os.name == "nt" else [])):  # fmt: skip
         result = run("guard-submission", _shell(in_claude_code, command), capsys)
         assert decision(result) == "deny", command
 

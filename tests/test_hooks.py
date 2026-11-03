@@ -4031,7 +4031,7 @@ def test_a_long_quoted_program_follows_only_its_paths_through_links(
     program = "; ".join(f"x{n} = {n} + int('{n}')" for n in range(500))
     command = f'python -c "{program}; print(open(\'out/a.txt\').read())"'
     assert not hooks._vault_named(command, tmp_path, [str(tmp_path.parent / "vault")])
-    assert 0 < len(looked) <= 3, looked
+    assert 0 < len(looked) < 10, looked
 
 
 def test_a_command_that_names_the_vault_is_refused_while_the_session_can_read_it(
@@ -4058,6 +4058,24 @@ def test_a_command_that_names_the_vault_through_a_link_is_refused(
         link.symlink_to(kept_apart, target_is_directory=True)
     result = run("guard-submission", _shell(in_claude_code, f'cat "{link}/cohort.csv"'), capsys)
     assert decision(result) == "deny"
+
+
+def test_a_link_named_bare_beside_a_path_is_followed(
+    in_claude_code: Path, kept_apart: Path, capsys
+) -> None:
+    """The last fix-only round of #488: following only path-like pieces dropped a link the
+    project holds, named bare in a command that has a slash elsewhere."""
+    _register(in_claude_code, kept_apart)
+    link = in_claude_code / "extract"
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(kept_apart), str(link))
+    else:
+        link.symlink_to(kept_apart, target_is_directory=True)
+    for command in ("cp -r extract /tmp/out", "tar czf /tmp/x.tgz extract"):
+        result = run("guard-submission", _shell(in_claude_code, command), capsys)
+        assert decision(result) == "deny", command
 
 
 def test_a_command_that_names_a_vault_this_session_cannot_reach_is_asked(

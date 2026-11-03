@@ -12481,7 +12481,11 @@ folder is the folder or a path after its separator, so `data2` is not inside `da
 folder is compared as the local file keeps it, as typed and as resolved) or names
 `MANUSCRIPT_GUARD_VAULT` in any case, is refused while the probe says readable, and asked where
 it says not reachable. Every word is compared as written before any is followed through its
-links, and only a word that could be a path (a separator, `~` or `..`) is followed. Every look
+links. Every piece that could be a path (a separator, `~`, `..` or a drive) is followed through
+its links, from the whole words, the pieces split from them and the words inside their quoted
+parts alike; a bare name only where the working folder holds a link of that name (a symbolic
+link, a junction or another reparse point), the folder listed once (`_links_held`); and the
+working folder itself is resolved once, a folder inside the vault refusing every name. Every look
 on disk, the project's vault files, the links of the words and the probe, runs on a thread
 within `VAULT_GUARD_LIMIT` (3 s), but for the look for a vault behind a command that names `vault
 run` or `vault release` without running it, made where the command is read. Past it: a command that names the folder as
@@ -19915,8 +19919,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     command is sent from, so `cd .. && cat study-data/cohort.csv`, the vault beside the
     project, passes. A command with no slash, backslash, `~` or
     `..` in it is let through before any folder is looked at, the guard firing on every shell
-    command; so a link inside the project that leads into the vault, named bare (`ls data`),
-    passes, where `ls data/` is refused. A Codex patch that writes into the folder is
+    command; so `ls data` alone passes, `data` a link into the vault. In a command the guard
+    reads, a link the working folder holds is followed wherever it is named, bare, quoted, in
+    a quoted program or joined by a colon (`cp -r data /tmp/out`). A link deeper in a folder the
+    command names, read recursively (`cp -r notes /tmp/out` where `notes/data` leads into the
+    vault), is not followed. A Codex patch that writes into the folder is
     the write guard's, which does not read the vault. It is a guard against an agent's
     ordinary commands, not against a deliberate evasion, as the other shell guards are.
   - *No hook on the agent's file-reading tools.* Read, Grep and Glob are held only by the agent

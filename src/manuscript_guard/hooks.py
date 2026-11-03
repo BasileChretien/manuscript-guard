@@ -1750,7 +1750,8 @@ _HERE_VARIABLE = re.compile(
 _QUOTES = re.compile(r"[\"']")
 _INSIDE = re.compile(r"[\s()\[\],=;&|<>`]+")
 _INSIDE_UNESCAPED = re.compile(r"(?<!\\)[\s()\[\],=;&|<>`]+")
-_SPACE = re.compile(r"\s")
+#: A word that begins with a drive, `C:` or `C:x`: a path, though it has no separator.
+_DRIVE = re.compile(r"[A-Za-z]:")
 #: Git Bash's drive, written with one slash or two: `/c/x`, `//c/x`.
 _GIT_BASH_DRIVES = re.compile(r"//?([A-Za-z])(/.*)")
 _VAULT_UNREADABLE = (
@@ -1878,32 +1879,55 @@ def _vault_named(command: str, cwd: Path, folders: list[str], *, links: bool = T
     (DESIGN.md, Known gaps)."""
     kept = {_comparable(folder) for folder in folders}
     text = _HERE_VARIABLE.sub(".", _HOME_VARIABLE.sub("~", command))
-    words = _words(text)
-    # The command's own words, the pieces they are joined from by `:` or `;`, and the words
-    # inside their quoted parts (`_sub_words`).
-    pieces = [piece for word in words for piece in _pieces(word)]
-    inner = [piece for word in words for sub in _sub_words(word)[1:] for piece in _pieces(sub)]
-    paths = list(dict.fromkeys(path for piece in [*words, *pieces, *inner]
-                               if (path := _vault_path(piece, cwd))))  # fmt: skip
-    # Every path as written first, which needs no look on disk; then, with `links`, each
-    # through its links, on this machine only: asking Windows about `//host/share` waits for
-    # the host. Each of the command's own words is followed, a link the project holds named
-    # bare among them (`cp -r data /tmp/out`); of the pieces and the words inside a quoted
-    # part, one that could be a path (a separator, `~` or `..`) or, for a piece, one that is a
-    # single word, so that a long quoted program is not hundreds of looks (the fix-only rounds
-    # of #488).
-    chosen = [*words, *(p for p in pieces if _MAY_LEAVE.search(p) or not _SPACE.search(p)),
-              *(p for p in inner if _MAY_LEAVE.search(p))]  # fmt: skip
-    followed = dict.fromkeys(path for piece in chosen if (path := _vault_path(piece, cwd)))
+    # The command's own words, the parts and words inside their quotes (`_sub_words`, the word
+    # itself first), and the pieces each is joined from by `:` or `;`.
+    pieces = list(dict.fromkeys(piece for word in _words(text) for sub in _sub_words(word)
+                                for piece in _pieces(sub)))  # fmt: skip
+    # Every path as written first, which needs no look on disk.
+    paths = dict.fromkeys(path for piece in pieces if (path := _vault_path(piece, cwd)))
     if any(_within(_comparable(path), one) for path in paths for one in kept):
         return True
-    for path in followed if links else ():
+    if not links:
+        return False
+    # Then through links, on this machine only: asking Windows about `//host/share` waits for
+    # the host. The working folder first, once: inside the vault, every name is a path in it.
+    with contextlib.suppress(OSError, ValueError, RuntimeError):
+        if any(_within(_comparable(os.path.realpath(cwd)), one) for one in kept):
+            return True
+    # A piece that could be a path is followed, every one. A bare name leads out of the
+    # working folder only as a link the folder holds, so it is followed only where it names
+    # one: the folder is listed once, and a long quoted program is a few looks, not hundreds.
+    held = _links_held(cwd)
+    followed = dict.fromkeys(
+        path for piece in pieces
+        if (_MAY_LEAVE.search(piece) or _DRIVE.match(piece) or _comparable(piece) in held)
+        and (path := _vault_path(piece, cwd))
+    )  # fmt: skip
+    for path in followed:
         if path.startswith(("\\\\", "//")) or len(Path(path).parts) > _DEEPEST_PATH:
             continue
         with contextlib.suppress(OSError, ValueError, RuntimeError):
             if any(_within(_comparable(os.path.realpath(path)), one) for one in kept):
                 return True
     return False
+
+
+def _links_held(folder: Path) -> set[str]:
+    """The names of the entries of `folder` that are links, as `_comparable` writes a name: a
+    symbolic link, and on Windows a junction or any other reparse point, which `is_symlink`
+    misses before Python 3.12. None where the folder cannot be listed."""
+    import stat
+
+    held: set[str] = set()
+    with contextlib.suppress(OSError), os.scandir(folder) as entries:
+        for entry in entries:
+            with contextlib.suppress(OSError):
+                reparse = os.name == "nt" and bool(
+                    getattr(entry.stat(follow_symlinks=False), "st_file_attributes", 0)
+                    & stat.FILE_ATTRIBUTE_REPARSE_POINT)  # fmt: skip
+                if entry.is_symlink() or reparse:
+                    held.add(_comparable(entry.name))
+    return held
 
 
 def _names_the_vault(command: str, cwd: Path, folders: list[str], *,
@@ -1953,7 +1977,11 @@ def _vault_looked_at(command: str, payload: dict, found: dict) -> None:
     a vault is registered here, what the command names of it, and whether it can be read."""
     from manuscript_guard.vault import probe
 
-    root = _project_root(payload)
+    here = Path(os.path.abspath(payload.get("cwd") or Path.cwd()))
+    # Upwards from the folder as written first: one reached through a link into the vault
+    # resolves to a folder above which there is no project.
+    root = next((up for up in (here, *here.parents) if (up / "paper.yaml").is_file()),
+                None) or _project_root(payload)  # fmt: skip
     if root is None or not probe.local_file(root).is_file():
         return
     found["registered"] = True

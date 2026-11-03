@@ -4028,10 +4028,44 @@ def test_a_long_quoted_program_follows_only_its_paths_through_links(
         return real(path, *args, **kwargs)
 
     monkeypatch.setattr(hooks.os.path, "realpath", counted)
-    program = "; ".join(f"x{n} = {n} + int('{n}')" for n in range(500))
-    command = f'python -c "{program}; print(open(\'out/a.txt\').read())"'
-    assert not hooks._vault_named(command, tmp_path, [str(tmp_path.parent / "vault")])
-    assert 0 < len(looked) < 10, looked
+    # Spaced, and with no space at all, which splits into 500 one-word pieces.
+    for joined in ("; ", ";"):
+        looked.clear()
+        statements = (f"x{n} = {n} + int('{n}')" if joined == "; " else f"x{n}=int('{n}')"
+                      for n in range(500))  # fmt: skip
+        program = joined.join(statements)
+        command = f'python -c "{program}; print(open(\'out/a.txt\').read())"'
+        assert not hooks._vault_named(command, tmp_path, [str(tmp_path.parent / "vault")])
+        assert 0 < len(looked) < 10, (joined, len(looked))
+
+
+def _linked(link: Path, target: Path) -> None:
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+def test_the_working_folder_is_listed_once_for_its_links(
+    in_claude_code: Path, kept_apart: Path, monkeypatch, capsys
+) -> None:
+    """A name with no separator leads out of the working folder only as a link the folder
+    holds: the folder is listed once, and a bare name is followed only where it is one."""
+    _register(in_claude_code, kept_apart)
+    listed: list[str] = []
+    real = os.scandir
+
+    def counted(path=".", *args, **kwargs):
+        if os.path.normcase(os.path.abspath(path)) == os.path.normcase(str(in_claude_code)):
+            listed.append(os.fspath(path))
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(hooks.os, "scandir", counted)
+    command = "cp -r notes results manuscript /tmp/out"
+    assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
+    assert len(listed) == 1, listed
 
 
 def test_a_command_that_names_the_vault_is_refused_while_the_session_can_read_it(
@@ -4073,9 +4107,25 @@ def test_a_link_named_bare_beside_a_path_is_followed(
         _winapi.CreateJunction(str(kept_apart), str(link))
     else:
         link.symlink_to(kept_apart, target_is_directory=True)
-    for command in ("cp -r extract /tmp/out", "tar czf /tmp/x.tgz extract"):
+    _linked(in_claude_code / "My Data", kept_apart)
+    for command in ("cp -r extract /tmp/out", "tar czf /tmp/x.tgz extract",
+                    # And wherever the link is named: in a quoted program, joined by a colon,
+                    # quoted with a space in its name (after 166ce24d).
+                    'bash -c "cp -r extract /tmp/out"', 'sh -c "tar czf /tmp/x.tgz extract"',
+                    "PATH=/a:extract cmd", 'cp -r "My Data" /tmp'):  # fmt: skip
         result = run("guard-submission", _shell(in_claude_code, command), capsys)
         assert decision(result) == "deny", command
+
+
+def test_a_working_folder_reached_through_a_link_into_the_vault_refuses_a_bare_name(
+    in_claude_code: Path, kept_apart: Path, capsys
+) -> None:
+    """The working folder is resolved once: inside the vault, every name is a path in it."""
+    _register(in_claude_code, kept_apart)
+    _linked(in_claude_code / "extract", kept_apart)
+    cwd = in_claude_code / "extract"
+    result = run("guard-submission", _shell(cwd, "cp cohort.csv /tmp/"), capsys)
+    assert decision(result) == "deny", result
 
 
 def test_a_command_that_names_a_vault_this_session_cannot_reach_is_asked(

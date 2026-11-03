@@ -4768,6 +4768,58 @@ DOI_NOT_NAMED = (
     "10.52810/zenodo.1234567", "https://doi.org/10.5281/zenodo.1234567-v2",
 )  # fmt: skip
 
+#: The ways a shell command names the vault (`hooks._names_the_vault`), and the paths beside it
+#: that are not it, each as `tests/readings.py` writes it (`vault_spelling`): quoted with its
+#: space or escaped, by the folder or a file inside, from the project or after an `=` or `@`.
+VAULT_NAMED = ("quoted", "single quoted", "forward slashes", "inside", "relative",
+               "after an equals sign", "after an at sign", "escaped space", "variable",
+               # Round 1 of #488: the home by each shell's name of it, and a path joined to
+               # another by a colon or a semicolon.
+               "the home", "the home in braces", "PowerShell's home", "cmd's home",
+               "a volume", "a search path", "a Windows search path",
+               # Round 2 of #488: a path inside a program the command quotes.
+               "a path inside a quoted program")  # fmt: skip
+VAULT_NOT_NAMED = ("a folder beside it", "the folder above it", "a file beside it", "the word",
+                   "another variable", "a search path beside it")  # fmt: skip
+_SHELL_HEADS = ("cat", "ls -la", "Get-Content", "head -n 5", "wc -l", "Copy-Item", "grep -c id",
+                "python analysis/01_model.py", "Rscript analysis/02_fit.R", "echo")  # fmt: skip
+_SHELL_ARGUMENTS = ("results/model.json", "data/synthetic/cohort.csv", "-n", "--quiet",
+                    "figures/forest.svg", "manuscript/main.md", "'two words'")  # fmt: skip
+_SHELL_JOINS = (" && ", "; ", " | ", "\n", " || ")
+
+
+def _shell_line(draw: st.DrawFn, planted: list[str]) -> str:
+    """A command line of one to five commands, the planted words standing in one of them."""
+
+    def command(words: list[str]) -> str:
+        head = draw(st.sampled_from(_SHELL_HEADS))
+        others = draw(st.lists(st.sampled_from(_SHELL_ARGUMENTS), max_size=2))
+        at = draw(st.integers(0, len(others)))
+        return " ".join([head, *others[:at], *words, *others[at:]])
+
+    before = [command([]) for _ in range(draw(st.integers(0, 2)))]
+    after = [command([]) for _ in range(draw(st.integers(0, 2)))]
+    parts = [*before, command(planted), *after]
+    joins = [draw(st.sampled_from(_SHELL_JOINS)) for _ in parts[1:]]
+    return parts[0] + "".join(join + part for join, part in zip(joins, parts[1:], strict=True))
+
+
+@st.composite
+def vault_commands(draw: st.DrawFn) -> tuple[list[str], list[str | None]]:
+    """A command line for each way of `VAULT_NAMED`, among commands that name nothing, and one
+    holding every path of `VAULT_NOT_NAMED`, in an order drawn each time; and what each names:
+    `variable`, `folder` or None. Every example holds every kind, so that a rule broken for
+    one meets it under any seed."""
+    lines, expected = [], []
+    for kind in draw(st.permutations(VAULT_NAMED)):
+        lines.append(_shell_line(draw, [f"<<{kind}>>"]))
+        expected.append("variable" if kind == "variable" else "folder")
+    lookalikes = [f"<<{kind}>>" for kind in draw(st.permutations(VAULT_NOT_NAMED))]
+    lines.append(_shell_line(draw, lookalikes))
+    expected.append(None)
+    order = draw(st.permutations(range(len(lines))))
+    return [lines[at] for at in order], [expected[at] for at in order]
+
 
 @st.composite
 def deposit_statements(draw: st.DrawFn) -> tuple[str, list[str], list[str]]:
@@ -8821,6 +8873,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "quoted": texts(),
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),
     "deposit named": texts(DOI_NAMED + DOI_NOT_NAMED),
+    "vault named": vault_commands().flatmap(
+        lambda drawn: st.sampled_from([{"command": line} for line in drawn[0]])
+    ),
     "count cells": count_cells().map(lambda drawn: [cell for cell, _count in drawn]),
     "harvest cells": harvest_cells().map(
         lambda drawn: [[text, digits] for text, digits, _read in drawn]

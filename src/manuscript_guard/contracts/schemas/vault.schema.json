@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/vault/1",
+  "title": "manuscript-guard vault registry",
+  "description": "The files of the vault, the folder outside the project where the data are held and which the operating system keeps from the agent. Written by `manuscript-guard vault init` at design/vault.yaml and committed. Each file is named by its path inside the folder and its digests, never by its contents or by where the folder is on a machine (that is .manuscript-guard/vault.local.yaml, which git ignores). No row count: a count is a result, and leaves the vault only through a person's release.",
+  "type": "object",
+  "required": ["schema", "files"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/vault/1" },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "sha256", "raw_sha256", "bytes", "registered_by", "registered_on"],
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?![A-Za-z]:)(?!(.*/)?[.][.](/|$))[^\\\\]*$",
+            "description": "The file's path inside the vault's folder, with forward slashes."
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "As the emitter digests an input it read: line endings left out of a text format (emit.input_digest)."
+          },
+          "raw_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "The digest of the file's bytes as they are (emit.sha256_of)."
+          },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "registered_by": { "type": "string", "minLength": 1, "description": "Who registered the file, as given to --as." },
+          "registered_on": { "type": "string", "minLength": 1, "description": "When, in UTC, as ISO 8601." }
+        }
+      }
+    }
+  }
+}

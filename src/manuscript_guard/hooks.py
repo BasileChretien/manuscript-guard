@@ -2435,6 +2435,37 @@ def stale_cli_notice() -> str | None:
     )
 
 
+# As docs/agent-tools.md gives them. Codex gives a plugin's hooks `CLAUDE_PLUGIN_ROOT` too, by
+# its documentation, and a session start does not say which tool sent it, so both are named.
+PLUGIN_UPDATE_COMMAND = (
+    "`claude plugin marketplace update manuscript-guard`, then "
+    "`claude plugin update manuscript-guard@manuscript-guard` (in Codex: "
+    "`codex plugin marketplace upgrade manuscript-guard`), and start a new session"
+)
+
+
+def stale_plugin_notice() -> str | None:
+    """A sentence, when the plugin is older than this command line tool; otherwise None.
+
+    The installed copy of the plugin changes only when someone updates it, and one installed
+    once stayed many releases behind a tool upgraded with pip: its skills lacked commands and
+    skills that the tool and the AGENTS.md `init` writes name, `next` and the `guide` skill
+    among them, and nothing said so. It only says so: nothing is blocked.
+    """
+    from manuscript_guard import __version__
+
+    plugin = _plugin_version()
+    shipped = _version_tuple(plugin)
+    have = _version_tuple(__version__)
+    if shipped is None or have is None or shipped >= have:
+        return None
+    return (
+        f"manuscript-guard: the plugin is at {plugin.strip()} but the installed command line "
+        f"tool is at {__version__}, so the skills may lack a command or a skill the tool "
+        f"names. Update the plugin with {PLUGIN_UPDATE_COMMAND}."
+    )
+
+
 def _hooks_failed() -> str | None:
     """Once, the hooks' failures recorded since this was last said (`diagnostics.crashes`)."""
     try:
@@ -2449,8 +2480,8 @@ def session_start(payload: dict) -> int:
     """One line on where the manuscript stands, so nobody has to remember.
 
     Also, once at the start of a session, the notice that the installed command line tool is
-    older than the plugin. It is said here, where it is heard once, and not by the hooks that
-    fire on every edit and every shell command.
+    older than the plugin, or the plugin older than the tool. It is said here, where it is
+    heard once, and not by the hooks that fire on every edit and every shell command.
 
     And, where a vault is registered on this machine, whether this session can read it: the
     agent is told, and where it can, the person too (`_vault_line`).
@@ -2461,7 +2492,7 @@ def session_start(payload: dict) -> int:
     # is no status line, and a manifest nobody should have written is no reason to lose it.
     source = payload.get("source") if isinstance(payload, dict) else None
     try:
-        notice = None if source in QUIET_SOURCES else stale_cli_notice()
+        notice = None if source in QUIET_SOURCES else stale_cli_notice() or stale_plugin_notice()
     except Exception:  # noqa: BLE001 - a hook must never break the session
         notice = None
     # The vault's probe first, on a thread of its own, while the gates run: a few file opens,

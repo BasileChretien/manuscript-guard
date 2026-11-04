@@ -27,9 +27,10 @@ def utf8_when_piped() -> None:
     pipe, and read it as UTF-8.
 
     A console is left as Python opened it: on Windows Python writes to it as UTF-16 whatever
-    the code page, and elsewhere it is in the terminal's own encoding. So is a stream whose
-    encoding `PYTHONIOENCODING`, `PYTHONUTF8` or `-X utf8` names. A stream that cannot be
-    reconfigured (one a host or a test put in place) is left as it is.
+    the code page, and elsewhere it is in the terminal's own encoding. So is every stream when
+    `PYTHONIOENCODING` or `PYTHONUTF8` is set, whatever its value, or Python runs with
+    `-X utf8`. A stream that cannot be reconfigured (one a host or a test put in place) is
+    left as it is.
     """
     if any(os.environ.get(name) for name in _SAID_BY_THE_USER):
         return
@@ -50,5 +51,9 @@ def utf8_when_piped() -> None:
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is None:
             continue
+        # Its own error handler kept: `reconfigure` puts back `strict` when given an encoding
+        # and no handler, and standard error would then raise on a lone surrogate in the
+        # message it was writing, which `backslashreplace` writes as `\udcxx`.
+        errors = getattr(stream, "errors", None) or "strict"
         with contextlib.suppress(ValueError, OSError, io.UnsupportedOperation):
-            reconfigure(encoding="utf-8")
+            reconfigure(encoding="utf-8", errors=errors)

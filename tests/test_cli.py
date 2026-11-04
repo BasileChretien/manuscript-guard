@@ -1421,6 +1421,28 @@ def test_a_pipe_is_made_utf8_unless_the_user_chose(environment: dict, monkeypatc
     assert console.encoding == "cp1252"
 
 
+def test_a_pipe_made_utf8_keeps_its_way_with_what_it_cannot_write(monkeypatch) -> None:
+    """Made UTF-8, each stream keeps the error handler Python gave it: standard error's
+    `backslashreplace` writes a lone surrogate in a message as `\\udcxx`, where `strict`,
+    which `reconfigure` puts back when it is not named, would raise while the error was
+    being said (round 1 of #504)."""
+    from manuscript_guard.streams import utf8_when_piped
+
+    for name in ("PYTHONIOENCODING", "PYTHONUTF8"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(sys, "_xoptions", {})
+    out = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
+    err = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="backslashreplace")
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(sys, "stderr", err)
+    utf8_when_piped()
+    assert (out.encoding, out.errors) == ("utf-8", "strict")
+    assert (err.encoding, err.errors) == ("utf-8", "backslashreplace")
+    err.write("C:\\x\\" + chr(0xDC80) + ".md\n")  # raised UnicodeEncodeError under strict
+    err.flush()
+    assert err.buffer.getvalue().startswith(b"C:\\x\\\\udc80.md")
+
+
 def test_the_hook_writes_utf8_to_a_pipe(monkeypatch) -> None:
     """`manuscript-guard-hook` sets its streams as the CLI does, before it reads anything."""
     from manuscript_guard import hooks

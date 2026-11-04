@@ -7431,8 +7431,9 @@ def _survive_the_console() -> None:
     Folding to ASCII rather than forcing UTF-8 on the stream: forcing it turns a cp1252
     console into mojibake, which is harder to read than `--`, and unlike `errors="replace"`
     this keeps the text meaningful. A pipe or a file is not a console, and is made UTF-8
-    before this runs (`streams.utf8_when_piped`): what is folded is a console, or a stream
-    whose encoding the user named.
+    before this runs (`streams.utf8_when_piped`): what is folded is a console, a stream left
+    as Python opened it because `PYTHONIOENCODING` or `PYTHONUTF8` is set, or one that could
+    not be reconfigured.
     """
     # De-duplicated and marked. Each call captured the previous `write` and wrapped it
     # again, so a host calling `main()` in a loop on a legacy console — or this project's

@@ -43,6 +43,12 @@ MANIFEST = "run.json"
 MANIFEST_SCHEMA = "manuscript-guard/vault-run-record/1"
 #: A run's id, as `new_run` makes one; nothing else names a folder of the vault.
 RUN_ID = re.compile(r"[0-9]{8}-[0-9]{6}(?:-[0-9]+)?")
+#: Inside a run's folder: the copy of the project, in a folder of its own whatever the
+#: project's is called, and the versions the run released last ran (fix round 3 of #490).
+COPY = "copy"
+RELEASED = "released"
+#: A commit as a release records it: git's id, SHA-1 or SHA-256.
+_COMMIT = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 #: What a run leaves in the copy that is no output of it: Python's compiled files.
 _LEFT = frozenset({"__pycache__"})
 #: What a run can execute or source, by suffix: the runners' and the analysis sources', and
@@ -123,6 +129,8 @@ class Ran:
     folder: Path
     scripts: list[tuple[str, int]] = field(default_factory=list)
     failed: str | None = None
+    #: The script running, until it ends.
+    running: str | None = None
     moved: list[str] = field(default_factory=list)
     left: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -512,7 +520,7 @@ def prepare(project, folder: Path, scripts: list[str]) -> Staged:
         raise RunRefused(why)
     run_id = new_run(folder)
     here = folder / RUNS / run_id
-    work = here / root.name
+    work = here / COPY / root.name
     here.mkdir(parents=True)
     named = tuple(scripts)
     try:
@@ -567,18 +575,23 @@ def run(project, staged: Staged) -> Ran:
         failure = _steps(project, staged, done)
     except BaseException:
         # Stopped after it started, by a fault or a Ctrl-C: the copy goes, and the log stays
-        # with a record that says the run did not finish (fix round 2 of #490).
+        # with a record that says the run did not finish (fix round 2 of #490); the agent is
+        # told it stopped, so that it never reads the run before's summary as this one's
+        # (fix round 3).
         record.update({"finished": False, "outbox": []})
         with contextlib.suppress(OSError):
             (here / MANIFEST).write_text(json.dumps(record, indent=2) + "\n",
                                          encoding="utf-8", newline="\n")  # fmt: skip
-        shutil.rmtree(work, ignore_errors=True)
+        shutil.rmtree(work.parent, ignore_errors=True)
+        stopped = [*done.scripts, *([(done.running, None)] if done.running else [])]
+        with contextlib.suppress(Exception):
+            write_summary(root, run_id, ran_at, stopped, None, outbox=False, stopped=True)
         raise
     record.update({"finished": done.failed is None, "outbox": done.moved})
     (here / MANIFEST).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8",
                                  newline="\n")  # fmt: skip
     try:
-        shutil.rmtree(work)
+        shutil.rmtree(work.parent)
     except OSError as exc:
         done.notes.append(f"the copy of the project at {work} could not be removed ({exc}): "
                           "remove it yourself")  # fmt: skip
@@ -606,7 +619,9 @@ def _steps(project, staged: Staged, done: Ran) -> dict | None:
             log.write(f"== {script}\n".encode())
             log.flush()
             command = command_for(work / script, summary, wrapper, work)
+            done.running = script
             code, tail = execute(command, work, env, log)
+            done.running = None
             done.scripts.append((script, code))
             if code != 0:
                 done.failed = script
@@ -620,22 +635,24 @@ def _steps(project, staged: Staged, done: Ran) -> dict | None:
 
 
 def released_version(root: Path, staged: Staged, path: str, commit: str | None) -> Path | None:
-    """The script as the run released last ran it, from git at that run's commit, written
-    beside the copy under `<vault>/.runs/<run>/before/`, so that the person reads the copy's
-    bytes against it; None where it had none, or git cannot say."""
-    if not commit:
+    """The script as the run released last ran it, from git at that run's commit, the path
+    read from the project's own folder (`./`, so that a project inside a larger repository
+    gets its own file), written beside the copy under `<vault>/.runs/<run>/released/`, so that
+    the person reads the copy's bytes against it; None where it had none, the record's commit
+    is no commit's id, or git or the disk cannot say (fix round 3 of #490)."""
+    if not (isinstance(commit, str) and _COMMIT.fullmatch(commit)):
         return None
     try:
-        said = subprocess.run(["git", "-c", "core.fsmonitor=false", "show", f"{commit}:{path}"],
-                              cwd=root, capture_output=True, check=False,
-                              timeout=GIT_SECONDS)  # fmt: skip
+        said = subprocess.run(["git", "-c", "core.fsmonitor=false", "show", "--end-of-options",
+                               f"{commit}:./{path}"], cwd=root, capture_output=True,
+                              check=False, timeout=GIT_SECONDS)  # fmt: skip
+        if said.returncode != 0:
+            return None
+        target = staged.here.joinpath(RELEASED, *path.split("/"))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(said.stdout)
     except (OSError, subprocess.SubprocessError):
         return None
-    if said.returncode != 0:
-        return None
-    target = staged.here.joinpath("before", *path.split("/"))
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(said.stdout)
     return target
 
 

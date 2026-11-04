@@ -34,6 +34,9 @@ _ANGLED = frozenset({"<module>", "<lambda>", "<listcomp>", "<dictcomp>", "<setco
                      "<genexpr>"})  # fmt: skip
 #: How many frames are kept, the last ones, nearest the fault.
 FRAMES = 20
+#: The most of what the wrapper wrote that is read: ample for a class, a module, the frames
+#: and a key; anything larger, or too deep for the reader, is no name (fix round 3 of #490).
+SUMMARY_BYTES = 64 * 1024
 
 
 def _words(text: str) -> set[str]:
@@ -137,10 +140,16 @@ def python_failure(project, texts: dict[str, str], work: Path, script: str, code
     """What the summary says of a Python script that failed, from what its wrapper wrote."""
     failed: dict = {"path": script, "exit_code": code}
     try:
-        record = json.loads(summary.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, ValueError):
-        return failed
+        with summary.open("rb") as file:
+            data = file.read(SUMMARY_BYTES + 1)
+    except OSError:
+        return failed  # nothing was raised: the script ended with an exit code of its own
+    try:
+        record = json.loads(data.decode("utf-8")) if len(data) <= SUMMARY_BYTES else None
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        record = None
     if not isinstance(record, dict):
+        failed["exception"] = NOT_BUILTIN
         return failed
     kind = _kind(record)
     if kind is not None:
@@ -173,14 +182,16 @@ def r_failure(texts: dict[str, str], script: str, code: int, tail: bytes) -> dic
     return failed
 
 
-def write_summary(root: Path, run: str, ran_at: str, scripts: list[tuple[str, int]],
-                  failed: dict | None, *, outbox: bool) -> Path:  # fmt: skip
-    """Write the summary into the project, checked against its schema first."""
+def write_summary(root: Path, run: str, ran_at: str, scripts: list[tuple[str, int | None]],
+                  failed: dict | None, *, outbox: bool, stopped: bool = False) -> Path:  # fmt: skip
+    """Write the summary into the project, checked against its schema first. A run stopped
+    before its end says so, the script it stopped in with no exit code."""
     from manuscript_guard.contracts._schema import validate
 
     document = {"schema": SUMMARY_SCHEMA, "run": run, "ran_at": ran_at,
                 "scripts": [{"path": path, "exit_code": code} for path, code in scripts],
-                "failed": failed, "outbox": outbox}  # fmt: skip
+                "failed": failed, "outbox": outbox,
+                **({"stopped": True} if stopped else {})}  # fmt: skip
     path = root.joinpath(*SUMMARY.parts)
     checked = validate(document, "vault-run", path)
     if not checked.ok:

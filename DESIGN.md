@@ -12565,7 +12565,10 @@ files a runner reads first (`run.RUNNER_FILES`: `.Rprofile`, `.Renviron`, `_quar
 wherever they are, and so is compiled code a run can load (`run.COMPILED_SUFFIXES`: `.pyc`,
 `.pyo`, `.pyd`, `.so`, `.dll`, `.dylib`). The copy is made first and the list is read from it
 (`run.prepare`). Each changed script's version as the run released last ran it is written
-from `git show <commit>:<path>` under `<vault>/.runs/<run>/before/` (`run.released_version`),
+from `git show --end-of-options <commit>:./<path>` run in the project's folder, so that a
+project inside a larger repository gets its own file, under `<vault>/.runs/<run>/released/`
+(`run.released_version`), the commit taken only where it is git's id, 40 or 64 hex
+characters, and anything git or the disk refuses giving "read <copy> whole" (fix round 3);
 and the line printed is `git diff --no-index <before> <copy>`, or "read <copy> whole" where
 there is none, so that the person reads the bytes that run. Both the copy and the listing read
 the project by one rule, `run._NOT_COPIED` (`build`, `.git` and `__pycache__` at any depth)
@@ -12580,7 +12583,8 @@ saying it did not finish (round 2 and the fix rounds of #490).
 
 The run's id is its UTC time, `YYYYMMDD-HHMMSS`, with `-2` and on where taken, and runs are
 ordered by the time and then the number (`run.run_key`); no other word names a run's folder. The project is
-copied into `<vault>/.runs/<run>/<project>/` as `verify` copies it (`verify._skip`: no `.git`,
+copied into `<vault>/.runs/<run>/copy/<project>/`, a folder of its own whatever the project
+is called, as `verify` copies it (`verify._skip`: no `.git`,
 no `build/`), and no `__pycache__/`, so that no compiled file stands in for a script listed;
 `results/` is emptied wholly, and each file's size and time written are taken; where the
 project's `results/` is, or holds, a link or a junction, the run is refused before anything is
@@ -12593,7 +12597,9 @@ terminal and to `<vault>/.runs/<run>/log.txt`. The run stops at the first script
 other than 0. Where every one finished, each file written or changed in the copy, but Python's
 compiled files and a link, a junction or another reparse point the run made, is moved into
 `<vault>/outbox/<run>/` at its path, and the walk goes through no link (round 1 of #490);
-where one failed, nothing is, and the run is not one to release. The copy is then removed, and
+where one failed, nothing is, and the run is not one to release. A run stopped before its end
+writes a summary saying `stopped`, the script it stopped in with no exit code, so that the
+agent never reads the run before's as this one's. The copy is then removed, and
 `<vault>/.runs/<run>/run.json` keeps the run's id, time, commit, the project's scripts by
 digest, the scripts run and what went to the outbox.
 
@@ -20169,6 +20175,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     R's `source("steps.txt")`, Python's `exec(open("x.txt").read())`, a template a script
     renders, is neither listed nor checked at the yes; the copy holds it and runs it as it
     was copied.
+  - *A link to a folder outside the project is kept in the copy.* The copy keeps symbolic
+    links as links (`copytree(symlinks=True)`), and a runner follows one out of the copy to
+    whatever it names, which is not listed. A run is not refused for one, since a virtual
+    environment in the project holds links to the system's Python. A junction is not copied.
+  - *A second Ctrl-C during the clean-up of a stopped run* can leave the copy in
+    `<vault>/.runs/<run>/copy/`, and the summary unwritten; the person removes the copy.
+  - *The summary file is read up to 64 KiB.* Anything larger, too deep or not JSON is "not a
+    builtin", with no frame.
   - *What a run records of git.* The copy leaves `.git` out, as `verify`'s does, so a
     fragment written in a run records no `vcs`; the release records the project's commit at
     the run, which says nothing of uncommitted changes.

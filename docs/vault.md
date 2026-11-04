@@ -131,7 +131,7 @@ manuscript-guard vault run analysis/02_model.py # or the ones you name, in that 
 It refuses where standard input is not a terminal, and the plugin's hook refuses it to an
 agent. It does this, in order:
 
-1. It copies the project into `<vault>/.runs/<run>/`, inside the vault rather than the
+1. It copies the project into `<vault>/.runs/<run>/copy/`, inside the vault rather than the
    system's temporary folder, so that the copy shares the data's protection. `.git` and
    `build/` are left out, and so is Python's compiled code in `__pycache__/`, and
    `results/` is emptied. It refuses where `results/` is, or holds, a link or a junction.
@@ -145,7 +145,7 @@ agent. It does this, in order:
    `renv/activate.R`, every file of `_extensions/` and a `_metadata.yml` in any folder,
    which a runner reads, are listed wherever they are. The list is read from the copy. For
    each script changed since the run released last, the version that run ran is written
-   beside the copy, under `<vault>/.runs/<run>/before/`, from git at that run's commit, and
+   beside the copy, under `<vault>/.runs/<run>/released/`, from git at that run's commit, and
    the line to read is `git diff --no-index <before> <copy>`: the copy's bytes, which are
    what runs. At your yes the project is digested again, and where a script differs from
    the copy's, the run is refused: run `vault run` again. Read what changed before you
@@ -157,9 +157,10 @@ agent. It does this, in order:
 5. Where every script finished, it moves everything they wrote into `<vault>/outbox/<run>/`:
    results files, harvested outputs, figures, anything else. A link or a junction a
    script made is left out, and nothing reached through one is moved. The copy of the
-   project is then removed, and so it is where the run stops before its end, by a fault or
-   a Ctrl-C: `log.txt` stays, with a `run.json` saying the run did not finish, and such a
-   run is not one to release.
+   project is then removed. Where the run stops before its end, by a fault or a Ctrl-C, the
+   copy is removed too, `log.txt` stays with a `run.json` saying the run did not finish,
+   the summary for the agent says it stopped, and such a run is not one to release. A second
+   Ctrl-C while that is done can leave the copy in the vault: remove it yourself.
 
 The tool writes nothing to the project except `.manuscript-guard/vault/last-run.json`, which
 the agent reads to know how the run went. (A script run on the real data runs as your

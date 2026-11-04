@@ -246,7 +246,7 @@ def test_a_run_works_in_the_vault_and_writes_nothing_to_the_project_but_its_summ
     assert fragment["values"]["cohort.n"]["value"] == 12
     assert fragment["provenance"]["vault"] == {"run": run, "released": False}
     # The copy of the project is gone; its log and record stay.
-    assert not (vault / ".runs" / run / paper.name).exists()
+    assert not (vault / ".runs" / run / "copy").exists()
     assert (vault / ".runs" / run / "run.json").is_file()
     after = _files(paper)
     assert sorted(set(after) - set(before)) == [".manuscript-guard/vault/last-run.json"]
@@ -930,7 +930,7 @@ def test_a_results_folder_holding_compiled_files_runs_and_leaves_no_copy(
     answers.append("y")
     assert vault_cli(paper, "run") == 0
     (run,) = [one.name for one in (vault / ".runs").iterdir()]
-    assert not (vault / ".runs" / run / paper.name).exists()
+    assert not (vault / ".runs" / run / "copy").exists()
 
 
 def test_compiled_code_is_not_copied_nor_written_and_is_listed(
@@ -1048,7 +1048,11 @@ def _forged(record: str) -> str:
     '{"class": "KeyError", "module": "builtins", "frames": [5, "x", null, [[], 1, "f"], '
     '["a.py", [], []], ["__FILE__", 1, {}], ["__FILE__", 1, []]], "key": {}}',
     '[1, 2]',
-], ids=["list", "dict", "null", "number", "long", "module-frames-key", "frames", "list-whole"])
+    "[" * 200000,
+    '{"class": "KeyError", "module": "builtins", "frames": [], "key": null, "pad": "'
+    + "x" * 200000 + '"}',
+], ids=["list", "dict", "null", "number", "long", "module-frames-key", "frames", "list-whole",
+        "deep", "oversized"])
 def test_a_summary_of_the_wrong_shape_still_gives_the_agent_its_summary(
     paper: Path, vault: Path, terminal, record: str
 ) -> None:
@@ -1060,8 +1064,11 @@ def test_a_summary_of_the_wrong_shape_still_gives_the_agent_its_summary(
     assert vault_cli(paper, "run") == 1
     _text, failed = _failed(paper)
     assert failed.get("class") in (None, "KeyError") and "column" not in failed
+    if len(record) > 100000:
+        # Too large or too deep to be read: no name and no frame (fix round 3 of #490).
+        assert "class" not in failed and failed["exception"] == "not a builtin"
     (run,) = [one.name for one in (vault / ".runs").iterdir()]
-    assert not (vault / ".runs" / run / paper.name).exists()
+    assert not (vault / ".runs" / run / "copy").exists()
 
 
 @pytest.mark.parametrize("where", ["analysis/sub/build/helper.py", "analysis/cpp/build/model.so",
@@ -1106,10 +1113,14 @@ def test_a_run_stopped_after_it_started_leaves_its_log_and_no_copy(
     with pytest.raises(KeyboardInterrupt):
         vault_cli(paper, "run")
     (run,) = [one.name for one in (vault / ".runs").iterdir()]
-    assert not (vault / ".runs" / run / paper.name).exists()
+    assert not (vault / ".runs" / run / "copy").exists()
     assert (vault / ".runs" / run / "log.txt").is_file()
     record = json.loads((vault / ".runs" / run / "run.json").read_text(encoding="utf-8"))
     assert record["finished"] is False
+    # The agent reads this run's summary, not the one before (fix round 3 of #490).
+    summary = _summary(paper)
+    assert summary["run"] == run and summary["stopped"] is True
+    assert summary["scripts"] == [{"path": "analysis/01_model.py", "exit_code": None}]
 
 
 def test_a_copy_stopped_while_it_is_made_is_removed(
@@ -1179,3 +1190,105 @@ def test_a_link_inside_the_results_compiled_folder_refuses_the_run(
     assert vault_cli(paper, "run") == 2
     assert (elsewhere / "kept.txt").read_text(encoding="utf-8") == "kept"
     assert not (vault / ".runs").exists() or not any((vault / ".runs").iterdir())
+
+
+# ---------------------------------------------------------------------------- fix round 3 of #490
+
+
+def test_a_released_version_is_read_from_the_project_in_a_larger_repository(
+    tmp_path: Path, data: Path, terminal, capsys
+) -> None:
+    """Where the project is a folder of a larger repository, the released version of a script
+    is the project's at that commit, not the file at the same path from the repository's top
+    (fix round 3 of #490)."""
+    if not shutil.which("git"):
+        pytest.skip("git is not installed")
+    top = tmp_path / "repository"
+    (top / "analysis").mkdir(parents=True)
+    (top / "analysis" / "01_model.py").write_text("print('the top one')\n", encoding="utf-8")
+    paper = top / "sub"
+    assert main(["init", str(paper)]) == 0
+    with (paper / "paper.yaml").open("a", encoding="utf-8") as file:
+        file.write(MINIMUM)
+    (paper / "authors.yaml").write_text(AUTHORS, encoding="utf-8")
+    (paper / "analysis").mkdir(exist_ok=True)
+    _script(paper)
+    _git(top, "init", "-q")
+    _git(top, "add", "-A")
+    _git(top, "-c", "user.name=t", "-c", "user.email=t@example.org", "commit", "-qm", "x")
+    assert vault_cli(paper, "init", str(data), "cohort.csv", "--as", "Ada Lovelace") == 0
+    run = _ran(paper, data, terminal)
+    answers, _asked = terminal
+    answers.append("y")
+    assert vault_cli(paper, "release", run, "--as", "Lovelace") == 0
+    _script(paper, "print('changed')")
+    answers.append("y")
+    capsys.readouterr()
+    assert vault_cli(paper, "run") == 0
+    said = capsys.readouterr().out
+    line = next(one for one in said.splitlines() if one.startswith("  analysis/01_model.py:"))
+    assert "git diff --no-index" in line, line
+    before = line.split("git diff --no-index ", 1)[1].split(" ", 1)[0]
+    assert Path(before).read_text(encoding="utf-8") == SCRIPT.format(extra="")
+
+
+@pytest.mark.parametrize("commit", ["HEAD", "--output=x", "a" * 39, "zz" * 20])
+def test_a_commit_that_is_no_commit_id_is_not_asked_of_git(
+    paper: Path, vault: Path, terminal, capsys, commit: str
+) -> None:
+    from manuscript_guard.vault.records import release_file
+
+    if not shutil.which("git"):
+        pytest.skip("git is not installed")
+    _script(paper)
+    _committed(paper)
+    run = _ran(paper, vault, terminal)
+    answers, _asked = terminal
+    answers.append("y")
+    assert vault_cli(paper, "release", run, "--as", "Lovelace") == 0
+    record_path = release_file(paper, run)
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["commit"] = commit
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+    _script(paper, "print('changed')")
+    answers.append("n")
+    capsys.readouterr()
+    assert vault_cli(paper, "run") == 0
+    line = next(one for one in capsys.readouterr().out.splitlines()
+                if one.startswith("  analysis/01_model.py:"))  # fmt: skip
+    assert "read " in line and "whole" in line and "git diff --no-index" not in line
+    assert not (paper / "x").exists()
+
+
+def _committed(paper: Path) -> None:
+    _git(paper, "add", "-A")
+    _git(paper, "-c", "user.name=t", "-c", "user.email=t@example.org", "commit", "-qm", "x")
+
+
+@pytest.mark.parametrize("name", ["before", "released", "copy"])
+def test_a_project_folder_named_as_the_run_s_own_folders_keeps_its_copy_apart(
+    tmp_path: Path, data: Path, terminal, capsys, name: str
+) -> None:
+    """The released versions are written beside the copy, never into it, whatever the
+    project's folder is called (fix round 3 of #490)."""
+    if not shutil.which("git"):
+        pytest.skip("git is not installed")
+    paper = tmp_path / name
+    assert main(["init", str(paper)]) == 0
+    with (paper / "paper.yaml").open("a", encoding="utf-8") as file:
+        file.write(MINIMUM)
+    (paper / "authors.yaml").write_text(AUTHORS, encoding="utf-8")
+    (paper / "analysis").mkdir(exist_ok=True)
+    _git(paper, "init", "-q")
+    _script(paper)
+    _committed(paper)
+    assert vault_cli(paper, "init", str(data), "cohort.csv", "--as", "Ada Lovelace") == 0
+    run = _ran(paper, data, terminal)
+    answers, _asked = terminal
+    answers.append("y")
+    assert vault_cli(paper, "release", run, "--as", "Lovelace") == 0
+    _script(paper, "print('the-edited-script-ran')")
+    answers.append("y")
+    capsys.readouterr()
+    assert vault_cli(paper, "run") == 0
+    assert "the-edited-script-ran" in capsys.readouterr().out

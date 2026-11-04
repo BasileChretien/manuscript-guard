@@ -18,10 +18,11 @@
         "additionalProperties": false,
         "properties": {
           "path": { "type": "string", "minLength": 1 },
-          "exit_code": { "type": "integer" }
+          "exit_code": { "type": ["integer", "null"], "description": "null for the script a run was stopped in." }
         }
       }
     },
+    "stopped": { "const": true, "description": "The run was stopped before its end, by a fault or a Ctrl-C: nothing waits in the outbox." },
     "failed": {
       "oneOf": [
         { "type": "null" },

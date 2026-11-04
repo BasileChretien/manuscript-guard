@@ -1644,7 +1644,7 @@ def _report_plan(
                 if words:
                     print(f"    {mark} {words}")
         if more:
-            print(f"    (and {more} more change(s) in it)")
+            print(f"    (and {more} more changed stretch(es) in it, not shown)")
         if not found:
             print(f"    + {first_words(now)}")
 

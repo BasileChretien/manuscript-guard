@@ -26,11 +26,12 @@ _WORD = re.compile(
 )
 #: Words of context on either side of a change.
 CONTEXT = 5
-#: Words of a changed stretch shown on each side of its middle, when it is longer than twice
-#: this: a paragraph rewritten whole is shown by its two ends.
-ENDS = 15
-#: Changed stretches shown for one paragraph; the rest are counted.
+#: Changed stretches shown for one paragraph; the rest are counted. A stretch is shown whole,
+#: every word changed in it: edits ten words apart or fewer are one stretch, and a stretch
+#: shown by its two ends hid an edit in its middle that `--apply` wrote.
 MOST = 3
+#: Words of a paragraph shown where none of its words changed.
+OPENING = 30
 ELIDED = "..."
 
 
@@ -44,14 +45,7 @@ def _shown(text: str, spans: list[tuple[int, int]], start: int, end: int) -> str
     if start >= end:
         return ""
 
-    def joined(first: int, last: int) -> str:
-        return " ".join(text[spans[first][0] : spans[last - 1][1]].split())
-
-    if end - start > 2 * ENDS + 2 * CONTEXT:
-        middle = f"{joined(start, start + CONTEXT + ENDS)} {ELIDED} "
-        middle += joined(end - CONTEXT - ENDS, end)
-    else:
-        middle = joined(start, end)
+    middle = " ".join(text[spans[start][0] : spans[end - 1][1]].split())
     before = f"{ELIDED} " if start > 0 else ""
     after = f" {ELIDED}" if end < len(spans) else ""
     return f"{before}{middle}{after}"
@@ -78,7 +72,7 @@ def changes(was: str, now: str) -> tuple[list[tuple[str, str]], int]:
     return found, max(0, len(groups) - MOST)
 
 
-def opening(text: str, most: int = 2 * ENDS) -> str:
+def opening(text: str, most: int = OPENING) -> str:
     """The first `most` words of `text`, never cut inside one."""
     spans = _words(text)
     return _shown(text, spans, 0, min(most, len(spans))) if spans else ""

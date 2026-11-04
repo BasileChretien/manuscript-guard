@@ -7146,43 +7146,57 @@ def edits(draw: st.DrawFn) -> tuple[str, str]:
 
 #: The kinds of edit `previewed_edits` makes, one of each in every paragraph.
 PREVIEWED = ("replaced", "inserted", "deleted")
+#: The words of context `preview.CONTEXT` shows beside a change, written here so that the
+#: inputs do not change with the rule they test; `tests/test_preview.py` holds the two equal.
+PREVIEW_CONTEXT = 5
 
 
 @st.composite
-def previewed_edits(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[str, str]]]:
-    """A paragraph as the source has it and as an edit left it, and the word each change
-    removed and added ("" for none), in order. Every paragraph has an edit of each kind of
-    `PREVIEWED`, in an order drawn each time, each among words that hold spaces: citations
-    of several works, in brackets as the source writes them or in parentheses as Word prints
-    them, each of more space-separated pieces than `preview.CONTEXT`, so that wherever the
-    words beside a change are cut by spaces, it is inside one. Enough of them stand between
-    two changes that each is shown on its own; the words between two of them are drawn into
-    lines as an author wraps them."""
-    from manuscript_guard.preview import CONTEXT
-
+def previewed_edits(draw: st.DrawFn) -> tuple[dict[str, str], list[list[tuple[str, str]]]]:
+    """A paragraph as the source has it and as an edit left it, and for each changed stretch,
+    in order, the word each of its changes removed and added ("" for none). Every paragraph
+    has a stretch opening with an edit of each kind of `PREVIEWED`, in an order drawn each
+    time, and in one of them, drawn, a word replaced every six to ten words after it, as a
+    copy-editor goes through a sentence, so that it runs past forty words; the others have
+    up to two such. The words between changes hold spaces: citations of several works, in
+    brackets as the source writes them or in parentheses as Word prints them, each of more
+    space-separated pieces than `PREVIEW_CONTEXT`, so that wherever the words beside a change
+    are cut by spaces, it is inside one. Changes in one stretch stand at most twice the
+    context apart, which makes one stretch of them; two stretches stand further apart. The
+    words are drawn into lines as an author wraps them."""
+    context = PREVIEW_CONTEXT
     cited = iter(range(1, 10_000, 10))
 
     def held() -> str:
         # Each citation its own, so that the two texts line up in one way only.
-        works, start = draw(st.integers(CONTEXT + 1, CONTEXT + 3)), next(cited)
+        works, start = draw(st.integers(context + 1, context + 3)), next(cited)
         if draw(st.booleans()):
             return "[" + "; ".join(f"@key{start + n}" for n in range(works)) + "]"
         return "(" + " ".join(f"Fictional{start + n}" for n in range(works - 1)) + " 2021)"
 
-    def between() -> list[str]:
-        return [held() for _ in range(draw(st.integers(2 * CONTEXT + 1, 2 * CONTEXT + 3)))]
+    def run(least: int, most: int) -> list[str]:
+        return [held() for _ in range(draw(st.integers(least, most)))]
 
-    was = between()
+    was = run(2 * context + 1, 2 * context + 3)
     now = list(was)
-    expected: list[tuple[str, str]] = []
-    for number, kind in enumerate(draw(st.permutations(PREVIEWED))):
+    expected: list[list[tuple[str, str]]] = []
+    kinds = draw(st.permutations(PREVIEWED))
+    long = draw(st.sampled_from(kinds))
+    for number, kind in enumerate(kinds):
         old, new = {"replaced": (f"old{number}", f"new{number}"),
                     "inserted": ("", f"added{number}"),
                     "deleted": (f"removed{number}", "")}[kind]  # fmt: skip
         was += [old] if old else []
         now += [new] if new else []
-        expected.append((old, new))
-        tail = between()
+        stretch = [(old, new)]
+        more = draw(st.integers(6, 8)) if kind == long else draw(st.integers(0, 2))
+        for edit in range(more):
+            gap = run(context + 1, 2 * context)
+            was += [*gap, f"was{number}x{edit}"]
+            now += [*gap, f"now{number}x{edit}"]
+            stretch.append((f"was{number}x{edit}", f"now{number}x{edit}"))
+        expected.append(stretch)
+        tail = run(2 * context + 1, 2 * context + 3)
         was += tail
         now += tail
 

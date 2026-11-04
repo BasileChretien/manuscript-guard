@@ -13921,7 +13921,10 @@ Added by the adversarial review, verified and **not** fixed:
   exists.
 - **The dry run of `import` shows each change by its words, not by what it means.** Under
   "would merge into" and "NOT merged into" it prints each stretch whose words differ, with
-  five words either side, at most three stretches a paragraph (`preview.py`). Words are
+  five words either side, at most three stretches a paragraph (`preview.py`); the rest are
+  counted, not shown. Edits ten words apart or fewer are one stretch, and a stretch is
+  shown whole, every changed word in it: a paragraph copy-edited throughout prints at its
+  full length, where showing a long stretch by its two ends hid the edits between. Words are
   compared, so spacing alone, a line wrapped otherwise, shows nothing. A binding, a
   bracketed citation and a parenthesis of up to 160 characters are one word and never cut;
   a longer parenthesis, a clause rather than a citation, is cut between its words. A

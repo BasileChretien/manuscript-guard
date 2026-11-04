@@ -16785,6 +16785,32 @@ def test_an_unanswered_co_author_comment_fails_the_submission(project: Path) -> 
     assert not [f for f in _g11(project, submission=False).failures if f.code.startswith("comment")]
 
 
+@pytest.mark.parametrize(
+    ("anchored", "said"),
+    [
+        ("We analysed a synthetic spontaneous", "on a paragraph in manuscript/main.md, line "),
+        ("words in no paragraph", 'on a paragraph, at the words "words in no paragraph"'),
+    ],
+)
+def test_an_unanswered_comment_is_placed_and_still_fails(
+    project: Path, anchored: str, said: str
+) -> None:
+    """G11 names where an unanswered comment is, the file and line or the words it was made
+    on, in place of a paragraph's identifier; placed or not, it still fails the submission."""
+    path = _filed(project, "Which database?")
+    record = _record_of(path)
+    from manuscript_guard.filed_comments import words_digest
+
+    # Placed by hand on a paragraph of the example, and sealed again, as `import` files one.
+    record["findings"][0].update(anchored=anchored, where="mg-p-maincbb16c-12")
+    record["words_sha256"] = words_digest(record)
+    _rewrite_comments(path, record)
+    report = _g11(project, submission=True)
+    (found,) = [f for f in report.failures if f.code == "comment-unanswered"]
+    assert said in found.message and "mg-p-" not in found.message, found.message
+    assert "comments-altered" not in {f.code for f in report.failures}
+
+
 def test_a_comment_lowered_to_the_least_severity_still_binds(project: Path) -> None:
     """Severity is the author's to set and not sealed; it decides nothing here."""
     path = _filed(project, "Rename the heading.")

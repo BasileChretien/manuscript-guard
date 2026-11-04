@@ -156,7 +156,9 @@ class _Places:
         same = [entry for entry in paragraphs.values() if digest and digest_of(entry[2]) == digest]
         if len(same) == 1:
             return self._line(same[0][0], same[0][1], same[0][3])
-        anchored = _plain(finding.get("anchored") or "")
+        # "text" has no paragraph in the source, the title above all: its words are quoted,
+        # since where else the body holds them is not where it is (round 2 of #511).
+        anchored = _plain(finding.get("anchored") or "") if finding["block"] != "text" else ""
         found = [(path, raw, at) for path, raw, body, _supp, _tagged in files
                  for at in _plain_finds(raw, anchored, body)] if anchored else []  # fmt: skip
         if len(found) != 1:

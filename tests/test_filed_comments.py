@@ -453,6 +453,15 @@ def test_a_comment_on_words_the_document_holds_twice_quotes_them(
         assert f"on a heading in manuscript/main.md, line {line}:" in found.message
 
 
+def test_a_comment_on_text_with_no_source_paragraph_quotes_its_words(project: Path) -> None:
+    """Round 2 of #511: the title has no paragraph in the source, and `import` files a comment
+    on it as on "text"; its words stand once in the body, in the abstract, which was named."""
+    found = _comment_on(project, "", "hepatic injury with example-drug", block="text")
+    assert 'c1, on text, at the words "hepatic injury with example-drug": Why' in (
+        found.message
+    ), found.message
+
+
 def test_a_comment_on_white_space_alone_quotes_no_words(project: Path) -> None:
     """An anchor of a tab or a no-break space is no words: nothing is quoted, not `""`."""
     found = _comment_on(project, "", "\t\N{NO-BREAK SPACE}", block="heading")

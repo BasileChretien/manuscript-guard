@@ -11288,7 +11288,8 @@ the paragraph the identifier names if they are in it, or the line they are on. T
 paragraphs that read the same, a Methods paragraph the supplement repeats, and words that
 stand twice, a heading "Results" beside an abstract's "Results.", are not guessed between
 (round 1 of #511, where the first of them was named): the words are quoted, 'on a heading,
-at the words "Results"', and the identifier is never shown.
+at the words "Results"', and the identifier is never shown. Nor is text with no paragraph
+in the source placed by its words, the title above all: its words are quoted.
 
 **A comment is known again by the id Word keeps through a save.** Word renumbers `w:id`
 each time it saves: in Word 16 on 2026-10-20, a comment added above four others moved each

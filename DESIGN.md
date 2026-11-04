@@ -2826,6 +2826,18 @@ and proves only that those digits are somewhere in the paper. So G7 warns
 out of it, a word being a run between spaces with a letter in it ("COVID-19" is one, "95%"
 and "2.1-3.2" are not). The value stays verified.
 
+Chinese, Japanese and Thai put no space between words, and a whole sentence of them was
+counted as a word or two, so every quote in them was warned of. In those scripts a word is
+counted for every two letters in a row of Han, Hiragana or Katakana and for every four of
+Thai, Lao, Khmer or Myanmar, rounded down (`literature.sources.UNSPACED`); a stop of theirs
+parts two runs, and a Latin word or a number among them is counted as it is between spaces.
+Two, because segmented Chinese averages 1.6 to 1.7 characters a word (the PKU and MSR
+corpora of the SIGHAN 2005 bakeoff) and Japanese, whose particles are words of one letter,
+is as short; four, because the BEST 2009 corpus of Thai averages 3.6. Each size is rounded
+up and each count down, so a quote is counted no longer than a reader would count it: a
+sentence passes, "報告オッズ比2.6" (three words) and "2.6倍" (none) are still warned of. Lao,
+Khmer and Myanmar are written as Thai is and were not measured.
+
 Comparison folds the differences that are not differences: curly quotes, dash widths,
 ligatures, non-breaking spaces and line wrapping all differ between a quote copied from a
 rendered page and the same sentence extracted from a PDF, and none of them change what was
@@ -13539,8 +13551,9 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   case.
 - **Some tests of the literature are narrower than the rule they hold.** The words beside a
   quoted value are drawn with each value once, between spaces, and never inside a word with
-  a digit: a value quoted twice, or within "CYP3A14", and a quote in a script written
-  without spaces, are held by corruption cases only, or not at all (round 1 of #278). A
+  a digit: a value quoted twice, or within "CYP3A14", are held by corruption cases only, or
+  not at all (round 1 of #278); a quote in a script written without spaces is drawn in
+  Han, Kana, Thai, Lao, Khmer and Myanmar letters, and never with a value glued to it. A
   Zotero field in a returned document is tested in one shape, with its run properties and
   its result in one run: a field with no `rPr`, a result over several runs, a
   `w:fldSimple` and a `formattedCitation` are not (round 1 of #281). A narrative
@@ -14107,12 +14120,16 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   placeholder; a Crossref `component` always fails, a cited supplementary item included;
   `\textregistered` and `\textdegree` keep their names in a title, `{\'\i}t` reads as
   `\it`, a footnote letter in `<sup>` joins the word before it, and a kind of notice
-  Crossref adds later passes. A quote in Chinese, Japanese, Korean or Thai, written without
-  spaces, counts one or two words and is always too short; a value quoted from a table row,
-  with no sentence, is warned of. A quotation in the prose with a citation or a binding
-  inside its marks, a block quotation's `>`, an unpaired straight `"` (5' 10") or
-  mismatched curly marks can be warned of wrongly. A data statement's DOI is cut at `<` in
-  a SICI DOI, and a closing `'`, `’` or `_` is kept on it.
+  Crossref adds later passes. A quote in Chinese, Japanese or Thai is counted a word for
+  every two or four letters in a row, a fixed size and no dictionary: a label of long words
+  can pass, "อัตราส่วนความเสี่ยง" (risk ratio, two words of nineteen letters) counts four.
+  Tibetan, Javanese, Balinese and other scripts written without spaces are still counted
+  between spaces, a sentence of them as a word or two, and so is a Han letter outside the
+  blocks of `UNSPACED`; "〇", which Unicode makes a number, counts for nothing. A value
+  quoted from a table row, with no sentence, is warned of. A quotation in the prose with a
+  citation or a binding inside its marks, a block quotation's `>`, an unpaired straight
+  `"` (5' 10") or mismatched curly marks can be warned of wrongly. A data statement's DOI
+  is cut at `<` in a SICI DOI, and a closing `'`, `’` or `_` is kept on it.
 - **What `impact` reads.** Figure scripts are found in the scripts folder only, not below
   it, figures only where a `results.` key exists, and a figure file, where no render record
   names it, only by its script's stem and as `.svg`, `.pdf`, `.png`, `.tif`, `.tiff`, `.jpg`

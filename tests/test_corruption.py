@@ -12978,6 +12978,42 @@ def test_a_quote_that_holds_little_more_than_its_value_is_said(
     assert report.counts["literature_verified"] == 2
 
 
+@pytest.mark.parametrize(
+    ("quote", "short"),
+    [
+        # Made-up sentences, in the source's words: the class's signal, its ROR and its year.
+        ("2019年の調査では、薬剤群全体で報告オッズ比2.6の信号が検出された。", False),
+        ("2019年的调查显示，该类药物整体的报告比值比为2.6。", False),
+        ("พบสัญญาณของยากลุ่มนี้โดยรวม (ROR 2.6)", False),
+        # Japanese and Latin in one quote: three words of the one and one of the other.
+        ("薬剤群全体のROR 2.6", False),
+        ("群全体のROR 2.6", True),
+        ("報告オッズ比2.6", True),
+        ("倍率2.6", True),
+        ("2.6倍", True),
+        ("ROR 2.6 เท่า", True),
+    ],
+)
+def test_a_quote_in_a_script_written_without_spaces_is_counted_by_its_letters(
+    project: Path, quote: str, short: bool
+) -> None:
+    """A quote in Japanese, Chinese or Thai has no spaces between its words, so a whole
+    sentence was two words beside its value and warned of as a value quoted alone. Han,
+    Hiragana and Katakana count a word for every two letters in a row, Thai for every four;
+    a value with a unit or a label of a few letters is still said."""
+    source = project / "literature" / "sources" / "fictionalClassSignal2019.txt"
+    source.write_text(source.read_text(encoding="utf-8") + f"\n{quote}\n", encoding="utf-8")
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    entry = next(e for e in document["entries"] if e.get("display") == "2.6")
+    entry["quote"] = quote
+    path.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True), "utf-8")
+    report = _literature_report(project)
+    said = [f for f in report.findings if f.code == "quote-too-short"]
+    assert [f.severity for f in said] == (["warn"] if short else []), report.render(project)
+    assert report.counts["literature_verified"] == 2
+
+
 # ------------------------------------------------- what the audit reads of a LaTeX paper
 # `audit` refused a `.tex` named: a LaTeX paper's numbers, its tables and its references were
 # checked by nothing outside a project. Each corruption below changes what it reports.

@@ -13,9 +13,11 @@ abstract — into text that check can run against.
 from __future__ import annotations
 
 import html
+import itertools
 import re
 import shutil
 import subprocess
+import unicodedata
 from pathlib import Path
 
 TEXT_SUFFIXES = {".txt", ".md", ".rst", ".csv", ".json", ".xml", ".bib", ".nbib", ".ris"}
@@ -208,11 +210,70 @@ def states_value(quote: str, display: str) -> bool:
 #: The fewest words a quote holds beside its value for it to show what the value is of.
 WORDS_BESIDE = 4
 
+#: The scripts written without spaces between words, each as the letters in a row that count
+#: as one word and the blocks of code points that hold it. Han, Hiragana and Katakana, two:
+#: the segmented corpora of Chinese average 1.6 to 1.7 characters a word (SIGHAN 2005: PKU
+#: 1.83 million characters in 1.11 million words, MSR 4.05 million in 2.37 million), and
+#: Japanese, whose particles (の, は, が) are words of one letter, has words as short. Thai,
+#: four: the BEST 2009 corpus holds 20.9 million characters in 5.8 million words, 3.6 a
+#: word, its vowel and tone marks being characters of their own. Lao, Khmer and Myanmar are
+#: written as Thai is and counted as it is; no corpus of them was measured. Each size is
+#: rounded up and each count down, so that a quote is counted no longer than a person would
+#: count it and a short one is still warned of.
+UNSPACED: tuple[tuple[int, tuple[tuple[int, int], ...]], ...] = (
+    (
+        2,
+        (
+            (0x3005, 0x3007),  # 々, 〆, 〇
+            (0x3040, 0x30FF),  # Hiragana, Katakana
+            (0x31F0, 0x31FF),  # small Katakana for Ainu
+            (0x3400, 0x4DBF),  # CJK Unified Ideographs Extension A
+            (0x4E00, 0x9FFF),  # CJK Unified Ideographs
+            (0xF900, 0xFAFF),  # CJK Compatibility Ideographs
+            (0xFF66, 0xFF9F),  # half-width Katakana
+            (0x20000, 0x323AF),  # CJK Unified Ideographs Extensions B to H
+        ),
+    ),
+    (4, ((0x0E00, 0x0EFF), (0x1000, 0x109F), (0x1780, 0x17FF))),  # Thai, Lao; Myanmar; Khmer
+)
+
+
+def _letters_to_a_word(ch: str) -> int:
+    """How many letters of `ch`'s script in a row count as a word, 0 where words are spaced.
+    Only a letter or a mark counts: a stop, a bracket or a digit of these scripts does not."""
+    if unicodedata.category(ch)[0] not in "LM":
+        return 0
+    code = ord(ch)
+    for size, blocks in UNSPACED:
+        if any(low <= code <= high for low, high in blocks):
+            return size
+    return 0
+
+
+def _words_of(piece: str) -> list[str]:
+    """The words of a run between spaces. A run in it of a script written without spaces is
+    cut into words of its size, a shorter piece left at its end counting for none; what
+    stands between such runs is a word if it holds a letter, as a run between spaces is."""
+    words = []
+    for size, letters in itertools.groupby(piece, _letters_to_a_word):
+        run = "".join(letters)
+        if size:
+            words.extend(run[at : at + size] for at in range(0, len(run) - size + 1, size))
+        elif any(ch.isalpha() for ch in run):
+            words.append(run)
+    return words
+
 
 def words_beside(quote: str, display: str) -> list[str]:
     """The words of a quote once the value is taken out of it, as `states_value` finds it: a
     word is a run between spaces that holds a letter. "2.6" quoted alone proves only that
-    those digits are somewhere in the source; "ROR 2.6" says little more."""
+    those digits are somewhere in the source; "ROR 2.6" says little more.
+
+    Chinese, Japanese and Thai put no space between words, and a whole sentence of them was
+    a word or two. In those scripts a word is counted for every two letters in a row of Han,
+    Hiragana or Katakana and every four of Thai, Lao, Khmer or Myanmar, rounded down (see
+    `UNSPACED` for why), and Latin words and digits among them are counted as before:
+    "薬剤群全体のROR 2.6" holds four words beside 2.6, "報告オッズ比2.6" three."""
     text = normalise(quote)
     value = normalise(display)
     if value:
@@ -220,7 +281,7 @@ def words_beside(quote: str, display: str) -> list[str]:
         found = re.search(edges[0] + re.escape(value) + edges[1], text, re.IGNORECASE)
         if found:
             text = text[: found.start()] + " " + text[found.end() :]
-    return [word for word in text.split() if any(ch.isalpha() for ch in word)]
+    return [word for piece in text.split() for word in _words_of(piece)]
 
 
 def filed_name(citekey: str, suffix: str) -> str:

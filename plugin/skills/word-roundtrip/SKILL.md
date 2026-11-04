@@ -158,22 +158,19 @@ manuscript-guard check
 
 Read the whole diff. What to look for:
 
-- Formatting lost. Only the words the co-author changed are written; the rest of the
-  paragraph keeps your bold, italics, code and straight quotes, and an edit inside bold or
-  italics stays inside it. Where an edit meets one end of bold, italics or code (words typed
-  just where it opens or closes, or a change across its end), or any part of inline code,
-  that span comes back as plain text with the edit. Where a straight quote of yours stands
-  next to a changed word, where words were deleted next to a bracket, a brace or another
-  character Markdown reads as markup, or where the paragraph's prose holds a brace, the
-  whole text between the numbers or citations either side of the edit does, its
-  apostrophes curly. Where that loses bold, italics, code or a straight quote, the import
-  lists it under "written as Word's plain text". (A footnote, a comment, a link or an equation is refused instead, because
-  merging would delete it.)
-- Backslashes. Every character in what is written from Word's text that Markdown could
-  read as markup is escaped (`CYP2D6\*4`, `\@admin`, `US\$5`), and a `&lt;` of yours in it
-  may come back as `\<`. Each prints as it did. The exception is a straight quote: an
-  escaped one of yours, `\"`, comes back bare, and one the co-author typed is left bare,
-  and pandoc curls both. Put a backslash in front where the straight quote mattered. A co-author who only turned curly
+- Formatting lost. Only the words the co-author changed are written; the rest keeps your
+  bold, italics, code and straight quotes, and an edit inside bold or italics stays inside
+  it. An edit at one end of bold, italics or code, or anywhere in inline code, brings that
+  span back as plain text. Next to a straight quote of yours, after words deleted beside a
+  bracket or other markup, or in a paragraph holding a brace, the whole text between the
+  nearest numbers or citations comes back so, apostrophes curly. The import lists what lost
+  formatting under "written as Word's plain text". (A footnote, a comment, a link or an
+  equation is refused instead, because merging would delete it.)
+- Backslashes. Every character written from Word's text that Markdown could read as markup
+  is escaped (`CYP2D6\*4`, `\@admin`, `US\$5`), and a `&lt;` of yours in it may come back as
+  `\<`. Each prints as it did. The exception is a straight quote: an escaped one of yours,
+  `\"`, comes back bare, and one the co-author typed is left bare, and pandoc curls both.
+  Put a backslash in front where the straight quote mattered. A co-author who only turned curly
   quotes straight has changed nothing that reaches the build. A `{` typed straight before a
   binding comes back as `&lbrace;`. Leave it: a bare `{` there joins the binding's braces,
   and `check` reports `{{{results.x}}` as malformed. Once a `<` before a letter (`<LLOQ`,

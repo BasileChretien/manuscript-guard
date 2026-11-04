@@ -20,10 +20,11 @@ edit that meets emphasis, code or a character written as an escape or an entity 
 inside it - words typed just where a span opens or closes, or a change that runs across one
 end of it - cannot be placed by Word's text: it does not say whether the new words are
 inside. Such a span is written from Word's text whole, with the edit, and loses its
-formatting, which the dry run names (`flattened`). Where the source's straight quotes could
-pair differently once a word beside them is changed, or the stretch cannot be lined up with
-what was printed, nothing is written here and `align` writes the stretch from Word's text,
-as it did before.
+formatting, which the dry run names (`flattened`). Where what is kept could read otherwise
+beside the edit - a straight quote pandoc may pair, markup a deletion brings up against other
+text, a tag a `<` before the edit could open, a bare brace anywhere in the paragraph's prose -
+or the stretch cannot be lined up with what was printed, nothing is written here and `align`
+writes the stretch from Word's text, as it did before.
 """
 
 from __future__ import annotations
@@ -307,12 +308,7 @@ def rewritten(
         near = range(max(edit.s1 - 1, 0), min(edit.s2 + 1, len(source)))
         if any(_pairing_quote(source, at) for at in near):
             return None
-    delimiters = {
-        at
-        for start, end, inner, inner_end, _formatting in marks
-        if inner >= 0
-        for at in (*range(start, inner), *range(inner_end, end))
-    }
+    delimiters = _delimiters(source, marks)
     beyond = "".join(reading.prose[index + 1 :])
 
     out: list[str] = []
@@ -359,17 +355,20 @@ def _beside(
 ) -> bool:
     """Whether `words` can be written at `edit` in the stretch `source` without what is kept
     beside them reading otherwise. Deleted, they must leave no character that reads as
-    markup against what is beyond them (`_TOUCHY`), but for a delimiter of emphasis kept
-    round them. Written, they must not open a tag or an entity after a kept `<` or `&`. And
-    no tag may be open before them, by a `<` that Word's text shows bare (`bare`), with a
+    markup against what is beyond them (`_TOUCHY`), but for a delimiter of emphasis or code
+    on one side of them: two spans brought together, `*a**b*` or two code spans, read as
+    one. Written, they must not open a tag or an entity after a kept `<` or `&`. And no tag
+    may be open before them, by a `<` that Word's text shows bare (`bare`), with a
     bare `>` of the source after them, in the stretch or beyond it in the paragraph: pandoc
     read the two as text only because something between them was not an attribute, and the
     edit may be what was not."""
     before, rest = source[: edit.s1], source[edit.s2 :]
     if not words:
-        for at in (edit.s1 - 1, edit.s2):
-            if 0 <= at < len(source) and source[at] in _TOUCHY and at not in delimiters:
-                return False
+        sides = [at for at in (edit.s1 - 1, edit.s2) if 0 <= at < len(source)]
+        if all(at in delimiters for at in sides) and len(sides) == 2:
+            return False
+        if any(source[at] in _TOUCHY and at not in delimiters for at in sides):
+            return False
     elif before[-1:] in _OPENS_AFTER and _OPENS_AFTER[before[-1]].match(words):
         return False
     return not (_TAG_OPENS.search(bare) and _BARE_CLOSE.search(rest + beyond))
@@ -391,6 +390,19 @@ def _respaced_in(
     for start, end in written_at:
         out[start:end] = spaced[start:end]
     return "".join(out)
+
+
+def _delimiters(source: str, marks) -> set[int]:
+    """Where in the stretch `source` the delimiters of its emphasis and code stand: the marks
+    of emphasis round its text, and the backticks either end of code."""
+    found: set[int] = set()
+    for start, end, inner, inner_end, formatting in marks:
+        if inner >= 0:
+            found.update((*range(start, inner), *range(inner_end, end)))
+        elif formatting and source.startswith("`", start):
+            ticks = len(source[start:end]) - len(source[start:end].lstrip("`"))
+            found.update((*range(start, start + ticks), *range(end - ticks, end)))
+    return found
 
 
 def _written(

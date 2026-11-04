@@ -8868,6 +8868,56 @@ def addressed(draw: st.DrawFn) -> tuple[str, list[str]]:
     return text, keys
 
 
+# ------------------------------------------------------- a citation typed as text, G2
+
+#: A citation typed as text, each form G2's hint reads, `{n}` the first author's name, `{o}`
+#: a second's, `{y}` the year and `{z}` a second year.
+TYPED_CITATIONS = (
+    "({n}, {y})", "({n} {y})", "({n} et al., {y})", "({n} & {o}, {y})", "({n} and {o}, {y})",
+    "({n}, {o}, & {o}, {y})", "({o}, {z}; {n}, {y})", "{n} ({y})", "{n} et al. ({y})",
+    "{n} and {o} ({y})", "{n}, {o} and {o} ({y})",
+)  # fmt: skip
+#: A year that is no citation's: after a month, a sign or a lower-case word, alone, or in text.
+NOT_TYPED_CITATIONS = (
+    "(March, {y})", "(Sept {y})", "(n = {y})", "in {y}", "Table 2 ({y})", "({y})",
+    "(reports, {y})", "{y} ({n})",
+)  # fmt: skip
+#: First authors' names, and the word of each a family name is compared by.
+TYPED_NAMES = (
+    ("Fictional", "Fictional"), ("Ødegård", "Ødegård"), ("Smith-Jones", "Smith-Jones"),
+    ("Van der Berg", "Berg"), ("O'Neil", "O'Neil"), ("see Imaginary", "Imaginary"),
+)  # fmt: skip
+
+
+@st.composite
+def typed_citations(draw: st.DrawFn) -> tuple[str, list[tuple[int, int, str | None, str]]]:
+    """Text with a citation typed as text in each form of `TYPED_CITATIONS` and a year in
+    each of `NOT_TYPED_CITATIONS`, in an order drawn, parted by drawn words and a stop, and
+    for each year where it stands, the name the hint reads for it (None for no citation's)
+    and the year. Every form in every example, so that a rule broken for one fails under any
+    seed."""
+    years = st.builds(lambda y, s: f"{y}{s}", st.integers(1800, 2099), st.sampled_from(("", "a")))
+    others = st.sampled_from(("Other", "Second", "Dupont"))
+    shapes = [(shape, True) for shape in TYPED_CITATIONS]
+    shapes += [(shape, False) for shape in NOT_TYPED_CITATIONS]
+    text, found = "", []
+    for shape, cited in draw(st.permutations(shapes)):
+        written, compared = draw(st.sampled_from(TYPED_NAMES))
+        other = draw(others)
+        filled = {"{n}": written, "{o}": other}
+        named = {"{y}": compared if cited else None, "{z}": other}
+        words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+        text += f"{words} "
+        for part in re.split(r"(\{[noyz]\})", shape):
+            if part in named:
+                year = draw(years)
+                found.append((len(text), len(text) + len(year), named[part], year[:4]))
+                part = year
+            text += filled.get(part, part)
+        text += draw(st.sampled_from((". ", ".\n", "; ")))
+    return text, found
+
+
 # --------------------------------------------- escaped backticks beside an escaped comparison
 
 #: Pieces of a paragraph with backticks and escaped comparisons in them, each closing every
@@ -9164,6 +9214,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "interval order": intervals(),
     "pointers": numbered_displays().map(lambda drawn: {"files": drawn[0]}),
+    "typed citations": st.one_of(typed_citations().map(lambda drawn: drawn[0]), texts()),
     "quoted whole": texts(WHOLE),
     "labels": texts(LABELLED),
     "data dates": texts(DATED),

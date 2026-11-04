@@ -1018,6 +1018,52 @@ def test_near_miss_conventions_are_not_waved_through(project: Path, convention: 
     assert "unclassified-number" in codes(gate_report(project))
 
 
+_TWIN = (
+    "\n@article{fictionalSecondSignal2019,\n  title = {A second fictional signal},\n"
+    "  author = {Fictional, Eve},\n  year = {2019},\n}\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("typed", "year", "said"),
+    [
+        ("(Fictional, 2021)", "2021", "cite it with its key, [@fictionalHepaticCohort2021],"),
+        ("(Fictional et al., 2019)", "2019", "[@fictionalClassSignal2019]"),
+        ("(Fictional & Other, 2019)", "2019", "[@fictionalClassSignal2019]"),
+        ("Fictional (2019)", "2019", "[@fictionalClassSignal2019]"),
+        ("Fictional and Other (2021)", "2021", "[@fictionalHepaticCohort2021]"),
+        ("(Other, 2018; Fictional, 2021)", "2021", "[@fictionalHepaticCohort2021]"),
+        ("(Other, 2018; Fictional, 2021)", "2018", "holds no work by Other from 2018"),
+        ("(Fictional, 2018)", "2018", "holds no work by Fictional from 2018"),
+        ("(Fictional, 2019)", "2019", "2 works by Fictional from 2019"),
+        ("(March, 2019)", "2019", "a date is one placeholder"),
+    ],
+)
+def test_the_year_of_a_citation_typed_as_text_fails_and_its_hint_names_the_key(
+    project: Path, typed: str, year: str, said: str
+) -> None:
+    """A co-author types "(Fictional, 2018)" in Word, `import` merges it as text, and G2 fails
+    the year as a number nobody bound: it still does, matched or not. Its hint said to bind
+    it with {{results.<key>}}, where the author needed the work's key: it names the key now,
+    each of them where `references.bib` holds two works of that first author and year, and
+    says to add the work where it holds none. A month is no name."""
+    if "2 works" in said:
+        bib = project / "literature" / "references.bib"
+        bib.write_text(bib.read_text(encoding="utf-8") + _TWIN, encoding="utf-8")
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8") + f"\n\nThe counts were as reported {typed}.\n",
+        encoding="utf-8",
+    )
+    report = gate_report(project)
+    found = [f for f in report.failures if f.code == "unclassified-number"
+             and f.message == f"{year!r} is not bound to any source"]  # fmt: skip
+    assert len(found) == 1, report.render(project)
+    assert said in found[0].hint, found[0].hint
+    if "[@" in said:
+        assert "typed as text" in found[0].hint and "{{results" not in found[0].hint
+
+
 def _in_methods(project: Path, sentence: str) -> None:
     path = main_md(project)
     anchor = "Reporting follows the checklist"

@@ -36,6 +36,8 @@ from manuscript_guard.contracts.values import Value, number_in
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.data_dates import data_dates, dates_in_english
 from manuscript_guard.gates.labels import labelled, sentence_stops
+from manuscript_guard.gates.typed_citations import hint as typed_hint
+from manuscript_guard.gates.typed_citations import keys_for, typed_citation, works_by
 from manuscript_guard.roundtrip import splits_a_paragraph
 from manuscript_guard.text.latex import views as latex_views
 from manuscript_guard.text.masking import (
@@ -175,6 +177,7 @@ def check_numbers(
     dictionaries = [value for value in choices if value.role == "dictionary"]
     chosen = chosen_rules(classifier)
     declares = any(value.role == "parameter" for value in choices)
+    works = works_by(project.path("literature") / "references.bib")
 
     for read in _files_read(project):
         totals["files"] += 1
@@ -286,7 +289,7 @@ def check_numbers(
                         "tables are generated from results; replace the table with "
                         "{{table.<key>}} and emit it from the analysis"
                         if in_table
-                        else _hint_for(atom)
+                        else _hint_for(atom, works, latex=path.suffix == ".tex")
                     ),
                 )
             )
@@ -1381,7 +1384,8 @@ def _how_to_declare(atom) -> str:
     )
 
 
-def _hint_for(atom) -> str:
+def _hint_for(atom, works: dict[tuple[str, str], list[str]] | None = None, *,
+              latex: bool = False) -> str:  # fmt: skip
     """A hint that names the thing the author is looking at.
 
     "Bind it with {{results.<key>}}" is true of every unbound number and useful for almost
@@ -1389,7 +1393,16 @@ def _hint_for(atom) -> str:
     a result, so the generic hint reads as the tool not understanding the sentence. Dates
     and design parameters are the two that come up in every observational paper, and both
     have a specific answer. So has a name written with a subscript: how it is declared.
+
+    With `works`, `references.bib`'s keys by first author and year, so has the year of a
+    citation typed as text, "(Fictional, 2018)", as a co-author types one in Word: the key
+    to cite it with (`gates.typed_citations`). The year still fails.
     """
+    if works is not None:
+        typed = typed_citation(atom.source, atom.start, atom.end)
+        if typed is not None:
+            keys = keys_for(typed, works)
+            return typed_hint(typed, keys, latex=latex, otherwise=_hint_for(atom))
     declare = _how_to_declare(atom)
     if declare:
         return declare + _GENERIC_HINT

@@ -129,6 +129,8 @@ ROUTES: dict[str, Route] = {
            "value-from-abstract", "no-reference-source", "zotero-unreadable",
            "pinning-unchecked", "no-live-citations", "citation-"),
     **_all("literature-verify", ("passages",), "passage-"),
+    # The sentence is reworded, hedged or given a study that can show the effect: no command.
+    **_all("literature-verify", None, "effect-claim-weak-source"),
     **_all("literature-verify", ("lookup",), "reference-", "lookup-", "doi-unregistered",
            "pmid-", "preprint-", "pages-placeholder", "identifier-malformed"),
     # Neither is answered by asking the registries: one is rebuilt from what is cited, the

@@ -8752,6 +8752,8 @@ _READS_LATEX = (
     "check_writing", "check_values", "check_registration", "check_reported",
     "check_recomputed", "check_methods", "check_models", "check_related", "check_revision",
     "check_reporting", "check_prose_quotations", "check_passages",
+    # It reads the citing sentences through `citing_documents`, as `check_passages` does.
+    "check_weak_sources",
     # It reads the main text through G4's `main_text`, which gives a LaTeX manuscript as it
     # prints (#414).
     "check_package_doi",
@@ -10286,6 +10288,121 @@ def test_an_expression_of_concern_or_a_correction_is_not_a_retraction(project: P
     found = _g7_codes(project)
     assert "reference-retracted" not in found
     assert found["reference-under-concern"] == "warn"
+
+
+#: A sentence that claims a cause and cites only the example's first reference.
+_CAUSE_ON_ONE = "Example-drug caused hepatic injury in a patient [@fictionalHepaticCohort2021]."
+#: Where the example's Introduction is given a sentence.
+_BEFORE_WHETHER = "Whether the signal extends"
+_CASE_REPORT = {"status": "found", "doi": _LOOKED_DOI,
+                "pubtypes": ["Case Reports", "Journal Article"]}  # fmt: skip
+
+
+def _weak_notes(root: Path) -> list:
+    """What G7 notes of an effect or a cause claimed on case reports, letters and comments."""
+    from manuscript_guard.gates import check_weak_sources
+
+    return list(check_weak_sources(load_project(root)[0]).findings)
+
+
+def _line_holding(path: Path, words: str) -> int:
+    text = path.read_text(encoding="utf-8")
+    return text.count("\n", 0, text.index(words)) + 1
+
+
+def test_g7_notes_a_cause_claimed_on_a_case_report_alone(project: Path) -> None:
+    """A sentence that says one thing caused another, with no hedge, and cites only a work
+    PubMed types as a case report, is a note at its line, naming the word, the work, its
+    types and the day they were looked up. The same sentence hedged, or citing a work whose
+    types are not known, is not; nor is one whose record was changed by hand."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.literature.lookups import record_path
+
+    main = project / "manuscript" / "main.md"
+    _replace_once(main, _BEFORE_WHETHER, f"{_CAUSE_ON_ONE}\n\n{_BEFORE_WHETHER}")
+    assert _weak_notes(project) == []  # never looked up: its types are not known
+    _looked_up(project, pmid="31000001", pubmed=_CASE_REPORT)
+    (note,) = _weak_notes(project)
+    assert (note.gate, note.code, note.severity) == ("G7", "effect-claim-weak-source", "info")
+    assert (Path(note.path).name, note.line) == ("main.md", _line_holding(main, _CAUSE_ON_ONE))
+    assert "'caused' (causation)" in note.message, note.message
+    assert ("@fictionalHepaticCohort2021 (Case Reports, Journal Article; looked up on "
+            "2026-10-01)") in note.message, note.message  # fmt: skip
+    report, *_ = _run_gates(project)
+    assert "effect-claim-weak-source" in {f.code for f in report.findings}
+    # A study beside it in PubMed's types is a work that can show an effect.
+    _looked_up(project, pmid="31000001",
+               pubmed={**_CASE_REPORT, "pubtypes": ["Case Reports", "Observational Study"]})
+    assert _weak_notes(project) == []
+    # A record changed after `lookup` wrote it says nothing that can be read.
+    _looked_up(project, pmid="31000001", pubmed=_CASE_REPORT)
+    record = record_path(load_project(project)[0], _LOOKED_KEY)
+    text = record.read_text(encoding="utf-8")
+    record.write_text(text.replace("Journal Article", "Letter"), encoding="utf-8")
+    assert _weak_notes(project) == []
+    _looked_up(project, pmid="31000001", pubmed=_CASE_REPORT)
+    _replace_once(main, "Example-drug caused", "Example-drug may have caused")
+    assert _weak_notes(project) == []
+
+
+def test_g7_reads_no_types_from_a_record_of_identifiers_the_entry_no_longer_has(
+    project: Path,
+) -> None:
+    """Round 1 of #492: a PMID changed in references.bib after `lookup` leaves a record of
+    another work. Its types are not the cited work's, and are not read, as G7's lookup
+    checks do not judge such a record."""
+    main = project / "manuscript" / "main.md"
+    _replace_once(main, _BEFORE_WHETHER, f"{_CAUSE_ON_ONE}\n\n{_BEFORE_WHETHER}")
+    _looked_up(project, pmid="31000001", pubmed=_CASE_REPORT)
+    assert [note.code for note in _weak_notes(project)] == ["effect-claim-weak-source"]
+    # Round 2: an entry changed elsewhere, its identifiers intact, is still read.
+    _bib_field(project, "pages", "1-9")
+    assert [note.code for note in _weak_notes(project)] == ["effect-claim-weak-source"]
+    _bib_field(project, "pmid", "31000002")
+    assert _weak_notes(project) == []
+
+
+def test_g7_reads_the_types_of_the_pmid_pubmed_gives_a_doi(project: Path) -> None:
+    """With #493: a work cited by its DOI alone is typed from the PMID PubMed gives the
+    DOI, as G7's `publication_types` reads it."""
+    main = project / "manuscript" / "main.md"
+    _replace_once(main, _BEFORE_WHETHER, f"{_CAUSE_ON_ONE}\n\n{_BEFORE_WHETHER}")
+    _looked_up(project, pubmed_by_doi=_by_doi(pubtypes=("Case Reports", "Journal Article")))
+    assert [note.code for note in _weak_notes(project)] == ["effect-claim-weak-source"]
+
+
+def test_g7_notes_an_effect_claimed_on_a_letter_beside_a_work_never_looked_up_not_at_all(
+    project: Path,
+) -> None:
+    """Every cited work has to be known weak: one never looked up beside a letter may be the
+    trial that shows the effect."""
+    main = project / "manuscript" / "main.md"
+    both = ("Example-drug increased hepatic injury "
+            "[@fictionalHepaticCohort2021; @fictionalClassSignal2019].")  # fmt: skip
+    _replace_once(main, _BEFORE_WHETHER, f"{both}\n\n{_BEFORE_WHETHER}")
+    _looked_up(project, pmid="31000001",
+               pubmed={**_CASE_REPORT, "pubtypes": ["Letter", "Comment"]})
+    assert _weak_notes(project) == []
+
+
+def test_g7_notes_a_cause_claimed_on_a_case_report_in_latex(project: Path) -> None:
+    """A LaTeX manuscript's sentence is noted at its `.tex` line."""
+    entry = _twin(project)
+    latex = _CAUSE_ON_ONE.replace("[@fictionalHepaticCohort2021]",
+                                  "\\cite{fictionalHepaticCohort2021}")  # fmt: skip
+    _replace_once(entry, "\\section{Discussion}", f"{latex}\n\n\\section{{Discussion}}")
+    _looked_up(project, pmid="31000001", pubmed=_CASE_REPORT)
+    (note,) = _weak_notes(project)
+    assert (Path(note.path).name, note.line) == ("main.tex", _line_holding(entry, latex))
+
+
+def test_g7_notes_a_cause_claimed_on_a_case_report_in_the_supplement(project: Path) -> None:
+    """A sentence of `manuscript/supplementary/` is noted at its own file's line."""
+    supplement = project / "manuscript" / "supplementary" / "S2_cases.md"
+    supplement.write_text(f"# Cases\n\n{_CAUSE_ON_ONE}\n", encoding="utf-8")
+    _looked_up(project, pmid="31000001", pubmed=_CASE_REPORT)
+    (note,) = _weak_notes(project)
+    assert (Path(note.path).name, note.line) == ("S2_cases.md", 3)
 
 
 @pytest.mark.parametrize(

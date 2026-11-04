@@ -39,6 +39,7 @@ from manuscript_guard.gates.review import (
     panels,
 )
 from manuscript_guard.gates.revision import check_revision, rounds
+from manuscript_guard.gates.weak_sources import check_weak_sources
 from manuscript_guard.gates.writing import check_writing
 
 GATES = {
@@ -73,6 +74,7 @@ __all__ = [
     "check_bound_units",
     "check_citations",
     "check_passages",
+    "check_weak_sources",
     "check_prose_quotations",
     "check_consistency",
     "check_datasets",

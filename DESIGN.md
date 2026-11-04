@@ -3545,6 +3545,51 @@ judgement is shown or digested. The first depends on the PDF reader of the machi
 built the page, which a digest must not; the second would tell a co-author the answer before
 they read.
 
+## An effect claimed on a case report, a letter or a comment is noted
+
+The fitness half of the reference-currency design (2026-11-04, its section 2.1): is this kind
+of work suitable for what the sentence uses it for? A case report shows that something
+happened to one patient; an editorial, a letter or a comment says what someone thinks.
+None of them can show that one thing affects or causes another. G7 notes
+(`effect-claim-weak-source`, `gates/weak_sources.py`) a cited sentence when all of these
+hold:
+
+- it cites one or more works, as `gates.passages.citing_documents` reads them: the main text
+  and `manuscript/supplementary/`, Markdown or LaTeX;
+- it holds a word that `claims.py` places on the effect or the causation rung of its ladder
+  (`data/claim_strength.yaml`), read on that one sentence as `auditing/causal.py` reads one:
+  both rungs here, since "increased the risk", cited to a case report, claims an effect it
+  cannot show;
+- it holds none of the hedges that list names: "may cause" says what a case report can
+  support;
+- every work it cites has PubMed publication types in its lookup record
+  (`sources.pubmed.pubtypes` of `literature/lookups/<citekey>.yaml`, the record's digest as
+  `lookup` wrote it), and each work's types, once the types that say nothing of the evidence
+  are set aside, are case reports, editorials, letters or comments only.
+
+Both sets are written out in the module. `WEAK` is PubMed's "Case Reports", "Editorial",
+"Letter" and "Comment". `GENERIC`, set aside before a work is read, is "Journal Article",
+"English Abstract" and the "Research Support, ..." types: what every article is, a
+language, and who paid. Any other type, a trial, a review, an observational study, makes the
+work one that may show an effect. A work with generic types only is not weak.
+
+A work whose types are not known silences the sentence: no record, a record changed by hand,
+a record of a DOI or PMID the `references.bib` entry no longer has (judged as G7's lookup
+checks judge it), no PMID, or PubMed silent. An unknown work beside a letter may be the trial that shows the
+effect. A negation does not silence it: "X did not reduce Y", cited to a letter only, claims
+as much about an effect as "X reduced Y".
+
+It is a note at every stage and never more, because the words are read from a list, which
+is not an exact reading of what a sentence claims. The note names the sentence (at the line
+its paragraph starts on, as G7's other checks of a cited sentence do), each word of the two
+rungs with its rung, and each cited work with its types and the day its record was written.
+The finding is the registry's fact and the rule; no model reads anything.
+
+The types are read by a private reader of the module. The registry-facts pull request, built
+at the same time, adds a public `publication_types(record)` to `gates/lookups.py` that also
+reads a PMID PubMed gives for a DOI; whichever of the two merges second switches the reader
+to it.
+
 ## Text from the authors' earlier papers is found before the journal finds it
 
 A journal puts each submission through a similarity check (Crossref Similarity Check, which
@@ -18601,6 +18646,32 @@ Open, recorded as each change landed:
   then states a locked parameter of the same value, and `methods-parameter-absent` is not
   said (fix-only round of #395). G9 reads the printed headings, so a line pandoc prints as
   text that names the Results ends G2's Methods there and not G9's.
+- **An effect claimed on a weak source is read from words and PubMed's types
+  (`effect-claim-weak-source`).**
+  - The word ladder is not an exact reading of a claim. A word of the effect rung that claims
+    nothing, "in patients with reduced renal function", sets the note off; a claim in words
+    the list lacks, "is responsible for", "due to", "raised", does not. The limits of
+    `reworded`'s reading of the list, above, hold here too.
+  - A negation does not silence the note, so a statement that evidence is lacking is noted
+    too: "There is no evidence that X causes Y", cited to an editorial, gets the note,
+    though an editorial can say that much.
+  - A heading with no blank line after it is read as part of the sentence it runs into, and
+    so is the text of a pipe table's cells: `## Causes of liver injury` over a sentence
+    citing a case report gives the note, a capitalised effect or causation word opening the
+    heading or the cell being read as the first word of that sentence.
+  - A hedge silences the note, whatever it hedges: "X caused Y, which may explain Z" holds
+    "may" and is passed over. Only the hedges of `data/claim_strength.yaml` count: "has been
+    reported to cause" holds none and is noted.
+  - A cited work whose publication types are not known silences the note for its whole
+    sentence: a reference with no PMID (until the registry-facts pull request reads a PMID
+    from its DOI), one never looked up, a record changed by hand, a record of a DOI or PMID
+    the entry no longer has (until `lookup` runs again), PubMed silent. A work
+    PubMed does not index has no types at all, and nothing is said of it.
+  - PubMed's types are the indexers' and as of the lookup's date. A letter that reports a
+    series of cases is typed "Letter" and is weak here; a case report typed only "Journal
+    Article" is not.
+  - The sentence is named at the line its paragraph starts on, and a sentence is cut as G7's
+    other checks of a cited sentence cut it.
 - **A supporting passage is in its work, and is not held to what its sentence says.** G7
   finds the words in the stored source; whether they say what the sentence says is the
   judgement it leaves to people, the author's in `passages.yaml` and the co-authors' in the

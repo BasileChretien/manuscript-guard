@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/vault-run/1",
+  "title": "manuscript-guard summary of a run on the data held in the vault",
+  "description": "What `manuscript-guard vault run` tells the agent, at .manuscript-guard/vault/last-run.json in the project: each script's exit code and, where one failed, the class of a Python exception, the frames of the traceback that fall in the project's own files (path, line, function), the function names of R's `Calls:` line, and the key of a KeyError where it is a column name the released profile or the data dictionary already holds. No message and no value: every name kept is one the project's code or a released file already shows, and the rest is left out (DESIGN.md, the vault, Known gaps: an exit code and a line number still carry a few bits a script could choose).",
+  "type": "object",
+  "required": ["schema", "run", "ran_at", "scripts", "failed"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/vault-run/1" },
+    "run": { "type": "string", "pattern": "^[0-9]{8}-[0-9]{6}(-[0-9]+)?$" },
+    "ran_at": { "type": "string", "minLength": 1 },
+    "scripts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "exit_code"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "exit_code": { "type": ["integer", "null"], "description": "null for the script a run was stopped in." }
+        }
+      }
+    },
+    "stopped": { "const": true, "description": "The run was stopped before its end, by a fault or a Ctrl-C. What it moved before then may wait in the outbox (`outbox`), and the run is not one to release." },
+    "failed": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["path", "exit_code"],
+          "additionalProperties": false,
+          "properties": {
+            "path": { "type": "string", "minLength": 1 },
+            "exit_code": { "type": "integer" },
+            "class": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "description": "A built-in exception's name: no other class is named." },
+            "exception": { "const": "not a builtin", "description": "The exception is not a built-in one; its name, and its module, are withheld." },
+            "frames": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["path", "line", "function"],
+                "additionalProperties": false,
+                "properties": {
+                  "path": { "type": "string", "minLength": 1 },
+                  "line": { "type": "integer", "minimum": 1 },
+                  "function": { "type": "string", "pattern": "^(<[a-z]+>|[A-Za-z_][A-Za-z0-9_]*)$" }
+                }
+              }
+            },
+            "calls": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[A-Za-z.][A-Za-z0-9._]*$" }
+            },
+            "column": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "outbox": { "type": "boolean", "description": "Whether files the run wrote wait in the vault's outbox. Only a run that finished can be released; a stopped one's files wait there unreleased." }
+  }
+}

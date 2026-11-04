@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/vault-release/1",
+  "title": "manuscript-guard release of a run on the data held in the vault",
+  "description": "A person's release of what a run on the real data wrote, written by `manuscript-guard vault release` at approvals/vault-releases/<run>.json. It is a person's statement, unsigned, as an approval is: who released the files and when, the run, each analysis script by its digest, each file of the vault the results read by its label and digest, each file released into the project by its digest, and each warning shown at the release. G1 holds a fragment that read the vault to the digest recorded for it here.",
+  "type": "object",
+  "required": ["schema", "run", "released_by", "released_at", "ran_at", "scripts", "ran", "inputs", "files", "warnings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/vault-release/1" },
+    "run": { "type": "string", "pattern": "^[0-9]{8}-[0-9]{6}(-[0-9]+)?$" },
+    "released_by": { "type": "string", "minLength": 1, "description": "The person who released it, as authors.yaml names them." },
+    "orcid": { "type": "string" },
+    "role": { "type": "string", "enum": ["data_custodian", "author"], "description": "The data custodian where authors.yaml names one; an author otherwise." },
+    "released_at": { "type": "string", "minLength": 1, "description": "When, in UTC, as ISO 8601." },
+    "ran_at": { "type": "string", "minLength": 1 },
+    "commit": { "type": ["string", "null"], "description": "The project's git commit when the run copied it, where there was one." },
+    "scripts": {
+      "type": "array",
+      "description": "Every analysis script of the project when the run copied it, by its digest as G1 takes a script's.",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "ran": {
+      "type": "array",
+      "description": "The scripts run, in the order they were run.",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "inputs": {
+      "type": "array",
+      "description": "Each file of the vault the released results read, by its label and digest.",
+      "items": {
+        "type": "object",
+        "required": ["label", "sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "label": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "description": "Each file released into the project, by its path from the project's root and the digest of its bytes as written there.",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256", "bytes", "kind"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "kind": {
+            "enum": ["results", "harvested", "plan", "named"],
+            "description": "A results file, every value and cell of it read; a harvested output, every cell of it read; the plan the run's first results froze, read to hold the project's plan and nothing else; or a file no check reads, released because the person named it at the terminal."
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "description": "Each warning shown to the person before they released the files.",
+      "items": { "type": "string" }
+    },
+    "signed_off": {
+      "type": "array",
+      "description": "The data custodian's sign-offs the release stood on, by finding id.",
+      "items": { "type": "string" }
+    }
+  }
+}

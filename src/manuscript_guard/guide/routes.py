@@ -86,6 +86,8 @@ ROUTES: dict[str, Route] = {
     **_all("results-binding", _VERIFY, "harvest-declared"),
     **_all("results-binding", None, "receipt-"),
     **_all("results-binding", None, "input-at-site", who="author"),
+    # A run on the vault and its release are the person's, at a terminal (docs/vault.md).
+    **_all("results-binding", None, "vault-", who="author"),
     **_all("results-binding", _BIND, "unclassified-number", "unresolved-binding",
            "unquoted-result", "typed-", "parameter-unread", "hand-authored-table",
            "value-splits-paragraph", "duplicate-quantity", "malformed-placeholder",
@@ -129,12 +131,18 @@ ROUTES: dict[str, Route] = {
            "value-from-abstract", "no-reference-source", "zotero-unreadable",
            "pinning-unchecked", "no-live-citations", "citation-"),
     **_all("literature-verify", ("passages",), "passage-"),
+    # The sentence is reworded, hedged or given a study that can show the effect: no command.
+    **_all("literature-verify", None, "effect-claim-weak-source"),
     **_all("literature-verify", ("lookup",), "reference-", "lookup-", "doi-unregistered",
            "pmid-", "preprint-", "pages-placeholder", "identifier-malformed"),
     # Neither is answered by asking the registries: one is rebuilt from what is cited, the
     # other is put right in Zotero.
     **_all("literature-verify", ("sync-bib",), "reference-uncited"),
     **_all("literature-verify", None, "reference-duplicate", "reference-title-duplicate"),
+    # A later version, a correction, a number quoted from a review: what the registries said
+    # is read, and the citation or the quote is put right in Zotero and the ledger.
+    **_all("literature-verify", None, "reference-updated", "reference-corrected",
+           "number-from-secondary-source"),
     **_all("related-outputs", ("related",), "related-"),
     # -- figures --------------------------------------------------------------------------
     **_all("figure-review", None, "figure-unreviewed", "figure-review-", "figure-alt-"),

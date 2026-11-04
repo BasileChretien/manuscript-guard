@@ -1538,6 +1538,28 @@ def _cited_sentences() -> Reading:
     return read
 
 
+@reading("weak sources")
+def _weak_sources() -> Reading:
+    """Each cited sentence of a Markdown file G7 notes as claiming an effect or a cause on
+    case reports, editorials, letters or comments only, given each work's PubMed publication
+    types and the day they were looked up, or None where they are not known: its line, its
+    words, the words of the two rungs, each work with its types, and what the note says."""
+    from manuscript_guard.checking.produce import cited_sentences, citing_document
+    from manuscript_guard.gates.weak_sources import Typed, finding, weak_claims
+
+    def read(given: dict[str, Any]) -> list[list[Any]]:
+        sentences = cited_sentences([citing_document(MAIN, given["text"])])
+        typed = {key: None if work is None else Typed(tuple(work["types"]), work["on"])
+                 for key, work in given["works"].items()}  # fmt: skip
+        return [[claim.line, claim.sentence, [list(word) for word in claim.words],
+                 [[key, None if work is None else list(work.types)]
+                  for key, work in claim.works],
+                 finding(claim).message]
+                for claim in weak_claims(sentences, typed)]  # fmt: skip
+
+    return read
+
+
 @reading("whole-number means")
 def _whole_number_means() -> Reading:
     """Each mean in a pipe table's rows the auditor names, as it is printed, with its

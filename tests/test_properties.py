@@ -175,6 +175,7 @@ from generated import (
     vault_commands,
     vector_figures,
     vocabularies,
+    weak_source_papers,
 )
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -5341,6 +5342,68 @@ def _a_citation_at_a_stop_ends_no_sentence(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import sentences
 
     patch.setattr(sentences.View, "_stop_cuts", lambda self: ())
+
+
+# ------------------------------------------- an effect claimed on case reports and letters
+
+
+@holds(60, weak_source_papers())
+def test_an_effect_claimed_on_case_reports_letters_and_comments_only_is_noted(
+    drawn: tuple[str, dict[str, Any], list[list[Any]]],
+) -> None:
+    """G7 notes a cited sentence that holds a word of the effect or the causation rung and no
+    hedge, negated or not, where every work it cites has PubMed publication types that, once
+    the generic ones (Journal Article, a Research Support type, English Abstract) are set
+    aside, are case reports, editorials, letters or comments only. A hedged sentence, one
+    that cites a study beside them, one that cites a work whose types are not known, one
+    whose works have generic types only, and one with no word of the two rungs give nothing.
+    Each is named at the line its paragraph starts on, with its words and its works
+    (`gates/weak_sources.py`). Every paper holds one sentence of every kind."""
+    text, given_, noted = drawn
+    found = answer(READINGS["weak sources"](), given_)
+    assert "raised" not in found, (found, text)
+    said = [[row[0], row[2], [key for key, _types in row[3]]] for row in found["answer"]]
+    assert said == noted, text
+    for row in found["answer"]:
+        for key, types in row[3]:
+            work = given_["works"][key]
+            assert types == work["types"], text
+            assert f"@{key} ({', '.join(types)}; looked up on {work['on']})" in row[4], row[4]
+
+
+def _a_hedge_does_not_silence_a_weak_source(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import weak_sources
+
+    patch.setattr(weak_sources, "_hedged", lambda words: False)
+
+
+def _some_weak_sources_are_enough(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import weak_sources
+
+    patch.setattr(weak_sources, "_all_weak", lambda works: any(
+        work is not None and weak_sources.weak(work.types) for work in works))
+
+
+def _the_causation_rung_is_not_read_for_weak_sources(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import weak_sources
+
+    patch.setattr(weak_sources, "RUNGS", ("effect",))
+
+
+def _a_work_of_unknown_types_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import weak_sources
+
+    def known_are_weak(works):
+        known = [work for work in works if work is not None]
+        return bool(known) and all(weak_sources.weak(work.types) for work in known)
+
+    patch.setattr(weak_sources, "_all_weak", known_are_weak)
+
+
+def _a_generic_type_is_not_set_aside(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import weak_sources
+
+    patch.setattr(weak_sources, "_GENERIC", frozenset())
 
 
 # ----------------------------------------------------------- a LaTeX table's rows and cells
@@ -16139,6 +16202,26 @@ BROKEN = {
     "a citation directly after a stop ends no sentence": (
         _a_citation_at_a_stop_ends_no_sentence,
         test_a_causal_word_is_warned_of_where_the_paper_sums_up_and_not_hedged_negated_or_cited,
+    ),
+    "a hedge does not silence an effect claimed on weak sources": (
+        _a_hedge_does_not_silence_a_weak_source,
+        test_an_effect_claimed_on_case_reports_letters_and_comments_only_is_noted,
+    ),
+    "an effect claimed on weak sources is noted when only some cited works are weak": (
+        _some_weak_sources_are_enough,
+        test_an_effect_claimed_on_case_reports_letters_and_comments_only_is_noted,
+    ),
+    "the causation rung is not read for an effect claimed on weak sources": (
+        _the_causation_rung_is_not_read_for_weak_sources,
+        test_an_effect_claimed_on_case_reports_letters_and_comments_only_is_noted,
+    ),
+    "a cited work whose types are not known is passed over, for weak sources": (
+        _a_work_of_unknown_types_is_passed_over,
+        test_an_effect_claimed_on_case_reports_letters_and_comments_only_is_noted,
+    ),
+    "a generic publication type is read as a study's, for weak sources": (
+        _a_generic_type_is_not_set_aside,
+        test_an_effect_claimed_on_case_reports_letters_and_comments_only_is_noted,
     ),
     "a citation after a sentence's stop is listed beside the next sentence": (
         _a_citation_after_a_stop_is_the_next_sentence_s,

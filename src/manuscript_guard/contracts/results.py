@@ -57,6 +57,9 @@ class Fragment:
     # Where `harvest` read this fragment from an output the script is declared to write, the
     # output's path and digest, the entry it was read by and the site's receipt, if any.
     harvested: dict | None = None
+    # Where a run on the data held in the vault wrote this fragment: the run's id and whether
+    # a person has released it (`vault release`). G1 holds it to the release's record.
+    vault: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -197,6 +200,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 ),
                 datasets=dict(document.get("datasets") or {}),
                 harvested=prov.get("harvested"),
+                vault=prov.get("vault"),
             )
         )
         corrections.update(document.get("corrections") or {})

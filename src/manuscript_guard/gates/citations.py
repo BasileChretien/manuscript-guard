@@ -151,7 +151,7 @@ def check_citations(project: Project, literature: Literature) -> Report:
     report = report.merge(check_identifiers(project))
     # What the registries said of each cited reference, read from the records `lookup`
     # wrote; nothing is asked here.
-    report = report.merge(check_lookups(project, sorted(seen)))
+    report = report.merge(check_lookups(project, sorted(seen), literature))
     report = report.merge(check_duplicates(project, seen))
     stale = sorted(committed - seen) if committed else []
     for citekey in stale:

@@ -72,6 +72,7 @@ from manuscript_guard.gates import (
     check_reporting,
     check_review,
     check_revision,
+    check_weak_sources,
     check_writing,
     content_digest,
     manuscript_digest,
@@ -103,6 +104,7 @@ from manuscript_guard.gates.registration import check_registration
 from manuscript_guard.gates.related import check_related
 from manuscript_guard.gates.shortlist import check_shortlist
 from manuscript_guard.gates.synthetic import check_synthetic_inputs
+from manuscript_guard.gates.vault import check_vault_results
 from manuscript_guard.paper_edit import KEYS as PAPER_KEYS
 from manuscript_guard.policy import (
     DESCRIPTIONS,
@@ -190,6 +192,7 @@ def _gate_run(
         ("G7", lambda: check_literature_chain(project, literature)),
         ("G7", lambda: check_prose_quotations(project)),
         ("G7", lambda: check_passages(project, chosen)),
+        ("G7", lambda: check_weak_sources(project)),
         ("G7", lambda: check_recycling(project, chosen)),
         ("G4", lambda: check_journal(project)),
         ("G4", lambda: check_boxes(project, namespace, chosen)),
@@ -215,6 +218,7 @@ def _gate_run(
         ("G2", lambda: check_recoverable(project, results)),
         ("G1", lambda: check_restricted_inputs(project, results)),
         ("G1", lambda: check_synthetic_inputs(project, results, submission=at_submission)),
+        ("G1", lambda: check_vault_results(project, results, chosen)),
         ("G1", lambda: check_datasets(project, results)),
         ("G1", lambda: check_values(project, namespace, results)),
         ("G8", lambda: check_reported(project, results)),
@@ -2845,7 +2849,8 @@ def cmd_package(args: argparse.Namespace) -> int:
     stage = resolve_stage(project, None, False)
     checks, _deferred = apply_stage(
         merge_all([contract_report, load_report, check_freshness(project, results),
-                   check_restricted_inputs(project, results)]), stage)  # fmt: skip
+                   check_restricted_inputs(project, results),
+                   check_vault_results(project, results, stage)]), stage)  # fmt: skip
     try:
         plan = plan_package(project, results, with_manuscript=args.with_manuscript,
                             citation=args.citation or args.root_citation,
@@ -4572,6 +4577,16 @@ def cmd_sign(args: argparse.Namespace) -> int:
         standing += package_signables(project, results, notes)
         for note in dict.fromkeys(notes):
             print(f"manuscript-guard: {note}", file=sys.stderr)
+    # The vault's, only where one is asked for: a run's small counts are worked out from its
+    # outbox, inside the vault, and said without the counts.
+    if args.finding.startswith("VAULT/"):
+        from manuscript_guard.vault.release import vault_signables
+
+        vaulted, notes = vault_signables(project, args.finding)
+        for note in notes:
+            print(f"manuscript-guard: {args.finding} cannot be worked out: {note}",
+                  file=sys.stderr)  # fmt: skip
+        standing += vaulted
     # A bundle's, only where one is asked for: it is worked out from every file it holds.
     if args.finding.startswith("DEPOSIT/"):
         from manuscript_guard.deposit.bundles import DepositError
@@ -4767,8 +4782,15 @@ def cmd_lookup(args: argparse.Namespace) -> int:
         for one in due:
             ids = ", ".join(f"{k} {v}" for k, v in (("DOI", one.doi), ("PMID", one.pmid)) if v)
             what = f"look up {ids}" if ids else "search PubMed, Crossref and OpenAlex for its title"
+            if one.doi and not one.pmid:
+                what += ", and ask PubMed for the DOI's PMID"
             print(f"@{one.citekey}: would {what} ({one.again})")
         print(f"{len(due)} to look up, {len(planned) - len(due)} not; nothing was sent")
+        by_doi = sum(1 for one in due if one.doi and not one.pmid)
+        if by_doi:
+            # A search, and a summary where it finds one PMID: one or two requests each.
+            print(f"{by_doi} DOI(s) with no PMID would each add one or two requests to "
+                  f"PubMed ({by_doi} to {2 * by_doi}), for the PMID and its record")
         return 0
     written = lookup.run(
         project, planned, credentials=lookup.Credentials.from_environment(project)
@@ -6362,21 +6384,31 @@ def build_parser() -> argparse.ArgumentParser:
         "Code's deny rules for the folder. `check` opens each registered file without reading "
         "it, and lists the folder: exit 0 not reachable from this session, 1 readable, 2 not "
         "registered here. `init` also starts analysis/00_profile.py (or .R), which profiles "
-        "each file with em.profile under `vault run`. `synthesize [NAME ...]` draws "
-        "data/synthetic/NAME from the released profile profiles/data/NAME.profile.json, the "
-        "data dictionary and the seed kept beside the profile, and from nothing else: CSV or "
-        "TSV, each column drawn alone, the same bytes from the same profile and seed. Nothing "
-        "is sent.",
+        "each file with em.profile under `vault run`. `run [SCRIPT ...]`, at a terminal, lists "
+        "the analysis scripts changed since the run released last, asks, and runs them on the "
+        "data in a copy of the project inside the vault, what they write waiting in its "
+        "outbox; the agent is told exit codes and where a script failed, in "
+        ".manuscript-guard/vault/last-run.json. `release RUN --as PERSON`, at a terminal, "
+        "reads every count of the outbox to the custodian's rules and puts its results into "
+        "the project, each file no check reads only where you type its path, recorded in "
+        "approvals/vault-releases/. A released file is read by the agent, and through it by "
+        "its provider. `synthesize [NAME ...]` draws data/synthetic/NAME from the released "
+        "profile profiles/data/NAME.profile.json, the data dictionary and the seed kept beside "
+        "the profile, and from nothing else: CSV or TSV, each column drawn alone, the same "
+        "bytes from the same profile and seed. Nothing is sent.",
     )
-    vault.add_argument("verb", choices=["init", "check", "synthesize"])
+    vault.add_argument("verb", choices=["init", "check", "run", "release", "synthesize"])
     vault.add_argument(
         "words", nargs="*", metavar="[FOLDER FILE ... | NAME ...]",
         help="init: the vault's folder, then the files to register in it, by name or glob; "
+        "run: the scripts to run, every one directly in analysis/ where none is named; "
+        "release: the run's id; "
         "synthesize: the profiles to draw a copy of (default: every one released)",
     )  # fmt: skip
     vault.add_argument(
         "--as", dest="as_", metavar="PERSON",
-        help="init: who registers the files, recorded beside each",
+        help="init: who registers the files, recorded beside each; release: who releases, "
+        "the data custodian where authors.yaml names one, else an author",
     )  # fmt: skip
     vault.add_argument(
         "--refresh", action="store_true",

@@ -3023,10 +3023,12 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
 
 - *Retracted* fails from drafting (`reference-retracted`): a retraction, withdrawal or
   removal among the notices Crossref holds for the DOI, OpenAlex's `is_retracted`, or
-  PubMed's "Retracted Publication". A paper that discusses the retracted work, or cites
+  PubMed's "Retracted Publication" or its "Retraction in" link (since 2026-11-04, below).
+  A paper that discusses the retracted work, or cites
   its notice, says why under `lookup.cited_as_retracted` in `paper.yaml`, and G7 then
-  notes it. An expression of concern or a partial retraction is a warning; a correction
-  is kept in the record and not reported.
+  notes it. An expression of concern or a partial retraction is a warning, and so is
+  PubMed's "Expression of concern in"; a later version and a correction are said as the
+  section "Later notices, and the kind of work a number is quoted from" below says.
 - *Not the work cited* fails from internal-review, since a draft may not have its records
   yet. A DOI that no registry has: Crossref, DataCite and doi.org all said so, and one
   that did not answer proves nothing (`doi-unregistered`), and a PMID PubMed does not know
@@ -3126,6 +3128,66 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
   drafting (`lookup-record-edited`), since an edit by hand can take a retraction out; one
   dated in the future, one that is not a record, or one filed under another citekey fails
   from internal-review.
+
+### Later notices, and the kind of work a number is quoted from
+
+Since 2026-11-04 (Basile's design of that day, its section 2.1) a cited work is asked two more
+questions, kept apart: has it been replaced or corrected since (currency), and is it the kind
+of work a number should be quoted from (fitness). Both are read from registry facts in the
+record and nothing else: no model, no score, and the age of a work alone is never a finding.
+Each finding names the registry, the field and the day the record was looked up.
+
+`lookup` writes records of version 3 (`manuscript-guard/lookup/3`). Beside what version 2
+kept:
+
+- PubMed's links from the work to later ones, from ESummary's `references` list: "Update in",
+  "Erratum in", "Comment in", "Expression of concern in" and "Retraction in", each with the
+  PMID it points to and PubMed's reference to that work (`links`). The links that point the
+  other way ("Comment on", "Erratum for") are not kept. `search` reads the same list for its
+  retractions, concerns and later versions through the same parser (`sources.links`), and
+  says what it said before.
+- For an entry with a DOI and no PMID, one exact ESearch for the DOI in PubMed's `[doi]` field
+  (`"10.1056/NEJMoa2021436"[doi]` gave PMID 32678530 alone on 2026-11-04). Where it gives
+  exactly one PMID and that PMID's record holds the DOI, the record keeps it with its ESummary
+  in a block of its own (`sources.pubmed_by_doi`); no PMID is `absent`; several, or one whose
+  record holds another DOI or none, is `refused`, with the reason, and none is kept. That block
+  is read for publication types and links only, never by the checks of whether the entry names
+  the work (title, year, authors, details, `pmid-names-another-work`, `reference-not-the-work`).
+  `lookup --dry-run` counts the one or two requests each such DOI adds. `audit --lookup` does
+  not ask it.
+- Crossref's dates as far as it gives them (`dates`: "2021", "2021-03", "2021-03-14"), beside
+  the years, for comparisons at the finest precision both sides have. A month or a day that is
+  none ends the date there.
+
+A record of version 2 is read as before, its authors compared, and the next `lookup` asks
+again for it, "looked up before PubMed's links were kept".
+
+G7 then says:
+
+- `reference-updated`, a warning: Crossref's `updated-by` lists a new version or a new
+  edition, or PubMed's record lists "Update in". Crossref's kinds of update are the twelve
+  its Crossmark documentation lists ("Participating in Crossmark", read 2026-11-04).
+- `reference-corrected`, a note: Crossref's `updated-by` lists a correction, a corrigendum,
+  an erratum, an addendum or a clarification, or PubMed's record lists "Erratum in". Only
+  `updated-by`: a DOI whose `update-to` names another work is the notice itself, which is
+  `reference-not-the-work`. A retraction and a concern keep their own findings, which
+  PubMed's "Retraction in" and "Expression of concern in" now also give.
+- `number-from-secondary-source`: a value of the literature ledger (or of `attested.yaml`,
+  where it names a citekey) quoted from a work by what PubMed's types say of it exactly. The
+  types are read from the record of the entry's PMID, else from that of the PMID PubMed gives
+  its DOI (`publication_types` in `gates/lookups.py`, which other checks read too), and
+  NLM's generic types (Journal Article, English Abstract, Introductory Journal Article, the
+  Research Support types; nlm.nih.gov/mesh/pubtypes.html, last reviewed 2026-07-01) are set
+  aside: they say nothing of the kind of work. Where every other type is Editorial or
+  Comment, a warning. Where every other type is Review, Editorial or Comment, Review among
+  them, a note, which says that a work typed only as a review may be a systematic review
+  indexed before PubMed had a type for one. Anything else says nothing: a letter, which may
+  report data of its own; a guideline that reviews; a systematic review, a meta-analysis or a
+  study of any design beside the others. Round 1 of #493 narrowed the rule to this from one
+  that warned of every review, letter or comment not typed as a study or a synthesis, which
+  warned of a research letter and of a guideline typed Practice Guideline and Review. One
+  finding names every value quoted from one work, in the ledger. A record edited by hand, or
+  looked up under other identifiers than the entry has now, types nothing.
 
 ### Measured on real papers, 2026-10-21
 
@@ -3482,6 +3544,51 @@ saw, and the item is outstanding again. Neither what G7 found of it nor the auth
 judgement is shown or digested. The first depends on the PDF reader of the machine that
 built the page, which a digest must not; the second would tell a co-author the answer before
 they read.
+
+## An effect claimed on a case report, a letter or a comment is noted
+
+The fitness half of the reference-currency design (2026-11-04, its section 2.1): is this kind
+of work suitable for what the sentence uses it for? A case report shows that something
+happened to one patient; an editorial, a letter or a comment says what someone thinks.
+None of them can show that one thing affects or causes another. G7 notes
+(`effect-claim-weak-source`, `gates/weak_sources.py`) a cited sentence when all of these
+hold:
+
+- it cites one or more works, as `gates.passages.citing_documents` reads them: the main text
+  and `manuscript/supplementary/`, Markdown or LaTeX;
+- it holds a word that `claims.py` places on the effect or the causation rung of its ladder
+  (`data/claim_strength.yaml`), read on that one sentence as `auditing/causal.py` reads one:
+  both rungs here, since "increased the risk", cited to a case report, claims an effect it
+  cannot show;
+- it holds none of the hedges that list names: "may cause" says what a case report can
+  support;
+- every work it cites has PubMed publication types in its lookup record
+  (`sources.pubmed.pubtypes` of `literature/lookups/<citekey>.yaml`, the record's digest as
+  `lookup` wrote it), and each work's types, once the types that say nothing of the evidence
+  are set aside, are case reports, editorials, letters or comments only.
+
+Both sets are written out in the module. `WEAK` is PubMed's "Case Reports", "Editorial",
+"Letter" and "Comment". `GENERIC`, set aside before a work is read, is "Journal Article",
+"English Abstract" and the "Research Support, ..." types: what every article is, a
+language, and who paid. Any other type, a trial, a review, an observational study, makes the
+work one that may show an effect. A work with generic types only is not weak.
+
+A work whose types are not known silences the sentence: no record, a record changed by hand,
+a record of a DOI or PMID the `references.bib` entry no longer has (judged as G7's lookup
+checks judge it), no PMID, or PubMed silent. An unknown work beside a letter may be the trial that shows the
+effect. A negation does not silence it: "X did not reduce Y", cited to a letter only, claims
+as much about an effect as "X reduced Y".
+
+It is a note at every stage and never more, because the words are read from a list, which
+is not an exact reading of what a sentence claims. The note names the sentence (at the line
+its paragraph starts on, as G7's other checks of a cited sentence do), each word of the two
+rungs with its rung, and each cited work with its types and the day its record was written.
+The finding is the registry's fact and the rule; no model reads anything.
+
+The types are read by a private reader of the module. The registry-facts pull request, built
+at the same time, adds a public `publication_types(record)` to `gates/lookups.py` that also
+reads a PMID PubMed gives for a DOI; whichever of the two merges second switches the reader
+to it.
 
 ## Text from the authors' earlier papers is found before the journal finds it
 
@@ -12393,7 +12500,7 @@ inside the folder until a person releases it after the custodian's checks. The t
 claim that the agent cannot reach the data: the operating system decides that, through a
 second account, a container, permissions or a volume that is not mounted. What the tool does is
 register where the data are, check from the agent's own session whether they can be read, keep
-the agent's ordinary commands away from them, and, in later parts, hold what comes out to the
+the agent's ordinary commands away from them, and hold what comes out of a run on them to the
 custodian's rules and a person's release. Agent-written code run on the real data can put a row
 into any output it writes, a mean of one chosen patient, a coefficient, a figure's point, an
 exit code; counting rules do not catch that, and a person reading the script and the outputs is
@@ -12401,9 +12508,10 @@ the control. Nothing here makes a setup lawful under GDPR, HIPAA or a data-use a
 that must stay inside a trusted research environment are out of scope: there the site's
 receipt applies (`verify --receipt SITE`). `docs/vault.md` says all of this to the user.
 
-This part holds registration, the check and the guards. `vault run`, `vault release` and the G1
-codes for a result from unregistered, changed or unreleased data are part 2; the profile and
-`vault synthesize` are part 3, below; the command group exists, without `run` and `release`.
+Part 1 holds registration, the check and the guards; part 2 the run on the real data
+(`em.vault_input`, `vault run`), its release (`vault release`) and the G1 codes for a result
+from unregistered, changed or unreleased data; part 3 the profile and `vault synthesize`,
+below.
 
 Basile's decisions of 2026-10-29: the folder is outside the project only (1a); `vault init`
 refuses until `paper.yaml` declares `custodian.minimum_cell_count`, 1 where the custodian has
@@ -12711,6 +12819,171 @@ with Python's `csv` writer, a byte-order mark first only where the profile says 
 one. Every sum of floats is `math.fsum`, since Python 3.12 changed what `sum` gives of floats.
 The profile records the dictionary's dataset it is of, and the copy reads only that dataset's
 entries.
+### Reading the vault in the analysis: `em.vault_input` (Task F, part 2)
+
+`em.vault_input(label)` (`emit.py`; `em$vault_input` in `emit.R`, case for case) returns the
+path the script reads, so that the script never knows where the data are. With
+`MANUSCRIPT_GUARD_VAULT` set, as `vault run` sets it to the folder, it is the file at that
+label in the folder, recorded after the other inputs as `{"path": "vault:<label>", sha256,
+raw_sha256, bytes, "restricted": true, "vault": true}`, never by the folder's path; and the
+fragment's provenance gets `vault: {run, released}`, the run's id from
+`MANUSCRIPT_GUARD_VAULT_RUN` (null where the variable was set by hand) and `released: false`.
+Otherwise it is `data/synthetic/<label>`, declared synthetic through `add_input`, and refused
+with a `FileNotFoundError` that names `vault synthesize` where the copy is not there. A label
+is a path inside the folder as `design/vault.yaml` registers it: no leading slash, no drive,
+no backslash, no empty, `.` or `..` part (`vault.checked_label`, `mg_vault_label`).
+`results.schema.json` has `vault` on an input and on the provenance. G1's freshness skips a
+`vault:` input, and `restricted-input-tracked` does not ask git about one: it is outside the
+project.
+
+### Running on the real data: `vault run`
+
+`vault run [SCRIPT...]` (`vault/person.py`, `vault/run.py`) refuses, with nothing read of the
+vault, where standard input is not a terminal; the hook refuses it to an agent (part 1). Where
+no script is named it runs each file directly in `analysis/` that a runner here knows
+(`verify.RUNNERS`), by name; a helper in a folder below is read by them and not run. It lists
+the scripts and every script of the project (`run.script_files`: by suffix, `run.SCRIPT_SUFFIXES`,
+anywhere but `results/`, `data/`, `build/`, `approvals/` and `profiles/` at the root, a hidden
+folder and a library of others' code, no link followed, round 1 of #490) whose
+`source_digest` is not the one the run released last recorded, with `git diff <commit> --
+<path>`, the commit being the project's at that run, or "read it whole" where no run was
+released; then it asks y/N (`ask_at_terminal`; no `--yes`). It refuses where `vault check`'s
+probe does not say readable from this process. A script named on the command line, the
+files a runner reads first (`run.RUNNER_FILES`: `.Rprofile`, `.Renviron`, `_quarto.yml`,
+`_quarto.yaml`, `renv/activate.R`) and every file of `_extensions/`, are listed and recorded
+wherever they are, and so is compiled code a run can load (`run.COMPILED_SUFFIXES`: `.pyc`,
+`.pyo`, `.pyd`, `.so`, `.dll`, `.dylib`). The copy is made first and the list is read from it
+(`run.prepare`). Each changed script's version as the run released last ran it is written
+from `git show --end-of-options <commit>:./<path>` run in the project's folder, so that a
+project inside a larger repository gets its own file, under `<vault>/.runs/<run>/released/`
+(`run.released_version`), the commit taken only where it is git's id, 40 or 64 hex
+characters, and anything git or the disk refuses giving "read <copy> whole" (fix round 3);
+and the line printed is `git diff --no-index <before> <copy>`, or "read <copy> whole" where
+there is none, so that the person reads the bytes that run. Both the copy and the listing read
+the project by one rule, `run._NOT_COPIED` (`build`, `.git` and `__pycache__` at any depth)
+and no link or junction gone through (`run._copied_path`), so that a file the copy leaves out
+is no change (fix round 2). `.lua` is a script's suffix, and `_metadata.yml` or
+`_metadata.yaml` in any folder is listed. At the yes the project's scripts are digested again
+(`run.differs`), and one that is not the copy's, changed, gone or new, refuses the run. A no,
+a Ctrl-C or a refusal removes the copy (`run.discard`, in a `finally` until the run starts),
+and `prepare` removes it on anything that ends it, a Ctrl-C during the copy included; once the
+run has started, anything that ends it removes the copy and leaves `log.txt` and a `run.json`
+saying it did not finish, with what was moved to the outbox before then, where that record can
+be written: on a full disk the run's folder may hold no record at all, and `vault release` then
+says there is no such run (round 2 and the fix rounds of #490).
+
+The run's id is its UTC time, `YYYYMMDD-HHMMSS`, with `-2` and on where taken, and runs are
+ordered by the time and then the number (`run.run_key`); no other word names a run's folder. The project is
+copied into `<vault>/.runs/<run>/copy/<project>/`, a folder of its own whatever the project
+is called, as `verify` copies it (`verify._skip`: no `.git`,
+no `build/`), and no `__pycache__/`, so that no compiled file stands in for a script listed;
+`results/` is emptied wholly, and each file's size and time written are taken; where the
+project's `results/` is, or holds, a link or a junction, the run is refused before anything is
+copied, since emptying it would follow the link, and a copy that cannot be made whole is
+refused and removed. Python runs with `-B` and `PYTHONDONTWRITEBYTECODE=1`. The scripts
+are run there in order with `MANUSCRIPT_GUARD_VAULT` and `MANUSCRIPT_GUARD_VAULT_RUN` set,
+standard input closed, in a process group of their own, with no time limit: the person is at
+the terminal and can stop it. Their standard output and error are copied as they come to the
+terminal and to `<vault>/.runs/<run>/log.txt`. The run stops at the first script that exits
+other than 0. Where every one finished, each file written or changed in the copy, but Python's
+compiled files and a link, a junction or another reparse point the run made, is moved into
+`<vault>/outbox/<run>/` at its path, and the walk goes through no link (round 1 of #490);
+where one failed, nothing is, and the run is not one to release. A run stopped before its end
+writes a summary saying `stopped`, the script it stopped in with no exit code, so that the
+agent never reads the run before's as this one's; where it stopped while the outputs were
+moved, what was moved before then waits in the outbox, `run.json` names it, the terminal is
+told, and the release refuses the run as one that did not finish (fix rounds 4 and 5). The copy is then removed, and
+`<vault>/.runs/<run>/run.json` keeps the run's id, time, commit, the project's scripts by
+digest, the scripts run and what went to the outbox.
+
+The summary the agent reads, `.manuscript-guard/vault/last-run.json`
+(`manuscript-guard/vault-run/1`, `vault/summary.py`), is written at once (decision 9a) and is
+the only file the run writes in the project. A `.py` script is run through a wrapper written
+into the run's folder, which runs it with `runpy.run_path(..., run_name="__main__")`, its own
+folder first on `sys.path` and `sys.argv` its path, and where it raises anything but
+`SystemExit`, writes the frames of the traceback and a `KeyError`'s key where it is a string
+into the run's folder, and the exception's class and module where the module holds the
+class under its name and is `builtins` or a module whose file is outside the copy; then it
+prints the traceback and exits 1. The script runs in the wrapper's process, so all the
+wrapper writes is the script's to forge: it is read as untrusted, and held to the project's
+scripts as the copy held them before anything ran (`run.source_texts`), never to what the run
+wrote (round 1 of #490). A frame is kept where its file is one of them, its line within that
+file's lines and its function `<module>` or the like or a word of that file. A class is named
+only where it is a built-in exception, of a set the tool computes from `builtins` in its own
+process (`summary.BUILTIN_EXCEPTIONS`), and the wrapper says its module is `builtins`. Any
+other class gives `"exception": "not a builtin"`, with no name and no module. Nothing the
+summary names is looked for or imported: importing a module a run names runs that module's
+code in the tool (`test.autotest` runs CPython's tests), and in a virtual environment a run
+can plant a module in site-packages (the fix round of #490); the key where it is exactly a column name of the data
+dictionary or of a released profile (`profiles/data/*.profile.json`, `columns[].name`). An R
+script's last `Calls:` line in its standard error, kept in this process only, gives the names
+that are words of the project's scripts before the run, the last 20, as many as the frames. No message and no value is written. The summary is checked against its
+schema before it is written, and where it does not hold, only each script's path and exit code
+are.
+
+### Releasing what a run wrote: `vault release`
+
+`vault release RUN --as PERSON` (`vault/release.py`) refuses where standard input is not a
+terminal, before anything is read, and refuses a run already released, one not finished
+(saying, where files were moved before it stopped, that they wait in its outbox unreleased),
+and an outbox holding a link. Who releases is the data custodian where `authors.yaml` names one
+(`sign_offs.holder`, `is_holder`), else any author (`approvals.find_author`) (decision 10a).
+The outbox is sorted: each `results/*.json` is a results file (its `.sha256` is written again
+beside it); a path `harvest.yaml` names as an entry's output is a harvested output; the plan
+the run's first results froze, `design/plan.frozen.yaml`, is the plan where it holds the keys
+`freeze_plan` writes and no other, the project's plan text and its digest, a time, one of the
+scripts run, and not `synthetic`, and the project has none yet; anything else is a file no
+check reads, profiles under `profiles/data/` among them while part 3's checks are not built.
+
+Each results file is checked against the results schema and read whole by
+`deposit.counts.small_in` (values, table cells, model and variable cards); each table, but one
+a model card made, by `custodian.recoverable` for a count held back that a total gives away,
+a warning; each column but the first, the one that names the rows, for values all different
+over at least the larger of the minimum and two rows, a warning. Each harvested output is read
+by `harvest.receipt._counts_held`, as a site's receipt reads it, its refusals refusing the
+release and no sign-off taking them, and every column of it for values all different. Small
+counts in the results refuse unless the data custodian has signed off
+`VAULT/custodian/small-counts/<run>`, whose digest is of the run, the minimum and the SHA-256
+of every results file of the outbox, and whose findings name each results file holding such a
+count and neither the count nor where it is: the sign-off is kept in the project whether or not
+the release follows, and counts from one to the minimum could be found from a digest of them
+by trying each (round 1 of #490); `sign --finding VAULT/...` reads the outbox to work it out.
+Where `custodian.restricts_sending` is true, the release is refused until the data custodian
+has signed off `VAULT/custodian/agent-reads-releases`, a statement bound to nothing but itself
+(decision 11a): a released file is read by the agent, and through it by its provider, and
+every release prints that line, at its start and its end.
+
+The warnings are printed; each file no check reads is asked for one by one, and released only
+where the person types its path (decision 12a); then the list of what goes in is shown and a
+y/N asked. A file whose path in the project, or a folder above it, is a link or a junction
+refuses the release, rather than be written through (round 1 of #490). The results go into
+the project at their paths with `provenance.vault.released`
+set true and their digest written again, the rest copied as they are, and
+`approvals/vault-releases/<run>.json` (`manuscript-guard/vault-release/1`) records who released
+it, their ORCID iD where `authors.yaml` gives one, the role, when, the run's time and commit,
+the analysis sources by digest, the scripts run, the vault's labels and digests the results
+read, each file released with its digest, size and kind, the warnings shown, and the sign-offs
+it stood on. The outbox is left as it is.
+
+### What G1 says of results from the vault
+
+`gates/vault.py`, run by `check` and before `package`, reads each fragment with a `vault:`
+input. A label `design/vault.yaml` does not register is `vault-input-unregistered`, and a
+digest other than the registered one `vault-input-changed`, both failures at every stage. A
+fragment no release record holds by its path and the SHA-256 of its bytes is
+`vault-result-unreleased`, a warning before internal review and a failure from it
+(`policy.BINDS_AT`, as `count-below-minimum`), saying whether a record holds another digest
+for it (changed since), whether it says it was released, or neither (copied by hand, or a run
+outside `vault run`). A record that breaks its schema, or whose name is not its run, is a G0
+`schema-violation`. The codes route to the results-binding skill, the person's to act on.
+The write guard puts to the person an agent's write or edit of any file under
+`approvals/vault-releases/`, JSON as the records are, and the shell guard a command that
+names that folder in either shell's spelling, as it puts an approval and a sign-off: a forged
+record would make `vault run` say no script changed and let an edited fragment pass G1.
+
+The receipt's `_run_entry` put the last 400 characters of the script's standard error into
+its error, and a script run on data can print a row of them: it now says how the run ended and
+not what it printed.
 
 ## Known gaps
 
@@ -14245,6 +14518,28 @@ Open, recorded as each change landed:
   carry is not in the record, and the record is as old as the day it was asked. Requests
   are paced at fixed intervals rather than by the limits each answer states in its
   headers.
+- **A work's kind is PubMed's word, where PubMed has the work.** A work with no PubMed record
+  (most of what is not biomedical, books, reports, and a paper whose DOI PubMed does not hold
+  and that the entry gives no PMID) has no publication types, so `number-from-secondary-source`
+  says nothing of it; nor of a recent paper MEDLINE has not yet indexed, typed only "Journal
+  Article". The types are the indexers', and only what they say exactly is read: a letter is
+  not read at all, so a letter that only comments on others' numbers says nothing; a review
+  is a note, not a warning, since PubMed typed a systematic review as a Review before it had
+  a type for one; a narrative review typed only Journal Article says nothing; and a type
+  beside them that is not generic (a guideline, a consensus statement) clears the work. The
+  sets (`OPINION`, `REVIEWED` and `GENERIC` in `gates/lookups.py`) are a reading of NLM's list
+  of 2026-07-01, and a generic type NLM adds later clears a work until it is put there. Which
+  PMID a record's types come from is not checked against the entry's title: a PMID that names
+  another work (`pmid-names-another-work`) gives that work's types.
+- **The PMID PubMed gives a DOI is refused where the answer is not one.** Several PMIDs for
+  one DOI (a work and a notice filed under its DOI, or two records of one work), or one whose
+  record holds another DOI or none, keep no PMID: the work's types and links are then unknown,
+  as for a work PubMed does not have. A DOI holding a quotation mark is not searched for.
+- **A later version or a correction is as current as the record.** Crossref's notices are
+  those the publisher deposits, and PubMed's links those its indexers make; a correction
+  deposited after the lookup is not in the record until `lookup` asks again (`lookup-stale`
+  after `lookup.max_age_days`). A new version that keeps the work's DOI, as a preprint
+  server's do, is no notice and is not said.
 - **A registration is held to the record as it stood the day it was asked.**
   ClinicalTrials.gov's API serves the record as it is now, not as it was registered: an
   outcome changed in the registry before the paper was written is held as registered. Only
@@ -18699,6 +18994,32 @@ Open, recorded as each change landed:
   then states a locked parameter of the same value, and `methods-parameter-absent` is not
   said (fix-only round of #395). G9 reads the printed headings, so a line pandoc prints as
   text that names the Results ends G2's Methods there and not G9's.
+- **An effect claimed on a weak source is read from words and PubMed's types
+  (`effect-claim-weak-source`).**
+  - The word ladder is not an exact reading of a claim. A word of the effect rung that claims
+    nothing, "in patients with reduced renal function", sets the note off; a claim in words
+    the list lacks, "is responsible for", "due to", "raised", does not. The limits of
+    `reworded`'s reading of the list, above, hold here too.
+  - A negation does not silence the note, so a statement that evidence is lacking is noted
+    too: "There is no evidence that X causes Y", cited to an editorial, gets the note,
+    though an editorial can say that much.
+  - A heading with no blank line after it is read as part of the sentence it runs into, and
+    so is the text of a pipe table's cells: `## Causes of liver injury` over a sentence
+    citing a case report gives the note, a capitalised effect or causation word opening the
+    heading or the cell being read as the first word of that sentence.
+  - A hedge silences the note, whatever it hedges: "X caused Y, which may explain Z" holds
+    "may" and is passed over. Only the hedges of `data/claim_strength.yaml` count: "has been
+    reported to cause" holds none and is noted.
+  - A cited work whose publication types are not known silences the note for its whole
+    sentence: a reference with no PMID (until the registry-facts pull request reads a PMID
+    from its DOI), one never looked up, a record changed by hand, a record of a DOI or PMID
+    the entry no longer has (until `lookup` runs again), PubMed silent. A work
+    PubMed does not index has no types at all, and nothing is said of it.
+  - PubMed's types are the indexers' and as of the lookup's date. A letter that reports a
+    series of cases is typed "Letter" and is weak here; a case report typed only "Journal
+    Article" is not.
+  - The sentence is named at the line its paragraph starts on, and a sentence is cut as G7's
+    other checks of a cited sentence cut it.
 - **A supporting passage is in its work, and is not held to what its sentence says.** G7
   finds the words in the stored source; whether they say what the sentence says is the
   judgement it leaves to people, the author's in `passages.yaml` and the co-authors' in the
@@ -20184,6 +20505,86 @@ What papers converted from Word showed (see "What papers converted from Word sho
     given law is the custodian's call.
   - *The starter script reads CSV and TSV.* It reads them as UTF-8 text, comma or tab; any
     other shape, and any other format, is the author's to read in it.
+- **The vault (Task F, part 2): what a run and its release do not hold.**
+  - *Encoded outputs.* A script run on the real data can put any value into anything it
+    writes or prints: a mean of one chosen row, a coefficient, a figure's point, a level's
+    name, a file name, the exit code, the line it fails at, which of its functions it fails
+    in. The release reads counts: every value and cell of a results file, every cell of a
+    harvested output. It does not read a value that is no count, nor a table's text, nor a
+    column name. A person's reading of the script, before the run, and of what is released is
+    the control, and the run and the release say so.
+  - *The summary for the agent* is written at once (decision 9a). It holds no message and no
+    value, and keeps only names the project's code held before the run and the name of a
+    built-in exception. A failing script can still choose its exit code, which built-in
+    exception it raises (some 6 bits, of the 60 or so there are), and, among its own code's
+    names and lines, the frames reported, at most 20 (and as many names of R's `Calls:`
+    line): some bits for each failed run. What the summary file holds is read by type, and a
+    field of another type is no name. Only a `KeyError`'s key is read as a column
+    name; a missing column another library reports otherwise (polars' `ColumnNotFoundError`,
+    or any R error) gives its class or its calls, and no column.
+  - *The terminal requirement.* An agent can start a pseudo-terminal (`script`, `expect`,
+    `winpty`); the hook's refusal of `vault run` and `vault release` is the other half, and
+    reads ordinary commands only. What a run prints goes to the terminal it runs in: an agent
+    app's own terminal panel, or an IDE's beside an agent extension, may be readable by the
+    agent (docs/vault.md, the traps).
+  - *Unread files are released on a person's word.* A figure, a profile, a file no entry of
+    `harvest.yaml` takes, are not read; typing a path releases the file as it is. One value
+    per row is a warning read from all the values of a column being different, over at least
+    the minimum of rows: a column of distinct estimates in a table of ten rows is warned of,
+    and an identifier column with one value repeated is not. Its first column, the one that
+    names the rows, is not read.
+  - *A harvested output's small count refuses with no sign-off to take*, as a site's receipt
+    refuses it; a results file's can be signed off.
+  - *The sign-off that the agent's provider may read releases* is bound to nothing but the
+    statement: the tool does not know which agent tool, or provider, the author uses, and a
+    change of either does not ask the custodian again.
+  - *Records.* The release record is a person's statement, unsigned, as an approval is; G1
+    holds a fragment to the digest a record gives it, and anyone who can edit the project
+    can write a record. The hooks put an agent's write of one, and a shell command naming
+    their folder, to the person; a command that only reads a record is asked too, and one
+    that builds the folder's path at run time is not seen.
+    A run made with `MANUSCRIPT_GUARD_VAULT` set by hand, outside `vault run`, writes into
+    the project and is caught only as unreleased. The write guard reads the folder of the
+    records in the case the system compares names in; the shell guard reads a word from the
+    folder the command is sent from, so `cd approvals && cp x vault-releases/` passes, as the
+    guard's other `cd` limits do.
+  - *A script run on the real data can write anywhere the account can.* The copy keeps the
+    run away from the project by where it starts, not by any wall: a script can write into
+    the project, the vault or elsewhere, and what it writes outside the copy is no output the
+    release reads.
+  - *The summary's names are held to the project's scripts as the copy was made.* A name the
+    project's code already held is kept wherever the run's choice of it came from. Only a
+    built-in exception is named, so a library's (pandas' `ParserError`, `json`'s
+    `JSONDecodeError`) is said to be "not a builtin", and the agent learns less of why a run
+    failed than it could.
+  - *What is listed is digested at the yes.* A file the project and the copy hold alike at
+    that moment passes, though it changed and changed back meanwhile; what runs is the copy,
+    the same bytes.
+  - *Only files that look like code are listed.* An input that runs and has another suffix,
+    R's `source("steps.txt")`, Python's `exec(open("x.txt").read())`, a template a script
+    renders, is neither listed nor checked at the yes; the copy holds it and runs it as it
+    was copied.
+  - *A link to a folder outside the project is kept in the copy.* The copy keeps symbolic
+    links as links (`copytree(symlinks=True)`), and a runner follows one out of the copy to
+    whatever it names, which is not listed. A run is not refused for one, since a virtual
+    environment in the project holds links to the system's Python. A junction is not copied.
+  - *A second Ctrl-C during the clean-up of a stopped run* can leave the copy in
+    `<vault>/.runs/<run>/copy/`, and the summary unwritten; the person removes the copy.
+  - *The summary file is read up to 64 KiB.* The wrapper writes the last 20 frames in the
+    copy, as UTF-8, and leaves out a value too long to write whole, so a real one fits, for
+    paths of an ordinary length; anything larger, too deep or not JSON says nothing but the
+    path and the exit code, as a script that raised nothing. A library copied with the
+    project (a `venv/` inside it) is inside the copy: a failure 20 or more frames deep in it
+    keeps 20 of its frames, which the summary then drops as no script's, and names no frame.
+  - *What a run records of git.* The copy leaves `.git` out, as `verify`'s does, so a
+    fragment written in a run records no `vcs`; the release records the project's commit at
+    the run, which says nothing of uncommitted changes.
+  - *What is run.* With no script named, each file directly in `analysis/` that a runner here
+    knows is run, in the order of its name; one that is meant to be imported, not run, is run
+    too. A run has no time limit, and a script stopped at the terminal ends the run as a
+    failure.
+  - *The outbox and the runs stay in the vault* after a release, and `.runs/<run>/log.txt`
+    holds whatever the scripts printed. Removing them is the person's.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

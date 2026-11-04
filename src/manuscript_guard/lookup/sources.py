@@ -27,6 +27,9 @@ from manuscript_guard.lookup.http import NoAnswer, Request, Response, user_agent
 FOUND = "found"
 ABSENT = "absent"
 UNRESOLVABLE = "unresolvable"
+#: A registry answered, and what it said could not be taken without a guess: PubMed giving
+#: several PMIDs for one DOI, or one whose record holds another DOI. Nothing is kept.
+REFUSED = "refused"
 
 Ask = Callable[[Request], Response]
 SHAPE = "an answer not of the shape the service documents"
@@ -85,16 +88,33 @@ def _year(value: Any) -> int | None:
 
 
 def _date(value: Any) -> str | None:
-    """A Crossref date as ISO, as far as it goes: "2010-02-06", "1998-02", "1998"."""
+    """A Crossref date as ISO, as far as it goes: "2010-02-06", "1998-02", "1998". A month
+    or a day that is none ends the date before it: a later comparison takes "2021" for
+    as much as is known, and a "2021-13" would be read as a month."""
     if not isinstance(value, dict):
         return None
     parts = value.get("date-parts")
     if not (isinstance(parts, list) and parts and isinstance(parts[0], list)):
         return None
-    numbers = [p for p in parts[0] if isinstance(p, int) and not isinstance(p, bool)]
-    if not numbers or not 1000 <= numbers[0] <= 9999:
+    numbers = []
+    # A year, a month, a day; anything after them is not read.
+    for part, (low, high) in zip(parts[0], ((1000, 9999), (1, 12), (1, 31)), strict=False):
+        if isinstance(part, bool) or not isinstance(part, int) or not low <= part <= high:
+            break
+        numbers.append(part)
+    if not numbers:
         return None
-    return "-".join([f"{numbers[0]:04d}", *(f"{n:02d}" for n in numbers[1:3])])
+    return "-".join([f"{numbers[0]:04d}", *(f"{n:02d}" for n in numbers[1:])])
+
+
+def _digits(value: Any) -> str | None:
+    """A PMID: digits, from a number, a string or the end of a PubMed URL."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        value = str(value)
+    if not isinstance(value, str):
+        return None
+    found = re.search(r"(\d+)/?\s*$", value)
+    return found.group(1) if found else None
 
 
 def _kept(record: dict[str, Any]) -> dict[str, Any]:
@@ -186,6 +206,16 @@ def work(message: dict[str, Any]) -> dict[str, Any]:
                     "posted": _year(message.get("posted")),
                 }
             ),
+            # The same dates as far as Crossref gives them, for a comparison at the finest
+            # precision both sides have; the years above are what G7 compares today.
+            "dates": _kept(
+                {
+                    name: _date(message.get(field))
+                    for name, field in (("print", "published-print"),
+                                        ("online", "published-online"),
+                                        ("issued", "issued"), ("posted", "posted"))
+                }
+            ),  # fmt: skip
             "volume": _text(message.get("volume")),
             "page": _text(message.get("page")),
             "article_number": _text(message.get("article-number")),
@@ -329,6 +359,32 @@ def summaries(
     return shapeless[0] if shapeless else read
 
 
+#: The links of ESummary's `references` list a record keeps, by `reftype` as PubMed writes
+#: it (read live on 2026-10-20 and 2026-11-04: `{"refsource": "N Engl J Med. 2021 ...",
+#: "reftype": "Comment in", "pmid": 32678528, "note": ""}`). Each points from the work to
+#: a later one: its update, its erratum, a comment on it, an expression of concern, its
+#: retraction. The others ("Comment on", "Erratum for", "Cites" and the like) point from a
+#: notice or a comment to the work it is about, and are not kept.
+LINKS = ("Update in", "Erratum in", "Comment in", "Expression of concern in", "Retraction in")
+_LINK_TYPES = {kind.casefold(): kind for kind in LINKS}
+
+
+def links(item: dict[str, Any]) -> list[dict[str, str]]:
+    """The later works an ESummary record links to, in its order: each link's type as
+    `LINKS` writes it, the PMID it points to, and PubMed's reference to that work. One
+    parser for `lookup` and `search`, which read the same reply."""
+    found = []
+    for reference in item.get("references") or []:
+        if not isinstance(reference, dict):
+            continue
+        kind = _LINK_TYPES.get(str(reference.get("reftype", "")).casefold())
+        if kind is None:
+            continue
+        found.append(_kept({"type": kind, "pmid": _digits(reference.get("pmid")),
+                            "reference": _text(reference.get("refsource"))}))  # fmt: skip
+    return found
+
+
 def _summary(pmid: str, item: Any) -> dict[str, Any]:
     """One PMID's summary. `{"error": ...}` in its place is a PMID PubMed does not know."""
     if not isinstance(item, dict):
@@ -353,6 +409,11 @@ def _summary(pmid: str, item: Any) -> dict[str, Any]:
                 "year": _year(item.get("sortpubdate")) or _year(item.get("pubdate")),
                 "doi": dois[0] if dois else None,
                 "pubtypes": [p.strip() for p in pubtypes if isinstance(p, str) and p.strip()],
+                # A PMID longer than nine digits is none the record can hold.
+                "links": [
+                    {k: v for k, v in link.items() if k != "pmid" or len(v) <= 9}
+                    for link in links(item)
+                ],
                 "volume": _text(item.get("volume")),
                 "pages": _text(item.get("pages")),
                 "elocation": _text(item.get("elocationid")),
@@ -370,10 +431,13 @@ def _summary(pmid: str, item: Any) -> dict[str, Any]:
 __all__ = [
     "ABSENT",
     "FOUND",
+    "LINKS",
+    "REFUSED",
     "UNRESOLVABLE",
     "crossref",
     "datacite",
     "doi_org",
+    "links",
     "openalex",
     "pubmed",
     "summaries",

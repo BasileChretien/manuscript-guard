@@ -6315,6 +6315,141 @@ def causal_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list], dict[str,
     return "\n".join(md) + "\n", "\n".join(tex) + "\n", found_md, found_tex
 
 
+# ------------------------------------------- an effect claimed on case reports and letters
+
+#: PubMed's publication types for a work that cannot show an effect, as PubMed writes them,
+#: those that say nothing of the evidence, and some that say a study can show one. Written
+#: here and not taken from `gates/weak_sources.py`, so that a type dropped there is caught.
+PUBTYPES_WEAK = ("Case Reports", "Editorial", "Letter", "Comment")
+PUBTYPES_GENERIC = ("Journal Article", "English Abstract", "Research Support, Non-U.S. Gov't",
+                    "Research Support, N.I.H., Extramural")  # fmt: skip
+PUBTYPES_STRONG = ("Randomized Controlled Trial", "Review", "Systematic Review",
+                   "Meta-Analysis", "Observational Study", "Multicenter Study")  # fmt: skip
+#: Sentences that claim an effect, each with its one word of the effect rung.
+EFFECT_CLAIMS = (
+    ("{s} increased {o}", "increased"), ("{s} reduced {o}", "reduced"),
+    ("{s} led to {o}", "led to"), ("{s} induced {o}", "induced"),
+    ("{s} worsened {o}", "worsened"), ("{s} prevented {o}", "prevented"),
+    ("{s} affects {o}", "affects"), ("{s} resulted in {o}", "resulted in"),
+)  # fmt: skip
+#: Sentences that claim a cause, each with its one word of the causation rung.
+CAUSE_CLAIMS = (
+    ("{s} causes {o}", "causes"), ("{s} caused {o}", "caused"),
+    ("{s} is causally related to {o}", "causally"), ("Causes of {o} include {s}", "causes"),
+    ("This proves that {s} raises {o}", "proves that"),
+    ("We demonstrated that {s} raises {o}", "demonstrated that"),
+)  # fmt: skip
+#: The same claims, each with a hedge.
+HEDGED_CLAIMS = (
+    "{s} may cause {o}", "{s} might increase {o}", "{s} could lead to {o}",
+    "{s} possibly caused {o}", "It appears that {s} reduces {o}", "{s} probably prevented {o}",
+    "{s} seems to affect {o}",
+)  # fmt: skip
+#: Claims of an effect, negated: a negation does not silence the note.
+NEGATED_CLAIMS = (
+    ("{s} did not cause {o}", "cause", "causation"),
+    ("{s} was not shown to reduce {o}", "reduce", "effect"),
+    ("No study found that {s} increased {o}", "increased", "effect"),
+)  # fmt: skip
+#: Sentences with no word of the effect or the causation rung.
+QUIET_CLAIMS = ("{s} was associated with {o}", "A case of {o} after {s} was reported",
+                "{s} was linked to {o}")  # fmt: skip
+#: The kinds of cited sentence each paper of `weak_source_papers` holds one of, and which
+#: give the note: an effect, a cause and a negated claim on weak works only, a claim on weak
+#: works whose types include generic ones; and a hedged claim on weak works, a claim on weak
+#: works beside a study, beside a work whose types are not known, on works of generic types
+#: only, and a sentence with no word of the two rungs, which give nothing.
+WEAK_SOURCE_KINDS = {
+    "effect": True, "cause": True, "negated": True, "weak beside generic": True,
+    "hedged": False, "some weak": False, "unknown": False, "generic only": False,
+    "quiet": False,
+}  # fmt: skip
+
+
+@st.composite
+def _pubtypes(draw: st.DrawFn, role: str) -> list[str]:
+    """The publication types of one work: `weak`, `weak beside generic`, `strong` (a study,
+    with weak and generic types perhaps beside it) or `generic`."""
+    from itertools import combinations
+
+    def some(pool: tuple[str, ...], least: int) -> list[str]:
+        return list(draw(st.sampled_from([pick for size in range(least, 3)
+                                          for pick in combinations(pool, size)])))
+
+    if role == "generic":
+        chosen = some(PUBTYPES_GENERIC, 1)
+    elif role == "strong":
+        chosen = some(PUBTYPES_STRONG, 1) + some(PUBTYPES_WEAK, 0)[:1] + some(PUBTYPES_GENERIC, 0)
+    else:
+        chosen = some(PUBTYPES_WEAK, 1)
+        chosen += some(PUBTYPES_GENERIC, 1 if role == "weak beside generic" else 0)
+    return draw(st.permutations(chosen))
+
+
+@st.composite
+def weak_source_papers(
+    draw: st.DrawFn,
+) -> tuple[str, dict[str, Any], list[list[Any]]]:
+    """A Markdown paper with one cited sentence of every kind of `WEAK_SOURCE_KINDS`, each in
+    a paragraph of its own and in an order drawn, a sentence with no citation before or after
+    it perhaps, the paragraph wrapped perhaps; the PubMed publication types of each work it
+    cites, None for a work whose types are not known, with the day each was looked up; and
+    each sentence `gates/weak_sources.py` notes, as the line its paragraph starts on, the
+    words of the two rungs with their rung, and the works it cites in the order of their
+    keys."""
+    lines = ["# Introduction", ""]
+    works: dict[str, Any] = {}
+    noted: list[list[Any]] = []
+    number = 0
+    for kind in draw(st.permutations(list(WEAK_SOURCE_KINDS))):
+        s, o = draw(st.sampled_from(CAUSAL_SUBJECTS)), draw(st.sampled_from(CAUSAL_OBJECTS))
+        if kind == "cause":
+            template, word = draw(st.sampled_from(CAUSE_CLAIMS))
+            words = [[word, "causation"]]
+        elif kind == "negated":
+            template, word, rung = draw(st.sampled_from(NEGATED_CLAIMS))
+            words = [[word, rung]]
+        elif kind == "hedged":
+            template, words = draw(st.sampled_from(HEDGED_CLAIMS)), []
+        elif kind == "quiet":
+            template, words = draw(st.sampled_from(QUIET_CLAIMS)), []
+        else:
+            pool = draw(st.sampled_from((EFFECT_CLAIMS, CAUSE_CLAIMS)))
+            template, word = draw(st.sampled_from(pool))
+            words = [[word, "effect" if pool is EFFECT_CLAIMS else "causation"]]
+        said = template.format(s=s, o=o)
+        roles = {"some weak": ["weak", "strong"], "unknown": ["weak", None],
+                 "generic only": ["generic"],
+                 "weak beside generic": ["weak beside generic"]}.get(kind, ["weak"])  # fmt: skip
+        roles = roles + draw(st.lists(st.sampled_from(["weak", *roles]), max_size=1))
+        keys = []
+        for role in draw(st.permutations(roles)):
+            number += 1
+            key = f"{'unknown' if role is None else role.split()[0]}{number}"
+            keys.append(key)
+            works[key] = None if role is None else {
+                "types": draw(_pubtypes(role)),
+                "on": f"2026-{draw(st.integers(1, 10)):02d}-{draw(st.integers(1, 28)):02d}",
+            }
+        cites = "; ".join(f"@{key}" for key in keys)
+        claim = said[0].lower() + said[1:]
+        sentence = draw(st.sampled_from((
+            f"{said} [{cites}].",
+            f"@{keys[0]} reported that {claim}"
+            + (f" [{'; '.join(f'@{key}' for key in keys[1:])}]" if keys[1:] else "") + ".",
+        )))  # fmt: skip
+        before = draw(st.sampled_from(("", "Reports were few. ")))
+        after = draw(st.sampled_from(("", " The rate was stable.")))
+        paragraph = before + sentence + after
+        if draw(st.booleans()):
+            paragraph = paragraph.replace(" ", "\n", 1)
+        if WEAK_SOURCE_KINDS[kind]:
+            noted.append([len(lines) + 1, words, sorted(keys)])
+        lines += [*paragraph.split("\n"), ""]
+    noted.sort()
+    return "\n".join(lines), {"text": "\n".join(lines), "works": works}, noted
+
+
 # ------------------------------------------------------- a table's means of whole numbers
 
 #: Rows of means of whole numbers, as an auditor names them: a scale's score, a count.
@@ -9111,6 +9246,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
                               texts().map(lambda text: {"paper": text})),
     "cited sentences": st.one_of(causal_papers().map(lambda drawn: {"paper": drawn[0]}),
                                  texts().map(lambda text: {"paper": text})),
+    "weak sources": weak_source_papers().map(lambda drawn: drawn[1]),
     "latex tables": latex_table_rows().map(lambda drawn: drawn[0]),
     "reference census": numbered_citations().map(lambda drawn: drawn[0]),
     "whole-number means": mean_tables().map(

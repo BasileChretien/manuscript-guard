@@ -321,6 +321,21 @@ def test_the_site_refuses_a_run_that_fails(project: Path) -> None:
         make_receipt(load_project(project)[0], "site-b")
 
 
+def test_a_failed_run_at_the_site_does_not_carry_its_output_into_the_error(
+    project: Path,
+) -> None:
+    """What a script printed before it failed can be a row of the data; the error the site's
+    command raises is printed wherever the command was started, so it says how the run
+    ended, and not what it printed (Task F, part 2: the error kept the last 400 characters
+    of standard error)."""
+    _harvested(project, receipt="site-a")
+    _write_script(project, "import sys\nsys.stderr.write('PATIENT-7741 aged 93')\n"
+                           "raise SystemExit(3)\n")  # fmt: skip
+    with pytest.raises(HarvestError, match="exited 3") as raised:
+        make_receipt(load_project(project)[0], "site-a")
+    assert "PATIENT-7741" not in str(raised.value)
+
+
 # ----------------------------------------------------------------------------- the commands
 
 

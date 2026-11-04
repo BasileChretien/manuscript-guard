@@ -122,6 +122,14 @@ BINDS_AT = {
     # A count the custodian forbids may be read inside the team; not outside it, which a
     # panel sent to a model provider already is.
     "count-below-minimum": INTERNAL_REVIEW,
+    # Results from the data held in the vault that no person released: copied from its
+    # outbox by hand, edited since, or from a run outside `vault run`. A warning before, as
+    # G1 says it (`gates/vault.py`), and a failure where a small count would be one.
+    "vault-result-unreleased": INTERNAL_REVIEW,
+    # From data other than those registered, or a file the registry does not name: the
+    # results are not from the data the paper says, at every stage.
+    "vault-input-changed": DESIGN,
+    "vault-input-unregistered": DESIGN,
     # A count held back that a total beside it gives away is printed all the same. It fails
     # only where the analysis declares the total a sum; a table's total read from its label
     # is a warning, and warnings bind at no stage (Basile, 2026-10-29).

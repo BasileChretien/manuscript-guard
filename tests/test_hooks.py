@@ -763,6 +763,98 @@ def test_every_name_the_package_installs_is_one_the_guard_knows() -> None:
         assert SUBMISSION_MARKERS.search(f"python -m {module} submit"), module
 
 
+#: The tool asked for its help in the one shape the guard lets through: its name, a subcommand
+#: or none, and `-h` or `--help`. Each such submission was refused in a project that fails, so
+#: an agent could not read `submit`'s options until the paper passed.
+ONLY_ITS_HELP = [
+    "manuscript-guard submit --help",
+    "manuscript-guard submit -h",
+    "mguard check -h",
+    "manuscript-guard.exe submit --help",
+    "mguard.exe build -h",
+    "manuscript-guard --help",
+]
+#: And what is still a submission: the command itself, and a help beside one, or a help that
+#: is not one (after `--`, as an option's value, from a command substitution). A help is let
+#: through only as the whole command, so one among other commands is held as main held it.
+NOT_ONLY_ITS_HELP = [
+    # Help in any other shape than exactly the tool, a subcommand and the help (round 3).
+    "mguard submit --offline --help",
+    "manuscript-guard check --submission --help",
+    "manuscript-guard build --stage submission -h",
+    'manuscript-guard submit "--help"',
+    "python -m manuscript_guard.cli submit --help",
+    "FOO=1 manuscript-guard submit --help",
+    "./mguard submit --help",
+    "manuscript-guard submit --help ",
+    "manuscript-guard  submit --help",
+    "cd paper && manuscript-guard submit --help",
+    "manuscript-guard submit --help | head -n 20",
+    "manuscript-guard submit",
+    "manuscript-guard submit --offline",
+    "manuscript-guard check --submission",
+    "manuscript-guard build --stage submission",
+    "manuscript-guard submit --help && manuscript-guard submit",
+    "manuscript-guard submit --help; mguard submit --offline",
+    "manuscript-guard submit --help\nmanuscript-guard check --submission",
+    "manuscript-guard check --help && manuscript-guard submit",
+    "manuscript-guard submit -- --help",
+    "manuscript-guard submit --offline=--help",
+    "manuscript-guard submit $(echo --help)",
+    "manuscript-guard submit --help-me",
+    "manuscript-guard check --help; scp build/manuscript.docx host:",
+    # Round 1 of #513. A quote opened before the tool's name, which a cut at the `;` hid.
+    'sh -c "manuscript-guard submit" " -h " "a;b"',
+    'sh -c "manuscript-guard submit" -h',
+]
+#: A line continued in one shell and not the other, each with the tool that runs it: under
+#: PowerShell the copy after `\` is a command of its own; under bash the scp runs in the
+#: substitution the backtick opens (round 1 of #513).
+CONTINUED_PAST_A_HELP = [
+    ("PowerShell", "manuscript-guard check --help \\\ncp build/manuscript.docx D:\\upload"),
+    ("Bash", "manuscript-guard -h `\nscp build/manuscript.docx host:;`"),
+    ("PowerShell", "manuscript-guard submit --help $ExecutionContext.InvokeCommand.InvokeScript("
+                   "'Copy-Item build/manuscript.docx D:/upload')"),
+    ("PowerShell", "manuscript-guard submit --help @{a=Copy-Item build/manuscript.docx D:/upload}"),
+    # A quote PowerShell 5.1 hands on unescaped, so the help ends inside the word before it.
+    ("PowerShell", "manuscript-guard submit --skip-checks --document build/manuscript.docx "
+                   """--csl 'x"' --help"""),
+    ("PowerShell", """manuscript-guard build --submission --skip-checks -o 'out"' -h"""),
+    ("PowerShell", 'manuscript-guard submit --skip-checks --csl "x""" --help'),
+    ("PowerShell", "manuscript-guard submit --skip-checks --csl 'x y\\' --help"),
+]
+
+
+@pytest.mark.parametrize("command", ONLY_ITS_HELP)
+def test_a_submission_asked_only_for_its_help_is_let_through(
+    command: str, project: Path, capsys
+) -> None:
+    _without_a_review(project)
+    event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(project)}
+    assert run("guard-submission", event, capsys) is None, command
+
+
+@pytest.mark.parametrize("command", NOT_ONLY_ITS_HELP)
+def test_a_submission_beside_a_help_is_still_refused(command: str, project: Path, capsys) -> None:
+    """The corruption: a help in the line must not carry the submission beside it through."""
+    _without_a_review(project)
+    event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(project)}
+    result = run("guard-submission", event, capsys)
+    assert decision(result) == "deny", command
+    assert "submission check" in reason(result)
+
+
+@pytest.mark.parametrize(("tool", "command"), CONTINUED_PAST_A_HELP)
+def test_a_line_continued_past_a_help_is_still_refused(
+    tool: str, command: str, project: Path, capsys
+) -> None:
+    _without_a_review(project)
+    event = {"tool_name": tool, "tool_input": {"command": command}, "cwd": str(project)}
+    result = run("guard-submission", event, capsys)
+    assert decision(result) == "deny", command
+    assert "submission check" in reason(result)
+
+
 def _named_commands(text: str) -> list[str]:
     """Each `manuscript-guard` command a message tells its reader to run."""
     return re.findall(r"`(manuscript-guard\s[^`]*)`", text)

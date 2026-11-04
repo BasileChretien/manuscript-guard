@@ -7627,6 +7627,18 @@ that the hook fires on every shell command, so it has its own console script
 (`manuscript-guard-hook`) that imports nothing heavy until it knows it has work: 152 ms for
 the no-op path against roughly 400 ms through the full CLI.
 
+One command goes through for its help, in one exact shape (`hooks._ONLY_HELP`): the tool
+by its name, `manuscript-guard` or `mguard` with or without `.exe`, a subcommand or none, and
+`-h` or `--help`, one space between and nothing else, as `manuscript-guard submit --help`.
+That prints the options of `submit` and exits, and it was refused while the submission check
+failed, so an agent could not read those options until the paper passed. Every other command
+is read as before, a help with an option beside it, quoted, after a path, an assignment or
+`python -m` among them. The shape is exact because three rounds of review of #513 each found a
+way past a broader reading: a line continued in one shell and not the other into a copy of the
+document, a submission quoted for `sh -c` before the tool's name, an expression PowerShell
+evaluates inside an argument, and a quote inside a word that Windows PowerShell 5.1 hands to
+the program unescaped, so that the help ends inside the argument before it.
+
 It is registered for the three tools through which Claude Code runs a shell command: `Bash`,
 `PowerShell` and `Monitor`. Each sends the command in `tool_input.command`, and the guard
 reads the command, not the tool's name. It was registered for `Bash` alone until 2026-10-02,
@@ -15646,7 +15658,16 @@ Open, recorded as each change landed:
   nothing else was considered and left (Basile, 2026-10-02): the rule has to tell
   `manuscript-guard check --submission` from the same words followed by `&& scp`, and a
   mistake in it lets a submission through, which is what the guard exists to stop. An author
-  typing in a terminal is not affected, since a hook sees only the agent's commands.
+  typing in a terminal is not affected, since a hook sees only the agent's commands. A help
+  is let through only as the tool, a subcommand and the help: `check --submission --help`
+  is held.
+- **A help is let through only in one exact shape.** `cd paper && manuscript-guard submit
+  --help`, `manuscript-guard check --submission --help`, `submit --offline --help`, a quoted
+  `"--help"`, `./mguard submit --help`, `FOO=1 manuscript-guard submit --help`, `python -m
+  manuscript_guard.cli submit --help` and a help with a space too many are each held as a
+  submission. `--hel` is held too, and argparse refuses it, since the parser takes no
+  abbreviation (`allow_abbrev=False`). Each costs an agent one refusal, and none lets a
+  submission through.
 - **From a folder with no project, the submission guard finds only a project the command
   spells out.** It used to find none. It matched the command, then ran the submission check
   in the folder the event names as the agent's, and from the folder above a project there is

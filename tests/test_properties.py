@@ -103,6 +103,7 @@ from generated import (
     generated,
     harvest_cells,
     harvest_tables,
+    help_commands,
     holds,
     keyword_paragraphs,
     laid_out,
@@ -3039,6 +3040,23 @@ def test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_besi
     lines, expected = drawn
     read = READINGS["vault named"]()
     assert [read({"command": line}) for line in lines] == expected, lines
+
+
+# ------------------------------------------------- a submission asked only for its help
+
+
+@holds(60, help_commands())
+def test_a_submission_asked_only_for_its_help_is_let_through_and_no_other(
+    drawn: tuple[list[str], list[bool]],
+) -> None:
+    """A command that is exactly the tool, by its name, a subcommand or none, and `-h` or
+    `--help`, one space between, is no submission; and every other shape that asks for a
+    submission is one: a help beside an option, quoted, after `--`, as a value or from a
+    substitution, the tool by a path, after an assignment or run by Python, a space too many,
+    a quote inside a word, and more than the one command (`hooks._submission_shaped`)."""
+    lines, held = drawn
+    read = READINGS["submission shaped"]()
+    assert [read({"command": line}) for line in lines] == held, lines
 
 
 # ------------------------------------------------------------- the profile of a vault's file
@@ -14583,6 +14601,33 @@ def _the_home_is_read_by_its_tilde_only(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(hooks, "_HOME_VARIABLE", re.compile("(?!)"))
 
 
+def _loosened(patch: pytest.MonkeyPatch, pattern: str) -> None:
+    patch.setattr("manuscript_guard.hooks._ONLY_HELP", re.compile(pattern, re.DOTALL))
+
+
+_TOOL_HELP = r"(?:manuscript-guard|mguard)(?:\.exe)?(?: [a-z][a-z-]*)? "
+
+
+def _a_quoted_help_is_one(patch: pytest.MonkeyPatch) -> None:
+    _loosened(patch, _TOOL_HELP + r"[\"']?(?:-h|--help)[\"']?")
+
+
+def _any_words_may_stand_before_the_help(patch: pytest.MonkeyPatch) -> None:
+    _loosened(patch, r"(?:manuscript-guard|mguard)(?:\.exe)?.* (?:-h|--help)")
+
+
+def _the_help_may_be_followed(patch: pytest.MonkeyPatch) -> None:
+    _loosened(patch, _TOOL_HELP + r"(?:-h|--help).*")
+
+
+def _anything_may_stand_before_the_tool(patch: pytest.MonkeyPatch) -> None:
+    _loosened(patch, r".*" + _TOOL_HELP + r"(?:-h|--help)")
+
+
+def _no_help_is_let_through(patch: pytest.MonkeyPatch) -> None:
+    _loosened(patch, r"(?!)")
+
+
 def _a_word_joined_by_colons_is_read_whole(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import hooks
 
@@ -14744,6 +14789,26 @@ BROKEN = {
     "a path a command quotes is split at its spaces": (
         _a_quoted_path_is_split_at_its_spaces,
         test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_beside_it,
+    ),
+    "a quoted help is let through": (
+        _a_quoted_help_is_one,
+        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
+    ),
+    "any words may stand before the help": (
+        _any_words_may_stand_before_the_help,
+        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
+    ),
+    "anything may follow the help": (
+        _the_help_may_be_followed,
+        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
+    ),
+    "anything may stand before the tool": (
+        _anything_may_stand_before_the_tool,
+        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
+    ),
+    "no help is let through": (
+        _no_help_is_let_through,
+        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
     ),
     "a figure Word left an identifier on is read as a paragraph": (
         _a_figure_with_an_identifier_is_a_paragraph,

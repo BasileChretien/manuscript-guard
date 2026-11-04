@@ -7743,6 +7743,17 @@ write guard knows a generated file. The answer needed no change. `json.dumps` es
 character outside ASCII, so what the hook prints reads the same in the code page it is written
 in and in the UTF-8 the tool reads it as, and a test holds it to ASCII.
 
+**Output to a pipe is UTF-8.** Python opens a pipe or a file in the locale's code page on
+Windows, and `check`, `next` and `import` wrote every character outside cp1252 as `?`: each
+Japanese quote in a finding's context read "?????", and the `é` of an author's name was the
+lone byte 0xE9, which a reader of UTF-8 cannot decode. An agent's tool, `> file` and a CI log
+all read the output that way. `streams.utf8_when_piped` makes standard output and error UTF-8
+at the start of both entry points when they are not a console, unless `PYTHONIOENCODING`,
+`PYTHONUTF8` or `-X utf8` names an encoding, which is then followed. A console is left as it
+is: on Windows Python writes to it as UTF-16, and elsewhere in the terminal's encoding. Where
+that encoding cannot take a character, `cli._survive_the_console` writes the line in ASCII,
+an em dash as `--`, as it did before.
+
 **A hook blocks only what is unambiguous.** Writing a machine-written results file is always
 wrong. Prose that trips the AI-writing lint is not, so nothing in G6 is enforced this way.
 

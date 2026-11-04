@@ -19,13 +19,12 @@ gives:
   different, or more than 50 different values that are neither numbers nor dates), the
   missing values and the pattern its values share, "AA-9999", where they share one.
 
-The counts of each column add up to the table's rows, which are printed, and nought is printed
-as 0, so a count "<m" is one to m-1, and the levels folded into "other" are as many rows at
-least. Where a count held back could be worked out from them
-(`gates.custodian.recoverable_counts`), the smallest count printed beside it is held back too,
-unprinted (`null`), until none can; where none is left to hold back, the column's counts are
-withheld, and the profile says why (`held`). How many levels "other" folds is not said where it
-would give its count away.
+The counts of each column add up to the table's rows, which are printed; a table of fewer
+rows than m is not profiled. What a reader works out of them is `vault.disclosure`'s: where a
+count is held behind the minimum, the smallest printed above nought is held beside it
+(`null`); where a count would still be worked out, the column's counts are withheld, and the
+profile says why (`held`). How many levels "other" folds is said only where it gives no folded
+level's rows. DESIGN.md lists what each field tells a reader.
 
 At a minimum of 1 nothing is held back. With few rows, the centiles, the mean and the SD
 together can give the smallest and largest values back.
@@ -42,12 +41,13 @@ import math
 import re
 from bisect import bisect_left, bisect_right
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from manuscript_guard import quality
 from manuscript_guard.contracts.dictionary import CODED, NUMERIC, Dictionary, Variable
+from manuscript_guard.vault import disclosure
 
 SCHEMA = "manuscript-guard/data-profile/1"
 #: Where the profiles are, in the project.
@@ -257,64 +257,6 @@ def _shown(count: int, minimum: int) -> int | str:
     return quality.held_back(count, minimum) or count
 
 
-def _range(one: object, total: int | None, minimum: int, bound) -> tuple[int, float]:
-    """What a count printed as `one` can be, `bound` narrowing it where more is known."""
-    from manuscript_guard.gates import custodian
-
-    if isinstance(one, int):
-        return one, one
-    least = custodian.HELD_LEAST
-    low, high = (0, math.inf if total is None else total) if one is None else (least, minimum - 1)
-    if bound is not None:
-        low, high = max(low, bound[0]), min(high, bound[1])
-    return low, high
-
-
-def _given_away(shown: list, total: int | None, minimum: int, bounds) -> list[int]:
-    """The places of the counts held back that are worked out: alone, by what is known of
-    each, or beside the total and the others."""
-    from manuscript_guard.gates.custodian import recoverable_counts
-
-    alone = [at for at, one in enumerate(shown) if not isinstance(one, int)
-             and (pinned := _range(one, total, minimum, bounds[at]))[0] == pinned[1]
-             and 1 <= pinned[0] < minimum]  # fmt: skip
-    if alone or total is None:
-        return alone
-    return recoverable_counts(total, shown, minimum, bounds)
-
-
-def _unheld(shown: list) -> list | None:
-    """What a column whose counts give one held back away, and that has none left to hold
-    back beside it, prints: nothing of its counts."""
-    return None
-
-
-def held_beside(
-    counts: Sequence[int],
-    total: int | None,
-    minimum: int,
-    bounds: Sequence | None = None,
-    hidden: Sequence[int] = (),
-) -> list | None:
-    """How each count of a column is printed: itself, "<m" below the minimum, or None where
-    it is held back beside a count that the total and the others would give away, or that
-    gives itself away. The counts add up to `total`, which is printed, or None where it is
-    held back; `bounds` says what more is known of a count, `hidden` which are never printed.
-    None where no count is left to hold back and one would still be given away."""
-    bounds = list(bounds) if bounds is not None else [None] * len(counts)
-    shown: list = [None if at in hidden else _shown(count, minimum)
-                   for at, count in enumerate(counts)]  # fmt: skip
-    for at in _given_away(shown, None, minimum, bounds):
-        shown[at] = None
-    while _given_away(shown, total, minimum, bounds):
-        exact = [at for at, one in enumerate(shown) if isinstance(one, int)]
-        if not exact:
-            return _unheld(shown)
-        some = [at for at in exact if counts[at] > 0] or exact
-        shown[min(some, key=lambda at: counts[at])] = None
-    return shown
-
-
 def _share(count: int, shown: object, rows: int, minimum: int) -> Figure | None:
     if isinstance(shown, int) and count >= minimum and count > 0 and rows > 0:
         return figure(count / rows)
@@ -393,7 +335,31 @@ def _month_shown(month: int) -> str:
     return f"{month // 12:04d}-{month % 12 + 1:02d}"
 
 
-def _distribution(column: _Column, rows: int | None, minimum: int) -> dict:
+def fewest_rows(centile: int, minimum: int) -> int:
+    """The fewest rows a centile is given of: `minimum` below its value and as many above."""
+    n = 2 * minimum + 1
+    while not _enough(_centile_index(centile, n), n - _centile_index(centile, n) - 1, minimum):
+        n += 1
+    return n
+
+
+def _n_bounds(out: dict, minimum: int) -> tuple[float, float]:
+    """What the rest of a number's profile says of its rows read: a mean and SD from
+    max(m, 3) rows and none below, decimals from m rows and none below, a centile from the
+    fewest rows it can be given of."""
+    least, most = 0, disclosure.INF
+    for printed, fewest in (("mean" in out, max(minimum, FEWEST_FOR_MEAN)),
+                            ("decimals" in out, minimum)):  # fmt: skip
+        if printed:
+            least = max(least, fewest)
+        else:
+            most = min(most, fewest - 1)
+    for centile in out.get("centiles", {}):
+        least = max(least, fewest_rows(int(centile), minimum))
+    return least, most
+
+
+def _distribution(column: _Column, rows: int, minimum: int) -> dict:
     """What a number, date or time column gives beyond its missing values."""
     if column.role == "number":
         read = [quality.number_of(item) for item in column.present]
@@ -405,12 +371,7 @@ def _distribution(column: _Column, rows: int | None, minimum: int) -> dict:
         read = [quality.time_of(item) for item in column.present]
         read = [None if one is None else int(one[:2]) for one in read]
     values = [one for one in read if one is not None]
-    counts = [column.missing, len(read) - len(values), len(values)]
-    shown = held_beside(counts, rows, minimum)
-    if shown is None:
-        return _withheld(column, rows, minimum, held=True)
-    missing, unread, n = shown
-    out = _missing(column, missing, rows, minimum) | {"unread": unread, "n": n}
+    out: dict = {}
     enough = len(values) >= minimum
     if column.role == "number":
         if len(values) >= max(minimum, FEWEST_FOR_MEAN):
@@ -424,7 +385,24 @@ def _distribution(column: _Column, rows: int | None, minimum: int) -> dict:
         out["centiles"] = _centiles(values, minimum, _month_shown)
     else:
         out["centiles"] = _centiles(values, minimum, lambda hour: f"{hour:02d}:00")
-    return out
+    least, most = _n_bounds(out, minimum) if column.role == "number" else (0, disclosure.INF)
+    if column.role != "number":
+        least = max((fewest_rows(int(centile), minimum) for centile in out["centiles"]),
+                    default=0)  # fmt: skip
+    counts = [column.missing, len(read) - len(values), len(values)]
+    cells = [disclosure.Cell(count, _shown(count, minimum)) for count in counts]
+    cells[2] = disclosure.Cell(len(values), _shown(len(values), minimum), least, most)
+    cells = disclosure.beside(cells, minimum)
+    if disclosure.unsafe(cells, rows, minimum):
+        return _held(column)
+    return (_missing(column, cells[0].shown, rows, minimum)
+            | {"unread": cells[1].shown, "n": cells[2].shown} | out)  # fmt: skip
+
+
+def _held(column: _Column) -> dict:
+    """A column whose counts would give one away whatever is held back: its missing values
+    held back too, and why."""
+    return {"kind": "withheld", "missing": None, "held": HELD}
 
 
 def _missing(column: _Column, shown: object, rows: int | None, minimum: int) -> dict:
@@ -435,7 +413,7 @@ def _missing(column: _Column, shown: object, rows: int | None, minimum: int) -> 
     return out
 
 
-def _levels(column: _Column, rows: int | None, minimum: int) -> dict:
+def _levels(column: _Column, rows: int, minimum: int) -> dict:
     """Each level of `minimum` rows or more with its count, in the dictionary's order and
     then in the order of their text; the rest folded into "other"."""
     counted = Counter(quality.text_of(item) for item in column.present)
@@ -444,33 +422,56 @@ def _levels(column: _Column, rows: int | None, minimum: int) -> dict:
     order = sorted(counted, key=lambda level: (rank.get(level, len(rank)), level))
     kept = [level for level in order if _kept(counted[level], minimum)]
     folded = [level for level in order if not _kept(counted[level], minimum)]
-    counts = [counted[level] for level in kept]
-    bounds: list = [None] * len(counts)
+    cells = [disclosure.Cell(counted[level], _shown(counted[level], minimum)) for level in kept]
+    # The dictionary's codes not given by name, which a reader takes the folded ones to be.
+    coded = len([code for code in rank if code not in counted or code in folded])
+    if folded:
+        count = sum(counted[level] for level in folded)
+        most = coded * (minimum - 1) if coded else disclosure.INF
+        cells.append(disclosure.Cell(count, _shown(count, minimum), 1, most))
+    cells.append(disclosure.Cell(column.missing, _shown(column.missing, minimum)))
+    cells = disclosure.beside(cells, minimum)
+    # How many levels are folded is chosen once the count is printed or not: said beside a
+    # count held back, it would say what made it said (round 2 of the review: k said beside
+    # a 6 then held, behind a minimum of 3, said the count was even).
     said = None
     if folded:
-        counts.append(sum(counted[level] for level in folded))
-        said, bound = _other_bounds(len(folded), counts[-1], minimum)
-        bounds.append(bound)
-    shown = held_beside([*counts, column.missing], rows, minimum, [*bounds, None])
-    if shown is None:
-        return _withheld(column, rows, minimum, held=True)
-    *shown, missing = shown
-    out = _missing(column, missing, rows, minimum)
-    out["levels"] = [{"level": level, "count": count}
-                     for level, count in zip(kept, shown, strict=False)]  # fmt: skip
+        said = _folded_said(len(folded), cells[-2].count, cells[-2].shown, minimum,
+                            coded=bool(rank))  # fmt: skip
+    worked = disclosure.unsafe(cells, rows, minimum)
+    if folded and not worked:
+        other = disclosure.ranges(cells, rows, minimum)[-2]
+        worked = _folded_unsafe(other, minimum, coded)
+    if worked:
+        return _held(column)
+    out = _missing(column, cells[-1].shown, rows, minimum)
+    out["levels"] = [{"level": level, "count": cell.shown}
+                     for level, cell in zip(kept, cells, strict=False)]  # fmt: skip
     if folded:
-        out["other"] = {"levels": said, "count": shown[-1]}
+        out["other"] = {"levels": said, "count": cells[-2].shown}
     return out
 
 
-def _other_bounds(levels: int, count: int, minimum: int) -> tuple[int | None, tuple | None]:
-    """How many levels "other" is said to fold, and what that says of its count: at least
-    one row each, under the minimum each. Not said where its count is held back and that
-    would give it away: `levels` levels of fewer than `minimum` rows in all are `levels` rows
-    at least, and `minimum` - 1 at most."""
-    if count < minimum and levels >= minimum - 1:
-        return None, None
-    return levels, (levels, levels * (minimum - 1))
+def _folded_said(levels: int, count: int, shown: object, minimum: int, coded: bool) -> int | None:
+    """How many levels "other" is said to fold, chosen from what is printed so that saying it,
+    or not, gives no folded level's rows away. Never where its count is held back, nor where
+    the dictionary names the codes, nor behind a minimum of 2. Where its count c is printed,
+    the k levels are c rows of one each at most and of m - 1 each at least, which give every
+    level's rows; k is said only where c is a whole number of m - 1, and k is neither, so that
+    a k not said leaves both."""
+    if coded or minimum <= 2 or not isinstance(shown, int) or count % (minimum - 1):
+        return None
+    return None if levels in (count, count // (minimum - 1)) else levels
+
+
+def _folded_unsafe(other: tuple[float, float], minimum: int, coded: int) -> bool:
+    """Whether a reader works out the rows of a folded level: behind a minimum of 2, each is
+    one; where the dictionary names `coded` codes not given by name, each code's rows are
+    from the folded count less what the other codes can hold, to what one can."""
+    if not coded:
+        return minimum <= 2
+    low = max(0, other[0] - (coded - 1) * (minimum - 1))
+    return low == min(other[1], minimum - 1)
 
 
 def shape_of(text: str) -> str:
@@ -483,24 +484,24 @@ def shape_of(text: str) -> str:
     )
 
 
-def _withheld(column: _Column, rows: int | None, minimum: int, held: bool = False) -> dict:
-    """A column given nothing of its values: its missing values, and where it is withheld by
-    its kind, the pattern its values share; where by its counts, why."""
+def _withheld(column: _Column, rows: int, minimum: int) -> dict:
+    """A column given nothing of its values: its missing values, and the pattern its values
+    share, from `minimum` of them. A pattern says there are `minimum` rows with a value, so
+    it is left out where that would give the missing count away; and where the missing count
+    would give the rows with a value away, the column is held."""
     present = len(column.present)
-    shown = held_beside([column.missing, present], rows, minimum, hidden=(1,))
-    assert shown is not None  # the present rows are never printed, so nothing is worked out
-    out: dict = {"kind": "withheld"} if held else {}
-    out |= _missing(column, shown[0], rows, minimum)
-    if held:
-        out["held"] = HELD
-        return out
     shapes = {shape_of(quality.text_of(item)) for item in column.present}
-    if present >= minimum and len(shapes) == 1:
-        out["pattern"] = shapes.pop()
-    return out
+    pattern = shapes.pop() if present >= minimum and len(shapes) == 1 else None
+    missing = disclosure.Cell(column.missing, _shown(column.missing, minimum))
+    for given in (pattern, None) if pattern is not None else (None,):
+        rest = disclosure.Cell(present, None, minimum if given is not None else 0, hidden=True)
+        if not disclosure.unsafe([missing, rest], rows, minimum):
+            out = _missing(column, missing.shown, rows, minimum)
+            return out | ({"pattern": given} if given is not None else {})
+    return _held(column)
 
 
-def _column(column: _Column, rows: int | None, minimum: int) -> dict:
+def _column(column: _Column, rows: int, minimum: int) -> dict:
     out: dict = {"name": column.name, "type": column.kind,
                  "typed_by": "dictionary" if column.variable else "values", "kind": column.role}
     if column.role == "levels":
@@ -552,8 +553,11 @@ def profile(
     if unknown:
         raise ValueError(f"profile: read_as dates names {', '.join(unknown)}, which the table "
                          "has no column of")  # fmt: skip
-    shown = quality.held_back(table.rows, minimum)
-    rows = None if shown else table.rows
+    if table.rows < minimum:
+        raise ValueError(f"profile: the table has fewer rows than the data custodian's minimum "
+                         f"of {minimum}, so every count of it would be below the minimum; no "
+                         "profile is written")  # fmt: skip
+    rows = table.rows
     names = list(table.names)
     if names and names[0].startswith(_MARK):
         shape["bom"], shape["encoding"] = True, "utf-8"
@@ -563,7 +567,7 @@ def profile(
         for column in names
     ]
     return {"schema": SCHEMA, "name": name, "dataset": dataset, "minimum_cell_count": minimum,
-            "rows": shown or table.rows, "file": shape, "columns": columns}  # fmt: skip
+            "rows": rows, "file": shape, "columns": columns}  # fmt: skip
 
 
 def _unmarked(name: str) -> str:

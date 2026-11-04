@@ -4941,6 +4941,81 @@ def small_profile_tables(draw: st.DrawFn) -> dict[str, Any]:
     }
 
 
+#: The shapes each round of the profile's review found a count given away in, each a column
+#: of a table of `rows` rows behind a minimum of `m`, padded with a level of the rest (`L`).
+#: Two folded counts of one row; m - 1 levels of one row, which their number would give
+#: ("folded pin"); m levels of one row each beside their count ("c = k"); two levels of
+#: m - 1 rows ("c = k(m-1)"); a level of m rows held beside one of one row, below a larger
+#: ("held beside"); the same beside a missing row too ("two ones beside"); two levels alike
+#: beside m - 1 rows of a third ("tie"); dictionary codes of which two hold m - 1 rows each
+#: ("coded"); and numbers with one row missing and one that is no number ("number").
+ORACLE_SHAPES = {
+    "two ones": lambda m, rows: ["r"] + [""] + ["L"] * (rows - 2),
+    "folded pin": lambda m, rows: [f"r{at}" for at in range(m - 1)] + ["L"] * (rows - m + 1),
+    "c = k": lambda m, rows: [f"r{at}" for at in range(m)] + ["L"] * (rows - m),
+    "c = k(m-1)": lambda m, rows: ["r0"] * (m - 1) + ["r1"] * (m - 1) + ["L"] * (rows - 2 * m + 2),
+    "held beside": lambda m, rows: ["A"] * (rows - m - 1) + ["B"] * m + ["r"],
+    "two ones beside": lambda m, rows: ["A"] * (rows - m - 2) + ["B"] * m + ["r", ""],
+    "tie": lambda m, rows: ["A"] * ((rows - m + 1) // 2) * 2 + ["r"] * (m - 1),
+    "coded": lambda m, rows: ["c0"] * (rows - 2 * m + 2) + ["c1"] * (m - 1) + ["c2"] * (m - 1),
+    "number": lambda m, rows: ["7"] * (rows - 2) + ["n/a", ""],
+}
+#: The codes the dictionary lists for the coded shape.
+ORACLE_CODES = ("c0", "c1", "c2")
+
+
+def _tie(values: list[str]) -> list[str]:
+    """The tie's first level split into two alike, A and B."""
+    half = values.count("A") // 2
+    return ["A"] * half + ["B"] * half + [value for value in values if value != "A"]
+
+
+def _drawn_levels(draw: st.DrawFn, m: int, rows: int) -> list[str]:
+    """Levels drawn: up to three of m rows or more, up to four of fewer, some missing, and the
+    rest in one more level, or missing where too few for one."""
+    named = draw(st.lists(st.integers(m, 2 * m + 3), max_size=3))
+    folded = draw(st.lists(st.integers(1, max(m - 1, 1)), max_size=4)) if m > 1 else []
+    missing = draw(st.integers(0, m + 1))
+    parts = [("N", count) for count in named] + [("f", count) for count in folded]
+    while sum(count for _kind, count in parts) + missing > rows:
+        parts.pop() if parts else None
+        missing = min(missing, rows)
+        if not parts and missing <= rows:
+            break
+    rest = rows - sum(count for _kind, count in parts) - missing
+    if rest >= m:
+        parts.append(("N", rest))
+    else:
+        missing += rest
+    values = [f"{kind}{at}" for at, (kind, count) in enumerate(parts) for _ in range(count)]
+    return values + [""] * missing
+
+
+@st.composite
+def oracle_tables(draw: st.DrawFn) -> list[dict[str, Any]]:
+    """A table behind each minimum of 2, 3 and 4, small enough that every table a reader of
+    its profile could hold can be listed, each holding every shape of `ORACLE_SHAPES` and a
+    column of levels drawn. Its rows are drawn and made even beside the tie's m - 1."""
+    tables = []
+    for m in (2, 3, 4):
+        low = 5 * m - 1
+        rows = draw(st.integers(low, max(low, 20 - (m - 2) * 2)))
+        if (rows - m + 1) % 2:
+            rows += 1 if rows < 20 else -1
+        rng = draw(st.randoms(use_true_random=False))
+        columns = {}
+        for shape, make in ORACLE_SHAPES.items():
+            values = make(m, rows)
+            values = _tie(values) if shape == "tie" else values
+            rng.shuffle(values)
+            columns[shape] = values
+        columns["drawn"] = _drawn_levels(draw, m, rows)
+        tables.append({"minimum": m, "columns": columns,
+                       "types": {"coded": "categorical", "number": "continuous"},
+                       "codes": {"coded": list(ORACLE_CODES)}})  # fmt: skip
+    return tables
+
+
 @st.composite
 def deposit_statements(draw: st.DrawFn) -> tuple[str, list[str], list[str]]:
     """Drawn words; the same with each way of naming the deposit put in at a place drawn, one

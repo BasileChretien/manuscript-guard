@@ -216,11 +216,12 @@ minimum cell count from `paper.yaml`, it gives of each column:
   different, only its missing values and the pattern its values share ("AA-99999").
 
 Every column's counts add up to the table's rows, and nought is printed as 0, so "<5" is one
-to four, and the levels folded into "other" are as many rows at least. Where a count held back
-could be worked out from the rows and the counts beside it, the smallest count beside it is
-held back as well (`null`). Where none is left to hold back, the column gives nothing of its
-counts and says why (`held`). How many levels "other" folds is not said where that would give
-its count away.
+to four. Wherever a count is held back behind the minimum, the smallest count printed above
+nought is held back beside it (`null`); a reader then knows that one was at least the minimum
+and at most the counts printed after it. Where a reader could still work a count out, the
+column gives nothing of its counts, its missing values held back too, and says why (`held`).
+How many levels "other" folds is said only where it gives no folded level's rows. A table of
+fewer rows than the minimum is not profiled. DESIGN.md lists what each field tells a reader.
 
 At a minimum of 1 nothing is held back. With few rows, the centiles, the mean and the SD
 together can give the smallest and largest values back: read the profile before releasing it.
@@ -248,6 +249,10 @@ column `text` or `identifier`.
 manuscript-guard vault synthesize            # every profile released
 manuscript-guard vault synthesize cohort.csv
 ```
+
+A column the profile holds back is drawn from the dictionary's codes where it lists them, and
+an identifier the dictionary gives a `pattern` is put within it where its released shape
+allows; where it does not, the copy says so, naming the column.
 
 It writes `data/synthetic/cohort.csv` from the released profile, the data dictionary and a seed
 kept beside the profile, `profiles/data/cohort.csv.synthetic.yaml`, which the first run writes.

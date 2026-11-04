@@ -98,6 +98,10 @@ def _project(folder: Path, table: dict) -> None:
         f"title: t\ncustodian: {{minimum_cell_count: {table['minimum']}}}\n", encoding="utf-8")
     variables = [{"name": name, "label": name, "definition": "d", "type": kind}
                  for name, kind in table["types"].items()]  # fmt: skip
+    for variable in variables:
+        codes = table.get("codes", {}).get(variable["name"])
+        if codes:
+            variable["values"] = [{"code": code, "label": code} for code in codes]
     (folder / "design" / "data_dictionary.yaml").write_text(yaml.safe_dump(
         {"schema": "manuscript-guard/data-dictionary/1", "variables": variables}),
         encoding="utf-8")  # fmt: skip
@@ -184,3 +188,43 @@ for (folder in c({listed})) {{
 """)
     for folder in folders:
         assert (Path(folder) / "r.json").read_bytes() == (Path(folder) / "python.json").read_bytes()
+
+
+def test_the_shapes_the_oracle_plants_give_the_same_bytes(tmp_path: Path) -> None:
+    """Every shape of `generated.ORACLE_SHAPES`, behind a minimum of 2, 3 and 4 and the
+    dictionary's codes and types, profiled by both languages: the held-back counts, the
+    folded levels said or not, and the columns withheld."""
+    from generated import ORACLE_CODES, ORACLE_SHAPES, _tie
+
+    folders = []
+    for minimum in (2, 3, 4):
+        for rows in (5 * minimum - 1, 5 * minimum + 1):
+            columns = {}
+            for shape, make in ORACLE_SHAPES.items():
+                values = make(minimum, rows)
+                columns[shape] = _tie(values) if shape == "tie" else values
+            table = {"minimum": minimum, "columns": columns,
+                     "types": {"coded": "categorical", "number": "continuous"},
+                     "codes": {"coded": list(ORACLE_CODES)}}  # fmt: skip
+            folder = tmp_path / f"m{minimum}r{rows}"
+            _project(folder, table)
+            dictionary, _ = load_dictionary(folder)
+            document = profiling.profile(columns, name="table.csv", minimum=minimum,
+                                         dictionary=dictionary)  # fmt: skip
+            (folder / "python.json").write_bytes(
+                (profiling.dumps(document) + "\n").encode("utf-8"))  # fmt: skip
+            folders.append(folder.as_posix())
+    listed = ", ".join(f'"{folder}"' for folder in folders)
+    run_r(tmp_path, f"""
+for (folder in c({listed})) {{
+  data <- read.csv(file.path(folder, "table.csv"), colClasses = "character", check.names = FALSE,
+                   na.strings = character(), encoding = "UTF-8")
+  dictionary <- mg_read_dictionary(file.path(folder, "design", "data_dictionary.yaml"))
+  document <- mg_profile(data, "table.csv", mg_minimum_cell_count(folder), dictionary)
+  writeBin(charToRaw(enc2utf8(paste0(mg_profile_json(document), "\\n"))),
+           file.path(folder, "r.json"))
+}}
+""")
+    for folder in folders:
+        r_bytes = (Path(folder) / "r.json").read_bytes()
+        assert r_bytes == (Path(folder) / "python.json").read_bytes(), folder

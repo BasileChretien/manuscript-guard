@@ -44,38 +44,9 @@
       "name": "region",
       "type": "text",
       "typed_by": "values",
-      "kind": "levels",
-      "missing": 0,
-      "levels": [
-        {
-          "level": "East",
-          "count": 12
-        },
-        {
-          "level": "North",
-          "count": 24
-        },
-        {
-          "level": "Say \"hi\"",
-          "count": 7
-        },
-        {
-          "level": "South",
-          "count": 23
-        },
-        {
-          "level": "West",
-          "count": 12
-        },
-        {
-          "level": "Île",
-          "count": null
-        }
-      ],
-      "other": {
-        "levels": 2,
-        "count": "<5"
-      }
+      "kind": "withheld",
+      "missing": null,
+      "held": "held back: its counts would give a count below the minimum away"
     },
     {
       "name": "age",
@@ -84,7 +55,7 @@
       "kind": "number",
       "missing": "<5",
       "unread": "<5",
-      "n": 81,
+      "n": null,
       "mean": 54.3457,
       "sd": 23.8187,
       "decimals": 0,

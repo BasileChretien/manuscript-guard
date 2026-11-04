@@ -92,7 +92,8 @@ def test_a_level_under_the_minimum_is_folded_into_other_and_its_count_held() -> 
     found = column(made(group=["a"] * 9 + ["b"] * 6 + ["c"] * 2 + ["d"] * 1 + ["e"] * 4), "group")
     assert found["kind"] == "levels"
     assert [level["level"] for level in found["levels"]] == ["a", "b"]
-    assert found["other"] == {"levels": 3, "count": 7}
+    # 7 rows in 3 levels: 7 is no whole number of 4, so how many levels is never said of it.
+    assert found["other"] == {"levels": None, "count": 7}
 
 
 def test_a_count_the_total_gives_away_is_held_beside_the_smallest_printed() -> None:
@@ -100,14 +101,16 @@ def test_a_count_the_total_gives_away_is_held_beside_the_smallest_printed() -> N
     away, so the 6 is held back too."""
     found = column(made(group=["a"] * 9 + ["b"] * 6 + ["c"] * 2 + ["d"]), "group")
     assert found["levels"] == [{"level": "a", "count": 9}, {"level": "b", "count": None}]
-    assert found["other"] == {"levels": 2, "count": "<5"}
+    assert found["other"] == {"levels": None, "count": "<5"}
     assert found["missing"] == 0
 
 
-def test_two_counts_held_whose_sum_leaves_each_open_are_not_held_further() -> None:
+def test_a_count_is_held_beside_wherever_one_is_held_behind_the_minimum() -> None:
+    """Two counts held whose sum leaves each open: one is held beside them all the same, so
+    that holding says nothing of the sum."""
     found = column(made(group=["a"] * 9 + ["c"] * 2 + [""] * 3), "group")
-    assert found["levels"] == [{"level": "a", "count": 9}]
-    assert found["other"] == {"levels": 1, "count": "<5"}
+    assert found["levels"] == [{"level": "a", "count": None}]
+    assert found["other"] == {"levels": None, "count": "<5"}
     assert found["missing"] == "<5"
 
 
@@ -240,10 +243,11 @@ def test_a_project_with_no_custodian_minimum_is_refused(tmp_path: Path) -> None:
     assert not (tmp_path / "profiles").exists()
 
 
-def test_a_table_with_fewer_rows_than_the_minimum_holds_back_its_rows() -> None:
-    document = made(x=["a", "b", "a"])
-    assert document["rows"] == "<5"
-    assert column(document, "x")["levels"] == []
+@pytest.mark.parametrize(("minimum", "rows"), [(5, 3), (2, 1), (5, 0)])
+def test_a_table_with_fewer_rows_than_the_minimum_is_not_profiled(minimum: int, rows: int) -> None:
+    """Its rows would be a count below the minimum, and behind a minimum of 2 "<2" is 1."""
+    with pytest.raises(ValueError, match="fewer rows than"):
+        profiling.profile({"x": ["a"] * rows}, name="t.csv", minimum=minimum)
 
 
 # ------------------------------------------------------------- the custodian's reading
@@ -287,7 +291,7 @@ def test_a_column_whose_counts_cannot_be_held_enough_is_withheld() -> None:
     """Eight rows, two levels of two and four blanks: "<5" and "<5" make 8, each 4, and no
     count is printed that could be held back beside them."""
     found = column(made(x=["a", "a", "b", "b"] + [""] * 4), "x")
-    assert found["kind"] == "withheld" and found["missing"] == "<5"
+    assert found["kind"] == "withheld" and found["missing"] is None
     assert "levels" not in found and "other" not in found
     assert "give" in found["held"]
 
@@ -296,7 +300,7 @@ def test_a_held_count_of_a_minimum_of_two_is_not_printed_as_one() -> None:
     """Behind a minimum of 2, "<2" can only be 1."""
     document = profiling.profile({"x": ["a"] * 9 + ["b"]}, name="t.csv", minimum=2)
     found = column(document, "x")
-    assert found["other"]["count"] is None or found["kind"] == "withheld"
+    assert found["kind"] == "withheld" or found["other"]["count"] is None
 
 
 def test_the_profile_records_its_dataset_and_a_byte_order_mark(tmp_path: Path) -> None:
@@ -315,3 +319,79 @@ def test_the_profile_records_its_dataset_and_a_byte_order_mark(tmp_path: Path) -
 def test_the_centile_index_is_exact_for_a_large_table() -> None:
     assert profiling._centile_index(95, 30_000_000) == 28_500_000 - 1
     assert profiling._centile_index(5, 21) == 1
+
+
+# ------------------------------------------------- round 2: what the choices themselves say
+
+
+def held(found: dict) -> bool:
+    return found["kind"] == "withheld" and found.get("held") == profiling.HELD
+
+
+def test_a_count_held_beside_is_the_minimum_or_more_and_at_most_those_after_it() -> None:
+    """15 rows, a 9, b 5, c 1: b is held beside c's "<5"; a reader knows b was printed, so 5
+    or more, and the smaller, so 8 at most: b is 5 and c is 1. The column is withheld."""
+    assert held(column(made(x=["a"] * 9 + ["b"] * 5 + ["c"]), "x"))
+
+
+def test_of_two_counts_alike_the_first_is_held_and_a_reader_knows_it() -> None:
+    """a 10, b 10, and 4 rows of c: a is held, at most b's 10, and 24 rows leave c 4."""
+    assert held(column(made(x=["a"] * 10 + ["b"] * 10 + ["c"] * 4), "x"))
+
+
+@pytest.mark.parametrize("folded", [list("bcdefg"), ["b"] * 4 + ["c"] * 4])
+def test_how_many_levels_are_folded_is_not_said_where_it_gives_their_rows(folded: list) -> None:
+    """Six levels of one row, or two of four, printed beside their count: each folded
+    level's rows. 6 is no whole number of 4, and 8 is two fours."""
+    found = column(made(x=["a"] * (100 - len(folded)) + folded), "x")
+    assert found["other"]["levels"] is None and isinstance(found["other"]["count"], int)
+
+
+def test_how_many_levels_are_folded_is_said_where_it_gives_nothing() -> None:
+    """12 rows in 4 levels of 1, 2, 4 and 5... of under 5 each: 12 is three fours, and 4
+    levels are neither 12 nor 3, so saying 4 leaves each level's rows open."""
+    found = column(made(x=["a"] * 88 + ["b"] + ["c"] * 3 + ["d"] * 4 + ["e"] * 4), "x")
+    assert found["other"] == {"levels": 4, "count": 12}
+
+
+def test_how_many_levels_a_held_count_folds_is_never_said() -> None:
+    for folded in (["b"], ["b", "c"], list("bcd"), list("bcde")):
+        found = column(made(x=["a"] * 96 + folded), "x")
+        assert found["other"]["levels"] is None, folded
+
+
+def test_dictionary_codes_whose_folded_rows_are_given_withhold_the_column(tmp_path: Path) -> None:
+    """Three codes, two of four rows folded: 8 rows in two codes of under 5 are four each."""
+    (tmp_path / "design").mkdir()
+    (tmp_path / "design" / "data_dictionary.yaml").write_text(
+        "schema: manuscript-guard/data-dictionary/1\nvariables:\n"
+        "  - {name: g, label: G, definition: d, type: categorical, values: "
+        "[{code: x, label: x}, {code: y, label: y}, {code: z, label: z}]}\n",
+        encoding="utf-8")  # fmt: skip
+    dictionary, _ = load_dictionary(tmp_path)
+    document = profiling.profile({"g": ["x"] * 40 + ["y"] * 4 + ["z"] * 4}, name="t.csv",
+                                 minimum=5, dictionary=dictionary)  # fmt: skip
+    assert held(column(document, "g"))
+
+
+def test_a_pattern_that_gives_the_missing_count_away_is_left_out() -> None:
+    """Six rows, five identifiers and one blank: a pattern says five have a value."""
+    found = column(made(id=["P1", "P2", "P3", "P4", "P5", ""]), "id")
+    assert found["missing"] == "<5" and "pattern" not in found
+
+
+def test_the_centiles_of_a_number_bound_its_rows_held_beside() -> None:
+    """Eleven numbers, one that is none and fifty blanks: the eleven are held beside the one,
+    and a median given says there are eleven at least: 12 less the one is eleven."""
+    document = typed(x=[str(n) for n in range(11)] + ["n/a"] + [""] * 50)
+    assert held(column(document, "x"))
+
+
+def test_how_many_levels_are_folded_is_not_said_beside_a_count_held_beside() -> None:
+    """Behind 3, 18 rows: 10 of one level, folded levels of 2, 2, 1 and 1, and 2 missing. The 6
+    folded rows are held beside the missing "<3"; saying 4 levels would say the count was a
+    whole number of 2, so 6 and not 7, and the missing 2 (the oracle, round 2)."""
+    document = profiling.profile({"x": ["a"] * 10 + ["b", "b", "c", "c", "d", "e", "", ""]},
+                                 name="t.csv", minimum=3)  # fmt: skip
+    found = column(document, "x")
+    assert held(found) or found["other"]["levels"] is None

@@ -194,70 +194,76 @@ mg_profile_kind <- function(entry, kind, texts) {
 }
 
 # --------------------------------------------------------------------- counts and margins
+#
+# What a reader can work out of a column's counts, as the Python `vault/disclosure.py`: a count
+# printed is itself; "<m" one to m - 1, since nought is printed as 0; one held beside, the
+# minimum or more, at most each count printed after it and below each printed before it; and
+# what the rest of the column says (a cell's `least` and `most`). Every choice is made from
+# what is printed: one count is held beside where any is held behind the minimum, and where a
+# count is still worked out the column's counts are withheld.
 
 mg_profile_shown <- function(count, minimum) {
   held <- mg_held_back(count, minimum)
   if (is.null(held)) as.integer(count) else held
 }
 
-# What a count printed as `one` can be: itself; "<m" one to m - 1, since nought is printed
-# as 0; NULL nought to the total (or without end where the total is held back). `bound`
-# narrows it where more is known, as the Python `_range`.
-mg_profile_range <- function(one, total, minimum, bound) {
-  if (is.numeric(one)) return(c(as.numeric(one), as.numeric(one)))
-  range <- if (is.null(one)) c(0, if (is.null(total)) Inf else as.numeric(total))
-           else c(1, as.numeric(sub("^<", "", one)) - 1)
-  if (!is.null(bound)) range <- c(max(range[1], bound[1]), min(range[2], bound[2]))
-  range
+mg_profile_cell <- function(count, shown, least = 0, most = Inf, hidden = FALSE) {
+  list(count = count, shown = shown, least = least, most = most, hidden = hidden)
 }
 
-# The places of the counts held back that are worked out: alone, by what is known of each, or
-# beside the total and the others, as the Python `custodian.recoverable_counts` reads a line.
-mg_profile_given_away <- function(shown, total, minimum, bounds) {
-  ranges <- lapply(seq_along(shown), function(at) {
-    mg_profile_range(shown[[at]], total, minimum, bounds[[at]])
-  })
-  held <- !vapply(shown, is.numeric, logical(1))
-  alone <- which(held & vapply(ranges, function(r) r[1] == r[2] && r[1] >= 1 && r[1] < minimum,
-                               logical(1)))
-  if (length(alone) || is.null(total)) return(alone)
-  low <- vapply(ranges, function(r) r[1], numeric(1))
-  high <- vapply(ranges, function(r) max(r[1], r[2]), numeric(1))
-  if (sum(low) > total || sum(high) < total) return(integer())
-  found <- integer()
-  for (at in which(held)) {
-    from <- max(low[at], total - (sum(high) - high[at]))
-    to <- min(high[at], total - (sum(low) - low[at]))
-    if (from == to && from >= 1 && from < minimum) found <- c(found, at)
+mg_profile_printed <- function(cell) is.numeric(cell$shown) && !cell$hidden
+
+mg_profile_known <- function(cell, total, minimum) {
+  if (mg_profile_printed(cell)) return(c(as.numeric(cell$shown), as.numeric(cell$shown)))
+  range <- if (is.null(cell$shown)) c(0, as.numeric(total)) else c(1, as.numeric(minimum) - 1)
+  c(max(range[1], cell$least), min(range[2], cell$most))
+}
+
+mg_profile_ranges <- function(cells, total, minimum) {
+  own <- lapply(cells, mg_profile_known, total = total, minimum = minimum)
+  lows <- sum(vapply(own, function(r) r[1], numeric(1)))
+  highs <- sum(vapply(own, function(r) r[2], numeric(1)))
+  lapply(own, function(r) c(max(r[1], total - (highs - r[2])), min(r[2], total - (lows - r[1]))))
+}
+
+mg_profile_unsafe <- function(cells, total, minimum) {
+  ranges <- mg_profile_ranges(cells, total, minimum)
+  for (at in seq_along(cells)) {
+    cell <- cells[[at]]
+    range <- ranges[[at]]
+    if (mg_profile_printed(cell) || range[1] != range[2]) next
+    if (!cell$hidden || (range[1] >= 1 && range[1] < minimum)) return(TRUE)
   }
-  found
+  FALSE
 }
 
-# How each count of a column is printed: itself, "<m" below the minimum, or NULL where it is
-# held back beside a count the total and the others would give away, or that gives itself
-# away. NULL in place of the list where none is left to hold back and one is still given
-# away: the column's counts are then withheld.
-mg_profile_held_beside <- function(counts, total, minimum, bounds = NULL, hidden = integer()) {
-  if (is.null(bounds)) bounds <- vector("list", length(counts))
-  shown <- lapply(counts, mg_profile_shown, minimum = minimum)
-  for (at in hidden) shown[at] <- list(NULL)
-  for (at in mg_profile_given_away(shown, NULL, minimum, bounds)) shown[at] <- list(NULL)
-  while (length(mg_profile_given_away(shown, total, minimum, bounds))) {
-    exact <- which(vapply(shown, is.numeric, logical(1)))
-    if (!length(exact)) return(NULL)
-    some <- exact[counts[exact] > 0]
-    if (!length(some)) some <- exact
-    shown[some[which.min(counts[some])]] <- list(NULL)
+mg_profile_beside_bounds <- function(cells, chosen, minimum) {
+  most <- Inf
+  for (at in seq_along(cells)) {
+    cell <- cells[[at]]
+    if (at != chosen && mg_profile_printed(cell) && cell$shown > 0) {
+      most <- min(most, if (at < chosen) cell$shown - 1 else cell$shown)
+    }
   }
-  shown
+  c(as.numeric(minimum), most)
 }
 
-# How many levels "other" is said to fold, and what that says of its count, as the Python
-# `_other_bounds`.
-mg_profile_other_bounds <- function(levels, count, minimum) {
-  if (count < minimum && levels >= minimum - 1) return(list(said = NULL, bound = NULL))
-  list(said = as.integer(levels),
-       bound = c(as.numeric(levels), as.numeric(levels) * (as.numeric(minimum) - 1)))
+mg_profile_beside <- function(cells, minimum) {
+  if (!any(vapply(cells, function(cell) is.character(cell$shown), logical(1)))) return(cells)
+  candidates <- which(vapply(cells, function(cell) {
+    mg_profile_printed(cell) && cell$count > 0
+  }, logical(1)))
+  if (!length(candidates)) return(cells)
+  counts <- vapply(cells[candidates], function(cell) as.numeric(cell$count), numeric(1))
+  chosen <- candidates[which.min(counts)]
+  bounds <- mg_profile_beside_bounds(cells, chosen, minimum)
+  held <- cells[[chosen]]
+  held$shown <- NULL
+  held["shown"] <- list(NULL)
+  held$least <- max(held$least, bounds[1])
+  held$most <- min(held$most, bounds[2])
+  cells[[chosen]] <- held
+  cells
 }
 
 mg_profile_json_count <- function(one) if (is.null(one)) mg_null else one
@@ -268,6 +274,10 @@ mg_profile_missing <- function(missing, shown, rows, minimum) {
     out$missing_share <- mg_fig(missing / rows)
   }
   out
+}
+
+mg_profile_held_view <- function() {
+  list(kind = "withheld", missing = mg_null, held = mg_profile_held)
 }
 
 # --------------------------------------------------------------------------- the columns
@@ -281,6 +291,8 @@ mg_profile_decimals <- function(present) {
   min(max(as.integer(names(seen)[seen == most])), mg_profile_most_decimals)
 }
 
+mg_profile_enough <- function(below, above, minimum) below >= minimum && above >= minimum
+
 mg_profile_centiles_of <- function(values, minimum, show) {
   ordered <- sort(values, method = "radix")
   n <- length(ordered)
@@ -290,7 +302,7 @@ mg_profile_centiles_of <- function(values, minimum, show) {
     value <- ordered[mg_profile_centile_index(centile, n) + 1]
     below <- sum(ordered < value)
     above <- sum(ordered > value)
-    if (below >= minimum && above >= minimum) found[[as.character(centile)]] <- show(value)
+    if (mg_profile_enough(below, above, minimum)) found[[as.character(centile)]] <- show(value)
   }
   structure(found, class = "mg_obj")
 }
@@ -301,11 +313,37 @@ mg_profile_centile_index <- function(centile, n) {
   (as.numeric(centile) * as.numeric(n) + 99) %/% 100 - 1
 }
 
+# The fewest rows a centile is given of: `minimum` below its value and as many above.
+mg_profile_fewest_rows <- function(centile, minimum) {
+  n <- 2 * minimum + 1
+  repeat {
+    at <- mg_profile_centile_index(centile, n)
+    if (mg_profile_enough(at, n - at - 1, minimum)) return(n)
+    n <- n + 1
+  }
+}
+
 mg_profile_month <- function(iso) {
   as.integer(substr(iso, 1, 4)) * 12L + as.integer(substr(iso, 6, 7)) - 1L
 }
 
 mg_profile_month_shown <- function(month) sprintf("%04d-%02d", month %/% 12L, month %% 12L + 1L)
+
+# What the rest of a column's profile says of its rows read, as the Python `_n_bounds`.
+mg_profile_n_bounds <- function(out, minimum, number) {
+  least <- 0
+  most <- Inf
+  if (number) {
+    for (said in list(list(!is.null(out$mean), max(minimum, mg_profile_fewest_for_mean)),
+                      list(!is.null(out$decimals), minimum))) {
+      if (said[[1]]) least <- max(least, said[[2]]) else most <- min(most, said[[2]] - 1)
+    }
+  }
+  for (centile in names(out$centiles)) {
+    least <- max(least, mg_profile_fewest_rows(as.integer(centile), minimum))
+  }
+  c(least, most)
+}
 
 mg_profile_distribution <- function(column, rows, minimum) {
   present <- column$present
@@ -318,11 +356,7 @@ mg_profile_distribution <- function(column, rows, minimum) {
   }
   ok <- !is.na(read)
   values <- read[ok]
-  shown <- mg_profile_held_beside(c(column$missing, sum(!ok), sum(ok)), rows, minimum)
-  if (is.null(shown)) return(mg_profile_withheld(column, rows, minimum, held = TRUE))
-  out <- mg_profile_missing(column$missing, shown[[1]], rows, minimum)
-  out$unread <- mg_profile_json_count(shown[[2]])
-  out$n <- mg_profile_json_count(shown[[3]])
+  out <- list()
   if (column$role == "number") {
     if (length(values) >= max(minimum, mg_profile_fewest_for_mean)) {
       mean <- sum(values) / length(values)
@@ -338,7 +372,31 @@ mg_profile_distribution <- function(column, rows, minimum) {
   } else {
     out$centiles <- mg_profile_centiles_of(values, minimum, function(h) sprintf("%02d:00", h))
   }
-  out
+  bounds <- mg_profile_n_bounds(out, minimum, column$role == "number")
+  counts <- c(column$missing, sum(!ok), sum(ok))
+  cells <- list(mg_profile_cell(counts[1], mg_profile_shown(counts[1], minimum)),
+                mg_profile_cell(counts[2], mg_profile_shown(counts[2], minimum)),
+                mg_profile_cell(counts[3], mg_profile_shown(counts[3], minimum),
+                                bounds[1], bounds[2]))
+  cells <- mg_profile_beside(cells, minimum)
+  if (mg_profile_unsafe(cells, rows, minimum)) return(mg_profile_held_view())
+  c(mg_profile_missing(column$missing, cells[[1]]$shown, rows, minimum),
+    list(unread = mg_profile_json_count(cells[[2]]$shown),
+         n = mg_profile_json_count(cells[[3]]$shown)), out)
+}
+
+# How many levels "other" is said to fold, as the Python `_folded_said`.
+mg_profile_folded_said <- function(levels, count, shown, minimum, coded) {
+  if (coded || minimum <= 2 || !is.numeric(shown) || count %% (minimum - 1) != 0) return(NULL)
+  if (levels == count || levels == count %/% (minimum - 1)) return(NULL)
+  as.integer(levels)
+}
+
+# Whether a reader works out the rows of a folded level, as the Python `_folded_unsafe`.
+mg_profile_folded_unsafe <- function(other, minimum, coded) {
+  if (!coded) return(minimum <= 2)
+  low <- max(0, other[1] - (coded - 1) * (minimum - 1))
+  low == min(other[2], minimum - 1)
 }
 
 mg_profile_levels <- function(column, rows, minimum, dictionary) {
@@ -353,23 +411,39 @@ mg_profile_levels <- function(column, rows, minimum, dictionary) {
   levels <- levels[order]
   counted <- counted[order]
   kept <- counted >= minimum
-  counts <- counted[kept]
   folded <- !kept
-  bounds <- vector("list", length(counts))
+  cells <- lapply(counted[kept], function(count) {
+    mg_profile_cell(count, mg_profile_shown(count, minimum))
+  })
+  coded <- sum(!(listed %in% levels[kept]))
   if (any(folded)) {
-    counts <- c(counts, sum(counted[folded]))
-    other <- mg_profile_other_bounds(sum(folded), counts[length(counts)], minimum)
-    bounds <- c(bounds, list(other$bound))
+    count <- sum(counted[folded])
+    most <- if (coded) coded * (minimum - 1) else Inf
+    cells <- c(cells, list(mg_profile_cell(count, mg_profile_shown(count, minimum), 1, most)))
   }
-  shown <- mg_profile_held_beside(c(counts, column$missing), rows, minimum, c(bounds, list(NULL)))
-  if (is.null(shown)) return(mg_profile_withheld(column, rows, minimum, held = TRUE))
-  out <- mg_profile_missing(column$missing, shown[[length(shown)]], rows, minimum)
+  cells <- c(cells, list(mg_profile_cell(column$missing,
+                                         mg_profile_shown(column$missing, minimum))))
+  cells <- mg_profile_beside(cells, minimum)
+  # How many levels are folded is chosen once the count is printed or not, as in Python.
+  said <- NULL
+  if (any(folded)) {
+    other_cell <- cells[[length(cells) - 1L]]
+    said <- mg_profile_folded_said(sum(folded), other_cell$count, other_cell$shown, minimum,
+                                   length(listed) > 0)
+  }
+  worked <- mg_profile_unsafe(cells, rows, minimum)
+  if (any(folded) && !worked) {
+    other <- mg_profile_ranges(cells, rows, minimum)[[length(cells) - 1L]]
+    worked <- mg_profile_folded_unsafe(other, minimum, coded)
+  }
+  if (worked) return(mg_profile_held_view())
+  out <- mg_profile_missing(column$missing, cells[[length(cells)]]$shown, rows, minimum)
   out$levels <- mg_arr(lapply(seq_len(sum(kept)), function(at) {
-    mg_obj(level = levels[kept][at], count = mg_profile_json_count(shown[[at]]))
+    mg_obj(level = levels[kept][at], count = mg_profile_json_count(cells[[at]]$shown))
   }))
   if (any(folded)) {
-    out$other <- mg_obj(levels = mg_profile_json_count(other$said),
-                        count = mg_profile_json_count(shown[[length(shown) - 1L]]))
+    out$other <- mg_obj(levels = mg_profile_json_count(said),
+                        count = mg_profile_json_count(cells[[length(cells) - 1L]]$shown))
   }
   out
 }
@@ -384,20 +458,23 @@ mg_profile_shape_of <- function(text) {
   gsub("[a-z]", "a", text, perl = TRUE)
 }
 
-# A column given nothing of its values: its missing values, and where it is withheld by its
-# kind, the pattern its values share; where by its counts, why.
-mg_profile_withheld <- function(column, rows, minimum, held = FALSE) {
+# A column given nothing of its values, as the Python `_withheld`: its missing values, and the
+# pattern its values share where that gives no count away.
+mg_profile_withheld <- function(column, rows, minimum) {
   present <- length(column$present)
-  shown <- mg_profile_held_beside(c(column$missing, present), rows, minimum, hidden = 2L)
-  out <- if (held) list(kind = "withheld") else list()
-  out <- c(out, mg_profile_missing(column$missing, shown[[1]], rows, minimum))
-  if (held) {
-    out$held <- mg_profile_held
-    return(out)
-  }
   shapes <- unique(mg_profile_shape_of(mg_text_of(column$present)))
-  if (present >= minimum && length(shapes) == 1) out$pattern <- shapes
-  out
+  pattern <- if (present >= minimum && length(shapes) == 1) shapes else NULL
+  missing <- mg_profile_cell(column$missing, mg_profile_shown(column$missing, minimum))
+  tries <- if (is.null(pattern)) list(NULL) else list(pattern, NULL)
+  for (given in tries) {
+    rest <- mg_profile_cell(present, NULL, if (is.null(given)) 0 else minimum, hidden = TRUE)
+    if (!mg_profile_unsafe(list(missing, rest), rows, minimum)) {
+      out <- mg_profile_missing(column$missing, missing$shown, rows, minimum)
+      if (!is.null(given)) out$pattern <- given
+      return(out)
+    }
+  }
+  mg_profile_held_view()
 }
 
 mg_profile_column <- function(column, rows, minimum, dictionary) {
@@ -464,8 +541,12 @@ mg_profile <- function(data, name, minimum, dictionary = NULL, dataset = NULL, r
     stop("profile: read_as dates names ", paste(sort(unknown, method = "radix"), collapse = ", "),
          ", which the table has no column of", call. = FALSE)
   }
-  held <- mg_held_back(total, minimum)
-  rows <- if (is.null(held)) total else NULL
+  if (total < minimum) {
+    stop("profile: the table has fewer rows than the data custodian's minimum of ", minimum,
+         ", so every count of it would be below the minimum; no profile is written",
+         call. = FALSE)
+  }
+  rows <- total
   columns_of <- names(data)
   if (length(columns_of) && startsWith(enc2utf8(columns_of[1]), mg_profile_mark)) {
     read$shape$bom <- TRUE
@@ -478,7 +559,7 @@ mg_profile <- function(data, name, minimum, dictionary = NULL, dataset = NULL, r
   })
   mg_obj(schema = mg_profile_schema, name = name,
          dataset = if (is.null(dataset)) mg_null else dataset, minimum_cell_count = minimum,
-         rows = if (is.null(held)) as.integer(total) else held,
+         rows = as.integer(total),
          file = structure(read$shape, class = "mg_obj"), columns = mg_arr(columns))
 }
 

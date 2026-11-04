@@ -1678,8 +1678,9 @@ class Emitter:
         format, of %Y %m %d %H %M %S), and `header_of`, the file whose header line is read for
         the delimiter, a byte-order mark and the line ending. A byte-order mark before the
         first column's name is taken off it and recorded. `dataset` is the dictionary's
-        dataset the table is, recorded too. Run under `vault run`, the profile leaves the
-        vault only when a person releases it; `vault synthesize` then draws the copy from it.
+        dataset the table is, recorded too. A table of fewer rows than the minimum is
+        refused. Run under `vault run`, the profile leaves the vault only when a person
+        releases it; `vault synthesize` then draws the copy from it.
         """
         from manuscript_guard.vault import profile as profiling
 

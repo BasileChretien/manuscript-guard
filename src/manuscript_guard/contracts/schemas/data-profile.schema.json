@@ -35,10 +35,9 @@
     },
     "minimum_cell_count": { "type": "integer", "minimum": 1 },
     "rows": {
-      "oneOf": [
-        { "type": "integer", "minimum": 0 },
-        { "type": "string", "pattern": "^<[1-9][0-9]*$" }
-      ]
+      "type": "integer",
+      "minimum": 1,
+      "description": "The table's rows; a table of fewer than the minimum is not profiled."
     },
     "file": {
       "type": "object",
@@ -89,7 +88,7 @@
             "properties": {
               "levels": {
                 "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }],
-                "description": "How many levels are folded; null where saying so would give the count away."
+                "description": "How many levels are folded; said only beside a count printed that is a whole number of m - 1 and where the number is neither the count nor the count over m - 1, else null."
               },
               "count": { "$ref": "#/$defs/count" }
             }
@@ -103,7 +102,7 @@
           "pattern": { "type": "string", "minLength": 1 },
           "held": {
             "type": "string",
-            "description": "Why a column's counts are withheld: they would give a count below the minimum away, and none is left to hold back beside it."
+            "description": "Why a column's counts are withheld, its missing values with them: a reader would work a count out of them, whatever one count held beside it."
           }
         },
         "allOf": [

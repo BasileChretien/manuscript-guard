@@ -12572,21 +12572,64 @@ of it (`kind`):
   rest as written).
 
 Each count is printed as itself, or `quality.held_back`'s "<m" from 1 to m−1, and a missing
-share only from m. Nought is printed as 0, so a reader knows "<m" to be one to m−1
-(`custodian.HELD_LEAST`), and the k levels folded into "other" to be k rows at least and
-k(m−1) at most. The counts of a column are the table's rows, which are printed, so a count
-held back can be the rows less the others. Each column's counts are read as a line of a table
-(`gates.custodian.recoverable_counts`, the reading `recoverable` makes of a table's line, with
-what is known of each count as its bounds), and where it gives a count held back away, alone or
-beside the others, the smallest count printed beside it is held back too, unprinted (`null`),
-until none is given away. Where no count is left to hold back, the column is withheld: its
-name, its type and its missing values, with `held` saying why. How many levels "other" folds
-is not said where its count is held back and k = m−1, which would give it away alone. A "<2"
-behind a minimum of 2 can only be 1, and is not printed. Round 1 of the review found each of
-these: 98, "<5" and "<5" of 100 rows are 1 and 1; four levels of one row folded are 4; eight
-rows of four in rare levels and four missing leave each 4. The design said to hold back the total; that
+share only from m. The counts of a column are the table's rows, which are printed: a table of
+fewer rows than m is not profiled, since its rows would be a count below the minimum, and
+behind a minimum of 2 "<2" is 1.
+
+What a reader knows of a column is the model the code holds to (`vault/disclosure.py`), and
+round 2 of the review asked for it written down as a list. Each field tells a reader:
+
+- `rows`: the table's rows, m or more; every column's counts add up to it.
+- a count printed (`missing`, `unread`, `n`, a level's `count`, `other.count`): itself. A
+  count printed is nought or m or more.
+- a count printed "<m": one to m − 1, since nought is printed as 0 (`custodian.HELD_LEAST`).
+- a count `null` beside a "<m": a count that would have been printed, so m or more; and the
+  smallest of them above nought, since one is held beside wherever a count is held behind
+  the minimum, and of two alike the first. So it is at most each count printed after it, and
+  under each printed before it.
+- `levels` of a level: a count of m or more, by that name; no other value of the column has
+  m rows.
+- `other.levels` k: k values of 1 to m − 1 rows each, so `other.count` is k to k(m−1). It is
+  said only beside a count c printed, where c is a whole number of m − 1 and k is neither c
+  nor c/(m − 1). A k `null` beside a printed c then says only that k is one of those two, and
+  each folded level one row or m − 1; beside a c that is no whole number of m − 1 it says
+  nothing. Beside a held count, and in a column the dictionary codes, k is never said. It is
+  chosen once holding beside is done: said of a count then held beside, it would say the count
+  was a whole number of m − 1 (the oracle found this, behind 3: k said of a 6 then held
+  narrowed it from 6 or 7 to 6, and the missing count to 2).
+- where the dictionary lists the codes, the codes not given by name are the folded values, so
+  each holds 0 to m − 1 rows, `other.count` at most their number times m − 1.
+- `mean` and `sd`: `n` is max(m, 3) or more; no mean says `n` is fewer. `decimals`: `n` is m
+  or more; none says fewer.
+- a centile: m values below it and m above, so `n` (or a date's or time's rows read) is at
+  least the fewest rows that centile is given of (`fewest_rows`).
+- `pattern`: m or more values, all of that shape; left out where saying so would give the
+  missing count away (six rows, five identifiers: one missing).
+- `held`: what the column printed would let a reader work a count out, whatever one count was
+  held beside; the missing count is held too.
+
+Every choice of what to print is made from what is printed, so that the choice tells no more
+than the list. One count is held beside wherever one is held behind the minimum, whether or
+not the rows would give it away; then, where a reader still works a count out
+(`disclosure.unsafe`: a count not printed with one value, or the rows of a folded level), the
+column is withheld. Round 2 asked for holding to go on to a fixed point instead; that is a
+choice made from counts it then hides. In 15 rows of a 9, b 5 and one c, holding a and b
+leaves a reader the tables where holding b alone had still given c away, a 9 or 6, and so b 5
+and c 1 or 4. Round 2's other cases: of a 10, b 10 and 4 rows of c, a is held, at most 10, and
+the rows give c; six levels of one row printed beside 6 gave each level's rows; a k left
+unsaid only at m − 1 said the count was m − 1. Round 1's: 98, "<5" and "<5" of 100 rows are 1
+and 1; four levels of one row folded are 4; eight rows of four in rare levels and four missing
+leave each 4.
+
+`tests/test_properties.py` holds this to no model of its own
+(`test_no_count_a_profile_holds_back_is_one_value_in_every_table_it_could_be`): for tables of
+up to 20 rows behind minimums of 2, 3 and 4, holding every shape the reviews found, it lists
+each table a reader of a column could hold, puts each through the profile, keeps those whose
+profile is the one printed, and requires each count not printed, and the rows of the folded
+levels and of each code, to take two values among them. The design said to hold back the total; that
 holds nothing here, because every column's counts add up to the same rows, and any column whose
-counts are all printed gives them back (accepted in round 1). `vault synthesize` reads a count held back as an even
+counts are all printed gives them back (accepted in round 1; in round 2 Basile chose to keep
+holding and model every bound a reader can infer, over merging small groups). `vault synthesize` reads a count held back as an even
 share of what the rows leave.
 
 The file's shape is for the copy: the delimiter, decimal mark, encoding, quoting and line ending
@@ -12631,8 +12674,11 @@ the vault. Each value of a row, column by column:
   (`A999` beside 1000 rows), or there is none, `SYN` and the row's number; a number the row's
   number, a date from 2000-01-01.
 
-A row that breaks an order or unique rule of the dictionary whose variables are all columns of
-the copy is drawn again, up to 1000 times, and then the copy is refused naming the rule; a
+A column the profile holds back (`held`) is drawn from the dictionary's codes where it lists
+them, evenly, with nothing missing; an identifier the dictionary gives a `pattern` is put within
+it, by the pattern's opening characters or one letter for all, and where none fits, a note names
+the column. A row that breaks an order or unique rule of the dictionary whose variables are all
+columns of the copy is drawn again, up to 1000 times, and then the copy is refused naming the rule; a
 computed rule is the script's and is said not to be held. A variable that applies only where
 another holds certain codes is left empty elsewhere. Only `random.Random(seed).random()` is drawn
 from, and only exact arithmetic, `math.floor`, `math.sqrt` (correctly rounded) and Python's own
@@ -20079,6 +20125,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     of a few rows above m say much of each, and with few rows the centiles, mean and SD
     together can give the smallest and largest values back. At a minimum of 1 nothing is held
     back.
+  - *A column is withheld more often than it need be.* One count is held beside a "<m" and
+    no more; where that leaves a count worked out, the whole column is withheld, since holding
+    more would tell by holding. A small table, or two named levels alike beside a folded one,
+    loses its counts. How many levels "other" folds is said only beside a printed count that is
+    a whole number of m − 1.
+  - *The oracle lists small tables.* It holds the profile to every table of up to 20 rows a
+    reader could hold, with numbers all one value and folded levels without names; a pattern
+    no small table has passes it unseen.
   - *What two profiles say together is not read.* The profile of a slightly changed extract
     beside an earlier one, two columns that are the same variable, or a profile beside a
     released result, can give away what neither does alone; each column's counts are read

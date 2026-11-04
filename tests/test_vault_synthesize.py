@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -77,7 +78,8 @@ def test_the_copy_is_in_the_profile_s_shape_and_keeps_the_dictionary_s_rules(
         assert row["admitted"] <= f"{year}-{month}-{day}", row
         assert row["patient_id"].startswith("XX-9"), row
         assert row["sex"] in ("1", "2", ""), row
-        assert row["region"] in REGIONS, row
+        # The profile holds region's counts back, a level of six rows beside four folded.
+        assert row["region"].startswith("SYN"), row
         assert row["age"] == "" or 18 <= int(row["age"]) <= 110, row
     assert len({row["patient_id"] for row in rows}) == len(rows)
 
@@ -339,3 +341,43 @@ def test_the_starter_script_reads_a_byte_order_mark(paper: Path, data: Path) -> 
     (paper / "analysis" / "00_profile.py").unlink()
     assert main(["vault", "init", str(data), "*.*", "--as", "Ada", "--path", str(paper)]) == 0
     assert 'fileEncoding = "UTF-8-BOM"' in (paper / "analysis" / "00_profile.R").read_text("utf-8")
+
+
+# ------------------------------------------------- round 2: the dictionary's pattern and codes
+
+
+def test_an_identifier_meets_the_dictionary_s_pattern(released: Path) -> None:
+    dictionary = released / "design" / "data_dictionary.yaml"
+    document = yaml.safe_load(dictionary.read_text(encoding="utf-8"))
+    for entry in document["variables"]:
+        if entry["name"] == "patient_id":
+            entry["pattern"] = "PT-[0-9]{5}"
+    dictionary.write_text(yaml.safe_dump(document), encoding="utf-8")
+    copy = synthesize(released, "cohort.csv")
+    ids = [row["patient_id"] for row in rows_of(copy.path)]
+    assert all(re.fullmatch(r"PT-[0-9]{5}", one) for one in ids) and len(set(ids)) == len(ids)
+    assert not any("patient_id" in note for note in copy.notes)
+
+
+def test_a_pattern_no_identifier_meets_is_named_in_a_note(released: Path) -> None:
+    dictionary = released / "design" / "data_dictionary.yaml"
+    document = yaml.safe_load(dictionary.read_text(encoding="utf-8"))
+    for entry in document["variables"]:
+        if entry["name"] == "patient_id":
+            entry["pattern"] = "[a-z]{3}"
+    dictionary.write_text(yaml.safe_dump(document), encoding="utf-8")
+    copy = synthesize(released, "cohort.csv")
+    assert any(note.startswith("patient_id:") for note in copy.notes)
+
+
+def test_a_coded_column_held_back_is_drawn_from_its_codes(released: Path) -> None:
+    def hold(document: dict) -> None:
+        for column in document["columns"]:
+            if column["name"] == "sex":
+                for key in ("levels", "other", "missing_share"):
+                    column.pop(key, None)
+                column.update(kind="withheld", missing=None, held="held back")
+
+    edit_profile(released, hold)
+    rows = rows_of(synthesize(released, "cohort.csv").path)
+    assert {row["sex"] for row in rows} <= {"1", "2"} and len({row["sex"] for row in rows}) == 2

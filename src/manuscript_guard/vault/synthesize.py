@@ -16,9 +16,12 @@ Each column is drawn alone:
   smallest or largest value is made; with fewer than two centiles, evenly about the mean
   with its SD, or the one value given;
 * a missing value at the released rate;
-* an identifier by its released pattern, one to a row: its letters X and its digits the row's
-  number, after a 9 where the pattern has a digit to spare for it; and `SYN` and the row's
-  number where the pattern has no digit, or too few for the rows, or there is no pattern.
+* a column the profile holds back, from the dictionary's codes where it lists them, evenly;
+* an identifier by its released pattern, one to a row, put within the dictionary's `pattern`
+  where it declares one, or named in a note where it cannot be: its letters X and its digits
+  the row's number, after a 9 where the pattern has a digit to spare for it; and `SYN` and the
+  row's number where the pattern has no digit, or too few for the rows, or there is no
+  pattern.
 
 A row that breaks a rule of the dictionary across variables (an order, a key that must be
 unique) is drawn again, up to `REDRAWS` times, and then the copy is refused, naming the
@@ -40,7 +43,7 @@ from datetime import date, timedelta
 from pathlib import Path, PurePosixPath
 
 from manuscript_guard import quality
-from manuscript_guard.contracts.dictionary import Dictionary, Variable
+from manuscript_guard.contracts.dictionary import CODED, Dictionary, Variable
 from manuscript_guard.vault import profile as profiling
 
 SEED_SCHEMA = "manuscript-guard/synthetic/1"
@@ -190,6 +193,9 @@ class _Column:
     #: The rows the copy draws.
     rows: int = 0
     weights: list[float] = field(default_factory=list)
+    #: How an identifier is put within the dictionary's pattern, once found; False for none.
+    fill: object = None
+    notes: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         kind = self.spec["kind"]
@@ -200,6 +206,10 @@ class _Column:
             shown.append(self.spec["missing"])
         elif kind == "withheld":
             shown = [self.spec["missing"], None]
+            if self.spec["missing"] is None:
+                # Held back with the rest of its counts: drawn with nothing missing.
+                self.weights = [0.0, 1.0]
+                return
         else:
             shown = [self.spec["missing"], self.spec["unread"], self.spec["n"]]
         self.weights = _estimates(shown, self.total, self.minimum)
@@ -322,9 +332,73 @@ def identifier(pattern: str | None, row: int, rows: int) -> str:
                    for at, char in enumerate(pattern))  # fmt: skip
 
 
-def _withheld(column: _Column, row: int) -> _Drawn:
-    """A value of a column the profile gives nothing of the values of."""
+#: Characters a regular expression gives a meaning of its own to.
+_SPECIAL = set("\\.^$|?*+()[]{}")
+
+
+def _literal_start(pattern: str) -> str:
+    """The characters a dictionary's pattern opens with that stand for themselves: `PT-` of
+    `PT-[0-9]{5}`. One followed by a quantifier is not taken."""
+    out = []
+    for at, char in enumerate(pattern):
+        if char in _SPECIAL:
+            break
+        if pattern[at + 1:at + 2] in ("?", "*", "+", "{"):
+            break
+        out.append(char)
+    return "".join(out)
+
+
+def _within(column: _Column, made: str, row: int) -> str:
+    """An identifier made in the released pattern, put within the dictionary's pattern where it
+    declares one: its opening letters the pattern's own, or every letter one letter, the
+    first of these that the pattern takes for every row. Where none does, the identifier is
+    as made, and a note names the column."""
+    variable = column.variable
+    if variable is None or not variable.pattern:
+        return made
+    compiled = quality.pattern_of(variable)
+    if column.fill is None:
+        column.fill = next((fill for fill in _fills(variable.pattern)
+                            if compiled.fullmatch(fill(made))), False)  # fmt: skip
+        if column.fill is False:
+            column.notes.append(f"{column.name}: no identifier of the released pattern meets "
+                                f"the dictionary's pattern {variable.pattern}; drawn as "
+                                "released")  # fmt: skip
+    if column.fill is False:
+        return made
+    shaped = column.fill(made)
+    if compiled.fullmatch(shaped):
+        return shaped
+    if not column.notes:
+        column.notes.append(f"{column.name}: an identifier does not meet the dictionary's "
+                            f"pattern {variable.pattern}")  # fmt: skip
+    return shaped
+
+
+def _fills(pattern: str) -> list:
+    """The ways an identifier's letters are tried in turn: as made; the pattern's opening
+    characters over its first; every letter one letter, A to Z, in each case."""
+    start = _literal_start(pattern)
+    fills = [lambda made: made]
+    if start:
+        fills.append(lambda made: start + made[len(start):])
+    for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        fills.append(lambda made, upper=letter: "".join(
+            upper if "A" <= char <= "Z" else upper.lower() if "a" <= char <= "z" else char
+            for char in made))  # fmt: skip
+    return fills
+
+
+def _withheld(column: _Column, row: int, u) -> _Drawn:
+    """A value of a column the profile gives nothing of the values of: a coded column's from
+    its dictionary codes, drawn evenly; an identifier in its pattern."""
     kind = column.spec["type"]
+    variable = column.variable
+    if variable is not None and kind in CODED and variable.values:
+        codes = [coded.code for coded in variable.values]
+        code = codes[min(int(u() * len(codes)), len(codes) - 1)]
+        return _Drawn(code, code)
     if kind in ("continuous", "count") and "pattern" not in column.spec:
         return _Drawn(float(row), str(row))
     if kind in ("date", "datetime"):
@@ -332,7 +406,7 @@ def _withheld(column: _Column, row: int) -> _Drawn:
         return _Drawn(day, day)
     if kind == "time":
         return _Drawn("00:00", "00:00")
-    text = identifier(column.spec.get("pattern"), row, column.rows)
+    text = _within(column, identifier(column.spec.get("pattern"), row, column.rows), row)
     return _Drawn(text, text)
 
 
@@ -348,7 +422,7 @@ def _draw(column: _Column, row: int, u, shape: dict) -> _Drawn | None:
     if cell == 0:
         return None
     if kind == "withheld":
-        return _withheld(column, row)
+        return _withheld(column, row, u)
     if kind == "number":
         return _number(column, u(), shape)
     if kind == "date":
@@ -495,6 +569,7 @@ def synthesize(root: Path, name: str) -> Copy:
     out = root.joinpath(*OUT.parts, *name.split("/"))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(_written([column.name for column in columns], rows, shape))
+    notes += [note for column in columns for note in column.notes]
     return Copy(name, out, count, seed, seeded, notes)
 
 

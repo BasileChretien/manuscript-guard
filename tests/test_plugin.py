@@ -871,6 +871,10 @@ NAMED_NOWHERE = {
     "n/a": "not a path: what a checklist item says when it does not apply",
     "provider/model": "not a path: how a model is named in paper.yaml",
     "checks/items.json": "written by `checker build`",
+    "design/vault.yaml": "written by `vault init`",
+    ".manuscript-guard/vault/last-run.json": "written by `vault run`",
+    "data/synthetic/": "where the synthetic copy of a vault's file is put, by the author or "
+    "`vault synthesize`",
     "checks/decisions.csv": "written by `checker` when the answers come back",
     "checks/bundles.csv": "written by `checker build`, a row for each page",
     "checks/recap.md": "written by `checker recap`",

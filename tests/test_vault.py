@@ -587,12 +587,12 @@ def test_vault_reads_no_abbreviated_option(paper: Path) -> None:
         main(["vault", "check", "--pa", str(paper)])
 
 
-def test_vault_offers_no_run_and_no_release_yet() -> None:
-    """They read the real data and let what a run wrote into the project: a later step, and
-    the shell guard refuses them to an agent already (`tests/test_hooks.py`)."""
+def test_run_and_release_are_refused_without_a_terminal(paper: Path) -> None:
+    """They read the real data and let what a run wrote into the project: the person's, at a
+    terminal, and the shell guard refuses them to an agent (`tests/test_hooks.py`). What they
+    do is in `tests/test_vault_run.py`."""
     for verb in ("run", "release"):
-        with pytest.raises(SystemExit):
-            main(["vault", verb])
+        assert vault(paper, verb) == 2
 
 
 def test_the_vault_modules_the_hooks_read_import_nothing_heavy() -> None:

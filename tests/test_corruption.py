@@ -2192,6 +2192,101 @@ def test_both_emitters_record_an_input_declared_restricted(tmp_path: Path) -> No
     ]
 
 
+# ------------------------------------------------------------------ results from the vault
+
+
+def _from_the_vault(project: Path, tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
+    """The example with a vault registered beside it, and a fragment written by a script that
+    read it with MANUSCRIPT_GUARD_VAULT set: the vault's folder, and the fragment."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.emit import Emitter
+
+    with (project / "paper.yaml").open("a", encoding="utf-8") as file:
+        file.write("\ncustodian:\n  minimum_cell_count: 5\n")
+    held = tmp_path / "held"
+    held.mkdir()
+    (held / "cohort.csv").write_text("id,age\n" + "".join(f"P{n},{n}\n" for n in range(40)),
+                                     encoding="utf-8")  # fmt: skip
+    assert main(["vault", "init", str(held), "cohort.csv", "--as", "Ada",
+                 "--path", str(project)]) == 0  # fmt: skip
+    script = project / "analysis" / "09_vault.py"
+    script.write_text("# reads the vault\n", encoding="utf-8")
+    monkeypatch.setenv("MANUSCRIPT_GUARD_VAULT", str(held))
+    monkeypatch.setenv("MANUSCRIPT_GUARD_VAULT_RUN", "20261104-120000")
+    em = Emitter(script, root=project)
+    em.vault_input("cohort.csv")
+    em.value("vault.n_rows", 40, quoted=False)
+    written = em.write()
+    monkeypatch.delenv("MANUSCRIPT_GUARD_VAULT")
+    return held, written
+
+
+def _vault_said(root: Path, stage: str = "internal-review") -> list[tuple[str, str]]:
+    from manuscript_guard.gates.vault import check_vault_results
+
+    loaded, _ = load_project(root)
+    _, results, _, _ = load_namespace(loaded)
+    return [(f.code, f.severity) for f in check_vault_results(loaded, results, stage).findings]
+
+
+def _released(project: Path, fragment: Path) -> None:
+    """A release's record for the fragment as it stands, as `vault release` writes one."""
+    from manuscript_guard.emit import sha256_of
+
+    record = {"schema": "manuscript-guard/vault-release/1", "run": "20261104-120000",
+              "released_by": "Ada", "role": "author", "released_at": "2026-11-04T12:00:00+00:00",
+              "ran_at": "2026-11-04T12:00:00+00:00", "commit": None, "scripts": [],
+              "ran": ["analysis/09_vault.py"], "inputs": [], "warnings": [],
+              "files": [{"path": fragment.relative_to(project).as_posix(),
+                         "sha256": sha256_of(fragment), "bytes": fragment.stat().st_size,
+                         "kind": "results"}]}  # fmt: skip
+    folder = project / "approvals" / "vault-releases"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "20261104-120000.json").write_text(json.dumps(record), encoding="utf-8")
+
+
+def test_results_from_the_vault_copied_in_by_hand_are_caught(
+    project: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """A fragment written with the vault's variable set, or copied from its outbox, that no
+    person released: a warning while the paper is written, a failure from internal review.
+    Freshness says nothing of its input, which is outside the project."""
+    _from_the_vault(project, tmp_path, monkeypatch)
+    assert _vault_said(project, "drafting") == [("vault-result-unreleased", "warn")]
+    assert _vault_said(project) == [("vault-result-unreleased", "fail")]
+    assert "input-missing" not in codes(gate_report(project))
+    _released(project, project / "results" / "09_vault.json")
+    assert _vault_said(project) == []
+
+
+def test_results_from_the_vault_edited_after_their_release_are_caught(
+    project: Path, tmp_path: Path, monkeypatch
+) -> None:
+    _held, fragment = _from_the_vault(project, tmp_path, monkeypatch)
+    _released(project, fragment)
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["vault.n_rows"]["value"] = 41
+    fragment.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    write_digest(fragment)
+    assert _vault_said(project) == [("vault-result-unreleased", "fail")]
+
+
+def test_results_from_an_extract_since_replaced_are_caught(
+    project: Path, tmp_path: Path, monkeypatch
+) -> None:
+    from manuscript_guard.cli import main
+
+    held, fragment = _from_the_vault(project, tmp_path, monkeypatch)
+    _released(project, fragment)
+    assert _vault_said(project) == []
+    (held / "cohort.csv").write_text("id,age\nP1,1\n", encoding="utf-8")
+    assert main(["vault", "init", "--refresh", "--as", "Ada", "--path", str(project)]) == 0
+    assert _vault_said(project, "design") == [("vault-input-changed", "fail")]
+    registry = project / "design" / "vault.yaml"
+    registry.write_text(registry.read_text(encoding="utf-8").replace("label: cohort.csv",
+                                                                     "label: other.csv"),
+                        encoding="utf-8")  # fmt: skip
+    assert _vault_said(project, "design") == [("vault-input-unregistered", "fail")]
 
 
 def _synthetic_said(root: Path, *, submission: bool = False) -> list[tuple[str, str]]:
@@ -8735,6 +8830,8 @@ _NOT_THE_MANUSCRIPT = (
     "check_data_quality",
     # G4's DOI held to the receipts: it reads paper.yaml and deposit/receipts/.
     "check_deposit_doi",
+    # G1's of the vault: it reads the results, design/vault.yaml and the release records.
+    "check_vault_results",
     "check_datasets", "check_declared_datasets",
     "check_method_passages", "check_methods_review",
     # It finds the figures placed in the Markdown sources, so it reads nothing of a LaTeX

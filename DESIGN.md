@@ -12500,7 +12500,7 @@ inside the folder until a person releases it after the custodian's checks. The t
 claim that the agent cannot reach the data: the operating system decides that, through a
 second account, a container, permissions or a volume that is not mounted. What the tool does is
 register where the data are, check from the agent's own session whether they can be read, keep
-the agent's ordinary commands away from them, and, in later parts, hold what comes out to the
+the agent's ordinary commands away from them, and hold what comes out of a run on them to the
 custodian's rules and a person's release. Agent-written code run on the real data can put a row
 into any output it writes, a mean of one chosen patient, a coefficient, a figure's point, an
 exit code; counting rules do not catch that, and a person reading the script and the outputs is
@@ -12508,9 +12508,9 @@ the control. Nothing here makes a setup lawful under GDPR, HIPAA or a data-use a
 that must stay inside a trusted research environment are out of scope: there the site's
 receipt applies (`verify --receipt SITE`). `docs/vault.md` says all of this to the user.
 
-This part holds registration, the check and the guards. `vault run`, `vault release`, the G1
-codes for a result from unregistered, changed or unreleased data, the profile and `vault
-synthesize` are parts 2 and 3; the command group exists, without `run` and `release`.
+Part 1 holds registration, the check and the guards; part 2 the run on the real data
+(`em.vault_input`, `vault run`), its release (`vault release`) and the G1 codes for a result
+from unregistered, changed or unreleased data. The profile and `vault synthesize` are part 3.
 
 Basile's decisions of 2026-10-29: the folder is outside the project only (1a); `vault init`
 refuses until `paper.yaml` declares `custodian.minimum_cell_count`, 1 where the custodian has
@@ -12636,6 +12636,172 @@ file it adds `.claude/settings.local.json` to `.gitignore`, and where git tracks
 whole command is refused before anything is written. A real
 headless session could not confirm the rule's spelling on 2026-10-30: the `claude` on PATH
 (2.1.310) had no login (Known gaps).
+
+### Reading the vault in the analysis: `em.vault_input` (Task F, part 2)
+
+`em.vault_input(label)` (`emit.py`; `em$vault_input` in `emit.R`, case for case) returns the
+path the script reads, so that the script never knows where the data are. With
+`MANUSCRIPT_GUARD_VAULT` set, as `vault run` sets it to the folder, it is the file at that
+label in the folder, recorded after the other inputs as `{"path": "vault:<label>", sha256,
+raw_sha256, bytes, "restricted": true, "vault": true}`, never by the folder's path; and the
+fragment's provenance gets `vault: {run, released}`, the run's id from
+`MANUSCRIPT_GUARD_VAULT_RUN` (null where the variable was set by hand) and `released: false`.
+Otherwise it is `data/synthetic/<label>`, declared synthetic through `add_input`, and refused
+with a `FileNotFoundError` that names `vault synthesize` where the copy is not there. A label
+is a path inside the folder as `design/vault.yaml` registers it: no leading slash, no drive,
+no backslash, no empty, `.` or `..` part (`vault.checked_label`, `mg_vault_label`).
+`results.schema.json` has `vault` on an input and on the provenance. G1's freshness skips a
+`vault:` input, and `restricted-input-tracked` does not ask git about one: it is outside the
+project.
+
+### Running on the real data: `vault run`
+
+`vault run [SCRIPT...]` (`vault/person.py`, `vault/run.py`) refuses, with nothing read of the
+vault, where standard input is not a terminal; the hook refuses it to an agent (part 1). Where
+no script is named it runs each file directly in `analysis/` that a runner here knows
+(`verify.RUNNERS`), by name; a helper in a folder below is read by them and not run. It lists
+the scripts and every script of the project (`run.script_files`: by suffix, `run.SCRIPT_SUFFIXES`,
+anywhere but `results/`, `data/`, `build/`, `approvals/` and `profiles/` at the root, a hidden
+folder and a library of others' code, no link followed, round 1 of #490) whose
+`source_digest` is not the one the run released last recorded, with `git diff <commit> --
+<path>`, the commit being the project's at that run, or "read it whole" where no run was
+released; then it asks y/N (`ask_at_terminal`; no `--yes`). It refuses where `vault check`'s
+probe does not say readable from this process. A script named on the command line, the
+files a runner reads first (`run.RUNNER_FILES`: `.Rprofile`, `.Renviron`, `_quarto.yml`,
+`_quarto.yaml`, `renv/activate.R`) and every file of `_extensions/`, are listed and recorded
+wherever they are, and so is compiled code a run can load (`run.COMPILED_SUFFIXES`: `.pyc`,
+`.pyo`, `.pyd`, `.so`, `.dll`, `.dylib`). The copy is made first and the list is read from it
+(`run.prepare`). Each changed script's version as the run released last ran it is written
+from `git show --end-of-options <commit>:./<path>` run in the project's folder, so that a
+project inside a larger repository gets its own file, under `<vault>/.runs/<run>/released/`
+(`run.released_version`), the commit taken only where it is git's id, 40 or 64 hex
+characters, and anything git or the disk refuses giving "read <copy> whole" (fix round 3);
+and the line printed is `git diff --no-index <before> <copy>`, or "read <copy> whole" where
+there is none, so that the person reads the bytes that run. Both the copy and the listing read
+the project by one rule, `run._NOT_COPIED` (`build`, `.git` and `__pycache__` at any depth)
+and no link or junction gone through (`run._copied_path`), so that a file the copy leaves out
+is no change (fix round 2). `.lua` is a script's suffix, and `_metadata.yml` or
+`_metadata.yaml` in any folder is listed. At the yes the project's scripts are digested again
+(`run.differs`), and one that is not the copy's, changed, gone or new, refuses the run. A no,
+a Ctrl-C or a refusal removes the copy (`run.discard`, in a `finally` until the run starts),
+and `prepare` removes it on anything that ends it, a Ctrl-C during the copy included; once the
+run has started, anything that ends it removes the copy and leaves `log.txt` and a `run.json`
+saying it did not finish, with what was moved to the outbox before then, where that record can
+be written: on a full disk the run's folder may hold no record at all, and `vault release` then
+says there is no such run (round 2 and the fix rounds of #490).
+
+The run's id is its UTC time, `YYYYMMDD-HHMMSS`, with `-2` and on where taken, and runs are
+ordered by the time and then the number (`run.run_key`); no other word names a run's folder. The project is
+copied into `<vault>/.runs/<run>/copy/<project>/`, a folder of its own whatever the project
+is called, as `verify` copies it (`verify._skip`: no `.git`,
+no `build/`), and no `__pycache__/`, so that no compiled file stands in for a script listed;
+`results/` is emptied wholly, and each file's size and time written are taken; where the
+project's `results/` is, or holds, a link or a junction, the run is refused before anything is
+copied, since emptying it would follow the link, and a copy that cannot be made whole is
+refused and removed. Python runs with `-B` and `PYTHONDONTWRITEBYTECODE=1`. The scripts
+are run there in order with `MANUSCRIPT_GUARD_VAULT` and `MANUSCRIPT_GUARD_VAULT_RUN` set,
+standard input closed, in a process group of their own, with no time limit: the person is at
+the terminal and can stop it. Their standard output and error are copied as they come to the
+terminal and to `<vault>/.runs/<run>/log.txt`. The run stops at the first script that exits
+other than 0. Where every one finished, each file written or changed in the copy, but Python's
+compiled files and a link, a junction or another reparse point the run made, is moved into
+`<vault>/outbox/<run>/` at its path, and the walk goes through no link (round 1 of #490);
+where one failed, nothing is, and the run is not one to release. A run stopped before its end
+writes a summary saying `stopped`, the script it stopped in with no exit code, so that the
+agent never reads the run before's as this one's; where it stopped while the outputs were
+moved, what was moved before then waits in the outbox, `run.json` names it, the terminal is
+told, and the release refuses the run as one that did not finish (fix rounds 4 and 5). The copy is then removed, and
+`<vault>/.runs/<run>/run.json` keeps the run's id, time, commit, the project's scripts by
+digest, the scripts run and what went to the outbox.
+
+The summary the agent reads, `.manuscript-guard/vault/last-run.json`
+(`manuscript-guard/vault-run/1`, `vault/summary.py`), is written at once (decision 9a) and is
+the only file the run writes in the project. A `.py` script is run through a wrapper written
+into the run's folder, which runs it with `runpy.run_path(..., run_name="__main__")`, its own
+folder first on `sys.path` and `sys.argv` its path, and where it raises anything but
+`SystemExit`, writes the frames of the traceback and a `KeyError`'s key where it is a string
+into the run's folder, and the exception's class and module where the module holds the
+class under its name and is `builtins` or a module whose file is outside the copy; then it
+prints the traceback and exits 1. The script runs in the wrapper's process, so all the
+wrapper writes is the script's to forge: it is read as untrusted, and held to the project's
+scripts as the copy held them before anything ran (`run.source_texts`), never to what the run
+wrote (round 1 of #490). A frame is kept where its file is one of them, its line within that
+file's lines and its function `<module>` or the like or a word of that file. A class is named
+only where it is a built-in exception, of a set the tool computes from `builtins` in its own
+process (`summary.BUILTIN_EXCEPTIONS`), and the wrapper says its module is `builtins`. Any
+other class gives `"exception": "not a builtin"`, with no name and no module. Nothing the
+summary names is looked for or imported: importing a module a run names runs that module's
+code in the tool (`test.autotest` runs CPython's tests), and in a virtual environment a run
+can plant a module in site-packages (the fix round of #490); the key where it is exactly a column name of the data
+dictionary or of a released profile (`profiles/data/*.profile.json`, `columns[].name`). An R
+script's last `Calls:` line in its standard error, kept in this process only, gives the names
+that are words of the project's scripts before the run, the last 20, as many as the frames. No message and no value is written. The summary is checked against its
+schema before it is written, and where it does not hold, only each script's path and exit code
+are.
+
+### Releasing what a run wrote: `vault release`
+
+`vault release RUN --as PERSON` (`vault/release.py`) refuses where standard input is not a
+terminal, before anything is read, and refuses a run already released, one not finished
+(saying, where files were moved before it stopped, that they wait in its outbox unreleased),
+and an outbox holding a link. Who releases is the data custodian where `authors.yaml` names one
+(`sign_offs.holder`, `is_holder`), else any author (`approvals.find_author`) (decision 10a).
+The outbox is sorted: each `results/*.json` is a results file (its `.sha256` is written again
+beside it); a path `harvest.yaml` names as an entry's output is a harvested output; the plan
+the run's first results froze, `design/plan.frozen.yaml`, is the plan where it holds the keys
+`freeze_plan` writes and no other, the project's plan text and its digest, a time, one of the
+scripts run, and not `synthetic`, and the project has none yet; anything else is a file no
+check reads, profiles under `profiles/data/` among them while part 3's checks are not built.
+
+Each results file is checked against the results schema and read whole by
+`deposit.counts.small_in` (values, table cells, model and variable cards); each table, but one
+a model card made, by `custodian.recoverable` for a count held back that a total gives away,
+a warning; each column but the first, the one that names the rows, for values all different
+over at least the larger of the minimum and two rows, a warning. Each harvested output is read
+by `harvest.receipt._counts_held`, as a site's receipt reads it, its refusals refusing the
+release and no sign-off taking them, and every column of it for values all different. Small
+counts in the results refuse unless the data custodian has signed off
+`VAULT/custodian/small-counts/<run>`, whose digest is of the run, the minimum and the SHA-256
+of every results file of the outbox, and whose findings name each results file holding such a
+count and neither the count nor where it is: the sign-off is kept in the project whether or not
+the release follows, and counts from one to the minimum could be found from a digest of them
+by trying each (round 1 of #490); `sign --finding VAULT/...` reads the outbox to work it out.
+Where `custodian.restricts_sending` is true, the release is refused until the data custodian
+has signed off `VAULT/custodian/agent-reads-releases`, a statement bound to nothing but itself
+(decision 11a): a released file is read by the agent, and through it by its provider, and
+every release prints that line, at its start and its end.
+
+The warnings are printed; each file no check reads is asked for one by one, and released only
+where the person types its path (decision 12a); then the list of what goes in is shown and a
+y/N asked. A file whose path in the project, or a folder above it, is a link or a junction
+refuses the release, rather than be written through (round 1 of #490). The results go into
+the project at their paths with `provenance.vault.released`
+set true and their digest written again, the rest copied as they are, and
+`approvals/vault-releases/<run>.json` (`manuscript-guard/vault-release/1`) records who released
+it, their ORCID iD where `authors.yaml` gives one, the role, when, the run's time and commit,
+the analysis sources by digest, the scripts run, the vault's labels and digests the results
+read, each file released with its digest, size and kind, the warnings shown, and the sign-offs
+it stood on. The outbox is left as it is.
+
+### What G1 says of results from the vault
+
+`gates/vault.py`, run by `check` and before `package`, reads each fragment with a `vault:`
+input. A label `design/vault.yaml` does not register is `vault-input-unregistered`, and a
+digest other than the registered one `vault-input-changed`, both failures at every stage. A
+fragment no release record holds by its path and the SHA-256 of its bytes is
+`vault-result-unreleased`, a warning before internal review and a failure from it
+(`policy.BINDS_AT`, as `count-below-minimum`), saying whether a record holds another digest
+for it (changed since), whether it says it was released, or neither (copied by hand, or a run
+outside `vault run`). A record that breaks its schema, or whose name is not its run, is a G0
+`schema-violation`. The codes route to the results-binding skill, the person's to act on.
+The write guard puts to the person an agent's write or edit of any file under
+`approvals/vault-releases/`, JSON as the records are, and the shell guard a command that
+names that folder in either shell's spelling, as it puts an approval and a sign-off: a forged
+record would make `vault run` say no script changed and let an edited fragment pass G1.
+
+The receipt's `_run_entry` put the last 400 characters of the script's standard error into
+its error, and a script run on data can print a row of them: it now says how the run ended and
+not what it printed.
 
 ## Known gaps
 
@@ -20109,6 +20275,87 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - *Records.* `design/vault.yaml` is an unsigned statement, as an approval is. A digest of a
     very small file could be matched by guessing its content. `registered_by` is the name
     given to `--as`, and nothing checks it against `authors.yaml`.
+
+- **The vault (Task F, part 2): what a run and its release do not hold.**
+  - *Encoded outputs.* A script run on the real data can put any value into anything it
+    writes or prints: a mean of one chosen row, a coefficient, a figure's point, a level's
+    name, a file name, the exit code, the line it fails at, which of its functions it fails
+    in. The release reads counts: every value and cell of a results file, every cell of a
+    harvested output. It does not read a value that is no count, nor a table's text, nor a
+    column name. A person's reading of the script, before the run, and of what is released is
+    the control, and the run and the release say so.
+  - *The summary for the agent* is written at once (decision 9a). It holds no message and no
+    value, and keeps only names the project's code held before the run and the name of a
+    built-in exception. A failing script can still choose its exit code, which built-in
+    exception it raises (some 6 bits, of the 60 or so there are), and, among its own code's
+    names and lines, the frames reported, at most 20 (and as many names of R's `Calls:`
+    line): some bits for each failed run. What the summary file holds is read by type, and a
+    field of another type is no name. Only a `KeyError`'s key is read as a column
+    name; a missing column another library reports otherwise (polars' `ColumnNotFoundError`,
+    or any R error) gives its class or its calls, and no column.
+  - *The terminal requirement.* An agent can start a pseudo-terminal (`script`, `expect`,
+    `winpty`); the hook's refusal of `vault run` and `vault release` is the other half, and
+    reads ordinary commands only. What a run prints goes to the terminal it runs in: an agent
+    app's own terminal panel, or an IDE's beside an agent extension, may be readable by the
+    agent (docs/vault.md, the traps).
+  - *Unread files are released on a person's word.* A figure, a profile, a file no entry of
+    `harvest.yaml` takes, are not read; typing a path releases the file as it is. One value
+    per row is a warning read from all the values of a column being different, over at least
+    the minimum of rows: a column of distinct estimates in a table of ten rows is warned of,
+    and an identifier column with one value repeated is not. Its first column, the one that
+    names the rows, is not read.
+  - *A harvested output's small count refuses with no sign-off to take*, as a site's receipt
+    refuses it; a results file's can be signed off.
+  - *The sign-off that the agent's provider may read releases* is bound to nothing but the
+    statement: the tool does not know which agent tool, or provider, the author uses, and a
+    change of either does not ask the custodian again.
+  - *Records.* The release record is a person's statement, unsigned, as an approval is; G1
+    holds a fragment to the digest a record gives it, and anyone who can edit the project
+    can write a record. The hooks put an agent's write of one, and a shell command naming
+    their folder, to the person; a command that only reads a record is asked too, and one
+    that builds the folder's path at run time is not seen.
+    A run made with `MANUSCRIPT_GUARD_VAULT` set by hand, outside `vault run`, writes into
+    the project and is caught only as unreleased. The write guard reads the folder of the
+    records in the case the system compares names in; the shell guard reads a word from the
+    folder the command is sent from, so `cd approvals && cp x vault-releases/` passes, as the
+    guard's other `cd` limits do.
+  - *A script run on the real data can write anywhere the account can.* The copy keeps the
+    run away from the project by where it starts, not by any wall: a script can write into
+    the project, the vault or elsewhere, and what it writes outside the copy is no output the
+    release reads.
+  - *The summary's names are held to the project's scripts as the copy was made.* A name the
+    project's code already held is kept wherever the run's choice of it came from. Only a
+    built-in exception is named, so a library's (pandas' `ParserError`, `json`'s
+    `JSONDecodeError`) is said to be "not a builtin", and the agent learns less of why a run
+    failed than it could.
+  - *What is listed is digested at the yes.* A file the project and the copy hold alike at
+    that moment passes, though it changed and changed back meanwhile; what runs is the copy,
+    the same bytes.
+  - *Only files that look like code are listed.* An input that runs and has another suffix,
+    R's `source("steps.txt")`, Python's `exec(open("x.txt").read())`, a template a script
+    renders, is neither listed nor checked at the yes; the copy holds it and runs it as it
+    was copied.
+  - *A link to a folder outside the project is kept in the copy.* The copy keeps symbolic
+    links as links (`copytree(symlinks=True)`), and a runner follows one out of the copy to
+    whatever it names, which is not listed. A run is not refused for one, since a virtual
+    environment in the project holds links to the system's Python. A junction is not copied.
+  - *A second Ctrl-C during the clean-up of a stopped run* can leave the copy in
+    `<vault>/.runs/<run>/copy/`, and the summary unwritten; the person removes the copy.
+  - *The summary file is read up to 64 KiB.* The wrapper writes the last 20 frames in the
+    copy, as UTF-8, and leaves out a value too long to write whole, so a real one fits, for
+    paths of an ordinary length; anything larger, too deep or not JSON says nothing but the
+    path and the exit code, as a script that raised nothing. A library copied with the
+    project (a `venv/` inside it) is inside the copy: a failure 20 or more frames deep in it
+    keeps 20 of its frames, which the summary then drops as no script's, and names no frame.
+  - *What a run records of git.* The copy leaves `.git` out, as `verify`'s does, so a
+    fragment written in a run records no `vcs`; the release records the project's commit at
+    the run, which says nothing of uncommitted changes.
+  - *What is run.* With no script named, each file directly in `analysis/` that a runner here
+    knows is run, in the order of its name; one that is meant to be imported, not run, is run
+    too. A run has no time limit, and a script stopped at the terminal ends the run as a
+    failure.
+  - *The outbox and the runs stay in the vault* after a release, and `.runs/<run>/log.txt`
+    holds whatever the scripts printed. Removing them is the person's.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

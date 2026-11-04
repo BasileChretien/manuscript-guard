@@ -1273,6 +1273,48 @@ def test_a_sign_off_written_by_an_agent_is_put_to_the_person(
     assert "manuscript-guard sign --as" in reason(result)
 
 
+@pytest.mark.parametrize("tool", ["Write", "Edit"])
+def test_a_vault_release_record_written_by_an_agent_is_put_to_the_person(
+    in_claude_code: Path, capsys, tool: str
+) -> None:
+    """A record of a release says a person released a run's outputs; a forged one makes `vault
+    run` say no script changed, and lets an edited released fragment pass G1 (round 1 of
+    #490). Its file is JSON, which the check of approvals did not read."""
+    path = in_claude_code / "approvals" / "vault-releases" / "20261104-120000.json"
+    fields = {"content": "{}"} if tool == "Write" else {"old_string": "a", "new_string": "b"}
+    payload = _writes(in_claude_code, tool, file_path=str(path), **fields)
+    result = run("guard-write", payload, capsys)
+    assert decision(result) == "ask"
+    assert "vault release" in reason(result)
+    payload = {**payload, "turn_id": "turn-1", "model": "gpt-test"}
+    assert decision(run("guard-write", payload, capsys)) == "deny"
+
+
+@pytest.mark.parametrize("command", [
+    "cp forged.json approvals/vault-releases/20261104-120000.json",
+    r"Copy-Item forged.json approvals\vault-releases\20261104-120000.json",
+    "echo {} > approvals/vault-releases/x.json",
+])
+def test_a_shell_command_that_names_the_release_records_is_put_to_the_person(
+    in_claude_code: Path, capsys, command: str
+) -> None:
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "vault release" in reason(result)
+
+
+@pytest.mark.skipif(sys.platform not in ("win32", "darwin"),
+                    reason="names are told apart by case on this system")
+def test_a_release_record_spelt_in_another_case_is_put_to_the_person(
+    in_claude_code: Path, capsys
+) -> None:
+    path = in_claude_code / "Approvals" / "Vault-Releases" / "20261104-120000.json"
+    payload = _writes(in_claude_code, file_path=str(path), content="{}")
+    result = run("guard-write", payload, capsys)
+    assert decision(result) == "ask"
+    assert "vault release" in reason(result)
+
+
 def _attested(project: Path) -> Path:
     return project / "literature" / "attested.yaml"
 

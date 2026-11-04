@@ -350,6 +350,8 @@ def check_restricted_inputs(project: Project, results: Results) -> Report:
             for fragment in results.fragments
             for record in fragment.inputs
             if isinstance(record, dict) and record.get("restricted") and record.get("path")
+            # A file of the vault is outside the project, and outside git.
+            and not str(record["path"]).startswith("vault:")
         }
     )
     report = Report()

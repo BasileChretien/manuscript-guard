@@ -33,6 +33,7 @@ from manuscript_guard.gates.datasets import dataset_of
 from manuscript_guard.gates.harvested import check_harvested, input_at_site, receipted
 from manuscript_guard.paths import SOURCE_SUFFIXES, lockfiles
 from manuscript_guard.pointers import Pointer, pointer_at
+from manuscript_guard.vault import in_vault
 
 GATE = "G1"
 
@@ -50,6 +51,10 @@ def check_freshness(project: Project, results: Results) -> Report:
 
         for declared in fragment.inputs:
             checked_inputs += 1
+            if in_vault(declared) is not None:
+                # Outside the project, in the vault: held to design/vault.yaml's digest
+                # (`gates/vault.py`), as a site's receipt holds an input at the site.
+                continue
             input_path = project.root / declared["path"]
             # Before the file is read: a Git LFS or git-annex pointer stands where the data
             # is not fetched, and its own bytes are no evidence of a change (item 35).

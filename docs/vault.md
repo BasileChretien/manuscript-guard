@@ -26,9 +26,10 @@ Four things are said plainly here, because each is easy to believe otherwise:
 
 What this version holds: registering the data (`vault init`), checking whether this session
 can read them (`vault check`), the line at each session start, the shell guard and the agent
-tool's own deny rules. Running the analysis on the real data (`vault run`), releasing what it
-wrote (`vault release`), and the profile and synthetic copy are later steps; the shell guard
-already refuses `vault run` and `vault release` to an agent.
+tool's own deny rules, running the analysis on the real data (`em.vault_input`, `vault run`)
+and releasing what it wrote (`vault release`). The profile of a file and the synthetic copy
+drawn from it are a later step: until then, put a synthetic copy in `data/synthetic/`
+yourself.
 
 ## Registering the data: `vault init`
 
@@ -95,6 +96,145 @@ the answer was not found.
 The probe measures the account and the process it runs in. It sees nothing of a sandbox an
 agent tool applies only to the commands the agent runs in a shell: the hook runs outside it,
 so an agent under the same account in such a sandbox is reported readable.
+
+## Reading the data in the analysis: `em.vault_input`
+
+The analysis names a file of the vault by its label, never by where it is:
+
+```python
+path = em.vault_input("cohort.csv")      # Python
+cohort = pd.read_csv(path)
+```
+
+```r
+path <- em$vault_input("cohort.csv")     # R
+cohort <- read.csv(path)
+```
+
+Under a run on the real data, where `vault run` sets `MANUSCRIPT_GUARD_VAULT` to the vault's
+folder, it gives the real file, declared restricted and recorded in the results as
+`vault:cohort.csv` with its digests, never with the folder's path. Anywhere else it gives
+`data/synthetic/cohort.csv`, declared synthetic, and refuses where that file is not there,
+saying to make one with `vault synthesize` (a later step) or to put one there yourself. So
+the agent writes and tests the analysis on the synthetic copy, and the same script, unchanged,
+reads the real data when you run it.
+
+## Running on the real data: `vault run`
+
+You run it, at a terminal the agent tool cannot read:
+
+```bash
+manuscript-guard vault run                      # every script directly in analysis/, by name
+manuscript-guard vault run analysis/02_model.py # or the ones you name, in that order
+```
+
+It refuses where standard input is not a terminal, and the plugin's hook refuses it to an
+agent. It does this, in order:
+
+1. It copies the project into `<vault>/.runs/<run>/copy/`, inside the vault rather than the
+   system's temporary folder, so that the copy shares the data's protection. `.git` and
+   `build/` are left out, and so is Python's compiled code in `__pycache__/`, and
+   `results/` is emptied. It refuses where `results/` is, or holds, a link or a junction.
+2. It lists the scripts it will run, and every script of the copy that changed since the
+   run released last, by digest, with the `git diff` command that shows what changed, and
+   asks y/N. A script is any file a run can execute or source (`.py`, `.R`, `.Rmd`, `.qmd`,
+   `.sh`, a `.lua` filter and the like), wherever it is, but in `results/`, `data/`, a
+   `build/` or `.git/` folder at any depth, a hidden folder or a library of others' code,
+   as the copy leaves them out; compiled code a run can load (`.pyc`, `.pyd`, `.so`, `.dll`,
+   `.dylib`) is listed too. A script you name, and `.Rprofile`, `.Renviron`, `_quarto.yml`,
+   `renv/activate.R`, every file of `_extensions/` and a `_metadata.yml` in any folder,
+   which a runner reads, are listed wherever they are. The list is read from the copy. For
+   each script changed since the run released last, the version that run ran is written
+   beside the copy, under `<vault>/.runs/<run>/released/`, from git at that run's commit, and
+   the line to read is `git diff --no-index <before> <copy>`: the copy's bytes, which are
+   what runs. At your yes the project is digested again, and where a script differs from
+   the copy's, the run is refused: run `vault run` again. Read what changed before you
+   answer: the scripts were written with an agent, and what they print or write can hold
+   any value of the data. On a no, or a Ctrl-C, the copy is removed.
+3. It runs the scripts there in order, with `MANUSCRIPT_GUARD_VAULT` set and Python told
+   to write no compiled file, and stops at the first that fails.
+4. What they print goes to your terminal as it comes, and into `<vault>/.runs/<run>/log.txt`.
+5. Where every script finished, it moves everything they wrote into `<vault>/outbox/<run>/`:
+   results files, harvested outputs, figures, anything else. A link or a junction a
+   script made is left out, and nothing reached through one is moved. The copy of the
+   project is then removed. Where the run stops before its end, by a fault or a Ctrl-C, the
+   copy is removed too, `log.txt` stays with a `run.json` saying the run did not finish and
+   what it had moved, the summary for the agent says it stopped, and such a run is not one
+   to release: files moved before the stop may wait in the outbox, and are not released. A second
+   Ctrl-C while that is done can leave the copy in the vault: remove it yourself.
+
+The tool writes nothing to the project except `.manuscript-guard/vault/last-run.json`, which
+the agent reads to know how the run went. (A script run on the real data runs as your
+account, and can write anywhere that account can, the project and the vault included: the
+copy keeps it away from the project by where it starts, not by any wall.) The summary holds
+each script's exit code and, of a script that failed: for Python, the class of the exception and the frames of its traceback that fall in
+the project's own files (path, line, function); for R, the function names of its `Calls:`
+line; and the key of a `KeyError` where it is exactly a column name the released profile or
+the data dictionary already holds. No message and no value goes in. The project's files are
+read as they were before the run: a function whose name is not a word of them, or a frame in
+a file the run wrote, is left out, since a script could make either from the data. A class
+is named only where it is one of Python's built-in exceptions (`KeyError`, `ValueError`,
+`ZeroDivisionError`); any other, a library's or the script's own, is said to be "not a
+builtin", with no name and no module, and nothing the summary names is imported. A failing
+script can still choose its exit code, which built-in exception it raises, and, among its
+own code's names and lines, which frames are reported, at most 20: a few bits for each failed
+run. What the summary file holds is read by type, and a field of another type is no name.
+
+## Releasing what a run wrote: `vault release`
+
+```bash
+manuscript-guard vault release 20261104-093012 --as "Grace Hopper"
+```
+
+You run it, at a terminal; the hook refuses it to an agent. The data custodian releases where
+`authors.yaml` names one under `roles:`; otherwise any author does. Before anything is asked,
+it reads the outbox:
+
+- every results file whole: each value, each table cell, and the model and variable cards.
+  A count from one to below `custodian.minimum_cell_count` refuses the release, unless the
+  data custodian has signed off that exact list:
+  `manuscript-guard sign --as <custodian> --finding VAULT/custodian/small-counts/<run>`. The
+  sign-off, kept in the project, names each results file that holds such a count, and
+  neither the count nor where it is; it is bound to the bytes of the run's results files, so
+  a run written again needs it again. A count held back that a total beside it gives away
+  is a warning;
+- each output `harvest.yaml` harvests, every cell, as a site's receipt reads it: a count
+  below the minimum refuses;
+- a table column whose values are all different, over at least the minimum of rows, is a
+  warning: "an identifier, or a value per person?";
+- the plan that the run's first results froze, `design/plan.frozen.yaml`, goes in with the
+  results where it holds the project's plan and nothing else;
+- every other file (a figure, a profile, a CSV no entry harvests, an `.rds`) is a file no
+  check reads. Each is listed, and released only where you type its path at the prompt. A
+  scatter plot draws real people.
+
+Where `paper.yaml` says `custodian: {restricts_sending: true}`, the release is refused until
+the data custodian has signed off that the coding agent's provider may read what is released:
+`manuscript-guard sign --as <custodian> --finding VAULT/custodian/agent-reads-releases`. Every
+release says so, because it is true: **a file released is read by the coding agent, and
+through it by its provider.**
+
+Then it lists what goes into the project and asks y/N. It refuses an outbox holding a link
+or a junction, and refuses to write through one in the project, at a file's path or a folder
+above it. The results go into `results/`, each
+saying in its provenance that it is released, and the rest to their paths. The release is
+recorded in `approvals/vault-releases/<run>.json`: who released it and when, the run, each
+analysis script by its digest, each file of the vault the results read by its label and
+digest, each file released by its digest, and each warning shown. It is your statement,
+unsigned, as an approval is.
+
+## What `check` says of results from the vault
+
+G1 compares each input recorded as `vault:<label>` with the digest `design/vault.yaml`
+registers, without reading the file:
+
+| Code | Says | Severity |
+|---|---|---|
+| `vault-input-unregistered` | the results read a label the registry does not hold | a failure |
+| `vault-input-changed` | the results read the file with another digest: other data than those registered, as after `vault init --refresh` for a new extract | a failure |
+| `vault-result-unreleased` | no release record holds the results file by its digest: copied from the outbox by hand, edited after its release, or written by a run made outside `vault run` | a warning while the paper is written, a failure from `internal-review` on |
+
+Its input is outside the project, so G1 does not say `input-missing` of it.
 
 ## What the plugin's hooks refuse
 

@@ -1184,6 +1184,10 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
   state$recorded <- vapply(state$inputs, input_path, character(1), USE.NAMES = FALSE)
   state$restricted <- character()
   state$synthetic <- character()
+  # The files of the vault read under a run on the real data, by label, each with where it
+  # was read, and the run's id that `vault run` gives; as `_vault` in Python.
+  state$vault <- character()
+  state$vault_run <- NULL
   state$tables <- list()
   state$code_lists <- list()
   state$variables <- list()
@@ -1929,6 +1933,20 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
       if (path %in% state$synthetic) record$synthetic <- TRUE
       record
     })
+    # Each file of the vault by its label, never by where the folder is, after the others,
+    # as in Python. Every one is restricted.
+    vault_records <- lapply(names(state$vault), function(label) {
+      full <- state$vault[[label]]
+      list(
+        path = paste0("vault:", label),
+        sha256 = mg_input_digest(full),
+        raw_sha256 = digest::digest(file = full, algo = "sha256"),
+        bytes = as.integer(file.info(full)$size),
+        restricted = TRUE,
+        vault = TRUE
+      )
+    })
+    input_records <- c(input_records, vault_records)
 
     sha <- mg_git(project_root, c("rev-parse", "HEAD"))
     vcs <- list()
@@ -1990,7 +2008,40 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
       session = session
     )
     if (length(vcs) > 0) provenance$vcs <- vcs
+    # The run on the real data these results came from, and whether a person has released
+    # them, as in Python.
+    if (length(state$vault) > 0) {
+      provenance$vault <- list(run = state$vault_run, released = FALSE)
+    }
     provenance
+  }
+
+  # The path to read a file of the vault at, declared as read: the real file under a run on
+  # the real data, where `vault run` sets MANUSCRIPT_GUARD_VAULT, recorded as `vault:<label>`
+  # and restricted; otherwise the synthetic copy in data/synthetic/, declared synthetic, and
+  # refused where there is none. As `vault_input` in Python, case for case.
+  vault_input <- function(label) {
+    label <- mg_vault_label(label)
+    folder <- Sys.getenv("MANUSCRIPT_GUARD_VAULT", "")
+    if (nzchar(folder)) {
+      full <- file.path(folder, label)
+      if (!file.exists(full) || dir.exists(full)) {
+        stop("vault:", label, " is not in the vault's folder: is it the label ",
+             "design/vault.yaml registers?", call. = FALSE)
+      }
+      state$vault[[label]] <- full
+      run <- Sys.getenv("MANUSCRIPT_GUARD_VAULT_RUN", "")
+      state$vault_run <- if (nzchar(run)) run else NULL
+      return(full)
+    }
+    full <- file.path(project_root, "data", "synthetic", label)
+    if (!file.exists(full) || dir.exists(full)) {
+      stop("data/synthetic/", label, " is not there: the analysis runs on a synthetic copy ",
+           "outside a vault run. Make one with `manuscript-guard vault synthesize`, from the ",
+           "released profile, or put one there yourself", call. = FALSE)
+    }
+    add_input(full, synthetic = TRUE)
+    full
   }
 
   write <- function(path = NULL) {
@@ -2055,8 +2106,28 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     relation = relation,
     flow = flow,
     add_input = add_input,
+    vault_input = vault_input,
     write = write
   )
+}
+
+# The label as given, where it names a file inside the vault's folder as `vault init`
+# registers one; refused otherwise. As `vault.checked_label` in Python.
+mg_vault_label <- function(label) {
+  if (!is.character(label) || length(label) != 1L || is.na(label) || !nzchar(label)) {
+    stop("vault_input takes the file's label, its path inside the vault's folder as ",
+         "design/vault.yaml registers it", call. = FALSE)
+  }
+  parts <- strsplit(label, "/", fixed = TRUE)[[1]]
+  if (endsWith(label, "/")) parts <- c(parts, "")
+  if (grepl("\\", label, fixed = TRUE) || startsWith(label, "/") ||
+      (nchar(label) > 1L && substr(label, 2L, 2L) == ":") ||
+      any(parts %in% c("", ".", ".."))) {
+    stop("vault_input('", label, "'): a label is the file's path inside the vault's folder, ",
+         "with forward slashes, as design/vault.yaml registers it: no folder above it, no ",
+         "drive and no backslash", call. = FALSE)
+  }
+  label
 }
 
 # What is wrong with a flow's arithmetic, or NULL: the Python `flow_problem`, word for word,

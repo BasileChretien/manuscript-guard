@@ -166,10 +166,17 @@ def small_counts(
         named = fragment.path.relative_to(project.root).as_posix()
         if named in withheld:
             continue
-        for where, count in _values(document) + _cells(document) + _cards(document):
-            if 1 <= count < minimum:
-                found.append(Small(named, where, count))
+        found += small_in(document, named, minimum)
     return found
+
+
+def small_in(document: dict, named: str, minimum: int) -> list[Small]:
+    """Every count below the minimum in one fragment as the file holds it, named `named`:
+    its values, its table cells, and its model and variable cards. `vault release` reads a
+    run's fragments with it before they leave the vault."""
+    return [Small(named, where, count)
+            for where, count in _values(document) + _cells(document) + _cards(document)
+            if 1 <= count < minimum]  # fmt: skip
 
 
 def small_count_signable(
@@ -206,4 +213,5 @@ def settled_small_counts(
     return signable, (settle(project, signable) if signable else ())
 
 
-__all__ = ["SMALL_COUNTS", "Small", "count_in_cell", "settled_small_counts", "small_counts"]
+__all__ = ["SMALL_COUNTS", "Small", "count_in_cell", "settled_small_counts", "small_counts",
+           "small_in"]

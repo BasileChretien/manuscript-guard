@@ -1,4 +1,4 @@
-"""`manuscript-guard vault init` and `vault check`.
+"""`manuscript-guard vault init` and `vault check`; `run` and `release` are in `person.py`.
 
 `init` is the person's: it registers the data and prints the agent tool's deny rules, and
 with `--agent-settings` writes them, once the person says yes at a terminal. `check` may be
@@ -39,6 +39,10 @@ def cmd_vault(args: argparse.Namespace) -> int:
     try:
         if args.verb == "check":
             return _check(args)
+        if args.verb in ("run", "release"):
+            from manuscript_guard.vault import person
+
+            return person.cmd_run(args) if args.verb == "run" else person.cmd_release(args)
         return _init(args)
     except VaultFileError as exc:
         print(f"{_PREFIX}: {exc}", file=sys.stderr)

@@ -248,3 +248,10 @@ check as nearly clean.
 
 After a `gate-errored` finding, offer `manuscript-guard report-issue <fingerprint>` with the fingerprint its hint names; after a sentence saying the tool itself failed, `manuscript-guard report-issue --last`.
 For a gate that got something wrong, propose the smallest made-up text that shows it for `report-issue --about`, show it to the author, and never fill `--snippet` with the manuscript's own sentences unasked.
+
+Where the data are held in a vault (`design/vault.yaml`, docs/vault.md), read them in the
+analysis with `em.vault_input("<label>")`, which gives the synthetic copy in
+`data/synthetic/`, and work on that copy only. Never read, list or name the vault's folder.
+`vault run` and `vault release` are the person's, at a terminal: ask them to run them, and
+read how a run went in `.manuscript-guard/vault/last-run.json`. `vault-result-unreleased`,
+`vault-input-changed` and `vault-input-unregistered` are theirs to settle the same way.

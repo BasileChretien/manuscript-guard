@@ -104,6 +104,7 @@ from manuscript_guard.gates.registration import check_registration
 from manuscript_guard.gates.related import check_related
 from manuscript_guard.gates.shortlist import check_shortlist
 from manuscript_guard.gates.synthetic import check_synthetic_inputs
+from manuscript_guard.gates.vault import check_vault_results
 from manuscript_guard.paper_edit import KEYS as PAPER_KEYS
 from manuscript_guard.policy import (
     DESCRIPTIONS,
@@ -217,6 +218,7 @@ def _gate_run(
         ("G2", lambda: check_recoverable(project, results)),
         ("G1", lambda: check_restricted_inputs(project, results)),
         ("G1", lambda: check_synthetic_inputs(project, results, submission=at_submission)),
+        ("G1", lambda: check_vault_results(project, results, chosen)),
         ("G1", lambda: check_datasets(project, results)),
         ("G1", lambda: check_values(project, namespace, results)),
         ("G8", lambda: check_reported(project, results)),
@@ -2846,7 +2848,8 @@ def cmd_package(args: argparse.Namespace) -> int:
     stage = resolve_stage(project, None, False)
     checks, _deferred = apply_stage(
         merge_all([contract_report, load_report, check_freshness(project, results),
-                   check_restricted_inputs(project, results)]), stage)  # fmt: skip
+                   check_restricted_inputs(project, results),
+                   check_vault_results(project, results, stage)]), stage)  # fmt: skip
     try:
         plan = plan_package(project, results, with_manuscript=args.with_manuscript,
                             citation=args.citation or args.root_citation,
@@ -4573,6 +4576,16 @@ def cmd_sign(args: argparse.Namespace) -> int:
         standing += package_signables(project, results, notes)
         for note in dict.fromkeys(notes):
             print(f"manuscript-guard: {note}", file=sys.stderr)
+    # The vault's, only where one is asked for: a run's small counts are worked out from its
+    # outbox, inside the vault, and said without the counts.
+    if args.finding.startswith("VAULT/"):
+        from manuscript_guard.vault.release import vault_signables
+
+        vaulted, notes = vault_signables(project, args.finding)
+        for note in notes:
+            print(f"manuscript-guard: {args.finding} cannot be worked out: {note}",
+                  file=sys.stderr)  # fmt: skip
+        standing += vaulted
     # A bundle's, only where one is asked for: it is worked out from every file it holds.
     if args.finding.startswith("DEPOSIT/"):
         from manuscript_guard.deposit.bundles import DepositError
@@ -6369,16 +6382,26 @@ def build_parser() -> argparse.ArgumentParser:
         "the project and a paper.yaml with no custodian.minimum_cell_count, and prints Claude "
         "Code's deny rules for the folder. `check` opens each registered file without reading "
         "it, and lists the folder: exit 0 not reachable from this session, 1 readable, 2 not "
-        "registered here. Nothing is sent.",
+        "registered here. `run [SCRIPT ...]`, at a terminal, lists the analysis scripts "
+        "changed since the run released last, asks, and runs them on the data in a copy of "
+        "the project inside the vault, what they write waiting in its outbox; the agent is "
+        "told exit codes and where a script failed, in .manuscript-guard/vault/last-run.json. "
+        "`release RUN --as PERSON`, at a terminal, reads every count of the outbox to the "
+        "custodian's rules and puts its results into the project, each file no check reads "
+        "only where you type its path, recorded in approvals/vault-releases/. A released "
+        "file is read by the agent, and through it by its provider. Nothing is sent.",
     )
-    vault.add_argument("verb", choices=["init", "check"])
+    vault.add_argument("verb", choices=["init", "check", "run", "release"])
     vault.add_argument(
         "words", nargs="*", metavar="[FOLDER FILE ...]",
-        help="init: the vault's folder, then the files to register in it, by name or glob",
+        help="init: the vault's folder, then the files to register in it, by name or glob; "
+        "run: the scripts to run, every one directly in analysis/ where none is named; "
+        "release: the run's id",
     )  # fmt: skip
     vault.add_argument(
         "--as", dest="as_", metavar="PERSON",
-        help="init: who registers the files, recorded beside each",
+        help="init: who registers the files, recorded beside each; release: who releases, "
+        "the data custodian where authors.yaml names one, else an author",
     )  # fmt: skip
     vault.add_argument(
         "--refresh", action="store_true",

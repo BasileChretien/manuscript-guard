@@ -12878,8 +12878,9 @@ saying it did not finish, with what was moved to the outbox before then, where t
 be written: on a full disk the run's folder may hold no record at all, and `vault release` then
 says there is no such run (round 2 and the fix rounds of #490). A run that ended, every script
 finished or one failed, and whose `run.json` could not be written is removed in the same way
-(`run.RecordUnwritten`): the terminal is told that every script finished and that the run
-cannot be released, with what waits in its outbox, rather than that it stopped, and the
+(`run.RecordUnwritten`): the terminal is told that every script finished, or which one
+failed, and that the run cannot be released, with what waits in its outbox, rather than that
+it stopped (a Ctrl-C during that write is cleaned up alike), and the
 summary says `unrecorded`; where the outbox of a stopped run cannot be listed, the terminal is
 told that, not that what it moved waits there (the last round of #490). On a disk too full
 for the summary as well, `last-run.json` is still the run before's, as after a second Ctrl-C.

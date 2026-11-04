@@ -610,14 +610,17 @@ def run(project, staged: Staged) -> Ran:
     try:
         (here / MANIFEST).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8",
                                      newline="\n")  # fmt: skip
-    except OSError as exc:
+    except BaseException as exc:
         # The run ended and cannot be released: the copy goes, as for a run stopped, and the
-        # agent is told this run's record could not be written (the last round of #490).
+        # agent is told this run's record could not be written (the last round of #490), a
+        # Ctrl-C during the write too (round 1 of #498).
         shutil.rmtree(work.parent, ignore_errors=True)
         with contextlib.suppress(Exception):
             write_summary(root, run_id, ran_at, done.scripts, failure, outbox=bool(done.moved),
                           unrecorded=True)  # fmt: skip
-        raise RecordUnwritten(done, here / MANIFEST, exc) from exc
+        if isinstance(exc, OSError):
+            raise RecordUnwritten(done, here / MANIFEST, exc) from exc
+        raise
     try:
         shutil.rmtree(work.parent)
     except OSError as exc:

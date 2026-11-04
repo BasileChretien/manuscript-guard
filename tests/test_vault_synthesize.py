@@ -635,6 +635,20 @@ def test_a_time_about_one_centile_by_midnight_wraps_round_it(centre: str) -> Non
     assert all(re.fullmatch(r"(2[0-3]|[01][0-9]):[0-5][0-9]", one) for one in drawn)
 
 
+def test_a_time_is_kept_within_the_dictionary_s_range() -> None:
+    """Round 1 of #498: carried round midnight, a time near the end of a declared range left
+    it, where base held it at 23:59; every time drawn is kept within the range."""
+    from types import SimpleNamespace
+
+    from manuscript_guard.vault.synthesize import _Column, _time
+
+    evening = SimpleNamespace(minimum="20:00", maximum="23:59")
+    column = _Column({"name": "t", "kind": "time", "type": "time", "centiles": {"50": "23:00"},
+                      "missing": 0, "unread": 0, "n": 100}, evening, 5, 100, 100)  # fmt: skip
+    drawn = {_time(column, at / 1000).text for at in range(1000)}
+    assert all("20:00" <= one <= "23:59" for one in drawn), sorted(drawn)[:5]
+
+
 @pytest.mark.parametrize(("kind", "bounds", "values", "read_as"), [
     ("count", ", range: {min: 40}", ["40"] * 150 + ["41"] * 47 + ["unknown"] * 3, None),
     ("date", ', range: {min: "2019-03-01"}', [f"2019-03-{day:02d}" for day in range(1, 9)],

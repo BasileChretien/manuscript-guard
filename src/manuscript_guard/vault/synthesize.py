@@ -428,10 +428,29 @@ def _time(column: _Column, u: float) -> _Drawn | None:
         hours = 24 * u
     minutes = math.floor(hours * 60)
     # About one centile, a time near midnight is carried round it rather than piled on 00:00
-    # or 23:59 (the last round of #491).
+    # or 23:59 (the last round of #491); then kept within the dictionary's range, as a date
+    # is (round 1 of #498).
     minutes = minutes % day if len(points) == 1 else min(max(minutes, 0), day - 1)
+    low, high = _time_range(column)
+    if low is not None:
+        minutes = max(low, minutes)
+    if high is not None:
+        minutes = min(high, minutes)
     text = f"{minutes // 60:02d}:{minutes % 60:02d}"
     return _Drawn(text, text)
+
+
+def _time_range(column: _Column) -> tuple[int | None, int | None]:
+    """The dictionary's range of a time, each end its minute of the day, as `quality` reads
+    it."""
+    variable = column.variable
+    if variable is None:
+        return None, None
+    ends = []
+    for bound in (getattr(variable, "minimum", None), getattr(variable, "maximum", None)):
+        clock = quality.time_of(bound)
+        ends.append(int(clock[:2]) * 60 + int(clock[3:5]) if clock else None)
+    return ends[0], ends[1]
 
 
 def identifier(pattern: str | None, row: int, rows: int) -> str:

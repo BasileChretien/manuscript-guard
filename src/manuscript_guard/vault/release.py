@@ -247,10 +247,13 @@ def read_outbox(project, box: Outbox) -> tuple[Reading, list[tuple[str, str]]]:
 # ---------------------------------------------------------------------------- sign-offs
 
 
-def small_signable(project, run: str, small: list):
+def small_signable(project, box: Outbox, small: list):
     """The small counts of a run's results as one statement the data custodian may sign off,
-    or None where they hold none. What is said names where each count is and not the count,
-    since a sign-off is kept in the project."""
+    or None where they hold none. A sign-off is kept in the project, and the release may not
+    follow it, so it holds no count and nothing a count could be found from by trying each:
+    what is said names each results file that holds one, and what is signed is the digest of
+    every results file's bytes, with the run and the minimum (round 1 of #490)."""
+    from manuscript_guard.emit import sha256_of
     from manuscript_guard.gates.custodian import minimum_cell_count
     from manuscript_guard.sign_offs import Signable, digest_of
 
@@ -259,16 +262,17 @@ def small_signable(project, run: str, small: list):
     minimum = minimum_cell_count(project)
     findings = tuple(
         Finding(gate=GATE, code="vault-small-count", severity=FAIL,
-                message=f"{one.fragment}: {one.where} is below the data custodian's minimum "
-                f"of {minimum}, and the release puts the file in the project whole",
+                message=f"{fragment} holds a count below the data custodian's minimum of "
+                f"{minimum}, and the release puts the file in the project whole",
                 path=Path(project.root) / "paper.yaml",
                 hint="hold it back in the analysis, as fewer than the minimum or merged with "
                 "another category, and run it again")  # fmt: skip
-        for one in small
+        for fragment in sorted({one.fragment for one in small})
     )
-    digest = digest_of("vault-small-counts", run, minimum,
-                       [(one.fragment, one.where, one.count) for one in small])  # fmt: skip
-    return Signable(ROLE, f"{SMALL_COUNTS}/{run}", digest, findings)
+    digest = digest_of("vault-small-counts", box.run, minimum,
+                       [(relative, sha256_of(box.folder / relative))
+                        for relative in sorted(box.fragments)])  # fmt: skip
+    return Signable(ROLE, f"{SMALL_COUNTS}/{box.run}", digest, findings)
 
 
 def agent_signable(project):
@@ -302,10 +306,11 @@ def vault_signables(project, finding: str) -> tuple[list, list[str]]:
         folder = local_folder(Path(project.root))
         if folder is None:
             return [], ["no vault is registered on this machine"]
-        found, _inputs = read_outbox(project, open_outbox(project, folder, run))
+        box = open_outbox(project, folder, run)
+        found, _inputs = read_outbox(project, box)
     except (Refused, VaultFileError) as exc:
         return [], [str(exc)]
-    signable = small_signable(project, run, found.small)
+    signable = small_signable(project, box, found.small)
     return ([signable] if signable else []), []
 
 
@@ -349,6 +354,23 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def through_links(root: Path, paths: list[str]) -> list[str]:
+    """The paths a release would write through a link or a junction: the file itself, or a
+    folder between it and the project's root. A release refuses them rather than follow
+    the link out of the project (round 1 of #490)."""
+    from manuscript_guard.verify import _is_junction
+
+    found = []
+    for relative in paths:
+        here = root
+        for part in relative.split("/"):
+            here = here / part
+            if here.is_symlink() or _is_junction(str(here)):
+                found.append(relative)
+                break
+    return found
+
+
 def _released_bytes(path: Path) -> bytes:
     """A results file as it goes into the project: `provenance.vault` saying it is released."""
     data = path.read_bytes()
@@ -369,6 +391,9 @@ def write_release(project, box: Outbox, named: list[str], who: tuple[str, str | 
     from manuscript_guard.vault.records import release_file
 
     root = Path(project.root)
+    going = [*box.fragments, *(one for one, _entry in box.harvested), *box.plan, *named]
+    if blocked := through_links(root, going):
+        raise Refused(f"the release would write through a link: {', '.join(blocked)}")
     files = []
     for relative, kind in ([(one, "results") for one in box.fragments]
                            + [(one, "harvested") for one, _entry in box.harvested]
@@ -402,4 +427,5 @@ def write_release(project, box: Outbox, named: list[str], who: tuple[str, str | 
 
 __all__ = ["AGENT_READS", "SENT", "SMALL_COUNTS", "Outbox", "Reading", "Refused",
            "agent_signable", "open_outbox", "read_outbox", "releaser", "small_signable",
+           "through_links",
            "vault_signables", "write_release"]

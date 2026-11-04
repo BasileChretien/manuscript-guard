@@ -733,13 +733,34 @@ def _reserves(path: Path, payload: dict) -> str | None:
     )
 
 
+#: Why a write of a vault's release record, or a command naming their folder, is the person's.
+_RELEASE_RECORD = (
+    "approvals/vault-releases/ holds the records of a person's release of what a run on the "
+    "data held in the vault wrote. Only that person makes one, with `manuscript-guard vault "
+    "release <run> --as <them>` at a terminal; G1 and `vault run` take a record as their word."
+)
+#: The folder of those records, named in a shell command in either shell's spelling.
+_RELEASES_NAMED = re.compile(r"(?i)\bapprovals[\\/]+vault-releases\b")
+
+
+def _names_releases(command: str) -> str | None:
+    """Why a command that names the folder of the vault's release records is put to the
+    person: a copy into it, a redirection or a move writes a person's statement (round 1 of
+    #490). A command that only reads one is asked too: the guard reads words, not effects."""
+    return _RELEASE_RECORD if _RELEASES_NAMED.search(command) else None
+
+
 def _an_approval(path: Path) -> str | None:
     """Why an edit of an author's approval, or of a named person's sign-off, is put to the
-    person: the file is their statement, written by `approve` or `sign` when they run it."""
-    if path.suffix.lower() not in {".yaml", ".yml"}:
-        return None
+    person: the file is their statement, written by `approve` or `sign` when they run it. A
+    record of a vault's release is JSON, and any file under its folder is put to the person
+    (round 1 of #490)."""
     found = _relative_to_project(path)
     if found is None or found[1].split("/")[0] != "approvals":
+        return None
+    if found[1].split("/")[1:2] == ["vault-releases"]:
+        return f"{path.name}: {_RELEASE_RECORD}"
+    if path.suffix.lower() not in {".yaml", ".yml"}:
         return None
     if found[1].split("/")[1:2] == ["sign-offs"]:
         return (
@@ -1233,6 +1254,7 @@ def guard_submission(payload: dict) -> int:
     if refused:
         return _deny("PreToolUse", "\n\n".join(refused))
     sends = deposits or names_posting or names_vault_run or names_vault
+    sends = sends or _names_releases(command)
     sends = sends or _or_nothing(lambda _path: _sends_without_asking(command, payload),
                                  Path("."))  # fmt: skip
     sends = sends or _or_nothing(lambda _path: _approves(command), Path("."))

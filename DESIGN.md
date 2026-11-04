@@ -12553,13 +12553,16 @@ project.
 vault, where standard input is not a terminal; the hook refuses it to an agent (part 1). Where
 no script is named it runs each file directly in `analysis/` that a runner here knows
 (`verify.RUNNERS`), by name; a helper in a folder below is read by them and not run. It lists
-the scripts and every analysis source (`paths.SOURCE_SUFFIXES` under `analysis/`) whose
+the scripts and every script of the project (`run.script_files`: by suffix, `run.SCRIPT_SUFFIXES`,
+anywhere but `results/`, `data/`, `build/`, `approvals/` and `profiles/` at the root, a hidden
+folder and a library of others' code, no link followed, round 1 of #490) whose
 `source_digest` is not the one the run released last recorded, with `git diff <commit> --
 <path>`, the commit being the project's at that run, or "read it whole" where no run was
 released; then it asks y/N (`ask_at_terminal`; no `--yes`). It refuses where `vault check`'s
 probe does not say readable from this process.
 
-The run's id is its UTC time, `YYYYMMDD-HHMMSS`, with `-2` and on where taken. The project is
+The run's id is its UTC time, `YYYYMMDD-HHMMSS`, with `-2` and on where taken, and runs are
+ordered by the time and then the number (`run.run_key`); no other word names a run's folder. The project is
 copied into `<vault>/.runs/<run>/<project>/` as `verify` copies it (`verify._skip`: no `.git`,
 no `build/`), `results/` emptied, and each file's size and time written are taken. The scripts
 are run there in order with `MANUSCRIPT_GUARD_VAULT` and `MANUSCRIPT_GUARD_VAULT_RUN` set,
@@ -12567,9 +12570,10 @@ standard input closed, in a process group of their own, with no time limit: the 
 the terminal and can stop it. Their standard output and error are copied as they come to the
 terminal and to `<vault>/.runs/<run>/log.txt`. The run stops at the first script that exits
 other than 0. Where every one finished, each file written or changed in the copy, but Python's
-compiled files and a link the run made, is moved into `<vault>/outbox/<run>/` at its path;
+compiled files and a link, a junction or another reparse point the run made, is moved into
+`<vault>/outbox/<run>/` at its path, and the walk goes through no link (round 1 of #490);
 where one failed, nothing is, and the run is not one to release. The copy is then removed, and
-`<vault>/.runs/<run>/run.json` keeps the run's id, time, commit, the analysis sources by
+`<vault>/.runs/<run>/run.json` keeps the run's id, time, commit, the project's scripts by
 digest, the scripts run and what went to the outbox.
 
 The summary the agent reads, `.manuscript-guard/vault/last-run.json`
@@ -12577,16 +12581,20 @@ The summary the agent reads, `.manuscript-guard/vault/last-run.json`
 the only file the run writes in the project. A `.py` script is run through a wrapper written
 into the run's folder, which runs it with `runpy.run_path(..., run_name="__main__")`, its own
 folder first on `sys.path` and `sys.argv` its path, and where it raises anything but
-`SystemExit`, writes the exception's class, its module and that module's file, the frames of
-the traceback and a `KeyError`'s key where it is a string, into the run's folder, prints the
-traceback and exits 1. What the wrapper wrote is read as untrusted, the script having been
-able to write it: a frame is kept where its file is inside the copy, its line within the
-file's lines and its function `<module>` or the like or a word of that file; the class where it
-is a built-in, a class of a module outside the copy, or a word of the project's analysis
-scripts; the key where it is exactly a column name of the data dictionary or of a released
-profile (`profiles/data/*.profile.json`, `columns[].name`). An R script's last `Calls:` line
-in its standard error, kept in this process only, gives the names that are words of the
-project's scripts. No message and no value is written. The summary is checked against its
+`SystemExit`, writes the frames of the traceback and a `KeyError`'s key where it is a string
+into the run's folder, and the exception's class and module only where the module holds the
+class under its name (`getattr(module, name) is type(exc)`) and is `builtins` or a module
+whose file is outside the copy, since a script sets `__module__` as it likes; then it prints
+the traceback and exits 1. What the wrapper wrote is read as untrusted, the script having been
+able to write it, and is held to the project's scripts as the copy held them before anything
+ran (`run.source_texts`), never to what the run wrote (round 1 of #490): a frame is kept where
+its file is one of them, its line within that file's lines and its function `<module>` or the
+like or a word of that file; the class where it is a built-in exception of this Python, or
+the module's file is outside the copy and holds the name, and otherwise the summary says
+`own_exception` and gives no name; the key where it is exactly a column name of the data
+dictionary or of a released profile (`profiles/data/*.profile.json`, `columns[].name`). An R
+script's last `Calls:` line in its standard error, kept in this process only, gives the names
+that are words of the project's scripts before the run. No message and no value is written. The summary is checked against its
 schema before it is written, and where it does not hold, only each script's path and exit code
 are.
 
@@ -12611,9 +12619,11 @@ over at least the larger of the minimum and two rows, a warning. Each harvested 
 by `harvest.receipt._counts_held`, as a site's receipt reads it, its refusals refusing the
 release and no sign-off taking them, and every column of it for values all different. Small
 counts in the results refuse unless the data custodian has signed off
-`VAULT/custodian/small-counts/<run>`, whose digest is of the run, the minimum and each count
-with where it is, and whose findings say where each count is and not the count, since the
-sign-off is kept in the project; `sign --finding VAULT/...` reads the outbox to work it out.
+`VAULT/custodian/small-counts/<run>`, whose digest is of the run, the minimum and the SHA-256
+of every results file of the outbox, and whose findings name each results file holding such a
+count and neither the count nor where it is: the sign-off is kept in the project whether or not
+the release follows, and counts from one to the minimum could be found from a digest of them
+by trying each (round 1 of #490); `sign --finding VAULT/...` reads the outbox to work it out.
 Where `custodian.restricts_sending` is true, the release is refused until the data custodian
 has signed off `VAULT/custodian/agent-reads-releases`, a statement bound to nothing but itself
 (decision 11a): a released file is read by the agent, and through it by its provider, and
@@ -12621,7 +12631,9 @@ every release prints that line, at its start and its end.
 
 The warnings are printed; each file no check reads is asked for one by one, and released only
 where the person types its path (decision 12a); then the list of what goes in is shown and a
-y/N asked. The results go into the project at their paths with `provenance.vault.released`
+y/N asked. A file whose path in the project, or a folder above it, is a link or a junction
+refuses the release, rather than be written through (round 1 of #490). The results go into
+the project at their paths with `provenance.vault.released`
 set true and their digest written again, the rest copied as they are, and
 `approvals/vault-releases/<run>.json` (`manuscript-guard/vault-release/1`) records who released
 it, their ORCID iD where `authors.yaml` gives one, the role, when, the run's time and commit,
@@ -12640,6 +12652,10 @@ fragment no release record holds by its path and the SHA-256 of its bytes is
 for it (changed since), whether it says it was released, or neither (copied by hand, or a run
 outside `vault run`). A record that breaks its schema, or whose name is not its run, is a G0
 `schema-violation`. The codes route to the results-binding skill, the person's to act on.
+The write guard puts to the person an agent's write or edit of any file under
+`approvals/vault-releases/`, JSON as the records are, and the shell guard a command that
+names that folder in either shell's spelling, as it puts an approval and a sign-off: a forged
+record would make `vault run` say no script changed and let an edited fragment pass G1.
 
 The receipt's `_run_entry` put the last 400 characters of the script's standard error into
 its error, and a script run on data can print a row of them: it now says how the run ended and
@@ -20102,7 +20118,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     change of either does not ask the custodian again.
   - *Records.* The release record is a person's statement, unsigned, as an approval is; G1
     holds a fragment to the digest a record gives it, and anyone who can edit the project
-    can write a record. A run made with `MANUSCRIPT_GUARD_VAULT` set by hand, outside `vault
+    can write a record. The hooks put an agent's write of one, and a shell command naming
+    their folder, to the person; a command that only reads a record is asked too, and one
+    that builds the folder's path at run time is not seen.
+  - *The summary's names are held to the project's scripts as the copy was made.* A name the
+    project's code already held is kept wherever the run's choice of it came from; a library
+    module's file is read for the class's name, and one the same account can edit is read as
+    it is. A run made with `MANUSCRIPT_GUARD_VAULT` set by hand, outside `vault
     run`, writes into the project and is caught only as unreleased.
   - *What a run records of git.* The copy leaves `.git` out, as `verify`'s does, so a
     fragment written in a run records no `vcs`; the release records the project's commit at

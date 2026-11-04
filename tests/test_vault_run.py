@@ -297,7 +297,8 @@ def test_r_calls_keep_only_the_names_the_code_holds(tmp_path: Path) -> None:
                                             encoding="utf-8")  # fmt: skip
     tail = (b"Error in helper(1) : PLANTED 1953-04-02\n"
             b"Calls: helper -> Smith1953 -> stop\nExecution halted\n")
-    failed = r_failure(None, work, "analysis/01.R", 1, tail)
+    texts = {"analysis/01.R": (work / "analysis" / "01.R").read_text(encoding="utf-8")}
+    failed = r_failure(texts, "analysis/01.R", 1, tail)
     # `stop` is a word of the script; the name made of the data is not.
     assert failed == {"path": "analysis/01.R", "exit_code": 1, "calls": ["helper", "stop"]}
 
@@ -351,7 +352,7 @@ def test_release_puts_the_results_in_the_project_and_records_it(
     # And the next run lists nothing changed, or the script once it changes.
     answers.append("n")
     assert vault_cli(paper, "run") == 0
-    assert "No analysis script changed since the run released last." in capsys.readouterr().out
+    assert "No script changed since the run released last." in capsys.readouterr().out
     _script(paper, "print('changed')")
     answers.append("n")
     assert vault_cli(paper, "run") == 0
@@ -416,8 +417,9 @@ def test_a_small_count_refuses_the_release_until_the_custodian_signs_that_list_o
     assert main(["sign", str(paper), "--as", "Hopper", "--finding", finding]) == 0
     signed = next((paper / "approvals" / "sign-offs").glob("vault-custodian-small-counts*"))
     # The sign-off is kept in the project: it says where the count is, not the count.
-    assert "cohort.deaths is below" in signed.read_text(encoding="utf-8")
+    assert "results/01_model.json holds a count below" in signed.read_text(encoding="utf-8")
     assert "is 3" not in signed.read_text(encoding="utf-8")
+    assert "deaths" not in signed.read_text(encoding="utf-8")
     answers.append("y")
     assert vault_cli(paper, "release", run, "--as", "Hopper") == 0
     record = json.loads((paper / "approvals" / "vault-releases" / f"{run}.json").read_text(
@@ -625,3 +627,163 @@ def test_the_r_emitter_reads_the_vault_as_python_does(
     assert from_r["provenance"]["inputs"] == from_python["provenance"]["inputs"]
     assert from_r["provenance"].get("vault") == from_python["provenance"].get("vault")
     assert validate(from_r, "results", paper / "results" / "01_r.json").ok
+
+
+# ---------------------------------------------------------------------------- round 1 of #490
+
+
+def _junction(link: Path, target: Path) -> None:
+    """A link to a folder: a junction on Windows, which needs no privilege, else a symlink."""
+    import os
+
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+def test_a_word_the_run_wrote_into_the_copy_is_no_word_of_the_code(
+    paper: Path, vault: Path, terminal
+) -> None:
+    """The words a name is held to, and the files a frame may name, are the project's as it
+    stood before the run: a script that writes a helper named after a row and fails in it
+    gets neither the name nor the frame into the summary."""
+    extra = ("import pathlib, sys\nname = 'PLANTED' + rows[3]['id']\n"
+             "pathlib.Path('analysis/zz_helper.py').write_text("
+             "'def ' + name + '():\\n    raise ValueError()\\n')\n"
+             "sys.path.insert(0, 'analysis')\nimport zz_helper\ngetattr(zz_helper, name)()")
+    answers, _asked = terminal
+    _script(paper, extra)
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    text = (paper / ".manuscript-guard" / "vault" / "last-run.json").read_text("utf-8")
+    assert "PLANTED" not in text and "zz_helper" not in text
+    failed = _summary(paper)["failed"]
+    assert [frame["path"] for frame in failed["frames"]] == ["analysis/01_model.py"]
+
+
+@pytest.mark.parametrize("module", ["builtins", "json"])
+def test_a_class_that_says_it_is_of_another_module_is_not_named(
+    paper: Path, vault: Path, terminal, module: str
+) -> None:
+    extra = (f"raise type('PLANTED' + rows[3]['id'], (Exception,), "
+             f"{{'__module__': '{module}'}})()")
+    answers, _asked = terminal
+    _script(paper, extra)
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    text = (paper / ".manuscript-guard" / "vault" / "last-run.json").read_text("utf-8")
+    assert "PLANTED" not in text
+    failed = _summary(paper)["failed"]
+    assert "class" not in failed and failed["own_exception"] is True
+
+
+def test_an_r_calls_line_is_held_to_the_code_before_the_run(
+    paper: Path, vault: Path, terminal, monkeypatch
+) -> None:
+    from test_r_emitter import EMIT_R, RSCRIPT
+
+    from manuscript_guard import verify
+
+    if RSCRIPT is None:
+        pytest.skip("R is not installed")
+    # Rscript may be installed and not on PATH, as on Windows.
+    monkeypatch.setitem(verify.RUNNERS, ".r", [RSCRIPT, "--vanilla"])
+    script = paper / "analysis" / "01_model.R"
+    script.write_text(
+        f'source("{EMIT_R.as_posix()}")\n'
+        'em <- mg_emitter("analysis/01_model.R")\n'
+        'rows <- read.csv(em$vault_input("cohort.csv"))\n'
+        'word <- paste0("PLANTED", rows$id[4])\n'
+        'writeLines(paste0(word, " <- function() 1"), "analysis/zz.R")\n'
+        'message("Calls: ", word)\nquit(status = 1)\n', encoding="utf-8")
+    answers, _asked = terminal
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    text = (paper / ".manuscript-guard" / "vault" / "last-run.json").read_text("utf-8")
+    assert "PLANTED" not in text
+    assert _summary(paper)["failed"]["exit_code"] == 1
+
+
+def test_the_small_counts_sign_off_binds_the_outputs_and_says_no_count(
+    paper: Path, vault: Path, terminal
+) -> None:
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.vault.release import vault_signables
+
+    run = _ran(paper, vault, terminal, "em.value('cohort.deaths', 3)")
+    project, _report = load_project(paper)
+    finding = f"VAULT/custodian/small-counts/{run}"
+    (signable,), _notes = vault_signables(project, finding)
+    said = " ".join(one.message for one in signable.findings)
+    assert "deaths" not in said and " 3" not in said
+    fragment = vault / "outbox" / run / "results" / "01_model.json"
+    fragment.write_bytes(fragment.read_bytes() + b"\n")
+    (again,), _notes = vault_signables(project, finding)
+    assert again.digest != signable.digest
+
+
+def test_the_scripts_listed_and_recorded_are_every_one_the_run_can_run(
+    paper: Path, vault: Path, terminal, capsys
+) -> None:
+    run = _ran(paper, vault, terminal)
+    answers, _asked = terminal
+    answers.append("y")
+    assert vault_cli(paper, "release", run, "--as", "Lovelace") == 0
+    (paper / "R").mkdir()
+    (paper / "R" / "utils.R").write_text("helper <- function() 1\n", encoding="utf-8")
+    (paper / "tools.sh").write_text("echo hi\n", encoding="utf-8")
+    (paper / "data" / "make.py").parent.mkdir(exist_ok=True)
+    (paper / "data" / "make.py").write_text("# data, not code\n", encoding="utf-8")
+    answers.append("y")
+    assert vault_cli(paper, "run") == 0
+    said = capsys.readouterr().out
+    assert "R/utils.R: not in run" in said and "tools.sh: not in run" in said
+    assert "data/make.py" not in said
+    last = sorted((vault / ".runs").iterdir())[-1]
+    record = json.loads((last / "run.json").read_text(encoding="utf-8"))
+    assert {"R/utils.R", "tools.sh", "analysis/01_model.py"} <= {
+        one["path"] for one in record["scripts"]}
+
+
+def test_a_release_does_not_write_through_a_link(
+    paper: Path, vault: Path, terminal, tmp_path: Path
+) -> None:
+    run = _ran(paper, vault, terminal)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    shutil.rmtree(paper / "results")
+    _junction(paper / "results", elsewhere)
+    answers, _asked = terminal
+    answers.append("y")
+    assert vault_cli(paper, "release", run, "--as", "Lovelace") == 2
+    assert list(elsewhere.iterdir()) == []
+    assert not (paper / "approvals" / "vault-releases").exists()
+
+
+def test_a_link_the_run_makes_into_the_vault_moves_nothing_out_of_it(
+    paper: Path, vault: Path, terminal
+) -> None:
+    extra = ("import os, pathlib\nheld = pathlib.Path(os.environ['MANUSCRIPT_GUARD_VAULT'])\n"
+             "if os.name == 'nt':\n    import _winapi\n"
+             "    _winapi.CreateJunction(str(held), 'reached')\n"
+             "else:\n    os.symlink(held, 'reached', target_is_directory=True)")
+    run = _ran(paper, vault, terminal, extra)
+    assert (vault / "cohort.csv").is_file()
+    assert not (vault / "outbox" / run / "reached").exists()
+
+
+def test_runs_are_ordered_by_their_time_then_their_number(paper: Path) -> None:
+    from manuscript_guard.vault.records import last_release
+
+    folder = paper / "approvals" / "vault-releases"
+    folder.mkdir(parents=True)
+    for run in ("20261104-120000-9", "20261104-120000-10", "20261104-115959"):
+        (folder / f"{run}.json").write_text(json.dumps({
+            "schema": "manuscript-guard/vault-release/1", "run": run, "released_by": "Ada",
+            "released_at": "2026-11-04T12:00:00+00:00", "ran_at": "2026-11-04T12:00:00+00:00",
+            "scripts": [], "ran": [], "inputs": [], "files": [], "warnings": []}),
+            encoding="utf-8")  # fmt: skip
+    assert last_release(paper)["run"] == "20261104-120000-10"

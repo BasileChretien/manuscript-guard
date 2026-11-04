@@ -5,11 +5,13 @@ It holds each script's exit code and, of the script that failed: for Python, the
 exception and the frames of its traceback that fall in the project's own files (path, line,
 function); for R, the function names of its `Calls:` line; and the key of a KeyError where it
 is exactly a column name the released profile or the data dictionary already holds. No
-message and no value goes in. Every name kept is one the project's code or a released file
-already shows: a class or a function whose name is not a word of the project's scripts (one
-made while the script ran, from the data), a frame outside the copy, a line past the end of
-its file, or a key no released file names, is left out. The exit code and a line number still
-carry a few bits a script could choose (DESIGN.md, Known gaps; Basile's decision 9a).
+message and no value goes in. Every name kept is one the project's code, a library or a
+released file already shows, the code read as the copy held it before the run: a function
+whose name is not a word of those scripts, a frame in a file the run wrote or outside the
+copy, a line past the end of its file, a class the wrapper did not find under its name in a
+built-in module or a module outside the copy, or a key no released file names, is left out.
+The exit code and a line number still carry a few bits a script could choose (DESIGN.md,
+Known gaps; Basile's decision 9a).
 
 What the wrapper of a Python script wrote, and what R printed, are read as untrusted: the
 script could have written either.
@@ -39,22 +41,12 @@ def _words(text: str) -> set[str]:
     return found | {part for word in found for part in word.split(".") if part}
 
 
-def _text(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return ""
-
-
-def code_words(work: Path, script: str) -> set[str]:
-    """Every word of the project's analysis scripts in the copy, and of the script run."""
-    from manuscript_guard.paths import SOURCE_SUFFIXES
-
-    words = _words(_text(work / script))
-    folder = work / "analysis"
-    for path in folder.rglob("*") if folder.is_dir() else ():
-        if path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES:
-            words |= _words(_text(path))
+def code_words(texts: dict[str, str]) -> set[str]:
+    """Every word of the project's scripts as the copy held them before anything ran in it
+    (`run.source_texts`): never of what the run wrote (round 1 of #490)."""
+    words: set[str] = set()
+    for text in texts.values():
+        words |= _words(text)
     return words
 
 
@@ -84,54 +76,64 @@ def known_columns(project) -> frozenset[str]:
     return frozenset(names)
 
 
-def _inside(path: str, work: Path) -> Path | None:
+def _relative(path: str, work: Path) -> str | None:
+    """The path from the copy's root of a file a frame names, or None outside the copy."""
     try:
         real = Path(os.path.realpath(path))
-        real.relative_to(os.path.realpath(work))
+        return real.relative_to(Path(os.path.realpath(work))).as_posix()
     except (ValueError, OSError, TypeError):
         return None
-    return real if real.is_file() else None
 
 
 def _identifier(name: object) -> bool:
     return isinstance(name, str) and name.isascii() and name.isidentifier()
 
 
-def _frames(given: object, work: Path) -> list[dict]:
+def _frames(given: object, work: Path, texts: dict[str, str]) -> list[dict]:
+    """The frames in a script of the project as it stood before the run: its file among
+    them, its line within that file, its function `<module>` or the like or a word of it."""
     kept = []
     for frame in given if isinstance(given, list) else ():
         if not (isinstance(frame, list) and len(frame) == 3):
             continue
         filename, line, name = frame
-        real = _inside(filename, work) if isinstance(filename, str) else None
-        if real is None or not isinstance(line, int) or isinstance(line, bool):
+        relative = _relative(filename, work) if isinstance(filename, str) else None
+        text = texts.get(relative) if relative is not None else None
+        if text is None or not isinstance(line, int) or isinstance(line, bool):
             continue
-        text = _text(real)
         if not 1 <= line <= text.count("\n") + 1:
             continue
         if not (name in _ANGLED or (_identifier(name) and name in _words(text))):
             continue
-        root = Path(os.path.realpath(work))
-        kept.append({"path": real.relative_to(root).as_posix(), "line": line, "function": name})
+        kept.append({"path": relative, "line": line, "function": name})
     return kept[-FRAMES:]
 
 
-def _kind(record: dict, work: Path, words: set[str]) -> str | None:
-    """The exception's class name where the code or a library shows it: a built-in, a class
-    of a module outside the copy, or a word of the project's scripts."""
+def _kind(record: dict, work: Path) -> str | None:
+    """The exception's class name, where the wrapper found the class under that name in its
+    module, and the module a built-in one or one whose file is outside the copy; and that
+    file, read here, holds the name. Anything else is an exception of the script's own."""
+    import builtins
+
     name, module = record.get("class"), record.get("module")
     if not _identifier(name):
         return None
-    if module == "builtins" or name in words:
-        return name
+    if module == "builtins":
+        found = getattr(builtins, name, None)
+        return name if isinstance(found, type) and issubclass(found, BaseException) else None
     where = record.get("module_file")
-    if (isinstance(module, str) and module != "__main__" and isinstance(where, str)
-            and _inside(where, work) is None and Path(where).is_file()):  # fmt: skip
-        return name
-    return None
+    if not (isinstance(module, str) and module != "__main__" and isinstance(where, str)
+            and _relative(where, work) is None and Path(where).is_file()):  # fmt: skip
+        return None
+    try:
+        held = Path(where).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    return name if name in _words(held) else None
 
 
-def python_failure(project, work: Path, script: str, code: int, summary: Path) -> dict:
+def python_failure(project, texts: dict[str, str], work: Path, script: str, code: int,
+                   summary: Path) -> dict:  # fmt: skip
     """What the summary says of a Python script that failed, from what its wrapper wrote."""
     failed: dict = {"path": script, "exit_code": code}
     try:
@@ -140,11 +142,12 @@ def python_failure(project, work: Path, script: str, code: int, summary: Path) -
         return failed
     if not isinstance(record, dict):
         return failed
-    words = code_words(work, script)
-    kind = _kind(record, work, words)
+    kind = _kind(record, work)
     if kind is not None:
         failed["class"] = kind
-    frames = _frames(record.get("frames"), work)
+    else:
+        failed["own_exception"] = True
+    frames = _frames(record.get("frames"), work, texts)
     if frames:
         failed["frames"] = frames
     key = record.get("key")
@@ -153,16 +156,15 @@ def python_failure(project, work: Path, script: str, code: int, summary: Path) -
     return failed
 
 
-def r_failure(project, work: Path, script: str, code: int, tail: bytes) -> dict:
+def r_failure(texts: dict[str, str], script: str, code: int, tail: bytes) -> dict:
     """What the summary says of an R script that failed: the function names of the last
-    `Calls:` line it printed that are words of the project's scripts."""
-    del project  # the names are held to the code alone
+    `Calls:` line it printed that are words of the project's scripts before the run."""
     failed: dict = {"path": script, "exit_code": code}
     lines = [line for line in tail.decode("utf-8", "replace").splitlines()
              if line.startswith("Calls: ")]  # fmt: skip
     if not lines:
         return failed
-    words = code_words(work, script)
+    words = code_words(texts)
     calls = [part.strip() for part in lines[-1][len("Calls: "):].split("->")]
     kept = [part for part in calls if _R_NAME.fullmatch(part) and part in words]
     if kept:

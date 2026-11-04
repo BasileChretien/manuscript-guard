@@ -910,6 +910,13 @@ def test_the_example_demonstrates_every_public_emitter_api() -> None:
     }
     # `document`, `render` and `add_input` are plumbing rather than things an analysis writes.
     public -= {"document", "render", "add_input"}
+    # `vault_input` reads a file of a vault, the folder outside the project that the operating
+    # system keeps from the agent, registered by `vault init` and run on by a person at a
+    # terminal. The example is a folder every user copies, with simulated data in data/ and no
+    # vault: showing it there would mean a vault the example does not have, or a synthetic
+    # copy standing for data it does not hold apart. docs/vault.md shows it, and
+    # tests/test_vault_run.py runs it in both cases and in R.
+    public -= {"vault_input"}
 
     # Parsed, not searched. `.code_list(` inside a comment or a docstring satisfies a text
     # search, so an example could stop demonstrating an API while this still passed - the

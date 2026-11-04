@@ -3,8 +3,9 @@
 `vault release` writes one per run, at `approvals/vault-releases/<run>.json`
 (`manuscript-guard/vault-release/1`). G1 holds a fragment that read the vault to the digest a
 record gives it, and `vault run` lists the scripts changed since the run released last. A
-record is a person's statement, unsigned, as an approval is: the hooks put an agent's edit
-under `approvals/` to the person.
+record is a person's statement, unsigned, as an approval is: the hooks put to the person an
+agent's write or edit of a file under `approvals/vault-releases/`, and a shell command that
+names the folder (round 1 of #490).
 """
 
 from __future__ import annotations
@@ -45,12 +46,14 @@ def read_releases(root: Path) -> tuple[list[dict], list[Finding]]:
                                   f"{document['run']}, whose record is {document['run']}.json"))
             continue
         records.append(document)
-    return sorted(records, key=lambda record: record["run"]), faults
+    from manuscript_guard.vault.run import run_key
+
+    return sorted(records, key=lambda record: run_key(record["run"])), faults
 
 
 def last_release(root: Path) -> dict | None:
-    """The record of the run released last, by the run's id, which is its time; None where
-    none has been."""
+    """The record of the run released last, by the run's id, which is its time and then its
+    number; None where none has been."""
     records, _faults = read_releases(root)
     return records[-1] if records else None
 

@@ -23,6 +23,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -43,6 +44,15 @@ MANIFEST_SCHEMA = "manuscript-guard/vault-run-record/1"
 RUN_ID = re.compile(r"[0-9]{8}-[0-9]{6}(?:-[0-9]+)?")
 #: What a run leaves in the copy that is no output of it: Python's compiled files.
 _LEFT = frozenset({"__pycache__"})
+#: What a run can execute or source, by suffix: the runners' and the analysis sources', and
+#: the shells' and the like (round 1 of #490).
+SCRIPT_SUFFIXES = frozenset({".r", ".rmd", ".qmd", ".py", ".ipynb", ".sql", ".jl", ".do",
+                             ".sas", ".sh", ".bash", ".zsh", ".ps1", ".bat", ".cmd", ".pl",
+                             ".m", ".stan", ".c", ".cc", ".cpp", ".h", ".hpp"})  # fmt: skip
+#: Folders of the project that hold no script the run executes: at its root the results,
+#: the data, the build and the records, and anywhere the libraries of others' code.
+_NOT_SCRIPTS_AT_ROOT = frozenset({"results", "data", "build", "approvals", "profiles"})
+_LIBRARIES = frozenset({"node_modules", "renv", "venv", "site-packages"})
 #: How much of a script's standard error is kept, in this process only, for R's `Calls:`.
 TAIL = 1 << 16
 #: How long git may take to say which commit the project is at.
@@ -52,13 +62,16 @@ GIT_SECONDS = 10
 #: run's folder in the vault: the script runs as `__main__`, with its own folder first on the
 #: path, and where it raises, the exception's class, its module, and the frames of its
 #: traceback are written to the file named first, inside the vault, before the traceback is
-#: printed. `summary.py` keeps of them only what the
+#: printed. The class is named only where its module holds it under that name and is a
+#: built-in or a module whose file is outside the copy, named second: a script sets
+#: `__module__` as it likes (round 1 of #490). `summary.py` keeps of them only what the
 #: project's code already shows. No message and no value is written.
 WRAPPER = """
-import json, os, runpy, sys, traceback
-summary, script = sys.argv[1], sys.argv[2]
+import builtins, json, os, runpy, sys, traceback
+summary, copy, script = sys.argv[1], sys.argv[2], sys.argv[3]
 sys.argv = [script]
 sys.path[0] = os.path.dirname(os.path.abspath(script))
+inside = os.path.join(os.path.normcase(os.path.realpath(copy)), "")
 try:
     runpy.run_path(script, run_name="__main__")
 except SystemExit:
@@ -66,10 +79,16 @@ except SystemExit:
 except BaseException as exc:
     kind = type(exc)
     module = sys.modules.get(kind.__module__)
+    where = getattr(module, "__file__", None)
+    held = module is not None and getattr(module, kind.__name__, None) is kind
+    outside = isinstance(where, str) and not os.path.normcase(
+        os.path.realpath(where)).startswith(inside)
+    named = held and (module is builtins or outside)
     key = exc.args[0] if (isinstance(exc, KeyError) and len(exc.args) == 1
                           and isinstance(exc.args[0], str)) else None
-    record = {"class": kind.__name__, "module": kind.__module__,
-              "module_file": getattr(module, "__file__", None),
+    record = {"class": kind.__name__ if named else None,
+              "module": kind.__module__ if named else None,
+              "module_file": where if named and outside else None,
               "frames": [[f.filename, f.lineno, f.name]
                          for f in traceback.extract_tb(exc.__traceback__)],
               "key": key}
@@ -121,19 +140,72 @@ class Ran:
 # ---------------------------------------------------------------------------- the scripts
 
 
-def analysis_sources(root: Path) -> dict[str, str]:
-    """Every analysis source of the project, by its path from the root, with its digest as G1
-    takes a script's (`emit.source_digest`)."""
-    from manuscript_guard.emit import source_digest
-    from manuscript_guard.paths import SOURCE_SUFFIXES
+def _reparse(entry: os.DirEntry) -> bool:
+    """Whether a folder's entry is a link: a symbolic link, or on Windows a junction or any
+    other reparse point, which a walk must not go through (round 1 of #490)."""
+    if entry.is_symlink():
+        return True
+    try:
+        attributes = entry.stat(follow_symlinks=False).st_file_attributes
+    except (AttributeError, OSError):
+        return False
+    return bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
 
-    folder = root / "analysis"
-    found = {}
-    for path in sorted(folder.rglob("*")) if folder.is_dir() else ():
-        if (path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES
-                and not _LEFT & set(path.relative_to(root).parts)):  # fmt: skip
-            found[path.relative_to(root).as_posix()] = source_digest(path)
-    return found
+
+def _walk(top: Path, skip=lambda _relative: False):
+    """Each file under `top`, by its path from it, and each link, neither followed; with a
+    flag saying which is a link. A folder `skip` names, by its path, is not entered."""
+    pending = [top]
+    while pending:
+        folder = pending.pop()
+        try:
+            entries = sorted(os.scandir(folder), key=lambda one: one.name)
+        except OSError:
+            continue
+        for entry in entries:
+            path = Path(entry.path)
+            relative = path.relative_to(top).as_posix()
+            if _reparse(entry):
+                yield relative, path, True
+            elif entry.is_dir(follow_symlinks=False):
+                if entry.name not in _LEFT and not skip(relative):
+                    pending.append(path)
+            else:
+                yield relative, path, False
+
+
+def _not_scripts(relative: str) -> bool:
+    name = relative.rsplit("/", 1)[-1]
+    return name.startswith(".") or name in _LIBRARIES or (
+        "/" not in relative and name in _NOT_SCRIPTS_AT_ROOT)  # fmt: skip
+
+
+def script_files(root: Path) -> dict[str, Path]:
+    """Every file of the project that a run can execute or source, by its path from the
+    root: by its suffix, anywhere but in the results, the data, the build, a hidden folder
+    and the libraries of others' code; no link followed."""
+    return {relative: path for relative, path, link in sorted(_walk(root, _not_scripts))
+            if not link and path.suffix.lower() in SCRIPT_SUFFIXES}  # fmt: skip
+
+
+def analysis_sources(root: Path) -> dict[str, str]:
+    """Every script of the project (`script_files`), by its path from the root, with its
+    digest as G1 takes a script's (`emit.source_digest`)."""
+    from manuscript_guard.emit import source_digest
+
+    return {relative: source_digest(path) for relative, path in script_files(root).items()}
+
+
+def source_texts(work: Path) -> dict[str, str]:
+    """The text of every script of the copy as it was made, before anything ran in it: what
+    the summary holds a name and a frame to."""
+    texts = {}
+    for relative, path in script_files(work).items():
+        try:
+            texts[relative] = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+    return texts
 
 
 def default_scripts(root: Path) -> list[str]:
@@ -173,7 +245,7 @@ def scripts_to_run(root: Path, named: list[str]) -> list[str]:
 
 
 def changes(sources: dict[str, str], last: dict | None) -> list[Change]:
-    """Each analysis script whose digest is not the one the run released last ran with."""
+    """Each script whose digest is not the one the run released last ran with."""
     if last is None:
         return [Change(path, "no run on the vault has been released yet", f"read {path} whole")
                 for path in sources]  # fmt: skip
@@ -205,6 +277,14 @@ def commit_of(root: Path) -> str | None:
 # ---------------------------------------------------------------------------- the run
 
 
+def run_key(run: str) -> tuple[str, int]:
+    """A run's id as it is ordered: its time, then its number, `-10` after `-9`."""
+    parts = run.split("-")
+    base = "-".join(parts[:2])
+    number = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 1
+    return base, number
+
+
 def new_run(folder: Path) -> str:
     """A run's id: when it started, in UTC, with a number after it where that is taken."""
     base = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -230,28 +310,26 @@ def stage(root: Path, work: Path) -> None:
             stale.unlink() if stale.is_file() or stale.is_symlink() else stale.rmdir()
 
 
-def snapshot(work: Path) -> dict[str, tuple[int, int]]:
-    """Each file of the copy, by its path, with its size and when it was written."""
+def snapshot(work: Path) -> dict[str, tuple[int, int, bool]]:
+    """Each file of the copy, by its path, with its size, when it was written and whether it
+    is a link; nothing reached through a link or a junction (round 1 of #490)."""
     found = {}
-    for directory, folders, names in os.walk(work):
-        folders[:] = [name for name in folders if name not in _LEFT]
-        for name in names:
-            path = Path(directory) / name
-            try:
-                stat = path.lstat()
-            except OSError:
-                continue
-            found[path.relative_to(work).as_posix()] = (stat.st_size, stat.st_mtime_ns)
+    for relative, path, link in _walk(work):
+        try:
+            held = path.lstat()
+        except OSError:
+            continue
+        found[relative] = (held.st_size, held.st_mtime_ns, link)
     return found
 
 
-def command_for(script: Path, summary: Path, wrapper: Path) -> list[str]:
+def command_for(script: Path, summary: Path, wrapper: Path, work: Path) -> list[str]:
     from manuscript_guard.verify import runner_for
 
     runner = runner_for(script)
     assert runner is not None  # `scripts_to_run` refused a script with none
     if script.suffix.lower() == ".py":
-        return [*runner, str(wrapper), str(summary), str(script)]
+        return [*runner, str(wrapper), str(summary), str(work), str(script)]
     return [*runner, str(script)]
 
 
@@ -303,16 +381,16 @@ def execute(command: list[str], cwd: Path, env: dict[str, str], log) -> tuple[in
     return code, bytes(tail)
 
 
-def collect(work: Path, before: dict[str, tuple[int, int]], outbox: Path) -> tuple[
+def collect(work: Path, before: dict[str, tuple[int, int, bool]], outbox: Path) -> tuple[
         list[str], list[str]]:  # fmt: skip
     """Move each file the run wrote or changed in the copy into the outbox, at its path; and
-    say which it left, a link it made being no file of its own."""
+    say which it left, a link it made, or a junction, being no file of its own."""
     moved, left = [], []
-    for relative, stat in sorted(snapshot(work).items()):
-        if before.get(relative) == stat or relative.endswith(".pyc"):
+    for relative, held in sorted(snapshot(work).items()):
+        if before.get(relative) == held or relative.endswith(".pyc"):
             continue
         source = work / relative
-        if source.is_symlink():
+        if held[2]:
             left.append(relative)
             continue
         target = outbox / relative
@@ -344,6 +422,7 @@ def run(project, folder: Path, scripts: list[str], run_id: str) -> Ran:
                           for path, digest in analysis_sources(root).items()],
               "ran": list(scripts)}  # fmt: skip
     stage(root, work)
+    texts = source_texts(work)
     wrapper = here / "wrapper.py"
     wrapper.write_text(WRAPPER, encoding="utf-8", newline="\n")
     before = snapshot(work)
@@ -355,14 +434,14 @@ def run(project, folder: Path, scripts: list[str], run_id: str) -> Ran:
             summary.parent.mkdir(exist_ok=True)
             log.write(f"== {script}\n".encode())
             log.flush()
-            command = command_for(work / script, summary, wrapper)
+            command = command_for(work / script, summary, wrapper, work)
             code, tail = execute(command, work, env, log)
             done.scripts.append((script, code))
             if code != 0:
                 done.failed = script
-                failure = (python_failure(project, work, script, code, summary)
+                failure = (python_failure(project, texts, work, script, code, summary)
                            if script.lower().endswith(".py")
-                           else r_failure(project, work, script, code, tail))  # fmt: skip
+                           else r_failure(texts, script, code, tail))  # fmt: skip
                 break
     if done.failed is None:
         done.moved, done.left = collect(work, before, done.outbox)

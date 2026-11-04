@@ -131,9 +131,11 @@ manuscript-guard vault run analysis/02_model.py # or the ones you name, in that 
 It refuses where standard input is not a terminal, and the plugin's hook refuses it to an
 agent. It does this, in order:
 
-1. It lists the scripts it will run, and every analysis script that changed since the run
-   released last, by digest, with the `git diff` command that shows what changed, and asks
-   y/N. Read what changed before you answer: the scripts were written with an agent, and what
+1. It lists the scripts it will run, and every script of the project that changed since
+   the run released last, by digest, with the `git diff` command that shows what changed,
+   and asks y/N. A script is any file a run can execute or source (`.py`, `.R`, `.Rmd`,
+   `.qmd`, `.sh` and the like), wherever it is, but in `results/`, `data/`, `build/`, a
+   hidden folder or a library of others' code. Read what changed before you answer: the scripts were written with an agent, and what
    they print or write can hold any value of the data.
 2. It copies the project into `<vault>/.runs/<run>/`, inside the vault rather than the
    system's temporary folder, so that the copy shares the data's protection. `.git` and
@@ -142,18 +144,21 @@ agent. It does this, in order:
    first that fails.
 4. What they print goes to your terminal as it comes, and into `<vault>/.runs/<run>/log.txt`.
 5. Where every script finished, it moves everything they wrote into `<vault>/outbox/<run>/`:
-   results files, harvested outputs, figures, anything else. A link a script made is left
-   out. The copy of the project is then removed.
+   results files, harvested outputs, figures, anything else. A link or a junction a
+   script made is left out, and nothing reached through one is moved. The copy of the
+   project is then removed.
 
 Nothing is written to the project except `.manuscript-guard/vault/last-run.json`, which the
 agent reads to know how the run went. It holds each script's exit code and, of a script that
 failed: for Python, the class of the exception and the frames of its traceback that fall in
 the project's own files (path, line, function); for R, the function names of its `Calls:`
 line; and the key of a `KeyError` where it is exactly a column name the released profile or
-the data dictionary already holds. No message and no value goes in. A class or a function
-whose name is not a word of the project's scripts is left out, since a script could make one
-from the data. The exit code and a line number still carry a few bits that a script could
-choose.
+the data dictionary already holds. No message and no value goes in. The project's files are
+read as they were before the run: a function whose name is not a word of them, or a frame in
+a file the run wrote, is left out, since a script could make either from the data. A class
+is named only where it is a built-in or a library's, found under its name in its module; a
+class of the script's own is said to be one, without its name. The exit code and a line
+number still carry a few bits that a script could choose.
 
 ## Releasing what a run wrote: `vault release`
 
@@ -169,8 +174,10 @@ it reads the outbox:
   A count from one to below `custodian.minimum_cell_count` refuses the release, unless the
   data custodian has signed off that exact list:
   `manuscript-guard sign --as <custodian> --finding VAULT/custodian/small-counts/<run>`. The
-  sign-off, kept in the project, says where each count is and not the count. A count held
-  back that a total beside it gives away is a warning;
+  sign-off, kept in the project, names each results file that holds such a count, and
+  neither the count nor where it is; it is bound to the bytes of the run's results files, so
+  a run written again needs it again. A count held back that a total beside it gives away
+  is a warning;
 - each output `harvest.yaml` harvests, every cell, as a site's receipt reads it: a count
   below the minimum refuses;
 - a table column whose values are all different, over at least the minimum of rows, is a
@@ -187,7 +194,8 @@ the data custodian has signed off that the coding agent's provider may read what
 release says so, because it is true: **a file released is read by the coding agent, and
 through it by its provider.**
 
-Then it lists what goes into the project and asks y/N. The results go into `results/`, each
+Then it lists what goes into the project and asks y/N. It refuses to write through a link
+or a junction in the project, at a file's path or a folder above it. The results go into `results/`, each
 saying in its provenance that it is released, and the rest to their paths. The release is
 recorded in `approvals/vault-releases/<run>.json`: who released it and when, the run, each
 analysis script by its digest, each file of the vault the results read by its label and

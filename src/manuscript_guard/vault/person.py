@@ -84,12 +84,12 @@ def cmd_run(args: argparse.Namespace) -> int:
     for script in scripts:
         print(f"  {script}")
     if changed:
-        print("The analysis scripts that changed since the run released last, by digest; "
+        print("The scripts that changed since the run released last, by digest; "
               "read each before you answer:")  # fmt: skip
         for change in changed:
             print(f"  {change.path}: {change.said}; {change.read}")
     else:
-        print("No analysis script changed since the run released last.")
+        print("No script changed since the run released last.")
     print("They were written with an agent: what they print or write can hold any value of "
           "the data. What they write waits in the vault's outbox until you release it.")
     answer = _ask("Run them on the data held in the vault? [y/N] ")
@@ -197,7 +197,7 @@ def cmd_release(args: argparse.Namespace) -> int:
         print(f"{_PREFIX} release: refused, nothing released, until the data custodian signs "
               f"off that the agent's provider may read what is released.", file=sys.stderr)
         return 1
-    small = releasing.small_signable(project, run_id, found.small)
+    small = releasing.small_signable(project, box, found.small)
     if small is not None and not _signed(project, small, signed):
         print(f"{_PREFIX} release: refused, nothing released: counts below the data "
               "custodian's minimum, as they stand:", file=sys.stderr)  # fmt: skip
@@ -213,6 +213,9 @@ def cmd_release(args: argparse.Namespace) -> int:
     if not going:
         print(f"{_PREFIX} release: nothing to release; the outbox is left as it is")
         return 0
+    if blocked := releasing.through_links(root, going):
+        return _refused("release", "it would write through a link, out of the project: "
+                        f"{', '.join(blocked)}")  # fmt: skip
     print(f"{_PREFIX} release: into {root}:")
     for relative in going:
         print(f"  {relative}")

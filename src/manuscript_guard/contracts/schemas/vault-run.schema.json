@@ -32,7 +32,8 @@
           "properties": {
             "path": { "type": "string", "minLength": 1 },
             "exit_code": { "type": "integer" },
-            "class": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+            "class": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "description": "Where its module holds the class under this name, and is a built-in one or one outside the copy." },
+            "own_exception": { "const": true, "description": "The exception is of a class of the script's own, or one the summary cannot hold to a module: its name is left out." },
             "frames": {
               "type": "array",
               "items": {

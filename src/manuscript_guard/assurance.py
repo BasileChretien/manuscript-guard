@@ -96,7 +96,8 @@ def assurance(report: Report, project: Project) -> list[str]:
     lines = ["What was checked, by what (no score: none of this says the paper is right):"]
     recorded = {
         "computational reproducibility": [*_verified(project), *_harvested(project)],
-        "literature": [*_attested(project), *_passages(report, project)],
+        "literature": [*_attested(project), *_passages(report, project),
+                       *_currency(report, project)],
         "methodological validity": ["no review of the design", *_similar(report)],
         "review": [*_rounds(project), *_comments(project), *_figures(project)],
     }
@@ -353,6 +354,27 @@ def _passages(report: Report, project: Project) -> list[str]:
             + (f", by {', '.join(people)}" if people else "")
         )
     return [said]
+
+
+def _currency(report: Report, project: Project) -> list[str]:
+    """How many entries on whether a cited work is still the one to cite the rules decided,
+    and from whose readings, one reader who read an entry twice said so; and how many a
+    person decided. Whether a reading is right is not among them."""
+    from manuscript_guard.gates.currency import readers_of
+
+    entries = report.counts.get("currency_entries", 0)
+    if not entries:
+        return []
+    by_rules = report.counts.get("currency_by_rules", 0)
+    said = (f"entries on whether a cited work is still the one to cite: {entries}, "
+            f"{by_rules} decided by the rules")  # fmt: skip
+    if by_rules:
+        try:
+            readers = readers_of(project)
+        except ContractError:  # a file that cannot be read: `check` has said so
+            readers = []
+        said += f" from readings by {'; '.join(readers)}" if readers else ""
+    return [said + f", {report.counts.get('currency_by_person', 0)} by a person"]
 
 
 def _read(path: Path) -> dict:

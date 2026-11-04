@@ -50,10 +50,10 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G14 reports no `abbreviation-redefined` in a Markdown manuscript whose main text has
-      no heading, and notes it, `no-headings`, at the drafting stage only; reads a
-      glossary's entries as definitions, lets a caption restate one, and leaves SD, ANOVA, RMSE and RMSD undefined unless the
-      journal's profile asks for them
+      G7 reads whether each cited work is still the one to cite (`gates/currency.py`), and
+      its counts, `currency_entries`, `currency_claims`, `currency_by_rules` and
+      `currency_by_person`, are said of every project, 0 where it has no
+      literature/currency.yaml and cites no work whose lookup record shows a later version
   - reading: numbers
     why: >-
       an e-mail address is structural, `email-address`, and an interleukin, "IL-4",

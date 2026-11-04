@@ -2920,6 +2920,201 @@ def test_a_passage_of_a_work_with_no_stored_copy_is_unchecked(project: Path) -> 
     assert _passage_findings(project) == [("passage-unchecked", "warn")]
 
 
+# ------------------------------------------- whether a cited work is still the one to cite
+
+
+def _currency_findings(root: Path, stage: str) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.currency import check_currency
+    from manuscript_guard.policy import apply_stage
+
+    report, _deferred = apply_stage(check_currency(load_project(root)[0], stage), stage)
+    return sorted((f.code, f.severity) for f in report.findings)
+
+
+def _currency_text(root: Path, old: str, new: str, name: str = "currency.yaml") -> None:
+    path = root / "literature" / name
+    text = path.read_text(encoding="utf-8")
+    assert old in text, old
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def _a_reading_edited(root: Path) -> None:
+    path = next((root / "literature" / "currency" / "readings").glob("c1.Ada*.yaml"))
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("value: 1\n", "value: 2\n", 1), encoding="utf-8")
+
+
+def _a_works_record_edited(root: Path) -> None:
+    path = next((root / "literature" / "currency" / "works").glob("*review*.yaml"))
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("pooled analysis", "pooled analyses", 1), encoding="utf-8")
+
+
+def _a_quote_not_in_the_work(root: Path) -> None:
+    import currency_records as case
+
+    case.file(root, case.reading("Cy Example", quote="The class was safe in every trial"),
+              "third")  # fmt: skip
+
+
+def _the_candidate_retracted(root: Path) -> None:
+    import currency_records as case
+
+    from manuscript_guard.currency import records
+
+    retracted = case.work(case.CANDIDATE, published="2023-06-01", abstract=case.REVIEW_ABSTRACT,
+                          publication_types=["Systematic Review"])  # fmt: skip
+    retracted["integrity"] = {**retracted["integrity"], "retracted": True}
+    records.write_work(load_project(root)[0], retracted)
+
+
+def _searched_long_ago(root: Path) -> None:
+    from manuscript_guard.currency import records
+
+    records.write_search(load_project(root)[0], {
+        "entry": "c1", "number": 1, "step": "S2", "source": "pubmed",
+        "query": "drug class AND hepatic injury", "searched_on": "2025-01-10", "hits": 1,
+        "candidates": ["doi:10.5555/class.review.2023"]})  # fmt: skip
+
+
+def _read_on_a_scale_there_is_not(root: Path) -> None:
+    import currency_records as case
+
+    from manuscript_guard.currency import records
+
+    records.file_reading(load_project(root)[0], {**case.reading("Cy Example"),
+                                                 "scale": "harms-everything"}, "2026-11-04")
+
+
+_UNANSWERED = ("currency-change-unanswered", "warn")
+
+
+@pytest.mark.parametrize(
+    ("corrupt", "stage", "said"),
+    [
+        pytest.param(None, "drafting", [_UNANSWERED], id="as filed"),
+        pytest.param(None, "submission", [("currency-change-unanswered", "fail")],
+                     id="unanswered at submission"),
+        pytest.param(("    action: replace\n    candidate: doi:10.5555/class.review.2023\n",
+                      "    action: keep\n"), "drafting",
+                     [("currency-decision-mismatch", "fail")], id="the decision rewritten"),
+        pytest.param(("    by: rules\n", "    by: Claude\n    why: it read them\n"), "drafting",
+                     [_UNANSWERED, ("currency-decision-not-human", "fail")],
+                     id="the decision signed by a model"),
+        pytest.param(_a_reading_edited, "drafting",
+                     [_UNANSWERED, ("currency-decision-mismatch", "fail"),
+                      ("currency-record-edited", "fail")], id="a reading edited"),
+        pytest.param(_a_works_record_edited, "drafting",
+                     [_UNANSWERED, ("currency-decision-mismatch", "fail"),
+                      ("currency-quote-unchecked", "info"), ("currency-record-edited", "fail")],
+                     id="a works record edited"),
+        pytest.param(_a_quote_not_in_the_work, "drafting",
+                     [_UNANSWERED, ("currency-quote-not-found", "fail")],
+                     id="a quote not in the work"),
+        pytest.param(_the_candidate_retracted, "drafting",
+                     [("currency-candidate-retracted", "fail"), _UNANSWERED,
+                      ("currency-decision-mismatch", "fail")], id="the candidate retracted"),
+        pytest.param(_searched_long_ago, "drafting",
+                     [_UNANSWERED, ("currency-record-stale", "warn")], id="a search long ago"),
+        pytest.param(_searched_long_ago, "submission",
+                     [("currency-change-unanswered", "fail"), ("currency-record-stale", "fail")],
+                     id="a search long ago, at submission"),
+        pytest.param(_read_on_a_scale_there_is_not, "drafting",
+                     [_UNANSWERED, ("currency-reading-invalid", "fail")],
+                     id="a reading on a scale the hierarchy has not"),
+    ],
+)  # fmt: skip
+def test_a_currency_entry_that_is_not_what_its_records_say_is_caught(
+    project: Path, corrupt, stage: str, said: list
+) -> None:
+    """Each way an entry on whether a cited work is still the one to cite can be wrong: a
+    decision the readings do not give, signed by a model or left unanswered at submission; a
+    record edited by hand; a quote that is not the work's; a work now retracted; a search
+    too old to stand at submission; a reading on no scale the hierarchy has."""
+    import currency_records as case
+
+    case.case(project)
+    if callable(corrupt):
+        corrupt(project)
+    elif corrupt is not None:
+        _currency_text(project, *corrupt)
+    assert _currency_findings(project, stage) == said
+
+
+@pytest.mark.parametrize(
+    ("stage", "required", "severity"),
+    [("drafting", True, "info"), ("internal-review", False, "warn"),
+     ("submission", False, "warn"), ("submission", True, "fail")],
+)  # fmt: skip
+def test_a_claim_marked_and_never_decided_fails_at_submission_only_where_required(
+    project: Path, stage: str, required: bool, severity: str
+) -> None:
+    """Basile, 2026-11-04 (decision 3): a claim in scope with no decision warns from
+    internal-review, and fails at submission where paper.yaml requires it."""
+    import currency_records as case
+
+    case.case(project, readings=False)
+    if required:
+        with (project / "paper.yaml").open("a", encoding="utf-8") as paper:
+            paper.write("references:\n  currency: required\n")
+    found = _currency_findings(project, stage)
+    assert found == [("currency-record-missing", severity)]
+    report = _currency_messages(project, stage)
+    assert "marked, not searched" in report["currency-record-missing"]
+
+
+def _currency_messages(root: Path, stage: str) -> dict[str, str]:
+    from manuscript_guard.gates.currency import check_currency
+
+    return {f.code: f.message for f in check_currency(load_project(root)[0], stage).findings}
+
+
+def test_a_sentence_citing_a_work_with_a_later_version_is_in_scope(project: Path) -> None:
+    """A claim is in scope where the author marks it, and where the lookup record of a work
+    it cites says a later version came since (`reference-updated`)."""
+    from manuscript_guard.gates.currency import check_currency
+
+    _looked_up(project, crossref={**_CROSSREF, "updated_by": [{"type": "new_version"}]})
+    found = check_currency(load_project(project)[0], "internal-review").findings
+    # The work is cited in the Introduction and in the Discussion: each sentence is a claim.
+    assert [(f.code, f.severity, f.line) for f in found] == [
+        ("currency-record-missing", "warn", 19), ("currency-record-missing", "warn", 118)]
+    for finding in found:
+        assert f"@{_LOOKED_KEY}, which has a later version" in finding.message
+        assert "no entry in literature/currency.yaml" in finding.message
+
+
+@pytest.mark.parametrize(
+    ("change", "said"),
+    [
+        pytest.param("readings", [("currency-uncertain", "info")], id="the readings disagree"),
+        pytest.param("store", [("currency-change-unanswered", "warn"),
+                               ("currency-quote-unchecked", "info")],
+                     id="no works store in this checkout"),
+        pytest.param("sentence", [("currency-change-unanswered", "warn"),
+                                  ("currency-entry-unplaced", "info")],
+                     id="the sentence rewritten"),
+    ],
+)  # fmt: skip
+def test_what_currency_notes_is_said(project: Path, change: str, said: list) -> None:
+    import currency_records as case
+
+    case.case(project, readings=change != "readings")
+    if change == "readings":
+        case.file(project, case.reading("Ada Example"), "first")
+        case.file(project, case.reading("Bo Example", level=2), "second")
+    elif change == "store":
+        for path in (project / "literature" / "currency" / "works").glob("*.yaml"):
+            path.unlink()
+    else:
+        main = project / "manuscript" / "main.md"
+        text = main.read_text(encoding="utf-8")
+        old = "[@fictionalClassSignal2019]. The"
+        assert old in text
+        main.write_text(text.replace(old, "The", 1), encoding="utf-8")
+    assert _currency_findings(project, "drafting") == said
+
+
 # ------------------------------------------------- the methods of a similar study
 
 
@@ -8850,7 +9045,7 @@ _READS_LATEX = (
     "check_recomputed", "check_methods", "check_models", "check_related", "check_revision",
     "check_reporting", "check_prose_quotations", "check_passages",
     # It reads the citing sentences through `citing_documents`, as `check_passages` does.
-    "check_weak_sources",
+    "check_weak_sources", "check_currency",
     # It reads the main text through G4's `main_text`, which gives a LaTeX manuscript as it
     # prints (#414).
     "check_package_doi",

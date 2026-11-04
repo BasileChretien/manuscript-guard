@@ -1622,6 +1622,99 @@ def test_a_file_named_passages_elsewhere_holds_no_judgement(in_claude_code: Path
     assert run("guard-write", payload, capsys) is None
 
 
+#: literature/currency.yaml with one entry, its proposal answered by a person.
+_CURRENCY = """schema: manuscript-guard/currency/1
+entries:
+- id: c1
+  sentence: A disproportionality signal has been reported for the drug class.
+  citekey: fictionalClassSignal2019
+  marked_by: Bo Example
+  decision:
+    action: replace
+    candidate: doi:10.5555/class.review.2023
+    rules: [K1, K2, K3, D1]
+    by: rules
+    decided_on: 2026-11-02
+  answer:
+    status: refused
+    by: Ada Example
+    why: the review pools another population
+    answered_on: 2026-11-03
+"""
+
+
+def _currency(project: Path) -> Path:
+    path = project / "literature" / "currency.yaml"
+    path.write_text(_CURRENCY, encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "asked"),
+    [
+        # A person's answer, who gave it, why, or the sentence and work it is of.
+        ("status: refused", "status: accepted", True),
+        ("by: Ada Example", "by: Bo Example", True),
+        ("why: the review pools another population", "why: no reason", True),
+        ("drug class.", "drug class as a whole.", True),
+        # The rules' decision, rewritten by a person with their name and why.
+        ("    by: rules\n", "    by: Ada Example\n    why: read it myself\n", True),
+        # What no person said: who marked the claim, the question.
+        ("marked_by: Bo Example", "marked_by: Cy Example", False),
+        ("  marked_by: Bo Example\n", "  marked_by: Bo Example\n  question: does it harm?\n",
+         False),
+    ],
+)  # fmt: skip
+def test_an_edit_of_a_persons_answer_on_a_cited_work_is_put_to_them(
+    in_claude_code: Path, old: str, new: str, asked: bool, capsys
+) -> None:
+    """The rules decide a currency entry from its readings; only a person overrules them or
+    answers a proposed change, and the hook asks before an agent's edit changes either."""
+    path = _currency(in_claude_code)
+    payload = _writes(in_claude_code, "Edit", file_path=str(path), old_string=old, new_string=new)
+    result = run("guard-write", payload, capsys)
+    assert decision(result) == ("ask" if asked else None)
+    if asked:
+        assert "a person's decision on a cited work" in reason(result)
+
+
+def test_taking_an_answer_on_a_cited_work_away_is_put_to_the_person(
+    in_claude_code: Path, capsys
+) -> None:
+    path = _currency(in_claude_code)
+    answer = _CURRENCY[_CURRENCY.index("  answer:"):]
+    payload = _writes(in_claude_code, "Edit", file_path=str(path), old_string=answer,
+                      new_string="")  # fmt: skip
+    result = run("guard-write", payload, capsys)
+    assert decision(result) == "ask"
+    assert "Ada Example" in reason(result)
+
+
+def test_a_file_named_currency_elsewhere_holds_no_decision(in_claude_code: Path, capsys) -> None:
+    other = in_claude_code / "notes" / "currency.yaml"
+    other.parent.mkdir()
+    payload = _writes(in_claude_code, file_path=str(other), content=_CURRENCY)
+    assert run("guard-write", payload, capsys) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'manuscript-guard references --refuse c1 --why "another population" --as "Ada Example"',
+        "cd paper && mguard references . --refuse=c1 --why x --as Ada",
+    ],
+)
+def test_a_refusal_of_a_proposed_citation_by_an_agent_is_put_to_the_person(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "references --refuse" in reason(result)
+    for other in ("manuscript-guard references --explain c1",
+                  'manuscript-guard references --mark "a signal" @key'):  # fmt: skip
+        assert run("guard-submission", _shell(in_claude_code, other), capsys) is None, other
+
+
 def test_a_file_named_attested_elsewhere_is_no_attestation(in_claude_code: Path, capsys) -> None:
     other = in_claude_code / "notes" / "attested.yaml"
     other.parent.mkdir()

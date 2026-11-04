@@ -679,6 +679,9 @@ def guard_write(payload: dict) -> int:
     named += [
         said for path in paths if (said := _or_nothing(lambda file: _decides(file, payload), path))
     ]
+    named += [
+        said for path in paths if (said := _or_nothing(lambda file: _answers(file, payload), path))
+    ]
     named += [said for path in paths if (said := _or_nothing(_an_approval, path))]
     named += [
         said for path in paths if (said := _or_nothing(lambda file: _reserves(file, payload), path))
@@ -1033,6 +1036,83 @@ def _decisions(text: str) -> Counter:
                 str(decision.get("decided_on")),
             )] += 1  # fmt: skip
     return decided
+
+
+def _answers(path: Path, payload: dict) -> str | None:
+    """Why an edit of the project's literature/currency.yaml is a person's to make, or None
+    where it leaves every person's decision and every answer as they were, over the sentence
+    and the work they were of.
+
+    The rules decide an entry from its readings (`by: rules`); a person may overrule them,
+    with why, and only a person answers a proposed change. G7 refuses a model's name under
+    `by`, and cannot tell a person's name typed by an agent from the person's own, nor one
+    taken away. So an edit after which those are not the ones the file held before, word for
+    word, is put to the person, as an edit of a passage's judgement is (`_judges`)."""
+    if path.name != "currency.yaml":
+        return None
+    found = _relative_to_project(path)
+    if found is None:
+        return None
+    root, relative = found
+    from manuscript_guard.contracts import ContractError, load_project
+
+    try:
+        project, _report = load_project(root)
+        wanted = project.path("literature") / "currency.yaml"
+    except (ContractError, ValueError, OSError):
+        wanted = root / "literature" / "currency.yaml"
+    if path.resolve() != wanted.resolve():
+        return None
+    before, after = _whole_texts(payload, path)
+    if after is None:
+        if not any(_SAID_BY.search(text) for text in before):
+            return None
+        names = "a decision or an answer it touches or keeps"
+    elif (unread := _unread(_SAID_BY, after, before[0])) is not None:
+        if not unread:
+            return None
+        names = unread
+    else:
+        now, then = _persons_said(after), _persons_said(before[0])
+        changed = (now - then) + (then - now)
+        if not changed:
+            return None
+        names = ", ".join(dict.fromkeys(entry[-1] for entry in sorted(changed)))
+    return (
+        f"{relative}: this edit records, takes away, or leaves standing over a sentence it "
+        f"changes, a person's decision on a cited work or their answer to a proposed change "
+        f"({names}). That is the person's, and G7 cannot tell a name an agent typed from "
+        f"theirs."
+    )
+
+
+#: A `by:` of literature/currency.yaml, in block or flow style, on a line that is not a
+#: comment; not `marked_by`, which an agent may write.
+_SAID_BY = re.compile(r"""(?m)^(?![ \t]*#).*?(?<![\w-])["']?by["']?[ \t]*:""")
+
+
+def _persons_said(text: str) -> Counter:
+    """Each person's decision and each answer of a currency.yaml text, with the entry, the
+    sentence and the work it is of, counted. A decision the rules wrote is left out: the
+    gate holds it to the readings."""
+    import yaml
+
+    document = yaml.safe_load(text)
+    entries = document.get("entries") if isinstance(document, dict) else None
+    said: Counter = Counter()
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        for part in ("decision", "answer"):
+            given = entry.get(part)
+            if not isinstance(given, dict) or given.get("by") in (None, "", "rules"):
+                continue
+            said[(
+                str(entry.get("id")), str(entry.get("sentence")), str(entry.get("citekey")),
+                part, tuple(sorted((str(key), str(value)) for key, value in given.items())),
+                str(given.get("by")),
+            )] += 1  # fmt: skip
+    return said
 
 
 def _whole_texts(payload: dict, path: Path) -> tuple[list[str], str | None]:
@@ -1552,6 +1632,12 @@ def _approves(command: str) -> str | None:
             "judged a finding acceptable. Only that person can say so: run it yourself, as "
             "yourself."
         )
+    if _REFUSES.search(joined):
+        return (
+            "`manuscript-guard references --refuse` records that a named person refused a "
+            "proposed change to a citation, and why. Only that person can say so: run it "
+            "yourself, as yourself."
+        )
     if _imports_answers(joined):
         return (
             "`manuscript-guard checker import` records a co-author's answers under their name "
@@ -1663,6 +1749,10 @@ def _reads_in_confidence(command: str) -> str | None:
 
 
 #: `communicate approve`, and `communicate … --done`, in one invocation of the command.
+#: `references` with `--refuse` in the same invocation, which answers a proposed change.
+_REFUSES = re.compile(
+    _TOOL + r"references\b" + _SAME_COMMAND + r"(?<![\w-])--refuse\b", re.IGNORECASE
+)
 _COMMUNICATE_APPROVE = re.compile(
     _TOOL + r"communicate\b" + _SAME_COMMAND + r"(?<![\w-])approve\b", re.IGNORECASE
 )

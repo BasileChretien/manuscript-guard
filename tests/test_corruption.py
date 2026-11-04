@@ -25840,6 +25840,46 @@ def test_a_date_typed_into_the_script_is_warned_where_the_methods_date_the_data(
     ]
 
 
+def test_a_year_of_the_data_emitted_as_a_string_is_told_to_emit_a_number(
+    project: Path,
+) -> None:
+    """A first year computed from the data and emitted as a string, as R's
+    `as.character(min(d$year))` does, was said to be "typed", and the hint offered only
+    `dataset()` and `parameter()`, neither of which a year computed from the data is. The
+    message says what is known, that it was emitted as a string, and the hint gives the way
+    out that fits: the year emitted as a number, which is not warned of."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["data.first_year"] = {"value": "2010", "display": "2010"}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\nThe reports cover the years from "
+                    "{{results.data.first_year}}.\n", encoding="utf-8")  # fmt: skip
+    [warned] = [f for f in gate_report(project).findings if f.code == "data-date-not-declared"]
+    assert warned.message == (
+        "{{results.data.first_year}} is a date of the data emitted as a string, '2010', and "
+        "nothing ties it to the data it dates"
+    )
+    assert "typed" not in warned.message
+    for route in ("em.value(key, int(", "em$value(key, min(d$year))", "em.dataset(",
+                  "em.parameter()"):  # fmt: skip
+        assert route in warned.hint, (route, warned.hint)
+    # The way out the hint gives: the same year emitted as a number is not warned of.
+    document["values"]["data.first_year"] = {"value": 2010, "display": "2010"}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert "data-date-not-declared" not in codes(gate_report(project))
+
+
+def test_a_year_emitted_as_a_number_prints_with_no_separator() -> None:
+    """The hint sends a year computed from the data to `em.value(key, int(...))`: that
+    prints 2010 as "2010", with no thousands separator, as the year it is."""
+    from manuscript_guard.emit import derive_display
+
+    assert derive_display("data.first_year", 2010, None, None) == "2010"
+
+
 def test_a_period_printed_as_another_than_the_one_declared_fails(project: Path) -> None:
     """The fragment's display says the data cover to 2023, its value to 2024: read with the
     emitter's rule, from either language or by hand."""

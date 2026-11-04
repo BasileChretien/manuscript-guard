@@ -4690,6 +4690,38 @@ def suggestion_writes(draw: st.DrawFn) -> dict[str, Any]:
     }
 
 
+#: What a co-author does to one word of a `suggestion_paragraphs` paragraph in Word, for
+#: `word_edits`: types another for it, types a comma after it, or deletes it with the space
+#: before it.
+WORD_EDITS = ("replaced", "comma after", "deleted")
+
+
+def word_edited(printed: str, shown: tuple[int, int], edit: str, new: str = "plainly") -> str:
+    """What Word shows of a laid-out paragraph once one word, shown at `shown`, is edited."""
+    start, end = shown
+    if edit == "replaced":
+        return printed[:start] + new + printed[end:]
+    if edit == "comma after":
+        return printed[:end] + "," + printed[end:]
+    return printed[: start - 1] + printed[end:]
+
+
+@st.composite
+def word_edits(draw: st.DrawFn) -> dict[str, Any]:
+    """A `suggestion_paragraphs` paragraph as it was typed and printed, and as it came back
+    from Word with one word that Word shows edited (`WORD_EDITS`): what `import` merges."""
+    source, printed, words, tokens, _renderings = laid_out(draw(suggestion_paragraphs()))
+    shown = [word for word in words if word[4] is not None and word[4][0] > 0]
+    word = draw(st.sampled_from(shown))
+    edit = draw(st.sampled_from(WORD_EDITS))
+    return {
+        "source": source,
+        "printed": printed,
+        "tokens": [list(token) for token in tokens],
+        "returned": word_edited(printed, word[4], edit, draw(st.sampled_from(WRITTEN_WORDS))),
+    }
+
+
 # ---------------------------------------------------------------------------- spellings
 
 #: Words one English writes and the other does not, with a name's capital, in capitals,
@@ -9194,6 +9226,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "quote placement": nearly_quoted(),
     "suggested edit": suggested_edits(),
     "suggestion written": suggestion_writes(),
+    "word merged": word_edits(),
     "recycled passages": st.fixed_dictionaries(
         {"text": texts(RECYCLED, REFERENCE_BLOCKS), "source": earlier_papers()}
     ),

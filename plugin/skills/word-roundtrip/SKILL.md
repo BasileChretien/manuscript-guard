@@ -158,14 +158,22 @@ manuscript-guard check
 
 Read the whole diff. What to look for:
 
-- Formatting lost. An edited stretch of text comes back as plain text, so bold, italics and
-  inline code in it are gone. (A footnote, a comment, a link or an equation is refused
-  instead, because merging would delete it.)
-- Backslashes. Every character in Word's text that Markdown could read as markup is
-  escaped (`CYP2D6\*4`, `\@admin`, `US\$5`), and a `&lt;` of yours may come back as `\<`.
-  Each prints as it did. The exception is a straight quote: an escaped one of yours, `\"`,
-  comes back bare, and one the co-author typed is left bare, and pandoc curls both. Put a
-  backslash in front where the straight quote mattered. A co-author who only turned curly
+- Formatting lost. Only the words the co-author changed are written; the rest of the
+  paragraph keeps your bold, italics, code and straight quotes, and an edit inside bold or
+  italics stays inside it. Where an edit meets one end of bold, italics or code (words typed
+  just where it opens or closes, or a change across its end), or any part of inline code,
+  that span comes back as plain text with the edit. Where a straight quote of yours stands
+  next to a changed word, where words were deleted next to a bracket, a brace or another
+  character Markdown reads as markup, or where the paragraph's prose holds a brace, the
+  whole text between the numbers or citations either side of the edit does, its
+  apostrophes curly. Where that loses bold, italics, code or a straight quote, the import
+  lists it under "written as Word's plain text". (A footnote, a comment, a link or an equation is refused instead, because
+  merging would delete it.)
+- Backslashes. Every character in what is written from Word's text that Markdown could
+  read as markup is escaped (`CYP2D6\*4`, `\@admin`, `US\$5`), and a `&lt;` of yours in it
+  may come back as `\<`. Each prints as it did. The exception is a straight quote: an
+  escaped one of yours, `\"`, comes back bare, and one the co-author typed is left bare,
+  and pandoc curls both. Put a backslash in front where the straight quote mattered. A co-author who only turned curly
   quotes straight has changed nothing that reaches the build. A `{` typed straight before a
   binding comes back as `&lbrace;`. Leave it: a bare `{` there joins the binding's braces,
   and `check` reports `{{{results.x}}` as malformed. Once a `<` before a letter (`<LLOQ`,
@@ -177,10 +185,10 @@ Read the whole diff. What to look for:
   `<` and `>` with words between them as an HTML tag and drop everything from one to the
   other, and `check` reads `ROR \> 2` as the threshold it prints. A `<` before a number or
   a space, as in `p < 0.05`, opens nothing, and what follows it comes back as typed.
-- Invisible no-break spaces. A `\ ` or `&nbsp;` of yours in an edited stretch comes back as
-  the character itself. It prints as it did, but a diff can show a line as changed where
-  nothing visible changed. The one pandoc puts after "e.g." or "et al." is written back as a
-  plain space, because pandoc puts it back at the next build.
+- Invisible no-break spaces. A `\ ` or `&nbsp;` of yours in what is written from Word's
+  text comes back as the character itself. It prints as it did, but a diff can show a line
+  as changed where nothing visible changed. The one pandoc puts after "e.g." or "et al." is
+  written back as a plain space, because pandoc puts it back at the next build.
 - A number or citation the co-author typed. These merge as literals, and `check` then
   reports them as unbound. Bind the number, and turn the citation into `[@citekey]`.
 - A binding cut short, a `{{` without its `}}`. `check` now reports it as a malformed

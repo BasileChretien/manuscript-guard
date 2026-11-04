@@ -64,6 +64,9 @@ class Plan:
     order: tuple[str, ...]
     #: Identifier -> the source paragraph rebuilt with the co-author's wording.
     merged: dict[str, str] = field(default_factory=dict)
+    #: Identifier -> the co-author's words in it written from Word's text over the source's
+    #: own emphasis, code or quotes, which they lose there (`roundtrip.Alignment.flattened`).
+    flattened: dict[str, tuple[str, ...]] = field(default_factory=dict)
     refused: tuple[Refusal, ...] = ()
     #: Deleted in Word - outright or as a tracked change. Left in place in the source.
     gone: tuple[str, ...] = ()
@@ -1860,6 +1863,7 @@ def plan_import(
         return (stale or name in followed) and _printed_otherwise(name, reference, missing)
 
     merged: dict[str, str] = {}
+    flattened: dict[str, tuple[str, ...]] = {}
     refused: list[Refusal] = []
     gone: list[str] = []
     for name, (_path, source, _start) in known.items():
@@ -1952,6 +1956,8 @@ def plan_import(
                 continue
             if aligned.rebuilt:
                 merged[name] = aligned.rebuilt + anchors
+                if aligned.flattened:
+                    flattened[name] = aligned.flattened
             else:
                 refused.append(Refusal(name, now, why(aligned)))
 
@@ -2025,6 +2031,7 @@ def plan_import(
         reached=frozenset(rendered),
         order=tuple(order),
         merged=merged,
+        flattened=flattened,
         refused=tuple(refused),
         gone=tuple(name for name in gone if name not in displaced),
         displaced=tuple((name, displaced[name]) for name in gone if name in displaced),

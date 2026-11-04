@@ -75,6 +75,7 @@ from generated import (
     TERMS,
     TYPOGRAPHY,
     UNCLAIMED,
+    WORD_EDITS,
     WRITTEN_WORDS,
     abstract_papers,
     abstract_trees,
@@ -176,6 +177,7 @@ from generated import (
     vector_figures,
     vocabularies,
     weak_source_papers,
+    word_edited,
 )
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -8509,6 +8511,74 @@ def _emphasis_is_in_the_way_of_a_suggestion(patch: pytest.MonkeyPatch) -> None:
         return real(paragraph, start, end)
 
     patch.setattr(suggestions, "_in_the_way", with_emphasis)
+
+
+@holds(40, suggestion_paragraphs())
+def test_a_word_edited_in_word_is_written_where_it_stands_and_nothing_else_changes(
+    paragraph: dict[str, Any],
+) -> None:
+    """`import` merges a paragraph reworded in Word by writing only the words that changed
+    into the source (`rewording.rewritten`). Every word Word shows is edited in turn, each
+    way a co-author edits one (`WORD_EDITS`). A word typed for another, inside emphasis or
+    not, is written where it stands, and so is a comma typed after a word that does not end
+    a span: nothing else in the source changes, its emphasis, code and soft line breaks
+    kept. A deletion keeps every other span as typed. A comma typed where emphasis or code
+    closes cannot be told to be inside it or after it, and any edit in code cannot be
+    written into code from Word's text: that span alone is written as Word shows it, and
+    the merge names it. A stretch between two values holding a link, a hard line break or a
+    comment is refused."""
+    from manuscript_guard.roundtrip import align
+
+    source, printed, words, tokens, _renderings = laid_out(paragraph)
+    for word in words:
+        text, kind, place, (start, end), shown, stretch = word
+        if shown is None or shown[0] == 0:
+            continue
+        span = [other for other in words if other[2] == place]
+        refused = any(other[1] in _NOT_MERGED for other in words if other[5] == stretch)
+        opening, closing, _prose = STRETCHES[kind]
+        for edit in WORD_EDITS:
+            returned = word_edited(printed, shown, edit)
+            aligned = align(source, printed, returned, tokens)
+            if refused:
+                assert aligned.rebuilt is None, (edit, text, source)
+                continue
+            if edit == "deleted":
+                # Which space goes with the word is the comparison's to choose, and beside a
+                # span's end either is right; every other span is kept as it was typed.
+                assert aligned.rebuilt is not None, (edit, text, source)
+                for other in {o[2] for o in words if o[2] != place}:
+                    those = [o for o in words if o[2] == other]
+                    head, tail, _ = STRETCHES[those[0][1]]
+                    typed = source[those[0][3][0] - len(head) : those[-1][3][1] + len(tail)]
+                    assert typed in aligned.rebuilt, (text, typed, source)
+                continue
+            if kind == "code" or (edit == "comma after" and word == span[-1] and closing):
+                # The span as Word shows it once edited, typed in place of the span.
+                at, to = span[0][3][0] - len(opening), span[-1][3][1] + len(closing)
+                was = printed[span[0][4][0] : span[-1][4][1]]
+                now = word_edited(was, (shown[0] - span[0][4][0], shown[1] - span[0][4][0]),
+                                  edit)  # fmt: skip
+                expected, flattened = source[:at] + now + source[to:], (now,)
+            elif edit == "replaced":
+                expected, flattened = source[:start] + "plainly" + source[end:], ()
+            else:
+                expected, flattened = source[:end] + "," + source[end:], ()
+            assert aligned.rebuilt == expected, (edit, text, source, returned)
+            assert aligned.flattened == flattened, (edit, text, source)
+
+
+def _a_reworded_stretch_is_written_whole_from_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rewording
+
+    patch.setattr(rewording, "rewritten", lambda *given, **named: None)
+
+
+def _an_edit_where_a_span_closes_is_written_inside_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rewording
+
+    real = rewording._widened
+    patch.setattr(rewording, "_widened", lambda edit, marks, sources: real(edit, (), sources))
 
 
 # ------------------------------------------------------------------------- a rewording
@@ -17338,6 +17408,14 @@ BROKEN = {
     "words in a comment are counted with the paragraph's": (
         _words_in_a_comment_are_counted,
         test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes,
+    ),
+    "a reworded stretch is written whole from Word's text": (
+        _a_reworded_stretch_is_written_whole_from_word,
+        test_a_word_edited_in_word_is_written_where_it_stands_and_nothing_else_changes,
+    ),
+    "an edit where a span closes is written inside it": (
+        _an_edit_where_a_span_closes_is_written_inside_it,
+        test_a_word_edited_in_word_is_written_where_it_stands_and_nothing_else_changes,
     ),
     "a rule's or a table's dashes are em dashes": (
         _a_rule_or_a_table_s_dashes_are_em_dashes,

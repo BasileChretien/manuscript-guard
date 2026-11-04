@@ -5972,6 +5972,9 @@ def cmd_init(args: argparse.Namespace) -> int:
               "and --latex starts a LaTeX one; nothing was made", file=sys.stderr)  # fmt: skip
         return 2
     converted = None
+    paper = (Path(args.path) / "paper.yaml").resolve()
+    # A paper.yaml found is a project under way, past the advice for its first day.
+    under_way = paper.is_file()
     try:
         if word is None:
             title = UNTITLED if args.title is None else args.title
@@ -5988,7 +5991,6 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 2
     for path in created:
         print(f"created {path}")
-    paper = (Path(args.path) / "paper.yaml").resolve()
     if args.english and paper not in {path.resolve() for path in created}:
         print(
             f"\npaper.yaml was already there and was left as it was, so english_variant: "
@@ -6003,6 +6005,12 @@ def cmd_init(args: argparse.Namespace) -> int:
             "left as it was. An agent tool reads its rules from that file. Add these to it:\n\n"
             + rules
         )
+    if under_way:
+        added = "added only the files above" if created else "added nothing"
+        print(f"\nThis project was set up already (its paper.yaml was there): init {added} "
+              "and left every file it found as it was. For what to do now, run "
+              "`manuscript-guard next`.")  # fmt: skip
+        return 0
     print(
         "\nnext: describe your authors in authors.yaml, then write an analysis that "
         f"publishes its results with {HOW_TO_EMIT}"

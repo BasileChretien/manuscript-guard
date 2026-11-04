@@ -241,6 +241,47 @@ def test_init_does_not_print_rules_that_are_in_the_file(tmp_path: Path, capsys) 
     assert "Never edit a machine-written file" not in capsys.readouterr().out
 
 
+FIRST_DAY = "describe your authors in authors.yaml"
+
+
+def test_init_in_a_project_under_way_points_to_next(project: Path, capsys) -> None:
+    """`init .` in a project at the drafting stage, its authors described and its results
+    written, added only AGENTS.md and then advised describing the authors and writing a
+    first analysis. A project that was there is pointed to `next`, which reads where it
+    stands, and is told what was added."""
+    from manuscript_guard.cli import main
+
+    (project / "AGENTS.md").unlink()
+    assert main(["init", str(project)]) == 0
+    said = capsys.readouterr().out
+    assert f"created {project / 'AGENTS.md'}" in said
+    assert FIRST_DAY not in said
+    assert "set up already" in said
+    assert "`manuscript-guard next`" in said
+
+
+def test_init_that_adds_nothing_says_so(project: Path, capsys) -> None:
+    from manuscript_guard.cli import main
+
+    assert main(["init", str(project)]) == 0  # what the copy lacks, `.gitignore` for one
+    capsys.readouterr()
+    assert main(["init", str(project)]) == 0
+    said = capsys.readouterr().out
+    assert "created " not in said
+    assert "added nothing" in said
+    assert FIRST_DAY not in said
+    assert "`manuscript-guard next`" in said
+
+
+def test_a_new_project_keeps_the_first_day_advice(tmp_path: Path, capsys) -> None:
+    from manuscript_guard.cli import main
+
+    assert main(["init", str(tmp_path / "paper"), "--title", "T"]) == 0
+    said = capsys.readouterr().out
+    assert FIRST_DAY in said
+    assert "set up already" not in said
+
+
 def test_the_advice_names_an_emitter_that_exists(
     project: Path, tmp_path: Path, capsys
 ) -> None:

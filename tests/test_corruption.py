@@ -2481,6 +2481,106 @@ def test_a_number_the_supplement_reports_is_reported(project: Path) -> None:
     assert _unreported(project) == []
 
 
+#: A narrative review of made-up reports, which reports under headings of its own and has no
+#: section called Results, as a review or a case report has none.
+_REVIEW = """# Abstract
+
+Of {{results.cohort.n_reports}} reports, {{results.case.n_cases}} described hepatic injury,
+{{results.case.n_serious}} of them serious; the reporting odds ratio was {{results.ror.point}}.
+
+# Introduction
+
+Hepatic injury is a common reason for regulatory action.
+
+# Reports of hepatic injury
+
+The database held {{results.cohort.n_reports}} reports.
+
+## Serious reports: a smaller group
+
+Of them, {{results.case.n_cases}} described hepatic injury, {{results.case.n_serious}} serious.
+
+# Regulatory responses
+
+Against all other drugs, the reporting odds ratio was {{results.ror.point}}.
+
+# Discussion
+
+Reporting is not incidence.
+
+# Conclusions
+
+A reporting odds ratio of {{results.ror.point}} is a signal and no more.
+
+# Funding
+
+None.
+"""
+
+
+def test_a_paper_with_no_results_section_reports_under_its_own_headings(project: Path) -> None:
+    """A narrative review reports under topical headings, and every number its abstract and
+    its conclusions bound and its body gave again was warned: none of those headings opened
+    with "Results". Where the paper has no Results section, every section but the summaries,
+    the Introduction, the Discussion and the back matter reports. A number bound in the
+    abstract alone is still warned, and so is one the Introduction, the Discussion or a
+    statement gives again, with a message that says where the paper was read. Once the paper
+    has a Results section, the topical sections report nothing again."""
+    from manuscript_guard.gates import check_reported
+
+    def said(text: str) -> list[tuple[str, str, int, str]]:
+        main_md(project).write_text(text, encoding="utf-8")
+        loaded, _ = load_project(project)
+        found = check_reported(loaded, load_namespace(loaded)[1]).findings
+        return [(f.message.split()[0], re.search(r"under '([^']*)'", f.message)[1], f.line,
+                 f.message) for f in found]  # fmt: skip
+
+    assert said(_REVIEW) == []
+    alone = _REVIEW.replace(", {{results.case.n_serious}} serious.", ".")
+    for where in ("# Introduction\n\n", "# Discussion\n\n", "# Funding\n\n"):
+        text = alone.replace(where, f"{where}Of them, {{{{results.case.n_serious}}}} serious. ")
+        (found,) = said(text)
+        assert found[:3] == ("results.case.n_serious", "Abstract", 4), where
+        assert "with no Results section" in found[3], found
+        assert "the Methods, the Results" not in found[3], found
+    # With a Results section, a topical heading is read as before.
+    found = said(_REVIEW.replace("# Regulatory responses", "# Results"))
+    assert [(key, heading) for key, heading, _line, _message in found] == [
+        ("results.cohort.n_reports", "Abstract"),
+        ("results.case.n_cases", "Abstract"),
+        ("results.case.n_serious", "Abstract"),
+    ]
+    assert all("nowhere in the Methods, the Results, a table or a figure" in one[3]
+               for one in found)  # fmt: skip
+
+
+def test_a_latex_paper_with_no_results_section_reports_under_its_own_headings(
+    project: Path,
+) -> None:
+    """The same in LaTeX, read in the printed view: a key the abstract gives and a section of
+    the review's own gives again is reported, and one the abstract alone gives is not."""
+    from manuscript_guard.gates import check_reported
+
+    folder = project / "manuscript"
+    for path in folder.rglob("*.md"):
+        path.unlink()
+
+    def said(abstract: str) -> list[str]:
+        (folder / "main.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}\n\\begin{abstract}\n" + abstract
+            + "\n\\end{abstract}\n\\section{Introduction}\nx\n\\section{Regulatory responses}\n"
+            "The ROR was \\mg{results.ror.point}.\n\\section{Discussion}\n"
+            "Of \\mg{results.case.n_cases}.\n\\end{document}\n",
+            encoding="utf-8",
+        )
+        loaded, _ = load_project(project)
+        return [f.message.split()[0] for f in
+                check_reported(loaded, load_namespace(loaded)[1]).findings]  # fmt: skip
+
+    assert said("The ROR was \\mg{results.ror.point}.") == []
+    assert said("Of \\mg{results.case.n_cases}.") == ["results.case.n_cases"]
+
+
 # --------------------------------------- an earlier output of the same data, and this paper
 #
 # The example stands beside a copy of itself as the abstract it was first presented in. Each

@@ -23,6 +23,7 @@ from __future__ import annotations
 import bisect
 import dataclasses
 import hashlib
+import itertools
 import json
 import math
 import os
@@ -30,6 +31,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from bisect import bisect_left
 from collections import Counter
 from decimal import Decimal
@@ -139,6 +141,7 @@ from generated import (
     named_numbers,
     numbered_citations,
     numbered_displays,
+    oracle_tables,
     painted_pdfs,
     painted_svgs,
     paper_files,
@@ -148,6 +151,7 @@ from generated import (
     planned_plans,
     post_links,
     printings,
+    profile_tables,
     proofs,
     published_texts,
     quotations,
@@ -159,6 +163,7 @@ from generated import (
     share_tables,
     signed_ticks,
     signs,
+    small_profile_tables,
     sources,
     suggestion_paragraphs,
     supplements,
@@ -3033,6 +3038,448 @@ def test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_besi
     lines, expected = drawn
     read = READINGS["vault named"]()
     assert [read({"command": line}) for line in lines] == expected, lines
+
+
+# ------------------------------------------------------------- the profile of a vault's file
+
+
+def _profiled(drawn: dict) -> dict:
+    return json.loads(READINGS["data profile"]()(drawn))
+
+
+def _profile_cells(column: dict) -> list:
+    """The counts a column of a profile prints, which together are the table's rows."""
+    if column["kind"] == "levels":
+        other = [column["other"]["count"]] if "other" in column else []
+        return [level["count"] for level in column["levels"]] + other + [column["missing"]]
+    if column["kind"] == "withheld":
+        return [column["missing"], None]
+    return [column["missing"], column["unread"], column["n"]]
+
+
+def _profile_points(column: dict, values: list[str]) -> list[float]:
+    """A column's values in the unit its centiles are given in: numbers, months, hours."""
+    kept = [value for value in values if value.strip()]
+    if column["kind"] == "date":
+        return [int(value[:4]) * 12 + int(value[5:7]) - 1 for value in kept]
+    if column["kind"] == "time":
+        return [int(value[:2]) for value in kept]
+    return [float(value) for value in kept if re.fullmatch(r"-?[0-9.]+", value)]
+
+
+def _centile_point(column: dict, shown: object) -> float:
+    if column["kind"] == "date":
+        return int(shown[:4]) * 12 + int(shown[5:7]) - 1
+    if column["kind"] == "time":
+        return int(shown[:2])
+    return float(shown)
+
+
+@holds(60, profile_tables())
+def test_a_profile_prints_no_count_under_the_custodian_minimum(drawn: dict) -> None:
+    """Every count a profile prints is nought or the minimum or more, and is the count; each
+    level given by name has the minimum rows or more; the rest are folded into "other", whose
+    count is printed only from the minimum and held back, "<m", below it (`vault/profile.py`)."""
+    minimum = drawn["minimum"]
+    held = f"<{minimum}"
+    for column in _profiled(drawn)["columns"]:
+        for cell in _profile_cells(column):
+            assert cell in (None, held) or cell == 0 or cell >= minimum, column
+        if column["kind"] != "levels":
+            continue
+        counted = Counter(value for value in drawn["columns"][column["name"]] if value.strip())
+        for level in column["levels"]:
+            assert counted[level["level"]] >= minimum, column
+            assert level["count"] in (None, counted[level["level"]]), column
+        folded = [level for level, count in counted.items() if count < minimum]
+        assert column.get("other", {}).get("levels", 0) in (len(folded), None), column
+        if folded:
+            count = sum(counted[level] for level in folded)
+            assert column["other"]["count"] in (None, count if count >= minimum else held)
+
+
+@holds(60, profile_tables())
+def test_a_profile_gives_no_centile_with_fewer_than_the_minimum_rows_on_a_side(
+    drawn: dict,
+) -> None:
+    """Each centile a profile gives of a number, a date (to the month) or a time (to the hour)
+    has the custodian's minimum of rows below it and as many above it."""
+    minimum = drawn["minimum"]
+    for column in _profiled(drawn)["columns"]:
+        points = _profile_points(column, drawn["columns"][column["name"]])
+        for shown in column.get("centiles", {}).values():
+            at = _centile_point(column, shown)
+            below = sum(1 for point in points if point < at)
+            above = sum(1 for point in points if point > at)
+            assert below >= minimum and above >= minimum, (column["name"], shown, below, above)
+
+
+@holds(60, profile_tables())
+def test_a_profile_gives_no_smallest_or_largest_value(drawn: dict) -> None:
+    """No centile a profile gives is a column's smallest or largest value, in its unit, even
+    where several rows hold it."""
+    for column in _profiled(drawn)["columns"]:
+        points = _profile_points(column, drawn["columns"][column["name"]])
+        for shown in column.get("centiles", {}).values():
+            assert _centile_point(column, shown) not in (min(points), max(points)), column
+
+
+def _profile_ranges(column: dict, rows: int | None, minimum: int) -> list[tuple[int, float]]:
+    """What a reader knows each count of a column to be: a count printed is itself; "<m" is
+    one to m - 1, since nought is printed as 0; one not printed is nought to the rows; and the
+    k levels "other" folds are k rows at least and k (m - 1) at most."""
+    top = math.inf if rows is None else rows
+
+    def known(cell: object) -> tuple[int, float]:
+        if isinstance(cell, int):
+            return cell, cell
+        return (0, top) if cell is None else (1, minimum - 1)
+
+    ranges = [known(cell) for cell in _profile_cells(column)]
+    folded = column.get("other", {}).get("levels")
+    if folded is not None:
+        at = len(column["levels"])
+        low, high = ranges[at]
+        ranges[at] = max(low, folded), min(high, folded * (minimum - 1))
+    return ranges
+
+
+@holds(60, profile_tables(), small_profile_tables())
+def test_no_count_a_profile_holds_back_is_given_away_by_the_rows_it_prints(
+    drawn: dict, small: dict
+) -> None:
+    """The counts of each column are the table's rows, which the profile prints: no count it
+    does not print can be worked out to be one under the minimum, alone or from the rows and
+    the others, whatever they are within what is printed (`_profile_ranges`); in a table so
+    small that nothing can be held back enough, the column's counts are withheld."""
+    for table in (drawn, small):
+        document = _profiled(table)
+        minimum, rows = table["minimum"], document["rows"]
+        for column in document["columns"]:
+            cells = _profile_cells(column)
+            ranges = _profile_ranges(column, rows if isinstance(rows, int) else None, minimum)
+            lows = [low for low, _high in ranges]
+            highs = [max(low, high) for low, high in ranges]
+            if isinstance(rows, int):
+                assert sum(lows) <= rows <= sum(highs), column
+            for at, cell in enumerate(cells):
+                if isinstance(cell, int):
+                    continue
+                low, high = lows[at], highs[at]
+                if isinstance(rows, int):
+                    low = max(low, rows - (sum(highs) - highs[at]))
+                    high = min(high, rows - (sum(lows) - lows[at]))
+                assert not (low == high and 1 <= low < minimum), (column, cell, low)
+
+
+@holds(15, profile_tables(), st.integers(0, 2**31 - 1))
+def test_a_synthetic_copy_is_the_same_bytes_from_the_same_profile_and_seed(
+    drawn: dict, seed: int
+) -> None:
+    """Drawn twice, in two projects, from one profile and one seed, the synthetic copy is the
+    same bytes (`vault synthesize`)."""
+    from manuscript_guard.vault import profile as profiling
+    from manuscript_guard.vault import synthesize
+
+    written = (READINGS["data profile"]()(drawn) + "\n").encode("utf-8")
+    copies = []
+    with tempfile.TemporaryDirectory() as folder:
+        for place in ("one", "two"):
+            root = Path(folder) / place
+            profiled = profiling.path_of(root, "table.csv")
+            profiled.parent.mkdir(parents=True)
+            profiled.write_bytes(written)
+            kept = synthesize.seed_path(root, "table.csv")
+            kept.write_text(f"schema: {synthesize.SEED_SCHEMA}\nseed: {seed}\nrows: 40\n",
+                            encoding="utf-8")  # fmt: skip
+            copies.append(synthesize.synthesize(root, "table.csv").path.read_bytes())
+    assert copies[0] == copies[1]
+
+
+# ------------------------------------------------- what a reader of a profile can hold, listed
+#
+# The properties above hold the profile to a model of what a reader knows, and twice that model
+# was the code's own, so that a leak both shared passed (rounds 1 and 2 of the profile's
+# review). This one keeps no model: it lists every table a reader of a column could hold, puts
+# each through the profile itself, keeps those whose profile is the one printed, since the
+# reader knows the rule, and asks of each count the profile does not print whether it takes
+# two values among them.
+
+
+def _oracle_dictionary(table: dict) -> Any:
+    from manuscript_guard.contracts.dictionary import Code, Dictionary, Variable
+
+    variables = tuple(
+        Variable(name, name, "d", kind,
+                 values=tuple(Code(code, code) for code in table["codes"].get(name, ())))
+        for name, kind in table["types"].items()
+    )  # fmt: skip
+    return Dictionary(Path("d.yaml"), variables)
+
+
+def _oracle_profile(name: str, values: list[str], table: dict) -> tuple[object, dict]:
+    from manuscript_guard.vault.profile import profile
+
+    document = profile({name: values}, name="t.csv", minimum=table["minimum"],
+                       dictionary=_oracle_dictionary(table))  # fmt: skip
+    return document["rows"], json.loads(json.dumps(document["columns"][0]))
+
+
+def _parts(total: int, most: int) -> list[tuple[int, ...]]:
+    """Every way of making `total` of parts from 1 to `most`, largest first."""
+    if total == 0:
+        return [()]
+    found = []
+
+    def grow(left: int, cap: int, made: tuple[int, ...]) -> None:
+        if left == 0:
+            found.append(made)
+            return
+        for part in range(min(cap, left), 0, -1):
+            grow(left - part, part, (*made, part))
+
+    if most >= 1:
+        grow(total, most, ())
+    return found
+
+
+def _span(shown: object, rows: int, minimum: int, least: int = 0) -> range:
+    """Every count a reader takes a count printed as `shown` to be, before the rule is put
+    to it: itself; one to m - 1 behind "<m"; any, where not printed."""
+    if isinstance(shown, int):
+        return range(shown, shown + 1)
+    if isinstance(shown, str):
+        return range(1, minimum)
+    return range(least, rows + 1)
+
+
+def _named_worlds(name: str, printed: dict, table: dict, rows: int):
+    """Each table of untyped levels a reader of `printed` could hold, with what it says of
+    each count not printed: the named levels as printed, a level held back from the minimum,
+    the folded levels any of one row to m - 1, their number as said."""
+    minimum = table["minimum"]
+    named = printed["levels"]
+    other = printed.get("other")
+    spans = [_span(level["count"], rows, minimum, minimum) for level in named]
+    spans.append(_span(printed["missing"], rows, minimum))
+    spans.append(_span(other["count"], rows, minimum, 1) if other else range(0, 1))
+    for counts in itertools.product(*spans):
+        if sum(counts) != rows:
+            continue
+        *levels, missing, folded = counts
+        for parts in _parts(folded, minimum - 1):
+            if other and other["levels"] is not None and len(parts) != other["levels"]:
+                continue
+            values = [level["level"] for level, count in zip(named, levels, strict=True)
+                      for _ in range(count)]  # fmt: skip
+            values += [f"zz{at}" for at, part in enumerate(parts) for _ in range(part)]
+            values += [""] * missing
+            said = {f"level {level['level']}": count
+                    for level, count in zip(named, levels, strict=True)
+                    if not isinstance(level["count"], int)}  # fmt: skip
+            said["missing"] = missing
+            said["other"] = folded
+            yield values, said, set(parts)
+
+
+def _coded_worlds(name: str, table: dict, rows: int):
+    """Each table of the dictionary's codes a reader could hold: every count of each code and
+    of the missing values, that make the rows."""
+    codes = table["codes"][name]
+    for counts in itertools.product(range(rows + 1), repeat=len(codes)):
+        missing = rows - sum(counts)
+        if missing < 0:
+            continue
+        values = [code for code, count in zip(codes, counts, strict=True) for _ in range(count)]
+        said = {f"code {code}": count for code, count in zip(codes, counts, strict=True)}
+        said["missing"] = missing
+        yield values + [""] * missing, said, set()
+
+
+def _spread_for(n: int, printed: dict, minimum: int, places: int, whole: bool) -> list | None:
+    """Numbers, `n` of them, that print the column's centiles and decimals as `printed` does:
+    each centile given at its place, the others different and in order between them, those
+    not given held below or above by values alike; or None where no such numbers fit. In
+    units of the last decimal place, so that nothing is lost to a float."""
+    from manuscript_guard.vault.profile import CENTILES, _centile_index, _enough
+
+    unit = 10**places
+    given = {int(centile): round(float(value) * unit)
+             for centile, value in printed.get("centiles", {}).items()}  # fmt: skip
+    if not given:
+        return [str(7)] * n if places == 0 else [format(7, f".{places}f")] * n
+    anchors: dict[int, int] = {}
+    for centile in sorted(given):
+        at = _centile_index(centile, n)
+        if anchors.get(at, given[centile]) != given[centile]:
+            return None
+        anchors[at] = given[centile]
+    low, high = min(anchors), max(anchors)
+    bottom, top = -1, n
+    for centile in CENTILES:
+        at = _centile_index(centile, n)
+        alone = _enough(at, n - at - 1, minimum)
+        if (centile in given) != alone:
+            if centile in given or low < at < high:
+                return None
+            bottom, top = (max(bottom, at), top) if at < low else (bottom, min(top, at))
+    places_ = sorted(anchors)
+    values: list[int] = [0] * n
+    for first, second in zip(places_, places_[1:], strict=False):
+        if anchors[second] - anchors[first] < second - first:
+            return None
+        for at in range(first, second + 1):
+            values[at] = anchors[first] + (at - first) if at < second else anchors[second]
+    for at in range(low):
+        values[at] = anchors[low] - (low - at)
+    for at in range(high, n):
+        values[at] = anchors[high] + (at - high)
+    for at in range(bottom + 1):
+        values[at] = values[bottom]
+    for at in range(top, n):
+        values[at] = values[top]
+    if whole and min(values) < 0:
+        return None
+    return [str(value) if places == 0 else format(value / unit, f".{places}f") for value in values]
+
+
+def _number_worlds(name: str, printed: dict, table: dict, rows: int):
+    """Each table of a number column a reader could hold: every count of rows missing, that
+    are no number, and read; the numbers read those of the table where there are as many,
+    and otherwise numbers that print its centiles and decimals alike (`_spread_for`). A mean
+    and SD a reader could match only by luck, so a world of other numbers prints one alike
+    only where the profile prints none."""
+    values = table["columns"][name]
+    read = [value for value in values if value not in ("", "n/a")]
+    places = max((len(value.split(".")[1]) for value in read if "." in value), default=0)
+    whole = table["types"][name] == "count"
+    for missing in range(rows + 1):
+        for unread in range(rows - missing + 1):
+            n = rows - missing - unread
+            numbers = read if n == len(read) else _spread_for(n, printed, table["minimum"],
+                                                              places, whole)  # fmt: skip
+            if numbers is None:
+                continue
+            yield (list(numbers) + ["n/a"] * unread + [""] * missing,
+                   {"missing": missing, "unread": unread, "n": n}, set())  # fmt: skip
+
+
+def _near(values: list[str]):
+    """The table, and the tables made from it by moving any number of rows of one value, or of
+    the missing, to another or to a value of its own: a row or two only missed a column whose
+    missing count changes by more before it is held again."""
+    yield list(values), {"missing": values.count("")}, set()
+    kinds = sorted(set(values)) + ["zz-new"]
+    for source in sorted(set(values)):
+        for target in kinds:
+            for moved in range(1, values.count(source) + 1):
+                if target == source:
+                    continue
+                changed = list(values)
+                for _ in range(moved):
+                    changed[changed.index(source)] = target
+                yield changed, {"missing": changed.count("")}, set()
+
+
+def _held_elsewhere(name: str, printed: dict, table: dict, rows: int, known: set) -> int | None:
+    """A missing count other than those `known` that a table of up to two levels of the
+    minimum or more, levels of fewer and missing values gives, with the profile printed; or
+    None. Each count of missing values is tried in turn, and the search stops at the first."""
+    minimum = table["minimum"]
+    for missing in range(rows + 1):
+        if missing in known:
+            continue
+        left = rows - missing
+        for first in (0, *range(minimum, left + 1)):
+            for second in (0, *range(minimum, left - first + 1)) if first else (0,):
+                for parts in _parts(left - first - second, minimum - 1):
+                    world = ["A"] * first + ["B"] * second + [""] * missing
+                    world += [f"zz{at}" for at, part in enumerate(parts) for _ in range(part)]
+                    if _oracle_profile(name, world, table)[1] == printed:
+                        return missing
+    return None
+
+
+def _not_printed(printed: dict) -> list[str]:
+    """The counts of a printed column a reader is not told."""
+    held = []
+    if printed["missing"] is None or isinstance(printed["missing"], str):
+        held.append("missing")
+    for level in printed.get("levels", []):
+        if not isinstance(level["count"], int):
+            held.append(f"level {level['level']}")
+    if "other" in printed and not isinstance(printed["other"]["count"], int):
+        held.append("other")
+    for key in ("unread", "n"):
+        if key in printed and not isinstance(printed[key], int):
+            held.append(key)
+    return held
+
+
+def oracle_findings(table: dict) -> list[str]:
+    """Each count a reader of the table's profile works out: one not printed that takes one
+    value among every table whose profile is the one printed; and folded levels whose rows
+    are one value in all of them, or, where the dictionary names the codes, a code's."""
+    found = []
+    for name, values in table["columns"].items():
+        rows, printed = _oracle_profile(name, values, table)
+        if printed.get("held"):
+            worlds = (_number_worlds(name, printed, table, rows) if name in table["types"]
+                      and name not in table["codes"] else _near(values))  # fmt: skip
+            if name in table["codes"]:
+                worlds = _coded_worlds(name, table, rows)
+        elif name in table["codes"]:
+            worlds = _coded_worlds(name, table, rows)
+        elif name in table["types"]:
+            worlds = _number_worlds(name, printed, table, rows)
+        else:
+            worlds = _named_worlds(name, printed, table, rows)
+        seen: dict[str, set] = {}
+        folded: set = set()
+        matched = 0
+        for world, said, parts in worlds:
+            if _oracle_profile(name, world, table)[1] != printed:
+                continue
+            matched += 1
+            folded |= parts
+            for key, count in said.items():
+                seen.setdefault(key, set()).add(count)
+        assert matched, (name, printed)
+        held = _not_printed(printed)
+        if printed.get("held"):
+            # A single value counts where it is a small count, and only once no table of other
+            # shapes prints alike with another missing count.
+            one = seen.get("missing", set())
+            small = len(one) == 1 and 1 <= next(iter(one)) < table["minimum"]
+            if small and _held_elsewhere(name, printed, table, rows, one) is None:
+                found.append(f"{name}: missing is {one}")
+            continue
+        for key in held:
+            if len(seen.get(key, ())) < 2:
+                found.append(f"{name}: {key} is {seen.get(key)}")
+        if "other" in printed and name not in table["codes"] and len(folded) < 2:
+            found.append(f"{name}: every folded level has {folded} rows")
+        if "other" in printed and name in table["codes"]:
+            listed = {level["level"] for level in printed["levels"]}
+            for code in table["codes"][name]:
+                if code not in listed and len(seen.get(f"code {code}", ())) < 2:
+                    found.append(f"{name}: code {code} is {seen.get(f'code {code}')}")
+    return found
+
+
+@holds(10, oracle_tables())
+def test_no_count_a_profile_holds_back_is_one_value_in_every_table_it_could_be(
+    tables: list[dict],
+) -> None:
+    """For each table behind a minimum of 2, 3, 4 and 5, of every shape the profile's review
+    found a count given away in: each table a reader could hold is put through the profile,
+    those whose profile is the one printed are kept, and each count not printed takes two
+    values among them, as do the rows of the levels folded into "other", and of each code the
+    dictionary names. A column whose counts are all held back is searched near the table, and
+    its missing count is not to be one value under the minimum (`vault/profile.py`)."""
+    findings = [f"minimum {table['minimum']}: {one}" for table in tables
+                for one in oracle_findings(table)]  # fmt: skip
+    assert not findings, findings
 
 
 # ------------------------------------------------------------- a count in a deposited table
@@ -13848,9 +14295,117 @@ def _a_quoted_path_is_split_at_its_spaces(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(hooks, "_words", lambda command: list(dict.fromkeys(command.split())))
 
 
+def _a_level_under_the_minimum_is_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.vault import profile
+
+    patch.setattr(profile, "_kept", lambda count, minimum: count >= 1)
+
+
+def _a_centile_needs_one_row_a_side(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.vault import profile
+
+    patch.setattr(profile, "_enough", lambda below, above, minimum: below >= 1 and above >= 1)
+
+
+def _a_centile_is_given_whatever_lies_beside_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.vault import profile
+
+    patch.setattr(profile, "_enough", lambda below, above, minimum: True)
+
+
+def _a_count_held_back_may_be_nought(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import custodian
+
+    patch.setattr(custodian, "HELD_LEAST", 0)
+
+
+def _a_column_nothing_can_be_held_in_is_printed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.vault import disclosure
+
+    patch.setattr(disclosure, "unsafe", lambda cells, total, minimum: False)
+
+
+def _the_null_levels_of_a_held_count_say_it(patch: pytest.MonkeyPatch) -> None:
+    """Round 1's rule: how many levels "other" folds left unsaid only where it gives the
+    count, so that leaving it unsaid gives it."""
+    from manuscript_guard.vault import profile
+
+    patch.setattr(profile, "_folded_said", lambda levels, count, shown, minimum, coded: (
+        None if count < minimum and levels >= minimum - 1 else levels))  # fmt: skip
+
+
+def _the_levels_are_said_beside_a_count_they_give(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.vault import profile
+
+    patch.setattr(profile, "_folded_said", lambda levels, count, shown, minimum, coded: (
+        levels if isinstance(shown, int) and not coded else None))  # fmt: skip
+
+
+def _a_mean_is_printed_beside_a_held_n(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.vault import profile
+
+    patch.setattr(profile, "_stats_printed", lambda n_shown: True)
+
+
+def _a_count_held_beside_is_read_as_any(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.vault import disclosure
+
+    patch.setattr(disclosure, "beside_bounds", lambda cells, chosen, minimum: (0, math.inf))
+
+
+def _a_synthetic_copy_is_drawn_unseeded(patch: pytest.MonkeyPatch) -> None:
+    import random
+    import types
+
+    from manuscript_guard.vault import synthesize
+
+    patch.setattr(synthesize, "random", types.SimpleNamespace(
+        Random=lambda _seed: random.Random(), SystemRandom=random.SystemRandom))  # fmt: skip
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a level under the custodian's minimum is given by its name": (
+        _a_level_under_the_minimum_is_kept,
+        test_a_profile_prints_no_count_under_the_custodian_minimum,
+    ),
+    "a centile with one row on each side is given": (
+        _a_centile_needs_one_row_a_side,
+        test_a_profile_gives_no_centile_with_fewer_than_the_minimum_rows_on_a_side,
+    ),
+    "a centile is given whatever lies beside it": (
+        _a_centile_is_given_whatever_lies_beside_it,
+        test_a_profile_gives_no_smallest_or_largest_value,
+    ),
+    "a count held back behind the minimum is read as maybe nought": (
+        _a_count_held_back_may_be_nought,
+        test_no_count_a_profile_holds_back_is_one_value_in_every_table_it_could_be,
+    ),
+    "a column with nothing left to hold back is printed as it is": (
+        _a_column_nothing_can_be_held_in_is_printed,
+        test_no_count_a_profile_holds_back_is_one_value_in_every_table_it_could_be,
+    ),
+    "the folded levels of a held count are left unsaid only where they give it": (
+        _the_null_levels_of_a_held_count_say_it,
+        test_no_count_a_profile_holds_back_is_one_value_in_every_table_it_could_be,
+    ),
+    "how many levels are folded is said beside a printed count they give": (
+        _the_levels_are_said_beside_a_count_they_give,
+        test_no_count_a_profile_holds_back_is_one_value_in_every_table_it_could_be,
+    ),
+    "the mean printed where n is held": (
+        _a_mean_is_printed_beside_a_held_n,
+        test_no_count_a_profile_holds_back_is_one_value_in_every_table_it_could_be,
+    ),
+    "a count held beside is read as any from nought": (
+        _a_count_held_beside_is_read_as_any,
+        test_no_count_a_profile_holds_back_is_one_value_in_every_table_it_could_be,
+    ),
+    "a synthetic copy is drawn from an unseeded stream": (
+        _a_synthetic_copy_is_drawn_unseeded,
+        test_a_synthetic_copy_is_the_same_bytes_from_the_same_profile_and_seed,
+    ),
     "a folder whose name begins with the vault's is read as inside it": (
         _a_folder_beginning_as_the_vault_is_in_it,
         test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_beside_it,

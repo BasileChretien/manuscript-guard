@@ -81,7 +81,14 @@ def data(tmp_path: Path) -> Path:
 def vault(paper: Path, data: Path) -> Path:
     assert main(["vault", "init", str(data), "cohort.csv", "--as", "Ada Lovelace",
                  "--path", str(paper)]) == 0  # fmt: skip
+    _without_starter(paper)
     return data
+
+
+def _without_starter(paper: Path) -> None:
+    """These tests run the analysis alone: the profile script `vault init` starts (Task F,
+    part 3) is taken out again, and tested with the profile and once below with a run."""
+    (paper / "analysis" / "00_profile.py").unlink(missing_ok=True)
 
 
 def _script(paper: Path, extra: str = "", name: str = "01_model.py") -> Path:
@@ -223,6 +230,21 @@ def test_run_lists_the_scripts_changed_and_runs_nothing_on_a_no(
     assert asked == ["Run them on the data held in the vault? [y/N] "]
     assert "nothing run" in said
     assert not (vault / ".runs").exists()
+
+
+def test_the_profile_script_vault_init_starts_runs_and_its_profile_waits(
+    paper: Path, data: Path, terminal
+) -> None:
+    """Parts 2 and 3 of Task F together: `vault init` starts analysis/00_profile.py, `vault
+    run` runs it on the data with the rest, and the profile waits in the outbox for a
+    person's release."""
+    assert vault_cli(paper, "init", str(data), "cohort.csv", "--as", "Ada Lovelace") == 0
+    assert (paper / "analysis" / "00_profile.py").is_file()
+    answers, _asked = terminal
+    answers.append("y")
+    assert vault_cli(paper, "run") == 0
+    (run,) = [one.name for one in (data / ".runs").iterdir()]
+    assert "profiles/data/cohort.csv.profile.json" in _files(data / "outbox" / run)
 
 
 def test_a_run_works_in_the_vault_and_writes_nothing_to_the_project_but_its_summary(
@@ -1219,6 +1241,7 @@ def test_a_released_version_is_read_from_the_project_in_a_larger_repository(
     _git(top, "add", "-A")
     _git(top, "-c", "user.name=t", "-c", "user.email=t@example.org", "commit", "-qm", "x")
     assert vault_cli(paper, "init", str(data), "cohort.csv", "--as", "Ada Lovelace") == 0
+    _without_starter(paper)
     run = _ran(paper, data, terminal)
     answers, _asked = terminal
     answers.append("y")
@@ -1285,6 +1308,7 @@ def test_a_project_folder_named_as_the_run_s_own_folders_keeps_its_copy_apart(
     _script(paper)
     _committed(paper)
     assert vault_cli(paper, "init", str(data), "cohort.csv", "--as", "Ada Lovelace") == 0
+    _without_starter(paper)
     run = _ran(paper, data, terminal)
     answers, _asked = terminal
     answers.append("y")

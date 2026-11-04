@@ -910,6 +910,10 @@ def test_the_example_demonstrates_every_public_emitter_api() -> None:
     }
     # `document`, `render` and `add_input` are plumbing rather than things an analysis writes.
     public -= {"document", "render", "add_input"}
+    # `profile` describes a file of the vault for its synthetic copy, run under `vault run`;
+    # the example holds simulated data and declares no custodian's minimum, which it needs,
+    # and declaring one would move every small-cell check made of the example.
+    public -= {"profile"}
     # `vault_input` reads a file of a vault, the folder outside the project that the operating
     # system keeps from the agent, registered by `vault init` and run on by a person at a
     # terminal. The example is a folder every user copies, with simulated data in data/ and no

@@ -2748,7 +2748,8 @@ def _from_project(root: Path, given: str | Path) -> str:
 
 
 def cmd_vault(args: argparse.Namespace) -> int:
-    """Register the vault, or say whether this session can read it (`vault/command.py`)."""
+    """Register the vault, say whether this session can read it, or draw the synthetic copy
+    (`vault/command.py`)."""
     from manuscript_guard.vault.command import cmd_vault as run
 
     return run(args)
@@ -6372,8 +6373,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     vault = sub.add_parser(
         "vault",
-        help="register the folder where the data are held, outside the project, and check "
-        "whether this session can read it",
+        help="register the folder where the data are held, outside the project, check "
+        "whether this session can read it, and draw the synthetic copy from a released profile",
         description="The vault is the folder where the data are held, which the operating "
         "system keeps from the agent: a second account, a container or a volume mounted only "
         "while you run on it (docs/vault.md). `init FOLDER FILE...` registers the files you "
@@ -6382,21 +6383,27 @@ def build_parser() -> argparse.ArgumentParser:
         "the project and a paper.yaml with no custodian.minimum_cell_count, and prints Claude "
         "Code's deny rules for the folder. `check` opens each registered file without reading "
         "it, and lists the folder: exit 0 not reachable from this session, 1 readable, 2 not "
-        "registered here. `run [SCRIPT ...]`, at a terminal, lists the analysis scripts "
-        "changed since the run released last, asks, and runs them on the data in a copy of "
-        "the project inside the vault, what they write waiting in its outbox; the agent is "
-        "told exit codes and where a script failed, in .manuscript-guard/vault/last-run.json. "
-        "`release RUN --as PERSON`, at a terminal, reads every count of the outbox to the "
-        "custodian's rules and puts its results into the project, each file no check reads "
-        "only where you type its path, recorded in approvals/vault-releases/. A released "
-        "file is read by the agent, and through it by its provider. Nothing is sent.",
+        "registered here. `init` also starts analysis/00_profile.py (or .R), which profiles "
+        "each file with em.profile under `vault run`. `run [SCRIPT ...]`, at a terminal, lists "
+        "the analysis scripts changed since the run released last, asks, and runs them on the "
+        "data in a copy of the project inside the vault, what they write waiting in its "
+        "outbox; the agent is told exit codes and where a script failed, in "
+        ".manuscript-guard/vault/last-run.json. `release RUN --as PERSON`, at a terminal, "
+        "reads every count of the outbox to the custodian's rules and puts its results into "
+        "the project, each file no check reads only where you type its path, recorded in "
+        "approvals/vault-releases/. A released file is read by the agent, and through it by "
+        "its provider. `synthesize [NAME ...]` draws data/synthetic/NAME from the released "
+        "profile profiles/data/NAME.profile.json, the data dictionary and the seed kept beside "
+        "the profile, and from nothing else: CSV or TSV, each column drawn alone, the same "
+        "bytes from the same profile and seed. Nothing is sent.",
     )
-    vault.add_argument("verb", choices=["init", "check", "run", "release"])
+    vault.add_argument("verb", choices=["init", "check", "run", "release", "synthesize"])
     vault.add_argument(
-        "words", nargs="*", metavar="[FOLDER FILE ...]",
+        "words", nargs="*", metavar="[FOLDER FILE ... | NAME ...]",
         help="init: the vault's folder, then the files to register in it, by name or glob; "
         "run: the scripts to run, every one directly in analysis/ where none is named; "
-        "release: the run's id",
+        "release: the run's id; "
+        "synthesize: the profiles to draw a copy of (default: every one released)",
     )  # fmt: skip
     vault.add_argument(
         "--as", dest="as_", metavar="PERSON",

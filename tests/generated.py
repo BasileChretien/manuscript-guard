@@ -41,7 +41,7 @@ import os
 import re
 import textwrap
 from collections.abc import Callable, Iterable
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal
 from fractions import Fraction
 from functools import cache
@@ -4821,6 +4821,208 @@ def vault_commands(draw: st.DrawFn) -> tuple[list[str], list[str | None]]:
     return [lines[at] for at in order], [expected[at] for at in order]
 
 
+#: Each kind of column a table to profile holds, once in every table, and the type the data
+#: dictionary gives it, or None where the profile reads the type from the values:
+#: levels some of which are rare; levels whose only count held back is the rare ones', and
+#: the missing values', which the rows would give away; numbers and dates and times, with
+#: the smallest and largest value each held by several rows ("ends"); identifiers and texts,
+#: each value different; counts some of which are no number; a rare level of one row beside
+#: one missing value, which since nought is printed are one each ("two ones"); and a level of
+#: one row for each of the minimum less one, which their number gives away ("folded pin").
+PROFILE_KINDS = {
+    "levels": None, "rare closing": None, "missing closing": None, "number": "continuous",
+    "ends": "continuous", "date": "date", "time": "time", "identifier": None, "text": None,
+    "unread": "count", "two ones": None, "folded pin": None,
+}  # fmt: skip
+#: The kinds of a table so small that its counts give one held back away whatever else is
+#: held: as many missing values as rows of one rare level, or as numbers, the minimum less one
+#: each, in a table of twice that many rows.
+SMALL_KINDS = {"tiny levels": None, "tiny number": "continuous"}
+
+
+def _levels_column(rng: Any, rows: int, minimum: int, rare: int, missing: int,
+                   counts: list[int] | None = None) -> list[str]:  # fmt: skip
+    """Levels: `rare` of them each under `minimum` (or of the `counts` given), `missing`
+    blanks, and the rest in common levels of `minimum` rows or more."""
+    if counts is None:
+        counts = [rng.randint(1, minimum - 1) for _ in range(rare)] if minimum > 1 else []
+    rest = rows - sum(counts) - missing
+    common = max(1, min(4, rest // minimum))
+    shares = [minimum] * common
+    for _ in range(rest - minimum * common):
+        shares[rng.randrange(common)] += 1
+    values = [f"r{at}" for at, count in enumerate(counts) for _ in range(count)]
+    values += [f"L{at}" for at, count in enumerate(shares) for _ in range(count)]
+    values += [""] * missing
+    rng.shuffle(values)
+    return values
+
+
+def _spread_column(rng: Any, rows: int, minimum: int, kind: str, ends: bool) -> list[str]:
+    """Numbers, dates or times, each different but where `ends` holds the smallest and the
+    largest by a twentieth of the rows and one more, and a few missing."""
+    missing = rng.randint(0, min(minimum + 2, rows // 4))
+    count = rows - missing
+    tied = -(-count // 20) + 1 if ends and count > 8 else 0
+    points = sorted(rng.sample(range(10, 10 * count + 10), count - 2 * tied))
+    if tied:
+        points = [points[0] - 7] * tied + points + [points[-1] + 7] * tied
+    shown = {
+        "number": lambda point: f"{point / 10:.1f}",
+        "date": lambda point: (date(2010, 1, 1) + timedelta(days=point * 3)).isoformat(),
+        "time": lambda point: f"{point * 5 // 60 % 24:02d}:{point * 5 % 60:02d}",
+    }[kind]
+    values = [shown(point) for point in points] + [""] * missing
+    rng.shuffle(values)
+    return values
+
+
+def _profile_column(rng: Any, kind: str, rows: int, minimum: int) -> list[str]:
+    if kind == "two ones":
+        return _levels_column(rng, rows, minimum, 0, 1, counts=[1] if minimum > 1 else [])
+    if kind == "folded pin":
+        return _levels_column(rng, rows, minimum, 0, 0, counts=[1] * (minimum - 1))
+    if kind in SMALL_KINDS:
+        held = minimum - 1
+        values = [""] * held
+        values += (["r0"] * held if kind == "tiny levels"
+                   else [str(10 + at) for at in range(held)])  # fmt: skip
+        rng.shuffle(values)
+        return values
+    if kind == "levels":
+        return _levels_column(rng, rows, minimum, rng.randint(1, 2), rng.randint(0, minimum))
+    if kind == "rare closing":
+        return _levels_column(rng, rows, minimum, 1 if minimum > 1 else 0, 0)
+    if kind == "missing closing":
+        return _levels_column(rng, rows, minimum, 0, rng.randint(1, max(minimum - 1, 1)))
+    if kind in ("number", "ends"):
+        return _spread_column(rng, rows, minimum, "number", kind == "ends")
+    if kind in ("date", "time"):
+        return _spread_column(rng, rows, minimum, kind, rng.random() < 0.5)
+    if kind == "identifier":
+        return [f"ID-{at:05d}" for at in rng.sample(range(100000), rows)]
+    if kind == "text":
+        numbers = rng.sample(range(10**6), rows)
+        return [f"{rng.choice(['seen', 'Left', 'x'])} {at}" for at in numbers]
+    unread = rng.randint(1, max(minimum - 1, 1))
+    values = [str(rng.randint(0, 40)) for _ in range(rows - unread)] + ["n/a"] * unread
+    rng.shuffle(values)
+    return values
+
+
+@st.composite
+def profile_tables(draw: st.DrawFn) -> dict[str, Any]:
+    """A table to profile, with the custodian's minimum and the types the dictionary gives:
+    every kind of `PROFILE_KINDS` once, in an order drawn, so that a rule broken for one meets
+    it in every example. Each value is text, as a CSV file is read."""
+    minimum = draw(st.sampled_from((3, 5, 10, 11)))
+    rows = draw(st.integers(5 * minimum, 12 * minimum))
+    rng = draw(st.randoms(use_true_random=False))
+    kinds = draw(st.permutations(list(PROFILE_KINDS)))
+    return {
+        "minimum": minimum,
+        "types": {kind: PROFILE_KINDS[kind] for kind in kinds if PROFILE_KINDS[kind]},
+        "columns": {kind: _profile_column(rng, kind, rows, minimum) for kind in kinds},
+    }
+
+
+@st.composite
+def small_profile_tables(draw: st.DrawFn) -> dict[str, Any]:
+    """A table of twice the minimum less one rows, holding each of `SMALL_KINDS`: the minimum
+    less one missing values beside as many rows of one rare level, or of numbers, so that each
+    count is held back and the rows give it away."""
+    minimum = draw(st.sampled_from((3, 5, 10, 11)))
+    rng = draw(st.randoms(use_true_random=False))
+    kinds = draw(st.permutations(list(SMALL_KINDS)))
+    return {
+        "minimum": minimum,
+        "types": {kind: SMALL_KINDS[kind] for kind in kinds if SMALL_KINDS[kind]},
+        "columns": {kind: _profile_column(rng, kind, 2 * minimum - 2, minimum) for kind in kinds},
+    }
+
+
+#: The shapes each round of the profile's review found a count given away in, each a column
+#: of a table of `rows` rows behind a minimum of `m`, padded with a level of the rest (`L`).
+#: Two folded counts of one row; m - 1 levels of one row, which their number would give
+#: ("folded pin"); m levels of one row each beside their count ("c = k"); two levels of
+#: m - 1 rows ("c = k(m-1)"); a level of m rows held beside one of one row, below a larger
+#: ("held beside"); the same beside a missing row too ("two ones beside"); two levels alike
+#: beside m - 1 rows of a third ("tie"); dictionary codes of which two hold m - 1 rows each
+#: ("coded"); whole numbers, each different, with one row missing and one that is no number
+#: ("number"); and numbers to a decimal place, each different, two of them missing
+#: ("decimals").
+ORACLE_SHAPES = {
+    "two ones": lambda m, rows: ["r"] + [""] + ["L"] * (rows - 2),
+    "folded pin": lambda m, rows: [f"r{at}" for at in range(m - 1)] + ["L"] * (rows - m + 1),
+    "c = k": lambda m, rows: [f"r{at}" for at in range(m)] + ["L"] * (rows - m),
+    "c = k(m-1)": lambda m, rows: ["r0"] * (m - 1) + ["r1"] * (m - 1) + ["L"] * (rows - 2 * m + 2),
+    "held beside": lambda m, rows: ["A"] * (rows - m - 1) + ["B"] * m + ["r"],
+    "two ones beside": lambda m, rows: ["A"] * (rows - m - 2) + ["B"] * m + ["r", ""],
+    "tie": lambda m, rows: ["A"] * ((rows - m + 1) // 2) * 2 + ["r"] * (m - 1),
+    "coded": lambda m, rows: ["c0"] * (rows - 2 * m + 2) + ["c1"] * (m - 1) + ["c2"] * (m - 1),
+    "number": lambda m, rows: [str(10 * at) for at in range(1, rows - 1)] + ["n/a", ""],
+    "decimals": lambda m, rows: [f"{at * 2 + 0.5:.1f}" for at in range(rows - 2)] + ["", ""],
+}
+#: The codes the dictionary lists for the coded shape.
+ORACLE_CODES = ("c0", "c1", "c2")
+
+
+def _tie(values: list[str]) -> list[str]:
+    """The tie's first level split into two alike, A and B."""
+    half = values.count("A") // 2
+    return ["A"] * half + ["B"] * half + [value for value in values if value != "A"]
+
+
+def _drawn_levels(draw: st.DrawFn, m: int, rows: int) -> list[str]:
+    """Levels drawn: up to three of m rows or more, up to four of fewer, some missing, and the
+    rest in one more level, or missing where too few for one."""
+    named = draw(st.lists(st.integers(m, 2 * m + 3), max_size=3))
+    folded = draw(st.lists(st.integers(1, max(m - 1, 1)), max_size=5)) if m > 1 else []
+    missing = draw(st.integers(0, m + 1))
+    parts = [("N", count) for count in named] + [("f", count) for count in folded]
+    while sum(count for _kind, count in parts) + missing > rows:
+        parts.pop() if parts else None
+        missing = min(missing, rows)
+        if not parts and missing <= rows:
+            break
+    rest = rows - sum(count for _kind, count in parts) - missing
+    if rest >= m:
+        parts.append(("N", rest))
+    else:
+        missing += rest
+    values = [f"{kind}{at}" for at, (kind, count) in enumerate(parts) for _ in range(count)]
+    return values + [""] * missing
+
+
+@st.composite
+def oracle_tables(draw: st.DrawFn) -> list[dict[str, Any]]:
+    """A table behind each minimum of 2, 3, 4 and 5, small enough that every table a reader of
+    its profile could hold can be listed, each holding every shape of `ORACLE_SHAPES` and a
+    column of levels drawn. Its rows are drawn and made even beside the tie's m - 1: from the
+    fewest the tie takes, 5m - 1, to 20, or 24 behind 5 (its fewest), which keeps a run
+    of ten examples near two minutes."""
+    tables = []
+    for m in (2, 3, 4, 5):
+        low = 5 * m - 1
+        most = max(low, 20)
+        rows = draw(st.integers(low, most))
+        if (rows - m + 1) % 2:
+            rows += 1 if rows < most else -1
+        rng = draw(st.randoms(use_true_random=False))
+        columns = {}
+        for shape, make in ORACLE_SHAPES.items():
+            values = make(m, rows)
+            values = _tie(values) if shape == "tie" else values
+            rng.shuffle(values)
+            columns[shape] = values
+        columns["drawn"] = _drawn_levels(draw, m, rows)
+        tables.append({"minimum": m, "columns": columns,
+                       "types": {"coded": "categorical", "number": "count",
+                                 "decimals": "continuous"},
+                       "codes": {"coded": list(ORACLE_CODES)}})  # fmt: skip
+    return tables
+
+
 @st.composite
 def deposit_statements(draw: st.DrawFn) -> tuple[str, list[str], list[str]]:
     """Drawn words; the same with each way of naming the deposit put in at a place drawn, one
@@ -9011,6 +9213,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "vault named": vault_commands().flatmap(
         lambda drawn: st.sampled_from([{"command": line} for line in drawn[0]])
     ),
+    "data profile": profile_tables(),
     "count cells": count_cells().map(lambda drawn: [cell for cell, _count in drawn]),
     "harvest cells": harvest_cells().map(
         lambda drawn: [[text, digits] for text, digits, _read in drawn]

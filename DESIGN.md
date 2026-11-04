@@ -12510,7 +12510,8 @@ receipt applies (`verify --receipt SITE`). `docs/vault.md` says all of this to t
 
 Part 1 holds registration, the check and the guards; part 2 the run on the real data
 (`em.vault_input`, `vault run`), its release (`vault release`) and the G1 codes for a result
-from unregistered, changed or unreleased data. The profile and `vault synthesize` are part 3.
+from unregistered, changed or unreleased data; part 3 the profile and `vault synthesize`,
+below.
 
 Basile's decisions of 2026-10-29: the folder is outside the project only (1a); `vault init`
 refuses until `paper.yaml` declares `custodian.minimum_cell_count`, 1 where the custodian has
@@ -12637,6 +12638,187 @@ whole command is refused before anything is written. A real
 headless session could not confirm the rule's spelling on 2026-10-30: the `claude` on PATH
 (2.1.310) had no login (Known gaps).
 
+## The profile of a file of the vault, and its synthetic copy (Task F, part 3)
+
+The agent works on `data/synthetic/<label>`, a copy drawn from a profile of the real file. Basile's
+decisions of 2026-10-29: the profile is computed in the author's script (`em.profile`), run by
+`vault run` and released like any output (5a), so the rule that the script reads the data and
+the tool never does holds, any format the author's reader opens can be profiled, and R gives the
+same bytes; the copy's columns are drawn apart, with the data dictionary's rules across
+variables enforced (6a); its rows are drawn from the released profile alone, never compared with
+the data (7a); it is written as CSV or TSV only (8a).
+
+### The profile: `em.profile`
+
+`em.profile(table, name=LABEL, read_as={...}, dataset=None)` (`vault/profile.py`; `em$profile`
+in `r/manuscriptguard/R/profile.R`) reads the table through `quality.Table` and the reading
+rules `quality.py` and `quality.R` share, and writes `profiles/data/<LABEL>.profile.json`
+(`manuscript-guard/data-profile/1`). m is `custodian.minimum_cell_count`, refused where
+`paper.yaml` declares none. For each column, in order: its name, the type read (the
+dictionary's where it has the column, `typed_by: dictionary`; else read from the values: a
+number, a date, a date and time, a time, or text, in that order of trying) and what is given
+of it (`kind`):
+
+- **levels**: a binary, categorical or ordinal column, or one the dictionary does not type with
+  at most 50 different values that is neither a date nor every value different. Each level of
+  m rows or more is given with its count, in the dictionary's order and then by its text's code
+  points; the rest are folded into `other`, how many levels and their rows.
+- **number**, **date**, **time**: the rows read (`n`), the values that do not read as the type
+  (`unread`, for a dictionary's type), and each of the 5th, 10th, 25th, 50th, 75th, 90th and
+  95th centiles that has m rows strictly below it and m strictly above. A centile is the
+  smallest value whose rows at or below it are the centile's share or more, so it is a value
+  some row holds; dates are read and given to the month, times to the hour, and the m rows on
+  each side are counted in those units. A number also gets a mean and SD from max(m, 3) rows
+  (two values and their mean and SD are the two values), and the decimal places it is most
+  often written to. No centile is the smallest or largest value: m ≥ 1 rows lie beyond each
+  centile given. At a minimum of 1 nothing is held back, and with few rows the centiles, the
+  mean and the SD together can give the smallest and largest values back.
+- **withheld**: an identifier or a text, and a column the dictionary does not type whose
+  values are all different or that holds more than 50 different values that are neither
+  numbers nor dates. Only its missing values, and the pattern its values share where all of
+  them, m or more, share one (`AA-99999`: 9 a digit, A and a a letter, ? another letter, the
+  rest as written).
+
+Each count is printed as itself, or `quality.held_back`'s "<m" from 1 to m−1, and a missing
+share only from m. The counts of a column are the table's rows, which are printed: a table of
+fewer rows than m is not profiled, since its rows would be a count below the minimum, and
+behind a minimum of 2 "<2" is 1.
+
+What a reader knows of a column is the model the code holds to (`vault/disclosure.py`), and
+round 2 of the review asked for it written down as a list. Each field tells a reader:
+
+- `rows`: the table's rows, m or more; every column's counts add up to it.
+- a count printed (`missing`, `unread`, `n`, a level's `count`, `other.count`): itself. A
+  count printed is nought or m or more.
+- a count printed "<m": one to m − 1, since nought is printed as 0 (`custodian.HELD_LEAST`).
+- a count `null` beside a "<m": a count that would have been printed, so m or more; and the
+  smallest of them above nought, since one is held beside wherever a count is held behind
+  the minimum, and of two alike the first. So it is at most each count printed after it, and
+  under each printed before it.
+- `levels` of a level: a count of m or more, by that name; no other value of the column has
+  m rows.
+- `other.levels` k: k values of 1 to m − 1 rows each, so `other.count` is k to k(m−1). It is
+  said only beside a count c printed, where c is a whole number of m − 1 and k is neither c
+  nor c/(m − 1). A k `null` beside a printed c then says only that k is one of those two, and
+  each folded level one row or m − 1; beside a c that is no whole number of m − 1 it says
+  nothing. Beside a held count, and in a column the dictionary codes, k is never said. It is
+  chosen once holding beside is done: said of a count then held beside, it would say the count
+  was a whole number of m − 1 (the oracle found this, behind 3: k said of a 6 then held
+  narrowed it from 6 or 7 to 6, and the missing count to 2).
+- where the dictionary lists the codes, the codes not given by name are the folded values, so
+  each holds 0 to m − 1 rows, `other.count` at most their number times m − 1.
+- `mean` and `sd`: printed only beside `n` printed, from max(m, 3) rows. A mean is a total
+  over n, and of whole numbers, or of numbers to so many decimals, few n give a total that
+  prints so: beside a held `n` it would give `n` back (the fix-only round: behind 5, 1 to 97
+  and 100 with two blank print 49.5204, which only 98 whole numbers total to, and so the
+  missing 2; the GRIM check of `stats/granularity.py`). So no mean says nothing of a held `n`.
+  `decimals`, the places the values are most often written to, is kept: printed from m rows,
+  so it says `n` is m or more, and none says fewer, and it is no total over n. The centiles
+  are kept too: they are values at ranks, no total over n, and say what the next entry says.
+- a centile: m values below it and m above, so `n` (or a date's or time's rows read) is at
+  least the fewest rows that centile is given of (`fewest_rows`).
+- `pattern`: m or more values, all of that shape; left out where saying so would give the
+  missing count away (six rows, five identifiers: one missing).
+- `held`: what the column printed would let a reader work a count out, whatever one count was
+  held beside; the missing count is held too.
+
+Every choice of what to print is made from what is printed, so that the choice tells no more
+than the list. One count is held beside wherever one is held behind the minimum, whether or
+not the rows would give it away; then, where a reader still works a count out
+(`disclosure.unsafe`: a count not printed with one value, or the rows of a folded level), the
+column is withheld. Round 2 asked for holding to go on to a fixed point instead; that is a
+choice made from counts it then hides. In 15 rows of a 9, b 5 and one c, holding a and b
+leaves a reader the tables where holding b alone had still given c away, a 9 or 6, and so b 5
+and c 1 or 4. Round 2's other cases: of a 10, b 10 and 4 rows of c, a is held, at most 10, and
+the rows give c; six levels of one row printed beside 6 gave each level's rows; a k left
+unsaid only at m − 1 said the count was m − 1. Round 1's: 98, "<5" and "<5" of 100 rows are 1
+and 1; four levels of one row folded are 4; eight rows of four in rare levels and four missing
+leave each 4.
+
+`tests/test_properties.py` holds this to no model of its own
+(`test_no_count_a_profile_holds_back_is_one_value_in_every_table_it_could_be`): for tables of
+up to 20 rows behind minimums of 2, 3 and 4, holding every shape the reviews found, it lists
+each table a reader of a column could hold, puts each through the profile, keeps those whose
+profile is the one printed, and requires each count not printed, and the rows of the folded
+levels and of each code, to take two values among them. A number column's tables are its own
+numbers where they are as many, and otherwise numbers that print its centiles and decimals
+alike (whole, or to a place, each different, with values alike below or above the centiles
+given); a printed mean such tables match only by luck, so a mean beside a held `n` fails it.
+Behind 5 it lists tables of 24 rows. The pinned run of ten examples took 82 and 103 s in two runs on the
+author's machine under CI's flags (`-n auto -m "not timing"`), the one test on one worker.
+
+The design said to hold back the total; that
+holds nothing here, because every column's counts add up to the same rows, and any column whose
+counts are all printed gives them back (accepted in round 1; in round 2 Basile chose to keep
+holding and model every bound a reader can infer, over merging small groups). `vault synthesize` reads a count held back as an even
+share of what the rows leave.
+
+The file's shape is for the copy: the delimiter, decimal mark, encoding, quoting and line ending
+`read_as` says, and where it names `header_of`, the delimiter most often in that file's header
+line, a byte-order mark and the line ending, read from the header and no further. A date format
+in `read_as["dates"]` is of `%Y %m %d %H %M %S`, read exactly in both languages, and the copy
+writes the column in it.
+
+Numbers are written as C's `%.6g`, by a JSON writer of the profile's own in each language
+(`profile.dumps`, `mg_profile_json`), so Python and R write the same bytes: the shared table in
+`tests/data/profile`, read as text and as `read.csv` types it, and drawn tables of every kind
+of column (`tests/test_r_profile.py`). The mean is summed with `math.fsum` in Python and R's
+long-double `sum`, which could differ in a last bit that `%.6g` then rounds apart: no drawn
+table has shown it.
+
+`vault init` starts `analysis/00_profile.py`, or `.R` where `analysis/` holds more R scripts
+than Python ones, and never writes over one. It reads the vault's folder from
+`MANUSCRIPT_GUARD_VAULT`, which `vault run` (part 2) sets, refuses to run without it, reads each
+CSV or TSV with the language's own reader and hands it to `em.profile` with `header_of`; a file
+of another format gets a comment saying to read it as the analysis does, and that the copy needs
+it exported to CSV inside the vault.
+
+### The synthetic copy: `vault synthesize`
+
+`vault synthesize [LABEL ...]` (`vault/synthesize.py`), every profile released by default,
+reads the profile, `design/data_dictionary.yaml` and `profiles/data/<LABEL>.synthetic.yaml`
+(`manuscript-guard/synthetic/1`: a seed, and the rows to draw, the profile's or 1000 where it
+holds them back), written on first use from the system's random source and kept after. It reads
+no data and no vault, so anyone may run it, the agent included; the shell guard lets it through.
+A profile of a format other than CSV or TSV is refused, with the advice to export to CSV inside
+the vault. Each value of a row, column by column:
+
+- a level by the counts, "other" as a level named `other`, a missing value as one more cell;
+- a number, date or time: missing at its rate, else the inverse of the distribution drawn
+  straight between the centiles and continued straight beyond the outer two; a number with
+  fewer than two centiles evenly about its mean (half-width √3 SD). With no mean either (its
+  rows read held back, or too few), it is drawn without its distribution, from the seeded
+  stream so that a row drawn again for a rule draws it again, and a note names the column and
+  how: evenly within the dictionary's range where it gives both ends, else about its one
+  centile, else as a value of its type, from 0 over a span of 100, or from its one declared
+  end; clamped to whichever ends are declared, whole for a count or where it is written to no
+  decimal place. A date with no centile is drawn within its range, or from its one end, or
+  over ten years from 2000, and a date or time with one centile about it (six months, two
+  hours), each written in the format the profile records, a date and time with a clock drawn.
+  No column is written blank unless its profile says every row is missing;
+  rounded to its decimal places, a count to a whole number from nought, and kept within the
+  dictionary's range; a date's day and a date and time's clock from the fraction left;
+- a withheld column: its pattern, one to a row for any number of rows, letters X and its
+  digits, read as one number, the row's number, after a 9 where the rows leave a digit to spare
+  (`AA-99999` gives `XX-90001`); where the pattern has no digit, or too few for the rows
+  (`A999` beside 1000 rows), or there is none, `SYN` and the row's number; a number the row's
+  number, a date from 2000-01-01.
+
+A column the profile holds back (`held`) is drawn from the dictionary's codes where it lists
+them, evenly, with nothing missing; an identifier the dictionary gives a `pattern` is put within
+it, by the pattern's opening characters or one letter for all, and where none fits, a note names
+the column. A row that breaks an order or unique rule of the dictionary whose variables are all
+columns of the copy is drawn again, up to 1000 times, and then the copy is refused naming the rule; a
+computed rule is the script's and is said not to be held. A variable that applies only where
+another holds certain codes is left empty elsewhere. Only `random.Random(seed).random()` is drawn
+from, and only exact arithmetic, `math.floor`, `math.sqrt` (correctly rounded) and Python's own
+formatting turn it into text, so the same profile and seed give the same bytes:
+`tests/data/profile/expected.synthetic.csv` holds every platform and Python version CI runs to
+them, and a property holds it over drawn profiles. The copy is written in the profile's shape
+with Python's `csv` writer, a byte-order mark first only where the profile says the file had
+one. Every sum of floats is `math.fsum`, since Python 3.12 changed what `sum` gives of floats.
+The profile records the dictionary's dataset it is of, and the copy reads only that dataset's
+entries.
 ### Reading the vault in the analysis: `em.vault_input` (Task F, part 2)
 
 `em.vault_input(label)` (`emit.py`; `em$vault_input` in `emit.R`, case for case) returns the
@@ -20276,6 +20458,53 @@ What papers converted from Word showed (see "What papers converted from Word sho
     very small file could be matched by guessing its content. `registered_by` is the name
     given to `--as`, and nothing checks it against `authors.yaml`.
 
+- **The profile and the synthetic copy (Task F, part 3): what they do not hold.**
+  - *Names are shown as written.* A level's name and a column's name are printed as the data
+    and the table hold them: a column of staff names with m rows each, or a level that is a
+    rare diagnosis's own word, is given. The dictionary typing the column `text` or
+    `identifier` withholds it.
+  - *A centile is a row's value.* It has m rows below and m above it, and it is still the
+    value one or more rows hold, to six significant figures, a month or an hour. A mean and SD
+    of a few rows above m say much of each, and with few rows the centiles, mean and SD
+    together can give the smallest and largest values back. At a minimum of 1 nothing is held
+    back.
+  - *A column is withheld more often than it need be.* One count is held beside a "<m" and
+    no more; where that leaves a count worked out, the whole column is withheld, since holding
+    more would tell by holding. A small table, or two named levels alike beside a folded one,
+    loses its counts. How many levels "other" folds is said only beside a printed count that is
+    a whole number of m − 1.
+  - *How many levels are folded tells their rows as a set.* Where k is said beside a count
+    c, the folded levels' rows are known as a set, though not which level holds which: k =
+    c − 1 is one level of 2 rows and the rest of 1; behind 3, where each folded level is 1 or 2
+    rows, every k said fixes how many have 2 (c − k of them). The oracle reads folded levels
+    without names by the rows any of them has, which two values satisfy (accepted in the
+    fix-only round).
+  - *A number column with a few missing values loses its mean and SD.* One to m − 1
+    missing values, or values that are no number, the commonest case, put `n` behind the
+    minimum's holding beside, and no mean or SD is printed beside a held `n`. Its centiles stay
+    where it has them; the synthetic copy draws it from them, or without its distribution,
+    said in a note.
+  - *The oracle lists small tables.* It holds the profile to every table of up to 20 rows a
+    reader could hold, with numbers all one value and folded levels without names; a pattern
+    no small table has passes it unseen.
+  - *What two profiles say together is not read.* The profile of a slightly changed extract
+    beside an earlier one, two columns that are the same variable, or a profile beside a
+    released result, can give away what neither does alone; each column's counts are read
+    alone, as G2's recoverable check reads a line.
+  - *The type read from values is a reading.* A column the dictionary does not type is read
+    as levels at 50 values or fewer, so an age with 40 values is given as levels and mostly
+    folded into `other`; one whose values are all different is withheld, a measurement to
+    many decimals included. Typing it in the dictionary gives its distribution.
+  - *Python and R agree on drawn tables and the shared one.* A mean summed with `fsum` and
+    with R's long double could round apart in its last figure, and a value R reads as a
+    factor or a date class the profile reads as R reads it.
+  - *The copy is plausible, not realistic.* Its columns are drawn apart, so a model fitted on
+    it finds nothing; the dictionary's order and unique rules are kept, its computed rules are
+    not. Tails are straight lines beyond the outer centiles. A row may by chance equal a real
+    person's (7a). Whether a copy drawn from released aggregates is personal data under a
+    given law is the custodian's call.
+  - *The starter script reads CSV and TSV.* It reads them as UTF-8 text, comma or tab; any
+    other shape, and any other format, is the author's to read in it.
 - **The vault (Task F, part 2): what a run and its release do not hold.**
   - *Encoded outputs.* A script run on the real data can put any value into anything it
     writes or prints: a mean of one chosen row, a coefficient, a figure's point, a level's

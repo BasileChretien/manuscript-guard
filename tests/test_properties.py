@@ -3048,11 +3048,12 @@ def test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_besi
 def test_a_submission_asked_only_for_its_help_is_let_through_and_no_other(
     drawn: tuple[list[str], list[bool]],
 ) -> None:
-    """A guarded command that asks only for its help, `--help` or `-h` wherever it stands among
-    the command's arguments, quoted or not, under any name of the command and among other
-    commands, is no submission; and one is where the help comes after `--`, is an option's
-    value, comes out of a command substitution, or stands beside a second invocation that
-    submits (`hooks._submission_shaped`)."""
+    """A guarded command that is the whole command and asks only for its help, `--help` or
+    `-h` wherever it stands among the command's arguments, quoted or not, under any name of
+    the command, is no submission; and one is where the help comes after `--`, is an option's
+    value or comes out of a command substitution, or where the command holds more than that
+    invocation: a second one that submits, other commands, a line continued into a copy, or a
+    shell that runs the tool from a quote (`hooks._submission_shaped`)."""
     lines, held = drawn
     read = READINGS["submission shaped"]()
     assert [read({"command": line}) for line in lines] == held, lines
@@ -14298,17 +14299,21 @@ def _the_home_is_read_by_its_tilde_only(patch: pytest.MonkeyPatch) -> None:
 def _a_help_is_read_in_the_text(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import hooks
 
-    patch.setattr(hooks, "_help_only",
-                  lambda invocation: "--help" in invocation or " -h" in invocation)  # fmt: skip
+    patch.setattr(hooks, "_only_help",
+                  lambda command: "--help" in command or " -h" in command)  # fmt: skip
 
 
-def _a_help_lets_the_line_through(patch: pytest.MonkeyPatch) -> None:
+def _a_continued_line_is_read_as_bash_alone_reads_it(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import hooks
 
-    def without(command: str) -> str:
-        return "" if "--help" in command or " -h" in command else command
+    patch.setattr(hooks, "_CHAIN", re.compile("(?!)"))
+    patch.setattr(hooks, "_READ_AS", (True,))
 
-    patch.setattr(hooks, "_without_help", without)
+
+def _the_tool_need_not_stand_first(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import hooks
+
+    patch.setattr(hooks, "_tool_words", lambda words: words[1:])
 
 
 def _no_help_is_read(patch: pytest.MonkeyPatch) -> None:
@@ -14476,8 +14481,12 @@ BROKEN = {
         _a_help_is_read_in_the_text,
         test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
     ),
-    "a help anywhere in a line lets the whole line through": (
-        _a_help_lets_the_line_through,
+    "a line continued past a help is read as bash alone reads it": (
+        _a_continued_line_is_read_as_bash_alone_reads_it,
+        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
+    ),
+    "a help given to a shell that runs the tool from a quote is the tool's": (
+        _the_tool_need_not_stand_first,
         test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
     ),
     "no help is read": (

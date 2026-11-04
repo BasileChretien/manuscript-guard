@@ -7596,14 +7596,16 @@ that the hook fires on every shell command, so it has its own console script
 (`manuscript-guard-hook`) that imports nothing heavy until it knows it has work: 152 ms for
 the no-op path against roughly 400 ms through the full CLI.
 
-An invocation of the command that asks only for its help is set aside before the markers are
-read (`hooks._without_help`): `manuscript-guard submit --help` prints the options of `submit`
-and exits, as argparse does with `-h` or `--help` anywhere among the arguments, and it was
-refused while the submission check failed, so an agent could not read those options until
-the paper passed. An invocation is set aside only where it reads cleanly as one command to a
-POSIX shell and to Windows, with the help as a word of its own before any `--`; a help after
-`--`, as an option's value or out of a command substitution is none, and an invocation that
-submits beside it on the line is still held.
+A command that is the tool asked only for its help goes through (`hooks._only_help`):
+`manuscript-guard submit --help` prints the options of `submit` and exits, as argparse does
+with `-h` or `--help` anywhere among the arguments, and it was refused while the submission
+check failed, so an agent could not read those options until the paper passed. It goes
+through only as the whole command: one invocation of the tool, named first, read cleanly by
+a POSIX shell's rules and by Windows', with no `;`, `&`, `|` or line end anywhere in it, in
+quotes too, and the help a word of its own before any `--`. Every other command is read as
+before. A first version read a help out of a longer line, invocation by invocation, and let
+through a copy that a line continued in one shell and not the other runs as a command of its
+own, and a submission quoted for `sh -c` before the tool's name (round 1 of #513).
 
 It is registered for the three tools through which Claude Code runs a shell command: `Bash`,
 `PowerShell` and `Monitor`. Each sends the command in `tool_input.command`, and the guard
@@ -15531,13 +15533,13 @@ Open, recorded as each change landed:
   mistake in it lets a submission through, which is what the guard exists to stop. An author
   typing in a terminal is not affected, since a hook sees only the agent's commands. A help
   is let through (`check --submission --help`), since nothing runs after it.
-- **A help is let through only where the guard reads the invocation plainly.** The guard
-  cuts an invocation at the next `;`, `&`, `|` or line whether or not it stands in quotes,
-  so `submit --title "a;b" --help` is held, and so is PowerShell's `& "C:\Tools\mguard.exe"
-  submit --help`, read from the name on, where the quote that closes the path opens one. An
-  abbreviation argparse accepts, `--hel`, is not read as a help, and a short option joined to
-  another, `-vh`, is not either. Each costs an agent one refusal, and none lets a submission
-  through.
+- **A help is let through only as the whole command.** `cd paper && manuscript-guard submit
+  --help`, a help piped to `head`, `submit --title "a;b" --help` and PowerShell's
+  `& "C:\Tools\mguard.exe" submit --help` are each held, since each holds a `;`, `&` or `|`,
+  and so is a help on a line continued from the one before. A short option joined to another,
+  `-vh`, is not read as a help; `--hel` is held too, and argparse refuses it, since the
+  parser takes no abbreviation (`allow_abbrev=False`). Each costs an agent one refusal, and
+  none lets a submission through.
 - **From a folder with no project, the submission guard finds only a project the command
   spells out.** It used to find none. It matched the command, then ran the submission check
   in the folder the event names as the agent's, and from the folder above a project there is

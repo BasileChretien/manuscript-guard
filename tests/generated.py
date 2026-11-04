@@ -4828,18 +4828,27 @@ _GUARDED_ASKS = ("submit", "submit --offline", "check --submission", "build --st
                  "build --offline --stage submission")  # fmt: skip
 _GUARDED_BEFORE = ("", "cd paper && ", "FOO=1 ")
 #: The ways a guarded command asks only for its help, which prints it and exits: `--help` or
-#: `-h` after the options or among them, quoted, or given to the tool before the subcommand.
+#: `-h` after the options or among them, quoted, or given to the tool before the subcommand,
+#: each as the whole command.
 HELP_ONLY = ("after", "among", "short", "quoted", "of the tool")
-#: And the ways it does not, so that the command runs: no help, a help after `--`, as the
-#: value of an option, from a command substitution, or beside a second invocation that
-#: submits.
+#: And the ways it does not, so that the command runs, or it is not the whole command: no
+#: help, a help after `--`, as the value of an option, from a command substitution, beside a
+#: second invocation that submits, among other commands, on a line continued in one shell
+#: and not the other into a copy of the document, or given to a shell that runs the tool from
+#: a quote, with a `;` quoted after it or without (round 1 of #513).
 HELP_NOT_ONLY = ("none", "after the end of options", "as a value", "substituted",
-                 "beside a submission")  # fmt: skip
+                 "beside a submission", "among other commands", "continued", "in a shell",
+                 "in a shell, a join quoted")  # fmt: skip
+#: How a line is continued in one shell, and what the other then runs as a command of its own.
+_CONTINUED = (" \\\n", " `\n")
+_COPIED = ("cp build/manuscript.docx D:\\upload", "scp build/manuscript.docx host:")
+_SHELLS = ('sh -c "{}"', "bash -c '{}'", 'pwsh -Command "{}"')
+_SHELL_HELPS = ("-h", "--help", '" -h "')
 
 
 def _guarded(draw: st.DrawFn, kind: str) -> str:
     """One invocation of the command that asks for a submission, with its help asked as
-    `kind` says."""
+    `kind` says; each kind that is not the whole command is made in `help_commands`."""
     words = draw(st.sampled_from(_GUARDED_ASKS)).split()
     if kind == "after":
         words.append("--help")
@@ -4858,7 +4867,8 @@ def _guarded(draw: st.DrawFn, kind: str) -> str:
     elif kind == "substituted":
         words.append(draw(st.sampled_from(("$(echo --help)", "`echo -h`"))))
     tool = draw(st.sampled_from(_GUARDED_TOOLS))
-    return draw(st.sampled_from(_GUARDED_BEFORE)) + " ".join([tool, *words])
+    before = ("", "FOO=1 ") if kind in HELP_ONLY else _GUARDED_BEFORE
+    return draw(st.sampled_from(before)) + " ".join([tool, *words])
 
 
 def _ordinary_command(draw: st.DrawFn) -> str:
@@ -4866,28 +4876,42 @@ def _ordinary_command(draw: st.DrawFn) -> str:
     return " ".join([head, *draw(st.lists(st.sampled_from(_SHELL_ARGUMENTS), max_size=2))])
 
 
+def _help_line(draw: st.DrawFn, kind: str) -> str:
+    """A command line of the kind, the guarded invocation among ordinary commands where the
+    kind is not the whole command."""
+    if kind in HELP_ONLY:
+        return _guarded(draw, kind)
+    # A help the markers read past: at the end, where `--stage submission` is still whole.
+    helped = _guarded(draw, draw(st.sampled_from(("after", "quoted"))))
+    if kind == "continued":
+        return helped + draw(st.sampled_from(_CONTINUED)) + draw(st.sampled_from(_COPIED))
+    if kind.startswith("in a shell"):
+        tool = draw(st.sampled_from(_GUARDED_TOOLS[:3]))
+        ask = draw(st.sampled_from(_GUARDED_ASKS))
+        run = draw(st.sampled_from(_SHELLS)).format(tool + " " + ask)
+        quoted = ' "a;b"' if kind.endswith("quoted") else ""
+        return run + " " + draw(st.sampled_from(_SHELL_HELPS)) + quoted
+    if kind == "beside a submission":
+        planted = [helped, _guarded(draw, "none")]
+        planted = [planted[at] for at in draw(st.permutations(range(2)))]
+    else:
+        planted = [helped if kind == "among other commands" else _guarded(draw, kind)]
+    least = 1 if kind == "among other commands" else 0
+    parts = [_ordinary_command(draw) for _ in range(draw(st.integers(least, 2)))]
+    for one in planted:
+        parts.insert(draw(st.integers(0, len(parts))), one)
+    joins = [draw(st.sampled_from(_SHELL_JOINS)) for _ in parts[1:]]
+    return parts[0] + "".join(join + part for join, part in zip(joins, parts[1:], strict=True))
+
+
 @st.composite
 def help_commands(draw: st.DrawFn) -> tuple[list[str], list[bool]]:
-    """A command line for each way of `HELP_ONLY` and of `HELP_NOT_ONLY`, each among commands
-    that are no submission, in an order drawn each time; and whether the guard holds it as a
-    submission. Every example holds every kind, so that a rule broken for one meets it under
-    any seed."""
-    lines, held = [], []
-    for kind in draw(st.permutations(HELP_ONLY + HELP_NOT_ONLY)):
-        if kind == "beside a submission":
-            pair = [_guarded(draw, draw(st.sampled_from(HELP_ONLY))), _guarded(draw, "none")]
-            planted = [pair[at] for at in draw(st.permutations(range(2)))]
-        else:
-            planted = [_guarded(draw, kind)]
-        parts = [_ordinary_command(draw) for _ in range(draw(st.integers(0, 2)))]
-        for one in planted:
-            parts.insert(draw(st.integers(0, len(parts))), one)
-        joins = [draw(st.sampled_from(_SHELL_JOINS)) for _ in parts[1:]]
-        lines.append(parts[0] + "".join(join + part
-                                        for join, part in zip(joins, parts[1:], strict=True)))
-        held.append(kind in HELP_NOT_ONLY)
-    order = draw(st.permutations(range(len(lines))))
-    return [lines[at] for at in order], [held[at] for at in order]
+    """A command line for each way of `HELP_ONLY` and of `HELP_NOT_ONLY`, in an order drawn
+    each time; and whether the guard holds it as a submission. Every example holds every
+    kind, so that a rule broken for one meets it under any seed."""
+    kinds = draw(st.permutations(HELP_ONLY + HELP_NOT_ONLY))
+    lines = [_help_line(draw, kind) for kind in kinds]
+    return lines, [kind in HELP_NOT_ONLY for kind in kinds]
 
 
 #: Each kind of column a table to profile holds, once in every table, and the type the data

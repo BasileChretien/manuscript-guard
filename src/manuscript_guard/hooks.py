@@ -1295,17 +1295,21 @@ def guard_submission(payload: dict) -> int:
 #: Where one invocation of the command ends: at the next `;`, `&`, `|` or line, or at the
 #: next invocation.
 _INVOCATION_END = re.compile(r"[;&|\n]|" + _TOOL + r"[A-Za-z]", re.IGNORECASE)
-_TOOL_NAMED = re.compile(_TOOL, re.IGNORECASE)
 #: Asked for its help, the command prints it and exits, whatever else it is given: argparse
 #: acts on `-h` or `--help` wherever it stands among the arguments, as a word of its own and
 #: before a `--`, after which every word is an argument.
 _HELP_WORDS = ("-h", "--help")
 _END_OF_OPTIONS = "--"
+#: What joins one command to another, or continues a line, in some shell: a command that holds
+#: one anywhere, in quotes too, is not let through for its help.
+_CHAIN = re.compile(r"[;&|\r\n]")
+#: The shells' readings a help has to be one in: as a POSIX shell reads it, and as Windows does.
+_READ_AS = (True, False)
 
 
-def _asks_help(words: list[str]) -> bool:
-    """Whether the words of one invocation, the command's name first, ask for its help."""
-    for word in words[1:]:
+def _asks_help(arguments: list[str]) -> bool:
+    """Whether the arguments of one invocation of the tool ask for its help."""
+    for word in arguments:
         if word == _END_OF_OPTIONS:
             return False
         if word in _HELP_WORDS:
@@ -1313,46 +1317,33 @@ def _asks_help(words: list[str]) -> bool:
     return False
 
 
-def _help_only(invocation: str) -> bool:
-    """Whether one invocation of the command, from its name to where it ends, asks for its
-    help and nothing else can run in it: read cleanly as a POSIX shell reads it and as Windows
-    does, as one command, which asks for help in both readings."""
-    for posix in (True, False):
-        invocations, clean = _command_words(invocation, posix=posix)
+def _only_help(command: str) -> bool:
+    """Whether the whole command is one invocation of the tool that asks for its help.
+
+    `manuscript-guard submit --help` prints the options of `submit` and submits nothing, and
+    it was refused while the submission check failed: an agent could not read them until the
+    paper passed. Only a command that is that and nothing else is let through: read cleanly,
+    with no substitution and no unclosed quote, as one command in both readings, and with no
+    `;`, `&`, `|` or line end anywhere in it. Reading a help out of a longer line let through
+    a copy that a line continued in one shell and not the other ran as its own command, and a
+    submission in a quote opened before the tool's name (round 1 of #513)."""
+    if _CHAIN.search(command):
+        return False
+    for posix in _READ_AS:
+        invocations, clean = _command_words(command, posix=posix)
         commands = [words for words in invocations if words]
-        if not clean or len(commands) != 1 or not _asks_help(commands[0]):
+        arguments = _tool_words(commands[0]) if clean and len(commands) == 1 else None
+        if arguments is None or not _asks_help(arguments):
             return False
     return True
 
 
-def _without_help(command: str) -> str:
-    """The command with each invocation of the tool that asks only for its help taken out,
-    and a `;` in its place, so that what stood on either side is still two commands.
-
-    `manuscript-guard submit --help` prints the options of `submit` and submits nothing, and
-    it was refused while the submission check failed: an agent could not read them until the
-    paper passed. An invocation whose end the guard cannot read plainly, one with a quote it
-    cannot close where `_INVOCATION_END` cuts it, is left in, and so is held."""
-    # A line continued in bash or PowerShell, made spaces of the same length, so that where an
-    # invocation starts and ends is where it does in the command.
-    joined = re.sub(r"[\\`]\r?\n", lambda found: " " * len(found[0]), command)
-    kept, at = [], 0
-    for found in _TOOL_NAMED.finditer(joined):
-        if found.start() < at:
-            continue
-        rest = joined[found.end() :]
-        end = _INVOCATION_END.search(rest)
-        stop = found.end() + (end.start() if end else len(rest))
-        if _help_only(joined[found.start() : stop]):
-            kept += [command[at : found.start()], " ; "]
-            at = stop
-    return "".join(kept) + command[at:] if kept else command
-
-
 def _submission_shaped(command: str) -> bool:
-    """Whether the command looks like a submission (`SUBMISSION_MARKERS`), once each
-    invocation of the tool that asks only for its help is set aside (`_without_help`)."""
-    return SUBMISSION_MARKERS.search(_without_help(command)) is not None
+    """Whether the command looks like a submission (`SUBMISSION_MARKERS`) and is not the tool
+    asked only for its help (`_only_help`)."""
+    return not _only_help(command) and SUBMISSION_MARKERS.search(command) is not None
+
+
 _REVIEW = re.compile(_TOOL + r"review\b", re.IGNORECASE)
 _APPROVE = re.compile(_TOOL + r"approve\b", re.IGNORECASE)
 _SIGN = re.compile(_TOOL + r"sign\b", re.IGNORECASE)

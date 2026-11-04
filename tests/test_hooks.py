@@ -776,12 +776,13 @@ ONLY_ITS_HELP = [
     "python -m manuscript_guard.cli submit --help",
     "manuscript-guard --help submit",
     'manuscript-guard submit "--help"',
-    "cd paper && manuscript-guard submit --help",
-    "manuscript-guard submit --help | head -n 20",
 ]
 #: And what is still a submission: the command itself, and a help beside one, or a help that
-#: is not one (after `--`, as an option's value, from a command substitution).
+#: is not one (after `--`, as an option's value, from a command substitution). A help is let
+#: through only as the whole command, so one among other commands is held as main held it.
 NOT_ONLY_ITS_HELP = [
+    "cd paper && manuscript-guard submit --help",
+    "manuscript-guard submit --help | head -n 20",
     "manuscript-guard submit",
     "manuscript-guard submit --offline",
     "manuscript-guard check --submission",
@@ -795,6 +796,16 @@ NOT_ONLY_ITS_HELP = [
     "manuscript-guard submit $(echo --help)",
     "manuscript-guard submit --help-me",
     "manuscript-guard check --help; scp build/manuscript.docx host:",
+    # Round 1 of #513. A quote opened before the tool's name, which a cut at the `;` hid.
+    'sh -c "manuscript-guard submit" " -h " "a;b"',
+    'sh -c "manuscript-guard submit" -h',
+]
+#: A line continued in one shell and not the other, each with the tool that runs it: under
+#: PowerShell the copy after `\` is a command of its own; under bash the scp runs in the
+#: substitution the backtick opens (round 1 of #513).
+CONTINUED_PAST_A_HELP = [
+    ("PowerShell", "manuscript-guard check --help \\\ncp build/manuscript.docx D:\\upload"),
+    ("Bash", "manuscript-guard -h `\nscp build/manuscript.docx host:;`"),
 ]
 
 
@@ -812,6 +823,17 @@ def test_a_submission_beside_a_help_is_still_refused(command: str, project: Path
     """The corruption: a help in the line must not carry the submission beside it through."""
     _without_a_review(project)
     event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(project)}
+    result = run("guard-submission", event, capsys)
+    assert decision(result) == "deny", command
+    assert "submission check" in reason(result)
+
+
+@pytest.mark.parametrize(("tool", "command"), CONTINUED_PAST_A_HELP)
+def test_a_line_continued_past_a_help_is_still_refused(
+    tool: str, command: str, project: Path, capsys
+) -> None:
+    _without_a_review(project)
+    event = {"tool_name": tool, "tool_input": {"command": command}, "cwd": str(project)}
     result = run("guard-submission", event, capsys)
     assert decision(result) == "deny", command
     assert "submission check" in reason(result)

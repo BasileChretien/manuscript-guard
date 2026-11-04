@@ -7585,7 +7585,7 @@ def test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it(
         read = typed_module.typed_citation(written, len(written) - 5, len(written) - 1)
         assert read is not None, written
         said = typed_module.hint(read, works, latex=False, otherwise="")
-        assert f"[@{key}]" in said and "holds no work by" not in said, (written, said, bib)
+        assert f"[@{key}]" in said and "holds no work" not in said, (written, said, bib)
 
 
 def _a_tex_escape_is_read_as_its_letters(patch: pytest.MonkeyPatch) -> None:

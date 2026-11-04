@@ -1045,6 +1045,8 @@ _NAMES_IN_TEX = r"""
   author = {{\IJ}ssel, Jan},
   year = {2015},
 }
+@report{whoReport2018, author = {{World Health Organization}}, year = {2018},}
+@article{benitezStudy2018, author = {Ben{\'\i}tez, Ana}, year = {2018},}
 """
 
 
@@ -1071,8 +1073,12 @@ _NAMES_IN_TEX = r"""
         ("Fictional (2019)", "2019", "[@fictionalClassSignal2019]"),
         ("Fictional and Other (2021)", "2021", "[@fictionalHepaticCohort2021]"),
         ("(Other, 2018; Fictional, 2021)", "2021", "[@fictionalHepaticCohort2021]"),
-        ("(Other, 2018; Fictional, 2021)", "2018", "holds no work by Other from 2018"),
-        ("(Fictional, 2018)", "2018", "holds no work by Fictional from 2018"),
+        ("(Other, 2018; Fictional, 2021)", "2018", "adding the work there first if"),
+        ("(Fictional, 2018)", "2018", "adding the work there first if it is not yet in it"),
+        # Round 2 of #510: a group's name, and TeX the check misreads, match no entry, and
+        # the hint must not say the work is missing.
+        ("(World Health Organization, 2018)", "2018", "adding the work there first if"),
+        ("(Ben\N{LATIN SMALL LETTER I WITH ACUTE}tez, 2018)", "2018", "adding the work there"),
         ("(Fictional, 2019)", "2019", "2 works by Fictional from 2019"),
         ("(March, 2019)", "2019", "a date is one placeholder"),
     ],
@@ -1084,7 +1090,7 @@ def test_the_year_of_a_citation_typed_as_text_fails_and_its_hint_names_the_key(
     the year as a number nobody bound: it still does, matched or not. Its hint said to bind
     it with {{results.<key>}}, where the author needed the work's key: it names the key now,
     each of them where `references.bib` holds two works of that first author and year, and
-    says to add the work where it holds none. A month is no name.
+    says to add the work if it is not there yet. A month is no name.
 
     Round 1 of #510: a work by that family name and year was said to be the one meant, though
     neither the year's letter nor a given name is compared, and the old hint was dropped; and
@@ -1103,11 +1109,11 @@ def test_the_year_of_a_citation_typed_as_text_fails_and_its_hint_names_the_key(
              and f.message == f"{year!r} is not bound to any source"]  # fmt: skip
     assert len(found) == 1, report.render(project)
     hint = " ".join(found[0].hint.split())
-    assert said in hint, hint
+    assert said in hint and "holds no work" not in hint, hint
     if "[@" in said:
         # Said as what may be, never as fact, and the hint G2 gave before stays after it.
         assert "typed as text" in hint and "Otherwise, bind it with {{results" in hint, hint
-        assert "holds the work" not in hint and "holds no work by" not in hint, hint
+        assert "holds the work" not in hint, hint
 
 
 def _in_methods(project: Path, sentence: str) -> None:

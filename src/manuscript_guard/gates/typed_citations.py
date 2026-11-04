@@ -13,6 +13,8 @@ A name in `references.bib` is read as a reader sees it, TeX and accents folded a
 the names it compares (`gates.authors.name_words`): `{\\AA}ngstr{\\"o}m` is "Ångström" and
 "Angstrom", `L{\\o}kke` is "Løkke" and "Lokke". A name holding TeX that reading does not know
 is not said to be missing: the hint names its entry to look at before adding the work.
+Where nothing matches, the hint never says the work is missing either, since a name can be
+missed: it says to cite the work by its key, adding it to `references.bib` if it is not there.
 
 The forms read are the author-year ones: "(Name, 2018)", "(Name 2018)", "(Name et al.,
 2018)", "(Name & Other, 2018)", "(Name and Other, 2018)", each part of a group "(Name, 2018;
@@ -216,7 +218,7 @@ def hint(typed: Typed, works: Works, *, latex: bool, otherwise: str) -> str:
             f"{otherwise}"
         )
     return (
-        f"{typed_as}cite the work with its key, {cite('key')}, in place of the typed text; "
-        f"references.bib holds no work by {typed.name} from {typed.year}, so add it there "
-        f"first (sync-bib reads it from Zotero). Otherwise, {otherwise}"
+        f"{typed_as}cite it with its key from references.bib, {cite('key')}, in place of the "
+        f"typed text, adding the work there first if it is not yet in it (sync-bib reads it "
+        f"from Zotero). Otherwise, {otherwise}"
     )

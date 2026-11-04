@@ -7564,6 +7564,46 @@ def test_the_year_of_a_citation_typed_as_text_is_read_with_its_first_author(
         ), (text[max(0, start - 60) : end + 2], name)
 
 
+from generated import names_in_tex  # noqa: E402
+
+
+@holds(30, names_in_tex())
+def test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """Round 1 of #510: `{\\AA}ngstr{\\"o}m` was read as "aangstrom", and the hint for
+    "(Ångström, 2018)" said references.bib held no work by Ångström and to add one. Each
+    family name a `.bib` writes in TeX is found for the citation typed with its letter, or
+    with the letters a reader without it types; and a name holding TeX the hint does not
+    read is never said to be missing: the hint names its entry."""
+    bib, cited = drawn
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "references.bib"
+        path.write_text(bib, encoding="utf-8")
+        works = typed_module.works_by(path)
+    for written, key in cited:
+        read = typed_module.typed_citation(written, len(written) - 5, len(written) - 1)
+        assert read is not None, written
+        said = typed_module.hint(read, works, latex=False, otherwise="")
+        assert f"[@{key}]" in said and "holds no work by" not in said, (written, said, bib)
+
+
+def _a_tex_escape_is_read_as_its_letters(patch: pytest.MonkeyPatch) -> None:
+    import unicodedata
+
+    def fold(name: str) -> str:
+        words = name.replace("{", "").replace("}", "").split() or [""]
+        decomposed = unicodedata.normalize("NFKD", words[-1])
+        return "".join(c for c in decomposed
+                       if c.isalpha() and not unicodedata.combining(c)).casefold()  # fmt: skip
+
+    patch.setattr(typed_module, "_fold", fold)
+
+
+def _a_name_in_tex_not_read_is_missing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_module, "_unread", lambda family: False)
+
+
 def _et_al_is_a_name(patch: pytest.MonkeyPatch) -> None:
     def bracketed(part: str) -> str | None:
         first = re.split(r",|\s&\s|\sand\s", f" {part} ")[0].split()
@@ -14881,6 +14921,14 @@ BROKEN = {
     "a month is a typed citation's name": (
         _a_month_is_a_name,
         test_the_year_of_a_citation_typed_as_text_is_read_with_its_first_author,
+    ),
+    "a TeX escape in a .bib name is read as its letters": (
+        _a_tex_escape_is_read_as_its_letters,
+        test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it,
+    ),
+    "a .bib name in TeX the hint does not read is said to be missing": (
+        _a_name_in_tex_not_read_is_missing,
+        test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it,
     ),
     "in LaTeX, an escaped percent opens a comment": (
         _an_escaped_percent_opens_a_comment,

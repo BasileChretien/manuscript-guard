@@ -9930,9 +9930,17 @@ told the author to bind it with `{{results.<key>}}` or call it a convention, whe
 needed was the work's key. G2 still fails the year, matched or not; its hint now reads it as
 the year of a citation typed as text (`gates.typed_citations`), in brackets, in a group or
 in the sentence, finds the entries of `references.bib` with that first author's family name
-and that year, and names the key to cite it with, or each of them where there are two. Where
-there is none it says to add the work and cite it by its key, and gives the usual hint after
-it, since a capitalised word before a year in brackets need not be an author.
+and that year, and names the key of each as a work the author may mean, to cite if it is the
+one: neither the year's letter ("2021b") nor a given name is compared, so it is never said to
+be the work (round 1 of #510: it was, and "(Fictional, 2021b)" was told the key of the 2021
+work). Where there is none it says to add the work and cite it by its key. The usual hint
+follows in every case, since a capitalised word before a year in brackets need not be an
+author. A name in `references.bib` is read as a reader sees it, its TeX read and its letters
+folded as G7 folds the names it compares (`gates.authors.name_words`): `{\AA}ngstr{\"o}m` is
+found for "(Ångström, 2018)" and "(Angstrom, 2018)", `L{\o}kke` for "Løkke" and "Lokke"
+(round 1 of #510: TeX was read as letters, `{\aa}` as "aa", and the hint said the work was
+missing). A name holding TeX that reading does not know is never said to be missing: the
+hint names its entry, to look at before adding the work.
 
 ## The round trip carries prose, and refuses everything else
 
@@ -14143,10 +14151,13 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   not open with a capital, a Chinese or a Japanese one among them, get the generic hint. A
   possessive, "Name's (2018)", is read with its "'s" and matches no entry. A capitalised word
   before a year in brackets reads as a name, "Japan (2018)", and its hint says what to do if
-  it is a citation and what otherwise. A family name is compared by its last word, accents
-  and case folded, so "van Berg" and "Berg" are one; an entry whose `author` is a `@string`
-  macro is not found. The hint is G2's alone: `bind` and the annotated copy still give the
-  generic one.
+  it is a citation and what otherwise. A family name is compared by its last word, folded
+  as G7 folds names, so "van Berg" and "Berg" are one, and so are "Müller" and "Muller"; a
+  work by another person of that family name from that year is named as one the author may
+  mean. TeX in a name that `gates.lookups` does not read (`{\IJ}ssel`) leaves that entry
+  out of the comparison, and the hint names it for each typed citation of that year that
+  matches no other entry; an entry whose `author` is a `@string` macro is not found. The hint is G2's alone: `bind` and
+  the annotated copy still give the generic one.
 - **Figure estimates.** `def std(values):` is read as a call; an `.Rmd` or `.qmd` is lexed
   as R throughout, its Python chunks missed and "sample (" in its prose read; a form feed
   counts as a line break for one count and not the other. `stripplot` is not marked seeded,

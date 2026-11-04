@@ -36,8 +36,8 @@ from manuscript_guard.contracts.values import Value, number_in
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.data_dates import data_dates, dates_in_english
 from manuscript_guard.gates.labels import labelled, sentence_stops
+from manuscript_guard.gates.typed_citations import Works, typed_citation, works_by
 from manuscript_guard.gates.typed_citations import hint as typed_hint
-from manuscript_guard.gates.typed_citations import keys_for, typed_citation, works_by
 from manuscript_guard.roundtrip import splits_a_paragraph
 from manuscript_guard.text.latex import views as latex_views
 from manuscript_guard.text.masking import (
@@ -1384,8 +1384,7 @@ def _how_to_declare(atom) -> str:
     )
 
 
-def _hint_for(atom, works: dict[tuple[str, str], list[str]] | None = None, *,
-              latex: bool = False) -> str:  # fmt: skip
+def _hint_for(atom, works: Works | None = None, *, latex: bool = False) -> str:
     """A hint that names the thing the author is looking at.
 
     "Bind it with {{results.<key>}}" is true of every unbound number and useful for almost
@@ -1396,13 +1395,13 @@ def _hint_for(atom, works: dict[tuple[str, str], list[str]] | None = None, *,
 
     With `works`, `references.bib`'s keys by first author and year, so has the year of a
     citation typed as text, "(Fictional, 2018)", as a co-author types one in Word: the key
-    to cite it with (`gates.typed_citations`). The year still fails.
+    of each work it may be (`gates.typed_citations`), and the hint it had before. The year
+    still fails.
     """
     if works is not None:
         typed = typed_citation(atom.source, atom.start, atom.end)
         if typed is not None:
-            keys = keys_for(typed, works)
-            return typed_hint(typed, keys, latex=latex, otherwise=_hint_for(atom))
+            return typed_hint(typed, works, latex=latex, otherwise=_hint_for(atom))
     declare = _how_to_declare(atom)
     if declare:
         return declare + _GENERIC_HINT

@@ -4,8 +4,15 @@ A co-author who types "(Fictional, 2018)" in Word leaves a year that `import` me
 text, and G2 then fails it as a number nobody bound. The generic hint told the author to bind
 it with `{{results.<key>}}` or to declare it a convention, and the fix they needed was
 `[@fictionalCohort2018]`. What fails does not change here: the year is still unbound and G2
-still fails it. Only the hint does: it says the year is a citation's, and names the key
-`references.bib` holds for that first author and year, where it holds one.
+still fails it. Only the hint does: it says the year may be a citation's, and names the key
+of each work `references.bib` holds by that first author's family name from that year, as a
+work the author may mean and not as the one they meant: neither the year's letter ("2021b")
+nor a given name is compared. The hint G2 gave before follows it.
+
+A name in `references.bib` is read as a reader sees it, TeX and accents folded as G7 folds
+the names it compares (`gates.authors.name_words`): `{\\AA}ngstr{\\"o}m` is "Ångström" and
+"Angstrom", `L{\\o}kke` is "Løkke" and "Lokke". A name holding TeX that reading does not know
+is not said to be missing: the hint names its entry to look at before adding the work.
 
 The forms read are the author-year ones: "(Name, 2018)", "(Name 2018)", "(Name et al.,
 2018)", "(Name & Other, 2018)", "(Name and Other, 2018)", each part of a group "(Name, 2018;
@@ -16,8 +23,7 @@ A name is a word that opens with a capital; a month is not one, so "(March, 2018
 from __future__ import annotations
 
 import re
-import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 #: A year a citation gives: four digits from 1800 to 2099, with a letter after where an
@@ -111,66 +117,106 @@ def typed_citation(text: str, start: int, end: int) -> Typed | None:
 
 
 def _fold(name: str) -> str:
-    """A family name's last word as two are compared: its letters, accents and case folded,
-    so "Müller" is `M\\"uller` as a `.bib` file writes it."""
-    words = name.split() or [""]
-    decomposed = unicodedata.normalize("NFKD", words[-1])
-    return "".join(c for c in decomposed if c.isalpha() and not unicodedata.combining(c)).casefold()
+    """A family name's last word as two are compared, read as G7 reads the names it compares
+    (`gates.authors.name_words`): TeX read as the letters it prints, then accents, case and
+    the letters of their own folded to what a reader types, "Løkke" as "lokke"."""
+    from manuscript_guard.gates.authors import name_words
+
+    words = name_words(name)
+    return words[-1] if words else ""
 
 
-def _first_family(authors: str) -> str:
-    """The first author's family name in a `.bib` author field: before the comma, or the last
-    word."""
-    first = authors.split(" and ")[0].strip()
-    return first.split(",")[0] if "," in first else first
+def _unread(family: str) -> bool:
+    """Whether a `.bib` family name holds TeX that `_fold` does not read, which it would leave
+    out: a command that is neither a letter, an accent nor a wrapper it knows (`{\\IJ}ssel`),
+    or a backslash left over."""
+    from manuscript_guard.gates import lookups
+
+    text = family.replace("{", "").replace("}", "")
+    for found in lookups._COMMAND.finditer(text):
+        name = found.group(1)
+        if name[0] not in lookups._ACCENTS and not any(map(name.startswith, lookups._KNOWN)):
+            return True
+    return "\\" in lookups._SIGN.sub("", lookups._COMMAND.sub("", text))
 
 
-def works_by(path: Path) -> dict[tuple[str, str], list[str]]:
-    """The keys of `references.bib` by first author and year, as `_fold` and four digits.
-    An unreadable file holds none: the hint then says to cite the work by its key."""
+@dataclass(frozen=True)
+class Works:
+    """`references.bib`'s keys by first author and year, as `_fold` and four digits, and by
+    year the keys of the works whose first author's name holds TeX `_fold` does not read."""
+
+    keys: dict[tuple[str, str], list[str]] = field(default_factory=dict)
+    unread: dict[str, list[str]] = field(default_factory=dict)
+
+
+def works_by(path: Path) -> Works:
+    """The works of `references.bib` as the hint looks for them, its first author's name read
+    as `literature.names` reads an author field. An unreadable file holds none: the hint then
+    says to cite the work by its key."""
     from manuscript_guard.literature.bibfile import read_entries
+    from manuscript_guard.literature.names import cited
 
     try:
-        entries = read_entries(path) if path.is_file() else {}
+        entries = read_entries(path, braces=True) if path.is_file() else {}
     except (OSError, ValueError):
-        return {}
+        return Works()
     found: dict[tuple[str, str], list[str]] = {}
+    unread: dict[str, list[str]] = {}
     for key, fields in entries.items():
         year = re.search(r"\d{4}", fields.get("year") or fields.get("date") or "")
-        family = _fold(_first_family(fields.get("author") or fields.get("editor") or ""))
-        if year and family:
+        people = cited(fields.get("author") or fields.get("editor") or "").names
+        if not year or not people or not people[0].family:
+            continue
+        if _unread(people[0].family):
+            unread.setdefault(year.group(), []).append(key)
+        elif family := _fold(people[0].family):
             found.setdefault((family, year.group()), []).append(key)
-    return {where: sorted(keys) for where, keys in found.items()}
+    return Works({where: sorted(keys) for where, keys in found.items()},
+                 {year: sorted(keys) for year, keys in unread.items()})  # fmt: skip
 
 
-def keys_for(typed: Typed, known: dict[tuple[str, str], list[str]]) -> list[str]:
-    """The keys of the works `typed` can be: its first author's last name and its year."""
-    return known.get((_fold(typed.name), typed.year), [])
+def keys_for(typed: Typed, works: Works) -> list[str]:
+    """The keys of the works `typed` may be: its first author's family name and its year."""
+    return works.keys.get((_fold(typed.name), typed.year), [])
 
 
-def hint(typed: Typed, keys: list[str], *, latex: bool, otherwise: str) -> str:
-    """What G2 says of the year of a citation typed as text: that it is one, and the key. With
-    no work of that author and year in `references.bib` it may be no citation ("Japan
-    (2018)"), so the hint says what to do if it is one, and `otherwise` after it."""
+def hint(typed: Typed, works: Works, *, latex: bool, otherwise: str) -> str:
+    """What G2 says of the year of a citation typed as text: that it may be one, and the key
+    of each work in `references.bib` by that family name from that year, which the author may
+    mean, not the one they meant. A capitalised word before a year need not be an author
+    ("Japan (2018)"), so `otherwise`, the hint G2 gave before, follows in every case."""
 
     def cite(key: str) -> str:
         return f"\\cite{{{key}}}" if latex else f"[@{key}]"
 
+    def listed(keys: list[str]) -> str:
+        return ", ".join(cite(key) for key in keys[:-1]) + f" and {cite(keys[-1])}" \
+            if len(keys) > 1 else cite(keys[0])
+
+    typed_as = f"if this is a citation typed as text, \"{typed.shown}\", "
+    keys = keys_for(typed, works)
     if len(keys) == 1:
         return (
-            f"this is a citation typed as text, \"{typed.shown}\", and references.bib holds the "
-            f"work: cite it with its key, {cite(keys[0])}, in place of the typed text"
+            f"{typed_as}references.bib holds a work by {typed.name} from {typed.year}: if it "
+            f"is the one meant, cite it with its key, {cite(keys[0])}, in place of the typed "
+            f"text. Otherwise, {otherwise}"
         )
     if keys:
-        listed = ", ".join(cite(key) for key in keys[:-1]) + f" or {cite(keys[-1])}"
         return (
-            f"this is a citation typed as text, \"{typed.shown}\", and references.bib holds "
-            f"{len(keys)} works by {typed.name} from {typed.year}: cite the one meant with its "
-            f"key, {listed}, in place of the typed text"
+            f"{typed_as}references.bib holds {len(keys)} works by {typed.name} from "
+            f"{typed.year}, {listed(keys)}: if one of them is the work meant, cite it with its "
+            f"key in place of the typed text. Otherwise, {otherwise}"
+        )
+    unread = works.unread.get(typed.year, [])
+    if unread:
+        return (
+            f"{typed_as}cite the work with its key, {cite('key')}, in place of the typed text; "
+            f"the name of {listed(unread)}, from {typed.year}, holds TeX this check does not "
+            f"read, so look there before adding the work to references.bib. Otherwise, "
+            f"{otherwise}"
         )
     return (
-        f"if this is a citation typed as text, \"{typed.shown}\", cite the work with its key, "
-        f"{cite('key')}, in place of the typed text; references.bib holds no work by "
-        f"{typed.name} from {typed.year}, so add it there first (sync-bib reads it from "
-        f"Zotero). Otherwise, {otherwise}"
+        f"{typed_as}cite the work with its key, {cite('key')}, in place of the typed text; "
+        f"references.bib holds no work by {typed.name} from {typed.year}, so add it there "
+        f"first (sync-bib reads it from Zotero). Otherwise, {otherwise}"
     )

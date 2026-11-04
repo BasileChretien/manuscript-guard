@@ -184,7 +184,8 @@ Read the whole diff. What to look for:
 - A number or citation the co-author typed. These merge as literals, and `check` then
   reports them as unbound. Bind the number, and turn the citation into `[@citekey]`: for
   the year of a citation typed as "(Name, 2018)" or "Name (2018)", the hint names the key
-  `references.bib` holds for that first author and year, or says that it holds none.
+  of each work `references.bib` holds by that first author's name from that year, or says
+  that it holds none. Check that the work named is the one meant before citing it.
 - A binding cut short, a `{{` without its `}}`. `check` now reports it as a malformed
   placeholder; it should not happen, and if it does, it is a bug to report.
 

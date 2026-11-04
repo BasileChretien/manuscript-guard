@@ -8918,6 +8918,54 @@ def typed_citations(draw: st.DrawFn) -> tuple[str, list[tuple[int, int, str | No
     return text, found
 
 
+#: A letter of a family name as a manuscript types it, as a reader without it types it, and
+#: as a .bib writes it in TeX, as Better BibTeX's BibTeX export does. The capitals open a name.
+TEX_LETTERS = (
+    ("\N{LATIN CAPITAL LETTER A WITH RING ABOVE}", "A", r"{\AA}"),
+    ("\N{LATIN CAPITAL LETTER S WITH CARON}", "S", r"\v{S}"),
+    ("\N{LATIN CAPITAL LETTER O WITH STROKE}", "O", r"{\O}"),
+    ("\N{LATIN SMALL LETTER A WITH RING ABOVE}", "a", r"{\aa}"),
+    ("\N{LATIN SMALL LETTER O WITH DIAERESIS}", "o", r"{\"o}"),
+    ("\N{LATIN SMALL LETTER U WITH DIAERESIS}", "u", r"\"{u}"),
+    ("\N{LATIN SMALL LETTER C WITH CEDILLA}", "c", r"\c{c}"),
+    ("\N{LATIN SMALL LETTER Z WITH CARON}", "z", r"{\v z}"),
+    ("\N{LATIN SMALL LETTER O WITH STROKE}", "o", r"{\o}"),
+    ("\N{LATIN SMALL LETTER L WITH STROKE}", "l", r"{\l}"),
+    ("\N{LATIN SMALL LETTER AE}", "ae", r"{\ae}"),
+    ("\N{LATIN SMALL LETTER SHARP S}", "ss", r"{\ss}"),
+    ("\N{LATIN SMALL LETTER E WITH ACUTE}", "e", r"\'{e}"),
+    ("\N{LATIN SMALL LETTER N WITH TILDE}", "n", r"\~{n}"),
+)  # fmt: skip
+#: TeX in a name the hint does not read, and the letters a manuscript types for it.
+TEX_UNREAD = ((r"{\IJ}", "IJ"), (r"\foreignlanguage{dutch}{IJ}", "IJ"))
+
+
+@st.composite
+def names_in_tex(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A `.bib` file with a work for each letter of `TEX_LETTERS`, its first author's family
+    name holding the letter in TeX, written "Family, Given" or "Given Family", and one whose
+    name holds TeX of `TEX_UNREAD`; and for each, the citation a manuscript types for it, the
+    letter as typed or as a reader without it types it, with the key. Every letter in every
+    example, so that a reading broken for one fails under any seed."""
+    # No "e" or "s" around the letter: "oe" and "ss" are a transcription of their own.
+    part = st.text("abdfghikmnoprtuvz", min_size=1, max_size=5)
+    entries, cited = [], []
+    shapes = [(letter, typed, tex, True) for letter, typed, tex in TEX_LETTERS]
+    shapes += [(typed, typed, tex, False) for tex, typed in TEX_UNREAD]
+    for number, (letter, plain, tex, read) in enumerate(draw(st.permutations(shapes))):
+        head = "" if letter[0].isupper() else draw(st.sampled_from("BDGKMPTV"))
+        tail = draw(part)
+        written = draw(st.sampled_from((letter, plain))) if read else plain
+        year = 1900 + draw(st.integers(0, 120))
+        key = f"work{number}"
+        family = f"{head}{tex}{tail}"
+        author = draw(st.sampled_from((f"{family}, Anne", f"Anne {family}")))
+        entries.append(f"@article{{{key},\n  author = {{{author} and Other, Eve}},\n"
+                       f"  year = {{{year}}},\n}}\n")  # fmt: skip
+        cited.append((f"({head}{written}{tail}, {year})", key))
+    return "\n".join(entries), cited
+
+
 # --------------------------------------------- escaped backticks beside an escaped comparison
 
 #: Pieces of a paragraph with backticks and escaped comparisons in them, each closing every

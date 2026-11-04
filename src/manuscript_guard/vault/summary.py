@@ -109,31 +109,70 @@ def _frames(given: object, work: Path, texts: dict[str, str]) -> list[dict]:
     return kept[-FRAMES:]
 
 
-def _kind(record: dict, work: Path) -> str | None:
-    """The exception's class name, where the wrapper found the class under that name in its
-    module, and the module a built-in one or one whose file is outside the copy; and that
-    file, read here, holds the name. Anything else is an exception of the script's own."""
-    import builtins
+#: Modules of the standard library that do something when imported: a name the script
+#: wrote is not imported where it would open a browser or a window.
+_ACTS_WHEN_IMPORTED = frozenset({"antigravity", "this", "turtle", "turtledemo", "tkinter",
+                                 "idlelib", "webbrowser", "__main__", "__hello__",
+                                 "__phello__"})  # fmt: skip
+#: The built-in exceptions, computed here: a closed set the script cannot add to.
+BUILTIN_EXCEPTIONS = frozenset(
+    name for name, found in vars(__import__("builtins")).items()
+    if isinstance(found, type) and issubclass(found, BaseException)
+)  # fmt: skip
+
+
+def _installed(origin: str, away: list[Path]) -> bool:
+    """Whether a module's file is this Python's own, its standard library or an installed
+    package, and not under the copy or the vault."""
+    import sysconfig
+
+    try:
+        real = Path(os.path.realpath(origin))
+    except (OSError, ValueError):
+        return False
+    homes = {Path(os.path.realpath(found)) for key in ("stdlib", "platstdlib", "purelib",
+                                                       "platlib")
+             if (found := sysconfig.get_paths().get(key))}  # fmt: skip
+
+    def under(folder: Path) -> bool:
+        return real == folder or folder in real.parents
+
+    return any(under(home) for home in homes) and not any(
+        under(Path(os.path.realpath(one))) for one in away)  # fmt: skip
+
+
+def _kind(record: dict, away: list[Path]) -> str | None:
+    """The exception's class name where this process, the tool's, confirms it, holding all
+    the wrapper wrote as untrusted, since the script ran in the wrapper's process and could
+    write any of it (round 2 of #490): a built-in exception, or a class this process finds
+    under that name in a module it imports itself from this Python's standard library or an
+    installed package, never from the copy or the vault. Anything else is an exception of
+    the script's own."""
+    import importlib
+    import importlib.util
 
     name, module = record.get("class"), record.get("module")
     if not _identifier(name):
         return None
     if module == "builtins":
-        found = getattr(builtins, name, None)
-        return name if isinstance(found, type) and issubclass(found, BaseException) else None
-    where = record.get("module_file")
-    if not (isinstance(module, str) and module != "__main__" and isinstance(where, str)
-            and _relative(where, work) is None and Path(where).is_file()):  # fmt: skip
+        return name if name in BUILTIN_EXCEPTIONS else None
+    if not (isinstance(module, str) and module != "__main__"
+            and all(part.isidentifier() for part in module.split("."))
+            and module.split(".")[0] not in _ACTS_WHEN_IMPORTED):  # fmt: skip
         return None
     try:
-        held = Path(where).read_text(encoding="utf-8", errors="replace")
-    except OSError:
+        spec = importlib.util.find_spec(module)
+        if spec is None or not spec.origin or not _installed(spec.origin, away):
+            return None
+        found = getattr(importlib.import_module(module), name, None)
+    except Exception:  # noqa: BLE001 - a module that will not import names nothing
         return None
-    return name if name in _words(held) else None
+    ok = isinstance(found, type) and issubclass(found, BaseException) and found.__name__ == name
+    return name if ok else None
 
 
 def python_failure(project, texts: dict[str, str], work: Path, script: str, code: int,
-                   summary: Path) -> dict:  # fmt: skip
+                   summary: Path, vault: Path) -> dict:  # fmt: skip
     """What the summary says of a Python script that failed, from what its wrapper wrote."""
     failed: dict = {"path": script, "exit_code": code}
     try:
@@ -142,7 +181,7 @@ def python_failure(project, texts: dict[str, str], work: Path, script: str, code
         return failed
     if not isinstance(record, dict):
         return failed
-    kind = _kind(record, work)
+    kind = _kind(record, [work, vault])
     if kind is not None:
         failed["class"] = kind
     else:
@@ -168,7 +207,8 @@ def r_failure(texts: dict[str, str], script: str, code: int, tail: bytes) -> dic
     calls = [part.strip() for part in lines[-1][len("Calls: "):].split("->")]
     kept = [part for part in calls if _R_NAME.fullmatch(part) and part in words]
     if kept:
-        failed["calls"] = kept
+        # As many as a Python traceback's frames, the last ones, nearest the fault.
+        failed["calls"] = kept[-FRAMES:]
     return failed
 
 

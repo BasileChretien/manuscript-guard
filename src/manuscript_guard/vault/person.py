@@ -79,7 +79,12 @@ def cmd_run(args: argparse.Namespace) -> int:
     if said != READABLE:
         return _refused("run", f"the vault's folder, {folder}, cannot be read from here: "
                         "`manuscript-guard vault check` says why")  # fmt: skip
-    changed = running.changes(running.analysis_sources(root), last_release(root))
+    # The copy first, and the list from it: what is shown is what runs (round 2 of #490).
+    try:
+        staged = running.prepare(project, folder, scripts)
+    except running.RunRefused as exc:
+        return _refused("run", str(exc))
+    changed = running.changes(staged.sources, last_release(root))
     print(f"{_PREFIX} run: the scripts to run on the data held in {folder}, in this order:")
     for script in scripts:
         print(f"  {script}")
@@ -93,13 +98,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     print("They were written with an agent: what they print or write can hold any value of "
           "the data. What they write waits in the vault's outbox until you release it.")
     answer = _ask("Run them on the data held in the vault? [y/N] ")
-    if answer is None:
-        return _no_terminal("run")
     if not _yes(answer):
+        running.discard(staged)
+        if answer is None:
+            return _no_terminal("run")
         print(f"{_PREFIX} run: nothing run")
         return 0
-    run_id = running.new_run(folder)
-    done = running.run(project, folder, scripts, run_id)
+    run_id = staged.run
+    done = running.run(project, staged)
     for note in done.notes:
         print(f"{_PREFIX} run: {note}")
     print(f"{_PREFIX} run {run_id}: what the scripts printed is in {done.log}.")

@@ -131,15 +131,20 @@ manuscript-guard vault run analysis/02_model.py # or the ones you name, in that 
 It refuses where standard input is not a terminal, and the plugin's hook refuses it to an
 agent. It does this, in order:
 
-1. It lists the scripts it will run, and every script of the project that changed since
-   the run released last, by digest, with the `git diff` command that shows what changed,
-   and asks y/N. A script is any file a run can execute or source (`.py`, `.R`, `.Rmd`,
-   `.qmd`, `.sh` and the like), wherever it is, but in `results/`, `data/`, `build/`, a
-   hidden folder or a library of others' code. Read what changed before you answer: the scripts were written with an agent, and what
-   they print or write can hold any value of the data.
-2. It copies the project into `<vault>/.runs/<run>/`, inside the vault rather than the
+1. It copies the project into `<vault>/.runs/<run>/`, inside the vault rather than the
    system's temporary folder, so that the copy shares the data's protection. `.git` and
-   `build/` are left out, and `results/` is emptied.
+   `build/` are left out, and `results/` is emptied. It refuses where `results/` is, or
+   holds, a link or a junction.
+2. It lists the scripts it will run, and every script of the copy that changed since the
+   run released last, by digest, with the `git diff` command that shows what changed, and
+   asks y/N. A script is any file a run can execute or source (`.py`, `.R`, `.Rmd`, `.qmd`,
+   `.sh` and the like), wherever it is, but in `results/`, `data/`, `build/`, a hidden
+   folder or a library of others' code; a script you name, and `.Rprofile`, `_quarto.yml`
+   and `renv/activate.R`, which a runner reads first, are listed wherever they are. The list
+   is read from the copy, and the copy is what runs: an edit of the project while you read
+   it changes nothing of the run. Read what changed before you answer: the scripts were
+   written with an agent, and what they print or write can hold any value of the data. On a
+   no, the copy is removed.
 3. It runs the scripts there in order, with `MANUSCRIPT_GUARD_VAULT` set, and stops at the
    first that fails.
 4. What they print goes to your terminal as it comes, and into `<vault>/.runs/<run>/log.txt`.
@@ -148,17 +153,21 @@ agent. It does this, in order:
    script made is left out, and nothing reached through one is moved. The copy of the
    project is then removed.
 
-Nothing is written to the project except `.manuscript-guard/vault/last-run.json`, which the
-agent reads to know how the run went. It holds each script's exit code and, of a script that
+The tool writes nothing to the project except `.manuscript-guard/vault/last-run.json`, which
+the agent reads to know how the run went. A script run on the real data runs as your account,
+and can write anywhere that account can, the project and the vault included: the copy keeps
+it away from the project by where it starts, not by any wall. It holds each script's exit code and, of a script that
 failed: for Python, the class of the exception and the frames of its traceback that fall in
 the project's own files (path, line, function); for R, the function names of its `Calls:`
 line; and the key of a `KeyError` where it is exactly a column name the released profile or
 the data dictionary already holds. No message and no value goes in. The project's files are
 read as they were before the run: a function whose name is not a word of them, or a frame in
 a file the run wrote, is left out, since a script could make either from the data. A class
-is named only where it is a built-in or a library's, found under its name in its module; a
-class of the script's own is said to be one, without its name. The exit code and a line
-number still carry a few bits that a script could choose.
+is named only where the tool itself, in its own process, finds it: a built-in exception, or
+one it imports from this Python's standard library or an installed package, never from the
+copy or the vault. A class of the script's own is said to be one, without its name. A
+failing script can still choose its exit code and, among its own code's names and lines,
+which frames are reported, at most 20: a few bits for each failed run.
 
 ## Releasing what a run wrote: `vault release`
 
@@ -194,8 +203,9 @@ the data custodian has signed off that the coding agent's provider may read what
 release says so, because it is true: **a file released is read by the coding agent, and
 through it by its provider.**
 
-Then it lists what goes into the project and asks y/N. It refuses to write through a link
-or a junction in the project, at a file's path or a folder above it. The results go into `results/`, each
+Then it lists what goes into the project and asks y/N. It refuses an outbox holding a link
+or a junction, and refuses to write through one in the project, at a file's path or a folder
+above it. The results go into `results/`, each
 saying in its provenance that it is released, and the rest to their paths. The release is
 recorded in `approvals/vault-releases/<run>.json`: who released it and when, the run, each
 analysis script by its digest, each file of the vault the results read by its label and

@@ -19,6 +19,7 @@ it; no message and no value.
 from __future__ import annotations
 
 import codecs
+import contextlib
 import json
 import os
 import re
@@ -88,7 +89,6 @@ except BaseException as exc:
                           and isinstance(exc.args[0], str)) else None
     record = {"class": kind.__name__ if named else None,
               "module": kind.__module__ if named else None,
-              "module_file": where if named and outside else None,
               "frames": [[f.filename, f.lineno, f.name]
                          for f in traceback.extract_tb(exc.__traceback__)],
               "key": key}
@@ -180,27 +180,39 @@ def _not_scripts(relative: str) -> bool:
         "/" not in relative and name in _NOT_SCRIPTS_AT_ROOT)  # fmt: skip
 
 
-def script_files(root: Path) -> dict[str, Path]:
+#: Files a runner reads before the script where they are there, wherever a run is: R's
+#: profile, read by a run that is not `--vanilla`, Quarto's project file and renv's start.
+RUNNER_FILES = (".Rprofile", "_quarto.yml", "_quarto.yaml", "renv/activate.R")
+
+
+def script_files(root: Path, named: tuple[str, ...] = ()) -> dict[str, Path]:
     """Every file of the project that a run can execute or source, by its path from the
     root: by its suffix, anywhere but in the results, the data, the build, a hidden folder
-    and the libraries of others' code; no link followed."""
-    return {relative: path for relative, path, link in sorted(_walk(root, _not_scripts))
-            if not link and path.suffix.lower() in SCRIPT_SUFFIXES}  # fmt: skip
+    and the libraries of others' code, no link followed; and wherever they are, the scripts
+    named to run and the files a runner reads first (round 2 of #490)."""
+    found = {relative: path for relative, path, link in sorted(_walk(root, _not_scripts))
+             if not link and path.suffix.lower() in SCRIPT_SUFFIXES}  # fmt: skip
+    for relative in (*named, *RUNNER_FILES):
+        path = root.joinpath(*relative.split("/"))
+        if path.is_file() and not path.is_symlink():
+            found.setdefault(relative, path)
+    return dict(sorted(found.items()))
 
 
-def analysis_sources(root: Path) -> dict[str, str]:
+def analysis_sources(root: Path, named: tuple[str, ...] = ()) -> dict[str, str]:
     """Every script of the project (`script_files`), by its path from the root, with its
     digest as G1 takes a script's (`emit.source_digest`)."""
     from manuscript_guard.emit import source_digest
 
-    return {relative: source_digest(path) for relative, path in script_files(root).items()}
+    return {relative: source_digest(path)
+            for relative, path in script_files(root, named).items()}  # fmt: skip
 
 
-def source_texts(work: Path) -> dict[str, str]:
+def source_texts(work: Path, named: tuple[str, ...] = ()) -> dict[str, str]:
     """The text of every script of the copy as it was made, before anything ran in it: what
     the summary holds a name and a frame to."""
     texts = {}
-    for relative, path in script_files(work).items():
+    for relative, path in script_files(work, named).items():
         try:
             texts[relative] = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -295,19 +307,43 @@ def new_run(folder: Path) -> str:
     return run
 
 
+def _linked_results(root: Path) -> str | None:
+    """Why the project's `results/`, which the copy empties, cannot be emptied safely: it, or
+    something in it, is a link or a junction (round 2 of #490)."""
+    from manuscript_guard.verify import _is_junction
+
+    results = root / "results"
+    if results.is_symlink() or _is_junction(str(results)):
+        return "results/ is a link or a junction: make it a folder of the project's own"
+    links = [relative for relative, _path, link in _walk(results) if link] \
+        if results.is_dir() else []  # fmt: skip
+    if links:
+        return f"results/ holds a link or a junction: {', '.join(links)}"
+    return None
+
+
 def stage(root: Path, work: Path) -> None:
     """The project copied to `work`, as `verify` copies it, its results emptied, so that what
-    is in them after the run is what the run wrote."""
+    is in them after the run is what the run wrote. Refused, before anything is copied, where
+    the project's results are, or hold, a link."""
     from manuscript_guard.verify import _skip
 
+    if why := _linked_results(root):
+        raise RunRefused(why)
     try:
         shutil.copytree(root, work, symlinks=True, ignore=_skip)
     except (OSError, shutil.Error) as exc:
         raise RunRefused(f"could not copy the project into the vault: {exc}") from exc
     results = work / "results"
     if results.is_dir():
-        for stale in sorted(results.rglob("*"), reverse=True):
-            stale.unlink() if stale.is_file() or stale.is_symlink() else stale.rmdir()
+        found = list(_walk(results))
+        if any(link for _relative, _path, link in found):
+            raise RunRefused("the copy's results/ holds a link or a junction")
+        for _relative, path, _link in found:
+            path.unlink()
+        for folder in sorted((one for one in results.rglob("*") if one.is_dir()),
+                             reverse=True):  # fmt: skip
+            folder.rmdir()
 
 
 def snapshot(work: Path) -> dict[str, tuple[int, int, bool]]:
@@ -404,25 +440,66 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def run(project, folder: Path, scripts: list[str], run_id: str) -> Ran:
-    """Run the scripts on the data held in `folder`, in a copy of the project inside it, and
+@dataclass
+class Staged:
+    """A copy of the project made in the vault for a run, before anything runs in it: its
+    scripts by digest, which the person is shown, and their texts, which the summary holds
+    names to. What is listed is what runs (round 2 of #490)."""
+
+    run: str
+    folder: Path
+    here: Path
+    work: Path
+    scripts: list[str]
+    sources: dict[str, str]
+    texts: dict[str, str]
+    record: dict
+
+
+def prepare(project, folder: Path, scripts: list[str]) -> Staged:
+    """Copy the project into the vault for a run of `scripts`, and read its scripts there.
+    Refused, with nothing in the vault, where the copy cannot be made safely."""
+    root = Path(project.root)
+    if why := _linked_results(root):
+        raise RunRefused(why)
+    run_id = new_run(folder)
+    here = folder / RUNS / run_id
+    work = here / root.name
+    here.mkdir(parents=True)
+    try:
+        stage(root, work)
+    except RunRefused:
+        shutil.rmtree(here, ignore_errors=True)
+        raise
+    named = tuple(scripts)
+    sources = analysis_sources(work, named)
+    record = {"schema": MANIFEST_SCHEMA, "run": run_id, "ran_at": _now(),
+              "commit": commit_of(root),
+              "scripts": [{"path": path, "sha256": digest} for path, digest in sources.items()],
+              "ran": list(scripts)}  # fmt: skip
+    return Staged(run_id, folder, here, work, list(scripts), sources,
+                  source_texts(work, named), record)  # fmt: skip
+
+
+def discard(staged: Staged) -> None:
+    """Remove a copy the person chose not to run, and the folder of runs where it was the
+    only one."""
+    shutil.rmtree(staged.here, ignore_errors=True)
+    with contextlib.suppress(OSError):
+        staged.here.parent.rmdir()
+
+
+def run(project, staged: Staged) -> Ran:
+    """Run the staged scripts on the data held in the vault, in the copy made for them, and
     move what they wrote into its outbox where every script finished; write the summary the
     agent reads in the project."""
     from manuscript_guard.vault.summary import python_failure, r_failure, write_summary
 
     root = Path(project.root)
+    folder, run_id, here, work = staged.folder, staged.run, staged.here, staged.work
+    scripts, texts, record = staged.scripts, staged.texts, dict(staged.record)
     done = Ran(run_id, folder)
-    here = folder / RUNS / run_id
-    work = here / root.name
-    here.mkdir(parents=True)
-    ran_at = _now()
-    record = {"schema": MANIFEST_SCHEMA, "run": run_id, "ran_at": ran_at,
-              "commit": commit_of(root),
-              "scripts": [{"path": path, "sha256": digest}
-                          for path, digest in analysis_sources(root).items()],
-              "ran": list(scripts)}  # fmt: skip
-    stage(root, work)
-    texts = source_texts(work)
+    ran_at = record["ran_at"]
     wrapper = here / "wrapper.py"
     wrapper.write_text(WRAPPER, encoding="utf-8", newline="\n")
     before = snapshot(work)
@@ -439,7 +516,8 @@ def run(project, folder: Path, scripts: list[str], run_id: str) -> Ran:
             done.scripts.append((script, code))
             if code != 0:
                 done.failed = script
-                failure = (python_failure(project, texts, work, script, code, summary)
+                failure = (python_failure(project, texts, work, script, code, summary,
+                                          folder)
                            if script.lower().endswith(".py")
                            else r_failure(texts, script, code, tail))  # fmt: skip
                 break
@@ -473,5 +551,6 @@ def read_manifest(folder: Path, run_id: str) -> dict:
     return document
 
 
-__all__ = ["Change", "Ran", "RunRefused", "analysis_sources", "changes", "default_scripts",
-           "new_run", "read_manifest", "run", "scripts_to_run"]
+__all__ = ["Change", "Ran", "RunRefused", "Staged", "analysis_sources", "changes",
+           "default_scripts", "discard", "new_run", "prepare", "read_manifest", "run",
+           "scripts_to_run"]

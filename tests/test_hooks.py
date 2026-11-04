@@ -1303,6 +1303,18 @@ def test_a_shell_command_that_names_the_release_records_is_put_to_the_person(
     assert "vault release" in reason(result)
 
 
+@pytest.mark.skipif(sys.platform not in ("win32", "darwin"),
+                    reason="names are told apart by case on this system")
+def test_a_release_record_spelt_in_another_case_is_put_to_the_person(
+    in_claude_code: Path, capsys
+) -> None:
+    path = in_claude_code / "Approvals" / "Vault-Releases" / "20261104-120000.json"
+    payload = _writes(in_claude_code, file_path=str(path), content="{}")
+    result = run("guard-write", payload, capsys)
+    assert decision(result) == "ask"
+    assert "vault release" in reason(result)
+
+
 def _attested(project: Path) -> Path:
     return project / "literature" / "attested.yaml"
 

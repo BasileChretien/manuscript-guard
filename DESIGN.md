@@ -12559,12 +12559,18 @@ folder and a library of others' code, no link followed, round 1 of #490) whose
 `source_digest` is not the one the run released last recorded, with `git diff <commit> --
 <path>`, the commit being the project's at that run, or "read it whole" where no run was
 released; then it asks y/N (`ask_at_terminal`; no `--yes`). It refuses where `vault check`'s
-probe does not say readable from this process.
+probe does not say readable from this process. A script named on the command line, and the
+files a runner reads first (`run.RUNNER_FILES`: `.Rprofile`, `_quarto.yml`, `_quarto.yaml`,
+`renv/activate.R`), are listed and recorded wherever they are. The copy is made first and the
+list is read from it (`run.prepare`), so that what is shown is what runs, and a no removes it
+(`run.discard`) (round 2 of #490).
 
 The run's id is its UTC time, `YYYYMMDD-HHMMSS`, with `-2` and on where taken, and runs are
 ordered by the time and then the number (`run.run_key`); no other word names a run's folder. The project is
 copied into `<vault>/.runs/<run>/<project>/` as `verify` copies it (`verify._skip`: no `.git`,
-no `build/`), `results/` emptied, and each file's size and time written are taken. The scripts
+no `build/`), `results/` emptied, and each file's size and time written are taken; where the
+project's `results/` is, or holds, a link or a junction, the run is refused before anything is
+copied, since emptying it would follow the link. The scripts
 are run there in order with `MANUSCRIPT_GUARD_VAULT` and `MANUSCRIPT_GUARD_VAULT_RUN` set,
 standard input closed, in a process group of their own, with no time limit: the person is at
 the terminal and can stop it. Their standard output and error are copied as they come to the
@@ -12582,19 +12588,24 @@ the only file the run writes in the project. A `.py` script is run through a wra
 into the run's folder, which runs it with `runpy.run_path(..., run_name="__main__")`, its own
 folder first on `sys.path` and `sys.argv` its path, and where it raises anything but
 `SystemExit`, writes the frames of the traceback and a `KeyError`'s key where it is a string
-into the run's folder, and the exception's class and module only where the module holds the
-class under its name (`getattr(module, name) is type(exc)`) and is `builtins` or a module
-whose file is outside the copy, since a script sets `__module__` as it likes; then it prints
-the traceback and exits 1. What the wrapper wrote is read as untrusted, the script having been
-able to write it, and is held to the project's scripts as the copy held them before anything
-ran (`run.source_texts`), never to what the run wrote (round 1 of #490): a frame is kept where
-its file is one of them, its line within that file's lines and its function `<module>` or the
-like or a word of that file; the class where it is a built-in exception of this Python, or
-the module's file is outside the copy and holds the name, and otherwise the summary says
-`own_exception` and gives no name; the key where it is exactly a column name of the data
+into the run's folder, and the exception's class and module where the module holds the
+class under its name and is `builtins` or a module whose file is outside the copy; then it
+prints the traceback and exits 1. The script runs in the wrapper's process, so all the
+wrapper writes is the script's to forge: it is read as untrusted, and held to the project's
+scripts as the copy held them before anything ran (`run.source_texts`), never to what the run
+wrote (round 1 of #490). A frame is kept where its file is one of them, its line within that
+file's lines and its function `<module>` or the like or a word of that file. A class is named
+only where the tool, in its own process, confirms it (round 2 of #490): a built-in exception,
+from a set it computes (`summary.BUILTIN_EXCEPTIONS`), or a class it finds under that name,
+a `BaseException` subclass of that name, in a module it imports itself, whose
+`importlib.util.find_spec` origin is under this Python's standard library or an installed
+package and under neither the copy nor the vault; a module of the standard library that acts
+when imported (`antigravity`, `turtle`, `webbrowser` and the like) is not imported. Otherwise
+the summary says `own_exception` and gives no name. The module file the wrapper wrote is never
+read; the key where it is exactly a column name of the data
 dictionary or of a released profile (`profiles/data/*.profile.json`, `columns[].name`). An R
 script's last `Calls:` line in its standard error, kept in this process only, gives the names
-that are words of the project's scripts before the run. No message and no value is written. The summary is checked against its
+that are words of the project's scripts before the run, the last 20, as many as the frames. No message and no value is written. The summary is checked against its
 schema before it is written, and where it does not hold, only each script's path and exit code
 are.
 
@@ -20095,9 +20106,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
     column name. A person's reading of the script, before the run, and of what is released is
     the control, and the run and the release say so.
   - *The summary for the agent* is written at once (decision 9a). It holds no message and no
-    value, and keeps only names the project's code already holds, but the exit code, a line
-    number within a file, which frames appear and which of the code's names a `Calls:` line
-    gives are a few bits a script can choose. Only a `KeyError`'s key is read as a column
+    value, and keeps only names the project's code held before the run and classes the tool
+    confirms itself. A failing script can still choose its exit code and, among its own
+    code's names and lines, the frames reported, at most 20 (and as many names of R's
+    `Calls:` line): some bits for each failed run. Only a `KeyError`'s key is read as a column
     name; a missing column another library reports otherwise (polars' `ColumnNotFoundError`,
     or any R error) gives its class or its calls, and no column.
   - *The terminal requirement.* An agent can start a pseudo-terminal (`script`, `expect`,
@@ -20121,11 +20133,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
     can write a record. The hooks put an agent's write of one, and a shell command naming
     their folder, to the person; a command that only reads a record is asked too, and one
     that builds the folder's path at run time is not seen.
+    A run made with `MANUSCRIPT_GUARD_VAULT` set by hand, outside `vault run`, writes into
+    the project and is caught only as unreleased. The write guard reads the folder of the
+    records in the case the system compares names in; the shell guard reads a word from the
+    folder the command is sent from, so `cd approvals && cp x vault-releases/` passes, as the
+    guard's other `cd` limits do.
+  - *A script run on the real data can write anywhere the account can.* The copy keeps the
+    run away from the project by where it starts, not by any wall: a script can write into
+    the project, the vault or elsewhere, and what it writes outside the copy is no output the
+    release reads.
   - *The summary's names are held to the project's scripts as the copy was made.* A name the
-    project's code already held is kept wherever the run's choice of it came from; a library
-    module's file is read for the class's name, and one the same account can edit is read as
-    it is. A run made with `MANUSCRIPT_GUARD_VAULT` set by hand, outside `vault
-    run`, writes into the project and is caught only as unreleased.
+    project's code already held is kept wherever the run's choice of it came from. A class
+    is confirmed by importing its module from this Python's installed packages; an installed
+    package the same account can edit is read as it is.
   - *What a run records of git.* The copy leaves `.git` out, as `verify`'s does, so a
     fragment written in a run records no `vcs`; the release records the project's commit at
     the run, which says nothing of uncommitted changes.

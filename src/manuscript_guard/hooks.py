@@ -756,10 +756,17 @@ def _an_approval(path: Path) -> str | None:
     record of a vault's release is JSON, and any file under its folder is put to the person
     (round 1 of #490)."""
     found = _relative_to_project(path)
-    if found is None or found[1].split("/")[0] != "approvals":
+    if found is None:
         return None
-    if found[1].split("/")[1:2] == ["vault-releases"]:
+    parts = found[1].split("/")
+    # In the case the system compares names in: on Windows and macOS `Approvals/Vault-Releases`
+    # is the folder (round 2 of #490).
+    folded = [part.casefold() for part in parts] if sys.platform in ("win32", "darwin") \
+        else parts  # fmt: skip
+    if folded[:2] == ["approvals", "vault-releases"]:
         return f"{path.name}: {_RELEASE_RECORD}"
+    if parts[0] != "approvals":
+        return None
     if path.suffix.lower() not in {".yaml", ".yml"}:
         return None
     if found[1].split("/")[1:2] == ["sign-offs"]:

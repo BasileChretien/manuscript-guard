@@ -787,3 +787,150 @@ def test_runs_are_ordered_by_their_time_then_their_number(paper: Path) -> None:
             "scripts": [], "ran": [], "inputs": [], "files": [], "warnings": []}),
             encoding="utf-8")  # fmt: skip
     assert last_release(paper)["run"] == "20261104-120000-10"
+
+
+# ---------------------------------------------------------------------------- round 2 of #490
+
+
+def _failed(paper: Path) -> tuple[str, dict]:
+    text = (paper / ".manuscript-guard" / "vault" / "last-run.json").read_text("utf-8")
+    return text, _summary(paper)["failed"]
+
+
+def test_a_module_the_script_makes_in_the_vault_names_no_class(
+    paper: Path, vault: Path, terminal
+) -> None:
+    """Everything the wrapper writes is the script's to forge: it runs in the same process. A
+    module whose file is a file of the vault, holding a class named after a row, is no module
+    the tool can import itself (round 2 of #490)."""
+    extra = ("import os, sys, types\nname = rows[3]['id']\n"
+             "module = types.ModuleType('heldmod')\n"
+             "module.__file__ = os.path.join(os.environ['MANUSCRIPT_GUARD_VAULT'], 'cohort.csv')\n"
+             "sys.modules['heldmod'] = module\n"
+             "kind = type(name, (Exception,), {'__module__': 'heldmod'})\n"
+             "setattr(module, name, kind)\nraise kind()")
+    answers, _asked = terminal
+    _script(paper, extra)
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    text, failed = _failed(paper)
+    assert "P0004" not in text
+    assert "class" not in failed and failed["own_exception"] is True
+
+
+@pytest.mark.parametrize("module", ["builtins", "json", "heldmod"])
+def test_a_summary_the_script_writes_itself_names_no_class(
+    paper: Path, vault: Path, terminal, module: str
+) -> None:
+    extra = ("import json, os, pathlib, sys\n"
+             "where = pathlib.Path(os.environ['MANUSCRIPT_GUARD_VAULT'], '.runs', "
+             "os.environ['MANUSCRIPT_GUARD_VAULT_RUN'], 'summary', '1.json')\n"
+             "where.write_text(json.dumps({'class': rows[3]['id'], "
+             f"'module': '{module}', 'module_file': str(pathlib.Path("
+             "os.environ['MANUSCRIPT_GUARD_VAULT'], 'cohort.csv')), 'frames': [], "
+             "'key': None}))\nsys.exit(1)")
+    answers, _asked = terminal
+    _script(paper, extra)
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    text, failed = _failed(paper)
+    assert "P0004" not in text
+    assert "class" not in failed
+
+
+def test_an_installed_library_s_exception_is_still_named(
+    paper: Path, vault: Path, terminal
+) -> None:
+    answers, _asked = terminal
+    _script(paper, "import json\njson.loads('{')")
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    _text, failed = _failed(paper)
+    assert failed["class"] == "JSONDecodeError" and "own_exception" not in failed
+
+
+def test_r_calls_are_at_most_twenty(tmp_path: Path) -> None:
+    names = [f"step{n}" for n in range(30)]
+    texts = {"analysis/01.R": "".join(f"{name} <- function() 1\n" for name in names)}
+    tail = ("Calls: " + " -> ".join(names) + "\nExecution halted\n").encode()
+    failed = r_failure(texts, "analysis/01.R", 1, tail)
+    assert failed["calls"] == names[-20:]
+
+
+def test_what_is_listed_is_what_runs(paper: Path, vault: Path, monkeypatch, capsys) -> None:
+    """The copy is made first, the scripts listed from it, and that copy is run: an edit of
+    the project while the person reads the list changes nothing of the run (round 2)."""
+    from manuscript_guard.deposit.remote import command
+
+    script = _script(paper, "print('as listed')")
+    monkeypatch.setattr(person, "_at_terminal", lambda: True)
+
+    def ask(prompt: str) -> str:
+        script.write_text(SCRIPT.format(extra="print('edited meanwhile')"), encoding="utf-8")
+        return "y"
+
+    monkeypatch.setattr(command, "ask_at_terminal", ask)
+    assert vault_cli(paper, "run") == 0
+    said = capsys.readouterr().out
+    assert "as listed" in said and "edited meanwhile" not in said
+    (run,) = [one.name for one in (vault / ".runs").iterdir()]
+    record = json.loads((vault / ".runs" / run / "run.json").read_text(encoding="utf-8"))
+    from manuscript_guard.emit import source_digest
+
+    listed = {one["path"]: one["sha256"] for one in record["scripts"]}
+    assert listed["analysis/01_model.py"] != source_digest(script)
+
+
+def test_a_no_leaves_no_copy_in_the_vault(paper: Path, vault: Path, terminal) -> None:
+    answers, _asked = terminal
+    _script(paper)
+    answers.append("n")
+    assert vault_cli(paper, "run") == 0
+    assert not (vault / ".runs").exists() or not any((vault / ".runs").iterdir())
+
+
+def test_a_script_named_or_read_by_a_runner_is_listed_wherever_it_is(
+    paper: Path, vault: Path, terminal, capsys
+) -> None:
+    (paper / "data").mkdir(exist_ok=True)
+    named = paper / "data" / "run_me.py"
+    named.write_text(SCRIPT.format(extra=""), encoding="utf-8")
+    (paper / ".Rprofile").write_text("options(digits = 3)\n", encoding="utf-8")
+    (paper / "_quarto.yml").write_text("project: {}\n", encoding="utf-8")
+    answers, _asked = terminal
+    answers.append("n")
+    assert vault_cli(paper, "run", "data/run_me.py") == 0
+    said = capsys.readouterr().out
+    for path in ("data/run_me.py", ".Rprofile", "_quarto.yml"):
+        assert f"{path}: no run on the vault has been released yet" in said, path
+
+
+def test_an_outbox_holding_a_link_is_refused(
+    paper: Path, vault: Path, terminal, tmp_path: Path
+) -> None:
+    run = _ran(paper, vault, terminal)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "rows.csv").write_text("P0001,31\n", encoding="utf-8")
+    _junction(vault / "outbox" / run / "linked", elsewhere)
+    answers, _asked = terminal
+    answers += ["linked/rows.csv", "y"]
+    assert vault_cli(paper, "release", run, "--as", "Lovelace") == 2
+    assert not (paper / "linked").exists()
+    assert not (paper / "approvals" / "vault-releases").exists()
+
+
+def test_a_run_refuses_a_results_folder_that_is_a_link(
+    paper: Path, vault: Path, terminal, tmp_path: Path
+) -> None:
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "kept.json").write_text("{}", encoding="utf-8")
+    shutil.rmtree(paper / "results")
+    _junction(paper / "results", elsewhere)
+    answers, _asked = terminal
+    _script(paper)
+    answers.append("y")
+    assert vault_cli(paper, "run") == 2
+    assert (elsewhere / "kept.json").read_text(encoding="utf-8") == "{}"
+    assert not (vault / ".runs").exists() or not any((vault / ".runs").iterdir())

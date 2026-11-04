@@ -106,14 +106,17 @@ def open_outbox(project, folder: Path, run: str) -> Outbox:
     except HarvestError as exc:
         raise Refused(f"harvest.yaml cannot be read, to know which outputs it harvests: {exc}"
                       ) from exc  # fmt: skip
+    from manuscript_guard.vault.run import _walk
+
     box = Outbox(run, where, manifest)
-    paths = sorted(path for path in where.rglob("*") if not path.is_dir())
-    named = {path.relative_to(where).as_posix() for path in paths}
-    for path in paths:
-        relative = path.relative_to(where).as_posix()
-        if path.is_symlink():
-            raise Refused(f"{relative} in the outbox is a link: a release copies files, and "
-                          "a link's target is no output of the run")  # fmt: skip
+    # Walked as the run walked the copy: no link or junction is gone through, and one there
+    # refuses the outbox (round 2 of #490).
+    found = sorted(_walk(where))
+    named = {relative for relative, _path, _link in found}
+    for relative, path, link in found:
+        if link:
+            raise Refused(f"{relative} in the outbox is a link or a junction: a release copies "
+                          "files, and a link's target is no output of the run")  # fmt: skip
         pure = PurePosixPath(relative)
         if relative.endswith(".sha256") and relative[: -len(".sha256")] in named and \
                 str(pure.parent) == RESULTS:  # fmt: skip

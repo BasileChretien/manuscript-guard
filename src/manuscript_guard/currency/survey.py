@@ -25,7 +25,7 @@ from pathlib import Path
 
 from manuscript_guard.checking.produce import CitedSentence, cited_sentences
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.currency.records import Entry, read_entries, work_id
+from manuscript_guard.currency.records import Entry, is_work, read_entries
 from manuscript_guard.findings import Report
 from manuscript_guard.literature.passages import NEAR, statement_words
 
@@ -93,7 +93,7 @@ def survey(project: Project) -> tuple[Survey, Report]:
             placed[entry.id] = found
     bib = project.path("literature") / "references.bib"
     fields = read_bib(bib) if bib.is_file() else {}
-    accepted = _accepted(entries, fields, sentences, words)
+    accepted = _accepted(entries, fields, sentences, words, placed)
     for entry_id, cited in accepted.items():
         entry = next(one for one in entries if one.id == entry_id)
         own = placed.get(entry_id)
@@ -118,17 +118,26 @@ def survey(project: Project) -> tuple[Survey, Report]:
 
 
 def _accepted(entries: tuple[Entry, ...], fields: dict[str, dict[str, str]],
-              sentences: list[CitedSentence], words: list[str]
-              ) -> dict[str, CitedSentence]:  # fmt: skip
+              sentences: list[CitedSentence], words: list[str],
+              placed: dict[str, CitedSentence]) -> dict[str, CitedSentence]:  # fmt: skip
     """Each unanswered proposal a sentence accepts, with that sentence: one matching the
-    entry's words that cites a key whose DOI or PMID is the candidate's."""
+    entry's words that cites a key whose DOI or PMID is the candidate's. Where the entry's
+    own sentence still stands, word for word, only that sentence can accept it: another
+    that holds most of its words and cites the candidate is not the author citing it here
+    (round 2 of #499)."""
     accepted: dict[str, CitedSentence] = {}
     for entry in entries:
         decision = entry.decision or {}
         candidate = decision.get("candidate")
         if decision.get("action") not in ("replace", "add") or not candidate or entry.answer:
             continue
-        for key in sorted(key for key, one in fields.items() if work_id(one) == candidate):
+        keys = sorted(key for key, one in fields.items() if is_work(one, candidate))
+        own = placed.get(entry.id)
+        if own is not None and statement_words(own.text) == statement_words(entry.sentence):
+            if any(key in own.keys for key in keys):
+                accepted[entry.id] = own
+            continue
+        for key in keys:
             cited = place(entry.sentence, key, sentences, words)
             if cited is not None:
                 accepted[entry.id] = cited

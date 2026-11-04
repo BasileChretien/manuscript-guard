@@ -61,6 +61,27 @@ def test_a_candidate_off_the_question_read_at_two_levels_leaves_a_clear_replace(
     assert decide(Work("c"), _works("a", "w"), readings).candidate == "a"
 
 
+def test_a_weaker_candidate_read_at_two_weaker_levels_leaves_a_clear_replace() -> None:
+    """Basile, 2026-11-05 (item 3 of round 2 of #499): only what can change the outcome is
+    compared. x is agreed at level 1 against a cited level 2; y, weaker in both readings,
+    is read at 4 and at 5, and once as `supports`, once as `neither`."""
+    x = Fields(level=1, population="same", exposure="same", outcome="same", stance="supports")
+    y = Fields(level=4, population="same", exposure="same", outcome="same", stance="supports")
+    readings = [Reading("a", "ocebm-2011", "benefit", 2, {"x": x, "y": y}),
+                Reading("b", "ocebm-2011", "benefit", 2,
+                        {"x": x, "y": Fields(**{**y.__dict__, "level": 5,
+                                                "stance": "neither"})})]  # fmt: skip
+    decided = decide(Work("c"), _works("x", "y"), readings)
+    assert (decided.action, decided.candidate) == ("replace", "x")
+    # Two search ends on the same side of the publication decide nothing either.
+    at = Fields(level=2, population="same", exposure="same", outcome="same",
+                stance="supports", search_end="2021")  # fmt: skip
+    readings = [Reading("a", "ocebm-2011", "benefit", 2, {"x": x, "d": at}),
+                Reading("b", "ocebm-2011", "benefit", 2,
+                        {"x": x, "d": Fields(**{**at.__dict__, "search_end": "2023-04"})})]
+    assert decide(Work("c", published="2020"), _works("x", "d"), readings).candidate == "x"
+
+
 def test_a_candidate_one_reading_names_and_the_other_does_not_is_uncertain() -> None:
     first, _second = _two(x=SAME)
     alone = Reading("b", "ocebm-2011", "benefit", 3, {})
@@ -460,6 +481,33 @@ def test_references_lists_explains_and_says_why_it_refuses(project: Path, capsys
     assert "--refuse needs --why and --as" in capsys.readouterr().err
     assert main(["references", str(project), "--explain", "c7"]) == 2
     assert "no entry c7" in capsys.readouterr().err
+
+
+def test_explain_says_no_decision_without_the_works_and_an_accepted_proposal_as_one(
+    project: Path,
+) -> None:
+    """Round 2 of #499: `--explain` printed "the rules give: keep" with the store gone, and
+    called a proposal the listing showed as accepted "not answered"."""
+    case.case(project)
+    works = project / "literature" / "currency" / "works"
+    kept = {path: path.read_bytes() for path in works.glob("*.yaml")}
+    for path in kept:
+        path.unlink()
+    said = command.explain(load_project(project)[0], "c1")
+    assert "the rules give:" not in said and "the rules decide nothing" in said
+    for path, data in kept.items():
+        path.write_bytes(data)
+    bib = project / "literature" / "references.bib"
+    with bib.open("a", encoding="utf-8") as entries:
+        entries.write("\n@article{classTrial2023,\n  title = {A trial},\n"
+                      "  author = {Fictional, Eve},\n  journal = {Imaginary Trials},\n"
+                      "  year = {2023},\n  doi = {10.5555/class.trial.2023}\n}\n")
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text.replace("[@fictionalClassSignal2019]. The", "[@classTrial2023]. The",
+                                 1), encoding="utf-8")  # fmt: skip
+    said = command.explain(load_project(project)[0], "c1")
+    assert "accepted: the sentence cites it" in said and "not answered" not in said
 
 
 def test_the_summary_says_who_read_and_who_decided(project: Path) -> None:

@@ -204,6 +204,23 @@ def work_id(fields: dict[str, str] | None) -> str | None:
     return f"pmid:{pmid}" if pmid else None
 
 
+def is_work(fields: dict[str, str] | None, work: str) -> bool:
+    """Whether a `references.bib` entry is the work `work` names: a `doi:` id by the entry's
+    DOI, a `pmid:` id by its PMID, each as G7 reads them. An entry with both is either
+    work (round 2 of #499: `work_id` gives the DOI first, and a candidate filed by its PMID
+    was never the entry's)."""
+    from manuscript_guard.gates.identifiers import doi_of, pmid_of
+
+    if not fields:
+        return False
+    work = fold_work(work)
+    if work.startswith("doi:"):
+        return doi_of(fields) == work.removeprefix("doi:")
+    if work.startswith("pmid:"):
+        return pmid_of(fields) == work.removeprefix("pmid:")
+    return False
+
+
 def works_folder(project: Project) -> Path:
     return folder(project) / WORKS
 

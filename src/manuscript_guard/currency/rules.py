@@ -20,10 +20,13 @@ answer from the same records.
   what decides a candidate that passes K1, or on the hierarchy, the scale or the cited
   work's level, and nothing is proposed.
 
-What decides a candidate (`_decisive`): R2 always; its level and stance where R2 is `same`
-on all three; its search end date only where it is at the cited work's level and does not
-contradict the sentence, where D1 would rest on the date. A field no rule reads for that
-candidate may differ between readings, and decides nothing. A candidate one reading names and
+What decides a candidate (`_decisive`) is only what can change the outcome (Basile,
+2026-11-05): R2 always; where R2 is `same` on all three, whether it is weaker than the cited
+work, and for one that is not, its level, which ranks it, and whether it contradicts the
+sentence; and at the cited work's level, not contradicting it, whether its search ended after
+the cited work was published. A field that cannot change what the rules give may differ
+between readings: a weaker candidate's exact level or stance, `supports` against `neither`,
+two search end dates on the same side of the publication. A candidate one reading names and
 another does not is a disagreement.
 
 Two readings are needed before anything is decided, counted as distinct readers' numbered
@@ -136,21 +139,28 @@ def _same_question(fields: Fields) -> bool:
     return (fields.population, fields.exposure, fields.outcome) == (SAME, SAME, SAME)
 
 
-def _decisive(fields: Fields | None, cited_level: int) -> tuple:
-    """What decides one candidate in one reading: R2; then, where R2 is `same` on all
-    three, its level and stance; then, where it is at the cited work's level and does not
-    contradict the sentence, its search end date. Nothing where it was not read."""
+def _decisive(fields: Fields | None, cited_level: int, cited: Work | None) -> tuple:
+    """What can change the outcome for one candidate in one reading: R2; where R2 is `same`
+    on all three, that it is weaker than the cited work, or else its level and whether it
+    contradicts the sentence; and at the cited work's level, not contradicting it, whether
+    its search ended after the cited work was published (D1's date). Nothing where it was
+    not read."""
     if fields is None:
         return ("not read",)
     r2 = (fields.population, fields.exposure, fields.outcome)
     if not _same_question(fields):
         return (r2,)
-    if fields.level == cited_level and fields.stance != CONTRADICTS:
-        return (r2, fields.level, fields.stance, fields.search_end)
-    return (r2, fields.level, fields.stance)
+    if fields.level is not None and fields.level > cited_level:
+        return (r2, "weaker")
+    contradicts = fields.stance == CONTRADICTS
+    if fields.level == cited_level and not contradicts:
+        return (r2, fields.level, contradicts,
+                after(fields.search_end, cited.published if cited else None))  # fmt: skip
+    return (r2, fields.level, contradicts)
 
 
-def _disagreement(readings: Sequence[Reading], works: Mapping[str, Work | None]) -> str | None:
+def _disagreement(readings: Sequence[Reading], works: Mapping[str, Work | None],
+                  cited: Work | None) -> str | None:  # fmt: skip
     """What two readings disagree on, among what decides, or None."""
     heads = {_head(reading) for reading in readings}
     if len(heads) > 1:
@@ -160,7 +170,8 @@ def _disagreement(readings: Sequence[Reading], works: Mapping[str, Work | None])
     for work in ids:
         if not passes_k1(works.get(work)):
             continue
-        said = {_decisive(reading.candidates.get(work), cited_level) for reading in readings}
+        said = {_decisive(reading.candidates.get(work), cited_level, cited)
+                for reading in readings}  # fmt: skip
         if len(said) > 1:
             return f"what decides {work}"
     return None
@@ -226,7 +237,7 @@ def decide(
     readings = _distinct(readings)
     if len(readings) < READINGS:
         return None
-    disagreed = _disagreement(readings, works)
+    disagreed = _disagreement(readings, works, cited)
     if disagreed is not None:
         return Decision(UNCERTAIN, None, ("D4",),
                         f"the readings disagree on {disagreed}")  # fmt: skip

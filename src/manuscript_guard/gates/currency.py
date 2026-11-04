@@ -215,14 +215,16 @@ def _fitting(usable: list[dict], entry: Entry, known, bib: dict
     """The readings the rules may read, and why each other is not one."""
     from manuscript_guard.currency.hierarchy import level_problem
 
-    cited = records.work_id(bib.get(entry.citekey))
+    fields = bib.get(entry.citekey)
+    cited = records.work_id(fields)
     fit, why = [], []
     for record in usable:
         levels = [record["cited"]["level"]["value"],
                   *(one["level"]["value"] for one in record.get("candidates") or [])]
         problem = (level_problem(known, record["hierarchy"], record["scale"], levels)
                    if known is not None else "the hierarchy cannot be read")  # fmt: skip
-        if problem is None and cited is not None and record["cited"]["work"] != cited:
+        if problem is None and cited is not None and not records.is_work(
+                fields, record["cited"]["work"]):  # fmt: skip
             problem = (f"the reading is of {record['cited']['work']}, and @{entry.citekey} "
                        f"is {cited}")  # fmt: skip
         if problem is None:
@@ -271,11 +273,20 @@ def quote_in(texts: Iterable[str], quote: str) -> bool:
     return False
 
 
+def cited_id(entry: Entry, usable: list[dict], bib: dict) -> str | None:
+    """The works store's id of an entry's cited work: as its readings name it, where that
+    is the `references.bib` entry's DOI or PMID, else the entry's (`work_id`)."""
+    fields = bib.get(entry.citekey)
+    named = usable[0]["cited"]["work"] if usable else None
+    if named and (fields is None or records.is_work(fields, named)):
+        return named
+    return records.work_id(fields) or named
+
+
 def needed_works(entry: Entry, usable: list[dict], bib: dict) -> list[str]:
     """The works the rules need a record of to decide an entry: the cited work and each
     candidate a reading names."""
-    cited = records.work_id(bib.get(entry.citekey)) or (
-        usable[0]["cited"]["work"] if usable else None)  # fmt: skip
+    cited = cited_id(entry, usable, bib)
     ids = {cited} if cited else set()
     for record in usable:
         ids |= {str(one["work"]) for one in record.get("candidates") or []}
@@ -324,14 +335,14 @@ def _quotes(entry: Entry, usable: list[dict], held: _Records, path: Path,
 
 def rules_decision(entry: Entry, usable: list[dict], held: _Records,
                    bib: dict) -> rules.Decision | None:  # fmt: skip
-    """What the rules give for an entry from its readings and the works store. K5 reads the
-    entry's own sentence, so that the decision is the records' alone."""
+    """What the rules give for an entry from its readings, the works store and the
+    literature ledger. K5 reads the entry's own sentence, not the manuscript's, with the
+    values the ledger records from the cited work (`quotes_a_number`)."""
     readings = [records.as_reading(record) for record in usable]
     ids = {work for reading in readings for work in reading.candidates}
     works = {work: records.as_work(held.good_work(work)) for work in ids}
-    cited_id = records.work_id(bib.get(entry.citekey)) or (
-        usable[0]["cited"]["work"] if usable else None)  # fmt: skip
-    cited = records.as_work(held.good_work(cited_id)) if cited_id else None
+    cited_work = cited_id(entry, usable, bib)
+    cited = records.as_work(held.good_work(cited_work)) if cited_work else None
     number = quotes_a_number(entry.sentence, entry.citekey, held.literature)
     return rules.decide(cited, works, readings, number=number)
 
@@ -402,7 +413,7 @@ def _decision(entry: Entry, usable: list[dict], held: _Records, bib: dict, path:
             "accept it by citing the work in the sentence (add it to Zotero, then "
             f"`manuscript-guard sync-bib`), or refuse it with `references --refuse {entry.id} "
             "--why ... --as <you>`", FAIL if stage == SUBMISSION else WARN))  # fmt: skip
-    kept = candidate if action in _PROPOSALS else records.work_id(bib.get(entry.citekey))
+    kept = candidate if action in _PROPOSALS else cited_id(entry, usable, bib)
     record = held.good_work(kept) if kept else None
     if record is not None and (record.get("integrity") or {}).get("retracted"):
         out.append(_finding(

@@ -3623,13 +3623,18 @@ function) decide:
   work's publication; dates compare at the finest precision both have, and equal there is
   not after. D2 `add`: it contradicts the sentence at the same or a stronger level. D3 `keep`
   otherwise. D4 `uncertain`: two readings disagree on the hierarchy, the scale or the cited
-  work's level, or on what decides a candidate that passes K1: R2 always; its level and
-  stance where R2 is `same` on all three; its search end date only where it is at the cited
-  work's level and does not contradict the sentence, where D1 would rest on the date. A
-  field no rule reads for that candidate may differ, and a candidate one reading names and
-  the other does not is a disagreement (round 1 of #499: every field of every candidate was
-  compared, and a candidate off the question read at two levels made a clear `replace`
-  `uncertain`).
+  work's level, or, for a candidate that passes K1, on what can change what the rules give:
+  R2 always; where R2 is `same` on all three, whether the candidate is weaker than the
+  cited work; for one that is not weaker, its level, which ranks it, and whether it
+  contradicts the sentence; and at the cited work's level, not contradicting it, whether
+  its search ended after the cited work was published. A weaker candidate's exact level or
+  stance, `supports` against `neither`, and two search end dates on the same side of the
+  publication may differ. A candidate one reading names and the other does not is a
+  disagreement. Basile chose this on 2026-11-05 (item 3 of round 2 of #499). Before it,
+  every field of every candidate was compared (#499 as opened), and then R2, the exact
+  level and stance where R2 was `same`, and the raw search end date at the cited level
+  (round 1), so that a weaker candidate read at two weaker levels still made a clear
+  `replace` `uncertain`.
 
 Settled here, where the design left it open: the rules decide nothing from one reading, so
 that a change is proposed only where two agree, and a reading counts once, by its reader and
@@ -19181,9 +19186,7 @@ Open, recorded as each change landed:
   - A quote found word for word in a work can still back the wrong field: a cohort quoted
     from a trial's background, a population from its discussion.
   - A level on a hierarchy is a guide to where the likely best evidence lies, not a study's
-    quality; risk of bias within a level is not judged. The level descriptions of
-    `data/evidence_hierarchies.yaml` were written from the table's structure on 2026-11-04
-    and are still to be read against the version 2.1 PDF.
+    quality; risk of bias within a level is not judged.
   - A search end date is read only where a review states it, and dates of unequal precision
     compare at the coarser: a review whose search ended in 2020 does not replace a work
     published in 2020, whatever the months.
@@ -19194,6 +19197,13 @@ Open, recorded as each change landed:
     a decision the rules wrote are not checked, entry by entry, and a note says so
     (`currency-quote-unchecked`). So there a `by: rules` decision edited by hand is caught by
     neither the hook, which leaves the rules' decisions to the gate, nor `check`.
+  - A value recorded in the literature ledger from the cited work after the rules decided
+    turns an earlier `by: rules` `replace` with a synthesis into
+    `currency-decision-mismatch` (K5 now sets the synthesis aside). Nothing decides again
+    from the readings filed, and a further reading is refused once the proposal is answered.
+  - A ledger display that is a bare whole number ("12") is found in any equal number of the
+    sentence ("in 12 countries [@cited]"), so K5 can set a synthesis aside where the
+    sentence quotes no value of the cited work.
   - That a reading is of the cited work (`currency-reading-invalid`, "the reading is of")
     is checked only where `references.bib` gives the cited work a DOI or a PMID.
   - G7 reads a work's stored source once for each quote of it, with nothing kept between.

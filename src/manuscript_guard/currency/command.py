@@ -134,7 +134,12 @@ def explain(project: Project, entry_id: str) -> str:
             continue
         usable.append(read.record)
         lines += _reading_lines(read.record)
-    given = rules_decision(entry, usable, held, _bib(project)) if usable else None
+    from manuscript_guard.gates.currency import missing_works
+
+    absent = missing_works(entry, usable, held, _bib(project))
+    # Round 2 of #499: with a work missing the rules decide nothing, and say no `keep`.
+    given = rules_decision(entry, usable, held, _bib(project)) if usable and not absent \
+        else None  # fmt: skip
     if given is None:
         lines.append(f"  the rules: {len(usable)} reading(s); they decide from "
                      f"{rules.READINGS}")  # fmt: skip
@@ -142,14 +147,12 @@ def explain(project: Project, entry_id: str) -> str:
         lines.append(f"  the rules give: {given.action}"
                      + (f" {given.candidate}" if given.candidate else "")
                      + f" ({', '.join(given.rules)}): {given.why}")  # fmt: skip
-    from manuscript_guard.gates.currency import missing_works
-
-    absent = missing_works(entry, usable, held, _bib(project))
     if absent:
         lines.append(f"  (the works store holds no record of {', '.join(absent)}: the rules "
                      "decide nothing until it does)")  # fmt: skip
     if entry.decision:
-        lines.append(f"  decision: {state_of(entry, held)}"
+        accepted = entry.id in survey(project)[0].accepted
+        lines.append(f"  decision: {state_of(entry, held, accepted)}"
                      + (f"; why: {entry.decision['why']}" if entry.decision.get("why")
                         else ""))  # fmt: skip
     if entry.answer and entry.answer.get("why"):

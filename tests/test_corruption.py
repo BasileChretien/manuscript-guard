@@ -3131,6 +3131,56 @@ def test_a_proposal_is_accepted_by_citing_the_work_it_proposes(
     assert unplaced == []
 
 
+#: The worked case's sentence, nearly: what a later trial cited beside it might be.
+_NEAR_COPY = (
+    "\nIn a national cohort, the crude incidence was {{lit.background.reported_incidence}} "
+    "per 100 000 person-years, and a disproportionality signal has been reported for the "
+    "drug class as a whole in a later trial (ROR {{lit.background.class_ror}}) "
+    "[@classTrial2023].\n"
+)
+
+
+def _cite_the_trial(root: Path, *, doi: str, pmid: str | None = None) -> None:
+    bib = root / "literature" / "references.bib"
+    with bib.open("a", encoding="utf-8") as entries:
+        entries.write("\n@article{classTrial2023,\n  title = {A trial},\n"
+                      "  author = {Fictional, Eve},\n  journal = {Imaginary Trials},\n"
+                      f"  year = {{2023}},\n  doi = {{{doi}}},\n"
+                      + (f"  pmid = {{{pmid}}},\n" if pmid else "") + "}\n")
+
+
+def test_a_near_copy_citing_the_candidate_elsewhere_accepts_nothing(project: Path) -> None:
+    """Round 2 of #499: with the entry's own sentence standing word for word and citing
+    only the old work, a sentence elsewhere that holds most of its words and cites the
+    candidate was taken for the author citing it."""
+    import currency_records as case
+
+    case.case(project)
+    _cite_the_trial(project, doi="10.5555/class.trial.2023")
+    with (project / "manuscript" / "main.md").open("a", encoding="utf-8") as text:
+        text.write(_NEAR_COPY)
+    assert _currency_findings(project, "submission") == [
+        ("currency-change-unanswered", "fail")]
+
+
+def test_a_candidate_filed_by_its_pmid_is_cited_by_an_entry_with_a_doi_too(
+    project: Path,
+) -> None:
+    """Round 2 of #499: the candidate was matched to a key by the key's DOI only, so one
+    filed by its PMID was never cited by an entry that gives both."""
+    import currency_records as case
+
+    case.case(project, candidate="pmid:37000001")
+    assert case.decision(project)["candidate"] == "pmid:37000001"
+    _cite_the_trial(project, doi="10.5555/class.trial.2023", pmid="37000001")
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    old = "[@fictionalClassSignal2019]. The"
+    assert old in text
+    main.write_text(text.replace(old, "[@classTrial2023]. The", 1), encoding="utf-8")
+    assert _currency_findings(project, "submission") == []
+
+
 @pytest.mark.parametrize(
     ("change", "said"),
     [

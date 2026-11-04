@@ -31,10 +31,10 @@ TRIAL_ABSTRACT = (
 
 def work(identifier: str, **fields) -> dict:
     """A works record's fields, as the tool would write them."""
-    doi = identifier.removeprefix("doi:")
+    kind, _colon, value = identifier.partition(":")
     return {
         "work": identifier,
-        "identifiers": {"doi": doi},
+        "identifiers": {kind: value},
         "fetched_on": "2026-11-01",
         "sources": ["crossref", "pubmed"],
         "integrity": {"retracted": False, "withdrawn": False, "under_concern": False},
@@ -44,7 +44,7 @@ def work(identifier: str, **fields) -> dict:
 
 def reading(reader: str, *, level: int = 2, stance: str = "supports",
             quote: str = "The class was associated with hepatic injury",
-            provenance: dict | None = None) -> dict:  # fmt: skip
+            provenance: dict | None = None, candidate: str = CANDIDATE) -> dict:  # fmt: skip
     """A reading of the case's entry: the cited work at level 4 on the scale of rare harms,
     and the review as `level`, the same question, and `stance`."""
     said = {
@@ -57,7 +57,7 @@ def reading(reader: str, *, level: int = 2, stance: str = "supports",
         "cited": {"work": CITED, "level": {
             "value": 4, "quote": "A signal was detected for the class as a whole"}},
         "candidates": [{
-            "work": CANDIDATE,
+            "work": candidate,
             "level": {"value": level, "quote": "This randomized trial"},
             "population": {"value": "same", "quote": "adults exposed to the drug class"},
             "exposure": {"value": "same", "quote": "exposed to the drug class"},
@@ -79,15 +79,15 @@ def given_a_doi(root: Path) -> None:
                    encoding="utf-8")  # fmt: skip
 
 
-def stored(root: Path) -> None:
-    """The works store: the cited work and the review."""
+def stored(root: Path, candidate: str = CANDIDATE) -> None:
+    """The works store: the cited work and the trial."""
     project = load_project(root)[0]
     records.write_work(project, work(
         CITED, title="A disproportionality signal for a fictional drug class",
         published="2019-03", publication_types=["Journal Article"],
         abstract="A signal was detected for the class as a whole (ROR 2.6, 95% CI 2.1-3.2)."))
     records.write_work(project, work(
-        CANDIDATE, title="Hepatic injury with the drug class: a randomized trial",
+        candidate, title="Hepatic injury with the drug class: a randomized trial",
         published="2023-06-01", publication_types=["Randomized Controlled Trial"],
         abstract=TRIAL_ABSTRACT))  # fmt: skip
 
@@ -99,15 +99,16 @@ def file(root: Path, said: dict, name: str) -> str:
     return command.file_reading(load_project(root)[0], path)
 
 
-def case(root: Path, *, readings: bool = True) -> Path:
-    """The worked case on the project at `root`; its currency.yaml's path."""
+def case(root: Path, *, readings: bool = True, candidate: str = CANDIDATE) -> Path:
+    """The worked case on the project at `root`; its currency.yaml's path. `candidate` is
+    the trial's id in the works store and the readings."""
     given_a_doi(root)
-    stored(root)
+    stored(root, candidate)
     command.mark(load_project(root)[0], MARKED, "@" + CITED_KEY, "Ada Example")
     if readings:
-        file(root, reading("Ada Example"), "first")
-        file(root, reading("gpt-test", provenance={"provider": "test", "model": "gpt-test"}),
-             "second")  # fmt: skip
+        file(root, reading("Ada Example", candidate=candidate), "first")
+        file(root, reading("gpt-test", provenance={"provider": "test", "model": "gpt-test"},
+                           candidate=candidate), "second")  # fmt: skip
     return root / "literature" / "currency.yaml"
 
 

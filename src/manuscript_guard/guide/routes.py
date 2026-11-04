@@ -86,6 +86,8 @@ ROUTES: dict[str, Route] = {
     **_all("results-binding", _VERIFY, "harvest-declared"),
     **_all("results-binding", None, "receipt-"),
     **_all("results-binding", None, "input-at-site", who="author"),
+    # A run on the vault and its release are the person's, at a terminal (docs/vault.md).
+    **_all("results-binding", None, "vault-", who="author"),
     **_all("results-binding", _BIND, "unclassified-number", "unresolved-binding",
            "unquoted-result", "typed-", "parameter-unread", "hand-authored-table",
            "value-splits-paragraph", "duplicate-quantity", "malformed-placeholder",

@@ -759,8 +759,22 @@
               "synthetic": {
                 "type": "boolean",
                 "description": "Not the real data: a simulation, a dummy extract or a test fixture. G1 says so of every result the manuscript quotes from the run, and fails at submission unless paper.yaml declares the paper a demonstration."
+              },
+              "vault": {
+                "type": "boolean",
+                "description": "A file of the vault, read under a run on the real data (`em.vault_input`); its path is `vault:<label>`, never where the folder is. G1 holds its digest to design/vault.yaml's."
               }
             }
+          }
+        },
+        "vault": {
+          "type": "object",
+          "description": "These results were written by a run on the data held in the vault: the run's id, which `vault run` gives, null for a run made outside it, and whether a person has released them (`vault release`). G1 holds the fragment to the release's record.",
+          "required": ["run", "released"],
+          "additionalProperties": false,
+          "properties": {
+            "run": { "type": ["string", "null"] },
+            "released": { "type": "boolean" }
           }
         },
         "environment": {

@@ -1172,6 +1172,10 @@ class Emitter:
     _synthetic: set[str] = field(default_factory=set, init=False)
     # The data the analysis read, by what identifies them, as `dataset()` declared them.
     _datasets: dict[str, dict] = field(default_factory=dict, init=False)
+    # The files of the vault read under a run on the real data, by label, each with where it
+    # was read; and the run's id, which `vault run` gives.
+    _vault: dict[str, Path] = field(default_factory=dict, init=False)
+    _vault_run: str | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self.script = Path(self.script).resolve()
@@ -2015,6 +2019,38 @@ class Emitter:
         if synthetic:
             self._synthetic.add(recorded)
 
+    def vault_input(self, label: str) -> Path:
+        """The path to read a file of the vault at, declared as read. The script never knows
+        where the data are.
+
+        Under a run on the real data, where `vault run` sets MANUSCRIPT_GUARD_VAULT to the
+        vault's folder, it is the real file: declared restricted, and recorded as
+        `vault:<label>` with its digests, never with where it is, so that G1 holds it to the
+        digests `design/vault.yaml` registers. Otherwise it is the synthetic copy,
+        `data/synthetic/<label>`, declared synthetic, and refused where there is none."""
+        from manuscript_guard.vault import RUN_VARIABLE, SYNTHETIC, VARIABLE, checked_label
+
+        label = checked_label(label)
+        folder = os.environ.get(VARIABLE)
+        if folder:
+            path = Path(folder).joinpath(*label.split("/"))
+            if not path.is_file():
+                raise FileNotFoundError(f"vault:{label} is not in the vault's folder: is it "
+                                        "the label design/vault.yaml registers?")  # fmt: skip
+            self._vault[label] = path
+            self._vault_run = os.environ.get(RUN_VARIABLE) or None
+            return path
+        assert self.root is not None
+        path = self.root.joinpath(*SYNTHETIC.parts, *label.split("/"))
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"{SYNTHETIC}/{label} is not there: the analysis runs on a synthetic copy "
+                f"outside a vault run. Make one with `manuscript-guard vault synthesize`, from "
+                f"the released profile, or put one there yourself"
+            )
+        self.add_input(path, synthetic=True)
+        return path
+
     def _read_at(self, path: str | Path) -> Path:
         """Where an input is read: as written, from the project root where it is relative."""
         assert self.root is not None
@@ -2060,6 +2096,12 @@ class Emitter:
                     **({"synthetic": True} if recorded in self._synthetic else {}),
                 }
             )
+        # Each file of the vault by its label, never by where the folder is. Every one is
+        # restricted: the data stay in the custodian's hands.
+        for label, path in self._vault.items():
+            inputs.append({"path": f"vault:{label}", "sha256": input_digest(path),
+                           "raw_sha256": sha256_of(path), "bytes": path.stat().st_size,
+                           "restricted": True, "vault": True})  # fmt: skip
 
         sha = _git(root, "rev-parse", "HEAD")
         status = _git(root, "status", "--porcelain")
@@ -2098,6 +2140,9 @@ class Emitter:
                 "version": sys.version.split()[0],
                 "platform": platform.platform(),
             },
+            # The run on the real data these results came from, and whether a person has
+            # released them: `vault release` says so, and G1 holds the fragment to its record.
+            **({"vault": {"run": self._vault_run, "released": False}} if self._vault else {}),
         }
 
     def document(self) -> dict:

@@ -193,8 +193,11 @@ def _run_entry(project, root: Path, work: Path, entry: Entry, run, runner_for
     except (OSError, subprocess.SubprocessError) as exc:
         raise HarvestError(f"{entry.script} could not run: {exc}") from exc
     if finished.returncode != 0:
-        tail = (finished.stderr or finished.stdout or "").strip()[-400:]
-        raise HarvestError(f"{entry.script} exited {finished.returncode}\n{tail}")
+        # Not what it printed: a script run on the data can print a row of them, and this
+        # error is printed wherever the command was started (Task F, part 2).
+        raise HarvestError(f"{entry.script} exited {finished.returncode}. What it printed is "
+                           "not repeated here, since it can hold the data: run it yourself "
+                           "where the data are to read it")  # fmt: skip
     if not output.is_file():
         raise HarvestError(f"{entry.script} ran but wrote no {entry.output}")
     forbidden, warnings = _counts_held(project, entry, output)

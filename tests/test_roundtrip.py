@@ -7947,6 +7947,109 @@ def test_a_display_equation_is_a_block_of_its_own(tmp_path: Path) -> None:
     assert found[0].key == found[1].key != found[2].key
 
 
+@pytest.mark.parametrize("kind", ["figure", "equation"])
+def test_an_identifier_word_left_on_a_figure_or_an_equation_is_not_the_block(
+    tmp_path: Path, kind: str
+) -> None:
+    """Cut or deleted with Track Changes off, a paragraph leaves its bookmark behind, and
+    Word puts it on the next paragraph. On a figure's, which holds a picture and no text, the
+    figure was read as an empty paragraph carrying that identifier: the figure went missing,
+    and import said it was deleted and to take its placeholder out of the .md. Now both are
+    there: the identifier, holding no text, and the figure."""
+    from manuscript_guard.docxtext import blocks as read
+
+    inner = (
+        "<w:r><w:drawing/></w:r>"
+        if kind == "figure"
+        else "<m:oMathPara><m:oMath><m:r><m:t>x=y</m:t></m:r></m:oMath></m:oMathPara>"
+    )
+    body = (
+        '<w:p><w:bookmarkStart w:id="1" w:name="mg-p-main-2"/><w:bookmarkEnd w:id="1"/>'
+        f"{inner}</w:p>"
+    )
+    found = read(word_document(tmp_path / "left-on.docx", body))
+    assert [(b.names, b.text, b.kind, b.stranded) for b in found] == [
+        (("mg-p-main-2",), "", "", kind),
+        ((), "", kind, ""),
+    ]
+
+
+#: Saved by Word 16 (see `test_a_paragraph_cut_from_above_a_figure_leaves_the_figure_found`).
+CUT_BEFORE_FIGURE = Path(__file__).parent / "data" / "word" / "cut-before-figure.docx"
+
+
+def cut_before_figure(project: Path, tmp_path: Path, change=None) -> tuple[Path, Path]:
+    """The example's Results given two paragraphs above its figure and one under it, built,
+    and the copy Word saved after the second was cut and pasted above the first, carrying
+    this build's properties and picture, then passed through `change`. Word saved it from a
+    build on another machine, where the analysis may draw the figure otherwise; Word keeps a
+    picture's bytes, under a new name, so this build's picture is put where Word put it."""
+    source = project / "manuscript" / "main.md"
+    text = source.read_text(encoding="utf-8")
+    old = "{{table.two_by_two}}\n\n{{figure.forest}}\n"
+    assert old in text
+    source.write_bytes(
+        text.replace(
+            old,
+            "{{table.two_by_two}}\n\n"
+            "The figure below shows the made-up estimate on a log scale.\n\n"
+            "Its whiskers mark the interval, and the vertical line marks no difference.\n\n"
+            "{{figure.forest}}\n\n"
+            "The figure is drawn from the same counts as the table above.\n",
+        ).encode("utf-8")
+    )
+    document = built(project)
+    with zipfile.ZipFile(document) as fresh:
+        custom = fresh.read("docProps/custom.xml")
+        (picture,) = [fresh.read(n) for n in fresh.namelist() if n.startswith("word/media/")]
+    returned = tmp_path / "returned.docx"
+    with zipfile.ZipFile(CUT_BEFORE_FIGURE) as zin, zipfile.ZipFile(
+        returned, "w", zipfile.ZIP_DEFLATED
+    ) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "docProps/custom.xml":
+                data = custom
+            elif item.filename.startswith("word/media/"):
+                data = picture
+            elif item.filename == "word/document.xml" and change is not None:
+                data = change(data.decode("utf-8")).encode("utf-8")
+            zout.writestr(item, data)
+    return source, returned
+
+
+@needs_pandoc
+def test_a_paragraph_cut_from_above_a_figure_leaves_the_figure_found(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Made in Word 16 over COM, Track Changes off, on a build of the source
+    `cut_before_figure` writes: the paragraph "Its whiskers mark ..." selected whole, mark
+    included (`Paragraphs(1).Range`), cut, and pasted at the start of the paragraph "The
+    figure below ...", then saved. Word left the cut paragraph's bookmark behind, on the
+    figure's paragraph, and gave the pasted copy the bookmark of the paragraph it was pasted
+    in front of.
+
+    Read as a paragraph with that identifier, the figure went missing: "1 figure(s) of the
+    document as sent could not be found", with advice to take its placeholder out of the
+    .md, which deletes the figure from the manuscript. The figure is found by its picture,
+    and the paragraph whose identifier was left on it is reported as moved without a record,
+    saying where its identifier went."""
+    from manuscript_guard.cli import main
+
+    source, returned = cut_before_figure(project, tmp_path)
+    before = source.read_bytes()
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "could not be found" not in out, out
+    assert "remove the placeholder" not in out, out
+    assert "moved in Word, left in place here: Its whiskers mark the interval" in out, out
+    assert "came back on the figure that stood after it" in out, out
+    assert "with its identifier on other text" in out, out
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert source.read_bytes() == before
+
+
 def _deleted(inner: str) -> str:
     """A paragraph whose content and mark were deleted with Track Changes on."""
     mark = '<w:pPr><w:rPr><w:del w:id="91" w:author="A"/></w:rPr></w:pPr>'
@@ -9462,6 +9565,52 @@ def test_a_paragraph_split_in_word_is_not_truncated(
     assert main(["import", str(returned), str(project), "--apply"]) == 1
     assert source.read_text(encoding="utf-8") == before
     assert "split" in capsys.readouterr().out
+
+
+def _refusal_of(printed: str, opening: str) -> str:
+    """The refusal `import` printed for the paragraph whose text starts with `opening`: from
+    its line to the next blank line."""
+    at = printed.index(opening)
+    start = printed.rfind("\n\n", 0, at) + 2
+    end = printed.find("\n\n", at)
+    return " ".join(printed[start : end if end != -1 else None].split())
+
+
+@needs_pandoc
+def test_the_paragraph_after_a_split_is_told_it_is_its_neighbour(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A paragraph split in Word, and one word of the next one reworded. Both are refused,
+    and the next one was refused with the split's own message, "split in two in Word": the
+    author read a wrong diagnosis, and missed that the rewording was theirs to carry over.
+    The split keeps its message; the paragraph after it is told the new paragraph is before
+    it, which one that is, and that its own edit is made in the .md."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    split = (
+        'data generator.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="BodyText" /></w:pPr>'
+        '<w:r><w:t xml:space="preserve">Real work'
+    )
+    returned = rewrite(
+        document,
+        tmp_path / "split.docx",
+        lambda xml: xml.replace("data generator. Real work", split, 1).replace(
+            "The reporting odds ratio was computed", "The reporting odds ratio was calculated", 1
+        ),
+    )
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert source.read_text(encoding="utf-8") == before
+    printed = capsys.readouterr().out
+    split_said = _refusal_of(printed, "Hepatic injury is the single event term")
+    assert "split in two in Word" in split_said, split_said
+    after = _refusal_of(printed, "The reporting odds ratio was calculated")
+    assert "split in two in Word, new text written next to it" not in after, after
+    assert "after a new paragraph, 'Real work would need a case definition" in after, after
+    assert "was not split itself" in after and "own edit in the .md" in after, after
 
 
 @needs_pandoc

@@ -266,7 +266,7 @@ checked like any other.
 | `hand-authored-table` | emit the table |
 | `script-newer`, `input-changed` | re-run the script that wrote the results; where the input is a dataset's, with the date of the new extraction and its pin |
 | `dataset-pin-mismatch`, `dataset-read-differs`, `dataset-value-unrecorded` | the results were computed from other data than the extraction the dataset dates, or a dataset's value was typed into a fragment: re-run the scripts that read the old data, through the emitter |
-| `data-date-not-declared` | a warning: a date of the data typed into the script as a string. Declare the data with `em.dataset()` and bind `{{results.dataset.<name>.extracted}}`; a date the study chose is `em.parameter()` |
+| `data-date-not-declared` | a warning: a date of the data emitted as a string. Declare the data with `em.dataset()`; emit a year computed from the data as a number (`int(...)`); a date the study chose is `em.parameter()` |
 | `dataset-date-english` | a warning: the dataset's date was printed in the English paper.yaml declared when the analysis ran; run it again |
 | `input-missing` | restore the input, or stop declaring it, then re-run |
 | `input-not-fetched` | a warning: the input is a Git LFS or git-annex pointer that cannot be compared with the results (an MD5 key, an LFS extension, or results written before the emitter recorded `raw_sha256`). Fetch it to check it, or re-run where it is fetched |

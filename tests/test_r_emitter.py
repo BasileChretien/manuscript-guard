@@ -439,6 +439,34 @@ def test_r_and_python_agree_that_rounding_to_zero_is_not_rounding(tmp_path: Path
     assert "AGREED" in out.stdout
 
 
+YEAR_CHECK = """
+source("%(emit)s")
+# G2's hint sends a year computed from the data to em$value(key, min(d$year)): a year
+# prints as one, with no thousands separator, from an integer column or a double one.
+d <- data.frame(year = c(2012L, 2010L), when = c(2012, 2010))
+for (shown in list(mg_display("y", min(d$year), NULL, NULL),
+                   mg_display("y", min(d$when), NULL, NULL))) {
+  if (!identical(shown, "2010")) { cat("SHOWN", shown, "\n"); quit(status = 1) }
+}
+cat("AGREED\n")
+"""
+
+
+def test_r_prints_a_year_computed_from_the_data_as_python_does(tmp_path: Path) -> None:
+    """The case `tests/test_corruption.py` asserts for Python: 2010 is "2010"."""
+    script = tmp_path / "year.R"
+    script.write_text(YEAR_CHECK % {"emit": EMIT_R.as_posix()}, encoding="utf-8")
+    out = subprocess.run(
+        [RSCRIPT, "--vanilla", str(script)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert "AGREED" in out.stdout
+
+
 def test_both_emitters_digest_a_script_the_same_way(tmp_path: Path) -> None:
     """`generated_by_sha256` is written by whichever emitter ran and read by one gate.
 

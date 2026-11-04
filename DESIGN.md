@@ -224,7 +224,10 @@ saying what the README holds for which tool. Where it does not hold, Known gaps 
 names no agent tool. Like every file of the scaffold it is never written over an existing
 one; where a repository already has an `AGENTS.md` that does not mention the toolkit, `init`
 prints the rules to add, because an agent there would otherwise read rules that say nothing
-of `results/`. It is advice to the reader and enforces nothing: the gates do that.
+of `results/`. It is advice to the reader and enforces nothing: the gates do that. Run where a
+`paper.yaml` already was, `init` names each file and folder it made, if any, and points to
+`manuscript-guard next`, which reads where the project stands; it used to end, there too, on
+the advice for a project's first day: describe the authors, then write a first analysis.
 
 `manuscript/supplementary/` is read by every gate that reads prose — a fabricated number in a
 supplementary table is still fabricated, and a supplement nobody checks is the obvious place
@@ -2825,6 +2828,21 @@ and proves only that those digits are somewhere in the paper. So G7 warns
 (`quote-too-short`) where a verified quote holds fewer than four words once the value is taken
 out of it, a word being a run between spaces with a letter in it ("COVID-19" is one, "95%"
 and "2.1-3.2" are not). The value stays verified.
+
+Chinese, Japanese and Thai put no space between words, and a whole sentence of them was
+counted as a word or two, so every quote in them was warned of. In those scripts a word is
+counted for every two letters in a row of Han, Hiragana or Katakana and for every four of
+Thai, Lao, Khmer or Myanmar, rounded down (`literature.sources.UNSPACED`); a stop of theirs
+parts two runs, and a Latin word or a number among them is counted as it is between spaces.
+Two, because segmented Chinese averages 1.6 to 1.7 characters a word (the PKU and MSR
+corpora of the SIGHAN 2005 bakeoff) and Japanese, whose particles are words of one letter,
+is as short; four, because the BEST 2009 corpus of Thai averages 3.6. Each size is rounded
+up and each count down, so that a quote of average words is counted no longer than a reader
+would count it: a sentence passes, "報告オッズ比2.6" (three words) and "2.6倍" (one) are
+still warned of. A quote of long words counts longer (Known gaps). A run between spaces
+that holds a letter is still a word at the least, so Chinese set with spaces around its
+numbers, "纳入 120 例, ROR 为 2.6", counts four words as it always did. Lao, Khmer and
+Myanmar are written as Thai is and were not measured.
 
 Comparison folds the differences that are not differences: curly quotes, dash widths,
 ligatures, non-breaking spaces and line wrapping all differ between a quote copied from a
@@ -6186,6 +6204,19 @@ heading over the Introduction or the Methods is the paper's title written as a h
 names no part. The headings are carried from one file of the paper into the next, as G14
 carries them.
 
+A narrative review or a case report has no Results heading. It reports under headings of
+its own ("Drug-related arrests", "Case presentation"), and each number its abstract or its
+conclusions gave and its body gave again was warned. So
+where no heading opens with "Results" or "Findings" outside the abstract and the boxes, a
+section reports when no heading over it names a part of the paper that does not, by the
+names the other gates read them by: the abstract or a box, the Introduction or Background
+(G7's), the Discussion, a conclusion, a section G2 and G9 rule out as the Methods
+("Limitations", "Interpretation"), a statement of the back matter (G7's) or the reference
+list. A heading over the abstract, the opening or the Methods is the paper's title and
+names no part, whatever its first word. Where the paper has a Results heading nothing
+changes, and a number the Introduction binds still reports nothing. The warning says which
+of the two the paper was read as, so that it stays true.
+
 It is a warning: a new rule starts as one, until what it says of real papers is known.
 
 A box the journal's profile asks for (`boxes:`, highlights or key points, below) summarises as
@@ -7744,6 +7775,19 @@ and a letter lost from a file's own name leaves the folder and the extension by 
 write guard knows a generated file. The answer needed no change. `json.dumps` escapes every
 character outside ASCII, so what the hook prints reads the same in the code page it is written
 in and in the UTF-8 the tool reads it as, and a test holds it to ASCII.
+
+**Output to a pipe is UTF-8.** Python opens a pipe or a file in the locale's code page on
+Windows, and `check`, `next` and `import` wrote every character outside cp1252 as `?`: each
+Japanese quote in a finding's context read "?????", and the `é` of an author's name was the
+lone byte 0xE9, which a reader of UTF-8 cannot decode. An agent's tool, `> file` and a CI log
+all read the output that way. `streams.utf8_when_piped` makes standard output and error UTF-8
+at the start of both entry points when they are not a console, unless `PYTHONIOENCODING` or
+`PYTHONUTF8` is set, whatever its value (`PYTHONUTF8=0` too), or Python runs with `-X utf8`:
+the streams are then as Python opened them. Each keeps its own error handler, so standard
+error still writes a lone surrogate as `\udcxx`. A console is left as it
+is: on Windows Python writes to it as UTF-16, and elsewhere in the terminal's encoding. Where
+that encoding cannot take a character, `cli._survive_the_console` writes the line in ASCII,
+an em dash as `--`, as it did before.
 
 **A hook blocks only what is unambiguous.** Writing a machine-written results file is always
 wrong. Prose that trips the AI-writing lint is not, so nothing in G6 is enforced this way.
@@ -11301,6 +11345,20 @@ has now and a digest of its source. G11 finds the paragraph by that text, as G13
 reviewer's, and says when the manuscript no longer holds it: "[the paragraph has changed
 since]". That is said, and answers nothing.
 
+The finding says where the comment is as the author finds it. It named the paragraph by
+its identifier, "on a paragraph mg-p-maincbb16c-34", which is in no file the author opens,
+and the words it was made on were in the context line only. It names the file and the line
+the paragraph starts on now, in the comment's own document, the paper or its supplement:
+the paragraph the identifier names, where it still has the digest filed with the comment;
+else the one paragraph with that digest, where it has moved; else, where the commented
+words stand once in the document's body (front matter left out, read across line breaks),
+the paragraph the identifier names if they are in it, or the line they are on. Two
+paragraphs that read the same, a Methods paragraph the supplement repeats, and words that
+stand twice, a heading "Results" beside an abstract's "Results.", are not guessed between
+(round 1 of #511, where the first of them was named): the words are quoted, 'on a heading,
+at the words "Results"', and the identifier is never shown. Nor is text with no paragraph
+in the source placed by its words, the title above all: its words are quoted.
+
 **A comment is known again by the id Word keeps through a save.** Word renumbers `w:id`
 each time it saves: in Word 16 on 2026-10-20, a comment added above four others moved each
 of their ids, while their `w16cid:durableId` and `w14:paraId` stayed. Keyed on `w:id`, a copy
@@ -13294,9 +13352,22 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   warning back: the example's figure draws a tick at 10, and a key whose display is 10 is
   reported by it. A figure with no text layer, a PNG alone, reports nothing, and neither
   does a table's caption. A section whose title names the Results in other words
-  ("Outcomes", "Main results") is not read as the Results, and a conclusion written as a
-  bold paragraph rather than a heading is not read as one. Literature values (`lit.`) are
-  not looked for: an abstract may give the background it rests on.
+  ("Outcomes", "Main results") is read as reporting only where the paper has no Results
+  heading, and a conclusion written as a bold paragraph rather than a heading is not read as
+  one. Literature values (`lit.`) are not looked for: an abstract may give the background
+  it rests on.
+- **A paper with no Results heading reports under every heading that names no part.** A
+  section of a review's own that is really an introduction ("The problem of arrests"), a
+  discussion ("What this means for regulators") or a summary is read as reporting, so a
+  number the abstract gives and such a section restates passes. A review whose Results
+  stand under topical headings beside one that opens with "Results" ("Results of the
+  search") has a Results heading, and its topical sections report nothing. A topical section
+  over a subsection called "Background" is taken for the paper's title, as a heading over
+  the opening is, and the text directly under it reports nothing. An abstract that no
+  heading names and the profile does not either ("Overview") is a section of the paper's
+  own, and its own "Results" heading is a Results heading. The paper audit's Abstract
+  against the Results (`auditing/abstract.py`) still compares only a paper with a Results
+  heading.
 - **G8 compares only values whose units agree.** A count of 56 and a share of 56.0% are two
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and
@@ -13563,8 +13634,9 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   case.
 - **Some tests of the literature are narrower than the rule they hold.** The words beside a
   quoted value are drawn with each value once, between spaces, and never inside a word with
-  a digit: a value quoted twice, or within "CYP3A14", and a quote in a script written
-  without spaces, are held by corruption cases only, or not at all (round 1 of #278). A
+  a digit: a value quoted twice, or within "CYP3A14", are held by corruption cases only, or
+  not at all (round 1 of #278); a quote in a script written without spaces is drawn in
+  Han, Kana, Thai, Lao, Khmer and Myanmar letters, and never with a value glued to it. A
   Zotero field in a returned document is tested in one shape, with its run properties and
   its result in one run: a field with no `rPr`, a result over several runs, a
   `w:fldSimple` and a `formattedCitation` are not (round 1 of #281). A narrative
@@ -13863,6 +13935,15 @@ Added by the adversarial review, verified and **not** fixed:
   only, the dichromacies; the anomalous trichromacies, commoner and milder, are not, and
   Machado's model is less sure of tritanopia than of the other two. The threshold of 10 is a
   convention, not a standard. A LaTeX manuscript's figures are not read.
+- **A marker or a line style is not seen.** The check reads the colours a figure paints and
+  nothing else, so two series that differ by marker shape or line style as well as colour
+  are warned of as though colour alone told them apart: a ggplot drawn with
+  `aes(colour = series, shape = series)` is warned of as one drawn with `colour` alone. The
+  figure's guard file says so under `allow_colours`, and the hint says that is the way out.
+  The hint offers Okabe and Ito's eight only for a deficiency their own colours stay apart
+  for, all three: in grey, where several of them are one grey, it names no palette and
+  points to `manuscript-guard palettes`. It does not ask whether the eight are enough for
+  the figure's series.
 - **A palette's verdict is the check's, at its threshold, on its colours as written.** The
   number of a set's colours that stay apart is counted in the collection's order for that
   many, so a set whose first colours are close is rated low though a figure could take
@@ -13946,9 +14027,12 @@ Added by the adversarial review, verified and **not** fixed:
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
-  not. Seven designs are named; a design outside them (a cross-sectional study, a
-  diagnostic accuracy study, a target trial emulation as a design of its own) names none and
-  keeps the seven sections. The self-controlled designs have no reporting guideline, and
+  not. Seven designs are named; a design outside them (a narrative review, a cross-sectional
+  study, a case series or report, a qualitative study, a diagnostic accuracy study, a target
+  trial emulation as a design of its own) takes `study_type: other`, which settles `next`'s
+  choice of design and keeps the seven sections, with no guideline asked for by the design.
+  A design is added only with sections that each cite their guideline item: a narrative
+  review (SANRA) and a cross-sectional study (STROBE) could be next. The self-controlled designs have no reporting guideline, and
   their sections come from the methods literature. G5 holds the paper's guidelines to the
   design, and not the protocol's (SPIRIT, PRISMA-P). A guideline is matched by the start of
   its name, so a name that begins as another does ("STROBE-anything").
@@ -14131,12 +14215,18 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   placeholder; a Crossref `component` always fails, a cited supplementary item included;
   `\textregistered` and `\textdegree` keep their names in a title, `{\'\i}t` reads as
   `\it`, a footnote letter in `<sup>` joins the word before it, and a kind of notice
-  Crossref adds later passes. A quote in Chinese, Japanese, Korean or Thai, written without
-  spaces, counts one or two words and is always too short; a value quoted from a table row,
-  with no sentence, is warned of. A quotation in the prose with a citation or a binding
-  inside its marks, a block quotation's `>`, an unpaired straight `"` (5' 10") or
-  mismatched curly marks can be warned of wrongly. A data statement's DOI is cut at `<` in
-  a SICI DOI, and a closing `'`, `’` or `_` is kept on it.
+  Crossref adds later passes. A quote in Chinese, Japanese or Thai is counted a word for
+  every two or four letters in a row, a fixed size and no dictionary: a label of long words
+  can pass, "อัตราส่วนความเสี่ยง" (risk ratio, two words of nineteen letters) counts four, and
+  "ファーマコビジランス" (one word) five. Latin words parted only by a stop of these scripts,
+  "ROR、PRR、IC", count as one, and an ideographic variation selector parts a run of Han.
+  Tibetan, Javanese, Balinese and other scripts written without spaces are still counted
+  between spaces, a sentence of them as a word or two, and so is a Han letter outside the
+  blocks of `UNSPACED`; "〇", which Unicode makes a number, counts for nothing. A value
+  quoted from a table row, with no sentence, is warned of. A quotation in the prose with a
+  citation or a binding inside its marks, a block quotation's `>`, an unpaired straight
+  `"` (5' 10") or mismatched curly marks can be warned of wrongly. A data statement's DOI
+  is cut at `<` in a SICI DOI, and a closing `'`, `’` or `_` is kept on it.
 - **What `impact` reads.** Figure scripts are found in the scripts folder only, not below
   it, figures only where a `results.` key exists, and a figure file, where no render record
   names it, only by its script's stem and as `.svg`, `.pdf`, `.png`, `.tif`, `.tiff`, `.jpg`
@@ -15657,7 +15747,9 @@ Open, recorded as each change landed:
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until
-  they run `claude plugin update`, and nothing tells them to. An update compares only the
+  they run `claude plugin update`. The session-start hook tells them to only once the
+  installed tool is at a later release than the copy (below), so a copy left behind with a
+  tool left behind beside it is said nothing of. An update compares only the
   version in `plugin.json` and the marketplace entry: a skill edited without a bump is
   reported as "already at the latest version" and never reaches anyone. Verified 2026-09-24
   with Claude Code 2.1.119.
@@ -15727,8 +15819,11 @@ Open, recorded as each change landed:
   plugins reference lists `CLAUDE_PLUGIN_ROOT` among the variables exported to a hook's
   process, and the hooks reference describes `systemMessage` as a field any hook event can
   return, shown to the user as a warning. The same JSON carries `additionalContext`, so the
-  model is told either way. The reverse, a tool newer than its plugin, is silent, and so is
-  a plugin never updated: nothing tells anyone to run `claude plugin update`.
+  model is told either way. The reverse, a plugin older than the tool, is said the same way
+  by `hooks.stale_plugin_notice`, with `claude plugin marketplace update` and `claude plugin
+  update` and Codex's `codex plugin marketplace upgrade`: a session start does not say which
+  agent tool sent it, so both are named. There is no threshold: a plugin one release behind,
+  as after a `pip install --upgrade` made before the plugin's update, is said of as well.
 - **The skills are worded for any agent tool, and the test that keeps them so knows a list.**
   The skills are in the open SKILL.md format, which other agent tools read as well as Claude
   Code. `tests/test_plugin.py` fails when a skill names an agent tool (Claude, Codex, Gemini
@@ -18008,6 +18103,11 @@ Open, recorded as each change landed:
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the
   paragraph under it are both edited in one round, that paragraph's rewording is refused.
+  Its refusal says which: a paragraph with new text before it and none after it was not
+  split itself, since a split's first half keeps the identifier, and is told it came back
+  after a new paragraph, with that paragraph's opening words, and to make its own edit in
+  the .md. A paragraph with new text after it is told it may have been split, though the
+  text after it may be new text typed there.
   That is the price of refusing a split, and it does not refuse every one. The search for
   new text stops at the first untagged text the document already had. A table moved with
   its caption between the halves of a split, or a heading dragged there, puts that text
@@ -19313,7 +19413,10 @@ Open, recorded as each change landed:
   the data in other words, "as of", "received by", "data cut", is not read, and one that
   uses those words of something else and binds a typed date is warned of. A year typed into
   the script as a number is never warned of, since it cannot be told from one the analysis
-  computed. The sentence is the one `in_sentences` gives the binding, with its limit: a stop
+  computed; and a year computed and then made text (`as.character(min(d$year))`) is warned
+  of as one typed, since the two cannot be told apart either: the message says the date was
+  emitted as a string, and the hint that a year computed from the data is emitted as a
+  number. The sentence is the one `in_sentences` gives the binding, with its limit: a stop
   typed against a binding with no space after it ends no sentence.
 - **A braced citation key is read as words.** Pandoc's `[@{who-extraction:2020}]` is not
   blanked as a key is, so its "extraction" dates the data, and a typed date beside it is
@@ -20666,6 +20769,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     holds whatever the scripts printed. Removing them is the person's.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A plugin left releases behind the tool was said nothing of.** A copy of the plugin
+  installed once stayed at a release a month old while the tool was upgraded with pip, and
+  its skills lacked `next` and the `guide` skill that the tool and the AGENTS.md `init`
+  writes name. The session-start hook says so once now, with the commands that update the
+  plugin; see "A stale command line tool is warned about, not prevented".
 
 - **The journal's sharing policy was recorded and not read (Task 5, PR 3, 2026-10-29).** A
   profile held where each version of the paper may be shared, and a communication text could

@@ -51,7 +51,7 @@ import yaml
 from hypothesis import HealthCheck, Phase, given, seed, settings
 from hypothesis import strategies as st
 from hypothesis.internal.conjecture import providers
-from readings import INTERVALS, SAYS, TAGS
+from readings import INTERVALS, PICTURES, SAYS, TAGS
 
 Test = TypeVar("Test", bound=Callable[..., Any])
 
@@ -2442,6 +2442,31 @@ def summaries() -> st.SearchStrategy[str]:
     )
 
 
+#: A paper with no Results heading, as a narrative review or a case report is written: the
+#: headings of the parts that report nothing, each written more than one way, headings that
+#: name no part, and bindings to put under them. G8 reads the second as reporting.
+TOPICAL_SUMMARIES = (
+    "\n\n# Abstract\n\n", "\n\n# Introduction\n\n", "\n\n# 1. Background\n\n",
+    "\n\n# Discussion\n\n", "\n\n## Limitations\n\n", "\n\n# Conclusions\n\n",
+    "\n\n# Funding\n\n", "\n\n## Author contributions\n\n", "\n\n# References\n\n",
+    "\n\n# Drug-related arrests\n\n", "\n\n## 2. Stimulants: a smaller population\n\n",
+    "\n\nCase presentation\n=================\n\n", "\n\n# **Regulatory responses**\n\n",
+    "{{results.ror.point}}", "{{results.case.n_cases}}", "{{ results.ror.ci_low }}",
+    "{{results.ror.point}}", "{{results.case.n_cases}}",
+)  # fmt: skip
+
+
+def topical_summaries() -> st.SearchStrategy[str]:
+    """A manuscript holding every heading and binding of `TOPICAL_SUMMARIES`, in an order
+    and among pieces of the pool drawn each time, as `summaries` draws its own."""
+    between = _in_a_row(_pool(()), few=3, many=10)
+    return st.permutations(TOPICAL_SUMMARIES).flatmap(
+        lambda order: st.tuples(*(between for _ in order)).map(
+            lambda gaps: "".join(gap + piece for gap, piece in zip(gaps, order, strict=True))
+        )
+    )
+
+
 #: The boxes a journal's profile may ask for, as `boxes:` writes them, and each way the
 #: manuscript may title one.
 BOX_RULES = (
@@ -4520,6 +4545,16 @@ def nearly_quoted(draw: st.DrawFn) -> dict[str, str]:
     at = draw(st.integers(0, len(source)))
     put = draw(st.sampled_from(INTERRUPTIONS))
     return {"source": source[:at] + put + source[at:], "quote": quote}
+
+
+#: Made-up pieces of a quote in scripts written without spaces between words: Japanese,
+#: Chinese and Thai, a unit or a label of a letter or two, a run longer than one word, a
+#: Latin word or a number against them, and their own stops.
+UNSPACED_SAID = (
+    "患者", "例", "人", "倍率", "報告オッズ比", "の調査では、対象者のうち", "が検出された。",
+    "COVID-19患者", "年の", "调查显示，", "该类药物整体的", "比值比为", "ROR为", "名",
+    "สัญญาณของยา", "คน", "โดยรวม", "ผู้ป่วยCOVID-19",
+)  # fmt: skip
 
 
 # ----------------------------------------------------------------------- suggested edits
@@ -8358,6 +8393,41 @@ def revisions(draw: st.DrawFn) -> tuple[dict[str, list], list[tuple[str, str]]]:
     return {"before": before, "after": after}, expected
 
 
+#: How many paragraphs directly above a figure are cut from there in Word, Track Changes
+#: off, each leaving its bookmark on the paragraph after it: so on the figure, for all but
+#: the first kind.
+LEFT_ON_FIGURE = {"none left": 0, "one left": 1, "two left": 2}
+
+
+@st.composite
+def figures_left_on(draw: st.DrawFn) -> tuple[dict[str, Any], list[list[Any]]]:
+    """A document of paragraphs and figures as `readings.document_of` writes one, with the
+    paragraphs to cut from it (`cut`), and what is left on each figure: for each, in order,
+    the identifiers of the paragraphs cut from directly above it. Every document has a
+    figure of each kind of `LEFT_ON_FIGURE`, in an order drawn each time, each showing a
+    picture drawn, with a paragraph kept above it or not, and a paragraph after the last."""
+    tags = iter(draw(st.permutations(TAGS)))
+    blocks: list[dict[str, Any]] = []
+    cut: list[str] = []
+    left: list[list[str]] = []
+
+    def paragraph() -> str:
+        tag = next(tags)
+        blocks.append({"kind": "p", "runs": [[f"The {tag} reports were counted once.", ""]]})
+        return tag
+
+    for kind in draw(st.permutations(sorted(LEFT_ON_FIGURE))):
+        if draw(st.booleans()):
+            paragraph()
+        cuts = [paragraph() for _ in range(LEFT_ON_FIGURE[kind])]
+        # `document_of` names each paragraph by its place in the document as sent.
+        left.append([f"mg-p-main-{len(blocks) - len(cuts) + n + 1}" for n in range(len(cuts))])
+        cut += cuts
+        blocks.append({"kind": "figure", "picture": draw(st.sampled_from(sorted(PICTURES)))})
+    paragraph()
+    return {"blocks": blocks, "cut": cut}, left
+
+
 @st.composite
 def sessions(draw: st.DrawFn) -> dict[str, Any]:
     """A paper, what a co-author did to it in Word, and what its author did meanwhile.
@@ -9169,7 +9239,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "spans": texts(),
     "sections": texts(),
     "summaries": st.fixed_dictionaries(
-        {"text": summaries(), "abstract title": st.sampled_from((None, "Summary"))}
+        {"text": st.one_of(summaries(), topical_summaries()),
+         "abstract title": st.sampled_from((None, "Summary"))}  # fmt: skip
     ),
     "boxes": box_papers().map(lambda drawn: drawn[0]),
     "communicate anchors": st.one_of(
@@ -9221,7 +9292,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     # As text, a byte a character, so that the bytes pass to a reader as they are.
     "pdf figure": pdf_figures().map(lambda drawn: drawn[0].decode("latin-1")),
     "quote words": st.fixed_dictionaries(
-        {"quote": texts(), "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4"))}
+        {
+            "quote": texts(UNSPACED_SAID),
+            "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4")),
+        }
     ),
     "quote placement": nearly_quoted(),
     "suggested edit": suggested_edits(),
@@ -9323,6 +9397,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "reworded": edits(),
     "response letter": response_letters().map(lambda drawn: drawn[0]),
     "marked up": revisions().map(lambda drawn: drawn[0]),
+    "word blocks": figures_left_on().map(lambda drawn: drawn[0]),
     "paper.yaml set": paper_files().flatmap(
         lambda files: st.sampled_from([
             *files,

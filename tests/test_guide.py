@@ -176,7 +176,32 @@ def test_an_undeclared_design_offers_each_design(tmp_path: Path) -> None:
     (action,) = of(settled(tmp_path, study_type=None, stage="design"), "choose-study-type")
     assert action.choice.recommended is None
     assert [option.argv for option in action.choice.options] == [
-        ("set", "study_type", "cohort"), ("set", "study_type", "trial")]
+        ("set", "study_type", "cohort"), ("set", "study_type", "trial"),
+        ("set", "study_type", "other")]  # fmt: skip
+
+
+def test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice(
+    tmp_path: Path,
+) -> None:
+    """A narrative review, a survey or a case report is none of the designs the table holds,
+    and the choice was asked of it at every run, since nothing it could set answered it."""
+    (action,) = of(settled(tmp_path, study_type=None, stage="design"), "choose-study-type")
+    other = action.choice.options[-1]
+    assert (other.id, other.label) == ("other", "None of these")
+    assert "seven sections every plan has" in other.effect
+    assert of(settled(tmp_path, study_type="other", stage="design"), "choose-study-type") == []
+
+
+def test_a_design_none_of_the_table_s_is_offered_every_guideline(tmp_path: Path) -> None:
+    """As a paper that names no design is: `other` has no guideline of its own to put first."""
+    asked = {}
+    for design in (None, "other"):
+        (action,) = of(settled(tmp_path, reporting_guidelines=(), study_type=design),
+                       "choose-guideline")  # fmt: skip
+        asked[design] = (action.choice.recommended,
+                         [option.argv for option in action.choice.options])  # fmt: skip
+    assert asked["other"] == asked[None]
+    assert asked["other"][0] is None
 
 
 def test_the_choices_come_in_their_order(tmp_path: Path) -> None:
@@ -798,6 +823,31 @@ def test_a_removed_english_gives_the_english_choice(project: Path) -> None:
     action = next(a for a in decide(guide.inspect(project)) if a.rule == "choose-english")
     assert action.choice.recommended == "en-GB"
     assert "english-variant-undeclared" in action.codes
+
+
+def test_a_design_set_to_other_is_settled_and_asks_the_plan_for_the_seven(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`set study_type other` is taken, `next` no longer asks for the design, and the gates
+    read the paper as one that names none: the plan is asked for the seven sections only,
+    and no guideline is said to be missing for the design."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.contracts import load_project
+
+    asked = [a for a in decide(guide.inspect(project)) if a.rule == "choose-study-type"]
+    assert asked
+    assert main(["set", "study_type", "other", "--path", str(project)]) == 0
+    capsys.readouterr()
+    assert main(["next", str(project), "--json"]) == 0
+    said = json.loads(capsys.readouterr().out)
+    assert sorted(VALIDATOR.iter_errors(said), key=str) == []
+    assert "choose-study-type" not in [action["rule"] for action in said["actions"]]
+    loaded, report = load_project(project)
+    assert report.ok, report.render()
+    assert loaded.study_type == "other"
+    codes = {f.code for f in _run_gates(project, stage="drafting")[0].findings}
+    assert not codes & {"plan-section-missing", "plan-section-empty",
+                        "reporting-guideline-for-design", "schema-violation"}  # fmt: skip
 
 
 def test_a_deleted_profile_gives_the_journal_choice(project: Path) -> None:

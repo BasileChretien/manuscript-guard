@@ -186,8 +186,9 @@ Ask the author for the date of the extract and the period their query covered, a
 release only where the custodian names one: do not take a date from a file's modification
 time, which a copy resets, nor invent a version. The first run without `fingerprint` is
 refused and prints the pin to paste. A new extract is refused under the old pin, so the date
-changes with the data. A date of the data typed into the script as a string, rather than
-declared this way, is warned of where the sentence dates the data (`data-date-not-declared`).
+changes with the data. A date of the data emitted as a string, rather than declared this
+way, is warned of where the sentence dates the data (`data-date-not-declared`); a year
+computed from the data is emitted as a number, and is not.
 Use the name the source has in `design/data_sources.yaml` where the project keeps one:
 `check` warns of a dataset whose name is none of the sources the record chose
 (`dataset-not-chosen`).

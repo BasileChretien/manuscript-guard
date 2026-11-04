@@ -4102,6 +4102,10 @@ def test_the_working_folder_is_listed_once_for_its_links(
     real = os.scandir
 
     def counted(path=".", *args, **kwargs):
+        # pytest removes the test's folder while this patch still stands, and on POSIX
+        # shutil.rmtree lists a folder by its descriptor, which is no path.
+        if isinstance(path, int):
+            return real(path, *args, **kwargs)
         if os.path.normcase(os.path.abspath(path)) == os.path.normcase(str(in_claude_code)):
             listed.append(os.fspath(path))
         return real(path, *args, **kwargs)

@@ -8752,6 +8752,8 @@ _READS_LATEX = (
     "check_writing", "check_values", "check_registration", "check_reported",
     "check_recomputed", "check_methods", "check_models", "check_related", "check_revision",
     "check_reporting", "check_prose_quotations", "check_passages",
+    # It reads the citing sentences through `citing_documents`, as `check_passages` does.
+    "check_weak_sources",
     # It reads the main text through G4's `main_text`, which gives a LaTeX manuscript as it
     # prints (#414).
     "check_package_doi",

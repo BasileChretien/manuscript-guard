@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/evidence-hierarchy/1",
+  "title": "manuscript-guard hierarchies of evidence",
+  "description": "The hierarchies a reading of a cited work places it on, each with its scales, one for each kind of question, and on each scale its levels: whole numbers from 1, 1 the strongest. The toolkit's own (data/evidence_hierarchies.yaml) holds the Oxford 2011 Levels of Evidence in its own words; a project may declare another in a file of this shape, named in paper.yaml under `references.hierarchy`.",
+  "type": "object",
+  "required": ["schema", "hierarchies"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/evidence-hierarchy/1" },
+    "hierarchies": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[a-z0-9][a-z0-9.-]*$" },
+      "additionalProperties": { "$ref": "#/$defs/hierarchy" }
+    }
+  },
+  "$defs": {
+    "hierarchy": {
+      "type": "object",
+      "required": ["name", "scales"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "pattern": "\\S" },
+        "citation": { "type": "string", "pattern": "\\S", "description": "The hierarchy's own citation, as its authors ask for it." },
+        "introduction": { "type": "string", "pattern": "\\S", "description": "The citation of the document it is to be read with." },
+        "url": { "type": "string", "pattern": "^https?://" },
+        "read_on": { "type": "string", "format": "date" },
+        "scales": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "pattern": "^[a-z0-9][a-z0-9-]*$" },
+          "additionalProperties": { "$ref": "#/$defs/scale" }
+        }
+      }
+    },
+    "scale": {
+      "type": "object",
+      "required": ["question", "levels"],
+      "additionalProperties": false,
+      "properties": {
+        "question": { "type": "string", "pattern": "\\S", "description": "The kind of question the scale is for." },
+        "levels": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "pattern": "^[1-9][0-9]*$" },
+          "additionalProperties": { "type": "string", "pattern": "\\S" },
+          "description": "Each level by its number, 1 the strongest, with a short description."
+        }
+      }
+    }
+  }
+}

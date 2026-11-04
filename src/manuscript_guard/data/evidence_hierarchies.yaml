@@ -1,0 +1,111 @@
+schema: manuscript-guard/evidence-hierarchy/1
+
+# The hierarchies of evidence a reading of a cited work places it on (`literature/currency/
+# readings/`), and the rules of `references` compare: a level is a whole number from 1, and 1
+# is the strongest. A project may declare its own, in a file of this shape that paper.yaml
+# names under `references.hierarchy`; it is then used in place of this one.
+#
+# The Oxford 2011 Levels of Evidence are the work of the OCEBM Levels of Evidence Working
+# Group, published by the Oxford Centre for Evidence-Based Medicine. The Centre's site grants
+# no licence to copy the table, so nothing of its text is here: each scale is named by an id
+# of ours, after the question the table's row asks, and each level carries a short
+# description in our own words, enough for a reader to recognise it. Read the table itself,
+# with its introductory document, at the address below before placing a work on it.
+#
+# What the Centre asks of a reader, in our words: read the table with its introductory
+# document; a level says where the likely best evidence for a question lies, and is no
+# verdict on the quality of one study; a reader may grade a level down (for a study's risk
+# of bias, imprecision, indirectness or inconsistency, or a small effect) or up (for a large
+# or very large effect), as the table's note allows. Its rule of thumb for a common harm is
+# one that occurs in more than 20% of participants.
+#
+# The descriptions were written from the table's structure on 2026-11-04 and are to be read
+# against the version 2.1 PDF before they are relied on (DESIGN.md, Known gaps).
+
+hierarchies:
+  ocebm-2011:
+    name: The Oxford 2011 Levels of Evidence
+    citation: >-
+      OCEBM Levels of Evidence Working Group. "The Oxford Levels of Evidence 2". Oxford
+      Centre for Evidence-Based Medicine.
+      https://www.cebm.ox.ac.uk/resources/levels-of-evidence/ocebm-levels-of-evidence
+    introduction: >-
+      Jeremy Howick, Iain Chalmers, Paul Glasziou, Trish Greenhalgh, Carl Heneghan,
+      Alessandro Liberati, Ivan Moschetti, Bob Phillips, and Hazel Thornton. "The 2011
+      Oxford CEBM Levels of Evidence (Introductory Document)". Oxford Centre for
+      Evidence-Based Medicine.
+      https://www.cebm.ox.ac.uk/resources/levels-of-evidence/ocebm-levels-of-evidence
+    url: https://www.cebm.ox.ac.uk/resources/levels-of-evidence/ocebm-levels-of-evidence
+    read_on: 2026-11-04
+    scales:
+      frequency:
+        question: how common is the problem
+        levels:
+          1: a current local survey or census of a random sample
+          2: a systematic review of surveys that can be matched to local circumstances
+          3: a local sample that is not random
+          4: a case series
+          5: none of the above
+      diagnosis:
+        question: how accurate is the test
+        levels:
+          1: >-
+            a systematic review of cross-sectional studies, each applying a reference
+            standard to every participant, with blinding
+          2: one such cross-sectional study
+          3: >-
+            a study of participants not recruited consecutively, or one without a reference
+            standard applied to every participant
+          4: a case-control study, or one with a poor or non-independent reference standard
+          5: reasoning from mechanism
+      prognosis:
+        question: what happens without added treatment
+        levels:
+          1: a systematic review of inception cohort studies
+          2: an inception cohort study
+          3: a cohort study, or the control arm of a randomized trial
+          4: a case series, a case-control study, or a prognostic cohort of poor quality
+          5: none of the above
+      benefit:
+        question: does the intervention help
+        levels:
+          1: a systematic review of randomized trials, or an n-of-1 trial
+          2: a randomized trial, or an observational study with a dramatic effect
+          3: a controlled cohort or follow-up study that is not randomized
+          4: a case series, a case-control study, or a study with historical controls
+          5: reasoning from mechanism
+      harms-common:
+        question: what are the common harms
+        levels:
+          1: >-
+            a systematic review of randomized trials or of nested case-control studies, an
+            n-of-1 trial in the patient the question is about, or an observational study
+            with a dramatic effect
+          2: >-
+            a randomized trial, or, exceptionally, an observational study with a dramatic
+            effect
+          3: >-
+            a controlled cohort or follow-up study that is not randomized (post-marketing
+            surveillance, for one), large enough to rule out a common harm
+          4: a case series, a case-control study, or a study with historical controls
+          5: reasoning from mechanism
+      harms-rare:
+        question: what are the rare harms
+        levels:
+          1: a systematic review of randomized trials, or an n-of-1 trial
+          2: >-
+            a randomized trial, or, exceptionally, an observational study with a dramatic
+            effect
+          3: >-
+            a controlled cohort or follow-up study that is not randomized, large enough to
+            rule out a rare harm
+          4: a case series, a case-control study, or a study with historical controls
+          5: reasoning from mechanism
+      screening:
+        question: is early detection worthwhile
+        levels:
+          1: a systematic review of randomized trials
+          2: a randomized trial
+          3: a controlled cohort or follow-up study that is not randomized
+          4: a case series, a case-control study, or a study with historical controls
+          5: reasoning from mechanism

@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/currency-reading/1",
+  "title": "manuscript-guard currency reading",
+  "description": "literature/currency/readings/<id>.<reader>.<n>.yaml: one reader's reading of a currency entry's cited work and its candidates, each field with a quote of the work's stored abstract or text, word for word (rules R1 to R4). A model, an agent or a person may read; `references --reading` files it once, numbered and sealed by `reading_sha256`, and the rules decide from two.",
+  "type": "object",
+  "required": ["schema", "entry", "reader", "read_on", "hierarchy", "scale", "cited", "candidates"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/currency-reading/1" },
+    "entry": { "type": "string", "pattern": "^c[1-9][0-9]*$" },
+    "reader": { "type": "string", "pattern": "\\S", "description": "Who read: a person's name, or the model's, which `provenance` then describes." },
+    "read_on": { "type": "string", "format": "date" },
+    "hierarchy": { "type": "string", "pattern": "\\S", "description": "The hierarchy the levels are on, by its id." },
+    "scale": { "type": "string", "pattern": "\\S", "description": "Its scale for the kind of question (rule F2)." },
+    "question": { "type": "string", "pattern": "\\S", "description": "The claim written as a question (rule F1)." },
+    "cited": {
+      "type": "object",
+      "required": ["work", "level"],
+      "additionalProperties": false,
+      "properties": {
+        "work": { "$ref": "#/$defs/work" },
+        "level": { "$ref": "#/$defs/level" }
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/candidate" }
+    },
+    "provenance": {
+      "type": "object",
+      "description": "Where a model read: its provider, its name and what it was sent, as a panel's reading records them."
+    },
+    "number": { "type": "integer", "minimum": 1, "description": "Written when it is filed: this reader's nth reading of the entry." },
+    "filed_on": { "type": "string", "format": "date" },
+    "reading_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  },
+  "$defs": {
+    "work": { "type": "string", "pattern": "^(doi:10\\.\\S+|pmid:[1-9][0-9]*)$" },
+    "quote": { "type": "string", "pattern": "\\S" },
+    "level": {
+      "type": "object",
+      "required": ["value", "quote"],
+      "additionalProperties": false,
+      "properties": {
+        "value": { "type": "integer", "minimum": 1 },
+        "quote": { "$ref": "#/$defs/quote" }
+      }
+    },
+    "same": {
+      "type": "object",
+      "required": ["value", "quote"],
+      "additionalProperties": false,
+      "properties": {
+        "value": { "enum": ["same", "different", "unclear"] },
+        "quote": { "$ref": "#/$defs/quote" }
+      }
+    },
+    "search_end": {
+      "type": "object",
+      "required": ["value", "quote"],
+      "additionalProperties": false,
+      "properties": {
+        "value": { "type": "string", "pattern": "^[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?$" },
+        "quote": { "$ref": "#/$defs/quote" }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "required": ["work", "level", "population", "exposure", "outcome", "stance"],
+      "additionalProperties": false,
+      "properties": {
+        "work": { "$ref": "#/$defs/work" },
+        "level": { "$ref": "#/$defs/level" },
+        "population": { "$ref": "#/$defs/same" },
+        "exposure": { "$ref": "#/$defs/same" },
+        "outcome": { "$ref": "#/$defs/same" },
+        "stance": {
+          "type": "object",
+          "required": ["value", "quote"],
+          "additionalProperties": false,
+          "properties": {
+            "value": { "enum": ["supports", "contradicts", "neither"] },
+            "quote": { "$ref": "#/$defs/quote" }
+          }
+        },
+        "search_end": { "$ref": "#/$defs/search_end" }
+      }
+    }
+  }
+}

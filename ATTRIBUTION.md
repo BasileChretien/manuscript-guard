@@ -282,6 +282,29 @@ capital only where a sentence opens, a word in a compound or a participle after 
 not read). The contract's other parts, on null findings and on asking the author before a
 claim is moved, are not used; the file's own comments say how each word is read.
 
+## The Oxford levels of evidence
+
+`src/manuscript_guard/data/evidence_hierarchies.yaml`, which `manuscript-guard references`
+and G7 read to compare a cited work with newer evidence, names the scales and levels of the
+Oxford 2011 Levels of Evidence. The table is the work of the OCEBM Levels of Evidence
+Working Group, published by the Oxford Centre for Evidence-Based Medicine:
+
+- OCEBM Levels of Evidence Working Group. "The Oxford Levels of Evidence 2". Oxford Centre
+  for Evidence-Based Medicine.
+  https://www.cebm.ox.ac.uk/resources/levels-of-evidence/ocebm-levels-of-evidence
+- Jeremy Howick, Iain Chalmers, Paul Glasziou, Trish Greenhalgh, Carl Heneghan, Alessandro
+  Liberati, Ivan Moschetti, Bob Phillips, and Hazel Thornton. "The 2011 Oxford CEBM Levels of
+  Evidence (Introductory Document)". Oxford Centre for Evidence-Based Medicine.
+  https://www.cebm.ox.ac.uk/resources/levels-of-evidence/ocebm-levels-of-evidence
+
+The Centre's site, read on 2026-11-04, grants no licence to copy the table. So the file holds
+none of its text: each scale has an id of this project's, after the question the table's
+row asks, and each level a short description written here, in this project's own words, to
+recognise it by. Whoever places a work on a level reads the table itself, with its
+introductory document, which the Centre asks that it be read with. A level there is a guide
+to where the likely best evidence lies, not a verdict on one study's quality, and the table's
+note lets a reader grade a level down or up.
+
 ## The palettes
 
 `src/manuscript_guard/data/palettes.json`, which `manuscript_guard.palettes`, the R package's

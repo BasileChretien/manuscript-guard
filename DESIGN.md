@@ -15633,7 +15633,9 @@ Open, recorded as each change landed:
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until
-  they run `claude plugin update`, and nothing tells them to. An update compares only the
+  they run `claude plugin update`. The session-start hook tells them to only once the
+  installed tool is at a later release than the copy (below), so a copy left behind with a
+  tool left behind beside it is said nothing of. An update compares only the
   version in `plugin.json` and the marketplace entry: a skill edited without a bump is
   reported as "already at the latest version" and never reaches anyone. Verified 2026-09-24
   with Claude Code 2.1.119.
@@ -15703,8 +15705,11 @@ Open, recorded as each change landed:
   plugins reference lists `CLAUDE_PLUGIN_ROOT` among the variables exported to a hook's
   process, and the hooks reference describes `systemMessage` as a field any hook event can
   return, shown to the user as a warning. The same JSON carries `additionalContext`, so the
-  model is told either way. The reverse, a tool newer than its plugin, is silent, and so is
-  a plugin never updated: nothing tells anyone to run `claude plugin update`.
+  model is told either way. The reverse, a plugin older than the tool, is said the same way
+  by `hooks.stale_plugin_notice`, with `claude plugin marketplace update` and `claude plugin
+  update` and Codex's `codex plugin marketplace upgrade`: a session start does not say which
+  agent tool sent it, so both are named. There is no threshold: a plugin one release behind,
+  as after a `pip install --upgrade` made before the plugin's update, is said of as well.
 - **The skills are worded for any agent tool, and the test that keeps them so knows a list.**
   The skills are in the open SKILL.md format, which other agent tools read as well as Claude
   Code. `tests/test_plugin.py` fails when a skill names an agent tool (Claude, Codex, Gemini
@@ -20614,6 +20619,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     holds whatever the scripts printed. Removing them is the person's.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A plugin left releases behind the tool was said nothing of.** A copy of the plugin
+  installed once stayed at a release a month old while the tool was upgraded with pip, and
+  its skills lacked `next` and the `guide` skill that the tool and the AGENTS.md `init`
+  writes name. The session-start hook says so once now, with the commands that update the
+  plugin; see "A stale command line tool is warned about, not prevented".
 
 - **The journal's sharing policy was recorded and not read (Task 5, PR 3, 2026-10-29).** A
   profile held where each version of the paper may be shared, and a communication text could

@@ -39,7 +39,8 @@ in a virtualenv it does not use, the hooks cannot run: nothing is blocked and no
 guarded at the moment of the mistake, and `check` and `build` still run every gate. The
 agent tool may then report a hook error that blocks nothing, which is the sign to look for.
 Where the agent tool tells the hooks which release the skills are from, the session-start
-hook says once when that release is newer than the installed tool, with the upgrade command.
+hook says once when that release is newer or older than the installed tool, with the command
+that brings the one behind up to date.
 
 ## 2. Scaffold
 

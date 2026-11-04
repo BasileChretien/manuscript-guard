@@ -30,7 +30,8 @@ commands of the version they came with, so keep the two together (see
 [the plugin](agent-tools.md#the-claude-code-plugin)). When the plugin is newer than the
 installed command line tool, its session-start hook says so, once, with an upgrade command,
 and blocks nothing. That warning comes from the tool itself, so a copy older than 0.2.260
-cannot give it: upgrade such a copy once, by hand.
+cannot give it: upgrade such a copy once, by hand. When the plugin is the older of the two,
+the hook says that once too, with the commands that update the plugin.
 
 Between a change landing on `main` and the number being raised, the repository holds code
 that no release has. To install what `main` has:

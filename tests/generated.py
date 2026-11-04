@@ -4522,6 +4522,16 @@ def nearly_quoted(draw: st.DrawFn) -> dict[str, str]:
     return {"source": source[:at] + put + source[at:], "quote": quote}
 
 
+#: Made-up pieces of a quote in scripts written without spaces between words: Japanese,
+#: Chinese and Thai, a unit or a label of a letter or two, a run longer than one word, a
+#: Latin word or a number against them, and their own stops.
+UNSPACED_SAID = (
+    "患者", "例", "人", "倍率", "報告オッズ比", "の調査では、対象者のうち", "が検出された。",
+    "COVID-19患者", "年の", "调查显示，", "该类药物整体的", "比值比为", "ROR为", "名",
+    "สัญญาณของยา", "คน", "โดยรวม", "ผู้ป่วยCOVID-19",
+)  # fmt: skip
+
+
 # ----------------------------------------------------------------------- suggested edits
 
 #: Words a reviewer's edit is made of, each as an edit types it and as pandoc prints it: a
@@ -9189,7 +9199,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     # As text, a byte a character, so that the bytes pass to a reader as they are.
     "pdf figure": pdf_figures().map(lambda drawn: drawn[0].decode("latin-1")),
     "quote words": st.fixed_dictionaries(
-        {"quote": texts(), "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4"))}
+        {
+            "quote": texts(UNSPACED_SAID),
+            "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4")),
+        }
     ),
     "quote placement": nearly_quoted(),
     "suggested edit": suggested_edits(),

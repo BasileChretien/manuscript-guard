@@ -9050,6 +9050,64 @@ def test_the_words_beside_a_quoted_value_are_its_words_and_no_more(
         assert len(literature_sources.words_beside(quote, value)) == count, (quote, value)
 
 
+#: Letters of the scripts written without spaces, and how many in a row are a word: Han,
+#: Hiragana and Katakana, an iteration mark, a long vowel, half-width Katakana, a letter of
+#: Extension A and of Extension B; Thai with its marks, Lao, Khmer and Myanmar.
+_UNSPACED_LETTERS = (
+    ("の調査患者例倍率報告オッズ比ー々" + "".join(map(chr, (0x3400, 0x20B9F, 0xFF76, 0x31F0))), 2),
+    ("พบสัญญาณของยาโดยรวม" + "".join(map(chr, (0x0E81, 0x0EB2, 0x1780, 0x17B6, 0x1000))), 4),
+)
+#: What parts two runs of those letters: their own stops, and a middle dot.
+_UNSPACED_STOPS = ("\N{IDEOGRAPHIC COMMA}", "\N{IDEOGRAPHIC FULL STOP}",
+                   "\N{FULLWIDTH COMMA}", "\N{KATAKANA MIDDLE DOT}")  # fmt: skip
+
+
+@st.composite
+def _unspaced_pieces(draw: st.DrawFn, letters: str, size: int) -> tuple[str, int]:
+    """Runs of `letters` parted by their stops, as one piece, and how many words it holds."""
+    runs = draw(st.lists(st.text(letters, min_size=1, max_size=3 * size), min_size=1,
+                         max_size=3))  # fmt: skip
+    stops = [draw(st.sampled_from(_UNSPACED_STOPS)) for _ in runs[1:]]
+    piece = runs[0] + "".join(stop + run for stop, run in zip(stops, runs[1:], strict=True))
+    return piece, sum(len(run) // size for run in runs)
+
+
+@st.composite
+def _unspaced_quotes_beside(draw: st.DrawFn) -> list[tuple[str, str, int]]:
+    """A quote for each kind of value, with a piece of Japanese or Chinese, a piece of Thai,
+    each of a few letters at least, a Latin word glued to the first, and filler words, in an
+    order drawn each time, and how many words stand beside the value."""
+    quotes = []
+    (han, two), (thai, four) = _UNSPACED_LETTERS
+    for value in _LEDGER_VALUES:
+        words = draw(st.lists(st.sampled_from(FILLER), max_size=4))
+        cjk, cjk_count = draw(_unspaced_pieces(han, two))
+        thai_piece, thai_count = draw(_unspaced_pieces(thai, four).filter(lambda p: p[1] > 0))
+        glued, glued_count = draw(_unspaced_pieces(han, two))
+        latin = draw(st.sampled_from(FILLER))
+        glued = draw(st.sampled_from((latin + glued, glued + latin)))
+        pieces = draw(st.permutations([*words, cjk, thai_piece, glued, value]))
+        gaps = [draw(st.sampled_from(_QUOTE_GAPS)) for _ in pieces]
+        quote = "".join(gap + piece for gap, piece in zip(gaps, pieces, strict=True))
+        # The Japanese or Chinese piece stands between spaces, so it is a word at the least.
+        cjk_count = max(cjk_count, 1)
+        quotes.append((quote, value, len(words) + cjk_count + thai_count + glued_count + 1))
+    return quotes
+
+
+@holds(150, _unspaced_quotes_beside())
+def test_a_quote_without_spaces_counts_a_word_for_each_few_letters(
+    quotes: list[tuple[str, str, int]],
+) -> None:
+    """Chinese, Japanese and Thai put no space between words, so a run between spaces of
+    them is no word: a run of Han, Hiragana or Katakana is a word for every two letters,
+    one of Thai, Lao, Khmer or Myanmar for every four, rounded down, a stop of theirs
+    parting two runs; and a Latin word glued to such a run is a word of its own. A run
+    between spaces that holds a letter is still a word at the least, as it was before."""
+    for quote, value, count in quotes:
+        assert len(literature_sources.words_beside(quote, value)) == count, (quote, value)
+
+
 # -------------------------------------------------------------------------------- quotations
 
 
@@ -13726,6 +13784,34 @@ def _the_value_is_left_in_the_quote(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(literature_sources, "words_beside", lambda quote, display: real(quote, ""))
 
 
+def _unspaced_letters_are_counted_between_spaces(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(literature_sources, "UNSPACED", ())
+
+
+def _each_unspaced_letter_is_a_word(patch: pytest.MonkeyPatch) -> None:
+    unspaced = tuple((1, blocks) for _size, blocks in literature_sources.UNSPACED)
+    patch.setattr(literature_sources, "UNSPACED", unspaced)
+
+
+def _thai_is_counted_as_han_is(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(literature_sources, "UNSPACED", tuple(
+        (2, blocks) for _size, blocks in literature_sources.UNSPACED))  # fmt: skip
+
+
+def _a_lone_unspaced_letter_is_no_word(patch: pytest.MonkeyPatch) -> None:
+    def counted(piece: str) -> list[str]:
+        words = []
+        for size, letters in itertools.groupby(piece, literature_sources._letters_to_a_word):
+            run = "".join(letters)
+            if size:
+                words.extend(run[at : at + size] for at in range(0, len(run) - size + 1, size))
+            elif any(ch.isalpha() for ch in run):
+                words.append(run)
+        return words
+
+    patch.setattr(literature_sources, "_words_of", counted)
+
+
 def _an_anchor_in_a_comment_is_an_anchor(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(placeholders, "_without_comments", lambda text: text)
 
@@ -16730,6 +16816,22 @@ BROKEN = {
     "the value is left in the quote": (
         _the_value_is_left_in_the_quote,
         test_the_words_beside_a_quoted_value_are_its_words_and_no_more,
+    ),
+    "a script without spaces is counted between spaces": (
+        _unspaced_letters_are_counted_between_spaces,
+        test_a_quote_without_spaces_counts_a_word_for_each_few_letters,
+    ),
+    "each letter of a script without spaces is a word": (
+        _each_unspaced_letter_is_a_word,
+        test_a_quote_without_spaces_counts_a_word_for_each_few_letters,
+    ),
+    "Thai is counted as Han is": (
+        _thai_is_counted_as_han_is,
+        test_a_quote_without_spaces_counts_a_word_for_each_few_letters,
+    ),
+    "a lone letter of a script without spaces between spaces is no word": (
+        _a_lone_unspaced_letter_is_no_word,
+        test_a_quote_without_spaces_counts_a_word_for_each_few_letters,
     ),
     "a comment in a plan's section is compared": (
         _comments_are_compared,

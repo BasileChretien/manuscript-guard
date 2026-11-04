@@ -9506,10 +9506,10 @@ def test_a_paragraph_split_in_word_is_not_truncated(
     assert "split" in capsys.readouterr().out
 
 
-def _refusal_of(printed: str, opening: str) -> str:
-    """The refusal `import` printed for the paragraph whose text starts with `opening`: from
-    its line to the next blank line."""
-    at = printed.index(opening)
+def _refusal_of(printed: str, shown: str) -> str:
+    """The refusal `import` printed for the paragraph whose changed stretch, as the dry run
+    shows it, holds `shown`: from its line to the next blank line."""
+    at = printed.index(shown)
     start = printed.rfind("\n\n", 0, at) + 2
     end = printed.find("\n\n", at)
     return " ".join(printed[start : end if end != -1 else None].split())
@@ -9544,9 +9544,11 @@ def test_the_paragraph_after_a_split_is_told_it_is_its_neighbour(
     assert main(["import", str(returned), str(project), "--apply"]) == 1
     assert source.read_text(encoding="utf-8") == before
     printed = capsys.readouterr().out
-    split_said = _refusal_of(printed, "Hepatic injury is the single event term")
+    # Each found by the stretch the dry run shows of it: the split one by what is left of it,
+    # the one after by its rewording.
+    split_said = _refusal_of(printed, "+ ... used by the data generator.\n")
     assert "split in two in Word" in split_said, split_said
-    after = _refusal_of(printed, "The reporting odds ratio was calculated")
+    after = _refusal_of(printed, "+ The reporting odds ratio was calculated")
     assert "split in two in Word, new text written next to it" not in after, after
     assert "after a new paragraph, 'Real work would need a case definition" in after, after
     assert "was not split itself" in after and "own edit in the .md" in after, after

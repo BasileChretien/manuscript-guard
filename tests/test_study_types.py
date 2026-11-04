@@ -10,14 +10,18 @@ from pathlib import Path
 
 import pytest
 
-from manuscript_guard.gates.design import REQUIRED, study_types
+from manuscript_guard.gates.design import OTHER, REQUIRED, study_types
 
 SCHEMAS = Path(__file__).resolve().parent.parent / "src" / "manuscript_guard" / "contracts"
 
 
 def test_the_designs_paper_yaml_takes_are_the_table_s() -> None:
     schema = json.loads((SCHEMAS / "schemas" / "paper.schema.json").read_text(encoding="utf-8"))
-    assert set(schema["properties"]["study_type"]["enum"]) == set(study_types())
+    taken = schema["properties"]["study_type"]["enum"]
+    # And `other`, last, for a design none of them is: it asks for the seven sections only.
+    assert set(taken) == set(study_types()) | {OTHER} and taken[-1] == OTHER
+    assert OTHER not in study_types()
+    assert f"`{OTHER}`" in schema["properties"]["study_type"]["description"]
 
 
 @pytest.mark.parametrize("design", sorted(study_types()))

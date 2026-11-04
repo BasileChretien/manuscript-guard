@@ -55,7 +55,8 @@ stage: design
 
 # The study's design: the analysis plan is then asked for the sections it needs, each from
 # the guideline item it comes from. One of cohort, case-control, self-controlled,
-# disproportionality, trial, systematic-review, prediction-model.
+# disproportionality, trial, systematic-review, prediction-model; or other, for a study
+# none of these is, whose plan is asked for the seven sections every plan has.
 # study_type: cohort
 
 reporting_guideline: []

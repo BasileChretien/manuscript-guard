@@ -24725,6 +24725,18 @@ def test_a_plan_is_asked_for_what_its_design_needs(project: Path) -> None:
                                     "randomisation"]  # fmt: skip
 
 
+def test_a_design_none_of_the_table_s_is_still_asked_for_the_seven(project: Path) -> None:
+    """`study_type: other` settles the choice of design and asks for nothing of its own: a
+    plan that lacks one of the seven sections is still told, as one that names no design."""
+    _paper_has(project, study_type="other")
+    assert _plan_asked(project) == []
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Outcome\n" in text
+    plan.write_text(text.replace("## Outcome\n", "## What is counted\n"), encoding="utf-8")
+    assert _plan_asked(project) == ["outcome"]
+
+
 @pytest.mark.parametrize(
     "title", ["Standard deviation of the dose", "Standard deviations", "standard\tdeviation"]
 )
@@ -24833,6 +24845,9 @@ def _guideline_said(root: Path) -> list[str]:
         ("prediction-model", ["TRIPOD+AI"], False),
         ("disproportionality", ["READUS-PV"], False),
         (None, [], False),
+        # A design none of the table's has no guideline to be held to.
+        ("other", [], False),
+        ("other", ["CONSORT"], False),
     ],
 )
 def test_a_paper_whose_design_has_none_of_its_guidelines_is_told(

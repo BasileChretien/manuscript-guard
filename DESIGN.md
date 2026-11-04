@@ -3172,19 +3172,20 @@ G7 then says:
   `updated-by`: a DOI whose `update-to` names another work is the notice itself, which is
   `reference-not-the-work`. A retraction and a concern keep their own findings, which
   PubMed's "Retraction in" and "Expression of concern in" now also give.
-- `number-from-secondary-source`, a warning: a value of the literature ledger (or of
-  `attested.yaml`, where it names a citekey) quoted from a work PubMed types as a review, an
-  editorial, a letter or a comment, and as no systematic review, meta-analysis or primary
-  study. The types are read from the record of the entry's PMID, else from that of the PMID
-  PubMed gives its DOI (`publication_types` in `gates/lookups.py`, which other checks read
-  too). The sets are NLM's publication types (nlm.nih.gov/mesh/pubtypes.html, last reviewed
-  2026-07-01), sorted in `gates/lookups.py`: secondary are Review, Editorial, Letter and
-  Comment; synthesis are Systematic Review, Meta-Analysis, Network Meta-Analysis, Scoping
-  Review and Evidence Synthesis; primary are the trials of every kind, Case Reports, Clinical
-  Study, Comparative Study, Evaluation Study, Multicenter Study, Observational Study, Twin
-  Study and Validation Study. Journal Article, English Abstract and the Research Support types
-  say nothing of the kind of work and are left out of the message. Any other type (Practice
-  Guideline, Historical Article, News) neither makes a work secondary nor clears it. One
+- `number-from-secondary-source`: a value of the literature ledger (or of `attested.yaml`,
+  where it names a citekey) quoted from a work by what PubMed's types say of it exactly. The
+  types are read from the record of the entry's PMID, else from that of the PMID PubMed gives
+  its DOI (`publication_types` in `gates/lookups.py`, which other checks read too), and
+  NLM's generic types (Journal Article, English Abstract, Introductory Journal Article, the
+  Research Support types; nlm.nih.gov/mesh/pubtypes.html, last reviewed 2026-07-01) are set
+  aside: they say nothing of the kind of work. Where every other type is Editorial or
+  Comment, a warning. Where every other type is Review, Editorial or Comment, Review among
+  them, a note, which says that a work typed only as a review may be a systematic review
+  indexed before PubMed had a type for one. Anything else says nothing: a letter, which may
+  report data of its own; a guideline that reviews; a systematic review, a meta-analysis or a
+  study of any design beside the others. Round 1 of #493 narrowed the rule to this from one
+  that warned of every review, letter or comment not typed as a study or a synthesis, which
+  warned of a research letter and of a guideline typed Practice Guideline and Review. One
   finding names every value quoted from one work, in the ledger. A record edited by hand, or
   looked up under other identifiers than the entry has now, types nothing.
 
@@ -14128,13 +14129,15 @@ Open, recorded as each change landed:
   (most of what is not biomedical, books, reports, and a paper whose DOI PubMed does not hold
   and that the entry gives no PMID) has no publication types, so `number-from-secondary-source`
   says nothing of it; nor of a recent paper MEDLINE has not yet indexed, typed only "Journal
-  Article". The types are the indexers': a research letter that reports data of its own is
-  typed Letter and warned of, and a narrative review typed only Journal Article is not. The
-  two sets (`SECONDARY`, and `SYNTHESIS` with `PRIMARY` in `gates/lookups.py`) are a reading
-  of NLM's list of 2026-07-01; a type NLM adds later is in neither until it is put there, and
-  a type in neither (a guideline, a consensus statement) leaves a review typed with it
-  warned of. Which PMID a record's types come from is not checked against the entry's title:
-  a PMID that names another work (`pmid-names-another-work`) gives that work's types.
+  Article". The types are the indexers', and only what they say exactly is read: a letter is
+  not read at all, so a letter that only comments on others' numbers says nothing; a review
+  is a note, not a warning, since PubMed typed a systematic review as a Review before it had
+  a type for one; a narrative review typed only Journal Article says nothing; and a type
+  beside them that is not generic (a guideline, a consensus statement) clears the work. The
+  sets (`OPINION`, `REVIEWED` and `GENERIC` in `gates/lookups.py`) are a reading of NLM's list
+  of 2026-07-01, and a generic type NLM adds later clears a work until it is put there. Which
+  PMID a record's types come from is not checked against the entry's title: a PMID that names
+  another work (`pmid-names-another-work`) gives that work's types.
 - **The PMID PubMed gives a DOI is refused where the answer is not one.** Several PMIDs for
   one DOI (a work and a notice filed under its DOI, or two records of one work), or one whose
   record holds another DOI or none, keep no PMID: the work's types and links are then unknown,

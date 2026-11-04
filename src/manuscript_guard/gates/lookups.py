@@ -75,25 +75,16 @@ CORRECTING = frozenset({"correction", "corrigendum", "erratum", "addendum", "cla
 #: PubMed's publication types for a notice rather than the work it is about.
 PUBMED_NOTICES = frozenset({"Retraction of Publication", "Published Erratum"})
 #: PubMed's publication types, from NLM's list (nlm.nih.gov/mesh/pubtypes.html, last
-#: reviewed 2026-07-01), sorted for `number-from-secondary-source`. A work typed with one of
-#: SECONDARY and none of SYNTHESIS or PRIMARY reports what others measured: a narrative
-#: review, an editorial, a letter, a comment. Any other type (a guideline, a historical
-#: article, a news item) neither makes a work secondary nor clears it, and GENERIC says
-#: nothing of the kind of work at all: every article is a Journal Article, and who paid for
-#: it is no design.
-SECONDARY = frozenset({"Review", "Editorial", "Letter", "Comment"})
-SYNTHESIS = frozenset({"Systematic Review", "Meta-Analysis", "Network Meta-Analysis",
-                       "Scoping Review", "Evidence Synthesis"})  # fmt: skip
-PRIMARY = frozenset({
-    "Adaptive Clinical Trial", "Case Reports", "Clinical Study", "Clinical Trial",
-    "Clinical Trial, Phase I", "Clinical Trial, Phase II", "Clinical Trial, Phase III",
-    "Clinical Trial, Phase IV", "Clinical Trial, Veterinary", "Comparative Study",
-    "Controlled Clinical Trial", "Equivalence Trial", "Evaluation Study",
-    "Human Challenge Trials", "Multicenter Study", "Observational Study",
-    "Observational Study, Veterinary", "Pragmatic Clinical Trial",
-    "Randomized Controlled Trial", "Randomized Controlled Trial, Veterinary", "Twin Study",
-    "Validation Study",
-})  # fmt: skip
+#: reviewed 2026-07-01), read for `number-from-secondary-source` exactly, GENERIC set aside:
+#: it says nothing of the kind of work, since every article is a Journal Article and who
+#: paid for it is no design. A work whose other types are all OPINION (an editorial, a
+#: comment) reports what others measured: a warning. One whose other types are all
+#: REVIEWED, Review among them, is a note: PubMed typed a systematic review as a Review
+#: before it had a type for one. Any other type beside them (a letter, which may report data
+#: of its own; a guideline; a systematic review, a meta-analysis or a study of any design)
+#: says nothing (round 1 of #493).
+OPINION = frozenset({"Editorial", "Comment"})
+REVIEWED = OPINION | {"Review"}
 GENERIC = frozenset({
     "Journal Article", "English Abstract", "Introductory Journal Article",
     "Research Support, American Recovery and Reinvestment Act",
@@ -242,6 +233,9 @@ def _read(project: Project, citekey: str) -> tuple[dict[str, Any] | None, Report
 
 
 _REDO = "run `manuscript-guard lookup --again` to write the record again"
+#: Answers read for a work's types and links only, never for what is known of it, by the
+#: words a message names them with.
+_SIDE_ANSWERS = {"pubmed_by_doi": "PubMed's search by DOI"}
 
 
 def check_lookups(project: Project, cited: list[str], literature: Any = None) -> Report:
@@ -411,12 +405,16 @@ def _judge(
     answers = record["sources"]
     late = [name for name, answer in answers.items() if answer["status"] == "unresolvable"]
     if late:
-        # Every registry silent: nothing is known of the reference, retracted or not.
-        nothing = len(late) == len(answers)
+        # Every registry silent: nothing is known of the reference, retracted or not. What
+        # PubMed's search by DOI said counts for nothing here: it never says which work is
+        # cited (round 1 of #493).
+        asked = [name for name in answers if name not in _SIDE_ANSWERS]
+        nothing = bool(asked) and all(name in late for name in asked)
+        named = ", ".join(_SIDE_ANSWERS.get(name, name) for name in late)
         found.append(
             _finding(
                 "lookup-unresolvable",
-                f"@{citekey}: no answer from {', '.join(late)} when it was looked up"
+                f"@{citekey}: no answer from {named} when it was looked up"
                 + (", so nothing is known of it" if nothing else ""),
                 path,
                 "`manuscript-guard lookup` asks again for an answer that did not come",
@@ -485,6 +483,12 @@ def _pointed(link: dict[str, str]) -> str:
     return pmid + (f" ({link['reference']})" if link.get("reference") else "")
 
 
+def _a(kind: str) -> str:
+    """A kind of notice with its article, chosen by its first letter, which suits every one
+    of Crossref's kinds: "an erratum", "an addendum", "a correction" (round 1 of #493)."""
+    return ("an " if kind[:1].lower() in "aeiou" else "a ") + kind
+
+
 def _since(citekey: str, answers: dict[str, Any], path: Path, looked_on: str) -> list[Finding]:
     """What came after the work: a later version or edition of it (a warning, as a preprint
     published since is), a correction of it (a note). Read from Crossref's `updated_by`
@@ -499,7 +503,7 @@ def _since(citekey: str, answers: dict[str, Any], path: Path, looked_on: str) ->
          "read the correction, and check that what is cited is not what it corrects"),
     ):  # fmt: skip
         where = [
-            f"Crossref's `updated-by` lists a {n['type'].replace('_', ' ')}"
+            f"Crossref's `updated-by` lists {_a(n['type'].replace('_', ' '))}"
             + (f" (doi:{n['doi']}{', ' + n['date'] if n.get('date') else ''})"
                if n.get("doi") else "")
             for n in notices if n["type"] in kinds
@@ -539,12 +543,17 @@ def publication_types(record: dict[str, Any]) -> tuple[str, ...] | None:
     return typed[0] if typed else None
 
 
-def secondary(types: tuple[str, ...] | list[str]) -> bool:
-    """A work PubMed types as a review, an editorial, a letter or a comment, and as no
-    systematic review, meta-analysis or primary study (`SECONDARY`, `SYNTHESIS`,
-    `PRIMARY`)."""
-    kinds = set(types)
-    return bool(kinds & SECONDARY) and not kinds & (SYNTHESIS | PRIMARY)
+def secondary(types: tuple[str, ...] | list[str]) -> str | None:
+    """How a number quoted from a work of these PubMed types is said, from the types beside
+    the generic ones: `WARN` where all are an editorial or a comment (`OPINION`), `INFO`
+    where all are a review, an editorial or a comment and one is a review (`REVIEWED`), and
+    None for anything else, a letter included."""
+    kinds = set(types) - GENERIC
+    if kinds and kinds <= OPINION:
+        return WARN
+    if "Review" in kinds and kinds <= REVIEWED:
+        return INFO
+    return None
 
 
 def _sealed(project: Project, citekey: str, fields: dict[str, str] | None) -> dict | None:
@@ -563,8 +572,9 @@ def _sealed(project: Project, citekey: str, fields: dict[str, str] | None) -> di
 def _secondary_sources(project: Project, literature: Any,
                        entries: dict[str, dict[str, str]]) -> Report:  # fmt: skip
     """`number-from-secondary-source`: a value of the literature ledger, or of attested.yaml,
-    quoted from a work PubMed types as secondary (`secondary`), one finding per work. A work
-    with no type known says nothing."""
+    quoted from a work PubMed types only as an editorial or a comment (a warning) or as a
+    review (a note; `secondary`), one finding per work. A work with no type known says
+    nothing."""
     by_work: dict[str, list[Any]] = {}
     for _key, value in sorted(literature.values.items()):
         citekey = str((value.detail or {}).get("citekey") or "").strip()
@@ -574,21 +584,25 @@ def _secondary_sources(project: Project, literature: Any,
     for citekey, values in by_work.items():
         record = _sealed(project, citekey, entries.get(citekey))
         typed = _types_of(record) if record else None
-        if typed is None or not secondary(typed[0]):
+        severity = secondary(typed[0]) if typed else None
+        if severity is None:
             continue
         types, pmid, by_doi = typed
         shown = ", ".join(t for t in types if t not in GENERIC)
         whose = f"PMID {pmid}" + (", which PubMed gives its DOI" if by_doi else "")
         keys = ", ".join(f"lit.{v.key}" for v in values)
+        said = ("a work that reports what other studies measured" if severity == WARN else
+                "most such works report what other studies measured, though a work typed "
+                "only as a review may be a systematic review indexed before PubMed had a "
+                "type for one")  # fmt: skip
         found.append(Finding(
-            gate=GATE, code="number-from-secondary-source", severity=WARN,
+            gate=GATE, code="number-from-secondary-source", severity=severity,
             message=f"{keys}: quoted from @{citekey}, which PubMed types as {shown} "
-            f"(`pubtype` of {whose}, looked up on {record['looked_up_on']}): a work that "
-            "reports what other studies measured",
+            f"(`pubtype` of {whose}, looked up on {record['looked_up_on']}): {said}",
             path=values[0].source,
             hint="quote the value from the study that measured it, or from a systematic "
-            "review or meta-analysis, and cite that work; PubMed's types are its indexers', "
-            "and a letter may report data of its own",
+            "review or meta-analysis, and cite that work; PubMed's types are its "
+            "indexers'",
         ))  # fmt: skip
     return Report(tuple(found))
 
@@ -802,9 +816,8 @@ __all__ = [
     "CORRECTING",
     "GENERIC",
     "MAX_AGE_DAYS",
-    "PRIMARY",
-    "SECONDARY",
-    "SYNTHESIS",
+    "OPINION",
+    "REVIEWED",
     "TITLE_HELD",
     "UPDATING",
     "check_lookups",

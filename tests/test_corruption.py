@@ -10491,7 +10491,10 @@ def test_a_corrected_work_is_noted(project: Path, sources: dict) -> None:
     _looked_up(project, pmid="31000001" if "pubmed" in sources else None, **sources)
     findings = {f.code: f for f in _g7(project).findings}
     assert findings["reference-corrected"].severity == "info"
-    assert "looked up on 2026-10-01" in findings["reference-corrected"].message
+    message = findings["reference-corrected"].message
+    assert "looked up on 2026-10-01" in message
+    # Round 1 of #493: "a addendum", "a erratum".
+    assert not re.search(r"\ba [aeiou]", message), message
     assert not {"reference-updated", "reference-retracted"} & set(findings)
 
 
@@ -10549,43 +10552,88 @@ def test_the_pmid_found_by_the_doi_never_says_which_work_is_cited(project: Path)
                 "reference-authors-differ"} & set(found), found  # fmt: skip
 
 
+_SUPPORT = "Research Support, Non-U.S. Gov't"
+
+
 @pytest.mark.parametrize(
     ("pubtypes", "said"),
     [
-        (("Journal Article", "Review"), True),
-        (("Editorial",), True),
-        (("Letter", "Comment", "Research Support, Non-U.S. Gov't"), True),
-        (("Review", "Practice Guideline"), True),
-        # A synthesis or a primary study is where a number belongs, whatever else it is.
-        (("Review", "Systematic Review"), False),
-        (("Review", "Meta-Analysis"), False),
-        (("Letter", "Case Reports"), False),
-        (("Comment", "Randomized Controlled Trial"), False),
-        (("Journal Article",), False),
-        (("Journal Article", "Practice Guideline"), False),
+        # Only an editorial or a comment, the generic types set aside: a warning.
+        (("Editorial",), "warn"),
+        (("Comment",), "warn"),
+        (("Journal Article", "Editorial", "Comment", _SUPPORT), "warn"),
+        # A review, alone or with an editorial or a comment: a note, since a systematic
+        # review indexed before PubMed had a type for one is typed only as a review.
+        (("Review",), "info"),
+        (("Journal Article", "Review", _SUPPORT), "info"),
+        (("Review", "Editorial"), "info"),
+        # Round 1 of #493: a research letter with data of its own, and a guideline that
+        # reviews, are ordinary sources of a number. A letter is not read.
+        (("Letter",), None),
+        (("Letter", "Comment"), None),
+        (("Review", "Practice Guideline"), None),
+        # A synthesis or a primary study beside any of them: where a number belongs.
+        (("Review", "Systematic Review"), None),
+        (("Review", "Meta-Analysis"), None),
+        (("Editorial", "Meta-Analysis"), None),
+        (("Comment", "Randomized Controlled Trial"), None),
+        (("Editorial", "Observational Study"), None),
+        (("Review", "Editorial", "Case Reports"), None),
+        (("Journal Article",), None),
+        (("Journal Article", _SUPPORT), None),
     ],
 )
 def test_a_number_quoted_from_a_secondary_source_is_said(
-    project: Path, pubtypes: tuple, said: bool
+    project: Path, pubtypes: tuple, said: str | None
 ) -> None:
     """The example's ledger quotes its incidence from its first reference."""
     _looked_up(project, pmid="31000001", pubmed=_pubmed(pubtypes=pubtypes))
     findings = {f.code: f for f in _g7(project).findings}
-    assert ("number-from-secondary-source" in findings) is said
+    finding = findings.get("number-from-secondary-source")
+    assert (finding.severity if finding else None) == said
     if said:
-        finding = findings["number-from-secondary-source"]
-        assert finding.severity == "warn" and finding.path.name == "ledger.yaml"
+        assert finding.path.name == "ledger.yaml"
         assert "lit.background.reported_incidence" in finding.message
         assert "PMID 31000001" in finding.message and "2026-10-01" in finding.message
         assert "Research Support" not in finding.message
         assert "Journal Article" not in finding.message
+        assert ("systematic review indexed before PubMed had a type for one"
+                in finding.message) is (said == "info")  # fmt: skip
 
 
 def test_a_number_s_source_is_typed_by_the_pmid_its_doi_has(project: Path) -> None:
-    _looked_up(project, pubmed_by_doi=_by_doi(pubtypes=("Journal Article", "Review")))
+    _looked_up(project, pubmed_by_doi=_by_doi(pubtypes=("Journal Article", "Editorial")))
     findings = {f.code: f for f in _g7(project).findings}
     assert "PMID 31000009, which PubMed gives its DOI" in findings[
         "number-from-secondary-source"].message  # fmt: skip
+
+
+def _unanswered(why: str = "HTTP 500") -> dict:
+    return {"status": "unresolvable", "why": why}
+
+
+@pytest.mark.parametrize(
+    "by_doi",
+    [{"status": "absent", "count": 0}, _by_doi(), _unanswered("throttled (HTTP 429)")],
+)
+def test_the_doi_s_pmid_never_turns_a_lookup_that_got_nothing_into_a_note(
+    project: Path, by_doi: dict
+) -> None:
+    """Round 1 of #493: with Crossref, OpenAlex, DataCite and doi.org all unanswered,
+    nothing is known of the reference, whatever PubMed's search by DOI said."""
+    _looked_up(project, crossref=_unanswered(), openalex=_unanswered(),
+               datacite=_unanswered(), doi_org=_unanswered(), pubmed_by_doi=by_doi)
+    findings = {f.code: f for f in _g7(project).findings}
+    assert findings["lookup-unresolvable"].severity == "warn"
+    assert "nothing is known of it" in findings["lookup-unresolvable"].message
+
+
+def test_a_search_by_doi_that_got_no_answer_is_named_in_words(project: Path) -> None:
+    _looked_up(project, pubmed_by_doi=_unanswered("throttled (HTTP 429)"))
+    finding = {f.code: f for f in _g7(project).findings}["lookup-unresolvable"]
+    assert finding.severity == "info"
+    assert "PubMed's search by DOI" in finding.message
+    assert "pubmed_by_doi" not in finding.message
 
 
 @pytest.mark.parametrize(

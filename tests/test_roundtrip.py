@@ -9327,6 +9327,52 @@ def test_a_paragraph_split_in_word_is_not_truncated(
     assert "split" in capsys.readouterr().out
 
 
+def _refusal_of(printed: str, opening: str) -> str:
+    """The refusal `import` printed for the paragraph whose text starts with `opening`: from
+    its line to the next blank line."""
+    at = printed.index(opening)
+    start = printed.rfind("\n\n", 0, at) + 2
+    end = printed.find("\n\n", at)
+    return " ".join(printed[start : end if end != -1 else None].split())
+
+
+@needs_pandoc
+def test_the_paragraph_after_a_split_is_told_it_is_its_neighbour(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A paragraph split in Word, and one word of the next one reworded. Both are refused,
+    and the next one was refused with the split's own message, "split in two in Word": the
+    author read a wrong diagnosis, and missed that the rewording was theirs to carry over.
+    The split keeps its message; the paragraph after it is told the new paragraph is before
+    it, which one that is, and that its own edit is made in the .md."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    split = (
+        'data generator.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="BodyText" /></w:pPr>'
+        '<w:r><w:t xml:space="preserve">Real work'
+    )
+    returned = rewrite(
+        document,
+        tmp_path / "split.docx",
+        lambda xml: xml.replace("data generator. Real work", split, 1).replace(
+            "The reporting odds ratio was computed", "The reporting odds ratio was calculated", 1
+        ),
+    )
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert source.read_text(encoding="utf-8") == before
+    printed = capsys.readouterr().out
+    split_said = _refusal_of(printed, "Hepatic injury is the single event term")
+    assert "split in two in Word" in split_said, split_said
+    after = _refusal_of(printed, "The reporting odds ratio was calculated")
+    assert "split in two in Word, new text written next to it" not in after, after
+    assert "after a new paragraph, 'Real work would need a case definition" in after, after
+    assert "was not split itself" in after and "own edit in the .md" in after, after
+
+
 @needs_pandoc
 @pytest.mark.parametrize("bookmark", ["kept", "lost"])
 def test_two_paragraphs_joined_in_word_are_not_duplicated(

@@ -37,8 +37,8 @@ pandoc is on PATH. Set it to the same value locally to run the suite as CI does;
 missing pandoc only skips the tests that need it.
 
 The generated tests (`tests/test_properties.py`, `tests/test_generated_sessions.py` and
-`tests/test_differential.py`) draw the same inputs on every run. To look harder at a change, draw more of them or from another seed,
-and name the commit to compare the working tree with:
+`tests/test_differential.py`) draw the same inputs on every run. To look harder at a change,
+draw more of them or from another seed, and name the commit to compare the working tree with:
 
 ```bash
 MANUSCRIPT_GUARD_MORE_EXAMPLES=20 pytest -q tests/test_properties.py   # twenty times as many
@@ -46,43 +46,33 @@ MANUSCRIPT_GUARD_SEED=7 pytest -q tests/test_properties.py             # other i
 MANUSCRIPT_GUARD_BASE=origin/main pytest -q -rs tests/test_differential.py
 ```
 
-The twelve sessions of `tests/test_generated_sessions.py` are drawn from a seed written in
-that file (`PINNED`), because the file also holds what the twelve have in them. A change to
-`sessions()` in `tests/generated.py`, to what it draws from (`TAGS` and `SAYS` of
-`tests/readings.py`), or to the pin of Hypothesis, draws twelve others, and
-the test of what they contain may then fail with nothing wrong in the import: its message
-says so, and which numbers to try in its place. Under the first two variables above, the
-two tests that are about the pinned twelve are skipped.
+`tests/test_generated_sessions.py` draws its twelve sessions from the seed `PINNED` in that
+file, which also holds what the twelve have in them. A change to `sessions()` in
+`tests/generated.py`, to `TAGS` or `SAYS` in `tests/readings.py`, or to the pin of Hypothesis
+draws twelve others, and the test of what they contain may then fail with nothing wrong in
+the import: its message says so, and which numbers to try. Under the first two variables
+above, the two tests about the pinned twelve are skipped.
 
-Unset, the base is where the branch left `origin/main`. CI's `old-against-new` job names the
-commit of the base branch that the pull request's merge was made on, the first parent of
-what it checks out, and fails on any difference in what a reading of `tests/readings.py`
-reports. A pull request that means to change one says so in
-`tests/data/differential_expected.yaml`, with the reason; the entry counts in that pull
-request only. It says so there, too, when it changes what a reading goes through, so that
-the base cannot be asked for it. DESIGN.md, "Generated inputs belong to the suite", has the
-rest.
+Unset, the base is where the branch left `origin/main`. CI's `old-against-new` job compares
+with the base-branch commit the pull request's merge was made on (the first parent of what
+it checks out) and fails on any difference in what a reading of `tests/readings.py` reports.
+A pull request that means to change one, or what a reading goes through, says so in
+`tests/data/differential_expected.yaml` with the reason; the entry counts in that pull
+request only. DESIGN.md, "Generated inputs belong to the suite", has the rest.
 
 The repository is its own plugin marketplace (`.claude-plugin/marketplace.json`, source
 `./plugin`). The package and the plugin share one version number, written in four places:
 `version` in `pyproject.toml`, `__version__` in `src/manuscript_guard/__init__.py`, and
 `version` in both `plugin/.claude-plugin/plugin.json` and the marketplace entry. **A pull
 request does not touch the version: leave the version line in each of the four files exactly
-as `main` has it.** Only that line is meant. The rest of each file is a pull request's to
-change like any other, the dependencies in `pyproject.toml` for one. The coordinating session
-raises the number on `main` after merges that change `src/` or `plugin/`. Its bump is the one
-pull request that changes those four lines, and it changes nothing else. Do not ask it for a
-number and do not pick one. A branch that already carries a bump puts `main`'s version lines
-back, whether a merge of `main` conflicts on them or goes through cleanly; where it
-conflicts, take `main`'s side on all four lines. Until 2026-10-02 every pull request that
-changed `src/` or `plugin/` bumped the four places itself. With a dozen open at once two
-branches carried the same number, which git merges without a conflict and which was caught
-before either merged, and `main` passed the number of a pull request that was waiting for its
-review. The number still has to move, on `main`: without a bump `claude plugin update`
-reports the old plugin as current, and `pip install --upgrade` finds nothing newer for the
-package. `tests/test_version.py` holds the four equal and `tests/test_plugin.py` the two
-manifests. When the installed tool is older than the plugin, its session-start hook
-(`manuscript-guard-hook`) warns once and blocks nothing.
+as `main` has it.** The rest of each file is a pull request's to change like any other. The
+coordinating session raises the number on `main` after merges that change `src/` or
+`plugin/`, in a pull request that changes those four lines and nothing else. Do not ask it
+for a number and do not pick one. A branch that already carries a bump puts `main`'s version
+lines back, whether a merge of `main` conflicts on them or not; on a conflict, take `main`'s
+side on all four lines. `tests/test_version.py` holds the four equal and
+`tests/test_plugin.py` the two manifests. When the installed tool is older than the plugin,
+its session-start hook (`manuscript-guard-hook`) warns once and blocks nothing.
 
 The example doubles as the test fixture. To see the whole loop:
 
@@ -98,36 +88,16 @@ Anything under `manuscript/supplementary/` is checked like the rest of the manus
 built as its own document, so it does not count against the journal's limits and can be
 uploaded to the supplementary slot rather than pasted onto the end of the paper.
 
-CLI: `check` (all gates, exit 1 on failure, `--json` for machines), `build` (the .docx;
-live Zotero fields by default, `--offline` for citeproc), `sync-bib` (rewrite
-`references.bib` from Zotero), `lookup` (each cited DOI and PMID asked of the registries
-once, the answers kept in `literature/lookups/`; `--dry-run` sends nothing; the tests answer
-from a loopback server; `--journals` asks the NLM Catalog and DOAJ about each ISSN of
-`journals/shortlist.yaml`, kept in `journals/lookups/`), `search` (works a claim could cite,
-asked of PubMed, Europe PMC and OpenAlex and merged; it proposes, writes nothing and keeps
-nothing, and the author chooses), `style` (the journal's citation
-style fetched once from the CSL style repository, with its parent where it is dependent,
-and kept in `profiles/journals/styles/` for the offline build), `explain` (how every
-number in a file was classified),
-`reworded` (an edit changed the wording and no binding, citation key or typed number:
-the manuscript against the last commit, `--since` another, or one file `--before` a copy),
-`render` (substitute bindings only), `init` (scaffold a project), `set` (write one of
-`stage`, `target_journal`, `english_variant`, `reporting_guideline`, `study_type` into
-`paper.yaml`, its comments kept; the hook asks before an agent moves the stage back,
-takes a guideline away or replaces the journal), `next` (what to do now, from one run of
-the gates, with the skill and the exact command; `--json` is `manuscript-guard/next/1`,
-see docs/next.md; it writes nothing and exits 0),
-`review --record <reviewer> --remit … --verdict …` (file the record G11 asks for, with the
-digests filled in; `--record-figure <name> --by …` for G10). Neither can re-stamp an existing
-record: a second reading by the same reader is a further round. `--reading <reader>`
-files one of several readers' readings of a remit and names its reader in the panel. `review --providers` lists the
-model providers a panel can be read by and whether each key is set; `review --run` has
-the round's panel read by the models in `paper.yaml`'s `review.models` and files each
-reading (`--dry-run` shows what would be sent and sends nothing; `--one-each` deals one
-model per reviewer; `--yes` is for a script, never an agent's to add).
-`install-skills` copies the skills into
-`.agents/skills` (the user's, or `--project`, or `--dir`) for an agent tool that has no
-plugin; it never writes over a folder it did not write.
+The subcommands and what each does are in the README's "Commands" table, and their flags in
+`manuscript-guard <command> --help`. What an agent must keep to:
+
+- `review --run --yes` is for a script, never an agent's to add; `--dry-run` shows what would
+  be sent and sends nothing.
+- `review --record` and `--record-figure` never re-stamp an existing record: a second reading
+  by the same reader is a further round.
+- `search` proposes works a claim could cite and writes nothing; the author chooses.
+- `set` writes one setting of `paper.yaml`; the hook asks before an agent moves the stage
+  back, takes a guideline away or replaces the journal.
 
 The README is the front page and is held to the tool by `tests/test_docs.py`: its
 "Commands" table lists exactly the subcommands (all but `hook`), its "What is checked" table
@@ -145,40 +115,29 @@ The example's citekeys are fictional and live in its committed `references.bib`,
 builds offline anywhere without touching anyone's Zotero.
 
 The list of spellings G14 reads, `src/manuscript_guard/data/spelling_variants.tsv`, is
-generated from VarCon and never edited by hand:
-
-```bash
-python tools/derive_spelling_variants.py path/to/varcon.txt
-```
-
-The script names the source file by its SHA-256 and refuses another. `varcon.txt` is not
-in the repository; with `MANUSCRIPT_GUARD_VARCON` naming a copy, a test derives the list
-again and compares it byte for byte. A row that is wrong is put right in the script, with
-the authority for it. The derived file carries VarCon's notices and so does
-ATTRIBUTION.md, and both have to keep them.
+generated from VarCon by `python tools/derive_spelling_variants.py path/to/varcon.txt` and
+never edited by hand. The script names its source file by its SHA-256 and refuses another;
+`varcon.txt` is not in the repository, and with `MANUSCRIPT_GUARD_VARCON` naming a copy a
+test derives the list again and compares it byte for byte. A wrong row is put right in the
+script, with the authority for it. The derived file and ATTRIBUTION.md both keep VarCon's
+notices.
 
 The palettes, `src/manuscript_guard/data/palettes.json`, and their licences beside them, are
-derived from each collection's own files at pinned commits and never edited by hand; the R
-package's copies are written with them:
+derived from each collection's own files at pinned commits by
+`python tools/derive_palettes.py path/to/folder --fetch`, and never edited by hand; the R
+package's copies are written with them. A wrong palette is put right in the script. With
+`MANUSCRIPT_GUARD_PALETTE_SOURCES` naming the folder, a test derives both files again and
+compares them byte for byte.
 
-```bash
-python tools/derive_palettes.py path/to/folder --fetch   # downloads the files, then derives
-```
-
-A palette that is wrong is put right in the script. With `MANUSCRIPT_GUARD_PALETTE_SOURCES`
-naming the folder, a test derives both files again and compares them byte for byte.
-
-Reporting checklists are generated, not committed:
-
-```bash
-manuscript-guard fetch STROBE --url <link> --save-url   # downloads; prints the licence
-manuscript-guard transcribe                             # all recipes
-```
-
-Put the guideline documents in `profiles/reporting/sources/` (gitignored). Recipes are in
-`profiles/reporting/recipes/`; generated profiles land beside them and are gitignored until
-each licence is confirmed. Never hand-edit a generated profile — change the recipe and
-re-run, so the profile stays a function of the published checklist.
+Reporting checklists are generated, not committed: `manuscript-guard fetch STROBE --url
+<link> --save-url` downloads a guideline's document and prints its licence, and
+`manuscript-guard transcribe` runs all recipes. The documents go in
+`profiles/reporting/sources/` (gitignored). Recipes ship in
+`src/manuscript_guard/profiles/reporting/recipes/`, and a workspace's own
+`profiles/reporting/recipes/` comes first; generated profiles land in `profiles/reporting/`
+and are gitignored until each licence is confirmed.
+Never hand-edit a generated profile — change the recipe and re-run, so the profile stays a
+function of the published checklist.
 
 ## Conventions
 
@@ -222,23 +181,18 @@ Verified 2026-08-03 on the author's machine.
   for when it is not.
 - pandoc on Windows installs per-user, at `%LOCALAPPDATA%\Pandoc\pandoc.exe`, and is often
   not on `PATH`. Verified against 3.9.0.2.
-- **`jq` is not installed.** `gh ... --json x --jq '...'` works (gh has jq built in), and so
-  does `--template`, but piping to a standalone `jq` fails silently inside a loop — a CI
-  watcher written that way reports nothing and looks like a pending build.
-- **`gh run view <id>` needs the id as a plain integer.** Reading it out of `--json
-  databaseId` through anything that formats numbers turns it into `3.08e+10` and gets a 404;
-  `--jq '.[0].databaseId'` returns it intact.
+- **`jq` is not installed.** Use `gh ... --json x --jq '...'` (gh has jq built in) or
+  `--template`. Piping to a standalone `jq` fails silently inside a loop, and a CI watcher
+  written that way reports nothing and looks like a pending build.
+- **`gh run view <id>` needs the id as a plain integer.** Anything that formats numbers turns
+  `--json databaseId` into `3.08e+10` and gets a 404; `--jq '.[0].databaseId'` keeps it intact.
 - Multiple R versions are installed; use the newest unless a project pins one via renv.
-- **Word 365 is installed and scriptable over COM** (`New-Object -ComObject Word.Application`
-  in PowerShell, `Visible = $false`, `Quit(0)` in a `finally`). That is how to learn what
-  Word writes for an edit, rather than guessing: a move test that moved the whole `<w:p>`
-  with its bookmark passed for months, and Word never makes that edit. Selection-based
-  `Cut`/`Paste` borrows the clipboard; save and restore it.
+- **Word 365 is installed and scriptable over COM** (`New-Object -ComObject Word.Application`,
+  `Visible = $false`, `Quit(0)` in a `finally`): learn from it what Word writes for an edit,
+  rather than guessing. Selection-based `Cut`/`Paste` borrows the clipboard; save and restore it.
 - **`codex plugin` can be tried with no login and without touching the real installation**
-  (verified 2026-10-02 with Codex 0.158):
-  set `CODEX_HOME` to an empty folder, then `codex plugin marketplace add <checkout>` and
+  (Codex 0.158, 2026-10-02): set `CODEX_HOME` to an empty folder with a short path (a deep one
+  makes git fail with "Filename too long"), then `codex plugin marketplace add <checkout>` and
   `codex plugin add manuscript-guard@manuscript-guard`. `tests/test_plugin.py` does this where
-  `codex` is on `PATH`, and CI's `codex-plugin` job always. A Codex binary may be on the
-  machine without being on `PATH` (the desktop app keeps one under `.codex/plugins` in the
-  user's home). Adding a marketplace from GitHub clones it under `CODEX_HOME`, and on Windows
-  git fails with "Filename too long" when that folder is deep: use a short one.
+  `codex` is on `PATH`, CI's `codex-plugin` job always. The desktop app keeps a Codex binary
+  off `PATH`, under `.codex/plugins` in the user's home.

@@ -100,22 +100,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         started = True
         try:
             done = running.run(project, staged)
+        except running.RecordUnwritten as exc:
+            _unrecorded(exc)
+            raise
         except BaseException:
-            # Said only where the run's own record does not say it finished: a finished run
-            # whose summary alone failed is releasable (fix round 6 of #490), and a run with
-            # no record that can be read is not (fix round 7).
-            outbox = folder / running.OUTBOX / staged.run
-            try:
-                stopped = not running.read_manifest(folder, staged.run).get("finished")
-            except running.RunRefused:
-                stopped = True
-            try:
-                waiting = stopped and outbox.is_dir() and any(outbox.iterdir())
-            except OSError:
-                waiting = stopped
-            if waiting:
-                print(f"{_PREFIX} run {staged.run}: stopped; what it moved before then waits in "
-                      f"{outbox}, and the run cannot be released", file=sys.stderr)  # fmt: skip
+            _stopped(running, folder, staged.run)
             raise
     finally:
         if not started:
@@ -135,6 +124,42 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"{_PREFIX} run {run_id}: {len(done.moved)} file(s) wait in {done.outbox}. Read "
           f"them, then `manuscript-guard vault release {run_id} --as <you>`.")  # fmt: skip
     return 0
+
+
+def _unrecorded(exc) -> None:
+    """Say what is true of a run that ended and whose record could not be written: it cannot
+    be released, and what it wrote waits in the outbox (the last round of #490)."""
+    done = exc.done
+    if done.failed is None:
+        waits = (f"the {len(done.moved)} file(s) it wrote wait in {done.outbox}" if done.moved
+                 else "it wrote nothing to the outbox")  # fmt: skip
+        said = f"every script finished, but {exc}, so the run cannot be released; {waits}"
+    else:
+        said = f"{done.failed} failed, and {exc}; nothing was put in the outbox"
+    print(f"{_PREFIX} run {done.run}: {said}", file=sys.stderr)
+
+
+def _stopped(running, folder: Path, run: str) -> None:
+    """Say, of a run that started and did not finish, what waits in its outbox. Said only
+    where the run's own record does not say it finished: a finished run whose summary alone
+    failed is releasable (fix round 6 of #490), and a run with no record that can be read is
+    not (fix round 7). An outbox that cannot be listed is said so, not said to hold what the
+    run moved (the last round)."""
+    outbox = folder / running.OUTBOX / run
+    try:
+        if running.read_manifest(folder, run).get("finished"):
+            return
+    except running.RunRefused:
+        pass
+    try:
+        waiting = outbox.is_dir() and any(outbox.iterdir())
+    except OSError as exc:
+        print(f"{_PREFIX} run {run}: stopped, and the run cannot be released; its outbox, "
+              f"{outbox}, could not be listed ({exc})", file=sys.stderr)  # fmt: skip
+        return
+    if waiting:
+        print(f"{_PREFIX} run {run}: stopped; what it moved before then waits in {outbox}, "
+              "and the run cannot be released", file=sys.stderr)  # fmt: skip
 
 
 def _listed_and_asked(running, root: Path, staged, scripts: list[str], folder: Path,

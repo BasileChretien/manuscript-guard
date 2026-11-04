@@ -184,15 +184,18 @@ def r_failure(texts: dict[str, str], script: str, code: int, tail: bytes) -> dic
 
 
 def write_summary(root: Path, run: str, ran_at: str, scripts: list[tuple[str, int | None]],
-                  failed: dict | None, *, outbox: bool, stopped: bool = False) -> Path:  # fmt: skip
+                  failed: dict | None, *, outbox: bool, stopped: bool = False,
+                  unrecorded: bool = False) -> Path:  # fmt: skip
     """Write the summary into the project, checked against its schema first. A run stopped
-    before its end says so, the script it stopped in with no exit code."""
+    before its end says so, the script it stopped in with no exit code; and so does a run
+    whose record in the vault could not be written."""
     from manuscript_guard.contracts._schema import validate
 
     document = {"schema": SUMMARY_SCHEMA, "run": run, "ran_at": ran_at,
                 "scripts": [{"path": path, "exit_code": code} for path, code in scripts],
                 "failed": failed, "outbox": outbox,
-                **({"stopped": True} if stopped else {})}  # fmt: skip
+                **({"stopped": True} if stopped else {}),
+                **({"unrecorded": True} if unrecorded else {})}  # fmt: skip
     path = root.joinpath(*SUMMARY.parts)
     checked = validate(document, "vault-run", path)
     if not checked.ok:

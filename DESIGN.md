@@ -12791,10 +12791,16 @@ the vault. Each value of a row, column by column:
   stream so that a row drawn again for a rule draws it again, and a note names the column and
   how: evenly within the dictionary's range where it gives both ends, else about its one
   centile, else as a value of its type, from 0 over a span of 100, or from its one declared
-  end; clamped to whichever ends are declared, whole for a count or where it is written to no
-  decimal place. A date with no centile is drawn within its range, or from its one end, or
-  over ten years from 2000, and a date or time with one centile about it (six months, two
-  hours), each written in the format the profile records, a date and time with a clock drawn.
+  end over that span, the note saying "from its one end" (a count below a maximum alone from
+  nought at the lowest); clamped to whichever ends are declared, a count's rounded inwards
+  (`min: 40.5` is 41), whole for a count or where it is written to no decimal place. A date
+  with no centile is drawn within its range, or from its one end over ten years, stopping at
+  the calendar's ends, the note saying "from its one end" as a number's does, or over ten
+  years from 2000; a date and time's day and clock are drawn together, to the second, so that
+  a range's clock holds. A date or time with one centile is drawn about it (six months, two
+  hours), a time carried round midnight rather than piled on 00:00 or 23:59. A date is kept
+  within the dictionary's range however it was drawn (the last round of #491), and each is
+  written in the format the profile records, a date and time with a clock drawn.
   No column is written blank unless its profile says every row is missing;
   rounded to its decimal places, a count to a whole number from nought, and kept within the
   dictionary's range; a date's day and a date and time's clock from the fraction left;
@@ -12870,7 +12876,15 @@ and `prepare` removes it on anything that ends it, a Ctrl-C during the copy incl
 run has started, anything that ends it removes the copy and leaves `log.txt` and a `run.json`
 saying it did not finish, with what was moved to the outbox before then, where that record can
 be written: on a full disk the run's folder may hold no record at all, and `vault release` then
-says there is no such run (round 2 and the fix rounds of #490).
+says there is no such run (round 2 and the fix rounds of #490). A run that ended, every script
+finished or one failed, and whose `run.json` could not be written is removed in the same way
+(`run.RecordUnwritten`): where every script finished, the terminal is told so and that the run
+cannot be released, with what waits in its outbox, rather than that it stopped; where one
+failed, which one, and that nothing was put in the outbox; a Ctrl-C during that write is
+cleaned up alike and told as a stop; and the
+summary says `unrecorded`; where the outbox of a stopped run cannot be listed, the terminal is
+told that, not that what it moved waits there (the last round of #490). On a disk too full
+for the summary as well, `last-run.json` is still the run before's, as after a second Ctrl-C.
 
 The run's id is its UTC time, `YYYYMMDD-HHMMSS`, with `-2` and on where taken, and runs are
 ordered by the time and then the number (`run.run_key`); no other word names a run's folder. The project is
@@ -20431,7 +20445,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     target lie in projects, the project above the folder as written is the one whose vault is
     guarded. In a command the guard
     reads, a link the working folder holds is followed wherever it is named, bare, quoted, in
-    a quoted program or joined by a colon (`cp -r data /tmp/out`). A link deeper in a folder the
+    a quoted program or joined by a colon (`cp -r data /tmp/out`). On Windows, where a name's
+    trailing dots are dropped, a word that ends a sentence inside a quoted program matches a
+    link of that name (`python -c "print('Wrote the extract.')"` beside a link `extract`),
+    and the command is refused though it reads nothing: a false alarm, which the guard made
+    already of the word without the stop. Git Bash may keep a trailing dot rather than drop
+    it, so there `cp -r extract. /tmp/out` may name another file and still be refused; that
+    errs towards refusing (both from the last round of #488). A link deeper in a folder the
     command names, read recursively (`cp -r notes /tmp/out` where `notes/data` leads into the
     vault), is not followed. A Codex patch that writes into the folder is
     the write guard's, which does not read the vault. It is a guard against an agent's
@@ -20505,6 +20525,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     given law is the custodian's call.
   - *The starter script reads CSV and TSV.* It reads them as UTF-8 text, comma or tab; any
     other shape, and any other format, is the author's to read in it.
+  - *A time kept within its range is kept to the minute.* A minimum with seconds
+    (`08:30:45`) is written as its minute, `08:30`, a little below it, and a datetime written
+    with no seconds the same. A time about one centile with one end of a range declared, or
+    with no centile and both ends, is clamped to the range and so piles at its end rather
+    than being drawn within it (#498).
 - **The vault (Task F, part 2): what a run and its release do not hold.**
   - *Encoded outputs.* A script run on the real data can put any value into anything it
     writes or prints: a mean of one chosen row, a coefficient, a figure's point, a level's
@@ -20569,7 +20594,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     whatever it names, which is not listed. A run is not refused for one, since a virtual
     environment in the project holds links to the system's Python. A junction is not copied.
   - *A second Ctrl-C during the clean-up of a stopped run* can leave the copy in
-    `<vault>/.runs/<run>/copy/`, and the summary unwritten; the person removes the copy.
+    `<vault>/.runs/<run>/copy/`, and the summary unwritten; the person removes the copy. A
+    disk too full for the summary leaves it unwritten too, and the agent then reads the run
+    before's in `last-run.json`.
   - *The summary file is read up to 64 KiB.* The wrapper writes the last 20 frames in the
     copy, as UTF-8, and leaves out a value too long to write whole, so a real one fits, for
     paths of an ordinary length; anything larger, too deep or not JSON says nothing but the

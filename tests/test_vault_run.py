@@ -1405,7 +1405,9 @@ def test_a_run_whose_record_cannot_be_written_is_said_unreleasable(
     paper: Path, vault: Path, terminal, monkeypatch, capsys
 ) -> None:
     """Fix round 7 of #490: with no record of the run (a full disk), the run is not one to
-    release, and the person is told what waits in the outbox."""
+    release, and the person is told what waits in the outbox. Every script finished, and the
+    person is told so, not that it stopped; the copy is removed, and the agent's summary is
+    this run's, saying its record could not be written (the last round of #490)."""
     real = Path.write_text
 
     def full(self, *args, **kwargs):
@@ -1420,7 +1422,67 @@ def test_a_run_whose_record_cannot_be_written_is_said_unreleasable(
     answers.append("y")
     with pytest.raises(OSError, match="the disk is full"):
         vault_cli(paper, "run")
-    assert "cannot be released" in capsys.readouterr().err
+    said = capsys.readouterr().err
+    (run,) = [one.name for one in (vault / ".runs").iterdir()]
+    assert "cannot be released" in said and "every script finished" in said
+    assert "stopped" not in said and str(vault / "outbox" / run) in said
+    assert not (vault / ".runs" / run / "copy").exists()
+    summary = _summary(paper)
+    assert summary["run"] == run and summary["unrecorded"] is True
+    assert summary["failed"] is None and summary["outbox"] is True and "stopped" not in summary
+
+
+def test_a_ctrl_c_during_the_run_s_record_leaves_no_copy_and_this_run_s_summary(
+    paper: Path, vault: Path, terminal, monkeypatch
+) -> None:
+    """Round 1 of #498: a Ctrl-C is no OSError, so it skipped the clean-up; the copy went and
+    the agent kept the run before's summary as this one's."""
+    real = Path.write_text
+
+    def stopped(self, *args, **kwargs):
+        if self.name == "run.json" and "copy" not in self.parts:
+            raise KeyboardInterrupt
+        return real(self, *args, **kwargs)
+
+    answers, _asked = terminal
+    _script(paper)
+    answers.append("y")
+    monkeypatch.setattr(Path, "write_text", stopped)
+    with pytest.raises(KeyboardInterrupt):
+        vault_cli(paper, "run")
+    (run,) = [one.name for one in (vault / ".runs").iterdir()]
+    assert not (vault / ".runs" / run / "copy").exists()
+    assert _summary(paper)["run"] == run
+
+
+def test_an_outbox_that_cannot_be_listed_is_said_so(
+    paper: Path, vault: Path, terminal, monkeypatch, capsys
+) -> None:
+    """A run stopped while its outputs were moved, whose outbox cannot then be listed, is not
+    said to have left anything waiting there (the last round of #490)."""
+    from manuscript_guard.vault import run as running
+
+    def moved(_source: str, _target: str):
+        raise OSError("the disk is full")
+
+    real = Path.iterdir
+
+    def unlisted(self):
+        if self.parent.name == "outbox":
+            raise PermissionError("access is denied")
+        return real(self)
+
+    monkeypatch.setattr(running.shutil, "move", moved)
+    monkeypatch.setattr(Path, "iterdir", unlisted)
+    answers, _asked = terminal
+    _script(paper, "import pathlib\npathlib.Path('figures').mkdir(exist_ok=True)\n"
+                   "pathlib.Path('figures/a.png').write_bytes(b'a')")
+    answers.append("y")
+    with pytest.raises(OSError, match="the disk is full"):
+        vault_cli(paper, "run")
+    said = capsys.readouterr().err
+    assert "could not be listed" in said and "cannot be released" in said
+    assert "waits in" not in said
 
 
 def test_a_lone_surrogate_in_the_summary_is_kept_readable(

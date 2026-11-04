@@ -39,7 +39,7 @@ import json
 import math
 import random
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path, PurePosixPath
 
 from manuscript_guard import quality
@@ -235,7 +235,7 @@ _ABOUT_HOURS = 2.0
 
 def _undistributed(column: _Column, how: str) -> None:
     """Say, once, that a column is drawn without its distribution, and how: "within its
-    range", "about its one centile", or "as a value of its type"."""
+    range", "from its one end", "about its one centile", or "as a value of its type"."""
     if not any(note.startswith(f"{column.name}: drawn without") for note in column.notes):
         column.notes.append(f"{column.name}: drawn without its distribution, {how}: the "
                             "profile gives none (its rows read are held back, or too "
@@ -243,16 +243,27 @@ def _undistributed(column: _Column, how: str) -> None:
 
 
 def _range_of(column: _Column) -> tuple[float | None, float | None]:
+    """The dictionary's range of a number; a count's rounded inwards, so that no whole number
+    written passes an end that is not whole (`min: 40.5` is 41; the last round of #491)."""
     variable = column.variable
     if variable is None:
         return None, None
-    return quality.number_of(variable.minimum), quality.number_of(variable.maximum)
+    low, high = quality.number_of(variable.minimum), quality.number_of(variable.maximum)
+    if column.spec["type"] != "count":
+        return low, high
+    low = None if low is None else float(math.ceil(low))
+    high = None if high is None else float(math.floor(high))
+    if low is not None and high is not None and low > high:
+        raise Refused(f"{column.name}: its range in the data dictionary holds no whole number, "
+                      "and it is a count")  # fmt: skip
+    return low, high
 
 
 def _number(column: _Column, u: float, shape: dict) -> _Drawn | None:
     spec = column.spec
     points = [(int(c) / 100, float(v)) for c, v in spec["centiles"].items()]
     low, high = _range_of(column)
+    whole = spec["type"] == "count"
     if len(points) >= 2:
         value = _inverse(points, u)
     elif "mean" in spec and "sd" in spec:
@@ -267,11 +278,15 @@ def _number(column: _Column, u: float, shape: dict) -> _Drawn | None:
         centre = points[0][1]
         half = max(abs(centre), 1.0) / 2
         value = centre - half + 2 * half * u
-    else:
+    elif low is None and high is None:
         _undistributed(column, "as a value of its type")
-        start = low if low is not None else (high - _SPAN if high is not None else 0.0)
-        value = start + _SPAN * u
-    whole = spec["type"] == "count"
+        value = _SPAN * u
+    else:
+        _undistributed(column, "from its one end")
+        # Below a maximum alone, a count starts at nought at the lowest, so that its rows are
+        # not piled there (the last round of #491).
+        start = low if low is not None else max(high - _SPAN, 0.0) if whole else high - _SPAN
+        value = start + (_SPAN if low is not None else high - start) * u
     value = max(value, low) if low is not None else value
     value = min(value, high) if high is not None else value
     if whole:
@@ -311,33 +326,66 @@ def render(form: str, parts: dict[str, int]) -> str:
     return "".join(out)
 
 
-def _date_range(column: _Column) -> tuple[date | None, date | None]:
+def _date_range(column: _Column) -> tuple[datetime | None, datetime | None]:
+    """The dictionary's range of a date, each end its day's midnight, or of a date and time,
+    an end written as a date its midnight, as `quality` reads it."""
     variable = column.variable
     if variable is None:
         return None, None
+    timed = column.spec["type"] == "datetime"
     found = []
     for bound in (variable.minimum, variable.maximum):
-        iso = quality.date_of(bound) or (quality.datetime_of(bound) or "")[:10] or None
-        found.append(date.fromisoformat(iso) if iso else None)
+        day = quality.date_of(bound)
+        iso = quality.datetime_of(bound) or (f"{day}T00:00:00" if day else None)
+        when = datetime.fromisoformat(iso) if iso else None
+        found.append(when if when is None or timed else datetime(when.year, when.month,
+                                                                  when.day))  # fmt: skip
     return found[0], found[1]
 
 
-def _day_without_distribution(column: _Column, u: float) -> tuple[int, int, int]:
-    """A day drawn evenly within the dictionary's range, from its one end, or from 2000."""
+#: The calendar's ends, which a span drawn from one end of a range stops at (the last round
+#: of #491).
+_EARLIEST = datetime(1, 1, 1)
+_LAST_DAY = datetime(9999, 12, 31)
+
+
+def _without_distribution(column: _Column, u: float, step: int) -> datetime:
+    """A day (`step` a day's seconds), or a date and time to the second (`step` 1), drawn
+    evenly within the dictionary's range, from its one end over ten years, or from 2000: the
+    day and the clock together, so that a range's clock holds too (the last round of #491)."""
     low, high = _date_range(column)
+    width = timedelta(seconds=_DAYS * _SECONDS - step)
+    latest = _LAST_DAY + timedelta(seconds=_SECONDS - step)
     if low is not None and high is not None:
         _undistributed(column, "within its range")
-        first, span = low, (high - low).days + 1
+        first, last = low, high
+    elif low is not None:
+        _undistributed(column, "from its one end")
+        first, last = low, low + width if latest - low >= width else latest
+    elif high is not None:
+        _undistributed(column, "from its one end")
+        first, last = high - width if high - _EARLIEST >= width else _EARLIEST, high
     else:
-        _undistributed(column, "within its range" if low or high else "as a value of its type")
-        first = low or (high - timedelta(days=_DAYS - 1) if high else _FIRST_DAY)
-        span = _DAYS
-    day = first + timedelta(days=min(math.floor(u * span), span - 1))
-    return day.year, day.month, day.day
+        _undistributed(column, "as a value of its type")
+        first = datetime(_FIRST_DAY.year, _FIRST_DAY.month, _FIRST_DAY.day)
+        last = first + width
+    steps = (last - first) // timedelta(seconds=step) + 1
+    return first + timedelta(seconds=step * min(math.floor(u * steps), steps - 1))
+
+
+def _clamped(when: datetime, column: _Column, timed: bool) -> datetime:
+    """A date, or a date and time, kept within the dictionary's range, as a number is."""
+    low, high = _date_range(column)
+    if timed:
+        return max(low or when, min(high or when, when))
+    if low is not None and when.date() < low.date():
+        return low
+    return high if high is not None and when.date() > high.date() else when
 
 
 def _date(column: _Column, u: float, clock: float) -> _Drawn | None:
     spec = column.spec
+    timed = spec["type"] == "datetime"
     points = [(int(c) / 100, _month_value(v)) for c, v in spec["centiles"].items()]
     if len(points) >= 2:
         month = _inverse(points, u)
@@ -346,6 +394,7 @@ def _date(column: _Column, u: float, clock: float) -> _Drawn | None:
         month = points[0][1] + 0.5 + (2 * u - 1) * _ABOUT_MONTHS
     else:
         month = None
+    seconds = timedelta(seconds=min(math.floor(clock * _SECONDS), _SECONDS - 1))
     if month is not None:
         index = math.floor(month)
         year, month_ = divmod(index, 12)
@@ -353,13 +402,14 @@ def _date(column: _Column, u: float, clock: float) -> _Drawn | None:
             year, month_ = min(max(year, 1), 9999), 0 if year < 1 else 11
         days = _days_in(year, month_ + 1)
         day = min(1 + math.floor((month - index) * days), days)
-        month_ += 1
+        when = datetime(year, month_ + 1, day) + seconds
+    elif timed:
+        when = _without_distribution(column, u, 1)
     else:
-        year, month_, day = _day_without_distribution(column, u)
-    seconds = min(math.floor(clock * _SECONDS), _SECONDS - 1)
-    parts = {"Y": year, "m": month_, "d": day, "H": seconds // 3600,
-             "M": seconds // 60 % 60, "S": seconds % 60}  # fmt: skip
-    timed = spec["type"] == "datetime"
+        when = _without_distribution(column, u, _SECONDS) + seconds
+    when = _clamped(when, column, timed)
+    parts = {"Y": when.year, "m": when.month, "d": when.day, "H": when.hour,
+             "M": when.minute, "S": when.second}  # fmt: skip
     default = "%Y-%m-%d %H:%M:%S" if timed else "%Y-%m-%d"
     iso = render("%Y-%m-%dT%H:%M:%S" if timed else "%Y-%m-%d", parts)
     return _Drawn(iso, render(spec.get("format", default), parts))
@@ -367,6 +417,7 @@ def _date(column: _Column, u: float, clock: float) -> _Drawn | None:
 
 def _time(column: _Column, u: float) -> _Drawn | None:
     points = [(int(c) / 100, int(v[:2])) for c, v in column.spec["centiles"].items()]
+    day = 24 * 60
     if len(points) >= 2:
         hours = _inverse(points, u)
     elif points:
@@ -375,9 +426,31 @@ def _time(column: _Column, u: float) -> _Drawn | None:
     else:
         _undistributed(column, "as a value of its type")
         hours = 24 * u
-    minutes = min(max(math.floor(hours * 60), 0), 24 * 60 - 1)
+    minutes = math.floor(hours * 60)
+    # About one centile, a time near midnight is carried round it rather than piled on 00:00
+    # or 23:59 (the last round of #491); then kept within the dictionary's range, as a date
+    # is (round 1 of #498).
+    minutes = minutes % day if len(points) == 1 else min(max(minutes, 0), day - 1)
+    low, high = _time_range(column)
+    if low is not None:
+        minutes = max(low, minutes)
+    if high is not None:
+        minutes = min(high, minutes)
     text = f"{minutes // 60:02d}:{minutes % 60:02d}"
     return _Drawn(text, text)
+
+
+def _time_range(column: _Column) -> tuple[int | None, int | None]:
+    """The dictionary's range of a time, each end its minute of the day, as `quality` reads
+    it."""
+    variable = column.variable
+    if variable is None:
+        return None, None
+    ends = []
+    for bound in (getattr(variable, "minimum", None), getattr(variable, "maximum", None)):
+        clock = quality.time_of(bound)
+        ends.append(int(clock[:2]) * 60 + int(clock[3:5]) if clock else None)
+    return ends[0], ends[1]
 
 
 def identifier(pattern: str | None, row: int, rows: int) -> str:

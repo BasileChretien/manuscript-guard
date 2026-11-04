@@ -9476,6 +9476,46 @@ def test_the_paragraph_after_a_split_is_told_it_is_its_neighbour(
     assert "was not split itself" in after and "own edit in the .md" in after, after
 
 
+#: A document Word 16 saved itself: see the test that reads it.
+SPLIT_IN_WORD = Path(__file__).parent / "data" / "word" / "split-beside-reworded.docx"
+
+
+@needs_pandoc
+def test_word_s_own_split_and_the_reworded_paragraph_after_it_are_told_apart(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Word 16 saved this document itself (2026-11-05, over COM, Track Changes off), from a
+    build of the example: the space after "data generator." replaced by a paragraph mark
+    (`Range.InsertParagraph`), and "computed" typed over with "calculated" in the next
+    paragraph. Word left the identifier's bookmark on the first half, gave the second half
+    none and the first half's style, wrote its own style ids (`a0` for Body Text, as its
+    Japanese interface names it) and a `lastRenderedPageBreak`. The person who saved it is
+    renamed `Ana Author` in `docProps/core.xml`; nothing else was changed.
+    It carries this build's properties, its source stamp and its record of paragraphs, as
+    the fixtures of `tests/test_filed_comments.py` do, since the build it was saved from
+    may print its results otherwise. Both paragraphs are refused, each with its own reason."""
+    from manuscript_guard.cli import main
+
+    with zipfile.ZipFile(built(project)) as fresh:
+        custom = fresh.read("docProps/custom.xml")
+    returned = tmp_path / "split.docx"
+    with zipfile.ZipFile(SPLIT_IN_WORD) as zin, zipfile.ZipFile(returned, "w") as zout:
+        for item in zin.infolist():
+            zout.writestr(item, custom if item.filename == "docProps/custom.xml"
+                          else zin.read(item.filename))  # fmt: skip
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert source.read_text(encoding="utf-8") == before
+    printed = capsys.readouterr().out
+    split_said = _refusal_of(printed, "Hepatic injury is the single event term")
+    assert "split in two in Word" in split_said, split_said
+    after = _refusal_of(printed, "The reporting odds ratio was calculated")
+    assert "after a new paragraph, 'Real work would need a case definition" in after, after
+    assert "own edit in the .md" in after, after
+
+
 @needs_pandoc
 @pytest.mark.parametrize("bookmark", ["kept", "lost"])
 def test_two_paragraphs_joined_in_word_are_not_duplicated(

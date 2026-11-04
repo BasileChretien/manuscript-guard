@@ -69,6 +69,19 @@ STATEMENT_NAMES = (
     r"|additional\s+contributions|article\s+information"
     r")(?:\s+(?:statements?|declarations?|disclosures?|section))?"
 )
+#: A statement's heading: its whole title names one or several, "Funding", "Data
+#: availability statement", "Ethics approval and consent to participate", "Funding/Support",
+#: "CRediT author statement". A title that only opens with such a word is the paper's own
+#: matter: "Funding sources of the included trials", "Data sharing in pharmacovigilance".
+#: G7 sets a statement's text apart by it, and G8 reports nothing under one.
+STATEMENT_TITLE = re.compile(
+    rf"(?:the\s+)?{STATEMENT_NAMES}"
+    rf"(?:\s*(?:,\s*(?:and\b)?|;|&|/|\band\b)\s*{STATEMENT_NAMES})*\W*$",
+    re.IGNORECASE,
+)
+#: The opening of a paper by the word its title opens with: "Introduction", "1. Background",
+#: "Rationale and objectives". G7 reads the Introduction by it, and G8 reports nothing under it.
+INTRODUCTION_TITLE = re.compile(r"(?:introduction|background|rationale)\b", re.IGNORECASE)
 
 
 #: The reference list's title in the languages besides English that papers are most often
@@ -123,6 +136,19 @@ def names_discussion(title: str) -> bool:
     """Whether a heading names the Discussion, numbered, marked or not: "Discussion", "5.
     General discussion", "Discussion and conclusions", "Results and discussion"."""
     return bool(_DISCUSSION.match(plain(title)))
+
+
+def names_introduction(title: str) -> bool:
+    """Whether a heading's title opens with the word for the opening of a paper, numbered,
+    marked or not: "Introduction", "1. Background", "Rationale and objectives"."""
+    return bool(INTRODUCTION_TITLE.match(plain(title)))
+
+
+def names_statement(title: str) -> bool:
+    """Whether a heading's whole title names one or several of the statements a journal asks
+    for, or a list of the back matter: "Funding", "Acknowledgements", "Author contributions",
+    "Ethics approval and consent to participate", "Abbreviations"."""
+    return bool(STATEMENT_TITLE.match(plain(title)))
 
 
 def names_methods(title: str) -> bool:
@@ -192,7 +218,9 @@ __all__ = [
     "names_abstract",
     "names_conclusion",
     "names_discussion",
+    "names_introduction",
     "names_methods",
     "names_results",
+    "names_statement",
     "plain",
 ]

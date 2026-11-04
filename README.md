@@ -458,8 +458,13 @@ everywhere.
 
 ## Status
 
-Alpha. No real manuscript has been through it yet, its author's or anyone else's: `check`,
-`build`, `import` and `review --run` have run on the worked example and the test suite's
+Alpha. One real manuscript has been through it: a narrative review by the toolkit's author,
+written with it since September 2026. On 2026-11-04, with 0.2.473, it went through `check`,
+`lookup`, `build` (live and offline), `verify`, which ran the analysis again and reproduced
+each of its 1,483 values, and `import` of two rounds of edits made in Word 16 as a co-author
+would make them, by script rather than by a co-author. It stopped at the submission check,
+which asks for a review panel.
+`submit`, `review --run` and `package` have run on the worked example and the test suite's
 inputs only. `audit`, which reads a paper written some other way, has been pointed at one
 submitted paper, and what it found is recorded in DESIGN.md. G7's reference checks were
 measured on 2026-10-21 against the 740 references of 16 published open-access pharmacology

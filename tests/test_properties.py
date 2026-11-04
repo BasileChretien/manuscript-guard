@@ -5872,7 +5872,9 @@ def _papers_with_summaries(draw: st.DrawFn) -> list[tuple[str, str | None, set[s
     Discussion alone (`c`) or with the Results (`e`); and in a "Summary" under the Results
     (`s`). Every way of writing a conclusion, an abstract structured with headings of its
     own and not, each title a profile may give the abstract, and both layouts, with and
-    without the paper's title over it, are in every example."""
+    without the paper's title over it, are in every example. Where the paper has no Results
+    heading, the section that stands in their place names no part of the paper and reports,
+    and a "Summary" under it is a conclusion's."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
@@ -5906,9 +5908,13 @@ def _papers_with_summaries(draw: st.DrawFn) -> list[tuple[str, str | None, set[s
             reports = results in _THE_RESULTS
             for named in _ABSTRACT_TITLES:
                 summary = abstract in _THE_ABSTRACT[:4] or abstract == named
-                unreported = {"c"} | (set() if reports else {"e", "s"})
+                unreported = {"c"} | (set() if reports else {"s"})
+                # An abstract no heading names, its "Results" a Results heading: the paper
+                # then has one, and the section standing in their place reports nothing.
+                if structured and not summary and not reports:
+                    unreported |= {"e"}
                 if summary:
-                    unreported |= {"a", "d"} | (set() if reports else {"b"})
+                    unreported |= {"a", "d"}
                     unreported |= {"g", "t"} if children else set()
                 for paper in (text, _under_a_title(text, _RESULTS_TITLE)):
                     papers.append((paper, named, unreported))
@@ -5924,7 +5930,9 @@ def test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_
     an abstract with a "Results" of its own included, and a "Summary" under the Results not
     taken for one, with the paper's title over it all or not."""
     for text, named, unreported in papers:
-        given, reported = reported_gate.Walk(named).read(text)
+        walk = reported_gate.Walk(named)
+        given, reported = walk.read(text)
+        reported |= walk.reported_without_results()
         found = {one.key for one in given if one.key not in reported}
         assert found == unreported, (text, named)
         # And as two files of one paper, the second opening inside the Results the first
@@ -5933,9 +5941,80 @@ def test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_
         cut = text.index("{{results.b}} {{results.e}}")
         walk = reported_gate.Walk(named)
         first, second = walk.read(text[:cut]), walk.read(text[cut:])
-        reported = first[1] | second[1]
+        reported = first[1] | second[1] | walk.reported_without_results()
         found = {one.key for one in first[0] + second[0] if one.key not in reported}
         assert found == unreported, (text[:cut], text[cut:], named)
+
+
+#: Each part of a paper with no Results that reports nothing, each written more than one way,
+#: with the key the abstract gives and that part gives again, and headings that name no part.
+_REPORTS_NOTHING = {
+    "i": ("Introduction", "1. Background", "**Background**", "Rationale and objectives"),
+    "d": ("Discussion", "5. General discussion", "Discussion and conclusions"),
+    "l": ("Limitations", "Interpretation"),
+    "f": ("Funding", "Acknowledgements", "Author contributions",
+          "Declaration of competing interests", "Data availability statement"),
+    "r": ("References", "6. References", "Bibliography"),
+}  # fmt: skip
+_TOPICAL = (
+    "Drug-related arrests", "2. Stimulants: a smaller population", "**Regulatory responses**",
+    "Case presentation", "Outcomes", "Comparison with earlier reviews",
+)  # fmt: skip
+#: A paper's title as a heading over it, opening with the word of a part that reports nothing.
+_TOPICAL_TITLE = "# Background rates of hepatic injury: a narrative review\n\n"
+
+
+@st.composite
+def _papers_without_results(draw: st.DrawFn) -> list[tuple[str, set[str]]]:
+    """A narrative review, with the keys it should leave unreported: under the abstract, a
+    key given there alone (`a`), with a section that names no part (`b`), with one under it
+    (`u`), and with each part that reports nothing (`_REPORTS_NOTHING`), a heading of the
+    paper's own under the Discussion among them (`t`); and in a conclusion with a section
+    that names no part (`e`). Each part is drawn one of its ways, in every example; the
+    paper is drawn with and without its title over it, and with a Results heading, under
+    which none of the sections that name no part reports."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    named = {key: draw(st.sampled_from(ways)) for key, ways in _REPORTS_NOTHING.items()}
+    topical, under, below = draw(st.lists(st.sampled_from(_TOPICAL), min_size=3, max_size=3))
+    keys = "".join(f" {{{{results.{key}}}}}" for key in ("a", "b", "u", "t", "e", *named))
+    text = (
+        f"# Abstract\n\n{words()}{keys}.\n\n"
+        f"# {named['i']}\n\n{words()} {{{{results.i}}}}.\n\n"
+        f"# {topical}\n\n{words()} {{{{results.b}}}} {{{{results.e}}}}.\n\n"
+        f"## {under}\n\n{words()} {{{{results.u}}}}.\n\n"
+        f"# {named['d']}\n\n{words()} {{{{results.d}}}}.\n\n"
+        f"## {below}\n\n{words()} {{{{results.t}}}}.\n\n"
+        f"# {named['l']}\n\n{words()} {{{{results.l}}}}.\n\n"
+        f"# Conclusions\n\n{words()} {{{{results.e}}}}.\n\n"
+        f"# {named['f']}\n\n{words()} {{{{results.f}}}}.\n\n"
+        f"# {named['r']}\n\n{words()} {{{{results.r}}}}.\n"
+    )
+    unreported = {"a", "t", *named}
+    results = text.replace("\n\n# Conclusions", f"\n\n# Results\n\n{words()}.\n\n# Conclusions")
+    papers = []
+    for paper, expected in ((text, unreported), (results, unreported | {"b", "u", "e"})):
+        papers += [(paper, expected), (_under_a_title(paper, _TOPICAL_TITLE), expected)]
+    return papers
+
+
+@holds(20, _papers_without_results())
+def test_a_paper_with_no_results_reports_under_the_headings_that_name_no_part(
+    papers: list[tuple[str, set[str]]],
+) -> None:
+    """A narrative review or a case report has no Results heading, and reports under headings
+    of its own: each number its abstract gave was warned. Where the paper has no Results, a
+    key bound under a heading that names no part of the paper is reported, and under the
+    abstract, the Introduction, the Discussion and a heading under it, a limitation, a
+    statement or the reference list is not; a paper's title over it all names no part,
+    whatever its first word. With a Results heading, the topical sections report nothing."""
+    for text, unreported in papers:
+        walk = reported_gate.Walk(None)
+        given, reported = walk.read(text)
+        reported |= walk.reported_without_results()
+        assert {one.key for one in given if one.key not in reported} == unreported, text
 
 
 # --------------------------------------------------------------------------------- boxes
@@ -9077,6 +9156,64 @@ def test_the_words_beside_a_quoted_value_are_its_words_and_no_more(
     """A word is a run between spaces that holds a letter, a digit in it or not; the value is
     taken out first, so "1 in 4" counts no "in"; and a percentage, an interval, a bracket or
     a number alone is no word."""
+    for quote, value, count in quotes:
+        assert len(literature_sources.words_beside(quote, value)) == count, (quote, value)
+
+
+#: Letters of the scripts written without spaces, and how many in a row are a word: Han,
+#: Hiragana and Katakana, an iteration mark, a long vowel, half-width Katakana, a letter of
+#: Extension A and of Extension B; Thai with its marks, Lao, Khmer and Myanmar.
+_UNSPACED_LETTERS = (
+    ("の調査患者例倍率報告オッズ比ー々" + "".join(map(chr, (0x3400, 0x20B9F, 0xFF76, 0x31F0))), 2),
+    ("พบสัญญาณของยาโดยรวม" + "".join(map(chr, (0x0E81, 0x0EB2, 0x1780, 0x17B6, 0x1000))), 4),
+)
+#: What parts two runs of those letters: their own stops, and a middle dot.
+_UNSPACED_STOPS = ("\N{IDEOGRAPHIC COMMA}", "\N{IDEOGRAPHIC FULL STOP}",
+                   "\N{FULLWIDTH COMMA}", "\N{KATAKANA MIDDLE DOT}")  # fmt: skip
+
+
+@st.composite
+def _unspaced_pieces(draw: st.DrawFn, letters: str, size: int) -> tuple[str, int]:
+    """Runs of `letters` parted by their stops, as one piece, and how many words it holds."""
+    runs = draw(st.lists(st.text(letters, min_size=1, max_size=3 * size), min_size=1,
+                         max_size=3))  # fmt: skip
+    stops = [draw(st.sampled_from(_UNSPACED_STOPS)) for _ in runs[1:]]
+    piece = runs[0] + "".join(stop + run for stop, run in zip(stops, runs[1:], strict=True))
+    return piece, sum(len(run) // size for run in runs)
+
+
+@st.composite
+def _unspaced_quotes_beside(draw: st.DrawFn) -> list[tuple[str, str, int]]:
+    """A quote for each kind of value, with a piece of Japanese or Chinese, a piece of Thai,
+    each of a few letters at least, a Latin word glued to the first, and filler words, in an
+    order drawn each time, and how many words stand beside the value."""
+    quotes = []
+    (han, two), (thai, four) = _UNSPACED_LETTERS
+    for value in _LEDGER_VALUES:
+        words = draw(st.lists(st.sampled_from(FILLER), max_size=4))
+        cjk, cjk_count = draw(_unspaced_pieces(han, two))
+        thai_piece, thai_count = draw(_unspaced_pieces(thai, four).filter(lambda p: p[1] > 0))
+        glued, glued_count = draw(_unspaced_pieces(han, two))
+        latin = draw(st.sampled_from(FILLER))
+        glued = draw(st.sampled_from((latin + glued, glued + latin)))
+        pieces = draw(st.permutations([*words, cjk, thai_piece, glued, value]))
+        gaps = [draw(st.sampled_from(_QUOTE_GAPS)) for _ in pieces]
+        quote = "".join(gap + piece for gap, piece in zip(gaps, pieces, strict=True))
+        # The Japanese or Chinese piece stands between spaces, so it is a word at the least.
+        cjk_count = max(cjk_count, 1)
+        quotes.append((quote, value, len(words) + cjk_count + thai_count + glued_count + 1))
+    return quotes
+
+
+@holds(150, _unspaced_quotes_beside())
+def test_a_quote_without_spaces_counts_a_word_for_each_few_letters(
+    quotes: list[tuple[str, str, int]],
+) -> None:
+    """Chinese, Japanese and Thai put no space between words, so a run between spaces of
+    them is no word: a run of Han, Hiragana or Katakana is a word for every two letters,
+    one of Thai, Lao, Khmer or Myanmar for every four, rounded down, a stop of theirs
+    parting two runs; and a Latin word glued to such a run is a word of its own. A run
+    between spaces that holds a letter is still a word at the least, as it was before."""
     for quote, value, count in quotes:
         assert len(literature_sources.words_beside(quote, value)) == count, (quote, value)
 
@@ -13309,6 +13446,33 @@ def _the_methods_report_nothing(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reported_gate, "methods_sections", lambda sections, named=None: [])
 
 
+def _a_heading_that_names_no_part_reports_beside_the_results(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reported_gate.Walk, "reported_without_results", lambda self: set(self.topical))
+
+
+def _the_innermost_heading_alone_names_no_part(patch: pytest.MonkeyPatch) -> None:
+    place = reported_gate.Walk._place
+
+    def innermost(self: reported_gate.Walk) -> object:
+        found = place(self)
+        last = self.chain[-1] if self.chain else None
+        if found is None and last is not None and id(last) not in self.elsewhere | self.titles:
+            return reported_gate.TOPICAL
+        return found
+
+    patch.setattr(reported_gate.Walk, "_place", innermost)
+
+
+def _a_statement_names_no_part(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reported_gate, "names_statement", lambda title: False)
+
+
+def _a_title_over_the_paper_names_the_part_its_first_word_does(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(reported_gate, "subsections", lambda sections, index: sections[index:][:1])
+
+
 def _a_quotation_is_in_straight_marks_only(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(quotations_gate, "_QUOTED", re.compile(r'"([^"\n]+(?:\n[^"\n]+)*)"()'))
 
@@ -13755,6 +13919,34 @@ def _a_word_with_a_digit_is_no_word(patch: pytest.MonkeyPatch) -> None:
 def _the_value_is_left_in_the_quote(patch: pytest.MonkeyPatch) -> None:
     real = literature_sources.words_beside
     patch.setattr(literature_sources, "words_beside", lambda quote, display: real(quote, ""))
+
+
+def _unspaced_letters_are_counted_between_spaces(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(literature_sources, "UNSPACED", ())
+
+
+def _each_unspaced_letter_is_a_word(patch: pytest.MonkeyPatch) -> None:
+    unspaced = tuple((1, blocks) for _size, blocks in literature_sources.UNSPACED)
+    patch.setattr(literature_sources, "UNSPACED", unspaced)
+
+
+def _thai_is_counted_as_han_is(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(literature_sources, "UNSPACED", tuple(
+        (2, blocks) for _size, blocks in literature_sources.UNSPACED))  # fmt: skip
+
+
+def _a_lone_unspaced_letter_is_no_word(patch: pytest.MonkeyPatch) -> None:
+    def counted(piece: str) -> list[str]:
+        words = []
+        for size, letters in itertools.groupby(piece, literature_sources._letters_to_a_word):
+            run = "".join(letters)
+            if size:
+                words.extend(run[at : at + size] for at in range(0, len(run) - size + 1, size))
+            elif any(ch.isalpha() for ch in run):
+                words.append(run)
+        return words
+
+    patch.setattr(literature_sources, "_words_of", counted)
 
 
 def _an_anchor_in_a_comment_is_an_anchor(patch: pytest.MonkeyPatch) -> None:
@@ -15895,6 +16087,22 @@ BROKEN = {
         _the_methods_report_nothing,
         test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
     ),
+    "a heading that names no part reports beside a Results heading": (
+        _a_heading_that_names_no_part_reports_beside_the_results,
+        test_a_paper_with_no_results_reports_under_the_headings_that_name_no_part,
+    ),
+    "a heading of its own under the Discussion reports": (
+        _the_innermost_heading_alone_names_no_part,
+        test_a_paper_with_no_results_reports_under_the_headings_that_name_no_part,
+    ),
+    "a statement of the back matter reports": (
+        _a_statement_names_no_part,
+        test_a_paper_with_no_results_reports_under_the_headings_that_name_no_part,
+    ),
+    "a paper's title over it names the part its first word does": (
+        _a_title_over_the_paper_names_the_part_its_first_word_does,
+        test_a_paper_with_no_results_reports_under_the_headings_that_name_no_part,
+    ),
     "a short form followed by a colon defines nothing": (
         _a_short_form_followed_by_a_colon_defines_nothing,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
@@ -16782,6 +16990,22 @@ BROKEN = {
     "the value is left in the quote": (
         _the_value_is_left_in_the_quote,
         test_the_words_beside_a_quoted_value_are_its_words_and_no_more,
+    ),
+    "a script without spaces is counted between spaces": (
+        _unspaced_letters_are_counted_between_spaces,
+        test_a_quote_without_spaces_counts_a_word_for_each_few_letters,
+    ),
+    "each letter of a script without spaces is a word": (
+        _each_unspaced_letter_is_a_word,
+        test_a_quote_without_spaces_counts_a_word_for_each_few_letters,
+    ),
+    "Thai is counted as Han is": (
+        _thai_is_counted_as_han_is,
+        test_a_quote_without_spaces_counts_a_word_for_each_few_letters,
+    ),
+    "a lone letter of a script without spaces between spaces is no word": (
+        _a_lone_unspaced_letter_is_no_word,
+        test_a_quote_without_spaces_counts_a_word_for_each_few_letters,
     ),
     "a comment in a plan's section is compared": (
         _comments_are_compared,

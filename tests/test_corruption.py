@@ -2481,6 +2481,106 @@ def test_a_number_the_supplement_reports_is_reported(project: Path) -> None:
     assert _unreported(project) == []
 
 
+#: A narrative review of made-up reports, which reports under headings of its own and has no
+#: section called Results, as a review or a case report has none.
+_REVIEW = """# Abstract
+
+Of {{results.cohort.n_reports}} reports, {{results.case.n_cases}} described hepatic injury,
+{{results.case.n_serious}} of them serious; the reporting odds ratio was {{results.ror.point}}.
+
+# Introduction
+
+Hepatic injury is a common reason for regulatory action.
+
+# Reports of hepatic injury
+
+The database held {{results.cohort.n_reports}} reports.
+
+## Serious reports: a smaller group
+
+Of them, {{results.case.n_cases}} described hepatic injury, {{results.case.n_serious}} serious.
+
+# Regulatory responses
+
+Against all other drugs, the reporting odds ratio was {{results.ror.point}}.
+
+# Discussion
+
+Reporting is not incidence.
+
+# Conclusions
+
+A reporting odds ratio of {{results.ror.point}} is a signal and no more.
+
+# Funding
+
+None.
+"""
+
+
+def test_a_paper_with_no_results_section_reports_under_its_own_headings(project: Path) -> None:
+    """A narrative review reports under topical headings, and every number its abstract and
+    its conclusions bound and its body gave again was warned: none of those headings opened
+    with "Results". Where the paper has no Results section, every section but the summaries,
+    the Introduction, the Discussion and the back matter reports. A number bound in the
+    abstract alone is still warned, and so is one the Introduction, the Discussion or a
+    statement gives again, with a message that says where the paper was read. Once the paper
+    has a Results section, the topical sections report nothing again."""
+    from manuscript_guard.gates import check_reported
+
+    def said(text: str) -> list[tuple[str, str, int, str]]:
+        main_md(project).write_text(text, encoding="utf-8")
+        loaded, _ = load_project(project)
+        found = check_reported(loaded, load_namespace(loaded)[1]).findings
+        return [(f.message.split()[0], re.search(r"under '([^']*)'", f.message)[1], f.line,
+                 f.message) for f in found]  # fmt: skip
+
+    assert said(_REVIEW) == []
+    alone = _REVIEW.replace(", {{results.case.n_serious}} serious.", ".")
+    for where in ("# Introduction\n\n", "# Discussion\n\n", "# Funding\n\n"):
+        text = alone.replace(where, f"{where}Of them, {{{{results.case.n_serious}}}} serious. ")
+        (found,) = said(text)
+        assert found[:3] == ("results.case.n_serious", "Abstract", 4), where
+        assert "with no Results section" in found[3], found
+        assert "the Methods, the Results" not in found[3], found
+    # With a Results section, a topical heading is read as before.
+    found = said(_REVIEW.replace("# Regulatory responses", "# Results"))
+    assert [(key, heading) for key, heading, _line, _message in found] == [
+        ("results.cohort.n_reports", "Abstract"),
+        ("results.case.n_cases", "Abstract"),
+        ("results.case.n_serious", "Abstract"),
+    ]
+    assert all("nowhere in the Methods, the Results, a table or a figure" in one[3]
+               for one in found)  # fmt: skip
+
+
+def test_a_latex_paper_with_no_results_section_reports_under_its_own_headings(
+    project: Path,
+) -> None:
+    """The same in LaTeX, read in the printed view: a key the abstract gives and a section of
+    the review's own gives again is reported, and one the abstract alone gives is not."""
+    from manuscript_guard.gates import check_reported
+
+    folder = project / "manuscript"
+    for path in folder.rglob("*.md"):
+        path.unlink()
+
+    def said(abstract: str) -> list[str]:
+        (folder / "main.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}\n\\begin{abstract}\n" + abstract
+            + "\n\\end{abstract}\n\\section{Introduction}\nx\n\\section{Regulatory responses}\n"
+            "The ROR was \\mg{results.ror.point}.\n\\section{Discussion}\n"
+            "Of \\mg{results.case.n_cases}.\n\\end{document}\n",
+            encoding="utf-8",
+        )
+        loaded, _ = load_project(project)
+        return [f.message.split()[0] for f in
+                check_reported(loaded, load_namespace(loaded)[1]).findings]  # fmt: skip
+
+    assert said("The ROR was \\mg{results.ror.point}.") == []
+    assert said("Of \\mg{results.case.n_cases}.") == ["results.case.n_cases"]
+
+
 # --------------------------------------- an earlier output of the same data, and this paper
 #
 # The example stands beside a copy of itself as the abstract it was first presented in. Each
@@ -12978,6 +13078,45 @@ def test_a_quote_that_holds_little_more_than_its_value_is_said(
     assert report.counts["literature_verified"] == 2
 
 
+@pytest.mark.parametrize(
+    ("quote", "short"),
+    [
+        # Made-up sentences, in the source's words: the class's signal, its ROR and its year.
+        ("2019年の調査では、薬剤群全体で報告オッズ比2.6の信号が検出された。", False),
+        ("2019年的调查显示，该类药物整体的报告比值比为2.6。", False),
+        ("พบสัญญาณของยากลุ่มนี้โดยรวม (ROR 2.6)", False),
+        # Japanese and Latin in one quote: three words of the one and one of the other.
+        ("薬剤群全体のROR 2.6", False),
+        # Chinese set with spaces around numbers and Latin words: a piece between spaces is
+        # a word, a single letter as well, as it was before (round 1 of #505).
+        ("纳入 120 例, ROR 为 2.6", False),
+        ("群全体のROR 2.6", True),
+        ("報告オッズ比2.6", True),
+        ("倍率2.6", True),
+        ("2.6倍", True),
+        ("ROR 2.6 เท่า", True),
+    ],
+)
+def test_a_quote_in_a_script_written_without_spaces_is_counted_by_its_letters(
+    project: Path, quote: str, short: bool
+) -> None:
+    """A quote in Japanese, Chinese or Thai has no spaces between its words, so a whole
+    sentence was two words beside its value and warned of as a value quoted alone. Han,
+    Hiragana and Katakana count a word for every two letters in a row, Thai for every four;
+    a value with a unit or a label of a few letters is still said."""
+    source = project / "literature" / "sources" / "fictionalClassSignal2019.txt"
+    source.write_text(source.read_text(encoding="utf-8") + f"\n{quote}\n", encoding="utf-8")
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    entry = next(e for e in document["entries"] if e.get("display") == "2.6")
+    entry["quote"] = quote
+    path.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True), "utf-8")
+    report = _literature_report(project)
+    said = [f for f in report.findings if f.code == "quote-too-short"]
+    assert [f.severity for f in said] == (["warn"] if short else []), report.render(project)
+    assert report.counts["literature_verified"] == 2
+
+
 # ------------------------------------------------- what the audit reads of a LaTeX paper
 # `audit` refused a `.tex` named: a LaTeX paper's numbers, its tables and its references were
 # checked by nothing outside a project. Each corruption below changes what it reports.
@@ -15012,6 +15151,86 @@ def test_a_palette_drawn_for_deficiencies_is_said_only_of_grey(project: Path) ->
                            "read_on": "2026-10-21", "confirmed": True, "print": "greyscale"}
     profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
     assert _colours_said(project) == [("figure-greyscale-confused", "warn")]
+
+
+#: For each way the check sees, two colours it makes one: matplotlib's red and green with
+#: deuteranopia, its blue and pink with protanopia, two light blues with tritanopia, and
+#: Okabe and Ito's orange and sky blue in grey.
+_ONE_TO = {
+    "deuteranopia": (_RED, _GREEN),
+    "protanopia": ("#1f77b4", "#e377c2"),
+    "tritanopia": ("#28ccfa", "#81fcf5"),
+    "greyscale": (_ORANGE, _SKY),
+}
+#: R's `palette.colors(palette = "Okabe-Ito")`: Okabe and Ito's eight, and a grey.
+_R_OKABE_ITO = ("#000000", "#e69f00", "#56b4e9", "#009e73", "#f0e442", "#0072b2", "#d55e00",
+                "#cc79a7", "#999999")  # fmt: skip
+
+
+def _hints(root: Path) -> dict[str, str]:
+    """The hint of each way the figure's colours are confused, by the way."""
+    from manuscript_guard.colour import DEFICIENCIES, GREYSCALE
+    from manuscript_guard.gates.figure_colours import check_figure_colours
+
+    out = {}
+    for found in check_figure_colours(load_project(root)[0]).findings:
+        if found.code == "figure-greyscale-confused":
+            out[GREYSCALE] = found.hint
+        else:
+            out[next(way for way in DEFICIENCIES if f"with {way}" in found.message)] = found.hint
+    return out
+
+
+@pytest.mark.parametrize("way", sorted(_ONE_TO))
+def test_the_hint_offers_no_palette_the_check_it_reports_finds_wanting(
+    project: Path, way: str
+) -> None:
+    """A figure in Okabe and Ito's orange and sky blue was told, in grey, to take Okabe and
+    Ito's colours: their own orange and sky blue are 0.6 apart in grey. A palette the hint
+    names keeps its colours apart the way the finding is about; where the one it offers does
+    not, it names none and says where to look."""
+    from manuscript_guard import palettes
+    from manuscript_guard.colour import confusions, parse
+
+    _painted(project, *_ONE_TO[way])
+    hint = _hints(project)[way]
+    named = re.findall(r"as the \d+ colours of `([^`]+)` do", hint)
+    for name in named:
+        assert confusions([parse(code)[0] for code in palettes.colours(name)], (way,)) == []
+    assert named == ([] if way == "greyscale" else ["okabe-ito"]), hint
+    if not named:
+        assert "`manuscript-guard palettes`" in hint, hint
+    # The check cannot see what else tells the series apart, and the guard file is the way
+    # out where something does.
+    assert "cannot see a marker or a line style" in hint, hint
+    assert "forest.guard.yaml under allow_colours" in hint, hint
+
+
+def test_a_figure_in_r_s_okabe_ito_palette_is_told_what_its_grey_does(project: Path) -> None:
+    """R's palette adds a grey to the eight, and deuteranopia makes it one with the reddish
+    purple: the hint that offers the eight says the grey is none of them, and in grey it
+    offers no palette at all, since the eight are not apart there either."""
+    from manuscript_guard.colour import GREYSCALE
+
+    _painted(project, *_R_OKABE_ITO)
+    hints = _hints(project)
+    assert sorted(hints) == ["deuteranopia", GREYSCALE]
+    assert "`okabe-ito`" in hints["deuteranopia"]
+    assert "adds a grey that is not one of them" in hints["deuteranopia"]
+    assert "okabe-ito" not in hints[GREYSCALE]
+
+
+def test_a_figure_with_no_guard_file_is_told_the_check_cannot_see_markers(
+    project: Path,
+) -> None:
+    """Read without a project, as `communicate` reads its graphical abstract, there is no
+    guard file to name, and what the check cannot see is still said."""
+    from manuscript_guard.gates.figure_colours import colour_findings
+
+    _painted(project, _RED, _GREEN)
+    [found] = colour_findings(project / "figures" / "forest.svg", "forest")
+    assert "cannot see a marker or a line style" in found.hint
+    assert "allow_colours" not in found.hint
 
 
 def test_a_supplementary_figure_s_colours_are_checked_as_the_paper_s(project: Path) -> None:

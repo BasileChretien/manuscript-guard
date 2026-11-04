@@ -480,14 +480,17 @@ def _supplementary_methods() -> Reading:
 @reading("summaries")
 def _summaries() -> Reading:
     """The results keys a file gives in its Abstract or a conclusion, and those it binds where
-    the paper reports them: G8's reading of the parts of a paper."""
+    the paper reports them: G8's reading of the parts of a paper. And those it binds under
+    headings that name no part, read as reported where the paper has no Results heading."""
     from manuscript_guard.gates.reported import Walk
 
     def summaries(given: dict[str, Any]) -> dict[str, Any]:
-        found, reported = Walk(given["abstract title"]).read(given["text"])
+        walk = Walk(given["abstract title"])
+        found, reported = walk.read(given["text"])
         return {
             "given": [[one.key, one.heading, one.line] for one in found],
             "reported": sorted(reported),
+            "without results": sorted(walk.reported_without_results()),
         }
 
     return summaries

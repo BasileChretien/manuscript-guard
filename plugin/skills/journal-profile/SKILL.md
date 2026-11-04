@@ -159,6 +159,12 @@ so that none is dropped without a trace. `check` then:
   corresponding author checks the paper against each and runs `manuscript-guard sign`
   themselves, as the warning's hint says; never run it for them.
 
+**A profile written before rules were quoted** gets `journal-rule-unquoted` for each of its
+rules after an upgrade. Many already hold the page's words in a comment beside each rule.
+Move each under `quotes:`, keyed by its rule, and delete the comment. A quote must be the
+stored page's words as the page writes them, which `journal-quote-not-on-page` holds, so
+copy it from the stored page rather than from the comment where the two differ.
+
 **A year on**, when `check` says the profile is old, save the journal's page as it now
 stands as text beside the stored one and run `manuscript-guard journal --reread <file>`. It
 shows what changed and names each rule whose quote the page no longer holds: read those

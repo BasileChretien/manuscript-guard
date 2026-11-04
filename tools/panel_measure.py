@@ -172,7 +172,7 @@ def requests_of(project: Path) -> list[tuple[str, dict]]:
     # This tree's package, not whichever one is installed.
     path = os.pathsep.join(filter(None, [str(ROOT / "src"), os.environ.get("PYTHONPATH")]))
     run = subprocess.run([sys.executable, "-c", code, "review", "--run", "--dry-run"],
-                         cwd=project, capture_output=True, text=True,
+                         cwd=project, capture_output=True, text=True, encoding="utf-8",
                          env={**os.environ, "PYTHONPATH": path})  # fmt: skip
     if run.returncode != 0:
         said = run.stdout + run.stderr

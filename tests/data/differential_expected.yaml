@@ -68,6 +68,11 @@ expected:
       a P above 1, "P = 4.1 x 10^5", is not judged; a number with a middle dot or a comma
       for its point is not read, nor a P cut off before one; and Dunnett's and
       Games-Howell's procedures stand a test down as the other named adjustments do
+  - reading: summaries
+    why: >-
+      where a paper has no Results heading, a key bound under a heading that names no part
+      of it is read as reported, `Walk.reported_without_results`, which the base does not
+      have; the reading reports those keys, and its inputs now hold papers with no Results
   - reading: word blocks
     why: >-
       a figure whose paragraph carries an identifier Word left there, from a paragraph cut
@@ -91,6 +96,12 @@ expected:
       a sentence that opens with a typographic quotation mark is a sentence of its own, as
       one that opens with a straight one is, so its quotation is held to its own citation
       and not to the one of the sentence before (step 8, G7)
+  - reading: quote words
+    why: >-
+      a run of Han, Hiragana or Katakana in a ledger quote is a word for every two letters
+      in a row, one of Thai, Lao, Khmer or Myanmar for every four, rounded down, and a Latin
+      word glued to such a run is a word of its own, where the whole run between spaces was
+      one word; the inputs now hold Japanese, Chinese and Thai pieces (G7, quote-too-short)
   - reading: latex bindings
     why: >-
       a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was

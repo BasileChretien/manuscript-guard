@@ -84,28 +84,24 @@ def cmd_run(args: argparse.Namespace) -> int:
         staged = running.prepare(project, folder, scripts)
     except running.RunRefused as exc:
         return _refused("run", str(exc))
-    changed = running.changes(staged.sources, last_release(root))
-    print(f"{_PREFIX} run: the scripts to run on the data held in {folder}, in this order:")
-    for script in scripts:
-        print(f"  {script}")
-    if changed:
-        print("The scripts that changed since the run released last, by digest; "
-              "read each before you answer:")  # fmt: skip
-        for change in changed:
-            print(f"  {change.path}: {change.said}; {change.read}")
-    else:
-        print("No script changed since the run released last.")
-    print("They were written with an agent: what they print or write can hold any value of "
-          "the data. What they write waits in the vault's outbox until you release it.")
-    answer = _ask("Run them on the data held in the vault? [y/N] ")
-    if not _yes(answer):
-        running.discard(staged)
-        if answer is None:
-            return _no_terminal("run")
-        print(f"{_PREFIX} run: nothing run")
-        return 0
+    started = False
+    try:
+        answer = _listed_and_asked(running, staged, scripts, folder, last_release(root))
+        if not _yes(answer):
+            if answer is None:
+                return _no_terminal("run")
+            print(f"{_PREFIX} run: nothing run")
+            return 0
+        # Digested again at the yes: the project the person read must be the copy that runs.
+        if moved := running.differs(project, staged):
+            return _refused("run", "the project changed while you read it ("
+                            f"{', '.join(moved)}); run `vault run` again")  # fmt: skip
+        started = True
+        done = running.run(project, staged)
+    finally:
+        if not started:
+            running.discard(staged)
     run_id = staged.run
-    done = running.run(project, staged)
     for note in done.notes:
         print(f"{_PREFIX} run: {note}")
     print(f"{_PREFIX} run {run_id}: what the scripts printed is in {done.log}.")
@@ -120,6 +116,26 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"{_PREFIX} run {run_id}: {len(done.moved)} file(s) wait in {done.outbox}. Read "
           f"them, then `manuscript-guard vault release {run_id} --as <you>`.")  # fmt: skip
     return 0
+
+
+def _listed_and_asked(running, staged, scripts: list[str], folder: Path, last) -> str | None:
+    """List the scripts and those changed since the run released last, each with the copy's
+    own path, which is what runs; and ask."""
+    changed = running.changes(staged.sources, last)
+    print(f"{_PREFIX} run: the scripts to run on the data held in {folder}, in this order:")
+    for script in scripts:
+        print(f"  {script}")
+    if changed:
+        print("The scripts that changed since the run released last, by digest; read each "
+              "before you answer. The copy beside each is what runs:")  # fmt: skip
+        for change in changed:
+            copy = staged.work.joinpath(*change.path.split("/"))
+            print(f"  {change.path}: {change.said}; {change.read}; the copy: {copy}")
+    else:
+        print("No script changed since the run released last.")
+    print("They were written with an agent: what they print or write can hold any value of "
+          "the data. What they write waits in the vault's outbox until you release it.")
+    return _ask("Run them on the data held in the vault? [y/N] ")
 
 
 # ---------------------------------------------------------------------------- release

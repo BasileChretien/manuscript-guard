@@ -12559,18 +12559,25 @@ folder and a library of others' code, no link followed, round 1 of #490) whose
 `source_digest` is not the one the run released last recorded, with `git diff <commit> --
 <path>`, the commit being the project's at that run, or "read it whole" where no run was
 released; then it asks y/N (`ask_at_terminal`; no `--yes`). It refuses where `vault check`'s
-probe does not say readable from this process. A script named on the command line, and the
-files a runner reads first (`run.RUNNER_FILES`: `.Rprofile`, `_quarto.yml`, `_quarto.yaml`,
-`renv/activate.R`), are listed and recorded wherever they are. The copy is made first and the
-list is read from it (`run.prepare`), so that what is shown is what runs, and a no removes it
-(`run.discard`) (round 2 of #490).
+probe does not say readable from this process. A script named on the command line, the
+files a runner reads first (`run.RUNNER_FILES`: `.Rprofile`, `.Renviron`, `_quarto.yml`,
+`_quarto.yaml`, `renv/activate.R`) and every file of `_extensions/`, are listed and recorded
+wherever they are, and so is compiled code a run can load (`run.COMPILED_SUFFIXES`: `.pyc`,
+`.pyo`, `.pyd`, `.so`, `.dll`, `.dylib`). The copy is made first and the list is read from it
+(`run.prepare`), each changed script shown with the copy's own path, so that what is shown is
+what runs. At the yes the project's scripts are digested again (`run.differs`), and one that
+is not the copy's, changed, gone or new, refuses the run. A no, a Ctrl-C or a refusal removes
+the copy (`run.discard`, in a `finally` until the run starts) (round 2 and the fix round of
+#490).
 
 The run's id is its UTC time, `YYYYMMDD-HHMMSS`, with `-2` and on where taken, and runs are
 ordered by the time and then the number (`run.run_key`); no other word names a run's folder. The project is
 copied into `<vault>/.runs/<run>/<project>/` as `verify` copies it (`verify._skip`: no `.git`,
-no `build/`), `results/` emptied, and each file's size and time written are taken; where the
+no `build/`), and no `__pycache__/`, so that no compiled file stands in for a script listed;
+`results/` is emptied wholly, and each file's size and time written are taken; where the
 project's `results/` is, or holds, a link or a junction, the run is refused before anything is
-copied, since emptying it would follow the link. The scripts
+copied, since emptying it would follow the link, and a copy that cannot be made whole is
+refused and removed. Python runs with `-B` and `PYTHONDONTWRITEBYTECODE=1`. The scripts
 are run there in order with `MANUSCRIPT_GUARD_VAULT` and `MANUSCRIPT_GUARD_VAULT_RUN` set,
 standard input closed, in a process group of their own, with no time limit: the person is at
 the terminal and can stop it. Their standard output and error are copied as they come to the
@@ -12595,14 +12602,12 @@ wrapper writes is the script's to forge: it is read as untrusted, and held to th
 scripts as the copy held them before anything ran (`run.source_texts`), never to what the run
 wrote (round 1 of #490). A frame is kept where its file is one of them, its line within that
 file's lines and its function `<module>` or the like or a word of that file. A class is named
-only where the tool, in its own process, confirms it (round 2 of #490): a built-in exception,
-from a set it computes (`summary.BUILTIN_EXCEPTIONS`), or a class it finds under that name,
-a `BaseException` subclass of that name, in a module it imports itself, whose
-`importlib.util.find_spec` origin is under this Python's standard library or an installed
-package and under neither the copy nor the vault; a module of the standard library that acts
-when imported (`antigravity`, `turtle`, `webbrowser` and the like) is not imported. Otherwise
-the summary says `own_exception` and gives no name. The module file the wrapper wrote is never
-read; the key where it is exactly a column name of the data
+only where it is a built-in exception, of a set the tool computes from `builtins` in its own
+process (`summary.BUILTIN_EXCEPTIONS`), and the wrapper says its module is `builtins`. Any
+other class gives `"exception": "not a builtin"`, with no name and no module. Nothing the
+summary names is looked for or imported: importing a module a run names runs that module's
+code in the tool (`test.autotest` runs CPython's tests), and in a virtual environment a run
+can plant a module in site-packages (the fix round of #490); the key where it is exactly a column name of the data
 dictionary or of a released profile (`profiles/data/*.profile.json`, `columns[].name`). An R
 script's last `Calls:` line in its standard error, kept in this process only, gives the names
 that are words of the project's scripts before the run, the last 20, as many as the frames. No message and no value is written. The summary is checked against its
@@ -20106,8 +20111,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
     column name. A person's reading of the script, before the run, and of what is released is
     the control, and the run and the release say so.
   - *The summary for the agent* is written at once (decision 9a). It holds no message and no
-    value, and keeps only names the project's code held before the run and classes the tool
-    confirms itself. A failing script can still choose its exit code and, among its own
+    value, and keeps only names the project's code held before the run and the name of a
+    built-in exception. A failing script can still choose its exit code and, among its own
     code's names and lines, the frames reported, at most 20 (and as many names of R's
     `Calls:` line): some bits for each failed run. Only a `KeyError`'s key is read as a column
     name; a missing column another library reports otherwise (polars' `ColumnNotFoundError`,
@@ -20143,9 +20148,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     the project, the vault or elsewhere, and what it writes outside the copy is no output the
     release reads.
   - *The summary's names are held to the project's scripts as the copy was made.* A name the
-    project's code already held is kept wherever the run's choice of it came from. A class
-    is confirmed by importing its module from this Python's installed packages; an installed
-    package the same account can edit is read as it is.
+    project's code already held is kept wherever the run's choice of it came from. Only a
+    built-in exception is named, so a library's (pandas' `ParserError`, `json`'s
+    `JSONDecodeError`) is said to be "not a builtin", and the agent learns less of why a run
+    failed than it could.
+  - *What is listed is digested at the yes.* A file the project and the copy hold alike at
+    that moment passes, though it changed and changed back meanwhile; what runs is the copy,
+    the same bytes.
   - *What a run records of git.* The copy leaves `.git` out, as `verify`'s does, so a
     fragment written in a run records no `vcs`; the release records the project's commit at
     the run, which says nothing of uncommitted changes.

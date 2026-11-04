@@ -677,7 +677,7 @@ def test_a_class_that_says_it_is_of_another_module_is_not_named(
     text = (paper / ".manuscript-guard" / "vault" / "last-run.json").read_text("utf-8")
     assert "PLANTED" not in text
     failed = _summary(paper)["failed"]
-    assert "class" not in failed and failed["own_exception"] is True
+    assert "class" not in failed and failed["exception"] == "not a builtin"
 
 
 def test_an_r_calls_line_is_held_to_the_code_before_the_run(
@@ -815,7 +815,7 @@ def test_a_module_the_script_makes_in_the_vault_names_no_class(
     assert vault_cli(paper, "run") == 1
     text, failed = _failed(paper)
     assert "P0004" not in text
-    assert "class" not in failed and failed["own_exception"] is True
+    assert "class" not in failed and failed["exception"] == "not a builtin"
 
 
 @pytest.mark.parametrize("module", ["builtins", "json", "heldmod"])
@@ -838,17 +838,6 @@ def test_a_summary_the_script_writes_itself_names_no_class(
     assert "class" not in failed
 
 
-def test_an_installed_library_s_exception_is_still_named(
-    paper: Path, vault: Path, terminal
-) -> None:
-    answers, _asked = terminal
-    _script(paper, "import json\njson.loads('{')")
-    answers.append("y")
-    assert vault_cli(paper, "run") == 1
-    _text, failed = _failed(paper)
-    assert failed["class"] == "JSONDecodeError" and "own_exception" not in failed
-
-
 def test_r_calls_are_at_most_twenty(tmp_path: Path) -> None:
     names = [f"step{n}" for n in range(30)]
     texts = {"analysis/01.R": "".join(f"{name} <- function() 1\n" for name in names)}
@@ -857,28 +846,129 @@ def test_r_calls_are_at_most_twenty(tmp_path: Path) -> None:
     assert failed["calls"] == names[-20:]
 
 
-def test_what_is_listed_is_what_runs(paper: Path, vault: Path, monkeypatch, capsys) -> None:
-    """The copy is made first, the scripts listed from it, and that copy is run: an edit of
-    the project while the person reads the list changes nothing of the run (round 2)."""
+def test_an_edit_of_the_project_while_the_person_reads_refuses_the_run(
+    paper: Path, vault: Path, monkeypatch, capsys
+) -> None:
+    """The copy is made first and listed; at the yes the project is digested again, and a
+    script that differs from the copy's refuses the run: the person read the project's file,
+    and the copy is what would run (the fix round of #490)."""
     from manuscript_guard.deposit.remote import command
 
-    script = _script(paper, "print('as listed')")
+    script = _script(paper, "print('planted')")
     monkeypatch.setattr(person, "_at_terminal", lambda: True)
 
     def ask(prompt: str) -> str:
-        script.write_text(SCRIPT.format(extra="print('edited meanwhile')"), encoding="utf-8")
+        script.write_text(SCRIPT.format(extra=""), encoding="utf-8")
         return "y"
 
     monkeypatch.setattr(command, "ask_at_terminal", ask)
+    assert vault_cli(paper, "run") == 2
+    captured = capsys.readouterr()
+    assert "planted" not in captured.out
+    assert "changed while you read" in captured.err
+    # The copy's own path is shown beside the script, to read what would run.
+    assert f"{paper.name}/analysis/01_model.py" in captured.out.replace("\\", "/")
+    assert not (vault / "outbox").exists()
+    assert not (vault / ".runs").exists() or not any((vault / ".runs").iterdir())
+
+
+@pytest.mark.parametrize(("extra", "kind"), [("raise KeyError('x')", "KeyError"),
+                                             ("raise ValueError()", "ValueError"),
+                                             ("1 / 0", "ZeroDivisionError"),
+                                             ("import json\njson.loads('{')", None)])
+def test_only_a_builtin_exception_is_named(paper: Path, vault: Path, terminal, extra: str,
+                                           kind: str | None) -> None:  # fmt: skip
+    answers, _asked = terminal
+    _script(paper, extra)
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    _text, failed = _failed(paper)
+    assert failed.get("class") == kind
+    assert ("exception" in failed) is (kind is None)
+    if kind is None:
+        assert failed["exception"] == "not a builtin"
+
+
+@pytest.mark.parametrize("module", ["test.autotest", "heldmod", "json"])
+def test_the_tool_imports_nothing_the_summary_names(
+    paper: Path, vault: Path, terminal, monkeypatch, module: str
+) -> None:
+    """A module the summary names is not imported by the tool, nor looked for: `test.autotest`
+    runs CPython's tests when imported, and a module planted in a writable site-packages
+    would be found (the fix round of #490)."""
+    import importlib
+    import importlib.util
+
+    looked: list[str] = []
+    real_find, real_import = importlib.util.find_spec, importlib.import_module
+    monkeypatch.setattr(importlib.util, "find_spec",
+                        lambda name, *a, **k: looked.append(name) or real_find(name, *a, **k))
+    monkeypatch.setattr(importlib, "import_module",
+                        lambda name, *a, **k: looked.append(name) or real_import(name, *a, **k))
+    extra = ("import json, os, pathlib, sys\n"
+             "where = pathlib.Path(os.environ['MANUSCRIPT_GUARD_VAULT'], '.runs', "
+             "os.environ['MANUSCRIPT_GUARD_VAULT_RUN'], 'summary', '1.json')\n"
+             f"where.write_text(json.dumps({{'class': 'SystemExit', 'module': '{module}', "
+             "'frames': [], 'key': None}))\nsys.exit(1)")
+    answers, _asked = terminal
+    _script(paper, extra)
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    _text, failed = _failed(paper)
+    assert "class" not in failed and failed["exception"] == "not a builtin"
+    assert module not in looked and module.split(".")[0] not in looked
+
+
+def test_a_results_folder_holding_compiled_files_runs_and_leaves_no_copy(
+    paper: Path, vault: Path, terminal
+) -> None:
+    cache = paper / "results" / "__pycache__"
+    cache.mkdir(parents=True)
+    (cache / "a.pyc").write_bytes(b"compiled")
+    answers, _asked = terminal
+    _script(paper)
+    answers.append("y")
+    assert vault_cli(paper, "run") == 0
+    (run,) = [one.name for one in (vault / ".runs").iterdir()]
+    assert not (vault / ".runs" / run / paper.name).exists()
+
+
+def test_compiled_code_is_not_copied_nor_written_and_is_listed(
+    paper: Path, vault: Path, terminal, capsys
+) -> None:
+    cache = paper / "analysis" / "__pycache__"
+    cache.mkdir(parents=True)
+    (cache / "01_model.cpython-312.pyc").write_bytes(b"planted")
+    (paper / "analysis" / "helper.pyc").write_bytes(b"sourceless")
+    (paper / "lib.so").write_bytes(b"native")
+    (paper / ".Renviron").write_text("X=1\n", encoding="utf-8")
+    (paper / "_extensions" / "mine").mkdir(parents=True)
+    (paper / "_extensions" / "mine" / "filter.lua").write_text("--\n", encoding="utf-8")
+    answers, _asked = terminal
+    _script(paper, "import os, sys\nprint('cache', os.path.exists('analysis/__pycache__'), "
+                   "sys.dont_write_bytecode)")
+    answers.append("y")
     assert vault_cli(paper, "run") == 0
     said = capsys.readouterr().out
-    assert "as listed" in said and "edited meanwhile" not in said
-    (run,) = [one.name for one in (vault / ".runs").iterdir()]
-    record = json.loads((vault / ".runs" / run / "run.json").read_text(encoding="utf-8"))
-    from manuscript_guard.emit import source_digest
+    assert "cache False True" in said
+    for path in ("analysis/helper.pyc", "lib.so", ".Renviron", "_extensions/mine/filter.lua"):
+        assert f"{path}: no run on the vault has been released yet" in said, path
+    assert "__pycache__" not in said
 
-    listed = {one["path"]: one["sha256"] for one in record["scripts"]}
-    assert listed["analysis/01_model.py"] != source_digest(script)
+
+def test_a_stop_at_the_question_leaves_no_copy(paper: Path, vault: Path, monkeypatch) -> None:
+    from manuscript_guard.deposit.remote import command
+
+    _script(paper)
+    monkeypatch.setattr(person, "_at_terminal", lambda: True)
+
+    def stopped(prompt: str) -> str:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(command, "ask_at_terminal", stopped)
+    with pytest.raises(KeyboardInterrupt):
+        vault_cli(paper, "run")
+    assert not (vault / ".runs").exists() or not any((vault / ".runs").iterdir())
 
 
 def test_a_no_leaves_no_copy_in_the_vault(paper: Path, vault: Path, terminal) -> None:

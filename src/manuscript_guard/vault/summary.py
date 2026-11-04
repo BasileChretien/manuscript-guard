@@ -8,8 +8,8 @@ is exactly a column name the released profile or the data dictionary already hol
 message and no value goes in. Every name kept is one the project's code, a library or a
 released file already shows, the code read as the copy held it before the run: a function
 whose name is not a word of those scripts, a frame in a file the run wrote or outside the
-copy, a line past the end of its file, a class the wrapper did not find under its name in a
-built-in module or a module outside the copy, or a key no released file names, is left out.
+copy, a line past the end of its file, a class that is no built-in exception, or a key no
+released file names, is left out.
 The exit code and a line number still carry a few bits a script could choose (DESIGN.md,
 Known gaps; Basile's decision 9a).
 
@@ -109,70 +109,27 @@ def _frames(given: object, work: Path, texts: dict[str, str]) -> list[dict]:
     return kept[-FRAMES:]
 
 
-#: Modules of the standard library that do something when imported: a name the script
-#: wrote is not imported where it would open a browser or a window.
-_ACTS_WHEN_IMPORTED = frozenset({"antigravity", "this", "turtle", "turtledemo", "tkinter",
-                                 "idlelib", "webbrowser", "__main__", "__hello__",
-                                 "__phello__"})  # fmt: skip
 #: The built-in exceptions, computed here: a closed set the script cannot add to.
 BUILTIN_EXCEPTIONS = frozenset(
     name for name, found in vars(__import__("builtins")).items()
     if isinstance(found, type) and issubclass(found, BaseException)
 )  # fmt: skip
+#: What the summary says of any other exception: its name is withheld.
+NOT_BUILTIN = "not a builtin"
 
 
-def _installed(origin: str, away: list[Path]) -> bool:
-    """Whether a module's file is this Python's own, its standard library or an installed
-    package, and not under the copy or the vault."""
-    import sysconfig
-
-    try:
-        real = Path(os.path.realpath(origin))
-    except (OSError, ValueError):
-        return False
-    homes = {Path(os.path.realpath(found)) for key in ("stdlib", "platstdlib", "purelib",
-                                                       "platlib")
-             if (found := sysconfig.get_paths().get(key))}  # fmt: skip
-
-    def under(folder: Path) -> bool:
-        return real == folder or folder in real.parents
-
-    return any(under(home) for home in homes) and not any(
-        under(Path(os.path.realpath(one))) for one in away)  # fmt: skip
-
-
-def _kind(record: dict, away: list[Path]) -> str | None:
-    """The exception's class name where this process, the tool's, confirms it, holding all
-    the wrapper wrote as untrusted, since the script ran in the wrapper's process and could
-    write any of it (round 2 of #490): a built-in exception, or a class this process finds
-    under that name in a module it imports itself from this Python's standard library or an
-    installed package, never from the copy or the vault. Anything else is an exception of
-    the script's own."""
-    import importlib
-    import importlib.util
-
+def _kind(record: dict) -> str | None:
+    """The exception's class name where it is a built-in exception, of the set this process
+    computes; None for any other. All the wrapper wrote is the script's to forge, since the
+    script ran in the wrapper's process, and nothing it names is looked for or imported here:
+    importing a module a run names runs that module's code in the tool (the fix round of
+    #490)."""
     name, module = record.get("class"), record.get("module")
-    if not _identifier(name):
-        return None
-    if module == "builtins":
-        return name if name in BUILTIN_EXCEPTIONS else None
-    if not (isinstance(module, str) and module != "__main__"
-            and all(part.isidentifier() for part in module.split("."))
-            and module.split(".")[0] not in _ACTS_WHEN_IMPORTED):  # fmt: skip
-        return None
-    try:
-        spec = importlib.util.find_spec(module)
-        if spec is None or not spec.origin or not _installed(spec.origin, away):
-            return None
-        found = getattr(importlib.import_module(module), name, None)
-    except Exception:  # noqa: BLE001 - a module that will not import names nothing
-        return None
-    ok = isinstance(found, type) and issubclass(found, BaseException) and found.__name__ == name
-    return name if ok else None
+    return name if module == "builtins" and name in BUILTIN_EXCEPTIONS else None
 
 
 def python_failure(project, texts: dict[str, str], work: Path, script: str, code: int,
-                   summary: Path, vault: Path) -> dict:  # fmt: skip
+                   summary: Path) -> dict:  # fmt: skip
     """What the summary says of a Python script that failed, from what its wrapper wrote."""
     failed: dict = {"path": script, "exit_code": code}
     try:
@@ -181,11 +138,11 @@ def python_failure(project, texts: dict[str, str], work: Path, script: str, code
         return failed
     if not isinstance(record, dict):
         return failed
-    kind = _kind(record, [work, vault])
+    kind = _kind(record)
     if kind is not None:
         failed["class"] = kind
     else:
-        failed["own_exception"] = True
+        failed["exception"] = NOT_BUILTIN
     frames = _frames(record.get("frames"), work, texts)
     if frames:
         failed["frames"] = frames

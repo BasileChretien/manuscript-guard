@@ -133,20 +133,23 @@ agent. It does this, in order:
 
 1. It copies the project into `<vault>/.runs/<run>/`, inside the vault rather than the
    system's temporary folder, so that the copy shares the data's protection. `.git` and
-   `build/` are left out, and `results/` is emptied. It refuses where `results/` is, or
-   holds, a link or a junction.
+   `build/` are left out, and so is Python's compiled code in `__pycache__/`, and
+   `results/` is emptied. It refuses where `results/` is, or holds, a link or a junction.
 2. It lists the scripts it will run, and every script of the copy that changed since the
    run released last, by digest, with the `git diff` command that shows what changed, and
    asks y/N. A script is any file a run can execute or source (`.py`, `.R`, `.Rmd`, `.qmd`,
    `.sh` and the like), wherever it is, but in `results/`, `data/`, `build/`, a hidden
-   folder or a library of others' code; a script you name, and `.Rprofile`, `_quarto.yml`
-   and `renv/activate.R`, which a runner reads first, are listed wherever they are. The list
-   is read from the copy, and the copy is what runs: an edit of the project while you read
-   it changes nothing of the run. Read what changed before you answer: the scripts were
-   written with an agent, and what they print or write can hold any value of the data. On a
-   no, the copy is removed.
-3. It runs the scripts there in order, with `MANUSCRIPT_GUARD_VAULT` set, and stops at the
-   first that fails.
+   folder or a library of others' code; compiled code a run can load (`.pyc`, `.pyd`,
+   `.so`, `.dll`, `.dylib`) is listed too. A script you name, and `.Rprofile`, `.Renviron`,
+   `_quarto.yml`, `renv/activate.R` and every file of `_extensions/`, which a runner reads
+   first, are listed wherever they are. The list is read from the copy, and each script is
+   shown with the copy's own path, which is what runs. At your yes the project is digested
+   again, and where a script differs from the copy's, the run is refused: run `vault run`
+   again. Read what changed before you answer: the scripts were written with an agent, and
+   what they print or write can hold any value of the data. On a no, or a Ctrl-C, the copy
+   is removed.
+3. It runs the scripts there in order, with `MANUSCRIPT_GUARD_VAULT` set and Python told
+   to write no compiled file, and stops at the first that fails.
 4. What they print goes to your terminal as it comes, and into `<vault>/.runs/<run>/log.txt`.
 5. Where every script finished, it moves everything they wrote into `<vault>/outbox/<run>/`:
    results files, harvested outputs, figures, anything else. A link or a junction a
@@ -163,11 +166,11 @@ line; and the key of a `KeyError` where it is exactly a column name the released
 the data dictionary already holds. No message and no value goes in. The project's files are
 read as they were before the run: a function whose name is not a word of them, or a frame in
 a file the run wrote, is left out, since a script could make either from the data. A class
-is named only where the tool itself, in its own process, finds it: a built-in exception, or
-one it imports from this Python's standard library or an installed package, never from the
-copy or the vault. A class of the script's own is said to be one, without its name. A
-failing script can still choose its exit code and, among its own code's names and lines,
-which frames are reported, at most 20: a few bits for each failed run.
+is named only where it is one of Python's built-in exceptions (`KeyError`, `ValueError`,
+`ZeroDivisionError`); any other, a library's or the script's own, is said to be "not a
+builtin", with no name and no module, and nothing the summary names is imported. A failing
+script can still choose its exit code and, among its own code's names and lines, which
+frames are reported, at most 20: a few bits for each failed run.
 
 ## Releasing what a run wrote: `vault release`
 

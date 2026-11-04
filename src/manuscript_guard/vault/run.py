@@ -63,10 +63,8 @@ GIT_SECONDS = 10
 #: run's folder in the vault: the script runs as `__main__`, with its own folder first on the
 #: path, and where it raises, the exception's class, its module, and the frames of its
 #: traceback are written to the file named first, inside the vault, before the traceback is
-#: printed. The class is named only where its module holds it under that name and is a
-#: built-in or a module whose file is outside the copy, named second: a script sets
-#: `__module__` as it likes (round 1 of #490). `summary.py` keeps of them only what the
-#: project's code already shows. No message and no value is written.
+#: printed. `summary.py` keeps of them only what the project's code already shows, and a
+#: class only where it is a built-in exception. No message and no value is written.
 WRAPPER = """
 import builtins, json, os, runpy, sys, traceback
 summary, copy, script = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -152,9 +150,10 @@ def _reparse(entry: os.DirEntry) -> bool:
     return bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
 
 
-def _walk(top: Path, skip=lambda _relative: False):
+def _walk(top: Path, skip=lambda _relative: False, left: frozenset[str] = _LEFT):
     """Each file under `top`, by its path from it, and each link, neither followed; with a
-    flag saying which is a link. A folder `skip` names, by its path, is not entered."""
+    flag saying which is a link. A folder `skip` names, by its path, is not entered, nor one
+    named in `left` (Python's compiled files)."""
     pending = [top]
     while pending:
         folder = pending.pop()
@@ -168,7 +167,7 @@ def _walk(top: Path, skip=lambda _relative: False):
             if _reparse(entry):
                 yield relative, path, True
             elif entry.is_dir(follow_symlinks=False):
-                if entry.name not in _LEFT and not skip(relative):
+                if entry.name not in left and not skip(relative):
                     pending.append(path)
             else:
                 yield relative, path, False
@@ -181,8 +180,12 @@ def _not_scripts(relative: str) -> bool:
 
 
 #: Files a runner reads before the script where they are there, wherever a run is: R's
-#: profile, read by a run that is not `--vanilla`, Quarto's project file and renv's start.
-RUNNER_FILES = (".Rprofile", "_quarto.yml", "_quarto.yaml", "renv/activate.R")
+#: profile and environment, read by a run that is not `--vanilla`, Quarto's project file and
+#: renv's start; and every file of Quarto's extensions (the fix round of #490).
+RUNNER_FILES = (".Rprofile", ".Renviron", "_quarto.yml", "_quarto.yaml", "renv/activate.R")
+RUNNER_FOLDERS = ("_extensions",)
+#: Compiled code a run can load in place of a script: listed and recorded by digest.
+COMPILED_SUFFIXES = frozenset({".pyc", ".pyo", ".pyd", ".so", ".dll", ".dylib"})
 
 
 def script_files(root: Path, named: tuple[str, ...] = ()) -> dict[str, Path]:
@@ -190,8 +193,12 @@ def script_files(root: Path, named: tuple[str, ...] = ()) -> dict[str, Path]:
     root: by its suffix, anywhere but in the results, the data, the build, a hidden folder
     and the libraries of others' code, no link followed; and wherever they are, the scripts
     named to run and the files a runner reads first (round 2 of #490)."""
+    suffixes = SCRIPT_SUFFIXES | COMPILED_SUFFIXES
     found = {relative: path for relative, path, link in sorted(_walk(root, _not_scripts))
-             if not link and path.suffix.lower() in SCRIPT_SUFFIXES}  # fmt: skip
+             if not link and path.suffix.lower() in suffixes}  # fmt: skip
+    for folder in RUNNER_FOLDERS:
+        found.update({f"{folder}/{relative}": path
+                      for relative, path, link in _walk(root / folder) if not link})
     for relative in (*named, *RUNNER_FILES):
         path = root.joinpath(*relative.split("/"))
         if path.is_file() and not path.is_symlink():
@@ -213,6 +220,8 @@ def source_texts(work: Path, named: tuple[str, ...] = ()) -> dict[str, str]:
     the summary holds a name and a frame to."""
     texts = {}
     for relative, path in script_files(work, named).items():
+        if path.suffix.lower() in COMPILED_SUFFIXES:
+            continue
         try:
             texts[relative] = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -330,13 +339,19 @@ def stage(root: Path, work: Path) -> None:
 
     if why := _linked_results(root):
         raise RunRefused(why)
+
+    def ignored(directory: str, names: list[str]) -> set[str]:
+        # No compiled Python is copied, so that none stands in for a script listed.
+        return _skip(directory, names) | (_LEFT & set(names))
+
     try:
-        shutil.copytree(root, work, symlinks=True, ignore=_skip)
+        shutil.copytree(root, work, symlinks=True, ignore=ignored)
     except (OSError, shutil.Error) as exc:
         raise RunRefused(f"could not copy the project into the vault: {exc}") from exc
     results = work / "results"
     if results.is_dir():
-        found = list(_walk(results))
+        # Wholly, `__pycache__` too (the fix round of #490).
+        found = list(_walk(results, left=frozenset()))
         if any(link for _relative, _path, link in found):
             raise RunRefused("the copy's results/ holds a link or a junction")
         for _relative, path, _link in found:
@@ -365,7 +380,9 @@ def command_for(script: Path, summary: Path, wrapper: Path, work: Path) -> list[
     runner = runner_for(script)
     assert runner is not None  # `scripts_to_run` refused a script with none
     if script.suffix.lower() == ".py":
-        return [*runner, str(wrapper), str(summary), str(work), str(script)]
+        # `-B`: no compiled file is written beside the copy's scripts.
+        return [runner[0], "-B", *runner[1:], str(wrapper), str(summary), str(work),
+                str(script)]
     return [*runner, str(script)]
 
 
@@ -466,19 +483,32 @@ def prepare(project, folder: Path, scripts: list[str]) -> Staged:
     here = folder / RUNS / run_id
     work = here / root.name
     here.mkdir(parents=True)
+    named = tuple(scripts)
     try:
         stage(root, work)
-    except RunRefused:
+        sources = analysis_sources(work, named)
+        texts = source_texts(work, named)
+    except (RunRefused, OSError) as exc:
+        # A copy that could not be made whole is not left in the vault (the fix round).
         shutil.rmtree(here, ignore_errors=True)
-        raise
-    named = tuple(scripts)
-    sources = analysis_sources(work, named)
+        with contextlib.suppress(OSError):
+            here.parent.rmdir()
+        raise exc if isinstance(exc, RunRefused) else RunRefused(
+            f"could not copy the project into the vault: {exc}") from exc  # fmt: skip
     record = {"schema": MANIFEST_SCHEMA, "run": run_id, "ran_at": _now(),
               "commit": commit_of(root),
               "scripts": [{"path": path, "sha256": digest} for path, digest in sources.items()],
               "ran": list(scripts)}  # fmt: skip
-    return Staged(run_id, folder, here, work, list(scripts), sources,
-                  source_texts(work, named), record)  # fmt: skip
+    return Staged(run_id, folder, here, work, list(scripts), sources, texts, record)
+
+
+def differs(project, staged: Staged) -> list[str]:
+    """The scripts listed whose file in the project is no longer the copy's: changed, gone or
+    new since the copy was made. Asked at the yes, so that what the person read in the project
+    is what the copy runs (the fix round of #490)."""
+    now = analysis_sources(Path(project.root), tuple(staged.scripts))
+    return sorted(path for path in set(now) | set(staged.sources)
+                  if now.get(path) != staged.sources.get(path))
 
 
 def discard(staged: Staged) -> None:
@@ -503,7 +533,8 @@ def run(project, staged: Staged) -> Ran:
     wrapper = here / "wrapper.py"
     wrapper.write_text(WRAPPER, encoding="utf-8", newline="\n")
     before = snapshot(work)
-    env = {**os.environ, VARIABLE: str(folder), RUN_VARIABLE: run_id}
+    env = {**os.environ, VARIABLE: str(folder), RUN_VARIABLE: run_id,
+           "PYTHONDONTWRITEBYTECODE": "1"}
     failure = None
     with (here / LOG).open("wb") as log:
         for number, script in enumerate(scripts, 1):
@@ -516,8 +547,7 @@ def run(project, staged: Staged) -> Ran:
             done.scripts.append((script, code))
             if code != 0:
                 done.failed = script
-                failure = (python_failure(project, texts, work, script, code, summary,
-                                          folder)
+                failure = (python_failure(project, texts, work, script, code, summary)
                            if script.lower().endswith(".py")
                            else r_failure(texts, script, code, tail))  # fmt: skip
                 break
@@ -553,4 +583,4 @@ def read_manifest(folder: Path, run_id: str) -> dict:
 
 __all__ = ["Change", "Ran", "RunRefused", "Staged", "analysis_sources", "changes",
            "default_scripts", "discard", "new_run", "prepare", "read_manifest", "run",
-           "scripts_to_run"]
+           "scripts_to_run", "differs"]

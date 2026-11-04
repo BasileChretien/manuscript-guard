@@ -18,9 +18,10 @@ So a sentence of the manuscript is noted (`effect-claim-weak-source`) when all o
   digest as `lookup` wrote it), and each work's types, once the types that say nothing of
   the evidence (`GENERIC`) are set aside, are of `WEAK` only and at least one of them.
 
-A work whose types are not known (no record, no PMID, a record edited by hand, PubMed silent)
-gives nothing, and neither does any sentence that cites it: an unknown work may be the trial
-that shows the effect. A negation does not silence the note: "X did not reduce Y", citing a
+A work whose types are not known (no record, no PMID, a record edited by hand, a record of
+identifiers the `references.bib` entry no longer has, PubMed silent) gives nothing, and
+neither does any sentence that cites it: an unknown work may be the trial that shows the
+effect. A negation does not silence the note: "X did not reduce Y", citing a
 letter only, claims as much about an effect as "X reduced Y".
 
 It is a note and never more, because the words are read from a list, and a list is not an
@@ -141,14 +142,32 @@ def weak_claims(sentences: Sequence, typed: Mapping[str, Typed | None]) -> list[
     return found
 
 
-def _typed(project: Project, citekey: str) -> Typed | None:
+def _of_the_entry(record: dict, fields: dict[str, str] | None) -> bool:
+    """Whether a lookup record is of the work the `references.bib` entry names now, as
+    `gates/lookups.py` judges it: an entry unchanged since its lookup, or changed with its
+    DOI and PMID as the record has them (round 1 of #492)."""
+    from manuscript_guard.gates.identifiers import doi_of, pmid_of
+    from manuscript_guard.literature.lookups import entry_digest
+
+    if fields is None:
+        return False
+    if entry_digest(fields) == record["entry_sha256"]:
+        return True
+    wanted = {k: v for k, v in (("doi", doi_of(fields)), ("pmid", pmid_of(fields))) if v}
+    return bool(wanted) and record["identifiers"] == wanted
+
+
+def _typed(project: Project, citekey: str, fields: dict[str, str] | None) -> Typed | None:
     """The PubMed publication types the lookup record of `citekey` holds, or None where they
     are not known: no record, one that cannot be read or was changed after `lookup` wrote
-    it, no answer from PubMed, or none of its types kept."""
+    it, one of identifiers the entry `fields` no longer has, no answer from PubMed, or none
+    of its types kept."""
     from manuscript_guard.literature.lookups import answers_digest, read_record
 
     record = read_record(project, citekey)
     if record is None or answers_digest(record) != record.get("answers_sha256"):
+        return None
+    if not _of_the_entry(record, fields):
         return None
     pubmed = record["sources"].get("pubmed") or {}
     types = pubmed.get("pubtypes") if pubmed.get("status") == "found" else None
@@ -196,7 +215,13 @@ def check_weak_sources(project: Project) -> Report:
     sentences = [cited for cited in cited_sentences(citing_documents(project))
                  if claimed(cited.text)]  # fmt: skip
     keys = sorted({key for cited in sentences for key in cited.keys})
-    typed = {key: _typed(project, key) for key in keys}
+    if not keys:
+        return Report()
+    from manuscript_guard.literature.bibfile import read_entries
+
+    bib = project.path("literature") / "references.bib"
+    entries = read_entries(bib) if bib.is_file() else {}
+    typed = {key: _typed(project, key, entries.get(key)) for key in keys}
     return Report(tuple(finding(claim) for claim in weak_claims(sentences, typed)))
 
 

@@ -10343,6 +10343,20 @@ def test_g7_notes_a_cause_claimed_on_a_case_report_alone(project: Path) -> None:
     assert _weak_notes(project) == []
 
 
+def test_g7_reads_no_types_from_a_record_of_identifiers_the_entry_no_longer_has(
+    project: Path,
+) -> None:
+    """Round 1 of #492: a PMID changed in references.bib after `lookup` leaves a record of
+    another work. Its types are not the cited work's, and are not read, as G7's lookup
+    checks do not judge such a record."""
+    main = project / "manuscript" / "main.md"
+    _replace_once(main, _BEFORE_WHETHER, f"{_CAUSE_ON_ONE}\n\n{_BEFORE_WHETHER}")
+    _looked_up(project, pmid="31000001", pubmed=_CASE_REPORT)
+    assert [note.code for note in _weak_notes(project)] == ["effect-claim-weak-source"]
+    _bib_field(project, "pmid", "31000002")
+    assert _weak_notes(project) == []
+
+
 def test_g7_notes_an_effect_claimed_on_a_letter_beside_a_work_never_looked_up_not_at_all(
     project: Path,
 ) -> None:

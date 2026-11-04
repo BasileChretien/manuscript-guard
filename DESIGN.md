@@ -3512,7 +3512,8 @@ language, and who paid. Any other type, a trial, a review, an observational stud
 work one that may show an effect. A work with generic types only is not weak.
 
 A work whose types are not known silences the sentence: no record, a record changed by hand,
-no PMID, or PubMed silent. An unknown work beside a letter may be the trial that shows the
+a record of a DOI or PMID the `references.bib` entry no longer has (judged as G7's lookup
+checks judge it), no PMID, or PubMed silent. An unknown work beside a letter may be the trial that shows the
 effect. A negation does not silence it: "X did not reduce Y", cited to a letter only, claims
 as much about an effect as "X reduced Y".
 
@@ -18567,12 +18568,20 @@ Open, recorded as each change landed:
     nothing, "in patients with reduced renal function", sets the note off; a claim in words
     the list lacks, "is responsible for", "due to", "raised", does not. The limits of
     `reworded`'s reading of the list, above, hold here too.
+  - A negation does not silence the note, so a statement that evidence is lacking is noted
+    too: "There is no evidence that X causes Y", cited to an editorial, gets the note,
+    though an editorial can say that much.
+  - A heading with no blank line after it is read as part of the sentence it runs into, and
+    so is the text of a pipe table's cells: `## Causes of liver injury` over a sentence
+    citing a case report gives the note, a capitalised effect or causation word opening the
+    heading or the cell being read as the first word of that sentence.
   - A hedge silences the note, whatever it hedges: "X caused Y, which may explain Z" holds
     "may" and is passed over. Only the hedges of `data/claim_strength.yaml` count: "has been
     reported to cause" holds none and is noted.
   - A cited work whose publication types are not known silences the note for its whole
     sentence: a reference with no PMID (until the registry-facts pull request reads a PMID
-    from its DOI), one never looked up, a record changed by hand, PubMed silent. A work
+    from its DOI), one never looked up, a record changed by hand, a record of a DOI or PMID
+    the entry no longer has (until `lookup` runs again), PubMed silent. A work
     PubMed does not index has no types at all, and nothing is said of it.
   - PubMed's types are the indexers' and as of the lookup's date. A letter that reports a
     series of cases is typed "Letter" and is weak here; a case report typed only "Journal

@@ -158,8 +158,9 @@ agent. It does this, in order:
    results files, harvested outputs, figures, anything else. A link or a junction a
    script made is left out, and nothing reached through one is moved. The copy of the
    project is then removed. Where the run stops before its end, by a fault or a Ctrl-C, the
-   copy is removed too, `log.txt` stays with a `run.json` saying the run did not finish,
-   the summary for the agent says it stopped, and such a run is not one to release. A second
+   copy is removed too, `log.txt` stays with a `run.json` saying the run did not finish and
+   what it had moved, the summary for the agent says it stopped, and such a run is not one
+   to release: files moved before the stop may wait in the outbox, and are not released. A second
    Ctrl-C while that is done can leave the copy in the vault: remove it yourself.
 
 The tool writes nothing to the project except `.manuscript-guard/vault/last-run.json`, which

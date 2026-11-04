@@ -22,7 +22,7 @@
         }
       }
     },
-    "stopped": { "const": true, "description": "The run was stopped before its end, by a fault or a Ctrl-C: nothing waits in the outbox." },
+    "stopped": { "const": true, "description": "The run was stopped before its end, by a fault or a Ctrl-C. What it moved before then may wait in the outbox (`outbox`), and the run is not one to release." },
     "failed": {
       "oneOf": [
         { "type": "null" },

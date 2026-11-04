@@ -1051,8 +1051,9 @@ def _forged(record: str) -> str:
     "[" * 200000,
     '{"class": "KeyError", "module": "builtins", "frames": [], "key": null, "pad": "'
     + "x" * 200000 + '"}',
+    "[" * 60000,
 ], ids=["list", "dict", "null", "number", "long", "module-frames-key", "frames", "list-whole",
-        "deep", "oversized"])
+        "deep", "oversized", "deep-within-the-cap"])
 def test_a_summary_of_the_wrong_shape_still_gives_the_agent_its_summary(
     paper: Path, vault: Path, terminal, record: str
 ) -> None:
@@ -1064,9 +1065,10 @@ def test_a_summary_of_the_wrong_shape_still_gives_the_agent_its_summary(
     assert vault_cli(paper, "run") == 1
     _text, failed = _failed(paper)
     assert failed.get("class") in (None, "KeyError") and "column" not in failed
-    if len(record) > 100000:
-        # Too large or too deep to be read: no name and no frame (fix round 3 of #490).
-        assert "class" not in failed and failed["exception"] == "not a builtin"
+    if record.startswith("[[") or len(record) > 100000:
+        # Too large or too deep to be read: the path and the exit code alone, as a script
+        # that raised nothing (fix rounds 3 and 4 of #490).
+        assert set(failed) == {"path", "exit_code"}
     (run,) = [one.name for one in (vault / ".runs").iterdir()]
     assert not (vault / ".runs" / run / "copy").exists()
 
@@ -1292,3 +1294,51 @@ def test_a_project_folder_named_as_the_run_s_own_folders_keeps_its_copy_apart(
     capsys.readouterr()
     assert vault_cli(paper, "run") == 0
     assert "the-edited-script-ran" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------- fix round 4 of #490
+
+
+def test_a_recursion_error_is_named_with_its_last_frames(
+    paper: Path, vault: Path, terminal
+) -> None:
+    """A real RecursionError has some thousand frames: the wrapper writes the last 20 only,
+    so that what it writes fits what the tool reads (fix round 4 of #490)."""
+    answers, _asked = terminal
+    _script(paper, "def walk(n):\n    return walk(n + 1)\nwalk(0)")
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    _text, failed = _failed(paper)
+    assert failed["class"] == "RecursionError"
+    assert len(failed["frames"]) == 20
+    assert {frame["function"] for frame in failed["frames"]} == {"walk"}
+
+
+def test_a_fault_while_the_outputs_are_moved_says_what_waits(
+    paper: Path, vault: Path, terminal, monkeypatch
+) -> None:
+    from manuscript_guard.vault import run as running
+
+    real = running.shutil.move
+    calls: list[str] = []
+
+    def moved(source: str, target: str):
+        calls.append(source)
+        if len(calls) == 2:
+            raise OSError("the disk is full")
+        return real(source, target)
+
+    monkeypatch.setattr(running.shutil, "move", moved)
+    answers, _asked = terminal
+    _script(paper, "import pathlib\npathlib.Path('figures').mkdir(exist_ok=True)\n"
+                   "pathlib.Path('figures/a.png').write_bytes(b'a')")
+    answers.append("y")
+    with pytest.raises(OSError, match="the disk is full"):
+        vault_cli(paper, "run")
+    (run,) = [one.name for one in (vault / ".runs").iterdir()]
+    record = json.loads((vault / ".runs" / run / "run.json").read_text(encoding="utf-8"))
+    assert record["finished"] is False and len(record["outbox"]) == 1
+    assert (vault / "outbox" / run / record["outbox"][0]).is_file()
+    summary = _summary(paper)
+    assert summary["stopped"] is True and summary["outbox"] is True
+    assert vault_cli(paper, "release", run, "--as", "Lovelace") == 2

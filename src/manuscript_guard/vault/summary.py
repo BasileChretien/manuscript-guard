@@ -149,7 +149,8 @@ def python_failure(project, texts: dict[str, str], work: Path, script: str, code
     except (UnicodeDecodeError, ValueError, RecursionError):
         record = None
     if not isinstance(record, dict):
-        failed["exception"] = NOT_BUILTIN
+        # A summary that cannot be read says nothing: the path and the exit code alone, as a
+        # script that raised nothing (fix round 4 of #490).
         return failed
     kind = _kind(record)
     if kind is not None:

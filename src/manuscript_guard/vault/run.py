@@ -92,11 +92,13 @@ except BaseException as exc:
     named = held and (module is builtins or outside)
     key = exc.args[0] if (isinstance(exc, KeyError) and len(exc.args) == 1
                           and isinstance(exc.args[0], str)) else None
-    record = {"class": kind.__name__ if named else None,
-              "module": kind.__module__ if named else None,
-              "frames": [[f.filename, f.lineno, f.name]
-                         for f in traceback.extract_tb(exc.__traceback__)],
-              "key": key}
+    # The last 20 frames, as many as the summary keeps, each field cut short, so that what
+    # is written fits what the tool reads: a RecursionError has some thousand frames.
+    record = {"class": kind.__name__[:256] if named else None,
+              "module": kind.__module__[:256] if named else None,
+              "frames": [[f.filename[:4096], f.lineno, f.name[:256]]
+                         for f in traceback.extract_tb(exc.__traceback__)[-20:]],
+              "key": key[:1024] if key else key}
     try:
         with open(summary, "w", encoding="utf-8") as out:
             json.dump(record, out)
@@ -473,11 +475,12 @@ def execute(command: list[str], cwd: Path, env: dict[str, str], log) -> tuple[in
     return code, bytes(tail)
 
 
-def collect(work: Path, before: dict[str, tuple[int, int, bool]], outbox: Path) -> tuple[
-        list[str], list[str]]:  # fmt: skip
-    """Move each file the run wrote or changed in the copy into the outbox, at its path; and
-    say which it left, a link it made, or a junction, being no file of its own."""
-    moved, left = [], []
+def collect(work: Path, before: dict[str, tuple[int, int, bool]], outbox: Path,
+            moved: list[str]) -> list[str]:  # fmt: skip
+    """Move each file the run wrote or changed in the copy into the outbox, at its path, each
+    added to `moved` as it is moved, so that a fault half way says what waits there; and say
+    which it left, a link it made, or a junction, being no file of its own."""
+    left = []
     for relative, held in sorted(snapshot(work).items()):
         if before.get(relative) == held or relative.endswith(".pyc"):
             continue
@@ -489,7 +492,7 @@ def collect(work: Path, before: dict[str, tuple[int, int, bool]], outbox: Path) 
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source), str(target))
         moved.append(relative)
-    return moved, left
+    return left
 
 
 def _now() -> str:
@@ -578,14 +581,16 @@ def run(project, staged: Staged) -> Ran:
         # with a record that says the run did not finish (fix round 2 of #490); the agent is
         # told it stopped, so that it never reads the run before's summary as this one's
         # (fix round 3).
-        record.update({"finished": False, "outbox": []})
+        # What was moved before the fault waits in the outbox; the run is not one to release.
+        record.update({"finished": False, "outbox": list(done.moved)})
         with contextlib.suppress(OSError):
             (here / MANIFEST).write_text(json.dumps(record, indent=2) + "\n",
                                          encoding="utf-8", newline="\n")  # fmt: skip
         shutil.rmtree(work.parent, ignore_errors=True)
         stopped = [*done.scripts, *([(done.running, None)] if done.running else [])]
         with contextlib.suppress(Exception):
-            write_summary(root, run_id, ran_at, stopped, None, outbox=False, stopped=True)
+            write_summary(root, run_id, ran_at, stopped, None, outbox=bool(done.moved),
+                          stopped=True)  # fmt: skip
         raise
     record.update({"finished": done.failed is None, "outbox": done.moved})
     (here / MANIFEST).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8",
@@ -630,7 +635,7 @@ def _steps(project, staged: Staged, done: Ran) -> dict | None:
                            else r_failure(texts, script, code, tail))  # fmt: skip
                 break
     if done.failed is None:
-        done.moved, done.left = collect(work, before, done.outbox)
+        done.left = collect(work, before, done.outbox, done.moved)
     return failure
 
 

@@ -20181,8 +20181,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     environment in the project holds links to the system's Python. A junction is not copied.
   - *A second Ctrl-C during the clean-up of a stopped run* can leave the copy in
     `<vault>/.runs/<run>/copy/`, and the summary unwritten; the person removes the copy.
-  - *The summary file is read up to 64 KiB.* Anything larger, too deep or not JSON is "not a
-    builtin", with no frame.
+  - *The summary file is read up to 64 KiB.* The wrapper writes the last 20 frames, each
+    field cut short, so a real one fits; anything larger, too deep or not JSON says nothing
+    but the path and the exit code, as a script that raised nothing.
   - *What a run records of git.* The copy leaves `.git` out, as `verify`'s does, so a
     fragment written in a run records no `vcs`; the release records the project's commit at
     the run, which says nothing of uncommitted changes.

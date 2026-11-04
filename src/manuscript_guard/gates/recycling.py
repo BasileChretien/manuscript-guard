@@ -74,8 +74,10 @@ from manuscript_guard.text.masking import blank_comments, fenced_blocks, front_m
 from manuscript_guard.text.reader import LATEX, manuscript_format
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
 from manuscript_guard.text.section_names import (
+    INTRODUCTION_TITLE,
     REFERENCE_WORDS_ELSEWHERE,
     STATEMENT_NAMES,
+    STATEMENT_TITLE,
     methods_sections,
     names_abstract,
     names_conclusion,
@@ -206,20 +208,12 @@ def source_words(source: str) -> list[Word]:
     by author and year left out."""
     return words(without_author_year(source))
 
-_INTRODUCTION = re.compile(r"(?:introduction|background|rationale)\b", re.IGNORECASE)
+#: The Introduction, the names of the statements a journal asks for and a statement's heading,
+#: as `text/section_names.py` says them for G8 too.
+_INTRODUCTION = INTRODUCTION_TITLE
 _DISCUSSION = re.compile(r"(?:discussion|interpretation|comment)\b", re.IGNORECASE)
-#: The names of the statements a journal asks for, said in `text/section_names.py`, where
-#: a reference list under a bold line ends at one standing alone.
 _STATEMENT_NAMES = STATEMENT_NAMES
-#: A statement's heading: its whole title names one or several, "Funding", "Data
-#: availability statement", "Ethics approval and consent to participate", "Funding/Support",
-#: "CRediT author statement". A title that only opens with such a word is the paper's own
-#: matter: "Funding sources of the included trials", "Data sharing in pharmacovigilance".
-_STATEMENTS = re.compile(
-    rf"(?:the\s+)?{_STATEMENT_NAMES}"
-    rf"(?:\s*(?:,\s*(?:and\b)?|;|&|/|\band\b)\s*{_STATEMENT_NAMES})*\W*$",
-    re.IGNORECASE,
-)
+_STATEMENTS = STATEMENT_TITLE
 #: The reference list, which a similarity check is asked to leave out, and this check does.
 _REFERENCES = re.compile(
     rf"(?:references|bibliography|(?:literature|works)\s+cited|{REFERENCE_WORDS_ELSEWHERE})\W*$",

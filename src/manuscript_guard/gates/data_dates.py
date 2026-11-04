@@ -1,4 +1,4 @@
-"""G2 — a date of the data that the analysis typed, where `dataset()` would have pinned it.
+"""G2 — a date of the data emitted as a string, where `dataset()` would have pinned it.
 
 A date typed in the text fails G2 like any number. The way out G2 offered, a string emitted
 with its display, `em.value("extracted", "2024-03-01", display="1 March 2024")`, ties the
@@ -12,7 +12,9 @@ reads one. Its words are read with every binding and comment in it blanked, so t
 named `extracted` says nothing. A date is a string value that is an ISO date, or whose
 display reads as one (`dates.read_written`). A parameter is a choice the analysis made, a
 study period it set, and is not warned of; nor is a number, which the analysis may well have
-computed from the data, as the example computes its first and last year.
+computed from the data, as the example computes its first and last year. What is known of a
+date warned of is that it was emitted as a string, typed into the script or computed and
+then made text, and the hint says so: a year computed from the data is emitted as a number.
 
 And one warning that reads no text: a dataset's date printed in another English than the one
 `paper.yaml` declares now, which the emitter read when the analysis ran
@@ -55,7 +57,8 @@ _DECLARED = frozenset({"dataset", "parameter", "software", "dictionary"})
 
 
 def is_typed_date(value: Value) -> bool:
-    """Whether `value` is a date the analysis typed rather than declared with `dataset()`."""
+    """Whether `value` is a date of the data emitted as a string rather than declared with
+    `dataset()`: typed, or computed and then made text, which the gate cannot tell apart."""
     if value.role in _DECLARED or not isinstance(value.value, str):
         return False
     return parse_iso(value.value) is not None or read_written(value.display) is not None
@@ -104,7 +107,7 @@ def _typed(placeholder, value: Value, path: Path) -> Finding:
         gate=GATE,
         code="data-date-not-declared",
         severity=WARN,
-        message=f"{placeholder.raw} is a date of the data the analysis typed, "
+        message=f"{placeholder.raw} is a date of the data emitted as a string, "
         f"{value.display!r}, and nothing ties it to the data it dates",
         path=path,
         line=placeholder.line,
@@ -112,7 +115,10 @@ def _typed(placeholder, value: Value, path: Path) -> Finding:
         hint='declare the data with em.dataset("<name>", "<file>", extracted="2024-03-01", '
         'covers=(...), fingerprint=...) and bind {{results.dataset.<name>.extracted}}: the '
         "date is then pinned to the file, and data extracted again need a date of their own. "
-        "A date the study chose rather than one of the data is a parameter, em.parameter()",
+        "A year computed from the data is emitted as a number, em.value(key, int(...)) in "
+        "Python or em$value(key, min(d$year)) in R, which prints it with no separator and is "
+        "not warned of. A date the study chose rather than one of the data is a parameter, "
+        "em.parameter()",
     )
 
 

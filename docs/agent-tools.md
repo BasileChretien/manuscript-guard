@@ -32,6 +32,9 @@ claude plugin marketplace update manuscript-guard
 claude plugin update manuscript-guard@manuscript-guard
 ```
 
+When the installed copy is older than the command line tool, the session-start hook says so
+once, with these two commands, and blocks nothing.
+
 To work on the skills themselves, load the directory for one session instead, and edits
 apply on the next start: `claude --plugin-dir ./plugin`.
 
@@ -43,7 +46,7 @@ nothing, but for the submission guard where a command names a project (below).
 
 | Hook | What it does |
 |---|---|
-| session start | One line: the stage, how many findings fail and warn, and the title of what `manuscript-guard next` puts first, decided on the same run of the gates. Where a file of the project cannot be used, which file and why, in place of that line. And once, when the installed tool is older than the plugin, a notice with the upgrade command |
+| session start | One line: the stage, how many findings fail and warn, and the title of what `manuscript-guard next` puts first, decided on the same run of the gates. Where a file of the project cannot be used, which file and why, in place of that line. And once, when the installed tool is older than the plugin, a notice with the upgrade command, and when the plugin is older than the tool, one with the commands that update it |
 | before a write | Refuses edits to `results/`, `build/` and generated checklist profiles. These are written by something else, and editing one desynchronises it. Puts to you an edit of `literature/attested.yaml` that names an attester, or changes one, and an edit of an author's approval or a named person's sign-off under `approvals/` |
 | after a write | For a manuscript file, classifies the numbers just saved and names any bound to nothing, while you are still in the paragraph. For an analysis file, says the results are now stale and the Methods may no longer describe the code |
 | before a submission-shaped shell command | Runs the submission check and blocks if it fails, or if a file of the project cannot be used and the check cannot run. Puts to you a `review --run --yes`, which would send the manuscript without asking, an `approve`, which only the author approving can run, and a `sign`, which only the person `authors.yaml` names for the role can run |
@@ -155,8 +158,8 @@ codex plugin marketplace upgrade manuscript-guard
 
 Upgrade the pip package at the same time. Codex may also refresh the copy without being
 asked: its program carries an automatic upgrade of marketplaces, and when that runs was not
-observed. Either way, when the plugin is the newer of the two, the session-start hook says
-so once.
+observed. Either way, when the plugin and the tool are at different releases, the
+session-start hook says so once, with the command for the one that is behind.
 
 **Codex runs a hook only after you have trusted it.** By Codex's documentation, it warns at
 the start of a session that hooks are waiting for review, and `/hooks` is where you read and

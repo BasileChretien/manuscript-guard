@@ -149,6 +149,24 @@ def test_the_dry_run_imports_this_tree_s_package(
     assert seen["env"]["PYTHONPATH"].split(os.pathsep) == [str(tool.ROOT / "src"), "elsewhere"]
 
 
+def test_the_dry_run_s_output_is_read_as_the_utf8_it_is_written_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The command writes UTF-8 to a pipe, so its output is read as UTF-8: read in the
+    locale's code page, cp1252 on Windows, a byte it leaves undefined (`Á` is C3 81) raised
+    inside `subprocess.run` (round 1 of #504)."""
+    seen = {}
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+        seen.update(kwargs)
+        return subprocess.CompletedProcess(command, 1, "", "stopped here")
+
+    monkeypatch.setattr(tool.subprocess, "run", run)
+    with pytest.raises(SystemExit, match="stopped here"):
+        tool.requests_of(tmp_path)
+    assert seen.get("encoding") == "utf-8"
+
+
 def test_the_blank_copy_is_its_title_and_abstract_and_the_minor_one_is_planted(
     prepared: tuple[Path, dict],
 ) -> None:

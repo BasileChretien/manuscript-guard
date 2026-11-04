@@ -3145,10 +3145,16 @@ def test_a_search_for_named_projects_is_made_only_for_a_submission(
     assert looked == ["at the folder", "named"]
 
 
-# ---------------------------------------------------------------- a CLI older than its plugin
+# ------------------------------------------------- a CLI and its plugin at different releases
 
 UPGRADE_PIP = "pip install --upgrade manuscript-guard"
 UPGRADE_PIPX = "pipx install --force manuscript-guard"
+#: The commands docs/agent-tools.md gives for taking a new release of the plugin.
+UPDATE_CLAUDE = (
+    "claude plugin marketplace update manuscript-guard",
+    "claude plugin update manuscript-guard@manuscript-guard",
+)
+UPDATE_CODEX = "codex plugin marketplace upgrade manuscript-guard"
 
 
 def plugin_at(root: Path, version: object) -> Path:
@@ -3199,14 +3205,31 @@ def test_the_notice_comes_alongside_the_reason_a_project_cannot_be_checked(
     assert "cannot parse" not in result["systemMessage"], "the notice alone is shown"
 
 
-@pytest.mark.parametrize("version", ["0.0.1", None])
-def test_a_cli_at_or_past_the_plugin_says_nothing(
-    version: str | None, tmp_path: Path, monkeypatch, capsys
+def test_a_plugin_older_than_the_cli_says_so_with_the_update_command(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """A plugin installed once and never updated stayed many releases behind the tool, its
+    skills without the commands and skills the tool and the project's AGENTS.md name, and
+    nothing said so."""
+    from manuscript_guard import __version__
+
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_at(tmp_path / "cache", "0.0.1")))
+    result = run("session-start", {"cwd": str(tmp_path), "source": "startup"}, capsys)
+    assert result is not None
+    shown = result["systemMessage"]
+    for needle in ("0.0.1", __version__, *UPDATE_CLAUDE, UPDATE_CODEX):
+        assert needle in shown, needle
+    assert UPGRADE_PIP not in shown, "the tool is the newer of the two"
+    assert shown in context(result), "the model is told as well as the person"
+    assert decision(result) is None, "a stale plugin blocks nothing"
+
+
+def test_a_cli_at_the_plugin_s_version_says_nothing(
+    tmp_path: Path, monkeypatch, capsys
 ) -> None:
     from manuscript_guard import __version__
 
-    shipped = __version__ if version is None else version  # None: exactly equal
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_at(tmp_path / "cache", shipped)))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_at(tmp_path / "cache", __version__)))
     assert run("session-start", {"cwd": str(tmp_path), "source": "startup"}, capsys) is None
 
 
@@ -3217,7 +3240,10 @@ def test_without_a_plugin_root_it_stays_silent(tmp_path: Path, monkeypatch, caps
 
 @pytest.mark.parametrize(
     "broken",
-    ["no-such-directory", "empty", "not-json", "list", "no-version", "number", "prerelease"],
+    [
+        "no-such-directory", "empty", "not-json", "list", "no-version", "number", "prerelease",
+        "old-prerelease",
+    ],
 )
 def test_a_plugin_root_it_cannot_read_stays_silent(
     broken: str, tmp_path: Path, monkeypatch, capsys
@@ -3232,43 +3258,51 @@ def test_a_plugin_root_it_cannot_read_stays_silent(
             "no-version": '{"name": "manuscript-guard"}',
             "number": '{"version": 99}',
             "prerelease": '{"version": "99.0.0-rc1"}',
+            "old-prerelease": '{"version": "0.0.1-rc1"}',
         }[broken]
         (root / ".claude-plugin" / "plugin.json").write_text(body, encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(root))
     assert run("session-start", {"cwd": str(tmp_path), "source": "startup"}, capsys) is None
 
 
+@pytest.mark.parametrize("plugin", ["99.0.0", "0.0.1"], ids=["newer", "older"])
 @pytest.mark.parametrize("source", ["clear", "compact"])
 def test_it_is_said_once_per_session_not_again_after_a_clear_or_a_compact(
-    source: str, tmp_path: Path, monkeypatch, capsys
+    source: str, plugin: str, tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_at(tmp_path / "cache", "99.0.0")))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_at(tmp_path / "cache", plugin)))
     assert run("session-start", {"cwd": str(tmp_path), "source": source}, capsys) is None
 
 
 @pytest.mark.parametrize(
-    ("plugin", "warns"),
+    ("plugin", "newer"),
     [
-        ("0.2.99", False),  # older: 99 < 260, though "99" sorts after "260" as text
-        ("0.2.9", False),
-        ("0.2.260", False),
-        ("0.2.259", False),
-        ("0.2.261", True),
-        ("0.10.0", True),  # newer: 10 > 2, though "10" sorts before "2" as text
-        ("0.2.1000", True),  # newer: 1000 > 260, though "1000" sorts before "260" as text
-        ("0.2.260.1", True),
-        ("1.0", True),
+        ("0.2.99", "tool"),  # older: 99 < 260, though "99" sorts after "260" as text
+        ("0.2.9", "tool"),
+        ("0.2.260", None),
+        ("0.2.259", "tool"),
+        ("0.2.261", "plugin"),
+        ("0.10.0", "plugin"),  # newer: 10 > 2, though "10" sorts before "2" as text
+        ("0.2.1000", "plugin"),  # newer: 1000 > 260, though "1000" sorts before "260" as text
+        ("0.2.260.1", "plugin"),
+        ("1.0", "plugin"),
     ],
 )
 def test_versions_are_compared_as_numbers_not_as_text(
-    plugin: str, warns: bool, tmp_path: Path, monkeypatch, capsys
+    plugin: str, newer: str | None, tmp_path: Path, monkeypatch, capsys
 ) -> None:
     """A comparison of the strings gets 0.2.99 against 0.2.260 and 0.10.0 against 0.2.260
     the wrong way round, and every other test here would still pass."""
     monkeypatch.setattr("manuscript_guard.__version__", "0.2.260")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_at(tmp_path / "cache", plugin)))
     result = run("session-start", {"cwd": str(tmp_path), "source": "startup"}, capsys)
-    assert (result is not None) == warns
+    said = None if result is None else result["systemMessage"]
+    if newer is None:
+        assert said is None
+    elif newer == "plugin":
+        assert UPGRADE_PIP in said and UPDATE_CLAUDE[1] not in said, said
+    else:
+        assert UPDATE_CLAUDE[1] in said and UPGRADE_PIP not in said, said
 
 
 def test_the_notice_names_the_version_without_the_spaces_around_it(
@@ -3310,14 +3344,18 @@ def test_a_failing_check_for_the_notice_never_costs_the_status_line(
         raise RuntimeError("anything at all")
 
     monkeypatch.setattr("manuscript_guard.hooks.stale_cli_notice", broken)
+    monkeypatch.setattr("manuscript_guard.hooks.stale_plugin_notice", broken, raising=False)
     result = run("session-start", {"cwd": str(project), "source": "startup"}, capsys)
     assert "stage 'drafting'" in context(result)
 
 
+@pytest.mark.parametrize("plugin", ["99.0.0", "0.0.1"], ids=["newer", "older"])
 @pytest.mark.parametrize("handler", sorted(set(HANDLERS) - {"session-start"}))
-def test_no_other_hook_repeats_it(handler: str, tmp_path: Path, monkeypatch, capsys) -> None:
+def test_no_other_hook_repeats_it(
+    handler: str, plugin: str, tmp_path: Path, monkeypatch, capsys
+) -> None:
     """These fire on every edit and every shell command; the notice is for the start."""
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_at(tmp_path / "cache", "99.0.0")))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_at(tmp_path / "cache", plugin)))
     payload = {"cwd": str(tmp_path), "tool_input": {"command": "ls", "file_path": ""}}
     assert run(handler, payload, capsys) is None
 

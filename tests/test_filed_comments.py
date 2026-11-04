@@ -323,6 +323,151 @@ def test_an_unreadable_manuscript_file_does_not_hide_the_comments(project: Path)
     assert "[the paragraph has changed since]" in found.message
 
 
+def _comment_on(project: Path, identifier: str, anchored: str, *, digest: bool = True,
+                block: str = "paragraph", supplementary: bool = False):  # fmt: skip
+    """G11's finding for a comment filed on the example's paragraph `identifier`, as
+    `import` files one: its identifier, the digest of its source and the words it covers.
+    With no `identifier`, a comment on a block `import` keeps no identifier for."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.filed_comments import Thread, _digest, plan_filing, write_filing
+    from manuscript_guard.gates import check_review
+    from manuscript_guard.roundtrip import tagged_paragraphs
+
+    loaded = load_project(project)[0]
+    source = tagged_paragraphs(loaded)[identifier][1] if identifier else ""
+    thread = Thread(key="durable:00000001", author="Ann Coauthor", date="2026-10-19",
+                    text="Why this database?", block=block, anchored=anchored,
+                    where=identifier,
+                    paragraph_sha256=(_digest(source) if digest else "0" * 64) if identifier
+                    else "")  # fmt: skip
+    (filing,) = plan_filing(loaded, [thread], stamp="a" * 64, printed=None,
+                            supplementary=supplementary, today="2026-10-20")  # fmt: skip
+    write_filing(filing)
+    (found,) = [f for f in check_review(load_project(project)[0], submission=True).failures
+                if f.code == "comment-unanswered"]  # fmt: skip
+    return found
+
+
+def _line_of(project: Path, words: str) -> int:
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    return text[: text.index(words)].count("\n") + 1
+
+
+def test_an_unanswered_comment_says_the_file_and_line_of_its_paragraph(project: Path) -> None:
+    """G11 named the paragraph by its identifier, `mg-p-maincbb16c-12`, which is in no file
+    the author opens; the words it was made on were in the context line only. It names the
+    manuscript file and the line the paragraph starts on now."""
+    found = _comment_on(project, "mg-p-maincbb16c-12", "a synthetic spontaneous reporting")
+    line = _line_of(project, "We analysed a synthetic spontaneous")
+    assert f"c1, on a paragraph in manuscript/main.md, line {line}: Why this database?" in (
+        found.message
+    ), found.message
+    assert "mg-p-" not in found.message
+
+
+def test_a_comment_whose_paragraph_moved_is_found_where_it_is_now(project: Path) -> None:
+    """A paragraph added above moves the identifiers below it: the identifier then names the
+    paragraph above the one commented on. The paragraph is found by its digest, and the line
+    is where it stands now."""
+    found = _comment_on(project, "mg-p-maincbb16c-12", "a synthetic spontaneous reporting")
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    at = text.index("We analysed a synthetic spontaneous")
+    path.write_text(text[:at] + "An added paragraph.\n\n" + text[at:], encoding="utf-8")
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates import check_review
+
+    (found,) = [f for f in check_review(load_project(project)[0], submission=True).failures
+                if f.code == "comment-unanswered"]  # fmt: skip
+    line = _line_of(project, "We analysed a synthetic spontaneous")
+    assert f"on a paragraph in manuscript/main.md, line {line}:" in found.message, found.message
+
+
+def test_a_comment_whose_paragraph_changed_is_found_by_its_words(project: Path) -> None:
+    """Its paragraph reworded since, the comment is found where the words it was made on are,
+    the one place in the paper's body that holds them, and where they are gone, those words
+    are named, never the identifier alone."""
+    found = _comment_on(project, "mg-p-maincbb16c-12", "We analysed a synthetic spontaneous",
+                        digest=False)  # fmt: skip
+    line = _line_of(project, "We analysed a synthetic spontaneous")
+    assert f"in manuscript/main.md, line {line}:" in found.message, found.message
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("a synthetic spontaneous", "an invented spontaneous"),
+                    encoding="utf-8")  # fmt: skip
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates import check_review
+
+    (found,) = [f for f in check_review(load_project(project)[0], submission=True).failures
+                if f.code == "comment-unanswered"]  # fmt: skip
+    assert 'c1, on a paragraph, at the words "We analysed a synthetic spontaneous": Why' in (
+        found.message
+    ), found.message
+    assert "mg-p-" not in found.message
+
+
+def test_a_comment_on_a_paragraph_the_supplement_repeats_names_the_supplement(
+    project: Path,
+) -> None:
+    """Round 1 of #511: the first paragraph of the whole manuscript with the comment's digest
+    was taken, ahead of the one its identifier names, so a comment on the supplement's copy
+    of a Methods paragraph named the paper's. The identifier's paragraph is taken where it
+    still has the digest."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.roundtrip import tagged_paragraphs
+
+    main = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    repeated = tagged_paragraphs(load_project(project)[0])["mg-p-maincbb16c-12"][1]
+    copy = project / "manuscript" / "supplementary" / "S2_methods.md"
+    copy.write_text(f"# Supplementary methods\n\nAn opening paragraph.\n\n{repeated}\n",
+                    encoding="utf-8")  # fmt: skip
+    assert repeated in main
+    (identifier,) = [name for name, (path, text, _start) in
+                     tagged_paragraphs(load_project(project)[0]).items()
+                     if path == copy and text == repeated]  # fmt: skip
+    found = _comment_on(project, identifier, "a synthetic spontaneous reporting",
+                        supplementary=True)  # fmt: skip
+    assert "on a paragraph in manuscript/supplementary/S2_methods.md, line 5:" in (
+        found.message
+    ), found.message
+
+
+@pytest.mark.parametrize("anchored", ["Results", "Results were consistent across"])
+def test_a_comment_on_words_the_document_holds_twice_quotes_them(
+    project: Path, anchored: str
+) -> None:
+    """Round 1 of #511: the commented words were looked for over every source, front matter
+    and the other document included, and the first match named, so a comment on the heading
+    "Results" named the first line with "Results" in it. Words are placed only where they
+    stand once in the body of the comment's own document; elsewhere they are quoted."""
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    at = text.index("# Abstract")
+    path.write_text(text[:at] + "Results were consistent across sites.\n\n" + text[at:],
+                    encoding="utf-8")  # fmt: skip
+    found = _comment_on(project, "", anchored, block="heading")
+    if anchored == "Results":
+        assert 'c1, on a heading, at the words "Results": Why' in found.message, found.message
+    else:
+        line = _line_of(project, anchored)
+        assert f"on a heading in manuscript/main.md, line {line}:" in found.message
+
+
+def test_a_comment_on_text_with_no_source_paragraph_quotes_its_words(project: Path) -> None:
+    """Round 2 of #511: the title has no paragraph in the source, and `import` files a comment
+    on it as on "text"; its words stand once in the body, in the abstract, which was named."""
+    found = _comment_on(project, "", "hepatic injury with example-drug", block="text")
+    assert 'c1, on text, at the words "hepatic injury with example-drug": Why' in (
+        found.message
+    ), found.message
+
+
+def test_a_comment_on_white_space_alone_quotes_no_words(project: Path) -> None:
+    """An anchor of a tab or a no-break space is no words: nothing is quoted, not `""`."""
+    found = _comment_on(project, "", "\t\N{NO-BREAK SPACE}", block="heading")
+    assert "c1, on a heading: Why this database?" in found.message, found.message
+
+
 # ------------------------------------------------------------------------- import files them
 
 

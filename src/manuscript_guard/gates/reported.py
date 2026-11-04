@@ -10,6 +10,10 @@ So each key the Abstract or a conclusion binds is looked for where the paper rep
 
 - bound in a section the gates read as the Methods (`methods_sections`), whose summary the
   abstract's own Methods are, or in one whose heading opens with "Results" or "Findings";
+- or, where the paper has no such Results heading, as a narrative review or a case report
+  has none, bound in a section that names no part of the paper that does not report: not
+  the abstract or a box, the Introduction or Background, the Discussion, a conclusion, a
+  limitation, a statement of the back matter or the reference list;
 - or a key declared the same quantity (`same_as`, either way) bound there;
 - or bound anywhere in the supplement, which reports what the paper has no room for;
 - or its display printed in a table, or in the text of a figure, that a manuscript file
@@ -41,7 +45,10 @@ from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.section_names import (
     methods_sections,
     names_conclusion,
+    names_discussion,
+    names_introduction,
     names_results,
+    names_statement,
     plain,
 )
 from manuscript_guard.text.sections import Section, scannable, split_sections, subsections
@@ -51,10 +58,23 @@ CODE = "summary-not-reported"
 
 #: Where a section's keys are reported, as against summarised or neither.
 REPORTED = object()
+#: Where a section's keys are reported if the paper has no Results: under headings that name
+#: no part of it, as a narrative review's "Regulatory responses" or a case report's "Case
+#: presentation".
+TOPICAL = object()
 #: The opening of a paper. A heading over one of these or over the Methods is the paper's
 #: title written as a heading over the whole paper, and names no part of it. Not over the
 #: abstract: where the profile calls it "Summary", a "Summary" under the Results is one.
 _OPENING = re.compile(r"(?:introduction|background)\W*$", re.IGNORECASE)
+
+
+#: Where a key was looked for, as the warning says it, with a Results section and without.
+_NOWHERE = "reported nowhere in the Methods, the Results, a table or a figure"
+_NOWHERE_WITHOUT_RESULTS = (
+    "bound in no section that reports, nor shown in a table or a figure: with no Results "
+    "section, every section reports but the abstract, a box, the Introduction, the "
+    "Discussion, a conclusion and the back matter"
+)
 
 
 @dataclass(frozen=True)
@@ -88,6 +108,16 @@ class Walk:
     #: Every section met, kept so that the identity `reports` and `summaries` hold for each
     #: is not given to a section of a later file once the first is freed (round 1 of #272).
     kept: list[Section] = field(default_factory=list)
+    #: The sections named the Results, of `reports`; whether one of them was met where the
+    #: paper reports, outside the abstract and every box; the sections that name a part of the
+    #: paper that reports nothing; those over the abstract, the opening or the Methods, which
+    #: are the paper's title written as a heading and name no part; and the keys bound under
+    #: headings that name no part (TOPICAL).
+    results: set[int] = field(default_factory=set)
+    has_results: bool = False
+    elsewhere: set[int] = field(default_factory=set)
+    titles: set[int] = field(default_factory=set)
+    topical: set[str] = field(default_factory=set)
 
     def read(self, text: str) -> tuple[list[Given], set[str]]:
         """The results keys `text` binds in a summary, and those it binds where the paper
@@ -106,14 +136,22 @@ class Walk:
             place = place_of(placeholder.line)
             if place is REPORTED:
                 reported.add(placeholder.key)
+            elif place is TOPICAL:
+                self.topical.add(placeholder.key)
             elif place is not None:
                 given.append(Given(placeholder.key, place, placeholder.line, placeholder.start))
         return given, reported
 
+    def reported_without_results(self) -> set[str]:
+        """The keys bound under headings that name no part of the paper, read as reported
+        where the paper has no Results: none once a Results heading has been met where the
+        paper reports, in this file or an earlier one. Asked once every file is read."""
+        return set() if self.has_results else set(self.topical)
+
     def placing(self, sections: list[Section]) -> Callable[[int], object]:
         """Where each line of one file stands, given its headings in order, each with its
-        level and its line: the title of the summary it is in, REPORTED, or None for
-        neither. What `read` places a binding by, and the audit's Abstract against Results
+        level and its line: the title of the summary it is in, REPORTED, TOPICAL, or None
+        for none of these. What `read` places a binding by, and the audit's Abstract against Results
         a number by, its sections read from a Word document's heading styles or a LaTeX
         document's printed view as well as from Markdown (`auditing.abstract`)."""
         self.kept += sections
@@ -125,6 +163,8 @@ class Walk:
             self.chain.append(section)
             starts.append(section.line)
             places.append(self._place())
+            if id(section) in self.results and places[-1] is REPORTED:
+                self.has_results = True
         return lambda line: places[bisect_right(starts, line) - 1]
 
     def _name(self, sections: list[Section]) -> None:
@@ -134,28 +174,53 @@ class Walk:
         self.reports |= methods
         for index, section in enumerate(sections):
             below = subsections(sections, index)[1:]
+            # Over an "Abstract", the paper's title names no part either; not over the title
+            # a profile gives the abstract, where a "Summary" may be a section's own.
+            if any(other.names_abstract(None) for other in below):
+                self.titles.add(id(section))
             if any(self._opens(other, methods) for other in below):
+                self.titles.add(id(section))
                 continue
             if box_of(section.title, self.boxes) is not None:
                 self.summaries.add(id(section))
             elif names_results(section.title):
                 self.reports.add(id(section))
+                self.results.add(id(section))
             elif names_conclusion(section.title):
                 self.summaries.add(id(section))
+            elif id(section) not in methods | self.titles and self._reports_nothing(section):
+                self.elsewhere.add(id(section))
 
     def _opens(self, section: Section, methods: set[int]) -> bool:
         return bool(_OPENING.match(plain(section.title))) or id(section) in methods
 
+    def _reports_nothing(self, section: Section) -> bool:
+        """Whether a heading names a part of the paper that reports nothing, by the names
+        the other gates read them by: the abstract, the Introduction or Background (G7's),
+        the Discussion, a section G2 and G9 rule out as the Methods ("Limitations",
+        "Interpretation"), a statement of the back matter (G7's) or the reference list."""
+        from manuscript_guard.classify import rules_out_methods
+
+        title = section.title
+        return (section.names_abstract(self.named) or names_introduction(title)
+                or names_discussion(title) or rules_out_methods(title)
+                or names_statement(title) or section.is_references)  # fmt: skip
+
     def _place(self) -> object:
         """What the text under the current headings is: the title of the summary it is in,
-        REPORTED, or None. The outermost heading that names a part decides: the abstract's
-        own "Results" summarise, and a "Summary" under the Results is theirs, even where the
-        profile calls the abstract "Summary"."""
+        REPORTED, TOPICAL or None. The outermost heading that names a part decides: the
+        abstract's own "Results" summarise, and a "Summary" under the Results is theirs, even
+        where the profile calls the abstract "Summary". Text under headings none of which
+        names a part, the paper's title apart, is TOPICAL: a review's own sections, which
+        report where the paper has no Results; under the Discussion, say, it is None."""
         for section in self.chain:
             if section.names_abstract(self.named) or id(section) in self.summaries:
                 return section.title
             if id(section) in self.reports:
                 return REPORTED
+        named = [section for section in self.chain if id(section) not in self.titles]
+        if named and not any(id(section) in self.elsewhere for section in named):
+            return TOPICAL
         return None
 
 
@@ -170,6 +235,7 @@ def check_reported(project: Project, results: Results) -> Report:
         given, reported, placed = _latex_read(root, walk)
     else:
         given, reported, placed = _markdown_read(root, walk)
+    reported |= walk.reported_without_results()
     same = _same_quantity(results)
     reported_as = {same(key) for key in reported}
     missing = [(path, one) for path, one in given if same(one.key) not in reported_as]
@@ -188,8 +254,8 @@ def check_reported(project: Project, results: Results) -> Report:
                 gate=GATE,
                 code=CODE,
                 severity=WARN,
-                message=f"results.{one.key} is given under {plain(one.heading)!r} and reported "
-                "nowhere in the Methods, the Results, a table or a figure",
+                message=f"results.{one.key} is given under {plain(one.heading)!r} and "
+                + (_NOWHERE if walk.has_results else _NOWHERE_WITHOUT_RESULTS),
                 path=path,
                 line=one.line,
                 hint="report the number where the paper reports its results, a table or a "

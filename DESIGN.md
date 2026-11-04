@@ -19339,7 +19339,10 @@ Open, recorded as each change landed:
   the data in other words, "as of", "received by", "data cut", is not read, and one that
   uses those words of something else and binds a typed date is warned of. A year typed into
   the script as a number is never warned of, since it cannot be told from one the analysis
-  computed. The sentence is the one `in_sentences` gives the binding, with its limit: a stop
+  computed; and a year computed and then made text (`as.character(min(d$year))`) is warned
+  of as one typed, since the two cannot be told apart either: the message says the date was
+  emitted as a string, and the hint that a year computed from the data is emitted as a
+  number. The sentence is the one `in_sentences` gives the binding, with its limit: a stop
   typed against a binding with no space after it ends no sentence.
 - **A braced citation key is read as words.** Pandoc's `[@{who-extraction:2020}]` is not
   blanked as a key is, so its "extraction" dates the data, and a typed date beside it is

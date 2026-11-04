@@ -13986,9 +13986,12 @@ Added by the adversarial review, verified and **not** fixed:
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
-  not. Seven designs are named; a design outside them (a cross-sectional study, a
-  diagnostic accuracy study, a target trial emulation as a design of its own) names none and
-  keeps the seven sections. The self-controlled designs have no reporting guideline, and
+  not. Seven designs are named; a design outside them (a narrative review, a cross-sectional
+  study, a case series or report, a qualitative study, a diagnostic accuracy study, a target
+  trial emulation as a design of its own) takes `study_type: other`, which settles `next`'s
+  choice of design and keeps the seven sections, with no guideline asked for by the design.
+  A design is added only with sections that each cite their guideline item: a narrative
+  review (SANRA) and a cross-sectional study (STROBE) could be next. The self-controlled designs have no reporting guideline, and
   their sections come from the methods literature. G5 holds the paper's guidelines to the
   design, and not the protocol's (SPIRIT, PRISMA-P). A guideline is matched by the start of
   its name, so a name that begins as another does ("STROBE-anything").

@@ -516,6 +516,9 @@ def test_the_template_follows_the_study_type() -> None:
     assert templates.chosen(None, "prediction-model")[0].name == "computational"
     assert templates.chosen("lab", "trial")[0].name == "lab"
     assert templates.chosen(None, None)[0].name == templates.DEFAULT
+    # A design with no template of its own is drawn as one that names none, and says so.
+    template, why = templates.chosen(None, "other")
+    assert template.name == templates.DEFAULT and why.startswith("study_type other has no")
 
 
 def test_the_graphical_abstract_is_drawn_and_its_report_is_what_check_says(ready: Path) -> None:

@@ -128,7 +128,8 @@ Where `paper.yaml` names the design (`study_type`), G5 says when none of its gui
 declared. The table is the one G12 reads the plan's sections from
 (`src/manuscript_guard/data/study_types.yaml`), read on each guideline's own page on
 2026-10-15. An extension counts for its base: RECORD and RECORD-PE for STROBE, TRIPOD+AI for
-TRIPOD.
+TRIPOD. A paper whose `study_type` is `other` is held to no guideline by its design, as one
+that names none: choose the guideline that fits it with the author.
 
 | study_type | the paper | the protocol |
 |---|---|---|

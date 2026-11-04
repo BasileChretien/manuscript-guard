@@ -245,7 +245,8 @@ draws two concepts from the brief into `communication/graphical-abstract/`: `con
 three panels left to right (what was asked and how, what was found, what it means), and
 `concept-2.svg`, the question above its answer. The template follows `study_type`, a trial
 `rct`, a cohort, case-control, self-controlled or disproportionality study `observational`,
-a prediction model `computational`. The primary finding is set large and the secondary ones
+a prediction model `computational`; a paper that names no design, or `other`, gets
+`observational` unless `--template` names another. The primary finding is set large and the secondary ones
 smaller, below a rule; the colours are Okabe and Ito's; every `<text>` names its statement
 (`data-statement`) and the values it prints (`data-binding`). The size is the journal's
 `graphical_abstract` rule; where its profile gives none, 1328 by 531 pixels, with a note

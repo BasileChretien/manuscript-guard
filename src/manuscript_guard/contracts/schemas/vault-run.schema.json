@@ -23,6 +23,7 @@
       }
     },
     "stopped": { "const": true, "description": "The run was stopped before its end, by a fault or a Ctrl-C. What it moved before then may wait in the outbox (`outbox`), and the run is not one to release." },
+    "unrecorded": { "const": true, "description": "The run ended, but its record in the vault (`run.json`) could not be written: it is not one to release, and what it wrote waits in the outbox (`outbox`) unreleased." },
     "failed": {
       "oneOf": [
         { "type": "null" },

@@ -547,3 +547,104 @@ def test_a_time_with_no_centile_is_drawn_from_the_stream(tmp_path: Path) -> None
                 {"t": [f"{8 + at}:15".zfill(5) for at in range(8)]})  # fmt: skip
     written = [row["t"] for row in rows_of(synthesize(tmp_path, "t.csv").path) if row["t"]]
     assert len(set(written)) > 3 and all(re.fullmatch(r"[0-9]{2}:[0-9]{2}", one) for one in written)
+
+
+# ------------------------------------- within a declared range (the last round of #491)
+
+
+def _held_values(tmp_path: Path, kind: str, bounds: str, values: list[str],
+                 read_as: dict | None = None) -> list[str]:  # fmt: skip
+    """The values the copy writes of one column `x` of `kind`, the dictionary giving it
+    `bounds`, profiled from `values`."""
+    _project_of(tmp_path, f"variables:\n  - {{name: x, label: X, definition: d, type: {kind}"
+                          f"{bounds}}}\n", {"x": values}, read_as=read_as)  # fmt: skip
+    copy = synthesize(tmp_path, "t.csv")
+    written = [row["x"] for row in rows_of(copy.path) if row["x"]]
+    assert written
+    return written
+
+
+def test_a_date_and_time_drawn_within_a_range_with_a_clock_stays_within_it(
+    tmp_path: Path,
+) -> None:
+    """The day and the clock are drawn together across the range: a row on its first or last
+    day is not drawn before `min` or after `max`."""
+    from datetime import datetime
+
+    form = "%Y-%m-%d %H:%M"
+    days = [datetime(2019, 3, day, 8 + day).strftime(form) for day in range(1, 9)]
+    written = _held_values(tmp_path, "datetime",
+                           ', range: {min: "2019-03-01T12:00:00", max: "2019-03-02T06:00:00"}',
+                           days, read_as={"dates": {"x": form}})  # fmt: skip
+    drawn = [datetime.strptime(value, form) for value in written]
+    assert all(datetime(2019, 3, 1, 12) <= one <= datetime(2019, 3, 2, 6) for one in drawn)
+    assert len(set(drawn)) > 5
+
+
+def test_a_date_drawn_from_its_distribution_is_kept_within_the_range(tmp_path: Path) -> None:
+    """Continued straight beyond the outer centiles, a date is still clamped to the range the
+    dictionary declares, as a number is."""
+    days = [f"2018-{month:02d}-{day:02d}" for month in range(1, 13) for day in (5, 15, 25)]
+    written = _held_values(tmp_path, "date", ', range: {min: "2018-03-01", max: "2018-10-31"}',
+                           days * 4, read_as={"dates": {"x": "%Y-%m-%d"}})  # fmt: skip
+    assert all("2018-03-01" <= value <= "2018-10-31" for value in written)
+
+
+def test_a_count_with_only_a_maximum_is_not_piled_on_nought(tmp_path: Path) -> None:
+    written = _held_values(tmp_path, "count", ", range: {max: 20}",
+                           ["0"] * 150 + ["1"] * 47 + ["unknown"] * 3)  # fmt: skip
+    values = [int(value) for value in written]
+    assert max(values) <= 20 and min(values) >= 0
+    assert values.count(0) < len(values) / 5 and len(set(values)) > 10
+
+
+@pytest.mark.parametrize(("bounds", "inside"), [
+    (', range: {min: "9995-01-01"}', lambda day: "9995-01-01" <= day <= "9999-12-31"),
+    (', range: {max: "0003-01-01"}', lambda day: "0001-01-01" <= day <= "0003-01-01"),
+])  # fmt: skip
+def test_a_one_ended_date_range_near_the_calendar_s_end_is_drawn_within_it(
+    tmp_path: Path, bounds: str, inside
+) -> None:
+    days = [f"2019-03-{day:02d}" for day in range(1, 9)]
+    written = _held_values(tmp_path, "date", bounds, days,
+                           read_as={"dates": {"x": "%Y-%m-%d"}})  # fmt: skip
+    assert all(inside(day) for day in written) and len(set(written)) > 5
+
+
+def test_a_count_s_bounds_that_are_not_whole_are_rounded_inwards(tmp_path: Path) -> None:
+    """Clamped to 40.5 and written as 40 was below the bound: a count's least is 41."""
+    written = _held_values(tmp_path, "count", ", range: {min: 40.5, max: 50.5}",
+                           [str(30 + at % 31) for at in range(310)])  # fmt: skip
+    values = [int(value) for value in written]
+    assert min(values) >= 41 and max(values) <= 50
+    assert 41 in values
+
+
+@pytest.mark.parametrize("centre", ["23:00", "00:00"])
+def test_a_time_about_one_centile_by_midnight_wraps_round_it(centre: str) -> None:
+    """Drawn two hours either side of its one centile, a time near midnight is carried round
+    to the other side, not piled on 23:59 or 00:00."""
+    from collections import Counter
+
+    from manuscript_guard.vault.synthesize import _Column, _time
+
+    column = _Column({"name": "t", "kind": "time", "type": "time", "centiles": {"50": centre},
+                      "missing": 0, "unread": 0, "n": 100}, None, 5, 100, 100)  # fmt: skip
+    drawn = Counter(_time(column, at / 1000).text for at in range(1000))
+    assert max(drawn.values()) < 20
+    assert all(re.fullmatch(r"(2[0-3]|[01][0-9]):[0-5][0-9]", one) for one in drawn)
+
+
+@pytest.mark.parametrize(("kind", "bounds", "values", "read_as"), [
+    ("count", ", range: {min: 40}", ["40"] * 150 + ["41"] * 47 + ["unknown"] * 3, None),
+    ("date", ', range: {min: "2019-03-01"}', [f"2019-03-{day:02d}" for day in range(1, 9)],
+     {"dates": {"x": "%Y-%m-%d"}}),
+])  # fmt: skip
+def test_a_number_and_a_date_with_one_declared_end_are_said_alike(
+    tmp_path: Path, kind: str, bounds: str, values: list[str], read_as: dict | None
+) -> None:
+    _project_of(tmp_path, f"variables:\n  - {{name: x, label: X, definition: d, type: {kind}"
+                          f"{bounds}}}\n", {"x": values}, read_as=read_as)  # fmt: skip
+    notes = synthesize(tmp_path, "t.csv").notes
+    assert any(note.startswith("x: drawn without its distribution, from its one end")
+               for note in notes), notes  # fmt: skip

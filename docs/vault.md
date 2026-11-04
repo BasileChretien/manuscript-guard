@@ -160,7 +160,10 @@ agent. It does this, in order:
    copy is removed too, `log.txt` stays with a `run.json` saying the run did not finish and
    what it had moved, the summary for the agent says it stopped, and such a run is not one
    to release: files moved before the stop may wait in the outbox, and are not released. A second
-   Ctrl-C while that is done can leave the copy in the vault: remove it yourself.
+   Ctrl-C while that is done can leave the copy in the vault: remove it yourself. A run that
+   ended but whose `run.json` could not be written (a full disk) is not one to release either:
+   the copy is removed, the terminal says so and what waits in the outbox, and the summary for
+   the agent says `unrecorded`.
 
 The tool writes nothing to the project except `.manuscript-guard/vault/last-run.json`, which
 the agent reads to know how the run went. (A script run on the real data runs as your

@@ -117,6 +117,16 @@ class RunRefused(Exception):
     """Why nothing was run, in a sentence for the person at the terminal."""
 
 
+class RecordUnwritten(OSError):
+    """A run that ended, every script finished or one failed, whose record in the vault could
+    not be written: what it did is `done`, and it is not one to release (the last round of
+    #490)."""
+
+    def __init__(self, done: Ran, path: Path, cause: OSError) -> None:
+        super().__init__(f"its record, {path}, could not be written ({cause})")
+        self.done = done
+
+
 @dataclass(frozen=True)
 class Change:
     """An analysis script changed since the run released last: why it is listed, and how to
@@ -597,8 +607,17 @@ def run(project, staged: Staged) -> Ran:
                           stopped=True)  # fmt: skip
         raise
     record.update({"finished": done.failed is None, "outbox": done.moved})
-    (here / MANIFEST).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8",
-                                 newline="\n")  # fmt: skip
+    try:
+        (here / MANIFEST).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8",
+                                     newline="\n")  # fmt: skip
+    except OSError as exc:
+        # The run ended and cannot be released: the copy goes, as for a run stopped, and the
+        # agent is told this run's record could not be written (the last round of #490).
+        shutil.rmtree(work.parent, ignore_errors=True)
+        with contextlib.suppress(Exception):
+            write_summary(root, run_id, ran_at, done.scripts, failure, outbox=bool(done.moved),
+                          unrecorded=True)  # fmt: skip
+        raise RecordUnwritten(done, here / MANIFEST, exc) from exc
     try:
         shutil.rmtree(work.parent)
     except OSError as exc:
@@ -681,6 +700,6 @@ def read_manifest(folder: Path, run_id: str) -> dict:
     return document
 
 
-__all__ = ["Change", "Ran", "RunRefused", "Staged", "analysis_sources", "changes",
-           "default_scripts", "discard", "new_run", "prepare", "read_manifest", "run",
+__all__ = ["Change", "Ran", "RecordUnwritten", "RunRefused", "Staged", "analysis_sources",
+           "changes", "default_scripts", "discard", "new_run", "prepare", "read_manifest", "run",
            "scripts_to_run", "differs"]

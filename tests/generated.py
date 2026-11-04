@@ -8938,6 +8938,104 @@ def addressed(draw: st.DrawFn) -> tuple[str, list[str]]:
     return text, keys
 
 
+# ------------------------------------------------------- a citation typed as text, G2
+
+#: A citation typed as text, each form G2's hint reads, `{n}` the first author's name, `{o}`
+#: a second's, `{y}` the year and `{z}` a second year.
+TYPED_CITATIONS = (
+    "({n}, {y})", "({n} {y})", "({n} et al., {y})", "({n} & {o}, {y})", "({n} and {o}, {y})",
+    "({n}, {o}, & {o}, {y})", "({o}, {z}; {n}, {y})", "{n} ({y})", "{n} et al. ({y})",
+    "{n} and {o} ({y})", "{n}, {o} and {o} ({y})",
+)  # fmt: skip
+#: A year that is no citation's: after a month, a sign or a lower-case word, alone, or in text.
+NOT_TYPED_CITATIONS = (
+    "(March, {y})", "(Sept {y})", "(n = {y})", "in {y}", "Table 2 ({y})", "({y})",
+    "(reports, {y})", "{y} ({n})",
+)  # fmt: skip
+#: First authors' names, and the word of each a family name is compared by.
+TYPED_NAMES = (
+    ("Fictional", "Fictional"), ("Ødegård", "Ødegård"), ("Smith-Jones", "Smith-Jones"),
+    ("Van der Berg", "Berg"), ("O'Neil", "O'Neil"), ("see Imaginary", "Imaginary"),
+)  # fmt: skip
+
+
+@st.composite
+def typed_citations(draw: st.DrawFn) -> tuple[str, list[tuple[int, int, str | None, str]]]:
+    """Text with a citation typed as text in each form of `TYPED_CITATIONS` and a year in
+    each of `NOT_TYPED_CITATIONS`, in an order drawn, parted by drawn words and a stop, and
+    for each year where it stands, the name the hint reads for it (None for no citation's)
+    and the year. Every form in every example, so that a rule broken for one fails under any
+    seed."""
+    years = st.builds(lambda y, s: f"{y}{s}", st.integers(1800, 2099), st.sampled_from(("", "a")))
+    others = st.sampled_from(("Other", "Second", "Dupont"))
+    shapes = [(shape, True) for shape in TYPED_CITATIONS]
+    shapes += [(shape, False) for shape in NOT_TYPED_CITATIONS]
+    text, found = "", []
+    for shape, cited in draw(st.permutations(shapes)):
+        written, compared = draw(st.sampled_from(TYPED_NAMES))
+        other = draw(others)
+        filled = {"{n}": written, "{o}": other}
+        named = {"{y}": compared if cited else None, "{z}": other}
+        words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+        text += f"{words} "
+        for part in re.split(r"(\{[noyz]\})", shape):
+            if part in named:
+                year = draw(years)
+                found.append((len(text), len(text) + len(year), named[part], year[:4]))
+                part = year
+            text += filled.get(part, part)
+        text += draw(st.sampled_from((". ", ".\n", "; ")))
+    return text, found
+
+
+#: A letter of a family name as a manuscript types it, as a reader without it types it, and
+#: as a .bib writes it in TeX, as Better BibTeX's BibTeX export does. The capitals open a name.
+TEX_LETTERS = (
+    ("\N{LATIN CAPITAL LETTER A WITH RING ABOVE}", "A", r"{\AA}"),
+    ("\N{LATIN CAPITAL LETTER S WITH CARON}", "S", r"\v{S}"),
+    ("\N{LATIN CAPITAL LETTER O WITH STROKE}", "O", r"{\O}"),
+    ("\N{LATIN SMALL LETTER A WITH RING ABOVE}", "a", r"{\aa}"),
+    ("\N{LATIN SMALL LETTER O WITH DIAERESIS}", "o", r"{\"o}"),
+    ("\N{LATIN SMALL LETTER U WITH DIAERESIS}", "u", r"\"{u}"),
+    ("\N{LATIN SMALL LETTER C WITH CEDILLA}", "c", r"\c{c}"),
+    ("\N{LATIN SMALL LETTER Z WITH CARON}", "z", r"{\v z}"),
+    ("\N{LATIN SMALL LETTER O WITH STROKE}", "o", r"{\o}"),
+    ("\N{LATIN SMALL LETTER L WITH STROKE}", "l", r"{\l}"),
+    ("\N{LATIN SMALL LETTER AE}", "ae", r"{\ae}"),
+    ("\N{LATIN SMALL LETTER SHARP S}", "ss", r"{\ss}"),
+    ("\N{LATIN SMALL LETTER E WITH ACUTE}", "e", r"\'{e}"),
+    ("\N{LATIN SMALL LETTER N WITH TILDE}", "n", r"\~{n}"),
+)  # fmt: skip
+#: TeX in a name the hint does not read, and the letters a manuscript types for it.
+TEX_UNREAD = ((r"{\IJ}", "IJ"), (r"\foreignlanguage{dutch}{IJ}", "IJ"))
+
+
+@st.composite
+def names_in_tex(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A `.bib` file with a work for each letter of `TEX_LETTERS`, its first author's family
+    name holding the letter in TeX, written "Family, Given" or "Given Family", and one whose
+    name holds TeX of `TEX_UNREAD`; and for each, the citation a manuscript types for it, the
+    letter as typed or as a reader without it types it, with the key. Every letter in every
+    example, so that a reading broken for one fails under any seed."""
+    # No "e" or "s" around the letter: "oe" and "ss" are a transcription of their own.
+    part = st.text("abdfghikmnoprtuvz", min_size=1, max_size=5)
+    entries, cited = [], []
+    shapes = [(letter, typed, tex, True) for letter, typed, tex in TEX_LETTERS]
+    shapes += [(typed, typed, tex, False) for tex, typed in TEX_UNREAD]
+    for number, (letter, plain, tex, read) in enumerate(draw(st.permutations(shapes))):
+        head = "" if letter[0].isupper() else draw(st.sampled_from("BDGKMPTV"))
+        tail = draw(part)
+        written = draw(st.sampled_from((letter, plain))) if read else plain
+        year = 1900 + draw(st.integers(0, 120))
+        key = f"work{number}"
+        family = f"{head}{tex}{tail}"
+        author = draw(st.sampled_from((f"{family}, Anne", f"Anne {family}")))
+        entries.append(f"@article{{{key},\n  author = {{{author} and Other, Eve}},\n"
+                       f"  year = {{{year}}},\n}}\n")  # fmt: skip
+        cited.append((f"({head}{written}{tail}, {year})", key))
+    return "\n".join(entries), cited
+
+
 # --------------------------------------------- escaped backticks beside an escaped comparison
 
 #: Pieces of a paragraph with backticks and escaped comparisons in them, each closing every
@@ -9235,6 +9333,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "interval order": intervals(),
     "pointers": numbered_displays().map(lambda drawn: {"files": drawn[0]}),
+    "typed citations": st.one_of(typed_citations().map(lambda drawn: drawn[0]), texts()),
     "quoted whole": texts(WHOLE),
     "labels": texts(LABELLED),
     "data dates": texts(DATED),

@@ -7621,6 +7621,89 @@ def _an_address_in_brackets_is_a_citation(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(citations_module, "BRACKETED", re.compile(rf"\[(?P<body>{group}*@{group}*)\]"))
 
 
+# ------------------------------------------------------- a citation typed as text, G2
+
+from generated import typed_citations  # noqa: E402
+
+from manuscript_guard.gates import typed_citations as typed_module  # noqa: E402
+
+
+@holds(100, typed_citations())
+def test_the_year_of_a_citation_typed_as_text_is_read_with_its_first_author(
+    drawn: tuple[str, list[tuple[int, int, str | None, str]]],
+) -> None:
+    """Each year of a citation typed as text, in brackets, in a group or in the sentence, is
+    read with its first author's name, the word of it a family name is compared by: the one
+    before "et al.", "&" or "and", the first of a list, its own in a group; and a year after
+    a month, a sign or a lower-case word, alone or in text, is no citation's."""
+    text, years = drawn
+    for start, end, name, year in years:
+        read = typed_module.typed_citation(text, start, end)
+        assert (None if read is None else (read.name, read.year)) == (
+            None if name is None else (name, year)
+        ), (text[max(0, start - 60) : end + 2], name)
+
+
+from generated import names_in_tex  # noqa: E402
+
+
+@holds(30, names_in_tex())
+def test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """Round 1 of #510: `{\\AA}ngstr{\\"o}m` was read as "aangstrom", and the hint for
+    "(Ångström, 2018)" said references.bib held no work by Ångström and to add one. Each
+    family name a `.bib` writes in TeX is found for the citation typed with its letter, or
+    with the letters a reader without it types; and a name holding TeX the hint does not
+    read is never said to be missing: the hint names its entry."""
+    bib, cited = drawn
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "references.bib"
+        path.write_text(bib, encoding="utf-8")
+        works = typed_module.works_by(path)
+    for written, key in cited:
+        read = typed_module.typed_citation(written, len(written) - 5, len(written) - 1)
+        assert read is not None, written
+        said = typed_module.hint(read, works, latex=False, otherwise="")
+        assert f"[@{key}]" in said and "holds no work" not in said, (written, said, bib)
+
+
+def _a_tex_escape_is_read_as_its_letters(patch: pytest.MonkeyPatch) -> None:
+    import unicodedata
+
+    def fold(name: str) -> str:
+        words = name.replace("{", "").replace("}", "").split() or [""]
+        decomposed = unicodedata.normalize("NFKD", words[-1])
+        return "".join(c for c in decomposed
+                       if c.isalpha() and not unicodedata.combining(c)).casefold()  # fmt: skip
+
+    patch.setattr(typed_module, "_fold", fold)
+
+
+def _a_name_in_tex_not_read_is_missing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_module, "_unread", lambda family: False)
+
+
+def _et_al_is_a_name(patch: pytest.MonkeyPatch) -> None:
+    def bracketed(part: str) -> str | None:
+        first = re.split(r",|\s&\s|\sand\s", f" {part} ")[0].split()
+        return first[-1] if first and typed_module._is_name(first[-1]) else None
+
+    patch.setattr(typed_module, "_bracketed", bracketed)
+
+
+def _the_last_author_named_is_the_first(patch: pytest.MonkeyPatch) -> None:
+    def narrated(words: list[str]) -> str | None:
+        name = words[-1].rstrip(",")
+        return name if typed_module._is_name(name) else None
+
+    patch.setattr(typed_module, "_narrated", narrated)
+
+
+def _a_month_is_a_name(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_module, "_MONTHS", frozenset())
+
+
 #: The papers each example of the property below holds: mostly British, mostly American,
 #: as many of each, British by its -ise words alone, and British with as many -ize words
 #: both Englishes write as it has British ones, which count for neither.
@@ -15070,6 +15153,26 @@ BROKEN = {
     "an e-mail address in brackets is a citation": (
         _an_address_in_brackets_is_a_citation,
         test_an_e_mail_address_is_no_citation_and_every_key_beside_one_is,
+    ),
+    "et al. is a typed citation's name": (
+        _et_al_is_a_name,
+        test_the_year_of_a_citation_typed_as_text_is_read_with_its_first_author,
+    ),
+    "the last author of a typed citation is its first": (
+        _the_last_author_named_is_the_first,
+        test_the_year_of_a_citation_typed_as_text_is_read_with_its_first_author,
+    ),
+    "a month is a typed citation's name": (
+        _a_month_is_a_name,
+        test_the_year_of_a_citation_typed_as_text_is_read_with_its_first_author,
+    ),
+    "a TeX escape in a .bib name is read as its letters": (
+        _a_tex_escape_is_read_as_its_letters,
+        test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it,
+    ),
+    "a .bib name in TeX the hint does not read is said to be missing": (
+        _a_name_in_tex_not_read_is_missing,
+        test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it,
     ),
     "in LaTeX, an escaped percent opens a comment": (
         _an_escaped_percent_opens_a_comment,

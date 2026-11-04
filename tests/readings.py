@@ -706,6 +706,23 @@ def _numbers() -> Reading:
     return numbers
 
 
+@reading("typed citations")
+def _typed_citations() -> Reading:
+    from manuscript_guard.gates.typed_citations import typed_citation
+
+    def typed(text: str) -> list[list[Any]]:
+        """Each year in the text, where it stands, and the citation typed as text G2's hint
+        reads it as the year of: its first author's name, the year and the words shown."""
+        found = []
+        for year in re.finditer(r"(?<![\w.])\d{4}[a-z]?(?!\w)", text):
+            read = typed_citation(text, year.start(), year.end())
+            found.append([year.start(), None if read is None else [read.name, read.year,
+                                                                    read.shown]])  # fmt: skip
+        return found
+
+    return typed
+
+
 @reading("pointers")
 def _pointers() -> Reading:
     from manuscript_guard.contracts import load_project

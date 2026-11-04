@@ -763,6 +763,60 @@ def test_every_name_the_package_installs_is_one_the_guard_knows() -> None:
         assert SUBMISSION_MARKERS.search(f"python -m {module} submit"), module
 
 
+#: A guarded command asked only for its help, which prints it and exits, as argparse does with
+#: `-h` or `--help` anywhere among the command's own arguments. Each was refused in a project
+#: that fails, so an agent could not read `submit`'s options until the paper passed.
+ONLY_ITS_HELP = [
+    "manuscript-guard submit --help",
+    "manuscript-guard submit -h",
+    "mguard submit --offline --help",
+    "mguard submit --help --offline",
+    "manuscript-guard check --submission --help",
+    "manuscript-guard build --stage submission -h",
+    "python -m manuscript_guard.cli submit --help",
+    "manuscript-guard --help submit",
+    'manuscript-guard submit "--help"',
+    "cd paper && manuscript-guard submit --help",
+    "manuscript-guard submit --help | head -n 20",
+]
+#: And what is still a submission: the command itself, and a help beside one, or a help that
+#: is not one (after `--`, as an option's value, from a command substitution).
+NOT_ONLY_ITS_HELP = [
+    "manuscript-guard submit",
+    "manuscript-guard submit --offline",
+    "manuscript-guard check --submission",
+    "manuscript-guard build --stage submission",
+    "manuscript-guard submit --help && manuscript-guard submit",
+    "manuscript-guard submit --help; mguard submit --offline",
+    "manuscript-guard submit --help\nmanuscript-guard check --submission",
+    "manuscript-guard check --help && manuscript-guard submit",
+    "manuscript-guard submit -- --help",
+    "manuscript-guard submit --offline=--help",
+    "manuscript-guard submit $(echo --help)",
+    "manuscript-guard submit --help-me",
+    "manuscript-guard check --help; scp build/manuscript.docx host:",
+]
+
+
+@pytest.mark.parametrize("command", ONLY_ITS_HELP)
+def test_a_submission_asked_only_for_its_help_is_let_through(
+    command: str, project: Path, capsys
+) -> None:
+    _without_a_review(project)
+    event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(project)}
+    assert run("guard-submission", event, capsys) is None, command
+
+
+@pytest.mark.parametrize("command", NOT_ONLY_ITS_HELP)
+def test_a_submission_beside_a_help_is_still_refused(command: str, project: Path, capsys) -> None:
+    """The corruption: a help in the line must not carry the submission beside it through."""
+    _without_a_review(project)
+    event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(project)}
+    result = run("guard-submission", event, capsys)
+    assert decision(result) == "deny", command
+    assert "submission check" in reason(result)
+
+
 def _named_commands(text: str) -> list[str]:
     """Each `manuscript-guard` command a message tells its reader to run."""
     return re.findall(r"`(manuscript-guard\s[^`]*)`", text)

@@ -4821,6 +4821,75 @@ def vault_commands(draw: st.DrawFn) -> tuple[list[str], list[str | None]]:
     return [lines[at] for at in order], [expected[at] for at in order]
 
 
+#: The command under each name it runs by, what it is asked that the submission guard holds,
+#: and what may stand before it (`hooks._submission_shaped`).
+_GUARDED_TOOLS = ("manuscript-guard", "mguard", "mguard.exe", "python -m manuscript_guard.cli")
+_GUARDED_ASKS = ("submit", "submit --offline", "check --submission", "build --stage submission",
+                 "build --offline --stage submission")  # fmt: skip
+_GUARDED_BEFORE = ("", "cd paper && ", "FOO=1 ")
+#: The ways a guarded command asks only for its help, which prints it and exits: `--help` or
+#: `-h` after the options or among them, quoted, or given to the tool before the subcommand.
+HELP_ONLY = ("after", "among", "short", "quoted", "of the tool")
+#: And the ways it does not, so that the command runs: no help, a help after `--`, as the
+#: value of an option, from a command substitution, or beside a second invocation that
+#: submits.
+HELP_NOT_ONLY = ("none", "after the end of options", "as a value", "substituted",
+                 "beside a submission")  # fmt: skip
+
+
+def _guarded(draw: st.DrawFn, kind: str) -> str:
+    """One invocation of the command that asks for a submission, with its help asked as
+    `kind` says."""
+    words = draw(st.sampled_from(_GUARDED_ASKS)).split()
+    if kind == "after":
+        words.append("--help")
+    elif kind == "among":
+        words.insert(draw(st.integers(1, len(words))), "--help")
+    elif kind == "short":
+        words.insert(draw(st.integers(1, len(words))), "-h")
+    elif kind == "quoted":
+        words.append(draw(st.sampled_from(('"--help"', "'--help'"))))
+    elif kind == "of the tool":
+        words.insert(0, draw(st.sampled_from(("--help", "-h"))))
+    elif kind == "after the end of options":
+        words += ["--", "--help"]
+    elif kind == "as a value":
+        words.append("--title=--help")
+    elif kind == "substituted":
+        words.append(draw(st.sampled_from(("$(echo --help)", "`echo -h`"))))
+    tool = draw(st.sampled_from(_GUARDED_TOOLS))
+    return draw(st.sampled_from(_GUARDED_BEFORE)) + " ".join([tool, *words])
+
+
+def _ordinary_command(draw: st.DrawFn) -> str:
+    head = draw(st.sampled_from(_SHELL_HEADS))
+    return " ".join([head, *draw(st.lists(st.sampled_from(_SHELL_ARGUMENTS), max_size=2))])
+
+
+@st.composite
+def help_commands(draw: st.DrawFn) -> tuple[list[str], list[bool]]:
+    """A command line for each way of `HELP_ONLY` and of `HELP_NOT_ONLY`, each among commands
+    that are no submission, in an order drawn each time; and whether the guard holds it as a
+    submission. Every example holds every kind, so that a rule broken for one meets it under
+    any seed."""
+    lines, held = [], []
+    for kind in draw(st.permutations(HELP_ONLY + HELP_NOT_ONLY)):
+        if kind == "beside a submission":
+            pair = [_guarded(draw, draw(st.sampled_from(HELP_ONLY))), _guarded(draw, "none")]
+            planted = [pair[at] for at in draw(st.permutations(range(2)))]
+        else:
+            planted = [_guarded(draw, kind)]
+        parts = [_ordinary_command(draw) for _ in range(draw(st.integers(0, 2)))]
+        for one in planted:
+            parts.insert(draw(st.integers(0, len(parts))), one)
+        joins = [draw(st.sampled_from(_SHELL_JOINS)) for _ in parts[1:]]
+        lines.append(parts[0] + "".join(join + part
+                                        for join, part in zip(joins, parts[1:], strict=True)))
+        held.append(kind in HELP_NOT_ONLY)
+    order = draw(st.permutations(range(len(lines))))
+    return [lines[at] for at in order], [held[at] for at in order]
+
+
 #: Each kind of column a table to profile holds, once in every table, and the type the data
 #: dictionary gives it, or None where the profile reads the type from the values:
 #: levels some of which are rare; levels whose only count held back is the rare ones', and
@@ -9211,6 +9280,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),
     "deposit named": texts(DOI_NAMED + DOI_NOT_NAMED),
     "vault named": vault_commands().flatmap(
+        lambda drawn: st.sampled_from([{"command": line} for line in drawn[0]])
+    ),
+    "submission shaped": help_commands().flatmap(
         lambda drawn: st.sampled_from([{"command": line} for line in drawn[0]])
     ),
     "data profile": profile_tables(),

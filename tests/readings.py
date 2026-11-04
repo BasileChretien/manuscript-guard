@@ -895,6 +895,17 @@ def _vault_named() -> Reading:
     return read
 
 
+@reading("submission shaped")
+def _submission_shaped() -> Reading:
+    from manuscript_guard.hooks import _submission_shaped as shaped
+
+    def read(given: dict[str, str]) -> bool:
+        """Whether the submission guard holds a shell command as a submission."""
+        return shaped(given["command"])
+
+    return read
+
+
 @reading("data profile")
 def _data_profile() -> Reading:
     from manuscript_guard.contracts.dictionary import Dictionary, Variable

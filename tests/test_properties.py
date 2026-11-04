@@ -102,6 +102,7 @@ from generated import (
     generated,
     harvest_cells,
     harvest_tables,
+    help_commands,
     holds,
     keyword_paragraphs,
     laid_out,
@@ -3038,6 +3039,23 @@ def test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_besi
     lines, expected = drawn
     read = READINGS["vault named"]()
     assert [read({"command": line}) for line in lines] == expected, lines
+
+
+# ------------------------------------------------- a submission asked only for its help
+
+
+@holds(60, help_commands())
+def test_a_submission_asked_only_for_its_help_is_let_through_and_no_other(
+    drawn: tuple[list[str], list[bool]],
+) -> None:
+    """A guarded command that asks only for its help, `--help` or `-h` wherever it stands among
+    the command's arguments, quoted or not, under any name of the command and among other
+    commands, is no submission; and one is where the help comes after `--`, is an option's
+    value, comes out of a command substitution, or stands beside a second invocation that
+    submits (`hooks._submission_shaped`)."""
+    lines, held = drawn
+    read = READINGS["submission shaped"]()
+    assert [read({"command": line}) for line in lines] == held, lines
 
 
 # ------------------------------------------------------------- the profile of a vault's file
@@ -14277,6 +14295,34 @@ def _the_home_is_read_by_its_tilde_only(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(hooks, "_HOME_VARIABLE", re.compile("(?!)"))
 
 
+def _a_help_is_read_in_the_text(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import hooks
+
+    patch.setattr(hooks, "_help_only",
+                  lambda invocation: "--help" in invocation or " -h" in invocation)  # fmt: skip
+
+
+def _a_help_lets_the_line_through(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import hooks
+
+    def without(command: str) -> str:
+        return "" if "--help" in command or " -h" in command else command
+
+    patch.setattr(hooks, "_without_help", without)
+
+
+def _no_help_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import hooks
+
+    patch.setattr(hooks, "_HELP_WORDS", ())
+
+
+def _the_end_of_options_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import hooks
+
+    patch.setattr(hooks, "_END_OF_OPTIONS", None)
+
+
 def _a_word_joined_by_colons_is_read_whole(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import hooks
 
@@ -14425,6 +14471,22 @@ BROKEN = {
     "a path a command quotes is split at its spaces": (
         _a_quoted_path_is_split_at_its_spaces,
         test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_beside_it,
+    ),
+    "a help is read in the text of an invocation, not in its words": (
+        _a_help_is_read_in_the_text,
+        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
+    ),
+    "a help anywhere in a line lets the whole line through": (
+        _a_help_lets_the_line_through,
+        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
+    ),
+    "no help is read": (
+        _no_help_is_read,
+        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
+    ),
+    "a help after `--` is read as one": (
+        _the_end_of_options_is_not_read,
+        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
     ),
     "a facet of a post is placed in characters, not bytes": (
         _a_facet_is_placed_in_characters,

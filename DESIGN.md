@@ -7596,6 +7596,15 @@ that the hook fires on every shell command, so it has its own console script
 (`manuscript-guard-hook`) that imports nothing heavy until it knows it has work: 152 ms for
 the no-op path against roughly 400 ms through the full CLI.
 
+An invocation of the command that asks only for its help is set aside before the markers are
+read (`hooks._without_help`): `manuscript-guard submit --help` prints the options of `submit`
+and exits, as argparse does with `-h` or `--help` anywhere among the arguments, and it was
+refused while the submission check failed, so an agent could not read those options until
+the paper passed. An invocation is set aside only where it reads cleanly as one command to a
+POSIX shell and to Windows, with the help as a word of its own before any `--`; a help after
+`--`, as an option's value or out of a command substitution is none, and an invocation that
+submits beside it on the line is still held.
+
 It is registered for the three tools through which Claude Code runs a shell command: `Bash`,
 `PowerShell` and `Monitor`. Each sends the command in `tool_input.command`, and the guard
 reads the command, not the tool's name. It was registered for `Bash` alone until 2026-10-02,
@@ -15520,7 +15529,15 @@ Open, recorded as each change landed:
   nothing else was considered and left (Basile, 2026-10-02): the rule has to tell
   `manuscript-guard check --submission` from the same words followed by `&& scp`, and a
   mistake in it lets a submission through, which is what the guard exists to stop. An author
-  typing in a terminal is not affected, since a hook sees only the agent's commands.
+  typing in a terminal is not affected, since a hook sees only the agent's commands. A help
+  is let through (`check --submission --help`), since nothing runs after it.
+- **A help is let through only where the guard reads the invocation plainly.** The guard
+  cuts an invocation at the next `;`, `&`, `|` or line whether or not it stands in quotes,
+  so `submit --title "a;b" --help` is held, and so is PowerShell's `& "C:\Tools\mguard.exe"
+  submit --help`, read from the name on, where the quote that closes the path opens one. An
+  abbreviation argparse accepts, `--hel`, is not read as a help, and a short option joined to
+  another, `-vh`, is not either. Each costs an agent one refusal, and none lets a submission
+  through.
 - **From a folder with no project, the submission guard finds only a project the command
   spells out.** It used to find none. It matched the command, then ran the submission check
   in the folder the event names as the agent's, and from the folder above a project there is

@@ -12564,11 +12564,19 @@ files a runner reads first (`run.RUNNER_FILES`: `.Rprofile`, `.Renviron`, `_quar
 `_quarto.yaml`, `renv/activate.R`) and every file of `_extensions/`, are listed and recorded
 wherever they are, and so is compiled code a run can load (`run.COMPILED_SUFFIXES`: `.pyc`,
 `.pyo`, `.pyd`, `.so`, `.dll`, `.dylib`). The copy is made first and the list is read from it
-(`run.prepare`), each changed script shown with the copy's own path, so that what is shown is
-what runs. At the yes the project's scripts are digested again (`run.differs`), and one that
-is not the copy's, changed, gone or new, refuses the run. A no, a Ctrl-C or a refusal removes
-the copy (`run.discard`, in a `finally` until the run starts) (round 2 and the fix round of
-#490).
+(`run.prepare`). Each changed script's version as the run released last ran it is written
+from `git show <commit>:<path>` under `<vault>/.runs/<run>/before/` (`run.released_version`),
+and the line printed is `git diff --no-index <before> <copy>`, or "read <copy> whole" where
+there is none, so that the person reads the bytes that run. Both the copy and the listing read
+the project by one rule, `run._NOT_COPIED` (`build`, `.git` and `__pycache__` at any depth)
+and no link or junction gone through (`run._copied_path`), so that a file the copy leaves out
+is no change (fix round 2). `.lua` is a script's suffix, and `_metadata.yml` or
+`_metadata.yaml` in any folder is listed. At the yes the project's scripts are digested again
+(`run.differs`), and one that is not the copy's, changed, gone or new, refuses the run. A no,
+a Ctrl-C or a refusal removes the copy (`run.discard`, in a `finally` until the run starts),
+and `prepare` removes it on anything that ends it, a Ctrl-C during the copy included; once the
+run has started, anything that ends it removes the copy and leaves `log.txt` and a `run.json`
+saying it did not finish (round 2 and the fix rounds of #490).
 
 The run's id is its UTC time, `YYYYMMDD-HHMMSS`, with `-2` and on where taken, and runs are
 ordered by the time and then the number (`run.run_key`); no other word names a run's folder. The project is
@@ -20112,9 +20120,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     the control, and the run and the release say so.
   - *The summary for the agent* is written at once (decision 9a). It holds no message and no
     value, and keeps only names the project's code held before the run and the name of a
-    built-in exception. A failing script can still choose its exit code and, among its own
-    code's names and lines, the frames reported, at most 20 (and as many names of R's
-    `Calls:` line): some bits for each failed run. Only a `KeyError`'s key is read as a column
+    built-in exception. A failing script can still choose its exit code, which built-in
+    exception it raises (some 6 bits, of the 60 or so there are), and, among its own code's
+    names and lines, the frames reported, at most 20 (and as many names of R's `Calls:`
+    line): some bits for each failed run. What the summary file holds is read by type, and a
+    field of another type is no name. Only a `KeyError`'s key is read as a column
     name; a missing column another library reports otherwise (polars' `ColumnNotFoundError`,
     or any R error) gives its class or its calls, and no column.
   - *The terminal requirement.* An agent can start a pseudo-terminal (`script`, `expect`,
@@ -20155,6 +20165,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - *What is listed is digested at the yes.* A file the project and the copy hold alike at
     that moment passes, though it changed and changed back meanwhile; what runs is the copy,
     the same bytes.
+  - *Only files that look like code are listed.* An input that runs and has another suffix,
+    R's `source("steps.txt")`, Python's `exec(open("x.txt").read())`, a template a script
+    renders, is neither listed nor checked at the yes; the copy holds it and runs it as it
+    was copied.
   - *What a run records of git.* The copy leaves `.git` out, as `verify`'s does, so a
     fragment written in a run records no `vcs`; the release records the project's commit at
     the run, which says nothing of uncommitted changes.

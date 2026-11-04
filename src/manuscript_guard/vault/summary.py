@@ -103,7 +103,8 @@ def _frames(given: object, work: Path, texts: dict[str, str]) -> list[dict]:
             continue
         if not 1 <= line <= text.count("\n") + 1:
             continue
-        if not (name in _ANGLED or (_identifier(name) and name in _words(text))):
+        if not (isinstance(name, str)
+                and (name in _ANGLED or (_identifier(name) and name in _words(text)))):
             continue
         kept.append({"path": relative, "line": line, "function": name})
     return kept[-FRAMES:]
@@ -125,6 +126,9 @@ def _kind(record: dict) -> str | None:
     importing a module a run names runs that module's code in the tool (the fix round of
     #490)."""
     name, module = record.get("class"), record.get("module")
+    # By type first: a name of another type is no name, never an error (fix round 2).
+    if not (isinstance(name, str) and isinstance(module, str)):
+        return None
     return name if module == "builtins" and name in BUILTIN_EXCEPTIONS else None
 
 

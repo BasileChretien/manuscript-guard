@@ -86,7 +86,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         return _refused("run", str(exc))
     started = False
     try:
-        answer = _listed_and_asked(running, staged, scripts, folder, last_release(root))
+        answer = _listed_and_asked(running, root, staged, scripts, folder,
+                                   last_release(root))  # fmt: skip
         if not _yes(answer):
             if answer is None:
                 return _no_terminal("run")
@@ -118,19 +119,25 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def _listed_and_asked(running, staged, scripts: list[str], folder: Path, last) -> str | None:
-    """List the scripts and those changed since the run released last, each with the copy's
-    own path, which is what runs; and ask."""
+def _listed_and_asked(running, root: Path, staged, scripts: list[str], folder: Path,
+                      last) -> str | None:  # fmt: skip
+    """List the scripts and those changed since the run released last, each to be read as the
+    copy holds it, which is what runs, against the version the run released last ran; and
+    ask."""
     changed = running.changes(staged.sources, last)
     print(f"{_PREFIX} run: the scripts to run on the data held in {folder}, in this order:")
     for script in scripts:
         print(f"  {script}")
     if changed:
         print("The scripts that changed since the run released last, by digest; read each "
-              "before you answer. The copy beside each is what runs:")  # fmt: skip
+              "before you answer, as the copy holds it, which is what runs:")  # fmt: skip
+        commit = last.get("commit") if last else None
         for change in changed:
             copy = staged.work.joinpath(*change.path.split("/"))
-            print(f"  {change.path}: {change.said}; {change.read}; the copy: {copy}")
+            before = running.released_version(root, staged, change.path, commit)
+            read = (f"git diff --no-index {before} {copy}" if before is not None
+                    else f"read {copy} whole")  # fmt: skip
+            print(f"  {change.path}: {change.said}; {read}")
     else:
         print("No script changed since the run released last.")
     print("They were written with an agent: what they print or write can hold any value of "

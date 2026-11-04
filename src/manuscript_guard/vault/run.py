@@ -49,7 +49,8 @@ _LEFT = frozenset({"__pycache__"})
 #: the shells' and the like (round 1 of #490).
 SCRIPT_SUFFIXES = frozenset({".r", ".rmd", ".qmd", ".py", ".ipynb", ".sql", ".jl", ".do",
                              ".sas", ".sh", ".bash", ".zsh", ".ps1", ".bat", ".cmd", ".pl",
-                             ".m", ".stan", ".c", ".cc", ".cpp", ".h", ".hpp"})  # fmt: skip
+                             ".m", ".stan", ".c", ".cc", ".cpp", ".h", ".hpp",
+                             ".lua"})  # fmt: skip
 #: Folders of the project that hold no script the run executes: at its root the results,
 #: the data, the build and the records, and anywhere the libraries of others' code.
 _NOT_SCRIPTS_AT_ROOT = frozenset({"results", "data", "build", "approvals", "profiles"})
@@ -173,9 +174,34 @@ def _walk(top: Path, skip=lambda _relative: False, left: frozenset[str] = _LEFT)
                 yield relative, path, False
 
 
+#: What the copy leaves out, by name at any depth: `verify._skip`'s and compiled Python. The
+#: copy and the listing of both sides read the project by this one rule (fix round 2 of #490).
+_NOT_COPIED = frozenset({"build", ".git", *_LEFT})
+
+
+def _not_copied(relative: str) -> bool:
+    return relative.rsplit("/", 1)[-1] in _NOT_COPIED
+
+
+def _copied_path(root: Path, relative: str) -> bool:
+    """Whether the copy holds this path: no part of it a name the copy leaves out, and no
+    folder on the way a link or a junction, which the copy does not go through."""
+    from manuscript_guard.verify import _is_junction
+
+    parts = relative.split("/")
+    if any(part in _NOT_COPIED for part in parts):
+        return False
+    here = root
+    for part in parts[:-1]:
+        here = here / part
+        if here.is_symlink() or _is_junction(str(here)):
+            return False
+    return True
+
+
 def _not_scripts(relative: str) -> bool:
     name = relative.rsplit("/", 1)[-1]
-    return name.startswith(".") or name in _LIBRARIES or (
+    return name.startswith(".") or name in _LIBRARIES or _not_copied(relative) or (
         "/" not in relative and name in _NOT_SCRIPTS_AT_ROOT)  # fmt: skip
 
 
@@ -183,6 +209,8 @@ def _not_scripts(relative: str) -> bool:
 #: profile and environment, read by a run that is not `--vanilla`, Quarto's project file and
 #: renv's start; and every file of Quarto's extensions (the fix round of #490).
 RUNNER_FILES = (".Rprofile", ".Renviron", "_quarto.yml", "_quarto.yaml", "renv/activate.R")
+#: Read by Quarto in any folder of the project.
+RUNNER_NAMES = frozenset({"_metadata.yml", "_metadata.yaml"})
 RUNNER_FOLDERS = ("_extensions",)
 #: Compiled code a run can load in place of a script: listed and recorded by digest.
 COMPILED_SUFFIXES = frozenset({".pyc", ".pyo", ".pyd", ".so", ".dll", ".dylib"})
@@ -195,13 +223,15 @@ def script_files(root: Path, named: tuple[str, ...] = ()) -> dict[str, Path]:
     named to run and the files a runner reads first (round 2 of #490)."""
     suffixes = SCRIPT_SUFFIXES | COMPILED_SUFFIXES
     found = {relative: path for relative, path, link in sorted(_walk(root, _not_scripts))
-             if not link and path.suffix.lower() in suffixes}  # fmt: skip
+             if not link and (path.suffix.lower() in suffixes or path.name in RUNNER_NAMES)}
     for folder in RUNNER_FOLDERS:
-        found.update({f"{folder}/{relative}": path
-                      for relative, path, link in _walk(root / folder) if not link})
+        if (root / folder).is_dir() and _copied_path(root, f"{folder}/x"):
+            found.update({f"{folder}/{relative}": path
+                          for relative, path, link in _walk(root / folder, _not_copied)
+                          if not link})  # fmt: skip
     for relative in (*named, *RUNNER_FILES):
         path = root.joinpath(*relative.split("/"))
-        if path.is_file() and not path.is_symlink():
+        if path.is_file() and not path.is_symlink() and _copied_path(root, relative):
             found.setdefault(relative, path)
     return dict(sorted(found.items()))
 
@@ -324,7 +354,7 @@ def _linked_results(root: Path) -> str | None:
     results = root / "results"
     if results.is_symlink() or _is_junction(str(results)):
         return "results/ is a link or a junction: make it a folder of the project's own"
-    links = [relative for relative, _path, link in _walk(results) if link] \
+    links = [relative for relative, _path, link in _walk(results, left=frozenset()) if link] \
         if results.is_dir() else []  # fmt: skip
     if links:
         return f"results/ holds a link or a junction: {', '.join(links)}"
@@ -341,8 +371,9 @@ def stage(root: Path, work: Path) -> None:
         raise RunRefused(why)
 
     def ignored(directory: str, names: list[str]) -> set[str]:
-        # No compiled Python is copied, so that none stands in for a script listed.
-        return _skip(directory, names) | (_LEFT & set(names))
+        # `_NOT_COPIED`, the rule the listing reads the project by; no compiled Python, so
+        # that none stands in for a script listed; and every junction.
+        return _skip(directory, names) | (_NOT_COPIED & set(names))
 
     try:
         shutil.copytree(root, work, symlinks=True, ignore=ignored)
@@ -488,13 +519,15 @@ def prepare(project, folder: Path, scripts: list[str]) -> Staged:
         stage(root, work)
         sources = analysis_sources(work, named)
         texts = source_texts(work, named)
-    except (RunRefused, OSError) as exc:
-        # A copy that could not be made whole is not left in the vault (the fix round).
+    except BaseException as exc:
+        # A copy that could not be made whole, or one stopped while it was made, is not left
+        # in the vault (the fix rounds of #490).
         shutil.rmtree(here, ignore_errors=True)
         with contextlib.suppress(OSError):
             here.parent.rmdir()
-        raise exc if isinstance(exc, RunRefused) else RunRefused(
-            f"could not copy the project into the vault: {exc}") from exc  # fmt: skip
+        if isinstance(exc, OSError):
+            raise RunRefused(f"could not copy the project into the vault: {exc}") from exc
+        raise
     record = {"schema": MANIFEST_SCHEMA, "run": run_id, "ran_at": _now(),
               "commit": commit_of(root),
               "scripts": [{"path": path, "sha256": digest} for path, digest in sources.items()],
@@ -523,13 +556,43 @@ def run(project, staged: Staged) -> Ran:
     """Run the staged scripts on the data held in the vault, in the copy made for them, and
     move what they wrote into its outbox where every script finished; write the summary the
     agent reads in the project."""
-    from manuscript_guard.vault.summary import python_failure, r_failure, write_summary
+    from manuscript_guard.vault.summary import write_summary
 
     root = Path(project.root)
     folder, run_id, here, work = staged.folder, staged.run, staged.here, staged.work
-    scripts, texts, record = staged.scripts, staged.texts, dict(staged.record)
+    record = dict(staged.record)
     done = Ran(run_id, folder)
     ran_at = record["ran_at"]
+    try:
+        failure = _steps(project, staged, done)
+    except BaseException:
+        # Stopped after it started, by a fault or a Ctrl-C: the copy goes, and the log stays
+        # with a record that says the run did not finish (fix round 2 of #490).
+        record.update({"finished": False, "outbox": []})
+        with contextlib.suppress(OSError):
+            (here / MANIFEST).write_text(json.dumps(record, indent=2) + "\n",
+                                         encoding="utf-8", newline="\n")  # fmt: skip
+        shutil.rmtree(work, ignore_errors=True)
+        raise
+    record.update({"finished": done.failed is None, "outbox": done.moved})
+    (here / MANIFEST).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8",
+                                 newline="\n")  # fmt: skip
+    try:
+        shutil.rmtree(work)
+    except OSError as exc:
+        done.notes.append(f"the copy of the project at {work} could not be removed ({exc}): "
+                          "remove it yourself")  # fmt: skip
+    write_summary(root, run_id, ran_at, done.scripts, failure, outbox=bool(done.moved))
+    return done
+
+
+def _steps(project, staged: Staged, done: Ran) -> dict | None:
+    """Run the scripts in the copy, and move what they wrote into the outbox where every one
+    finished; what the summary says of the one that failed, or None."""
+    from manuscript_guard.vault.summary import python_failure, r_failure
+
+    folder, run_id, here, work = staged.folder, staged.run, staged.here, staged.work
+    scripts, texts = staged.scripts, staged.texts
     wrapper = here / "wrapper.py"
     wrapper.write_text(WRAPPER, encoding="utf-8", newline="\n")
     before = snapshot(work)
@@ -553,16 +616,27 @@ def run(project, staged: Staged) -> Ran:
                 break
     if done.failed is None:
         done.moved, done.left = collect(work, before, done.outbox)
-    record.update({"finished": done.failed is None, "outbox": done.moved})
-    (here / MANIFEST).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8",
-                                 newline="\n")  # fmt: skip
+    return failure
+
+
+def released_version(root: Path, staged: Staged, path: str, commit: str | None) -> Path | None:
+    """The script as the run released last ran it, from git at that run's commit, written
+    beside the copy under `<vault>/.runs/<run>/before/`, so that the person reads the copy's
+    bytes against it; None where it had none, or git cannot say."""
+    if not commit:
+        return None
     try:
-        shutil.rmtree(work)
-    except OSError as exc:
-        done.notes.append(f"the copy of the project at {work} could not be removed ({exc}): "
-                          "remove it yourself")  # fmt: skip
-    write_summary(root, run_id, ran_at, done.scripts, failure, outbox=bool(done.moved))
-    return done
+        said = subprocess.run(["git", "-c", "core.fsmonitor=false", "show", f"{commit}:{path}"],
+                              cwd=root, capture_output=True, check=False,
+                              timeout=GIT_SECONDS)  # fmt: skip
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if said.returncode != 0:
+        return None
+    target = staged.here.joinpath("before", *path.split("/"))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(said.stdout)
+    return target
 
 
 def read_manifest(folder: Path, run_id: str) -> dict:

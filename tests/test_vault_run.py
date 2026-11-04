@@ -1024,3 +1024,158 @@ def test_a_run_refuses_a_results_folder_that_is_a_link(
     assert vault_cli(paper, "run") == 2
     assert (elsewhere / "kept.json").read_text(encoding="utf-8") == "{}"
     assert not (vault / ".runs").exists() or not any((vault / ".runs").iterdir())
+
+
+# ---------------------------------------------------------------------------- fix round 2 of #490
+
+
+def _forged(record: str) -> str:
+    """A script that writes its own summary, `record` being its JSON, and exits 1."""
+    return ("import json, os, pathlib, sys\n"
+            "where = pathlib.Path(os.environ['MANUSCRIPT_GUARD_VAULT'], '.runs', "
+            "os.environ['MANUSCRIPT_GUARD_VAULT_RUN'], 'summary', '1.json')\n"
+            f"where.write_text({record!r}.replace('\"__FILE__\"', json.dumps(__file__)))\n"
+            "sys.exit(1)")
+
+
+@pytest.mark.parametrize("record", [
+    '{"class": [], "module": "builtins", "frames": [], "key": null}',
+    '{"class": {}, "module": "builtins", "frames": [], "key": null}',
+    '{"class": null, "module": "builtins", "frames": [], "key": null}',
+    '{"class": 3, "module": "builtins", "frames": [], "key": null}',
+    '{"class": "' + "A" * 100000 + '", "module": "builtins", "frames": [], "key": null}',
+    '{"class": "KeyError", "module": [], "frames": 5, "key": []}',
+    '{"class": "KeyError", "module": "builtins", "frames": [5, "x", null, [[], 1, "f"], '
+    '["a.py", [], []], ["__FILE__", 1, {}], ["__FILE__", 1, []]], "key": {}}',
+    '[1, 2]',
+], ids=["list", "dict", "null", "number", "long", "module-frames-key", "frames", "list-whole"])
+def test_a_summary_of_the_wrong_shape_still_gives_the_agent_its_summary(
+    paper: Path, vault: Path, terminal, record: str
+) -> None:
+    """What the script wrote is read by type before use: a field of another type is no name,
+    never an error that leaves no summary and the copy behind (fix round 2 of #490)."""
+    answers, _asked = terminal
+    _script(paper, _forged(record))
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    _text, failed = _failed(paper)
+    assert failed.get("class") in (None, "KeyError") and "column" not in failed
+    (run,) = [one.name for one in (vault / ".runs").iterdir()]
+    assert not (vault / ".runs" / run / paper.name).exists()
+
+
+@pytest.mark.parametrize("where", ["analysis/sub/build/helper.py", "analysis/cpp/build/model.so",
+                                   "_extensions/x/build/f.lua"])
+def test_what_the_copy_leaves_out_is_no_change_at_the_yes(
+    paper: Path, vault: Path, terminal, where: str
+) -> None:
+    path = paper.joinpath(*where.split("/"))
+    path.parent.mkdir(parents=True)
+    path.write_text("x = 1\n", encoding="utf-8")
+    answers, _asked = terminal
+    _script(paper)
+    answers.append("y")
+    assert vault_cli(paper, "run") == 0
+
+
+def test_an_extensions_folder_that_is_a_link_is_no_change_at_the_yes(
+    paper: Path, vault: Path, terminal, tmp_path: Path
+) -> None:
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "f.lua").write_text("--\n", encoding="utf-8")
+    _junction(paper / "_extensions", elsewhere)
+    answers, _asked = terminal
+    _script(paper)
+    answers.append("y")
+    assert vault_cli(paper, "run") == 0
+
+
+def test_a_run_stopped_after_it_started_leaves_its_log_and_no_copy(
+    paper: Path, vault: Path, terminal, monkeypatch
+) -> None:
+    from manuscript_guard.vault import run as running
+
+    def stopped(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(running, "execute", stopped)
+    answers, _asked = terminal
+    _script(paper)
+    answers.append("y")
+    with pytest.raises(KeyboardInterrupt):
+        vault_cli(paper, "run")
+    (run,) = [one.name for one in (vault / ".runs").iterdir()]
+    assert not (vault / ".runs" / run / paper.name).exists()
+    assert (vault / ".runs" / run / "log.txt").is_file()
+    record = json.loads((vault / ".runs" / run / "run.json").read_text(encoding="utf-8"))
+    assert record["finished"] is False
+
+
+def test_a_copy_stopped_while_it_is_made_is_removed(
+    paper: Path, vault: Path, terminal, monkeypatch
+) -> None:
+    from manuscript_guard.vault import run as running
+
+    def stopped(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(running, "stage", stopped)
+    _script(paper)
+    with pytest.raises(KeyboardInterrupt):
+        vault_cli(paper, "run")
+    assert not (vault / ".runs").exists() or not any((vault / ".runs").iterdir())
+
+
+def test_a_changed_script_is_shown_against_the_version_released(
+    paper: Path, vault: Path, terminal, capsys
+) -> None:
+    if not shutil.which("git"):
+        pytest.skip("git is not installed")
+    _script(paper)
+    _git(paper, "add", "-A")
+    _git(paper, "-c", "user.name=t", "-c", "user.email=t@example.org", "commit", "-qm", "x")
+    run = _ran(paper, vault, terminal)
+    answers, _asked = terminal
+    answers.append("y")
+    assert vault_cli(paper, "release", run, "--as", "Lovelace") == 0
+    _script(paper, "print('changed')")
+    answers.append("y")
+    capsys.readouterr()
+    assert vault_cli(paper, "run") == 0
+    said = capsys.readouterr().out
+    line = next(one for one in said.splitlines() if one.startswith("  analysis/01_model.py:"))
+    assert "git diff --no-index" in line
+    before = line.split("git diff --no-index ", 1)[1].split(" ", 1)[0]
+    assert Path(before).read_text(encoding="utf-8") == SCRIPT.format(extra="")
+
+
+def test_a_lua_filter_and_a_metadata_file_are_listed(
+    paper: Path, vault: Path, terminal, capsys
+) -> None:
+    (paper / "filters").mkdir()
+    (paper / "filters" / "own.lua").write_text("--\n", encoding="utf-8")
+    (paper / "chapters").mkdir()
+    (paper / "chapters" / "_metadata.yml").write_text("x: 1\n", encoding="utf-8")
+    answers, _asked = terminal
+    _script(paper)
+    answers.append("n")
+    assert vault_cli(paper, "run") == 0
+    said = capsys.readouterr().out
+    assert "filters/own.lua: no run" in said and "chapters/_metadata.yml: no run" in said
+
+
+def test_a_link_inside_the_results_compiled_folder_refuses_the_run(
+    paper: Path, vault: Path, terminal, tmp_path: Path
+) -> None:
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "kept.txt").write_text("kept", encoding="utf-8")
+    (paper / "results" / "__pycache__").mkdir(parents=True)
+    _junction(paper / "results" / "__pycache__" / "linked", elsewhere)
+    answers, _asked = terminal
+    _script(paper)
+    answers.append("y")
+    assert vault_cli(paper, "run") == 2
+    assert (elsewhere / "kept.txt").read_text(encoding="utf-8") == "kept"
+    assert not (vault / ".runs").exists() or not any((vault / ".runs").iterdir())

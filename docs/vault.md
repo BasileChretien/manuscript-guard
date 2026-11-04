@@ -138,29 +138,34 @@ agent. It does this, in order:
 2. It lists the scripts it will run, and every script of the copy that changed since the
    run released last, by digest, with the `git diff` command that shows what changed, and
    asks y/N. A script is any file a run can execute or source (`.py`, `.R`, `.Rmd`, `.qmd`,
-   `.sh` and the like), wherever it is, but in `results/`, `data/`, `build/`, a hidden
-   folder or a library of others' code; compiled code a run can load (`.pyc`, `.pyd`,
-   `.so`, `.dll`, `.dylib`) is listed too. A script you name, and `.Rprofile`, `.Renviron`,
-   `_quarto.yml`, `renv/activate.R` and every file of `_extensions/`, which a runner reads
-   first, are listed wherever they are. The list is read from the copy, and each script is
-   shown with the copy's own path, which is what runs. At your yes the project is digested
-   again, and where a script differs from the copy's, the run is refused: run `vault run`
-   again. Read what changed before you answer: the scripts were written with an agent, and
-   what they print or write can hold any value of the data. On a no, or a Ctrl-C, the copy
-   is removed.
+   `.sh`, a `.lua` filter and the like), wherever it is, but in `results/`, `data/`, a
+   `build/` or `.git/` folder at any depth, a hidden folder or a library of others' code,
+   as the copy leaves them out; compiled code a run can load (`.pyc`, `.pyd`, `.so`, `.dll`,
+   `.dylib`) is listed too. A script you name, and `.Rprofile`, `.Renviron`, `_quarto.yml`,
+   `renv/activate.R`, every file of `_extensions/` and a `_metadata.yml` in any folder,
+   which a runner reads, are listed wherever they are. The list is read from the copy. For
+   each script changed since the run released last, the version that run ran is written
+   beside the copy, under `<vault>/.runs/<run>/before/`, from git at that run's commit, and
+   the line to read is `git diff --no-index <before> <copy>`: the copy's bytes, which are
+   what runs. At your yes the project is digested again, and where a script differs from
+   the copy's, the run is refused: run `vault run` again. Read what changed before you
+   answer: the scripts were written with an agent, and what they print or write can hold
+   any value of the data. On a no, or a Ctrl-C, the copy is removed.
 3. It runs the scripts there in order, with `MANUSCRIPT_GUARD_VAULT` set and Python told
    to write no compiled file, and stops at the first that fails.
 4. What they print goes to your terminal as it comes, and into `<vault>/.runs/<run>/log.txt`.
 5. Where every script finished, it moves everything they wrote into `<vault>/outbox/<run>/`:
    results files, harvested outputs, figures, anything else. A link or a junction a
    script made is left out, and nothing reached through one is moved. The copy of the
-   project is then removed.
+   project is then removed, and so it is where the run stops before its end, by a fault or
+   a Ctrl-C: `log.txt` stays, with a `run.json` saying the run did not finish, and such a
+   run is not one to release.
 
 The tool writes nothing to the project except `.manuscript-guard/vault/last-run.json`, which
-the agent reads to know how the run went. A script run on the real data runs as your account,
-and can write anywhere that account can, the project and the vault included: the copy keeps
-it away from the project by where it starts, not by any wall. It holds each script's exit code and, of a script that
-failed: for Python, the class of the exception and the frames of its traceback that fall in
+the agent reads to know how the run went. (A script run on the real data runs as your
+account, and can write anywhere that account can, the project and the vault included: the
+copy keeps it away from the project by where it starts, not by any wall.) The summary holds
+each script's exit code and, of a script that failed: for Python, the class of the exception and the frames of its traceback that fall in
 the project's own files (path, line, function); for R, the function names of its `Calls:`
 line; and the key of a `KeyError` where it is exactly a column name the released profile or
 the data dictionary already holds. No message and no value goes in. The project's files are
@@ -169,8 +174,9 @@ a file the run wrote, is left out, since a script could make either from the dat
 is named only where it is one of Python's built-in exceptions (`KeyError`, `ValueError`,
 `ZeroDivisionError`); any other, a library's or the script's own, is said to be "not a
 builtin", with no name and no module, and nothing the summary names is imported. A failing
-script can still choose its exit code and, among its own code's names and lines, which
-frames are reported, at most 20: a few bits for each failed run.
+script can still choose its exit code, which built-in exception it raises, and, among its
+own code's names and lines, which frames are reported, at most 20: a few bits for each failed
+run. What the summary file holds is read by type, and a field of another type is no name.
 
 ## Releasing what a run wrote: `vault release`
 

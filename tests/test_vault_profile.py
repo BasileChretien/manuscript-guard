@@ -395,3 +395,22 @@ def test_how_many_levels_are_folded_is_not_said_beside_a_count_held_beside() -> 
                                  name="t.csv", minimum=3)  # fmt: skip
     found = column(document, "x")
     assert held(found) or found["other"]["levels"] is None
+
+
+# ------------------------------------------- fix-only round: a mean says what n is
+
+
+def test_no_mean_or_sd_is_printed_where_n_is_held_back() -> None:
+    """Behind 5, a count column of 100 rows, 1 to 97 and 100, two blank: n is held beside
+    the missing "<5", and a mean of 49.5204 would give n back, since only 98 whole numbers
+    total to a mean that prints so (the granularity `stats/granularity.py` checks)."""
+    document = typed(x=[str(n) for n in range(1, 98)] + ["100", "", ""])
+    found = column(document, "x")
+    assert found["n"] is None and found["missing"] == "<5"
+    assert "mean" not in found and "sd" not in found
+    assert found["centiles"] and "decimals" in found
+
+
+def test_a_mean_is_printed_beside_n_printed() -> None:
+    found = column(typed(x=[str(n) for n in range(1, 101)]), "x")
+    assert found["n"] == 100 and "mean" in found and "sd" in found

@@ -12599,8 +12599,14 @@ round 2 of the review asked for it written down as a list. Each field tells a re
   narrowed it from 6 or 7 to 6, and the missing count to 2).
 - where the dictionary lists the codes, the codes not given by name are the folded values, so
   each holds 0 to m − 1 rows, `other.count` at most their number times m − 1.
-- `mean` and `sd`: `n` is max(m, 3) or more; no mean says `n` is fewer. `decimals`: `n` is m
-  or more; none says fewer.
+- `mean` and `sd`: printed only beside `n` printed, from max(m, 3) rows. A mean is a total
+  over n, and of whole numbers, or of numbers to so many decimals, few n give a total that
+  prints so: beside a held `n` it would give `n` back (the fix-only round: behind 5, 1 to 97
+  and 100 with two blank print 49.5204, which only 98 whole numbers total to, and so the
+  missing 2; the GRIM check of `stats/granularity.py`). So no mean says nothing of a held `n`.
+  `decimals`, the places the values are most often written to, is kept: printed from m rows,
+  so it says `n` is m or more, and none says fewer, and it is no total over n. The centiles
+  are kept too: they are values at ranks, no total over n, and say what the next entry says.
 - a centile: m values below it and m above, so `n` (or a date's or time's rows read) is at
   least the fewest rows that centile is given of (`fewest_rows`).
 - `pattern`: m or more values, all of that shape; left out where saying so would give the
@@ -12626,7 +12632,11 @@ leave each 4.
 up to 20 rows behind minimums of 2, 3 and 4, holding every shape the reviews found, it lists
 each table a reader of a column could hold, puts each through the profile, keeps those whose
 profile is the one printed, and requires each count not printed, and the rows of the folded
-levels and of each code, to take two values among them. The design said to hold back the total; that
+levels and of each code, to take two values among them. A number column's tables are its own
+numbers where they are as many, and otherwise numbers that print its centiles and decimals
+alike (whole, or to a place, each different, with values alike below or above the centiles
+given); a printed mean such tables match only by luck, so a mean beside a held `n` fails it.
+Behind 5 it lists tables of 24 rows. Ten examples take about two minutes. The design said to hold back the total; that
 holds nothing here, because every column's counts add up to the same rows, and any column whose
 counts are all printed gives them back (accepted in round 1; in round 2 Basile chose to keep
 holding and model every bound a reader can infer, over merging small groups). `vault synthesize` reads a count held back as an even
@@ -20130,6 +20140,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     more would tell by holding. A small table, or two named levels alike beside a folded one,
     loses its counts. How many levels "other" folds is said only beside a printed count that is
     a whole number of m − 1.
+  - *How many levels are folded tells their rows as a set.* Where k is said beside a count
+    c, the folded levels' rows are known as a set, though not which level holds which: k =
+    c − 1 is one level of 2 rows and the rest of 1; behind 3, where each folded level is 1 or 2
+    rows, every k said fixes how many have 2 (c − k of them). The oracle reads folded levels
+    without names by the rows any of them has, which two values satisfy (accepted in the
+    fix-only round).
   - *The oracle lists small tables.* It holds the profile to every table of up to 20 rows a
     reader could hold, with numbers all one value and folded levels without names; a pattern
     no small table has passes it unseen.

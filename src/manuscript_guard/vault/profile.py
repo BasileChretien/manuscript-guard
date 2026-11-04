@@ -13,7 +13,8 @@ gives:
   most 50 values), each level of m rows or more with its count, the others folded into
   "other": how many levels, and their rows, "<m" below m;
 * for numbers, dates and times, the rows read, a mean and SD (numbers only, from m rows and at
-  least three), and each of the 5th to 95th centiles that has m rows below it and m above it,
+  least three, beside the rows read printed), and each of the 5th to 95th centiles that has m
+  rows below it and m above it,
   so no centile is the smallest or largest value. Dates to the month, times to the hour;
 * for a withheld column (an identifier, a text, or with no entry in the dictionary every value
   different, or more than 50 different values that are neither numbers nor dates), the
@@ -343,20 +344,27 @@ def fewest_rows(centile: int, minimum: int) -> int:
     return n
 
 
-def _n_bounds(out: dict, minimum: int) -> tuple[float, float]:
-    """What the rest of a number's profile says of its rows read: a mean and SD from
-    max(m, 3) rows and none below, decimals from m rows and none below, a centile from the
-    fewest rows it can be given of."""
+def _n_bounds(out: dict, minimum: int, number: bool) -> tuple[float, float]:
+    """What the rest of a column's profile says of its rows read, where they are not printed:
+    decimals from m rows and none below, a centile from the fewest rows it can be given of. A
+    mean is not printed beside rows held back (`_stats_printed`), so it says nothing here."""
     least, most = 0, disclosure.INF
-    for printed, fewest in (("mean" in out, max(minimum, FEWEST_FOR_MEAN)),
-                            ("decimals" in out, minimum)):  # fmt: skip
-        if printed:
-            least = max(least, fewest)
+    if number:
+        if "decimals" in out:
+            least = minimum
         else:
-            most = min(most, fewest - 1)
+            most = minimum - 1
     for centile in out.get("centiles", {}):
         least = max(least, fewest_rows(int(centile), minimum))
     return least, most
+
+
+def _stats_printed(n_shown: object) -> bool:
+    """Whether a mean and SD are printed beside the rows read as shown: only where they are
+    printed. A mean is a total over n, and of whole numbers, or of numbers to so many
+    decimals, few n give a total that prints so: it would give a held n back (the fix-only
+    round of the review, and the granularity `stats/granularity.py` checks)."""
+    return isinstance(n_shown, int)
 
 
 def _distribution(column: _Column, rows: int, minimum: int) -> dict:
@@ -385,14 +393,14 @@ def _distribution(column: _Column, rows: int, minimum: int) -> dict:
         out["centiles"] = _centiles(values, minimum, _month_shown)
     else:
         out["centiles"] = _centiles(values, minimum, lambda hour: f"{hour:02d}:00")
-    least, most = _n_bounds(out, minimum) if column.role == "number" else (0, disclosure.INF)
-    if column.role != "number":
-        least = max((fewest_rows(int(centile), minimum) for centile in out["centiles"]),
-                    default=0)  # fmt: skip
+    least, most = _n_bounds(out, minimum, column.role == "number")
     counts = [column.missing, len(read) - len(values), len(values)]
     cells = [disclosure.Cell(count, _shown(count, minimum)) for count in counts]
     cells[2] = disclosure.Cell(len(values), _shown(len(values), minimum), least, most)
     cells = disclosure.beside(cells, minimum)
+    if not _stats_printed(cells[2].shown):
+        out.pop("mean", None)
+        out.pop("sd", None)
     if disclosure.unsafe(cells, rows, minimum):
         return _held(column)
     return (_missing(column, cells[0].shown, rows, minimum)

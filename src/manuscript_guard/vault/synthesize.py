@@ -193,8 +193,10 @@ class _Column:
     #: The rows the copy draws.
     rows: int = 0
     weights: list[float] = field(default_factory=list)
-    #: How an identifier is put within the dictionary's pattern, once found; False for none.
-    fill: object = None
+    #: The identifiers drawn so far, which a fill must not repeat.
+    used: set = field(default_factory=set)
+    #: Each row's identifier, once made.
+    made: dict = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -336,11 +338,36 @@ def identifier(pattern: str | None, row: int, rows: int) -> str:
 _SPECIAL = set("\\.^$|?*+()[]{}")
 
 
+def _alternatives(pattern: str) -> list[str]:
+    """The pattern's alternatives at its top level: `A|B(C|D)` is `A` and `B(C|D)`."""
+    parts, depth, at, escaped, inside = [], 0, 0, False, False
+    for here, char in enumerate(pattern):
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif inside:
+            inside = char != "]"
+        elif char == "[":
+            inside = True
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        elif char == "|" and depth == 0:
+            parts.append(pattern[at:here])
+            at = here + 1
+    return [*parts, pattern[at:]]
+
+
 def _literal_start(pattern: str) -> str:
-    """The characters a dictionary's pattern opens with that stand for themselves: `PT-` of
-    `PT-[0-9]{5}`. One followed by a quantifier is not taken."""
+    """The characters an alternative of a dictionary's pattern opens with that stand for
+    themselves: `PT-` of `PT-[0-9]{5}` and of `^PT-[0-9]{5}$`. One followed by a quantifier
+    is not taken."""
     out = []
     for at, char in enumerate(pattern):
+        if at == 0 and char == "^":
+            continue
         if char in _SPECIAL:
             break
         if pattern[at + 1:at + 2] in ("?", "*", "+", "{"):
@@ -349,45 +376,65 @@ def _literal_start(pattern: str) -> str:
     return "".join(out)
 
 
-def _within(column: _Column, made: str, row: int) -> str:
-    """An identifier made in the released pattern, put within the dictionary's pattern where it
-    declares one: its opening letters the pattern's own, or every letter one letter, the
-    first of these that the pattern takes for every row. Where none does, the identifier is
-    as made, and a note names the column."""
-    variable = column.variable
-    if variable is None or not variable.pattern:
-        return made
-    compiled = quality.pattern_of(variable)
-    if column.fill is None:
-        column.fill = next((fill for fill in _fills(variable.pattern)
-                            if compiled.fullmatch(fill(made))), False)  # fmt: skip
-        if column.fill is False:
-            column.notes.append(f"{column.name}: no identifier of the released pattern meets "
-                                f"the dictionary's pattern {variable.pattern}; drawn as "
-                                "released")  # fmt: skip
-    if column.fill is False:
-        return made
-    shaped = column.fill(made)
-    if compiled.fullmatch(shaped):
-        return shaped
-    if not column.notes:
-        column.notes.append(f"{column.name}: an identifier does not meet the dictionary's "
-                            f"pattern {variable.pattern}")  # fmt: skip
-    return shaped
+def _overlay(start: str, made: str) -> str | None:
+    """The identifier with `start` over its first characters, or None where that would change
+    a digit, which carries the row's number."""
+    if len(start) > len(made):
+        return None
+    for given, char in zip(start, made, strict=False):
+        if "0" <= char <= "9" and given != char:
+            return None
+    return start + made[len(start):]
 
 
 def _fills(pattern: str) -> list:
-    """The ways an identifier's letters are tried in turn: as made; the pattern's opening
-    characters over its first; every letter one letter, A to Z, in each case."""
-    start = _literal_start(pattern)
+    """The ways an identifier's letters are tried in turn: as made; each alternative's opening
+    characters over its first, where no digit changes; every letter one letter, A to Z, in each
+    case."""
     fills = [lambda made: made]
-    if start:
-        fills.append(lambda made: start + made[len(start):])
+    for alternative in _alternatives(pattern):
+        start = _literal_start(alternative)
+        if start:
+            fills.append(lambda made, start=start: _overlay(start, made))
     for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
         fills.append(lambda made, upper=letter: "".join(
             upper if "A" <= char <= "Z" else upper.lower() if "a" <= char <= "z" else char
             for char in made))  # fmt: skip
     return fills
+
+
+def within(pattern: str, made: str, used: set) -> str:
+    """An identifier made in the released pattern, put within the dictionary's `pattern`:
+    the first way of `_fills` the pattern takes and no row before has, chosen for this row.
+    Where none does, the identifier as made, which is one to a row already. Either way it is
+    added to `used`."""
+    import re
+
+    compiled = re.compile(pattern, re.ASCII)
+    for fill in _fills(pattern):
+        shaped = fill(made)
+        if shaped is not None and shaped not in used and compiled.fullmatch(shaped):
+            used.add(shaped)
+            return shaped
+    used.add(made)
+    return made
+
+
+def _within(column: _Column, made: str, row: int) -> str:
+    """An identifier put within the dictionary's pattern where it declares one, once for each
+    row, so that a row drawn again for a rule keeps it; where it cannot be, as made, and a
+    note names the column once."""
+    variable = column.variable
+    if variable is None or not variable.pattern:
+        return made
+    if row not in column.made:
+        column.made[row] = within(variable.pattern, made, column.used)
+    shaped = column.made[row]
+    if not quality.pattern_of(variable).fullmatch(shaped) and not column.notes:
+        column.notes.append(f"{column.name}: an identifier of the released pattern does not "
+                            f"meet the dictionary's pattern {variable.pattern}; drawn as "
+                            "released")  # fmt: skip
+    return shaped
 
 
 def _withheld(column: _Column, row: int, u) -> _Drawn:

@@ -3295,14 +3295,72 @@ def _coded_worlds(name: str, table: dict, rows: int):
         yield values + [""] * missing, said, set()
 
 
-def _number_worlds(name: str, table: dict, rows: int):
-    """Each table of a number column a reader could hold, its numbers all 7: every count of
-    rows missing, that are no number, and read."""
+def _spread_for(n: int, printed: dict, minimum: int, places: int, whole: bool) -> list | None:
+    """Numbers, `n` of them, that print the column's centiles and decimals as `printed` does:
+    each centile given at its place, the others different and in order between them, those
+    not given held below or above by values alike; or None where no such numbers fit. In
+    units of the last decimal place, so that nothing is lost to a float."""
+    from manuscript_guard.vault.profile import CENTILES, _centile_index, _enough
+
+    unit = 10**places
+    given = {int(centile): round(float(value) * unit)
+             for centile, value in printed.get("centiles", {}).items()}  # fmt: skip
+    if not given:
+        return [str(7)] * n if places == 0 else [format(7, f".{places}f")] * n
+    anchors: dict[int, int] = {}
+    for centile in sorted(given):
+        at = _centile_index(centile, n)
+        if anchors.get(at, given[centile]) != given[centile]:
+            return None
+        anchors[at] = given[centile]
+    low, high = min(anchors), max(anchors)
+    bottom, top = -1, n
+    for centile in CENTILES:
+        at = _centile_index(centile, n)
+        alone = _enough(at, n - at - 1, minimum)
+        if (centile in given) != alone:
+            if centile in given or low < at < high:
+                return None
+            bottom, top = (max(bottom, at), top) if at < low else (bottom, min(top, at))
+    places_ = sorted(anchors)
+    values: list[int] = [0] * n
+    for first, second in zip(places_, places_[1:], strict=False):
+        if anchors[second] - anchors[first] < second - first:
+            return None
+        for at in range(first, second + 1):
+            values[at] = anchors[first] + (at - first) if at < second else anchors[second]
+    for at in range(low):
+        values[at] = anchors[low] - (low - at)
+    for at in range(high, n):
+        values[at] = anchors[high] + (at - high)
+    for at in range(bottom + 1):
+        values[at] = values[bottom]
+    for at in range(top, n):
+        values[at] = values[top]
+    if whole and min(values) < 0:
+        return None
+    return [str(value) if places == 0 else format(value / unit, f".{places}f") for value in values]
+
+
+def _number_worlds(name: str, printed: dict, table: dict, rows: int):
+    """Each table of a number column a reader could hold: every count of rows missing, that
+    are no number, and read; the numbers read those of the table where there are as many,
+    and otherwise numbers that print its centiles and decimals alike (`_spread_for`). A mean
+    and SD a reader could match only by luck, so a world of other numbers prints one alike
+    only where the profile prints none."""
+    values = table["columns"][name]
+    read = [value for value in values if value not in ("", "n/a")]
+    places = max((len(value.split(".")[1]) for value in read if "." in value), default=0)
+    whole = table["types"][name] == "count"
     for missing in range(rows + 1):
         for unread in range(rows - missing + 1):
-            values = ["7"] * (rows - missing - unread) + ["n/a"] * unread + [""] * missing
-            yield values, {"missing": missing, "unread": unread,
-                           "n": rows - missing - unread}, set()  # fmt: skip
+            n = rows - missing - unread
+            numbers = read if n == len(read) else _spread_for(n, printed, table["minimum"],
+                                                              places, whole)  # fmt: skip
+            if numbers is None:
+                continue
+            yield (list(numbers) + ["n/a"] * unread + [""] * missing,
+                   {"missing": missing, "unread": unread, "n": n}, set())  # fmt: skip
 
 
 def _near(values: list[str]):
@@ -3365,14 +3423,14 @@ def oracle_findings(table: dict) -> list[str]:
     for name, values in table["columns"].items():
         rows, printed = _oracle_profile(name, values, table)
         if printed.get("held"):
-            worlds = (_number_worlds(name, table, rows) if name in table["types"]
+            worlds = (_number_worlds(name, printed, table, rows) if name in table["types"]
                       and name not in table["codes"] else _near(values))  # fmt: skip
             if name in table["codes"]:
                 worlds = _coded_worlds(name, table, rows)
         elif name in table["codes"]:
             worlds = _coded_worlds(name, table, rows)
         elif name in table["types"]:
-            worlds = _number_worlds(name, table, rows)
+            worlds = _number_worlds(name, printed, table, rows)
         else:
             worlds = _named_worlds(name, printed, table, rows)
         seen: dict[str, set] = {}
@@ -3412,7 +3470,7 @@ def oracle_findings(table: dict) -> list[str]:
 def test_no_count_a_profile_holds_back_is_one_value_in_every_table_it_could_be(
     tables: list[dict],
 ) -> None:
-    """For each table behind a minimum of 2, 3 and 4, of every shape the profile's review
+    """For each table behind a minimum of 2, 3, 4 and 5, of every shape the profile's review
     found a count given away in: each table a reader could hold is put through the profile,
     those whose profile is the one printed are kept, and each count not printed takes two
     values among them, as do the rows of the levels folded into "other", and of each code the
@@ -14220,6 +14278,12 @@ def _the_levels_are_said_beside_a_count_they_give(patch: pytest.MonkeyPatch) -> 
         levels if isinstance(shown, int) and not coded else None))  # fmt: skip
 
 
+def _a_mean_is_printed_beside_a_held_n(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.vault import profile
+
+    patch.setattr(profile, "_stats_printed", lambda n_shown: True)
+
+
 def _a_count_held_beside_is_read_as_any(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.vault import disclosure
 
@@ -14265,6 +14329,10 @@ BROKEN = {
     ),
     "how many levels are folded is said beside a printed count they give": (
         _the_levels_are_said_beside_a_count_they_give,
+        test_no_count_a_profile_holds_back_is_one_value_in_every_table_it_could_be,
+    ),
+    "the mean printed where n is held": (
+        _a_mean_is_printed_beside_a_held_n,
         test_no_count_a_profile_holds_back_is_one_value_in_every_table_it_could_be,
     ),
     "a count held beside is read as any from nought": (

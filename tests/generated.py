@@ -4948,7 +4948,9 @@ def small_profile_tables(draw: st.DrawFn) -> dict[str, Any]:
 #: m - 1 rows ("c = k(m-1)"); a level of m rows held beside one of one row, below a larger
 #: ("held beside"); the same beside a missing row too ("two ones beside"); two levels alike
 #: beside m - 1 rows of a third ("tie"); dictionary codes of which two hold m - 1 rows each
-#: ("coded"); and numbers with one row missing and one that is no number ("number").
+#: ("coded"); whole numbers, each different, with one row missing and one that is no number
+#: ("number"); and numbers to a decimal place, each different, two of them missing
+#: ("decimals").
 ORACLE_SHAPES = {
     "two ones": lambda m, rows: ["r"] + [""] + ["L"] * (rows - 2),
     "folded pin": lambda m, rows: [f"r{at}" for at in range(m - 1)] + ["L"] * (rows - m + 1),
@@ -4958,7 +4960,8 @@ ORACLE_SHAPES = {
     "two ones beside": lambda m, rows: ["A"] * (rows - m - 2) + ["B"] * m + ["r", ""],
     "tie": lambda m, rows: ["A"] * ((rows - m + 1) // 2) * 2 + ["r"] * (m - 1),
     "coded": lambda m, rows: ["c0"] * (rows - 2 * m + 2) + ["c1"] * (m - 1) + ["c2"] * (m - 1),
-    "number": lambda m, rows: ["7"] * (rows - 2) + ["n/a", ""],
+    "number": lambda m, rows: [str(10 * at) for at in range(1, rows - 1)] + ["n/a", ""],
+    "decimals": lambda m, rows: [f"{at * 2 + 0.5:.1f}" for at in range(rows - 2)] + ["", ""],
 }
 #: The codes the dictionary lists for the coded shape.
 ORACLE_CODES = ("c0", "c1", "c2")
@@ -4974,7 +4977,7 @@ def _drawn_levels(draw: st.DrawFn, m: int, rows: int) -> list[str]:
     """Levels drawn: up to three of m rows or more, up to four of fewer, some missing, and the
     rest in one more level, or missing where too few for one."""
     named = draw(st.lists(st.integers(m, 2 * m + 3), max_size=3))
-    folded = draw(st.lists(st.integers(1, max(m - 1, 1)), max_size=4)) if m > 1 else []
+    folded = draw(st.lists(st.integers(1, max(m - 1, 1)), max_size=5)) if m > 1 else []
     missing = draw(st.integers(0, m + 1))
     parts = [("N", count) for count in named] + [("f", count) for count in folded]
     while sum(count for _kind, count in parts) + missing > rows:
@@ -4993,15 +4996,18 @@ def _drawn_levels(draw: st.DrawFn, m: int, rows: int) -> list[str]:
 
 @st.composite
 def oracle_tables(draw: st.DrawFn) -> list[dict[str, Any]]:
-    """A table behind each minimum of 2, 3 and 4, small enough that every table a reader of
+    """A table behind each minimum of 2, 3, 4 and 5, small enough that every table a reader of
     its profile could hold can be listed, each holding every shape of `ORACLE_SHAPES` and a
-    column of levels drawn. Its rows are drawn and made even beside the tie's m - 1."""
+    column of levels drawn. Its rows are drawn and made even beside the tie's m - 1: from the
+    fewest the tie takes, 5m - 1, to 20, or 24 behind 5 (its fewest), which keeps a run
+    of ten examples near two minutes."""
     tables = []
-    for m in (2, 3, 4):
+    for m in (2, 3, 4, 5):
         low = 5 * m - 1
-        rows = draw(st.integers(low, max(low, 20 - (m - 2) * 2)))
+        most = max(low, 20)
+        rows = draw(st.integers(low, most))
         if (rows - m + 1) % 2:
-            rows += 1 if rows < 20 else -1
+            rows += 1 if rows < most else -1
         rng = draw(st.randoms(use_true_random=False))
         columns = {}
         for shape, make in ORACLE_SHAPES.items():
@@ -5011,7 +5017,8 @@ def oracle_tables(draw: st.DrawFn) -> list[dict[str, Any]]:
             columns[shape] = values
         columns["drawn"] = _drawn_levels(draw, m, rows)
         tables.append({"minimum": m, "columns": columns,
-                       "types": {"coded": "categorical", "number": "continuous"},
+                       "types": {"coded": "categorical", "number": "count",
+                                 "decimals": "continuous"},
                        "codes": {"coded": list(ORACLE_CODES)}})  # fmt: skip
     return tables
 

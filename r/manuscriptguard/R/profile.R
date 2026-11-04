@@ -329,15 +329,13 @@ mg_profile_month <- function(iso) {
 
 mg_profile_month_shown <- function(month) sprintf("%04d-%02d", month %/% 12L, month %% 12L + 1L)
 
-# What the rest of a column's profile says of its rows read, as the Python `_n_bounds`.
+# What the rest of a column's profile says of its rows read, where they are not printed, as
+# the Python `_n_bounds`: decimals and centiles; a mean is not printed beside rows held back.
 mg_profile_n_bounds <- function(out, minimum, number) {
   least <- 0
   most <- Inf
   if (number) {
-    for (said in list(list(!is.null(out$mean), max(minimum, mg_profile_fewest_for_mean)),
-                      list(!is.null(out$decimals), minimum))) {
-      if (said[[1]]) least <- max(least, said[[2]]) else most <- min(most, said[[2]] - 1)
-    }
+    if (!is.null(out$decimals)) least <- minimum else most <- minimum - 1
   }
   for (centile in names(out$centiles)) {
     least <- max(least, mg_profile_fewest_rows(as.integer(centile), minimum))
@@ -379,6 +377,12 @@ mg_profile_distribution <- function(column, rows, minimum) {
                 mg_profile_cell(counts[3], mg_profile_shown(counts[3], minimum),
                                 bounds[1], bounds[2]))
   cells <- mg_profile_beside(cells, minimum)
+  # A mean and SD only beside the rows read printed, as the Python `_stats_printed`: a total
+  # over a held n would give it back.
+  if (!is.numeric(cells[[3]]$shown)) {
+    out$mean <- NULL
+    out$sd <- NULL
+  }
   if (mg_profile_unsafe(cells, rows, minimum)) return(mg_profile_held_view())
   c(mg_profile_missing(column$missing, cells[[1]]$shown, rows, minimum),
     list(unread = mg_profile_json_count(cells[[2]]$shown),

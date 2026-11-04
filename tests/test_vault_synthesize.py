@@ -381,3 +381,36 @@ def test_a_coded_column_held_back_is_drawn_from_its_codes(released: Path) -> Non
     edit_profile(released, hold)
     rows = rows_of(synthesize(released, "cohort.csv").path)
     assert {row["sex"] for row in rows} <= {"1", "2"} and len({row["sex"] for row in rows}) == 2
+
+
+# ------------------------------------------- fix-only round: patterns, row by row
+
+
+def test_a_pattern_anchored_at_both_ends_is_met() -> None:
+    from manuscript_guard.vault.synthesize import within
+
+    assert within("^PT-[0-9]{5}$", "XX-90001", set()) == "PT-90001"
+
+
+def test_the_fill_is_chosen_for_each_row() -> None:
+    """Rows past 9999 of `AA-99999` lose the spare 9: a pattern that takes `XX-0...` and
+    `PT-1...` is met by each row in its own way."""
+    from manuscript_guard.vault.synthesize import within
+
+    pattern = "XX-0[0-9]{4}|PT-1[0-9]{4}"
+    assert within(pattern, "XX-00001", set()) == "XX-00001"
+    assert within(pattern, "XX-10000", set()) == "PT-10000"
+
+
+def test_an_identifier_put_within_the_pattern_stays_one_to_a_row() -> None:
+    """`PT-12[0-9]{3}` opens over two of the digits, which carry the row's number: putting
+    it over them would make rows that differ only there one identifier, so it is not put.
+    And a fill a row before took is not taken again."""
+    from manuscript_guard.vault.synthesize import within
+
+    used: set = set()
+    made = [within("PT-12[0-9]{3}", one, used) for one in ("XX-90001", "XX-91001", "XX-92001")]
+    assert made == ["XX-90001", "XX-91001", "XX-92001"]
+    taken = {"PT-90001"}
+    assert within("PT-[0-9]{5}|PU-[0-9]{5}", "XX-90001", taken) == "PU-90001"
+    assert within("PT-[0-9]{5}", "XX-90001", {"PT-90001"}) == "XX-90001"

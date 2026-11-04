@@ -56,8 +56,6 @@
       "missing": "<5",
       "unread": "<5",
       "n": null,
-      "mean": 54.3457,
-      "sd": 23.8187,
       "decimals": 0,
       "centiles": {
         "10": 25,

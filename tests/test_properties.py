@@ -14306,8 +14306,12 @@ def _a_help_is_read_in_the_text(patch: pytest.MonkeyPatch) -> None:
 def _a_continued_line_is_read_as_bash_alone_reads_it(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import hooks
 
-    patch.setattr(hooks, "_CHAIN", re.compile("(?!)"))
+    patch.setattr(hooks, "_PLAIN", re.compile(r"(?s).*"))
     patch.setattr(hooks, "_READ_AS", (True,))
+
+
+def _only_the_joins_are_looked_for(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr("manuscript_guard.hooks._PLAIN", re.compile(r"[^;&|\r\n]*"))
 
 
 def _the_tool_need_not_stand_first(patch: pytest.MonkeyPatch) -> None:
@@ -14483,6 +14487,10 @@ BROKEN = {
     ),
     "a line continued past a help is read as bash alone reads it": (
         _a_continued_line_is_read_as_bash_alone_reads_it,
+        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
+    ),
+    "a help beside what PowerShell evaluates in an argument is let through": (
+        _only_the_joins_are_looked_for,
         test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
     ),
     "a help given to a shell that runs the tool from a quote is the tool's": (

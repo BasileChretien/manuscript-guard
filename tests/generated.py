@@ -4838,12 +4838,14 @@ HELP_ONLY = ("after", "among", "short", "quoted", "of the tool")
 #: a quote, with a `;` quoted after it or without (round 1 of #513).
 HELP_NOT_ONLY = ("none", "after the end of options", "as a value", "substituted",
                  "beside a submission", "among other commands", "continued", "in a shell",
-                 "in a shell, a join quoted")  # fmt: skip
+                 "in a shell, a join quoted", "a PowerShell expression")  # fmt: skip
 #: How a line is continued in one shell, and what the other then runs as a command of its own.
 _CONTINUED = (" \\\n", " `\n")
 _COPIED = ("cp build/manuscript.docx D:\\upload", "scp build/manuscript.docx host:")
 _SHELLS = ('sh -c "{}"', "bash -c '{}'", 'pwsh -Command "{}"')
 _SHELL_HELPS = ("-h", "--help", '" -h "')
+_EXPRESSIONS = ("$ExecutionContext.InvokeCommand.InvokeScript('Copy-Item build/manuscript.docx x')",
+                "@{a=Copy-Item build/manuscript.docx x}", "(Copy-Item build/manuscript.docx x)")
 
 
 def _guarded(draw: st.DrawFn, kind: str) -> str:
@@ -4885,6 +4887,8 @@ def _help_line(draw: st.DrawFn, kind: str) -> str:
     helped = _guarded(draw, draw(st.sampled_from(("after", "quoted"))))
     if kind == "continued":
         return helped + draw(st.sampled_from(_CONTINUED)) + draw(st.sampled_from(_COPIED))
+    if kind == "a PowerShell expression":
+        return helped + " " + draw(st.sampled_from(_EXPRESSIONS))
     if kind.startswith("in a shell"):
         tool = draw(st.sampled_from(_GUARDED_TOOLS[:3]))
         ask = draw(st.sampled_from(_GUARDED_ASKS))

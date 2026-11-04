@@ -806,6 +806,9 @@ NOT_ONLY_ITS_HELP = [
 CONTINUED_PAST_A_HELP = [
     ("PowerShell", "manuscript-guard check --help \\\ncp build/manuscript.docx D:\\upload"),
     ("Bash", "manuscript-guard -h `\nscp build/manuscript.docx host:;`"),
+    ("PowerShell", "manuscript-guard submit --help $ExecutionContext.InvokeCommand.InvokeScript("
+                   "'Copy-Item build/manuscript.docx D:/upload')"),
+    ("PowerShell", "manuscript-guard submit --help @{a=Copy-Item build/manuscript.docx D:/upload}"),
 ]
 
 

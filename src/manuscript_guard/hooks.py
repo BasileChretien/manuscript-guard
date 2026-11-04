@@ -1300,9 +1300,9 @@ _INVOCATION_END = re.compile(r"[;&|\n]|" + _TOOL + r"[A-Za-z]", re.IGNORECASE)
 #: before a `--`, after which every word is an argument.
 _HELP_WORDS = ("-h", "--help")
 _END_OF_OPTIONS = "--"
-#: What joins one command to another, or continues a line, in some shell: a command that holds
-#: one anywhere, in quotes too, is not let through for its help.
-_CHAIN = re.compile(r"[;&|\r\n]")
+#: The only characters a help needs: any other, quoted too, may join commands, continue a line
+#: or be evaluated in an argument, as PowerShell does `$`, `@` and `(` (round 2 of #513).
+_PLAIN = re.compile(r"[A-Za-z0-9 \t\-_./\\:=~'\"]*")
 #: The shells' readings a help has to be one in: as a POSIX shell reads it, and as Windows does.
 _READ_AS = (True, False)
 
@@ -1327,7 +1327,7 @@ def _only_help(command: str) -> bool:
     `;`, `&`, `|` or line end anywhere in it. Reading a help out of a longer line let through
     a copy that a line continued in one shell and not the other ran as its own command, and a
     submission in a quote opened before the tool's name (round 1 of #513)."""
-    if _CHAIN.search(command):
+    if not _PLAIN.fullmatch(command):
         return False
     for posix in _READ_AS:
         invocations, clean = _command_words(command, posix=posix)

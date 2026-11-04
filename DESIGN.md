@@ -7605,7 +7605,9 @@ a POSIX shell's rules and by Windows', with no `;`, `&`, `|` or line end anywher
 quotes too, and the help a word of its own before any `--`. Every other command is read as
 before. A first version read a help out of a longer line, invocation by invocation, and let
 through a copy that a line continued in one shell and not the other runs as a command of its
-own, and a submission quoted for `sh -c` before the tool's name (round 1 of #513).
+own, and a submission quoted for `sh -c` before the tool's name (round 1 of #513). Its only
+characters are ASCII letters and digits, spaces, tabs, plain quotes and `-_./\:=~`, since
+PowerShell evaluates `$`, `@`, `(` and the rest inside an argument (round 2).
 
 It is registered for the three tools through which Claude Code runs a shell command: `Bash`,
 `PowerShell` and `Monitor`. Each sends the command in `tool_input.command`, and the guard

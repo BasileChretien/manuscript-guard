@@ -9509,11 +9509,17 @@ def test_word_s_own_split_and_the_reworded_paragraph_after_it_are_told_apart(
     assert main(["import", str(returned), str(project), "--apply"]) == 1
     assert source.read_text(encoding="utf-8") == before
     printed = capsys.readouterr().out
-    split_said = _refusal_of(printed, "Hepatic injury is the single event term")
-    assert "split in two in Word" in split_said, split_said
-    after = _refusal_of(printed, "The reporting odds ratio was calculated")
-    assert "after a new paragraph, 'Real work would need a case definition" in after, after
-    assert "own edit in the .md" in after, after
+    # Each refusal is found by its own reason, not by what the dry run shows of its paragraph,
+    # and there are exactly two: one with the split's message (in which "split in two in
+    # Word" alone would also match the neighbour's "another paragraph split in two in Word"),
+    # one with the neighbour's, naming the new paragraph (review of #518).
+    refused = [block for block in printed.split("\n\n") if "NOT merged into" in block]
+    assert len(refused) == 2, printed
+    split_said = [b for b in refused if "split in two in Word, new text written next to it" in b]
+    after = [b for b in refused if "after a new paragraph, 'Real work would need a case" in b]
+    assert len(split_said) == 1 and len(after) == 1, printed
+    assert "after a new paragraph" not in split_said[0], split_said[0]
+    assert "own edit in the .md" in after[0], after[0]
 
 
 @needs_pandoc

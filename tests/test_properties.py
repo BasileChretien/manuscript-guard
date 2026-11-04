@@ -61,6 +61,7 @@ from generated import (
     LOWERED,
     NOTATED,
     PLACEHOLDERS,
+    PREVIEWED,
     PROOF_ABBREVIATED,
     PROOF_CORRECTIONS,
     PROOF_EDIT,
@@ -150,6 +151,7 @@ from generated import (
     plan_pairs,
     planned_plans,
     post_links,
+    previewed_edits,
     printings,
     profile_tables,
     proofs,
@@ -8834,6 +8836,33 @@ def test_every_word_planted_as_a_claim_is_read_as_one_and_nothing_else_is() -> N
         assert sentence.words == (), (word, sentence)
 
 
+@holds(30, previewed_edits())
+def test_import_shows_each_change_whole_and_never_cuts_inside_a_citation(
+    drawn: tuple[dict[str, str], list[tuple[str, str]]],
+) -> None:
+    """What the dry run shows of an edit is each changed stretch, the words removed and the
+    words added, with a few words either side; it is cut only between words, and a citation
+    with spaces in it is one word. So each stretch shown, its marks of words left out
+    aside, is a stretch of the paragraph as it was or as it is, holding what was removed or
+    added there, and every bracket and parenthesis in it is closed."""
+    given_, expected = drawn
+    found = answer(READINGS["preview"](), given_)
+    assert "raised" not in found, found
+    shown, more = found["answer"]["shown"], found["answer"]["more"]
+    assert more == 0 and len(shown) == len(PREVIEWED), shown
+    was, now = (" ".join(given_[side].split()) for side in ("was", "now"))
+    for (removed, added), (old, new) in zip(shown, expected, strict=True):
+        for line, text, word in ((removed, was, old), (added, now, new)):
+            assert line.startswith("... ") and line.endswith(" ..."), line
+            inner = line.removeprefix("... ").removesuffix(" ...")
+            assert inner in text, (inner, text)
+            assert not word or f" {word} " in f" {inner} ", (word, line)
+            assert inner.count("[") == inner.count("]"), line
+            assert inner.count("(") == inner.count(")"), line
+            # The words beside it: a citation whole on either side.
+            assert inner[0] in "[(" and inner[-1] in "])", line
+
+
 @holds(30, claim_edits())
 def test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands(
     drawn: tuple[str, str, list[tuple[str, int]]],
@@ -14353,6 +14382,18 @@ def _a_count_held_beside_is_read_as_any(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(disclosure, "beside_bounds", lambda cells, chosen, minimum: (0, math.inf))
 
 
+def _a_citation_is_cut_at_its_spaces(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import preview
+
+    patch.setattr(preview, "_WORD", re.compile(r"\S+"))
+
+
+def _a_change_is_shown_alone(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import preview
+
+    patch.setattr(preview, "CONTEXT", 0)
+
+
 def _a_synthetic_copy_is_drawn_unseeded(patch: pytest.MonkeyPatch) -> None:
     import random
     import types
@@ -14425,6 +14466,14 @@ BROKEN = {
     "a path a command quotes is split at its spaces": (
         _a_quoted_path_is_split_at_its_spaces,
         test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_beside_it,
+    ),
+    "import cuts a citation it shows at its spaces": (
+        _a_citation_is_cut_at_its_spaces,
+        test_import_shows_each_change_whole_and_never_cuts_inside_a_citation,
+    ),
+    "import shows a change without the words beside it": (
+        _a_change_is_shown_alone,
+        test_import_shows_each_change_whole_and_never_cuts_inside_a_citation,
     ),
     "a facet of a post is placed in characters, not bytes": (
         _a_facet_is_placed_in_characters,

@@ -126,9 +126,10 @@ figure or equation that was moved or could not be found, and any paragraph witho
 identifier that came back different or in a different order, makes the command exit 1,
 with or without `--apply`; the safe changes are still applied.
 
-A `would merge` line shows the Markdown that will be written, bindings included; a `NOT
-merged` line shows what came back from Word. The stamp check refuses a document built from
-a different version of the source; see step 6.
+Under `would merge`, each change is shown in the Markdown, bindings included, with a few
+words either side: `-` what the source has there, `+` what will be written. Under `NOT
+merged`, `-` is the paragraph as sent and `+` as Word returned it, where they differ. The
+stamp check refuses a document built from a different version of the source; see step 6.
 
 For the paragraphs nobody compared, look yourself. Converting both documents to text shows
 every difference, compared or not:

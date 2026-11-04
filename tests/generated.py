@@ -7144,6 +7144,57 @@ def edits(draw: st.DrawFn) -> tuple[str, str]:
     return before, "\n\n".join(paragraphs)
 
 
+#: The kinds of edit `previewed_edits` makes, one of each in every paragraph.
+PREVIEWED = ("replaced", "inserted", "deleted")
+
+
+@st.composite
+def previewed_edits(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[str, str]]]:
+    """A paragraph as the source has it and as an edit left it, and the word each change
+    removed and added ("" for none), in order. Every paragraph has an edit of each kind of
+    `PREVIEWED`, in an order drawn each time, each among words that hold spaces: citations
+    of several works, in brackets as the source writes them or in parentheses as Word prints
+    them, each of more space-separated pieces than `preview.CONTEXT`, so that wherever the
+    words beside a change are cut by spaces, it is inside one. Enough of them stand between
+    two changes that each is shown on its own; the words between two of them are drawn into
+    lines as an author wraps them."""
+    from manuscript_guard.preview import CONTEXT
+
+    cited = iter(range(1, 10_000, 10))
+
+    def held() -> str:
+        # Each citation its own, so that the two texts line up in one way only.
+        works, start = draw(st.integers(CONTEXT + 1, CONTEXT + 3)), next(cited)
+        if draw(st.booleans()):
+            return "[" + "; ".join(f"@key{start + n}" for n in range(works)) + "]"
+        return "(" + " ".join(f"Fictional{start + n}" for n in range(works - 1)) + " 2021)"
+
+    def between() -> list[str]:
+        return [held() for _ in range(draw(st.integers(2 * CONTEXT + 1, 2 * CONTEXT + 3)))]
+
+    was = between()
+    now = list(was)
+    expected: list[tuple[str, str]] = []
+    for number, kind in enumerate(draw(st.permutations(PREVIEWED))):
+        old, new = {"replaced": (f"old{number}", f"new{number}"),
+                    "inserted": ("", f"added{number}"),
+                    "deleted": (f"removed{number}", "")}[kind]  # fmt: skip
+        was += [old] if old else []
+        now += [new] if new else []
+        expected.append((old, new))
+        tail = between()
+        was += tail
+        now += tail
+
+    def written(words: list[str]) -> str:
+        return "".join(
+            (draw(st.sampled_from((" ", " ", "\n"))) if n else "") + word
+            for n, word in enumerate(words)
+        )
+
+    return {"was": written(was), "now": written(now)}, expected
+
+
 # ------------------------------------------------------- a response letter quoting a revision
 
 #: Where the words a response letter quotes stand: in v2 only, in both versions, in v1 only,
@@ -9288,6 +9339,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "import": sessions(),
     "supplementary methods": supplements().map(lambda drawn: drawn[0]),
     "reworded": edits(),
+    "preview": previewed_edits().map(lambda drawn: drawn[0]),
     "response letter": response_letters().map(lambda drawn: drawn[0]),
     "marked up": revisions().map(lambda drawn: drawn[0]),
     "paper.yaml set": paper_files().flatmap(

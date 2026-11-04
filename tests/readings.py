@@ -1845,6 +1845,19 @@ def _reworded() -> Reading:
     return reworded
 
 
+@reading("preview")
+def _preview() -> Reading:
+    """What `import` shows of a paragraph an edit changed (`preview.changes`): each changed
+    stretch, as it was and as it is, and how many more there are."""
+    from manuscript_guard.preview import changes
+
+    def preview(given: dict[str, str]) -> dict[str, Any]:
+        shown, more = changes(given["was"], given["now"])
+        return {"shown": [list(pair) for pair in shown], "more": more}
+
+    return preview
+
+
 @reading("response letter")
 def _response_letter() -> Reading:
     from manuscript_guard.comparing.letters import held, unpaired

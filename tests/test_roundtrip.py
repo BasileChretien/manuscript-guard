@@ -186,6 +186,78 @@ def test_an_edited_number_is_refused_and_named(
     assert "'3.84' comes from results.ror.point" in out, out
 
 
+def _shown_under(out: str, heading: str) -> list[str]:
+    """The `-` and `+` lines the dry run prints under the first line opening `heading`."""
+    lines = out.splitlines()
+    at = next(n for n, line in enumerate(lines) if line.startswith(heading))
+    shown = []
+    for line in lines[at + 1 :]:
+        if not line.startswith(("    - ", "    + ")):
+            break
+        shown.append(line)
+    return shown
+
+
+@needs_pandoc
+def test_the_dry_run_shows_the_words_an_edit_changed_wherever_they_stand(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Each paragraph to be merged was printed cut to its first 150 characters, so an edit
+    past them was never seen before `--apply`, and the cut could fall inside a binding. Two
+    edits far into a long paragraph: each is shown, the words removed and the words added,
+    with a few words either side, and every binding shown is shown whole."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        {
+            "characteristics independently of the drug.": (
+                "characteristics independently of the medicine."
+            ),
+            "given to three decimal places": "reported to three decimal places",
+        },
+    )
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    shown = _shown_under(out, "would merge into manuscript/main.md")
+    assert len(shown) == 4, out
+    assert shown[0].startswith("    - ... "), out
+    assert "{{results.ror_adjusted.ci_high}}), given to three" in shown[0], out
+    assert shown[1].startswith("    + ... "), out
+    assert "{{results.ror_adjusted.ci_high}}), reported to three" in shown[1], out
+    assert shown[2].endswith(" independently of the drug."), out
+    assert shown[3].endswith(" independently of the medicine."), out
+    for line in shown:
+        assert line.count("{{") == line.count("}}"), out
+        assert len(line) < 250, out
+
+
+@needs_pandoc
+def test_the_dry_run_shows_the_number_a_refusal_is_for(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A refused paragraph was printed cut to its first 150 characters, and a number typed
+    over past them was named in the reason but never seen in its sentence. The part that
+    changed is shown, as the document was sent and as it came back."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", {"5.123)": "5.124)"}
+    )
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    shown = _shown_under(out, "NOT merged into manuscript/main.md")
+    assert len(shown) == 2, out
+    assert shown[0].startswith("    - ... ") and "5.123)," in shown[0], out
+    assert shown[1].startswith("    + ... ") and "5.124)," in shown[1], out
+    assert "Reporting of hepatic injury" not in "".join(shown), out
+
+
 def _with_refs(project: Path) -> Path:
     """The example citing its contingency table by its key, once in a paragraph and once as
     a paragraph of its own."""

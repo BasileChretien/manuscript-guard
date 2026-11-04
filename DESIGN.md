@@ -13919,6 +13919,15 @@ Added by the adversarial review, verified and **not** fixed:
   splice that item over the whole block (see "The round trip carries prose"). Comparing
   them needs an identifier per item and a merge that puts the list marker back, and neither
   exists.
+- **The dry run of `import` shows each change by its words, not by what it means.** Under
+  "would merge into" and "NOT merged into" it prints each stretch whose words differ, with
+  five words either side, at most three stretches a paragraph (`preview.py`). Words are
+  compared, so spacing alone, a line wrapped otherwise, shows nothing. A binding, a
+  bracketed citation and a parenthesis of up to 160 characters are one word and never cut;
+  a longer parenthesis, a clause rather than a citation, is cut between its words. A
+  refusal is shown against what the paragraph printed when the document was built, from the
+  build's record, and where there is none against the fresh build: in a forced import, a
+  value re-run since then shows as changed beside the co-author's edit.
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has

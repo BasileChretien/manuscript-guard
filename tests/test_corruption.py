@@ -10362,6 +10362,15 @@ def test_g7_reads_no_types_from_a_record_of_identifiers_the_entry_no_longer_has(
     assert _weak_notes(project) == []
 
 
+def test_g7_reads_the_types_of_the_pmid_pubmed_gives_a_doi(project: Path) -> None:
+    """With #493: a work cited by its DOI alone is typed from the PMID PubMed gives the
+    DOI, as G7's `publication_types` reads it."""
+    main = project / "manuscript" / "main.md"
+    _replace_once(main, _BEFORE_WHETHER, f"{_CAUSE_ON_ONE}\n\n{_BEFORE_WHETHER}")
+    _looked_up(project, pubmed_by_doi=_by_doi(pubtypes=("Case Reports", "Journal Article")))
+    assert [note.code for note in _weak_notes(project)] == ["effect-claim-weak-source"]
+
+
 def test_g7_notes_an_effect_claimed_on_a_letter_beside_a_work_never_looked_up_not_at_all(
     project: Path,
 ) -> None:

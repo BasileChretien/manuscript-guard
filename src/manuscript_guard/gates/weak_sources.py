@@ -161,7 +161,9 @@ def _typed(project: Project, citekey: str, fields: dict[str, str] | None) -> Typ
     """The PubMed publication types the lookup record of `citekey` holds, or None where they
     are not known: no record, one that cannot be read or was changed after `lookup` wrote
     it, one of identifiers the entry `fields` no longer has, no answer from PubMed, or none
-    of its types kept."""
+    of its types kept. The types are G7's (`lookups.publication_types`): the PMID's record,
+    else that of the PMID PubMed gives the entry's DOI."""
+    from manuscript_guard.gates.lookups import publication_types
     from manuscript_guard.literature.lookups import answers_digest, read_record
 
     record = read_record(project, citekey)
@@ -169,8 +171,7 @@ def _typed(project: Project, citekey: str, fields: dict[str, str] | None) -> Typ
         return None
     if not _of_the_entry(record, fields):
         return None
-    pubmed = record["sources"].get("pubmed") or {}
-    types = pubmed.get("pubtypes") if pubmed.get("status") == "found" else None
+    types = publication_types(record)
     if not types:
         return None
     return Typed(tuple(types), record["looked_up_on"])

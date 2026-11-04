@@ -1315,7 +1315,7 @@ def test_a_recursion_error_is_named_with_its_last_frames(
 
 
 def test_a_fault_while_the_outputs_are_moved_says_what_waits(
-    paper: Path, vault: Path, terminal, monkeypatch
+    paper: Path, vault: Path, terminal, monkeypatch, capsys
 ) -> None:
     from manuscript_guard.vault import run as running
 
@@ -1336,9 +1336,61 @@ def test_a_fault_while_the_outputs_are_moved_says_what_waits(
     with pytest.raises(OSError, match="the disk is full"):
         vault_cli(paper, "run")
     (run,) = [one.name for one in (vault / ".runs").iterdir()]
+    outbox = str(vault / "outbox" / run)
+    # The person is told at the terminal what waits, before the fault itself (fix round 5).
+    said = capsys.readouterr().err
+    assert outbox in said and "cannot be released" in said
     record = json.loads((vault / ".runs" / run / "run.json").read_text(encoding="utf-8"))
     assert record["finished"] is False and len(record["outbox"]) == 1
     assert (vault / "outbox" / run / record["outbox"][0]).is_file()
     summary = _summary(paper)
     assert summary["stopped"] is True and summary["outbox"] is True
     assert vault_cli(paper, "release", run, "--as", "Lovelace") == 2
+    said = capsys.readouterr().err
+    assert "nothing it wrote waits" not in said and outbox in said
+
+
+# ---------------------------------------------------------------------------- fix round 5 of #490
+
+
+def _wrapper_record(vault: Path) -> str:
+    (run,) = [one.name for one in (vault / ".runs").iterdir()]
+    return (vault / ".runs" / run / "summary" / "1.json").read_text(encoding="utf-8")
+
+
+def test_a_failure_deep_in_a_library_keeps_the_script_s_frame(
+    paper: Path, vault: Path, terminal
+) -> None:
+    """The frames are held to the copy before the last 20 are taken: a fault raised some
+    thirty frames down in the standard library keeps the line of the script that called it
+    (fix round 5 of #490)."""
+    extra = ("import copy, threading\nx = threading.Lock()\nfor _ in range(15):\n"
+             "    x = [x]\ncopy.deepcopy(x)")
+    answers, _asked = terminal
+    _script(paper, extra)
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    _text, failed = _failed(paper)
+    line = SCRIPT.format(extra=extra).splitlines().index("copy.deepcopy(x)") + 1
+    assert failed["frames"] == [{"path": "analysis/01_model.py", "line": line,
+                                 "function": "<module>"}]  # fmt: skip
+
+
+def test_a_name_too_long_to_write_is_left_out_not_cut(
+    paper: Path, vault: Path, terminal
+) -> None:
+    name = "f" + "x" * 300
+    answers, _asked = terminal
+    _script(paper, f"def {name}():\n    raise ValueError()\n{name}()")
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    written = json.loads(_wrapper_record(vault))
+    assert [frame[2] for frame in written["frames"]] == ["<module>"]
+
+
+def test_the_wrapper_writes_its_record_as_utf8(paper: Path, vault: Path, terminal) -> None:
+    answers, _asked = terminal
+    _script(paper, "def mesuré():\n    raise ValueError()\nmesuré()")
+    answers.append("y")
+    assert vault_cli(paper, "run") == 1
+    assert "mesuré" in _wrapper_record(vault)

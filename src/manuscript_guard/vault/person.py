@@ -98,7 +98,14 @@ def cmd_run(args: argparse.Namespace) -> int:
             return _refused("run", "the project changed while you read it ("
                             f"{', '.join(moved)}); run `vault run` again")  # fmt: skip
         started = True
-        done = running.run(project, staged)
+        try:
+            done = running.run(project, staged)
+        except BaseException:
+            outbox = folder / running.OUTBOX / staged.run
+            if outbox.is_dir() and any(outbox.iterdir()):
+                print(f"{_PREFIX} run {staged.run}: stopped; what it moved before then waits in "
+                      f"{outbox}, and the run cannot be released", file=sys.stderr)  # fmt: skip
+            raise
     finally:
         if not started:
             running.discard(staged)

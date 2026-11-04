@@ -57,6 +57,6 @@
         }
       ]
     },
-    "outbox": { "type": "boolean", "description": "Whether what the run wrote waits in the vault's outbox for a person's release." }
+    "outbox": { "type": "boolean", "description": "Whether files the run wrote wait in the vault's outbox. Only a run that finished can be released; a stopped one's files wait there unreleased." }
   }
 }

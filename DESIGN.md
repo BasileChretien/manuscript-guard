@@ -12579,7 +12579,8 @@ is no change (fix round 2). `.lua` is a script's suffix, and `_metadata.yml` or
 a Ctrl-C or a refusal removes the copy (`run.discard`, in a `finally` until the run starts),
 and `prepare` removes it on anything that ends it, a Ctrl-C during the copy included; once the
 run has started, anything that ends it removes the copy and leaves `log.txt` and a `run.json`
-saying it did not finish (round 2 and the fix rounds of #490).
+saying it did not finish, with what was moved to the outbox before then (round 2 and the fix
+rounds of #490).
 
 The run's id is its UTC time, `YYYYMMDD-HHMMSS`, with `-2` and on where taken, and runs are
 ordered by the time and then the number (`run.run_key`); no other word names a run's folder. The project is
@@ -12599,7 +12600,9 @@ compiled files and a link, a junction or another reparse point the run made, is 
 `<vault>/outbox/<run>/` at its path, and the walk goes through no link (round 1 of #490);
 where one failed, nothing is, and the run is not one to release. A run stopped before its end
 writes a summary saying `stopped`, the script it stopped in with no exit code, so that the
-agent never reads the run before's as this one's. The copy is then removed, and
+agent never reads the run before's as this one's; where it stopped while the outputs were
+moved, what was moved before then waits in the outbox, `run.json` names it, the terminal is
+told, and the release refuses the run as one that did not finish (fix rounds 4 and 5). The copy is then removed, and
 `<vault>/.runs/<run>/run.json` keeps the run's id, time, commit, the project's scripts by
 digest, the scripts run and what went to the outbox.
 
@@ -12631,8 +12634,9 @@ are.
 ### Releasing what a run wrote: `vault release`
 
 `vault release RUN --as PERSON` (`vault/release.py`) refuses where standard input is not a
-terminal, before anything is read, and refuses a run already released, one not finished, and
-an outbox holding a link. Who releases is the data custodian where `authors.yaml` names one
+terminal, before anything is read, and refuses a run already released, one not finished
+(saying, where files were moved before it stopped, that they wait in its outbox unreleased),
+and an outbox holding a link. Who releases is the data custodian where `authors.yaml` names one
 (`sign_offs.holder`, `is_holder`), else any author (`approvals.find_author`) (decision 10a).
 The outbox is sorted: each `results/*.json` is a results file (its `.sha256` is written again
 beside it); a path `harvest.yaml` names as an entry's output is a harvested output; the plan
@@ -20181,9 +20185,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
     environment in the project holds links to the system's Python. A junction is not copied.
   - *A second Ctrl-C during the clean-up of a stopped run* can leave the copy in
     `<vault>/.runs/<run>/copy/`, and the summary unwritten; the person removes the copy.
-  - *The summary file is read up to 64 KiB.* The wrapper writes the last 20 frames, each
-    field cut short, so a real one fits; anything larger, too deep or not JSON says nothing
-    but the path and the exit code, as a script that raised nothing.
+  - *The summary file is read up to 64 KiB.* The wrapper writes the last 20 frames in the
+    copy, as UTF-8, and leaves out a value too long to write whole, so a real one fits, for
+    paths of an ordinary length; anything larger, too deep or not JSON says nothing but the
+    path and the exit code, as a script that raised nothing.
   - *What a run records of git.* The copy leaves `.git` out, as `verify`'s does, so a
     fragment written in a run records no `vcs`; the release records the project's commit at
     the run, which says nothing of uncommitted changes.

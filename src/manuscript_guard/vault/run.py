@@ -91,17 +91,21 @@ except BaseException as exc:
         os.path.realpath(where)).startswith(inside)
     named = held and (module is builtins or outside)
     key = exc.args[0] if (isinstance(exc, KeyError) and len(exc.args) == 1
-                          and isinstance(exc.args[0], str)) else None
-    # The last 20 frames, as many as the summary keeps, each field cut short, so that what
-    # is written fits what the tool reads: a RecursionError has some thousand frames.
-    record = {"class": kind.__name__[:256] if named else None,
-              "module": kind.__module__[:256] if named else None,
-              "frames": [[f.filename[:4096], f.lineno, f.name[:256]]
-                         for f in traceback.extract_tb(exc.__traceback__)[-20:]],
-              "key": key[:1024] if key else key}
+                          and isinstance(exc.args[0], str) and len(exc.args[0]) <= 1024) else None
+    # The frames in the copy, then the last 20 of them, as many as the summary keeps, and no
+    # value too long to write whole, so that what is written fits what the tool reads, for
+    # paths of an ordinary length: a RecursionError has some thousand frames.
+    frames = [[f.filename, f.lineno, f.name]
+              for f in traceback.extract_tb(exc.__traceback__)
+              if len(f.filename) <= 4096 and len(f.name) <= 256 and os.path.isabs(f.filename)
+              and os.path.normcase(os.path.realpath(f.filename)).startswith(inside)][-20:]
+    named = named and len(kind.__name__) <= 256 and len(kind.__module__) <= 256
+    record = {"class": kind.__name__ if named else None,
+              "module": kind.__module__ if named else None,
+              "frames": frames, "key": key}
     try:
         with open(summary, "w", encoding="utf-8") as out:
-            json.dump(record, out)
+            json.dump(record, out, ensure_ascii=False)
     except Exception:
         pass
     traceback.print_exc()

@@ -78,6 +78,12 @@ expected:
       where a paper has no Results heading, a key bound under a heading that names no part
       of it is read as reported, `Walk.reported_without_results`, which the base does not
       have; the reading reports those keys, and its inputs now hold papers with no Results
+  - reading: word blocks
+    why: >-
+      a figure whose paragraph carries an identifier Word left there, from a paragraph cut
+      above it with Track Changes off, is read as the figure, by its picture, with the
+      identifier before it as a block of no text; it was read as an empty paragraph
+      carrying that identifier, and import reported the figure missing
   - reading: pointers
     why: >-
       G2 holds a caption beside a table or a figure to that display, so a typed caption or a

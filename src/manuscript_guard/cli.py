@@ -1358,7 +1358,16 @@ def cmd_import(args: argparse.Namespace) -> int:
         _answer_suggestions(project, decided, {}, applying=args.apply, named=now_named)
         return 0
 
-    _report_plan(project, known, plan, applying=args.apply, followed=set(followed.values()))
+    # Identifiers Word left on a figure or an equation: see `docxtext.Block.stranded`.
+    stranded = {n: b.stranded for b in renamed if b.stranded for n in b.names}
+    _report_plan(
+        project,
+        known,
+        plan,
+        applying=args.apply,
+        followed=set(followed.values()),
+        stranded=stranded,
+    )
     if not records_moves(edited):
         print(
             f"\n{edited.name} was built before manuscript-guard let Word record moves: its "
@@ -1613,13 +1622,28 @@ def _file_comments(
     return ok
 
 
-def _report_plan(project, known: dict, plan, *, applying: bool, followed=frozenset()) -> None:
+def _report_plan(
+    project, known: dict, plan, *, applying: bool, followed=frozenset(), stranded=None
+) -> None:
     """Say what the returned document changed and what will, or will not, be applied.
 
     `known` holds the paragraphs compared. A join can take in one that was not, which is
     named by its identifier: what the source now has under it is another paragraph.
     `followed` names those compared where they stand now, their identifier having shifted.
+    `stranded` names the kind of block, figure or equation, an identifier came back on.
     """
+    stranded = stranded or {}
+
+    def left_on(name: str) -> None:
+        # Said where the paragraph is reported moved or deleted. Read as that paragraph, the
+        # figure was said to be deleted, with advice to take its placeholder out of the .md.
+        if name in stranded:
+            kind = stranded[name]
+            print(
+                f"    Its identifier came back on the {kind} that stood after it, which has "
+                f"no text: cut or deleted with Track Changes off, a paragraph leaves its "
+                f"identifier on the paragraph after it. The {kind} is not read as a paragraph."
+            )
     from manuscript_guard.roundtrip import AS_SENT
 
     def where(name: str) -> str:
@@ -1783,6 +1807,7 @@ def _report_plan(project, known: dict, plan, *, applying: bool, followed=frozens
             "rewording there. Do not delete it and retype Word's copy: its numbers and "
             "citations would come back as typed text, not as bindings."
         )
+        left_on(name)
 
     for name in plan.gone:
         print(f"\ndeleted in Word, left in place here: {known[name][1].strip()[:110]}")
@@ -1791,6 +1816,7 @@ def _report_plan(project, known: dict, plan, *, applying: bool, followed=frozens
             "move it in the .md: retyped from Word's copy, its numbers and citations would "
             "come back as typed text."
         )
+        left_on(name)
 
 
 def _seeded(

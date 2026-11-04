@@ -225,7 +225,7 @@ names no agent tool. Like every file of the scaffold it is never written over an
 one; where a repository already has an `AGENTS.md` that does not mention the toolkit, `init`
 prints the rules to add, because an agent there would otherwise read rules that say nothing
 of `results/`. It is advice to the reader and enforces nothing: the gates do that. Run where a
-`paper.yaml` already was, `init` says what it added, or that it added nothing, and points to
+`paper.yaml` already was, `init` names each file and folder it made, if any, and points to
 `manuscript-guard next`, which reads where the project stands; it used to end, there too, on
 the advice for a project's first day: describe the authors, then write a first analysis.
 

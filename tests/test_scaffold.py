@@ -273,6 +273,23 @@ def test_init_that_adds_nothing_says_so(project: Path, capsys) -> None:
     assert "`manuscript-guard next`" in said
 
 
+def test_init_names_the_folders_it_made_in_a_project_under_way(tmp_path: Path, capsys) -> None:
+    """A clone lacks `build/`, which git ignores: init made it and said it added nothing."""
+    from manuscript_guard.cli import main
+
+    root = tmp_path / "paper"
+    assert main(["init", str(root), "--title", "T"]) == 0
+    (root / "build").rmdir()
+    (root / "results" / ".gitkeep").unlink()
+    capsys.readouterr()
+    assert main(["init", str(root)]) == 0
+    said = capsys.readouterr().out
+    assert (root / "build").is_dir() and (root / "results" / ".gitkeep").is_file()
+    assert "added nothing" not in said
+    assert f"made {root / 'build'}" in said
+    assert f"made {root / 'results' / '.gitkeep'}" in said
+
+
 def test_a_new_project_keeps_the_first_day_advice(tmp_path: Path, capsys) -> None:
     from manuscript_guard.cli import main
 

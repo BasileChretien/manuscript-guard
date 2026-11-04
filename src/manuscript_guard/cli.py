@@ -116,7 +116,7 @@ from manuscript_guard.policy import (
 )
 from manuscript_guard.record import FIGURE_VERDICTS
 from manuscript_guard.record import VERDICTS as RECORD_VERDICTS
-from manuscript_guard.scaffold import ENGLISHES, UNTITLED, init_project, rules_to_add
+from manuscript_guard.scaffold import _DIRS, ENGLISHES, UNTITLED, init_project, rules_to_add
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import parse, substitute
 from manuscript_guard.text.reader import LATEX, manuscript_files, manuscript_format
@@ -5975,6 +5975,9 @@ def cmd_init(args: argparse.Namespace) -> int:
     paper = (Path(args.path) / "paper.yaml").resolve()
     # A paper.yaml found is a project under way, past the advice for its first day.
     under_way = paper.is_file()
+    # init makes these too, and lists them nowhere: a clone lacks `build/`, which git ignores.
+    root = Path(args.path)
+    missing = [root / name for name in (*_DIRS, "results/.gitkeep") if not (root / name).exists()]
     try:
         if word is None:
             title = UNTITLED if args.title is None else args.title
@@ -6006,7 +6009,10 @@ def cmd_init(args: argparse.Namespace) -> int:
             + rules
         )
     if under_way:
-        added = "added only the files above" if created else "added nothing"
+        made = [path for path in missing if path.exists()]
+        for path in made:
+            print(f"made {path}")
+        added = "added only what is named above" if created or made else "added nothing"
         print(f"\nThis project was set up already (its paper.yaml was there): init {added} "
               "and left every file it found as it was. For what to do now, run "
               "`manuscript-guard next`.")  # fmt: skip

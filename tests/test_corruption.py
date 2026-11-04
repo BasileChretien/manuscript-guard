@@ -10632,7 +10632,7 @@ def test_a_search_by_doi_that_got_no_answer_is_named_in_words(project: Path) -> 
     _looked_up(project, pubmed_by_doi=_unanswered("throttled (HTTP 429)"))
     finding = {f.code: f for f in _g7(project).findings}["lookup-unresolvable"]
     assert finding.severity == "info"
-    assert "PubMed's search by DOI" in finding.message
+    assert "PubMed by the DOI" in finding.message
     assert "pubmed_by_doi" not in finding.message
 
 

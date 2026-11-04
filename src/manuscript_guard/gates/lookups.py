@@ -14,7 +14,8 @@ same in CI as on the author's machine. What it fails on:
 
 And what it warns of: a preprint published since or withdrawn, a later version of the work,
 an expression of concern, a number of the literature ledger quoted from a work PubMed types
-as a review, an editorial, a letter or a comment, a volume or first page that differs,
+only as an editorial or a comment (a review among them gives a note; a letter, nothing), a
+volume or first page that differs,
 authors of whom only some are on the work's record or the first not first, a placeholder
 for the pages, an entry changed since its lookup, and references never looked up or looked
 up too long ago. A lookup that got no answer is a note: a registry that did not answer said
@@ -235,13 +236,13 @@ def _read(project: Project, citekey: str) -> tuple[dict[str, Any] | None, Report
 _REDO = "run `manuscript-guard lookup --again` to write the record again"
 #: Answers read for a work's types and links only, never for what is known of it, by the
 #: words a message names them with.
-_SIDE_ANSWERS = {"pubmed_by_doi": "PubMed's search by DOI"}
+_SIDE_ANSWERS = {"pubmed_by_doi": "PubMed by the DOI"}  # as `lookup` names it (run.py)
 
 
 def check_lookups(project: Project, cited: list[str], literature: Any = None) -> Report:
     """Every cited reference, against its record; and, given the literature ledger, each
-    value quoted from a work PubMed types as a review, an editorial, a letter or a
-    comment."""
+    value quoted from a work PubMed types only as an editorial or a comment, or as a review
+    among those (a note); a letter is not judged."""
     from manuscript_guard.gates import searched
 
     bib = project.path("literature") / BIB_FILE

@@ -2825,6 +2825,11 @@ def main(argv: list[str] | None = None) -> int:
     the gates, the build pipeline and the Zotero client before deciding the command has
     nothing to do with a submission.
     """
+    from manuscript_guard.streams import utf8_when_piped
+
+    # An answer is JSON in ASCII and reads the same in any encoding; whatever else reaches
+    # standard output or error is read as UTF-8 as well.
+    utf8_when_piped()
     args = argv if argv is not None else sys.argv[1:]
     if not args or args[0] not in HANDLERS:
         return 0

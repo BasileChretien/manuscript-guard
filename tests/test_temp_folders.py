@@ -55,6 +55,9 @@ def test_only_a_failed_tests_folder_is_left_under_basetemp(tmp_path: Path) -> No
     )
     printed = finished.stdout + finished.stderr
     assert finished.returncode == 1, printed
-    assert sorted(path.name for path in base.iterdir()) == ["test_fails0"], printed
+    # On POSIX pytest also links `test_failscurrent` to the newest folder of that name. A link
+    # holds no files, and the one to the passing test's folder goes with the folder.
+    folders = sorted(path.name for path in base.iterdir() if not path.is_symlink())
+    assert folders == ["test_fails0"], printed
     written = base / "test_fails0" / "written"
     assert written.read_text(encoding="utf-8") == "a failing test wrote this"

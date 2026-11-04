@@ -593,17 +593,25 @@ def currency_facts(project: Project, citekey: str, fields: dict[str, str] | None
     return said
 
 
+def values_quoted_from(literature: Any) -> dict[str, list[Any]]:
+    """The values of the literature ledger and of attested.yaml, by the citekey of the work
+    each is quoted from, in the order of their keys. Read so for `number-from-secondary-
+    source` and for reference currency's K5 (`gates/currency.py`)."""
+    by_work: dict[str, list[Any]] = {}
+    for _key, value in sorted(literature.values.items()):
+        citekey = str((value.detail or {}).get("citekey") or "").strip()
+        if citekey:
+            by_work.setdefault(citekey, []).append(value)
+    return by_work
+
+
 def _secondary_sources(project: Project, literature: Any,
                        entries: dict[str, dict[str, str]]) -> Report:  # fmt: skip
     """`number-from-secondary-source`: a value of the literature ledger, or of attested.yaml,
     quoted from a work PubMed types only as an editorial or a comment (a warning) or as a
     review (a note; `secondary`), one finding per work. A work with no type known says
     nothing."""
-    by_work: dict[str, list[Any]] = {}
-    for _key, value in sorted(literature.values.items()):
-        citekey = str((value.detail or {}).get("citekey") or "").strip()
-        if citekey:
-            by_work.setdefault(citekey, []).append(value)
+    by_work = values_quoted_from(literature)
     found = []
     for citekey, values in by_work.items():
         record = _sealed(project, citekey, entries.get(citekey))

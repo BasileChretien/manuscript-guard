@@ -193,7 +193,7 @@ def _gate_run(
         ("G7", lambda: check_literature_chain(project, literature)),
         ("G7", lambda: check_prose_quotations(project)),
         ("G7", lambda: check_passages(project, chosen)),
-        ("G7", lambda: check_currency(project, chosen)),
+        ("G7", lambda: check_currency(project, chosen, literature)),
         ("G7", lambda: check_weak_sources(project)),
         ("G7", lambda: check_recycling(project, chosen)),
         ("G4", lambda: check_journal(project)),

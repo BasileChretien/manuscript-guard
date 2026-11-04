@@ -16,8 +16,8 @@
   "$defs": {
     "work": {
       "type": "string",
-      "pattern": "^(doi:10\\.\\S+|pmid:[1-9][0-9]*)$",
-      "description": "A work by its DOI (in lower case) or its PMID: doi:10.1000/xyz or pmid:12345."
+      "pattern": "^(doi:10\\.[^\\sA-Z]+|pmid:[1-9][0-9]*)$",
+      "description": "A work by its DOI, in lower case, or its PMID: doi:10.1000/xyz or pmid:12345."
     },
     "person": { "type": "string", "pattern": "\\S" },
     "entry": {
@@ -68,7 +68,11 @@
       "additionalProperties": false,
       "properties": {
         "status": { "enum": ["accepted", "refused"] },
-        "by": { "$ref": "#/$defs/person" },
+        "by": {
+          "$ref": "#/$defs/person",
+          "not": { "const": "rules" },
+          "description": "The person who answered: never `rules`, which decide and do not answer."
+        },
         "why": { "type": "string", "pattern": "\\S" },
         "answered_on": { "type": "string", "format": "date" }
       },

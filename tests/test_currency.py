@@ -33,6 +33,39 @@ def _works(*ids: str, **changed) -> dict[str, Work]:
 
 def test_one_reading_decides_nothing() -> None:
     assert decide(Work("c"), _works("x"), _two(x=SAME)[:1]) is None
+    # One reader's reading given twice is one reading (round 1 of #499).
+    first = _two(x=SAME)[0]
+    assert decide(Work("c"), _works("x"), [first, first]) is None
+    assert decide(Work("c"), _works("x"), [first, Reading(**{**first.__dict__, "number": 2})]
+                  ).action == "replace"  # fmt: skip
+
+
+def test_a_candidate_off_the_question_read_at_two_levels_leaves_a_clear_replace() -> None:
+    """Round 1 of #499: D4 compared every field of every candidate, and a candidate that is
+    not the same question for either reader, read at two levels, made a clear `replace`
+    `uncertain`. What decides each candidate is compared, and nothing else."""
+    clear = Fields(level=1, population="same", exposure="same", outcome="same",
+                   stance="supports")  # fmt: skip
+    off = Fields(level=3, population="different", exposure="same", outcome="same",
+                 stance="neither")  # fmt: skip
+    readings = [Reading("a", "ocebm-2011", "benefit", 2, {"a": clear, "b": off}),
+                Reading("b", "ocebm-2011", "benefit", 2,
+                        {"a": clear, "b": Fields(**{**off.__dict__, "level": 4})})]
+    decided = decide(Work("c"), _works("a", "b"), readings)
+    assert (decided.action, decided.candidate) == ("replace", "a")
+    # Weaker than the cited work, its search end date decides nothing either.
+    weaker = Fields(**{**clear.__dict__, "level": 3, "search_end": "2024"})
+    readings = [Reading("a", "ocebm-2011", "benefit", 2, {"a": clear, "w": weaker}),
+                Reading("b", "ocebm-2011", "benefit", 2,
+                        {"a": clear, "w": Fields(**{**weaker.__dict__, "search_end": None})})]
+    assert decide(Work("c"), _works("a", "w"), readings).candidate == "a"
+
+
+def test_a_candidate_one_reading_names_and_the_other_does_not_is_uncertain() -> None:
+    first, _second = _two(x=SAME)
+    alone = Reading("b", "ocebm-2011", "benefit", 3, {})
+    decided = decide(Work("c"), _works("x"), [first, alone])
+    assert (decided.action, decided.rules) == ("uncertain", ("D4",))
 
 
 def test_a_stronger_candidate_on_the_same_question_replaces_the_citation() -> None:
@@ -83,35 +116,86 @@ def test_two_readings_that_disagree_on_a_field_the_rules_use_are_uncertain() -> 
                     {"x": Fields(**{**SAME.__dict__, "outcome": "unclear"})})  # fmt: skip
     decided = decide(Work("c"), _works("x"), [first, other])
     assert (decided.action, decided.candidate, decided.rules) == ("uncertain", None, ("D4",))
-    assert "outcome of x" in decided.why
+    assert "what decides x" in decided.why
     # A disagreement on a candidate K1 puts out is no disagreement on what the rules use.
     assert decide(Work("c"), _works("x", retracted=True), [first, other]).action == "keep"
     assert decide(Work("c"), _works("x"), [first, second]).action == "replace"
 
 
-def test_for_a_number_a_primary_study_comes_before_a_synthesis() -> None:
+def test_a_synthesis_never_replaces_the_source_of_a_number() -> None:
     works = {"r": Work("r", published="2023", types=("Systematic Review",)),
              "t": Work("t", published="2021", types=("Randomized Controlled Trial",))}
     readings = _two(x=SAME)
     readings = [Reading(one.reader, one.hierarchy, one.scale, 3, {"r": SAME, "t": SAME})
                 for one in readings]  # fmt: skip
-    assert decide(Work("c"), works, readings).candidate == "r"  # the more recent
+    decided = decide(Work("c"), works, readings)
+    # The more recent, and K4 chose it; K5 is not recorded where no number is given.
+    assert (decided.candidate, decided.rules) == ("r", ("K1", "K2", "K3", "K4", "D1"))
     decided = decide(Work("c"), works, readings, number=True)
     assert (decided.candidate, decided.rules) == ("t", ("K1", "K2", "K3", "K5", "D1"))
+    # Basile, 2026-11-04, "primary only": a synthesis alone, however strong, is set aside.
+    alone = [Reading(one.reader, one.hierarchy, one.scale, 3, {"r": SAME}) for one in readings]
+    decided = decide(Work("c"), works, alone, number=True)
+    assert (decided.action, decided.rules) == ("keep", ("K1", "K2", "K3", "K5", "D3"))
+    assert decide(Work("c"), works, alone).rules == ("K1", "K2", "K3", "D1")
+    # A synthesis against the sentence is still added.
+    against = Fields(**{**SAME.__dict__, "stance": "contradicts"})
+    alone = [Reading(one.reader, one.hierarchy, one.scale, 3, {"r": against})
+             for one in readings]  # fmt: skip
+    decided = decide(Work("c"), works, alone, number=True)
+    assert (decided.action, decided.candidate, decided.rules) == (
+        "add", "r", ("K1", "K2", "K3", "D2"))
+
+
+def test_the_reviewers_example_a_review_does_not_replace_the_cohort_a_number_is_from() -> None:
+    """Item 6 of round 1 of #499, as Basile decided it: "The incidence was 12% [@cohort]",
+    the cohort's value in the ledger, cited at level 3, and a review at level 1 that is the
+    same question and supports the sentence: nothing replaces the cohort."""
+    from types import SimpleNamespace
+
+    from manuscript_guard.contracts.values import Value
+    from manuscript_guard.gates.currency import quotes_a_number
+
+    sentence = "The incidence was 12% [@cohort]."
+    ledger = SimpleNamespace(values={"incidence": Value(
+        key="incidence", value=12, display="12%", origin="literature",
+        detail={"citekey": "cohort"})})  # fmt: skip
+    assert quotes_a_number(sentence, "cohort", ledger)
+    assert quotes_a_number("Incidence was {{lit.incidence}} [@cohort].", "cohort", ledger)
+    # A year, another digit, another work's value: none quotes the cohort's number.
+    for other in ("In 2012 the incidence rose [@cohort].", "Of 120 cases [@cohort].",
+                  "The incidence was 12.5% [@cohort]."):
+        assert not quotes_a_number(other, "cohort", ledger), other
+    assert not quotes_a_number(sentence, "another", ledger)
+    review = Fields(level=1, population="same", exposure="same", outcome="same",
+                    stance="supports")  # fmt: skip
+    readings = [Reading(reader, "ocebm-2011", "frequency", 3, {"r": review})
+                for reader in ("a", "b")]  # fmt: skip
+    works = {"r": Work("r", published="2024", types=("Systematic Review",))}
+    decided = decide(Work("cohort", published="2019"), works, readings,
+                     number=quotes_a_number(sentence, "cohort", ledger))  # fmt: skip
+    assert (decided.action, decided.candidate) == ("keep", None)
+    assert "K5" in decided.rules
 
 
 # --------------------------------------------------------------------------- the hierarchy
 
 
-def test_the_built_in_hierarchy_has_seven_scales_of_five_levels_and_cebms_citation() -> None:
+def test_the_built_in_hierarchy_has_seven_scales_and_cebms_citation() -> None:
     found = hierarchies()
     oxford = found["ocebm-2011"]
     assert set(oxford.scales) == {"frequency", "diagnosis", "prognosis", "benefit",
                                   "harms-common", "harms-rare", "screening"}  # fmt: skip
-    assert all(sorted(levels) == [1, 2, 3, 4, 5] for levels in oxford.scales.values())
+    # The table gives how often a condition occurs and prognosis no fifth level.
+    assert {scale: sorted(levels) for scale, levels in oxford.scales.items()} == {
+        scale: [1, 2, 3, 4] if scale in ("frequency", "prognosis") else [1, 2, 3, 4, 5]
+        for scale in oxford.scales}
+    assert "no level 5" in level_problem(found, "ocebm-2011", "prognosis", [5])
+    assert "none of the above" not in BUILT_IN.read_text(encoding="utf-8")
     assert oxford.citation.startswith('OCEBM Levels of Evidence Working Group. "The Oxford')
     text = BUILT_IN.read_text(encoding="utf-8")
     assert "Introductory Document" in text and "20%" in text
+    assert "Explanation of the 2011 OCEBM Levels of Evidence" in text
     assert level_problem(found, "ocebm-2011", "benefit", [1, 5]) is None
     assert "no level 6" in level_problem(found, "ocebm-2011", "benefit", [6])
     assert "no scale" in level_problem(found, "ocebm-2011", "harms", [1])
@@ -139,7 +223,7 @@ def test_a_project_may_declare_its_own_hierarchy(project: Path) -> None:
 def test_a_works_record_is_sealed_and_its_store_kept_out_of_git(project: Path) -> None:
     loaded = load_project(project)[0]
     path = records.write_work(loaded, case.work(case.CANDIDATE, abstract="Words."))
-    assert path.name == "doi%3a10%2e5555%2fclass%2ereview%2e2023.yaml"
+    assert path.name == "doi%3a10%2e5555%2fclass%2etrial%2e2023.yaml"
     ignore = path.parent / ".gitignore"
     assert ignore.read_text(encoding="utf-8").splitlines()[-2:] == ["*", "!.gitignore"]
     assert records.read_work(loaded, case.CANDIDATE).problem is None
@@ -159,6 +243,50 @@ def test_a_reading_is_numbered_filed_once_and_sealed(project: Path) -> None:
         filed, "reading_sha256")
     with pytest.raises(FileExistsError):
         records._write_new(first, "again")
+    assert [read.problem for read in records.read_readings(loaded)] == [None, None]
+    # Round 1 of #499: neither a bad entry id nor a reading its schema refuses is filed.
+    with pytest.raises(ContractError, match="not the id of an entry"):
+        records.file_reading(loaded, {**case.reading("Ada Example"), "entry": "../x"},
+                             "2026-11-04")  # fmt: skip
+    with pytest.raises(ContractError, match="the reading is not valid"):
+        records.file_reading(loaded, {**case.reading("Ada Example"), "scale": ""},
+                             "2026-11-04")  # fmt: skip
+    assert len(list(first.parent.glob("*.yaml"))) == 2
+
+
+@pytest.mark.parametrize(
+    "copy", ["c1.Ada%20Example.2.yaml", "c1.Bob.1.yaml", "c2.Ada%20Example.1.yaml"]
+)
+def test_a_reading_copied_under_another_name_is_edited_and_counts_once(
+    project: Path, copy: str
+) -> None:
+    """Round 1 of #499: a reading copied under another reader's name, or as its reader's
+    second, kept its seal, and the rules decided from one reading."""
+    from manuscript_guard.gates.currency import check_currency
+
+    case.case(project, readings=False)
+    said = case.file(project, case.reading("Ada Example"), "first")
+    assert "the rules decide from 2 readings" in said
+    folder = project / "literature" / "currency" / "readings"
+    (folder / copy).write_bytes((folder / "c1.Ada%20Example.1.yaml").read_bytes())
+    loaded = load_project(project)[0]
+    assert [(read.path.name, read.edited) for read in records.read_readings(loaded)] == sorted(
+        [("c1.Ada%20Example.1.yaml", False), (copy, True)])
+    codes = sorted(f.code for f in check_currency(loaded).findings)
+    # Read once, so not decided: the copy is no second reading.
+    assert codes == ["currency-record-edited", "currency-record-missing"]
+    assert case.decision(project) is None
+
+
+def test_a_search_record_is_sealed(project: Path) -> None:
+    loaded = load_project(project)[0]
+    path = records.write_search(loaded, {
+        "entry": "c1", "number": 1, "step": "S2", "source": "pubmed", "query": "x AND y",
+        "searched_on": "2026-11-01", "hits": 0, "candidates": []})  # fmt: skip
+    assert [read.problem for read in records.read_searches(loaded)] == [None]
+    path.write_text(path.read_text(encoding="utf-8").replace("hits: 0", "hits: 3"),
+                    encoding="utf-8")  # fmt: skip
+    assert records.read_searches(loaded)[0].edited
 
 
 def test_entries_that_would_not_be_valid_are_never_written(project: Path) -> None:
@@ -230,15 +358,45 @@ def test_a_claim_in_the_supplement_is_marked_and_held_as_one_in_the_main_text(
         ("currency-record-missing", "S1_code_lists.md")]
 
 
+def test_no_decision_is_written_while_a_work_a_reading_names_has_no_record(
+    project: Path,
+) -> None:
+    """Round 1 of #499: a candidate with no works record fails K1, so two readings wrote
+    `keep` from an empty store and the claim stopped being missing."""
+    from manuscript_guard.gates.currency import check_currency
+
+    case.case(project, readings=False)
+    (project / "literature" / "currency" / "works" / (
+        records.safe_name(case.CANDIDATE) + ".yaml")).unlink()
+    case.file(project, case.reading("Ada Example"), "first")
+    said = case.file(project, case.reading("Bo Example"), "second")
+    assert f"the works store holds no record of {case.CANDIDATE}" in said
+    assert case.decision(project) is None
+    found = {f.code: f for f in check_currency(load_project(project)[0],
+                                                "internal-review").findings}
+    assert sorted(found) == ["currency-quote-unchecked", "currency-record-missing"]
+    assert "read 2 time(s)" in found["currency-record-missing"].message
+    assert f"no record of {case.CANDIDATE}" in found["currency-quote-unchecked"].message
+
+
+def test_a_doi_in_capitals_is_one_work_with_its_lower_case(project: Path) -> None:
+    case.case(project, readings=False)
+    upper = case.reading("Ada Example")
+    upper["candidates"][0]["work"] = case.CANDIDATE.upper().replace("DOI:", "doi:")
+    case.file(project, upper, "first")
+    case.file(project, case.reading("Bo Example"), "second")
+    assert case.decision(project)["candidate"] == case.CANDIDATE
+
+
 def test_filing_two_readings_writes_the_rules_decision(project: Path) -> None:
     case.case(project, readings=False)
     said = case.file(project, case.reading("Ada Example"), "first")
     assert "the rules decide from 2 readings" in said and case.decision(project) is None
     said = case.file(project, case.reading("Bo Example"), "second")
-    assert "the rules give replace doi:10.5555/class.review.2023" in said
+    assert "the rules give replace doi:10.5555/class.trial.2023" in said
     assert case.decision(project) == {
         "action": "replace", "candidate": case.CANDIDATE,
-        "rules": ["K1", "K2", "K3", "K5", "D1"], "by": "rules",
+        "rules": ["K1", "K2", "K3", "D1"], "by": "rules",
         "decided_on": case.decision(project)["decided_on"]}  # fmt: skip
 
 
@@ -279,6 +437,9 @@ def test_a_refusal_is_a_named_persons(project: Path) -> None:
     with pytest.raises(command.Refused, match="only a named person"):
         command.refuse(loaded, "c1", "no", "Claude")
     assert "refused" in command.refuse(loaded, "c1", "another population", "Ada Example")
+    # Round 1 of #499: an answer given is not written over.
+    with pytest.raises(command.Refused, match="answered already, refused by Ada Example on "):
+        command.refuse(load_project(project)[0], "c1", "no", "Bo Example")
     # The Discussion's sentence, marked and never decided: there is nothing to refuse.
     command.mark(load_project(project)[0], "reported previously", case.CITED_KEY, None)
     with pytest.raises(command.Refused, match="proposes no change"):
@@ -293,7 +454,7 @@ def test_references_lists_explains_and_says_why_it_refuses(project: Path, capsys
     assert "claims in scope: 1, decided: 1; unplaced entries: 0" in out
     assert main(["references", str(project), "--explain", "c1"]) == 0
     out = capsys.readouterr().out
-    assert "the rules give: replace doi:10.5555/class.review.2023 (K1, K2, K3, K5, D1)" in out
+    assert "the rules give: replace doi:10.5555/class.trial.2023 (K1, K2, K3, D1)" in out
     assert "reading 1 by gpt-test (gpt-test)" in out
     assert main(["references", str(project), "--refuse", "c1", "--why", "no"]) == 2
     assert "--refuse needs --why and --as" in capsys.readouterr().err
@@ -313,6 +474,16 @@ def test_the_summary_says_who_read_and_who_decided(project: Path) -> None:
     said = _currency(check_currency(loaded), loaded)
     assert said == ["entries on whether a cited work is still the one to cite: 1, 1 decided by "
                     "the rules from readings by gpt-test (one model, read twice), 0 by a person"]
+
+
+def test_an_answer_the_rules_sign_is_not_a_persons(project: Path) -> None:
+    """Round 1 of #499: `by: rules` under an answer cleared `currency-change-unanswered`."""
+    from manuscript_guard.currency.records import Entry
+    from manuscript_guard.gates.currency import _not_human
+
+    entry = Entry("c1", "A sentence.", "key", decision={"by": "rules"},
+                  answer={"status": "accepted", "by": "rules"})  # fmt: skip
+    assert [f.code for f in _not_human(entry, project)] == ["currency-decision-not-human"]
 
 
 def test_rules_and_records_reach_the_same_decision(project: Path) -> None:

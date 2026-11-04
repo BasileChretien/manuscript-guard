@@ -1105,7 +1105,11 @@ def _persons_said(text: str) -> Counter:
             continue
         for part in ("decision", "answer"):
             given = entry.get(part)
-            if not isinstance(given, dict) or given.get("by") in (None, "", "rules"):
+            if not isinstance(given, dict) or given.get("by") in (None, ""):
+                continue
+            # A decision the rules wrote is held to the readings by the gate; an answer is a
+            # person's whatever it names, `rules` included, which the gate refuses there.
+            if part == "decision" and given.get("by") == "rules":
                 continue
             said[(
                 str(entry.get("id")), str(entry.get("sentence")), str(entry.get("citekey")),
@@ -1345,6 +1349,7 @@ def guard_submission(payload: dict) -> int:
     sends = sends or _or_nothing(lambda _path: _sends_without_asking(command, payload),
                                  Path("."))  # fmt: skip
     sends = sends or _or_nothing(lambda _path: _approves(command), Path("."))
+    sends = sends or _or_nothing(lambda _path: _places_again(command, payload), Path("."))
     sends = sends or _opens_report(command)
     sends = sends or _moves_stage_back(command, payload)
     sends = sends or _or_nothing(lambda _path: _reads_in_confidence(command), Path("."))
@@ -1671,8 +1676,45 @@ def _approves(command: str) -> str | None:
     )
 
 
+def _places_again(command: str, payload: dict) -> str | None:
+    """Why a `references --mark ... --id <id>` in this command is put to the person: it puts
+    the entry on another sentence, and a person's decision or answer of it with it. Where
+    the entry holds neither, it is the agent's to run; where literature/currency.yaml cannot
+    be read, or there is no project here, it is asked."""
+    joined = re.sub(r"[\\`]\r?\n", " ", command)
+    ids = [found[1] for found in _PLACES_AGAIN.finditer(joined)]
+    if not ids:
+        return None
+    held: list[str] = []
+    root = _project_root(payload)
+    try:
+        from manuscript_guard.contracts import load_project
+        from manuscript_guard.currency.records import read_entries
+
+        if root is None:
+            raise ValueError("no project")
+        entries, report = read_entries(load_project(root)[0])
+        if report.failures:
+            raise ValueError("unreadable")
+        by_id = {entry.id: entry for entry in entries}
+        for one in ids:
+            entry = by_id.get(one)
+            decision = (entry.decision or {}) if entry else {}
+            if entry and (entry.answer or decision.get("by") not in (None, "rules")):
+                held.append(one)
+    except Exception:  # noqa: BLE001 - what cannot be read is asked
+        held = ids
+    if not held:
+        return None
+    return (
+        f"`manuscript-guard references --mark ... --id {held[0]}` puts that entry on another "
+        "sentence, with what a person decided or answered of it. That is theirs to move: run "
+        "it yourself, or ask them."
+    )
+
+
 #: `--open` as a word of the command, which `report-issue` opens the page with.
-_OPEN_FLAG = re.compile(r"--open(?:=.*)?", re.IGNORECASE | re.DOTALL)
+_OPEN_FLAG =re.compile(r"--open(?:=.*)?", re.IGNORECASE | re.DOTALL)
 _OPENS = (
     "`manuscript-guard report-issue --open` opens the project's issue page in your browser "
     "with a report filled in, to be posted under your GitHub account. Read the report it "
@@ -1748,11 +1790,17 @@ def _reads_in_confidence(command: str) -> str | None:
     return _COMPARES_IN_CONFIDENCE if _COMPARES.search(joined) else None
 
 
-#: `communicate approve`, and `communicate … --done`, in one invocation of the command.
 #: `references` with `--refuse` in the same invocation, which answers a proposed change.
 _REFUSES = re.compile(
     _TOOL + r"references\b" + _SAME_COMMAND + r"(?<![\w-])--refuse\b", re.IGNORECASE
 )
+#: `references --mark ... --id <id>`, in one invocation: it puts an entry, and whatever a
+#: person decided or answered of it, on another sentence.
+_PLACES_AGAIN = re.compile(
+    _TOOL + r"references\b" + _SAME_COMMAND + r"(?<![\w-])--id(?:\s+|=)[\"']?(c[0-9]+)",
+    re.IGNORECASE,
+)
+#: `communicate approve`, and `communicate … --done`, in one invocation of the command.
 _COMMUNICATE_APPROVE = re.compile(
     _TOOL + r"communicate\b" + _SAME_COMMAND + r"(?<![\w-])approve\b", re.IGNORECASE
 )

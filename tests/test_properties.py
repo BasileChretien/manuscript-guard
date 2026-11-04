@@ -5514,29 +5514,30 @@ def _stronger_by_two_levels(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(rules, "_stronger", lambda level, cited: level < cited - 1)
 
 
-#: Each field two readings can disagree on that D1 or D2 uses.
+#: Each field two readings can disagree on, where it decides the candidate.
 _DISAGREED = ("level", "population", "exposure", "outcome", "stance", "search_end",
               "cited level", "scale")  # fmt: skip
 
 
 @st.composite
 def _agreed(draw: st.DrawFn) -> dict[str, Any]:
-    """Two readings that agree, on a candidate that passes K1, and for each field of
-    `_DISAGREED` the value the second reading gives in its place, which differs."""
+    """Two readings that agree, on a candidate that passes K1 and where every field decides
+    it (the same question, at the cited work's level, not against the sentence, so that D1
+    would rest on the date); and for each field of `_DISAGREED` the value the second reading
+    gives in its place, which differs."""
     from manuscript_guard.currency import rules
 
     cited = draw(st.integers(1, 5))
     fields = rules.Fields(
-        level=draw(st.integers(1, 5)), population=draw(st.sampled_from(_R2)),
-        exposure=draw(st.sampled_from(_R2)), outcome=draw(st.sampled_from(_R2)),
-        stance=draw(st.sampled_from(_STANCES)),
+        level=cited, population="same", exposure="same", outcome="same",
+        stance=draw(st.sampled_from(("supports", "neither"))),
         search_end=draw(st.none() | st.builds(_a_date, st.integers(2000, 2030),
                                               st.integers(1, 12), st.integers(1, 28),
                                               st.integers(1, 3))),
     )  # fmt: skip
     other = {
         "level": fields.level % 5 + 1,
-        **{name: draw(st.sampled_from([v for v in _R2 if v != getattr(fields, name)]))
+        **{name: draw(st.sampled_from(("different", "unclear")))
            for name in ("population", "exposure", "outcome")},
         "stance": draw(st.sampled_from([v for v in _STANCES if v != fields.stance])),
         "search_end": "2031-01" if fields.search_end else "1999",
@@ -5550,14 +5551,14 @@ def _agreed(draw: st.DrawFn) -> dict[str, Any]:
 def test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain(
     drawn: dict[str, Any],
 ) -> None:
-    """D4: two readings that differ on any field D1 or D2 uses, the hierarchy's scale and the
-    cited work's level among them, propose nothing. Every example holds a disagreement on
-    each field."""
+    """D4: two readings that differ on a field that decides a candidate, or on the
+    hierarchy's scale or the cited work's level, propose nothing. Every example holds a
+    disagreement on each field, on a candidate every field decides."""
     from manuscript_guard.currency import rules
 
     cited, fields = drawn["cited"], drawn["fields"]
     work_set = {"x": rules.Work("x")}
-    agreed = rules.decide(rules.Work("cited"), work_set,
+    agreed = rules.decide(rules.Work("cited", published="2000"), work_set,
                           _currency_readings(cited, {"x": fields}))  # fmt: skip
     assert agreed.action != rules.UNCERTAIN, drawn
     for name in _DISAGREED:
@@ -5570,27 +5571,121 @@ def test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain(
         else:
             second = dataclasses.replace(first, reader="second", candidates={
                 "x": dataclasses.replace(fields, **{name: value})})
-        decided = rules.decide(rules.Work("cited"), work_set, [first, second])
+        decided = rules.decide(rules.Work("cited", published="2000"), work_set,
+                               [first, second])  # fmt: skip
         assert decided.action == rules.UNCERTAIN, (name, drawn, decided)
         assert decided.candidate is None, (name, decided)
 
 
-def _a_disagreement_on_the_stance_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+def _a_field_passed_over(name: str, patch: pytest.MonkeyPatch) -> None:
+    """D4 broken so that two readings that differ on `name` are taken to agree: the field is
+    read as one value, whatever each reading says."""
     from manuscript_guard.currency import rules
 
-    patch.setattr(rules, "USED", tuple(name for name in rules.USED if name != "stance"))
+    kept = rules._decisive
+    same = {"level": None, "population": "same", "exposure": "same", "outcome": "same",
+            "stance": "supports", "search_end": None}  # fmt: skip
+
+    def passed_over(fields, cited_level):
+        if fields is None:
+            return kept(fields, cited_level)
+        value = cited_level if name == "level" else same[name]
+        return kept(dataclasses.replace(fields, **{name: value}), cited_level)
+
+    patch.setattr(rules, "_decisive", passed_over)
+
+
+def _a_disagreement_on_the_stance_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    _a_field_passed_over("stance", patch)
 
 
 def _a_disagreement_on_the_search_end_is_passed_over(patch: pytest.MonkeyPatch) -> None:
-    from manuscript_guard.currency import rules
+    _a_field_passed_over("search_end", patch)
 
-    patch.setattr(rules, "USED", tuple(name for name in rules.USED if name != "search_end"))
+
+def _a_disagreement_on_the_level_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    _a_field_passed_over("level", patch)
+
+
+def _a_disagreement_on_the_population_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    _a_field_passed_over("population", patch)
+
+
+def _a_disagreement_on_the_exposure_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    _a_field_passed_over("exposure", patch)
+
+
+def _a_disagreement_on_the_outcome_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    _a_field_passed_over("outcome", patch)
 
 
 def _a_disagreement_on_the_cited_level_is_passed_over(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.currency import rules
 
     patch.setattr(rules, "_head", lambda reading: (reading.hierarchy, reading.scale))
+
+
+@st.composite
+def _undecisive(draw: st.DrawFn) -> dict[str, Any]:
+    """A candidate both readings read alike that replaces the citation by its level, and
+    beside it one of each kind whose readings differ only where no rule reads them: one off
+    the question on R2 alike in both, at levels, stances and search end dates that differ;
+    and one on the question, weaker than the cited work in both, whose search end dates
+    differ."""
+    from manuscript_guard.currency import rules
+
+    cited = draw(st.integers(2, 4))
+    decisive = rules.Fields(level=draw(st.integers(1, cited - 1)), population="same",
+                            exposure="same", outcome="same",
+                            stance=draw(st.sampled_from(("supports", "neither"))))  # fmt: skip
+    r2 = [draw(st.sampled_from(_R2)) for _ in range(3)]
+    r2[draw(st.integers(0, 2))] = draw(st.sampled_from(("different", "unclear")))
+    levels = draw(st.lists(st.integers(1, 5), min_size=2, max_size=2, unique=True))
+    off = [rules.Fields(level=level, population=r2[0], exposure=r2[1], outcome=r2[2],
+                        stance=draw(st.sampled_from(_STANCES)),
+                        search_end=draw(st.none() | st.just("2031")))
+           for level in levels]  # fmt: skip
+    weaker = draw(st.integers(cited + 1, 5))
+    stance = draw(st.sampled_from(("supports", "neither")))
+    late = [rules.Fields(level=weaker, population="same", exposure="same", outcome="same",
+                         stance=stance, search_end=end)
+            for end in ("2031", None)]  # fmt: skip
+    return {"cited": cited, "decisive": decisive, "off": off, "late": late}
+
+
+@holds(100, _undecisive())
+def test_readings_that_differ_where_no_rule_reads_them_still_decide(
+    drawn: dict[str, Any],
+) -> None:
+    """D4 compares what decides each candidate and nothing else (round 1 of #499): a
+    candidate off the question read at two levels, or one weaker than the cited work read
+    with two search end dates, leaves the `replace` the agreed candidate gives. Every
+    example holds one of each kind."""
+    from manuscript_guard.currency import rules
+
+    first = {"a": drawn["decisive"], "b": drawn["off"][0], "c": drawn["late"][0]}
+    second = {"a": drawn["decisive"], "b": drawn["off"][1], "c": drawn["late"][1]}
+    readings = [rules.Reading("first", "ocebm-2011", "benefit", drawn["cited"], first),
+                rules.Reading("second", "ocebm-2011", "benefit", drawn["cited"], second)]
+    works = {work: rules.Work(work) for work in first}
+    decided = rules.decide(rules.Work("cited", published="2020"), works, readings)
+    assert (decided.action, decided.candidate) == (rules.REPLACE, "a"), (drawn, decided)
+
+
+def _every_field_of_every_candidate_is_compared(patch: pytest.MonkeyPatch) -> None:
+    """D4 as it was first built (round 1 of #499)."""
+    from manuscript_guard.currency import rules
+
+    patch.setattr(rules, "_decisive", lambda fields, cited_level: (
+        ("not read",) if fields is None else dataclasses.astuple(fields)))
+
+
+def _a_search_end_is_compared_at_any_level(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    kept = rules._decisive
+    patch.setattr(rules, "_decisive", lambda fields, cited_level: (
+        kept(fields, cited_level) + ((fields.search_end,) if fields is not None else ())))
 
 
 @st.composite
@@ -5644,11 +5739,87 @@ def _a_work_under_concern_passes_k1(patch: pytest.MonkeyPatch) -> None:
         work.retracted or work.withdrawn or work.published_as))
 
 
+def _a_retracted_work_passes_k1(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    patch.setattr(rules, "passes_k1", lambda work: work is not None and not (
+        work.withdrawn or work.under_concern or work.published_as))
+
+
+def _a_withdrawn_work_passes_k1(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    patch.setattr(rules, "passes_k1", lambda work: work is not None and not (
+        work.retracted or work.under_concern or work.published_as))
+
+
 def _a_published_preprint_passes_k1(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.currency import rules
 
     patch.setattr(rules, "passes_k1", lambda work: work is not None and not (
         work.retracted or work.withdrawn or work.under_concern))
+
+
+@st.composite
+def _numbers_sources(draw: st.DrawFn) -> dict[str, Any]:
+    """For a sentence that quotes a number of the cited work: a synthesis that would
+    replace it, stronger and more recent than everything else; one against the sentence;
+    and up to three primary studies on the same question, no stronger and older."""
+    from manuscript_guard.currency import rules
+
+    cited = draw(st.integers(2, 5))
+    level = draw(st.integers(1, cited - 1))
+    same = {"population": "same", "exposure": "same", "outcome": "same"}
+    synthesis = draw(st.sampled_from(("Systematic Review", "Meta-Analysis", "Review")))
+    candidates = {"synthesis": rules.Fields(level=level, stance="supports", **same),
+                  "against": rules.Fields(level=draw(st.integers(1, cited)),
+                                          stance="contradicts", **same)}  # fmt: skip
+    works = {name: rules.Work(name, published="2024", types=(synthesis,))
+             for name in candidates}  # fmt: skip
+    for index in range(draw(st.integers(0, 3))):
+        work = f"primary-{index}"
+        candidates[work] = rules.Fields(level=draw(st.integers(level, 5)),
+                                        stance=draw(st.sampled_from(("supports", "neither"))),
+                                        **same)  # fmt: skip
+        works[work] = rules.Work(work, published="2010",
+                                 types=("Randomized Controlled Trial",))
+    return {"cited": cited, "candidates": candidates, "works": works}
+
+
+@holds(100, _numbers_sources())
+def test_a_synthesis_never_replaces_the_source_of_a_number(drawn: dict[str, Any]) -> None:
+    """K5 (Basile, 2026-11-04, "primary only"): for a sentence that quotes a number the
+    ledger records from the cited work, no synthesis is put in its place, however strong,
+    and K5 says it set one aside; one against the sentence is still added (D2). Every
+    example holds a synthesis that would replace the work, and one against the sentence."""
+    from manuscript_guard.currency import rules
+
+    cited = rules.Work("cited", published="2015")
+    supporting = {k: v for k, v in drawn["candidates"].items() if k != "against"}
+    decided = rules.decide(cited, drawn["works"],
+                           _currency_readings(drawn["cited"], supporting), number=True)
+    assert decided.candidate != "synthesis", (drawn, decided)
+    assert "K5" in decided.rules, (drawn, decided)
+    if decided.action == rules.REPLACE:
+        assert decided.candidate.startswith("primary-"), (drawn, decided)
+    else:
+        assert decided.action == rules.KEEP, (drawn, decided)
+    decided = rules.decide(cited, drawn["works"],
+                           _currency_readings(drawn["cited"], drawn["candidates"]), number=True)
+    assert (decided.action, decided.candidate) == (rules.ADD, "against"), (drawn, decided)
+
+
+def _a_synthesis_replaces_the_source_of_a_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    patch.setattr(rules, "_set_aside", lambda work, number, action: False)
+
+
+def _a_synthesis_against_a_number_is_set_aside_too(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    patch.setattr(rules, "_set_aside", lambda work, number, action: bool(
+        number and work is not None and work.synthesis))
 
 
 @st.composite
@@ -16543,6 +16714,30 @@ BROKEN = {
         _a_disagreement_on_the_search_end_is_passed_over,
         test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain,
     ),
+    "two readings that disagree on the level are taken to agree, for currency": (
+        _a_disagreement_on_the_level_is_passed_over,
+        test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain,
+    ),
+    "two readings that disagree on the population are taken to agree, for currency": (
+        _a_disagreement_on_the_population_is_passed_over,
+        test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain,
+    ),
+    "two readings that disagree on the exposure are taken to agree, for currency": (
+        _a_disagreement_on_the_exposure_is_passed_over,
+        test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain,
+    ),
+    "two readings that disagree on the outcome are taken to agree, for currency": (
+        _a_disagreement_on_the_outcome_is_passed_over,
+        test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain,
+    ),
+    "every field of every candidate is compared, for currency": (
+        _every_field_of_every_candidate_is_compared,
+        test_readings_that_differ_where_no_rule_reads_them_still_decide,
+    ),
+    "a search end date is compared at any level, for currency": (
+        _a_search_end_is_compared_at_any_level,
+        test_readings_that_differ_where_no_rule_reads_them_still_decide,
+    ),
     "two readings that disagree on the cited work's level are taken to agree, for currency": (
         _a_disagreement_on_the_cited_level_is_passed_over,
         test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain,
@@ -16554,6 +16749,22 @@ BROKEN = {
     "a candidate under an expression of concern passes K1": (
         _a_work_under_concern_passes_k1,
         test_a_candidate_that_fails_k1_is_never_proposed,
+    ),
+    "a retracted candidate passes K1": (
+        _a_retracted_work_passes_k1,
+        test_a_candidate_that_fails_k1_is_never_proposed,
+    ),
+    "a withdrawn candidate passes K1": (
+        _a_withdrawn_work_passes_k1,
+        test_a_candidate_that_fails_k1_is_never_proposed,
+    ),
+    "a synthesis replaces the source of a number, for currency": (
+        _a_synthesis_replaces_the_source_of_a_number,
+        test_a_synthesis_never_replaces_the_source_of_a_number,
+    ),
+    "a synthesis against a number is set aside too, for currency": (
+        _a_synthesis_against_a_number_is_set_aside_too,
+        test_a_synthesis_never_replaces_the_source_of_a_number,
     ),
     "a preprint published since passes K1": (
         _a_published_preprint_passes_k1,

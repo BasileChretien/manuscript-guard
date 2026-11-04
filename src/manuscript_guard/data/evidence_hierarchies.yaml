@@ -16,8 +16,13 @@ schema: manuscript-guard/evidence-hierarchy/1
 # document; a level says where the likely best evidence for a question lies, and is no
 # verdict on the quality of one study; a reader may grade a level down (for a study's risk
 # of bias, imprecision, indirectness or inconsistency, or a small effect) or up (for a large
-# or very large effect), as the table's note allows. Its rule of thumb for a common harm is
-# one that occurs in more than 20% of participants.
+# or very large effect), as the table's note allows. CEBM's background document,
+# "Explanation of the 2011 OCEBM Levels of Evidence", gives as a rule of thumb for a common
+# harm one that occurs in more than 20% of participants.
+#
+# Where the table gives a scale no level 5, as for how often a condition occurs and for
+# prognosis, the scale here has none either, and a reading that places a work there is
+# refused.
 #
 # The descriptions were written from the table's structure on 2026-11-04 and are to be read
 # against the version 2.1 PDF before they are relied on (DESIGN.md, Known gaps).
@@ -39,13 +44,12 @@ hierarchies:
     read_on: 2026-11-04
     scales:
       frequency:
-        question: how common is the problem
+        question: how often the condition occurs
         levels:
           1: a current local survey or census of a random sample
           2: a systematic review of surveys that can be matched to local circumstances
           3: a local sample that is not random
           4: a case series
-          5: none of the above
       diagnosis:
         question: how accurate is the test
         levels:
@@ -65,7 +69,6 @@ hierarchies:
           2: an inception cohort study
           3: a cohort study, or the control arm of a randomized trial
           4: a case series, a case-control study, or a prognostic cohort of poor quality
-          5: none of the above
       benefit:
         question: does the intervention help
         levels:

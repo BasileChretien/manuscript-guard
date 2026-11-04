@@ -18,7 +18,7 @@
     "hits": { "type": "integer", "minimum": 0 },
     "candidates": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^(doi:10\\.\\S+|pmid:[1-9][0-9]*)$" }
+      "items": { "type": "string", "pattern": "^(doi:10\\.[^\\sA-Z]+|pmid:[1-9][0-9]*)$" }
     },
     "answers_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
   }

@@ -25,8 +25,11 @@ network:
 - `currency-candidate-retracted`: a work the decision keeps or proposes is now retracted, by
   its works record.
 
-Without the works store, which git leaves out, the quotes of candidates and the rules'
-decisions cannot be checked here, and a note says so (`currency-quote-unchecked`).
+Where the works store holds no record of a work an entry's readings name, as in a clone,
+since git leaves the store out, the rules decide nothing for it and G7 checks no decision of
+theirs, and a note says so (`currency-quote-unchecked`). A proposed change counts as accepted
+once a sentence matching the entry cites the candidate, by its DOI or PMID in
+`references.bib`.
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 from manuscript_guard.contracts import ContractError
 from manuscript_guard.contracts.project import Project
@@ -81,9 +85,9 @@ class _Records:
     """The sealed records of the project, each read once: readings and searches by entry,
     works by id."""
 
-    def __init__(self, project: Project) -> None:
+    def __init__(self, project: Project, literature: Any = None) -> None:
         self.project = project
-        self.store = records.store_here(project)
+        self._literature = literature
         self.readings: dict[str, list[Read]] = {}
         self.unfiled: list[Read] = []
         for read in records.read_readings(project):
@@ -100,15 +104,25 @@ class _Records:
             self._works[work] = records.read_work(self.project, work)
         return self._works[work]
 
+    @property
+    def literature(self) -> Any:
+        """The literature ledger, read once, where the caller did not give it."""
+        if self._literature is None:
+            from manuscript_guard.contracts.literature import load_literature
+
+            self._literature, _report = load_literature(self.project.path("literature"))
+        return self._literature
+
     def good_work(self, work: str) -> dict | None:
         read = self.work(work)
         return read.record if read is not None and read.problem is None else None
 
 
-def check_currency(project: Project, stage: str = DRAFTING) -> Report:
-    """Each claim in scope held to its entry, and each entry to its records."""
+def check_currency(project: Project, stage: str = DRAFTING, literature: Any = None) -> Report:
+    """Each claim in scope held to its entry, and each entry to its records. `literature` is
+    the ledger `check` read, which K5 reads; without it the ledger is read here."""
     found, report = survey(project)
-    held = _Records(project)
+    held = _Records(project, literature)
     path = records.currency_path(project)
     try:
         from manuscript_guard.currency.hierarchy import hierarchies
@@ -172,8 +186,10 @@ def _of_entry(entry: Entry, found: Survey, held: _Records, known, bib: dict,
     works = sorted({work for record in usable for work, _f, _q in records.quotes_of(record)})
     out += [_edited(read) for work in works
             if (read := held.work(work)) is not None and read.problem]  # fmt: skip
-    out += _quotes(entry, usable, held, path)
-    out += _decision(entry, usable, held, bib, path, stage)
+    absent = missing_works(entry, usable, held, bib)
+    out += _quotes(entry, usable, held, path, absent)
+    out += _decision(entry, usable, held, bib, path, stage, absent,
+                     accepted=entry.id in found.accepted)
     out += _stale(entry, searches, path, stage)
     return out
 
@@ -184,7 +200,8 @@ def _not_human(entry: Entry, path: Path) -> list[Finding]:
     out = []
     for part in ("decision", "answer"):
         by = str((getattr(entry, part) or {}).get("by") or "")
-        if by and by != "rules" and _MODEL_NAME.search(by):
+        # The rules decide; they never answer a proposal, which is a person's to answer.
+        if by and (by == "rules" if part == "answer" else by != "rules" and _MODEL_NAME.search(by)):
             out.append(_finding(
                 "currency-decision-not-human", f"{entry.named}: {by!r} cannot sign a "
                 f"{'decision' if part == 'decision' else 'answer'} on a cited work", path,
@@ -254,7 +271,25 @@ def quote_in(texts: Iterable[str], quote: str) -> bool:
     return False
 
 
-def _quotes(entry: Entry, usable: list[dict], held: _Records, path: Path) -> list[Finding]:
+def needed_works(entry: Entry, usable: list[dict], bib: dict) -> list[str]:
+    """The works the rules need a record of to decide an entry: the cited work and each
+    candidate a reading names."""
+    cited = records.work_id(bib.get(entry.citekey)) or (
+        usable[0]["cited"]["work"] if usable else None)  # fmt: skip
+    ids = {cited} if cited else set()
+    for record in usable:
+        ids |= {str(one["work"]) for one in record.get("candidates") or []}
+    return sorted(ids)
+
+
+def missing_works(entry: Entry, usable: list[dict], held: _Records, bib: dict) -> list[str]:
+    """The works of `needed_works` the store holds no sound record of: until it does, the
+    rules write no decision for the entry, and G7 checks none."""
+    return [work for work in needed_works(entry, usable, bib) if held.good_work(work) is None]
+
+
+def _quotes(entry: Entry, usable: list[dict], held: _Records, path: Path,
+            absent: list[str]) -> list[Finding]:  # fmt: skip
     """Each reading's quotes, looked for in what is stored of the work each is of."""
     missing, unchecked = [], 0
     for record in usable:
@@ -272,12 +307,14 @@ def _quotes(entry: Entry, usable: list[dict], held: _Records, path: Path) -> lis
             f"are not in the work's stored abstract or text: {'; '.join(missing)}", path,
             "a reading quotes each field from the work, word for word; file it again with "
             "the words the work has"))  # fmt: skip
-    if unchecked or (usable and not held.store):
+    by_rules = (entry.decision or {}).get("by") == "rules"
+    if unchecked or (absent and (usable or by_rules)):
         why = (f"{unchecked} quote(s) of its readings could not be checked: nothing of the "
                "work is stored" if unchecked else "")
-        if not held.store:
-            why = (why + "; " if why else "") + ("the works store is not in this checkout, so "
-                                                 "the rules' decision was not checked either")
+        if absent:
+            why = (why + "; " if why else "") + (
+                f"the works store holds no record of {', '.join(absent)}, so the rules decide "
+                "nothing" + (" and their decision was not checked" if by_rules else ""))
         out.append(_finding(
             "currency-quote-unchecked", f"{entry.named}: {why}", path,
             "the works store stays out of git; run `manuscript-guard references` where it is "
@@ -295,28 +332,45 @@ def rules_decision(entry: Entry, usable: list[dict], held: _Records,
     cited_id = records.work_id(bib.get(entry.citekey)) or (
         usable[0]["cited"]["work"] if usable else None)  # fmt: skip
     cited = records.as_work(held.good_work(cited_id)) if cited_id else None
-    return rules.decide(cited, works, readings, number=gives_number(entry.sentence))
+    number = quotes_a_number(entry.sentence, entry.citekey, held.literature)
+    return rules.decide(cited, works, readings, number=number)
 
 
-def gives_number(sentence: str) -> bool:
-    """Whether a sentence gives a number, for K5: a binding, or a digit in its words once its
-    citation groups and narrative citations are taken out."""
+def quotes_a_number(sentence: str, citekey: str, literature: Any) -> bool:
+    """Whether a sentence quotes a value the literature ledger records from the work
+    `citekey`, for K5 (Basile, 2026-11-04): a binding of one, `{{lit.key}}`, or its display
+    written as words of their own. The ledger is read as `number-from-secondary-source`
+    reads it (`lookups.values_quoted_from`). A year, another digit, or a binding of another
+    work's value does not make it one."""
     import re
 
+    from manuscript_guard.gates.lookups import values_quoted_from
     from manuscript_guard.literature.passages import statement_words
+    from manuscript_guard.literature.sources import normalise
 
-    words = re.sub(r"@[^\s,;\]]+", " ", statement_words(sentence))
-    return bool(re.search(r"\{\{(?:lit|results)\.", words) or re.search(r"\d", words))
+    values = values_quoted_from(literature).get(citekey, []) if literature is not None else []
+    if not values:
+        return False
+    words = statement_words(sentence)
+    keys = {match.group(1) for match in re.finditer(r"\{\{lit\.([^}]+)\}\}", words)}
+    text = normalise(sentence)
+    for value in values:
+        if value.key in keys:
+            return True
+        shown = normalise(str(value.display or "")).strip()
+        if shown and re.search(r"(?<![\w.])" + re.escape(shown) + r"(?![\w]|\.\d)", text):
+            return True
+    return False
 
 
-def _decision(entry: Entry, usable: list[dict], held: _Records, bib: dict,
-              path: Path, stage: str) -> list[Finding]:  # fmt: skip
+def _decision(entry: Entry, usable: list[dict], held: _Records, bib: dict, path: Path,
+              stage: str, absent: list[str], *, accepted: bool) -> list[Finding]:  # fmt: skip
     decision = entry.decision
     if not decision:
         return []
     out: list[Finding] = []
     action, candidate = decision["action"], decision.get("candidate")
-    if decision["by"] == "rules" and held.store:
+    if decision["by"] == "rules" and not absent:
         given = rules_decision(entry, usable, held, bib)
         if given is None:
             out.append(_finding(
@@ -340,22 +394,22 @@ def _decision(entry: Entry, usable: list[dict], held: _Records, bib: dict,
             "proposed", path, "read the readings with `manuscript-guard references --explain "
             f"{entry.id}`; a third reading, or a person's decision with why, settles it",
             INFO))  # fmt: skip
-    if action in _PROPOSALS and not entry.answer:
+    if action in _PROPOSALS and not entry.answer and not accepted:
         out.append(_finding(
             "currency-change-unanswered", f"{entry.named}: {action} {candidate} is proposed "
             f"({', '.join(decision['rules'])}), and nobody has answered", path,
-            "read the proposal with `manuscript-guard references --explain "
-            f"{entry.id}`; cite the work, or refuse it with `references --refuse {entry.id} "
+            f"read the proposal with `manuscript-guard references --explain {entry.id}`; "
+            "accept it by citing the work in the sentence (add it to Zotero, then "
+            f"`manuscript-guard sync-bib`), or refuse it with `references --refuse {entry.id} "
             "--why ... --as <you>`", FAIL if stage == SUBMISSION else WARN))  # fmt: skip
-    if held.store:
-        kept = candidate if action in _PROPOSALS else records.work_id(bib.get(entry.citekey))
-        record = held.good_work(kept) if kept else None
-        if record is not None and (record.get("integrity") or {}).get("retracted"):
-            out.append(_finding(
-                "currency-candidate-retracted", f"{entry.named}: {kept}, which the decision "
-                f"{'proposes' if action in _PROPOSALS else 'keeps'}, is retracted, by its "
-                f"works record of {record['fetched_on']}", path,
-                "cite other evidence, and decide the entry again"))  # fmt: skip
+    kept = candidate if action in _PROPOSALS else records.work_id(bib.get(entry.citekey))
+    record = held.good_work(kept) if kept else None
+    if record is not None and (record.get("integrity") or {}).get("retracted"):
+        out.append(_finding(
+            "currency-candidate-retracted", f"{entry.named}: {kept}, which the decision "
+            f"{'proposes' if action in _PROPOSALS else 'keeps'}, is retracted, by its "
+            f"works record of {record['fetched_on']}", path,
+            "cite other evidence, and decide the entry again"))  # fmt: skip
     return out
 
 
@@ -370,8 +424,9 @@ def _stale(entry: Entry, searches: list[Read], path: Path, stage: str) -> list[F
     return [_finding(
         "currency-record-stale", f"{entry.named}: its newest search was run on {newest}, "
         f"more than {STALE_MONTHS} months ago", path,
-        "search again (`manuscript-guard references --search`, or `--replay` to run the "
-        "recorded queries again)", FAIL if stage == SUBMISSION else WARN)]  # fmt: skip
+        "run the searches again and file their readings with `manuscript-guard references "
+        f"--reading`; `references --explain {entry.id}` lists the searches it rests on",
+        FAIL if stage == SUBMISSION else WARN)]  # fmt: skip
 
 
 def _missing(found: Survey, held: _Records, project: Project, path: Path,

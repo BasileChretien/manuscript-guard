@@ -56,6 +56,16 @@ HEADER = (
 )
 _SAFE = re.compile(r"[A-Za-z0-9_-]")
 _ENTRY_ID = re.compile(r"c([1-9][0-9]*)")
+#: A reading's file name: the entry, the reader as `safe_name` writes it, the number.
+_READING_NAME = re.compile(r"(c[1-9][0-9]*)\.([^.]+)\.([1-9][0-9]*)\.yaml")
+#: The fields of a candidate's reading, in the order they are shown.
+FIELDS = ("level", "population", "exposure", "outcome", "stance", "search_end")
+
+
+def fold_work(work: str) -> str:
+    """A work's id as the store keys it: a DOI in lower case, as a DOI is matched without
+    regard to case; a PMID as it is."""
+    return work.lower() if work.lower().startswith("doi:") else work
 
 
 def _digest(value: Any) -> str:
@@ -222,7 +232,7 @@ def write_work(project: Project, record: dict[str, Any]) -> Path:
     """Write one works record, sealed, after holding it to its schema; and the store's
     `.gitignore` with it."""
     record = {key: value for key, value in record.items() if key != "answers_sha256"}
-    record = {"schema": WORK_SCHEMA, **record}
+    record = {"schema": WORK_SCHEMA, **record, "work": fold_work(str(record["work"]))}
     record["answers_sha256"] = sealed_digest(record, "answers_sha256")
     path = work_path(project, str(record["work"]))
     report = validate(record, "currency-work", path)
@@ -297,7 +307,8 @@ def search_path(project: Project, entry: str, number: int) -> Path:
 
 def write_search(project: Project, record: dict[str, Any]) -> Path:
     """Write one search record, sealed, after holding it to its schema. Nothing in this
-    version runs a search: `references --search` writes them (DESIGN.md)."""
+    version runs a search: the recorded searches, still to come, are to write them
+    (DESIGN.md, "A cited work is held to newer evidence by fixed rules")."""
     record = {key: value for key, value in record.items() if key != "answers_sha256"}
     record = {"schema": SEARCH_SCHEMA, **record}
     record["answers_sha256"] = sealed_digest(record, "answers_sha256")
@@ -333,31 +344,64 @@ def reading_path(project: Project, entry: str, reader: str, number: int) -> Path
 
 
 def read_readings(project: Project) -> list[Read]:
-    """Every reading filed, in the order of their names."""
+    """Every reading filed, in the order of their names. One whose name is not its entry, its
+    reader and its number, as `file_reading` names it, is edited: a reading copied under
+    another name keeps its seal, and would count as a second reading."""
     found = readings_folder(project)
     if not found.is_dir():
         return []
-    return [_sealed(path, "currency-reading", "reading_sha256")
-            for path in sorted(found.glob("*.yaml"))]  # fmt: skip
+    read = []
+    for path in sorted(found.glob("*.yaml")):
+        one = _sealed(path, "currency-reading", "reading_sha256")
+        record = one.record
+        if one.problem is None and record is not None:
+            named = _READING_NAME.fullmatch(path.name)
+            said = (str(record.get("entry")), safe_name(str(record.get("reader"))),
+                    str(record.get("number")))  # fmt: skip
+            if named is None or named.groups() != said:
+                one = Read(path, record, f"its name is not that of {said[0]}'s reading "
+                           f"{said[2]} by {record.get('reader')}", edited=True)  # fmt: skip
+        read.append(one)
+    return read
 
 
 def file_reading(project: Project, document: dict[str, Any], filed_on: str) -> Path:
     """File one reading: numbered as its reader's next of the entry, sealed, and written once.
     A name already taken is never written over."""
-    document = {key: value for key, value in document.items()
-                if key not in ("number", "filed_on", "reading_sha256")}  # fmt: skip
-    entry, reader = str(document["entry"]), str(document["reader"])
+    document = folded_reading({key: value for key, value in document.items()
+                               if key not in ("number", "filed_on", "reading_sha256")})
+    entry, reader = str(document.get("entry")), str(document.get("reader"))
+    if not _ENTRY_ID.fullmatch(entry):
+        raise ContractError(f"{entry!r} is not the id of an entry of literature/currency.yaml")
     number = 1
     while reading_path(project, entry, reader, number).exists():
         number += 1
     record = {**document, "number": number, "filed_on": filed_on}
     record["reading_sha256"] = sealed_digest(record, "reading_sha256")
     path = reading_path(project, entry, reader, number)
+    report = validate(record, "currency-reading", path)
+    if not report.ok:
+        problems = "; ".join(finding.message for finding in report.failures)
+        raise ContractError(f"the reading is not valid: {problems}")
     text = ("# Filed by `manuscript-guard references --reading`. Sealed by `reading_sha256`:\n"
             "# a second reading is filed as a further one, never written over this.\n"
             + yaml.safe_dump(record, sort_keys=False, allow_unicode=True, width=100))  # fmt: skip
     _write_new(path, text)
     return path
+
+
+def folded_reading(record: dict) -> dict:
+    """A reading with each work it names folded as the store keys it (`fold_work`)."""
+    record = dict(record)
+    if isinstance(record.get("cited"), dict) and isinstance(record["cited"].get("work"), str):
+        record["cited"] = {**record["cited"], "work": fold_work(record["cited"]["work"])}
+    if isinstance(record.get("candidates"), list):
+        record["candidates"] = [
+            {**one, "work": fold_work(one["work"])}
+            if isinstance(one, dict) and isinstance(one.get("work"), str) else one
+            for one in record["candidates"]
+        ]  # fmt: skip
+    return record
 
 
 def as_reading(record: dict) -> rules.Reading:
@@ -378,6 +422,7 @@ def as_reading(record: dict) -> rules.Reading:
         scale=str(record["scale"]),
         cited_level=int(record["cited"]["level"]["value"]),
         candidates=candidates,
+        number=int(record.get("number") or 1),
     )
 
 
@@ -385,7 +430,7 @@ def quotes_of(record: dict) -> list[tuple[str, str, str]]:
     """Each quote of a reading, as the work it is of, the field and the words."""
     quoted = [(str(record["cited"]["work"]), "level", str(record["cited"]["level"]["quote"]))]
     for one in record.get("candidates") or []:
-        for name in ("level", "population", "exposure", "outcome", "stance", "search_end"):
+        for name in FIELDS:
             if one.get(name):
                 quoted.append((str(one["work"]), name, str(one[name]["quote"])))
     return quoted

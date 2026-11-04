@@ -10,16 +10,22 @@ In scope, as G7 reads it: each claim an entry marks, and each citing sentence th
 work whose lookup record says a later version, or a published version of a preprint, has come
 since (`gates.lookups.currency_facts`). The sentences are those of the main text and of
 `manuscript/supplementary/`, Markdown or LaTeX (`gates.passages.citing_documents`).
+
+A proposed `replace` or `add` nobody answered counts as accepted once a sentence matching the
+entry's words, the same or `NEAR`, cites a key whose DOI or PMID in `references.bib` is the
+candidate's (design 2.5): the author cited the work, in Zotero and then `sync-bib`. Nothing is
+written; the entry is placed on that sentence where its own words no longer stand beside its
+old key.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.checking.produce import CitedSentence, cited_sentences
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.currency.records import Entry, read_entries
+from manuscript_guard.currency.records import Entry, read_entries, work_id
 from manuscript_guard.findings import Report
 from manuscript_guard.literature.passages import NEAR, statement_words
 
@@ -43,6 +49,8 @@ class Survey:
     placed: dict[str, CitedSentence]
     claims: tuple[Claim, ...]
     sentences: tuple[CitedSentence, ...]
+    #: The entries whose proposed change a sentence accepts by citing the candidate.
+    accepted: dict[str, CitedSentence] = field(default_factory=dict)
 
     @property
     def unplaced(self) -> tuple[Entry, ...]:
@@ -85,6 +93,12 @@ def survey(project: Project) -> tuple[Survey, Report]:
             placed[entry.id] = found
     bib = project.path("literature") / "references.bib"
     fields = read_bib(bib) if bib.is_file() else {}
+    accepted = _accepted(entries, fields, sentences, words)
+    for entry_id, cited in accepted.items():
+        entry = next(one for one in entries if one.id == entry_id)
+        own = placed.get(entry_id)
+        if own is None or statement_words(own.text) != statement_words(entry.sentence):
+            placed[entry_id] = cited
     keys = sorted({key for cited in sentences for key in cited.keys})
     facts = {key: tuple(currency_facts(project, key, fields.get(key))) for key in keys
              if key in fields}  # fmt: skip
@@ -100,7 +114,26 @@ def survey(project: Project) -> tuple[Survey, Report]:
             if facts.get(key) and (cited.path, theirs, key) not in taken:
                 taken.add((cited.path, theirs, key))
                 claims.append(Claim(cited, key, None, facts[key]))
-    return Survey(entries, placed, tuple(claims), tuple(sentences)), report
+    return Survey(entries, placed, tuple(claims), tuple(sentences), accepted), report
+
+
+def _accepted(entries: tuple[Entry, ...], fields: dict[str, dict[str, str]],
+              sentences: list[CitedSentence], words: list[str]
+              ) -> dict[str, CitedSentence]:  # fmt: skip
+    """Each unanswered proposal a sentence accepts, with that sentence: one matching the
+    entry's words that cites a key whose DOI or PMID is the candidate's."""
+    accepted: dict[str, CitedSentence] = {}
+    for entry in entries:
+        decision = entry.decision or {}
+        candidate = decision.get("candidate")
+        if decision.get("action") not in ("replace", "add") or not candidate or entry.answer:
+            continue
+        for key in sorted(key for key, one in fields.items() if work_id(one) == candidate):
+            cited = place(entry.sentence, key, sentences, words)
+            if cited is not None:
+                accepted[entry.id] = cited
+                break
+    return accepted
 
 
 def find_sentence(words: str, citekey: str, sentences: tuple[CitedSentence, ...]

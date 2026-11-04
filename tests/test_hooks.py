@@ -1690,6 +1690,33 @@ def test_taking_an_answer_on_a_cited_work_away_is_put_to_the_person(
     assert "Ada Example" in reason(result)
 
 
+def test_an_answer_signed_by_the_rules_is_put_to_the_person(in_claude_code: Path, capsys) -> None:
+    """Round 1 of #499: an answer `by: rules` was left out, as the rules' decision is, and an
+    agent's edit adding one to an unanswered proposal was not asked about."""
+    path = in_claude_code / "literature" / "currency.yaml"
+    unanswered = _CURRENCY[:_CURRENCY.index("  answer:")]
+    path.write_text(unanswered, encoding="utf-8")
+    added = "  answer:\n    status: accepted\n    by: rules\n    answered_on: 2026-11-03\n"
+    payload = _writes(in_claude_code, file_path=str(path), content=unanswered + added)
+    assert decision(run("guard-write", payload, capsys)) == "ask"
+
+
+@pytest.mark.parametrize(("answered", "asked"), [(True, "ask"), (False, None)])
+def test_putting_an_entry_a_person_answered_on_another_sentence_is_put_to_them(
+    in_claude_code: Path, answered: bool, asked: str | None, capsys
+) -> None:
+    """Round 1 of #499: `references --mark ... --id` moved a person's answer to another
+    sentence, where an Edit doing the same is asked."""
+    path = in_claude_code / "literature" / "currency.yaml"
+    path.write_text(_CURRENCY if answered else _CURRENCY[:_CURRENCY.index("  answer:")],
+                    encoding="utf-8")  # fmt: skip
+    command = 'manuscript-guard references --mark "a signal" @fictionalClassSignal2019 --id c1'
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == asked
+    if asked:
+        assert "--id c1" in reason(result)
+
+
 def test_a_file_named_currency_elsewhere_holds_no_decision(in_claude_code: Path, capsys) -> None:
     other = in_claude_code / "notes" / "currency.yaml"
     other.parent.mkdir()

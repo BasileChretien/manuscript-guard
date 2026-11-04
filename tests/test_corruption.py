@@ -2941,11 +2941,13 @@ def _currency_text(root: Path, old: str, new: str, name: str = "currency.yaml") 
 def _a_reading_edited(root: Path) -> None:
     path = next((root / "literature" / "currency" / "readings").glob("c1.Ada*.yaml"))
     text = path.read_text(encoding="utf-8")
-    path.write_text(text.replace("value: 1\n", "value: 2\n", 1), encoding="utf-8")
+    # The candidate's level: the cited work's is 4, and comes first.
+    assert "value: 2\n" in text
+    path.write_text(text.replace("value: 2\n", "value: 3\n", 1), encoding="utf-8")
 
 
 def _a_works_record_edited(root: Path) -> None:
-    path = next((root / "literature" / "currency" / "works").glob("*review*.yaml"))
+    path = next((root / "literature" / "currency" / "works").glob("*trial*.yaml"))
     text = path.read_text(encoding="utf-8")
     path.write_text(text.replace("pooled analysis", "pooled analyses", 1), encoding="utf-8")
 
@@ -2962,8 +2964,8 @@ def _the_candidate_retracted(root: Path) -> None:
 
     from manuscript_guard.currency import records
 
-    retracted = case.work(case.CANDIDATE, published="2023-06-01", abstract=case.REVIEW_ABSTRACT,
-                          publication_types=["Systematic Review"])  # fmt: skip
+    retracted = case.work(case.CANDIDATE, published="2023-06-01", abstract=case.TRIAL_ABSTRACT,
+                          publication_types=["Randomized Controlled Trial"])  # fmt: skip
     retracted["integrity"] = {**retracted["integrity"], "retracted": True}
     records.write_work(load_project(root)[0], retracted)
 
@@ -2974,7 +2976,16 @@ def _searched_long_ago(root: Path) -> None:
     records.write_search(load_project(root)[0], {
         "entry": "c1", "number": 1, "step": "S2", "source": "pubmed",
         "query": "drug class AND hepatic injury", "searched_on": "2025-01-10", "hits": 1,
-        "candidates": ["doi:10.5555/class.review.2023"]})  # fmt: skip
+        "candidates": ["doi:10.5555/class.trial.2023"]})  # fmt: skip
+
+
+def _answered_by_the_rules(root: Path) -> None:
+    """Round 1 of #499: an answer signed `rules` cleared `currency-change-unanswered`."""
+    path = root / "literature" / "currency.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["answer"] = {"status": "accepted", "by": "rules",
+                                        "answered_on": "2026-11-04"}  # fmt: skip
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
 
 
 def _read_on_a_scale_there_is_not(root: Path) -> None:
@@ -2995,19 +3006,20 @@ _UNANSWERED = ("currency-change-unanswered", "warn")
         pytest.param(None, "drafting", [_UNANSWERED], id="as filed"),
         pytest.param(None, "submission", [("currency-change-unanswered", "fail")],
                      id="unanswered at submission"),
-        pytest.param(("    action: replace\n    candidate: doi:10.5555/class.review.2023\n",
+        pytest.param(("    action: replace\n    candidate: doi:10.5555/class.trial.2023\n",
                       "    action: keep\n"), "drafting",
                      [("currency-decision-mismatch", "fail")], id="the decision rewritten"),
         pytest.param(("    by: rules\n", "    by: Claude\n    why: it read them\n"), "drafting",
                      [_UNANSWERED, ("currency-decision-not-human", "fail")],
                      id="the decision signed by a model"),
+        pytest.param(_answered_by_the_rules, "submission", [("schema-violation", "fail")],
+                     id="an answer signed by the rules"),
         pytest.param(_a_reading_edited, "drafting",
                      [_UNANSWERED, ("currency-decision-mismatch", "fail"),
                       ("currency-record-edited", "fail")], id="a reading edited"),
         pytest.param(_a_works_record_edited, "drafting",
-                     [_UNANSWERED, ("currency-decision-mismatch", "fail"),
-                      ("currency-quote-unchecked", "info"), ("currency-record-edited", "fail")],
-                     id="a works record edited"),
+                     [_UNANSWERED, ("currency-quote-unchecked", "info"),
+                      ("currency-record-edited", "fail")], id="a works record edited"),
         pytest.param(_a_quote_not_in_the_work, "drafting",
                      [_UNANSWERED, ("currency-quote-not-found", "fail")],
                      id="a quote not in the work"),
@@ -3084,6 +3096,41 @@ def test_a_sentence_citing_a_work_with_a_later_version_is_in_scope(project: Path
         assert "no entry in literature/currency.yaml" in finding.message
 
 
+@pytest.mark.parametrize("action", ["replace", "add"])
+def test_a_proposal_is_accepted_by_citing_the_work_it_proposes(
+    project: Path, action: str
+) -> None:
+    """Design 2.5, round 1 of #499: once the sentence cites a key whose DOI is the
+    candidate's, the proposal is accepted, with nothing written; and a `replace` done leaves
+    the entry placed on its sentence."""
+    import currency_records as case
+
+    case.case(project)
+    if action == "add":
+        _currency_text(project, "action: replace", "action: add")
+        _currency_text(project, "    by: rules\n", "    by: Ada Example\n    why: it disagrees\n")
+    bib = project / "literature" / "references.bib"
+    with bib.open("a", encoding="utf-8") as entries:
+        entries.write("\n@article{classReview2023,\n  title = {A review},\n"
+                      "  author = {Fictional, Eve},\n  journal = {Imaginary Reviews},\n"
+                      "  year = {2023},\n  doi = {10.5555/CLASS.TRIAL.2023}\n}\n")
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    old = "[@fictionalClassSignal2019]. The"
+    new = ("[@classReview2023]. The" if action == "replace"
+           else "[@fictionalClassSignal2019; @classReview2023]. The")  # fmt: skip
+    assert old in text
+    main.write_text(text.replace(old, new, 1), encoding="utf-8")
+    assert _currency_findings(project, "submission") == []
+    from manuscript_guard.currency import command
+
+    rows, unplaced = command.listing(load_project(project)[0])
+    assert [row.state for row in rows] == [
+        f"{action} {case.CANDIDATE}, accepted: the sentence cites it "
+        + ("(by the rules)" if action == "replace" else "(by Ada Example)")]
+    assert unplaced == []
+
+
 @pytest.mark.parametrize(
     ("change", "said"),
     [
@@ -3102,7 +3149,7 @@ def test_what_currency_notes_is_said(project: Path, change: str, said: list) -> 
     case.case(project, readings=change != "readings")
     if change == "readings":
         case.file(project, case.reading("Ada Example"), "first")
-        case.file(project, case.reading("Bo Example", level=2), "second")
+        case.file(project, case.reading("Bo Example", level=3), "second")
     elif change == "store":
         for path in (project / "literature" / "currency" / "works").glob("*.yaml"):
             path.unlink()

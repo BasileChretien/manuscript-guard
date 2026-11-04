@@ -40,7 +40,7 @@ def _where(project: Project, path: Path, line: int) -> str:
     return f"{shown}:{line}"
 
 
-def state_of(entry: records.Entry | None, held) -> str:
+def state_of(entry: records.Entry | None, held, accepted: bool = False) -> str:
     """How far one claim's entry got, in a few words."""
     if entry is None:
         return "no entry"
@@ -52,7 +52,9 @@ def state_of(entry: records.Entry | None, held) -> str:
         answer = entry.answer
         if decision["action"] in (rules.REPLACE, rules.ADD):
             said += (f", {answer['status']} by {answer['by']}" if answer
-                     else ", not answered")  # fmt: skip
+                     else ", accepted: the sentence cites it" if accepted
+                     else ", not answered: cite it (Zotero, then `sync-bib`), or "
+                     f"`references --refuse {entry.id}`")  # fmt: skip
         return f"{said} ({by})"
     readings = [read for read in held.readings.get(entry.id, []) if read.problem is None]
     searches = [read for read in held.searches.get(entry.id, []) if read.problem is None]
@@ -72,7 +74,8 @@ def listing(project: Project) -> tuple[list[Row], list[records.Entry]]:
     rows = [
         Row(claim.entry.id if claim.entry else None, claim.citekey,
             _where(project, claim.sentence.path, claim.sentence.line),
-            state_of(claim.entry, held), " ".join(claim.sentence.text.split()))
+            state_of(claim.entry, held, bool(claim.entry and claim.entry.id in found.accepted)),
+            " ".join(claim.sentence.text.split()))
         for claim in found.claims
     ]  # fmt: skip
     return rows, list(found.unplaced)
@@ -139,8 +142,12 @@ def explain(project: Project, entry_id: str) -> str:
         lines.append(f"  the rules give: {given.action}"
                      + (f" {given.candidate}" if given.candidate else "")
                      + f" ({', '.join(given.rules)}): {given.why}")  # fmt: skip
-    if not held.store:
-        lines.append("  (no works store in this checkout: every candidate fails K1 here)")
+    from manuscript_guard.gates.currency import missing_works
+
+    absent = missing_works(entry, usable, held, _bib(project))
+    if absent:
+        lines.append(f"  (the works store holds no record of {', '.join(absent)}: the rules "
+                     "decide nothing until it does)")  # fmt: skip
     if entry.decision:
         lines.append(f"  decision: {state_of(entry, held)}"
                      + (f"; why: {entry.decision['why']}" if entry.decision.get("why")
@@ -160,7 +167,7 @@ def _reading_lines(record: dict) -> list[str]:
                  f"({cited['level']['quote']!r})")  # fmt: skip
     for one in record.get("candidates") or []:
         fields = ", ".join(f"{name} {one[name]['value']} ({one[name]['quote']!r})"
-                           for name in rules.USED if one.get(name))  # fmt: skip
+                           for name in records.FIELDS if one.get(name))  # fmt: skip
         lines.append(f"    {one['work']}: {fields}")
     return lines
 
@@ -225,7 +232,13 @@ def file_reading(project: Project, path: Path) -> str:
     decision is left as it is, and so is the reading's entry where the rules would change a
     decision somebody answered: nothing is filed then."""
     from manuscript_guard.currency.hierarchy import hierarchies, level_problem
-    from manuscript_guard.gates.currency import _bib, _fitting, _Records, rules_decision
+    from manuscript_guard.gates.currency import (
+        _bib,
+        _fitting,
+        _Records,
+        missing_works,
+        rules_decision,
+    )
 
     try:
         record = read_structured(path)
@@ -233,6 +246,8 @@ def file_reading(project: Project, path: Path) -> str:
         raise Refused(str(exc)) from exc
     if record is None:
         raise Refused(f"{path}: no such file")
+    if isinstance(record, dict):
+        record = records.folded_reading(record)
     report = validate(record, "currency-reading", path)
     if not report.ok:
         raise Refused("; ".join(finding.message for finding in report.failures))
@@ -251,11 +266,21 @@ def file_reading(project: Project, path: Path) -> str:
     held = _Records(project)
     usable = [read.record for read in held.readings.get(entry.id, []) if read.problem is None]
     usable, _unfit = _fitting(usable, entry, hierarchies(project), bib)
-    given = rules_decision(entry, [*usable, record], held, bib)
+    number = 1
+    while records.reading_path(project, entry.id, str(record["reader"]), number).exists():
+        number += 1
+    numbered = {**record, "number": number}
+    given = rules_decision(entry, [*usable, numbered], held, bib)
+    absent = missing_works(entry, [*usable, numbered], held, bib)
+    if absent:
+        given = None
     _check_answered(entry, given)
     filed = records.file_reading(project, record, date.today().isoformat())
     records.ensure_gitignore(project)
     said = f"filed {filed.relative_to(project.root).as_posix()}"
+    if absent:
+        return (f"{said}; the works store holds no record of {', '.join(absent)}, so the "
+                "rules decide nothing until it does")  # fmt: skip
     if given is None:
         return f"{said}; the rules decide from {rules.READINGS} readings"
     if entry.decision and entry.decision["by"] != "rules":
@@ -307,6 +332,11 @@ def refuse(project: Project, entry_id: str, why: str, by: str) -> str:
     decision = raw.get("decision") or {}
     if decision.get("action") not in (rules.REPLACE, rules.ADD):
         raise Refused(f"{entry_id} proposes no change to refuse")
+    answer = raw.get("answer")
+    if answer:
+        raise Refused(f"{entry_id}'s proposal was answered already, {answer['status']} by "
+                      f"{answer['by']} on {answer['answered_on']}: only they take their "
+                      "answer back")  # fmt: skip
     entries = [dict(one) for one in document["entries"]]
     for one in entries:
         if one["id"] == entry_id:

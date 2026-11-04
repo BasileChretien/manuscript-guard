@@ -98,6 +98,7 @@ from generated import (
     embargo_times,
     escaped_backticks,
     figure_captions,
+    figures_left_on,
     flow_lists,
     generated,
     harvest_cells,
@@ -9013,6 +9014,36 @@ def test_a_marked_up_copy_shows_each_change_where_it_was_made_and_reads_as_both_
             assert any(holds_ in line for line in mine), (word, holds_, lines)
 
 
+@holds(20, figures_left_on())
+def test_a_figure_is_read_as_one_whatever_identifier_word_left_on_it(
+    drawn: tuple[dict[str, Any], list[list[str]]],
+) -> None:
+    """Cut with Track Changes off, a paragraph leaves its bookmark on the paragraph after
+    it, and directly above a figure that is the figure's. The document as sent reads as its
+    paragraphs, each with its identifier, and its figures, each known by its picture. After
+    the cuts it reads as the same less the paragraphs cut, each figure the same figure, with
+    the identifiers left on it before it as a block of no text, in the order they stood."""
+    given_, left = drawn
+    found = answer(READINGS["word blocks"](), given_)
+    assert "raised" not in found, found
+    sent, returned = found["answer"]["sent"], found["answer"]["returned"]
+    kinds = ["figure" if block["kind"] == "figure" else "" for block in given_["blocks"]]
+    assert [block[2] for block in sent] == kinds, sent
+    assert all(bool(block[3]) == (block[2] == "figure") for block in sent), sent
+    assert all(len(block[0]) == (block[2] != "figure") for block in sent), sent
+    gone = {name for names in left for name in names}
+    figures = iter(left)
+    expected: list[list[Any]] = []
+    for block in sent:
+        if block[2] == "figure":
+            names = next(figures)
+            expected += [[names, "", "", "", "figure"]] if names else []
+            expected.append(block)
+        elif not set(block[0]) & gone:
+            expected.append(block)
+    assert returned == expected, (sent, returned)
+
+
 # ------------------------------------------------------------ the words beside a quoted value
 
 #: A value a ledger records, as its display is written, one of each kind: a decimal, a whole
@@ -14353,6 +14384,19 @@ def _a_count_held_beside_is_read_as_any(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(disclosure, "beside_bounds", lambda cells, chosen, minimum: (0, math.inf))
 
 
+def _a_figure_with_an_identifier_is_a_paragraph(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import docxtext
+
+    patch.setattr(docxtext, "_no_text", lambda paragraph: not (paragraph.text or paragraph.names))
+
+
+def _an_identifier_left_on_a_figure_is_dropped(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import docxtext
+
+    fold = docxtext._fold
+    patch.setattr(docxtext, "_stranded", lambda pending, paragraph, kind: fold(pending))
+
+
 def _a_synthetic_copy_is_drawn_unseeded(patch: pytest.MonkeyPatch) -> None:
     import random
     import types
@@ -14425,6 +14469,14 @@ BROKEN = {
     "a path a command quotes is split at its spaces": (
         _a_quoted_path_is_split_at_its_spaces,
         test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_beside_it,
+    ),
+    "a figure Word left an identifier on is read as a paragraph": (
+        _a_figure_with_an_identifier_is_a_paragraph,
+        test_a_figure_is_read_as_one_whatever_identifier_word_left_on_it,
+    ),
+    "an identifier Word left on a figure is dropped": (
+        _an_identifier_left_on_a_figure_is_dropped,
+        test_a_figure_is_read_as_one_whatever_identifier_word_left_on_it,
     ),
     "a facet of a post is placed in characters, not bytes": (
         _a_facet_is_placed_in_characters,

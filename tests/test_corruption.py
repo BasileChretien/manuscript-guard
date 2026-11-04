@@ -21619,6 +21619,33 @@ def test_a_rewording_merges_under_a_block_deleted_in_the_same_round(
     assert ("either this paragraph, reworded" in out) == untold, out
 
 
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_figure_deleted_where_word_left_an_identifier_is_still_not_found(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A figure is read as one whatever identifier Word left on it, so that a paragraph cut
+    from above it does not lose it. Its picture deleted, the paragraph that held it carries
+    the identifier and nothing else, and the figure is still reported as not found: the
+    identifier is no figure."""
+    from test_roundtrip import cut_before_figure
+
+    from manuscript_guard.cli import main
+
+    def change(xml: str) -> str:
+        drawing = re.search(r"<w:r>(?:(?!<w:r>).)*?<w:drawing>.*?</w:r>", xml, re.DOTALL)
+        assert drawing, "the document has a figure"
+        return xml.replace(drawing.group(0), "", 1)
+
+    source, returned = cut_before_figure(project, tmp_path, change)
+    before = source.read_bytes()
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "1 figure(s) of the document as sent could not be found" in out, out
+    assert "came back on the figure" not in out, out
+    assert source.read_bytes() == before
+
+
 def _without_its_equation(paragraph: str, edit: tuple[str, str]):
     """Word 16, Track Changes off: the paragraph and the displayed equation under it deleted
     in one selection, and the text after the equation edited. The paragraph's identifier is

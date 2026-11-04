@@ -1,4 +1,4 @@
-"""G2 — a date of the data that the analysis typed, where `dataset()` would have pinned it.
+"""G2 — a date of the data emitted as a string, where `dataset()` would have pinned it.
 
 A date typed in the text fails G2 like any number. The way out G2 offered, a string emitted
 with its display, `em.value("extracted", "2024-03-01", display="1 March 2024")`, ties the
@@ -57,7 +57,8 @@ _DECLARED = frozenset({"dataset", "parameter", "software", "dictionary"})
 
 
 def is_typed_date(value: Value) -> bool:
-    """Whether `value` is a date the analysis typed rather than declared with `dataset()`."""
+    """Whether `value` is a date of the data emitted as a string rather than declared with
+    `dataset()`: typed, or computed and then made text, which the gate cannot tell apart."""
     if value.role in _DECLARED or not isinstance(value.value, str):
         return False
     return parse_iso(value.value) is not None or read_written(value.display) is not None

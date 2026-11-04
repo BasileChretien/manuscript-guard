@@ -63,6 +63,11 @@ expected:
       superscript's digits only where it opens a word, so "April-12" and "PharmD^2^" are
       numbers and "sIL-2R", "CCR2" and "PaO2FiO2" terms; the inputs now hold such
       addresses and names
+  - reading: data dates
+    why: >-
+      the finding says the date was emitted as a string rather than typed, and its hint adds
+      that a year computed from the data is emitted as a number, which is not warned of;
+      what is warned of is unchanged
   - reading: reported tests
     why: >-
       a P above 1, "P = 4.1 x 10^5", is not judged; a number with a middle dot or a comma

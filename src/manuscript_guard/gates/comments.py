@@ -20,8 +20,8 @@ import re
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import ContractError, read_structured, validate
+from manuscript_guard.filed_comments import SUPPLEMENTARY, made_on
 from manuscript_guard.filed_comments import _digest as digest_of
-from manuscript_guard.filed_comments import made_on
 from manuscript_guard.findings import FAIL, WARN, Finding, Report
 from manuscript_guard.text.shown import one_line
 
@@ -113,47 +113,58 @@ def _who(path: Path, document: dict) -> str:
 
 class _Places:
     """Where in the manuscript a comment's paragraph is now, for a finding to name it as the
-    author finds it: a file and a line. Read once, at the first comment that asks."""
+    author finds it: a file and a line. The source files are read once, at the first comment
+    that asks (`_passages` reads them once more, for whether a paragraph changed)."""
 
     def __init__(self, project) -> None:
         self.project = project
-        self._read: tuple[dict, list] | None = None
+        self._read: list[tuple[Path, str, int, bool, list]] | None = None
 
-    def _sources(self) -> tuple[dict, list]:
+    def _files(self) -> list[tuple[Path, str, int, bool, list]]:
+        """Each source file: its path, its text, where its body starts past the front
+        matter, whether it is the supplement's, and its tagged paragraphs."""
         if self._read is None:
-            from manuscript_guard.roundtrip import _sources, tagged_paragraphs
+            from manuscript_guard.gates.numbers import is_supplementary
+            from manuscript_guard.roundtrip import _body, _sources, identified
 
+            root = self.project.path("manuscript")
             try:
-                self._read = (tagged_paragraphs(self.project), _sources(self.project))
+                self._read = [
+                    (path, raw, len(raw) - len(_body(raw)), is_supplementary(root, path),
+                     identified(raw, relative))
+                    for path, relative, raw in _sources(self.project)
+                ]  # fmt: skip
             except (ContractError, OSError, UnicodeDecodeError):
-                self._read = ({}, [])
+                self._read = []
         return self._read
 
-    def of(self, finding: dict) -> str:
-        """" in manuscript/main.md, line 34" for the paragraph the comment was made on: the
-        paragraph whose source has the digest filed with the comment, wherever it stands
-        now; else the one its identifier names, where the commented words are in it; else
-        the first line the commented words are on. Empty where none holds them."""
-        tagged, sources = self._sources()
-        anchored = _plain(finding.get("anchored") or "")
+    def of(self, finding: dict, supplementary: bool) -> str:
+        """" in manuscript/main.md, line 34" for the paragraph the comment was made on, in
+        the comment's own document (the paper or its supplement). The paragraph its
+        identifier names, where it still has the digest filed with the comment; else the
+        one paragraph with that digest, where only one has it; else, where the commented
+        words stand once in the document's body, the paragraph its identifier names if they
+        are in it, or the line they are on. Empty where none of these holds: two paragraphs
+        that read the same, or words that stand twice, are not guessed between."""
+        files = [entry for entry in self._files() if entry[3] == supplementary]
+        paragraphs = {name: (path, raw, text, start) for path, raw, _body, _supp, tagged in files
+                      for name, text, start in tagged}  # fmt: skip
         digest = finding.get("paragraph_sha256")
-        found = None
-        if digest:
-            found = next((entry for entry in tagged.values()
-                          if digest_of(entry[1]) == digest), None)  # fmt: skip
-        named = tagged.get(finding.get("where") or "")
-        if found is None and named and anchored and anchored in _plain(named[1]):
-            found = named
-        if found is not None:
-            path, _text, start = found
-            raw = next((text for at, _relative, text in sources if at == path), "")
-            return self._line(path, raw, start)
-        if anchored:
-            for path, _relative, raw in sources:
-                start = _plain_find(raw, anchored)
-                if start is not None:
-                    return self._line(path, raw, start)
-        return ""
+        named = paragraphs.get(finding.get("where") or "")
+        if digest and named and digest_of(named[2]) == digest:
+            return self._line(named[0], named[1], named[3])
+        same = [entry for entry in paragraphs.values() if digest and digest_of(entry[2]) == digest]
+        if len(same) == 1:
+            return self._line(same[0][0], same[0][1], same[0][3])
+        anchored = _plain(finding.get("anchored") or "")
+        found = [(path, raw, at) for path, raw, body, _supp, _tagged in files
+                 for at in _plain_finds(raw, anchored, body)] if anchored else []  # fmt: skip
+        if len(found) != 1:
+            return ""
+        path, raw, at = found[0]
+        if named and named[0] == path and named[3] <= at < named[3] + len(named[2]):
+            return self._line(path, raw, named[3])
+        return self._line(path, raw, at)
 
     def _line(self, path: Path, raw: str, start: int) -> str:
         try:
@@ -169,11 +180,11 @@ def _plain(text: str) -> str:
     return " ".join(text.removesuffix(" [...]").split())
 
 
-def _plain_find(raw: str, words: str) -> int | None:
-    """Where in `raw` the words stand, line breaks and runs of spaces read as one space."""
-    pattern = r"\s+".join(re.escape(word) for word in words.split())
-    found = re.search(pattern, raw) if pattern else None
-    return found.start() if found else None
+def _plain_finds(raw: str, words: str, body: int) -> list[int]:
+    """Where in `raw`, past `body`, the words stand, line breaks and runs of spaces read as
+    one space."""
+    pattern = re.compile(r"\s+".join(re.escape(word) for word in words.split()))
+    return [found.start() for found in pattern.finditer(raw, body)]
 
 
 def _unanswered(path: Path, document: dict, finding: dict, passages, severity: str,
@@ -190,8 +201,10 @@ def _unanswered(path: Path, document: dict, finding: dict, passages, severity: s
     anchored = finding.get("anchored") or ""
     # Where it is, as the author finds it: a file and a line, or the words it was made on.
     # The paragraph's identifier, `mg-p-main3f2a1c-34`, is found in no file the author opens.
-    at = f', at the words "{one_line(_plain(anchored), 60)}"' if anchored else ""
-    on = made_on(finding["block"]) + (places.of(finding) or at)
+    plain = _plain(anchored)
+    at = f', at the words "{one_line(plain, 60)}"' if plain else ""
+    supplementary = document.get("document") == SUPPLEMENTARY
+    on = made_on(finding["block"]) + (places.of(finding, supplementary) or at)
     said = f"  [{'; '.join(notes)}]" if notes else ""
     words = one_line(finding["finding"], SHOWN) or NO_WORDS
     return Finding(

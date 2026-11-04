@@ -11280,11 +11280,15 @@ since]". That is said, and answers nothing.
 The finding says where the comment is as the author finds it. It named the paragraph by
 its identifier, "on a paragraph mg-p-maincbb16c-34", which is in no file the author opens,
 and the words it was made on were in the context line only. It names the file and the line
-the paragraph starts on now: the paragraph whose source has the digest filed with the
-comment, wherever it has moved; else the one the identifier names, where the commented
-words are in it; else the first line those words are on, read across line breaks. Where
-none holds them it quotes them, 'on a paragraph, at the words "a synthetic spontaneous reporting"',
-and the identifier is never shown.
+the paragraph starts on now, in the comment's own document, the paper or its supplement:
+the paragraph the identifier names, where it still has the digest filed with the comment;
+else the one paragraph with that digest, where it has moved; else, where the commented
+words stand once in the document's body (front matter left out, read across line breaks),
+the paragraph the identifier names if they are in it, or the line they are on. Two
+paragraphs that read the same, a Methods paragraph the supplement repeats, and words that
+stand twice, a heading "Results" beside an abstract's "Results.", are not guessed between
+(round 1 of #511, where the first of them was named): the words are quoted, 'on a heading,
+at the words "Results"', and the identifier is never shown.
 
 **A comment is known again by the id Word keeps through a save.** Word renumbers `w:id`
 each time it saves: in Word 16 on 2026-10-20, a comment added above four others moved each

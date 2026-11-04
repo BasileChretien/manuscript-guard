@@ -12580,7 +12580,8 @@ a Ctrl-C or a refusal removes the copy (`run.discard`, in a `finally` until the 
 and `prepare` removes it on anything that ends it, a Ctrl-C during the copy included; once the
 run has started, anything that ends it removes the copy and leaves `log.txt` and a `run.json`
 saying it did not finish, with what was moved to the outbox before then, where that record can
-be written (on a full disk it keeps what `prepare` wrote) (round 2 and the fix rounds of #490).
+be written: on a full disk the run's folder may hold no record at all, and `vault release` then
+says there is no such run (round 2 and the fix rounds of #490).
 
 The run's id is its UTC time, `YYYYMMDD-HHMMSS`, with `-2` and on where taken, and runs are
 ordered by the time and then the number (`run.run_key`); no other word names a run's folder. The project is

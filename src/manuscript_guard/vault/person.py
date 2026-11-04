@@ -101,14 +101,18 @@ def cmd_run(args: argparse.Namespace) -> int:
         try:
             done = running.run(project, staged)
         except BaseException:
-            # Said only where the run's own record says it did not finish: a finished run
-            # whose summary alone failed is releasable (fix round 6 of #490).
+            # Said only where the run's own record does not say it finished: a finished run
+            # whose summary alone failed is releasable (fix round 6 of #490), and a run with
+            # no record that can be read is not (fix round 7).
             outbox = folder / running.OUTBOX / staged.run
             try:
                 stopped = not running.read_manifest(folder, staged.run).get("finished")
+            except running.RunRefused:
+                stopped = True
+            try:
                 waiting = stopped and outbox.is_dir() and any(outbox.iterdir())
-            except (OSError, running.RunRefused):
-                waiting = False
+            except OSError:
+                waiting = stopped
             if waiting:
                 print(f"{_PREFIX} run {staged.run}: stopped; what it moved before then waits in "
                       f"{outbox}, and the run cannot be released", file=sys.stderr)  # fmt: skip

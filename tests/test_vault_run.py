@@ -1377,6 +1377,28 @@ def test_a_finished_run_whose_summary_fails_is_not_said_unreleasable(
     assert record["finished"] is True
 
 
+def test_a_run_whose_record_cannot_be_written_is_said_unreleasable(
+    paper: Path, vault: Path, terminal, monkeypatch, capsys
+) -> None:
+    """Fix round 7 of #490: with no record of the run (a full disk), the run is not one to
+    release, and the person is told what waits in the outbox."""
+    real = Path.write_text
+
+    def full(self, *args, **kwargs):
+        if self.name == "run.json":
+            raise OSError("the disk is full")
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", full)
+    answers, _asked = terminal
+    _script(paper, "import pathlib\npathlib.Path('figures').mkdir(exist_ok=True)\n"
+                   "pathlib.Path('figures/a.png').write_bytes(b'a')")
+    answers.append("y")
+    with pytest.raises(OSError, match="the disk is full"):
+        vault_cli(paper, "run")
+    assert "cannot be released" in capsys.readouterr().err
+
+
 def test_a_lone_surrogate_in_the_summary_is_kept_readable(
     paper: Path, vault: Path, terminal
 ) -> None:

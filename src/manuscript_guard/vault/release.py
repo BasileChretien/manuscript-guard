@@ -99,8 +99,9 @@ def open_outbox(project, folder: Path, run: str) -> Outbox:
     if not manifest.get("finished"):
         try:
             waiting = where.is_dir() and any(where.iterdir())
-        except OSError:
-            waiting = True  # not listable: said to wait, which refuses all the same
+        except OSError as exc:
+            raise Refused(f"run {run} did not finish, and its outbox {where} cannot be listed "
+                          f"({exc}): a run that did not finish cannot be released") from exc
         if waiting:
             raise Refused(f"run {run} did not finish: what it moved before it stopped waits in "
                           f"{where}, and a run that did not finish cannot be released. Read "

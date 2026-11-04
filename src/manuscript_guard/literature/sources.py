@@ -218,8 +218,9 @@ WORDS_BESIDE = 4
 #: four: the BEST 2009 corpus holds 20.9 million characters in 5.8 million words, 3.6 a
 #: word, its vowel and tone marks being characters of their own. Lao, Khmer and Myanmar are
 #: written as Thai is and counted as it is; no corpus of them was measured. Each size is
-#: rounded up and each count down, so that a quote is counted no longer than a person would
-#: count it and a short one is still warned of.
+#: rounded up and each count down, so that a quote of average words is counted no longer
+#: than a person would count it and a short one is still warned of; one of long words, a
+#: long Katakana loanword or a Thai compound, counts longer (DESIGN.md, Known gaps).
 UNSPACED: tuple[tuple[int, tuple[tuple[int, int], ...]], ...] = (
     (
         2,
@@ -253,7 +254,10 @@ def _letters_to_a_word(ch: str) -> int:
 def _words_of(piece: str) -> list[str]:
     """The words of a run between spaces. A run in it of a script written without spaces is
     cut into words of its size, a shorter piece left at its end counting for none; what
-    stands between such runs is a word if it holds a letter, as a run between spaces is."""
+    stands between such runs is a word if it holds a letter, as a run between spaces is.
+    A run between spaces that holds a letter is a word at the least, as it always was, so
+    that Chinese set with spaces around its numbers ("纳入 120 例") counts no fewer words
+    than before (round 1 of #505)."""
     words = []
     for size, letters in itertools.groupby(piece, _letters_to_a_word):
         run = "".join(letters)
@@ -261,6 +265,8 @@ def _words_of(piece: str) -> list[str]:
             words.extend(run[at : at + size] for at in range(0, len(run) - size + 1, size))
         elif any(ch.isalpha() for ch in run):
             words.append(run)
+    if not words and any(ch.isalpha() for ch in piece):
+        return [piece]
     return words
 
 

@@ -2834,9 +2834,12 @@ parts two runs, and a Latin word or a number among them is counted as it is betw
 Two, because segmented Chinese averages 1.6 to 1.7 characters a word (the PKU and MSR
 corpora of the SIGHAN 2005 bakeoff) and Japanese, whose particles are words of one letter,
 is as short; four, because the BEST 2009 corpus of Thai averages 3.6. Each size is rounded
-up and each count down, so a quote is counted no longer than a reader would count it: a
-sentence passes, "報告オッズ比2.6" (three words) and "2.6倍" (none) are still warned of. Lao,
-Khmer and Myanmar are written as Thai is and were not measured.
+up and each count down, so that a quote of average words is counted no longer than a reader
+would count it: a sentence passes, "報告オッズ比2.6" (three words) and "2.6倍" (one) are
+still warned of. A quote of long words counts longer (Known gaps). A run between spaces
+that holds a letter is still a word at the least, so Chinese set with spaces around its
+numbers, "纳入 120 例, ROR 为 2.6", counts four words as it always did. Lao, Khmer and
+Myanmar are written as Thai is and were not measured.
 
 Comparison folds the differences that are not differences: curly quotes, dash widths,
 ligatures, non-breaking spaces and line wrapping all differ between a quote copied from a
@@ -14122,7 +14125,9 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `\it`, a footnote letter in `<sup>` joins the word before it, and a kind of notice
   Crossref adds later passes. A quote in Chinese, Japanese or Thai is counted a word for
   every two or four letters in a row, a fixed size and no dictionary: a label of long words
-  can pass, "อัตราส่วนความเสี่ยง" (risk ratio, two words of nineteen letters) counts four.
+  can pass, "อัตราส่วนความเสี่ยง" (risk ratio, two words of nineteen letters) counts four, and
+  "ファーマコビジランス" (one word) five. Latin words parted only by a stop of these scripts,
+  "ROR、PRR、IC", count as one, and an ideographic variation selector parts a run of Han.
   Tibetan, Javanese, Balinese and other scripts written without spaces are still counted
   between spaces, a sentence of them as a word or two, and so is a Han letter outside the
   blocks of `UNSPACED`; "〇", which Unicode makes a number, counts for nothing. A value

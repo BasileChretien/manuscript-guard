@@ -12987,6 +12987,9 @@ def test_a_quote_that_holds_little_more_than_its_value_is_said(
         ("พบสัญญาณของยากลุ่มนี้โดยรวม (ROR 2.6)", False),
         # Japanese and Latin in one quote: three words of the one and one of the other.
         ("薬剤群全体のROR 2.6", False),
+        # Chinese set with spaces around numbers and Latin words: a piece between spaces is
+        # a word, a single letter as well, as it was before (round 1 of #505).
+        ("纳入 120 例, ROR 为 2.6", False),
         ("群全体のROR 2.6", True),
         ("報告オッズ比2.6", True),
         ("倍率2.6", True),

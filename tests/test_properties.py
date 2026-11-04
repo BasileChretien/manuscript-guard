@@ -9089,6 +9089,8 @@ def _unspaced_quotes_beside(draw: st.DrawFn) -> list[tuple[str, str, int]]:
         pieces = draw(st.permutations([*words, cjk, thai_piece, glued, value]))
         gaps = [draw(st.sampled_from(_QUOTE_GAPS)) for _ in pieces]
         quote = "".join(gap + piece for gap, piece in zip(gaps, pieces, strict=True))
+        # The Japanese or Chinese piece stands between spaces, so it is a word at the least.
+        cjk_count = max(cjk_count, 1)
         quotes.append((quote, value, len(words) + cjk_count + thai_count + glued_count + 1))
     return quotes
 
@@ -9100,7 +9102,8 @@ def test_a_quote_without_spaces_counts_a_word_for_each_few_letters(
     """Chinese, Japanese and Thai put no space between words, so a run between spaces of
     them is no word: a run of Han, Hiragana or Katakana is a word for every two letters,
     one of Thai, Lao, Khmer or Myanmar for every four, rounded down, a stop of theirs
-    parting two runs; and a Latin word glued to such a run is a word of its own."""
+    parting two runs; and a Latin word glued to such a run is a word of its own. A run
+    between spaces that holds a letter is still a word at the least, as it was before."""
     for quote, value, count in quotes:
         assert len(literature_sources.words_beside(quote, value)) == count, (quote, value)
 
@@ -13795,6 +13798,20 @@ def _thai_is_counted_as_han_is(patch: pytest.MonkeyPatch) -> None:
         (2, blocks) for _size, blocks in literature_sources.UNSPACED))  # fmt: skip
 
 
+def _a_lone_unspaced_letter_is_no_word(patch: pytest.MonkeyPatch) -> None:
+    def counted(piece: str) -> list[str]:
+        words = []
+        for size, letters in itertools.groupby(piece, literature_sources._letters_to_a_word):
+            run = "".join(letters)
+            if size:
+                words.extend(run[at : at + size] for at in range(0, len(run) - size + 1, size))
+            elif any(ch.isalpha() for ch in run):
+                words.append(run)
+        return words
+
+    patch.setattr(literature_sources, "_words_of", counted)
+
+
 def _an_anchor_in_a_comment_is_an_anchor(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(placeholders, "_without_comments", lambda text: text)
 
@@ -16810,6 +16827,10 @@ BROKEN = {
     ),
     "Thai is counted as Han is": (
         _thai_is_counted_as_han_is,
+        test_a_quote_without_spaces_counts_a_word_for_each_few_letters,
+    ),
+    "a lone letter of a script without spaces between spaces is no word": (
+        _a_lone_unspaced_letter_is_no_word,
         test_a_quote_without_spaces_counts_a_word_for_each_few_letters,
     ),
     "a comment in a plan's section is compared": (

@@ -50,7 +50,7 @@ dependencies = ["PyYAML>=6.0", "jsonschema>=4.0"]
 # pypdf reads the typeset proofs tests/test_proof.py writes, where no pdftotext is installed,
 # and is pinned for the reason hypothesis is: another release reads a page otherwise.
 dev = [
-  "pytest>=7.0",
+  "pytest>=7.3",
   "pytest-xdist>=3.5",
   "ruff==0.16.1",
   "matplotlib>=3.7",
@@ -121,6 +121,10 @@ artifacts = ["src/manuscript_guard/profiles/**/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A passing test's folder is removed when it ends, and a failed one's kept. pytest never
+# removes a folder named with `--basetemp`, parallel runs need one each, and a full run
+# writes some three hundred thousand files. tests/test_temp_folders.py holds this.
+tmp_path_retention_policy = "failed"
 
 [tool.ruff]
 line-length = 100

@@ -10353,6 +10353,9 @@ def test_g7_reads_no_types_from_a_record_of_identifiers_the_entry_no_longer_has(
     _replace_once(main, _BEFORE_WHETHER, f"{_CAUSE_ON_ONE}\n\n{_BEFORE_WHETHER}")
     _looked_up(project, pmid="31000001", pubmed=_CASE_REPORT)
     assert [note.code for note in _weak_notes(project)] == ["effect-claim-weak-source"]
+    # Round 2: an entry changed elsewhere, its identifiers intact, is still read.
+    _bib_field(project, "pages", "1-9")
+    assert [note.code for note in _weak_notes(project)] == ["effect-claim-weak-source"]
     _bib_field(project, "pmid", "31000002")
     assert _weak_notes(project) == []
 

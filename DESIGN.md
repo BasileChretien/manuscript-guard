@@ -11277,6 +11277,15 @@ has now and a digest of its source. G11 finds the paragraph by that text, as G13
 reviewer's, and says when the manuscript no longer holds it: "[the paragraph has changed
 since]". That is said, and answers nothing.
 
+The finding says where the comment is as the author finds it. It named the paragraph by
+its identifier, "on a paragraph mg-p-maincbb16c-34", which is in no file the author opens,
+and the words it was made on were in the context line only. It names the file and the line
+the paragraph starts on now: the paragraph whose source has the digest filed with the
+comment, wherever it has moved; else the one the identifier names, where the commented
+words are in it; else the first line those words are on, read across line breaks. Where
+none holds them it quotes them, 'on a paragraph, at the words "a synthetic spontaneous reporting"',
+and the identifier is never shown.
+
 **A comment is known again by the id Word keeps through a save.** Word renumbers `w:id`
 each time it saves: in Word 16 on 2026-10-20, a comment added above four others moved each
 of their ids, while their `w16cid:durableId` and `w14:paraId` stayed. Keyed on `w:id`, a copy

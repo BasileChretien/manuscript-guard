@@ -16,9 +16,11 @@ the author still says what was done.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import ContractError, read_structured, validate
+from manuscript_guard.filed_comments import _digest as digest_of
 from manuscript_guard.filed_comments import made_on
 from manuscript_guard.findings import FAIL, WARN, Finding, Report
 from manuscript_guard.text.shown import one_line
@@ -45,6 +47,7 @@ def check_comments(project, *, submission: bool = False) -> Report:
     report = Report()
     filed = unanswered = 0
     passages: set[str] | None = None
+    places = _Places(project)
     for path in records(project):
         document, problems = _read(path)
         report = report.merge(problems)
@@ -79,7 +82,7 @@ def check_comments(project, *, submission: bool = False) -> Report:
                     # their paragraphs changed is not said.
                     passages = frozenset()
             report = report.with_findings(_unanswered(path, document, finding, passages,
-                                                      severity))  # fmt: skip
+                                                      severity, places))  # fmt: skip
     return report.with_counts(review_comments=filed, review_comments_open=unanswered)
 
 
@@ -108,7 +111,73 @@ def _who(path: Path, document: dict) -> str:
     return f"{one_line(str(document['commenter']), 60)} ({path.parent.name})"
 
 
-def _unanswered(path: Path, document: dict, finding: dict, passages, severity: str) -> Finding:
+class _Places:
+    """Where in the manuscript a comment's paragraph is now, for a finding to name it as the
+    author finds it: a file and a line. Read once, at the first comment that asks."""
+
+    def __init__(self, project) -> None:
+        self.project = project
+        self._read: tuple[dict, list] | None = None
+
+    def _sources(self) -> tuple[dict, list]:
+        if self._read is None:
+            from manuscript_guard.roundtrip import _sources, tagged_paragraphs
+
+            try:
+                self._read = (tagged_paragraphs(self.project), _sources(self.project))
+            except (ContractError, OSError, UnicodeDecodeError):
+                self._read = ({}, [])
+        return self._read
+
+    def of(self, finding: dict) -> str:
+        """" in manuscript/main.md, line 34" for the paragraph the comment was made on: the
+        paragraph whose source has the digest filed with the comment, wherever it stands
+        now; else the one its identifier names, where the commented words are in it; else
+        the first line the commented words are on. Empty where none holds them."""
+        tagged, sources = self._sources()
+        anchored = _plain(finding.get("anchored") or "")
+        digest = finding.get("paragraph_sha256")
+        found = None
+        if digest:
+            found = next((entry for entry in tagged.values()
+                          if digest_of(entry[1]) == digest), None)  # fmt: skip
+        named = tagged.get(finding.get("where") or "")
+        if found is None and named and anchored and anchored in _plain(named[1]):
+            found = named
+        if found is not None:
+            path, _text, start = found
+            raw = next((text for at, _relative, text in sources if at == path), "")
+            return self._line(path, raw, start)
+        if anchored:
+            for path, _relative, raw in sources:
+                start = _plain_find(raw, anchored)
+                if start is not None:
+                    return self._line(path, raw, start)
+        return ""
+
+    def _line(self, path: Path, raw: str, start: int) -> str:
+        try:
+            shown = path.relative_to(self.project.root).as_posix()
+        except ValueError:
+            shown = path.name
+        return f" in {shown}, line {raw.count(chr(10), 0, start) + 1}"
+
+
+def _plain(text: str) -> str:
+    """Words as they are compared with the source: the mark of a cut taken off, every run of
+    white space one space."""
+    return " ".join(text.removesuffix(" [...]").split())
+
+
+def _plain_find(raw: str, words: str) -> int | None:
+    """Where in `raw` the words stand, line breaks and runs of spaces read as one space."""
+    pattern = r"\s+".join(re.escape(word) for word in words.split())
+    found = re.search(pattern, raw) if pattern else None
+    return found.start() if found else None
+
+
+def _unanswered(path: Path, document: dict, finding: dict, passages, severity: str,
+                places: _Places) -> Finding:  # fmt: skip
     notes = []
     # `passages` is a frozenset where the manuscript could not be read, and says nothing.
     known = isinstance(passages, set)
@@ -118,10 +187,12 @@ def _unanswered(path: Path, document: dict, finding: dict, passages, severity: s
         notes.append("made on a paragraph not matched to the source when it was filed")
     if finding.get("resolved_in_word"):
         notes.append("resolved in Word")
-    on = made_on(finding["block"])
-    on += f" {finding['where']}" if finding.get("where") else ""
-    said = f"  [{'; '.join(notes)}]" if notes else ""
     anchored = finding.get("anchored") or ""
+    # Where it is, as the author finds it: a file and a line, or the words it was made on.
+    # The paragraph's identifier, `mg-p-main3f2a1c-34`, is found in no file the author opens.
+    at = f', at the words "{one_line(_plain(anchored), 60)}"' if anchored else ""
+    on = made_on(finding["block"]) + (places.of(finding) or at)
+    said = f"  [{'; '.join(notes)}]" if notes else ""
     words = one_line(finding["finding"], SHOWN) or NO_WORDS
     return Finding(
         gate=GATE,

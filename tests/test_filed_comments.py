@@ -323,6 +323,85 @@ def test_an_unreadable_manuscript_file_does_not_hide_the_comments(project: Path)
     assert "[the paragraph has changed since]" in found.message
 
 
+def _comment_on(project: Path, identifier: str, anchored: str, *, digest: bool = True):
+    """G11's finding for a comment filed on the example's paragraph `identifier`, as
+    `import` files one: its identifier, the digest of its source and the words it covers."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.filed_comments import Thread, _digest, plan_filing, write_filing
+    from manuscript_guard.gates import check_review
+    from manuscript_guard.roundtrip import tagged_paragraphs
+
+    loaded = load_project(project)[0]
+    source = tagged_paragraphs(loaded)[identifier][1]
+    thread = Thread(key="durable:00000001", author="Ann Coauthor", date="2026-10-19",
+                    text="Why this database?", block="paragraph", anchored=anchored,
+                    where=identifier,
+                    paragraph_sha256=_digest(source) if digest else "0" * 64)  # fmt: skip
+    (filing,) = plan_filing(loaded, [thread], stamp="a" * 64, printed=None,
+                            supplementary=False, today="2026-10-20")  # fmt: skip
+    write_filing(filing)
+    (found,) = [f for f in check_review(load_project(project)[0], submission=True).failures
+                if f.code == "comment-unanswered"]  # fmt: skip
+    return found
+
+
+def _line_of(project: Path, words: str) -> int:
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    return text[: text.index(words)].count("\n") + 1
+
+
+def test_an_unanswered_comment_says_the_file_and_line_of_its_paragraph(project: Path) -> None:
+    """G11 named the paragraph by its identifier, `mg-p-maincbb16c-12`, which is in no file
+    the author opens; the words it was made on were in the context line only. It names the
+    manuscript file and the line the paragraph starts on now."""
+    found = _comment_on(project, "mg-p-maincbb16c-12", "a synthetic spontaneous reporting")
+    line = _line_of(project, "We analysed a synthetic spontaneous")
+    assert f"c1, on a paragraph in manuscript/main.md, line {line}: Why this database?" in (
+        found.message
+    ), found.message
+    assert "mg-p-" not in found.message
+
+
+def test_a_comment_whose_paragraph_moved_is_found_where_it_is_now(project: Path) -> None:
+    """A paragraph added above moves the identifiers below it: the identifier then names the
+    paragraph above the one commented on. The paragraph is found by its digest, and the line
+    is where it stands now."""
+    found = _comment_on(project, "mg-p-maincbb16c-12", "a synthetic spontaneous reporting")
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    at = text.index("We analysed a synthetic spontaneous")
+    path.write_text(text[:at] + "An added paragraph.\n\n" + text[at:], encoding="utf-8")
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates import check_review
+
+    (found,) = [f for f in check_review(load_project(project)[0], submission=True).failures
+                if f.code == "comment-unanswered"]  # fmt: skip
+    line = _line_of(project, "We analysed a synthetic spontaneous")
+    assert f"on a paragraph in manuscript/main.md, line {line}:" in found.message, found.message
+
+
+def test_a_comment_whose_paragraph_changed_is_found_by_its_words(project: Path) -> None:
+    """Its paragraph reworded since, the comment is found where the words it was made on are,
+    and where they are gone, those words are named, never the identifier alone."""
+    found = _comment_on(project, "mg-p-maincbb16c-12", "a synthetic spontaneous reporting",
+                        digest=False)  # fmt: skip
+    line = _line_of(project, "We analysed a synthetic spontaneous")
+    assert f"in manuscript/main.md, line {line}:" in found.message, found.message
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("a synthetic spontaneous", "an invented spontaneous"),
+                    encoding="utf-8")  # fmt: skip
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates import check_review
+
+    (found,) = [f for f in check_review(load_project(project)[0], submission=True).failures
+                if f.code == "comment-unanswered"]  # fmt: skip
+    assert 'c1, on a paragraph, at the words "a synthetic spontaneous reporting": Why' in (
+        found.message
+    ), found.message
+    assert "mg-p-" not in found.message
+
+
 # ------------------------------------------------------------------------- import files them
 
 

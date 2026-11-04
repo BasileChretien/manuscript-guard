@@ -807,9 +807,13 @@ def test_a_new_citation_in_a_live_document_is_named_not_merged(
     inserted = _field_runs(_csl_code(UNKNOWN_ITEM), " (Other 2020)")
     returned = edit_docx(built, tmp_path / "back.docx", _inserted_after_prose(inserted))
     assert main(["import", str(returned), str(project), "--apply"]) == 1
-    out = " ".join(capsys.readouterr().out.split())
+    said = capsys.readouterr().out
+    out = " ".join(said.split())
     assert 'Other 2020, "A study that is not in the library" was cited in Word' in out, out
-    assert "[@fictionalClassSignal2019]" not in out.split("cited in Word")[0][-200:]
+    # The reason names the work inserted, not the citation the paragraph already had, which
+    # the lines above it show, as sent and as returned, beside the change.
+    (reason,) = [line for line in said.splitlines() if "was cited in Word" in line]
+    assert "[@fictionalClassSignal2019]" not in reason, said
     assert (project / "manuscript" / "main.md").read_text(encoding="utf-8") == before
 
 

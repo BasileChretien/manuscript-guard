@@ -2,11 +2,14 @@
 
 Every test that copies the example into `tmp_path` writes a few dozen files, and a full run
 writes some three hundred thousand. pytest removes old runs from its own folder, keeping the
-newest three, but a folder named with `--basetemp` is never removed: parallel runs need one
-each, and two weeks of them left about 120 GB behind on the author's machine. With
+newest three. A folder named with `--basetemp` it empties when a later run names it again,
+never when a run ends: parallel runs need one each, each run named its own, and two weeks of
+them left about 120 GB behind on the author's machine. With
 `tmp_path_retention_policy = "failed"` in `pyproject.toml`, pytest removes a test's folder as
 soon as the test passes, under `--basetemp` as well, and keeps a failed test's folder for
-whoever has to look at it.
+whoever has to look at it. On Windows a passing test that is still inside its folder through
+`monkeypatch.chdir` when pytest removes it leaves the folder there, empty: a process cannot
+remove the folder it is working in.
 """
 
 from __future__ import annotations

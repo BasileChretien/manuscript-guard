@@ -121,9 +121,10 @@ artifacts = ["src/manuscript_guard/profiles/**/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# A passing test's folder is removed when it ends, and a failed one's kept. pytest never
-# removes a folder named with `--basetemp`, parallel runs need one each, and a full run
-# writes some three hundred thousand files. tests/test_temp_folders.py holds this.
+# A passing test's folder is removed when it ends, and a failed one's kept. pytest empties a
+# folder named with `--basetemp` when a later run names it again, never when a run ends;
+# parallel runs need one each, and a full run writes some three hundred thousand files.
+# tests/test_temp_folders.py holds this.
 tmp_path_retention_policy = "failed"
 
 [tool.ruff]

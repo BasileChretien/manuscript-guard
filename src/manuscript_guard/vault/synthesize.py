@@ -224,13 +224,22 @@ class _Column:
 # --------------------------------------------------------------------- drawing a value
 
 
-def _undistributed(column: _Column) -> None:
-    """Say, once, that a column is drawn without its distribution."""
+#: Where a value of a type is drawn from with no distribution and no range: a number from
+#: nought, a date from 2000-01-01, the width each spans, and how far about a lone centile.
+_SPAN = 100.0
+_FIRST_DAY = date(2000, 1, 1)
+_DAYS = 3653
+_ABOUT_MONTHS = 6.0
+_ABOUT_HOURS = 2.0
+
+
+def _undistributed(column: _Column, how: str) -> None:
+    """Say, once, that a column is drawn without its distribution, and how: "within its
+    range", "about its one centile", or "as a value of its type"."""
     if not any(note.startswith(f"{column.name}: drawn without") for note in column.notes):
-        column.notes.append(f"{column.name}: drawn without its distribution, which the profile "
-                            "does not give (its rows read are held back, or too few): within "
-                            "the dictionary's range, about its one centile, or as a value of "
-                            "its type")  # fmt: skip
+        column.notes.append(f"{column.name}: drawn without its distribution, {how}: the "
+                            "profile gives none (its rows read are held back, or too "
+                            "few)")  # fmt: skip
 
 
 def _range_of(column: _Column) -> tuple[float | None, float | None]:
@@ -240,7 +249,7 @@ def _range_of(column: _Column) -> tuple[float | None, float | None]:
     return quality.number_of(variable.minimum), quality.number_of(variable.maximum)
 
 
-def _number(column: _Column, u: float, shape: dict, row: int) -> _Drawn | None:
+def _number(column: _Column, u: float, shape: dict) -> _Drawn | None:
     spec = column.spec
     points = [(int(c) / 100, float(v)) for c, v in spec["centiles"].items()]
     low, high = _range_of(column)
@@ -249,19 +258,19 @@ def _number(column: _Column, u: float, shape: dict, row: int) -> _Drawn | None:
     elif "mean" in spec and "sd" in spec:
         half = math.sqrt(3) * float(spec["sd"])
         value = float(spec["mean"]) - half + 2 * half * u
-    else:
+    elif low is not None and high is not None:
         # No distribution printed: the rows read are held back, or too few for one.
-        _undistributed(column)
-        if low is not None and high is not None:
-            value = low + (high - low) * u
-        elif points:
-            centre = points[0][1]
-            half = max(abs(centre), 1.0) / 2
-            value = centre - half + 2 * half * u
-        elif "mean" in spec:
-            value = float(spec["mean"])
-        else:
-            return _withheld(column, row, lambda: u)
+        _undistributed(column, "within its range")
+        value = low + (high - low) * u
+    elif points:
+        _undistributed(column, "about its one centile")
+        centre = points[0][1]
+        half = max(abs(centre), 1.0) / 2
+        value = centre - half + 2 * half * u
+    else:
+        _undistributed(column, "as a value of its type")
+        start = low if low is not None else (high - _SPAN if high is not None else 0.0)
+        value = start + _SPAN * u
     whole = spec["type"] == "count"
     value = max(value, low) if low is not None else value
     value = min(value, high) if high is not None else value
@@ -302,24 +311,53 @@ def render(form: str, parts: dict[str, int]) -> str:
     return "".join(out)
 
 
-def _date(column: _Column, u: float, clock: float, row: int) -> _Drawn | None:
+def _date_range(column: _Column) -> tuple[date | None, date | None]:
+    variable = column.variable
+    if variable is None:
+        return None, None
+    found = []
+    for bound in (variable.minimum, variable.maximum):
+        iso = quality.date_of(bound) or (quality.datetime_of(bound) or "")[:10] or None
+        found.append(date.fromisoformat(iso) if iso else None)
+    return found[0], found[1]
+
+
+def _day_without_distribution(column: _Column, u: float) -> tuple[int, int, int]:
+    """A day drawn evenly within the dictionary's range, from its one end, or from 2000."""
+    low, high = _date_range(column)
+    if low is not None and high is not None:
+        _undistributed(column, "within its range")
+        first, span = low, (high - low).days + 1
+    else:
+        _undistributed(column, "within its range" if low or high else "as a value of its type")
+        first = low or (high - timedelta(days=_DAYS - 1) if high else _FIRST_DAY)
+        span = _DAYS
+    day = first + timedelta(days=min(math.floor(u * span), span - 1))
+    return day.year, day.month, day.day
+
+
+def _date(column: _Column, u: float, clock: float) -> _Drawn | None:
     spec = column.spec
     points = [(int(c) / 100, _month_value(v)) for c, v in spec["centiles"].items()]
     if len(points) >= 2:
         month = _inverse(points, u)
     elif points:
-        month = points[0][1] + 0.5
+        _undistributed(column, "about its one centile")
+        month = points[0][1] + 0.5 + (2 * u - 1) * _ABOUT_MONTHS
     else:
-        _undistributed(column)
-        return _withheld(column, row, lambda: u)
-    index = math.floor(month)
-    year, month_ = divmod(index, 12)
-    if not 1 <= year <= 9999:
-        year, month_ = min(max(year, 1), 9999), 0 if year < 1 else 11
-    days = _days_in(year, month_ + 1)
-    day = min(1 + math.floor((month - index) * days), days)
+        month = None
+    if month is not None:
+        index = math.floor(month)
+        year, month_ = divmod(index, 12)
+        if not 1 <= year <= 9999:
+            year, month_ = min(max(year, 1), 9999), 0 if year < 1 else 11
+        days = _days_in(year, month_ + 1)
+        day = min(1 + math.floor((month - index) * days), days)
+        month_ += 1
+    else:
+        year, month_, day = _day_without_distribution(column, u)
     seconds = min(math.floor(clock * _SECONDS), _SECONDS - 1)
-    parts = {"Y": year, "m": month_ + 1, "d": day, "H": seconds // 3600,
+    parts = {"Y": year, "m": month_, "d": day, "H": seconds // 3600,
              "M": seconds // 60 % 60, "S": seconds % 60}  # fmt: skip
     timed = spec["type"] == "datetime"
     default = "%Y-%m-%d %H:%M:%S" if timed else "%Y-%m-%d"
@@ -327,15 +365,16 @@ def _date(column: _Column, u: float, clock: float, row: int) -> _Drawn | None:
     return _Drawn(iso, render(spec.get("format", default), parts))
 
 
-def _time(column: _Column, u: float, row: int) -> _Drawn | None:
+def _time(column: _Column, u: float) -> _Drawn | None:
     points = [(int(c) / 100, int(v[:2])) for c, v in column.spec["centiles"].items()]
     if len(points) >= 2:
         hours = _inverse(points, u)
     elif points:
-        hours = points[0][1] + 0.5
+        _undistributed(column, "about its one centile")
+        hours = points[0][1] + 0.5 + (2 * u - 1) * _ABOUT_HOURS
     else:
-        _undistributed(column)
-        return _withheld(column, row, lambda: u)
+        _undistributed(column, "as a value of its type")
+        hours = 24 * u
     minutes = min(max(math.floor(hours * 60), 0), 24 * 60 - 1)
     text = f"{minutes // 60:02d}:{minutes % 60:02d}"
     return _Drawn(text, text)
@@ -494,10 +533,10 @@ def _draw(column: _Column, row: int, u, shape: dict) -> _Drawn | None:
     if kind == "withheld":
         return _withheld(column, row, u)
     if kind == "number":
-        return _number(column, u(), shape, row)
+        return _number(column, u(), shape)
     if kind == "date":
-        return _date(column, u(), u(), row)
-    return _time(column, u(), row)
+        return _date(column, u(), u())
+    return _time(column, u())
 
 
 # ------------------------------------------------------------------------------ rules

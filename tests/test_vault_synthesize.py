@@ -452,7 +452,12 @@ def test_a_number_column_whose_distribution_is_held_back_is_still_drawn(
     assert len(written) > len(drawn) // 2
     if allowed is not None:
         assert set(written) <= allowed
-    assert any(note.startswith("x:") and "distribution" in note for note in copy.notes)
+    else:
+        # A count drawn as a value of its type: whole, and drawn again for each row.
+        assert all(value.isdigit() for value in written) and len(set(written)) > 5
+    how = "within its range" if allowed is not None else "as a value of its type"
+    assert any(note.startswith(f"x: drawn without its distribution, {how}")
+               for note in copy.notes)  # fmt: skip
 
 
 def test_a_row_drawn_again_for_a_rule_keeps_its_identifier(released: Path) -> None:
@@ -466,3 +471,79 @@ def test_a_row_drawn_again_for_a_rule_keeps_its_identifier(released: Path) -> No
     first = _within(column, "XX-90001", 1)
     assert _within(column, "XX-90001", 1) == first == "PT-90001"
     assert _within(column, "XX-90002", 2) == "PT-90002"
+
+
+# ------------------------------------------- drawn without a distribution, from the stream
+
+
+def _project_of(root: Path, entries: str, columns: dict, read_as: dict | None = None) -> None:
+    from manuscript_guard.vault import profile as profiling
+
+    (root / "design").mkdir(parents=True)
+    (root / "paper.yaml").write_text("title: t\ncustodian: {minimum_cell_count: 5}\n", "utf-8")
+    (root / "design" / "data_dictionary.yaml").write_text(
+        "schema: manuscript-guard/data-dictionary/1\n" + entries, encoding="utf-8")
+    document = profiling.profile(columns, name="t.csv", minimum=5, read_as=read_as,
+                                 dictionary=profiling.dictionary_of(root))  # fmt: skip
+    profiling.write(root, document)
+
+
+def test_a_column_drawn_without_its_distribution_can_meet_a_rule(tmp_path: Path) -> None:
+    """`serious` is held (n beside an unread "<5"), with no range and no centile; `total` runs
+    to 20. Each row drawn again draws `serious` again, so `serious <= total` is met, and the
+    copy is written with whole numbers that vary."""
+    _project_of(tmp_path,
+                "variables:\n"
+                "  - {name: serious, label: S, definition: d, type: count}\n"
+                "  - {name: total, label: T, definition: d, type: count}\n"
+                "rules:\n  - {id: serious_within_total, says: s, order: [serious, total]}\n",
+                {"serious": ["0"] * 150 + ["1"] * 47 + ["unknown"] * 3,
+                 "total": [str(at % 21) for at in range(200)]})  # fmt: skip
+    copy = synthesize(tmp_path, "t.csv")
+    rows = rows_of(copy.path)
+    serious = [row["serious"] for row in rows if row["serious"]]
+    assert len(serious) > 150 and len(set(serious)) > 5
+    assert all(value.isdigit() for value in serious)
+    assert all(int(row["serious"]) <= int(row["total"]) for row in rows
+               if row["serious"] and row["total"])  # fmt: skip
+    assert any("serious: drawn without its distribution, as a value of its type" in note
+               for note in copy.notes)  # fmt: skip
+
+
+def test_a_one_ended_range_holds_a_column_drawn_without_its_distribution(tmp_path: Path) -> None:
+    _project_of(tmp_path,
+                "variables:\n  - {name: x, label: X, definition: d, type: count, "
+                "range: {min: 40}}\n",
+                {"x": ["40"] * 150 + ["41"] * 47 + ["unknown"] * 3})  # fmt: skip
+    values = [int(row["x"]) for row in rows_of(synthesize(tmp_path, "t.csv").path) if row["x"]]
+    assert values and min(values) >= 40 and len(set(values)) > 5
+
+
+@pytest.mark.parametrize(("form", "shaped"), [
+    ("%d/%m/%Y", r"[0-9]{2}/[0-9]{2}/[0-9]{4}"),
+    ("%Y-%m-%d %H:%M", r"[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}"),
+])  # fmt: skip
+def test_a_date_with_no_centile_is_drawn_in_its_format(
+    tmp_path: Path, form: str, shaped: str
+) -> None:
+    """Eight dates behind 5 give no centile: the copy still writes them in the format the
+    profile records, each drawn, a date and time with its clock."""
+    from datetime import datetime
+
+    days = [datetime(2019, 3, day, 8 + day).strftime(form) for day in range(1, 9)]
+    kind = "datetime" if "%H" in form else "date"
+    _project_of(tmp_path, f"variables:\n  - {{name: d, label: D, definition: d, type: {kind}}}\n",
+                {"d": days}, read_as={"dates": {"d": form}})  # fmt: skip
+    copy = synthesize(tmp_path, "t.csv")
+    written = [row["d"] for row in rows_of(copy.path) if row["d"]]
+    assert written and all(re.fullmatch(shaped, value) for value in written)
+    assert all(datetime.strptime(value, form) for value in written)
+    assert len(set(written)) > 3
+    assert any(note.startswith("d: drawn without its distribution") for note in copy.notes)
+
+
+def test_a_time_with_no_centile_is_drawn_from_the_stream(tmp_path: Path) -> None:
+    _project_of(tmp_path, "variables:\n  - {name: t, label: T, definition: d, type: time}\n",
+                {"t": [f"{8 + at}:15".zfill(5) for at in range(8)]})  # fmt: skip
+    written = [row["t"] for row in rows_of(synthesize(tmp_path, "t.csv").path) if row["t"]]
+    assert len(set(written)) > 3 and all(re.fullmatch(r"[0-9]{2}:[0-9]{2}", one) for one in written)

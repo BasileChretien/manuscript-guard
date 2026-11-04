@@ -12679,11 +12679,15 @@ the vault. Each value of a row, column by column:
 - a number, date or time: missing at its rate, else the inverse of the distribution drawn
   straight between the centiles and continued straight beyond the outer two; a number with
   fewer than two centiles evenly about its mean (half-width √3 SD). With no mean either (its
-  rows read held back, or too few), it is drawn without its distribution, said in a note
-  naming the column: evenly within the dictionary's range where it gives both ends, else about
-  its one centile, else as a withheld column is; a date or time with no centile as a
-  withheld column is. No column is written blank unless its profile says every row is
-  missing;
+  rows read held back, or too few), it is drawn without its distribution, from the seeded
+  stream so that a row drawn again for a rule draws it again, and a note names the column and
+  how: evenly within the dictionary's range where it gives both ends, else about its one
+  centile, else as a value of its type, from 0 over a span of 100, or from its one declared
+  end; clamped to whichever ends are declared, whole for a count or where it is written to no
+  decimal place. A date with no centile is drawn within its range, or from its one end, or
+  over ten years from 2000, and a date or time with one centile about it (six months, two
+  hours), each written in the format the profile records, a date and time with a clock drawn.
+  No column is written blank unless its profile says every row is missing;
   rounded to its decimal places, a count to a whole number from nought, and kept within the
   dictionary's range; a date's day and a date and time's clock from the fraction left;
 - a withheld column: its pattern, one to a row for any number of rows, letters X and its

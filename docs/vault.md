@@ -211,7 +211,9 @@ minimum cell count from `paper.yaml`, it gives of each column:
   of m rows or more with its count, the rest folded into "other";
 - for numbers, dates and times, the rows read, a mean and SD (numbers, from m rows and at least
   three, and only where the rows read are printed: a mean over a count held back would give
-  it back), and each centile from the 5th to the 95th that has m rows below it and m above it,
+  it back, so a column with one to m − 1 missing values, or values that are no number, the
+  commonest case, has no mean and no SD), and each centile from the 5th to the 95th that has
+  m rows below it and m above it,
   so no centile is the smallest or largest value. Dates to the month, times to the hour;
 - for an identifier, a text, or a column the dictionary does not list whose values are all
   different, only its missing values and the pattern its values share ("AA-99999").

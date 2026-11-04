@@ -12636,7 +12636,10 @@ levels and of each code, to take two values among them. A number column's tables
 numbers where they are as many, and otherwise numbers that print its centiles and decimals
 alike (whole, or to a place, each different, with values alike below or above the centiles
 given); a printed mean such tables match only by luck, so a mean beside a held `n` fails it.
-Behind 5 it lists tables of 24 rows. Ten examples take about two minutes. The design said to hold back the total; that
+Behind 5 it lists tables of 24 rows. The pinned run of ten examples took 82 and 103 s in two runs on the
+author's machine under CI's flags (`-n auto -m "not timing"`), the one test on one worker.
+
+The design said to hold back the total; that
 holds nothing here, because every column's counts add up to the same rows, and any column whose
 counts are all printed gives them back (accepted in round 1; in round 2 Basile chose to keep
 holding and model every bound a reader can infer, over merging small groups). `vault synthesize` reads a count held back as an even
@@ -12675,7 +12678,12 @@ the vault. Each value of a row, column by column:
 - a level by the counts, "other" as a level named `other`, a missing value as one more cell;
 - a number, date or time: missing at its rate, else the inverse of the distribution drawn
   straight between the centiles and continued straight beyond the outer two; a number with
-  fewer than two centiles evenly about its mean (half-width √3 SD), or the one value given;
+  fewer than two centiles evenly about its mean (half-width √3 SD). With no mean either (its
+  rows read held back, or too few), it is drawn without its distribution, said in a note
+  naming the column: evenly within the dictionary's range where it gives both ends, else about
+  its one centile, else as a withheld column is; a date or time with no centile as a
+  withheld column is. No column is written blank unless its profile says every row is
+  missing;
   rounded to its decimal places, a count to a whole number from nought, and kept within the
   dictionary's range; a date's day and a date and time's clock from the fraction left;
 - a withheld column: its pattern, one to a row for any number of rows, letters X and its
@@ -20146,6 +20154,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     rows, every k said fixes how many have 2 (c − k of them). The oracle reads folded levels
     without names by the rows any of them has, which two values satisfy (accepted in the
     fix-only round).
+  - *A number column with a few missing values loses its mean and SD.* One to m − 1
+    missing values, or values that are no number, the commonest case, put `n` behind the
+    minimum's holding beside, and no mean or SD is printed beside a held `n`. Its centiles stay
+    where it has them; the synthetic copy draws it from them, or without its distribution,
+    said in a note.
   - *The oracle lists small tables.* It holds the profile to every table of up to 20 rows a
     reader could hold, with numbers all one value and folded levels without names; a pattern
     no small table has passes it unseen.

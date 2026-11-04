@@ -224,26 +224,47 @@ class _Column:
 # --------------------------------------------------------------------- drawing a value
 
 
-def _number(column: _Column, u: float, shape: dict) -> _Drawn | None:
+def _undistributed(column: _Column) -> None:
+    """Say, once, that a column is drawn without its distribution."""
+    if not any(note.startswith(f"{column.name}: drawn without") for note in column.notes):
+        column.notes.append(f"{column.name}: drawn without its distribution, which the profile "
+                            "does not give (its rows read are held back, or too few): within "
+                            "the dictionary's range, about its one centile, or as a value of "
+                            "its type")  # fmt: skip
+
+
+def _range_of(column: _Column) -> tuple[float | None, float | None]:
+    variable = column.variable
+    if variable is None:
+        return None, None
+    return quality.number_of(variable.minimum), quality.number_of(variable.maximum)
+
+
+def _number(column: _Column, u: float, shape: dict, row: int) -> _Drawn | None:
     spec = column.spec
     points = [(int(c) / 100, float(v)) for c, v in spec["centiles"].items()]
+    low, high = _range_of(column)
     if len(points) >= 2:
         value = _inverse(points, u)
     elif "mean" in spec and "sd" in spec:
         half = math.sqrt(3) * float(spec["sd"])
         value = float(spec["mean"]) - half + 2 * half * u
-    elif points:
-        value = points[0][1]
-    elif "mean" in spec:
-        value = float(spec["mean"])
     else:
-        return None
-    variable = column.variable
+        # No distribution printed: the rows read are held back, or too few for one.
+        _undistributed(column)
+        if low is not None and high is not None:
+            value = low + (high - low) * u
+        elif points:
+            centre = points[0][1]
+            half = max(abs(centre), 1.0) / 2
+            value = centre - half + 2 * half * u
+        elif "mean" in spec:
+            value = float(spec["mean"])
+        else:
+            return _withheld(column, row, lambda: u)
     whole = spec["type"] == "count"
-    if variable is not None:
-        low, high = (quality.number_of(variable.minimum), quality.number_of(variable.maximum))
-        value = max(value, low) if low is not None else value
-        value = min(value, high) if high is not None else value
+    value = max(value, low) if low is not None else value
+    value = min(value, high) if high is not None else value
     if whole:
         value = max(value, 0.0)
     places = 0 if whole else spec.get("decimals", 0)
@@ -281,7 +302,7 @@ def render(form: str, parts: dict[str, int]) -> str:
     return "".join(out)
 
 
-def _date(column: _Column, u: float, clock: float) -> _Drawn | None:
+def _date(column: _Column, u: float, clock: float, row: int) -> _Drawn | None:
     spec = column.spec
     points = [(int(c) / 100, _month_value(v)) for c, v in spec["centiles"].items()]
     if len(points) >= 2:
@@ -289,7 +310,8 @@ def _date(column: _Column, u: float, clock: float) -> _Drawn | None:
     elif points:
         month = points[0][1] + 0.5
     else:
-        return None
+        _undistributed(column)
+        return _withheld(column, row, lambda: u)
     index = math.floor(month)
     year, month_ = divmod(index, 12)
     if not 1 <= year <= 9999:
@@ -305,14 +327,15 @@ def _date(column: _Column, u: float, clock: float) -> _Drawn | None:
     return _Drawn(iso, render(spec.get("format", default), parts))
 
 
-def _time(column: _Column, u: float) -> _Drawn | None:
+def _time(column: _Column, u: float, row: int) -> _Drawn | None:
     points = [(int(c) / 100, int(v[:2])) for c, v in column.spec["centiles"].items()]
     if len(points) >= 2:
         hours = _inverse(points, u)
     elif points:
         hours = points[0][1] + 0.5
     else:
-        return None
+        _undistributed(column)
+        return _withheld(column, row, lambda: u)
     minutes = min(max(math.floor(hours * 60), 0), 24 * 60 - 1)
     text = f"{minutes // 60:02d}:{minutes % 60:02d}"
     return _Drawn(text, text)
@@ -471,10 +494,10 @@ def _draw(column: _Column, row: int, u, shape: dict) -> _Drawn | None:
     if kind == "withheld":
         return _withheld(column, row, u)
     if kind == "number":
-        return _number(column, u(), shape)
+        return _number(column, u(), shape, row)
     if kind == "date":
-        return _date(column, u(), u())
-    return _time(column, u())
+        return _date(column, u(), u(), row)
+    return _time(column, u(), row)
 
 
 # ------------------------------------------------------------------------------ rules

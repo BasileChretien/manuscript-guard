@@ -414,3 +414,55 @@ def test_an_identifier_put_within_the_pattern_stays_one_to_a_row() -> None:
     taken = {"PT-90001"}
     assert within("PT-[0-9]{5}|PU-[0-9]{5}", "XX-90001", taken) == "PU-90001"
     assert within("PT-[0-9]{5}", "XX-90001", {"PT-90001"}) == "XX-90001"
+
+
+# ------------------------------------------- a column whose distribution is held back
+
+
+def _held_count(root: Path, entry: str) -> None:
+    """A profile of 200 rows behind 5, 150 of 0, 47 of 1 and 3 blank, the dictionary typing
+    it `count`: no centile (all are ties), missing "<5", n held beside it, so no mean."""
+    from manuscript_guard.vault import profile as profiling
+
+    (root / "design").mkdir(parents=True)
+    (root / "paper.yaml").write_text("title: t\ncustodian: {minimum_cell_count: 5}\n", "utf-8")
+    (root / "design" / "data_dictionary.yaml").write_text(
+        "schema: manuscript-guard/data-dictionary/1\nvariables:\n" + entry, encoding="utf-8")
+    dictionary = profiling.dictionary_of(root)
+    document = profiling.profile({"x": ["0"] * 150 + ["1"] * 47 + [""] * 3}, name="t.csv",
+                                 minimum=5, dictionary=dictionary)  # fmt: skip
+    column = document["columns"][0]
+    assert column["n"] is None and "mean" not in column and not column["centiles"]
+    profiling.write(root, document)
+
+
+@pytest.mark.parametrize(("bounds", "allowed"), [
+    (", range: {min: 0, max: 1}", {"0", "1"}),
+    ("", None),
+])  # fmt: skip
+def test_a_number_column_whose_distribution_is_held_back_is_still_drawn(
+    tmp_path: Path, bounds: str, allowed: set | None
+) -> None:
+    """Drawn within the dictionary's range where it declares one, else as a withheld column
+    is, and said in a note: never every row blank where the profile says some are not."""
+    _held_count(tmp_path, f"  - {{name: x, label: X, definition: d, type: count{bounds}}}\n")
+    copy = synthesize(tmp_path, "t.csv")
+    drawn = [row["x"] for row in rows_of(copy.path)]
+    written = [value for value in drawn if value]
+    assert len(written) > len(drawn) // 2
+    if allowed is not None:
+        assert set(written) <= allowed
+    assert any(note.startswith("x:") and "distribution" in note for note in copy.notes)
+
+
+def test_a_row_drawn_again_for_a_rule_keeps_its_identifier(released: Path) -> None:
+    """Each row's identifier is made once: a row drawn again for a dictionary's rule is not
+    given another, nor told its own is taken (the round-2 fix of `_within`)."""
+    from manuscript_guard.contracts.dictionary import Variable
+    from manuscript_guard.vault.synthesize import _Column, _within
+
+    column = _Column({"name": "id", "kind": "withheld", "type": "identifier", "missing": 0},
+                     Variable("id", "id", "d", "identifier", pattern="PT-[0-9]{5}"), 5, 10, 10)
+    first = _within(column, "XX-90001", 1)
+    assert _within(column, "XX-90001", 1) == first == "PT-90001"
+    assert _within(column, "XX-90002", 2) == "PT-90002"

@@ -4821,56 +4821,35 @@ def vault_commands(draw: st.DrawFn) -> tuple[list[str], list[str | None]]:
     return [lines[at] for at in order], [expected[at] for at in order]
 
 
-#: The command under each name it runs by, what it is asked that the submission guard holds,
-#: and what may stand before it (`hooks._submission_shaped`).
-_GUARDED_TOOLS = ("manuscript-guard", "mguard", "mguard.exe", "python -m manuscript_guard.cli")
-_GUARDED_ASKS = ("submit", "submit --offline", "check --submission", "build --stage submission",
+#: The command under each name the guard lets a help through by, what it is asked that the
+#: submission guard holds, and what may stand before it (`hooks._submission_shaped`).
+_GUARDED_TOOLS = ("manuscript-guard", "mguard", "manuscript-guard.exe", "mguard.exe")
+_GUARDED_ASKS = ("submit --offline", "check --submission", "build --stage submission",
                  "build --offline --stage submission")  # fmt: skip
 _GUARDED_BEFORE = ("", "cd paper && ", "FOO=1 ")
-#: The ways a guarded command asks only for its help, which prints it and exits: `--help` or
-#: `-h` after the options or among them, quoted, or given to the tool before the subcommand,
-#: each as the whole command.
-HELP_ONLY = ("after", "among", "short", "quoted", "of the tool")
-#: And the ways it does not, so that the command runs, or it is not the whole command: no
-#: help, a help after `--`, as the value of an option, from a command substitution, beside a
-#: second invocation that submits, among other commands, on a line continued in one shell
-#: and not the other into a copy of the document, or given to a shell that runs the tool from
-#: a quote, with a `;` quoted after it or without (round 1 of #513).
-HELP_NOT_ONLY = ("none", "after the end of options", "as a value", "substituted",
-                 "beside a submission", "among other commands", "continued", "in a shell",
-                 "in a shell, a join quoted", "a PowerShell expression")  # fmt: skip
-#: How a line is continued in one shell, and what the other then runs as a command of its own.
+_HELPS = ("--help", "-h")
+_SUBCOMMANDS = ("submit", "build", "check", "next", "install-skills")
+#: The one shape a help is let through in: a subcommand's, or the tool's own.
+HELP_ONLY = ("a subcommand's", "the tool's")
+#: And every other, so that the command is read as any other: no help; a help beside an option,
+#: quoted, after `--`, as a value or from a substitution; the tool by a path, after an
+#: assignment or run by Python; a space too many; a quote inside a word, which PowerShell 5.1
+#: hands on unescaped (round 3 of #513); a help beside a submission or among other commands; a
+#: line continued into a copy; a shell that runs the tool from a quote; a PowerShell expression.
+HELP_NOT_ONLY = ("none", "with an option", "quoted", "after the end of options", "as a value",
+                 "substituted", "by a path", "after an assignment", "run by Python",
+                 "a space too many", "a quote inside a word", "beside a submission",
+                 "among other commands", "continued", "in a shell", "in a shell, a join quoted",
+                 "a PowerShell expression")  # fmt: skip
 _CONTINUED = (" \\\n", " `\n")
 _COPIED = ("cp build/manuscript.docx D:\\upload", "scp build/manuscript.docx host:")
 _SHELLS = ('sh -c "{}"', "bash -c '{}'", 'pwsh -Command "{}"')
 _SHELL_HELPS = ("-h", "--help", '" -h "')
 _EXPRESSIONS = ("$ExecutionContext.InvokeCommand.InvokeScript('Copy-Item build/manuscript.docx x')",
                 "@{a=Copy-Item build/manuscript.docx x}", "(Copy-Item build/manuscript.docx x)")
-
-
-def _guarded(draw: st.DrawFn, kind: str) -> str:
-    """One invocation of the command that asks for a submission, with its help asked as
-    `kind` says; each kind that is not the whole command is made in `help_commands`."""
-    words = draw(st.sampled_from(_GUARDED_ASKS)).split()
-    if kind == "after":
-        words.append("--help")
-    elif kind == "among":
-        words.insert(draw(st.integers(1, len(words))), "--help")
-    elif kind == "short":
-        words.insert(draw(st.integers(1, len(words))), "-h")
-    elif kind == "quoted":
-        words.append(draw(st.sampled_from(('"--help"', "'--help'"))))
-    elif kind == "of the tool":
-        words.insert(0, draw(st.sampled_from(("--help", "-h"))))
-    elif kind == "after the end of options":
-        words += ["--", "--help"]
-    elif kind == "as a value":
-        words.append("--title=--help")
-    elif kind == "substituted":
-        words.append(draw(st.sampled_from(("$(echo --help)", "`echo -h`"))))
-    tool = draw(st.sampled_from(_GUARDED_TOOLS))
-    before = ("", "FOO=1 ") if kind in HELP_ONLY else _GUARDED_BEFORE
-    return draw(st.sampled_from(before)) + " ".join([tool, *words])
+_QUOTED_HELPS = ('"--help"', "'-h'")
+_PATHS = ("./", ".venv/bin/", "C:/Tools/")
+_WORDS_WITH_A_QUOTE = ("""'x"'""", '"x"""', "'x y\\'")
 
 
 def _ordinary_command(draw: st.DrawFn) -> str:
@@ -4878,34 +4857,55 @@ def _ordinary_command(draw: st.DrawFn) -> str:
     return " ".join([head, *draw(st.lists(st.sampled_from(_SHELL_ARGUMENTS), max_size=2))])
 
 
-def _help_line(draw: st.DrawFn, kind: str) -> str:
-    """A command line of the kind, the guarded invocation among ordinary commands where the
-    kind is not the whole command."""
-    if kind in HELP_ONLY:
-        return _guarded(draw, kind)
-    # A help the markers read past: at the end, where `--stage submission` is still whole.
-    helped = _guarded(draw, draw(st.sampled_from(("after", "quoted"))))
-    if kind == "continued":
-        return helped + draw(st.sampled_from(_CONTINUED)) + draw(st.sampled_from(_COPIED))
-    if kind == "a PowerShell expression":
-        return helped + " " + draw(st.sampled_from(_EXPRESSIONS))
-    if kind.startswith("in a shell"):
-        tool = draw(st.sampled_from(_GUARDED_TOOLS[:3]))
-        ask = draw(st.sampled_from(_GUARDED_ASKS))
-        run = draw(st.sampled_from(_SHELLS)).format(tool + " " + ask)
-        quoted = ' "a;b"' if kind.endswith("quoted") else ""
-        return run + " " + draw(st.sampled_from(_SHELL_HELPS)) + quoted
-    if kind == "beside a submission":
-        planted = [helped, _guarded(draw, "none")]
-        planted = [planted[at] for at in draw(st.permutations(range(2)))]
-    else:
-        planted = [helped if kind == "among other commands" else _guarded(draw, kind)]
-    least = 1 if kind == "among other commands" else 0
+def _among_others(draw: st.DrawFn, planted: list[str], least: int) -> str:
+    """The planted commands among ordinary ones, joined as a shell joins commands."""
     parts = [_ordinary_command(draw) for _ in range(draw(st.integers(least, 2)))]
     for one in planted:
         parts.insert(draw(st.integers(0, len(parts))), one)
     joins = [draw(st.sampled_from(_SHELL_JOINS)) for _ in parts[1:]]
     return parts[0] + "".join(join + part for join, part in zip(joins, parts[1:], strict=True))
+
+
+def _help_line(draw: st.DrawFn, kind: str) -> str:
+    """A command line of the kind. Each that is not `HELP_ONLY` asks for a submission by
+    the markers main reads, so that the guard holds it."""
+    tool = draw(st.sampled_from(_GUARDED_TOOLS))
+    asked = draw(st.sampled_from(_HELPS))
+    helped = f"{tool} submit {asked}"
+    if kind == "a subcommand's":
+        return f"{tool} {draw(st.sampled_from(_SUBCOMMANDS))} {asked}"
+    if kind == "the tool's":
+        return f"{tool} {asked}"
+    simple = {
+        "with an option": f"{tool} {draw(st.sampled_from(_GUARDED_ASKS))} {asked}",
+        "quoted": f"{tool} submit {draw(st.sampled_from(_QUOTED_HELPS))}",
+        "after the end of options": f"{tool} submit -- {asked}",
+        "as a value": f"{tool} submit --title={asked}",
+        "substituted": f"{tool} submit " + draw(st.sampled_from(("$(echo --help)", "`echo -h`"))),
+        "by a path": draw(st.sampled_from(_PATHS)) + helped,
+        "after an assignment": "FOO=1 " + helped,
+        "run by Python": f"python -m manuscript_guard.cli submit {asked}",
+        "a quote inside a word":
+            f"{tool} submit --csl {draw(st.sampled_from(_WORDS_WITH_A_QUOTE))} {asked}",
+        "continued": helped + draw(st.sampled_from(_CONTINUED)) + draw(st.sampled_from(_COPIED)),
+        "a PowerShell expression": helped + " " + draw(st.sampled_from(_EXPRESSIONS)),
+    }
+    if kind in simple:
+        return simple[kind]
+    submits = f"{tool} {draw(st.sampled_from(_GUARDED_ASKS))}"
+    if kind == "none":
+        return draw(st.sampled_from(_GUARDED_BEFORE)) + submits
+    if kind == "a space too many":
+        spaced = (helped + " ", helped.replace(" ", "  ", 1), helped.replace(" ", "\t", 1))
+        return draw(st.sampled_from(spaced))
+    if kind.startswith("in a shell"):
+        run = draw(st.sampled_from(_SHELLS)).format(submits)
+        quoted = ' "a;b"' if kind.endswith("quoted") else ""
+        return run + " " + draw(st.sampled_from(_SHELL_HELPS)) + quoted
+    if kind == "beside a submission":
+        planted = [helped, submits]
+        return _among_others(draw, [planted[at] for at in draw(st.permutations(range(2)))], 0)
+    return _among_others(draw, [helped], 1)  # among other commands
 
 
 @st.composite

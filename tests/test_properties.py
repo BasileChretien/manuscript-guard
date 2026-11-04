@@ -3048,12 +3048,11 @@ def test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_besi
 def test_a_submission_asked_only_for_its_help_is_let_through_and_no_other(
     drawn: tuple[list[str], list[bool]],
 ) -> None:
-    """A guarded command that is the whole command and asks only for its help, `--help` or
-    `-h` wherever it stands among the command's arguments, quoted or not, under any name of
-    the command, is no submission; and one is where the help comes after `--`, is an option's
-    value or comes out of a command substitution, or where the command holds more than that
-    invocation: a second one that submits, other commands, a line continued into a copy, or a
-    shell that runs the tool from a quote (`hooks._submission_shaped`)."""
+    """A command that is exactly the tool, by its name, a subcommand or none, and `-h` or
+    `--help`, one space between, is no submission; and every other shape that asks for a
+    submission is one: a help beside an option, quoted, after `--`, as a value or from a
+    substitution, the tool by a path, after an assignment or run by Python, a space too many,
+    a quote inside a word, and more than the one command (`hooks._submission_shaped`)."""
     lines, held = drawn
     read = READINGS["submission shaped"]()
     assert [read({"command": line}) for line in lines] == held, lines
@@ -14296,40 +14295,31 @@ def _the_home_is_read_by_its_tilde_only(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(hooks, "_HOME_VARIABLE", re.compile("(?!)"))
 
 
-def _a_help_is_read_in_the_text(patch: pytest.MonkeyPatch) -> None:
-    from manuscript_guard import hooks
-
-    patch.setattr(hooks, "_only_help",
-                  lambda command: "--help" in command or " -h" in command)  # fmt: skip
+def _loosened(patch: pytest.MonkeyPatch, pattern: str) -> None:
+    patch.setattr("manuscript_guard.hooks._ONLY_HELP", re.compile(pattern, re.DOTALL))
 
 
-def _a_continued_line_is_read_as_bash_alone_reads_it(patch: pytest.MonkeyPatch) -> None:
-    from manuscript_guard import hooks
-
-    patch.setattr(hooks, "_PLAIN", re.compile(r"(?s).*"))
-    patch.setattr(hooks, "_READ_AS", (True,))
+_TOOL_HELP = r"(?:manuscript-guard|mguard)(?:\.exe)?(?: [a-z][a-z-]*)? "
 
 
-def _only_the_joins_are_looked_for(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr("manuscript_guard.hooks._PLAIN", re.compile(r"[^;&|\r\n]*"))
+def _a_quoted_help_is_one(patch: pytest.MonkeyPatch) -> None:
+    _loosened(patch, _TOOL_HELP + r"[\"']?(?:-h|--help)[\"']?")
 
 
-def _the_tool_need_not_stand_first(patch: pytest.MonkeyPatch) -> None:
-    from manuscript_guard import hooks
-
-    patch.setattr(hooks, "_tool_words", lambda words: words[1:])
+def _any_words_may_stand_before_the_help(patch: pytest.MonkeyPatch) -> None:
+    _loosened(patch, r"(?:manuscript-guard|mguard)(?:\.exe)?.* (?:-h|--help)")
 
 
-def _no_help_is_read(patch: pytest.MonkeyPatch) -> None:
-    from manuscript_guard import hooks
-
-    patch.setattr(hooks, "_HELP_WORDS", ())
+def _the_help_may_be_followed(patch: pytest.MonkeyPatch) -> None:
+    _loosened(patch, _TOOL_HELP + r"(?:-h|--help).*")
 
 
-def _the_end_of_options_is_not_read(patch: pytest.MonkeyPatch) -> None:
-    from manuscript_guard import hooks
+def _anything_may_stand_before_the_tool(patch: pytest.MonkeyPatch) -> None:
+    _loosened(patch, r".*" + _TOOL_HELP + r"(?:-h|--help)")
 
-    patch.setattr(hooks, "_END_OF_OPTIONS", None)
+
+def _no_help_is_let_through(patch: pytest.MonkeyPatch) -> None:
+    _loosened(patch, r"(?!)")
 
 
 def _a_word_joined_by_colons_is_read_whole(patch: pytest.MonkeyPatch) -> None:
@@ -14481,28 +14471,24 @@ BROKEN = {
         _a_quoted_path_is_split_at_its_spaces,
         test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_beside_it,
     ),
-    "a help is read in the text of an invocation, not in its words": (
-        _a_help_is_read_in_the_text,
+    "a quoted help is let through": (
+        _a_quoted_help_is_one,
         test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
     ),
-    "a line continued past a help is read as bash alone reads it": (
-        _a_continued_line_is_read_as_bash_alone_reads_it,
+    "any words may stand before the help": (
+        _any_words_may_stand_before_the_help,
         test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
     ),
-    "a help beside what PowerShell evaluates in an argument is let through": (
-        _only_the_joins_are_looked_for,
+    "anything may follow the help": (
+        _the_help_may_be_followed,
         test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
     ),
-    "a help given to a shell that runs the tool from a quote is the tool's": (
-        _the_tool_need_not_stand_first,
+    "anything may stand before the tool": (
+        _anything_may_stand_before_the_tool,
         test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
     ),
-    "no help is read": (
-        _no_help_is_read,
-        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
-    ),
-    "a help after `--` is read as one": (
-        _the_end_of_options_is_not_read,
+    "no help is let through": (
+        _no_help_is_let_through,
         test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
     ),
     "a facet of a post is placed in characters, not bytes": (

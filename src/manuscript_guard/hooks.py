@@ -1295,53 +1295,18 @@ def guard_submission(payload: dict) -> int:
 #: Where one invocation of the command ends: at the next `;`, `&`, `|` or line, or at the
 #: next invocation.
 _INVOCATION_END = re.compile(r"[;&|\n]|" + _TOOL + r"[A-Za-z]", re.IGNORECASE)
-#: Asked for its help, the command prints it and exits, whatever else it is given: argparse
-#: acts on `-h` or `--help` wherever it stands among the arguments, as a word of its own and
-#: before a `--`, after which every word is an argument.
-_HELP_WORDS = ("-h", "--help")
-_END_OF_OPTIONS = "--"
-#: The only characters a help needs: any other, quoted too, may join commands, continue a line
-#: or be evaluated in an argument, as PowerShell does `$`, `@` and `(` (round 2 of #513).
-_PLAIN = re.compile(r"[A-Za-z0-9 \t\-_./\\:=~'\"]*")
-#: The shells' readings a help has to be one in: as a POSIX shell reads it, and as Windows does.
-_READ_AS = (True, False)
-
-
-def _asks_help(arguments: list[str]) -> bool:
-    """Whether the arguments of one invocation of the tool ask for its help."""
-    for word in arguments:
-        if word == _END_OF_OPTIONS:
-            return False
-        if word in _HELP_WORDS:
-            return True
-    return False
-
-
-def _only_help(command: str) -> bool:
-    """Whether the whole command is one invocation of the tool that asks for its help.
-
-    `manuscript-guard submit --help` prints the options of `submit` and submits nothing, and
-    it was refused while the submission check failed: an agent could not read them until the
-    paper passed. Only a command that is that and nothing else is let through: read cleanly,
-    with no substitution and no unclosed quote, as one command in both readings, and with no
-    `;`, `&`, `|` or line end anywhere in it. Reading a help out of a longer line let through
-    a copy that a line continued in one shell and not the other ran as its own command, and a
-    submission in a quote opened before the tool's name (round 1 of #513)."""
-    if not _PLAIN.fullmatch(command):
-        return False
-    for posix in _READ_AS:
-        invocations, clean = _command_words(command, posix=posix)
-        commands = [words for words in invocations if words]
-        arguments = _tool_words(commands[0]) if clean and len(commands) == 1 else None
-        if arguments is None or not _asks_help(arguments):
-            return False
-    return True
+#: The one command let through for its help: the tool by its name alone, a subcommand or none,
+#: and `-h` or `--help`, one space between, and nothing else. Three rounds of review each found
+#: a way past a broader reading, through a line continued in one shell only, an expression
+#: PowerShell evaluates in an argument, and a quote PowerShell 5.1 hands on unescaped (#513).
+_ONLY_HELP = re.compile(r"(?:manuscript-guard|mguard)(?:\.exe)?(?: [a-z][a-z-]*)? (?:-h|--help)")
 
 
 def _submission_shaped(command: str) -> bool:
-    """Whether the command looks like a submission (`SUBMISSION_MARKERS`) and is not the tool
-    asked only for its help (`_only_help`)."""
-    return not _only_help(command) and SUBMISSION_MARKERS.search(command) is not None
+    """Whether the command looks like a submission (`SUBMISSION_MARKERS`) and is not exactly the
+    tool asked for its help (`_ONLY_HELP`): `manuscript-guard submit --help` prints the options
+    of `submit` and exits, and it was refused while the submission check failed."""
+    return _ONLY_HELP.fullmatch(command) is None and SUBMISSION_MARKERS.search(command) is not None
 
 
 _REVIEW = re.compile(_TOOL + r"review\b", re.IGNORECASE)

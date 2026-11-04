@@ -7596,18 +7596,17 @@ that the hook fires on every shell command, so it has its own console script
 (`manuscript-guard-hook`) that imports nothing heavy until it knows it has work: 152 ms for
 the no-op path against roughly 400 ms through the full CLI.
 
-A command that is the tool asked only for its help goes through (`hooks._only_help`):
-`manuscript-guard submit --help` prints the options of `submit` and exits, as argparse does
-with `-h` or `--help` anywhere among the arguments, and it was refused while the submission
-check failed, so an agent could not read those options until the paper passed. It goes
-through only as the whole command: one invocation of the tool, named first, read cleanly by
-a POSIX shell's rules and by Windows', with no `;`, `&`, `|` or line end anywhere in it, in
-quotes too, and the help a word of its own before any `--`. Every other command is read as
-before. A first version read a help out of a longer line, invocation by invocation, and let
-through a copy that a line continued in one shell and not the other runs as a command of its
-own, and a submission quoted for `sh -c` before the tool's name (round 1 of #513). Its only
-characters are ASCII letters and digits, spaces, tabs, plain quotes and `-_./\:=~`, since
-PowerShell evaluates `$`, `@`, `(` and the rest inside an argument (round 2).
+One command goes through for its help, in one exact shape (`hooks._ONLY_HELP`): the tool
+by its name, `manuscript-guard` or `mguard` with or without `.exe`, a subcommand or none, and
+`-h` or `--help`, one space between and nothing else, as `manuscript-guard submit --help`.
+That prints the options of `submit` and exits, and it was refused while the submission check
+failed, so an agent could not read those options until the paper passed. Every other command
+is read as before, a help with an option beside it, quoted, after a path, an assignment or
+`python -m` among them. The shape is exact because three rounds of review of #513 each found a
+way past a broader reading: a line continued in one shell and not the other into a copy of the
+document, a submission quoted for `sh -c` before the tool's name, an expression PowerShell
+evaluates inside an argument, and a quote inside a word that Windows PowerShell 5.1 hands to
+the program unescaped, so that the help ends inside the argument before it.
 
 It is registered for the three tools through which Claude Code runs a shell command: `Bash`,
 `PowerShell` and `Monitor`. Each sends the command in `tool_input.command`, and the guard
@@ -15534,14 +15533,15 @@ Open, recorded as each change landed:
   `manuscript-guard check --submission` from the same words followed by `&& scp`, and a
   mistake in it lets a submission through, which is what the guard exists to stop. An author
   typing in a terminal is not affected, since a hook sees only the agent's commands. A help
-  is let through (`check --submission --help`), since nothing runs after it.
-- **A help is let through only as the whole command.** `cd paper && manuscript-guard submit
-  --help`, a help piped to `head`, `submit --title "a;b" --help` and PowerShell's
-  `& "C:\Tools\mguard.exe" submit --help` are each held, since each holds a `;`, `&` or `|`,
-  and so is a help on a line continued from the one before. A short option joined to another,
-  `-vh`, is not read as a help; `--hel` is held too, and argparse refuses it, since the
-  parser takes no abbreviation (`allow_abbrev=False`). Each costs an agent one refusal, and
-  none lets a submission through.
+  is let through only as the tool, a subcommand and the help: `check --submission --help`
+  is held.
+- **A help is let through only in one exact shape.** `cd paper && manuscript-guard submit
+  --help`, `manuscript-guard check --submission --help`, `submit --offline --help`, a quoted
+  `"--help"`, `./mguard submit --help`, `FOO=1 manuscript-guard submit --help`, `python -m
+  manuscript_guard.cli submit --help` and a help with a space too many are each held as a
+  submission. `--hel` is held too, and argparse refuses it, since the parser takes no
+  abbreviation (`allow_abbrev=False`). Each costs an agent one refusal, and none lets a
+  submission through.
 - **From a folder with no project, the submission guard finds only a project the command
   spells out.** It used to find none. It matched the command, then ran the submission check
   in the folder the event names as the agent's, and from the folder above a project there is

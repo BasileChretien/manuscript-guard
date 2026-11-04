@@ -19,7 +19,7 @@ import yaml
 from manuscript_guard.contracts._schema import ContractError, read_structured, validate
 from manuscript_guard.contracts.project import Project
 
-SCHEMA = "manuscript-guard/lookup/2"
+SCHEMA = "manuscript-guard/lookup/3"
 FOLDER = "lookups"
 _SAFE = re.compile(r"[A-Za-z0-9._-]")
 

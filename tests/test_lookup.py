@@ -21,7 +21,13 @@ import yaml
 
 from manuscript_guard.cli import main
 from manuscript_guard.contracts.project import load_project
-from manuscript_guard.literature.lookups import entry_digest, file_name, read_record, record_path
+from manuscript_guard.literature.lookups import (
+    SCHEMA,
+    entry_digest,
+    file_name,
+    read_record,
+    record_path,
+)
 from manuscript_guard.lookup import run as lookup
 from manuscript_guard.lookup import sources
 from manuscript_guard.lookup.http import NoAnswer, Request, Response, default_transport
@@ -39,6 +45,11 @@ PMID = "31000001"
 
 def _json(status: int, data: object, headers: dict | None = None) -> Response:
     return Response(status, headers or {}, json.dumps(data).encode())
+
+
+def _esearch(*ids: str) -> Response:
+    return _json(200, {"header": {"type": "esearch"}, "esearchresult": {
+        "count": str(len(ids)), "retmax": str(len(ids)), "retstart": "0", "idlist": list(ids)}})
 
 
 def _crossref_work(doi: str = DOI, **extra) -> dict:
@@ -93,14 +104,17 @@ class Table:
         return self.answer(urlsplit(request.base).path, request)
 
 
-def _registries(crossref=None, openalex=None, datacite=None, doi_org=None, pubmed=None):
-    """Answers by service; each default is the work found."""
+def _registries(crossref=None, openalex=None, datacite=None, doi_org=None, pubmed=None,
+                esearch=None):
+    """Answers by service; each default is the work found, and PubMed finds no PMID for a
+    DOI it is asked about."""
     defaults = {
         "crossref": crossref or _json(200, _crossref_work()),
         "openalex": openalex or _json(200, _OPENALEX),
         "datacite": datacite or _json(404, {"errors": [{"status": "404"}]}),
         "doi_org": doi_org or _json(200, {"responseCode": 1, "handle": DOI, "values": []}),
         "pubmed": pubmed or _json(200, _PUBMED),
+        "esearch": esearch or _esearch(),
     }
 
     def answer(path: str, request: Request) -> Response:
@@ -290,6 +304,138 @@ def test_pubmed_is_found_or_absent_only_in_its_own_shape(answer, status) -> None
         assert (found["doi"], found["year"], found["pubtypes"]) == (DOI, 2021, ["Journal Article"])
 
 
+def _linked(*references) -> Response:
+    item = {**_PUBMED["result"][PMID], "references": list(references)}
+    return _json(200, {"header": {}, "result": {"uids": [PMID], PMID: item}})
+
+
+def test_pubmed_s_links_to_later_works_are_kept() -> None:
+    """ESummary's `references`, in the shape read live on 2026-11-04 (a PMID as a number):
+    the five links from the work to a later one are kept, in PubMed's order; a link from a
+    comment or a notice back to the work it is about is not."""
+    references = [
+        {"refsource": "J Ex. 2023;1:1. doi: 10.5555/u.", "reftype": "Update in",
+         "pmid": 36000001, "note": ""},
+        {"refsource": "J Ex. 2022;1:2.", "reftype": "Erratum in", "pmid": "36000002"},
+        {"refsource": "J Ex. 2022;1:3.", "reftype": "Comment in", "pmid": 36000003},
+        {"refsource": "J Ex. 2022;1:4.", "reftype": "Expression of concern in"},
+        {"refsource": "J Ex. 2024;1:5.", "reftype": "retraction in", "pmid": 36000005},
+        {"refsource": "J Ex. 2019;1:6.", "reftype": "Comment on", "pmid": 30000006},
+        {"refsource": "J Ex. 2019;1:7.", "reftype": "Erratum for", "pmid": 30000007},
+        {"reftype": "Update in", "pmid": 12345678901},
+        "not a link",
+    ]  # fmt: skip
+    found = sources.pubmed(PMID, _ask(_registries(pubmed=_linked(*references))),
+                           SERVICES.pubmed, None, None)  # fmt: skip
+    assert found["links"] == [
+        {"type": "Update in", "pmid": "36000001", "reference": "J Ex. 2023;1:1. doi: 10.5555/u."},
+        {"type": "Erratum in", "pmid": "36000002", "reference": "J Ex. 2022;1:2."},
+        {"type": "Comment in", "pmid": "36000003", "reference": "J Ex. 2022;1:3."},
+        {"type": "Expression of concern in", "reference": "J Ex. 2022;1:4."},
+        {"type": "Retraction in", "pmid": "36000005", "reference": "J Ex. 2024;1:5."},
+        # A PMID of ten digits or more is none the record can hold; the link stays.
+        {"type": "Update in"},
+    ]  # fmt: skip
+
+
+def test_search_and_lookup_read_pubmed_s_links_with_one_parser() -> None:
+    """`search` reads its retraction, its concern and its later versions through
+    `sources.links`, so the two cannot drift apart."""
+    import inspect
+
+    from manuscript_guard.lookup import search
+
+    body = inspect.getsource(search._pubmed_hit)
+    assert "sources.links(item)" in body and "reftype" not in body
+
+
+def test_crossref_s_dates_are_kept_as_far_as_it_gives_them() -> None:
+    """Basile's design of 2026-11-04: dates are compared later at the finest precision
+    both sides have, so a month or a day that is not one ends the date."""
+    work = _crossref_work(posted={"date-parts": [[2020, 13, 1]]},
+                          issued={"date-parts": [[2021]]})  # fmt: skip
+    found = sources.crossref(DOI, _ask(_registries(crossref=_json(200, work))),
+                             SERVICES.crossref, None)  # fmt: skip
+    assert found["dates"] == {"print": "2021-04-01", "online": "2021-03-02", "issued": "2021",
+                              "posted": "2020"}  # fmt: skip
+    assert found["years"] == {"print": 2021, "online": 2021, "issued": 2021, "posted": 2020}
+
+
+def _by_doi(esearch: Response, pubmed: Response | None = None):
+    table = _registries(esearch=esearch, pubmed=pubmed)
+    found = lookup.pubmed_by_doi(DOI, _ask(table), SERVICES, lookup.Credentials())
+    return found, table
+
+
+def test_pubmed_s_pmid_for_a_doi_is_kept_where_it_gives_one_that_holds_the_doi() -> None:
+    found, table = _by_doi(_esearch(PMID))
+    assert found["status"] == sources.FOUND and found["pmid"] == PMID and found["count"] == 1
+    assert found["pubtypes"] == ["Journal Article"] and found["doi"] == DOI
+    term = table.sent[0].params["term"]
+    assert term == f'"{DOI}"[doi]', "one exact search, in PubMed's DOI field"
+
+
+def _summary_with(**fields) -> Response:
+    item = {**_PUBMED["result"][PMID], **fields}
+    return _json(200, {"header": {}, "result": {"uids": [PMID], PMID: item}})
+
+
+@pytest.mark.parametrize(
+    ("esearch", "pubmed", "status", "why"),
+    [
+        (_esearch(), None, sources.ABSENT, None),
+        # Several PMIDs for one DOI: keeping one would be a guess.
+        (_esearch(PMID, "31000002"), None, sources.REFUSED, "PubMed gives 2 PMIDs"),
+        # One PMID whose record holds another DOI, or none.
+        (_esearch(PMID), _summary_with(articleids=[{"idtype": "doi", "value": "10.5/x"}]),
+         sources.REFUSED, "whose record holds the DOI 10.5/x"),
+        (_esearch(PMID), _summary_with(articleids=[]), sources.REFUSED,
+         "whose record holds no DOI"),
+        (_esearch(PMID), _json(200, {"header": {}, "result": {"uids": [PMID], PMID: {
+            "uid": PMID, "error": "cannot get document summary"}}}),
+         sources.REFUSED, "which its summary does not hold"),
+        (Response(429, {}, b""), None, sources.UNRESOLVABLE, "throttled"),
+        (_json(200, {"esearchresult": {"ERROR": "Empty Term"}}), None, sources.UNRESOLVABLE,
+         "error"),
+    ],
+)  # fmt: skip
+def test_pubmed_s_pmid_for_a_doi_is_refused_rather_than_guessed(
+    esearch, pubmed, status, why
+) -> None:
+    found, _table = _by_doi(esearch, pubmed)
+    assert found["status"] == status
+    assert "pmid" not in found and "pubtypes" not in found
+    if why:
+        assert why in found["why"]
+
+
+def test_a_doi_s_pmid_is_kept_in_a_block_of_its_own(project: Path) -> None:
+    _run(project, _registries(esearch=_esearch(PMID), pubmed=_linked(
+        {"refsource": "J Ex. 2022;1:2.", "reftype": "Erratum in", "pmid": 36000002})))
+    # The example's second reference has a DOI and no PMID; PubMed's record of the PMID
+    # it gives holds that DOI.
+    record = read_record(_loaded(project), "fictionalClassSignal2019")
+    by_doi = record["sources"]["pubmed_by_doi"]
+    assert by_doi["status"] == sources.REFUSED, "the table's record holds the other DOI"
+    hepatic = read_record(_loaded(project), "fictionalHepaticCohort2021")
+    assert "pubmed_by_doi" not in hepatic["sources"], "an entry with a PMID is not asked"
+    other = "10.5555/fictional.2019.002"
+    erratum = {"refsource": "J Ex. 2022;1:2.", "reftype": "Erratum in", "pmid": 36000002}
+    summary = _summary_with(articleids=[{"idtype": "doi", "value": other}],
+                            references=[erratum])  # fmt: skip
+    _run(project, _registries(esearch=_esearch(PMID), pubmed=summary), again=True)
+    record = read_record(_loaded(project), "fictionalClassSignal2019")
+    by_doi = record["sources"]["pubmed_by_doi"]
+    assert by_doi["pmid"] == PMID and by_doi["links"][0]["type"] == "Erratum in"
+    assert record["identifiers"] == {"doi": other}
+
+
+def test_a_doi_with_a_quotation_mark_is_not_searched_for() -> None:
+    table = _registries()
+    found = lookup.pubmed_by_doi('10.5555/a"b', _ask(table), SERVICES, lookup.Credentials())
+    assert found["status"] == sources.REFUSED and table.sent == []
+
+
 # ------------------------------------------------------------------------- the project
 
 
@@ -340,6 +486,10 @@ def test_each_cited_reference_is_looked_up_and_its_record_written(project: Path)
     assert record["looked_up_on"] == "2026-10-15"
     assert set(record["sources"]) == {"crossref", "openalex", "pubmed"}
     assert record["sources"]["pubmed"]["doi"] == DOI
+    # A DOI with no PMID: PubMed is asked for the DOI's.
+    record = read_record(_loaded(project), "fictionalClassSignal2019")
+    assert set(record["sources"]) == {"crossref", "openalex", "pubmed_by_doi"}
+    assert record["sources"]["pubmed_by_doi"] == {"status": sources.ABSENT, "count": 0}
 
 
 def test_datacite_is_asked_only_where_crossref_does_not_know_the_doi(project: Path) -> None:
@@ -534,6 +684,9 @@ def test_a_dry_run_says_what_it_would_look_up_and_sends_nothing(project, capsys,
     assert main(["lookup", str(project), "--dry-run"]) == 0
     out = capsys.readouterr().out
     assert f"@fictionalHepaticCohort2021: would look up DOI {DOI}, PMID {PMID} (no record)" in out
+    assert ("@fictionalClassSignal2019: would look up DOI 10.5555/fictional.2019.002, and ask "
+            "PubMed for the DOI's PMID (no record)") in out  # fmt: skip
+    assert "1 DOI(s) with no PMID would each add one or two requests to PubMed (1 to 2)" in out
     assert "nothing was sent" in out
     assert not (project / "literature" / "lookups").exists()
 
@@ -559,11 +712,6 @@ _ESUMMARY = {
         },
     },
 }  # fmt: skip
-
-
-def _esearch(*ids: str) -> Response:
-    return _json(200, {"header": {"type": "esearch"}, "esearchresult": {
-        "count": str(len(ids)), "retmax": str(len(ids)), "retstart": "0", "idlist": list(ids)}})
 
 
 def _work_list(*items: dict) -> Response:
@@ -622,7 +770,7 @@ def test_a_reference_with_no_identifier_is_searched_by_its_title(searched: Path)
     written = _run(searched, table)
     assert len(written) == 2
     record = read_record(_loaded(searched), "fictionalHepaticCohort2021")
-    assert record["schema"] == "manuscript-guard/lookup/2" and record["identifiers"] == {}
+    assert record["schema"] == SCHEMA and record["identifiers"] == {}
     assert set(record["sources"]) == {"pubmed_search", "crossref_search", "openalex_search"}
     pubmed = record["sources"]["pubmed_search"]
     assert pubmed["asked"] == ["hepatic[ti] AND injury[ti] AND fictional[ti] AND national[ti] "
@@ -781,15 +929,23 @@ def test_crossref_s_searches_are_paced_from_their_own_pool() -> None:
     assert waited == [1.0]
 
 
-def test_a_record_kept_before_the_authors_is_looked_up_again(project: Path) -> None:
+@pytest.mark.parametrize(
+    ("version", "why"),
+    [
+        ("manuscript-guard/lookup/1", "it was looked up before the authors were kept"),
+        ("manuscript-guard/lookup/2", "it was looked up before PubMed's links were kept"),
+    ],
+)
+def test_a_record_of_an_older_version_is_looked_up_again_with_its_reason(
+    project: Path, version: str, why: str
+) -> None:
     _run(project, _registries())
     path = record_path(_loaded(project), "fictionalClassSignal2019")
     record = yaml.safe_load(path.read_text(encoding="utf-8"))
-    record["schema"] = "manuscript-guard/lookup/1"
+    record["schema"] = version
     path.write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
     planned = {p.citekey: p for p in lookup.plan(_loaded(project))}
-    assert planned["fictionalClassSignal2019"].again == (
-        "it was looked up before the authors were kept")  # fmt: skip
+    assert planned["fictionalClassSignal2019"].again == why
     assert planned["fictionalHepaticCohort2021"].skipped == "up to date"
 
 
@@ -859,6 +1015,7 @@ def server():
         "datacite": (404, {"errors": []}),
         "doi_org": (200, {"responseCode": 1}),
         "pubmed": (200, _PUBMED),
+        "esearch": (200, {"esearchresult": {"count": "0", "idlist": []}}),
     }
 
     def respond(path: str) -> tuple[int, bytes]:
@@ -887,6 +1044,7 @@ def test_the_real_transport_looks_up_and_keeps_no_key(project: Path, server) -> 
         datacite=f"{server.url}/datacite/",
         doi_org=f"{server.url}/doi_org/",
         pubmed=f"{server.url}/pubmed/esummary.fcgi",
+        esearch=f"{server.url}/esearch/esearch.fcgi",
     )
     project_ = _loaded(project)
     lookup.run(
@@ -911,7 +1069,7 @@ def test_the_real_transport_looks_up_and_keeps_no_key(project: Path, server) -> 
     for path in (project / "literature" / "lookups").glob("*.yaml"):
         text = path.read_text(encoding="utf-8")
         assert not any(s in text for s in (CONTACT, NCBI, OPENALEX, "127.0.0.1"))
-        assert yaml.safe_load(text)["schema"] == "manuscript-guard/lookup/2"
+        assert yaml.safe_load(text)["schema"] == SCHEMA
 
 
 def test_the_real_transport_follows_no_redirect(server) -> None:

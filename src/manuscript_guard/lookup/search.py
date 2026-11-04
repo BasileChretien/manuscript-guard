@@ -32,6 +32,7 @@ from manuscript_guard.lookup.sources import (
     UNRESOLVABLE,
     Ask,
     _ask,
+    _digits,
     _json,
     _status_only,
     _text,
@@ -233,16 +234,6 @@ def _doi(value: Any) -> str | None:
     return doi.lower() if doi.startswith("10.") else None
 
 
-def _digits(value: Any) -> str | None:
-    """A PMID: digits, from a number, a string or the end of a PubMed URL."""
-    if isinstance(value, int) and not isinstance(value, bool):
-        value = str(value)
-    if not isinstance(value, str):
-        return None
-    found = re.search(r"(\d+)/?\s*$", value)
-    return found.group(1) if found else None
-
-
 def _cited_doi(reference: str) -> str | None:
     """The DOI at the end of a reference as NLM writes one: "... doi: 10.1/x."."""
     found = re.search(r"doi:\s*(10\.\S+?)\.?\s*$", reference, flags=re.I)
@@ -351,14 +342,15 @@ def _pubmed_hit(rank: int, item: dict[str, Any]) -> Hit:
     pmcid = value.get("pmc") if re.fullmatch(r"PMC\d+", value.get("pmc") or "") else None
     # A PMC copy under embargo is not yet open: ESummary says so in the `pmcid` entry.
     embargoed = "embargo" in (value.get("pmcid") or "").casefold()
-    references = [r for r in item.get("references") or [] if isinstance(r, dict)]
-    said = {str(r.get("reftype", "")).casefold() for r in references}
+    # The later works PubMed links it to, read as `lookup` reads them (`sources.links`).
+    linked = sources.links(item)
+    said = {link["type"].casefold() for link in linked}
     pubtypes = item.get("pubtype") if isinstance(item.get("pubtype"), list) else []
     authors = [a for a in item.get("authors") or []
                if isinstance(a, dict) and a.get("authtype", "Author") == "Author"]  # fmt: skip
     languages = item.get("lang") if isinstance(item.get("lang"), list) else []
-    later = [_later(r.get("pmid"), r.get("refsource")) for r in references
-             if str(r.get("reftype", "")).casefold() == "update in"]  # fmt: skip
+    later = [_later(link.get("pmid"), link.get("reference")) for link in linked
+             if link["type"] == "Update in"]  # fmt: skip
     return Hit(
         registry="pubmed",
         rank=rank,

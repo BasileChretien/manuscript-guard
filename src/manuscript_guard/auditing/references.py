@@ -683,7 +683,8 @@ def look_up(
             if record is None:
                 came = "asked"
                 planned = run.Planned(entry.label, doi=wanted.get("doi"), pmid=wanted.get("pmid"))
-                record = run.look_up(planned, ask, services, credentials, today or date.today())
+                record = run.look_up(planned, ask, services, credentials, today or date.today(),
+                                     by_doi=False)
                 run._never_kept(record, credentials)
                 # An answer that did not come is asked for again, never kept as one.
                 if kept is not None and not _unanswered(record):

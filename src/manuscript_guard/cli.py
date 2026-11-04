@@ -4766,8 +4766,15 @@ def cmd_lookup(args: argparse.Namespace) -> int:
         for one in due:
             ids = ", ".join(f"{k} {v}" for k, v in (("DOI", one.doi), ("PMID", one.pmid)) if v)
             what = f"look up {ids}" if ids else "search PubMed, Crossref and OpenAlex for its title"
+            if one.doi and not one.pmid:
+                what += ", and ask PubMed for the DOI's PMID"
             print(f"@{one.citekey}: would {what} ({one.again})")
         print(f"{len(due)} to look up, {len(planned) - len(due)} not; nothing was sent")
+        by_doi = sum(1 for one in due if one.doi and not one.pmid)
+        if by_doi:
+            # A search, and a summary where it finds one PMID: one or two requests each.
+            print(f"{by_doi} DOI(s) with no PMID would each add one or two requests to "
+                  f"PubMed ({by_doi} to {2 * by_doi}), for the PMID and its record")
         return 0
     written = lookup.run(
         project, planned, credentials=lookup.Credentials.from_environment(project)

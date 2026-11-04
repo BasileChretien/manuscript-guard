@@ -104,7 +104,7 @@ except BaseException as exc:
               "module": kind.__module__ if named else None,
               "frames": frames, "key": key}
     try:
-        with open(summary, "w", encoding="utf-8") as out:
+        with open(summary, "w", encoding="utf-8", errors="backslashreplace") as out:
             json.dump(record, out, ensure_ascii=False)
     except Exception:
         pass

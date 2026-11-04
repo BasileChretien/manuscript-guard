@@ -97,7 +97,11 @@ def open_outbox(project, folder: Path, run: str) -> Outbox:
         raise Refused(str(exc)) from exc
     where = folder / OUTBOX / run
     if not manifest.get("finished"):
-        if where.is_dir() and any(where.iterdir()):
+        try:
+            waiting = where.is_dir() and any(where.iterdir())
+        except OSError:
+            waiting = True  # not listable: said to wait, which refuses all the same
+        if waiting:
             raise Refused(f"run {run} did not finish: what it moved before it stopped waits in "
                           f"{where}, and a run that did not finish cannot be released. Read "
                           "it, remove it, and run `vault run` again")  # fmt: skip

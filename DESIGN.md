@@ -12579,8 +12579,8 @@ is no change (fix round 2). `.lua` is a script's suffix, and `_metadata.yml` or
 a Ctrl-C or a refusal removes the copy (`run.discard`, in a `finally` until the run starts),
 and `prepare` removes it on anything that ends it, a Ctrl-C during the copy included; once the
 run has started, anything that ends it removes the copy and leaves `log.txt` and a `run.json`
-saying it did not finish, with what was moved to the outbox before then (round 2 and the fix
-rounds of #490).
+saying it did not finish, with what was moved to the outbox before then, where that record can
+be written (on a full disk it keeps what `prepare` wrote) (round 2 and the fix rounds of #490).
 
 The run's id is its UTC time, `YYYYMMDD-HHMMSS`, with `-2` and on where taken, and runs are
 ordered by the time and then the number (`run.run_key`); no other word names a run's folder. The project is
@@ -20188,7 +20188,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - *The summary file is read up to 64 KiB.* The wrapper writes the last 20 frames in the
     copy, as UTF-8, and leaves out a value too long to write whole, so a real one fits, for
     paths of an ordinary length; anything larger, too deep or not JSON says nothing but the
-    path and the exit code, as a script that raised nothing.
+    path and the exit code, as a script that raised nothing. A library copied with the
+    project (a `venv/` inside it) is inside the copy: a failure 20 or more frames deep in it
+    keeps 20 of its frames, which the summary then drops as no script's, and names no frame.
   - *What a run records of git.* The copy leaves `.git` out, as `verify`'s does, so a
     fragment written in a run records no `vcs`; the release records the project's commit at
     the run, which says nothing of uncommitted changes.

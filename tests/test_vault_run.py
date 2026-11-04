@@ -1350,6 +1350,46 @@ def test_a_fault_while_the_outputs_are_moved_says_what_waits(
     assert "nothing it wrote waits" not in said and outbox in said
 
 
+def test_a_finished_run_whose_summary_fails_is_not_said_unreleasable(
+    paper: Path, vault: Path, terminal, monkeypatch, capsys
+) -> None:
+    """Fix round 6 of #490: the run finished, its outputs wait to be released, and only the
+    agent's summary could not be written; the person is not told it cannot be released."""
+    from manuscript_guard.vault import summary
+
+    real = summary.write_summary
+
+    def failing(*args, **kwargs):
+        if kwargs.get("stopped"):
+            return real(*args, **kwargs)
+        raise OSError("last-run.json is a folder")
+
+    monkeypatch.setattr(summary, "write_summary", failing)
+    answers, _asked = terminal
+    _script(paper, "import pathlib\npathlib.Path('figures').mkdir(exist_ok=True)\n"
+                   "pathlib.Path('figures/a.png').write_bytes(b'a')")
+    answers.append("y")
+    with pytest.raises(OSError, match="is a folder"):
+        vault_cli(paper, "run")
+    assert "cannot be released" not in capsys.readouterr().err
+    (run,) = [one.name for one in (vault / ".runs").iterdir()]
+    record = json.loads((vault / ".runs" / run / "run.json").read_text(encoding="utf-8"))
+    assert record["finished"] is True
+
+
+def test_a_lone_surrogate_in_the_summary_is_kept_readable(
+    paper: Path, vault: Path, terminal
+) -> None:
+    """Fix round 6 of #490: a key decoded with surrogateescape no longer truncates the
+    wrapper's record, so the class is still named."""
+    answers, _asked = terminal
+    _script(paper, 'raise KeyError("\\udcff")')
+    answers.append("y")
+    vault_cli(paper, "run")
+    _text, failed = _failed(paper)
+    assert failed.get("class") == "KeyError"
+
+
 # ---------------------------------------------------------------------------- fix round 5 of #490
 
 

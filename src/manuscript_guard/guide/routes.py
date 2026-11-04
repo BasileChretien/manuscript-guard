@@ -135,6 +135,10 @@ ROUTES: dict[str, Route] = {
     # other is put right in Zotero.
     **_all("literature-verify", ("sync-bib",), "reference-uncited"),
     **_all("literature-verify", None, "reference-duplicate", "reference-title-duplicate"),
+    # A later version, a correction, a number quoted from a review: what the registries said
+    # is read, and the citation or the quote is put right in Zotero and the ledger.
+    **_all("literature-verify", None, "reference-updated", "reference-corrected",
+           "number-from-secondary-source"),
     **_all("related-outputs", ("related",), "related-"),
     # -- figures --------------------------------------------------------------------------
     **_all("figure-review", None, "figure-unreviewed", "figure-review-", "figure-alt-"),

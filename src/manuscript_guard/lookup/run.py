@@ -10,7 +10,13 @@ Which registries, and in what order:
 * DataCite where Crossref does not know the DOI: datasets are registered there, not there.
 * doi.org's handle API where neither knows it, for the other agencies (JaLC for Japanese
   papers, mEDRA, KISTI): whether the DOI is registered at all, and nothing more.
-* PubMed's ESummary for a PMID, separately from the DOI, with the DOI PubMed holds for it.
+* PubMed's ESummary for a PMID, separately from the DOI, with the DOI PubMed holds for it,
+  its publication types and its links to later works (an update, an erratum, a comment, an
+  expression of concern, a retraction).
+* For a DOI with no PMID, PubMed's ESearch for that DOI in its `[doi]` field: where it gives
+  exactly one PMID and that PMID's record holds the DOI, its ESummary is kept apart
+  (`pubmed_by_doi`), for the publication types and the links only, never to say whether
+  the entry names the work. Where it gives none, or several, none is kept.
 * For a reference with neither, a search by its title: PubMed, Crossref, and OpenAlex while
   its allowance lasts (`lookup/unidentified`).
 
@@ -158,12 +164,19 @@ def cited_keys(project: Project) -> list[str]:
     return list(seen)
 
 
+#: Why a record of an older version is looked up again: what the versions after it keep.
+OLDER = {
+    "manuscript-guard/lookup/1": "it was looked up before the authors were kept",
+    "manuscript-guard/lookup/2": "it was looked up before PubMed's links were kept",
+}
+
+
 def _stale(record: dict[str, Any] | None, planned: Planned) -> str:
     """Why a record no longer answers for the entry, or "" where it does."""
     if record is None:
         return "no record"
     if record["schema"] != SCHEMA:
-        return "it was looked up before the authors were kept"
+        return OLDER.get(record["schema"], "it was written by another version of the tool")
     if record["entry_sha256"] != planned.digest:
         return "the entry changed since it was looked up"
     wanted = {k: v for k, v in (("doi", planned.doi), ("pmid", planned.pmid)) if v}
@@ -257,9 +270,12 @@ def look_up(
     credentials: Credentials,
     today: date,
     allowance: Any = None,
+    *,
+    by_doi: bool = True,
 ) -> dict[str, Any]:
     """The record for one reference: each registry asked in turn, or, for one with no
-    identifier, each searched for its title."""
+    identifier, each searched for its title. `by_doi` asks PubMed for the PMID of a DOI
+    with none; `audit` leaves it out, and asks what it always asked."""
     from manuscript_guard.lookup import unidentified
 
     found: dict[str, Any] = {}
@@ -277,6 +293,8 @@ def look_up(
         found["pubmed"] = sources.pubmed(
             planned.pmid, ask, services.pubmed, credentials.contact, credentials.ncbi_key
         )
+    elif planned.doi and by_doi:
+        found["pubmed_by_doi"] = pubmed_by_doi(planned.doi, ask, services, credentials)
     if planned.query is not None:
         where = unidentified.Where(
             esearch=services.esearch, esummary=services.pubmed,
@@ -294,6 +312,49 @@ def look_up(
         "sources": found,
     }
     return {**record, "answers_sha256": answers_digest(record)}
+
+
+def pubmed_by_doi(
+    doi: str, ask: sources.Ask, services: Services, credentials: Credentials
+) -> dict[str, Any]:
+    """The PMID PubMed gives a DOI, with its ESummary, or why none is kept. One exact
+    ESearch, `"<doi>"[doi]`, then the ESummary of what it found. Kept only where it gives
+    exactly one PMID and that PMID's record holds the DOI asked: no PMID is `absent`;
+    several, or one whose record holds another DOI or none, is `refused`, since keeping one
+    of them would be a guess."""
+    from manuscript_guard.lookup import search
+
+    if '"' in doi:
+        return {"status": sources.REFUSED,
+                "why": "the DOI holds a quotation mark, which an exact search cannot hold"}
+    request = search._eutils(services.esearch, {"term": f'"{doi}"[doi]', "retmax": "2"},
+                             credentials)  # fmt: skip
+    read = search.esearch(request, ask)
+    if isinstance(read, search.Answer):
+        return sources.unresolvable(read.why or sources.SHAPE)
+    ids, count, dropped = read
+    if dropped:
+        return {"status": sources.REFUSED, "count": count,
+                "why": "PubMed did not search for the whole DOI"}  # fmt: skip
+    if not ids:
+        return {"status": sources.ABSENT, "count": count}
+    if count != 1 or len(ids) != 1:
+        return {"status": sources.REFUSED, "count": count,
+                "why": f"PubMed gives {count} PMIDs for the DOI, and none is kept"}
+    pmid = ids[0]
+    said = sources.pubmed(pmid, ask, services.pubmed, credentials.contact,
+                          credentials.ncbi_key)  # fmt: skip
+    if said["status"] == sources.UNRESOLVABLE:
+        return said
+    if said["status"] != sources.FOUND or len(pmid) > 9:
+        return {"status": sources.REFUSED, "count": count,
+                "why": f"PubMed's search gives PMID {pmid}, which its summary does not hold"}
+    if said.get("doi") != doi:
+        held = f"the DOI {said['doi']}" if said.get("doi") else "no DOI"
+        return {"status": sources.REFUSED, "count": count,
+                "why": f"PubMed's search gives PMID {pmid}, whose record holds {held}"}
+    return {"status": sources.FOUND, "pmid": pmid, "count": count,
+            **{k: v for k, v in said.items() if k != "status"}}  # fmt: skip
 
 
 def run(
@@ -345,6 +406,7 @@ def summary(record: dict[str, Any]) -> str:
         "datacite": "DataCite",
         "doi_org": "doi.org",
         "pubmed": "PubMed",
+        "pubmed_by_doi": "PubMed by the DOI",
         "pubmed_search": "PubMed",
         "crossref_search": "Crossref",
         "openalex_search": "OpenAlex",
@@ -359,6 +421,9 @@ def summary(record: dict[str, Any]) -> str:
             said = f"{alike} work(s) of a like title" if said == sources.FOUND else "none"
         elif name == "openalex" and answer.get("is_retracted"):
             said += ", retracted"
+        elif name == "pubmed_by_doi":
+            said = {sources.FOUND: f"PMID {answer.get('pmid')}", sources.ABSENT: "no PMID",
+                    sources.REFUSED: f"none kept ({answer.get('why')})"}[said]  # fmt: skip
         parts.append(f"{names[name]} {said}")
     searched = "searched by its title: " if not record["identifiers"] else ""
     return searched + "; ".join(parts)
@@ -376,6 +441,7 @@ __all__ = [
     "cited_keys",
     "look_up",
     "plan",
+    "pubmed_by_doi",
     "run",
     "summary",
 ]

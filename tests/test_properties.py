@@ -5871,7 +5871,9 @@ def _papers_with_summaries(draw: st.DrawFn) -> list[tuple[str, str | None, set[s
     Discussion alone (`c`) or with the Results (`e`); and in a "Summary" under the Results
     (`s`). Every way of writing a conclusion, an abstract structured with headings of its
     own and not, each title a profile may give the abstract, and both layouts, with and
-    without the paper's title over it, are in every example."""
+    without the paper's title over it, are in every example. Where the paper has no Results
+    heading, the section that stands in their place names no part of the paper and reports,
+    and a "Summary" under it is a conclusion's."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
@@ -5905,9 +5907,13 @@ def _papers_with_summaries(draw: st.DrawFn) -> list[tuple[str, str | None, set[s
             reports = results in _THE_RESULTS
             for named in _ABSTRACT_TITLES:
                 summary = abstract in _THE_ABSTRACT[:4] or abstract == named
-                unreported = {"c"} | (set() if reports else {"e", "s"})
+                unreported = {"c"} | (set() if reports else {"s"})
+                # An abstract no heading names, its "Results" a Results heading: the paper
+                # then has one, and the section standing in their place reports nothing.
+                if structured and not summary and not reports:
+                    unreported |= {"e"}
                 if summary:
-                    unreported |= {"a", "d"} | (set() if reports else {"b"})
+                    unreported |= {"a", "d"}
                     unreported |= {"g", "t"} if children else set()
                 for paper in (text, _under_a_title(text, _RESULTS_TITLE)):
                     papers.append((paper, named, unreported))
@@ -5923,7 +5929,9 @@ def test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_
     an abstract with a "Results" of its own included, and a "Summary" under the Results not
     taken for one, with the paper's title over it all or not."""
     for text, named, unreported in papers:
-        given, reported = reported_gate.Walk(named).read(text)
+        walk = reported_gate.Walk(named)
+        given, reported = walk.read(text)
+        reported |= walk.reported_without_results()
         found = {one.key for one in given if one.key not in reported}
         assert found == unreported, (text, named)
         # And as two files of one paper, the second opening inside the Results the first
@@ -5932,9 +5940,80 @@ def test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_
         cut = text.index("{{results.b}} {{results.e}}")
         walk = reported_gate.Walk(named)
         first, second = walk.read(text[:cut]), walk.read(text[cut:])
-        reported = first[1] | second[1]
+        reported = first[1] | second[1] | walk.reported_without_results()
         found = {one.key for one in first[0] + second[0] if one.key not in reported}
         assert found == unreported, (text[:cut], text[cut:], named)
+
+
+#: Each part of a paper with no Results that reports nothing, each written more than one way,
+#: with the key the abstract gives and that part gives again, and headings that name no part.
+_REPORTS_NOTHING = {
+    "i": ("Introduction", "1. Background", "**Background**", "Rationale and objectives"),
+    "d": ("Discussion", "5. General discussion", "Discussion and conclusions"),
+    "l": ("Limitations", "Interpretation"),
+    "f": ("Funding", "Acknowledgements", "Author contributions",
+          "Declaration of competing interests", "Data availability statement"),
+    "r": ("References", "6. References", "Bibliography"),
+}  # fmt: skip
+_TOPICAL = (
+    "Drug-related arrests", "2. Stimulants: a smaller population", "**Regulatory responses**",
+    "Case presentation", "Outcomes", "Comparison with earlier reviews",
+)  # fmt: skip
+#: A paper's title as a heading over it, opening with the word of a part that reports nothing.
+_TOPICAL_TITLE = "# Background rates of hepatic injury: a narrative review\n\n"
+
+
+@st.composite
+def _papers_without_results(draw: st.DrawFn) -> list[tuple[str, set[str]]]:
+    """A narrative review, with the keys it should leave unreported: under the abstract, a
+    key given there alone (`a`), with a section that names no part (`b`), with one under it
+    (`u`), and with each part that reports nothing (`_REPORTS_NOTHING`), a heading of the
+    paper's own under the Discussion among them (`t`); and in a conclusion with a section
+    that names no part (`e`). Each part is drawn one of its ways, in every example; the
+    paper is drawn with and without its title over it, and with a Results heading, under
+    which none of the sections that name no part reports."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    named = {key: draw(st.sampled_from(ways)) for key, ways in _REPORTS_NOTHING.items()}
+    topical, under, below = draw(st.lists(st.sampled_from(_TOPICAL), min_size=3, max_size=3))
+    keys = "".join(f" {{{{results.{key}}}}}" for key in ("a", "b", "u", "t", "e", *named))
+    text = (
+        f"# Abstract\n\n{words()}{keys}.\n\n"
+        f"# {named['i']}\n\n{words()} {{{{results.i}}}}.\n\n"
+        f"# {topical}\n\n{words()} {{{{results.b}}}} {{{{results.e}}}}.\n\n"
+        f"## {under}\n\n{words()} {{{{results.u}}}}.\n\n"
+        f"# {named['d']}\n\n{words()} {{{{results.d}}}}.\n\n"
+        f"## {below}\n\n{words()} {{{{results.t}}}}.\n\n"
+        f"# {named['l']}\n\n{words()} {{{{results.l}}}}.\n\n"
+        f"# Conclusions\n\n{words()} {{{{results.e}}}}.\n\n"
+        f"# {named['f']}\n\n{words()} {{{{results.f}}}}.\n\n"
+        f"# {named['r']}\n\n{words()} {{{{results.r}}}}.\n"
+    )
+    unreported = {"a", "t", *named}
+    results = text.replace("\n\n# Conclusions", f"\n\n# Results\n\n{words()}.\n\n# Conclusions")
+    papers = []
+    for paper, expected in ((text, unreported), (results, unreported | {"b", "u", "e"})):
+        papers += [(paper, expected), (_under_a_title(paper, _TOPICAL_TITLE), expected)]
+    return papers
+
+
+@holds(20, _papers_without_results())
+def test_a_paper_with_no_results_reports_under_the_headings_that_name_no_part(
+    papers: list[tuple[str, set[str]]],
+) -> None:
+    """A narrative review or a case report has no Results heading, and reports under headings
+    of its own: each number its abstract gave was warned. Where the paper has no Results, a
+    key bound under a heading that names no part of the paper is reported, and under the
+    abstract, the Introduction, the Discussion and a heading under it, a limitation, a
+    statement or the reference list is not; a paper's title over it all names no part,
+    whatever its first word. With a Results heading, the topical sections report nothing."""
+    for text, unreported in papers:
+        walk = reported_gate.Walk(None)
+        given, reported = walk.read(text)
+        reported |= walk.reported_without_results()
+        assert {one.key for one in given if one.key not in reported} == unreported, text
 
 
 # --------------------------------------------------------------------------------- boxes
@@ -13336,6 +13415,33 @@ def _the_methods_report_nothing(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reported_gate, "methods_sections", lambda sections, named=None: [])
 
 
+def _a_heading_that_names_no_part_reports_beside_the_results(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reported_gate.Walk, "reported_without_results", lambda self: set(self.topical))
+
+
+def _the_innermost_heading_alone_names_no_part(patch: pytest.MonkeyPatch) -> None:
+    place = reported_gate.Walk._place
+
+    def innermost(self: reported_gate.Walk) -> object:
+        found = place(self)
+        last = self.chain[-1] if self.chain else None
+        if found is None and last is not None and id(last) not in self.elsewhere | self.titles:
+            return reported_gate.TOPICAL
+        return found
+
+    patch.setattr(reported_gate.Walk, "_place", innermost)
+
+
+def _a_statement_names_no_part(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reported_gate, "names_statement", lambda title: False)
+
+
+def _a_title_over_the_paper_names_the_part_its_first_word_does(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(reported_gate, "subsections", lambda sections, index: sections[index:][:1])
+
+
 def _a_quotation_is_in_straight_marks_only(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(quotations_gate, "_QUOTED", re.compile(r'"([^"\n]+(?:\n[^"\n]+)*)"()'))
 
@@ -15928,6 +16034,22 @@ BROKEN = {
     "the Methods report nothing": (
         _the_methods_report_nothing,
         test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
+    ),
+    "a heading that names no part reports beside a Results heading": (
+        _a_heading_that_names_no_part_reports_beside_the_results,
+        test_a_paper_with_no_results_reports_under_the_headings_that_name_no_part,
+    ),
+    "a heading of its own under the Discussion reports": (
+        _the_innermost_heading_alone_names_no_part,
+        test_a_paper_with_no_results_reports_under_the_headings_that_name_no_part,
+    ),
+    "a statement of the back matter reports": (
+        _a_statement_names_no_part,
+        test_a_paper_with_no_results_reports_under_the_headings_that_name_no_part,
+    ),
+    "a paper's title over it names the part its first word does": (
+        _a_title_over_the_paper_names_the_part_its_first_word_does,
+        test_a_paper_with_no_results_reports_under_the_headings_that_name_no_part,
     ),
     "a short form followed by a colon defines nothing": (
         _a_short_form_followed_by_a_colon_defines_nothing,

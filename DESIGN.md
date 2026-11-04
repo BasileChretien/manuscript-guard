@@ -6199,6 +6199,19 @@ heading over the Introduction or the Methods is the paper's title written as a h
 names no part. The headings are carried from one file of the paper into the next, as G14
 carries them.
 
+A narrative review or a case report has no Results heading. It reports under headings of
+its own ("Drug-related arrests", "Case presentation"), and each number its abstract or its
+conclusions gave and its body gave again was warned. So
+where no heading opens with "Results" or "Findings" outside the abstract and the boxes, a
+section reports when no heading over it names a part of the paper that does not, by the
+names the other gates read them by: the abstract or a box, the Introduction or Background
+(G7's), the Discussion, a conclusion, a section G2 and G9 rule out as the Methods
+("Limitations", "Interpretation"), a statement of the back matter (G7's) or the reference
+list. A heading over the abstract, the opening or the Methods is the paper's title and
+names no part, whatever its first word. Where the paper has a Results heading nothing
+changes, and a number the Introduction binds still reports nothing. The warning says which
+of the two the paper was read as, so that it stays true.
+
 It is a warning: a new rule starts as one, until what it says of real papers is known.
 
 A box the journal's profile asks for (`boxes:`, highlights or key points, below) summarises as
@@ -13298,9 +13311,22 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   warning back: the example's figure draws a tick at 10, and a key whose display is 10 is
   reported by it. A figure with no text layer, a PNG alone, reports nothing, and neither
   does a table's caption. A section whose title names the Results in other words
-  ("Outcomes", "Main results") is not read as the Results, and a conclusion written as a
-  bold paragraph rather than a heading is not read as one. Literature values (`lit.`) are
-  not looked for: an abstract may give the background it rests on.
+  ("Outcomes", "Main results") is read as reporting only where the paper has no Results
+  heading, and a conclusion written as a bold paragraph rather than a heading is not read as
+  one. Literature values (`lit.`) are not looked for: an abstract may give the background
+  it rests on.
+- **A paper with no Results heading reports under every heading that names no part.** A
+  section of a review's own that is really an introduction ("The problem of arrests"), a
+  discussion ("What this means for regulators") or a summary is read as reporting, so a
+  number the abstract gives and such a section restates passes. A review whose Results
+  stand under topical headings beside one that opens with "Results" ("Results of the
+  search") has a Results heading, and its topical sections report nothing. A topical section
+  over a subsection called "Background" is taken for the paper's title, as a heading over
+  the opening is, and the text directly under it reports nothing. An abstract that no
+  heading names and the profile does not either ("Overview") is a section of the paper's
+  own, and its own "Results" heading is a Results heading. The paper audit's Abstract
+  against the Results (`auditing/abstract.py`) still compares only a paper with a Results
+  heading.
 - **G8 compares only values whose units agree.** A count of 56 and a share of 56.0% are two
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and

@@ -9,7 +9,9 @@ deficiency makes of it and through grey (`colour.py`: Machado et al. 2009, CIEDE
 * `figure-colours-confused`: two colours at least `colour.THRESHOLD` apart to normal vision
   are less than it apart to a reader with one of the deficiencies. A warning, never a
   failure; a note where the figure's `<name>.guard.yaml` gives a reason under
-  `allow_colours` for each such pair (two series that differ by line style as well).
+  `allow_colours` for each such pair (two series that differ by line style as well). The
+  check reads colours only: a marker or a line style that also tells two series apart is
+  not seen, and the guard file is where it is said.
 * `figure-greyscale-confused`: the same, in grey. A note, and a warning where the journal's
   profile says its figures print in grey (`figures.print: greyscale`) or the guard asks for
   it (`greyscale: true`).
@@ -31,6 +33,7 @@ which no deficiency made so.
 from __future__ import annotations
 
 import re
+from functools import cache
 from itertools import combinations
 from pathlib import Path
 
@@ -54,6 +57,11 @@ NAMED = 3
 #: More distinct colours than this, and a figure's colours are not compared: finding a scale
 #: among them, and comparing them, take time in their square.
 MANY = 300
+#: The palette a hint offers, where its own colours stay apart the way the finding is about
+#: (`_offered`); where they do not, the hint names no palette and points to the table.
+OFFERED = "okabe-ito"
+#: What a hint that offers a palette says of a copy of it with other colours in.
+_COPIES = {"okabe-ito": "R's `palette.colors()` adds a grey that is not one of them"}
 #: A colour as `allow_colours` may write one: a hex code, `rgb()`, `hsl()` or a name.
 _WRITTEN = re.compile(r"#[0-9A-Fa-f]{3,8}\b|(?:rgb|hsl)a?\([^)]*\)|[A-Za-z]+", re.IGNORECASE)
 
@@ -185,13 +193,7 @@ def _confused(
     if severity == INFO and reasons:
         hint = "the figure's guard file gives the reason: " + "; ".join(reasons)
     else:
-        hint = (
-            "tell the series apart by something besides colour as well (a marker, a line "
-            "style, a label on the line), or take colours that stay apart, Okabe and Ito's "
-            "for one"
-        )
-        if sidecar is not None:
-            hint += f"; or give the reason in {sidecar.name} under allow_colours, the pair and why"
+        hint = _advice(way, sidecar)
     return Finding(
         gate=GATE,
         code="figure-greyscale-confused" if way == GREYSCALE else "figure-colours-confused",
@@ -201,6 +203,42 @@ def _confused(
         path=path,
         hint=hint,
     )
+
+
+def _advice(way: str, sidecar: Path | None) -> str:
+    """What to do about colours one `way` of seeing makes one. A palette is offered only
+    where its own colours stay apart that way: Okabe and Ito's were offered for grey, where
+    their orange and sky blue are one. And the check sees no marker or line style, so a
+    figure whose series differ by one as well says so in its guard file."""
+    where = "in grey" if way == GREYSCALE else f"for a reader with {way}"
+    offered = _offered(way)
+    if offered is None:
+        palette = (f"take colours that stay apart {where}: `manuscript-guard palettes` says "
+                   "how many of each palette's colours do")  # fmt: skip
+    else:
+        from manuscript_guard.palettes import palette as named
+
+        copies = f" ({_COPIES[offered]})" if offered in _COPIES else ""
+        palette = (f"take colours that stay apart {where}, as the "
+                   f"{len(named(offered).colours)} colours of `{offered}` do{copies}")  # fmt: skip
+    hint = (
+        "tell the series apart by something besides colour as well (a marker, a line style, "
+        f"a label on the line), or {palette}. The check reads colours only and cannot see a "
+        "marker or a line style"
+    )
+    if sidecar is None:
+        return hint
+    return (f"{hint}: where the series already differ by one, give that as the reason in "
+            f"{sidecar.name} under allow_colours, with the pair")  # fmt: skip
+
+
+@cache
+def _offered(way: str) -> str | None:
+    """`OFFERED`, where no two of its colours are one colour as `way` makes them; else None."""
+    from manuscript_guard.palettes import palette
+
+    own = [parse(code)[0] for code in palette(OFFERED).colours]
+    return None if confusions(own, (way,)) else OFFERED
 
 
 _SCALE_HINT = (

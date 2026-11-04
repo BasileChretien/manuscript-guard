@@ -13839,6 +13839,15 @@ Added by the adversarial review, verified and **not** fixed:
   only, the dichromacies; the anomalous trichromacies, commoner and milder, are not, and
   Machado's model is less sure of tritanopia than of the other two. The threshold of 10 is a
   convention, not a standard. A LaTeX manuscript's figures are not read.
+- **A marker or a line style is not seen.** The check reads the colours a figure paints and
+  nothing else, so two series that differ by marker shape or line style as well as colour
+  are warned of as though colour alone told them apart: a ggplot drawn with
+  `aes(colour = series, shape = series)` is warned of as one drawn with `colour` alone. The
+  figure's guard file says so under `allow_colours`, and the hint says that is the way out.
+  The hint offers Okabe and Ito's eight only for a deficiency their own colours stay apart
+  for, all three: in grey, where several of them are one grey, it names no palette and
+  points to `manuscript-guard palettes`. It does not ask whether the eight are enough for
+  the figure's series.
 - **A palette's verdict is the check's, at its threshold, on its colours as written.** The
   number of a set's colours that stay apart is counted in the collection's order for that
   many, so a set whose first colours are close is rated low though a figure could take

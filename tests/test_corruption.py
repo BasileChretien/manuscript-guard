@@ -15014,6 +15014,86 @@ def test_a_palette_drawn_for_deficiencies_is_said_only_of_grey(project: Path) ->
     assert _colours_said(project) == [("figure-greyscale-confused", "warn")]
 
 
+#: For each way the check sees, two colours it makes one: matplotlib's red and green with
+#: deuteranopia, its blue and pink with protanopia, two light blues with tritanopia, and
+#: Okabe and Ito's orange and sky blue in grey.
+_ONE_TO = {
+    "deuteranopia": (_RED, _GREEN),
+    "protanopia": ("#1f77b4", "#e377c2"),
+    "tritanopia": ("#28ccfa", "#81fcf5"),
+    "greyscale": (_ORANGE, _SKY),
+}
+#: R's `palette.colors(palette = "Okabe-Ito")`: Okabe and Ito's eight, and a grey.
+_R_OKABE_ITO = ("#000000", "#e69f00", "#56b4e9", "#009e73", "#f0e442", "#0072b2", "#d55e00",
+                "#cc79a7", "#999999")  # fmt: skip
+
+
+def _hints(root: Path) -> dict[str, str]:
+    """The hint of each way the figure's colours are confused, by the way."""
+    from manuscript_guard.colour import DEFICIENCIES, GREYSCALE
+    from manuscript_guard.gates.figure_colours import check_figure_colours
+
+    out = {}
+    for found in check_figure_colours(load_project(root)[0]).findings:
+        if found.code == "figure-greyscale-confused":
+            out[GREYSCALE] = found.hint
+        else:
+            out[next(way for way in DEFICIENCIES if f"with {way}" in found.message)] = found.hint
+    return out
+
+
+@pytest.mark.parametrize("way", sorted(_ONE_TO))
+def test_the_hint_offers_no_palette_the_check_it_reports_finds_wanting(
+    project: Path, way: str
+) -> None:
+    """A figure in Okabe and Ito's orange and sky blue was told, in grey, to take Okabe and
+    Ito's colours: their own orange and sky blue are 0.6 apart in grey. A palette the hint
+    names keeps its colours apart the way the finding is about; where the one it offers does
+    not, it names none and says where to look."""
+    from manuscript_guard import palettes
+    from manuscript_guard.colour import confusions, parse
+
+    _painted(project, *_ONE_TO[way])
+    hint = _hints(project)[way]
+    named = re.findall(r"as the \d+ colours of `([^`]+)` do", hint)
+    for name in named:
+        assert confusions([parse(code)[0] for code in palettes.colours(name)], (way,)) == []
+    assert named == ([] if way == "greyscale" else ["okabe-ito"]), hint
+    if not named:
+        assert "`manuscript-guard palettes`" in hint, hint
+    # The check cannot see what else tells the series apart, and the guard file is the way
+    # out where something does.
+    assert "cannot see a marker or a line style" in hint, hint
+    assert "forest.guard.yaml under allow_colours" in hint, hint
+
+
+def test_a_figure_in_r_s_okabe_ito_palette_is_told_what_its_grey_does(project: Path) -> None:
+    """R's palette adds a grey to the eight, and deuteranopia makes it one with the reddish
+    purple: the hint that offers the eight says the grey is none of them, and in grey it
+    offers no palette at all, since the eight are not apart there either."""
+    from manuscript_guard.colour import GREYSCALE
+
+    _painted(project, *_R_OKABE_ITO)
+    hints = _hints(project)
+    assert sorted(hints) == ["deuteranopia", GREYSCALE]
+    assert "`okabe-ito`" in hints["deuteranopia"]
+    assert "adds a grey that is not one of them" in hints["deuteranopia"]
+    assert "okabe-ito" not in hints[GREYSCALE]
+
+
+def test_a_figure_with_no_guard_file_is_told_the_check_cannot_see_markers(
+    project: Path,
+) -> None:
+    """Read without a project, as `communicate` reads its graphical abstract, there is no
+    guard file to name, and what the check cannot see is still said."""
+    from manuscript_guard.gates.figure_colours import colour_findings
+
+    _painted(project, _RED, _GREEN)
+    [found] = colour_findings(project / "figures" / "forest.svg", "forest")
+    assert "cannot see a marker or a line style" in found.hint
+    assert "allow_colours" not in found.hint
+
+
 def test_a_supplementary_figure_s_colours_are_checked_as_the_paper_s(project: Path) -> None:
     """Basile, 2026-10-21: the supplement is held to the main text's rules. A figure only the
     supplement places is read and warned of as one the paper places, and a `print` under the

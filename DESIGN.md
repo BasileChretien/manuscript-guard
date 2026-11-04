@@ -3023,10 +3023,12 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
 
 - *Retracted* fails from drafting (`reference-retracted`): a retraction, withdrawal or
   removal among the notices Crossref holds for the DOI, OpenAlex's `is_retracted`, or
-  PubMed's "Retracted Publication". A paper that discusses the retracted work, or cites
+  PubMed's "Retracted Publication" or its "Retraction in" link (since 2026-11-04, below).
+  A paper that discusses the retracted work, or cites
   its notice, says why under `lookup.cited_as_retracted` in `paper.yaml`, and G7 then
-  notes it. An expression of concern or a partial retraction is a warning; a correction
-  is kept in the record and not reported.
+  notes it. An expression of concern or a partial retraction is a warning, and so is
+  PubMed's "Expression of concern in"; a later version and a correction are said as the
+  section "Later notices, and the kind of work a number is quoted from" below says.
 - *Not the work cited* fails from internal-review, since a draft may not have its records
   yet. A DOI that no registry has: Crossref, DataCite and doi.org all said so, and one
   that did not answer proves nothing (`doi-unregistered`), and a PMID PubMed does not know
@@ -3126,6 +3128,66 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
   drafting (`lookup-record-edited`), since an edit by hand can take a retraction out; one
   dated in the future, one that is not a record, or one filed under another citekey fails
   from internal-review.
+
+### Later notices, and the kind of work a number is quoted from
+
+Since 2026-11-04 (Basile's design of that day, its section 2.1) a cited work is asked two more
+questions, kept apart: has it been replaced or corrected since (currency), and is it the kind
+of work a number should be quoted from (fitness). Both are read from registry facts in the
+record and nothing else: no model, no score, and the age of a work alone is never a finding.
+Each finding names the registry, the field and the day the record was looked up.
+
+`lookup` writes records of version 3 (`manuscript-guard/lookup/3`). Beside what version 2
+kept:
+
+- PubMed's links from the work to later ones, from ESummary's `references` list: "Update in",
+  "Erratum in", "Comment in", "Expression of concern in" and "Retraction in", each with the
+  PMID it points to and PubMed's reference to that work (`links`). The links that point the
+  other way ("Comment on", "Erratum for") are not kept. `search` reads the same list for its
+  retractions, concerns and later versions through the same parser (`sources.links`), and
+  says what it said before.
+- For an entry with a DOI and no PMID, one exact ESearch for the DOI in PubMed's `[doi]` field
+  (`"10.1056/NEJMoa2021436"[doi]` gave PMID 32678530 alone on 2026-11-04). Where it gives
+  exactly one PMID and that PMID's record holds the DOI, the record keeps it with its ESummary
+  in a block of its own (`sources.pubmed_by_doi`); no PMID is `absent`; several, or one whose
+  record holds another DOI or none, is `refused`, with the reason, and none is kept. That block
+  is read for publication types and links only, never by the checks of whether the entry names
+  the work (title, year, authors, details, `pmid-names-another-work`, `reference-not-the-work`).
+  `lookup --dry-run` counts the one or two requests each such DOI adds. `audit --lookup` does
+  not ask it.
+- Crossref's dates as far as it gives them (`dates`: "2021", "2021-03", "2021-03-14"), beside
+  the years, for comparisons at the finest precision both sides have. A month or a day that is
+  none ends the date there.
+
+A record of version 2 is read as before, its authors compared, and the next `lookup` asks
+again for it, "looked up before PubMed's links were kept".
+
+G7 then says:
+
+- `reference-updated`, a warning: Crossref's `updated-by` lists a new version or a new
+  edition, or PubMed's record lists "Update in". Crossref's kinds of update are the twelve
+  its Crossmark documentation lists ("Participating in Crossmark", read 2026-11-04).
+- `reference-corrected`, a note: Crossref's `updated-by` lists a correction, a corrigendum,
+  an erratum, an addendum or a clarification, or PubMed's record lists "Erratum in". Only
+  `updated-by`: a DOI whose `update-to` names another work is the notice itself, which is
+  `reference-not-the-work`. A retraction and a concern keep their own findings, which
+  PubMed's "Retraction in" and "Expression of concern in" now also give.
+- `number-from-secondary-source`: a value of the literature ledger (or of `attested.yaml`,
+  where it names a citekey) quoted from a work by what PubMed's types say of it exactly. The
+  types are read from the record of the entry's PMID, else from that of the PMID PubMed gives
+  its DOI (`publication_types` in `gates/lookups.py`, which other checks read too), and
+  NLM's generic types (Journal Article, English Abstract, Introductory Journal Article, the
+  Research Support types; nlm.nih.gov/mesh/pubtypes.html, last reviewed 2026-07-01) are set
+  aside: they say nothing of the kind of work. Where every other type is Editorial or
+  Comment, a warning. Where every other type is Review, Editorial or Comment, Review among
+  them, a note, which says that a work typed only as a review may be a systematic review
+  indexed before PubMed had a type for one. Anything else says nothing: a letter, which may
+  report data of its own; a guideline that reviews; a systematic review, a meta-analysis or a
+  study of any design beside the others. Round 1 of #493 narrowed the rule to this from one
+  that warned of every review, letter or comment not typed as a study or a synthesis, which
+  warned of a research letter and of a guideline typed Practice Guideline and Review. One
+  finding names every value quoted from one work, in the ledger. A record edited by hand, or
+  looked up under other identifiers than the entry has now, types nothing.
 
 ### Measured on real papers, 2026-10-21
 
@@ -14108,6 +14170,28 @@ Open, recorded as each change landed:
   carry is not in the record, and the record is as old as the day it was asked. Requests
   are paced at fixed intervals rather than by the limits each answer states in its
   headers.
+- **A work's kind is PubMed's word, where PubMed has the work.** A work with no PubMed record
+  (most of what is not biomedical, books, reports, and a paper whose DOI PubMed does not hold
+  and that the entry gives no PMID) has no publication types, so `number-from-secondary-source`
+  says nothing of it; nor of a recent paper MEDLINE has not yet indexed, typed only "Journal
+  Article". The types are the indexers', and only what they say exactly is read: a letter is
+  not read at all, so a letter that only comments on others' numbers says nothing; a review
+  is a note, not a warning, since PubMed typed a systematic review as a Review before it had
+  a type for one; a narrative review typed only Journal Article says nothing; and a type
+  beside them that is not generic (a guideline, a consensus statement) clears the work. The
+  sets (`OPINION`, `REVIEWED` and `GENERIC` in `gates/lookups.py`) are a reading of NLM's list
+  of 2026-07-01, and a generic type NLM adds later clears a work until it is put there. Which
+  PMID a record's types come from is not checked against the entry's title: a PMID that names
+  another work (`pmid-names-another-work`) gives that work's types.
+- **The PMID PubMed gives a DOI is refused where the answer is not one.** Several PMIDs for
+  one DOI (a work and a notice filed under its DOI, or two records of one work), or one whose
+  record holds another DOI or none, keep no PMID: the work's types and links are then unknown,
+  as for a work PubMed does not have. A DOI holding a quotation mark is not searched for.
+- **A later version or a correction is as current as the record.** Crossref's notices are
+  those the publisher deposits, and PubMed's links those its indexers make; a correction
+  deposited after the lookup is not in the record until `lookup` asks again (`lookup-stale`
+  after `lookup.max_age_days`). A new version that keeps the work's DOI, as a preprint
+  server's do, is no notice and is not said.
 - **A registration is held to the record as it stood the day it was asked.**
   ClinicalTrials.gov's API serves the record as it is now, not as it was registered: an
   outcome changed in the registry before the paper was written is held as registered. Only

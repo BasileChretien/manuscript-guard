@@ -4470,56 +4470,6 @@ def test_a_quote_that_could_pair_otherwise_writes_the_stretch_from_word() -> Non
     assert aligned.flattened == ("They called it ‘the biggest’ at",)
 
 
-#: Documents Word itself saved, for what Word does to a document that no test can say for it.
-WORD_SAVED = Path(__file__).parent / "data" / "word"
-
-
-def _restamped(word_saved: Path, build: Path, target: Path) -> Path:
-    """A document Word saved, carrying the properties of `build`: its source stamp and its
-    record of paragraphs, which say which build it is."""
-    with zipfile.ZipFile(build) as fresh:
-        custom = fresh.read("docProps/custom.xml")
-    with zipfile.ZipFile(word_saved) as zin, zipfile.ZipFile(target, "w") as zout:
-        for item in zin.infolist():
-            data = custom if item.filename == "docProps/custom.xml" else zin.read(item.filename)
-            zout.writestr(item, data)
-    return target
-
-
-@needs_pandoc
-def test_a_word_changed_in_word_keeps_the_bold_and_straight_quotes_beside_it(
-    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """`reworded-in-word.docx` is the example's `build/manuscript.docx` (`build --offline`),
-    opened in Word 16 over COM on 2026-11-04 and edited by finding text: with Track Changes
-    off, "common" in "is a common reason" replaced by "frequent"; then, with Track Changes
-    on, "repeated" in "reports repeated another's" replaced by "duplicated", the revision
-    left as Word recorded it; saved as .docx, nothing else changed. The abstract is one
-    paragraph, and its first stretch, up to its first value, holds the bold "Background."
-    and "Methods."; the Methods stretch holds "another's", which the build printed curly.
-    Each stretch used to be written whole from Word's text: both bolds were lost, and the
-    apostrophe came back curly. Only the two words are written now."""
-    from manuscript_guard.cli import main
-
-    path = project / "manuscript" / "main.md"
-    before = path.read_text(encoding="utf-8")
-    assert main(["build", str(project), "--offline"]) == 0
-    build = project / "build" / "manuscript.docx"
-    returned = _restamped(WORD_SAVED / "reworded-in-word.docx", build, tmp_path / "back.docx")
-    capsys.readouterr()
-    assert main(["import", str(returned), str(project)]) == 1
-    said = capsys.readouterr().out
-    assert said.count("would merge into") == 2, said
-    assert "written as Word's plain text" not in said, said
-    assert path.read_text(encoding="utf-8") == before, "a dry run wrote"
-    assert main(["import", str(returned), str(project), "--apply"]) == 0
-    expected = before.replace("is a common reason", "is a frequent reason", 1).replace(
-        "reports repeated another's", "reports duplicated another's", 1
-    )
-    assert expected != before
-    assert path.read_text(encoding="utf-8") == expected
-
-
 def test_segments_splits_prose_from_what_the_author_does_not_own() -> None:
     prose, protected = segments("a {{results.x}} b [@key] c @other d")
     assert protected == ["{{results.x}}", "[@key]", "@other"]

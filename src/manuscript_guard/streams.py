@@ -12,8 +12,8 @@ import io
 import os
 import sys
 
-#: What a person sets to choose the encoding of standard output. Either one, whatever its
-#: value, is followed as Python reads it, and nothing here overrides it.
+#: What a person sets to choose the encoding of standard output. Either one, set to any value
+#: but an empty one, is followed as Python reads it, and nothing here overrides it.
 _SAID_BY_THE_USER = ("PYTHONIOENCODING", "PYTHONUTF8")
 
 
@@ -28,9 +28,9 @@ def utf8_when_piped() -> None:
 
     A console is left as Python opened it: on Windows Python writes to it as UTF-16 whatever
     the code page, and elsewhere it is in the terminal's own encoding. So is every stream when
-    `PYTHONIOENCODING` or `PYTHONUTF8` is set, whatever its value, or Python runs with
-    `-X utf8`. A stream that cannot be reconfigured (one a host or a test put in place) is
-    left as it is.
+    `PYTHONIOENCODING` or `PYTHONUTF8` is set to a value, whatever it is (an empty one counts
+    as unset, as it does to Python), or Python runs with `-X utf8`. A stream that cannot be
+    reconfigured (one a host or a test put in place) is left as it is.
     """
     if any(os.environ.get(name) for name in _SAID_BY_THE_USER):
         return

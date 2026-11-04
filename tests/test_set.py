@@ -540,6 +540,18 @@ def test_taking_a_guideline_away_or_replacing_the_journal_is_asked(
     assert (_decision(result) == "ask") is asked, result
 
 
+@pytest.mark.parametrize("design", ["other", "trial"])
+def test_replacing_the_study_design_is_not_asked(
+    tmp_path: Path, design: str, monkeypatch, capsys
+) -> None:
+    """Known gaps (round 1 of #502): `study_type` is not a key the guard watches, so a design
+    replaced, by `other` or by another of the seven, is let through unasked, though G12 then
+    asks the plan for other sections and G5 no longer warns of the cohort's guideline."""
+    _project(tmp_path, "stage: drafting\nstudy_type: cohort\n")
+    command = f"manuscript-guard set study_type {design}"
+    assert _hook(tmp_path, command, monkeypatch, capsys) is None
+
+
 # ------------------------------------------------------------------ the file it writes
 
 

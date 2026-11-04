@@ -48,4 +48,7 @@ def chosen(named: str | None, study_type: str | None) -> tuple[Template, str]:
         return TEMPLATES[named], "named with --template"
     if study_type in BY_STUDY_TYPE:
         return TEMPLATES[BY_STUDY_TYPE[study_type]], f"the template for study_type {study_type}"
+    if study_type:
+        return TEMPLATES[DEFAULT], (f"study_type {study_type} has no template of its own; "
+                                    "--template names another")  # fmt: skip
     return TEMPLATES[DEFAULT], "paper.yaml declares no study_type; --template names another"

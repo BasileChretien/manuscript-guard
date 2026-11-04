@@ -143,6 +143,14 @@ class Block:
     #: each occurrence: a Wingdings character, a piece of a tall bracket, a private-use
     #: character, Symbol-font text whose font a style sets. See `wordfonts`.
     unread: tuple[str, ...] = ()
+    #: "figure" or "equation" for a block holding only identifiers that Word left on a figure
+    #: or an equation, "" otherwise. A paragraph cut or deleted with Track Changes off leaves
+    #: its bookmark behind, and Word puts it on the next paragraph; where that holds a picture
+    #: or display maths and no text, the bookmark is all it carries. Read as a paragraph, the
+    #: figure itself went missing, and import called it deleted. Read as the figure, the
+    #: identifier went missing, and the paragraph before was read as joined with its text.
+    #: So it is both: this block, empty, then the figure or equation.
+    stranded: str = ""
 
     @property
     def table(self) -> bool:
@@ -845,19 +853,20 @@ def blocks(document: Path, fields: FieldReading | None = None) -> list[Block]:
         if cells is not None:
             out.append(Block(kind="table", key=_digest(cells)))
             cells = None
-        if paragraph.picture and not paragraph.names and not paragraph.text:
+        if paragraph.picture and _no_text(paragraph):
             # A figure: a picture and no text. Read as an empty paragraph it was no boundary
-            # at all, and a paragraph moved past it went unseen.
-            out.extend(_fold(pending))
+            # at all, and a paragraph moved past it went unseen. An identifier on it is one
+            # Word left there (see `Block.stranded`).
+            out.extend(_stranded(pending, paragraph, "figure"))
             pending = []
             seen = [pictures.get(rid) for rid in paragraph.embeds]
             key = _digest(seen) if seen and all(seen) else ""
             out.append(Block(kind="figure", key=key))
             continue
-        if paragraph.maths is not None and not paragraph.names and not paragraph.text:
+        if paragraph.maths is not None and _no_text(paragraph):
             # Display maths: an equation and no text. Read as an empty paragraph, it could be
             # dragged into another section or deleted and import said "nothing came back".
-            out.extend(_fold(pending))
+            out.extend(_stranded(pending, paragraph, "equation"))
             pending = []
             out.append(Block(kind="equation", key=_digest([paragraph.maths])))
             continue
@@ -920,6 +929,23 @@ def _digest_of(archive: zipfile.ZipFile, part: str) -> str | None:
         return hashlib.sha256(archive.read(part)).hexdigest()
     except Exception:
         return None
+
+
+def _no_text(paragraph: _Paragraph) -> bool:
+    """Whether a paragraph showing a picture or display maths is a figure or an equation: it
+    holds no text. An identifier on it is not its own (see `Block.stranded`)."""
+    return not paragraph.text
+
+
+def _stranded(pending: list[_Paragraph], paragraph: _Paragraph, kind: str) -> list[Block]:
+    """What comes before a figure or an equation: the paragraphs waiting to be folded, and
+    the identifiers on the figure's or equation's own paragraph, as they were read before it
+    was one. A paragraph run on into it keeps them, as a join does; on their own they are a
+    block with no text, `stranded` on that kind."""
+    if not paragraph.names:
+        return _fold(pending)
+    folded = _fold([*pending, replace(paragraph, picture=False, embeds=(), maths=None)])
+    return [replace(b, stranded=kind) if not b.text else b for b in folded]
 
 
 def _fold(run: list[_Paragraph]) -> list[Block]:

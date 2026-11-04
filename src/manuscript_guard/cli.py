@@ -116,7 +116,7 @@ from manuscript_guard.policy import (
 )
 from manuscript_guard.record import FIGURE_VERDICTS
 from manuscript_guard.record import VERDICTS as RECORD_VERDICTS
-from manuscript_guard.scaffold import ENGLISHES, UNTITLED, init_project, rules_to_add
+from manuscript_guard.scaffold import _DIRS, ENGLISHES, UNTITLED, init_project, rules_to_add
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import parse, substitute
 from manuscript_guard.text.reader import LATEX, manuscript_files, manuscript_format
@@ -1362,8 +1362,16 @@ def cmd_import(args: argparse.Namespace) -> int:
     # changed: what it printed at the build, where the record says, else the fresh build.
     as_sent = {b.names[0]: b.text for b in sent if b.names and not b.table}
     as_sent |= {b.names[0]: b.text for b in printed or () if b.names and not b.table}
+    # Identifiers Word left on a figure or an equation: see `docxtext.Block.stranded`.
+    stranded = {n: b.stranded for b in renamed if b.stranded for n in b.names}
     _report_plan(
-        project, known, plan, applying=args.apply, followed=set(followed.values()), sent=as_sent
+        project,
+        known,
+        plan,
+        applying=args.apply,
+        followed=set(followed.values()),
+        stranded=stranded,
+        sent=as_sent,
     )
     if not records_moves(edited):
         print(
@@ -1620,19 +1628,40 @@ def _file_comments(
 
 
 def _report_plan(
-    project, known: dict, plan, *, applying: bool, followed=frozenset(), sent=None
+    project,
+    known: dict,
+    plan,
+    *,
+    applying: bool,
+    followed=frozenset(),
+    stranded=None,
+    sent=None,
 ) -> None:
     """Say what the returned document changed and what will, or will not, be applied.
 
     `known` holds the paragraphs compared. A join can take in one that was not, which is
     named by its identifier: what the source now has under it is another paragraph.
     `followed` names those compared where they stand now, their identifier having shifted.
+    `stranded` names the kind of block, figure or equation, an identifier came back on.
     `sent` is what each paragraph read as in the document sent, which a refusal is shown
     against.
     """
     from manuscript_guard.preview import changes
     from manuscript_guard.preview import opening as first_words
     from manuscript_guard.roundtrip import AS_SENT
+
+    stranded = stranded or {}
+
+    def left_on(name: str) -> None:
+        # Said where the paragraph is reported moved or deleted. Read as that paragraph, the
+        # figure was said to be deleted, with advice to take its placeholder out of the .md.
+        if name in stranded:
+            kind = stranded[name]
+            print(
+                f"    Its identifier came back on the {kind} that stood after it, which has "
+                f"no text: cut or deleted with Track Changes off, a paragraph leaves its "
+                f"identifier on the paragraph after it. The {kind} is not read as a paragraph."
+            )
 
     def changed(was: str, now: str) -> None:
         # Each changed stretch, what was there and what is there now, with a few words
@@ -1809,6 +1838,7 @@ def _report_plan(
             "rewording there. Do not delete it and retype Word's copy: its numbers and "
             "citations would come back as typed text, not as bindings."
         )
+        left_on(name)
 
     for name in plan.gone:
         print(f"\ndeleted in Word, left in place here: {known[name][1].strip()[:110]}")
@@ -1817,6 +1847,7 @@ def _report_plan(
             "move it in the .md: retyped from Word's copy, its numbers and citations would "
             "come back as typed text."
         )
+        left_on(name)
 
 
 def _seeded(
@@ -5998,6 +6029,12 @@ def cmd_init(args: argparse.Namespace) -> int:
               "and --latex starts a LaTeX one; nothing was made", file=sys.stderr)  # fmt: skip
         return 2
     converted = None
+    paper = (Path(args.path) / "paper.yaml").resolve()
+    # A paper.yaml found is a project under way, past the advice for its first day.
+    under_way = paper.is_file()
+    # init makes these too, and lists them nowhere: a clone lacks `build/`, which git ignores.
+    root = Path(args.path)
+    missing = [root / name for name in (*_DIRS, "results/.gitkeep") if not (root / name).exists()]
     try:
         if word is None:
             title = UNTITLED if args.title is None else args.title
@@ -6014,7 +6051,6 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 2
     for path in created:
         print(f"created {path}")
-    paper = (Path(args.path) / "paper.yaml").resolve()
     if args.english and paper not in {path.resolve() for path in created}:
         print(
             f"\npaper.yaml was already there and was left as it was, so english_variant: "
@@ -6029,6 +6065,15 @@ def cmd_init(args: argparse.Namespace) -> int:
             "left as it was. An agent tool reads its rules from that file. Add these to it:\n\n"
             + rules
         )
+    if under_way:
+        made = [path for path in missing if path.exists()]
+        for path in made:
+            print(f"made {path}")
+        added = "added only what is named above" if created or made else "added nothing"
+        print(f"\nThis project was set up already (its paper.yaml was there): init {added} "
+              "and left every file it found as it was. For what to do now, run "
+              "`manuscript-guard next`.")  # fmt: skip
+        return 0
     print(
         "\nnext: describe your authors in authors.yaml, then write an analysis that "
         f"publishes its results with {HOW_TO_EMIT}"
@@ -7456,7 +7501,10 @@ def _survive_the_console() -> None:
 
     Folding to ASCII rather than forcing UTF-8 on the stream: forcing it turns a cp1252
     console into mojibake, which is harder to read than `--`, and unlike `errors="replace"`
-    this keeps the text meaningful.
+    this keeps the text meaningful. A pipe or a file is not a console, and is made UTF-8
+    before this runs (`streams.utf8_when_piped`): what is folded is a console, a stream left
+    as Python opened it because `PYTHONIOENCODING` or `PYTHONUTF8` is set, or one that could
+    not be reconfigured.
     """
     # De-duplicated and marked. Each call captured the previous `write` and wrapped it
     # again, so a host calling `main()` in a loop on a legacy console — or this project's
@@ -7568,7 +7616,9 @@ def _manuscript_folder(start: Path, command: str) -> Path | None:
 def main(argv: list[str] | None = None) -> int:
     from manuscript_guard.diagnostics import crashes
     from manuscript_guard.roundtrip import RoundTripError
+    from manuscript_guard.streams import utf8_when_piped
 
+    utf8_when_piped()
     args = build_parser().parse_args(argv)
     _survive_the_console()
     named = getattr(args, "path", None)

@@ -39,7 +39,9 @@ Within a tier, actions go in gate order, upstream first, then by code, file and 
 A choice is due when a finding asks for it (`journal-profile-missing`,
 `english-variant-undeclared` or `-mismatch`, `reporting-guideline-for-design`), or from
 `drafting` when the setting is not made: no `target_journal`, no `english_variant`, no
-reporting guideline. The study design is due wherever `study_type` is not set. A finding a
+reporting guideline. The study design is due wherever `study_type` is not set; its last
+option, `other`, is for a study none of the designs is, and asks the plan for the seven
+sections every plan has. A finding a
 choice answers is in that choice and is not listed again.
 
 A finding's code decides its skill and its command (`guide.ROUTES`): its own entry, or the

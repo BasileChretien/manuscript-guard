@@ -14,6 +14,10 @@ schema: manuscript-guard/study-types/1
 #
 # `guidelines` are the paper's: G5 says where paper.yaml declares none of them for the
 # design it names. The protocol's own guideline, where there is one, is under `protocol`.
+#
+# paper.yaml takes one more value, `other` (gates/design.py, OTHER), for a study none of
+# these is: its plan is asked for the seven sections and its paper for no guideline. A
+# design is added here only with sections that each cite their guideline item.
 
 types:
   trial:

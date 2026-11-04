@@ -227,6 +227,8 @@ def _either(names) -> str:
 
 
 def _choose_study_type(state: State) -> list[Action]:
+    from manuscript_guard.gates.design import OTHER
+
     if state.study_type is not None or not state.study_types:
         return []
     options = tuple(
@@ -234,7 +236,9 @@ def _choose_study_type(state: State) -> list[Action]:
                + (f", and it is reported with {_either(guidelines)}" if guidelines else ""),
                argv(state, "set", "study_type", key))
         for key, label, guidelines in state.study_types
-    )  # fmt: skip
+    ) + (Option(OTHER, "None of these", "the plan is asked for the seven sections every plan "
+                "has, and no guideline is asked for by the design",
+                argv(state, "set", "study_type", OTHER)),)  # fmt: skip
     return [_choice_action("choose-study-type", "Name the study design", "analysis-plan",
                            Choice("What kind of study is this?", options), (), state, 3)]
 

@@ -1355,6 +1355,107 @@ def test_a_utf8_console_keeps_the_typography(monkeypatch) -> None:
     assert "\u2014" in buffer.buffer.getvalue().decode("utf-8")
 
 
+#: The CLI with its output in a code page, as Python opens a pipe on Windows. The same on
+#: every platform, so that the test fails on Linux and macOS too if the output goes back to it.
+_IN_A_CODE_PAGE = (
+    "import sys\n"
+    "for stream in (sys.stdout, sys.stderr):\n"
+    "    stream.reconfigure(encoding='cp1252')\n"
+    "from manuscript_guard.cli import main\n"
+    "sys.exit(main())\n"
+)
+
+
+@pytest.mark.parametrize("opened", ["platform", "code-page"])
+def test_output_to_a_pipe_is_utf8(project: Path, opened: str) -> None:
+    """A pipe is opened in the code page on Windows, and `check` wrote every character outside
+    it as `?`: a Japanese quote in a finding's context read "???", and the `\u00e9` of a name was
+    the lone byte 0xE9, which is not UTF-8. An agent reads the output through a pipe."""
+    import os
+    import subprocess
+
+    import manuscript_guard
+
+    quote = "\u8cea\u554f\u7968"  # made up
+    path = project / "manuscript" / "main.md"
+    path.write_text(path.read_text(encoding="utf-8")
+                    + f"\n\nThe {quote} of Dr H\u00e9l\u00e8ne was answered by 47 patients.\n",
+                    encoding="utf-8")  # fmt: skip
+    env = {key: value for key, value in os.environ.items()
+           if key not in ("PYTHONUTF8", "PYTHONIOENCODING")}  # fmt: skip
+    source = str(Path(manuscript_guard.__file__).resolve().parent.parent)
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, [source, env.get("PYTHONPATH")]))
+    entry = ["-m", "manuscript_guard.cli"] if opened == "platform" else ["-c", _IN_A_CODE_PAGE]
+    finished = subprocess.run([sys.executable, *entry, "check", str(project)],
+                              capture_output=True, env=env, timeout=600)  # fmt: skip
+    assert finished.returncode == 1, finished.stderr
+    said = (finished.stdout + finished.stderr).decode("utf-8")  # raised on the lone 0xE9
+    assert quote in said and "H\u00e9l\u00e8ne" in said, said
+
+
+class _Console(io.TextIOWrapper):
+    def isatty(self) -> bool:
+        return True
+
+
+@pytest.mark.parametrize(
+    "environment",
+    [{}, {"PYTHONIOENCODING": "cp1252"}, {"PYTHONUTF8": "0"}],
+    ids=["unset", "PYTHONIOENCODING", "PYTHONUTF8"],
+)
+def test_a_pipe_is_made_utf8_unless_the_user_chose(environment: dict, monkeypatch) -> None:
+    """A pipe becomes UTF-8; a console, and a stream whose encoding the user named, keep
+    the encoding Python opened them with."""
+    from manuscript_guard.streams import utf8_when_piped
+
+    for name in ("PYTHONIOENCODING", "PYTHONUTF8"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    pipe = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    console = _Console(io.BytesIO(), encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", pipe)
+    monkeypatch.setattr(sys, "stderr", console)
+    utf8_when_piped()
+    assert pipe.encoding == ("cp1252" if environment else "utf-8")
+    assert console.encoding == "cp1252"
+
+
+def test_a_pipe_made_utf8_keeps_its_way_with_what_it_cannot_write(monkeypatch) -> None:
+    """Made UTF-8, each stream keeps the error handler Python gave it: standard error's
+    `backslashreplace` writes a lone surrogate in a message as `\\udcxx`, where `strict`,
+    which `reconfigure` puts back when it is not named, would raise while the error was
+    being said (round 1 of #504)."""
+    from manuscript_guard.streams import utf8_when_piped
+
+    for name in ("PYTHONIOENCODING", "PYTHONUTF8"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(sys, "_xoptions", {})
+    out = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
+    err = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="backslashreplace")
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(sys, "stderr", err)
+    utf8_when_piped()
+    assert (out.encoding, out.errors) == ("utf-8", "strict")
+    assert (err.encoding, err.errors) == ("utf-8", "backslashreplace")
+    err.write("C:\\x\\" + chr(0xDC80) + ".md\n")  # raised UnicodeEncodeError under strict
+    err.flush()
+    assert err.buffer.getvalue().startswith(b"C:\\x\\\\udc80.md")
+
+
+def test_the_hook_writes_utf8_to_a_pipe(monkeypatch) -> None:
+    """`manuscript-guard-hook` sets its streams as the CLI does, before it reads anything."""
+    from manuscript_guard import hooks
+
+    for name in ("PYTHONIOENCODING", "PYTHONUTF8"):
+        monkeypatch.delenv(name, raising=False)
+    pipe = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", pipe)
+    monkeypatch.setattr(sys, "stderr", pipe)
+    assert hooks.main(["no-such-handler"]) == 0
+    assert pipe.encoding == "utf-8"
+
+
 def test_json_output_is_ascii_so_a_pipe_cannot_truncate_it(project: Path, capsys) -> None:
     assert run("check", str(project), "--json") in (0, 1)
     out = capsys.readouterr().out

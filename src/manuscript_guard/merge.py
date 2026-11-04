@@ -958,8 +958,10 @@ def _displaced(
 
 def _beside_new_text(
     sent: list[Block], returned: list[Block], counterparts: dict[int, int] | None = None
-) -> set[str]:
-    """Identifiers whose paragraph came back directly beside text the document did not have.
+) -> dict[str, str | None]:
+    """Identifiers whose paragraph came back directly beside text the document did not have,
+    each with that text where it is a new paragraph before it and nothing new is after it,
+    and None otherwise.
 
     A split leaves the second half as a paragraph with no identifier next to the first, and
     that is the only trace it leaves: the first half is merely a shorter paragraph. So any
@@ -975,6 +977,11 @@ def _beside_new_text(
     A table, figure or equation the document as sent did not have is new too. The search
     stopped at any block that was not prose, so a paragraph split around a pasted picture or
     a new equation was merged as its first half.
+
+    The first half of a split keeps the identifier, so a paragraph with new text before it
+    and none after it was not split itself: it stands after a split, or after new text. Its
+    refusal named a split, and its author took the diagnosis for wrong and the rewording in
+    it for no edit of theirs to carry over. The new paragraph's text says which one it is.
     """
 
     def content(block: Block) -> tuple[str, tuple[str, ...]]:
@@ -993,7 +1000,8 @@ def _beside_new_text(
         else:
             new.add(index)
 
-    def touches(indices: range) -> bool:
+    def touches(indices: range) -> int | None:
+        """The index of the new block met first along `indices`, or None."""
         for i in indices:
             block = returned[i]
             # A paragraph moved here, identifier and all, is no neighbour to vouch for: it
@@ -1008,10 +1016,10 @@ def _beside_new_text(
             if block.arrived and not any(content(block)) and set(block.names) <= spacers:
                 continue
             if block.arrived and (any(content(block)) or block.names):
-                return True
+                return i
             if block.table:
                 if counterparts is None or i not in counterparts:
-                    return counterparts is not None
+                    return i if counterparts is not None else None
                 # One that was there before is looked past, as an empty line is: an equation
                 # moved in between the halves of a split paragraph hid the second half.
                 continue
@@ -1020,19 +1028,25 @@ def _beside_new_text(
                 # of a split's second half takes in the spacer line under it, and the second
                 # half then carries the spacer's identifier: as a paragraph with an
                 # identifier, it vouched for the split.
-                return any(content(block)) and set(block.names) <= spacers
+                return i if any(content(block)) and set(block.names) <= spacers else None
             if i in new:
-                return True
+                return i
             if any(content(block)):
-                return False
-        return False
+                return None
+        return None
 
-    found: set[str] = set()
+    found: dict[str, str | None] = {}
     for index, block in enumerate(returned):
-        if block.names and not block.table and (
-            touches(range(index - 1, -1, -1)) or touches(range(index + 1, len(returned)))
-        ):
-            found.update(block.names)
+        if not block.names or block.table:
+            continue
+        before = touches(range(index - 1, -1, -1))
+        after = touches(range(index + 1, len(returned)))
+        if before is None and after is None:
+            continue
+        # Only a new paragraph of text before it, and nothing new after it: not split itself.
+        shown = returned[before].text if after is None and before in new else None
+        for name in block.names:
+            found[name] = shown if found.get(name, shown) == shown else None
     return found
 
 
@@ -1916,6 +1930,9 @@ def plan_import(
             refused.append(Refusal(name, now, (_TOOK_IN.format(text=took[:60]),)))
         elif name in beside_changed or printed_otherwise(name):
             refused.append(Refusal(name, now, (_BESIDE_CHANGED,)))
+        elif name in beside_new and beside_new[name] is not None:
+            opening = _squashed(beside_new[name])[:60]
+            refused.append(Refusal(name, now, (_AFTER_NEW.format(opening=opening),)))
         elif name in beside_new:
             refused.append(Refusal(name, now, (_SPLIT,)))
         elif name in beside_lost:
@@ -2069,6 +2086,14 @@ _SPLIT = (
     "would replace the whole source paragraph with only part of it. Make the edit in the .md. "
     "If the text shown is a paragraph moved from elsewhere, move that paragraph in the .md "
     "rather than retyping it."
+)
+_AFTER_NEW = (
+    "it came back after a new paragraph, '{opening}': another paragraph split in two in Word, "
+    "new text written there, or a heading, list item or quotation there reworded. This "
+    "paragraph was not split itself, since nothing new follows it, but nothing of a "
+    "paragraph beside new text is merged. Make this paragraph's own edit in the .md. If the "
+    "text shown is a paragraph moved from elsewhere, move that paragraph in the .md rather "
+    "than retyping it."
 )
 _HIDDEN = (
     "text was typed where this paragraph renders nothing - a spacer such as `&nbsp;`, or "

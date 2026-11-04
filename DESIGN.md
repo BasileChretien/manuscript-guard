@@ -18034,6 +18034,11 @@ Open, recorded as each change landed:
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the
   paragraph under it are both edited in one round, that paragraph's rewording is refused.
+  Its refusal says which: a paragraph with new text before it and none after it was not
+  split itself, since a split's first half keeps the identifier, and is told it came back
+  after a new paragraph, with that paragraph's opening words, and to make its own edit in
+  the .md. A paragraph with new text after it is told it may have been split, though the
+  text after it may be new text typed there.
   That is the price of refusing a split, and it does not refuse every one. The search for
   new text stops at the first untagged text the document already had. A table moved with
   its caption between the halves of a split, or a heading dragged there, puts that text

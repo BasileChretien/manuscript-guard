@@ -13144,12 +13144,16 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   a title's or a family name's TeX (`gates/lookups`, `_untex`), so a command's name runs on
   into the letters it was given, `\textsubscript{2.5}` as `\textsubscript2.5`, and the
   longest command it knows is read off the front. After an accent, `\i` and `\j` are the
-  letter whatever follows, since an accent's argument is one letter: `{\'\i}tez` is "ítez".
-  With no accent before it, a `{\i}` before a t is read as `\it`, as `\it{...}` would be,
-  and the two cannot be told apart without the braces: a name written `\c{C}{\i}tan` is
-  "Can", and is compared as another person's (pinned in `tests/test_names.py`). Before any
-  other letter the `\i` is the letter. A command it does not know,
-  `{\IJ}ssel`, is dropped with the letters run on into it.
+  letter whatever letters follow, since an accent's argument is one letter: `{\'\i}tez` is
+  "ítez". The accent counts where it is written just before the `\i` or one space before
+  it, as Better BibTeX writes `{\v \i}`; two spaces, a tab or a line break between them
+  leave the `\i` read as before, and a sign after a TeX line break, `\\'\i`, is taken for an
+  accent. With no accent before it, a `{\i}` is read as the longest command it opens: before
+  a t as `\it`, as `\it{...}` would be, and before "ota" as the Greek `\iota`, which cannot
+  be told apart without the braces. A name written `\c{C}{\i}tan` is "Can", and is compared
+  as another person's (pinned in `tests/test_names.py`). Before any other letter the `\i` is
+  the letter. A command it does not know, `{\IJ}ssel`, is dropped with the letters run on
+  into it.
 - **No test runs the page's JavaScript.** The template is checked by reading it and by opening a
   built page in a browser by hand; its storage, its download, its dialog, its clipboard and its
   keyboard handling are held by nothing. A defect there reaches a co-author and not the suite.

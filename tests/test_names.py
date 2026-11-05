@@ -139,6 +139,10 @@ def test_a_dotless_i_no_accent_is_on_before_a_t_is_pinned() -> None:
     so a name written "\\c{C}{\\i}tan" is "Can"."""
     assert authors.name_words("\\c{C}{\\i}tan") == ("can",)
     assert authors.name_words("{\\c C}{\\i}tan") == ("can",)
+    # Before "ota" it is the Greek letter, and an accent two spaces before it is no accent
+    # of its (round 1 of #520).
+    assert authors.name_words("{\\i}otan") == ("\N{GREEK SMALL LETTER IOTA}n",)
+    assert authors.name_words("Sal{\\v  \\i}tez") == ("sal", "ez")
     # Before any other letter, the `\i` is the letter.
     assert authors.name_words("\\c{C}{\\i}nar") == ("cinar",)
 

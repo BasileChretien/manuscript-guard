@@ -157,9 +157,14 @@ not in it:
 
 - **Zotero**, so the build is offline: citations are formatted from the committed
   `literature/references.bib`, and live Zotero fields are never written.
-- **A stored source kept out of git.** `literature/sources/` is in git unless you leave it
-  out. A project that leaves it out fails G7's `literature-source-missing` from the
-  `drafting` stage, in CI and in any clone.
+- **The stored sources.** A new project keeps the copies in `literature/sources/` out of
+  git, and `literature/sources.yaml`, which `sync-sources` writes and you commit, records
+  them. A copy the record lists and git ignores is a note in CI, at every stage
+  (`literature-source-not-here`, G7): its value is counted unverifiable, its quote is still
+  held to the value, and only the quote's being in the copy goes unchecked. A passage, a
+  quotation or an earlier output read from such a copy is noted the same way. Any other
+  missing copy fails `literature-source-missing` from the `drafting` stage, and so does
+  every missing copy where `paper.yaml` sets `literature: {sources_in_git: true}`.
 - **The works store of reference currency**, `literature/currency/works/`, which stays out of
   git. A quote in a reading of currency is looked for there and, for the cited work, in its
   copy under `literature/sources/`; with neither, it is noted as unchecked
@@ -237,8 +242,11 @@ Its limits:
 - a ruleset that forbids new branches stops it.
 
 Before making a repository public for the badge, look at what it holds: `literature/sources/`
-is in git by default, with the copies of the works the paper cites, paywalled ones among them.
-A public repository publishes them, in its history too.
+has the copies of the works the paper cites, paywalled ones among them. A new project's
+`.gitignore` leaves them out, but `init` never rewrites an existing one, so a project made
+before `init` wrote that line commits them, as does one whose `paper.yaml` sets
+`literature: {sources_in_git: true}`. `git ls-files literature/sources` lists what is
+committed. A public repository publishes it, in its history too.
 
 ## A weekly job for reference currency
 

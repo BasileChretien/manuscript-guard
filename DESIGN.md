@@ -22002,8 +22002,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     sets, in no order the author chose.
   - *has no `reference.docx` of the author's*, so its document is in pandoc's default styles,
     and *writes no live Zotero fields*, since it builds offline.
-  - *fails G7 on a stored source kept out of git*, `literature-source-missing` from
-    `drafting`, until a recorded source that is absent is a note.
+  - *has none of the stored sources kept out of git.* A copy the record lists and git
+    ignores is a note (`literature-source-not-here`, and its like for a passage, a quotation
+    or an earlier output), so a quote is not looked for in it and its value is counted
+    unverifiable. Any other missing copy fails `literature-source-missing` from `drafting`,
+    and so does every missing copy under `literature: {sources_in_git: true}`.
   - *cannot run `verify` on restricted inputs*, and does not detect them: `verify` says what
     it could not run, and the job fails on it.
   - *may name a tag not yet published*, where `init` ran with a copy installed from the

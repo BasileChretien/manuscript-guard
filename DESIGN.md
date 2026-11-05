@@ -3608,6 +3608,138 @@ at the same time, adds a public `publication_types(record)` to `gates/lookups.py
 reads a PMID PubMed gives for a DOI; whichever of the two merges second switches the reader
 to it.
 
+## A cited work is held to newer evidence by fixed rules
+
+The currency half of the reference-currency design (2026-11-04, its sections 2.2 to 2.6, all
+seven of its decisions as recommended): has the cited work been overtaken? This part holds
+the records, the rules and G7's reading of them, with no model and no network. The recorded
+searches and their replay, the proposals as Word comments and the unattended run come after
+it, each with the options of `references` it needs.
+
+**The protocol.** A reader frames the claim as a question (F1), which picks a scale of the
+hierarchy (F2). For the cited work and each candidate a search found, the reader fills fixed
+fields, each with a quote of the work's stored abstract or text, word for word: R1 the level
+on the scale, R2 whether the population, the exposure and the outcome are the `same`,
+`different` or `unclear`, R3 whether it `supports` the sentence, `contradicts` it or
+`neither`, R4 a synthesis's search end date. The rules (`currency/rules.py`, one pure
+function) decide:
+
+- K1: a candidate with no works record, retracted, withdrawn, under concern, or a preprint
+  whose published version is known, is out. K2 the level, 1 the strongest; K3 `same` on all
+  of R2; K4 recency, at the same or a stronger level; K5, for a sentence that quotes a
+  number the literature ledger records from the cited work, the primary study only: no
+  synthesis replaces it, at whatever level, since a number is cited from the study that
+  measured it (`number-from-secondary-source`); a synthesis against the sentence may still be
+  added. Basile chose this, "primary only", on 2026-11-04 (item 6 of round 1 of #499), over a
+  primary study put first at one level only. The sentence quotes such a number where it
+  binds a value the ledger, or attested.yaml, records from the cited work, `{{lit.key}}`, or
+  writes its display as words of their own, the ledger read as `number-from-secondary-source`
+  reads it (`lookups.values_quoted_from`); a year, another digit, or another work's value is
+  not one.
+- D1 `replace`: a candidate passes K1, is `same` on R2, does not contradict the sentence,
+  and is at a stronger level, or at the same level with a search end date after the cited
+  work's publication; dates compare at the finest precision both have, and equal there is
+  not after. D2 `add`: it contradicts the sentence at the same or a stronger level. D3 `keep`
+  otherwise. D4 `uncertain`: two readings disagree on the hierarchy, the scale or the cited
+  work's level, or, for a candidate that passes K1, on what can change what the rules give:
+  R2 always; where R2 is `same` on all three, whether the candidate is weaker than the
+  cited work; for one that is not weaker, its level, which ranks it, and whether it
+  contradicts the sentence; and at the cited work's level, not contradicting it, whether
+  its search ended after the cited work was published. A weaker candidate's exact level or
+  stance, `supports` against `neither`, and two search end dates on the same side of the
+  publication may differ. A candidate one reading names and the other does not is a
+  disagreement. Basile chose this on 2026-11-05 (item 3 of round 2 of #499). Before it,
+  every field of every candidate was compared (#499 as opened), and then R2, the exact
+  level and stance where R2 was `same`, and the raw search end date at the cited level
+  (round 1), so that a weaker candidate read at two weaker levels still made a clear
+  `replace` `uncertain`.
+
+Settled here, where the design left it open: the rules decide nothing from one reading, so
+that a change is proposed only where two agree, and a reading counts once, by its reader and
+its number (a copy filed under another name is `currency-record-edited`); a candidate that
+contradicts the sentence is added and never put in its citation's place, and where one
+candidate gives `add` and another `replace`, the entry is `add`, since the contradiction is
+what the author has to read first. The rule ids a decision records are `K1, K2, K3`, the D
+rule, and `K4` or `K5` only where it decided: K5 where it set a synthesis aside, K4 where
+recency chose or D1 rests on the date. No
+decision is written, and none of the rules' is checked, while the works store holds no sound
+record of the cited work or of a candidate a reading names: K1 would put such a candidate
+out and write `keep` from an empty store (round 1 of #499).
+
+**The hierarchy** is the Oxford 2011 Levels of Evidence (`data/evidence_hierarchies.yaml`),
+seven scales after the table's questions (`frequency`, `diagnosis`, `prognosis`, `benefit`,
+`harms-common`, `harms-rare`, `screening`), levels 1 to 5, and 1 to 4 where the table gives
+a row no fifth (`frequency`, `prognosis`). The Centre's site grants no
+licence to copy the table, so the file holds ids and descriptions in this project's own
+words, with CEBM's citation for the table and its introductory document (ATTRIBUTION.md). A
+project may name its own in paper.yaml, `references.hierarchy`, in the same shape.
+
+**The records.** `literature/currency.yaml` holds one entry per citing sentence and work: a
+stable id (`c1`, `c2` ...), the sentence, the key, the question, who marked it, the decision
+(`action`, `candidate`, `rules`, `by`: `rules` or a person with `why`, `decided_on`) and the
+answer to a proposed change (`accepted`, or `refused` with the person and the reason; its `by`
+is a person, never `rules`). The dates are `decided_on` and `answered_on`, never a key `on`, which YAML reads as `true`. The
+search, works and reading records live under `literature/currency/` and are the tool's,
+each sealed by a digest; a reading is written once, numbered as its reader's next of the
+entry, as a panel's reading is filed (its writer is copied, since nothing a gate imports may
+import `panel/`). The works store is out of git by default: `references` writes its
+`.gitignore`. A DOI is folded to lower case wherever a reading or a works record names a
+work. An entry belongs to the sentence citing its work whose folded words are its own, as a
+passage does, or, where none is, to the one citing it that holds most of them, half or more
+(`NEAR`); with neither it is unplaced.
+
+**Acceptance by citation** (design 2.5): an unanswered `replace` or `add` counts as accepted,
+and nothing is written, once a sentence matching the entry's words, the same or `NEAR`,
+cites a key whose DOI or PMID in `references.bib` (`doi_of`, `pmid_of`) is the candidate's:
+the author added the work to Zotero and ran `sync-bib`. Exact words first (Basile, round 4
+of #499): the one sentence whose folded words are the entry's, citing the old work, the
+candidate or both, is the entry's own; it accepts if and only if it cites the candidate, and
+the entry is placed on it, so a `replace` done is not unplaced. Where two or more such
+sentences cite either, none accepts. Only where no sentence has the entry's words does
+`NEAR` decide: the sentence citing the old work that holds most of them is the entry's, and
+accepts only by citing the candidate too, so a copy elsewhere that holds most of its words
+and cites the candidate accepts nothing (rounds 2 and 3); failing that, the sentence citing
+the candidate that holds most of them accepts, and the entry is placed on it.
+
+**Scope.** The claims an entry marks, and each citing sentence of the main text or the
+supplement, Markdown or LaTeX, that cites a work whose lookup record says a later version
+came since or a preprint was published (`lookups.currency_facts`, what gives
+`reference-updated` and `preprint-published`).
+
+**The gate** reads the records only:
+
+| Finding | When | Level |
+|---|---|---|
+| `currency-record-missing` | a claim in scope has no entry, or its entry no decision ("marked, not searched", "read once") | a note while drafting, a warning from internal-review, a failure at submission under `references.currency: required` |
+| `currency-record-stale` | an entry's newest search is more than six months old | warning, failure at submission |
+| `currency-record-edited` | a search, works or reading record no longer matches its digest or its schema | fails from drafting |
+| `currency-reading-invalid` | a sealed reading names a hierarchy, scale or level the hierarchy in force lacks, or another cited work | fails from drafting |
+| `currency-quote-not-found` | a reading's quote is not in the work's stored abstract or text | fails from drafting |
+| `currency-quote-unchecked` | nothing stored to look in, or no works store in this checkout | note |
+| `currency-decision-mismatch` | an entry decided by `rules` says other than the rules give from its readings | fails from drafting |
+| `currency-decision-not-human` | a decision's or an answer's `by` names a model | fails from drafting |
+| `currency-change-unanswered` | a `replace` or `add` nobody answered | warning, failure at submission; a person's |
+| `currency-uncertain`, `currency-entry-unplaced` | the readings disagree; no sentence matches | notes |
+| `currency-candidate-retracted` | a work the decision keeps or proposes is retracted, by its works record | fails from drafting |
+
+`currency-reading-invalid` is a code the design did not list: a reading the rules cannot read
+is neither edited nor a mismatch. `currency-decision-not-human` is the author's to answer, as
+`currency-change-unanswered` is. The hook asks before an agent's edit changes a person's
+decision or any answer, before `references --refuse`, and before `references --mark ... --id`
+puts an entry a person decided or answered on another sentence, or puts one whose proposed
+change nobody answered on a sentence citing the work it proposes, which would accept the
+change (Basile, 2026-11-05); it asks too where currency.yaml or references.bib cannot be
+read. `check`'s literature line says how many entries the rules decided and from whose
+readings, and how many a person did.
+
+**The command**, `references`: alone, a row per claim in scope; `--explain ID`; `--mark
+"WORDS" @KEY` (with `--id`, an entry no sentence reads as put on the sentence again, `KEY`
+the entry's work or the one it proposes); `--reading FILE`, which holds the
+reading to its schema, the hierarchy and its entry, files it, and writes the rules' decision
+once two are filed and the works store holds every work they name, leaving a person's
+decision as it is and refusing a reading that would change a proposal a person answered;
+`--refuse ID --why ... --as PERSON`, refused where the proposal is answered already.
+
 ## Text from the authors' earlier papers is found before the journal finds it
 
 A journal puts each submission through a similarity check (Crossref Similarity Check, which
@@ -8237,6 +8369,29 @@ value could be printed as both, each to its own places: 1.5 and 1.52 do, 1.90 an
 not, and P = 0.03 and P = 0.032 do. Where no file has an Abstract heading, or none a Results
 heading outside it, the section says nothing was compared. `--strict` counts a conflict,
 `abstract-conflict`, and not a number not found (the author, 2026-10-28).
+
+## The audit page runs in the reader's browser
+
+A clinician, an editor or a referee who will not open a terminal can still run `audit`, on a
+page served by GitHub Pages (docs/audit-page.md). It runs in their browser and uploads
+nothing, and that was the condition: no hosted service (decided 2026-11-04), because an
+unpublished manuscript, a referee's copy or health data must not sit on a server, most
+publishers forbid uploading a referee's copy, and French health data needs certified
+hosting.
+
+Pyodide runs the wheel unchanged; its release ships every dependency built for WebAssembly,
+`rpds-py` included. On a `.docx`, `audit` starts a program in one place only, pandoc, for G6
+and G14 (`from_word._pandoc`), and pandoc publishes a WebAssembly build of each release. So
+the package has two places for a page and no more: `from_word.runner`, which runs pandoc
+another way where it is set, and `lookup.http.default_transport`, which sends one
+XMLHttpRequest under Pyodide; `manuscript_guard.web` holds both. Every file comes from the
+page's own origin, so that its Content-Security-Policy names no host but its own and the five
+registries `--lookup` asks, and a test holds that list to `lookup.run.Services`.
+
+The page is held to the command line, not trusted to match it: CI builds it as the Pages
+workflow does and requires each report on the worked example to be the command line's word for
+word, in Node and in Chrome and Firefox, with no request sent and every forbidden one refused.
+Its limits are under Known gaps.
 
 ## A paper read by its editor or a referee
 
@@ -13115,6 +13270,718 @@ record would make `vault run` say no script changed and let an edited fragment p
 The receipt's `_run_entry` put the last 400 characters of the script's standard error into
 its error, and a script run on data can print a row of them: it now says how the run ended and
 not what it printed.
+
+## Health data warehouses: formats in the middle, adapters at the edges
+
+Designed 2026-11-05, not built. Basile asked on 2026-11-04 that the tool be easy to adapt to the
+OMOP Common Data Model and to the other main formats and providers of health data warehouses:
+a few documented formats in the middle, and adapters at the edges that a third party can write
+for their own provider without touching a gate. The design was read once by an Opus agent
+against main at 855736b0 before Basile answered its questions: 16 findings, five of them
+blocking, all taken in (the recommendation of question 4 was kept, for the reason given
+there). Every fact below about an outside tool was read on 2026-11-05 from its own repository
+or its publisher's pages; what could not be read is listed at the end of the section. Nothing
+here is built before Basile says to start.
+
+**Basile's answers** (question boxes, 2026-11-05):
+
+| Question | Answer |
+|---|---|
+| 1. How a third party adds an adapter | both: the documented files, and Python entry points (the recommendation was the files alone) |
+| 2. What identifies a database | the canonical CDM_SOURCE row, pinned; record counts optional; a database nothing identifies warns, and fails at submission |
+| 3. A column name repeated across tables | `<table>.<field>`, with `column` |
+| 4. Whether DQD's counts satisfy G16 | a CDM field's `missing` only, where it is the same count, its scope shown, with a note on the entry's other checks |
+| 5. What G9 holds the cohort paragraph to | the pair, the definition's numbers as parameters, the concept sets as code lists |
+| 6. Results a network partner sends | the rule of 2026-10-28 stands; a partner's signed statement covers the zip once signed receipts exist |
+| 7. SAS and Stata | the results-table CSV, and runners in `verify` |
+| 8. Synthetic data and the real data's pin | one name; outside a vault run, a dataset declared synthetic is held to no pin |
+
+### The rules this keeps
+
+1. **No gate knows a provider.** A gate reads the formats below and nothing else. A test holds
+   that no module under `gates/` imports `adapters/`, as one holds it of `panel/`.
+2. **An adapter reads; the core writes.** An adapter turns a provider's files into one of the
+   middle formats. The core writes every value through the Python emitter, so that every rule
+   an emitted value is held to holds for an imported one: a display is a rendering of its
+   value, a text cell carries no number no gate can trace, a count is held to the custodian's
+   minimum.
+3. **The author's script reads the data, never the tool.** As with `check_data` and
+   `em.profile`: the tool reads what a provider's tool wrote (result tables, a specification, a
+   quality report, a cohort definition), and what the script hands the emitter. It never opens a
+   connection to a database.
+4. **An adapter runs only in a command that writes:** `harvest`, `dictionary --from`, `verify`
+   where it harvests again, `verify --receipt` and `vault release` where they read a raw output
+   for its counts. Never in `check`, `deposit`, `package` or a hook. What those need of an
+   output, which cells are counts, is recorded in the fragment when it is harvested.
+5. **An adapter reads the versions of a format it knows, exactly, and refuses the rest.** HADES's
+   CSV files carry no schema version, so the adapter knows a version by the exact set of columns
+   of each table it reads, and a refusal names the columns that differ. No guess, no partial
+   import.
+6. **Nothing assumes a provider, an institution or a database.** OHDSI and CDISC come first
+   because their formats are published and open, and most warehouses can export to one of them.
+   Any other provider comes in through the same formats.
+
+### What a warehouse needs that the tool lacks
+
+`harvest` reads one CSV, TSV or JSON file into values `<key>.<row>.<column>` and a table, through
+the emitter, with `attribution: declared` until `verify` reproduces it or a site's receipt
+covers it. `em.dataset` pins a date to a file's digest. The data dictionary is written by the
+author. `check_data` counts what the dictionary declares. G9 digests steps of code. Against
+that, in the order of the brief:
+
+1. Results come out of established tools as folders of related tables with their own ids, their
+   own names and their own small-count censoring, and a paper quotes a handful of rows from
+   thousands.
+2. A database has no file to take a digest of.
+3. The dictionary exists already, as a published specification (the CDM's, a define.xml), and
+   the cohorts are defined in JSON, not in code.
+4. The quality checks are run already, by the provider's own tool.
+5. The cohort, the part of the Methods most often wrong, is a definition file and not a step of
+   code.
+
+### The formats in the middle
+
+Six. Four exist and change a little; two are new. Each is a contract a third party can write to
+from any language, and each is held by a schema.
+
+**M1. The results fragment** keeps its shape. Three optional parts are added to `results/1`, as
+`vault`, `harvested` and `raw_sha256` were:
+
+- *A value says where it came from:* `context: {dataset, analysis, run}`. `dataset` names a
+  dataset some fragment of the project declares, this one or another (a harvested fragment's
+  database is often declared by the run's own fragment); `analysis` is the provider's id for the
+  analysis with its label ("1: 1-on-1 PS matching"); `run` is an id in
+  `provenance.harvested.runs`. Both emitters take it (`em.value(..., dataset="ccae")`), and
+  `explain` prints it. G1 fails a `dataset` no fragment declares (`context-dataset-unknown`,
+  from `analysis`).
+- *A dataset may be a database* (M3).
+- *A step may be a definition* (M6).
+
+**M2. The results table** (new, `manuscript-guard/results-table/1`) is one CSV or TSV file,
+UTF-8, one header row, one row for each value. It is the door for anything that can write a CSV
+and cannot write the fragment: SAS's `PROC EXPORT`, Stata's `export delimited`, a SQL query, an
+adapter in another language. `harvest` reads it with `format: results-table` and puts each row
+through the emitter as if the script had called it. The column names are the schema's own:
+
+| Column | Needed | What it holds |
+|---|---|---|
+| `key` | yes | the value's key under the entry's key: `primary.hr` becomes `cm.primary.hr`; each part as the schema's key pattern has it |
+| `value` | yes | a number in decimal notation (a point, no grouping), or text; empty where the display holds the value back |
+| `display` | no | how it is printed; refused where it is not a rendering of `value`, as the emitter refuses it |
+| `digits`, `unit` | no | as `em.value` takes them; a fraction with neither is refused |
+| `label` | no | `true`: a text that is a name or a period, not a measurement |
+| `count` | no | `true` or `false`: a count of people or records, held to the custodian's minimum, or not one; where empty, the emitter's rule (an integer with no unit is a count) |
+| `role` | no | `parameter` only |
+| `bounds`, `bound`, `level` | no | the estimate a bound belongs to, `low` or `high`, and the level ("95%"), as `interval()` writes them |
+| `of`, `over`, `family`, `spread` | no | what a statistic belongs to, as `em.value` takes them |
+| `quoted` | no | `false` for an intermediate |
+| `dataset`, `analysis` | no | M1's context; refused until the pull request that brings it (4 below) |
+| `table`, `row`, `column` | no | the cell of `table.<entry>_<table>` the value is placed in; one value to a cell, rows and columns in the order they first appear |
+| `note` | no | |
+
+`key`, `bounds`, `of` and `over` name keys of the same file, and all take the entry's key in
+front, but for a key under `quality.`, which is written as it stands so that G16 reads it from
+the root. Two entries writing one `quality.` key collide as two fragments always have, and the
+results are refused as a key defined twice. `dataset.` and flow keys are never written from a
+row. A role `software`, `dictionary` or `dataset` is refused: `em.software` reads the version
+from the session that ran, `em.dictionary` reads MedDRA's release from its own file, and a
+dataset's values come from its record (M3), so a row saying any of them would be a typed claim
+that skips the emitter's check. A SAS or Stata version is the runner's, which `verify` and a
+receipt record. The flat reader's `row_key`, `columns`, `digits` and `counts` are refused beside
+`format: results-table`; `quoted` and `receipt` keep their meaning. A cell built from two
+values, "12 (3.4%)", is two columns in this version.
+
+**M3. A database as a dataset.** `datasets.<name>` takes `kind: database`; its absence means
+files, as now, and `inputs` is required only for files. The keys a file's record has keep their
+meaning: `fingerprint` is the pin, `extracted` is a date, `covers` is the period the author
+states, `observed` is what the script found. A database adds `identity` (what the source states
+about itself, as text: for OMOP the CDM_SOURCE row), `extracted_from` (which field of the
+identity `extracted` was read from: for OMOP `source_release_date`), and optionally `released`
+(a date: OMOP's `cdm_release_date`), `vocabulary` (OMOP's `vocabulary_version`), `content` (a
+digest of the record counts of the tables the analysis read, which the script computes) and
+`synthetic`.
+
+*The canonical identity.* The pin has to be the same whoever read the row, and the row comes
+from four places: the script's query (R's DatabaseConnector gives the names in capitals and the
+dates as `Date`), DQD's `Metadata` (camel-cased, with `dqdVersion` added), Strategus's
+`database_meta_data.csv` (with `database_id` and `max_obs_period_end_date` added), and a Python
+driver. So the identity is always the same twelve fields, those of CDM_SOURCE in 5.5:
+`cdm_source_name`, `cdm_source_abbreviation`, `cdm_holder`, `source_description`,
+`source_documentation_reference`, `cdm_etl_reference`, `source_release_date`,
+`cdm_release_date`, `cdm_version`, `cdm_version_concept_id`, `vocabulary_version`,
+`cdm_release_identifier`. A field the row lacks (5.3 has ten, 5.4 eleven) is empty; any other
+field is left out. Names are folded to lower case with underscores (`cdmSourceName` and
+`CDM_SOURCE_NAME` are `cdm_source_name`); a date is `YYYY-MM-DD` whether it came as a date, a
+date and time at midnight, or ISO text; a whole number has no `.0`; blank, NULL and NA are all
+empty; spaces at a value's ends are taken off. The canonical text is one line `field=value` for
+each field, in that order, and the pin is twelve or more characters from the start of its
+SHA-256. A shared fixture holds R, Python, a DQD `Metadata` and a `database_meta_data.csv` of one
+row to one digest. Another common data model gets its own field list by the same rules, in the
+pull request that adds its adapter.
+
+The pin works as a file's does: an analysis run against a database whose identity is another is
+refused, and the refusal prints the pin to paste; a new release needs a new pin, as a new
+extraction does. The values emitted, each with the role `dataset`, are `dataset.<name>.extracted`,
+`.released`, `.covers_from`, `.covers_to`, `.version` and `.vocabulary`; `released` joins
+`DATE_PARTS`, and it and `vocabulary` join the map `dataset-value-unrecorded` reads. The record
+is written by `em.database(name, identity=..., fingerprint=..., covers=..., observed=...,
+synthetic=...)` in both emitters, from the row the script fetched; by the HADES and DQD adapters
+from what those tools wrote of the database; and by a third party as a file of its own,
+`manuscript-guard/database/1` (the record as JSON), which a harvest entry names with
+`identity:`.
+
+The script computes `observed` over the dates it trusts and hands it over, held to the rule
+`dates=` keeps now: a span ending after `extracted` is refused. Some ETLs write a far-future
+`observation_period_end_date` for people still enrolled; the script leaves those out, or caps
+them at the release date, and emits how many under `quality.`. Strategus's
+`max_obs_period_end_date` is recorded with the run, not as `observed`.
+
+G1: `dataset-pin-mismatch`, which exists, also holds a database's pin to the start of its
+identity's digest. Three codes are new, all from `analysis` as the file codes are:
+`database-identity-differs` (two fragments name one database with different identities: an
+analysis run on the 2024 release and a quality report run on the 2023 one),
+`database-content-differs` (one identity, two `content` digests: a CDM refreshed without its
+CDM_SOURCE row being updated),
+and `database-unidentified` (a value's context names a database no fragment identifies; a
+warning, and a failure at submission; it comes with M1's context). A database marked `synthetic` counts as a synthetic input
+wherever one does now: `synthetic-input-quoted` in G1, and `freeze_plan` in both emitters and in
+`harvest`, which freezes the plan unless every input is synthetic and would otherwise freeze it
+on a run against a synthetic database, which has no file inputs.
+
+**M4. The data dictionary** gains one key on a variable: `column`, the column's name in its
+dataset where the entry's name has to differ from it to be unique (answer 3). Every reader that
+maps an entry to a column reads `column` where it is given and the name where it is not:
+`quality.py` with `applies_if` and the rules, `em.profile`, `vault synthesize` and the run
+summary, in both languages; `deposit`'s bundles and G12's `related_methods` keep reading the
+name. G16 keys by the name and does not change. The loader refuses two names whose result keys
+would be one (`a.b_c` and `a_b.c` are both `a_b_c` to `quality.slug`), which `_repeated` does
+not do now. An adapter writes entries with `standard` saying what each follows, `system` and
+`term` given as the schema requires: `{system: OMOP CDM, version: "5.4", term:
+drug_exposure_start_date, code: drug_exposure.drug_exposure_start_date}`, or `{system: CDISC
+ADaM-IG, version: "1.1", term: AGE, code: C25150}`. A dataset takes `id` (lower case: `adsl`),
+`label` and `source` and nothing else.
+
+`manuscript-guard dictionary --from <adapter> <source> [names...]` adds the entries the
+dictionary lacks at the end, its comments kept, and the file read back to be the entries before
+and the new ones, as `harvest` adds an entry. With no names it adds those the plan names in
+backticks and the dictionary lacks, as G12 reads the plan already, so that nothing is added
+that G12 would call unused. It never changes an entry already there. `--compare` lists each
+entry whose source now says otherwise, and changes nothing. `--from yaml FILE` takes another
+dictionary's entries in the same way. `dictionary` has written only exports until now, so it
+moves in both tables of `tests/test_reads_nothing.py`.
+
+**M5. Quality counts** keep their keys. An adapter writes M2 rows under the keys G16 reads, each
+with its context naming the database, only where its count is the count G16 means. What a
+provider's tool counts that is no dictionary check goes under `quality.report.<tool>.`, and
+`report` joins `rows` and `rule` in `quality.RESERVED`, so that no variable takes the name.
+
+**M6. A definition as a step.** `steps.<name>.definition: {path, sha256, described_by: {tool,
+version}, description, description_sha256}`. The code of such a step is a definition file, a
+Circe cohort definition first, and the step's digest is the file's, its line endings left out:
+a definition re-exported with other indenting is a change, and the pair is read again.
+`description` is the readable text a person reads the Methods against. G9's rules do not
+change: the pair goes stale when the file changes, and a paragraph that points at no step is
+counted, as now. G9's file ledger reads only `analysis/`, so a definition under `inst/` is held
+through its pair alone. `methods --explain` and `checker build` print the description where
+they print a step's lines.
+
+### Adapters
+
+In this repository, under `src/manuscript_guard/adapters/<provider>/`, one module to a format
+(`adapters/ohdsi/cohortmethod.py`, `adapters/ohdsi/dqd.py`, `adapters/cdisc/define.py`). Each
+says its name (`ohdsi-cohortmethod`), the versions it reads and how it knows them, and gives the
+core three things: the rows (M2), the database identities it found (M3), and, for a raw output,
+which of its cells are counts.
+
+**Counts are recorded, not asked.** `deposit` and G2's custodian check decide which cells of a
+harvested table are counts from the fragment (`deposit.counts._cells` reads
+`harvested.spec.counts`), and an adapter's entry has no `counts`. So the core writes `count:
+true` or `false` on every value it harvests, and a map of the count columns of each table into
+`harvested.spec`, and `deposit`, `package` and G2 read that. Only the check of a raw output's
+whole file, in `verify --receipt` and `vault release`, asks the adapter, since the raw zip is
+what leaves the site.
+
+**An output that is a zip or a folder.** `harvest.yaml` allows an `output` ending in `.csv`,
+`.tsv` or `.json` only, and G1 checks it with `is_file()`. An adapter's entry may name a `.zip`
+or a folder. Its digest is that of a manifest: one line `<digest>  <path>` for each CSV member
+(the member's digest with line endings left out, its path inside with forward slashes), sorted
+by path as bytes compare, as `datasets.dataset_digest` sorts files, so that the same files
+zipped twice give one digest. `harvested` then holds the manifest's digest as `sha256`, the
+zip's bytes' SHA-256 as `raw_sha256` (for a folder, the manifest's digest over the members'
+bytes as they are), the members' total as `bytes`, and `members: [{path, sha256, bytes}]`. G1's
+`harvested-output-changed` and `-missing` compute the same manifest. A zip is read under the
+size caps `safexml` applies to a Word file's parts.
+
+**A harvest entry names its format.** `format:` takes `table` (the reader of today, and the
+default), `results-table` (M2), or an adapter's name. An adapter that reads a provider's ids
+takes `select:`, which names each row the paper reports; `identity:` names an M3 file, and
+`dataset:` a database another fragment declares. All four keys, and the zip and folder
+outputs, are added to `harvest.schema.json`:
+
+```yaml
+entries:
+  - key: cm
+    format: ohdsi-cohortmethod
+    output: output/cohortmethod/Results_ccae.zip
+    script: analysis/run_cohortmethod.R
+    inputs:
+      - path: inst/cohorts/1001.json
+    dataset: ccae
+    select:
+      primary: {analysis_id: 1, target_id: 1001, comparator_id: 1002, outcome_id: 3}
+      sensitivity: {analysis_id: 2, target_id: 1001, comparator_id: 1002, outcome_id: 3}
+```
+
+**A third party has two doors** (answer 1). *Files:* they write M2, M3 or entries of M4 from
+their own tool, in their own language, and the core holds what they wrote as it holds any other.
+*A Python package* that declares an entry point in the group `manuscript_guard.adapters`: it
+implements the interface of the adapters in this repository, and `harvest`'s `format:` and
+`dictionary --from` find it by its name. It may do what a built-in adapter may do, return rows,
+identities and the count cells of a raw output, and never writes a file: the core writes,
+through the emitter. Its code runs only in the commands of rule 4, and every fragment it gave
+rows to records its distribution's name and version in `provenance.harvested`, so that `verify`
+and `vault release` refuse where that adapter, or that version of it, is not installed, rather
+than read the output another way. A name an installed package and a built-in adapter both claim
+is refused. `manuscript-guard adapters` lists what is installed, built in or not, with each
+one's version and formats. A conformance kit, `manuscript_guard.adapters.testing`, gives a third
+party the checks this repository's adapters are held to (refusals of an unknown version, the
+count cells, the identities in canonical form) to run over their own fixtures. Installing a
+package is the author's act, and its code runs with the author's rights when the author
+harvests: the docs say so in those words. An adapter in this repository comes by pull request,
+with its fixtures.
+
+### OMOP
+
+**1. The result tables of HADES.** What is read: the CSV files a HADES package's `exportToCsv`
+writes, as a folder or as the zip it makes, or a Strategus module's folder. CohortMethod 6 first.
+Its 16 tables include `cm_result`, keyed by `analysis_id`, `target_comparator_id`, `outcome_id`
+and `database_id`. CohortMethod 6 broke the schema of 5: `target_id` and `comparator_id` left
+every table and are resolved through `cm_target_comparator` (`target_id`, `comparator_id` and
+`nesting_cohort_id` to `target_comparator_id`, "a hash of its components" in its NEWS). The
+adapter reads 6 and refuses 5, saying so; a reader of 5 is a later pull request if asked.
+
+For each name under `select:`, the selection is resolved to exactly one row of `cm_result`, and
+refused otherwise. From it: `rr` with its interval from `ci_95_lb` and `ci_95_ub` (`bounds`,
+level "95%"), `p` and `one_sided_p` (`of` the rr); `calibrated_rr` as a second estimate with its
+own interval and `calibrated_p`; `log_rr` and `se_log_rr` (`spread: se`); `target_subjects`,
+`comparator_subjects`, `target_outcomes` and `comparator_outcomes` as counts; `target_days` and
+`comparator_days` with the unit "days", no counts; `cm_diagnostics_summary`'s verdicts and the
+names of the analysis and the cohorts as labels. Each value's context names its database, its
+analysis and its run.
+
+CohortMethod writes a censored count as `-minCellCount` (its `exportToCsv` documentation; zeros
+are never censored). A negative number in a column the package censors is held back: no value,
+the display "<m" where m is the number without its sign, and a count. The censored cells of one
+export must all name one m, or the export is refused. G2 then holds "<m" to the custodian's
+minimum as it holds any held-back display: under a minimum of 11, "<5" says too much and fails.
+A covariate balance mean is censored to a negative fraction, `-(minCellCount / n)`; the balance
+tables are not read in this version.
+
+`cm_attrition` holds a count for each step and each arm. It becomes two flows for each selection,
+the target's and the comparator's, each stage a count, each exclusion the difference of two
+stages with the step's description as its reason, so that G8 holds them. `em.flow` refuses a
+count that is not whole or not at least nought, and does not hold small counts back. So where a
+stage is censored, or an exclusion would be below the custodian's minimum, the flow is not
+written: the stages are written as values, held back where they must be, and a note says why
+there is no flow.
+
+Which columns are counts: CohortMethod's and SelfControlledCaseSeries's
+`resultsDataModelSpecification.csv` flag them in a `min_cell_count` column, and the flags agree
+with the code. A standalone export carries no copy of it, so the adapter carries its own, derived
+by a script in `tools/` from the package at a pinned tag and compared byte for byte by a test
+where a checkout is named, as the palettes are. Characterization's specification flags no column
+though its code censors, so its adapter's list is written from its code and says so.
+
+The database: Strategus writes `DatabaseMetaData/database_meta_data.csv`, the CDM_SOURCE columns
+with `database_id` and `max_obs_period_end_date`. Where the export has it, it gives the M3
+identity in canonical form. Strategus forms `database_id` as a hash of `cdm_source_name`,
+`cdm_release_date` and `cdm_holder`; a standalone run uses what the user passed ("Eunomia"). The
+entry's `dataset:` names the dataset the database is in the paper; where the export has no
+metadata, that dataset's identity comes from the fragment `em.database` wrote in the run, and
+with neither the results are `database-unidentified`.
+
+The run: Strategus writes an `execution_status.json` for each module, with the module's package
+and version, Strategus's version, the start and end and a checksum of the settings.
+`zipResults()` keeps only the CSV files, so a zip carries none of it. Where the folder is given
+it is recorded in `provenance.harvested.runs`; from a zip, the run is the manifest's digest, and a
+note says the rest was not there to read.
+
+What vouches for it: as for any harvested output, `attribution: declared`, and
+`harvest-declared` warns until `verify` runs the script again where the data are (the vault, or
+a site) or a receipt covers it. In a network study each partner runs the study package and sends
+its zip, and nothing at the centre can run it again. The decision of 2026-10-28 stands (answer
+6): such a zip warns, and once signed receipts exist, a partner's signed statement of the zip's
+manifest digest (who, which package and version, when; no re-run) covers it as a receipt does.
+
+Then SelfControlledCaseSeries (`sccs_result`: the same estimate columns, keyed by
+`exposures_outcome_set_id` and `covariate_id`), Characterization (`incidence_summary`,
+`target_counts`; it censors to `-minCellCount` and sets the columns derived from the count to
+NA), and EvidenceSynthesis (`es_cm_result`, `es_sccs_result`: an estimate pooled over databases,
+its context naming each). CohortDiagnostics, CohortIncidence and PatientLevelPrediction when
+someone needs them. Fixtures: CohortMethod and SelfControlledCaseSeries each ship
+`inst/Results_Eunomia.zip` (Apache 2.0), one CSV a table, `database_id` "Eunomia", CohortMethod's
+in the schema of 6. Both lack `database_meta_data`, so a second fixture adds one built from
+GiBleed's CDM_SOURCE row. SelfControlledCaseSeries's zip holds `sccs_time_period.csv`, which its
+specification does not define, and `Inf` in two date columns: the reader's refusals are tested
+on it as it is.
+
+**2. A database's identity from CDM_SOURCE.** M3, with the OMOP fields. CDM_SOURCE has ten columns
+in 5.3 and eleven in 5.4, which adds `cdm_version_concept_id` and makes `source_release_date`,
+`cdm_release_date` and `vocabulary_version` required; 5.5 adds `cdm_release_identifier`. In R the
+script reads the row with its own connection and hands it over:
+
+```r
+cdm_source <- DatabaseConnector::querySql(connection, "SELECT * FROM cdm.cdm_source")
+em$database("ccae", identity = cdm_source, fingerprint = "9c1e0a7f3b2d4e61",
+            observed = c(first_start, last_end))
+```
+
+A table of more than one row is refused, and so is a 5.3 row with no `source_release_date`
+unless `extracted=` is given, in which case `extracted_from` says `stated`. CDM_SOURCE's
+`vocabulary_version` is by convention a copy of the VOCABULARY row `None`, and nothing in the
+CDM holds the two together; where the script hands both, a disagreement is refused.
+
+For an OMOP study the agent writes and tests the analysis on Eunomia, a synthetic CDM of the
+same schema, and the person runs it on the real database through `vault run`. Unlike `vault
+synthesize`'s copy, Eunomia is not drawn from the real database's profile: it is another
+database of the same schema, and nothing more is claimed of it. Four things change in the vault:
+
+- *A connection file is not data.* The vault's folder holds the connection details, which the
+  script reads with `em$vault_input("connection.json")`, so that no password is in the project.
+  `vault init --connection FILE` registers such a file: digested, so a change is seen, and never
+  profiled or synthesized; `vault init` writes no profile script for it. Outside a run,
+  `vault_input` gives `data/synthetic/connection.json`, which names Eunomia, as now.
+- *One script, synthetic data and the real data.* The pin is the real one's, so the run on
+  Eunomia was refused. The same holds now for a file's dataset read through `em.vault_input`,
+  whose pin no synthetic copy matches, which nothing had settled. Answer 8 settles both alike:
+  one name, and outside a vault run a dataset declared synthetic is held to no pin, by the
+  emitter or by G1 (`dataset-pin-mismatch`, `dataset-read-differs`), while
+  `synthetic-input-quoted` keeps its numbers out of a submission as it does now. Under `vault
+  run` the pin is held as always.
+- *The plan* is not frozen by a run whose only data are a synthetic database (M3).
+- *What `vault check` cannot see.* It opens files. Whether the agent's session can reach a
+  database over the network it cannot tell, and Known gaps will say so.
+
+Fixture: GiBleed's CDM_SOURCE row (EunomiaDatasets, Apache 2.0 for the repository; the data were
+generated by Synthea): "Synthea synthetic health database", holder "OHDSI Community", both
+release dates 2019-05-25, `cdm_version` "v5.3.1", `vocabulary_version` "v5.0 18-JAN-19", which the
+VOCABULARY row `None` agrees with. GiBleed 5.5 gives a row with `cdm_release_identifier` and
+`cdm_version_concept_id`.
+
+**3. Dictionary entries from the CDM specification and from ATLAS cohorts.** The
+CommonDataModel repository ships each version's specification as two CSV files,
+`inst/csv/OMOP_CDMv5.4_Field_Level.csv` and `..._Table_Level.csv`. The field file's columns are
+`cdmTableName`, `cdmFieldName`, `isRequired`, `cdmDatatype`, `userGuidance`, `etlConventions`,
+`isPrimaryKey`, `isForeignKey`, `fkTableName`, `fkFieldName`, `fkDomain` and `fkClass`. Its
+licence is Apache 2.0, stated in DESCRIPTION; the repository has no LICENSE file. A derived copy
+for 5.3, 5.4 and 5.5 ships in `src/manuscript_guard/data/`, written by `tools/derive_omop_cdm.py`
+from a pinned commit and never edited by hand, with the notice in ATTRIBUTION.md, as the palettes
+are. The script reads what differs between versions: `Yes`/`No` in 5.3, `TRUE`/`FALSE` in 5.4,
+`true` in 5.5, `NA` for empty, and cells with line breaks.
+
+`manuscript-guard dictionary --from omop-cdm --cdm 5.4` adds, for each field the plan names (or
+each named on the command line): the name `<table>.<field>` and `column: <field>`; the label; the
+definition from `userGuidance`; `required` from `isRequired`; `dataset` the table, added under
+`datasets` with its description; `standard` naming the CDM, its version and the field. The type
+is read in this order: a field ending `_concept_id` is an `identifier`, its definition naming
+the vocabulary's domain (`fkDomain`), since its values are concepts of a vocabulary no dictionary
+lists; a key or another field ending `_id` is an `identifier`; a date `date`; a date and time
+`datetime`; a float `continuous`; text `text`; any other integer `continuous`, and `count` only
+for the fields a table in the adapter lists, written once from the specification and reviewed
+(`days_supply`, `refills`), so that `year_of_birth` is no count. The adapter proposes; the author
+edits, as the skill's draft is edited now.
+
+`dictionary --from ohdsi-cohorts inst/Cohorts.csv` reads CohortGenerator's cohort definition set
+(`cohortId`, `cohortName`, and `cohorts/<cohortId>.json`). Each cohort the plan names is an entry
+`cohort.<slug of its name>`: binary, with the values `1` "in the cohort" and `0` "not in it";
+defined as membership of the cohort that definition gives; its `derivation` "the Circe cohort
+definition in <path>"; `source` the JSON's path; and `derived_from` the CDM fields its criteria
+read (a `DrugExposure` criterion reads `drug_exposure.drug_concept_id` and its dates, an age
+criterion `person.year_of_birth`, and so on, by a table in the adapter from the Circe criterion
+types). The fields it names and the dictionary lacks are added too, so that G12 finds the
+derivation's inputs. A concept set is not a dictionary's code list, which lists the values of a
+variable: it is the cohort's list of codes, published with the step (5 below). Fixtures: the
+specification files, and CohortGenerator's `inst/testdata/name/cohorts/*.json` (Apache License,
+in its DESCRIPTION), whose `celecoxibAge40.json` has an inclusion rule on age.
+
+**4. The Data Quality Dashboard.** What is read: the JSON that DQD's `executeDqChecks` writes
+(2.9.1), with `startTimestamp`, `endTimestamp`, `executionTime`, `executionTimeSeconds`,
+`CheckResults`, `Metadata` and `Overview`. Each check result has `checkName`, `checkLevel`,
+`cdmTableName`, `cdmFieldName`, `conceptId`, `numViolatedRows`, `numDenominatorRows`, `isError`,
+`notApplicable` and the rest. `Metadata` is CDM_SOURCE's row, camel-cased, with `dqdVersion`. DQD
+writes with `jsonlite`'s defaults, which may write a single value as an array of one; the reader
+takes the two shapes that gives, exactly, and refuses others.
+
+One DQD count is what G16 means, and only under conditions. `measureValueCompleteness` counts the
+rows where a field is NULL: that is the dictionary's `missing` for an entry that declares no
+`missing` codes. For a `*_concept_id` entry whose only missing code is `0` (no matching concept,
+by OMOP's convention), it is the NULL count added to DQD's count of the rows holding 0 in that
+field, where DQD made one. For any other entry it counts something else, and is not written as
+`missing`. Neither `plausibleValueLow`/`High` nor `cdmDatatype` is mapped: the first two test
+DQD's own thresholds and not the entry's `range`, and the third DQD's idea of the type. G16
+marks an entry checked by its `missing` count alone, so a completeness count would pass for
+checks nobody ran; answer 4 keeps the count, with its scope, the whole database, on the value and
+shown by `explain`, and G16 says, as a note, which of the entry's other checks no count covers.
+A cohort or a covariate still needs `check_data` on the analytic table. The other answer, that
+DQD's counts satisfy no entry, is closer to G16's rule that the author's script checks each table
+it reads, and would make every CDM field the dictionary holds fail at submission unless the
+script counted it over a table it seldom pulls whole: authors would keep CDM fields out of the
+dictionary.
+
+Every check result, mapped or not, is written under
+`quality.report.dqd.<check>.<table>[.<field>][.<concept>]` as an intermediate the Methods may
+bind; `quality.rows.<table>` is the denominator of `measureValueCompleteness`, the same for every
+field of a table or the report is refused; the overview's counts (checks run, passed, failed) are
+values a paper can quote. A check that erred counts nothing, and a note names it. A check DQD
+failed is a count, as every fault the data hold is, never a finding.
+
+`numViolatedRows` is a plain `COUNT_BIG`, with no small cells held back, so a count of one or two
+records is in the file. In the fragment, a count from one to below the custodian's minimum is
+printed "<m", as `check_data`'s are. The file itself holds them, and its `queryText`: run in the
+vault, it leaves only through `vault release` and the custodian's sign-off of small counts, which
+the release asks for already. `Metadata` is an M3 identity in canonical form, so a DQD report run
+on another release than the analysis is `database-identity-differs`. No DQD report ships in any
+repository read; one is made once, with DQD 2.9.1 on Eunomia's GiBleed, by a session that has R
+and Java, and committed with how it was made. A file written by hand in DQD's shape would test the
+reader against our own idea of it.
+
+**5. CirceR's description, and what G9 holds the cohort paragraph to.** In both languages,
+`em.cohort("target", "inst/cohorts/1001.json", description="inst/cohorts/1001.md")` and
+`em$cohort(...)` read the definition, digest it, and record a step `cohort.target` whose
+definition is the file, with the description the Markdown file holds, digested too. Both write
+the same fragment, held to one shared fixture. In R, where `description` is not given and CirceR
+is installed, the emitter renders it with `CirceR::cohortPrintFriendly()` and
+`conceptSetListPrintFriendly()` and records CirceR's version and its circe jar's (1.4.0 bundles
+circe 1.14.2, and needs Java 8 or later through rJava); with neither, the call is refused and
+says what to give. An R user without Java writes the Markdown from ATLAS, as a Python user does.
+
+What the Methods are held to (answer 5):
+
+- *The pair.* The Methods paragraph that describes the cohort ends with
+  `{{method.cohort.target}}`, and G9 holds the pair as it holds any: from internal review it
+  fails when the definition changed since the pair was read, when the paragraph changed, or when
+  it was never read. `methods --explain` prints the description beside the paragraph, and
+  `checker build` puts the two to a co-author.
+- *The numbers.* Both emitters read the definition into parameters, `quoted: false`: the
+  observation window before and after the index (`PrimaryCriteria.ObservationWindow`), which event
+  is kept (`PrimaryCriteriaLimit`, `QualifiedLimit`, `ExpressionLimit`, as labels), the age of each
+  inclusion rule that has one, the era pad (`CollapseSettings.EraPad`), the end strategy's offset
+  or gap, and the censor window. "At least 365 days of prior observation, aged over 40 years"
+  typed in the Methods fails G2 now, each number unclassified (tried on a copy of the example,
+  2026-11-05), and nothing in the analysis holds the number to bind it to. With these emitted the
+  paragraph binds `{{results.cohort.target.prior_observation_days}}`, which prints what the
+  definition holds. `typed-parameter` is no help here: it fires only on a number G2 had
+  classified. The other numbers of a definition are the author's to emit.
+- *The codes.* Each concept set becomes a code list (`em.code_list`), RECORD 6.1's table: the
+  set's name, the vocabulary, and the vocabulary's own codes. A `code_lists` entry takes
+  `concept`, `system` and `codes` and nothing else, so the schema gains three optional keys on an
+  entry, `descendants` (the items that take their descendants), `excluded` (the excluded items)
+  and `concept_ids`, and the table marks the first two.
+
+Whether CirceR gives the same Markdown for the same JSON and the same jar is not documented. So
+the description is recorded and shown, never compared: the pair's digest is the definition's,
+and a description rendered again for an unchanged definition is no change. Whether the paragraph
+describes the cohort correctly is still the reader's to say. Fixtures: CohortGenerator's test
+cohorts, their parameters as both emitters must read them, and their CirceR Markdown made once by
+a session with R and Java.
+
+### CDISC
+
+**define.xml as the dictionary.** `dictionary --from define-xml define.xml` reads Define-XML 2.0
+and 2.1 (namespaces `http://www.cdisc.org/ns/def/v2.0` and `.../v2.1`, over ODM 1.3.2) through
+`safexml`, which refuses a document type declaration; a define.xml carries none. The whole
+`MetaDataVersion` is read, since a variable's description is spread over it:
+
+| Dictionary | Define-XML |
+|---|---|
+| `datasets` (`id`, `label`, `source`) | `ItemGroupDef`: `Name` lowered, `Description`, and `Purpose` and `def:Structure` as words in `source` |
+| variable name and `column` | `<dataset>.<ItemDef Name>` and the name: USUBJID is in every dataset |
+| label | `ItemDef/Description/TranslatedText` |
+| type | `DataType`: `text` as `text`; `integer` as `continuous` (`count` only where a code list says so); `float` as `continuous`; `date`, `datetime` and `time` as themselves; the partial dates as `text` |
+| codes | `CodeListRef` to `CodeList`: `CodeListItem` with its `Decode`, or `EnumeratedItem` |
+| `standard` | `def:Standard` (name and version), the variable's name as `term`, and the item's `Alias Context="nci:ExtCodeID"` as `code` |
+| `derivation` | the `MethodDef` named by the `ItemRef`'s `MethodOID`, in the dataset's `ItemGroupDef` |
+| `derived_from` | a `Predecessor` origin naming its source variable |
+| `required` | the `ItemRef`'s `Mandatory` |
+| `source` | `def:Origin` (`Type`, and in 2.1 `Source`) |
+
+Value-level metadata (`def:ValueListDef` with `def:WhereClauseDef`) gives one variable other
+definitions under other conditions, as `PARAMCD` does in a BDS dataset. The dictionary has no
+such entry, so these are listed and not written; a later version may write them as variables of
+their own under `applies_if`. Define-XML 1.0 is refused, with the version in the message.
+
+**The data.** The tool reads no XPT and no `sas7bdat`: the script reads them with its own reader
+(`haven::read_xpt`, `pyreadstat`, `pandas.read_sas` for XPORT version 5) and hands the frame to
+`check_data`, which works on them now. `vault synthesize` writes CSV or TSV only, as above.
+
+**Results.** CDISC published the Analysis Results Standard 1.0 on 19 April 2024, a LinkML model
+(code MIT, content CC-BY-4.0). Its `OperationResult` carries `rawValue` and `formattedValue`, a
+value and its display, under an `Analysis` with its method and groupings. An adapter `cdisc-ars`
+reads it into M2 rows, the analysis id as context. The pharmaverse `cards` package (Apache 2.0)
+builds analysis results data as data frames and writes no ARS JSON that could be found; its
+frames reach the tool as M2, written by the script. This adapter comes last of the CDISC ones,
+once someone has an ARS file from a real tool to test it on.
+
+**The pilot data.** The brief named the CDISC pilot data as test data.
+`cdisc-org/sdtm-adam-pilot-project` is under CDISC's terms of use, which forbid modifying the
+data and ask for attribution, so it cannot be committed under MIT, and its define.xml files are
+version 1.0, which this design does not read. PHUSE's copy (`phuse-org/phuse-scripts`) is MIT for the repository, and whether CDISC's
+terms allow that is unresolved. Decided as the plain course: define.xml 2.0 and 2.1, tested on a
+define.xml we write and check once against CDISC's own XSDs (`cdisc-org/data-definition-engine`,
+MIT); 1.0, and a test reading a local copy of the pilot named by a variable as VarCon is, when
+someone asks for 1.0.
+
+### SAS and Stata
+
+As read: SAS 9.4 writes JSON with `PROC JSON`, digests a text with `SHA256` from 9.4M1 and a whole
+file with `HASHING_FILE` from 9.4M6, though a SAS problem note says the path and fileref forms
+give different digests for one file; the batch program's path is `getoption(SYSIN)`. Stata has no
+JSON writer, no SHA-256 (`checksum` is a CRC, Mata's `hash1` is not a cryptographic hash) and no
+way to name the running do-file; from Stata 16 a do-file can run Python. Neither program can be
+run in CI without a licence. So (answer 7):
+
+- *M2 is the emitter.* A SAS program builds a dataset with M2's columns and writes it with `PROC
+  EXPORT DBMS=CSV`; a do-file does the same with `export delimited`. `docs/harvest.md` shows both,
+  with every column, and `harvest` takes the file in, with the script declared.
+- *`verify` gets two runners,* `.sas` and `.do`, the program named by `MANUSCRIPT_GUARD_SAS` and
+  `MANUSCRIPT_GUARD_STATA`, since its name varies (`stata-mp`, `StataMP-64.exe`); where neither
+  is set, `verify` passes the script over as now. SAS exits 1 on a warning and 2 on an error, so
+  0 and 1 are a run that finished. Stata's batch mode exits 0 whatever happened, so the run is read
+  from its log: a last line `r(<n>);` is a failure. In both the declared output is deleted first
+  and must be written again.
+- *Not tested in CI.* The M2 reader is tested in Python. The two recipes and the two runners are
+  run once by someone with each program, and that measurement is written down with its date and
+  versions; until then Known gaps says they were not run.
+
+### Fixtures and licences
+
+| Fixture | Licence, as read | Use |
+|---|---|---|
+| CohortMethod `inst/Results_Eunomia.zip` | Apache 2.0 (DESCRIPTION; no LICENSE file in the repository) | committed under `tests/data/ohdsi/`, attributed in ATTRIBUTION.md |
+| SelfControlledCaseSeries `inst/Results_Eunomia.zip` | Apache 2.0, as above | committed, for its reader and its refusals |
+| CohortGenerator `inst/testdata/name/cohorts/*.json` | Apache License (DESCRIPTION) | committed |
+| GiBleed's CDM_SOURCE and VOCABULARY rows (EunomiaDatasets) | Apache 2.0 for the repository; generated by Synthea, whose code is Apache 2.0; no terms stated for the data it generates | two rows committed, attributed |
+| MIMIC-IV demo in OMOP (EunomiaDatasets) | ODbL, share-alike | not committed |
+| OMOP CDM specification CSVs | Apache 2.0 (DESCRIPTION; no LICENSE file) | a derived copy shipped in the package |
+| A DQD report on GiBleed | made by us with DQD 2.9.1 (Apache 2.0) | committed with how it was made |
+| CirceR Markdown of the test cohorts | made by us with CirceR 1.4.0 (Apache 2.0) | committed with how it was made |
+| The CDISC pilot, and PHUSE's copy | above | not committed |
+| `pharmaversesdtm`, `pharmaverseadam` | Apache 2.0, made from the CDISC pilot | not needed: the tool reads no data |
+| The Define-XML 2.1 sample in `swhume/odmlib_examples` | MIT, but it looks like CDISC's own sample, of unverified provenance | not committed |
+| Define-XML XSDs, `cdisc-org/data-definition-engine` | MIT (its copyright line is the template's) | not committed; the define.xml we write is checked against them once |
+
+### Pull requests, in order
+
+None touches the version lines. Each brings its README rows, its part of this section, its Known
+gaps, its failures in `tests/test_corruption.py`, and its new codes in `policy.py`, with their
+stage and severity, which `tests/test_policy.py` pins, and in `guide/routes.py` for `next`. A
+reader of text is held over generated inputs (`tests/generated.py`, `tests/readings.py`), with a
+broken rule tried under a dozen seeds.
+
+0. This section. Docs only.
+1. **M2, the results table.** `harvest`'s `format:` key, the reader through the emitter, the keys
+   under the entry's key but `quality.`, its schema; `docs/harvest.md`. Every path the emitter
+   refuses is tried as a row: a display not of its value, a fraction with no digits, a bound with
+   no estimate, a count below the minimum, a row with the role `software`, `dictionary` or
+   `dataset`, a text with a number, two values to a cell, a flat reader's key beside it, and a
+   `dataset` or `analysis` column until 4. A property draws tables of every column. Needs
+   nothing before it.
+2. **M3, a database as a dataset.** The schema (`kind`, `inputs` for files only, `identity`,
+   `extracted_from`, `released`, `vocabulary`, `content`), the canonical identity and its shared
+   fixture, `em.database` in Python and R, `DATE_PARTS`, `dataset-pin-mismatch` for a database,
+   the first two new codes, a synthetic database in G1 and in `freeze_plan`; `docs/vault.md` on
+   Eunomia as the synthetic CDM. Needs nothing before it.
+3. **The vault and a database.** `vault init --connection`; answer 8, for files and databases
+   alike, in both emitters and G1; Known gaps on the network. After 2.
+4. **The adapter layer.** `adapters/` with its registry, the test that no gate imports it, M1's
+   `context` in the schema and both emitters with `context-dataset-unknown` and
+   `database-unidentified`, the zip and folder outputs and their manifest digest in
+   `harvest.schema.json`, in `results.schema.json`'s `harvested` and in G1, `select:`,
+   `identity:` and `dataset:`. After 1 and 2.
+5. **Adapters from other packages.** The entry-point group, the adapter's name and version in
+   `provenance.harvested` (`results.schema.json`, beside `harvest.schema.json`) with the
+   refusals in `verify` and `vault release`, the clash of names,
+   `manuscript-guard adapters` (its row in the README and in `test_reads_nothing.py`), the
+   conformance kit, and a test package installed into a scratch environment that proves an
+   adapter found by its entry point is held as a built-in one is. After 4, and before the first
+   OMOP reader, so that the built-in readers are written to the interface a third party gets.
+6. **The counts of a harvested output.** `count` on every value, the count map in
+   `harvested.spec`, read by `deposit`, `package` and G2; the adapter's count reading in `verify
+   --receipt` and `vault release`. After 4.
+7. **CohortMethod 6.** The reader, the censoring, the attrition flows, `database_meta_data` as
+   M3, Strategus's run record (`harvested.runs`, in `results.schema.json` beside
+   `harvest.schema.json`), the derived specification and its `tools/` script. Fixtures:
+   `Results_Eunomia.zip` with and without the metadata. After 5 and 6.
+8. **SelfControlledCaseSeries**, then **Characterization**, then **EvidenceSynthesis**, a pull
+   request each. After 7.
+9. **The dictionary from the CDM.** M4's `column` in every reader that maps an entry to a column,
+   in both languages; the loader's refusal of two names with one key; `report` reserved; the
+   shipped specification and `tools/derive_omop_cdm.py`; `dictionary --from omop-cdm`, `--from
+   yaml` and `--compare`, with their rows in `test_reads_nothing.py`. After 4.
+10. **Cohorts in the dictionary,** `dictionary --from ohdsi-cohorts`. After 9.
+11. **DQD.** The reader, the count and its scope, G16's note on an entry's checks no count covers,
+    `quality.report.dqd.`, the overview, the identity. After 2, 4 and 9.
+12. **A definition as a step.** M6 in the schema, `em.cohort` and `em$cohort` held to one
+    fixture, the parameters, the code lists' three new keys, `methods --explain` and `checker
+    build`. After 10 for the names; alone otherwise.
+13. **define.xml as the dictionary.** After 9.
+14. **SAS and Stata.** The recipes and the runners. After 1.
+15. **ARS results.** After 4, once there is a real ARS file to test on.
+16. **The skills and a page.** `docs/warehouses.md`, with the `results-binding` and
+    `data-dictionary` skills sent to it, or a skill of its own if Basile prefers. Its pieces can
+    come with each pull request instead.
+
+1 and 2 do not depend on each other and can be built side by side, each in its own worktree; so
+can 14 beside anything after 1.
+
+### Not verified
+
+Each is named again in the pull request that rests on it, and settled there or written into
+Known gaps:
+
+- whether CirceR gives the same Markdown for the same JSON and the same jar;
+- the shape of a DQD report on disk (read from DQD's code, not seen), and the names of its checks
+  of the value 0 in a concept field;
+- the terms for data Synthea generates;
+- Characterization's censored columns, read from its code because its specification does not
+  flag them;
+- the digests of SAS's `HASHING_FILE`, and SAS's and Stata's exit statuses in batch mode;
+- the terms of SAS and Stata for use in CI;
+- CDISC's licence for the Define-XML specification itself, which is behind a login.
+
+### Sources, read 2026-11-05
+
+- OMOP CDM: `OHDSI/CommonDataModel`, `inst/csv/OMOP_CDMv5.3_Field_Level.csv` and the 5.4, 5.5
+  and Table_Level files, and its DESCRIPTION.
+- Circe and CirceR: `OHDSI/circe-be` (`CohortExpression.java`, `ConceptSet.java`,
+  `vocabulary/Concept.java`); `OHDSI/CirceR` (`R/PrintFriendly.R`, DESCRIPTION, `inst/java/`).
+- CohortGenerator: `R/CohortDefinitionSet.R`, `R/Export.R`, `inst/testdata/`, DESCRIPTION.
+- DataQualityDashboard: `R/executeDqChecks.R`, `R/recordResult.R`, `R/evaluateThresholds.R`,
+  `R/summarizeResults.R`, `R/writeResultsTo.R`,
+  `inst/sql/sql_server/field_plausible_value_low.sql`, DESCRIPTION.
+- Eunomia (`R/EunomiaData.R`, `R/Cohorts.R`, DESCRIPTION) and EunomiaDatasets (README, the
+  GiBleed and MIMIC folders, MIMIC's LICENSE.txt); Achilles, not used here.
+- CohortMethod (`R/Export.R`, `inst/csv/resultsDataModelSpecification.csv`, NEWS,
+  `inst/Results_Eunomia.zip`, the v5.5.2 to v6.0.3 diff); SelfControlledCaseSeries (`R/Export.R`,
+  its specification and zip); Characterization (`R/ExportingCsvFiles.R`,
+  `inst/settings/resultsDataModelSpecification.csv`); Strategus (`R/DatabaseMetaData.R`,
+  `inst/csv/databaseMetaDataRdms.csv`, `R/OperationStatus.R`, `R/Module-CohortMethod.R`,
+  `zipResults`); ResultModelManager; release tags through the GitHub API.
+- Synthea: its README's licence section.
+- Define-XML: cdisc.org's Define-XML page; the XSDs in `cdisc-org/data-definition-engine`; the
+  sample `definev21-adam.xml` in `swhume/odmlib_examples`.
+- The CDISC pilot: `cdisc-org/sdtm-adam-pilot-project` (its README's terms of use),
+  `phuse-org/phuse-scripts` (LICENSE.md), and the DESCRIPTION files of `pharmaversesdtm`,
+  `pharmaverseadam` and `safetyData`.
+- ARS: cdisc.org's Analysis Results Standard page; `cdisc-org/analysis-results-standard`,
+  `model/`; `cards` and `siera` on CRAN.
+- XPT readers: ReadStat's `src/sas/readstat_xport_read.c`, pyreadstat's documentation, haven's
+  `read_xpt` page, pandas' `pandas/io/sas/sas_xport.py`.
+- SAS: blogs.sas.com on `PROC JSON` and `SHA256`; SAS problem note 64450 on `HASHING_FILE`; SAS
+  Communities threads on the program's path and on SAS OnDemand for Academics.
+- Stata: the manuals for `checksum`, Mata's `hash1()`, `creturn` and `collect export`;
+  stata.com/python; the CI images `labordynamicsinstitute/continuous-integration-stata`,
+  `AEADataEditor/docker-stata` and `opensafely-core/stata-docker`.
 
 ## Known gaps
 
@@ -19381,6 +20248,57 @@ Open, recorded as each change landed:
   by the names they are sold under and not every name an agent could sign. G7 reads a
   work's stored files once for the passages and once for the quotations in the prose, so a
   PDF goes through `pdftotext` twice a `check`.
+- **Whether a cited work is still the one to cite rests on readings, which the rules do not
+  check (`currency-*`).**
+  - A reading varies between runs and between models, and two readings by one model are not
+    independent: they count as two (decision 4), and the summary says "one model, read
+    twice". A third reading that differs from the other two on a field the rules use makes
+    an agreed entry `uncertain`.
+  - A quote found word for word in a work can still back the wrong field: a cohort quoted
+    from a trial's background, a population from its discussion.
+  - A level on a hierarchy is a guide to where the likely best evidence lies, not a study's
+    quality; risk of bias within a level is not judged.
+  - A search end date is read only where a review states it, and dates of unequal precision
+    compare at the coarser: a review whose search ended in 2020 does not replace a work
+    published in 2020, whatever the months.
+  - K5 knows a synthesis by its PubMed publication types in its works record (a review, a
+    systematic review, a meta-analysis): one whose types are not known is read as a primary
+    study, and a number typed in the sentence is known only as the ledger's display of it.
+  - Without the works store, which git leaves out (decision 7), the quotes of candidates and
+    a decision the rules wrote are not checked, entry by entry, and a note says so
+    (`currency-quote-unchecked`). So there a `by: rules` decision edited by hand is caught by
+    neither the hook, which leaves the rules' decisions to the gate, nor `check`.
+  - A `replace` done in a sentence also reworded, where another sentence still citing the
+    old work holds half or more of the entry's words, is not seen as done: the entry stays on
+    that other sentence, and `currency-change-unanswered` fails at submission until the author
+    places the entry on the new sentence with `manuscript-guard references --mark "<words>"
+    @<key> --id <id>`.
+  - A value recorded in the literature ledger from the cited work after the rules decided
+    turns an earlier `by: rules` `replace` with a synthesis into
+    `currency-decision-mismatch` (K5 now sets the synthesis aside). Nothing decides again
+    from the readings filed, and a further reading is refused once the proposal is answered.
+  - A ledger display that is a bare whole number ("12") is found in any equal number of the
+    sentence ("in 12 countries [@cited]"), so K5 can set a synthesis aside where the
+    sentence quotes no value of the cited work.
+  - That a reading is of the cited work (`currency-reading-invalid`, "the reading is of")
+    is checked only where `references.bib` gives the cited work a DOI or a PMID.
+  - G7 reads a work's stored source once for each quote of it, with nothing kept between.
+  - An entry is placed on a sentence reworded beyond its words only while that sentence
+    holds half or more of them (`NEAR`), and may then be placed on a sentence that no longer
+    makes the claim its decision was of; further than that it is unplaced, a note. `--mark`
+    finds its sentence by its words folded and taken as one run, and refuses where more than
+    one sentence citing the work holds them.
+  - Scope reads what `lookup` recorded, as of its date: a later version deposited since is
+    not in scope until `lookup` asks again. The Introduction and Discussion of the unattended
+    run are not yet read.
+  - `references` writes `literature/currency.yaml` whole, so a comment written in it is not
+    kept.
+  - The digests of the search, works and reading records catch an edit made without care,
+    not one made by somebody who computes the digest again; and the hook asks about an
+    agent's ordinary edit of a person's decision or answer, not a deliberate evasion (a shell
+    command, a patch that deletes the file).
+  - `currency-record-stale` reads the search records, which nothing in this version writes:
+    the recorded searches are to come.
 - **An appraisal of a similar study's method is judgement, not a guarantee.** G12 holds it
   to a standard and a domain that exist, and nothing more: that the method departs from the
   standard as the appraisal says, that the concern is the right one, and that the studies
@@ -20956,6 +21874,36 @@ What papers converted from Word showed (see "What papers converted from Word sho
     failure.
   - *The outbox and the runs stay in the vault* after a release, and `.runs/<run>/log.txt`
     holds whatever the scripts printed. Removing them is the person's.
+- **The audit page (`web/`, docs/audit-page.md): what its rules and its checks do not hold.**
+  - *Leaving the page.* A Content-Security-Policy has no rule for navigation: a script that
+    set the page's address to `https://example.com/?…` reached example.com (tested, Chrome).
+    The page's code navigates nowhere, but nothing enforces that; turning off the network
+    once the page is ready is the proof it offers, and docs/audit-page.md says so.
+  - *The page's own host.* `connect-src 'self'` is needed to load its files, so a script on
+    the page could send to GitHub's servers. Nothing does, and the network test covers it.
+  - *A browser extension* can read any page, this one included.
+  - *A lookup from a page* sends no User-Agent, which a browser forbids; the browser follows
+    a redirect itself, where `default_transport` refuses one, though only to a host the
+    policy allows; and Crossref does not expose `Retry-After` to a page, so a 429 from it is
+    not waited out but taken as no answer. No API key is sent.
+  - *Browsers checked.* CI opens the page in Chrome and Firefox. Safari, and any phone, are
+    not checked.
+  - *What it reads.* A `.docx` or Markdown paper and outputs beside it. PDFs (`pdftotext`),
+    LaTeX projects, figures, packages, `--journal`, `--authors`, `--cited` and
+    `--report-draft` are the command line's.
+  - *The word-for-word check is on the worked example* (the `.docx` with and without its
+    results, `main.md`, and the `.docx` and results under names outside ASCII), in Node and
+    in two browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
+    line's Python would differ there unseen; none is known.
+  - *Lookups from the page are not in that check.* CI opens no connection to a registry, so
+    no case ticks the box. That the five registries answer a page (CORS) was tested by hand
+    on 2026-11-05; one that stops would be refused by the browser, and every lookup to it
+    said to have had no connection, with nothing in CI to notice.
+  - *pandoc.wasm's exit status is not read.* A failure is judged by nothing printed with
+    something on stderr, where the command line reads pandoc's exit code. A failure that says
+    nothing on stderr reaches `json.loads`, whose ValueError `gates._stage` turns into the note
+    that G6 and G14 were not run, rather than the message the command line gives (round 1 of
+    #527).
 
 - **`.zenodo.json` names one affiliation per creator.** Zenodo's field is one string, so the
   author's two institutions go in as one, matched to no organisation (ROR), as CITATION.cff's

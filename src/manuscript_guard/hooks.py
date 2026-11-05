@@ -679,6 +679,9 @@ def guard_write(payload: dict) -> int:
     named += [
         said for path in paths if (said := _or_nothing(lambda file: _decides(file, payload), path))
     ]
+    named += [
+        said for path in paths if (said := _or_nothing(lambda file: _answers(file, payload), path))
+    ]
     named += [said for path in paths if (said := _or_nothing(_an_approval, path))]
     named += [
         said for path in paths if (said := _or_nothing(lambda file: _reserves(file, payload), path))
@@ -1035,6 +1038,87 @@ def _decisions(text: str) -> Counter:
     return decided
 
 
+def _answers(path: Path, payload: dict) -> str | None:
+    """Why an edit of the project's literature/currency.yaml is a person's to make, or None
+    where it leaves every person's decision and every answer as they were, over the sentence
+    and the work they were of.
+
+    The rules decide an entry from its readings (`by: rules`); a person may overrule them,
+    with why, and only a person answers a proposed change. G7 refuses a model's name under
+    `by`, and cannot tell a person's name typed by an agent from the person's own, nor one
+    taken away. So an edit after which those are not the ones the file held before, word for
+    word, is put to the person, as an edit of a passage's judgement is (`_judges`)."""
+    if path.name != "currency.yaml":
+        return None
+    found = _relative_to_project(path)
+    if found is None:
+        return None
+    root, relative = found
+    from manuscript_guard.contracts import ContractError, load_project
+
+    try:
+        project, _report = load_project(root)
+        wanted = project.path("literature") / "currency.yaml"
+    except (ContractError, ValueError, OSError):
+        wanted = root / "literature" / "currency.yaml"
+    if path.resolve() != wanted.resolve():
+        return None
+    before, after = _whole_texts(payload, path)
+    if after is None:
+        if not any(_SAID_BY.search(text) for text in before):
+            return None
+        names = "a decision or an answer it touches or keeps"
+    elif (unread := _unread(_SAID_BY, after, before[0])) is not None:
+        if not unread:
+            return None
+        names = unread
+    else:
+        now, then = _persons_said(after), _persons_said(before[0])
+        changed = (now - then) + (then - now)
+        if not changed:
+            return None
+        names = ", ".join(dict.fromkeys(entry[-1] for entry in sorted(changed)))
+    return (
+        f"{relative}: this edit records, takes away, or leaves standing over a sentence it "
+        f"changes, a person's decision on a cited work or their answer to a proposed change "
+        f"({names}). That is the person's, and G7 cannot tell a name an agent typed from "
+        f"theirs."
+    )
+
+
+#: A `by:` of literature/currency.yaml, in block or flow style, on a line that is not a
+#: comment; not `marked_by`, which an agent may write.
+_SAID_BY = re.compile(r"""(?m)^(?![ \t]*#).*?(?<![\w-])["']?by["']?[ \t]*:""")
+
+
+def _persons_said(text: str) -> Counter:
+    """Each person's decision and each answer of a currency.yaml text, with the entry, the
+    sentence and the work it is of, counted. A decision the rules wrote is left out: the
+    gate holds it to the readings."""
+    import yaml
+
+    document = yaml.safe_load(text)
+    entries = document.get("entries") if isinstance(document, dict) else None
+    said: Counter = Counter()
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        for part in ("decision", "answer"):
+            given = entry.get(part)
+            if not isinstance(given, dict) or given.get("by") in (None, ""):
+                continue
+            # A decision the rules wrote is held to the readings by the gate; an answer is a
+            # person's whatever it names, `rules` included, which the gate refuses there.
+            if part == "decision" and given.get("by") == "rules":
+                continue
+            said[(
+                str(entry.get("id")), str(entry.get("sentence")), str(entry.get("citekey")),
+                part, tuple(sorted((str(key), str(value)) for key, value in given.items())),
+                str(given.get("by")),
+            )] += 1  # fmt: skip
+    return said
+
+
 def _whole_texts(payload: dict, path: Path) -> tuple[list[str], str | None]:
     """The file as it is and as the edit leaves it, where the edit says that whole; where it
     says only the lines or stretches it changes (a patch, an edit whose text is not in the
@@ -1265,6 +1349,7 @@ def guard_submission(payload: dict) -> int:
     sends = sends or _or_nothing(lambda _path: _sends_without_asking(command, payload),
                                  Path("."))  # fmt: skip
     sends = sends or _or_nothing(lambda _path: _approves(command), Path("."))
+    sends = sends or _or_nothing(lambda _path: _places_again(command, payload), Path("."))
     sends = sends or _opens_report(command)
     sends = sends or _moves_stage_back(command, payload)
     sends = sends or _or_nothing(lambda _path: _reads_in_confidence(command), Path("."))
@@ -1566,6 +1651,12 @@ def _approves(command: str) -> str | None:
             "judged a finding acceptable. Only that person can say so: run it yourself, as "
             "yourself."
         )
+    if _REFUSES.search(joined):
+        return (
+            "`manuscript-guard references --refuse` records that a named person refused a "
+            "proposed change to a citation, and why. Only that person can say so: run it "
+            "yourself, as yourself."
+        )
     if _imports_answers(joined):
         return (
             "`manuscript-guard checker import` records a co-author's answers under their name "
@@ -1597,6 +1688,99 @@ def _approves(command: str) -> str | None:
         "`manuscript-guard approve` records that an author read the manuscript and approves "
         "it. Only that author can say so: run it yourself, as yourself."
     )
+
+
+def _places_again(command: str, payload: dict) -> str | None:
+    """Why a `references --mark ... --id <id>` in this command is put to the person: it puts
+    the entry on another sentence, and a person's decision or answer of it with it; or it
+    puts an entry whose `replace` or `add` nobody answered on a sentence that cites the work
+    proposed, which counts as accepting it (Basile, 2026-11-05: an agent could otherwise
+    clear `currency-change-unanswered`, a person's to clear, by re-placing the entry on a
+    near copy). Where the entry holds neither, it is the agent's to run; where
+    literature/currency.yaml or references.bib cannot be read, or there is no project here,
+    it is asked."""
+    joined = re.sub(r"[\\`]\r?\n", " ", command)
+    ids = [found[1] for found in _PLACES_AGAIN.finditer(joined)]
+    if not ids:
+        return None
+    held: list[str] = []
+    accepting: list[str] = []
+    root = _project_root(payload)
+    try:
+        from manuscript_guard.contracts import load_project
+        from manuscript_guard.currency.records import read_entries
+
+        if root is None:
+            raise ValueError("no project")
+        project = load_project(root)[0]
+        entries, report = read_entries(project)
+        if report.failures:
+            raise ValueError("unreadable")
+        by_id = {entry.id: entry for entry in entries}
+        for one in ids:
+            entry = by_id.get(one)
+            decision = (entry.decision or {}) if entry else {}
+            if entry and (entry.answer or decision.get("by") not in (None, "rules")):
+                held.append(one)
+            elif (entry and decision.get("action") in ("replace", "add")
+                  and decision.get("candidate")
+                  and _onto_the_candidate(joined, one, str(decision["candidate"]), project)):
+                accepting.append(one)
+    except Exception:  # noqa: BLE001 - what cannot be read is asked
+        held = ids
+    if held:
+        return (
+            f"`manuscript-guard references --mark ... --id {held[0]}` puts that entry on "
+            "another sentence, with what a person decided or answered of it. That is theirs "
+            "to move: run it yourself, or ask them."
+        )
+    if accepting:
+        return (
+            f"`manuscript-guard references --mark ... --id {accepting[0]}` puts an entry whose "
+            "proposed change nobody has answered on a sentence that cites the work it "
+            "proposes, which counts as accepting the change. That is a person's to do: run it "
+            "yourself, or ask them."
+        )
+    return None
+
+
+def _onto_the_candidate(command: str, entry_id: str, candidate: str, project) -> bool:
+    """Whether a `references --mark WORDS @KEY --id <entry_id>` in this command moves the entry
+    onto the work it proposes: KEY's entry in references.bib is the candidate, or a sentence
+    citing KEY that holds WORDS cites the candidate. A command read two ways by the two
+    shells, references.bib missing, or a `--mark` not found beside the id, is taken to."""
+    from manuscript_guard.currency.records import is_work
+    from manuscript_guard.currency.survey import find_sentence, survey
+    from manuscript_guard.literature.bibfile import read_entries as read_bib
+
+    bib_path = project.path("literature") / "references.bib"
+    if not bib_path.is_file():
+        return True
+    bib = read_bib(bib_path)
+    candidates = {key for key, fields in bib.items() if is_work(fields, candidate)}
+    marks: list[tuple[str, str]] = []
+    for invocations, _clean in (_command_words(command, posix=posix) for posix in (True, False)):
+        for words in invocations:
+            tool = _tool_words(words)
+            if not tool or tool[0].casefold() != "references":
+                continue
+            ids = [tool[i + 1] for i, word in enumerate(tool[:-1]) if word == "--id"]
+            ids += [word.split("=", 1)[1] for word in tool if word.startswith("--id=")]
+            if entry_id not in [one.strip("\"'") for one in ids]:
+                continue
+            at = [i for i, word in enumerate(tool) if word == "--mark"]
+            if not at or at[0] + 2 >= len(tool):
+                return True
+            marks.append((tool[at[0] + 1], tool[at[0] + 2].removeprefix("@")))
+    if not marks:
+        return True
+    sentences = survey(project)[0].sentences
+    for words, key in marks:
+        if key in candidates:
+            return True
+        if any(candidates & set(one.keys) for one in find_sentence(words, key, sentences)):
+            return True
+    return False
 
 
 #: `--open` as a word of the command, which `report-issue` opens the page with.
@@ -1676,6 +1860,16 @@ def _reads_in_confidence(command: str) -> str | None:
     return _COMPARES_IN_CONFIDENCE if _COMPARES.search(joined) else None
 
 
+#: `references` with `--refuse` in the same invocation, which answers a proposed change.
+_REFUSES = re.compile(
+    _TOOL + r"references\b" + _SAME_COMMAND + r"(?<![\w-])--refuse\b", re.IGNORECASE
+)
+#: `references --mark ... --id <id>`, in one invocation: it puts an entry, and whatever a
+#: person decided or answered of it, on another sentence.
+_PLACES_AGAIN = re.compile(
+    _TOOL + r"references\b" + _SAME_COMMAND + r"(?<![\w-])--id(?:\s+|=)[\"']?(c[0-9]+)",
+    re.IGNORECASE,
+)
 #: `communicate approve`, and `communicate … --done`, in one invocation of the command.
 _COMMUNICATE_APPROVE = re.compile(
     _TOOL + r"communicate\b" + _SAME_COMMAND + r"(?<![\w-])approve\b", re.IGNORECASE

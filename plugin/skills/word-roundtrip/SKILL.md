@@ -205,10 +205,7 @@ the edit found them, keeping the markup beside them, and anything else changed i
 paragraph is merged as any rewording is; the panel's own comments are its findings and are
 not listed as a co-author's,
 and with `--apply` each finding gets its answer in its record (the review-panel skill, step
-3). An edit accepted in Word whose paragraph is refused leaves its finding open: the words
-are not in the source. Where the accepted words can no longer be written where they were (the
-`.md` changed there since, or the reading's record did), the whole paragraph is refused, as
-merging it from Word's text could flatten the markup beside them.
+3); what is left open is in the page named below.
 
 When the returned document carries comments, when more than one co-author sends theirs back,
 when the dry run lists paragraphs that `were not compared`, or when the stamp check refuses
@@ -222,9 +219,9 @@ are brought in one after another.
 ## 7. Replies to reference proposals
 
 `references --comments` writes each unanswered proposal to change a citation as a comment
-in a copy for the authors. `import` files each reply to one and decides nothing. Read each
-reply and record what it says, quoting its words exactly; a refusal is the author's to
-confirm. See [references/reference-proposals.md](references/reference-proposals.md).
+in a copy for the authors; `import` files each reply and decides nothing. Record what each
+reply says, quoting it exactly:
+[references/reference-proposals.md](references/reference-proposals.md).
 
 ## If you are a model doing this
 

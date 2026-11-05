@@ -334,11 +334,11 @@ def _assessed(entry: Entry, number: int, one: dict, accepted: bool) -> str:
         return f"agreed in Word ({by}), " + ("and cited" if accepted else "not yet cited")
     if one["says"] == "other":
         return f"says something else ({by}): read it with `references --explain {entry.id}`"
-    if (entry.answer or {}).get("reply") == number:
-        return f"refuses ({by}): it is the entry's answer"
     if accepted:
         return (f"refuses ({by}), and the sentence cites the work: accepted; the authors "
                 "settle it")  # fmt: skip
+    if (entry.answer or {}).get("reply") == number:
+        return f"refuses ({by}): it is the entry's answer"
     return f"refuses ({by})"
 
 

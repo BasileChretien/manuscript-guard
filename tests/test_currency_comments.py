@@ -387,16 +387,7 @@ def test_a_proposal_cited_and_refused_by_a_reply_is_accepted_and_both_are_shown(
 
     case.case(project)
     case.replied(project)
-    bib = project / "literature" / "references.bib"
-    with bib.open("a", encoding="utf-8") as entries:
-        entries.write("\n@article{classTrial2023,\n  title = {A trial},\n"
-                      "  author = {Fictional, Eve},\n  journal = {Imaginary Trials},\n"
-                      "  year = {2023},\n  doi = {10.5555/class.trial.2023}\n}\n")
-    main_md = project / "manuscript" / "main.md"
-    text = main_md.read_text("utf-8")
-    old = "[@fictionalClassSignal2019]. The"
-    assert old in text
-    main_md.write_text(text.replace(old, "[@classTrial2023]. The", 1), "utf-8")
+    _cite_the_candidate(project)
     code, said = assess(project, "refuses")
     assert code == 0
     assert "no answer is written: the sentence cites the work it proposes" in said, said
@@ -407,3 +398,52 @@ def test_a_proposal_cited_and_refused_by_a_reply_is_accepted_and_both_are_shown(
             "it") in shown, shown  # fmt: skip
     assert [f.code for f in check_currency(load_project(project)[0], "submission").findings
             ] == []  # fmt: skip
+
+
+def test_a_proposal_cited_after_a_reply_refused_it_is_accepted_and_both_are_shown(
+    project: Path,
+) -> None:
+    """The other order: the reply's refusal is the entry's answer, and the author cites the
+    work afterwards. The manuscript wins all the same (Basile, 2026-11-05): the proposal
+    counts as accepted, and the reply is shown beside it for the authors to settle. A
+    refusal by `references --refuse` is a person's answer, which a citation does not
+    overrule."""
+    from manuscript_guard.currency.survey import survey
+    from manuscript_guard.gates.currency import check_currency
+
+    case.case(project)
+    case.replied(project)
+    assert assess(project, "refuses")[0] == 0
+    assert currency_yaml(project)["entries"][0]["answer"]["reply"] == 1
+    _cite_the_candidate(project)
+    assert "c1" in survey(load_project(project)[0])[0].accepted
+    shown = listed(project)
+    assert "accepted: the sentence cites it" in shown, shown
+    assert ("refuses (Claude), and the sentence cites the work: accepted; the authors settle "
+            "it") in shown, shown  # fmt: skip
+    assert [f.code for f in check_currency(load_project(project)[0], "submission").findings
+            ] == []  # fmt: skip
+
+
+def test_a_person_s_refusal_stands_when_the_work_is_cited_afterwards(project: Path) -> None:
+    from manuscript_guard.currency import command
+    from manuscript_guard.currency.survey import survey
+
+    case.case(project)
+    command.refuse(load_project(project)[0], "c1", "another population", "Blaise Sample")
+    _cite_the_candidate(project)
+    assert "c1" not in survey(load_project(project)[0])[0].accepted
+    assert currency_yaml(project)["entries"][0]["answer"]["by"] == "Blaise Sample"
+
+
+def _cite_the_candidate(project: Path) -> None:
+    bib = project / "literature" / "references.bib"
+    with bib.open("a", encoding="utf-8") as entries:
+        entries.write("\n@article{classTrial2023,\n  title = {A trial},\n"
+                      "  author = {Fictional, Eve},\n  journal = {Imaginary Trials},\n"
+                      "  year = {2023},\n  doi = {10.5555/class.trial.2023}\n}\n")
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text("utf-8")
+    old = "[@fictionalClassSignal2019]. The"
+    assert old in text
+    main_md.write_text(text.replace(old, "[@classTrial2023]. The", 1), "utf-8")

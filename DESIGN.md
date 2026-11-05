@@ -3688,7 +3688,8 @@ work. An entry belongs to the sentence citing its work whose folded words are it
 passage does, or, where none is, to the one citing it that holds most of them, half or more
 (`NEAR`); with neither it is unplaced.
 
-**Acceptance by citation** (design 2.5): an unanswered `replace` or `add` counts as accepted,
+**Acceptance by citation** (design 2.5): an unanswered `replace` or `add`, or one refused only
+by a reply in Word, counts as accepted,
 and nothing is written, once a sentence matching the entry's words, the same or `NEAR`,
 cites a key whose DOI or PMID in `references.bib` (`doi_of`, `pmid_of`) is the candidate's:
 the author added the work to Zotero and ran `sync-bib`. Exact words first (Basile, round 4
@@ -3785,8 +3786,11 @@ refuses`. `agrees` answers nothing: the listing and `--explain` say "agreed in W
 cited". `other` is listed for the authors. A reply to a proposal that has changed since the
 copy was written (another decision digest, or no proposal now) is filed and answers nothing,
 and the listing says the proposal changed; a reply never changes an answer given already.
-Accepted by citation and refused by a reply at once, the manuscript wins: the assessment is
-filed, no answer is written, and the listing shows the reply beside the acceptance. Room is
+Accepted by citation and refused by a reply, in either order, the manuscript wins: where the
+sentence cites the candidate first, the assessment is filed and no answer is written; where
+the reply's refusal is the answer already, citing the candidate afterwards accepts the
+proposal all the same (acceptance by citation passes over an answer from a reply, not a
+person's own). Either way the listing shows the reply beside the acceptance. Room is
 left for PR 6, where two assessments will have to agree: a reply takes one assessment per
 reader.
 
@@ -19636,9 +19640,6 @@ Open, recorded as each change landed:
     once in their paragraph: two sentences that read alike in one paragraph get none. A
     sentence whose emphasis runs across its edge, or whose words the sentence splitter cuts
     otherwise than pandoc prints them, gets none either, with the reason.
-  - An answer refused from a reply stands where the sentence cites the work afterwards: the
-    acceptance by citation reads only unanswered proposals, as before; the manuscript wins
-    only where the citation came before the assessment.
 - **An appraisal of a similar study's method is judgement, not a guarantee.** G12 holds it
   to a standard and a domain that exist, and nothing more: that the method departs from the
   standard as the appraisal says, that the concern is the right one, and that the studies

@@ -53,8 +53,8 @@ def state_of(entry: records.Entry | None, held, accepted: bool = False) -> str:
         by = "by the rules" if decision["by"] == "rules" else f"by {decision['by']}"
         answer = entry.answer
         if decision["action"] in (rules.REPLACE, rules.ADD):
-            said += (f", {answer['status']} by {answer['by']}" if answer
-                     else ", accepted: the sentence cites it" if accepted
+            said += (", accepted: the sentence cites it" if accepted
+                     else f", {answer['status']} by {answer['by']}" if answer
                      else ", not answered: cite it (Zotero, then `sync-bib`), or "
                      f"`references --refuse {entry.id}`")  # fmt: skip
         return f"{said} ({by})"

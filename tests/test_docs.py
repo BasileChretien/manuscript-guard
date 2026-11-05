@@ -117,7 +117,7 @@ def test_the_readme_groups_the_commands_as_the_help_does() -> None:
         assert first_cells(table, "`([a-z-]+)`") == list(names), heading
 
 
-def test_the_readme_lists_the_gates_the_tool_has() -> None:
+def declared_gates() -> set[str]:
     declared = set()
     for module in pkgutil.iter_modules(manuscript_guard.gates.__path__):
         gate = getattr(
@@ -125,9 +125,40 @@ def test_the_readme_lists_the_gates_the_tool_has() -> None:
         )
         if gate:
             declared.add(gate)
+    return declared
+
+
+def test_the_readme_lists_the_gates_the_tool_has() -> None:
     listed = first_cells(section("What is checked"), r"(G\d+)")
     assert len(listed) == len(set(listed)), "a gate is listed twice"
-    assert set(listed) == declared
+    assert set(listed) == declared_gates()
+
+
+#: The pages that say in words how many gates or hooks there are.
+COUNTED = [README, DOCS / "agent-tools.md"]
+COUNT = re.compile(r"\b([a-z]+(?:-[a-z]+)?) (gates|hooks)\b")
+
+
+def test_a_count_of_gates_or_hooks_is_the_number_there_are() -> None:
+    """A count written out goes stale in silence: the README said "fifteen gates" and "four"
+    hooks long after there were more. Each "<number> gates" and "<number> hooks" of these
+    pages is held to the gates the package declares and the hooks the plugin registers. The
+    picture's count is the script's, and the test of the pictures holds that."""
+    import json
+
+    words = {figures_script().in_words(number): number for number in range(100)}
+    config = json.loads((REPO / "plugin" / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+    hooks = sum(len(group["hooks"]) for groups in config["hooks"].values() for group in groups)
+    there_are = {"gates": len(declared_gates()), "hooks": hooks}
+    counted = 0
+    for page in COUNTED:
+        for word, noun in COUNT.findall(text_of(page).lower()):
+            if word in words:
+                counted += 1
+                assert words[word] == there_are[noun], (
+                    f"{page.name} says {word} {noun}; there are {there_are[noun]}"
+                )
+    assert counted, "no count of gates or hooks found; the pattern no longer matches"
 
 
 # ------------------------------------------------------------------------------ pictures

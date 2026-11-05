@@ -72,7 +72,7 @@ On the worked example: one binding of the abstract replaced by the number it sto
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/demo-dark.svg">
   <img src="docs/img/demo-light.svg" width="860"
-       alt="manuscript-guard check fails: G2 manuscript/main.md:11:17, '4,000' is not bound to any source. The author replaces 4,000 with {{results.cohort.n_reports}} on line 11, and check runs again: under numerical provenance, G2, G3, G7, G8: 0 failing, 0 warnings; the run ends 0 failing, 12 warnings.">
+       alt="manuscript-guard check prints [FAIL] G2 manuscript/main.md:11:17, '4,000' is not bound to any source. The author replaces 4,000 with {{results.cohort.n_reports}} on line 11, and check runs again: stage: drafting (writing the manuscript against results that exist); numerical provenance, checked: G2, G3, G7, G8: 0 failing, 0 warnings; and its last line, 0 failing, 12 warnings.">
 </picture>
 
 ## Two ways in
@@ -120,7 +120,7 @@ Guided, not replaced: three kinds of user, using the same tool differently.
 |---|---|
 | An agent, through the skills | drafts the analysis plan, writes and runs the analysis, binds the numbers, drafts the prose, fixes what `check` finds |
 | The gates | decide from the records, offline and in CI, and ask no model anything |
-| A person | answers the findings only a person may close: an attestation that a value was read in its source, a judgement that a passage supports its sentence, an answer to a co-author's comment or to a major finding of a review; approves the manuscript (`approve`); signs off what is theirs to close (`sign`); answers a co-author's page of things to confirm (`checker`); is asked before the manuscript is sent to a model provider (`review --run`) and before a deposit is published (`deposit --publish`) |
+| A person | answers the findings only a person may close, among them: an attestation that a value was read in its source, a judgement that a passage supports its sentence, an answer to a co-author's comment or to a major finding of a review; approves the manuscript (`approve`); signs off what is theirs to close (`sign`); answers a co-author's page of things to confirm (`checker`); is asked before the manuscript is sent to a model provider (`review --run`) and before a deposit is published (`deposit --publish`) |
 
 ## What it covers
 
@@ -647,8 +647,8 @@ them.
 The most useful contribution now is a case where a gate is wrong, in either direction: a
 false alarm or a miss, reported with the smallest text that shows it. The
 [issue templates](.github/ISSUE_TEMPLATE/gate-got-it-wrong.md) ask for that, and
-`manuscript-guard report-issue --about G2 --flagged` (or `--missed`) writes the report for
-you to read and post. A profile of a journal you submit to
+`manuscript-guard report-issue --about G2 --flagged --snippet "…"` (or `--missed`) writes the
+report for you to read and post. A profile of a journal you submit to
 ([journal profiles](docs/journal-profiles.md)) and a recipe for a reporting checklist that
 is missing are contributions too.
 [CONTRIBUTING.md](CONTRIBUTING.md) says how, and [supporting the project](docs/funding.md)

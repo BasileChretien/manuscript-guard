@@ -261,12 +261,19 @@ def test_the_terminal_picture_says_what_check_says(project: Path, capsys) -> Non
     assert finding in printed, "check no longer prints the finding the picture shows"
 
 
+#: The alternative text the README gives the demo.
+DEMO_ALT = re.compile(r'<img src="docs/img/demo-light\.svg"[^>]*?\salt="([^"]*)"')
+
+
 def test_the_demo_ends_with_what_check_says_once_the_number_is_bound(
     project: Path, capsys
 ) -> None:
     """The demo opens on `CARD`, binds the number again and runs `check` on the example as it
     is. The line it rewrites is the one the finding quotes, put back as the manuscript has
-    it, and every line of its last scene but a `...` is printed, in that order."""
+    it, and every line of its last scene but a `...` is printed, in that order: two lines
+    with no `...` between them on two lines one after the other, and the last one last. The
+    README's alternative text for the demo says the finding and each of those lines, so a
+    reader who cannot see the picture is told what it shows now."""
     script = figures_script()
     assert script.CARD[2][1].endswith(f"manuscript/main.md:{script.LINE}:17")
     lines = (project / "manuscript" / "main.md").read_text(encoding="utf-8").splitlines()
@@ -276,13 +283,26 @@ def test_the_demo_ends_with_what_check_says_once_the_number_is_bound(
     assert main(["check", str(project)]) == 0
     printed = [said(line) for line in capsys.readouterr().out.splitlines()]
 
-    shown = [said(line) for _kind, line in script.CLEAN if line.strip() != "..."]
+    scene = [said(line) for _kind, line in script.CLEAN]
+    shown = [line for line in scene if line != "..."]
     assert shown[0].startswith("stage: ") and shown[-1].startswith("0 failing")
-    at = 0
-    for line in shown:
-        assert line in printed[at:], f"check no longer prints, where the demo shows it: {line}"
+    at, adjacent = 0, False
+    for line in scene:
+        if line == "...":
+            adjacent = False
+            continue
+        if adjacent:
+            assert printed[at] == line, f"check prints {printed[at]!r} where the demo has {line!r}"
+        else:
+            assert line in printed[at:], f"check no longer prints, where the demo shows: {line}"
         at = printed.index(line, at) + 1
+        adjacent = True
     assert printed[-1] == shown[-1], "the demo's last line is not the last line check prints"
+
+    alt = DEMO_ALT.search(text_of(README))
+    assert alt, "the README shows the demo with no alternative text"
+    for line in [said(script.CARD[2][1]), said(script.CARD[3][1]), *shown]:
+        assert line in said(alt.group(1)), f"the demo's alternative text does not say: {line}"
 
 
 def test_the_readme_quotes_what_check_says_of_an_edited_results_file(

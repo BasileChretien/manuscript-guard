@@ -278,7 +278,7 @@ number in the file and the rule that classified it.
 
 | Command | What it does |
 |---|---|
-| `init` | scaffold a new manuscript project; `--latex` starts the manuscript in LaTeX; `--from paper.docx` brings a paper written in Word in, its tables as pipe tables and its title page set aside; `--english en-GB` or `en-US` declares the paper's English (none unless told) |
+| `init` | scaffold a new manuscript project; `--latex` starts the manuscript in LaTeX; `--from paper.docx` brings a paper written in Word in, its tables as pipe tables and its title page set aside; `--english en-GB` or `en-US` declares the paper's English (none unless told); `--github-actions` writes the workflow that runs `check` and `build` on each push and pull request, and in a project set up already writes that alone ([docs/github-actions.md](docs/github-actions.md)) |
 | `next` | say what to do now, from one run of every gate: what stops a gate, stale results, the plan, the choices due (journal, English, reporting guideline, study design), the numbers' sources, the other failures, the warnings, the next stage, then the optional steps; each with its skill and the exact command, and a choice as the `set` commands to pick from. Writes nothing; `--json` for an agent ([docs/next.md](docs/next.md)) |
 | `set` | write one setting of `paper.yaml` (`stage`, `target_journal`, `english_variant`, `reporting_guideline`, `study_type`) and keep its comments and every other line; it refuses, writing nothing, where the file would read back as anything else |
 | `stages` | what each stage means and what binds at it |
@@ -439,6 +439,7 @@ everywhere.
 | | |
 |---|---|
 | [Installing and upgrading](docs/install.md) | upgrades, optional tools, the R emitter |
+| [Checking a paper in GitHub Actions](docs/github-actions.md) | the workflow `init --github-actions` writes: check on each push and pull request, the documents built where it passes, what CI cannot reach, and a badge that says the stage the check passes at |
 | [Stages](docs/stages.md) | which findings bind when, from the analysis plan to submission |
 | [Journal profiles](docs/journal-profiles.md) | the journal's rules quoted from its page: the boxes beside the abstract, a graphical abstract, what may be shared |
 | [What to do next](docs/next.md) | `next`: the order it decides in, and its JSON for an agent |

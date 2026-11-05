@@ -1,0 +1,209 @@
+# The action a paper's repository runs, from the workflow `manuscript-guard init
+# --github-actions` writes (src/manuscript_guard/github_workflow.py). docs/github-actions.md
+# says what it does and what it cannot reach; tests/test_github_action.py holds it to that.
+#
+# Every value from the project or from another step reaches a script through `env:`, never
+# through an expression written into the script, so no text of the project's runs as code.
+name: manuscript-guard
+description: >-
+  Check a manuscript-guard paper project at the stage its paper.yaml declares, build its
+  documents offline where check passes, and keep the report and the documents as the run's
+  artefact.
+
+inputs:
+  path:
+    description: The project's folder, from the repository's root.
+    default: "."
+  verify:
+    description: >-
+      "true" runs `manuscript-guard verify` before check: the analysis again, which needs its
+      inputs and its packages, set up in steps before this one. It cannot run on restricted
+      data.
+    default: "false"
+  requirements:
+    description: A pip requirements file the analysis needs for verify, from the repository's root.
+    default: ""
+  python-version:
+    description: The Python manuscript-guard runs on.
+    default: "3.12"
+  pandoc-version:
+    description: >-
+      The pandoc check and build run with: by default the one manuscript-guard's own tests
+      run with.
+    default: "3.9.0.2"
+  tex-packages:
+    description: More apt packages for a LaTeX manuscript, such as a journal's class.
+    default: ""
+  artifact-name:
+    description: The name of the artefact that holds the report and the documents.
+    default: manuscript-guard
+  retention-days:
+    description: How long GitHub keeps the artefact.
+    default: "30"
+
+outputs:
+  ok:
+    description: '"true" where check passed at the stage, "false" where it failed, empty where it did not run.'
+    value: ${{ steps.report.outputs.ok }}
+  stage:
+    description: The stage check held the manuscript to; empty where it did not run.
+    value: ${{ steps.report.outputs.stage }}
+  version:
+    description: The version of manuscript-guard that ran.
+    value: ${{ steps.install.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    # Built from this action's own files, so the tool is the code at the ref the workflow
+    # pins, a tag or a commit.
+    - name: manuscript-guard
+      id: install
+      shell: bash
+      run: |
+        rm -rf "$RUNNER_TEMP/manuscript-guard"
+        mkdir -p "$RUNNER_TEMP/manuscript-guard"
+        python -m pip install --upgrade pip
+        python -m pip install "$GITHUB_ACTION_PATH"
+        version=$(manuscript-guard --version | tr -d '\r')
+        echo "manuscript-guard $version"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - name: pandoc
+      uses: r-lib/actions/setup-pandoc@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2.14.0
+      with:
+        pandoc-version: ${{ inputs.pandoc-version }}
+
+    # pdftotext reads a stored source that is a PDF; without it, or pypdf, check cannot.
+    - name: pdftotext, and TeX Live for a LaTeX manuscript
+      shell: bash
+      env:
+        PROJECT: ${{ inputs.path }}
+        EXTRA: ${{ inputs.tex-packages }}
+      run: |
+        pandoc --version | head -n 1
+        packages=(poppler-utils)
+        if [ -f "$PROJECT/manuscript/main.tex" ]; then
+          # The TeX Live of manuscript-guard's own `latex` job.
+          packages+=(latexmk texlive-latex-base texlive-latex-recommended texlive-fonts-recommended cm-super-minimal texlive-luatex)
+          read -r -a extra <<< "$EXTRA"
+          packages+=("${extra[@]}")
+        fi
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends "${packages[@]}"
+
+    - name: The analysis's packages
+      if: inputs.requirements != ''
+      shell: bash
+      env:
+        REQUIREMENTS: ${{ inputs.requirements }}
+      run: python -m pip install -r "$REQUIREMENTS"
+
+    # Before check, which reads the run it records.
+    - name: verify
+      id: verify
+      if: inputs.verify == 'true'
+      shell: bash
+      env:
+        PROJECT: ${{ inputs.path }}
+      run: |
+        set +e
+        manuscript-guard verify "$PROJECT" 2>&1 | tee "$RUNNER_TEMP/manuscript-guard/verify.txt"
+        echo "exit-code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+    - name: check
+      id: check
+      shell: bash
+      env:
+        PROJECT: ${{ inputs.path }}
+      run: |
+        set +e
+        manuscript-guard check --json "$PROJECT" > "$RUNNER_TEMP/manuscript-guard/check.json"
+        echo "exit-code=$?" >> "$GITHUB_OUTPUT"
+
+    - name: The summary and the annotations
+      id: report
+      shell: bash
+      env:
+        CODE: ${{ steps.check.outputs.exit-code }}
+        VERSION: ${{ steps.install.outputs.version }}
+      run: >-
+        python -m manuscript_guard.ci_report report
+        --report "$RUNNER_TEMP/manuscript-guard/check.json"
+        --exit-code "$CODE" --version "$VERSION"
+
+    # Only where check passed: no artefact holds a document of a manuscript that fails at its
+    # stage. The documents of an earlier build are taken away first, so that only what this
+    # build wrote is copied.
+    - name: build
+      id: build
+      if: steps.report.outputs.ok == 'true'
+      shell: bash
+      env:
+        PROJECT: ${{ inputs.path }}
+      run: |
+        documents=(manuscript.docx supplementary.docx manuscript.pdf supplementary.pdf)
+        for name in "${documents[@]}"; do rm -f "$PROJECT/build/$name"; done
+        set +e
+        manuscript-guard build --offline "$PROJECT"
+        code=$?
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        built=()
+        if [ "$code" -eq 0 ]; then
+          for name in "${documents[@]}"; do
+            if [ -f "$PROJECT/build/$name" ]; then
+              cp "$PROJECT/build/$name" "$RUNNER_TEMP/manuscript-guard/$name"
+              built+=("$name")
+            fi
+          done
+          echo "Built: ${built[*]}." >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "build failed (exit code $code): what it printed is in the job's log." >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: No build
+      if: steps.report.outputs.ok != 'true'
+      shell: bash
+      run: echo "Not built, since check did not pass." >> "$GITHUB_STEP_SUMMARY"
+
+    # The report and the documents, and nothing else of the project.
+    - name: The artefact
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ runner.temp }}/manuscript-guard/
+        retention-days: ${{ inputs.retention-days }}
+        if-no-files-found: warn
+
+    - name: The verdict
+      if: always()
+      shell: bash
+      env:
+        WANT_VERIFY: ${{ inputs.verify }}
+        VERIFIED: ${{ steps.verify.outputs.exit-code }}
+        CHECKED: ${{ steps.check.outputs.exit-code }}
+        OK: ${{ steps.report.outputs.ok }}
+        BUILT: ${{ steps.build.outputs.exit-code }}
+      run: |
+        failed=0
+        if [ "$WANT_VERIFY" = "true" ] && [ "$VERIFIED" != "0" ]; then
+          echo "::error::verify did not reproduce the recorded results, or could not run them (exit code ${VERIFIED:-none}): verify.txt has what it said"
+          failed=1
+        fi
+        if [ -z "$OK" ]; then
+          echo "::error::check did not run to the end (exit code ${CHECKED:-none})"
+          failed=1
+        elif [ "$OK" != "true" ]; then
+          echo "::error::check fails at the stage paper.yaml declares: the findings are in the job's summary"
+          failed=1
+        elif [ "$BUILT" != "0" ]; then
+          echo "::error::build failed (exit code ${BUILT:-none})"
+          failed=1
+        fi
+        exit "$failed"

@@ -99,7 +99,8 @@ class Registry:
         name = self.service(request)
         if name in self.down:
             return _json(503, {})
-        return getattr(self, f"_{name}")(request, request.params)
+        answer = getattr(self, f"_{name}", None)
+        return answer(request, request.params) if answer else _json(404, {})
 
     def _esearch(self, request: Request, params: dict) -> Response:
         term = params["term"]

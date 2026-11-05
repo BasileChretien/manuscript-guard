@@ -9652,6 +9652,60 @@ def test_the_paragraph_after_a_split_is_told_it_is_its_neighbour(
     assert "was not split itself" in after and "own edit in the .md" in after, after
 
 
+#: A document Word 16 saved itself: see the test that reads it.
+SPLIT_IN_WORD = Path(__file__).parent / "data" / "word" / "split-beside-reworded.docx"
+
+
+@needs_pandoc
+def test_word_s_own_split_and_the_reworded_paragraph_after_it_are_told_apart(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Word 16 saved this document itself (2026-11-05, over COM, Track Changes off), from a
+    build of the example: the space after "data generator." replaced by a paragraph mark
+    (`Range.InsertParagraph`), and "computed" typed over with "calculated" in the next
+    paragraph. Word left the identifier's bookmark on the first half, gave the second half
+    none and the first half's style, wrote its own style ids (`a0` for Body Text, as its
+    Japanese interface names it) and a `lastRenderedPageBreak`. The person who saved it is
+    renamed `Ana Author` in `docProps/core.xml`; nothing else was changed.
+    It carries this build's properties, its source stamp and its record of paragraphs, as
+    the fixtures of `tests/test_filed_comments.py` do, since the build it was saved from
+    may print its results otherwise. Both paragraphs are refused, each with its own reason."""
+    from manuscript_guard.cli import main
+
+    with zipfile.ZipFile(built(project)) as fresh:
+        custom = fresh.read("docProps/custom.xml")
+    returned = tmp_path / "split.docx"
+    with zipfile.ZipFile(SPLIT_IN_WORD) as zin, zipfile.ZipFile(returned, "w") as zout:
+        for item in zin.infolist():
+            zout.writestr(item, custom if item.filename == "docProps/custom.xml"
+                          else zin.read(item.filename))  # fmt: skip
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert source.read_text(encoding="utf-8") == before
+    printed = capsys.readouterr().out
+    # Each refusal is found by its own reason, not by what the dry run shows of its paragraph,
+    # and there are exactly two: one with the split's message (in which "split in two in
+    # Word" alone would also match the neighbour's "another paragraph split in two in Word"),
+    # one with the neighbour's, naming the new paragraph (review of #518).
+    refused = [block for block in printed.split("\n\n") if "NOT merged into" in block]
+    # The build Word's copy was saved from printed that machine's Python and statsmodels; a
+    # build elsewhere prints its own, and that paragraph is refused as a changed number. It
+    # is set aside here, and nothing else may be (CI's Ubuntu job on #518).
+    refused = [
+        block for block in refused
+        if not (keys := re.findall(r"comes from (\S+?)\. ", block))
+        or not all(key.startswith("results.software.") for key in keys)
+    ]
+    assert len(refused) == 2, printed
+    split_said = [b for b in refused if "split in two in Word, new text written next to it" in b]
+    after = [b for b in refused if "after a new paragraph, 'Real work would need a case" in b]
+    assert len(split_said) == 1 and len(after) == 1, printed
+    assert "after a new paragraph" not in split_said[0], split_said[0]
+    assert "own edit in the .md" in after[0], after[0]
+
+
 def test_a_new_paragraph_of_only_a_symbol_is_named_by_no_words(tmp_path: Path) -> None:
     """Known gaps (round 1 of #512): a new paragraph holding only a symbol with no text, a
     check box typed in Wingdings, is new text, and the reworded paragraph after it is refused

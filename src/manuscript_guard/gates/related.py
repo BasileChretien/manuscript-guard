@@ -109,6 +109,8 @@ class _Seen:
     _cited: frozenset[str] | None = None
     _text: str | None = None
     rows: list[Compared] = field(default_factory=list)
+    #: Values whose copy is recorded, kept out of git and not on this computer.
+    not_here: int = 0
 
     @property
     def cited(self) -> frozenset[str]:
@@ -181,6 +183,7 @@ def compare_related(
         related_outputs=len(related.outputs),
         related_values_compared=sum(1 for row in seen.rows if not row.method),
         related_values_differ=sum(1 for row in seen.rows if not row.method and row.state != "same"),
+        related_values_not_here=seen.not_here,
     )
     return counted, seen.rows
 
@@ -667,9 +670,28 @@ def _recorded(
     strict: str,
     seen: _Seen,
 ) -> Report:
-    """A value read from the earlier output: in its stored copy, and as this paper has it."""
+    """A value read from the earlier output: in its stored copy, and as this paper has it.
+
+    A copy recorded, kept out of git and not on this computer, as in CI (`literature/away.py`),
+    is noted; what needs no copy runs all the same: the value in its quote, the pair, the
+    comparison with this paper's result."""
+    from manuscript_guard.literature.away import away
+
     path = project.path("literature") / recorded.source_file
     where = f"{output.name}: {recorded.value}"
+    if not path.is_file() and away(project).holds(recorded.source_file):
+        seen.not_here += 1
+        note = _finding(
+            related,
+            "related-source-not-here",
+            f"{where} is read from {recorded.source_file}, which is not on this computer. "
+            "literature/sources.yaml records it as stored, and the copies are kept out of "
+            "git, so the quote was not checked against it here",
+            severity=INFO,
+            line=recorded.line,
+            hint="on the computer that holds the copies, `check` holds the quote to it",
+        )
+        return Report((note,)).merge(_stated(related, output, recorded, results, strict, seen))
     if not path.is_file():
         return Report(
             (
@@ -705,6 +727,20 @@ def _recorded(
                 ),
             )
         )
+    return _stated(related, output, recorded, results, strict, seen)
+
+
+def _stated(
+    related: Related,
+    output: Output,
+    recorded: Recorded,
+    results: Results,
+    strict: str,
+    seen: _Seen,
+) -> Report:
+    """What needs no copy of a value read from the earlier output: that its quote states it,
+    and how it compares with this paper's."""
+    where = f"{output.name}: {recorded.value}"
     if not states_value(recorded.quote, recorded.value):
         return Report(
             (

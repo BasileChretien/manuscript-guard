@@ -102,6 +102,54 @@ def test_init_ships_the_gitattributes_the_digests_depend_on(tmp_path: Path) -> N
     assert {"*.docx", "*.png", "*.pdf", "*.xlsx"} <= marked
 
 
+def test_init_keeps_the_copies_of_cited_works_out_of_git(tmp_path: Path) -> None:
+    """The copies `sync-sources` makes are of paywalled papers among others, and a public
+    repository would publish them; the record of what was stored stays in git, so that CI
+    knows a copy it lacks was stored (Basile, 2026-10-20, confirmed 2026-11-05)."""
+    import shutil
+    import subprocess
+
+    root = tmp_path / "paper"
+    init_project(root)
+    lines = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
+    # The files under it, not the folder: git re-includes no file of an excluded folder, so a
+    # folder pattern would leave no way to commit an abstract or an open-access copy.
+    assert "literature/sources/*" in lines
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+
+    def ignored(path: str) -> bool:
+        asked = subprocess.run(["git", "check-ignore", "-q", "--no-index", path], cwd=root,
+                               capture_output=True, timeout=60)  # fmt: skip
+        assert asked.returncode in (0, 1), asked.stderr
+        return asked.returncode == 0
+
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True, timeout=60)
+    assert ignored("literature/sources/smith2020.pdf")
+    assert not ignored("literature/sources.yaml")
+    assert not ignored("literature/ledger.yaml")
+    with (root / ".gitignore").open("a", encoding="utf-8") as gitignore:
+        gitignore.write("!literature/sources/smith2020.abstract.txt\n")
+    assert not ignored("literature/sources/smith2020.abstract.txt")
+    assert ignored("literature/sources/smith2020.pdf")
+
+
+def test_paper_yaml_can_keep_the_copies_in_git(tmp_path: Path) -> None:
+    root = tmp_path / "paper"
+    init_project(root)
+    assert load_project(root)[0].sources_in_git is False
+    paper = root / "paper.yaml"
+    written = paper.read_text(encoding="utf-8")
+    # The template says how, where the author will look for it, and the line it offers is
+    # the one the schema takes.
+    (offered,) = [line for line in written.splitlines() if "sources_in_git" in line]
+    paper.write_text(written + "\n" + offered.removeprefix("# ") + "\n", encoding="utf-8")
+    project, report = load_project(root)
+    # A fresh project's authors are not filled in yet; paper.yaml has nothing to say.
+    assert [f for f in report.failures if f.code != "authors-incomplete"] == []
+    assert project.sources_in_git is True
+
+
 def test_init_writes_the_rules_any_agent_tool_reads(tmp_path: Path) -> None:
     """Several agent tools read an `AGENTS.md` at a project's root on their own, whether or
     not the skills are installed. So the rules the guarantee rests on are in every new

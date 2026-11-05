@@ -205,7 +205,10 @@ route is:
    entry file as `main.tex`, loading `mgvalues`.
 2. Make the analysis publish its values. The [results-binding](../results-binding/SKILL.md)
    skill covers the emitters.
-3. `manuscript-guard bind` lists every unbound number and proposes a key wherever exactly
+3. Save the copies of the works it quotes under `literature/sources/`, named by citation
+   key, and run `manuscript-guard sync-sources`: it records them in
+   `literature/sources.yaml`, which is committed while the copies are kept out of git.
+4. `manuscript-guard bind` lists every unbound number and proposes a key wherever exactly
    one published value displays the same. A proposal is a coincidence of value, and a paper
    converted from Word is full of coincidences, so read each one and apply only the right
    ones with `bind --apply --only manuscript/main.md:<line>`. Never run `bind --apply` alone

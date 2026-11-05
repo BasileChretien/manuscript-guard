@@ -131,6 +131,8 @@ ROUTES: dict[str, Route] = {
            "value-from-abstract", "no-reference-source", "zotero-unreadable",
            "pinning-unchecked", "no-live-citations", "citation-"),
     **_all("literature-verify", ("passages",), "passage-"),
+    # A recorded copy kept out of git: the command puts it on this computer again.
+    **_all("literature-verify", ("sync-sources",), "literature-source-not-here"),
     # The sentence is reworded, hedged or given a study that can show the effect: no command.
     **_all("literature-verify", None, "effect-claim-weak-source"),
     **_all("literature-verify", ("lookup",), "reference-", "lookup-", "doi-unregistered",

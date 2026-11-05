@@ -541,6 +541,9 @@ def _reference_items(project, literature) -> list[dict]:
         for value in literature.values.values()
         if (value.detail or {}).get("citekey")
     }
+    from manuscript_guard.literature.away import away
+
+    kept = away(project)
     items = []
     for key, record in sorted(_bib_records(project).items()):
         facts = _rows_for(record, REFERENCE_FIELDS)
@@ -548,7 +551,14 @@ def _reference_items(project, literature) -> list[dict]:
             path.name
             for path in (project.path("literature") / "sources").glob(f"{key}.*")
         ) if (project.path("literature") / "sources").is_dir() else []
-        rows = [["Stored copy", ", ".join(stored) or "none in the project"]]
+        said = ", ".join(stored)
+        # A copy recorded, kept out of git and not on this computer, as in CI.
+        elsewhere = kept.of(key)
+        if elsewhere:
+            said += ("; " if said else "") + (
+                f"{', '.join(elsewhere)}, recorded in literature/sources.yaml, kept out of "
+                "git and not on this computer")  # fmt: skip
+        rows = [["Stored copy", said or "none in the project"]]
         if key in cited:
             rows.append(["Quoted from", "yes — a value in the ledger comes from this source"])
         items.append(

@@ -530,6 +530,23 @@ def test_an_author_sees_their_affiliation_and_not_its_id(project: Path) -> None:
     ]
 
 
+def test_a_reference_whose_copy_is_kept_out_of_git_says_it_is_recorded(project: Path) -> None:
+    from kept_away import keep_away
+
+    from manuscript_guard.checking.produce import _reference_items
+    from manuscript_guard.contracts import load_namespace, load_project
+
+    keep_away(project, "fictionalHepaticCohort2021.txt", "fictionalHepaticCohort2021")
+    loaded, _ = load_project(project)
+    _namespace, _results, literature, _report = load_namespace(loaded)
+    item = next(i for i in _reference_items(loaded, literature)
+                if i["title"].startswith("fictionalHepaticCohort2021"))  # fmt: skip
+    rows = dict(item["evidence"][0]["rows"])
+    assert "none in the project" not in rows["Stored copy"]
+    assert "fictionalHepaticCohort2021.txt" in rows["Stored copy"]
+    assert "not on this computer" in rows["Stored copy"]
+
+
 def test_a_reference_carries_its_journal_and_date_in_either_bib_dialect(project: Path) -> None:
     """Better BibTeX writes biblatex (`journaltitle`, `date`); a hand-kept file is often plain
     BibTeX (`journal`, `year`). A reference shown with neither cannot be checked."""

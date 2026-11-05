@@ -3299,9 +3299,10 @@ and 92 neither. So each attachment gives its file, where it is there and is a PD
 page or plain text, or else, where the file is not here or is an EPUB, Zotero's text of it as
 `<key>.txt`, or else a reason, and the works left with no copy are listed with theirs and what
 to do in Zotero. Zotero's text is not taken for a table or a citation file, here or not,
-which Zotero may index too (round 2 of #361, and #364). A record entry whose file is gone is
-dropped by a run made while it is gone, so that a file saved later under its name stays the
-author's. A work with a file saved under its name by hand is not listed. The other kinds G7
+which Zotero may index too (round 2 of #361, and #364). A record entry whose file is gone
+stays while it is gone (Basile, 2026-11-05; see "Out of git by default" below, which reverses
+round 2 of #361 for this case). A work with a file saved under its name by hand is not
+listed. The other kinds G7
 reads, a table or a citation file, are not taken: attached to an item in Zotero they are a
 supplement's data or the item's own reference, and G7 would read them as the work's text.
 
@@ -3318,6 +3319,56 @@ the author's copy (round 1 of #361). Nothing is deleted. The record holds no pat
 computer, and lives beside `sources/` rather than in it, so that it can be kept where the
 sources are not. A record that is not one stops the command, since without it the command
 cannot tell its files from the author's; deleting it makes every file the author's.
+
+**Out of git by default.** A new project keeps `literature/sources/` out of git, and the
+record in it (Basile, 2026-10-20, confirmed 2026-11-05): the copies are of paywalled papers
+among others, and a public repository, or one made public later, would publish them with its
+history. `init`'s `.gitignore` leaves out `literature/sources/*`, the files rather than the
+folder, since git re-includes no file of an excluded folder: a line
+`!literature/sources/<name>` then commits one copy, an open-access paper or an abstract. A file
+saved there by hand, under a cited work's name or a name the ledger gives, is entered in the
+record by each run of `sync-sources` as the author's (`from: author`, the record's second
+version), with its digest as it is then, and is never replaced, whatever Zotero or the folder
+hold; the entry follows the file when the author changes it. So the record is what CI has of
+the folder.
+
+A copy counts as kept out of git where the record lists it, it is not on the computer,
+`paper.yaml` does not say the copies are committed (`literature: {sources_in_git: true}`), and
+git says its path is ignored (Basile, 2026-11-05: `git check-ignore --stdin`, asked once for a
+loaded project, with the timeout and C locale of `gates/custodian._git`;
+`literature/away.py`). A tracked path is never ignored, so a project that commits its copies,
+as one made before this change does, still fails a deleted copy; so does a copy git does not
+ignore, one where git cannot be asked, and any copy outside a git repository. Each reader of a
+copy then says that it was not checked here, a note at every stage, and still runs what needs
+no copy:
+
+- the ledger (`literature-source-not-here`): the value is counted unverifiable, and its quote
+  is still held to the value, the tests in it, the whole-number mean, its length and its
+  depth;
+- an earlier output's values (`related-source-not-here`): each still held to its quote and
+  compared with this paper's result;
+- a passage, and a methods review's passage (`passage-not-here`,
+  `similar-passage-not-here`): one found in a copy here passes, and one not found there whose
+  work has a copy kept out of git is not checked here rather than failed, so that an abstract
+  committed beside a full text out of git does not fail a passage of the full text;
+- a prose quotation (`quotation-not-here`), text recycling (`earlier-output-not-compared`, its
+  message naming the recorded copy), the checker page, and `passages`
+  (`recorded_not_here`).
+
+A copy neither recorded nor here fails as before (`literature-source-missing`), whose hint says
+that `sync-sources` records a file saved by hand, and so does a recorded one where the record
+is not one.
+
+A record entry stays while its file is absent (Basile, 2026-11-05). Round 2 of #361 dropped
+it, so that a file saved later under its name stayed the author's; with the copies out of git,
+every fresh clone lacks them, and a co-author's run of `sync-sources` there emptied the record
+CI reads. Now the command's copy is taken again where it is absent and its entry rewritten, and
+nothing is written into the name of an absent file of the author's: the run says to get it
+from whoever saved it. What round 2 of #361 guarded against becomes #364's limit across runs:
+a copy the author deletes and saves again with the bytes the command wrote is taken for the
+command's. The second version of the record (`manuscript-guard/sources/2`) is written from the
+first; a record of a version later than this tool knows is refused with "written by a newer
+version of manuscript-guard", and never with advice to delete it.
 
 Zotero is one way to the author's own access, and a downloader is another: auto-paper-harvester
 (github.com/jxtse/auto-paper-harvester) fetches each DOI from an open copy, then a publisher's
@@ -19962,11 +20013,26 @@ Open, recorded as each change landed:
   copied so far recorded, rather than listing that key and going on. A copy the author
   deletes and saves again with the same bytes before the next run is still taken for the
   command's, since the same bytes cannot be told apart (#364).
-- **`literature/sources/` is kept in git unless the author says otherwise.** `init` does not
-  ignore it, so the copies `sync-sources` makes, of paywalled papers among them, are
-  committed with the project, and published with it if the repository is public, including
-  in its history if it is made public later. Leaving them out of git leaves CI unable to
-  hold a quote to its source. Which way a project goes is not yet decided here.
+- **Copies kept out of git leave CI quotes it cannot check, and an older project as it was.**
+  A new project's `.gitignore` leaves `literature/sources/*` out (see "A cited work's copy is
+  taken from Zotero"), so CI, and a co-author's fresh clone, hold no quote, passage or earlier
+  output to its copy: each is a note there, and only the computer that holds the copies checks
+  them, at submission too. A record that a checkout holding the copies passed G7 at this
+  manuscript's digest, which `check --stage submission` would ask for, is to come in a pull
+  request of its own (Basile, 2026-11-05). Nothing warns before a push that a file saved by
+  hand, which git ignores, is not in the record: it passes on the author's computer and fails
+  in CI until `sync-sources` is run. Recording needs Zotero running, or `--from` a folder:
+  without either the run records the author's files and then stops with Zotero's error. The
+  record holds flat names only (`[A-Za-z0-9_.-]+`): a copy the ledger names with a space, or in
+  a folder under `sources/`, is not recorded, and fails in CI as an unrecorded one does.
+  `init` never rewrites an existing `.gitignore`, so a project made before 2026-11-05 still
+  commits its copies, and nothing says so: the author adds the line, and
+  `git rm -r --cached literature/sources`, which leaves the copies in the history. A
+  `sync-sources` older than this change reads the second version of the record as one it
+  cannot use and says to put it right or delete it; deleting it makes every recorded file the
+  author's and drops what CI knows. With `literature: {sources_in_git: true}` and the line left
+  in `.gitignore`, every recorded copy fails where it is absent, which says the setting and the
+  file disagree only by failing.
 - **`sync-sources --from` matches only a name a DOI spells, at the places the harvester puts
   it.** A PDF named by its title, its PMID or its citation key is counted as named for no
   cited DOI and not copied, and one deeper in the folder than `<name>/` or

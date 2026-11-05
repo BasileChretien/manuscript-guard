@@ -156,19 +156,28 @@ def _joins(left: str, mark: str, right: str) -> bool:
 
 
 def check_prose_quotations(project: Project) -> Report:
-    """A warning for each quotation not in the sources it cites; a note where none has one."""
+    """A warning for each quotation not in the sources it cites; a note where none has one,
+    and where a work it cites has a copy recorded, kept out of git and not on this computer
+    (`literature/away.py`), as in CI."""
+    from manuscript_guard.literature.away import away
+
     sources = project.path("literature") / "sources"
     read: dict[Path, str | None] = {}
     report = Report()
     latex = manuscript_format(project.path("manuscript")) == LATEX
+    kept = away(project).keys
     for path, quotation in _quotations(project):
         stored = [(key, source) for key in quotation.keys
                   for source in _sources_of(sources, key)]  # fmt: skip
-        if not stored:
-            report = report.with_findings(_unchecked(path, quotation, latex))
-            continue
         texts = [(key, _text(read, source)) for key, source in stored]
         if any(text is not None and quoted_in(text, quotation.quote) for _k, text in texts):
+            continue
+        elsewhere = [key for key in quotation.keys if key in kept]
+        if elsewhere:
+            report = report.with_findings(_not_here(path, quotation, elsewhere, latex))
+            continue
+        if not stored:
+            report = report.with_findings(_unchecked(path, quotation, latex))
             continue
         # Named only where a source was read: a work with none was not looked in (round 1 of
         # #282: every cited key was named).
@@ -226,6 +235,20 @@ def _text(read: dict[Path, str | None], source: Path) -> str | None:
         except UnreadableSource:
             read[source] = None
     return read[source]
+
+
+def _not_here(path: Path, quotation: Quotation, keys: list[str], latex: bool) -> Finding:
+    return Finding(
+        gate=GATE,
+        code="quotation-not-here",
+        severity=INFO,
+        message=f"the quotation {_shown(quotation.quote)} was not checked here: a copy of "
+        f"{', '.join(cited_as(key, latex=latex) for key in keys)} is recorded in "
+        "literature/sources.yaml, kept out of git, and is not on this computer",
+        path=path,
+        line=quotation.line,
+        hint="on the computer that holds the copies, `check` holds the quotation to it",
+    )
 
 
 def _unchecked(path: Path, quotation: Quotation, latex: bool = False) -> Finding:

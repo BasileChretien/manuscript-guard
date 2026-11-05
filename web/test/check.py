@@ -3,9 +3,10 @@
     python web/test/check.py --site _site --docx build/manuscript.docx \\
         --results results/01_disproportionality.json --markdown manuscript/main.md
 
-For each case (the .docx against the results, the .docx alone, the Markdown alone, and the
+For each case (the .docx against the results, the .docx alone, the Markdown alone, the
 .docx against the results under names a reader may give them, outside ASCII and with
-spaces), the command line's `audit` is run here, then the same command is run as the page
+spaces, under names that start with "-", and against two outputs whose names the page once
+made one), the command line's `audit` is run here, then the same command is run as the page
 runs it, in Node (`parity.mjs`): its report, what it says on stderr, its exit code and its
 `--json` must be the command line's. Then the page is opened in each browser named
 (`browser.mjs`): it must start under its own policy, give the same report, notes and exit
@@ -31,6 +32,15 @@ NODE = shutil.which("node") or "node"
 #: A paper and an output named as a reader may name them. The page once wrote each file
 #: under its name made ASCII, so two such names became one file (round 1 of #527).
 PAPER, OUTPUT = "Mon article (v3).docx", "résultats 結果.json"
+#: Names that start with "-", which the page gives the command as `./name`, and two outputs
+#: that were one file under the names made ASCII (round 2 of #527).
+DASHED_PAPER, DASHED_OUTPUT = "-paper.docx", "-results.json"
+ALIKE = ("résultats.json", "rèsultats.json")
+
+
+def argument(name: str) -> str:
+    """A file's name as the page puts it in the command (worker.js)."""
+    return "./" + name if name.startswith("-") else name
 
 
 def native(folder: Path, arguments: list[str]) -> dict:
@@ -71,18 +81,21 @@ def main(argv: list[str] | None = None) -> int:
         ("the .docx alone", "paper.docx", []),
         ("the Markdown alone", "paper.md", []),
         ("names outside ASCII, with spaces", PAPER, [OUTPUT]),
+        ("names that start with -", DASHED_PAPER, [DASHED_OUTPUT]),
+        ("two outputs the page once named alike", "paper.docx", list(ALIKE)),
     ]
     failed = 0
     with tempfile.TemporaryDirectory(prefix="mg-page-") as scratch:
         folder = Path(scratch)
-        for source, names in ((args.docx, ("paper.docx", PAPER)),
-                              (args.results, ("results.json", OUTPUT)),
+        for source, names in ((args.docx, ("paper.docx", PAPER, DASHED_PAPER)),
+                              (args.results, ("results.json", OUTPUT, DASHED_OUTPUT, *ALIKE)),
                               (args.markdown, ("paper.md",))):  # fmt: skip
             for name in names:
                 shutil.copyfile(source, folder / name)
         listed = []
         for number, (name, paper, against) in enumerate(cases):
-            arguments = ["audit", paper, *(["--against", *against] if against else [])]
+            arguments = ["audit", argument(paper),
+                         *(["--against", *map(argument, against)] if against else [])]
             said = native(folder, arguments)
             wrong = [*differences(said, in_node(args.site, folder, arguments), False),
                      *(f"--json {part}" for part in differences(

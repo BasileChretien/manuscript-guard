@@ -355,6 +355,53 @@ def test_the_pages_workflow_asks_after_the_job_publish_tags_with() -> None:
     assert 'workflows: ["Publish to PyPI"]' in pages and publish["name"] == "Publish to PyPI"
 
 
+def test_the_pages_workflow_deploys_the_newest_tag_a_limit_known_gaps_names() -> None:
+    """A limit (DESIGN.md, Known gaps, the audit page; round 2 of #527): where the release run
+    tagged, the page is built from the newest `v` tag, which may be a later run's. A change to
+    how the tag is chosen updates that entry."""
+    pages = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+    assert "git tag --list 'v*' --sort=-v:refname | head -n 1" in pages
+    design = (ROOT / "DESIGN.md").read_text(encoding="utf-8")
+    gaps = design.split("\n## Known gaps", 1)[1].split("Closed since, and why", 1)[0]
+    assert "*The release a page is built from.*" in gaps
+
+
+# ------------------------------------------------------- the names the page gives a command
+
+NODE = shutil.which("node")
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_the_worker_gives_the_command_line_each_name_as_the_reader_chose_it() -> None:
+    """worker.js, run in Node with a stand-in for Pyodide (web/test/names.mjs): each file is
+    written under the name it was chosen by and named so in the command, a name that starts
+    with "-" passed as `./name`, two names the page once made one kept apart, and a name
+    chosen twice, or one no file can have, refused before anything is written (round 2 of
+    #527: no case ran this code outside a browser, and none covered a refusal)."""
+    cases = [
+        {"paper": "Mon article (v3).docx", "against": ["résultats 結果.json"]},
+        {"paper": "-paper.docx", "against": ["-results.json"]},
+        {"paper": "paper.docx", "against": ["résultats.json", "rèsultats.json"]},
+        {"paper": "paper.docx", "against": ["results.json", "results.json"]},
+        {"paper": "paper.docx", "against": ["a/b.json"]},
+        {"paper": "..", "against": []},
+    ]
+    done = subprocess.run([NODE, str(WEB / "test" / "names.mjs")], input=json.dumps(cases),
+                          capture_output=True, text=True, encoding="utf-8", timeout=60,
+                          check=False)  # fmt: skip
+    assert done.returncode == 0, done.stderr
+    kept, dashed, apart, twice, slash, dots = json.loads(done.stdout)
+    assert kept == {"args": ["audit", "Mon article (v3).docx", "--against", "résultats 結果.json"],
+                    "written": ["/work/Mon article (v3).docx", "/work/résultats 結果.json"]}
+    assert dashed == {"args": ["audit", "./-paper.docx", "--against", "./-results.json"],
+                      "written": ["/work/-paper.docx", "/work/-results.json"]}
+    assert apart["written"] == ["/work/paper.docx", "/work/résultats.json", "/work/rèsultats.json"]
+    assert "two of the files chosen are named results.json" in twice["error"]
+    assert 'cannot use a file named "a/b.json"' in slash["error"]
+    assert 'cannot use a file named ".."' in dots["error"]
+    assert twice["written"] == slash["written"] == dots["written"] == []
+
+
 # --------------------------------------------------------------------- a command, printed
 
 

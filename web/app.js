@@ -61,6 +61,11 @@ $("form").addEventListener("submit", async (event) => {
   const paper = $("paper").files[0];
   if (!paper) return;
   $("run").disabled = true;
+  // The last report goes before this run starts, so that a run refused or failed leaves none
+  // on screen for "Save the report" to save as this one's (round 2 of #527).
+  $("result").hidden = true;
+  $("report").textContent = "";
+  $("notes").textContent = "";
   say(`Auditing ${paper.name}…`);
   try {
     const result = await ask("run", {

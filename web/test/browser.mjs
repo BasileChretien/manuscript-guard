@@ -1,7 +1,7 @@
 // The built page in a real browser, served as GitHub Pages serves it (no policy header):
 // it starts under its own Content-Security-Policy, each case's report is the command line's
-// word for word, no audit sends a request anywhere, and "Test the rules" finds every
-// forbidden request refused.
+// word for word, no audit sends a request anywhere, a run it refuses leaves no report on
+// screen, and "Test the rules" finds every forbidden request refused.
 //
 //   node web/test/browser.mjs <site> <cases> chrome|firefox [executable]
 //
@@ -62,24 +62,27 @@ try {
   console.log(`${await browser.version()}: ${status} (${((Date.now() - started) / 1000).toFixed(1)} s)`);
   if (!status.startsWith("Ready")) fail(`the page did not start: ${status}`);
 
+  // The files of the cases folder named, chosen as a reader chooses them, and the audit run.
+  const choose = (paper, against) => page.evaluate(async (paper, against) => {
+    const put = async (id, names) => {
+      const files = new DataTransfer();
+      for (const name of names) {
+        const blob = await (await fetch("/__cases__/" + encodeURIComponent(name))).blob();
+        files.items.add(new File([blob], name));
+      }
+      document.getElementById(id).files = files.files;
+    };
+    await put("paper", [paper]);
+    await put("against", against);
+    window.mgLast = null;
+    document.getElementById("run").click();
+    while (!window.mgLast) await new Promise((wait) => setTimeout(wait, 100));
+    return window.mgLast;
+  }, paper, against);
+
   const cases = JSON.parse(readFileSync(join(casesDir, "cases.json"), "utf-8"));
   for (const one of status.startsWith("Ready") ? cases : []) {
-    const result = await page.evaluate(async (paper, against) => {
-      const put = async (id, names) => {
-        const files = new DataTransfer();
-        for (const name of names) {
-          const blob = await (await fetch("/__cases__/" + encodeURIComponent(name))).blob();
-          files.items.add(new File([blob], name));
-        }
-        document.getElementById(id).files = files.files;
-      };
-      await put("paper", [paper]);
-      await put("against", against);
-      window.mgLast = null;
-      document.getElementById("run").click();
-      while (!window.mgLast) await new Promise((wait) => setTimeout(wait, 100));
-      return window.mgLast;
-    }, one.paper, one.against || []);
+    const result = await choose(one.paper, one.against || []);
     if (result.error) {
       fail(`${one.name}: the audit could not run: ${result.error}`);
       continue;
@@ -96,6 +99,24 @@ try {
     if (elsewhere.length) fail(`${one.name}: the audit sent ${elsewhere.map((e) => e.url).join(", ")}`);
     console.log(`${one.name}: ${wrong.length ? "DIFFERENT" : "same report, notes and exit code"}, ` +
       `${(result.ms / 1000).toFixed(1)} s, ${result.sent.length} requests`);
+  }
+
+  // A run the page refuses, two outputs of one name, after a report is on screen: it leaves
+  // no report for "Save the report" to save as this one's (round 2 of #527).
+  const one = cases.find((each) => (each.against || []).length);
+  if (status.startsWith("Ready") && one) {
+    const twice = [one.against[0], one.against[0]];
+    const refused = await choose(one.paper, twice);
+    const left = await page.evaluate(() => ({
+      hidden: document.getElementById("result").hidden,
+      report: document.getElementById("report").textContent,
+    }));
+    if (!/two of the files chosen are named/.test(refused.error || "")) {
+      fail(`two outputs named ${twice[0]}: not refused (${refused.error || "it ran"})`);
+    }
+    if (!left.hidden || left.report) fail("a refused run left the last report on screen");
+    console.log(`two outputs of one name: ${refused.error ? "refused" : "run"}, ` +
+      `${left.hidden && !left.report ? "no report left" : "the last report left"}`);
   }
 
   await page.click("#probe");

@@ -158,11 +158,11 @@ Read the whole diff. What to look for:
 
 - Formatting lost. Only the words the co-author changed are written; the rest keeps your
   bold, italics, code and straight quotes, and an edit inside bold or italics stays inside
-  it. An edit at one end of bold, italics or code, or anywhere in inline code, brings that
-  span back as plain text. Next to a straight quote of yours, after words deleted beside a
+  it. Words typed where bold, italics or code opens or closes, or any edit in inline
+  code, bring that span back as plain text. Next to a straight quote of yours, after words deleted beside a
   bracket or other markup, or in a paragraph whose prose holds a bare brace, the whole text
   between the nearest numbers or citations comes back so, apostrophes curly. The import
-  lists what lost formatting under "written as Word's plain text". (A footnote, a comment,
+  lists each loss, a straight quote's too, under "written as Word's plain text". (A footnote, a comment,
   a link or an equation is refused instead, because merging would delete it.)
 - Backslashes. Every character written from Word's text that Markdown could read as markup
   is escaped (`CYP2D6\*4`, `\@admin`, `US\$5`), and a `&lt;` of yours in it may come back as

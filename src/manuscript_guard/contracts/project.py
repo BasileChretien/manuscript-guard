@@ -122,6 +122,12 @@ class Project:
         )
 
     @property
+    def sources_in_git(self) -> bool:
+        """Whether the copies under `literature/sources/` are committed: no unless
+        `paper.yaml` says so (`literature: {sources_in_git: true}`; Basile, 2026-10-20)."""
+        return (self.setting("literature") or {}).get("sources_in_git") is True
+
+    @property
     def extra_terms(self) -> tuple[str, ...]:
         return tuple(self.setting("terms") or ())
 

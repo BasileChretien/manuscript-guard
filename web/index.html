@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- What this page may do, enforced by the browser. It may load code and data only from
+     where it is served ('self'), and send a request only there and to the five registries
+     named, which it does only when the reader ticks the box. It may not start a worker from
+     a file, load anything into a frame, send a form, or load an image or style from
+     elsewhere. Checked by web/test/ in Chrome and Firefox; docs/audit-page.md says what it
+     cannot stop. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src blob:; connect-src 'self' https://api.crossref.org https://api.openalex.org https://api.datacite.org https://doi.org https://eutils.ncbi.nlm.nih.gov; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Paper audit</title>
+<link rel="stylesheet" href="style.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<main>
+  <h1>Check a paper's numbers on this computer</h1>
+  <p class="lead">This page runs manuscript-guard's <code>audit</code> inside your browser.
+    The paper you choose is read here and is not uploaded: there is no server behind this
+    page to receive it.</p>
+
+  <h2>To see that for yourself</h2>
+  <ul>
+    <li>Once the page says <em>Ready</em>, turn off your network. Then choose your paper:
+      the audit still runs.</li>
+    <li>The page's own rules let it send requests only to the address it came from, and to
+      the five reference registries below when you tick the box. Your browser enforces them.
+      <button id="probe" type="button">Test the rules</button></li>
+    <li>Every file the page loads is listed with its SHA-256 in
+      <a href="files.sha256">files.sha256</a>, and its source is
+      <a id="source" href="https://github.com/BasileChretien/manuscript-guard">on GitHub</a>.</li>
+  </ul>
+  <pre id="probelog" hidden></pre>
+  <p class="caution">Reviewing for a journal? Read its policy first: some forbid putting a
+    manuscript under review into any tool, even one that runs on your own computer.</p>
+
+  <p id="status" role="status">Loading the checker: about 26 MB the first time, nothing
+    after that.</p>
+
+  <form id="form">
+    <label>The paper (.docx or .md)
+      <input id="paper" type="file" accept=".docx,.md" required disabled></label>
+    <label>The analysis outputs to compare its numbers with, if you have them (.json, .csv,
+      .tsv, .txt, .yaml). Without them the audit still reads the numbers against each other,
+      the words and the reference list.
+      <input id="against" type="file" multiple accept=".json,.csv,.tsv,.txt,.yaml,.yml,.md"
+        disabled></label>
+    <label class="tick"><input id="lookup" type="checkbox" disabled>
+      <span>Also check the reference list for retracted and unregistered works. This sends
+        the DOIs and PubMed IDs the paper cites, and nothing else, to Crossref, OpenAlex,
+        DataCite, doi.org and PubMed.</span></label>
+    <button id="run" type="submit" disabled>Audit</button>
+  </form>
+
+  <section id="result" hidden>
+    <h2>Report</h2>
+    <pre id="report"></pre>
+    <pre id="notes" hidden></pre>
+    <button id="save" type="button">Save the report</button>
+  </section>
+
+  <details>
+    <summary>What this page loaded and sent</summary>
+    <pre id="netlog"></pre>
+  </details>
+
+  <section class="limits">
+    <h2>What this page does not check</h2>
+    <ul>
+      <li>PDFs, LaTeX projects, figures and reproducibility packages. The command line reads
+        them, with the same checks: <code>uvx manuscript-guard audit paper.pdf</code></li>
+      <li>Whether a number is right. A number found in the outputs may be there by chance,
+        and the report says how often that would happen.</li>
+    </ul>
+    <p>More: <a href="https://github.com/BasileChretien/manuscript-guard/blob/main/docs/audit-page.md">how
+      this page works and what its rules cannot stop</a>.</p>
+  </section>
+
+  <footer>
+    <p id="versions"></p>
+    <p>Licences: manuscript-guard, <a href="licences/manuscript-guard-MIT.txt">MIT</a>;
+      pandoc, <a href="licences/pandoc-GPL-2.0.txt">GPL-2.0-or-later</a>
+      (<a id="src-pandoc" href="https://github.com/jgm/pandoc">source</a>); Pyodide,
+      <a href="licences/pyodide-MPL-2.0.txt">MPL-2.0</a>; browser_wasi_shim,
+      <a href="licences/browser_wasi_shim-LICENSE-MIT.txt">MIT</a> or
+      <a href="licences/browser_wasi_shim-LICENSE-APACHE.txt">Apache-2.0</a>. Each Python
+      package carries its own licence in its wheel.</p>
+  </footer>
+</main>
+</body>
+</html>

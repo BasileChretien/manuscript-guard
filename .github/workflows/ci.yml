@@ -484,3 +484,16 @@ jobs:
         env:
           OK: ${{ needs.github-action.outputs.ok }}
         run: '[ "$OK" = false ] || { echo "ok is ''$OK''"; exit 1; }'
+
+  web:
+    # The in-browser audit page (web/, docs/audit-page.md), built as the Pages workflow builds
+    # it and held to the command line: each case's report the same in Node, in Chrome and in
+    # Firefox, no audit sending a request, and every request the page's policy forbids
+    # refused. The page is what a reader runs without installing anything, and what it
+    # promises, that the paper is not uploaded, is only as good as this job.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/audit-page

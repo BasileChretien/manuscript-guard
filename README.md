@@ -5,30 +5,80 @@
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange)](#status)
 
-**Make every number in a scientific manuscript traceable to its source.**
+**Run a study from its plan to its publication so that every step can be checked and
+repeated.**
 
-A number in a paper comes from one of three places: your results, the literature, or a
-convention of scientific writing. `manuscript-guard` holds a manuscript to that. Numbers
-from your analysis are bindings into a results file that your code writes, numbers from the
-literature are bindings into a ledger backed by stored sources, and anything else has to be
-justified. Change the analysis, run it again and rebuild, and every bound number in the
-manuscript and the supplement follows. A number with no source is a finding of the check,
-not something left for a reviewer to notice.
+`manuscript-guard` keeps a study to its record, from the analysis plan to the published
+paper. The plan is written before the analysis and frozen when the first results are
+written. Every number in the manuscript is bound to the result or the published sentence it
+came from, or justified as a convention of writing. The analysis can be run again and its
+results compared value by value. The checks and approvals that need a person are recorded,
+with who gave them and when, for a co-author, an editor or a reader to look at later.
+
+It holds the study to the guidelines it answers to, each read from its source rather than
+remembered: the reporting checklist of its design (CONSORT 2025, SPIRIT 2025, STROBE,
+RECORD, PRISMA 2020, TRIPOD+AI and others), the journal's instructions for authors, ICMJE's
+recommendations, the study's registration and the norms on text recycling. Each is checked
+on every run from the first draft, so what a guideline asks is found while there is still
+time to do it, not the night before submission ([the guidelines](#the-guidelines-it-answers-to)).
+
+An agent can do much of the work. Claude Code, Codex or another agent tool, with a skill for
+each step, drafts the plan, writes and runs the analysis, binds the numbers, drafts the prose
+and fixes what the check finds, and `manuscript-guard next` tells it, or you, what to do now.
+It decides none of the calls that matter. The seventeen gates are deterministic code that
+runs offline and in CI, and no gate asks a model anything; two of them read a recorded
+review, of each figure and of the manuscript, which a person or a model may have written
+([principles](docs/principles.md)). What only a person should do is put to a person: an
+author's approval, a statistician's sign-off, an attestation that a value was read in its
+source, sending the manuscript to a model provider, releasing what an analysis wrote from the
+data, publishing a deposit. Co-authors are asked, one page each, what no gate can see:
+whether a sentence says what its source says. Without an agent the tool runs the same.
+
+Numbers are where it is strictest. A number in a paper comes from one of three places: your
+results, the literature, or a convention of scientific writing. A number from your analysis
+is a binding into a results file that your Python or R code writes; a number from the
+literature is a binding into a ledger, beside the sentence of the stored source it was quoted
+from; anything else has to be justified. Change the analysis, run it again and rebuild, and
+every bound number in the paper and its supplement follows. A number with no source is a
+finding of the check, not something left for a reviewer to notice.
+
+It is alpha. One real manuscript has been through it. How much of a study an agent can carry
+with it, and whether the research is better for it, have not been measured; [Status](#status)
+says what has run on real papers.
+
+What it covers:
+
+- **The plan and the data.** An analysis plan, a data dictionary, the record of the datasets
+  considered and the one chosen, the study's registration; the data held, where need be, in
+  a folder the operating system keeps from the agent, with a synthetic copy to write the code
+  against ([the vault](docs/vault.md)).
+- **The analysis.** Results published by an emitter for Python or R, with the scripts and
+  inputs they came from, or taken in from what a script writes on its own
+  ([harvest](docs/harvest.md)); models held to their variables; `verify` runs it all again.
+- **The manuscript.** Markdown built to Word, or LaTeX compiled to a PDF
+  ([LaTeX](docs/latex.md)); tables and figures placed by key and numbered by the build; live
+  Zotero citations.
+- **The check.** Seventeen gates, from the numbers to the Methods against the code, the
+  references, the figures, the journal's rules ([journal profiles](docs/journal-profiles.md)),
+  the reporting checklist and the language. A finding fails from the stage at which it
+  starts to matter ([stages](docs/stages.md)), and `next` says what to do about it
+  ([what to do next](docs/next.md)).
+- **Co-authors and review.** Edits and comments in Word brought back to the source
+  ([co-authors](docs/co-authors.md)); a review panel of people, or of models from several
+  providers ([review panel](docs/review-panel.md)); replies to the journal's reviewers held
+  to the revision.
+- **Submission and after.** The submission pack, the publisher's proof checked against it,
+  the code and results packaged and deposited at Zenodo or OSF ([deposit](docs/deposit.md)),
+  posts and summaries held to the paper ([communicate](docs/communicate.md)).
+- **Other people's papers.** `audit` and `compare` read a manuscript written some other way,
+  a PDF among them, on your own computer: an editor's or a referee's
+  ([refereeing](docs/refereeing.md)), or your own from before ([audit](docs/audit.md)).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/loop-dark.svg">
   <img src="docs/img/loop-light.svg" width="860"
-       alt="The analysis writes results; the manuscript binds to them and to a literature ledger; check runs fifteen gates against the journal's rules and a reporting checklist; build writes the .docx; import brings a co-author's Word edits back to the manuscript.">
+       alt="The analysis writes results; the manuscript binds to them and to a literature ledger; check runs seventeen gates against the journal's rules and a reporting checklist; build writes the .docx; import brings a co-author's Word edits back to the manuscript.">
 </picture>
-
-It is a command line tool written in Python, for a manuscript written in Markdown and built
-to a Word document, or written in LaTeX and compiled to a PDF ([LaTeX
-manuscripts](docs/latex.md)). The checks are deterministic code: they run offline and in CI and give
-the same answer every time. No gate asks a model anything. Two of them read a recorded
-review, of each figure and of the manuscript, which a person or a model may have written:
-the record is what the gate reads, and a person answers its major findings
-([principles](docs/principles.md)). Skills and hooks for Claude Code, Codex and other agent
-tools are optional, and help with the parts that need judgement.
 
 ## What it catches
 
@@ -42,17 +92,17 @@ where the manuscript can wait ([stages](docs/stages.md)).
 | A results file was edited by hand | the file, which no longer matches what the analysis wrote | `analysis` |
 | The script that wrote a results file, or an input it declared, changed afterwards | which of them, and the script to run again | `analysis` |
 | A value taken from a paper is not in the sentence quoted as evidence for it | the value and the quote; the quote itself has to be in the stored source | `drafting` |
+| A cited work has been retracted | the reference, and the registry that says so, from what `lookup` recorded | `drafting` |
+| A DOI or PMID names another work than the one cited | the reference, and what the registry has under it | `internal-review` |
 | A number was typed into text that a figure draws | the line of the figure's script | `drafting` |
-| A threshold or software version the analysis declares was typed into the Methods | the number, with its line and column, and the binding to write | `drafting` |
-| The analysis declares a parameter and never reads it | the parameter | `analysis` |
 | A model does not suit its variables: a binary outcome under a linear model, a categorical code entered as one slope, a reference other than the one declared, a level with no events | the model and the variable | `analysis` |
 | The analysis changed after the Methods were last read against it | the files that changed | `internal-review` |
-| A marked step of the code, or the Methods text pointing at it, changed after the two were read together | the step and the paragraph to read again | `internal-review` |
-| The Methods point at a step the run never took | the anchor, with its line | `design` |
-| A reporting checklist item (STROBE, CONSORT, PRISMA and others) is not addressed | each item still open | `internal-review` |
+| A count below the data custodian's minimum is printed | the count and its key | `internal-review` |
+| A reporting checklist item (CONSORT, STROBE, PRISMA and others) is not addressed | each item still open | `internal-review` |
 | The journal's word limit, a required section or a required statement is missed | which one | `internal-review` |
+| A co-author's comment in Word has no answer | the comment, by its file and line or by its words | `submission` |
+| A registered outcome is reported nowhere, and the Deviations do not say why | the registration and the outcome | `submission` |
 | A reply to a reviewer claims a revision that was not made | the point | `submission` |
-| A number sits in TeX that Word would silently drop | the piece of TeX and its line, where pandoc is installed; `build` refuses it too | `drafting` |
 
 `check` knows that a results file is out of date from digests: of the script that wrote
 it, and of the inputs that script declared. It does not follow imports, so a change in a
@@ -83,6 +133,31 @@ for a line left out, and other findings follow from the same edit:
          hint: results are machine-written; change the analysis and re-run it rather than editing this file
 ```
 
+## The guidelines it answers to
+
+| Guideline | What is checked | Gate |
+|---|---|---|
+| Reporting checklists: CONSORT 2025, SPIRIT 2025, STROBE, RECORD, RECORD-PE, PRISMA 2020, TRIPOD+AI, STARD 2015, CHEERS 2022, ARRIVE 2.0, READUS-PV, and SANRA for a narrative review | each item says where it is addressed, or why it does not apply; a warning where the study design declared has none of its guidelines, and where a guideline's authors have replaced it | G5 |
+| The journal's instructions for authors | each rule quoted from the journal's stored page: limits, sections, required statements, the data availability statement against the data policy, artwork, the boxes beside the abstract | G4 |
+| ICMJE's recommendations | tables and figures cited in the order of their first citation; an earlier output of the same data disclosed | G2, G8 |
+| The study's registration, at ClinicalTrials.gov, the EU PAS register, OSF or ISRCTN | made before the study started, or said to be retrospective; each registered outcome reported in the registry's words and role, or its absence said | G12 |
+| Text recycling (Text Recycling Research Project; COPE and BioMed Central) | passages shared with the authors' earlier papers, with the part of the paper each is in | G7 |
+| Methods standards: the ENCePP Guide, target trial emulation, ROBINS-I, RoB 2, PROBAST+AI, ROBIS and others | a method taken from a similar study is appraised against one, and taken on a person's decision | G12 |
+| The data custodian's rules | no count printed below the custodian's minimum; a restricted input never packaged | G2, `package` |
+
+**How it keeps up.** A checklist is downloaded from its authors' site (`fetch`) and turned
+into items by a recipe (`transcribe`), never typed from memory; a new edition is a new
+recipe, and the items are made again from the new document. A journal's page read again
+(`journal --reread`) shows which rules changed. `check` lists each item still open at every
+run, so the checklist is kept from the first draft rather than filled in at the end. How much
+time this saves has not been measured.
+
+**What it does not do.** G5 holds that each item names a place or a reason, and warns where
+the place is no heading of the manuscript; whether the text there does what the item asks is for a reader, and the starter
+panel of a review round has a reporting-guideline reviewer for it. The checklists are not shipped, since each has its own licence:
+`fetch` and `transcribe` make each one once, on your machine. [The guidelines](docs/guidelines.md)
+has each row in full.
+
 ## How it works
 
 The manuscript source is Markdown. Numbers appear in it as bindings:
@@ -93,9 +168,12 @@ The database contained {{results.cohort.n_reports}} reports, of which
 {{results.ror.point}} (95% CI {{results.ror.ci_low}} to {{results.ror.ci_high}}).
 ```
 
-A table or a figure is placed by its key, `{{table.baseline}}`, and pointed at by it:
-`{{ref.table.baseline}}` prints "Table 2" if it is the second table the main text places,
-and the number follows the table when it moves.
+A value from a paper is bound the same way, `{{lit.background.class_ror}}`, to an entry of
+`literature/ledger.yaml` that holds the value, the sentence it was quoted from and the stored
+copy of the source. A table or a figure is placed by its key, `{{table.baseline}}`, and
+pointed at by it: `{{ref.table.baseline}}` prints "Table 2" if it is the second table the
+main text places, and the number follows the table when it moves. In LaTeX the binding is
+`\mg{results.cohort.n_reports}` ([LaTeX manuscripts](docs/latex.md)).
 
 Your analysis publishes those values through an emitter, which records where they came
 from. There is one for Python and one for R, and anything that can write JSON can take part:
@@ -109,9 +187,13 @@ em.value("ror.point", 3.4211, digits=2)
 em.write()
 ```
 
-Then two commands do most of the work:
+An output a script writes on its own, a `.csv`, `.tsv` or `.json`, is taken in by
+`harvest` ([harvest](docs/harvest.md)).
+
+Then three commands do most of the work:
 
 ```bash
+manuscript-guard next      # what to do now, with the command to run
 manuscript-guard check     # every gate, against the source
 manuscript-guard build     # the .docx, with live Zotero citations
 ```
@@ -182,49 +264,22 @@ manuscript-guard checker status                         # outstanding, stale, an
 manuscript-guard checker recap                          # who checked what, into checks/recap.md
 ```
 
-`build` writes **one file**. It carries every item, the sentences each value appears in, and the
-evidence rendered into the file itself: images as data URIs, tables and excerpts as data. It
-opens by double-clicking, in any current browser, offline — nothing installed, no account, no
-network,
-and nothing sent anywhere by the page. The person presses a button and sends back the answers
-file.
+`checker build` writes one file for each person, which opens in any current browser, offline,
+with nothing installed and nothing sent anywhere by the page. It asks about the values quoted
+from the literature, the sentences that cite something, each Methods text beside the code it
+points at, the references and the authors. Each answer carries the digest of what its maker
+saw, so an answer about a sentence that has changed since no longer counts as agreement, and
+`checker recap` writes who checked what, tamper-evident by an unsigned hash chain over the
+record. What this gives you is a record of who looked, at what exactly, when, and what they
+said. It is not a proof that they read it correctly, and nothing here checks their reading.
 
-What is asked is found from the project's own files: the values quoted from the literature with
-the passage each came from, the sentences that cite something, with the passage of the cited
-work recorded as supporting each where there is one, each Methods text beside the code of the
-steps it points at (and each Methods paragraph pointing at none, as "no code is linked to this
-text"), the references, and the authors. A Methods item is answered "Text matches the code",
-"Text needs changing", "Code needs changing" or "Not sure".
-A number transcribed from a table in a source document is not among them and cannot be — only
-the project knows which row it came from — so a project that traces its own numbers adds them in
-`checks/items.json`.
-
-A group the project fills, it fills alone: one contributed item in a group means none of the
-toolkit's are added to it, since the two are keyed differently and a co-author would otherwise
-read the same value twice.
-
-Every answer carries the digest of the item as its maker saw it. If the sentence or the value
-moved after they looked, the answer does **not** count as agreement: their yes was about text
-nobody has now, and the item is outstanding again. Each page carries the name it was built for
-and a token whose digest `checks/bundles.csv` keeps, so a file that names a page and does not
-match it is refused; one from no page this project built is recorded as claimed. `checks/decisions.csv` is append-only, because
-"was this checked, by whom, and when" is a question asked months later, by whoever is answering a
-reviewer.
-
-`recap` writes `checks/recap.md`: each change a co-author asked for, in the manuscript with its
-sentence or in the code with its steps, what is still open, the notes on versions of an item
-that are gone, and a table of who verified each item. It is tamper-evident by a hash chain,
-unsigned: its last section carries the head of a chain over `checks/decisions.csv`, and
-`checker recap --check` makes it again and names the first line that differs, so a hand edit
-of any line but the one naming the earlier recap (taken as the file gives it, and said to be
-unverified), or a row of the record edited, deleted or moved, shows against a copy kept
-elsewhere. Someone who can write the record and every copy can still rewrite both. `submit`
-packs the tables as `coauthor-verification.md` and warns of each `wrong` or `code` still
-open, until any later answer by the person who gave it, or an edit to the item, closes it;
-it does not refuse.
-
-What this gives you is a record of who looked, at what exactly, when, and what they said. It is
-not a proof that they read it correctly, and nothing here checks their reading.
+The rest of a co-author's part is in Word. `import` brings their edits back into the source
+and files each of their comments as a finding to answer; `review --suggestions` writes the
+edits a panel's findings suggest into a Word document as tracked changes, for the author to
+accept or refuse; `approve`
+records an author's approval of the manuscript as it stands; and `build --marked-up` writes
+the revision with every change since the version the journal received.
+[Working with co-authors](docs/co-authors.md) has the detail of each.
 
 ## Install
 
@@ -234,6 +289,16 @@ Python 3.10 or later:
 pip install manuscript-guard
 manuscript-guard --version
 ```
+
+To audit one paper without installing anything, [uv](https://docs.astral.sh/uv/) runs it in
+one line, fetching a Python if there is none:
+
+```bash
+uvx manuscript-guard audit paper.docx
+```
+
+Or, with no terminal at all, [the audit page](docs/audit-page.md) runs `audit` on a .docx in
+a web browser, and the paper is not uploaded.
 
 To build a .docx you also need [pandoc](https://pandoc.org/installing.html). Zotero, R, and
 `pdftotext` or pypdf for reading PDFs, are needed only for particular things, and the tool
@@ -356,9 +421,9 @@ a gate never does, and because it takes as long as the analysis does.
 ## Agent tools
 
 The pip package is the whole guarantee and needs nothing else. An agent tool adds two
-things: skills, for the parts that need judgement, and hooks, which catch a mistake at the
-moment it is made. [Agent tools](docs/agent-tools.md) says what each tool enforces and what
-it does not.
+things: skills, which carry an agent through the steps that need judgement, and hooks,
+which catch a mistake at the moment it is made and put to you the calls only you may make.
+[Agent tools](docs/agent-tools.md) says what each tool enforces and what it does not.
 
 ### The Claude Code plugin
 
@@ -369,13 +434,14 @@ claude plugin marketplace add BasileChretien/manuscript-guard
 claude plugin install manuscript-guard@manuscript-guard
 ```
 
-Twenty-one skills. Start with `project-setup`, and work through the paper with `guide`;
-most of the others name the finding codes that should send you to them.
+Start with `guide`, which works through the paper with its author from `manuscript-guard
+next`, and `project-setup`, which starts the project; most of the other skills name the
+finding codes that should send you to them.
 
 | Skill | For |
 |---|---|
-| `project-setup` | starting a paper project, and the daily loop from analysis to .docx |
 | `guide` | the paper worked through with its author turn by turn, from `manuscript-guard next`: each choice put as numbered options, each step handed to its skill |
+| `project-setup` | starting a paper project, and the daily loop from analysis to .docx |
 | `results-binding` | publishing values from the analysis, and turning a red number into a bound one |
 | `analysis-plan` | writing the plan before the analysis, and recording deviations from it |
 | `data-sources` | the datasets that could answer the question, how each is reached and on what terms, chosen by the author |
@@ -401,9 +467,11 @@ Five hooks: one line on the project's state when a session starts, ending with w
 `manuscript-guard next` puts first, and again at the end of a turn that changed the
 manuscript or what it rests on; a refusal to edit files that are machine-written; a note on
 the numbers just saved in a manuscript file; and the submission check before a command that
-looks like a submission. Where the data are held in a [vault](docs/vault.md), the session's
-first line says whether the agent can read them, and a command that names their folder is
-refused while it can.
+looks like a submission. An author's approval, a named person's sign-off, an attester named
+in `literature/attested.yaml` and a panel sent to the models without asking are each put to you before they
+run, and refused where nobody can be asked. Where the data are held in a
+[vault](docs/vault.md), the session's first line says whether the agent can read them, and a
+command that names their folder is refused while it can.
 
 ### Codex
 
@@ -419,7 +487,7 @@ By Codex's documentation, it runs a hook only after you have trusted it, under `
 ### Gemini CLI, Mistral Vibe, Kimi Code CLI and other tools
 
 By their own documentation these read skills from a folder, and one command copies the
-sixteen there:
+skills there:
 
 ```bash
 manuscript-guard install-skills              # for you, in every project: ~/.agents/skills
@@ -431,8 +499,8 @@ everywhere.
 
 | | Skills | Hooks |
 |---|---|---|
-| Claude Code | plugin | four |
-| Codex | plugin | four, once you have trusted them |
+| Claude Code | plugin | five |
+| Codex | plugin | five, once you have trusted them |
 | Gemini CLI, Mistral Vibe, Kimi Code CLI | copy | none |
 
 ## More
@@ -442,6 +510,8 @@ everywhere.
 | [Installing and upgrading](docs/install.md) | upgrades, optional tools, the R emitter |
 | [Checking a paper in GitHub Actions](docs/github-actions.md) | the workflow `init --github-actions` writes: check on each push and pull request, the documents built where it passes, what CI cannot reach, and a badge that says the stage the check passes at |
 | [Stages](docs/stages.md) | which findings bind when, from the analysis plan to submission |
+| [The guidelines](docs/guidelines.md) | the reporting checklists, ICMJE, the journal's instructions, the registration, text recycling, methods standards and the custodian's rules: what each check holds, and what it leaves to a reader |
+| [Working with co-authors](docs/co-authors.md) | edits and comments in Word, suggested edits as tracked changes, approvals, the marked-up revision, and the checker for what no gate can check |
 | [Journal profiles](docs/journal-profiles.md) | the journal's rules quoted from its page: the boxes beside the abstract, a graphical abstract, what may be shared |
 | [What to do next](docs/next.md) | `next`: the order it decides in, and its JSON for an agent |
 | [Principles](docs/principles.md) | what the check guarantees, and why it is built this way |
@@ -461,24 +531,34 @@ everywhere.
 
 ## Status
 
-Alpha. One real manuscript has been through it: a narrative review by the toolkit's author,
-written with it since September 2026. On 2026-11-04, with 0.2.473, it went through `check`,
-`lookup`, `build` (live and offline), `verify`, which ran the analysis again and reproduced
-each of its 1,483 values, and `import` of two rounds of edits made in Word 16 as a co-author
-would make them, by script rather than by a co-author. It stopped at the submission check,
-which asks for a review panel.
-`submit`, `review --run` and `package` have run on the worked example and the test suite's
-inputs only. `audit`, which reads a paper written some other way, has been pointed at one
-submitted paper, and what it found is recorded in DESIGN.md. G7's reference checks were
-measured on 2026-10-21 against the 740 references of 16 published open-access pharmacology
-and epidemiology papers: as published, 1.49 false alarms per 100 references in all,
-of which 0.68 from the search by title and the comparison of authors; 1.08
-from those two with every DOI and PMID taken out, so that each reference was searched for
-(DESIGN.md, "Measured on real papers"). What it claims rests on its
-tests and on the measurements recorded in [DESIGN.md](DESIGN.md), under "What a claim rests
-on". The gates still change from week to week: interfaces, file formats and what a gate
+Alpha. The gates still change from week to week: interfaces, file formats and what a gate
 reports can change without a migration path. Every round of review so far has found
 something the round before had opened up.
+
+What has run on real papers:
+
+- **One real manuscript**, a narrative review by the toolkit's author, written with it since
+  September 2026. On 2026-11-04, with 0.2.473, it went through `check`, `lookup`, `build`
+  (live and offline), `verify`, which ran the analysis again and reproduced each of its
+  1,483 values, and `import` of two rounds of edits made in Word 16 as a co-author would make
+  them, by script rather than by a co-author. It stopped at the submission check, which asks
+  for a review panel.
+- **`audit`**, which reads a paper written some other way, has been pointed at one submitted
+  paper, and what it found is recorded in DESIGN.md.
+- **G7's reference checks** were measured on 2026-10-21 against the 740 references of 16
+  published open-access pharmacology and epidemiology papers: as published, 1.49 false
+  alarms per 100 references in all, of which 0.68 from the search by title and the
+  comparison of authors; 1.08 from those two with every DOI and PMID taken out, so that each
+  reference was searched for (DESIGN.md, "Measured on real papers").
+- **G6's thresholds** for AI phrasing were set from how often it fires on 384 biomedical
+  research articles of 2010 to 2022, written by people; no text written by a model was read.
+
+The rest has run on the worked example and the test suite's inputs only: among it the review
+panel (`review --run`), the co-author checker, `submit`, `proof`, `package` and `deposit`,
+`communicate`, the vault and `compare`. No study has yet gone from its plan to publication
+with the toolkit, and two things have not been measured: how much of a study an agent can
+carry with it, and whether the research is better for it. What it claims rests on its tests
+and on the measurements recorded in [DESIGN.md](DESIGN.md), under "What a claim rests on".
 
 A passing `check` means that no finding due at the project's stage is open. At
 `submission` that is what the tables above describe; at an earlier stage the findings not

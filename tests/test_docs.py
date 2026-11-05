@@ -117,7 +117,7 @@ def test_the_readme_groups_the_commands_as_the_help_does() -> None:
         assert first_cells(table, "`([a-z-]+)`") == list(names), heading
 
 
-def test_the_readme_lists_the_gates_the_tool_has() -> None:
+def declared_gates() -> set[str]:
     declared = set()
     for module in pkgutil.iter_modules(manuscript_guard.gates.__path__):
         gate = getattr(
@@ -125,9 +125,86 @@ def test_the_readme_lists_the_gates_the_tool_has() -> None:
         )
         if gate:
             declared.add(gate)
+    return declared
+
+
+def test_the_readme_lists_the_gates_the_tool_has() -> None:
     listed = first_cells(section("What is checked"), r"(G\d+)")
     assert len(listed) == len(set(listed)), "a gate is listed twice"
-    assert set(listed) == declared
+    assert set(listed) == declared_gates()
+
+
+#: The pages that say in words how many gates or hooks there are.
+COUNTED = [README, DOCS / "agent-tools.md"]
+COUNT = re.compile(r"\b([a-z]+(?:-[a-z]+)?)\s+(gates|hooks)\b")
+
+
+def cells(row: str) -> list[str]:
+    """A row's cells, split on each pipe that is not escaped or inside a code span."""
+    kept = CODE.sub(lambda span: span.group().replace("|", "\0"), row.replace("\\|", "\0"))
+    return [cell.strip().replace("\0", "|") for cell in kept.strip().strip("|").split("|")]
+
+
+def hooks_cells(text: str) -> list[str]:
+    """Each cell under a table's "Hooks" heading, as "five, once you have trusted them"; a
+    row short of that column gives an empty cell."""
+    found = []
+    for table in re.findall(r"(?:^\|.*\n?)+", FENCE.sub("", text), re.MULTILINE):
+        lines = table.splitlines()
+        if len(lines) < 3:
+            continue
+        header, _rule, *rows = lines
+        if "Hooks" in cells(header):
+            column = cells(header).index("Hooks")
+            found += [(cells(row) + [""] * column)[column] for row in rows]
+    return found
+
+
+@pytest.mark.parametrize(
+    ("table", "hooks"),
+    [
+        ("| | Skills | Hooks |\n|---|---|---|\n| A | plugin | five |\n", ["five"]),
+        ("| | Skills | Hooks |\n|---|---|---|\n| A | copy |\n", [""]),
+        ("| | Reads | Hooks |\n|---|---|---|\n| A | `a|b` | four |\n", ["four"]),
+        ("| | Reads | Hooks |\n|---|---|---|\n| A | a \\| b | four |\n", ["four"]),
+    ],
+)
+def test_a_hooks_cell_is_read_in_its_column(table: str, hooks: list[str]) -> None:
+    assert hooks_cells(table) == hooks
+
+
+def test_a_count_of_gates_or_hooks_is_the_number_there_are() -> None:
+    """A count written out goes stale in silence: the README said "fifteen gates", and "four"
+    in the Hooks column of its table, long after there were more. Each "<number> gates" and
+    "<number> hooks" of these pages, a line break between the two words or not, and the
+    number each cell of a Hooks column opens with, is held to the gates the package declares
+    and the hooks the plugin registers. A Hooks cell's number is read as the count of all of
+    them, so a row for a tool that runs only some would fail here and need words of its own.
+    A count written any other way is not read here. The picture's count is the script's, and
+    the test of the pictures holds that."""
+    import json
+
+    words = {figures_script().in_words(number): number for number in range(100)}
+    config = json.loads((REPO / "plugin" / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+    hooks = sum(len(group["hooks"]) for groups in config["hooks"].values() for group in groups)
+    there_are = {"gates": len(declared_gates()), "hooks": hooks}
+    counted = {"prose": 0, "cells": 0}
+    for page in COUNTED:
+        text = text_of(page)
+        for word, noun in COUNT.findall(text.lower()):
+            if word in words:
+                counted["prose"] += 1
+                assert words[word] == there_are[noun], (
+                    f"{page.name} says {word} {noun}; there are {there_are[noun]}"
+                )
+        for cell in hooks_cells(text):
+            word = re.match(r"[a-z-]*", cell.lower()).group()
+            if word in words:
+                counted["cells"] += 1
+                assert words[word] == hooks, (
+                    f"{page.name}'s Hooks column says {cell!r}; there are {hooks}"
+                )
+    assert all(counted.values()), f"a pattern no longer matches anything: {counted}"
 
 
 # ------------------------------------------------------------------------------ pictures

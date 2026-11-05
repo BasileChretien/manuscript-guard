@@ -191,6 +191,8 @@ def test_only_the_report_and_the_documents_are_uploaded() -> None:
 @pytest.mark.parametrize(
     ("given", "fails", "said"),
     [({"OK": "true", "BUILT": "0", "DOCUMENTS": "2"}, False, ""),
+     ({"WANT_VERIFY": "true", "VERIFIED": "0", "OK": "true", "BUILT": "0", "DOCUMENTS": "2"},
+      False, ""),
      ({"OK": "false", "CHECKED": "1"}, True, "check fails at the stage"),
      ({"OK": "", "CHECKED": "2"}, True, "check did not run to the end (exit code 2)"),
      ({"OK": "true", "BUILT": "1"}, True, "build failed (exit code 1)"),
@@ -199,7 +201,8 @@ def test_only_the_report_and_the_documents_are_uploaded() -> None:
       "verify did not run to the end, or a step before it failed"),
      ({"WANT_VERIFY": "true", "VERIFIED": "1", "OK": "true", "BUILT": "0", "DOCUMENTS": "2"},
       True, "verify did not reproduce")],
-    ids=["passes", "check fails", "check did not run", "build failed", "no document",
+    ids=["passes", "passes with verify", "check fails", "check did not run", "build failed",
+         "no document",
          "verify did not run", "verify failed"],
 )  # fmt: skip
 def test_the_verdict_fails_the_job_for_each_reason_and_says_which(
@@ -210,7 +213,7 @@ def test_the_verdict_fails_the_job_for_each_reason_and_says_which(
            "PATH": os.environ.get("PATH", "")}  # fmt: skip
     ran = subprocess.run(["bash", "-c", step["run"]], env=env, capture_output=True,
                          text=True, timeout=60, check=False)  # fmt: skip
-    assert (ran.returncode == 1) is fails, ran.stdout
+    assert ran.returncode == (1 if fails else 0), (ran.stdout, ran.stderr)
     assert said in ran.stdout and ("::error::" in ran.stdout) is fails
 
 

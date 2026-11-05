@@ -205,8 +205,9 @@ def _clipped(text: str, most: int) -> str:
 
 def _recorded(lines: list) -> list[str]:
     """The lines on what was checked and recorded, as a block of text: each clipped to
-    `RECORDED_LINE` characters, and at most `RECORDED_LINES` of them. A reviewer's name is the
-    project's text, and a long one must not take GitHub's summary away."""
+    `RECORDED_LINE` characters and a mark that it was, and the first `RECORDED_LINES` of them,
+    with a line saying how many more there are. A reviewer's name is the project's text, and a
+    long one must not take GitHub's summary away."""
     kept = [_clipped(str(line), RECORDED_LINE) for line in lines[:RECORDED_LINES]]
     if len(lines) > RECORDED_LINES:
         kept.append(f"... and {len(lines) - RECORDED_LINES} more lines, in check.json")

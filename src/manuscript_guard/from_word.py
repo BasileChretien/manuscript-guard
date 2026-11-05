@@ -35,10 +35,17 @@ import json
 import re
 import subprocess
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import ContractError
+
+#: What runs pandoc for this module where it is not the pandoc on PATH: a function of
+#: pandoc's arguments, its standard input and the paper, that returns what pandoc prints and
+#: raises ContractError where pandoc fails. The in-browser audit page sets it to pandoc.wasm
+#: (`manuscript_guard.web`), having no program to start; None runs the pandoc on PATH.
+runner: Callable[[list[str], str | None, Path], str] | None = None
 
 #: The first bytes of a Word 97-2003 document, an OLE compound file, which pandoc cannot read.
 LEGACY_DOC = b"\xd0\xcf\x11\xe0"
@@ -152,6 +159,8 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
 def _pandoc(arguments: list[str], given: str | None, path: Path) -> str:
     from manuscript_guard.build.document import BuildError, pandoc
 
+    if runner is not None:
+        return runner(arguments, given, path)
     try:
         command = [pandoc(), *arguments]
     except BuildError as exc:

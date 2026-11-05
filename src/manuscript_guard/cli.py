@@ -82,6 +82,7 @@ from manuscript_guard.gates import (
     source_files,
     sync_bib,
 )
+from manuscript_guard.gates.currency import check_currency
 from manuscript_guard.gates.custodian import (
     check_recoverable,
     check_restricted_inputs,
@@ -192,6 +193,7 @@ def _gate_run(
         ("G7", lambda: check_literature_chain(project, literature)),
         ("G7", lambda: check_prose_quotations(project)),
         ("G7", lambda: check_passages(project, chosen)),
+        ("G7", lambda: check_currency(project, chosen, literature)),
         ("G7", lambda: check_weak_sources(project)),
         ("G7", lambda: check_recycling(project, chosen)),
         ("G4", lambda: check_journal(project)),
@@ -1665,8 +1667,9 @@ def _report_plan(
 
     def changed(was: str, now: str) -> None:
         # Each changed stretch, what was there and what is there now, with a few words
-        # either side. Cut to its first 150 characters, a paragraph hid an edit past them
-        # until it was applied, and the cut could fall inside a binding.
+        # either side, every changed word in it shown, and a binding, or a bracket or a short
+        # parenthesis that holds no other, never cut (`preview.changes`); where no word
+        # changed, the paragraph's opening words.
         found, more = changes(was, now)
         for removed, added in found:
             for mark, words in (("-", removed), ("+", added)):
@@ -1811,6 +1814,14 @@ def _report_plan(
     for name, rebuilt in plan.merged.items():
         print(f"\n{verb} into {where(name)}:")
         changed(known[name][1], rebuilt)
+        for words in plan.flattened.get(name, ()):
+            print(f"    written as Word's plain text: '{words[:110]}'")
+        if plan.flattened.get(name):
+            print(
+                "    The edit there meets bold, italics, code or a straight quote of the .md, "
+                "and Word's text does not say how they go round the new words, so they are "
+                "not kept there. Put them back in the .md where they mattered."
+            )
 
     for refusal in plan.refused:
         print(f"\nNOT merged into {where(refusal.name)}:")
@@ -3483,6 +3494,44 @@ def cmd_passages(args: argparse.Namespace) -> int:
     sources = project.path("literature") / "sources"
     listed = listing(found, project.root, sources, missing=args.missing, away=away(project))
     print(json.dumps(listed, indent=2, ensure_ascii=False) if args.json else rendered(listed))
+    return 0
+
+
+def cmd_references(args: argparse.Namespace) -> int:
+    """Whether each cited work is still the one to cite: alone, a row per claim in scope;
+    `--explain`, one entry; `--mark`, a claim marked; `--reading`, a reading filed and the
+    rules run; `--refuse`, a proposed change refused. Exit 2 where it will not do what it is
+    asked, with the reason."""
+    import json
+    from dataclasses import asdict
+
+    from manuscript_guard.currency import command
+
+    project, _ = load_project(args.path)
+    try:
+        if args.mark is not None:
+            words, key = args.mark
+            print(command.mark(project, words, key, args.as_, args.id))
+        elif args.reading is not None:
+            print(command.file_reading(project, args.reading))
+        elif args.refuse is not None:
+            if not args.why or not args.as_:
+                raise command.Refused("--refuse needs --why and --as, the reason and who "
+                                      "refuses")  # fmt: skip
+            print(command.refuse(project, args.refuse, args.why, args.as_))
+        elif args.explain is not None:
+            print(command.explain(project, args.explain))
+        else:
+            rows, unplaced = command.listing(project)
+            if args.json:
+                print(json.dumps({"claims": [asdict(row) for row in rows],
+                                  "unplaced": [entry.id for entry in unplaced]},
+                                 indent=2, ensure_ascii=False))  # fmt: skip
+            else:
+                print(command.rendered(rows, unplaced))
+    except (command.Refused, ContractError, FileExistsError) as exc:
+        print(f"manuscript-guard references: {exc}", file=sys.stderr)
+        return 2
     return 0
 
 
@@ -6108,7 +6157,7 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Analysis & Data",
      ("verify", "harvest", "vault", "values", "models", "dictionary", "palettes",
       "related")),  # fmt: skip
-    ("Literature", ("lookup", "search", "sync-bib", "sync-sources", "passages")),
+    ("Literature", ("lookup", "search", "sync-bib", "sync-sources", "passages", "references")),
     ("Co-Authors & Review", ("review", "checker", "import", "respond", "approve", "sign")),
     ("Build, Release & Communicate",
      ("render", "build", "submit", "package", "deposit", "proof", "communicate")),  # fmt: skip
@@ -7111,6 +7160,37 @@ def build_parser() -> argparse.ArgumentParser:
     )
     passages.add_argument("--json", action="store_true", help="the listing as JSON")
     passages.set_defaults(func=cmd_passages)
+
+    references = sub.add_parser(
+        "references",
+        help="whether each cited work is still the one to cite: claims, readings, decisions",
+        description="Lists each claim in the scope of reference currency (a sentence and a "
+        "work it cites that literature/currency.yaml marks, or whose lookup record says a "
+        "later version came since) with how far its entry got. --mark adds a claim; "
+        "--reading files a reading, sealed, and writes the rules' decision from two; "
+        "--refuse records a person's refusal of a proposed change. It searches nothing and "
+        "calls no model.",
+    )
+    references.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    action = references.add_mutually_exclusive_group()
+    action.add_argument("--explain", metavar="ID",
+                        help="one entry: its searches, readings and what the rules give")
+    action.add_argument("--mark", nargs=2, metavar=("WORDS", "@KEY"),
+                        help="mark the sentence citing KEY that holds WORDS as a claim to check")
+    action.add_argument("--reading", type=Path, metavar="FILE",
+                        help="file a reading, once and sealed, and run the rules for its entry")
+    action.add_argument("--refuse", metavar="ID",
+                        help="refuse an entry's proposed change (with --why and --as)")
+    references.add_argument("--why", help="--refuse: the reason")
+    references.add_argument(
+        "--as", dest="as_", metavar="PERSON",
+        help="--refuse: who refuses; --mark: who marks the claim",
+    )  # fmt: skip
+    references.add_argument("--id", metavar="ID",
+                            help="--mark: put this entry on the sentence again, where no "
+                            "sentence reads as it does; KEY may be the work it proposes")
+    references.add_argument("--json", action="store_true", help="the listing as JSON")
+    references.set_defaults(func=cmd_references)
 
     render = sub.add_parser("render", help="substitute bindings into build/rendered")
     render.add_argument("path", nargs="?", type=Path, default=Path.cwd())

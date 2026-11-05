@@ -5,16 +5,13 @@ description: Send a co-author a Word document built from the Markdown source, an
 
 # Bringing a co-author's Word edits back
 
-The .docx is a build artefact: the Markdown is the source, and the document is regenerated
-from it. That rule is right, and on its own it is unusable, because co-authors edit in
-Word. So the round trip exists, and the whole question is what it may carry back.
+The .docx is built from the Markdown source, but co-authors edit in Word: the round trip
+decides what their edits may carry back.
 
-It carries prose back and refuses everything that was generated. A naive import would
-replace each binding with the number it currently shows, and the manuscript would still pass
-every check, because the literals match the analysis today. It would fail quietly months
-later, the first time the analysis changed. So a paragraph where a number or a citation
-changed is refused, and the co-author's point has to be made at its source, in the analysis
-or the ledger.
+It carries prose back and refuses everything that was generated: a binding replaced by the
+number it shows would pass every check until the analysis changed. So a paragraph where a
+number or a citation changed is refused, and the co-author's point is made at its source, in
+the analysis or the ledger.
 
 **The round trip has never been through a real co-author round.** Earlier versions lost text
 while reporting success (step 4 lists what is now refused instead). Treat every `--apply` as
@@ -159,14 +156,19 @@ manuscript-guard check
 
 Read the whole diff. What to look for:
 
-- Formatting lost. An edited stretch of text comes back as plain text, so bold, italics and
-  inline code in it are gone. (A footnote, a comment, a link or an equation is refused
-  instead, because merging would delete it.)
-- Backslashes. Every character in Word's text that Markdown could read as markup is
-  escaped (`CYP2D6\*4`, `\@admin`, `US\$5`), and a `&lt;` of yours may come back as `\<`.
-  Each prints as it did. The exception is a straight quote: an escaped one of yours, `\"`,
-  comes back bare, and one the co-author typed is left bare, and pandoc curls both. Put a
-  backslash in front where the straight quote mattered. A co-author who only turned curly
+- Formatting lost. Only the words the co-author changed are written; the rest keeps your
+  bold, italics, code and straight quotes, and an edit inside bold or italics stays inside
+  it. Words typed where bold, italics or code opens or closes, or any edit in inline
+  code, bring that span back as plain text. Next to a straight quote of yours, after words deleted beside a
+  bracket or other markup, or in a paragraph whose prose holds a bare brace, the whole text
+  between the nearest numbers or citations comes back so, apostrophes curly. The import
+  lists each loss, a straight quote's too, under "written as Word's plain text". (A footnote, a comment,
+  a link or an equation is refused instead, because merging would delete it.)
+- Backslashes. Every character written from Word's text that Markdown could read as markup
+  is escaped (`CYP2D6\*4`, `\@admin`, `US\$5`), and a `&lt;` of yours in it may come back as
+  `\<`. Each prints as it did. The exception is a straight quote: an escaped one of yours,
+  `\"`, comes back bare, and one the co-author typed is left bare, and pandoc curls both.
+  Put a backslash in front where the straight quote mattered. A co-author who only turned curly
   quotes straight has changed nothing that reaches the build. A `{` typed straight before a
   binding comes back as `&lbrace;`. Leave it: a bare `{` there joins the binding's braces,
   and `check` reports `{{{results.x}}` as malformed. Once a `<` before a letter (`<LLOQ`,
@@ -178,10 +180,10 @@ Read the whole diff. What to look for:
   `<` and `>` with words between them as an HTML tag and drop everything from one to the
   other, and `check` reads `ROR \> 2` as the threshold it prints. A `<` before a number or
   a space, as in `p < 0.05`, opens nothing, and what follows it comes back as typed.
-- Invisible no-break spaces. A `\ ` or `&nbsp;` of yours in an edited stretch comes back as
-  the character itself. It prints as it did, but a diff can show a line as changed where
-  nothing visible changed. The one pandoc puts after "e.g." or "et al." is written back as a
-  plain space, because pandoc puts it back at the next build.
+- Invisible no-break spaces. A `\ ` or `&nbsp;` of yours in what is written from Word's
+  text comes back as the character itself. It prints as it did, but a diff can show a line
+  as changed where nothing visible changed. The one pandoc puts after "e.g." or "et al." is
+  written back as a plain space, because pandoc puts it back at the next build.
 - A number or citation the co-author typed. These merge as literals, and `check` then
   reports them as unbound. Bind the number, and turn the citation into `[@citekey]`: for
   the year of a citation typed as "(Name, 2018)" or "Name (2018)", the hint names the key
@@ -220,9 +222,8 @@ are brought in one after another.
 ## If you are a model doing this
 
 Never run `--apply` without having read the dry run in full, and never report an import as
-done without having read `git diff`. In earlier versions the command's exit code and its
-"bindings intact" line were both seen alongside a corrupted source, and the round trip has
-still not been through a real co-author round.
+done without having read `git diff`: its exit code and its "bindings intact" line have
+been seen beside a corrupted source.
 
 When a co-author changed a number, do not type their number into the source to make the
 paragraph merge. Ask whether the analysis should change, and if so, change it there.

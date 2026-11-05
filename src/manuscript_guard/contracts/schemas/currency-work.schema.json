@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/currency-work/1",
+  "title": "manuscript-guard works store record",
+  "description": "literature/currency/works/<doi-or-pmid>.yaml: what the registries said of one work a currency search found, or of a cited work, on the day they were asked: its identifiers, title, publication date at the precision given, publication types, integrity facts and abstract. Written by the tool and sealed by `answers_sha256`; kept out of git by default, since an abstract is the publisher's text.",
+  "type": "object",
+  "required": ["schema", "work", "identifiers", "fetched_on", "sources", "integrity", "answers_sha256"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/currency-work/1" },
+    "work": { "type": "string", "pattern": "^(doi:10\\.[^\\sA-Z]+|pmid:[1-9][0-9]*)$" },
+    "identifiers": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "doi": { "type": "string", "pattern": "^10\\.\\S+$" },
+        "pmid": { "type": "string", "pattern": "^[1-9][0-9]*$" }
+      }
+    },
+    "fetched_on": { "type": "string", "format": "date" },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "pattern": "\\S" },
+      "description": "The registries the facts below were read from."
+    },
+    "title": { "type": "string" },
+    "published": {
+      "type": "string",
+      "pattern": "^[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?$",
+      "description": "The publication date at the precision the registry gave it: a year, a month or a day."
+    },
+    "publication_types": { "type": "array", "items": { "type": "string" } },
+    "integrity": {
+      "type": "object",
+      "required": ["retracted", "withdrawn", "under_concern"],
+      "additionalProperties": false,
+      "properties": {
+        "retracted": { "type": "boolean" },
+        "withdrawn": { "type": "boolean" },
+        "under_concern": { "type": "boolean" },
+        "published_as": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^(doi:10\\.[^\\sA-Z]+|pmid:[1-9][0-9]*)$" },
+          "description": "For a preprint, the works it was published as since."
+        }
+      }
+    },
+    "abstract": { "type": "string" },
+    "answers_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

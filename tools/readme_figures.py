@@ -8,11 +8,15 @@ that text as `manuscript-guard check` printed it on the worked example, and
 `tests/test_docs.py` runs the same edit and fails if the tool no longer says it. The paths
 are written with forward slashes, as on Linux and macOS; Windows prints backslashes.
 
-The files are committed. Run this after changing `CARD`, a palette or a drawing, and commit
-what it writes: the same test fails while the two differ.
+The files are committed. Run this after changing `CARD`, a palette or a drawing, or after a
+gate is added, and commit what it writes: the same test fails while the two differ. The loop
+says how many gates there are, counted from the package, so it needs `manuscript_guard`
+importable.
 """
 from __future__ import annotations
 
+import importlib
+import pkgutil
 from html import escape
 from pathlib import Path
 
@@ -80,6 +84,37 @@ def card_svg(palette: dict[str, str]) -> str:
     ])
 
 
+def gate_names() -> set[str]:
+    """The gates the package declares: the `GATE` of each module of `manuscript_guard.gates`,
+    read as `tests/test_docs.py` reads them for the README's table."""
+    import manuscript_guard.gates as package
+
+    found = set()
+    for module in pkgutil.iter_modules(package.__path__):
+        gate = getattr(importlib.import_module(f"{package.__name__}.{module.name}"), "GATE", None)
+        if gate:
+            found.add(gate)
+    return found
+
+
+_ONES = (
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen",
+    "nineteen",
+)
+_TENS = ("", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety")
+
+
+def in_words(number: int) -> str:
+    """A count from nought to ninety-nine as the prose writes it: "seventeen", "twenty-two"."""
+    if not 0 <= number < 100:
+        raise ValueError(f"{number} is not a count this writes in words")
+    if number < 20:
+        return _ONES[number]
+    tens, ones = divmod(number, 10)
+    return _TENS[tens] + (f"-{_ONES[ones]}" if ones else "")
+
+
 #: The boxes of the loop: where each stands, its name, and one line under it. The widths
 #: leave room for a font wider than the one a title was measured in: a Linux page falls back
 #: to DejaVu Sans, whose bold is a quarter wider than Segoe UI's.
@@ -87,7 +122,7 @@ BOXES = {
     "analysis": (20, 60, 150, "Analysis", "Python or R"),
     "results": (200, 60, 150, "results/", "from the emitter"),
     "manuscript": (380, 60, 150, "Manuscript", "with {{bindings}}"),
-    "check": (560, 60, 150, "check", "fifteen gates"),
+    "check": (560, 60, 150, "check", f"{in_words(len(gate_names()))} gates"),
     "build": (740, 60, 120, "build", "the .docx"),
     "ledger": (370, 190, 170, "Literature ledger", "value, quote, source"),
     "rules": (550, 190, 170, "Journal profile", "reporting checklist"),

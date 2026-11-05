@@ -15360,20 +15360,26 @@ def test_a_figure_with_a_confusion_stops_g3_where_the_palettes_cannot_be_read(
         cleared()
 
 
-def test_a_figure_warned_for_a_deficiency_is_offered_a_palette_its_grey_check_warns_of() -> (
-    None
-):
+def test_a_figure_warned_for_a_deficiency_is_offered_a_palette_its_grey_check_warns_of(
+    project: Path,
+) -> None:
     """Known gaps (round 1 of #506, note 2): each hint is true for its own way of seeing. A
     figure warned for deuteranopia in a journal that prints in grey is offered `okabe-ito`,
     which the hint for grey does not offer, and whose own colours grey makes one."""
     from manuscript_guard import palettes
-    from manuscript_guard.colour import DEFICIENCIES, GREYSCALE, confusions, parse
-    from manuscript_guard.gates.figure_colours import OFFERED, _advice, _offered
+    from manuscript_guard.colour import GREYSCALE, confusions, parse
+    from manuscript_guard.gates.figure_colours import OFFERED
 
-    assert OFFERED == "okabe-ito"
-    for way in DEFICIENCIES:
-        assert "`okabe-ito`" in _advice(way, None), way
-    assert _offered(GREYSCALE) is None
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["figures"] = {"source_url": "https://journal.example/artwork",
+                           "read_on": "2026-10-21", "confirmed": True, "print": "greyscale"}
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    _painted(project, *_ONE_TO["deuteranopia"], *_ONE_TO[GREYSCALE])
+    assert ("figure-greyscale-confused", "warn") in _colours_said(project)
+    hints = _hints(project)
+    assert "`okabe-ito`" in hints["deuteranopia"], hints
+    assert "okabe-ito" not in hints[GREYSCALE], hints
     own = [parse(code)[0] for code in palettes.colours(OFFERED)]
     assert confusions(own, (GREYSCALE,)) != []
 

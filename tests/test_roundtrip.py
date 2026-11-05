@@ -4514,7 +4514,16 @@ def test_a_word_changed_in_word_keeps_the_bold_and_straight_quotes_beside_it(
     assert said.count("would merge into") == 2, said
     assert "written as Word's plain text" not in said, said
     assert path.read_text(encoding="utf-8") == before, "a dry run wrote"
-    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    code = main(["import", str(returned), str(project), "--apply"])
+    applied = capsys.readouterr().out
+    # The build Word's copy was saved from printed that machine's Python and statsmodels; a
+    # build elsewhere prints its own, which import refuses as a changed number. Only that may
+    # be left over (CI's Ubuntu job, round 2 of #516).
+    refused = [block for block in applied.split("\n\n") if "NOT merged into" in block]
+    for block in refused:
+        keys = re.findall(r"comes from (\S+?)\. ", block)
+        assert keys and all(k.startswith("results.software.") for k in keys), applied
+    assert code == (1 if refused else 0), applied
     expected = before.replace("is a common reason", "is a frequent reason", 1).replace(
         "reports repeated another's", "reports duplicated another's", 1
     )

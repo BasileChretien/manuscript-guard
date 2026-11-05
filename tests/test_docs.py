@@ -237,6 +237,54 @@ def test_the_citation_file_reads_and_names_no_version() -> None:
     assert "CITATION.cff" in text_of(README)
 
 
+def _folded(text: str) -> str:
+    """A YAML block scalar and a JSON string compare equal once the line breaks are spaces."""
+    return " ".join(text.split())
+
+
+def test_the_zenodo_file_says_what_the_citation_file_says() -> None:
+    """Zenodo's GitHub integration reads `.zenodo.json` for each release. It repeats what
+    CITATION.cff says, and the two are held equal so that neither is edited alone. It names no
+    version and no date: Zenodo takes both from the release."""
+    import json
+
+    import yaml
+
+    citation = yaml.safe_load((REPO / "CITATION.cff").read_text(encoding="utf-8"))
+    record = json.loads((REPO / ".zenodo.json").read_text(encoding="utf-8"))
+    assert record["upload_type"] == "software"
+    assert record["title"] == citation["title"]
+    assert _folded(record["description"]) == _folded(citation["abstract"])
+    assert record["keywords"] == citation["keywords"]
+    # Zenodo names licences by their SPDX identifier in small letters.
+    assert record["license"] == citation["license"].lower()
+    people = [
+        (f"{who['family-names']}, {who['given-names']}", who["orcid"].rsplit("/", 1)[-1],
+         _folded(who["affiliation"]))
+        for who in citation["authors"]
+    ]  # fmt: skip
+    assert [
+        (who["name"], who["orcid"], _folded(who["affiliation"])) for who in record["creators"]
+    ] == people
+    assert "version" not in record and "publication_date" not in record
+    assert citation["repository-code"] in [
+        related["identifier"] for related in record["related_identifiers"]
+    ]
+
+
+def test_the_funding_file_leads_to_the_funding_page() -> None:
+    """GitHub's Sponsor button reads `.github/FUNDING.yml`; its link to the page in the
+    repository has to name a page that is there."""
+    import yaml
+
+    funding = yaml.safe_load((REPO / ".github" / "FUNDING.yml").read_text(encoding="utf-8"))
+    assert funding["github"] == ["BasileChretien"]
+    citation = yaml.safe_load((REPO / "CITATION.cff").read_text(encoding="utf-8"))
+    page = (DOCS / "funding.md").resolve()
+    assert page.exists()
+    assert funding["custom"] == [f"{citation['repository-code']}/blob/main/docs/funding.md"]
+
+
 # ----------------------------------------------------------------------------------- PyPI
 
 #: A target that leads somewhere from any page: it names a scheme, or a place on the page.

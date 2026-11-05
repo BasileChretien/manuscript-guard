@@ -166,7 +166,8 @@ class _Paragraph:
     #: Its paragraph mark was deleted as a tracked change, so it runs on into the next one.
     runs_on: bool
     table: bool
-    #: It holds a picture: a figure, when it has no text and no identifier.
+    #: It holds a picture: a figure, when it has no text. An identifier on it is read as one
+    #: Word left there (`Block.stranded`).
     picture: bool = False
     tokens: tuple[tuple[int, int], ...] = ()
     #: The relationship ids of the pictures it shows, in order.

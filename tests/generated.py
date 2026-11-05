@@ -4856,6 +4856,103 @@ def vault_commands(draw: st.DrawFn) -> tuple[list[str], list[str | None]]:
     return [lines[at] for at in order], [expected[at] for at in order]
 
 
+#: The command under each name the guard lets a help through by, what it is asked that the
+#: submission guard holds, and what may stand before it (`hooks._submission_shaped`).
+_GUARDED_TOOLS = ("manuscript-guard", "mguard", "manuscript-guard.exe", "mguard.exe")
+_GUARDED_ASKS = ("submit --offline", "check --submission", "build --stage submission",
+                 "build --offline --stage submission")  # fmt: skip
+_GUARDED_BEFORE = ("", "cd paper && ", "FOO=1 ")
+_HELPS = ("--help", "-h")
+_SUBCOMMANDS = ("submit", "build", "check", "next", "install-skills")
+#: The one shape a help is let through in: a subcommand's, or the tool's own.
+HELP_ONLY = ("a subcommand's", "the tool's")
+#: And every other, so that the command is read as any other: no help; a help beside an option,
+#: quoted, after `--`, as a value or from a substitution; the tool by a path, after an
+#: assignment or run by Python; a space too many; a quote inside a word, which PowerShell 5.1
+#: hands on unescaped (round 3 of #513); a help beside a submission or among other commands; a
+#: line continued into a copy; a shell that runs the tool from a quote; a PowerShell expression.
+HELP_NOT_ONLY = ("none", "with an option", "quoted", "after the end of options", "as a value",
+                 "substituted", "by a path", "after an assignment", "run by Python",
+                 "a space too many", "a quote inside a word", "beside a submission",
+                 "among other commands", "continued", "in a shell", "in a shell, a join quoted",
+                 "a PowerShell expression")  # fmt: skip
+_CONTINUED = (" \\\n", " `\n")
+_COPIED = ("cp build/manuscript.docx D:\\upload", "scp build/manuscript.docx host:")
+_SHELLS = ('sh -c "{}"', "bash -c '{}'", 'pwsh -Command "{}"')
+_SHELL_HELPS = ("-h", "--help", '" -h "')
+_EXPRESSIONS = ("$ExecutionContext.InvokeCommand.InvokeScript('Copy-Item build/manuscript.docx x')",
+                "@{a=Copy-Item build/manuscript.docx x}", "(Copy-Item build/manuscript.docx x)")
+_QUOTED_HELPS = ('"--help"', "'-h'")
+_PATHS = ("./", ".venv/bin/", "C:/Tools/")
+_WORDS_WITH_A_QUOTE = ("""'x"'""", '"x"""', "'x y\\'")
+
+
+def _ordinary_command(draw: st.DrawFn) -> str:
+    head = draw(st.sampled_from(_SHELL_HEADS))
+    return " ".join([head, *draw(st.lists(st.sampled_from(_SHELL_ARGUMENTS), max_size=2))])
+
+
+def _among_others(draw: st.DrawFn, planted: list[str], least: int) -> str:
+    """The planted commands among ordinary ones, joined as a shell joins commands."""
+    parts = [_ordinary_command(draw) for _ in range(draw(st.integers(least, 2)))]
+    for one in planted:
+        parts.insert(draw(st.integers(0, len(parts))), one)
+    joins = [draw(st.sampled_from(_SHELL_JOINS)) for _ in parts[1:]]
+    return parts[0] + "".join(join + part for join, part in zip(joins, parts[1:], strict=True))
+
+
+def _help_line(draw: st.DrawFn, kind: str) -> str:
+    """A command line of the kind. Each that is not `HELP_ONLY` asks for a submission by
+    the markers main reads, so that the guard holds it."""
+    tool = draw(st.sampled_from(_GUARDED_TOOLS))
+    asked = draw(st.sampled_from(_HELPS))
+    helped = f"{tool} submit {asked}"
+    if kind == "a subcommand's":
+        return f"{tool} {draw(st.sampled_from(_SUBCOMMANDS))} {asked}"
+    if kind == "the tool's":
+        return f"{tool} {asked}"
+    simple = {
+        "with an option": f"{tool} {draw(st.sampled_from(_GUARDED_ASKS))} {asked}",
+        "quoted": f"{tool} submit {draw(st.sampled_from(_QUOTED_HELPS))}",
+        "after the end of options": f"{tool} submit -- {asked}",
+        "as a value": f"{tool} submit --title={asked}",
+        "substituted": f"{tool} submit " + draw(st.sampled_from(("$(echo --help)", "`echo -h`"))),
+        "by a path": draw(st.sampled_from(_PATHS)) + helped,
+        "after an assignment": "FOO=1 " + helped,
+        "run by Python": f"python -m manuscript_guard.cli submit {asked}",
+        "a quote inside a word":
+            f"{tool} submit --csl {draw(st.sampled_from(_WORDS_WITH_A_QUOTE))} {asked}",
+        "continued": helped + draw(st.sampled_from(_CONTINUED)) + draw(st.sampled_from(_COPIED)),
+        "a PowerShell expression": helped + " " + draw(st.sampled_from(_EXPRESSIONS)),
+    }
+    if kind in simple:
+        return simple[kind]
+    submits = f"{tool} {draw(st.sampled_from(_GUARDED_ASKS))}"
+    if kind == "none":
+        return draw(st.sampled_from(_GUARDED_BEFORE)) + submits
+    if kind == "a space too many":
+        spaced = (helped + " ", helped.replace(" ", "  ", 1), helped.replace(" ", "\t", 1))
+        return draw(st.sampled_from(spaced))
+    if kind.startswith("in a shell"):
+        run = draw(st.sampled_from(_SHELLS)).format(submits)
+        quoted = ' "a;b"' if kind.endswith("quoted") else ""
+        return run + " " + draw(st.sampled_from(_SHELL_HELPS)) + quoted
+    if kind == "beside a submission":
+        planted = [helped, submits]
+        return _among_others(draw, [planted[at] for at in draw(st.permutations(range(2)))], 0)
+    return _among_others(draw, [helped], 1)  # among other commands
+
+
+@st.composite
+def help_commands(draw: st.DrawFn) -> tuple[list[str], list[bool]]:
+    """A command line for each way of `HELP_ONLY` and of `HELP_NOT_ONLY`, in an order drawn
+    each time; and whether the guard holds it as a submission. Every example holds every
+    kind, so that a rule broken for one meets it under any seed."""
+    kinds = draw(st.permutations(HELP_ONLY + HELP_NOT_ONLY))
+    lines = [_help_line(draw, kind) for kind in kinds]
+    return lines, [kind in HELP_NOT_ONLY for kind in kinds]
+
+
 #: Each kind of column a table to profile holds, once in every table, and the type the data
 #: dictionary gives it, or None where the profile reads the type from the values:
 #: levels some of which are rare; levels whose only count held back is the rare ones', and
@@ -7179,6 +7276,71 @@ def edits(draw: st.DrawFn) -> tuple[str, str]:
     return before, "\n\n".join(paragraphs)
 
 
+#: The kinds of edit `previewed_edits` makes, one of each in every paragraph.
+PREVIEWED = ("replaced", "inserted", "deleted")
+#: The words of context `preview.CONTEXT` shows beside a change, written here so that the
+#: inputs do not change with the rule they test; `tests/test_preview.py` holds the two equal.
+PREVIEW_CONTEXT = 5
+
+
+@st.composite
+def previewed_edits(draw: st.DrawFn) -> tuple[dict[str, str], list[list[tuple[str, str]]]]:
+    """A paragraph as the source has it and as an edit left it, and for each changed stretch,
+    in order, the word each of its changes removed and added ("" for none). Every paragraph
+    has a stretch opening with an edit of each kind of `PREVIEWED`, in an order drawn each
+    time, and in one of them, drawn, a word replaced every six to ten words after it, as a
+    copy-editor goes through a sentence, so that it runs past forty words; the others have
+    up to two such. The words between changes hold spaces: citations of several works, in
+    brackets as the source writes them or in parentheses as Word prints them, each of more
+    space-separated pieces than `PREVIEW_CONTEXT`, so that wherever the words beside a change
+    are cut by spaces, it is inside one. Changes in one stretch stand at most twice the
+    context apart, which makes one stretch of them; two stretches stand further apart. The
+    words are drawn into lines as an author wraps them."""
+    context = PREVIEW_CONTEXT
+    cited = iter(range(1, 10_000, 10))
+
+    def held() -> str:
+        # Each citation its own, so that the two texts line up in one way only.
+        works, start = draw(st.integers(context + 1, context + 3)), next(cited)
+        if draw(st.booleans()):
+            return "[" + "; ".join(f"@key{start + n}" for n in range(works)) + "]"
+        return "(" + " ".join(f"Fictional{start + n}" for n in range(works - 1)) + " 2021)"
+
+    def run(least: int, most: int) -> list[str]:
+        return [held() for _ in range(draw(st.integers(least, most)))]
+
+    was = run(2 * context + 1, 2 * context + 3)
+    now = list(was)
+    expected: list[list[tuple[str, str]]] = []
+    kinds = draw(st.permutations(PREVIEWED))
+    long = draw(st.sampled_from(kinds))
+    for number, kind in enumerate(kinds):
+        old, new = {"replaced": (f"old{number}", f"new{number}"),
+                    "inserted": ("", f"added{number}"),
+                    "deleted": (f"removed{number}", "")}[kind]  # fmt: skip
+        was += [old] if old else []
+        now += [new] if new else []
+        stretch = [(old, new)]
+        more = draw(st.integers(6, 8)) if kind == long else draw(st.integers(0, 2))
+        for edit in range(more):
+            gap = run(context + 1, 2 * context)
+            was += [*gap, f"was{number}x{edit}"]
+            now += [*gap, f"now{number}x{edit}"]
+            stretch.append((f"was{number}x{edit}", f"now{number}x{edit}"))
+        expected.append(stretch)
+        tail = run(2 * context + 1, 2 * context + 3)
+        was += tail
+        now += tail
+
+    def written(words: list[str]) -> str:
+        return "".join(
+            (draw(st.sampled_from((" ", " ", "\n"))) if n else "") + word
+            for n, word in enumerate(words)
+        )
+
+    return {"was": written(was), "now": written(now)}, expected
+
+
 # ------------------------------------------------------- a response letter quoting a revision
 
 #: Where the words a response letter quotes stand: in v2 only, in both versions, in v1 only,
@@ -8938,6 +9100,104 @@ def addressed(draw: st.DrawFn) -> tuple[str, list[str]]:
     return text, keys
 
 
+# ------------------------------------------------------- a citation typed as text, G2
+
+#: A citation typed as text, each form G2's hint reads, `{n}` the first author's name, `{o}`
+#: a second's, `{y}` the year and `{z}` a second year.
+TYPED_CITATIONS = (
+    "({n}, {y})", "({n} {y})", "({n} et al., {y})", "({n} & {o}, {y})", "({n} and {o}, {y})",
+    "({n}, {o}, & {o}, {y})", "({o}, {z}; {n}, {y})", "{n} ({y})", "{n} et al. ({y})",
+    "{n} and {o} ({y})", "{n}, {o} and {o} ({y})",
+)  # fmt: skip
+#: A year that is no citation's: after a month, a sign or a lower-case word, alone, or in text.
+NOT_TYPED_CITATIONS = (
+    "(March, {y})", "(Sept {y})", "(n = {y})", "in {y}", "Table 2 ({y})", "({y})",
+    "(reports, {y})", "{y} ({n})",
+)  # fmt: skip
+#: First authors' names, and the word of each a family name is compared by.
+TYPED_NAMES = (
+    ("Fictional", "Fictional"), ("Ødegård", "Ødegård"), ("Smith-Jones", "Smith-Jones"),
+    ("Van der Berg", "Berg"), ("O'Neil", "O'Neil"), ("see Imaginary", "Imaginary"),
+)  # fmt: skip
+
+
+@st.composite
+def typed_citations(draw: st.DrawFn) -> tuple[str, list[tuple[int, int, str | None, str]]]:
+    """Text with a citation typed as text in each form of `TYPED_CITATIONS` and a year in
+    each of `NOT_TYPED_CITATIONS`, in an order drawn, parted by drawn words and a stop, and
+    for each year where it stands, the name the hint reads for it (None for no citation's)
+    and the year. Every form in every example, so that a rule broken for one fails under any
+    seed."""
+    years = st.builds(lambda y, s: f"{y}{s}", st.integers(1800, 2099), st.sampled_from(("", "a")))
+    others = st.sampled_from(("Other", "Second", "Dupont"))
+    shapes = [(shape, True) for shape in TYPED_CITATIONS]
+    shapes += [(shape, False) for shape in NOT_TYPED_CITATIONS]
+    text, found = "", []
+    for shape, cited in draw(st.permutations(shapes)):
+        written, compared = draw(st.sampled_from(TYPED_NAMES))
+        other = draw(others)
+        filled = {"{n}": written, "{o}": other}
+        named = {"{y}": compared if cited else None, "{z}": other}
+        words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+        text += f"{words} "
+        for part in re.split(r"(\{[noyz]\})", shape):
+            if part in named:
+                year = draw(years)
+                found.append((len(text), len(text) + len(year), named[part], year[:4]))
+                part = year
+            text += filled.get(part, part)
+        text += draw(st.sampled_from((". ", ".\n", "; ")))
+    return text, found
+
+
+#: A letter of a family name as a manuscript types it, as a reader without it types it, and
+#: as a .bib writes it in TeX, as Better BibTeX's BibTeX export does. The capitals open a name.
+TEX_LETTERS = (
+    ("\N{LATIN CAPITAL LETTER A WITH RING ABOVE}", "A", r"{\AA}"),
+    ("\N{LATIN CAPITAL LETTER S WITH CARON}", "S", r"\v{S}"),
+    ("\N{LATIN CAPITAL LETTER O WITH STROKE}", "O", r"{\O}"),
+    ("\N{LATIN SMALL LETTER A WITH RING ABOVE}", "a", r"{\aa}"),
+    ("\N{LATIN SMALL LETTER O WITH DIAERESIS}", "o", r"{\"o}"),
+    ("\N{LATIN SMALL LETTER U WITH DIAERESIS}", "u", r"\"{u}"),
+    ("\N{LATIN SMALL LETTER C WITH CEDILLA}", "c", r"\c{c}"),
+    ("\N{LATIN SMALL LETTER Z WITH CARON}", "z", r"{\v z}"),
+    ("\N{LATIN SMALL LETTER O WITH STROKE}", "o", r"{\o}"),
+    ("\N{LATIN SMALL LETTER L WITH STROKE}", "l", r"{\l}"),
+    ("\N{LATIN SMALL LETTER AE}", "ae", r"{\ae}"),
+    ("\N{LATIN SMALL LETTER SHARP S}", "ss", r"{\ss}"),
+    ("\N{LATIN SMALL LETTER E WITH ACUTE}", "e", r"\'{e}"),
+    ("\N{LATIN SMALL LETTER N WITH TILDE}", "n", r"\~{n}"),
+)  # fmt: skip
+#: TeX in a name the hint does not read, and the letters a manuscript types for it.
+TEX_UNREAD = ((r"{\IJ}", "IJ"), (r"\foreignlanguage{dutch}{IJ}", "IJ"))
+
+
+@st.composite
+def names_in_tex(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A `.bib` file with a work for each letter of `TEX_LETTERS`, its first author's family
+    name holding the letter in TeX, written "Family, Given" or "Given Family", and one whose
+    name holds TeX of `TEX_UNREAD`; and for each, the citation a manuscript types for it, the
+    letter as typed or as a reader without it types it, with the key. Every letter in every
+    example, so that a reading broken for one fails under any seed."""
+    # No "e" or "s" around the letter: "oe" and "ss" are a transcription of their own.
+    part = st.text("abdfghikmnoprtuvz", min_size=1, max_size=5)
+    entries, cited = [], []
+    shapes = [(letter, typed, tex, True) for letter, typed, tex in TEX_LETTERS]
+    shapes += [(typed, typed, tex, False) for tex, typed in TEX_UNREAD]
+    for number, (letter, plain, tex, read) in enumerate(draw(st.permutations(shapes))):
+        head = "" if letter[0].isupper() else draw(st.sampled_from("BDGKMPTV"))
+        tail = draw(part)
+        written = draw(st.sampled_from((letter, plain))) if read else plain
+        year = 1900 + draw(st.integers(0, 120))
+        key = f"work{number}"
+        family = f"{head}{tex}{tail}"
+        author = draw(st.sampled_from((f"{family}, Anne", f"Anne {family}")))
+        entries.append(f"@article{{{key},\n  author = {{{author} and Other, Eve}},\n"
+                       f"  year = {{{year}}},\n}}\n")  # fmt: skip
+        cited.append((f"({head}{written}{tail}, {year})", key))
+    return "\n".join(entries), cited
+
+
 # --------------------------------------------- escaped backticks beside an escaped comparison
 
 #: Pieces of a paragraph with backticks and escaped comparisons in them, each closing every
@@ -9235,6 +9495,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "interval order": intervals(),
     "pointers": numbered_displays().map(lambda drawn: {"files": drawn[0]}),
+    "typed citations": st.one_of(typed_citations().map(lambda drawn: drawn[0]), texts()),
     "quoted whole": texts(WHOLE),
     "labels": texts(LABELLED),
     "data dates": texts(DATED),
@@ -9285,6 +9546,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),
     "deposit named": texts(DOI_NAMED + DOI_NOT_NAMED),
     "vault named": vault_commands().flatmap(
+        lambda drawn: st.sampled_from([{"command": line} for line in drawn[0]])
+    ),
+    "submission shaped": help_commands().flatmap(
         lambda drawn: st.sampled_from([{"command": line} for line in drawn[0]])
     ),
     "data profile": profile_tables(),
@@ -9362,6 +9626,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "import": sessions(),
     "supplementary methods": supplements().map(lambda drawn: drawn[0]),
     "reworded": edits(),
+    "preview": previewed_edits().map(lambda drawn: drawn[0]),
     "response letter": response_letters().map(lambda drawn: drawn[0]),
     "marked up": revisions().map(lambda drawn: drawn[0]),
     "word blocks": figures_left_on().map(lambda drawn: drawn[0]),

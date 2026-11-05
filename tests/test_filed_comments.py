@@ -468,6 +468,29 @@ def test_a_comment_on_white_space_alone_quotes_no_words(project: Path) -> None:
     assert "c1, on a heading: Why this database?" in found.message, found.message
 
 
+def test_a_point_comment_on_a_changed_paragraph_is_placed_nowhere(project: Path) -> None:
+    """Known gaps (round 1 of #511): a comment made at a point covers no words, so once its
+    paragraph has changed there is neither a digest nor words to find it by, and the finding
+    says no place at all."""
+    found = _comment_on(project, "mg-p-maincbb16c-12", "", digest=False)
+    assert "c1, on a paragraph: Why this database?" in found.message, found.message
+    assert "line" not in found.message.split("Why")[0]
+
+
+def test_words_that_stand_twice_are_quoted_though_the_named_paragraph_holds_them(
+    project: Path,
+) -> None:
+    """Known gaps (round 2 of #511): how often the words stand is counted before the paragraph
+    the identifier names is looked in. "a synthetic spontaneous reporting" stands in the
+    abstract and in the Methods paragraph the comment was filed on, so a comment on that
+    paragraph, changed since, has its words quoted rather than its line named."""
+    found = _comment_on(project, "mg-p-maincbb16c-12", "a synthetic spontaneous reporting",
+                        digest=False)  # fmt: skip
+    assert 'c1, on a paragraph, at the words "a synthetic spontaneous reporting": Why' in (
+        found.message
+    ), found.message
+
+
 # ------------------------------------------------------------------------- import files them
 
 

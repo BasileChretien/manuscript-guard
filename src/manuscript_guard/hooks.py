@@ -1268,7 +1268,7 @@ def guard_submission(payload: dict) -> int:
     sends = sends or _opens_report(command)
     sends = sends or _moves_stage_back(command, payload)
     sends = sends or _or_nothing(lambda _path: _reads_in_confidence(command), Path("."))
-    if not SUBMISSION_MARKERS.search(command):
+    if not _submission_shaped(command):
         return _ask("PreToolUse", sends, payload) if sends else 0
 
     root = _project_root(payload)
@@ -1295,6 +1295,20 @@ def guard_submission(payload: dict) -> int:
 #: Where one invocation of the command ends: at the next `;`, `&`, `|` or line, or at the
 #: next invocation.
 _INVOCATION_END = re.compile(r"[;&|\n]|" + _TOOL + r"[A-Za-z]", re.IGNORECASE)
+#: The one command let through for its help: the tool by its name alone, a subcommand or none,
+#: and `-h` or `--help`, one space between, and nothing else. Three rounds of review each found
+#: a way past a broader reading, through a line continued in one shell only, an expression
+#: PowerShell evaluates in an argument, and a quote PowerShell 5.1 hands on unescaped (#513).
+_ONLY_HELP = re.compile(r"(?:manuscript-guard|mguard)(?:\.exe)?(?: [a-z][a-z-]*)? (?:-h|--help)")
+
+
+def _submission_shaped(command: str) -> bool:
+    """Whether the command looks like a submission (`SUBMISSION_MARKERS`) and is not exactly the
+    tool asked for its help (`_ONLY_HELP`): `manuscript-guard submit --help` prints the options
+    of `submit` and exits, and it was refused while the submission check failed."""
+    return _ONLY_HELP.fullmatch(command) is None and SUBMISSION_MARKERS.search(command) is not None
+
+
 _REVIEW = re.compile(_TOOL + r"review\b", re.IGNORECASE)
 _APPROVE = re.compile(_TOOL + r"approve\b", re.IGNORECASE)
 _SIGN = re.compile(_TOOL + r"sign\b", re.IGNORECASE)

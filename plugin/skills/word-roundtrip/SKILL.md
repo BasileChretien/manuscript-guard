@@ -105,7 +105,7 @@ It changes nothing and reports each paragraph:
 | `would merge into manuscript/…` | reworded prose; the bindings and citations in it survive |
 | `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`; a table's number printed by a ref: `'Table 2' comes from ref.table.two_by_two`), the paragraph was split or has new text beside it, its identifier came back on text that is not its own (a paste or a copy landed in front of it), a heading was joined into it, a heading or other block beside it changed in the `.md` since the build or, in a document forced in, prints otherwise now or was deleted in Word (a heading run into it could not be told from a rewording), text was typed where it renders nothing, a line directly under it looks as if it opens or closes a block (such as an unmatched `\end{table}`; a paragraph with a fence, `</div>` or a definition under it, or a comment in it that closes past it, carries no identifier, and its edit is listed instead), it holds a `<!--` that never closes, Word shows it as more than one paragraph, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, the text between two numbers or citations was deleted so they would touch, Word draws something in it that has no text the source can hold (named: `Wingdings character F04A`, often an AutoCorrect symbol for `:)` or `-->`, or a piece of a tall bracket; retype it as the character itself, or make the edit in the `.md`), it holds a private-use character (named: `private-use character F06D`, a symbol or icon font's own code, which the build would draw in the body font; retype the character itself), part of it is in the Symbol font because a style, the defaults or the theme sets it (read, but not taken as exact; set the font on the text itself), everything but a table, figure or misspelt placeholder was deleted so it would build with no identifier, the braces would not pair (a brace kept from the .md lost its partner, edited, moved or deleted in Word, or a brace typed in Word pairs with nothing), or its numbers, citations and markup could not be told apart from its prose, as when two tokens touch in the source; or reworded so, the next build would give it no identifier. The whole paragraph is refused, including any rewording in it |
 | `came back joined into one` | two or more paragraphs were merged in Word. Not applied; join them in the `.md` yourself |
-| `deleted in Word, left in place here` | deleted outright or as a tracked change. Not applied; delete it in the `.md` yourself if that was intended. If it was in fact moved, move it in the `.md`: never retype Word's copy, which has numbers where the source has bindings |
+| `deleted in Word, left in place here` | deleted outright or as a tracked change. Not applied; delete it in the `.md` yourself if that was intended. If it was in fact moved, move it in the `.md`: never retype Word's copy, which has numbers where the source has bindings. If its identifier came back on the figure or equation after it, import says so: that figure is still found |
 | `moved in Word, left in place here` | cut and pasted where Word recorded no move of whole paragraphs: Track Changes off, a document built before Word could record moves (import says so), or move tracking turned off in Word. Word's copy is shown under it. Not applied; move it in the `.md` and make any rewording there. Never delete it and retype Word's copy. If its identifier came back on the figure or equation after it, import says so: that figure is still found |
 | `came back in a different place` | a move within one section (between the same two headings, tables, figures, lists, quotations or other blocks without an identifier, including an HTML comment or `\newpage`, which Word does not show), made by cut and paste with Track Changes on, which Word records; `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
 | `came back in a different place, not applied` | a recorded move in a section that also gained text - a paragraph split, a new one, an edited heading or caption, quoted under it - or holds a paragraph whose identifier came back on other text, so where its paragraphs now stand cannot be read with certainty. Move them in the `.md` yourself |
@@ -126,9 +126,10 @@ figure or equation that was moved or could not be found, and any paragraph witho
 identifier that came back different or in a different order, makes the command exit 1,
 with or without `--apply`; the safe changes are still applied.
 
-A `would merge` line shows the Markdown that will be written, bindings included; a `NOT
-merged` line shows what came back from Word. The stamp check refuses a document built from
-a different version of the source; see step 6.
+Under `would merge`, each change is shown in the Markdown, bindings included, with a few
+words either side: `-` what the source has there, `+` what will be written. Under `NOT
+merged`, `-` is the paragraph as sent and `+` as Word returned it, where they differ. The
+stamp check refuses a document built from a different version of the source; see step 6.
 
 For the paragraphs nobody compared, look yourself. Converting both documents to text shows
 every difference, compared or not:
@@ -182,7 +183,10 @@ Read the whole diff. What to look for:
   nothing visible changed. The one pandoc puts after "e.g." or "et al." is written back as a
   plain space, because pandoc puts it back at the next build.
 - A number or citation the co-author typed. These merge as literals, and `check` then
-  reports them as unbound. Bind the number, and turn the citation into `[@citekey]`.
+  reports them as unbound. Bind the number, and turn the citation into `[@citekey]`: for
+  the year of a citation typed as "(Name, 2018)" or "Name (2018)", the hint names the key
+  of each work `references.bib` holds by that first author's name from that year, or says
+  to add the work if it is not there. Check that the work named is the one meant.
 - A binding cut short, a `{{` without its `}}`. `check` now reports it as a malformed
   placeholder; it should not happen, and if it does, it is a bug to report.
 

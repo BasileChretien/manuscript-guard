@@ -220,7 +220,9 @@ WORDS_BESIDE = 4
 #: written as Thai is and counted as it is; no corpus of them was measured. Each size is
 #: rounded up and each count down, so that a quote of average words is counted no longer
 #: than a person would count it and a short one is still warned of; one of long words, a
-#: long Katakana loanword or a Thai compound, counts longer (DESIGN.md, Known gaps).
+#: long Katakana loanword or a Thai compound, counts longer (DESIGN.md, Known gaps). A run
+#: between spaces that holds a letter is one word at the least, rounded down or not, as
+#: every such run was before these scripts were counted by their letters.
 UNSPACED: tuple[tuple[int, tuple[tuple[int, int], ...]], ...] = (
     (
         2,

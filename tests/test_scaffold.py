@@ -290,6 +290,23 @@ def test_init_names_the_folders_it_made_in_a_project_under_way(tmp_path: Path, c
     assert f"made {root / 'results' / '.gitkeep'}" in said
 
 
+def test_a_paper_yaml_alone_is_taken_for_a_project_under_way(tmp_path: Path, capsys) -> None:
+    """Known gaps (round 1 of #509): a paper.yaml alone marks a project under way, whatever
+    is in it. In a folder holding only one written by hand, init writes a blank authors.yaml
+    and the rest, and gives no advice to describe the authors; `next` gives it."""
+    from manuscript_guard.cli import main
+
+    root = tmp_path / "paper"
+    root.mkdir()
+    (root / "paper.yaml").write_text("schema: manuscript-guard/paper/1\ntitle: T\n",
+                                     encoding="utf-8")  # fmt: skip
+    assert main(["init", str(root)]) == 0
+    said = capsys.readouterr().out
+    assert f"created {root / 'authors.yaml'}" in said
+    assert FIRST_DAY not in said
+    assert "set up already" in said
+
+
 def test_a_new_project_keeps_the_first_day_advice(tmp_path: Path, capsys) -> None:
     from manuscript_guard.cli import main
 

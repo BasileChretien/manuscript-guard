@@ -41,13 +41,14 @@ manuscript-guard checklist STROBE                       # the completion file to
 
 `paper.yaml` names the guideline (`reporting_guideline`) and the study's design
 (`study_type`). G5 holds that every item of the checklist says where in the manuscript it is
-addressed, and that the place exists, or why it does not apply ("n/a" is not a reason). It
-holds a declared design to one of its guidelines: a trial to CONSORT, a cohort study to
-STROBE, RECORD or TARGET, a case-control or self-controlled study to STROBE or RECORD, a
-disproportionality analysis to READUS-PV, a systematic review to PRISMA and a prediction
-model to TRIPOD; `study_type: other` is a design none of these is. It warns when the
-manuscript says it followed a guideline that `paper.yaml` does not name, and when a recipe
-records that the guideline's authors replaced it, as TRIPOD 2015's recipes do for TRIPOD+AI.
+addressed, or why it does not apply ("n/a" is not a reason), and warns where the place it
+names is no heading of the manuscript. It warns where a declared design has none of its
+guidelines: a trial is reported with CONSORT, a cohort study with STROBE, RECORD or TARGET, a
+case-control or self-controlled study with STROBE or RECORD, a disproportionality analysis
+with READUS-PV, a systematic review with PRISMA and a prediction model with TRIPOD;
+`study_type: other` is a design none of these is. It warns too when the manuscript says it
+followed a guideline that `paper.yaml` does not name, and when a recipe records that the
+guideline's authors replaced it, as TRIPOD 2015's recipes do for TRIPOD+AI.
 TARGET has no recipe yet.
 
 A new edition of a guideline is a new recipe, and the items are made again from the new

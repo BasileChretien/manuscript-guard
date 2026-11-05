@@ -136,13 +136,33 @@ def test_the_readme_lists_the_gates_the_tool_has() -> None:
 
 #: The pages that say in words how many gates or hooks there are.
 COUNTED = [README, DOCS / "agent-tools.md"]
-COUNT = re.compile(r"\b([a-z]+(?:-[a-z]+)?) (gates|hooks)\b")
+COUNT = re.compile(r"\b([a-z]+(?:-[a-z]+)?)\s+(gates|hooks)\b")
+
+
+def cells(row: str) -> list[str]:
+    return [cell.strip() for cell in row.strip().strip("|").split("|")]
+
+
+def hooks_cells(text: str) -> list[str]:
+    """Each cell under a table's "Hooks" heading, as "five, once you have trusted them"."""
+    found = []
+    for table in re.findall(r"(?:^\|.*\n?)+", FENCE.sub("", text), re.MULTILINE):
+        lines = table.splitlines()
+        if len(lines) < 3:
+            continue
+        header, _rule, *rows = lines
+        if "Hooks" in cells(header):
+            column = cells(header).index("Hooks")
+            found += [cells(row)[column] for row in rows]
+    return found
 
 
 def test_a_count_of_gates_or_hooks_is_the_number_there_are() -> None:
-    """A count written out goes stale in silence: the README said "fifteen gates" and "four"
-    hooks long after there were more. Each "<number> gates" and "<number> hooks" of these
-    pages is held to the gates the package declares and the hooks the plugin registers. The
+    """A count written out goes stale in silence: the README said "fifteen gates", and "four"
+    in the Hooks column of its table, long after there were more. Each "<number> gates" and
+    "<number> hooks" of these pages, a line break between the two words or not, and the
+    number each cell of a Hooks column opens with, is held to the gates the package declares
+    and the hooks the plugin registers. A count written any other way is not read here. The
     picture's count is the script's, and the test of the pictures holds that."""
     import json
 
@@ -150,15 +170,23 @@ def test_a_count_of_gates_or_hooks_is_the_number_there_are() -> None:
     config = json.loads((REPO / "plugin" / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     hooks = sum(len(group["hooks"]) for groups in config["hooks"].values() for group in groups)
     there_are = {"gates": len(declared_gates()), "hooks": hooks}
-    counted = 0
+    counted = {"prose": 0, "cells": 0}
     for page in COUNTED:
-        for word, noun in COUNT.findall(text_of(page).lower()):
+        text = text_of(page)
+        for word, noun in COUNT.findall(text.lower()):
             if word in words:
-                counted += 1
+                counted["prose"] += 1
                 assert words[word] == there_are[noun], (
                     f"{page.name} says {word} {noun}; there are {there_are[noun]}"
                 )
-    assert counted, "no count of gates or hooks found; the pattern no longer matches"
+        for cell in hooks_cells(text):
+            word = re.match(r"[a-z-]*", cell.lower()).group()
+            if word in words:
+                counted["cells"] += 1
+                assert words[word] == hooks, (
+                    f"{page.name}'s Hooks column says {cell!r}; there are {hooks}"
+                )
+    assert all(counted.values()), f"a pattern no longer matches anything: {counted}"
 
 
 # ------------------------------------------------------------------------------ pictures

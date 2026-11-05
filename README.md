@@ -137,7 +137,7 @@ for a line left out, and other findings follow from the same edit:
 
 | Guideline | What is checked | Gate |
 |---|---|---|
-| Reporting checklists: CONSORT 2025, SPIRIT 2025, STROBE, RECORD, RECORD-PE, PRISMA 2020, TRIPOD+AI, STARD 2015, CHEERS 2022, ARRIVE 2.0, READUS-PV, and SANRA for a narrative review | each item says where it is addressed, or why it does not apply; the study design declared has one of its guidelines; a guideline its authors replaced is pointed out | G5 |
+| Reporting checklists: CONSORT 2025, SPIRIT 2025, STROBE, RECORD, RECORD-PE, PRISMA 2020, TRIPOD+AI, STARD 2015, CHEERS 2022, ARRIVE 2.0, READUS-PV, and SANRA for a narrative review | each item says where it is addressed, or why it does not apply; a warning where the study design declared has none of its guidelines, and where a guideline's authors have replaced it | G5 |
 | The journal's instructions for authors | each rule quoted from the journal's stored page: limits, sections, required statements, the data availability statement against the data policy, artwork, the boxes beside the abstract | G4 |
 | ICMJE's recommendations | tables and figures cited in the order of their first citation; an earlier output of the same data disclosed | G2, G8 |
 | The study's registration, at ClinicalTrials.gov, the EU PAS register, OSF or ISRCTN | made before the study started, or said to be retrospective; each registered outcome reported in the registry's words and role, or its absence said | G12 |
@@ -152,8 +152,8 @@ recipe, and the items are made again from the new document. A journal's page rea
 run, so the checklist is kept from the first draft rather than filled in at the end. How much
 time this saves has not been measured.
 
-**What it does not do.** G5 holds that each item names a place or a reason, and that the
-place exists; whether the text there does what the item asks is for a reader, and the starter
+**What it does not do.** G5 holds that each item names a place or a reason, and warns where
+the place is no heading of the manuscript; whether the text there does what the item asks is for a reader, and the starter
 panel of a review round has a reporting-guideline reviewer for it. The checklists are not shipped, since each has its own licence:
 `fetch` and `transcribe` make each one once, on your machine. [The guidelines](docs/guidelines.md)
 has each row in full.
@@ -457,7 +457,7 @@ Five hooks: one line on the project's state when a session starts, ending with w
 manuscript or what it rests on; a refusal to edit files that are machine-written; a note on
 the numbers just saved in a manuscript file; and the submission check before a command that
 looks like a submission. An author's approval, a named person's sign-off, an attester named
-in the ledger and a panel sent to the models without asking are each put to you before they
+in `literature/attested.yaml` and a panel sent to the models without asking are each put to you before they
 run, and refused where nobody can be asked. Where the data are held in a
 [vault](docs/vault.md), the session's first line says whether the agent can read them, and a
 command that names their folder is refused while it can.

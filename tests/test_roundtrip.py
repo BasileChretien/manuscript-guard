@@ -186,6 +186,78 @@ def test_an_edited_number_is_refused_and_named(
     assert "'3.84' comes from results.ror.point" in out, out
 
 
+def _shown_under(out: str, heading: str) -> list[str]:
+    """The `-` and `+` lines the dry run prints under the first line opening `heading`."""
+    lines = out.splitlines()
+    at = next(n for n, line in enumerate(lines) if line.startswith(heading))
+    shown = []
+    for line in lines[at + 1 :]:
+        if not line.startswith(("    - ", "    + ")):
+            break
+        shown.append(line)
+    return shown
+
+
+@needs_pandoc
+def test_the_dry_run_shows_the_words_an_edit_changed_wherever_they_stand(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Each paragraph to be merged was printed cut to its first 150 characters, so an edit
+    past them was never seen before `--apply`, and the cut could fall inside a binding. Two
+    edits far into a long paragraph: each is shown, the words removed and the words added,
+    with a few words either side, and every binding shown is shown whole."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        {
+            "characteristics independently of the drug.": (
+                "characteristics independently of the medicine."
+            ),
+            "given to three decimal places": "reported to three decimal places",
+        },
+    )
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    shown = _shown_under(out, "would merge into manuscript/main.md")
+    assert len(shown) == 4, out
+    assert shown[0].startswith("    - ... "), out
+    assert "{{results.ror_adjusted.ci_high}}), given to three" in shown[0], out
+    assert shown[1].startswith("    + ... "), out
+    assert "{{results.ror_adjusted.ci_high}}), reported to three" in shown[1], out
+    assert shown[2].endswith(" independently of the drug."), out
+    assert shown[3].endswith(" independently of the medicine."), out
+    for line in shown:
+        assert line.count("{{") == line.count("}}"), out
+        assert len(line) < 250, out
+
+
+@needs_pandoc
+def test_the_dry_run_shows_the_number_a_refusal_is_for(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A refused paragraph was printed cut to its first 150 characters, and a number typed
+    over past them was named in the reason but never seen in its sentence. The part that
+    changed is shown, as the document was sent and as it came back."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", {"5.123)": "5.124)"}
+    )
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    shown = _shown_under(out, "NOT merged into manuscript/main.md")
+    assert len(shown) == 2, out
+    assert shown[0].startswith("    - ... ") and "5.123)," in shown[0], out
+    assert shown[1].startswith("    + ... ") and "5.124)," in shown[1], out
+    assert "Reporting of hepatic injury" not in "".join(shown), out
+
+
 def _with_refs(project: Path) -> Path:
     """The example citing its contingency table by its key, once in a paragraph and once as
     a paragraph of its own."""
@@ -735,9 +807,13 @@ def test_a_new_citation_in_a_live_document_is_named_not_merged(
     inserted = _field_runs(_csl_code(UNKNOWN_ITEM), " (Other 2020)")
     returned = edit_docx(built, tmp_path / "back.docx", _inserted_after_prose(inserted))
     assert main(["import", str(returned), str(project), "--apply"]) == 1
-    out = " ".join(capsys.readouterr().out.split())
+    said = capsys.readouterr().out
+    out = " ".join(said.split())
     assert 'Other 2020, "A study that is not in the library" was cited in Word' in out, out
-    assert "[@fictionalClassSignal2019]" not in out.split("cited in Word")[0][-200:]
+    # The reason names the work inserted, not the citation the paragraph already had, which
+    # the lines above it show, as sent and as returned, beside the change.
+    (reason,) = [line for line in said.splitlines() if "was cited in Word" in line]
+    assert "[@fictionalClassSignal2019]" not in reason, said
     assert (project / "manuscript" / "main.md").read_text(encoding="utf-8") == before
 
 
@@ -9628,10 +9704,10 @@ def test_a_paragraph_split_in_word_is_not_truncated(
     assert "split" in capsys.readouterr().out
 
 
-def _refusal_of(printed: str, opening: str) -> str:
-    """The refusal `import` printed for the paragraph whose text starts with `opening`: from
-    its line to the next blank line."""
-    at = printed.index(opening)
+def _refusal_of(printed: str, shown: str) -> str:
+    """The refusal `import` printed for the paragraph whose changed stretch, as the dry run
+    shows it, holds `shown`: from its line to the next blank line."""
+    at = printed.index(shown)
     start = printed.rfind("\n\n", 0, at) + 2
     end = printed.find("\n\n", at)
     return " ".join(printed[start : end if end != -1 else None].split())
@@ -9666,9 +9742,11 @@ def test_the_paragraph_after_a_split_is_told_it_is_its_neighbour(
     assert main(["import", str(returned), str(project), "--apply"]) == 1
     assert source.read_text(encoding="utf-8") == before
     printed = capsys.readouterr().out
-    split_said = _refusal_of(printed, "Hepatic injury is the single event term")
+    # Each found by the stretch the dry run shows of it: the split one by what is left of it,
+    # the one after by its rewording.
+    split_said = _refusal_of(printed, "+ ... used by the data generator.\n")
     assert "split in two in Word" in split_said, split_said
-    after = _refusal_of(printed, "The reporting odds ratio was calculated")
+    after = _refusal_of(printed, "+ The reporting odds ratio was calculated")
     assert "split in two in Word, new text written next to it" not in after, after
     assert "after a new paragraph, 'Real work would need a case definition" in after, after
     assert "was not split itself" in after and "own edit in the .md" in after, after

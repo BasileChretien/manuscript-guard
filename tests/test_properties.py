@@ -61,6 +61,7 @@ from generated import (
     LOWERED,
     NOTATED,
     PLACEHOLDERS,
+    PREVIEWED,
     PROOF_ABBREVIATED,
     PROOF_CORRECTIONS,
     PROOF_EDIT,
@@ -104,6 +105,7 @@ from generated import (
     generated,
     harvest_cells,
     harvest_tables,
+    help_commands,
     holds,
     keyword_paragraphs,
     laid_out,
@@ -152,6 +154,7 @@ from generated import (
     plan_pairs,
     planned_plans,
     post_links,
+    previewed_edits,
     printings,
     profile_tables,
     proofs,
@@ -3041,6 +3044,23 @@ def test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_besi
     lines, expected = drawn
     read = READINGS["vault named"]()
     assert [read({"command": line}) for line in lines] == expected, lines
+
+
+# ------------------------------------------------- a submission asked only for its help
+
+
+@holds(60, help_commands())
+def test_a_submission_asked_only_for_its_help_is_let_through_and_no_other(
+    drawn: tuple[list[str], list[bool]],
+) -> None:
+    """A command that is exactly the tool, by its name, a subcommand or none, and `-h` or
+    `--help`, one space between, is no submission; and every other shape that asks for a
+    submission is one: a help beside an option, quoted, after `--`, as a value or from a
+    substitution, the tool by a path, after an assignment or run by Python, a space too many,
+    a quote inside a word, and more than the one command (`hooks._submission_shaped`)."""
+    lines, held = drawn
+    read = READINGS["submission shaped"]()
+    assert [read({"command": line}) for line in lines] == held, lines
 
 
 # ------------------------------------------------------------- the profile of a vault's file
@@ -7623,6 +7643,89 @@ def _an_address_in_brackets_is_a_citation(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(citations_module, "BRACKETED", re.compile(rf"\[(?P<body>{group}*@{group}*)\]"))
 
 
+# ------------------------------------------------------- a citation typed as text, G2
+
+from generated import typed_citations  # noqa: E402
+
+from manuscript_guard.gates import typed_citations as typed_module  # noqa: E402
+
+
+@holds(100, typed_citations())
+def test_the_year_of_a_citation_typed_as_text_is_read_with_its_first_author(
+    drawn: tuple[str, list[tuple[int, int, str | None, str]]],
+) -> None:
+    """Each year of a citation typed as text, in brackets, in a group or in the sentence, is
+    read with its first author's name, the word of it a family name is compared by: the one
+    before "et al.", "&" or "and", the first of a list, its own in a group; and a year after
+    a month, a sign or a lower-case word, alone or in text, is no citation's."""
+    text, years = drawn
+    for start, end, name, year in years:
+        read = typed_module.typed_citation(text, start, end)
+        assert (None if read is None else (read.name, read.year)) == (
+            None if name is None else (name, year)
+        ), (text[max(0, start - 60) : end + 2], name)
+
+
+from generated import names_in_tex  # noqa: E402
+
+
+@holds(30, names_in_tex())
+def test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """Round 1 of #510: `{\\AA}ngstr{\\"o}m` was read as "aangstrom", and the hint for
+    "(Ångström, 2018)" said references.bib held no work by Ångström and to add one. Each
+    family name a `.bib` writes in TeX is found for the citation typed with its letter, or
+    with the letters a reader without it types; and a name holding TeX the hint does not
+    read is never said to be missing: the hint names its entry."""
+    bib, cited = drawn
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "references.bib"
+        path.write_text(bib, encoding="utf-8")
+        works = typed_module.works_by(path)
+    for written, key in cited:
+        read = typed_module.typed_citation(written, len(written) - 5, len(written) - 1)
+        assert read is not None, written
+        said = typed_module.hint(read, works, latex=False, otherwise="")
+        assert f"[@{key}]" in said and "holds no work" not in said, (written, said, bib)
+
+
+def _a_tex_escape_is_read_as_its_letters(patch: pytest.MonkeyPatch) -> None:
+    import unicodedata
+
+    def fold(name: str) -> str:
+        words = name.replace("{", "").replace("}", "").split() or [""]
+        decomposed = unicodedata.normalize("NFKD", words[-1])
+        return "".join(c for c in decomposed
+                       if c.isalpha() and not unicodedata.combining(c)).casefold()  # fmt: skip
+
+    patch.setattr(typed_module, "_fold", fold)
+
+
+def _a_name_in_tex_not_read_is_missing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_module, "_unread", lambda family: False)
+
+
+def _et_al_is_a_name(patch: pytest.MonkeyPatch) -> None:
+    def bracketed(part: str) -> str | None:
+        first = re.split(r",|\s&\s|\sand\s", f" {part} ")[0].split()
+        return first[-1] if first and typed_module._is_name(first[-1]) else None
+
+    patch.setattr(typed_module, "_bracketed", bracketed)
+
+
+def _the_last_author_named_is_the_first(patch: pytest.MonkeyPatch) -> None:
+    def narrated(words: list[str]) -> str | None:
+        name = words[-1].rstrip(",")
+        return name if typed_module._is_name(name) else None
+
+    patch.setattr(typed_module, "_narrated", narrated)
+
+
+def _a_month_is_a_name(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(typed_module, "_MONTHS", frozenset())
+
+
 #: The papers each example of the property below holds: mostly British, mostly American,
 #: as many of each, British by its -ise words alone, and British with as many -ize words
 #: both Englishes write as it has British ones, which count for neither.
@@ -8982,6 +9085,36 @@ def test_every_word_planted_as_a_claim_is_read_as_one_and_nothing_else_is() -> N
     for word in (*UNCLAIMED, *FILLER):
         (sentence,) = claims_module.sentences(f"Here {word} stands.")
         assert sentence.words == (), (word, sentence)
+
+
+@holds(30, previewed_edits())
+def test_import_shows_each_change_whole_and_never_cuts_inside_a_citation(
+    drawn: tuple[dict[str, str], list[list[tuple[str, str]]]],
+) -> None:
+    """What the dry run shows of an edit is each changed stretch, the words removed and the
+    words added, with a few words either side; it is cut only between words, and a citation
+    with spaces in it is one word. So each stretch shown, its marks of words left out
+    aside, is a stretch of the paragraph as it was or as it is, holding every word removed
+    or added there, however long the stretch, and every bracket and parenthesis in it is
+    closed."""
+    given_, expected = drawn
+    found = answer(READINGS["preview"](), given_)
+    assert "raised" not in found, found
+    shown, more = found["answer"]["shown"], found["answer"]["more"]
+    assert more == 0 and len(shown) == len(PREVIEWED), shown
+    was, now = (" ".join(given_[side].split()) for side in ("was", "now"))
+    for (removed, added), stretch in zip(shown, expected, strict=True):
+        for line, text, words in ((removed, was, [o for o, _n in stretch]),
+                                  (added, now, [n for _o, n in stretch])):  # fmt: skip
+            assert line.startswith("... ") and line.endswith(" ..."), line
+            inner = line.removeprefix("... ").removesuffix(" ...")
+            assert inner in text, (inner, text)
+            for word in words:
+                assert not word or f" {word} " in f" {inner} ", (word, line)
+            assert inner.count("[") == inner.count("]"), line
+            assert inner.count("(") == inner.count(")"), line
+            # The words beside it: a citation whole on either side.
+            assert inner[0] in "[(" and inner[-1] in "])", line
 
 
 @holds(30, claim_edits())
@@ -14570,6 +14703,33 @@ def _the_home_is_read_by_its_tilde_only(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(hooks, "_HOME_VARIABLE", re.compile("(?!)"))
 
 
+def _loosened(patch: pytest.MonkeyPatch, pattern: str) -> None:
+    patch.setattr("manuscript_guard.hooks._ONLY_HELP", re.compile(pattern, re.DOTALL))
+
+
+_TOOL_HELP = r"(?:manuscript-guard|mguard)(?:\.exe)?(?: [a-z][a-z-]*)? "
+
+
+def _a_quoted_help_is_one(patch: pytest.MonkeyPatch) -> None:
+    _loosened(patch, _TOOL_HELP + r"[\"']?(?:-h|--help)[\"']?")
+
+
+def _any_words_may_stand_before_the_help(patch: pytest.MonkeyPatch) -> None:
+    _loosened(patch, r"(?:manuscript-guard|mguard)(?:\.exe)?.* (?:-h|--help)")
+
+
+def _the_help_may_be_followed(patch: pytest.MonkeyPatch) -> None:
+    _loosened(patch, _TOOL_HELP + r"(?:-h|--help).*")
+
+
+def _anything_may_stand_before_the_tool(patch: pytest.MonkeyPatch) -> None:
+    _loosened(patch, r".*" + _TOOL_HELP + r"(?:-h|--help)")
+
+
+def _no_help_is_let_through(patch: pytest.MonkeyPatch) -> None:
+    _loosened(patch, r"(?!)")
+
+
 def _a_word_joined_by_colons_is_read_whole(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import hooks
 
@@ -14644,6 +14804,32 @@ def _a_count_held_beside_is_read_as_any(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.vault import disclosure
 
     patch.setattr(disclosure, "beside_bounds", lambda cells, chosen, minimum: (0, math.inf))
+
+
+def _a_citation_is_cut_at_its_spaces(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import preview
+
+    patch.setattr(preview, "_WORD", re.compile(r"\S+"))
+
+
+def _a_change_is_shown_alone(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import preview
+
+    patch.setattr(preview, "CONTEXT", 0)
+
+
+def _a_long_stretch_is_shown_by_its_ends(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import preview
+
+    shown = preview._shown
+
+    def ends(text: str, spans: list[tuple[int, int]], start: int, end: int) -> str:
+        if end - start <= 40:
+            return shown(text, spans, start, end)
+        first, last = shown(text, spans, start, start + 20), shown(text, spans, end - 20, end)
+        return f"{first.removesuffix(' ...')} ... {last.removeprefix('... ')}"
+
+    patch.setattr(preview, "_shown", ends)
 
 
 def _a_figure_with_an_identifier_is_a_paragraph(patch: pytest.MonkeyPatch) -> None:
@@ -14731,6 +14917,38 @@ BROKEN = {
     "a path a command quotes is split at its spaces": (
         _a_quoted_path_is_split_at_its_spaces,
         test_a_command_names_the_vault_however_it_writes_the_folder_and_no_path_beside_it,
+    ),
+    "a quoted help is let through": (
+        _a_quoted_help_is_one,
+        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
+    ),
+    "any words may stand before the help": (
+        _any_words_may_stand_before_the_help,
+        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
+    ),
+    "anything may follow the help": (
+        _the_help_may_be_followed,
+        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
+    ),
+    "anything may stand before the tool": (
+        _anything_may_stand_before_the_tool,
+        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
+    ),
+    "no help is let through": (
+        _no_help_is_let_through,
+        test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
+    ),
+    "import cuts a citation it shows at its spaces": (
+        _a_citation_is_cut_at_its_spaces,
+        test_import_shows_each_change_whole_and_never_cuts_inside_a_citation,
+    ),
+    "import shows a change without the words beside it": (
+        _a_change_is_shown_alone,
+        test_import_shows_each_change_whole_and_never_cuts_inside_a_citation,
+    ),
+    "import shows a long changed stretch by its two ends": (
+        _a_long_stretch_is_shown_by_its_ends,
+        test_import_shows_each_change_whole_and_never_cuts_inside_a_citation,
     ),
     "a figure Word left an identifier on is read as a paragraph": (
         _a_figure_with_an_identifier_is_a_paragraph,
@@ -15140,6 +15358,26 @@ BROKEN = {
     "an e-mail address in brackets is a citation": (
         _an_address_in_brackets_is_a_citation,
         test_an_e_mail_address_is_no_citation_and_every_key_beside_one_is,
+    ),
+    "et al. is a typed citation's name": (
+        _et_al_is_a_name,
+        test_the_year_of_a_citation_typed_as_text_is_read_with_its_first_author,
+    ),
+    "the last author of a typed citation is its first": (
+        _the_last_author_named_is_the_first,
+        test_the_year_of_a_citation_typed_as_text_is_read_with_its_first_author,
+    ),
+    "a month is a typed citation's name": (
+        _a_month_is_a_name,
+        test_the_year_of_a_citation_typed_as_text_is_read_with_its_first_author,
+    ),
+    "a TeX escape in a .bib name is read as its letters": (
+        _a_tex_escape_is_read_as_its_letters,
+        test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it,
+    ),
+    "a .bib name in TeX the hint does not read is said to be missing": (
+        _a_name_in_tex_not_read_is_missing,
+        test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it,
     ),
     "in LaTeX, an escaped percent opens a comment": (
         _an_escaped_percent_opens_a_comment,

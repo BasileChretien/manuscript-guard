@@ -1358,6 +1358,10 @@ def cmd_import(args: argparse.Namespace) -> int:
         _answer_suggestions(project, decided, {}, applying=args.apply, named=now_named)
         return 0
 
+    # What each paragraph read as in the document sent, for the part of a refused one that
+    # changed: what it printed at the build, where the record says, else the fresh build.
+    as_sent = {b.names[0]: b.text for b in sent if b.names and not b.table}
+    as_sent |= {b.names[0]: b.text for b in printed or () if b.names and not b.table}
     # Identifiers Word left on a figure or an equation: see `docxtext.Block.stranded`.
     stranded = {n: b.stranded for b in renamed if b.stranded for n in b.names}
     _report_plan(
@@ -1367,6 +1371,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         applying=args.apply,
         followed=set(followed.values()),
         stranded=stranded,
+        sent=as_sent,
     )
     if not records_moves(edited):
         print(
@@ -1623,7 +1628,14 @@ def _file_comments(
 
 
 def _report_plan(
-    project, known: dict, plan, *, applying: bool, followed=frozenset(), stranded=None
+    project,
+    known: dict,
+    plan,
+    *,
+    applying: bool,
+    followed=frozenset(),
+    stranded=None,
+    sent=None,
 ) -> None:
     """Say what the returned document changed and what will, or will not, be applied.
 
@@ -1631,7 +1643,13 @@ def _report_plan(
     named by its identifier: what the source now has under it is another paragraph.
     `followed` names those compared where they stand now, their identifier having shifted.
     `stranded` names the kind of block, figure or equation, an identifier came back on.
+    `sent` is what each paragraph read as in the document sent, which a refusal is shown
+    against.
     """
+    from manuscript_guard.preview import changes
+    from manuscript_guard.preview import opening as first_words
+    from manuscript_guard.roundtrip import AS_SENT
+
     stranded = stranded or {}
 
     def left_on(name: str) -> None:
@@ -1644,7 +1662,20 @@ def _report_plan(
                 f"no text: cut or deleted with Track Changes off, a paragraph leaves its "
                 f"identifier on the paragraph after it. The {kind} is not read as a paragraph."
             )
-    from manuscript_guard.roundtrip import AS_SENT
+
+    def changed(was: str, now: str) -> None:
+        # Each changed stretch, what was there and what is there now, with a few words
+        # either side. Cut to its first 150 characters, a paragraph hid an edit past them
+        # until it was applied, and the cut could fall inside a binding.
+        found, more = changes(was, now)
+        for removed, added in found:
+            for mark, words in (("-", removed), ("+", added)):
+                if words:
+                    print(f"    {mark} {words}")
+        if more:
+            print(f"    (and {more} more changed stretch(es) in it, not shown)")
+        if not found:
+            print(f"    + {first_words(now)}")
 
     def where(name: str) -> str:
         return known[name][0].relative_to(project.root).as_posix()
@@ -1779,7 +1810,7 @@ def _report_plan(
     verb = "merging" if applying else "would merge"
     for name, rebuilt in plan.merged.items():
         print(f"\n{verb} into {where(name)}:")
-        print(f"    + {rebuilt.strip()[:150]}")
+        changed(known[name][1], rebuilt)
         for words in plan.flattened.get(name, ()):
             print(f"    written as Word's plain text: '{words[:110]}'")
         if plan.flattened.get(name):
@@ -1791,7 +1822,7 @@ def _report_plan(
 
     for refusal in plan.refused:
         print(f"\nNOT merged into {where(refusal.name)}:")
-        print(f"    + {refusal.text.strip()[:150]}")
+        changed((sent or {}).get(refusal.name, ""), refusal.text)
         for line in refusal.why:
             print(f"    {line}")
 

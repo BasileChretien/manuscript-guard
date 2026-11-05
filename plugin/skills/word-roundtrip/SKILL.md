@@ -126,9 +126,10 @@ figure or equation that was moved or could not be found, and any paragraph witho
 identifier that came back different or in a different order, makes the command exit 1,
 with or without `--apply`; the safe changes are still applied.
 
-A `would merge` line shows the Markdown that will be written, bindings included; a `NOT
-merged` line shows what came back from Word. The stamp check refuses a document built from
-a different version of the source; see step 6.
+Under `would merge`, each change is shown in the Markdown, bindings included, with a few
+words either side: `-` what the source has there, `+` what will be written. Under `NOT
+merged`, `-` is the paragraph as sent and `+` as Word returned it, where they differ. The
+stamp check refuses a document built from a different version of the source; see step 6.
 
 For the paragraphs nobody compared, look yourself. Converting both documents to text shows
 every difference, compared or not:
@@ -187,7 +188,10 @@ Read the whole diff. What to look for:
   as changed where nothing visible changed. The one pandoc puts after "e.g." or "et al." is
   written back as a plain space, because pandoc puts it back at the next build.
 - A number or citation the co-author typed. These merge as literals, and `check` then
-  reports them as unbound. Bind the number, and turn the citation into `[@citekey]`.
+  reports them as unbound. Bind the number, and turn the citation into `[@citekey]`: for
+  the year of a citation typed as "(Name, 2018)" or "Name (2018)", the hint names the key
+  of each work `references.bib` holds by that first author's name from that year, or says
+  to add the work if it is not there. Check that the work named is the one meant.
 - A binding cut short, a `{{` without its `}}`. `check` now reports it as a malformed
   placeholder; it should not happen, and if it does, it is a bug to report.
 

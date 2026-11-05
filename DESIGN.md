@@ -20926,6 +20926,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - *The outbox and the runs stay in the vault* after a release, and `.runs/<run>/log.txt`
     holds whatever the scripts printed. Removing them is the person's.
 
+- **`.zenodo.json` names one affiliation per creator.** Zenodo's field is one string, so the
+  author's two institutions go in as one, matched to no organisation (ROR), as CITATION.cff's
+  one field does.
+
 Closed since, and why each mattered (an open gap goes above this line):
 
 - **An accent on a dotless i was read as italics (2026-11-05).** Better BibTeX writes í as

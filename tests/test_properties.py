@@ -8361,6 +8361,55 @@ def test_every_placeholder_is_found_and_nothing_that_looks_like_one(
         assert alone == [match], (written, alone)
 
 
+# ------------------------------------------------------ the assistant's voice, however wrapped
+
+#: What a chat assistant opens its reply with, as `assistant-voice` reads it.
+_OPENERS = (
+    "Certainly", "Sure", "Of course", "Here is the", "Here\N{RIGHT SINGLE QUOTATION MARK}s a",
+)  # fmt: skip
+
+
+@st.composite
+def _wrapped_openers(draw: st.DrawFn) -> tuple[str, str]:
+    """A paragraph with an assistant's opener in the middle of a sentence, and a paragraph
+    opened by one, each hard-wrapped at gaps drawn; in the first, a line break before the
+    opener in every example."""
+    before = draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=8))
+    after = draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=8))
+    opener = draw(st.sampled_from(_OPENERS))
+
+    def wrapped(words: list[str], broken_at: int | None) -> str:
+        gaps = [draw(st.sampled_from((" ", "\n"))) for _ in words[1:]]
+        if broken_at is not None:
+            gaps[broken_at] = "\n"
+        return words[0] + "".join(gap + word for gap, word in zip(gaps, words[1:], strict=True))
+
+    inside = wrapped([*before, opener.lower(), *after], len(before) - 1)
+    opening = wrapped([opener, *after], None)
+    return (f"# Methods\n\n{inside}.\n",
+            f"# Methods\n\n{wrapped(before, None)}.\n\n{opening}.\n")  # fmt: skip
+
+
+@holds(200, _wrapped_openers())
+def test_an_assistant_opener_is_found_where_a_paragraph_opens_however_it_is_wrapped(
+    drawn: tuple[str, str],
+) -> None:
+    """`assistant-voice` reads the words a paragraph opens with, which do not move when its
+    lines are wrapped again: an opener in the middle of a sentence is prose wherever the
+    wrap falls, and one that opens a paragraph is found once (the athlete-leakage study)."""
+    from manuscript_guard.gates.writing import artefacts_in, load_rules
+
+    inside, opening = drawn
+    rules = load_rules()
+
+    def voiced(text: str) -> list[str]:
+        return [match.group(0) for rule, match in artefacts_in(rules, text, manuscript=True)
+                if rule["id"] == "assistant-voice"]  # fmt: skip
+
+    assert voiced(inside) == [], inside
+    assert len(voiced(opening)) == 1, opening
+
+
 # ------------------------------------------------------- words to the reviewers, left in
 
 
@@ -13277,6 +13326,23 @@ def _lines_in_capitals_are_lines(patch: pytest.MonkeyPatch) -> None:
         return {**rule, "pattern": "(?i)" + rule["pattern"]}
 
     _residue_rule(patch, "lines-cited-alone", in_any_case)
+
+
+def _an_opener_is_read_at_every_line(patch: pytest.MonkeyPatch) -> None:
+    # As `assistant-voice` read a paragraph until the athlete-leakage study: every line's
+    # first words, a hard-wrapped line's among them.
+    from dataclasses import replace
+
+    from manuscript_guard.gates import writing
+
+    rules = writing.load_rules()
+    artefacts = tuple(
+        {**rule, "pattern": rule["pattern"].replace("(?<![^\\n]\\n)", "")}
+        if rule["id"] == "assistant-voice" else rule
+        for rule in rules.artefacts
+    )
+    assert artefacts != rules.artefacts, "assistant-voice reads no paragraph's start"
+    patch.setattr(writing, "load_rules", lambda: replace(rules, artefacts=artefacts))
 
 
 def _a_field_wholly_in_brackets_is_read_without_them(patch: pytest.MonkeyPatch) -> None:
@@ -18819,6 +18885,10 @@ BROKEN = {
     "a cited entry's field wholly in brackets is read without them": (
         _a_field_wholly_in_brackets_is_read_without_them,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "an assistant's opener is read at the start of every line": (
+        _an_opener_is_read_at_every_line,
+        test_an_assistant_opener_is_found_where_a_paragraph_opens_however_it_is_wrapped,
     ),
     "the reviewers are read as one reviewer": (
         _the_reviewers_are_one_reviewer,

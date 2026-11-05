@@ -6658,6 +6658,18 @@ def test_a_journal_templates_instruction_in_a_table_caption_fails(project: Path)
     assert len(said) == 1 and "the caption of table 'baseline'" in said[0][1], said
 
 
+def test_an_assistant_reply_after_a_wrapped_paragraph_fails(project: Path) -> None:
+    """The rule reads a paragraph's first words, not a line's (the athlete-leakage study): a
+    reply left in after a hard-wrapped paragraph is still a paragraph's first words, and the
+    wrapped words "reported / here is the" are not."""
+    _with_paragraph(project, "The analysis reported\nhere is the third protocol, unchanged.\n\n"
+                    "Certainly! Here is the revised Methods section.")
+    said = _placeholders(_g6(project))
+    assert [(severity, message.split(" — ")[0]) for severity, message in said] == [
+        ("fail", "'Certainly'")
+    ], said
+
+
 def test_a_placeholder_drawn_in_a_figure_fails(project: Path) -> None:
     """A "TBD" in a figure reached the document: G6 read only the manuscript."""
     figure = project / "figures" / "forest.svg"

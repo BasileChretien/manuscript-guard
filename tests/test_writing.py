@@ -155,6 +155,23 @@ def test_ordinary_scientific_prose_passes(project: Path) -> None:
     assert not report.findings, messages(report)
 
 
+@pytest.mark.parametrize(
+    "paragraph",
+    [
+        # The athlete-leakage study, 2026-11-06: the wrap fell before "here".
+        "The analysis reported\nhere is the third protocol, unchanged, on the corrected index.",
+        "We were not\nsure whether the second reader had seen the first reading.",
+        "The difference was\ncertainly smaller in the second period.",
+        "The cohort was, as the protocol required and\nof course before the analysis, fixed.",
+    ],
+)
+def test_an_opening_word_inside_a_wrapped_paragraph_passes(project: Path, paragraph: str) -> None:
+    """The assistant-voice rule reads a paragraph's first words. It read the first words of
+    every line, and in a hard-wrapped paragraph a line can start in the middle of a sentence."""
+    report = written(project, f"# Methods\n\n{paragraph}\n")
+    assert "model-artefact" not in codes(report), messages(report)
+
+
 def test_technical_senses_are_not_counted(project: Path) -> None:
     """"Robust standard errors" is not a tell; it is the name of the estimator."""
     text = (

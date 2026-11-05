@@ -2,7 +2,7 @@
 
 This page is about the part that is optional: the skills and hooks an agent tool can load,
 how each tool installs and updates them, and what each one does and does not enforce. The
-skills, twenty-three of them, are listed in the [README](../README.md#the-claude-code-plugin).
+skills are listed in the [README](../README.md#the-claude-code-plugin).
 
 ## The Claude Code plugin
 
@@ -137,8 +137,8 @@ description.
 
 ## Codex
 
-Codex installs the same plugin from this repository, with the same skills, all twenty-three, and
-the same five hooks. After the pip package:
+Codex installs the same plugin from this repository, with the same skills and the
+same five hooks. After the pip package:
 
 ```bash
 codex plugin marketplace add BasileChretien/manuscript-guard
@@ -204,7 +204,7 @@ Codex's source.
 ## Gemini CLI, Mistral Vibe, Kimi Code CLI and other agent tools
 
 By their own documentation, these tools read skills from a folder, `.agents/skills`, in your
-home or in a project. After the pip package, one command copies the skills there, all twenty-three:
+home or in a project. After the pip package, one command copies the skills there:
 
 ```bash
 manuscript-guard install-skills              # for you, in every project: ~/.agents/skills

@@ -159,7 +159,9 @@ codex plugin marketplace upgrade manuscript-guard
 Upgrade the pip package at the same time. Codex may also refresh the copy without being
 asked: its program carries an automatic upgrade of marketplaces, and when that runs was not
 observed. Either way, when the plugin and the tool are at different releases, the
-session-start hook says so once, with the command for the one that is behind.
+session-start hook says so once, with the command for the one that is behind. It says
+nothing where either version is not plain dotted digits (`0.0.1-rc1`, say), nor where the
+installed tool is older than 0.2.260, which has no such check.
 
 **Codex runs a hook only after you have trusted it.** By Codex's documentation, it warns at
 the start of a session that hooks are waiting for review, and `/hooks` is where you read and

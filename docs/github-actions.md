@@ -161,9 +161,11 @@ not in it:
   out. A project that leaves it out fails G7's `literature-source-missing` from the
   `drafting` stage, in CI and in any clone.
 - **The works store of reference currency**, `literature/currency/works/`, which stays out of
-  git: a quote in a reading of currency has nothing stored to be looked for in, and is noted
-  as unchecked (`currency-quote-unchecked`). Run `manuscript-guard references` where the
-  store is to have it checked.
+  git. A quote in a reading of currency is looked for there and, for the cited work, in its
+  copy under `literature/sources/`; with neither, it is noted as unchecked
+  (`currency-quote-unchecked`). And where the store has no record of a work an entry's
+  readings name, the rules decide nothing for it, so a decision recorded `by: rules` is not
+  checked against them in CI. Run `manuscript-guard references` where the store is kept.
 - **Restricted inputs.** They reach CI as a Git LFS or git-annex pointer, whose digest G1
   compares; in a [vault](vault.md), whose record G1 reads; or covered by a site's receipt. An
   input that is only left out of git fails `input-missing` from the `analysis` stage.

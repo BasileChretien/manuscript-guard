@@ -211,7 +211,7 @@ runs:
       run: |
         failed=0
         if [ "$WANT_VERIFY" = "true" ] && [ -z "$VERIFIED" ]; then
-          echo "::error::verify did not run: a step before it failed, which the job's log names"
+          echo "::error::verify did not run to the end, or a step before it failed: the job's log says which"
           failed=1
         elif [ "$WANT_VERIFY" = "true" ] && [ "$VERIFIED" != "0" ]; then
           echo "::error::verify did not reproduce the recorded results, or could not run them (exit code ${VERIFIED:-none}): the job's log has what it said"

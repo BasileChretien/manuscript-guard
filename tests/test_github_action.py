@@ -6,7 +6,9 @@ report. The CI job `github-action` runs the action itself, on the worked example
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -181,6 +183,35 @@ def test_only_the_report_and_the_documents_are_uploaded() -> None:
                     'cp -r "$PROJECT/data" "$RUNNER_TEMP"/manuscript-guard',
                     'cp "$BUILD/manuscript.md" "$RUNNER_TEMP/manuscript-guard/$name"'):  # fmt: skip
         assert _names_the_artefact([*scripts, planted]) == [planted]
+
+
+@pytest.mark.skipif(sys.platform == "win32" or shutil.which("bash") is None,
+                    reason="the action runs on Ubuntu; a bash on Windows may be WSL's, which "
+                    "takes no environment from here")  # fmt: skip
+@pytest.mark.parametrize(
+    ("given", "fails", "said"),
+    [({"OK": "true", "BUILT": "0", "DOCUMENTS": "2"}, False, ""),
+     ({"OK": "false", "CHECKED": "1"}, True, "check fails at the stage"),
+     ({"OK": "", "CHECKED": "2"}, True, "check did not run to the end (exit code 2)"),
+     ({"OK": "true", "BUILT": "1"}, True, "build failed (exit code 1)"),
+     ({"OK": "true", "BUILT": "0", "DOCUMENTS": "0"}, True, "wrote no document"),
+     ({"WANT_VERIFY": "true", "OK": "true", "BUILT": "0", "DOCUMENTS": "2"}, True,
+      "verify did not run to the end, or a step before it failed"),
+     ({"WANT_VERIFY": "true", "VERIFIED": "1", "OK": "true", "BUILT": "0", "DOCUMENTS": "2"},
+      True, "verify did not reproduce")],
+    ids=["passes", "check fails", "check did not run", "build failed", "no document",
+         "verify did not run", "verify failed"],
+)  # fmt: skip
+def test_the_verdict_fails_the_job_for_each_reason_and_says_which(
+    given: dict, fails: bool, said: str
+) -> None:
+    step = _step("The verdict")
+    env = {**{name: "" for name in step["env"]}, "WANT_VERIFY": "false", **given,
+           "PATH": os.environ.get("PATH", "")}  # fmt: skip
+    ran = subprocess.run(["bash", "-c", step["run"]], env=env, capture_output=True,
+                         text=True, timeout=60, check=False)  # fmt: skip
+    assert (ran.returncode == 1) is fails, ran.stdout
+    assert said in ran.stdout and ("::error::" in ran.stdout) is fails
 
 
 def test_the_badge_runs_nothing_of_the_project() -> None:

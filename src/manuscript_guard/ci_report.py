@@ -27,9 +27,9 @@ STAGES = ("design", "analysis", "drafting", "internal-review", "submission")
 ANNOTATIONS = 50
 
 #: How many findings of each kind the summary lists, how much of a message and of a place,
-#: and of the lines on what was recorded: GitHub drops a summary larger than 1 MiB whole, so
-#: the findings listed also stop where `BUDGET` bytes would be passed, room kept for the
-#: lines the action adds after it. `check.json` in the artefact has every finding.
+#: and of the lines on what was recorded: GitHub drops a step's summary larger than 1 MiB
+#: whole, so the findings listed also stop where `BUDGET` bytes would be passed, with room to
+#: spare. `check.json` in the artefact has every finding.
 LISTED = 200
 MESSAGE = 500
 PLACE = 300
@@ -204,9 +204,9 @@ def _clipped(text: str, most: int) -> str:
 
 
 def _recorded(lines: list) -> list[str]:
-    """The lines on what was checked and recorded, as a block of text: each clipped, and
-    no more of them than the summary has room for. A reviewer's name is the project's text,
-    and a long one must not take GitHub's summary away."""
+    """The lines on what was checked and recorded, as a block of text: each clipped to
+    `RECORDED_LINE` characters, and at most `RECORDED_LINES` of them. A reviewer's name is the
+    project's text, and a long one must not take GitHub's summary away."""
     kept = [_clipped(str(line), RECORDED_LINE) for line in lines[:RECORDED_LINES]]
     if len(lines) > RECORDED_LINES:
         kept.append(f"... and {len(lines) - RECORDED_LINES} more lines, in check.json")

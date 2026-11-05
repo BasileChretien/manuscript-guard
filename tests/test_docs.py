@@ -2,7 +2,7 @@
 
 The README is the first thing a reader meets and the last thing anyone re-reads after a
 change. Its tables say which commands and gates exist, its links lead to the pages the long
-sections were moved to, and its two pictures quote what `check` prints. Each of those is a
+sections were moved to, and its pictures quote what `check` prints. Each of those is a
 claim, so each is compared here with the thing it is a claim about.
 """
 
@@ -259,6 +259,30 @@ def test_the_terminal_picture_says_what_check_says(project: Path, capsys) -> Non
     finding = said(" ".join(quoted[1:]))
     assert finding.startswith("[FAIL] G2 manuscript/main.md:")
     assert finding in printed, "check no longer prints the finding the picture shows"
+
+
+def test_the_demo_ends_with_what_check_says_once_the_number_is_bound(
+    project: Path, capsys
+) -> None:
+    """The demo opens on `CARD`, binds the number again and runs `check` on the example as it
+    is. The line it rewrites is the one the finding quotes, put back as the manuscript has
+    it, and every line of its last scene but a `...` is printed, in that order."""
+    script = figures_script()
+    assert script.CARD[2][1].endswith(f"manuscript/main.md:{script.LINE}:17")
+    lines = (project / "manuscript" / "main.md").read_text(encoding="utf-8").splitlines()
+    bound = script.QUOTED.replace(script.TYPED, script.BINDING, 1)
+    assert lines[int(script.LINE) - 1].startswith(bound), "the demo rewrites another line"
+
+    assert main(["check", str(project)]) == 0
+    printed = [said(line) for line in capsys.readouterr().out.splitlines()]
+
+    shown = [said(line) for _kind, line in script.CLEAN if line.strip() != "..."]
+    assert shown[0].startswith("stage: ") and shown[-1].startswith("0 failing")
+    at = 0
+    for line in shown:
+        assert line in printed[at:], f"check no longer prints, where the demo shows it: {line}"
+        at = printed.index(line, at) + 1
+    assert printed[-1] == shown[-1], "the demo's last line is not the last line check prints"
 
 
 def test_the_readme_quotes_what_check_says_of_an_edited_results_file(

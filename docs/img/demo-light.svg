@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 420" width="860" height="420" role="img">
+  <title>manuscript-guard check, before and after a number is bound</title>
+  <style>
+text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 13.5px; } .cap { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 12.5px; }
+@keyframes typed1 { 0% { fill-opacity: 0 } 2.78% { fill-opacity: 0 } 2.83% { fill-opacity: 1 } 80% { fill-opacity: 1 } 80.06% { fill-opacity: 0 } 100% { fill-opacity: 0 } }
+@keyframes typed2 { 0% { fill-opacity: 0 } 50.56% { fill-opacity: 0 } 50.61% { fill-opacity: 1 } 100% { fill-opacity: 1 } }
+.typed1 { animation: typed1 18.0s linear infinite both; } .typed2 { animation: typed2 18.0s linear infinite both; }
+@keyframes failing { 0% { opacity: 1 } 27.78% { opacity: 1 } 29.44% { opacity: .35 } 47.22% { opacity: .35 } 48.33% { opacity: 0 } 100% { opacity: 0 } }
+@keyframes passing { 0% { opacity: 0 } 48.33% { opacity: 0 } 48.89% { opacity: 1 } 95.56% { opacity: 1 } 98.89% { opacity: 0 } 100% { opacity: 0 } }
+@keyframes pane { 0% { opacity: 0 } 1.67% { opacity: 1 } 95.56% { opacity: 1 } 98.89% { opacity: 0 } 100% { opacity: 0 } }
+.failing { opacity: 0; animation: failing 18.0s linear infinite both; } .passing { animation: passing 18.0s linear infinite both; } .pane { animation: pane 18.0s linear infinite both; }
+@keyframes cap1 { 0% { opacity: 0 } 1.11% { opacity: 0 } 2.5% { opacity: 1 } 27.78% { opacity: 1 } 29.17% { opacity: 0 } 100% { opacity: 0 } }
+.cap1 { opacity: 0; animation: cap1 18.0s linear infinite both; }
+@keyframes cap2 { 0% { opacity: 0 } 28.89% { opacity: 0 } 30.28% { opacity: 1 } 47.22% { opacity: 1 } 48.61% { opacity: 0 } 100% { opacity: 0 } }
+.cap2 { opacity: 0; animation: cap2 18.0s linear infinite both; }
+@keyframes cap3 { 0% { opacity: 0 } 48.89% { opacity: 0 } 50.28% { opacity: 1 } 100% { opacity: 1 } }
+.cap3 { animation: cap3 18.0s linear infinite both; }
+@keyframes a0 { 0% { opacity: 0 } 10.56% { opacity: 0 } 11.39% { opacity: 1 } 100% { opacity: 1 } }
+.a0 { animation: a0 18.0s linear infinite both; }
+@keyframes a1 { 0% { opacity: 0 } 11.22% { opacity: 0 } 12.06% { opacity: 1 } 100% { opacity: 1 } }
+.a1 { animation: a1 18.0s linear infinite both; }
+@keyframes a2 { 0% { opacity: 0 } 11.89% { opacity: 0 } 12.72% { opacity: 1 } 100% { opacity: 1 } }
+.a2 { animation: a2 18.0s linear infinite both; }
+@keyframes a3 { 0% { opacity: 0 } 12.56% { opacity: 0 } 13.39% { opacity: 1 } 100% { opacity: 1 } }
+.a3 { animation: a3 18.0s linear infinite both; }
+@keyframes a4 { 0% { opacity: 0 } 13.22% { opacity: 0 } 14.06% { opacity: 1 } 100% { opacity: 1 } }
+.a4 { animation: a4 18.0s linear infinite both; }
+@keyframes a5 { 0% { opacity: 0 } 13.89% { opacity: 0 } 14.72% { opacity: 1 } 100% { opacity: 1 } }
+.a5 { animation: a5 18.0s linear infinite both; }
+@keyframes a6 { 0% { opacity: 0 } 14.56% { opacity: 0 } 15.39% { opacity: 1 } 100% { opacity: 1 } }
+.a6 { animation: a6 18.0s linear infinite both; }
+@keyframes b0 { 0% { opacity: 0 } 58.33% { opacity: 0 } 59.17% { opacity: 1 } 100% { opacity: 1 } }
+.b0 { animation: b0 18.0s linear infinite both; }
+@keyframes b1 { 0% { opacity: 0 } 58.89% { opacity: 0 } 59.72% { opacity: 1 } 100% { opacity: 1 } }
+.b1 { animation: b1 18.0s linear infinite both; }
+@keyframes b2 { 0% { opacity: 0 } 59.44% { opacity: 0 } 60.28% { opacity: 1 } 100% { opacity: 1 } }
+.b2 { animation: b2 18.0s linear infinite both; }
+@keyframes b3 { 0% { opacity: 0 } 60% { opacity: 0 } 60.83% { opacity: 1 } 100% { opacity: 1 } }
+.b3 { animation: b3 18.0s linear infinite both; }
+@keyframes b4 { 0% { opacity: 0 } 60.56% { opacity: 0 } 61.39% { opacity: 1 } 100% { opacity: 1 } }
+.b4 { animation: b4 18.0s linear infinite both; }
+@keyframes b5 { 0% { opacity: 0 } 61.11% { opacity: 0 } 61.94% { opacity: 1 } 100% { opacity: 1 } }
+.b5 { animation: b5 18.0s linear infinite both; }
+@keyframes flag { 0% { fill: #1f2328 } 11.67% { fill: #1f2328 } 13.33% { fill: #cf222e } 100% { fill: #cf222e } }
+.flag { animation: flag 18.0s linear infinite both; }
+@keyframes typed { 0% { opacity: 0 } 0% { opacity: 0 } 0.83% { opacity: 1 } 32.22% { opacity: 1 } 33.06% { opacity: 0 } 100% { opacity: 0 } }
+.typed { opacity: 0; animation: typed 18.0s linear infinite both; }
+@keyframes struck { 0% { opacity: 0 } 32.22% { opacity: 0 } 33.89% { opacity: 1 } 100% { opacity: 1 } }
+.struck { animation: struck 18.0s linear infinite both; }
+@keyframes bound { 0% { opacity: 0 } 35.56% { opacity: 0 } 37.22% { opacity: 1 } 100% { opacity: 1 } }
+.bound { animation: bound 18.0s linear infinite both; }
+@keyframes bind { 0% { fill: #0969da } 65% { fill: #0969da } 66.67% { fill: #1a7f37 } 100% { fill: #1a7f37 } }
+.bind { fill: #1a7f37; animation: bind 18.0s linear infinite both; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+  </style>
+  <rect x="0.5" y="0.5" width="859" height="419" rx="10" fill="#f6f8fa" stroke="#d0d7de"/>
+  <circle cx="30" cy="20" r="5.5" fill="#d0d7de"/><circle cx="48" cy="20" r="5.5" fill="#d0d7de"/><circle cx="66" cy="20" r="5.5" fill="#d0d7de"/>
+  <text class="cap cap1" x="90" y="24.5" fill="#59636e">A number typed into the manuscript by hand</text>
+  <text class="cap cap2" x="90" y="24.5" fill="#59636e">The author binds it to the result it came from</text>
+  <text class="cap cap3" x="90" y="24.5" fill="#59636e">Checked again, after 4,000 became {{results.cohort.n_reports}} in manuscript/main.md:11</text>
+  <g class="failing">
+  <text x="22" y="60" fill="#1a7f37" font-weight="600" xml:space="preserve"><tspan class="typed1" style="animation-delay:0.000s">$</tspan><tspan class="typed1" style="animation-delay:0.045s"> </tspan><tspan class="typed1" style="animation-delay:0.090s">m</tspan><tspan class="typed1" style="animation-delay:0.135s">a</tspan><tspan class="typed1" style="animation-delay:0.180s">n</tspan><tspan class="typed1" style="animation-delay:0.225s">u</tspan><tspan class="typed1" style="animation-delay:0.270s">s</tspan><tspan class="typed1" style="animation-delay:0.315s">c</tspan><tspan class="typed1" style="animation-delay:0.360s">r</tspan><tspan class="typed1" style="animation-delay:0.405s">i</tspan><tspan class="typed1" style="animation-delay:0.450s">p</tspan><tspan class="typed1" style="animation-delay:0.495s">t</tspan><tspan class="typed1" style="animation-delay:0.540s">-</tspan><tspan class="typed1" style="animation-delay:0.585s">g</tspan><tspan class="typed1" style="animation-delay:0.630s">u</tspan><tspan class="typed1" style="animation-delay:0.675s">a</tspan><tspan class="typed1" style="animation-delay:0.720s">r</tspan><tspan class="typed1" style="animation-delay:0.765s">d</tspan><tspan class="typed1" style="animation-delay:0.810s"> </tspan><tspan class="typed1" style="animation-delay:0.855s">c</tspan><tspan class="typed1" style="animation-delay:0.900s">h</tspan><tspan class="typed1" style="animation-delay:0.945s">e</tspan><tspan class="typed1" style="animation-delay:0.990s">c</tspan><tspan class="typed1" style="animation-delay:1.035s">k</tspan></text>
+  <text class="a0" x="22" y="80" fill="#1f2328" xml:space="preserve">stage: drafting (writing the manuscript against results that exist)</text>
+  <text class="a1" x="22" y="100" fill="#cf222e" font-weight="600" xml:space="preserve">  [FAIL] G2 manuscript/main.md:11:17</text>
+  <text class="a2" x="22" y="120" fill="#1f2328" xml:space="preserve">         &#x27;4,000&#x27; is not bound to any source</text>
+  <text class="a3" x="22" y="140" fill="#59636e" xml:space="preserve">         &gt; **Results.** Of 4,000 reports, {{results.case.n_cases}} described</text>
+  <text class="a4" x="22" y="160" fill="#59636e" xml:space="preserve">         hint: bind it with {{results.&lt;key&gt;}} or {{lit.&lt;key&gt;}}; if it is a writing</text>
+  <text class="a5" x="22" y="180" fill="#59636e" xml:space="preserve">         convention, add it to `conventions:` in paper.yaml with a justification</text>
+  <text class="a6" x="22" y="200" fill="#59636e" xml:space="preserve">  ...</text>
+  </g>
+  <g class="passing">
+  <text x="22" y="60" fill="#1a7f37" font-weight="600" xml:space="preserve"><tspan class="typed2" style="animation-delay:0.000s">$</tspan><tspan class="typed2" style="animation-delay:0.045s"> </tspan><tspan class="typed2" style="animation-delay:0.090s">m</tspan><tspan class="typed2" style="animation-delay:0.135s">a</tspan><tspan class="typed2" style="animation-delay:0.180s">n</tspan><tspan class="typed2" style="animation-delay:0.225s">u</tspan><tspan class="typed2" style="animation-delay:0.270s">s</tspan><tspan class="typed2" style="animation-delay:0.315s">c</tspan><tspan class="typed2" style="animation-delay:0.360s">r</tspan><tspan class="typed2" style="animation-delay:0.405s">i</tspan><tspan class="typed2" style="animation-delay:0.450s">p</tspan><tspan class="typed2" style="animation-delay:0.495s">t</tspan><tspan class="typed2" style="animation-delay:0.540s">-</tspan><tspan class="typed2" style="animation-delay:0.585s">g</tspan><tspan class="typed2" style="animation-delay:0.630s">u</tspan><tspan class="typed2" style="animation-delay:0.675s">a</tspan><tspan class="typed2" style="animation-delay:0.720s">r</tspan><tspan class="typed2" style="animation-delay:0.765s">d</tspan><tspan class="typed2" style="animation-delay:0.810s"> </tspan><tspan class="typed2" style="animation-delay:0.855s">c</tspan><tspan class="typed2" style="animation-delay:0.900s">h</tspan><tspan class="typed2" style="animation-delay:0.945s">e</tspan><tspan class="typed2" style="animation-delay:0.990s">c</tspan><tspan class="typed2" style="animation-delay:1.035s">k</tspan></text>
+  <text class="b0" x="22" y="80" fill="#1f2328" xml:space="preserve">stage: drafting (writing the manuscript against results that exist)</text>
+  <text class="b1" x="22" y="100" fill="#59636e" xml:space="preserve">  ...</text>
+  <text class="b2" x="22" y="120" fill="#1f2328" xml:space="preserve">  numerical provenance</text>
+  <text class="b3" x="22" y="140" fill="#1f2328" xml:space="preserve">    checked:     G2, G3, G7, G8: 0 failing, 0 warnings</text>
+  <text class="b4" x="22" y="160" fill="#59636e" xml:space="preserve">  ...</text>
+  <text class="b5" x="22" y="180" fill="#1a7f37" font-weight="600" xml:space="preserve">0 failing, 12 warnings</text>
+  </g>
+  <line x1="1" y1="300.5" x2="859" y2="300.5" stroke="#d0d7de"/>
+  <text class="cap" x="22" y="324" fill="#59636e">manuscript/main.md</text>
+  <g class="pane">
+  <text x="22" y="350" fill="#59636e">11</text>
+  <text class="typed" x="60" y="350" fill="#1f2328" xml:space="preserve">**Results.** Of <tspan class="flag" font-weight="600">4,000</tspan> reports, {{results.case.n_cases}} described</text>
+  <text class="struck" x="60" y="350" fill="#59636e" text-decoration="line-through" xml:space="preserve">**Results.** Of 4,000 reports, {{results.case.n_cases}} described</text>
+  <text class="struck" x="44" y="350" fill="#cf222e" font-weight="600">&#8722;</text>
+  <g class="bound"><text x="22" y="374" fill="#59636e">11</text><text x="44" y="374" fill="#1a7f37" font-weight="600">+</text><text x="60" y="374" fill="#1f2328" xml:space="preserve">**Results.** Of <tspan class="bind">{{results.cohort.n_reports}}</tspan> reports, {{results.case.n_cases}} described</text></g>
+  </g>
+</svg>

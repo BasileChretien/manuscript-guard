@@ -1,0 +1,15 @@
+{
+  "name": "manuscript-guard-audit-page",
+  "private": true,
+  "description": "The in-browser audit page: what web/build.py bundles and serves, and what web/test/ drives.",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@bjorn3/browser_wasi_shim": "0.4.2",
+    "pyodide": "314.0.7"
+  },
+  "devDependencies": {
+    "esbuild": "0.27.3",
+    "puppeteer-core": "24.43.1"
+  }
+}

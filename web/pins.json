@@ -1,0 +1,24 @@
+{
+  "_": "What web/build.py downloads that npm does not pin, each held to its SHA-256. The pandoc version is CI's (MANUSCRIPT_GUARD_REQUIRE_PANDOC in .github/workflows/ci.yml), which tests/test_web.py holds. Pyodide's version is the one web/package.json names; the packages it loads are held to the hashes in its own pyodide-lock.json.",
+  "pandoc": {
+    "version": "3.9.0.2",
+    "wasm": {
+      "url": "https://github.com/jgm/pandoc/releases/download/3.9.0.2/pandoc.wasm.zip",
+      "sha256": "fc9c1f4eeed27a57937a521f73e4e7417c392f3112782e8b313effb4cab9a3f5"
+    },
+    "licence": {
+      "url": "https://raw.githubusercontent.com/jgm/pandoc/3.9.0.2/COPYING.md",
+      "sha256": "9d56cac92294e206af026a5502bee0fed77200b08b51ec28aa63c9efda4dcfdd"
+    },
+    "source": "https://github.com/jgm/pandoc/tree/3.9.0.2"
+  },
+  "pyodide": {
+    "packages": "https://cdn.jsdelivr.net/pyodide/v{version}/full/",
+    "load": ["pyyaml", "jsonschema"],
+    "licence": {
+      "url": "https://raw.githubusercontent.com/pyodide/pyodide/{version}/LICENSE",
+      "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+    },
+    "source": "https://github.com/pyodide/pyodide/tree/{version}"
+  }
+}

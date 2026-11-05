@@ -1,0 +1,54 @@
+name: Build and check the audit page
+description: >-
+  Builds the in-browser audit page (web/) into _site from the checkout, and holds it to the
+  command line (web/test/check.py). CI's `web` job and the Pages workflow both run this, so
+  the page served is a page CI has checked, built the same way.
+
+runs:
+  using: composite
+  steps:
+    # The pandoc the command line here runs is the one the page's pandoc.wasm is, so that
+    # their reports can be compared word for word. pins.json names it; tests/test_web.py
+    # holds it to the version CI pins.
+    - id: pins
+      shell: bash
+      run: echo "pandoc=$(python3 -c "import json; print(json.load(open('web/pins.json'))['pandoc']['version'])")" >> "$GITHUB_OUTPUT"
+    - uses: actions/setup-python@v6
+      with:
+        python-version: "3.13"
+        cache: pip
+        cache-dependency-path: pyproject.toml
+    - uses: r-lib/actions/setup-pandoc@v2
+      with:
+        pandoc-version: ${{ steps.pins.outputs.pandoc }}
+    - uses: actions/setup-node@v6
+      with:
+        node-version: "22"
+        cache: npm
+        cache-dependency-path: web/package-lock.json
+    - shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+    - name: Build the worked example, whose .docx and results the page is checked on
+      shell: bash
+      run: |
+        cp -r example "$RUNNER_TEMP/example"
+        cd "$RUNNER_TEMP/example"
+        python analysis/00_simulate.py
+        python analysis/01_disproportionality.py
+        python figures/forest.py
+        manuscript-guard build --offline
+    - name: Build the wheel and the site
+      shell: bash
+      run: |
+        pip wheel . --no-deps --wheel-dir "$RUNNER_TEMP/dist"
+        (cd web && npm ci)
+        python web/build.py --wheel "$RUNNER_TEMP"/dist/manuscript_guard-*.whl --out _site
+    - name: The page says what the command line says, sends nothing, and refuses what its rules forbid
+      shell: bash
+      run: >-
+        python web/test/check.py --site _site
+        --docx "$RUNNER_TEMP/example/build/manuscript.docx"
+        --results "$RUNNER_TEMP/example/results/01_disproportionality.json"
+        --markdown "$RUNNER_TEMP/example/manuscript/main.md"

@@ -1717,6 +1717,74 @@ def test_putting_an_entry_a_person_answered_on_another_sentence_is_put_to_them(
         assert "--id c1" in reason(result)
 
 
+def _proposal_unanswered(project: Path) -> None:
+    """The hook tests' currency.yaml with its proposal unanswered, and the work it proposes
+    in references.bib as @classReview2023."""
+    text = _CURRENCY[:_CURRENCY.index("  answer:")]
+    (project / "literature" / "currency.yaml").write_text(text, encoding="utf-8")
+    with (project / "literature" / "references.bib").open("a", encoding="utf-8") as bib:
+        bib.write("\n@article{classReview2023,\n  title = {A review},\n"
+                  "  author = {Fictional, Eve},\n  journal = {Imaginary Reviews},\n"
+                  "  year = {2023},\n  doi = {10.5555/class.review.2023}\n}\n")
+
+
+@pytest.mark.parametrize("by", ["key", "sentence"])
+def test_moving_an_unanswered_proposal_onto_the_work_it_proposes_is_put_to_the_person(
+    in_claude_code: Path, by: str, capsys
+) -> None:
+    """Basile, 2026-11-05: an entry whose proposed change nobody answered, put by `--mark
+    --id` on a sentence citing the work proposed, counts as accepting it; an agent could
+    clear `currency-change-unanswered`, which is a person's, by placing it on a near copy."""
+    _proposal_unanswered(in_claude_code)
+    if by == "key":
+        command = ('manuscript-guard references --mark "a disproportionality signal" '
+                   "@classReview2023 --id c1")  # fmt: skip
+    else:
+        main = in_claude_code / "manuscript" / "main.md"
+        text = main.read_text(encoding="utf-8")
+        old = "[@fictionalClassSignal2019]. The"
+        assert old in text
+        main.write_text(text.replace(old, "[@fictionalClassSignal2019; @classReview2023]. The",
+                                     1), encoding="utf-8")  # fmt: skip
+        command = ("manuscript-guard references --mark 'disproportionality signal has been "
+                   "reported' @fictionalClassSignal2019 --id=c1")  # fmt: skip
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "counts as accepting the change" in reason(result)
+
+
+@pytest.mark.parametrize("case", ["no proposal", "no --id", "not the work proposed"])
+def test_a_mark_that_accepts_no_proposal_is_the_agents_to_run(
+    in_claude_code: Path, case: str, capsys
+) -> None:
+    _proposal_unanswered(in_claude_code)
+    command = ('manuscript-guard references --mark "a disproportionality signal" '
+               "@classReview2023 --id c1")  # fmt: skip
+    if case == "no proposal":
+        path = in_claude_code / "literature" / "currency.yaml"
+        text = path.read_text(encoding="utf-8")
+        old = "    action: replace\n    candidate: doi:10.5555/class.review.2023\n"
+        assert old in text
+        path.write_text(text.replace(old, "    action: keep\n")
+                        .replace("[K1, K2, K3, D1]", "[K1, K2, K3, D3]"), encoding="utf-8")
+    elif case == "no --id":
+        command = command.removesuffix(" --id c1")
+    else:
+        command = ('manuscript-guard references --mark "disproportionality signal has been '
+                   'reported" @fictionalClassSignal2019 --id c1')  # fmt: skip
+    assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
+
+
+def test_moving_a_proposal_where_the_bibliography_is_missing_is_put_to_the_person(
+    in_claude_code: Path, capsys
+) -> None:
+    _proposal_unanswered(in_claude_code)
+    (in_claude_code / "literature" / "references.bib").unlink()
+    command = ('manuscript-guard references --mark "a disproportionality signal" '
+               "@fictionalClassSignal2019 --id c1")  # fmt: skip
+    assert decision(run("guard-submission", _shell(in_claude_code, command), capsys)) == "ask"
+
+
 def test_a_file_named_currency_elsewhere_holds_no_decision(in_claude_code: Path, capsys) -> None:
     other = in_claude_code / "notes" / "currency.yaml"
     other.parent.mkdir()

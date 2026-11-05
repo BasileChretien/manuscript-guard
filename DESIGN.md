@@ -3708,8 +3708,11 @@ came since or a preprint was published (`lookups.currency_facts`, what gives
 is neither edited nor a mismatch. `currency-decision-not-human` is the author's to answer, as
 `currency-change-unanswered` is. The hook asks before an agent's edit changes a person's
 decision or any answer, before `references --refuse`, and before `references --mark ... --id`
-puts an entry a person decided or answered on another sentence. `check`'s literature line says how
-many entries the rules decided and from whose readings, and how many a person did.
+puts an entry a person decided or answered on another sentence, or puts one whose proposed
+change nobody answered on a sentence citing the work it proposes, which would accept the
+change (Basile, 2026-11-05); it asks too where currency.yaml or references.bib cannot be
+read. `check`'s literature line says how many entries the rules decided and from whose
+readings, and how many a person did.
 
 **The command**, `references`: alone, a row per claim in scope; `--explain ID`; `--mark
 "WORDS" @KEY` (with `--id`, an entry no sentence reads as put on the sentence again, `KEY`

@@ -1678,14 +1678,19 @@ def _approves(command: str) -> str | None:
 
 def _places_again(command: str, payload: dict) -> str | None:
     """Why a `references --mark ... --id <id>` in this command is put to the person: it puts
-    the entry on another sentence, and a person's decision or answer of it with it. Where
-    the entry holds neither, it is the agent's to run; where literature/currency.yaml cannot
-    be read, or there is no project here, it is asked."""
+    the entry on another sentence, and a person's decision or answer of it with it; or it
+    puts an entry whose `replace` or `add` nobody answered on a sentence that cites the work
+    proposed, which counts as accepting it (Basile, 2026-11-05: an agent could otherwise
+    clear `currency-change-unanswered`, a person's to clear, by re-placing the entry on a
+    near copy). Where the entry holds neither, it is the agent's to run; where
+    literature/currency.yaml or references.bib cannot be read, or there is no project here,
+    it is asked."""
     joined = re.sub(r"[\\`]\r?\n", " ", command)
     ids = [found[1] for found in _PLACES_AGAIN.finditer(joined)]
     if not ids:
         return None
     held: list[str] = []
+    accepting: list[str] = []
     root = _project_root(payload)
     try:
         from manuscript_guard.contracts import load_project
@@ -1693,7 +1698,8 @@ def _places_again(command: str, payload: dict) -> str | None:
 
         if root is None:
             raise ValueError("no project")
-        entries, report = read_entries(load_project(root)[0])
+        project = load_project(root)[0]
+        entries, report = read_entries(project)
         if report.failures:
             raise ValueError("unreadable")
         by_id = {entry.id: entry for entry in entries}
@@ -1702,19 +1708,69 @@ def _places_again(command: str, payload: dict) -> str | None:
             decision = (entry.decision or {}) if entry else {}
             if entry and (entry.answer or decision.get("by") not in (None, "rules")):
                 held.append(one)
+            elif (entry and decision.get("action") in ("replace", "add")
+                  and decision.get("candidate")
+                  and _onto_the_candidate(joined, one, str(decision["candidate"]), project)):
+                accepting.append(one)
     except Exception:  # noqa: BLE001 - what cannot be read is asked
         held = ids
-    if not held:
-        return None
-    return (
-        f"`manuscript-guard references --mark ... --id {held[0]}` puts that entry on another "
-        "sentence, with what a person decided or answered of it. That is theirs to move: run "
-        "it yourself, or ask them."
-    )
+    if held:
+        return (
+            f"`manuscript-guard references --mark ... --id {held[0]}` puts that entry on "
+            "another sentence, with what a person decided or answered of it. That is theirs "
+            "to move: run it yourself, or ask them."
+        )
+    if accepting:
+        return (
+            f"`manuscript-guard references --mark ... --id {accepting[0]}` puts an entry whose "
+            "proposed change nobody has answered on a sentence that cites the work it "
+            "proposes, which counts as accepting the change. That is a person's to do: run it "
+            "yourself, or ask them."
+        )
+    return None
+
+
+def _onto_the_candidate(command: str, entry_id: str, candidate: str, project) -> bool:
+    """Whether a `references --mark WORDS @KEY --id <entry_id>` in this command moves the entry
+    onto the work it proposes: KEY's entry in references.bib is the candidate, or a sentence
+    citing KEY that holds WORDS cites the candidate. A command read two ways by the two
+    shells, references.bib missing, or a `--mark` not found beside the id, is taken to."""
+    from manuscript_guard.currency.records import is_work
+    from manuscript_guard.currency.survey import find_sentence, survey
+    from manuscript_guard.literature.bibfile import read_entries as read_bib
+
+    bib_path = project.path("literature") / "references.bib"
+    if not bib_path.is_file():
+        return True
+    bib = read_bib(bib_path)
+    candidates = {key for key, fields in bib.items() if is_work(fields, candidate)}
+    marks: list[tuple[str, str]] = []
+    for invocations, _clean in (_command_words(command, posix=posix) for posix in (True, False)):
+        for words in invocations:
+            tool = _tool_words(words)
+            if not tool or tool[0].casefold() != "references":
+                continue
+            ids = [tool[i + 1] for i, word in enumerate(tool[:-1]) if word == "--id"]
+            ids += [word.split("=", 1)[1] for word in tool if word.startswith("--id=")]
+            if entry_id not in [one.strip("\"'") for one in ids]:
+                continue
+            at = [i for i, word in enumerate(tool) if word == "--mark"]
+            if not at or at[0] + 2 >= len(tool):
+                return True
+            marks.append((tool[at[0] + 1], tool[at[0] + 2].removeprefix("@")))
+    if not marks:
+        return True
+    sentences = survey(project)[0].sentences
+    for words, key in marks:
+        if key in candidates:
+            return True
+        if any(candidates & set(one.keys) for one in find_sentence(words, key, sentences)):
+            return True
+    return False
 
 
 #: `--open` as a word of the command, which `report-issue` opens the page with.
-_OPEN_FLAG =re.compile(r"--open(?:=.*)?", re.IGNORECASE | re.DOTALL)
+_OPEN_FLAG = re.compile(r"--open(?:=.*)?", re.IGNORECASE | re.DOTALL)
 _OPENS = (
     "`manuscript-guard report-issue --open` opens the project's issue page in your browser "
     "with a report filled in, to be posted under your GitHub account. Read the report it "

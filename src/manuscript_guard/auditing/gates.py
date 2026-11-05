@@ -91,18 +91,20 @@ def _stage(paper: Path, tree=None) -> _Staged:
     if suffix == ".pdf":
         return _staged_pdf(paper)
     if suffix == ".docx":
+        from manuscript_guard import from_word
         from manuscript_guard.build.document import BuildError, pandoc
-        from manuscript_guard.from_word import convert
 
         # Asked here, so that the note is audit's: through `convert` it said "init needs it"
-        # (round 1 of #463).
+        # (round 1 of #463). Not where pandoc is run otherwise than from PATH, as the
+        # in-browser page runs pandoc.wasm (`from_word.runner`).
+        if from_word.runner is None:
+            try:
+                pandoc()
+            except BuildError as exc:
+                raise ValueError(f"{exc}; audit needs it to convert {paper.name} to the text "
+                                 "G6 and G14 read") from None  # fmt: skip
         try:
-            pandoc()
-        except BuildError as exc:
-            raise ValueError(f"{exc}; audit needs it to convert {paper.name} to the text G6 "
-                             "and G14 read") from None  # fmt: skip
-        try:
-            converted = convert(paper)
+            converted = from_word.convert(paper)
         except ContractError as exc:
             raise ValueError(str(exc)) from None
         return _Staged({"main.md": converted.text}, {"main.md": paper}, converted=True)

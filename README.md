@@ -290,6 +290,16 @@ pip install manuscript-guard
 manuscript-guard --version
 ```
 
+To audit one paper without installing anything, [uv](https://docs.astral.sh/uv/) runs it in
+one line, fetching a Python if there is none:
+
+```bash
+uvx manuscript-guard audit paper.docx
+```
+
+Or, with no terminal at all, [the audit page](docs/audit-page.md) runs `audit` on a .docx in
+a web browser, and the paper is not uploaded.
+
 To build a .docx you also need [pandoc](https://pandoc.org/installing.html). Zotero, R, and
 `pdftotext` or pypdf for reading PDFs, are needed only for particular things, and the tool
 says which when you reach it. [Installing and upgrading](docs/install.md) has the table of

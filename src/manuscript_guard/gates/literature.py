@@ -79,8 +79,12 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
     source to read used to be passed over: it was counted in none of these, reported by
     nothing, and the run said everything it had checked was verified.
     """
+    from manuscript_guard.gates.citations import source_elsewhere
+    from manuscript_guard.literature.copies import recorded_names
+
     report = Report()
     root = project.path("literature")
+    recorded = None if project.sources_in_git else recorded_names(project)
     verified = 0
     unverifiable = 0
     failed = 0
@@ -98,6 +102,11 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
         source_file = str(detail.get("source_file") or "").strip()
         quote = detail.get("quote", "")
         path = root / source_file
+        if source_file and not path.exists() and source_elsewhere(project, source_file, recorded):
+            # A recorded copy kept out of git, not on this computer: `_sources_exist` notes it
+            # (literature-source-not-here). Nothing was read, and nothing found wrong.
+            unverifiable += 1
+            continue
         if not source_file or not path.exists():
             # `_sources_exist` reports both as literature-source-missing; one finding is
             # enough. The value was checked against nothing, so it is not verified.

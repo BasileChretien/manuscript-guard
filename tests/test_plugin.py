@@ -896,6 +896,7 @@ NAMED_NOWHERE = {
     "profiles/reporting/STROBE.yaml": "written by `transcribe`, and kept out of git",
     "profiles/reporting/sources/": "where `fetch` puts the guidelines, kept out of git",
     "literature/related.yaml": "written with the author by the related-outputs skill",
+    "literature/sources.yaml": "written by `sync-sources`, the record of the stored copies",
     "manuscript/main.tex": "written by `init --latex`, in place of main.md",
     "manuscript/media/": "written by `init --from`, the pictures of a Word paper",
     "communication/graphical-abstract/": "made by the communicate commands, still to come",

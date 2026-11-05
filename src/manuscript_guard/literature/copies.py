@@ -27,6 +27,13 @@ deleted. What it wrote is recorded in `literature/sources.yaml`: each file's
 name, the work, the SHA-256 and size of what was written, and whether it is the file or
 Zotero's text. The record holds no path on anyone's computer.
 
+A file saved by hand under a cited work's name, or one the ledger names, is entered in the
+record too, as the author's (`from: author`), with its digest as it is now; it is never
+replaced. A new project keeps `literature/sources/` out of git and the record in it (Basile,
+2026-10-20, confirmed 2026-11-05), so the record is what CI has of the folder: G7 notes a copy
+it lists that is not on the computer, where it fails one that nobody stored
+(`recorded_names`).
+
 With `--from <folder>` the files are taken from a folder of PDFs named by DOI instead of from
 Zotero (`downloads`), under the same rules, and recorded as from the folder with the DOI they
 were matched by. A file one source wrote is not replaced from the other: one paper downloaded
@@ -37,6 +44,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import tempfile
 from collections import Counter
@@ -79,6 +87,8 @@ TEXT_IN_PLACE_OF = frozenset({".epub"})
 NOT_THE_WORK = frozenset(TEXT_SUFFIXES) - TAKEN
 #: What `from` says of a PDF taken from the folder named with `--from`.
 FROM_FOLDER = "folder"
+#: What `from` says of a file the author saved there: recorded, and never replaced.
+FROM_AUTHOR = "author"
 
 COPIED = "copied"
 UPDATED = "updated"
@@ -86,6 +96,8 @@ UNCHANGED = "unchanged"
 KEPT = "kept"
 STORED = "stored"
 NO_COPY = "no copy"
+#: A name the record holds, as its schema says.
+_NAME = re.compile(r"[A-Za-z0-9_.-]+")
 #: Kept, because the other source wrote it: said apart, counted as kept.
 _OTHERS = "the other source's"
 
@@ -150,6 +162,23 @@ def read_record(project: Project) -> dict[str, dict[str, Any]]:
             "it: the files it listed are then treated as put there by hand, and kept"
         )
     return dict(document["files"])
+
+
+def recorded_names(project: Project) -> frozenset[str] | None:
+    """The names under `literature/sources/` the record lists, for G7; None where there is a
+    record and it is not one, which then vouches for no copy. Read, never raised on: `check`
+    reports a missing copy whatever the record says."""
+    try:
+        return frozenset(read_record(project))
+    except (ContractError, OSError):
+        return None
+
+
+def recorded_name(source_file: str) -> str | None:
+    """The name a ledger's `source_file`, relative to `literature/`, has in the record: that of
+    a file directly under `sources/`, or None for a file anywhere else."""
+    parts = Path(os.path.normpath(source_file.strip())).parts
+    return parts[1] if len(parts) == 2 and parts[0] == FOLDER else None
 
 
 def write_record(project: Project, files: dict[str, dict[str, Any]]) -> Path:
@@ -231,6 +260,10 @@ def _decide(dest: Path, candidate: Candidate, ours: dict[str, Any] | None) -> st
         return COPIED
     if not dest.is_file():
         return KEPT
+    if ours is not None and ours["from"] == FROM_AUTHOR:
+        # The author's, whatever its bytes: recorded so that CI knows it was stored, not so
+        # that the command may replace it.
+        return UNCHANGED if digest(dest)[0] == candidate.sha256 else KEPT
     current, _ = digest(dest)
     if current == candidate.sha256:
         return UNCHANGED
@@ -351,6 +384,9 @@ def sync(
     files = dict(recorded)
     outcomes: list[Outcome] = []
     try:
+        files.update(_authors_files(project, keys, folder, files, today or date.today()))
+        recorded = {**recorded, **{name: files[name] for name in files
+                                   if files[name]["from"] == FROM_AUTHOR}}  # fmt: skip
         for key in keys:
             if offered is not None:
                 chosen, why = offered.candidates(key)
@@ -370,6 +406,55 @@ def sync(
         if not dry_run and files != on_disk:
             write_record(project, files)
     return outcomes
+
+
+def _named_by_the_ledger(project: Project) -> list[tuple[str, str]]:
+    """Each file directly under `sources/` a ledger entry names, with the entry's work."""
+    from manuscript_guard.contracts.literature import load_literature
+
+    try:
+        literature, _report = load_literature(project.path("literature"))
+    except ContractError:
+        # A ledger that cannot be read is `check`'s to report (G0); the copies of the cited
+        # works are still taken, and the files under their names still recorded.
+        return []
+    named = []
+    for value in literature.values.values():
+        detail = value.detail or {}
+        name = recorded_name(str(detail.get("source_file") or ""))
+        if name is not None and detail.get("citekey"):
+            named.append((str(detail["citekey"]), name))
+    return named
+
+
+def _authors_files(
+    project: Project,
+    keys: list[str],
+    folder: Path,
+    files: dict[str, dict[str, Any]],
+    today: date,
+) -> dict[str, dict[str, Any]]:
+    """The record's entries for the files saved by hand: each stored file of a wanted work,
+    and each file the ledger names, that the command did not write, as it is now. A name the
+    record cannot hold, or a file that cannot be read, is passed over: G7 holds it as it held
+    every hand-saved file before."""
+    wanted = [(key, path.name) for key in keys for path in stored_files(folder, key)]
+    found: dict[str, dict[str, Any]] = {}
+    for key, name in wanted + _named_by_the_ledger(project):
+        held = files.get(name)
+        if name in found or (held is not None and held["from"] != FROM_AUTHOR):
+            continue
+        if not _NAME.fullmatch(name) or not (folder / name).is_file():
+            continue
+        try:
+            sha, size = digest(folder / name)
+        except OSError:
+            continue
+        if held is not None and held["sha256"] == sha:
+            continue
+        found[name] = {"key": key, "sha256": sha, "bytes": size, "from": FROM_AUTHOR,
+                       "copied": today.isoformat()}  # fmt: skip
+    return found
 
 
 def _file(
@@ -468,6 +553,7 @@ def report(
 
 __all__ = [
     "COPIED",
+    "FROM_AUTHOR",
     "FROM_FOLDER",
     "KEPT",
     "NO_COPY",
@@ -481,6 +567,8 @@ __all__ = [
     "Outcome",
     "candidates",
     "read_record",
+    "recorded_name",
+    "recorded_names",
     "report",
     "sync",
     "write_record",

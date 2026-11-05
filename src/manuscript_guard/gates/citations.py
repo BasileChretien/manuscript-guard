@@ -27,7 +27,7 @@ from pathlib import Path
 
 from manuscript_guard.contracts.literature import ATTESTED, Literature
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.findings import WARN, Finding, Report
+from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.duplicates import check_duplicates
 from manuscript_guard.gates.identifiers import check_identifiers
 from manuscript_guard.gates.lookups import check_lookups
@@ -174,10 +174,21 @@ def check_citations(project: Project, literature: Literature) -> Report:
 
 
 def _sources_exist(project: Project, literature: Literature) -> Report:
-    """A ledger entry without its stored source is an assertion, not evidence."""
+    """A ledger entry without its stored source is an assertion, not evidence.
+
+    Unless the source is elsewhere for a reason that is not a fault. A new project keeps
+    `literature/sources/` out of git and `literature/sources.yaml` in it (Basile, 2026-10-20,
+    confirmed 2026-11-05), so on a fresh clone or in CI a copy the record lists is not there:
+    that is noted, and the quote is not checked here. A project that commits its copies says so
+    in `paper.yaml` (`literature: {sources_in_git: true}`), and a recorded copy missing there
+    fails as any other does."""
+    from manuscript_guard.literature.copies import recorded_names
+
     report = Report()
     root = project.path("literature")
+    recorded = None if project.sources_in_git else recorded_names(project)
     missing = 0
+    not_here = 0
     for key, value in sorted(literature.values.items()):
         detail = value.detail or {}
         if value.origin == ATTESTED:
@@ -198,19 +209,51 @@ def _sources_exist(project: Project, literature: Literature) -> Report:
                 )
             )
             continue
-        if not (root / source).exists():
-            missing += 1
+        if (root / source).exists():
+            continue
+        if source_elsewhere(project, source, recorded):
+            not_here += 1
             report = report.with_findings(
                 Finding(
                     gate=GATE,
-                    code="literature-source-missing",
-                    message=f"{key}: the stored source {source} is gone",
+                    code="literature-source-not-here",
+                    severity=INFO,
+                    message=f"{key}: {source} is not on this computer. literature/sources.yaml "
+                    "records it as stored, and the copies are kept out of git, so the quote "
+                    "was not checked against it here",
                     path=value.source,
-                    hint="restore the file, or move the entry to attested.yaml and say who "
-                    "read it",
+                    hint="on the computer that holds the copies, `check` holds the quote to it; "
+                    "to have the copy here, run `manuscript-guard sync-sources` or save the "
+                    "file again. A private repository that commits the copies sets "
+                    "`literature: {sources_in_git: true}` in paper.yaml",
                 )
             )
-    return report.with_counts(literature_sources_missing=missing)
+            continue
+        missing += 1
+        unread = recorded is None and not project.sources_in_git
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="literature-source-missing",
+                message=f"{key}: the stored source {source} is gone",
+                path=value.source,
+                hint="restore the file, or move the entry to attested.yaml and say who read it"
+                + ("; literature/sources.yaml is not a record `sync-sources` wrote, so it "
+                   "vouches for no copy" if unread else ""),
+            )
+        )
+    return report.with_counts(literature_sources_missing=missing,
+                              literature_sources_not_here=not_here)  # fmt: skip
+
+
+def source_elsewhere(project: Project, source: str, recorded: frozenset[str] | None) -> bool:
+    """Whether a source that is not on this computer is recorded as stored, in a project that
+    keeps its copies out of git: `recorded` is what `recorded_names` read, None for nothing."""
+    from manuscript_guard.literature.copies import recorded_name
+
+    if project.sources_in_git or not recorded:
+        return False
+    return recorded_name(source) in recorded
 
 
 def _nearest(citekey: str, known: frozenset[str], raw: str = "") -> str:

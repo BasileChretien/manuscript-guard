@@ -71,6 +71,12 @@ terms: []
 # Tables and figures the journal gets as files of their own, cited in the text and not
 # placed in it (a flow chart drawn by hand): counted with those placed by {{{{figure.<key>}}}}.
 # displays: {{figures_as_files: 1}}
+
+# The copies of cited works under literature/sources/ are left out of git by .gitignore, so
+# that a public repository does not publish them; literature/sources.yaml, the record of what
+# was stored, is committed, and a recorded copy missing in CI is noted, not failed. In a
+# private repository that commits them, take that line out of .gitignore and say so here:
+# literature: {{sources_in_git: true}}
 """
 
 AUTHORS = """\
@@ -185,6 +191,11 @@ GITIGNORE = """\
 build/
 .Rproj.user/
 __pycache__/
+
+# The copies of cited works, paywalled papers among them, which a public repository would
+# publish. literature/sources.yaml, the record of what was stored, is kept. To commit the
+# copies in a private repository, delete this line and see `literature:` in paper.yaml.
+literature/sources/
 """
 
 # Not cosmetic. Several of this toolkit's guarantees are byte-level: the .sha256 beside every

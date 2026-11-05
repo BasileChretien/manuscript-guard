@@ -12376,6 +12376,101 @@ def test_every_literature_value_ends_in_one_verdict(
         assert code in codes(report), report.render(project)
 
 
+# ------------------------------------------- a recorded source that is not on this computer
+# New projects keep literature/sources/ out of git, and literature/sources.yaml in it (Basile,
+# 2026-10-20, confirmed 2026-11-05). On a fresh clone or in CI a source the record lists is
+# then missing for a reason that is not a fault: G7 notes it, and the quote is unverifiable
+# rather than failed. A project that keeps the copies in git asks for the failure back.
+
+_HEPATIC = "fictionalHepaticCohort2021.txt"
+
+
+def _recorded_then_gone(root: Path, *, sources_in_git: bool | None = None) -> None:
+    from manuscript_guard.literature import copies
+
+    source = root / "literature" / "sources" / _HEPATIC
+    data = source.read_bytes()
+    files = {_HEPATIC: {"key": "fictionalHepaticCohort2021",
+                        "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data),
+                        "from": "author", "copied": "2026-11-05"}}  # fmt: skip
+    copies.write_record(load_project(root)[0], files)
+    source.unlink()
+    if sources_in_git is not None:
+        paper = root / "paper.yaml"
+        document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+        document["literature"] = {"sources_in_git": sources_in_git}
+        paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def test_a_recorded_source_not_on_this_computer_is_noted_and_unverifiable(project: Path) -> None:
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.findings import INFO
+
+    _recorded_then_gone(project)
+    report = _literature_report(project)
+    assert report.ok, report.render(project)
+    (note,) = [f for f in report.findings if f.code == "literature-source-not-here"]
+    assert note.severity == INFO
+    assert "not on this computer" in note.message and "sources.yaml" in note.message
+    assert "literature-source-missing" not in codes(report)
+    counts = report.counts
+    assert (counts["literature_verified"], counts["literature_unverifiable"],
+            counts["literature_failed"]) == (1, 1, 0), counts  # fmt: skip
+    # `check`, at every stage, says the same: a note, not a failure.
+    gated, _project, _stage, _deferred = _run_gates(project, stage="submission")
+    assert "literature-source-not-here" in {f.code for f in gated.findings}
+    assert "literature-source-missing" not in {f.code for f in gated.failures}
+
+
+def test_a_recorded_source_missing_fails_where_the_copies_are_kept_in_git(project: Path) -> None:
+    _recorded_then_gone(project, sources_in_git=True)
+    report = _literature_report(project)
+    assert "literature-source-missing" in {f.code for f in report.failures}
+    assert "literature-source-not-here" not in {f.code for f in report.findings}
+    assert report.counts["literature_failed"] == 1
+
+
+def test_saying_the_copies_are_not_in_git_is_the_default(project: Path) -> None:
+    _recorded_then_gone(project, sources_in_git=False)
+    report = _literature_report(project)
+    assert "literature-source-not-here" in {f.code for f in report.findings}
+    assert report.ok, report.render(project)
+
+
+def test_a_source_neither_recorded_nor_here_still_fails(project: Path) -> None:
+    from manuscript_guard.literature import copies
+
+    _recorded_then_gone(project)
+    path = project / "literature" / copies.RECORD
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["files"] = {}
+    path.write_text(yaml.safe_dump(document), encoding="utf-8")
+    report = _literature_report(project)
+    assert "literature-source-missing" in {f.code for f in report.failures}
+
+
+def test_a_record_that_is_not_one_vouches_for_no_missing_source(project: Path) -> None:
+    from manuscript_guard.literature import copies
+
+    _recorded_then_gone(project)
+    (project / "literature" / copies.RECORD).write_text("files: [not, a, record]\n", "utf-8")
+    report = _literature_report(project)
+    failed = [f for f in report.failures if f.code == "literature-source-missing"]
+    assert failed and "sources.yaml" in failed[0].hint, report.render(project)
+
+
+def test_a_recorded_file_of_another_folder_vouches_for_nothing(project: Path) -> None:
+    """The record names files under literature/sources/; a ledger entry naming the same file
+    name elsewhere under literature/ is not the recorded one."""
+    _recorded_then_gone(project)
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["source_file"] = _HEPATIC
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    report = _literature_report(project)
+    assert "literature-source-missing" in {f.code for f in report.failures}
+
+
 # ------------------------------------------------------- a P worked out from its statistic
 # A statistic and a P that the analysis did not make agree: typed, quoted from a source, or
 # bound from two keys. G2 sees two numbers, each of which passed.

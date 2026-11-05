@@ -296,6 +296,18 @@
       "description": "Project-specific tokens that contain digits but are names, not claims: CYP3A4, SARS-CoV-2, HbA1c.",
       "items": { "type": "string" }
     },
+    "literature": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How the project keeps the copies of the works it cites.",
+      "properties": {
+        "sources_in_git": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the copies under literature/sources/ are committed. A new project's .gitignore leaves them out, since a public repository would publish them, paywalled papers among them; literature/sources.yaml, the record of what was stored, stays committed, and G7 notes rather than fails a recorded copy that is not on this computer, as in CI. Set true in a private repository that commits them, and take the line out of .gitignore: a recorded copy that is missing then fails again, so that CI holds every quote to its source."
+        }
+      }
+    },
     "lookup": {
       "type": "object",
       "additionalProperties": false,

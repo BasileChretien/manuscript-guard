@@ -3319,6 +3319,21 @@ computer, and lives beside `sources/` rather than in it, so that it can be kept 
 sources are not. A record that is not one stops the command, since without it the command
 cannot tell its files from the author's; deleting it makes every file the author's.
 
+**Out of git by default.** A new project keeps `literature/sources/` out of git, and the
+record in it (Basile, 2026-10-20, confirmed 2026-11-05): the copies are of paywalled papers
+among others, and a public repository, or one made public later, would publish them with its
+history. `init`'s `.gitignore` leaves the folder out. A file saved there by hand, under a
+cited work's name or a name the ledger gives, is entered in the record by each run of
+`sync-sources` as the author's (`from: author`), with its digest as it is then, and is never
+replaced, whatever Zotero or the folder hold; the entry follows the file when the author
+changes it. So the record is what CI has of the folder. G7 notes a copy it lists that is not
+on the computer (`literature-source-not-here`, "is not on this computer"), and counts its
+value unverifiable rather than failed; a copy neither recorded nor here fails as before
+(`literature-source-missing`), and so does a recorded one where the record is not one. A
+private repository that commits its copies says so, `literature: {sources_in_git: true}` in
+`paper.yaml`, and a recorded copy missing there fails again, so that CI holds every quote to
+its source.
+
 Zotero is one way to the author's own access, and a downloader is another: auto-paper-harvester
 (github.com/jxtse/auto-paper-harvester) fetches each DOI from an open copy, then a publisher's
 text-and-data-mining service, then the author's own signed-in Chrome, at a set pace and
@@ -19012,11 +19027,23 @@ Open, recorded as each change landed:
   copied so far recorded, rather than listing that key and going on. A copy the author
   deletes and saves again with the same bytes before the next run is still taken for the
   command's, since the same bytes cannot be told apart (#364).
-- **`literature/sources/` is kept in git unless the author says otherwise.** `init` does not
-  ignore it, so the copies `sync-sources` makes, of paywalled papers among them, are
-  committed with the project, and published with it if the repository is public, including
-  in its history if it is made public later. Leaving them out of git leaves CI unable to
-  hold a quote to its source. Which way a project goes is not yet decided here.
+- **Copies kept out of git leave CI quotes it cannot check, and an older project as it was.**
+  A new project's `.gitignore` leaves `literature/sources/` out (see "A cited work's copy is
+  taken from Zotero"), so CI, and a co-author's fresh clone, hold no quote of the ledger to
+  its source: each copy `literature/sources.yaml` records is a note there
+  (`literature-source-not-here`) and its value counted unverifiable, and only the computer
+  that holds the copies checks the quote. The other readers of a stored copy say what they
+  said of a missing one: in CI a passage, a quotation or a similar study's passage is
+  unchecked and an earlier output not compared, each a warning or a note. A copy the ledger names by a name the record cannot hold
+  (one with a space, or in a folder under `sources/`) is not recorded, and fails in CI as an
+  unrecorded one does. `init` never rewrites an existing `.gitignore`, so a project made
+  before 2026-11-05 still commits its copies, and nothing says so: the author adds the line,
+  and `git rm -r --cached literature/sources`, which leaves the copies in the history. A run
+  of `sync-sources` on a computer without the copies drops their entries from the record, as
+  it drops any entry whose file is gone (round 2 of #361), and a record committed from there
+  turns the notes of CI back into failures until it is run where the copies are. With
+  `literature: {sources_in_git: true}` and the line left in `.gitignore`, every recorded copy
+  fails in CI, which says the setting and the file disagree only by failing.
 - **`sync-sources --from` matches only a name a DOI spells, at the places the harvester puts
   it.** A PDF named by its title, its PMID or its citation key is counted as named for no
   cited DOI and not copied, and one deeper in the folder than `<name>/` or

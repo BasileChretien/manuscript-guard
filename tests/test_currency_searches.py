@@ -647,7 +647,11 @@ def test_the_command_searches_and_exits_by_whether_every_source_answered(
      # An assessment's flags were dropped without a word (the review of #531's merge).
      (["--search", "c1", "--terms", TERMS, "--as", "Ada", "--says", "refuses", "--quote", "y"],
       "--says and --quote go with --assess"),
-     (["--replay", "c1", "--reply", "1"], "--reply goes with --assess")],
+     (["--replay", "c1", "--reply", "1"], "--reply goes with --assess"),
+     # So were `--refuse`'s and `--mark`'s (round 1 of #534).
+     (["--search", "c1", "--terms", TERMS, "--as", "Ada", "--why", "x"],
+      "--why goes with --refuse"),
+     (["--replay", "c1", "--id", "c2"], "--id goes with --mark")],
 )  # fmt: skip
 def test_the_command_refuses_what_it_cannot_run(marked: Path, monkeypatch, capsys, argv,
                                                said) -> None:  # fmt: skip

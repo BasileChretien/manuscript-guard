@@ -3639,14 +3639,16 @@ def _references_search(project, args: argparse.Namespace) -> int:
     misplaced = _search_flags(args)
     if args.search is None and args.replay is None:
         raise command.Refused(f"{', '.join(misplaced)} go with --search or --replay")
-    # An assessment's flags were dropped without a word (the review of #531's merge).
-    assessing = [flag for flag, value in (("--reply", args.reply), ("--says", args.says),
-                                          ("--quote", args.quote)) if value is not None]
-    if len(assessing) == 1:
-        raise command.Refused(f"{assessing[0]} goes with --assess, not with --search or --replay")
-    if assessing:
-        named = f"{', '.join(assessing[:-1])} and {assessing[-1]}"
-        raise command.Refused(f"{named} go with --assess, not with --search or --replay")
+    # Another action's flags were dropped without a word (the review of #531's merge, and
+    # round 1 of #534).
+    for action, flags in (("--assess", ("reply", "says", "quote")), ("--refuse", ("why",)),
+                          ("--mark", ("id",))):  # fmt: skip
+        given = [f"--{flag}" for flag in flags if getattr(args, flag) is not None]
+        if len(given) == 1:
+            raise command.Refused(f"{given[0]} goes with {action}, not with --search or --replay")
+        if given:
+            named = f"{', '.join(given[:-1])} and {given[-1]}"
+            raise command.Refused(f"{named} go with {action}, not with --search or --replay")
     if args.replay is not None:
         if args.terms or args.against or args.question:
             raise command.Refused("--replay runs the recorded searches as they were: it takes "

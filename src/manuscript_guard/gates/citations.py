@@ -226,7 +226,7 @@ def _sources_exist(project: Project, literature: Literature) -> Report:
                     "was not checked against it here",
                     path=value.source,
                     hint="on the computer that holds the copies, `check` holds the quote to it; "
-                    + _back_here(kept.saved_by_hand(source))
+                    + _back_here(kept.source_of(source))
                     + ". A private repository that commits the copies sets "
                     "`literature: {sources_in_git: true}` in paper.yaml",
                 )
@@ -250,12 +250,18 @@ def _sources_exist(project: Project, literature: Literature) -> Report:
                               literature_sources_not_here=not_here)  # fmt: skip
 
 
-def _back_here(by_hand: bool) -> str:
-    """How a copy kept out of git gets onto this computer: `sync-sources` takes again what it
-    took, and never writes into the name of a file the author saved (round 2 of #525)."""
-    if by_hand:
+def _back_here(taken_from: str | None) -> str:
+    """How a copy kept out of git gets onto this computer, by where the record says it came
+    from: `sync-sources` takes Zotero's again, and a folder's with `--from` (round 1 of
+    #534), and never writes into the name of a file the author saved (round 2 of #525)."""
+    from manuscript_guard.literature.copies import FROM_AUTHOR, FROM_FOLDER
+
+    if taken_from == FROM_AUTHOR:
         return ("it was saved there by hand, so get it from whoever saved it: "
                 "`sync-sources` puts no other copy in its name")  # fmt: skip
+    if taken_from == FROM_FOLDER:
+        return ("to have the copy here, run `manuscript-guard sync-sources --from <folder>` "
+                "with the folder of PDFs it was taken from")  # fmt: skip
     return "to have the copy here, run `manuscript-guard sync-sources`"
 
 

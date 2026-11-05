@@ -363,22 +363,35 @@ def _said(status: str, candidate: Candidate, dry_run: bool) -> str:
 
 
 def _without_copy(folder: Path, key: str, why: list[str], holder: str = "Zotero",
-                  away: tuple[str, ...] = ()) -> Outcome:  # fmt: skip
-    """What became of a work nothing was copied for. A file of the author's that the record
-    lists and that is not on this computer (`away`) is stored, for G7, which notes it."""
+                  away: tuple[str, ...] = (), noted: frozenset[str] = frozenset(),
+                  ) -> Outcome:  # fmt: skip
+    """What became of a work nothing was copied for. Each file of the author's that the
+    record lists and that is not on this computer (`away`) is said to come from whoever saved
+    it. It counts as stored only where G7 notes it rather than fails it (`noted`: git ignores
+    it and the copies are not committed); elsewhere the work has no copy (round 1 of #534)."""
     reasons = "; ".join(why) or "no attachment"
     stored = [p.name for p in stored_files(folder, key)]
     said = [f"{', '.join(stored)} is stored already"] if stored else []
-    said += [_by_hand_away(name) for name in away]
+    said += [_by_hand_away(name) for name in away if name in noted]
+    gone = [_by_hand_away(name) for name in away if name not in noted]
     if said:
         return Outcome(key, STORED, f"nothing to copy from {holder} ({reasons}); "
-                       + "; ".join(said))  # fmt: skip
-    return Outcome(key, NO_COPY, f"no copy: {reasons}")
+                       + "; ".join(said + gone))  # fmt: skip
+    return Outcome(key, NO_COPY, "no copy: " + "; ".join([reasons, *gone]))
 
 
 def _by_hand_away(name: str) -> str:
     return (f"literature/sources/{name} was saved there by hand and is not on this computer: "
             "get it from whoever saved it")  # fmt: skip
+
+
+def _noted(project: Project) -> frozenset[str]:
+    """The recorded names G7 notes rather than fails where they are absent: git ignores them
+    and the copies are not committed (`literature/away.py`). Asked of git afresh, since the
+    record is written again at the end of this run."""
+    from manuscript_guard.literature.away import kept_away
+
+    return frozenset(kept_away(project).works)
 
 
 def _away_of(recorded: dict[str, dict[str, Any]], folder: Path, key: str) -> tuple[str, ...]:
@@ -435,6 +448,7 @@ def sync(
     # command wrote is then taken for the command's (#364).
     recorded = dict(on_disk)
     files = dict(recorded)
+    noted = _noted(project)
     outcomes: list[Outcome] = []
     try:
         files.update(_authors_files(project, keys, folder, files, today or date.today()))
@@ -449,7 +463,7 @@ def sync(
                 chosen, why = candidates(key, held)
             away = _away_of(recorded, folder, key)
             if not chosen:
-                outcomes.append(_without_copy(folder, key, why, holder, away))
+                outcomes.append(_without_copy(folder, key, why, holder, away, noted))
                 continue
             for candidate in chosen:
                 outcomes.append(

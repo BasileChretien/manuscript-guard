@@ -42,8 +42,9 @@ publish the copies, and commits `literature/sources.yaml`, the record of each fi
 there; `sync-sources` enters the files the user saved by hand too, as theirs. Where a
 recorded copy is not on the computer, in CI or a fresh clone, `check` says
 literature-source-not-here, a note: the quote is checked where the copies are. `sync-sources`
-takes again the copies it took from Zotero or a folder; a file saved by hand comes from
-whoever saved it, since `sync-sources` puts no other copy in its name. A passage, a quotation
+takes again the copies it took from Zotero, and `sync-sources --from <folder>` those it took
+from a folder; a file saved by hand comes from whoever saved it, since `sync-sources` puts no
+other copy in its name. A passage, a quotation
 in the prose and an earlier output's value whose copy is away are notes too
 (`passage-not-here`, `quotation-not-here`, `related-source-not-here`), checked where the
 copies are; none fails at any stage. A private repository that commits them sets

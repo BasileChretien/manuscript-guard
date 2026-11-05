@@ -452,7 +452,10 @@ def test_an_absent_authors_file_is_said_whatever_zotero_offers(
     """The author's file, recorded and not on this computer, is said to come from whoever
     saved it when Zotero holds nothing for the work, or a file of another kind, as when it
     offers one of the same name (round 2 of #525: only that case said so). Nothing is listed
-    as having no copy: G7 notes the file rather than failing it."""
+    as having no copy: git ignores the copies, so G7 notes the file rather than failing it."""
+    from kept_away import a_repository
+
+    a_repository(paper)
     zotero = Storage(tmp_path)
     cite(paper, "printed2010")
     sources(paper).mkdir(parents=True, exist_ok=True)
@@ -466,6 +469,29 @@ def test_an_absent_authors_file_is_said_whatever_zotero_offers(
     assert "whoever saved it" in out
     assert "No copy for" not in out
     assert not (sources(paper) / "printed2010.pdf").exists()
+
+
+def test_an_absent_authors_file_g7_fails_is_listed_as_having_no_copy(
+    paper, monkeypatch, capsys
+):
+    """Where the copies are committed (`sources_in_git: true`), an absent file fails G7, so
+    the work is listed as having no copy, with where its file comes from (round 1 of #534:
+    it was counted as stored by hand)."""
+    from kept_away import a_repository
+
+    a_repository(paper)
+    document = yaml.safe_load((paper / "paper.yaml").read_text(encoding="utf-8"))
+    document["literature"] = {"sources_in_git": True}
+    (paper / "paper.yaml").write_text(yaml.safe_dump(document, sort_keys=False), "utf-8")
+    cite(paper, "printed2010")
+    sources(paper).mkdir(parents=True, exist_ok=True)
+    (sources(paper) / "printed2010.pdf").write_bytes(PDF)
+    sync(paper, monkeypatch, FakeBBT({1: {"printed2010": None}}))
+    (sources(paper) / "printed2010.pdf").unlink()
+    assert run(paper, monkeypatch, FakeBBT({1: {"printed2010": None}})) == 0
+    out = capsys.readouterr().out
+    assert "No copy for 1 cited work" in out, out
+    assert "printed2010.pdf was saved there by hand" in out and "whoever saved it" in out
 
 
 def test_the_record_says_which_files_are_the_authors(paper, monkeypatch):

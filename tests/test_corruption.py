@@ -13022,27 +13022,32 @@ def test_a_recorded_source_not_on_this_computer_is_noted_and_unverifiable(projec
     assert "literature-source-missing" not in {f.code for f in gated.failures}
 
 
-@pytest.mark.parametrize("taken_from", ["author", "zotero"])
+@pytest.mark.parametrize("taken_from", ["author", "zotero", "folder"])
 def test_a_recorded_source_not_here_says_where_it_comes_back_from(
     project: Path, taken_from: str
 ) -> None:
-    """`sync-sources` takes again a copy it took, and never writes into the name of a file the
-    author saved: the note says that file comes from whoever saved it (round 2 of #525: it
-    said `sync-sources` put every copy back)."""
+    """`sync-sources` takes again a copy it took, from Zotero, or with `--from` from a folder
+    (round 1 of #534), and never writes into the name of a file the author saved: the note
+    says that file comes from whoever saved it (round 2 of #525: it said `sync-sources` put
+    every copy back)."""
     from manuscript_guard.literature import copies
 
     _recorded_then_gone(project)
     path = project / "literature" / copies.RECORD
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
     document["files"][_HEPATIC]["from"] = taken_from
+    if taken_from == "folder":
+        document["files"][_HEPATIC]["doi"] = "10.5555/hepatic.2021"
     path.write_text(yaml.safe_dump(document), encoding="utf-8")
     (note,) = [f for f in _literature_report(project).findings
                if f.code == "literature-source-not-here"]  # fmt: skip
-    run = "run `manuscript-guard sync-sources`"
+    run = "run `manuscript-guard sync-sources"
     if taken_from == "author":
         assert "whoever saved it" in note.hint and run not in note.hint, note.hint
+    elif taken_from == "folder":
+        assert f"{run} --from" in note.hint and "whoever saved it" not in note.hint, note.hint
     else:
-        assert run in note.hint and "whoever saved it" not in note.hint, note.hint
+        assert f"{run}`" in note.hint and "--from" not in note.hint, note.hint
 
 
 def test_a_record_of_a_newer_version_says_to_upgrade(project: Path) -> None:

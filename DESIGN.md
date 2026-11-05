@@ -22270,8 +22270,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     LaTeX projects, figures, packages, `--journal`, `--authors`, `--cited` and
     `--report-draft` are the command line's.
   - *The word-for-word check is on the worked example* (the `.docx` with and without its
-    results, `main.md`, and the `.docx` and results under names outside ASCII), in Node and
-    in two browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
+    results, `main.md`, the `.docx` and results under names outside ASCII and under names
+    that start with "-", and the `.docx` against two outputs whose names the page once made
+    one), in Node and in two browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
     line's Python would differ there unseen; none is known.
   - *Lookups from the page are not in that check.* CI opens no connection to a registry, so
     no case ticks the box. That the five registries answer a page (CORS) was tested by hand
@@ -22282,6 +22283,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     nothing on stderr reaches `json.loads`, whose ValueError `gates._stage` turns into the note
     that G6 and G14 were not run, rather than the message the command line gives (round 1 of
     #527).
+  - *The release a page is built from.* Where a run of publish.yml tagged, pages.yml builds
+    the newest `v` tag, which is that run's unless a later run tagged a higher version before
+    this one checked out: two releases close together, the second tagged and then stopped
+    before its upload, put the second's page up while PyPI has only the first, and the
+    first's page is never deployed. Building each run's own tag instead would let a run that
+    finishes late put an older page over a newer one. A pre-release suffix sorts as a later
+    version under `v:refname`; this project tags none (round 2 of #527;
+    `test_the_pages_workflow_deploys_the_newest_tag_a_limit_known_gaps_names`).
 
 - **`.zenodo.json` names one affiliation per creator.** Zenodo's field is one string, so the
   author's two institutions go in as one, matched to no organisation (ROR), as CITATION.cff's

@@ -51,3 +51,9 @@ Thumbs.db
 .coverage
 .coverage.*
 htmlcov/
+
+# The in-browser audit page (web/): its npm packages, the downloads web/build.py keeps, and
+# the site it builds.
+web/node_modules/
+web/.cache/
+_site/

@@ -1,0 +1,95 @@
+name: Pages
+
+# The in-browser audit page (web/, docs/audit-page.md), built from each release and served by
+# GitHub Pages at https://basilechretien.github.io/manuscript-guard/.
+#
+# publish.yml makes a release and tags it with the workflow's own token, and a tag pushed so
+# starts no workflow. So this starts when a run of publish.yml has finished, and builds only
+# where that run released: where a `v` tag points at the commit it released. A run that
+# released nothing ends here. By hand, it builds the tag it is given: the first page, or a
+# release's page put back.
+#
+# The page is built and checked as CI's `web` job builds and checks it (the audit-page
+# action), from the tag's own files, and deployed only if the check passed.
+on:
+  workflow_run:
+    workflows: ["Publish to PyPI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release tag to build the page from, as v0.2.500"
+        required: true
+
+permissions: {}
+
+# One deployment at a time, and none cancelled: a later release's page replaces an earlier
+# one's when it gets there.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  which:
+    name: Which release?
+    if: >-
+      github.repository == 'BasileChretien/manuscript-guard'
+      && (github.event_name == 'workflow_dispatch'
+          || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - id: tag
+        shell: bash
+        env:
+          GIVEN: ${{ inputs.tag }}
+        run: |
+          if [ -n "$GIVEN" ]; then
+            tag="$GIVEN"
+            git rev-parse --quiet --verify "refs/tags/$tag" > /dev/null || { echo "no tag $tag"; exit 1; }
+          else
+            tag=$(git tag --points-at HEAD --list 'v*' | sort -V | tail -n 1)
+          fi
+          if [ -n "$tag" ] && [ ! -f web/build.py ]; then
+            echo "$tag has no web/ folder: its page cannot be built"; exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release: ${tag:-none}"
+
+  build:
+    needs: which
+    if: needs.which.outputs.tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.which.outputs.tag }}
+      - uses: ./.github/actions/audit-page
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

@@ -18,6 +18,7 @@ loopback port.
 from __future__ import annotations
 
 import http.client
+import sys
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
@@ -78,7 +79,14 @@ def user_agent(contact: str | None) -> str:
 
 
 def default_transport(request: Request, timeout: float) -> Response:
-    """Send one GET with `urllib`. A status that is not 2xx is an answer, not an error."""
+    """Send one GET with `urllib`. A status that is not 2xx is an answer, not an error.
+
+    In Pyodide, the in-browser audit page, there are no sockets: the GET is one
+    XMLHttpRequest instead, under the page's Content-Security-Policy (`web.xhr_transport`)."""
+    if sys.platform == "emscripten":
+        from manuscript_guard.web import xhr_transport
+
+        return xhr_transport(request, timeout)
     parts = urlsplit(request.base)
     local = parts.hostname in LOOPBACK
     if parts.scheme != "https" and not (parts.scheme == "http" and local):

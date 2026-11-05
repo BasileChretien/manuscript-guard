@@ -8238,6 +8238,29 @@ not, and P = 0.03 and P = 0.032 do. Where no file has an Abstract heading, or no
 heading outside it, the section says nothing was compared. `--strict` counts a conflict,
 `abstract-conflict`, and not a number not found (the author, 2026-10-28).
 
+## The audit page runs in the reader's browser
+
+A clinician, an editor or a referee who will not open a terminal can still run `audit`, on a
+page served by GitHub Pages (docs/audit-page.md). It runs in their browser and uploads
+nothing, and that was the condition: no hosted service (decided 2026-11-04), because an
+unpublished manuscript, a referee's copy or health data must not sit on a server, most
+publishers forbid uploading a referee's copy, and French health data needs certified
+hosting.
+
+Pyodide runs the wheel unchanged; its release ships every dependency built for WebAssembly,
+`rpds-py` included. On a `.docx`, `audit` starts a program in one place only, pandoc, for G6
+and G14 (`from_word._pandoc`), and pandoc publishes a WebAssembly build of each release. So
+the package has two places for a page and no more: `from_word.runner`, which runs pandoc
+another way where it is set, and `lookup.http.default_transport`, which sends one
+XMLHttpRequest under Pyodide; `manuscript_guard.web` holds both. Every file comes from the
+page's own origin, so that its Content-Security-Policy names no host but its own and the five
+registries `--lookup` asks, and a test holds that list to `lookup.run.Services`.
+
+The page is held to the command line, not trusted to match it: CI builds it as the Pages
+workflow does and requires each report on the worked example to be the command line's word for
+word, in Node and in Chrome and Firefox, with no request sent and every forbidden one refused.
+Its limits are under Known gaps.
+
 ## A paper read by its editor or a referee
 
 A journal sends its editors and referees manuscripts in confidence, and the publishers'
@@ -20925,6 +20948,26 @@ What papers converted from Word showed (see "What papers converted from Word sho
     failure.
   - *The outbox and the runs stay in the vault* after a release, and `.runs/<run>/log.txt`
     holds whatever the scripts printed. Removing them is the person's.
+- **The audit page (`web/`, docs/audit-page.md): what its rules and its checks do not hold.**
+  - *Leaving the page.* A Content-Security-Policy has no rule for navigation: a script that
+    set the page's address to `https://example.com/?…` reached example.com (tested, Chrome).
+    The page's code navigates nowhere, but nothing enforces that; turning off the network
+    once the page is ready is the proof it offers, and docs/audit-page.md says so.
+  - *The page's own host.* `connect-src 'self'` is needed to load its files, so a script on
+    the page could send to GitHub's servers. Nothing does, and the network test covers it.
+  - *A browser extension* can read any page, this one included.
+  - *A lookup from a page* sends no User-Agent, which a browser forbids; the browser follows
+    a redirect itself, where `default_transport` refuses one, though only to a host the
+    policy allows; and Crossref does not expose `Retry-After` to a page, so a 429 from it is
+    not waited out but taken as no answer. No API key is sent.
+  - *Browsers checked.* CI opens the page in Chrome and Firefox. Safari, and any phone, are
+    not checked.
+  - *What it reads.* A `.docx` or Markdown paper and outputs beside it. PDFs (`pdftotext`),
+    LaTeX projects, figures, packages, `--journal`, `--authors`, `--cited` and
+    `--report-draft` are the command line's.
+  - *The word-for-word check is on the worked example* (the `.docx` with and without its
+    results, `main.md`), in Node and in two browsers. A paper that Pyodide's Python 3.14 reads
+    otherwise than the command line's Python would differ there unseen; none is known.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

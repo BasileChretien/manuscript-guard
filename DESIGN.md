@@ -13114,8 +13114,12 @@ no gate decides, so the report kept says both; never the tool's version, which t
 reading of `tests/readings.py` would find changed at every release. It builds only where
 check passed, so no artefact holds a document of a manuscript that fails at its stage (the
 Word supplement of `build --skip-checks` is not named UNCHECKED). The artefact is a folder of
-the runner's holding the report, verify's output and the documents, and nothing else of the
-project; it is read by those who can read the repository, so it reaches no one new. The
+the runner's holding the report and the documents, and nothing else of the project: not what
+`verify` printed, which quotes a failing script and so may hold its data (round 1). It is read
+by those who can read the repository, so it reaches no one new. The action finds the
+manuscript and the build folder where `paths:` puts them (`ci_report folders`), and the job
+summary shows each message in a code span, the first 200 findings of each kind, so that a
+contributor's sentence is never a link and the summary stays under GitHub's 1 MiB. The
 workflow reads only: `contents: read`, no secret, `persist-credentials: false` so no token is
 left in the checkout while `verify` runs the project's code, `pull_request` and never
 `pull_request_target`.

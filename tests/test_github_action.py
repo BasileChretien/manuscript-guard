@@ -130,21 +130,55 @@ def test_verify_runs_before_check_and_build_only_where_check_passed() -> None:
     assert _step("build")["if"] == "steps.report.outputs.ok == 'true'"
 
 
+#: The lines of the action's scripts that may name the artefact's folder: it is emptied and
+#: made, the report is written into it, and each document is copied there by its name.
+ARTEFACT_LINES = {
+    'rm -rf "$RUNNER_TEMP/manuscript-guard"',
+    'mkdir -p "$RUNNER_TEMP/manuscript-guard"',
+    'manuscript-guard check --json "$PROJECT" > "$RUNNER_TEMP/manuscript-guard/check.json"',
+    'python -m manuscript_guard.ci_report report --report '
+    '"$RUNNER_TEMP/manuscript-guard/check.json" --exit-code "$CODE" --version "$VERSION"',
+    'cp "$BUILD/$name" "$RUNNER_TEMP/manuscript-guard/$name"',
+}
+
+
+def _names_the_artefact(scripts: list[str]) -> list[str]:
+    """Each line of `scripts` that names the artefact's folder and is none of those."""
+    lines = [line.strip() for script in scripts for line in script.splitlines()]
+    return [line for line in lines
+            if "$RUNNER_TEMP/manuscript-guard" in line and line not in ARTEFACT_LINES]  # fmt: skip
+
+
+def test_the_folders_are_asked_of_the_project_before_they_are_used() -> None:
+    """TeX Live is installed for a LaTeX manuscript, and the documents copied from the build
+    folder, where paper.yaml's `paths:` puts them, never at a folder written into the action."""
+    names = [step.get("name") for step in _steps(ACTION)]
+    asked = names.index("Where the project keeps its manuscript and its documents")
+    tex = "pdftotext, and TeX Live for a LaTeX manuscript"
+    assert asked < names.index(tex) < names.index("build")
+    assert _step(tex)["env"]["LATEX"] == "${{ steps.folders.outputs.latex }}"
+    assert _step("build")["env"]["BUILD"] == "${{ steps.folders.outputs.build }}"
+    for step in _steps(ACTION):
+        script = step.get("run", "")
+        assert "$PROJECT/build" not in script and "$PROJECT/manuscript" not in script
+
+
 def test_only_the_report_and_the_documents_are_uploaded() -> None:
     """The artefact is one folder of the runner's, outside the project, and nothing is
-    written there but the report, verify's output and the documents: never results/, data,
-    an input or a stored source."""
+    written there but the report and the documents: never results/, data, an input, a stored
+    source, or what verify printed, which may quote a script's data."""
     upload = _step("The artefact")
     assert upload["uses"].startswith("actions/upload-artifact@")
     assert upload["with"]["path"] == "${{ runner.temp }}/manuscript-guard/"
-    written = set()
-    for step in _steps(ACTION):
-        written |= set(re.findall(r'\$RUNNER_TEMP/manuscript-guard/([^"\s]+)', step.get("run", "")))
-    assert written == {"check.json", "verify.txt", "$name"}
-    build = _step("build")["run"]
-    named = re.search(r"documents=\(([^)]*)\)", build).group(1).split()
+    scripts = [step.get("run", "") for step in _steps(ACTION)]
+    assert _names_the_artefact(scripts) == []
+    named = re.search(r"documents=\(([^)]*)\)", _step("build")["run"]).group(1).split()
     assert set(named) == DOCUMENTS
-    assert 'cp "$PROJECT/build/$name" "$RUNNER_TEMP/manuscript-guard/$name"' in build
+    # A copy of anything else into the folder is found, under each spelling of it.
+    for planted in ('cp -r "$PROJECT/results" "$RUNNER_TEMP/manuscript-guard/"',
+                    'cp -r "$PROJECT/data" "$RUNNER_TEMP/manuscript-guard"',
+                    'cp "$BUILD/manuscript.md" "$RUNNER_TEMP/manuscript-guard/$name"'):  # fmt: skip
+        assert _names_the_artefact([*scripts, planted]) == [planted]
 
 
 def test_the_badge_runs_nothing_of_the_project() -> None:
@@ -331,10 +365,68 @@ def test_the_summary_says_the_stage_what_is_open_and_what_no_gate_decides(tmp_pa
     assert "manuscript-guard 1.2.3 held the manuscript to the stage **drafting**" in said
     assert "check **fails** there" in said
     assert "### Failing" in said and "### Warnings" in said
-    assert r"a \<b\> \& \[c\](http://x) \!\[d\](y)" in said
+    assert "`a <b> & [c](http://x) ![d](y)`" in said
     assert "And 1 note, in check.json." in said
     assert "```text\nWhat was checked, by what (no score)\n  the data\n```" in said
     assert "not evidence that the paper is right" in said
+
+
+@pytest.mark.parametrize(
+    "message", ["see https://example.org and www.example.org", "a `tick`", "``", "`edge`"]
+)
+def test_a_message_is_shown_as_it_is_and_never_as_markup(message: str) -> None:
+    """GitHub renders the summary as GFM, which makes a bare address a link: a message goes
+    in a code span, whose backticks outnumber any run of them inside it."""
+    shown = ci_report.code(message)
+    ticks = len(shown) - len(shown.lstrip("`"))
+    assert shown.endswith("`" * ticks)
+    inside = shown[ticks:-ticks]
+    assert inside.strip() == message
+    assert "`" * ticks not in inside
+
+
+def test_no_line_of_what_was_recorded_closes_its_block() -> None:
+    lines = ["  recorded:    read by ```Ada```", "````"]
+    fenced = ci_report.fenced(lines)
+    fence = fenced[-1]
+    assert fenced[0] == f"{fence}text"
+    assert all(fence not in line for line in lines)
+
+
+def test_the_summary_stays_under_the_size_github_keeps(tmp_path: Path) -> None:
+    """GitHub drops a step summary larger than 1 MiB whole."""
+    many = [_finding("warn", message="w" * 2000) for _ in range(6000)]
+    report = {"ok": True, "stage": "drafting", "findings": many, "assurance": ["a"] * 50}
+    said = ci_report.summary(report, 0, "1.2.3", tmp_path)
+    assert len(said.encode("utf-8")) < 1024 * 1024
+    assert f"- and {6000 - ci_report.LISTED} more, in check.json" in said
+
+
+@pytest.mark.parametrize(
+    ("settings", "latex", "build", "manuscript"),
+    [("", False, "build", "manuscript"),
+     ("paths:\n  build: out\n  manuscript: paper\n", False, "out", "paper"),
+     ("", True, "build", "manuscript")],
+    ids=["by default", "moved by paths", "latex"],
+)  # fmt: skip
+def test_the_folders_are_those_paper_yaml_gives(
+    tmp_path: Path, monkeypatch, settings: str, latex: bool, build: str, manuscript: str
+) -> None:
+    """The action installs TeX Live for a LaTeX manuscript and copies the documents from the
+    build folder, wherever `paths:` puts either."""
+    root = tmp_path / "paper"
+    init_project(root, "A study", latex=latex)
+    if settings:
+        with (root / "paper.yaml").open("a", encoding="utf-8", newline="\n") as paper:
+            paper.write(settings)
+        (root / "manuscript").rename(root / manuscript)
+    output = tmp_path / "output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    assert ci_report.main(["folders", "--path", str(root)]) == 0
+    said = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
+    assert Path(said["build"]).resolve() == (root / build).resolve()
+    assert Path(said["manuscript"]).resolve() == (root / manuscript).resolve()
+    assert said["latex"] == ("true" if latex else "false")
 
 
 @pytest.mark.parametrize(("report", "code"), [(None, 1), ({"ok": True}, 2)])

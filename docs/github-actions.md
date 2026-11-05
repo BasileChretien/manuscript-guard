@@ -109,20 +109,24 @@ its inputs are:
 1. It installs Python, and manuscript-guard from the action's own files, so the tool is the
    code at the version the workflow names.
 2. It installs pandoc at the version manuscript-guard's own tests run with, poppler's
-   `pdftotext`, which reads a stored source that is a PDF, and for a LaTeX manuscript
-   (`manuscript/main.tex`) the TeX Live packages its tests compile with.
-3. With `verify: true`, it runs `manuscript-guard verify` (below).
+   `pdftotext`, which reads a stored source that is a PDF, and for a LaTeX manuscript the TeX
+   Live packages its tests compile with. It finds the manuscript and the build folder where
+   `paths:` in `paper.yaml` puts them.
+3. With `verify: true`, it runs `manuscript-guard verify` (below). What verify prints stays in
+   the job's log.
 4. It runs `manuscript-guard check --json` at the stage `paper.yaml` declares. The job's
-   summary gives the version and the stage, each failing finding and warning with its place,
-   and what no gate decides. Failures and warnings are also annotations, which a pull request
-   shows beside the lines they are about; GitHub shows only some of them there, and the
-   summary has all of them.
+   summary gives the version and the stage, the failing findings and the warnings with their
+   places (the first 200 of each, since GitHub drops a summary larger than 1 MiB), and what
+   no gate decides. Failures and warnings are also annotations, which a pull request shows
+   beside the lines they are about; GitHub shows only some of them there. `check.json` has
+   every finding.
 5. Where check passed, it runs `manuscript-guard build --offline`. Where it failed, nothing is
    built: no artefact holds a document of a manuscript that fails at its stage. To read such
    a draft, build it on your own computer with `--skip-checks`.
-6. It keeps the run's artefact: `check.json`, `verify.txt` where verify ran, and the documents,
-   `manuscript.docx` and `supplementary.docx`, or `manuscript.pdf` and `supplementary.pdf`.
-7. The job fails where verify failed, check failed or did not run, or the build failed.
+6. It keeps the run's artefact: `check.json` and the documents, `manuscript.docx` and
+   `supplementary.docx`, or `manuscript.pdf` and `supplementary.pdf`.
+7. The job fails where verify failed, check failed or did not run, or the build failed or
+   wrote no document.
 
 ## Rerunning the analysis
 
@@ -173,7 +177,9 @@ And some things read otherwise:
 ## The artefact, and restricted data
 
 The artefact holds the report and the documents, and nothing else of the project: never
-`results/`, an input or a stored source. Everything in it is made from the checkout, and an
+`results/`, an input or a stored source, nor what `verify` printed, since a script that fails
+is quoted and may have printed its data (the job's log has it, for those who can read the
+repository). Everything in the artefact is made from the checkout, and an
 artefact is read by those with read access to the repository, so it reaches no one the
 repository does not. A count below the custodian's minimum printed in a draft is in the
 committed `results/` first, and G2 fails it from the `internal-review` stage.

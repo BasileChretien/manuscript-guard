@@ -1,12 +1,14 @@
 """What a GitHub Actions job says of a `check --json` report.
 
-The composite actions at the root of manuscript-guard's repository run this: `report` writes
-the job's summary, GitHub's annotations and the step's outputs from the report, and `badge`
-writes the badge's words. It reads only what it is given and decides nothing: whether the
-manuscript passed is the report's `ok`, which `check` set.
+The composite actions at the root of manuscript-guard's repository run this: `folders` says
+where the project keeps its manuscript and its documents, `report` writes the job's summary,
+GitHub's annotations and the step's outputs from the report, and `badge` writes the badge's
+words. It decides nothing: whether the manuscript passed is the report's `ok`, which `check`
+set.
 
-It imports nothing but the standard library, so that the badge's action, which installs
-nothing and runs nothing of the project, can run this file by its path.
+At its top it imports nothing but the standard library, and only `folders` imports the
+package, so that the badge's action, which installs nothing and runs nothing of the project,
+can run this file by its path.
 """
 
 from __future__ import annotations
@@ -21,8 +23,13 @@ from pathlib import Path
 STAGES = ("design", "analysis", "drafting", "internal-review", "submission")
 
 #: How many annotations of each kind a step prints: GitHub shows only some of them on a pull
-#: request, and the summary has them all.
+#: request.
 ANNOTATIONS = 50
+
+#: How many findings of each kind the summary lists, and how much of a message: GitHub drops
+#: a summary larger than 1 MiB whole. `check.json` in the artefact has every finding.
+LISTED = 200
+MESSAGE = 500
 
 #: The badge's label, and the colour of each outcome. Blue for a pass at every stage, not
 #: green: a pass at `design` holds almost nothing, and green reads as "all is well".
@@ -110,22 +117,39 @@ def _place(finding: dict, workspace: Path) -> str:
     return where
 
 
-def _plain(text: str) -> str:
-    """`text` as Markdown shows it, on one line: a message quotes the manuscript, and a
-    contributor's sentence must not become a link or a picture in the summary."""
+def _longest_run(text: str, mark: str = "`") -> int:
+    longest = run = 0
+    for character in text:
+        run = run + 1 if character == mark else 0
+        longest = max(longest, run)
+    return longest
+
+
+def code(text: str) -> str:
+    """`text` on one line as a Markdown code span, which shows it as it is: a message quotes
+    the manuscript, and a contributor's sentence must not become a link, a picture or
+    markup in the summary. The span's backticks outnumber any run of them inside it."""
     text = " ".join(text.split())
-    # Each escaped as CommonMark lets any ASCII punctuation be: the backslash first.
-    for mark in "\\`*_[]<>|#!&":
-        text = text.replace(mark, "\\" + mark)
-    return text
+    ticks = "`" * (_longest_run(text) + 1)
+    padded = f" {text} " if text.startswith("`") or text.endswith("`") else text
+    return f"{ticks}{padded}{ticks}"
+
+
+def fenced(lines: list[str]) -> list[str]:
+    """`lines` as a fenced block of text, its fence longer than any run of backticks in
+    them, so that no line, a reviewer's name among them, can close it."""
+    fence = "`" * max(3, _longest_run("\n".join(lines)) + 1)
+    return [f"{fence}text", *lines, fence]
 
 
 def _item(finding: dict, workspace: Path) -> str:
     """One finding as a line of the summary: its gate and code, its place, its message."""
-    place = _place(finding, workspace).replace("`", "'")
-    message = _plain(str(finding.get("message") or ""))
-    at = f" `{place}`" if place else ""
-    return f"- **{finding.get('gate')}** `{finding.get('code')}`{at}: {message}"
+    place = _place(finding, workspace)
+    message = str(finding.get("message") or "")
+    if len(message) > MESSAGE:
+        message = message[:MESSAGE] + " ..."
+    at = f" {code(place)}" if place else ""
+    return f"- **{finding.get('gate')}** {code(str(finding.get('code')))}{at}: {code(message)}"
 
 
 def summary(report: dict | None, exit_code: int, version: str, workspace: Path) -> str:
@@ -147,12 +171,14 @@ def summary(report: dict | None, exit_code: int, version: str, workspace: Path) 
         found = [f for f in findings if f.get("severity") == severity]
         if found:
             lines += ["", f"### {heading}", ""]
-            lines += [_item(f, workspace) for f in found]
+            lines += [_item(f, workspace) for f in found[:LISTED]]
+            if len(found) > LISTED:
+                lines.append(f"- and {len(found) - LISTED} more, in check.json")
     notes = sum(1 for f in findings if f.get("severity") == "info")
     if notes:
         lines += ["", f"And {notes} note{'' if notes == 1 else 's'}, in check.json."]
     if report.get("assurance"):
-        lines += ["", "### What was checked, by what", "", "```text", *report["assurance"], "```"]
+        lines += ["", "### What was checked, by what", "", *fenced(list(report["assurance"]))]
     return "\n".join(lines) + "\n"
 
 
@@ -193,6 +219,42 @@ def _report(args: argparse.Namespace) -> int:
     return 0
 
 
+def folders(project: Path) -> dict[str, str]:
+    """Where the project keeps its manuscript and its documents, as `paths:` in paper.yaml
+    puts them, and whether the manuscript is LaTeX: what the action installs and copies by.
+    The package is imported here and nowhere else in this file, so that the badge's action,
+    which installs nothing, never needs it. Where paper.yaml cannot be read, the folders it
+    would have by default; check then says what is wrong with it."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.contracts._schema import ContractError
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    manuscript, build = project / "manuscript", project / "build"
+    try:
+        loaded, _ = load_project(project)
+        manuscript, build = loaded.path("manuscript"), loaded.path("build")
+    except (ContractError, OSError, ValueError):
+        pass
+    said = {"manuscript": str(manuscript), "build": str(build),
+            "latex": "true" if manuscript_format(manuscript) == LATEX else "false"}  # fmt: skip
+    # A line break would end an output and begin another of the folder's choosing.
+    if any("\n" in value or "\r" in value for value in said.values()):
+        raise ValueError("paper.yaml names a folder with a line break in it")
+    return said
+
+
+def _folders(args: argparse.Namespace) -> int:
+    try:
+        said = folders(Path(args.path))
+    except ValueError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    _append(os.environ.get("GITHUB_OUTPUT"), "".join(f"{k}={v}\n" for k, v in said.items()))
+    for key, value in said.items():
+        print(f"{key}: {value}")
+    return 0
+
+
 def _badge(args: argparse.Namespace) -> int:
     try:
         words = badge(args.ok, args.stage)
@@ -215,6 +277,9 @@ def main(argv: list[str] | None = None) -> int:
     report.add_argument("--version", required=True, help="what `manuscript-guard --version` said")
     report.add_argument("--workspace", help="the repository's root; GITHUB_WORKSPACE otherwise")
     report.set_defaults(func=_report)
+    where = sub.add_parser("folders", help="where the project keeps its manuscript and documents")
+    where.add_argument("--path", required=True, help="the project's folder")
+    where.set_defaults(func=_folders)
     words = sub.add_parser("badge", help="the badge's words, as shields.io's endpoint reads them")
     words.add_argument("--ok", required=True)
     words.add_argument("--stage", required=True)

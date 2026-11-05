@@ -74,6 +74,14 @@ runs:
         echo "manuscript-guard $version"
         echo "version=$version" >> "$GITHUB_OUTPUT"
 
+    # As paper.yaml's `paths:` puts them, which may move either folder.
+    - name: Where the project keeps its manuscript and its documents
+      id: folders
+      shell: bash
+      env:
+        PROJECT: ${{ inputs.path }}
+      run: python -m manuscript_guard.ci_report folders --path "$PROJECT"
+
     - name: pandoc
       uses: r-lib/actions/setup-pandoc@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2.14.0
       with:
@@ -83,12 +91,12 @@ runs:
     - name: pdftotext, and TeX Live for a LaTeX manuscript
       shell: bash
       env:
-        PROJECT: ${{ inputs.path }}
+        LATEX: ${{ steps.folders.outputs.latex }}
         EXTRA: ${{ inputs.tex-packages }}
       run: |
         pandoc --version | head -n 1
         packages=(poppler-utils)
-        if [ -f "$PROJECT/manuscript/main.tex" ]; then
+        if [ "$LATEX" = true ]; then
           # The TeX Live of manuscript-guard's own `latex` job.
           packages+=(latexmk texlive-latex-base texlive-latex-recommended texlive-fonts-recommended cm-super-minimal texlive-luatex)
           read -r -a extra <<< "$EXTRA"
@@ -104,7 +112,8 @@ runs:
         REQUIREMENTS: ${{ inputs.requirements }}
       run: python -m pip install -r "$REQUIREMENTS"
 
-    # Before check, which reads the run it records.
+    # Before check, which reads the run it records. What it prints stays in the job's log and
+    # out of the artefact: a script that fails is quoted, and may have printed its data.
     - name: verify
       id: verify
       if: inputs.verify == 'true'
@@ -113,8 +122,10 @@ runs:
         PROJECT: ${{ inputs.path }}
       run: |
         set +e
-        manuscript-guard verify "$PROJECT" 2>&1 | tee "$RUNNER_TEMP/manuscript-guard/verify.txt"
-        echo "exit-code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+        manuscript-guard verify "$PROJECT"
+        code=$?
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        echo "verify exited $code; what it printed is in the job's log." >> "$GITHUB_STEP_SUMMARY"
 
     - name: check
       id: check
@@ -146,24 +157,30 @@ runs:
       shell: bash
       env:
         PROJECT: ${{ inputs.path }}
+        BUILD: ${{ steps.folders.outputs.build }}
       run: |
         documents=(manuscript.docx supplementary.docx manuscript.pdf supplementary.pdf)
-        for name in "${documents[@]}"; do rm -f "$PROJECT/build/$name"; done
+        for name in "${documents[@]}"; do rm -f "$BUILD/$name"; done
         set +e
         manuscript-guard build --offline "$PROJECT"
         code=$?
-        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
         built=()
         if [ "$code" -eq 0 ]; then
           for name in "${documents[@]}"; do
-            if [ -f "$PROJECT/build/$name" ]; then
-              cp "$PROJECT/build/$name" "$RUNNER_TEMP/manuscript-guard/$name"
+            if [ -f "$BUILD/$name" ]; then
+              cp "$BUILD/$name" "$RUNNER_TEMP/manuscript-guard/$name"
               built+=("$name")
             fi
           done
-          echo "Built: ${built[*]}." >> "$GITHUB_STEP_SUMMARY"
-        else
+        fi
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        echo "documents=${#built[@]}" >> "$GITHUB_OUTPUT"
+        if [ "$code" -ne 0 ]; then
           echo "build failed (exit code $code): what it printed is in the job's log." >> "$GITHUB_STEP_SUMMARY"
+        elif [ "${#built[@]}" -eq 0 ]; then
+          echo "build wrote no document in $BUILD." >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "Built: ${built[*]}." >> "$GITHUB_STEP_SUMMARY"
         fi
 
     - name: No build
@@ -190,10 +207,11 @@ runs:
         CHECKED: ${{ steps.check.outputs.exit-code }}
         OK: ${{ steps.report.outputs.ok }}
         BUILT: ${{ steps.build.outputs.exit-code }}
+        DOCUMENTS: ${{ steps.build.outputs.documents }}
       run: |
         failed=0
         if [ "$WANT_VERIFY" = "true" ] && [ "$VERIFIED" != "0" ]; then
-          echo "::error::verify did not reproduce the recorded results, or could not run them (exit code ${VERIFIED:-none}): verify.txt has what it said"
+          echo "::error::verify did not reproduce the recorded results, or could not run them (exit code ${VERIFIED:-none}): the job's log has what it said"
           failed=1
         fi
         if [ -z "$OK" ]; then
@@ -204,6 +222,9 @@ runs:
           failed=1
         elif [ "$BUILT" != "0" ]; then
           echo "::error::build failed (exit code ${BUILT:-none})"
+          failed=1
+        elif [ "$DOCUMENTS" = "0" ]; then
+          echo "::error::build said it built, and wrote no document where the project keeps them"
           failed=1
         fi
         exit "$failed"

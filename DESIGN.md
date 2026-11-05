@@ -14060,13 +14060,14 @@ Added by the adversarial review, verified and **not** fixed:
   shown whole, every changed word in it: a paragraph copy-edited throughout prints at its
   full length, with nothing to mark which of its words changed, where showing a long stretch
   by its two ends hid the edits between. Words are compared, so spacing between them, a line
-  wrapped otherwise, shows nothing. A binding, a bracket and a parenthesis of up to 160
-  characters are each one word, compared as written and never cut. So a no-break space
-  typed in Word for a space inside a parenthesis prints a `-` and a `+` line that read the
-  same, and a bracket prints whole on each line however long it is, as does any run of text
-  with no space in it, Chinese or Japanese among them. A longer parenthesis, a clause rather
-  than a citation, is cut between its words, and so is one with another inside it, so a
-  stretch beside it can open or close inside it. A refusal is shown against what the
+  wrapped otherwise, shows nothing. A binding, and a bracket or a parenthesis of up to 160
+  characters that holds no other, are each one word, compared as written and never cut. So
+  a no-break space typed in Word for a space inside a parenthesis prints a `-` and a `+`
+  line that read the same, and such a bracket prints whole on each line however long it
+  is, as does any run of text with no space in it, Chinese or Japanese among them. A longer
+  parenthesis, a clause or a citation of several works as Word prints one, is cut between
+  its words, and so is a bracket or a parenthesis with another inside it, so a stretch
+  beside it can open or close inside it. A refusal is shown against what the
   paragraph printed when the document was built, from the build's record, and where there is
   none against the fresh build: in a forced import, a value re-run since then shows as
   changed beside the co-author's edit. The generated edits (`previewed_edits`) never pass

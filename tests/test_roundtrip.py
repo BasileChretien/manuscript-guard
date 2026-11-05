@@ -258,6 +258,83 @@ def test_the_dry_run_shows_the_number_a_refusal_is_for(
     assert "Reporting of hepatic injury" not in "".join(shown), out
 
 
+def _dry_run_of_a_planted_paragraph(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], paragraph: str,
+    replacements: dict[str, str],
+) -> list[str]:  # fmt: skip
+    """The `-` and `+` lines the dry run prints for `paragraph`, written into the example
+    after its Results paragraph and edited in the built document by `replacements`."""
+    from manuscript_guard.cli import main
+
+    path = project / "manuscript" / "main.md"
+    anchor = "independently of the drug.\n"
+    text = path.read_text(encoding="utf-8")
+    assert text.count(anchor) == 1
+    path.write_text(text.replace(anchor, f"{anchor}\n{paragraph}\n", 1), encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", replacements
+    )
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    return _shown_under(capsys.readouterr().out, "would merge into manuscript/main.md")
+
+
+@needs_pandoc
+def test_a_spacing_change_inside_a_parenthesis_prints_two_equal_lines(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Known gaps (round 1 of #515): a parenthesis is one word, compared as it is written, so
+    a no-break space typed in Word for a space inside one is a changed stretch; it is printed
+    with its spaces run together, and its `-` and `+` lines read the same."""
+    shown = _dry_run_of_a_planted_paragraph(
+        project, tmp_path, capsys,
+        "The second register agreed (as its own coders read the reports) with the first.",
+        {"(as its own coders read": "(as its own\N{NO-BREAK SPACE}coders read"},
+    )  # fmt: skip
+    assert len(shown) == 2, shown
+    assert shown[0][len("    - "):] == shown[1][len("    + "):], shown
+    assert "(as its own coders read the reports)" in shown[0], shown
+
+
+@needs_pandoc
+def test_a_bracket_is_printed_whole_however_long(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Known gaps (round 1 of #515): a bracket is one word at any length and is never cut,
+    so one word changed inside a long one prints all of it on each line."""
+    # Eighty words, none of them a number: "note", then the letters a to j for its digits.
+    words = " ".join("note" + "".join(chr(ord("a") + int(d)) for d in f"{at:02d}")
+                     for at in range(80))  # fmt: skip
+    shown = _dry_run_of_a_planted_paragraph(
+        project, tmp_path, capsys,
+        f"The second register agreed [{words}] with the first.",
+        {"noteea ": "remark "},
+    )  # fmt: skip
+    assert len(shown) == 2, shown
+    for line in shown:
+        assert "[noteaa " in line and " notehj]" in line and len(line) > 500, shown
+
+
+@needs_pandoc
+def test_a_nested_parenthesis_is_cut_and_a_line_opens_inside_it(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Known gaps (round 1 of #515): a parenthesis with another inside it is cut between its
+    words like a long one, so a changed stretch just after it opens inside it, its closing
+    bracket shown and its opening one not."""
+    shown = _dry_run_of_a_planted_paragraph(
+        project, tmp_path, capsys,
+        "The signal (seen by an earlier study (in its first form) in one cohort and two "
+        "more) was confirmed in this sample of the reports.",
+        {"was confirmed in this sample": "was refuted in this sample"},
+    )  # fmt: skip
+    assert len(shown) == 2, shown
+    for line in shown:
+        assert line.count(")") > line.count("("), shown
+        assert " cohort and two more) was " in line, shown
+
+
 def _with_refs(project: Path) -> Path:
     """The example citing its contingency table by its key, once in a paragraph and once as
     a paragraph of its own."""
@@ -4419,6 +4496,197 @@ def test_unchanged_prose_keeps_its_own_markdown() -> None:
     assert "there" in out
 
 
+@pytest.mark.parametrize(
+    ("source", "marked", "returned", "expected"),
+    [
+        pytest.param(
+            "**Background.** Fictional described two indicators. This review extends those "
+            "indicators from {{results.a}} to {{results.b}}.",
+            "Background. Fictional described two indicators. This review extends those "
+            "indicators from ⟦12⟧ to ⟦15⟧.",
+            "Background. Fictional described two indicators. This review brings forward those "
+            "indicators from 12 to 15.",
+            "**Background.** Fictional described two indicators. This review brings forward "
+            "those indicators from {{results.a}} to {{results.b}}.",
+            id="bold-lead-in",
+        ),
+        pytest.param(
+            "**Figure 6.** Main drug among patients with {{results.c}} to {{results.d}} "
+            "[@fictional2021]",
+            "Figure 6. Main drug among patients with ⟦3⟧ to ⟦9⟧ ⟦(Fictional 2021)⟧",
+            "Figure 6. Main drug of patients with 3 to 9 (Fictional 2021)",
+            "**Figure 6.** Main drug of patients with {{results.c}} to {{results.d}} "
+            "[@fictional2021]",
+            id="bold-caption",
+        ),
+        pytest.param(
+            "The agency's report said the board's view was {{results.x}}.",
+            "The agency’s report said the board’s view was ⟦3.84⟧.",
+            "The agency’s report stated the board’s view was 3.84.",
+            "The agency's report stated the board's view was {{results.x}}.",
+            id="straight-apostrophes",
+        ),
+        pytest.param(
+            "**Background.** The agency's view, e.g. here, was clear.",
+            "Background. The agency’s view, e.g. here, was clear.",
+            "Background. The agency’s view, e.g. here, was plain.",
+            "**Background.** The agency's view, e.g. here, was plain.",
+            id="no-binding",
+        ),
+        pytest.param(
+            "The *very large* ratio was {{results.x}} in `lme4`.",
+            "The very large ratio was ⟦3.84⟧ in lme4.",
+            "The rather large ratio was 3.84 in lme4.",
+            "The *rather large* ratio was {{results.x}} in `lme4`.",
+            id="inside-emphasis",
+        ),
+        pytest.param(
+            "The ratio was {{results.x}} in **all** cases, &lt;5 in `lme4` here.",
+            "The ratio was ⟦3.84⟧ in all cases, <5 in lme4 here.",
+            "The ratio was 3.84 in all cases, <5 in lme4 here (CYP2D6*4).",
+            "The ratio was {{results.x}} in **all** cases, &lt;5 in `lme4` here (CYP2D6\\*4).",
+            id="new-words-escaped",
+        ),
+        pytest.param(
+            "The ratio was {{results.x}} in *all*.",
+            "The ratio was ⟦3.84⟧ in all.",
+            "1. ratio was 3.84 in all.",
+            "1\\. ratio was {{results.x}} in *all*.",
+            id="opens-a-list",
+        ),
+    ],
+)
+def test_only_the_words_that_changed_are_written(
+    source: str, marked: str, returned: str, expected: str
+) -> None:
+    """A stretch between two bindings or citations, from the paragraph's first word, was
+    written whole from Word's text: one word changed after a bold lead-in lost the bold,
+    and every straight apostrophe in the stretch came back curly, so a diff showed changes
+    nobody made. Only the changed words are written now, each where the source has it: the
+    source's emphasis, code, quotes, entities and spaces around them are kept, an edit
+    inside emphasis stays inside it, and what is written is Word's text, escaped."""
+    aligned = merged_alignment(source, marked, returned)
+    assert aligned.rebuilt == expected
+    assert aligned.flattened == ()
+
+
+@pytest.mark.parametrize(
+    ("source", "marked", "returned", "expected", "flattened"),
+    [
+        pytest.param(
+            "The **very** large and **mostly** stable ratio was {{results.x}}.",
+            "The very large and mostly stable ratio was ⟦3.84⟧.",
+            "The big and mostly stable ratio was 3.84.",
+            "The big and **mostly** stable ratio was {{results.x}}.",
+            ("big",),
+            id="across-one-end",
+        ),
+        pytest.param(
+            "Seen in *all* cases at {{results.x}}.",
+            "Seen in all cases at ⟦3.84⟧.",
+            "Seen in all, cases at 3.84.",
+            "Seen in all, cases at {{results.x}}.",
+            ("all,",),
+            id="typed-where-it-closes",
+        ),
+        pytest.param(
+            "Fitted with `lme4` and *glm* at {{results.x}}.",
+            "Fitted with lme4 and glm at ⟦3.84⟧.",
+            "Fitted with nlme and glm at 3.84.",
+            "Fitted with nlme and *glm* at {{results.x}}.",
+            ("nlme",),
+            id="inside-code",
+        ),
+    ],
+)
+def test_an_edit_that_meets_markup_writes_that_span_plain_and_says_so(
+    source: str, marked: str, returned: str, expected: str, flattened: tuple[str, ...]
+) -> None:
+    """Word's text does not say whether words typed where a span opens or closes, or run
+    across one end of it, are inside it. That span alone is written from Word's text, with
+    the edit; the rest of the stretch keeps its markup, and the merge names what lost it."""
+    aligned = merged_alignment(source, marked, returned)
+    assert aligned.rebuilt == expected
+    assert aligned.flattened == flattened
+
+
+def test_a_quote_that_could_pair_otherwise_writes_the_stretch_from_word() -> None:
+    """A straight quote of the source beside a changed word could open or close otherwise
+    once the word is changed, so the stretch is written from Word's text whole, as before,
+    and the merge says so."""
+    source = "They called it 'the big one' at {{results.x}} in *all*."
+    aligned = merged_alignment(
+        source, "They called it ‘the big one’ at ⟦3.84⟧ in all.",
+        "They called it ‘the biggest’ at 3.84 in all.",
+    )  # fmt: skip
+    assert aligned.rebuilt == "They called it ‘the biggest’ at {{results.x}} in *all*."
+    assert aligned.flattened == ("They called it ‘the biggest’ at",)
+
+
+#: Documents Word itself saved, for what Word does to a document that no test can say for it.
+WORD_SAVED = Path(__file__).parent / "data" / "word"
+
+
+def _restamped(word_saved: Path, build: Path, target: Path) -> Path:
+    """A document Word saved, carrying the properties of `build`: its source stamp and its
+    record of paragraphs, which say which build it is."""
+    with zipfile.ZipFile(build) as fresh:
+        custom = fresh.read("docProps/custom.xml")
+    with zipfile.ZipFile(word_saved) as zin, zipfile.ZipFile(target, "w") as zout:
+        for item in zin.infolist():
+            data = custom if item.filename == "docProps/custom.xml" else zin.read(item.filename)
+            zout.writestr(item, data)
+    return target
+
+
+@needs_pandoc
+def test_a_word_changed_in_word_keeps_the_bold_and_straight_quotes_beside_it(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`reworded-in-word.docx` is the example's `build/manuscript.docx` (`build --offline`),
+    opened in Word 16 over COM on 2026-11-05 and edited by finding text: with Track Changes
+    off, "common" in "is a common reason" replaced by "frequent"; then, with Track Changes
+    on, "repeated" in "reports repeated another's" replaced by "duplicated", the revision
+    left as Word recorded it; saved as .docx. The person who saved it is renamed `Ana
+    Author` and Word's account record of them removed; nothing else was changed. The
+    abstract is one paragraph, and its first stretch, up to its first value, holds the bold
+    "Background." and "Methods."; the Methods stretch holds "another's", which the build
+    printed curly.
+    Each stretch used to be written whole from Word's text: both bolds were lost, and the
+    apostrophe came back curly. Only the two words are written now.
+    The fixture is the example as it was built that day: a change to the example's
+    manuscript, or to what the build prints of it, makes the count of merges fail, and
+    the document is then saved again in Word as above."""
+    from manuscript_guard.cli import main
+
+    path = project / "manuscript" / "main.md"
+    before = path.read_text(encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    build = project / "build" / "manuscript.docx"
+    returned = _restamped(WORD_SAVED / "reworded-in-word.docx", build, tmp_path / "back.docx")
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    said = capsys.readouterr().out
+    assert said.count("would merge into") == 2, said
+    assert "written as Word's plain text" not in said, said
+    assert path.read_text(encoding="utf-8") == before, "a dry run wrote"
+    code = main(["import", str(returned), str(project), "--apply"])
+    applied = capsys.readouterr().out
+    # The build Word's copy was saved from printed that machine's Python and statsmodels; a
+    # build elsewhere prints its own, which import refuses as a changed number. Only that may
+    # be left over (CI's Ubuntu job, round 2 of #516).
+    refused = [block for block in applied.split("\n\n") if "NOT merged into" in block]
+    for block in refused:
+        keys = re.findall(r"comes from (\S+?)\. ", block)
+        assert keys and all(k.startswith("results.software.") for k in keys), applied
+    assert code == (1 if refused else 0), applied
+    expected = before.replace("is a common reason", "is a frequent reason", 1).replace(
+        "reports repeated another's", "reports duplicated another's", 1
+    )
+    assert expected != before
+    assert path.read_text(encoding="utf-8") == expected
+
+
 def test_segments_splits_prose_from_what_the_author_does_not_own() -> None:
     prose, protected = segments("a {{results.x}} b [@key] c @other d")
     assert protected == ["{{results.x}}", "[@key]", "@other"]
@@ -5292,14 +5560,14 @@ def test_code_pandoc_would_typeset_as_prose_refuses_a_rewording(
 
 
 def test_code_nothing_would_typeset_still_merges_as_text() -> None:
-    """Only its formatting is lost, the known cost of an edited stretch; it prints the same."""
+    """Code an edit changes is written as Word's text, which prints the same without its
+    formatting; code beside an edit is kept."""
     source = "Fitted with `lme4` in R, the ratio was {{results.x}} overall."
-    out = merged(
-        source,
-        "Fitted with lme4 in R, the ratio was ⟦3.84⟧ overall.",
-        "Fitted using lme4 in R, the ratio was 3.84 overall.",
-    )
-    assert out == "Fitted using lme4 in R, the ratio was {{results.x}} overall."
+    rendered = "Fitted with lme4 in R, the ratio was ⟦3.84⟧ overall."
+    out = merged(source, rendered, "Fitted using lme4 in R, the ratio was 3.84 overall.")
+    assert out == "Fitted using `lme4` in R, the ratio was {{results.x}} overall."
+    out = merged(source, rendered, "Fitted with nlme in R, the ratio was 3.84 overall.")
+    assert out == "Fitted with nlme in R, the ratio was {{results.x}} overall."
 
 
 @pytest.mark.parametrize(
@@ -5433,7 +5701,7 @@ def test_bold_around_two_bindings_is_not_stretched_over_the_words_between() -> N
             "About ~{{results.a}} reports and ~200 controls.",
             "About ~⟦3⟧ reports and ~200 controls.",
             "About ~3 reports and ~200 matched controls.",
-            "About ~{{results.a}} reports and \\~200 matched controls.",
+            "About ~{{results.a}} reports and ~200 matched controls.",
         ),
     ],
     ids=["interval", "approximately"],
@@ -5628,7 +5896,8 @@ def test_an_email_address_is_not_a_citation() -> None:
             "Values &lt;LLOQ and &gt;ULOQ (n = {{results.n}}) were excluded.",
             "Values <LLOQ and >ULOQ (n = 56) were excluded.",
             "Concentrations <LLOQ and >ULOQ (n = 56) were excluded.",
-            r"Concentrations \<LLOQ and \>ULOQ (n = {{results.n}}) were excluded.",
+            # Words the co-author left alone keep the source's way of writing them.
+            "Concentrations &lt;LLOQ and &gt;ULOQ (n = {{results.n}}) were excluded.",
             id="entity",
         ),
         pytest.param(
@@ -5649,14 +5918,14 @@ def test_an_email_address_is_not_a_citation() -> None:
             "The HR {{results.x}}* was lower.",
             "The HR 3.84* was lower.",
             "The HR 3.84* was higher.",
-            r"The HR {{results.x}}\* was higher.",
+            "The HR {{results.x}}* was higher.",
             id="asterisk-after-a-binding",
         ),
         pytest.param(
             r"The \"real-world\" data (95% CI \[1.2-3.4\]; p\<0.05) cost US\$5.",
             "The “real-world” data (95% CI [1.2-3.4]; p<0.05) cost US$5.",
             "The “real-world” data (95% CI [1.2-3.4]; p<0.05) cost only US$5.",
-            r"The “real-world” data (95% CI \[1.2-3.4]; p<0.05) cost only US\$5.",
+            r"The \"real-world\" data (95% CI \[1.2-3.4\]; p\<0.05) cost only US\$5.",
             id="converted-from-word",
         ),
     ],
@@ -5714,14 +5983,15 @@ NO_BREAK = [
         r"The dose was 5\ mg in all.",
         "The dose was 5\u00a0mg in all.",
         "The dose was 5\u00a0mg in most.",
-        "The dose was 5\u00a0mg in most.",
+        # Away from the edit, the source's own way of writing it is kept.
+        r"The dose was 5\ mg in most.",
         id="escaped-space",
     ),
     pytest.param(
         "The dose was 5&nbsp;mg in all.",
         "The dose was 5\u00a0mg in all.",
         "The dose was 5\u00a0mg in most.",
-        "The dose was 5\u00a0mg in most.",
+        "The dose was 5&nbsp;mg in most.",
         id="entity",
     ),
     pytest.param(
@@ -5820,8 +6090,9 @@ ABBREVIATED = [
         id="inside-a-word",
     ),
     pytest.param(
-        "p. 4 shows it.",
-        "p.\u00a04 shows it.",
+        # Typed where the paragraph opens: an untouched "p. 4" is kept as the source has it.
+        "Page 4 shows it.",
+        "Page 4 shows it.",
         "p.\u00a04 shows this.",
         "p\\.\u00a04 shows this.",
         id="escaped-at-the-opening",
@@ -6068,21 +6339,22 @@ def test_a_span_around_a_binding_is_seen_whatever_its_delimiter(
             "Costs ranged from US$5–US${{results.hi}} per patient.",
             "Costs ranged from US$5–US$6.3 per patient.",
             "Costs varied from US$5–US$6.3 per patient.",
-            r"Costs varied from US\$5–US\${{results.hi}} per patient.",
+            "Costs varied from US$5–US${{results.hi}} per patient.",
             id="one-price-bound",
         ),
         pytest.param(
             "The *main **adjusted** ratio* was {{results.x}} in cases.",
             "The main adjusted ratio was 3.84 in cases.",
             "The main fully adjusted ratio was 3.84 in cases.",
-            "The main fully adjusted ratio was {{results.x}} in cases.",
+            # Typed with a space between it and the bold, so outside it, inside the italics.
+            "The *main fully **adjusted** ratio* was {{results.x}} in cases.",
             id="bold-inside-italics",
         ),
         pytest.param(
             "Alpha `a*b` and `c*d` beta gamma.",
             "Alpha a*b and c*d beta gamma.",
-            "Alpha a*b and c*d beta delta.",
-            r"Alpha a\*b and c\*d beta delta.",
+            "Alpha a*b and c*e beta gamma.",
+            r"Alpha `a*b` and c\*e beta gamma.",
             id="code-comes-back-as-text",
         ),
     ],
@@ -6578,21 +6850,22 @@ def test_an_escape_in_a_stretch_left_alone_is_kept() -> None:
             "Levels <LOD were imputed as LOD/2 and >ULOQ excluded.",
             "Levels <LOD were imputed as LOD/2 and >ULOQ excluded.",
             "Levels <LOD were imputed as LOD/2 and >ULOQ dropped.",
-            r"Levels \<LOD were imputed as LOD/2 and \>ULOQ dropped.",
+            # Only "dropped" is written; the source's own `<` and `>` are kept as they were.
+            "Levels <LOD were imputed as LOD/2 and >ULOQ dropped.",
             id="angle-brackets",
         ),
         pytest.param(
             "Levels <LOD (n = {{results.n}}) were imputed as LOD/2 and >ULOQ excluded.",
             "Levels <LOD (n = 56) were imputed as LOD/2 and >ULOQ excluded.",
             "Levels <LOD (n = 56) were imputed as LOD/2 and >ULOQ dropped.",
-            r"Levels <LOD (n = {{results.n}}) were imputed as LOD/2 and \>ULOQ dropped.",
+            "Levels <LOD (n = {{results.n}}) were imputed as LOD/2 and >ULOQ dropped.",
             id="angle-brackets-and-a-binding",
         ),
         pytest.param(
             "Costs ranged from US${{results.lo}} to US${{results.hi}} per patient.",
             "Costs ranged from US$2.1 to US$6.3 per patient.",
             "Costs varied from US$2.1 to US$6.3 per patient.",
-            r"Costs varied from US\${{results.lo}} to US${{results.hi}} per patient.",
+            "Costs varied from US${{results.lo}} to US${{results.hi}} per patient.",
             id="dollars-and-bindings",
         ),
     ],
@@ -6606,11 +6879,14 @@ def test_prose_that_only_looks_like_markup_still_merges(
 
 
 def test_emphasis_inside_one_stretch_is_only_formatting() -> None:
-    """Bold wholly inside an edited stretch is lost with it, which is the known cost - both
-    delimiters go, so nothing is left unpaired."""
+    """Bold an edit runs into where it closes is written plain with the edit, the known cost
+    of Word's text, which does not say whether the new words are bold - both delimiters go,
+    so nothing is left unpaired."""
     source = "The ratio {{results.x}} was **very** high."
-    out = realign(source, "The ratio 3.84 was very high.", "The ratio 3.84 was very, very high.")
-    assert out == "The ratio {{results.x}} was very, very high."
+    out = realign(
+        source, "The ratio 3.84 was very high.", "The ratio 3.84 was very, if not wholly, high."
+    )
+    assert out == "The ratio {{results.x}} was very, if not wholly, high."
 
 
 @pytest.mark.parametrize(
@@ -6640,19 +6916,21 @@ def test_an_email_address_is_prose() -> None:
 
 def test_prices_in_dollars_are_prose() -> None:
     """Pandoc's dollar rule, not any pair of dollars: "US$ 5" and "$5 and $10" are text, so
-    the source is not refused as an equation. What comes back is escaped all the same."""
+    the source is not refused as an equation. The dollars the co-author left alone are
+    kept as the source has them, and only "abroad" is written."""
     source = "It cost US$ 5, or $5 and $10 elsewhere."
     out = realign(source, source, "It cost US$ 5, or $5 and $10 abroad.")
-    assert out == r"It cost US\$ 5, or \$5 and \$10 abroad."
+    assert out == "It cost US$ 5, or $5 and $10 abroad."
 
 
 def test_smart_punctuation_alone_does_not_refuse_a_plain_paragraph() -> None:
     """Pandoc curls quotes and turns `--` into a dash. That is typesetting, not something
-    lost, and refusing on it would refuse most paragraphs."""
+    lost, and refusing on it would refuse most paragraphs. Only the word that changed is
+    written, and the source's own quotes, dashes and full stops are kept."""
     source = "It's \"fine\" -- here..."
     rendered = "It’s “fine” – here…"
     returned = "It’s “fine” – there…"
-    assert realign(source, rendered, returned) == returned
+    assert realign(source, rendered, returned) == source.replace("here", "there")
 
 
 def test_a_paragraph_whose_text_word_does_not_show_is_refused() -> None:
@@ -9650,6 +9928,60 @@ def test_the_paragraph_after_a_split_is_told_it_is_its_neighbour(
     assert "split in two in Word, new text written next to it" not in after, after
     assert "after a new paragraph, 'Real work would need a case definition" in after, after
     assert "was not split itself" in after and "own edit in the .md" in after, after
+
+
+#: A document Word 16 saved itself: see the test that reads it.
+SPLIT_IN_WORD = Path(__file__).parent / "data" / "word" / "split-beside-reworded.docx"
+
+
+@needs_pandoc
+def test_word_s_own_split_and_the_reworded_paragraph_after_it_are_told_apart(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Word 16 saved this document itself (2026-11-05, over COM, Track Changes off), from a
+    build of the example: the space after "data generator." replaced by a paragraph mark
+    (`Range.InsertParagraph`), and "computed" typed over with "calculated" in the next
+    paragraph. Word left the identifier's bookmark on the first half, gave the second half
+    none and the first half's style, wrote its own style ids (`a0` for Body Text, as its
+    Japanese interface names it) and a `lastRenderedPageBreak`. The person who saved it is
+    renamed `Ana Author` in `docProps/core.xml`; nothing else was changed.
+    It carries this build's properties, its source stamp and its record of paragraphs, as
+    the fixtures of `tests/test_filed_comments.py` do, since the build it was saved from
+    may print its results otherwise. Both paragraphs are refused, each with its own reason."""
+    from manuscript_guard.cli import main
+
+    with zipfile.ZipFile(built(project)) as fresh:
+        custom = fresh.read("docProps/custom.xml")
+    returned = tmp_path / "split.docx"
+    with zipfile.ZipFile(SPLIT_IN_WORD) as zin, zipfile.ZipFile(returned, "w") as zout:
+        for item in zin.infolist():
+            zout.writestr(item, custom if item.filename == "docProps/custom.xml"
+                          else zin.read(item.filename))  # fmt: skip
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert source.read_text(encoding="utf-8") == before
+    printed = capsys.readouterr().out
+    # Each refusal is found by its own reason, not by what the dry run shows of its paragraph,
+    # and there are exactly two: one with the split's message (in which "split in two in
+    # Word" alone would also match the neighbour's "another paragraph split in two in Word"),
+    # one with the neighbour's, naming the new paragraph (review of #518).
+    refused = [block for block in printed.split("\n\n") if "NOT merged into" in block]
+    # The build Word's copy was saved from printed that machine's Python and statsmodels; a
+    # build elsewhere prints its own, and that paragraph is refused as a changed number. It
+    # is set aside here, and nothing else may be (CI's Ubuntu job on #518).
+    refused = [
+        block for block in refused
+        if not (keys := re.findall(r"comes from (\S+?)\. ", block))
+        or not all(key.startswith("results.software.") for key in keys)
+    ]
+    assert len(refused) == 2, printed
+    split_said = [b for b in refused if "split in two in Word, new text written next to it" in b]
+    after = [b for b in refused if "after a new paragraph, 'Real work would need a case" in b]
+    assert len(split_said) == 1 and len(after) == 1, printed
+    assert "after a new paragraph" not in split_said[0], split_said[0]
+    assert "own edit in the .md" in after[0], after[0]
 
 
 def test_a_new_paragraph_of_only_a_symbol_is_named_by_no_words(tmp_path: Path) -> None:
@@ -13610,21 +13942,32 @@ def test_a_rewording_that_brings_a_lone_marker_to_line_two_is_refused(
     project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], marker: str
 ) -> None:
     """End to end, from the round-3 review of #72. A hard-wrapped paragraph ends in a line
-    holding only `:`. Reworded in its first stretch, it merged with that stretch's line
-    break gone, the kept `:` came up to line 2, and the next build printed a definition list
-    with no identifier - while `import --apply` exited 0."""
+    holding only `:`. Reworded in its first stretch, and written there from Word's text, it
+    merged with that stretch's line break gone, the kept `:` came up to line 2, and the next
+    build printed a definition list with no identifier - while `import --apply` exited 0.
+    A stretch is written from Word's text whole now only where the edit cannot be written
+    word by word: here, beside a straight quote of the source. Written word by word, the
+    line breaks are kept and the paragraph stays one."""
     from manuscript_guard.cli import main
 
-    paragraph = "We enrolled patients over\ntwo years, reaching {{results.ror.point}} of\n"
-    with_paragraphs(project, paragraph + marker)
+    paragraph = "We 'enrolled' patients over\ntwo years, reaching {{results.ror.point}} of\n"
     source = project / "manuscript" / "main.md"
+    original = source.read_bytes()
+    with_paragraphs(project, paragraph + marker)
     before = source.read_text(encoding="utf-8")
-    returned = edit_docx(built(project), tmp_path / "back.docx", {"We enrolled": "We recruited"})
+    returned = edit_docx(built(project), tmp_path / "back.docx", {"enrolled": "recruited"})
 
     capsys.readouterr()
     assert main(["import", str(returned), str(project), "--apply"]) == 1
     assert "the next build would give it no identifier" in capsys.readouterr().out
     assert source.read_text(encoding="utf-8") == before
+
+    source.write_bytes(original)
+    with_paragraphs(project, paragraph.replace("'", "") + marker)
+    before = source.read_text(encoding="utf-8")
+    returned = edit_docx(built(project), tmp_path / "again.docx", {"enrolled": "recruited"})
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert source.read_text(encoding="utf-8") == before.replace("enrolled", "recruited")
 
 
 # --------------------------------------------------- a supplement is a document of its own

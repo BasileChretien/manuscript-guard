@@ -504,19 +504,19 @@ METHODS_EMPHASIS = (
 
 @needs_pandoc
 @pytest.mark.parametrize(
-    "retyped, kept",
-    [(("We analysed", "We examined"), True), (("de-duplication", "deduplication"), False)],
+    "retyped",
+    [("We analysed", "We examined"), ("de-duplication", "deduplication")],
     ids=["another-stretch", "the-same-stretch"],
 )
 def test_an_accepted_edit_and_the_author_s_own_edit_in_its_paragraph_both_come_back(
-    project: Path, tmp_path: Path, retyped: tuple[str, str], kept: bool
+    project: Path, tmp_path: Path, retyped: tuple[str, str]
 ) -> None:
     """The suggestion is written where its words were, and then the author's own edit in
     the same paragraph is merged as any rewording is, against the source with the
     suggestion in it. Retyped between other values, the stretch with the suggestion and
-    its emphasis is kept as written. Retyped in the suggestion's own stretch, that stretch
-    is rebuilt from Word's text and its emphasis goes, as it does for any edit there
-    (DESIGN.md, Known gaps)."""
+    its emphasis is kept as written. Retyped in the suggestion's own stretch, only the
+    retyped word is written there, and the emphasis beside it stays: it used to be rebuilt
+    from Word's text, and the emphasis went."""
     main = project / "manuscript" / "main.md"
     main.write_text(
         main.read_text(encoding="utf-8").replace(*METHODS_EMPHASIS), encoding="utf-8"
@@ -533,7 +533,7 @@ def test_an_accepted_edit_and_the_author_s_own_edit_in_its_paragraph_both_come_b
     text = " ".join(main.read_text(encoding="utf-8").split())
     assert "Reports of any age or sex were included." in text
     assert retyped[1] in text and retyped[0] not in text
-    assert ("*synthetic*" in text) is kept
+    assert "*synthetic*" in text
     found = {f["id"]: f for f in reading(project)["findings"]}
     assert "now reads" in found["r8-pe-02"]["resolution"]
 

@@ -3608,6 +3608,138 @@ at the same time, adds a public `publication_types(record)` to `gates/lookups.py
 reads a PMID PubMed gives for a DOI; whichever of the two merges second switches the reader
 to it.
 
+## A cited work is held to newer evidence by fixed rules
+
+The currency half of the reference-currency design (2026-11-04, its sections 2.2 to 2.6, all
+seven of its decisions as recommended): has the cited work been overtaken? This part holds
+the records, the rules and G7's reading of them, with no model and no network. The recorded
+searches and their replay, the proposals as Word comments and the unattended run come after
+it, each with the options of `references` it needs.
+
+**The protocol.** A reader frames the claim as a question (F1), which picks a scale of the
+hierarchy (F2). For the cited work and each candidate a search found, the reader fills fixed
+fields, each with a quote of the work's stored abstract or text, word for word: R1 the level
+on the scale, R2 whether the population, the exposure and the outcome are the `same`,
+`different` or `unclear`, R3 whether it `supports` the sentence, `contradicts` it or
+`neither`, R4 a synthesis's search end date. The rules (`currency/rules.py`, one pure
+function) decide:
+
+- K1: a candidate with no works record, retracted, withdrawn, under concern, or a preprint
+  whose published version is known, is out. K2 the level, 1 the strongest; K3 `same` on all
+  of R2; K4 recency, at the same or a stronger level; K5, for a sentence that quotes a
+  number the literature ledger records from the cited work, the primary study only: no
+  synthesis replaces it, at whatever level, since a number is cited from the study that
+  measured it (`number-from-secondary-source`); a synthesis against the sentence may still be
+  added. Basile chose this, "primary only", on 2026-11-04 (item 6 of round 1 of #499), over a
+  primary study put first at one level only. The sentence quotes such a number where it
+  binds a value the ledger, or attested.yaml, records from the cited work, `{{lit.key}}`, or
+  writes its display as words of their own, the ledger read as `number-from-secondary-source`
+  reads it (`lookups.values_quoted_from`); a year, another digit, or another work's value is
+  not one.
+- D1 `replace`: a candidate passes K1, is `same` on R2, does not contradict the sentence,
+  and is at a stronger level, or at the same level with a search end date after the cited
+  work's publication; dates compare at the finest precision both have, and equal there is
+  not after. D2 `add`: it contradicts the sentence at the same or a stronger level. D3 `keep`
+  otherwise. D4 `uncertain`: two readings disagree on the hierarchy, the scale or the cited
+  work's level, or, for a candidate that passes K1, on what can change what the rules give:
+  R2 always; where R2 is `same` on all three, whether the candidate is weaker than the
+  cited work; for one that is not weaker, its level, which ranks it, and whether it
+  contradicts the sentence; and at the cited work's level, not contradicting it, whether
+  its search ended after the cited work was published. A weaker candidate's exact level or
+  stance, `supports` against `neither`, and two search end dates on the same side of the
+  publication may differ. A candidate one reading names and the other does not is a
+  disagreement. Basile chose this on 2026-11-05 (item 3 of round 2 of #499). Before it,
+  every field of every candidate was compared (#499 as opened), and then R2, the exact
+  level and stance where R2 was `same`, and the raw search end date at the cited level
+  (round 1), so that a weaker candidate read at two weaker levels still made a clear
+  `replace` `uncertain`.
+
+Settled here, where the design left it open: the rules decide nothing from one reading, so
+that a change is proposed only where two agree, and a reading counts once, by its reader and
+its number (a copy filed under another name is `currency-record-edited`); a candidate that
+contradicts the sentence is added and never put in its citation's place, and where one
+candidate gives `add` and another `replace`, the entry is `add`, since the contradiction is
+what the author has to read first. The rule ids a decision records are `K1, K2, K3`, the D
+rule, and `K4` or `K5` only where it decided: K5 where it set a synthesis aside, K4 where
+recency chose or D1 rests on the date. No
+decision is written, and none of the rules' is checked, while the works store holds no sound
+record of the cited work or of a candidate a reading names: K1 would put such a candidate
+out and write `keep` from an empty store (round 1 of #499).
+
+**The hierarchy** is the Oxford 2011 Levels of Evidence (`data/evidence_hierarchies.yaml`),
+seven scales after the table's questions (`frequency`, `diagnosis`, `prognosis`, `benefit`,
+`harms-common`, `harms-rare`, `screening`), levels 1 to 5, and 1 to 4 where the table gives
+a row no fifth (`frequency`, `prognosis`). The Centre's site grants no
+licence to copy the table, so the file holds ids and descriptions in this project's own
+words, with CEBM's citation for the table and its introductory document (ATTRIBUTION.md). A
+project may name its own in paper.yaml, `references.hierarchy`, in the same shape.
+
+**The records.** `literature/currency.yaml` holds one entry per citing sentence and work: a
+stable id (`c1`, `c2` ...), the sentence, the key, the question, who marked it, the decision
+(`action`, `candidate`, `rules`, `by`: `rules` or a person with `why`, `decided_on`) and the
+answer to a proposed change (`accepted`, or `refused` with the person and the reason; its `by`
+is a person, never `rules`). The dates are `decided_on` and `answered_on`, never a key `on`, which YAML reads as `true`. The
+search, works and reading records live under `literature/currency/` and are the tool's,
+each sealed by a digest; a reading is written once, numbered as its reader's next of the
+entry, as a panel's reading is filed (its writer is copied, since nothing a gate imports may
+import `panel/`). The works store is out of git by default: `references` writes its
+`.gitignore`. A DOI is folded to lower case wherever a reading or a works record names a
+work. An entry belongs to the sentence citing its work whose folded words are its own, as a
+passage does, or, where none is, to the one citing it that holds most of them, half or more
+(`NEAR`); with neither it is unplaced.
+
+**Acceptance by citation** (design 2.5): an unanswered `replace` or `add` counts as accepted,
+and nothing is written, once a sentence matching the entry's words, the same or `NEAR`,
+cites a key whose DOI or PMID in `references.bib` (`doi_of`, `pmid_of`) is the candidate's:
+the author added the work to Zotero and ran `sync-bib`. Exact words first (Basile, round 4
+of #499): the one sentence whose folded words are the entry's, citing the old work, the
+candidate or both, is the entry's own; it accepts if and only if it cites the candidate, and
+the entry is placed on it, so a `replace` done is not unplaced. Where two or more such
+sentences cite either, none accepts. Only where no sentence has the entry's words does
+`NEAR` decide: the sentence citing the old work that holds most of them is the entry's, and
+accepts only by citing the candidate too, so a copy elsewhere that holds most of its words
+and cites the candidate accepts nothing (rounds 2 and 3); failing that, the sentence citing
+the candidate that holds most of them accepts, and the entry is placed on it.
+
+**Scope.** The claims an entry marks, and each citing sentence of the main text or the
+supplement, Markdown or LaTeX, that cites a work whose lookup record says a later version
+came since or a preprint was published (`lookups.currency_facts`, what gives
+`reference-updated` and `preprint-published`).
+
+**The gate** reads the records only:
+
+| Finding | When | Level |
+|---|---|---|
+| `currency-record-missing` | a claim in scope has no entry, or its entry no decision ("marked, not searched", "read once") | a note while drafting, a warning from internal-review, a failure at submission under `references.currency: required` |
+| `currency-record-stale` | an entry's newest search is more than six months old | warning, failure at submission |
+| `currency-record-edited` | a search, works or reading record no longer matches its digest or its schema | fails from drafting |
+| `currency-reading-invalid` | a sealed reading names a hierarchy, scale or level the hierarchy in force lacks, or another cited work | fails from drafting |
+| `currency-quote-not-found` | a reading's quote is not in the work's stored abstract or text | fails from drafting |
+| `currency-quote-unchecked` | nothing stored to look in, or no works store in this checkout | note |
+| `currency-decision-mismatch` | an entry decided by `rules` says other than the rules give from its readings | fails from drafting |
+| `currency-decision-not-human` | a decision's or an answer's `by` names a model | fails from drafting |
+| `currency-change-unanswered` | a `replace` or `add` nobody answered | warning, failure at submission; a person's |
+| `currency-uncertain`, `currency-entry-unplaced` | the readings disagree; no sentence matches | notes |
+| `currency-candidate-retracted` | a work the decision keeps or proposes is retracted, by its works record | fails from drafting |
+
+`currency-reading-invalid` is a code the design did not list: a reading the rules cannot read
+is neither edited nor a mismatch. `currency-decision-not-human` is the author's to answer, as
+`currency-change-unanswered` is. The hook asks before an agent's edit changes a person's
+decision or any answer, before `references --refuse`, and before `references --mark ... --id`
+puts an entry a person decided or answered on another sentence, or puts one whose proposed
+change nobody answered on a sentence citing the work it proposes, which would accept the
+change (Basile, 2026-11-05); it asks too where currency.yaml or references.bib cannot be
+read. `check`'s literature line says how many entries the rules decided and from whose
+readings, and how many a person did.
+
+**The command**, `references`: alone, a row per claim in scope; `--explain ID`; `--mark
+"WORDS" @KEY` (with `--id`, an entry no sentence reads as put on the sentence again, `KEY`
+the entry's work or the one it proposes); `--reading FILE`, which holds the
+reading to its schema, the hierarchy and its entry, files it, and writes the rules' decision
+once two are filed and the works store holds every work they name, leaving a person's
+decision as it is and refusing a reading that would change a proposal a person answered;
+`--refuse ID --why ... --as PERSON`, refused where the proposal is answered already.
+
 ## Text from the authors' earlier papers is found before the journal finds it
 
 A journal puts each submission through a similarity check (Crossref Similarity Check, which
@@ -5682,9 +5814,11 @@ and after it gives `reworded.compare` nothing to say of a binding, a citation or
 number. An edit that changes "2 x 2" to "3 x 2" is a finding, not a tracked change.
 
 **What is accepted is written where its words were, or is not offered.** `import` merges a
-rewording from Word by rebuilding each edited stretch between two values or citations from
-Word's text, which holds no markup: emphasis, code or a link in that stretch is flattened,
-or the paragraph refused. An accepted suggestion is not merged so. Its words are known, from
+rewording from Word by writing the words that changed where the source has them, found by
+comparing Word's text with what the build printed; where an edit meets emphasis or code
+other than from inside it, that span is written from Word's text, which holds no markup,
+and a link in the edited stretch refuses the paragraph (see "Two details are
+load-bearing"). An accepted suggestion is not merged so. Its words are known, from
 the sealed record, and so is where they were found, so `import` writes the new words there
 and touches nothing else (`suggestions.write_in`); see "An accepted suggestion is written,
 then the rest is merged" below. `review --suggestions` offers an edit only where that write
@@ -10411,15 +10545,37 @@ segment with the same segment of the build, character for character but for layo
 whitespace, since both are Word's text and Word changes no character nobody typed. Quotes
 were once compared as quotes, and a co-author turning ‘em the right way round left a segment
 that read as untouched: the correction was dropped with nothing reported. And an unchanged
-segment is rebuilt from the source rather than from Word, so only a segment the co-author
-actually edited loses its inline formatting — Word text is read as plain `<w:t>` runs, and
-that is the price of using the bookmark as identity. An edited segment keeps Word's quotes
-as they are: straightening them all for pandoc to curl again turned „ein Signal“ into
-“ein Signal” and the ’90s into ‘90s. One is straightened. A straight `'` kept from the
-source can open a quotation that closes in the edited segment, and pandoc, finding nothing
-straight to close it, prints it as an apostrophe: "’a ratio of 3.84’". The read-back check
-below compares quotes as quotes and cannot see that, so the segment's first closing `’` is
-written straight, as the source had it.
+segment is rebuilt from the source rather than from Word. Word text is read as plain
+`<w:t>` runs, the price of using the bookmark as identity, and an edited segment used to be
+written from it whole: one word changed in "**Background.** Fictional described ... from
+{{results.a}}" lost the bold of the untouched lead-in, and every straight apostrophe of
+the segment came back as Word's curly one, so a diff showed changes nobody made. A segment
+is usually from the paragraph's first word to its first value. Now only the words that
+changed are written (`rewording.rewritten`). The segment as the build printed it and as it
+came back are compared word by word, and the source is lined up with what was printed
+character by character, through what each source character shows in Word; a straight
+quote is a curly one there, `--` an en dash, a run of spaces a run. Each run of changed
+words is written where its words are in the source, and every other character is kept.
+Words changed inside emphasis are written inside it. An edit that meets emphasis, code, an
+escape or an entity other than from inside its text, words typed where a span opens or
+closes or a change across one end, cannot be placed by Word's text, which does not say
+whether the new words are inside: that span is written from Word's text with the edit, and
+code is written so whatever the edit in it, since words written from Word's text would be
+escaped inside it. The dry run lists what lost emphasis or code so ("written as Word's
+plain text"); an escape or an entity written so prints as it did. Where kept text could
+read otherwise beside the edit - a straight quote of the source pandoc may pair, markup a
+deletion brings up against other text, a tag a `<` before the edit could open (Known gaps
+lists them) - where the segment cannot be lined up with what was printed, or where the
+merged paragraph does not read back as Word's text, the segment is written from Word's
+text whole, as below, and listed too where it held emphasis, code or a straight quote. A
+paragraph whose prose has a bare brace is written so throughout. An edited segment written
+so keeps Word's quotes as they are: straightening them all for pandoc to curl again turned
+„ein Signal“ into “ein Signal” and the ’90s into ‘90s. One is straightened. A straight `'`
+kept from the source can open a quotation that closes in the edited segment, and pandoc,
+finding nothing straight to close it, prints it as an apostrophe: "’a ratio of 3.84’". The
+read-back check below compares quotes as quotes and cannot see that, so the segment's first
+closing `’` is written straight, as the source had it; a segment written word by word is
+not tried while a quote stands open.
 
 Losing bold is a cost; losing a footnote is a corruption. Word's text holds nothing of an
 HTML comment, a footnote, an equation or raw TeX; it holds a link's words without the
@@ -14122,13 +14278,21 @@ Added by the adversarial review, verified and **not** fixed:
   five words either side, at most three stretches a paragraph (`preview.py`); the rest are
   counted, not shown. Edits ten words apart or fewer are one stretch, and a stretch is
   shown whole, every changed word in it: a paragraph copy-edited throughout prints at its
-  full length, where showing a long stretch by its two ends hid the edits between. Words are
-  compared, so spacing alone, a line wrapped otherwise, shows nothing. A binding, a
-  bracketed citation and a parenthesis of up to 160 characters are one word and never cut;
-  a longer parenthesis, a clause rather than a citation, is cut between its words. A
-  refusal is shown against what the paragraph printed when the document was built, from the
-  build's record, and where there is none against the fresh build: in a forced import, a
-  value re-run since then shows as changed beside the co-author's edit.
+  full length, with nothing to mark which of its words changed, where showing a long stretch
+  by its two ends hid the edits between. Words are compared, so spacing between them, a line
+  wrapped otherwise, shows nothing. A binding, and a bracket or a parenthesis of up to 160
+  characters that holds no other, are each one word, compared as written and never cut. So
+  a no-break space typed in Word for a space inside a parenthesis prints a `-` and a `+`
+  line that read the same, and such a bracket prints whole on each line however long it
+  is, as does any run of text with no space in it, Chinese or Japanese among them. A longer
+  parenthesis, a clause or a citation of several works as Word prints one, is cut between
+  its words, and so is a bracket or a parenthesis with another inside it, so a stretch
+  beside it can open or close inside it. A refusal is shown against what the
+  paragraph printed when the document was built, from the build's record, and where there is
+  none against the fresh build: in a forced import, a value re-run since then shows as
+  changed beside the co-author's edit. The generated edits (`previewed_edits`) never pass
+  the three stretches a paragraph shows, and hold no binding, no parenthesis inside another
+  and no refusal. A run of `{{` never closed takes time in the square of its length.
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
@@ -14349,7 +14513,9 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   2018)", "(Name, Other, & Third, 2018)", each part of a group, and "Name (2018)" with "et
   al." or one or two more names. A year with a page after it, "(Name, 2018, p. 4)", a part
   that opens with a lower-case word and a comma, "(e.g., Name, 2018)", and a name that does
-  not open with a capital, a Chinese or a Japanese one among them, get the generic hint. A
+  not open with a capital, a Chinese or a Japanese one among them, get the generic hint. So
+  does a LaTeX citation that ties the name to the year, `Name~(2018)` or `Name et~al.
+  (2018)`: the tie is not read as a space. A
   possessive, "Name's (2018)", is read with its "'s" and matches no entry. A capitalised word
   before a year in brackets reads as a name, "Japan (2018)", and its hint says what to do if
   it is a citation and what otherwise. A family name is compared by its last word, folded
@@ -14357,7 +14523,13 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   work by another person of that family name from that year is named as one the author may
   mean. TeX in a name that `gates.lookups` does not read (`{\IJ}ssel`) leaves that entry
   out of the comparison, and the hint names it for each typed citation of that year that
-  matches no other entry; an entry whose `author` is a `@string` macro is not found. The hint is G2's alone: `bind` and
+  matches no other entry; an entry whose `author` is a `@string` macro is not found. Where
+  no entry matches, the hint says to "cite it with its key from references.bib, ..., adding
+  the work there first if it is not yet in it", whose "it" is the citation, then the work,
+  then the file. The rows of `tests/test_corruption.py` that end in that branch do not check that
+  the generic hint follows it, as the rows that name a key do; and the property of names in
+  TeX (`names_in_tex`) draws no citation that matches no entry, so its check that the hint
+  never says a work is missing cannot fail. The hint is G2's alone: `bind` and
   the annotated copy still give the generic one.
 - **Figure estimates.** `def std(values):` is read as a call; an `.Rmd` or `.qmd` is lexed
   as R throughout, its Python chunks missed and "sample (" in its prose read; a form feed
@@ -15776,7 +15948,10 @@ Open, recorded as each change landed:
   manuscript_guard.cli submit --help` and a help with a space too many are each held as a
   submission. `--hel` is held too, and argparse refuses it, since the parser takes no
   abbreviation (`allow_abbrev=False`). Each costs an agent one refusal, and none lets a
-  submission through.
+  submission through. That a help with a line end after it is held rests on the match being
+  of the whole command (`fullmatch`), and no test holds `manuscript-guard submit --help`
+  followed by a line end alone. The generated commands (`help_commands`) quote a `;` and
+  never an `&` or a `|`.
 - **From a folder with no project, the submission guard finds only a project the command
   spells out.** It used to find none. It matched the command, then ran the submission check
   in the folder the event names as the agent's, and from the folder above a project there is
@@ -17457,10 +17632,50 @@ Open, recorded as each change landed:
   analysis or they fail the gate. That is the intended answer — the reported study period
   should be the data's actual range — but it is friction, and the finding's hint now says
   what to do rather than leaving the author to guess.
-- **A merged segment loses its inline formatting.** Word text is read as plain `<w:t>` runs,
-  because the bookmark that identifies the paragraph is discarded by pandoc's markdown
-  writer. Only a segment the co-author actually edited is affected; unchanged prose is
-  rebuilt from the source.
+- **A merged edit can lose the inline formatting it meets.** Word text is read as plain
+  `<w:t>` runs, because the bookmark that identifies the paragraph is discarded by pandoc's
+  markdown writer. Only the words the co-author changed are written, so formatting is lost
+  only where Word's text cannot say where the new words go, and the dry run lists each
+  place under "written as Word's plain text":
+  - *An edit that meets one end of emphasis or code writes that span plain.* Words typed
+    just where a span opens or closes, `*all*` turned "all," or a word typed in front of a
+    bold lead-in, may be inside it or after it, and so may a change that runs across one end.
+    The span is written from Word's text with the edit, its other words with it. Words typed
+    with a space between them and the span are put outside it only where the comparison
+    lines the edit up away from the delimiter, and `difflib` takes the longer run of equal
+    words first: "in **all** cases" with "nearly" typed before "all" can meet the
+    opening `**` and lose the bold, and "*very large*" with "large" deleted loses the
+    italics on "very". The words are right, and the loss is listed.
+  - *A run of Chinese or Japanese is one word.* Kana and kanji written without spaces are
+    compared as one word, so any edit in the run writes the whole run from Word's text,
+    and emphasis inside it is lost; the loss is listed.
+  - *Any edit in inline code writes the code plain*, since words from Word's text would be
+    written escaped inside it, and an escape or an entity an edit runs into is written as
+    the character, which prints the same.
+  - *Some edits write their whole stretch plain*, between the values or citations either
+    side, its apostrophes as Word's curly ones, as every edited stretch was written before.
+    A straight `'` or `"` of the source that pandoc may pair, in the changed words or next
+    to them, could pair otherwise once they change. Words deleted next to a character
+    Markdown reads as markup (`]`, `(`, `{`, `<`, `&`, `` ` ``, `$`, `~` and the like, but
+    not a delimiter of emphasis round them) bring the source either side up against each
+    other or against a value: `{k={{results.a}} y}` without its ` y` is attributes, which
+    this module's reading of brackets does not see. Words typed straight after a kept `<` or
+    `&` can open a tag or an entity, and an edit after a `<` that can open a tag, with a bare
+    `>` of the source after it, can turn what pandoc read as text into a tag. A paragraph
+    whose prose has a bare brace is not written word by word at all, so the refusals of a
+    brace pair split across a value (#90) stand as they were. So too a stretch while a
+    straight quote opened before it is still open, one whose source does not line up with
+    what the build printed of it, and any paragraph whose merge does not read back as
+    Word's text.
+  - *Which of two equal words was edited is the comparison's to choose.* `difflib` lines
+    the words up, and of "very **very**" from "**very**" it keeps the bold on the second;
+    the words are right either way, and only the formatting of a repeated word can differ
+    from what the co-author meant.
+  - *The generated inputs draw the simple shapes only.* The property over Word's edits
+    never edits a paragraph's first word (the bold lead-in this was written for), draws
+    distinct ASCII words only (no repeated word, CJK, quote, `&`, `<`, entity or
+    escape), never inserts a word, and of a deletion checks only that the other spans
+    survive. Those shapes are held by unit tests and one document Word saved.
 - **Merging a reworded paragraph refuses, rather than drops, what Word does not show as its
   text.** It used to drop an inline comment, a footnote or inline math, and exit 0. Now an
   edited stretch holding what Word's text cannot carry is refused by name: a comment, a
@@ -17527,9 +17742,9 @@ Open, recorded as each change landed:
     and `--offline` prints as "–offline", as it does on a move into another paragraph. And
     an edit that deleted the code but left a literal `--`, `...` or straight quote in its
     stretch is refused under the code's name.
-  - *Formatting inside an edited stretch is still lost*, as the entry above says, and so is
-    the source's own way of writing a character: `&lt;` comes back as `\<`, and `\ ` or
-    `&nbsp;` as the no-break space itself, each of which prints the same. An escaped
+  - *What is written from Word's text loses its formatting*, where the entry above says it
+    is, and the source's own way of writing a character: `&lt;` comes back as `\<`, and
+    `\ ` or `&nbsp;` as the no-break space itself, each of which prints the same. An escaped
     straight quote, `\"`, comes back bare and pandoc curls it: a pandoc conversion from
     Word writes those.
   - *Pandoc's own no-break spaces are written back as spaces, only where pandoc makes them
@@ -19347,6 +19562,57 @@ Open, recorded as each change landed:
   by the names they are sold under and not every name an agent could sign. G7 reads a
   work's stored files once for the passages and once for the quotations in the prose, so a
   PDF goes through `pdftotext` twice a `check`.
+- **Whether a cited work is still the one to cite rests on readings, which the rules do not
+  check (`currency-*`).**
+  - A reading varies between runs and between models, and two readings by one model are not
+    independent: they count as two (decision 4), and the summary says "one model, read
+    twice". A third reading that differs from the other two on a field the rules use makes
+    an agreed entry `uncertain`.
+  - A quote found word for word in a work can still back the wrong field: a cohort quoted
+    from a trial's background, a population from its discussion.
+  - A level on a hierarchy is a guide to where the likely best evidence lies, not a study's
+    quality; risk of bias within a level is not judged.
+  - A search end date is read only where a review states it, and dates of unequal precision
+    compare at the coarser: a review whose search ended in 2020 does not replace a work
+    published in 2020, whatever the months.
+  - K5 knows a synthesis by its PubMed publication types in its works record (a review, a
+    systematic review, a meta-analysis): one whose types are not known is read as a primary
+    study, and a number typed in the sentence is known only as the ledger's display of it.
+  - Without the works store, which git leaves out (decision 7), the quotes of candidates and
+    a decision the rules wrote are not checked, entry by entry, and a note says so
+    (`currency-quote-unchecked`). So there a `by: rules` decision edited by hand is caught by
+    neither the hook, which leaves the rules' decisions to the gate, nor `check`.
+  - A `replace` done in a sentence also reworded, where another sentence still citing the
+    old work holds half or more of the entry's words, is not seen as done: the entry stays on
+    that other sentence, and `currency-change-unanswered` fails at submission until the author
+    places the entry on the new sentence with `manuscript-guard references --mark "<words>"
+    @<key> --id <id>`.
+  - A value recorded in the literature ledger from the cited work after the rules decided
+    turns an earlier `by: rules` `replace` with a synthesis into
+    `currency-decision-mismatch` (K5 now sets the synthesis aside). Nothing decides again
+    from the readings filed, and a further reading is refused once the proposal is answered.
+  - A ledger display that is a bare whole number ("12") is found in any equal number of the
+    sentence ("in 12 countries [@cited]"), so K5 can set a synthesis aside where the
+    sentence quotes no value of the cited work.
+  - That a reading is of the cited work (`currency-reading-invalid`, "the reading is of")
+    is checked only where `references.bib` gives the cited work a DOI or a PMID.
+  - G7 reads a work's stored source once for each quote of it, with nothing kept between.
+  - An entry is placed on a sentence reworded beyond its words only while that sentence
+    holds half or more of them (`NEAR`), and may then be placed on a sentence that no longer
+    makes the claim its decision was of; further than that it is unplaced, a note. `--mark`
+    finds its sentence by its words folded and taken as one run, and refuses where more than
+    one sentence citing the work holds them.
+  - Scope reads what `lookup` recorded, as of its date: a later version deposited since is
+    not in scope until `lookup` asks again. The Introduction and Discussion of the unattended
+    run are not yet read.
+  - `references` writes `literature/currency.yaml` whole, so a comment written in it is not
+    kept.
+  - The digests of the search, works and reading records catch an edit made without care,
+    not one made by somebody who computes the digest again; and the hook asks about an
+    agent's ordinary edit of a person's decision or answer, not a deliberate evasion (a shell
+    command, a patch that deletes the file).
+  - `currency-record-stale` reads the search records, which nothing in this version writes:
+    the recorded searches are to come.
 - **An appraisal of a similar study's method is judgement, not a guarantee.** G12 holds it
   to a standard and a domain that exist, and nothing more: that the method departs from the
   standard as the appraisal says, that the concern is the right one, and that the studies
@@ -20944,6 +21210,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - *The badge* reads through shields.io from `raw.githubusercontent.com`, so it works for a
     public repository only; it shows the last finished run on the default branch; and it is
     check's alone, so a run that fails for its build or its verify can show "passes".
+
+- **`.zenodo.json` names one affiliation per creator.** Zenodo's field is one string, so the
+  author's two institutions go in as one, matched to no organisation (ROR), as CITATION.cff's
+  one field does.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

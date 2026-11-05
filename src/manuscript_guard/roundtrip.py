@@ -2807,6 +2807,16 @@ class _Reading:
     lost: list[tuple[str, ...]]
     #: The whole paragraph as Word shows it, with each token as the rendering given for it.
     whole: str
+    #: Where each stretch of prose is in the paragraph, as (start, end).
+    ranges: tuple[tuple[int, int], ...] = ()
+    #: What each character of the paragraph puts into Word's text, layout spaces as typed:
+    #: what `rewording` lines a stretch up with what the build printed of it by.
+    shows: tuple[str, ...] = ()
+    #: The markup in the paragraph that Word's text holds none of, as (start, end, inner
+    #: start, inner end, formatting): emphasis with the text inside its delimiters, and each
+    #: construct `_SCAN` finds, with no inside (-1) - words are not written into one. The
+    #: last says it is emphasis or code, which a reworded stretch written plain loses.
+    marks: tuple[tuple[int, int, int, int, bool], ...] = ()
 
 
 def _read(paragraph: str, renderings: Sequence[str] = ()) -> _Reading:
@@ -2820,9 +2830,11 @@ def _read(paragraph: str, renderings: Sequence[str] = ()) -> _Reading:
     plain = list(filled_text)  # where emphasis is read: constructs set aside, as digits
     marks: list[tuple[int, int, str]] = []
     quiet: list[tuple[int, int]] = []  # where an `@` is not a key: code, a footnote, ...
+    spans: list[tuple[int, int, int, int, bool]] = []
     for m in _SCAN.finditer(filled_text):
         kind = m.lastgroup or ""
         start, end = m.span()
+        spans.append((start, end, -1, -1, kind in ("code", "coded")))
         if kind in _OPAQUE | _LITERAL:
             quiet.append((start, end))
         group = _INLINE[kind][2]
@@ -2853,6 +2865,7 @@ def _read(paragraph: str, renderings: Sequence[str] = ()) -> _Reading:
     ]
 
     for start, end, width in _emphasis("".join(plain).translate(_TEXT_SPACES)):
+        spans.append((start, end, start + width, end - width, True))
         shows[start : start + width] = [""] * width
         shows[end - width : end] = [""] * width
         if any(start < t.start() < end for t in tokens):
@@ -2874,6 +2887,9 @@ def _read(paragraph: str, renderings: Sequence[str] = ()) -> _Reading:
             for a, b in ranges
         ],
         whole=_spaced("".join(shows)).strip(),
+        ranges=tuple(ranges),
+        shows=tuple(shows),
+        marks=tuple(spans),
     )
 
 
@@ -3206,6 +3222,21 @@ class Alignment:
     #: escaped: `Set {x, {{results.x}}, y\} was chosen.` The source's braces paired, these do
     #: not, and the next build would give the paragraph no identifier.
     unpaired: bool = False
+    #: Merged, the co-author's words written from Word's text over markup of the source's
+    #: that they replaced or ran into: emphasis, code or a straight quote, which they lose.
+    #: What `import` lists beside the merge, as Word's text has them.
+    flattened: tuple[str, ...] = ()
+
+
+def _own_markup(reading: _Reading, index: int) -> bool:
+    """Whether the stretch `index` holds emphasis, code or a straight quote of the source's,
+    which it loses when it is written from Word's text whole."""
+    start, end = reading.ranges[index]
+    if any(
+        formatting and start <= a and b <= end for a, b, _i, _e, formatting in reading.marks
+    ):
+        return True
+    return re.search(r"(?<!\\)['\"]", reading.prose[index]) is not None
 
 
 #: A word for alignment: a number with its decimal and thousands separators, a run of
@@ -3318,8 +3349,13 @@ def align(
 
     Otherwise the text between the tokens is the new prose, and the paragraph is rebuilt from
     the *source's* tokens and the *co-author's* words. An unchanged prose segment is kept
-    exactly as the source has it, which preserves its markdown - only a segment the
-    co-author actually edited loses its inline formatting.
+    exactly as the source has it, which preserves its markdown. An edited one used to be
+    written whole from Word's text, and one word changed after a bold lead-in lost the bold
+    and turned every straight apostrophe in the stretch curly. Now only the words that
+    changed are written, where the source has them (`rewording.rewritten`); where an edit
+    meets emphasis or code other than from inside it, that span alone is written from
+    Word's text, and where the edit cannot be placed exactly, the stretch. `flattened`
+    lists what lost its markup so.
 
     Losing bold is a cost; losing a footnote is a corruption. An edited segment that holds
     something Word's text cannot carry back - a footnote, a comment, a link's address, the
@@ -3333,6 +3369,8 @@ def align(
 
     `abbreviations` are the words pandoc puts a no-break space after; see `_respaced`.
     """
+    from manuscript_guard.rewording import rewritten
+
     reading = _read(source)
     prose, protected = reading.prose, reading.protected
     if not protected:
@@ -3354,101 +3392,140 @@ def align(
     # is compared with, rendered text against rendered text.
     edges = [0] + [edge for span in spans for edge in span] + [len(rendered)]
     was_prose = [rendered[a:b] for a, b in zip(edges[::2], edges[1::2], strict=True)]
-    # What lies ahead of each stretch, for the rules that read a would-be tag; see `_closers`.
-    # A `<` there that can open one, kept from the source or brought by a binding's value, is
-    # bare, and a `>` in the stretch would close it; an `=` can make the `>` end an attribute's
-    # value. Word's text, but a citation as its key: `(Smith 2020)` has a space,
-    # `[@smith2020]` has none, and `HR=[@smith2020]\>1` closed a tag where Word's text said
-    # it could not. `bare` is the same with each `<` Word typed set aside: the merge escapes it.
-    ahead = bare = ""
-    out: list[str] = []
-    lost: list[str] = []
-    unread = False
-    # A straight ' kept from the source that opens a quotation closed in an edited stretch:
-    # Word's closing ’ there is written straight, or pandoc reads the kept one as an
-    # apostrophe and prints "’a ratio of 3.84’". Only that one; the rest stay as typed.
-    quote_open = False
-    for index, piece in enumerate(new_prose):
-        # Unchanged prose keeps the source's own markdown; only an edited segment is taken
-        # from Word, where inline formatting did not survive being read as plain text.
-        # Unchanged means it came back as it was sent, which catches a no-break space the
-        # co-author typed, or as the source reads, which lets pandoc's own after "e.g." be
-        # taken out again in Word without costing the stretch its formatting. See `_undone`.
-        if _unchanged(was_prose[index], piece) or _undone(
-            piece, reading.shown[index], was_prose[index]
-        ):
-            out.append(prose[index])
-            # Open only if pandoc did open it: it prints the ' of 'Tis or '90s as ’.
-            opened = quote_open or "\u2018" in was_prose[index]
-            quote_open = opened and _left_open(prose[index], index == 0, quote_open)
-            bare += piece
-        else:
-            lost += [name for name in _uncarried(reading.lost[index], piece) if name not in lost]
-            # What the build printed of the stretch must be what the source reads as, or
-            # part of it is something Word's text does not hold: `[Methods]` is a link to
-            # the heading, and pandoc reads `<LLOQ in mg/L and >` as a tag.
-            unread |= _untypeset(reading.shown[index]) != _untypeset(was_prose[index])
-            if quote_open and _WORD_CLOSES.search(piece):
-                # Straight even where `_closers` will escape it, after an `=`: left curly, it
-                # closed nothing, and a value the source's own `='` had opened ran on into the
-                # next paragraph. Escaped, it prints straight, the source's opener prints as
-                # an apostrophe, and every word prints.
-                piece = _WORD_CLOSES.sub("'", piece, count=1)
-                quote_open = False
-            beside = {"after_token": index > 0, "before_token": index < len(protected)}
-            # The paragraph is stripped once rebuilt, so the first stretch is escaped as it
-            # will open it: behind a space, a `#` or `:::` was not seen by `_OPENER`, and
-            # the paragraph merged as a heading.
-            opening = piece.lstrip() if index == 0 else piece
-            binding_next = index < len(protected) and _BINDING.fullmatch(protected[index])
-            tag = {"shown_before": ahead, "bare_before": bare}
-            out.append(
-                _respaced(
-                    _escaped(opening, opening=index == 0, **tag, **beside),
-                    abbreviations,
-                    lead=index == 0,
-                    binding_next=bool(binding_next),
+
+    def rebuild(fine: bool) -> tuple[Alignment, bool]:
+        """The paragraph rebuilt, and whether a stretch of it was written word by word: each
+        edited stretch so where `fine` lets it be (`rewording.rewritten`), else from Word's
+        text whole."""
+        # What lies ahead of each stretch, for the rules that read a would-be tag; see
+        # `_closers`. A `<` there that can open one, kept from the source or brought by a
+        # binding's value, is bare, and a `>` in the stretch would close it; an `=` can make
+        # the `>` end an attribute's value. Word's text, but a citation as its key: `(Smith
+        # 2020)` has a space, `[@smith2020]` has none, and `HR=[@smith2020]\>1` closed a tag
+        # where Word's text said it could not. `bare` is the same with each `<` Word typed
+        # set aside: the merge escapes it.
+        ahead = bare = ""
+        out: list[str] = []
+        lost: list[str] = []
+        flattened: list[str] = []
+        unread = worded = False
+        # A straight ' kept from the source that opens a quotation closed in an edited
+        # stretch: Word's closing ’ there is written straight, or pandoc reads the kept one
+        # as an apostrophe and prints "’a ratio of 3.84’". Only that one; the rest stay as
+        # typed.
+        quote_open = False
+        for index, piece in enumerate(new_prose):
+            # Unchanged prose keeps the source's own markdown. Unchanged means it came back
+            # as it was sent, which catches a no-break space the co-author typed, or as the
+            # source reads, which lets pandoc's own after "e.g." be taken out again in Word
+            # without costing the stretch its formatting. See `_undone`.
+            if _unchanged(was_prose[index], piece) or _undone(
+                piece, reading.shown[index], was_prose[index]
+            ):
+                out.append(prose[index])
+                # Open only if pandoc did open it: it prints the ' of 'Tis or '90s as ’.
+                opened = quote_open or "‘" in was_prose[index]
+                quote_open = opened and _left_open(prose[index], index == 0, quote_open)
+                bare += piece
+            else:
+                lost += [n for n in _uncarried(reading.lost[index], piece) if n not in lost]
+                # What the build printed of the stretch must be what the source reads as, or
+                # part of it is something Word's text does not hold: `[Methods]` is a link
+                # to the heading, and pandoc reads `<LLOQ in mg/L and >` as a tag.
+                unread |= _untypeset(reading.shown[index]) != _untypeset(was_prose[index])
+                binding_next = bool(
+                    index < len(protected) and _BINDING.fullmatch(protected[index])
                 )
-            )
-            bare += piece.replace("<", _SET_ASIDE)
-        ahead += piece
-        if index < len(protected):
-            out.append(protected[index])
-            start, end = placed[index]
-            shown = "".join(after[start:end])
-            token = shown if _BINDING.fullmatch(protected[index]) else protected[index]
-            ahead += token
-            bare += token
-    if lost:
-        return Alignment(None, markup=tuple(lost))
-    # With nothing between them there is nothing to escape: a citation's `]` against a value
-    # that opens with `(` is a link, and the interval was its address. Nor can two touching
-    # tokens be lined up again, so every later edit to the paragraph would be refused. After
-    # the markup: a footnote deleted with the words around it is the reason to name.
-    if not all(new_prose[1:-1]):
-        return Alignment(None, touching=True)
-    if unread:
-        return Alignment(None, unaligned=True)
-    rebuilt = "".join(out).strip()
-    # A paragraph cut down to one token is still a paragraph, and keeps its identifier -
-    # unless the token is one `tag` skips: a table, a figure, or a misspelt placeholder.
-    # Merged, that would build without one. Only that shape is refused here, because it is
-    # the one the reason names: `_untagged` skips more than a lone token, and asked of any
-    # rewording it refused `B) the ratio was...` as "everything but it was deleted".
-    if re.fullmatch(r"\{\{[^}]*\}\}", rebuilt) and _untagged(rebuilt):
-        return Alignment(None, alone=rebuilt)
-    # A stretch kept from the source keeps its braces bare, and one written from Word has
-    # them escaped, so a pair with one half on each side of a token no longer pairs. The
-    # paragraph would build without an identifier, and its next edit could not come back.
-    # Writing Word's half bare again is not safe: next to a `]`, a `)`, a `>`, a value or a
-    # kept `{`, a bare brace completes what pandoc reads as attributes, and three review
-    # rounds of #90 each found such a shape that printed wrong text and passed `check`
-    # (`[a [b] c]{k={{results.x}}}` printed without its value). So the rewording is refused.
-    if _brace_group_runs_on(rebuilt) and not _brace_group_runs_on(source):
-        return Alignment(None, unpaired=True)
-    if not _reads_as(rebuilt, protected, tokens, returned):
-        return Alignment(None, misread=True)
-    return Alignment(rebuilt or None)
+                # Only the words that changed are written, where the source has them, and
+                # the rest of the stretch is kept, its markup and its quotes with it. Where
+                # that cannot be done exactly, the stretch is written from Word's text.
+                written = None
+                if fine and not quote_open:
+                    written = rewritten(
+                        reading, index, was_prose[index], piece,
+                        ahead=ahead, bare=bare, last=index == len(protected),
+                        binding_next=binding_next, abbreviations=abbreviations,
+                    )  # fmt: skip
+                if written is not None:
+                    out.append(written.text)
+                    bare += written.bare
+                    flattened += written.flattened
+                    worded = True
+                    opened = "‘" in was_prose[index]
+                    quote_open = opened and _left_open(written.text, index == 0, False)
+                else:
+                    if _own_markup(reading, index):
+                        flattened.append(" ".join(piece.split()))
+                    if quote_open and _WORD_CLOSES.search(piece):
+                        # Straight even where `_closers` will escape it, after an `=`: left
+                        # curly, it closed nothing, and a value the source's own `='` had
+                        # opened ran on into the next paragraph. Escaped, it prints straight,
+                        # the source's opener prints as an apostrophe, and every word prints.
+                        piece = _WORD_CLOSES.sub("'", piece, count=1)
+                        quote_open = False
+                    beside = {"after_token": index > 0, "before_token": index < len(protected)}
+                    # The paragraph is stripped once rebuilt, so the first stretch is escaped
+                    # as it will open it: behind a space, a `#` or `:::` was not seen by
+                    # `_OPENER`, and the paragraph merged as a heading.
+                    opening = piece.lstrip() if index == 0 else piece
+                    tag = {"shown_before": ahead, "bare_before": bare}
+                    out.append(
+                        _respaced(
+                            _escaped(opening, opening=index == 0, **tag, **beside),
+                            abbreviations,
+                            lead=index == 0,
+                            binding_next=binding_next,
+                        )
+                    )
+                    bare += piece.replace("<", _SET_ASIDE)
+            ahead += piece
+            if index < len(protected):
+                out.append(protected[index])
+                start, end = placed[index]
+                shown = "".join(after[start:end])
+                token = shown if _BINDING.fullmatch(protected[index]) else protected[index]
+                ahead += token
+                bare += token
+        if lost:
+            return Alignment(None, markup=tuple(lost)), worded
+        # With nothing between them there is nothing to escape: a citation's `]` against a
+        # value that opens with `(` is a link, and the interval was its address. Nor can two
+        # touching tokens be lined up again, so every later edit to the paragraph would be
+        # refused. After the markup: a footnote deleted with the words around it is the
+        # reason to name.
+        if not all(new_prose[1:-1]):
+            return Alignment(None, touching=True), worded
+        if unread:
+            return Alignment(None, unaligned=True), worded
+        rebuilt = "".join(out).strip()
+        # A paragraph cut down to one token is still a paragraph, and keeps its identifier -
+        # unless the token is one `tag` skips: a table, a figure, or a misspelt placeholder.
+        # Merged, that would build without one. Only that shape is refused here, because it
+        # is the one the reason names: `_untagged` skips more than a lone token, and asked of
+        # any rewording it refused `B) the ratio was...` as "everything but it was deleted".
+        if re.fullmatch(r"\{\{[^}]*\}\}", rebuilt) and _untagged(rebuilt):
+            return Alignment(None, alone=rebuilt), worded
+        # A stretch kept from the source keeps its braces bare, and one written from Word has
+        # them escaped, so a pair with one half on each side of a token no longer pairs. The
+        # paragraph would build without an identifier, and its next edit could not come
+        # back. Writing Word's half bare again is not safe: next to a `]`, a `)`, a `>`, a
+        # value or a kept `{`, a bare brace completes what pandoc reads as attributes, and
+        # three review rounds of #90 each found such a shape that printed wrong text and
+        # passed `check` (`[a [b] c]{k={{results.x}}}` printed without its value). So the
+        # rewording is refused.
+        if _brace_group_runs_on(rebuilt) and not _brace_group_runs_on(source):
+            return Alignment(None, unpaired=True), worded
+        if not _reads_as(rebuilt, protected, tokens, returned):
+            return Alignment(None, misread=True), worded
+        return Alignment(rebuilt or None, flattened=tuple(flattened)), worded
+
+    aligned, worded = rebuild(True)
+    # Words written into the source can read otherwise than Word's text beside markup kept
+    # from it: a word typed straight before a kept `_x_` makes letters of its underscores.
+    # Every edited stretch is then written from Word's text whole, as it was before.
+    if worded and aligned.rebuilt is None:
+        aligned = rebuild(False)[0]
+    return aligned
 
 
 def _align_plain(
@@ -3474,12 +3551,22 @@ def _align_plain(
         return Alignment(None, markup=lost)
     if _untypeset(reading.shown[0]) != _untypeset(rendered):
         return Alignment(None, unaligned=True)
+    # Only the words that changed, as in a stretch between two tokens; see `align`.
+    from manuscript_guard.rewording import rewritten
+
+    written = rewritten(
+        reading, 0, rendered, returned, ahead="", bare="", last=True, binding_next=False,
+        abbreviations=abbreviations,
+    )  # fmt: skip
+    if written is not None and _reads_as(written.text.strip(), (), (), returned):
+        return Alignment(written.text.strip() or None, flattened=written.flattened)
     rebuilt = _respaced(
         _escaped(returned.strip(), opening=True), abbreviations, lead=True, binding_next=False
     )
     if not _reads_as(rebuilt, (), (), returned):
         return Alignment(None, misread=True)
-    return Alignment(rebuilt or None)
+    flattened = (" ".join(returned.split()),) if _own_markup(reading, 0) else ()
+    return Alignment(rebuilt or None, flattened=flattened)
 
 
 def _checked(

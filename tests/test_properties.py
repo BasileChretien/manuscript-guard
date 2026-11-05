@@ -76,6 +76,7 @@ from generated import (
     TERMS,
     TYPOGRAPHY,
     UNCLAIMED,
+    WORD_EDITS,
     WRITTEN_WORDS,
     abstract_papers,
     abstract_trees,
@@ -180,6 +181,7 @@ from generated import (
     vector_figures,
     vocabularies,
     weak_source_papers,
+    word_edited,
 )
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -5427,6 +5429,527 @@ def _a_generic_type_is_not_set_aside(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(weak_sources, "_GENERIC", frozenset())
 
 
+# ------------------------------------------- whether a cited work is still the one to cite
+#
+# The rules of `currency/rules.py` read no text: they decide from records. Their inputs are
+# drawn here, and each example holds one case of every kind its property is about, so that a
+# rule broken for one kind meets it in the first example, under any seed.
+
+#: What a reader may say of a candidate's population, exposure or outcome, and of whether it
+#: is for the sentence or against it.
+_R2 = ("same", "different", "unclear")
+_STANCES = ("supports", "contradicts", "neither")
+#: The ways a candidate fails K1, each as the works record says it.
+_K1_FAILS = ("no record", "retracted", "withdrawn", "under_concern", "published_as")
+
+
+def _a_date(year: int, month: int, day: int, precision: int) -> str:
+    return "-".join(f"{part:0{4 if index == 0 else 2}d}" for index, part in
+                    enumerate((year, month, day)[:precision]))  # fmt: skip
+
+
+#: A day of a month after January, and after the first: a date padded with ones as its month
+#: or its day is then never the date itself.
+_DAYS = st.tuples(st.integers(2000, 2030), st.integers(2, 12), st.integers(2, 28))
+
+
+@st.composite
+def _off_the_question(draw: st.DrawFn, work: str) -> tuple[str, Any]:
+    """A candidate that passes K1 and is not the same question on one of R2: no rule ever
+    proposes it, whatever its level and stance."""
+    from manuscript_guard.currency import rules
+
+    r2 = [draw(st.sampled_from(_R2)) for _ in range(3)]
+    r2[draw(st.integers(0, 2))] = draw(st.sampled_from(("different", "unclear")))
+    return work, rules.Fields(level=draw(st.integers(1, 5)), population=r2[0],
+                              exposure=r2[1], outcome=r2[2],
+                              stance=draw(st.sampled_from(_STANCES)),
+                              search_end=draw(st.none() | st.just("2031")))  # fmt: skip
+
+
+@st.composite
+def _replacing(draw: st.DrawFn) -> dict[str, Any]:
+    """Two setups, one of each kind of `replace`: a candidate at a stronger level, and one at
+    the cited work's level whose search ended after the cited work was published, each with
+    candidates beside it that are not the same question."""
+    from manuscript_guard.currency import rules
+
+    cited = draw(st.integers(2, 5))
+    year, month, day = draw(_DAYS)
+    published = _a_date(year, month, day, draw(st.integers(1, 3)))
+    ended = _a_date(year + draw(st.integers(1, 5)), month, day, draw(st.integers(1, 3)))
+    setups = []
+    for level, search_end in ((draw(st.integers(1, cited - 1)), None), (cited, ended)):
+        target = rules.Fields(level=level, population="same", exposure="same", outcome="same",
+                              stance=draw(st.sampled_from(("supports", "neither"))),
+                              search_end=search_end)  # fmt: skip
+        beside = draw(st.lists(st.integers(0, 9), max_size=3, unique=True))
+        candidates = {"target": target}
+        for index in beside:
+            work, fields = draw(_off_the_question(f"other-{index}"))
+            candidates[work] = fields
+        setups.append({"cited": cited, "published": published, "candidates": candidates})
+    return {"setups": setups}
+
+
+def _currency_readings(cited: int, candidates: dict, scale: str = "benefit") -> list:
+    from manuscript_guard.currency import rules
+
+    return [rules.Reading(reader, "ocebm-2011", scale, cited, dict(candidates))
+            for reader in ("first", "second")]  # fmt: skip
+
+
+def _currency_works(candidates, published: str | None = None) -> tuple[Any, dict]:
+    from manuscript_guard.currency import rules
+
+    return rules.Work("cited", published=published), {work: rules.Work(work)
+                                                      for work in candidates}  # fmt: skip
+
+
+@holds(100, _replacing())
+def test_a_stronger_candidate_never_turns_replace_into_keep(drawn: dict[str, Any]) -> None:
+    """K2 and D1 (`currency/rules.py`): where the rules replace the citation, a candidate
+    read one level stronger, in both readings, leaves a change to propose. Every example
+    holds a `replace` at a stronger level and one at the cited work's level on the date."""
+    from manuscript_guard.currency import rules
+
+    for setup in drawn["setups"]:
+        cited, work_set = _currency_works(setup["candidates"], setup["published"])
+        before = rules.decide(cited, work_set,
+                              _currency_readings(setup["cited"], setup["candidates"]))
+        assert before.action == rules.REPLACE and before.candidate == "target", (setup, before)
+        for work, fields in setup["candidates"].items():
+            stronger = dict(setup["candidates"])
+            stronger[work] = dataclasses.replace(fields, level=max(1, fields.level - 1))
+            after = rules.decide(cited, work_set, _currency_readings(setup["cited"], stronger))
+            assert after.action != rules.KEEP, (setup, work, after)
+
+
+def _stronger_is_a_larger_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    patch.setattr(rules, "_stronger", lambda level, cited: level > cited)
+
+
+def _stronger_by_two_levels(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    patch.setattr(rules, "_stronger", lambda level, cited: level < cited - 1)
+
+
+#: Each thing two readings can disagree on that can change what the rules give.
+_DISAGREED = ("weaker level", "stronger level", "population", "exposure", "outcome",
+              "stance", "search_end", "cited level", "scale")  # fmt: skip
+
+
+@st.composite
+def _agreed(draw: st.DrawFn) -> dict[str, Any]:
+    """Two readings that agree, on a candidate that passes K1 and where everything decides
+    it (the same question, at the cited work's level, not against the sentence, so that D1
+    would rest on the date); and for each kind of `_DISAGREED` the value the second reading
+    gives in its place, on the other side of what decides: weaker than the cited work, or
+    stronger; against the sentence; a search end on the other side of the publication."""
+    from manuscript_guard.currency import rules
+
+    cited = draw(st.integers(2, 4))
+    fields = rules.Fields(
+        level=cited, population="same", exposure="same", outcome="same",
+        stance=draw(st.sampled_from(("supports", "neither"))),
+        search_end=draw(st.none() | st.builds(_a_date, st.integers(2001, 2030),
+                                              st.integers(1, 12), st.integers(1, 28),
+                                              st.integers(1, 3))),
+    )  # fmt: skip
+    other = {
+        "weaker level": cited + draw(st.integers(1, 5 - cited)),
+        "stronger level": cited - draw(st.integers(1, cited - 1)),
+        **{name: draw(st.sampled_from(("different", "unclear")))
+           for name in ("population", "exposure", "outcome")},
+        "stance": "contradicts",
+        # The cited work was published in 2000: one search ends after it, the other not.
+        "search_end": "1999" if fields.search_end else "2031-01",
+        "cited level": cited % 5 + 1,
+        "scale": "harms-rare",
+    }  # fmt: skip
+    return {"cited": cited, "fields": fields, "other": other}
+
+
+@holds(100, _agreed())
+def test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain(
+    drawn: dict[str, Any],
+) -> None:
+    """D4: two readings that differ on what can change what the rules give for a candidate,
+    or on the hierarchy's scale or the cited work's level, propose nothing. Every example
+    holds a disagreement of each kind, on a candidate everything decides."""
+    from manuscript_guard.currency import rules
+
+    cited, fields = drawn["cited"], drawn["fields"]
+    work_set = {"x": rules.Work("x")}
+    agreed = rules.decide(rules.Work("cited", published="2000"), work_set,
+                          _currency_readings(cited, {"x": fields}))  # fmt: skip
+    assert agreed.action != rules.UNCERTAIN, drawn
+    for name in _DISAGREED:
+        first = rules.Reading("first", "ocebm-2011", "benefit", cited, {"x": fields})
+        value = drawn["other"][name]
+        if name == "cited level":
+            second = dataclasses.replace(first, reader="second", cited_level=value)
+        elif name == "scale":
+            second = dataclasses.replace(first, reader="second", scale=value)
+        else:
+            field = "level" if name.endswith("level") else name
+            second = dataclasses.replace(first, reader="second", candidates={
+                "x": dataclasses.replace(fields, **{field: value})})
+        decided = rules.decide(rules.Work("cited", published="2000"), work_set,
+                               [first, second])  # fmt: skip
+        assert decided.action == rules.UNCERTAIN, (name, drawn, decided)
+        assert decided.candidate is None, (name, decided)
+
+
+def _a_field_passed_over(name: str, patch: pytest.MonkeyPatch) -> None:
+    """D4 broken so that two readings that differ on `name` are taken to agree: the field is
+    read as one value, whatever each reading says."""
+    from manuscript_guard.currency import rules
+
+    kept = rules._decisive
+    same = {"population": "same", "exposure": "same", "outcome": "same",
+            "stance": "supports", "search_end": None}  # fmt: skip
+
+    def passed_over(fields, cited_level, cited):
+        if fields is None:
+            return kept(fields, cited_level, cited)
+        if name == "level":
+            # A candidate that is not weaker read at the cited work's level.
+            value = cited_level if fields.level <= cited_level else fields.level
+        elif name == "weaker":
+            # A weaker candidate read at the cited work's level, as though it were not.
+            value = cited_level if fields.level > cited_level else fields.level
+        else:
+            value = same[name]
+        field = "level" if name in ("level", "weaker") else name
+        return kept(dataclasses.replace(fields, **{field: value}), cited_level, cited)
+
+    patch.setattr(rules, "_decisive", passed_over)
+
+
+def _contradicts_or_not_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    _a_field_passed_over("stance", patch)
+
+
+def _after_or_not_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    _a_field_passed_over("search_end", patch)
+
+
+def _a_level_not_weaker_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    _a_field_passed_over("level", patch)
+
+
+def _weaker_or_not_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    _a_field_passed_over("weaker", patch)
+
+
+def _a_disagreement_on_the_population_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    _a_field_passed_over("population", patch)
+
+
+def _a_disagreement_on_the_exposure_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    _a_field_passed_over("exposure", patch)
+
+
+def _a_disagreement_on_the_outcome_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    _a_field_passed_over("outcome", patch)
+
+
+def _a_disagreement_on_the_cited_level_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    patch.setattr(rules, "_head", lambda reading: (reading.hierarchy, reading.scale))
+
+
+@st.composite
+def _undecisive(draw: st.DrawFn) -> dict[str, Any]:
+    """A candidate both readings read alike that replaces the citation at level 1, and
+    beside it one of each kind whose readings differ only where nothing can change: one off
+    the question on R2 alike in both, at levels, stances and search ends that differ; one
+    weaker than the cited work, read at two weaker levels, with stances and search ends
+    that differ; one not weaker, read as `supports` and as `neither`; and one at the cited
+    work's level whose two search ends are on the same side of its publication."""
+    from manuscript_guard.currency import rules
+
+    cited = draw(st.integers(2, 3))
+    same = {"population": "same", "exposure": "same", "outcome": "same"}
+    decisive = rules.Fields(level=1, stance=draw(st.sampled_from(("supports", "neither"))),
+                            **same)  # fmt: skip
+    r2 = [draw(st.sampled_from(_R2)) for _ in range(3)]
+    r2[draw(st.integers(0, 2))] = draw(st.sampled_from(("different", "unclear")))
+    levels = draw(st.lists(st.integers(1, 5), min_size=2, max_size=2, unique=True))
+    off = [rules.Fields(level=level, population=r2[0], exposure=r2[1], outcome=r2[2],
+                        stance=draw(st.sampled_from(_STANCES)),
+                        search_end=draw(st.none() | st.just("2031")))
+           for level in levels]  # fmt: skip
+    weaker_levels = draw(st.lists(st.integers(cited + 1, 5), min_size=2, max_size=2,
+                                  unique=True))  # fmt: skip
+    weaker = [rules.Fields(level=level, stance=draw(st.sampled_from(_STANCES)),
+                           search_end=end, **same)
+              for level, end in zip(weaker_levels, ("2031", None), strict=True)]  # fmt: skip
+    stance_level = draw(st.integers(2, cited))
+    stances = [rules.Fields(level=stance_level, stance=stance, **same)
+               for stance in ("supports", "neither")]  # fmt: skip
+    # The cited work was published in 2020-06: both after it, or neither.
+    ends = draw(st.sampled_from((("2021", "2024-02-11"), ("2019", "2020"), (None, "2020-05"))))
+    dated = [rules.Fields(level=cited, stance="supports", search_end=end, **same)
+             for end in ends]  # fmt: skip
+    return {"cited": cited, "decisive": decisive, "off": off, "weaker": weaker,
+            "stances": stances, "dated": dated}
+
+
+@holds(100, _undecisive())
+def test_readings_that_differ_where_no_rule_reads_them_still_decide(
+    drawn: dict[str, Any],
+) -> None:
+    """D4 compares only what can change what the rules give (Basile, 2026-11-05): a
+    candidate off the question read at two levels, a weaker one read at two weaker levels,
+    `supports` against `neither`, two search ends on the same side of the publication, each
+    leaves the `replace` the agreed candidate gives. Every example holds one of each kind."""
+    from manuscript_guard.currency import rules
+
+    first = {"a": drawn["decisive"], "b": drawn["off"][0], "w": drawn["weaker"][0],
+             "s": drawn["stances"][0], "d": drawn["dated"][0]}
+    second = {"a": drawn["decisive"], "b": drawn["off"][1], "w": drawn["weaker"][1],
+              "s": drawn["stances"][1], "d": drawn["dated"][1]}
+    readings = [rules.Reading("first", "ocebm-2011", "benefit", drawn["cited"], first),
+                rules.Reading("second", "ocebm-2011", "benefit", drawn["cited"], second)]
+    works = {work: rules.Work(work) for work in first}
+    decided = rules.decide(rules.Work("cited", published="2020-06"), works, readings)
+    assert (decided.action, decided.candidate) == (rules.REPLACE, "a"), (drawn, decided)
+
+
+def _every_field_of_every_candidate_is_compared(patch: pytest.MonkeyPatch) -> None:
+    """D4 as it was first built (round 1 of #499)."""
+    from manuscript_guard.currency import rules
+
+    patch.setattr(rules, "_decisive", lambda fields, cited_level, cited: (
+        ("not read",) if fields is None else dataclasses.astuple(fields)))
+
+
+def _raw_level_stance_and_date_are_compared(patch: pytest.MonkeyPatch) -> None:
+    """D4 as a71f90fc had it (round 2 of #499): R2, then the exact level and stance, and the
+    raw search end at the cited level."""
+    from manuscript_guard.currency import rules
+
+    def raw(fields, cited_level, cited):
+        if fields is None:
+            return ("not read",)
+        r2 = (fields.population, fields.exposure, fields.outcome)
+        if r2 != ("same", "same", "same"):
+            return (r2,)
+        if fields.level == cited_level and fields.stance != "contradicts":
+            return (r2, fields.level, fields.stance, fields.search_end)
+        return (r2, fields.level, fields.stance)
+
+    patch.setattr(rules, "_decisive", raw)
+
+
+def _a_search_end_is_compared_at_any_level(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    kept = rules._decisive
+    patch.setattr(rules, "_decisive", lambda fields, cited_level, cited: (
+        kept(fields, cited_level, cited)
+        + ((fields.search_end,) if fields is not None else ())))
+
+
+@st.composite
+def _failing_k1(draw: st.DrawFn) -> dict[str, Any]:
+    """One candidate of each way to fail K1, at the strongest level, on the same question
+    and for the sentence; and up to three that pass, weaker, never against the sentence."""
+    from manuscript_guard.currency import rules
+
+    cited = draw(st.integers(3, 5))
+    candidates, works = {}, {}
+    for kind in _K1_FAILS:
+        candidates[kind] = rules.Fields(level=1, population="same", exposure="same",
+                                        outcome="same", stance="supports")  # fmt: skip
+        if kind == "published_as":
+            works[kind] = rules.Work(kind, published_as=("doi:10.5555/published",))
+        elif kind != "no record":
+            works[kind] = rules.Work(kind, **{kind: True})
+    for index in range(draw(st.integers(0, 3))):
+        work = f"passing-{index}"
+        candidates[work] = rules.Fields(
+            level=draw(st.integers(2, 5)), population=draw(st.sampled_from(_R2)),
+            exposure="same", outcome="same", stance=draw(st.sampled_from(("supports",
+                                                                          "neither"))))
+        works[work] = rules.Work(work, published=draw(st.sampled_from(("2019", "2024"))))
+    return {"cited": cited, "candidates": candidates, "works": works}
+
+
+@holds(100, _failing_k1())
+def test_a_candidate_that_fails_k1_is_never_proposed(drawn: dict[str, Any]) -> None:
+    """K1: a candidate with no works record, retracted, withdrawn, under concern, or a
+    preprint whose published version is known, is never the one proposed, though it is the
+    strongest. Every example holds one of each."""
+    from manuscript_guard.currency import rules
+
+    decided = rules.decide(rules.Work("cited"), drawn["works"],
+                           _currency_readings(drawn["cited"], drawn["candidates"]))
+    assert decided.candidate not in _K1_FAILS, (drawn, decided)
+
+
+def _a_work_with_no_record_passes_k1(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    kept = rules.passes_k1
+    patch.setattr(rules, "passes_k1", lambda work: True if work is None else kept(work))
+
+
+def _a_work_under_concern_passes_k1(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    patch.setattr(rules, "passes_k1", lambda work: work is not None and not (
+        work.retracted or work.withdrawn or work.published_as))
+
+
+def _a_retracted_work_passes_k1(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    patch.setattr(rules, "passes_k1", lambda work: work is not None and not (
+        work.withdrawn or work.under_concern or work.published_as))
+
+
+def _a_withdrawn_work_passes_k1(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    patch.setattr(rules, "passes_k1", lambda work: work is not None and not (
+        work.retracted or work.under_concern or work.published_as))
+
+
+def _a_published_preprint_passes_k1(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    patch.setattr(rules, "passes_k1", lambda work: work is not None and not (
+        work.retracted or work.withdrawn or work.under_concern))
+
+
+@st.composite
+def _numbers_sources(draw: st.DrawFn) -> dict[str, Any]:
+    """For a sentence that quotes a number of the cited work: a synthesis that would
+    replace it, stronger and more recent than everything else; one against the sentence;
+    and up to three primary studies on the same question, no stronger and older."""
+    from manuscript_guard.currency import rules
+
+    cited = draw(st.integers(2, 5))
+    level = draw(st.integers(1, cited - 1))
+    same = {"population": "same", "exposure": "same", "outcome": "same"}
+    synthesis = draw(st.sampled_from(("Systematic Review", "Meta-Analysis", "Review")))
+    candidates = {"synthesis": rules.Fields(level=level, stance="supports", **same),
+                  "against": rules.Fields(level=draw(st.integers(1, cited)),
+                                          stance="contradicts", **same)}  # fmt: skip
+    works = {name: rules.Work(name, published="2024", types=(synthesis,))
+             for name in candidates}  # fmt: skip
+    for index in range(draw(st.integers(0, 3))):
+        work = f"primary-{index}"
+        candidates[work] = rules.Fields(level=draw(st.integers(level, 5)),
+                                        stance=draw(st.sampled_from(("supports", "neither"))),
+                                        **same)  # fmt: skip
+        works[work] = rules.Work(work, published="2010",
+                                 types=("Randomized Controlled Trial",))
+    return {"cited": cited, "candidates": candidates, "works": works}
+
+
+@holds(100, _numbers_sources())
+def test_a_synthesis_never_replaces_the_source_of_a_number(drawn: dict[str, Any]) -> None:
+    """K5 (Basile, 2026-11-04, "primary only"): for a sentence that quotes a number the
+    ledger records from the cited work, no synthesis is put in its place, however strong,
+    and K5 says it set one aside; one against the sentence is still added (D2). Every
+    example holds a synthesis that would replace the work, and one against the sentence."""
+    from manuscript_guard.currency import rules
+
+    cited = rules.Work("cited", published="2015")
+    supporting = {k: v for k, v in drawn["candidates"].items() if k != "against"}
+    decided = rules.decide(cited, drawn["works"],
+                           _currency_readings(drawn["cited"], supporting), number=True)
+    assert decided.candidate != "synthesis", (drawn, decided)
+    assert "K5" in decided.rules, (drawn, decided)
+    if decided.action == rules.REPLACE:
+        assert decided.candidate.startswith("primary-"), (drawn, decided)
+    else:
+        assert decided.action == rules.KEEP, (drawn, decided)
+    decided = rules.decide(cited, drawn["works"],
+                           _currency_readings(drawn["cited"], drawn["candidates"]), number=True)
+    assert (decided.action, decided.candidate) == (rules.ADD, "against"), (drawn, decided)
+
+
+def _a_synthesis_replaces_the_source_of_a_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    patch.setattr(rules, "_set_aside", lambda work, number, action: False)
+
+
+def _a_synthesis_against_a_number_is_set_aside_too(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    patch.setattr(rules, "_set_aside", lambda work, number, action: bool(
+        number and work is not None and work.synthesis))
+
+
+@st.composite
+def _dated(draw: st.DrawFn) -> dict[str, Any]:
+    """A day, and of it: each pair of precisions, equal there; and a date after it and one
+    before it, at drawn precisions."""
+    year, month, day = draw(_DAYS)
+    equal = [(_a_date(year, month, day, finer), _a_date(year, month, day, coarser))
+             for finer in (1, 2, 3) for coarser in (1, 2, 3) if finer != coarser]  # fmt: skip
+    shift = draw(st.integers(1, 3))
+    later = _a_date(year + shift, month, day, draw(st.integers(1, 3)))
+    earlier = _a_date(year - shift, month, day, draw(st.integers(1, 3)))
+    return {"day": _a_date(year, month, day, draw(st.integers(1, 3))), "equal": equal,
+            "later": later, "earlier": earlier, "level": draw(st.integers(1, 5))}
+
+
+@holds(100, _dated())
+def test_dates_compare_at_the_finest_precision_both_have_and_equal_is_not_after(
+    drawn: dict[str, Any],
+) -> None:
+    """D1's date: a search end date and a publication date compare at the finest precision
+    both have, and equal there is not after, so that a review that ended the year a work was
+    published does not replace it. Every example holds each pair of precisions."""
+    from manuscript_guard.currency import rules
+
+    for one, other in drawn["equal"]:
+        assert not rules.after(one, other), (one, other)
+    assert rules.after(drawn["later"], drawn["day"]), drawn
+    assert not rules.after(drawn["earlier"], drawn["day"]), drawn
+    level = drawn["level"]
+    for search_end, other, action in (
+        *((one, other, rules.KEEP) for one, other in drawn["equal"]),
+        (drawn["later"], drawn["day"], rules.REPLACE),
+    ):  # fmt: skip
+        fields = rules.Fields(level=level, population="same", exposure="same",
+                              outcome="same", stance="supports", search_end=search_end)
+        decided = rules.decide(rules.Work("cited", published=other), {"x": rules.Work("x")},
+                               _currency_readings(level, {"x": fields}))  # fmt: skip
+        assert decided.action == action, (search_end, other, decided)
+
+
+def _dates_compared_as_text(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    patch.setattr(rules, "after", lambda later, earlier: bool(later and earlier
+                                                               and later > earlier))
+
+
+def _dates_padded_with_the_first_of_january(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import rules
+
+    def padded(later, earlier):
+        if not later or not earlier:
+            return False
+        full = [rules.date_parts(one) + (1,) * (3 - len(rules.date_parts(one)))
+                for one in (later, earlier)]  # fmt: skip
+        return full[0] > full[1]
+
+    patch.setattr(rules, "after", padded)
+
+
 # ----------------------------------------------------------- a LaTeX table's rows and cells
 
 
@@ -8692,6 +9215,74 @@ def _emphasis_is_in_the_way_of_a_suggestion(patch: pytest.MonkeyPatch) -> None:
         return real(paragraph, start, end)
 
     patch.setattr(suggestions, "_in_the_way", with_emphasis)
+
+
+@holds(40, suggestion_paragraphs())
+def test_a_word_edited_in_word_is_written_where_it_stands_and_nothing_else_changes(
+    paragraph: dict[str, Any],
+) -> None:
+    """`import` merges a paragraph reworded in Word by writing only the words that changed
+    into the source (`rewording.rewritten`). Every word Word shows is edited in turn, each
+    way a co-author edits one (`WORD_EDITS`). A word typed for another, inside emphasis or
+    not, is written where it stands, and so is a comma typed after a word that does not end
+    a span: nothing else in the source changes, its emphasis, code and soft line breaks
+    kept. A deletion keeps every other span as typed. A comma typed where emphasis or code
+    closes cannot be told to be inside it or after it, and any edit in code cannot be
+    written into code from Word's text: that span alone is written as Word shows it, and
+    the merge names it. A stretch between two values holding a link, a hard line break or a
+    comment is refused."""
+    from manuscript_guard.roundtrip import align
+
+    source, printed, words, tokens, _renderings = laid_out(paragraph)
+    for word in words:
+        text, kind, place, (start, end), shown, stretch = word
+        if shown is None or shown[0] == 0:
+            continue
+        span = [other for other in words if other[2] == place]
+        refused = any(other[1] in _NOT_MERGED for other in words if other[5] == stretch)
+        opening, closing, _prose = STRETCHES[kind]
+        for edit in WORD_EDITS:
+            returned = word_edited(printed, shown, edit)
+            aligned = align(source, printed, returned, tokens)
+            if refused:
+                assert aligned.rebuilt is None, (edit, text, source)
+                continue
+            if edit == "deleted":
+                # Which space goes with the word is the comparison's to choose, and beside a
+                # span's end either is right; every other span is kept as it was typed.
+                assert aligned.rebuilt is not None, (edit, text, source)
+                for other in {o[2] for o in words if o[2] != place}:
+                    those = [o for o in words if o[2] == other]
+                    head, tail, _ = STRETCHES[those[0][1]]
+                    typed = source[those[0][3][0] - len(head) : those[-1][3][1] + len(tail)]
+                    assert typed in aligned.rebuilt, (text, typed, source)
+                continue
+            if kind == "code" or (edit == "comma after" and word == span[-1] and closing):
+                # The span as Word shows it once edited, typed in place of the span.
+                at, to = span[0][3][0] - len(opening), span[-1][3][1] + len(closing)
+                was = printed[span[0][4][0] : span[-1][4][1]]
+                now = word_edited(was, (shown[0] - span[0][4][0], shown[1] - span[0][4][0]),
+                                  edit)  # fmt: skip
+                expected, flattened = source[:at] + now + source[to:], (now,)
+            elif edit == "replaced":
+                expected, flattened = source[:start] + "plainly" + source[end:], ()
+            else:
+                expected, flattened = source[:end] + "," + source[end:], ()
+            assert aligned.rebuilt == expected, (edit, text, source, returned)
+            assert aligned.flattened == flattened, (edit, text, source)
+
+
+def _a_reworded_stretch_is_written_whole_from_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rewording
+
+    patch.setattr(rewording, "rewritten", lambda *given, **named: None)
+
+
+def _an_edit_where_a_span_closes_is_written_inside_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rewording
+
+    real = rewording._widened
+    patch.setattr(rewording, "_widened", lambda edit, marks, sources: real(edit, (), sources))
 
 
 # ------------------------------------------------------------------------- a rewording
@@ -16740,6 +17331,94 @@ BROKEN = {
         _a_generic_type_is_not_set_aside,
         test_an_effect_claimed_on_case_reports_letters_and_comments_only_is_noted,
     ),
+    "a larger level number is read as stronger, for currency": (
+        _stronger_is_a_larger_number,
+        test_a_stronger_candidate_never_turns_replace_into_keep,
+    ),
+    "a level is stronger only two levels up, for currency": (
+        _stronger_by_two_levels,
+        test_a_stronger_candidate_never_turns_replace_into_keep,
+    ),
+    "two readings that disagree on whether it contradicts are taken to agree, for currency": (
+        _contradicts_or_not_is_passed_over,
+        test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain,
+    ),
+    "a search end after the publication and one not are taken to agree, for currency": (
+        _after_or_not_is_passed_over,
+        test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain,
+    ),
+    "two levels of a candidate that is not weaker are taken to agree, for currency": (
+        _a_level_not_weaker_is_passed_over,
+        test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain,
+    ),
+    "a weaker candidate and one that is not are taken to agree, for currency": (
+        _weaker_or_not_is_passed_over,
+        test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain,
+    ),
+    "two readings that disagree on the population are taken to agree, for currency": (
+        _a_disagreement_on_the_population_is_passed_over,
+        test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain,
+    ),
+    "two readings that disagree on the exposure are taken to agree, for currency": (
+        _a_disagreement_on_the_exposure_is_passed_over,
+        test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain,
+    ),
+    "two readings that disagree on the outcome are taken to agree, for currency": (
+        _a_disagreement_on_the_outcome_is_passed_over,
+        test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain,
+    ),
+    "every field of every candidate is compared, for currency": (
+        _every_field_of_every_candidate_is_compared,
+        test_readings_that_differ_where_no_rule_reads_them_still_decide,
+    ),
+    "a search end date is compared at any level, for currency": (
+        _a_search_end_is_compared_at_any_level,
+        test_readings_that_differ_where_no_rule_reads_them_still_decide,
+    ),
+    "the raw level, stance and date are compared, as at a71f90fc, for currency": (
+        _raw_level_stance_and_date_are_compared,
+        test_readings_that_differ_where_no_rule_reads_them_still_decide,
+    ),
+    "two readings that disagree on the cited work's level are taken to agree, for currency": (
+        _a_disagreement_on_the_cited_level_is_passed_over,
+        test_two_readings_that_disagree_on_a_field_the_rules_use_give_uncertain,
+    ),
+    "a candidate with no works record passes K1": (
+        _a_work_with_no_record_passes_k1,
+        test_a_candidate_that_fails_k1_is_never_proposed,
+    ),
+    "a candidate under an expression of concern passes K1": (
+        _a_work_under_concern_passes_k1,
+        test_a_candidate_that_fails_k1_is_never_proposed,
+    ),
+    "a retracted candidate passes K1": (
+        _a_retracted_work_passes_k1,
+        test_a_candidate_that_fails_k1_is_never_proposed,
+    ),
+    "a withdrawn candidate passes K1": (
+        _a_withdrawn_work_passes_k1,
+        test_a_candidate_that_fails_k1_is_never_proposed,
+    ),
+    "a synthesis replaces the source of a number, for currency": (
+        _a_synthesis_replaces_the_source_of_a_number,
+        test_a_synthesis_never_replaces_the_source_of_a_number,
+    ),
+    "a synthesis against a number is set aside too, for currency": (
+        _a_synthesis_against_a_number_is_set_aside_too,
+        test_a_synthesis_never_replaces_the_source_of_a_number,
+    ),
+    "a preprint published since passes K1": (
+        _a_published_preprint_passes_k1,
+        test_a_candidate_that_fails_k1_is_never_proposed,
+    ),
+    "dates are compared as text, for currency": (
+        _dates_compared_as_text,
+        test_dates_compare_at_the_finest_precision_both_have_and_equal_is_not_after,
+    ),
+    "a date is padded with the first of January, for currency": (
+        _dates_padded_with_the_first_of_january,
+        test_dates_compare_at_the_finest_precision_both_have_and_equal_is_not_after,
+    ),
     "a citation after a sentence's stop is listed beside the next sentence": (
         _a_citation_after_a_stop_is_the_next_sentence_s,
         test_each_citation_is_listed_beside_the_sentence_it_belongs_to,
@@ -17879,6 +18558,14 @@ BROKEN = {
     "words in a comment are counted with the paragraph's": (
         _words_in_a_comment_are_counted,
         test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes,
+    ),
+    "a reworded stretch is written whole from Word's text": (
+        _a_reworded_stretch_is_written_whole_from_word,
+        test_a_word_edited_in_word_is_written_where_it_stands_and_nothing_else_changes,
+    ),
+    "an edit where a span closes is written inside it": (
+        _an_edit_where_a_span_closes_is_written_inside_it,
+        test_a_word_edited_in_word_is_written_where_it_stands_and_nothing_else_changes,
     ),
     "a rule's or a table's dashes are em dashes": (
         _a_rule_or_a_table_s_dashes_are_em_dashes,

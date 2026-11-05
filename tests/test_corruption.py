@@ -1122,6 +1122,39 @@ def test_the_year_of_a_citation_typed_as_text_fails_and_its_hint_names_the_key(
         assert "holds the work" not in hint, hint
 
 
+@pytest.mark.parametrize(
+    ("typed", "named"),
+    [
+        ("Fictional (2021)", True),
+        ("Fictional et al. (2021)", True),
+        ("Fictional~(2021)", False),
+        ("Fictional et~al. (2021)", False),
+    ],
+    ids=["space", "et al", "tie", "et~al"],
+)
+def test_a_latex_citation_typed_with_a_tie_before_its_year_is_given_the_generic_hint(
+    project: Path, typed: str, named: bool
+) -> None:
+    """Known gaps (round 1 of #510): LaTeX's tie, `Fictional~(2021)` or `Fictional et~al.
+    (2021)`, is not read as a space between the name and the year, so G2's hint for the year
+    is the generic one and names no key; written with a space, the same citation is told
+    `\\cite{fictionalHepaticCohort2021}`."""
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    path = project / "manuscript" / "main.tex"
+    anchor = "Whether the signal extends to example-drug specifically"
+    text = path.read_text(encoding="utf-8")
+    assert text.count(anchor) == 1
+    path.write_text(text.replace(anchor, f"As {typed} reported, it was studied. {anchor}"),
+                    encoding="utf-8")  # fmt: skip
+    found = [f for f in gate_report(project).failures if f.code == "unclassified-number"
+             and f.message == "'2021' is not bound to any source"]  # fmt: skip
+    assert len(found) == 1, [f.message for f in gate_report(project).failures]
+    hint = " ".join(found[0].hint.split())
+    assert ("\\cite{fictionalHepaticCohort2021}" in hint) is named, hint
+    assert ("typed as text" in hint) is named, hint
+
+
 def _in_methods(project: Path, sentence: str) -> None:
     path = main_md(project)
     anchor = "Reporting follows the checklist"
@@ -3234,6 +3267,374 @@ def test_a_passage_whose_sentence_changed_is_stale(
 def test_a_passage_of_a_work_with_no_stored_copy_is_unchecked(project: Path) -> None:
     (project / "literature" / "sources" / "fictionalClassSignal2019.txt").unlink()
     assert _passage_findings(project) == [("passage-unchecked", "warn")]
+
+
+# ------------------------------------------- whether a cited work is still the one to cite
+
+
+def _currency_findings(root: Path, stage: str) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.currency import check_currency
+    from manuscript_guard.policy import apply_stage
+
+    report, _deferred = apply_stage(check_currency(load_project(root)[0], stage), stage)
+    return sorted((f.code, f.severity) for f in report.findings)
+
+
+def _currency_text(root: Path, old: str, new: str, name: str = "currency.yaml") -> None:
+    path = root / "literature" / name
+    text = path.read_text(encoding="utf-8")
+    assert old in text, old
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def _a_reading_edited(root: Path) -> None:
+    path = next((root / "literature" / "currency" / "readings").glob("c1.Ada*.yaml"))
+    text = path.read_text(encoding="utf-8")
+    # The candidate's level: the cited work's is 4, and comes first.
+    assert "value: 2\n" in text
+    path.write_text(text.replace("value: 2\n", "value: 3\n", 1), encoding="utf-8")
+
+
+def _a_works_record_edited(root: Path) -> None:
+    path = next((root / "literature" / "currency" / "works").glob("*trial*.yaml"))
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("pooled analysis", "pooled analyses", 1), encoding="utf-8")
+
+
+def _a_quote_not_in_the_work(root: Path) -> None:
+    import currency_records as case
+
+    case.file(root, case.reading("Cy Example", quote="The class was safe in every trial"),
+              "third")  # fmt: skip
+
+
+def _the_candidate_retracted(root: Path) -> None:
+    import currency_records as case
+
+    from manuscript_guard.currency import records
+
+    retracted = case.work(case.CANDIDATE, published="2023-06-01", abstract=case.TRIAL_ABSTRACT,
+                          publication_types=["Randomized Controlled Trial"])  # fmt: skip
+    retracted["integrity"] = {**retracted["integrity"], "retracted": True}
+    records.write_work(load_project(root)[0], retracted)
+
+
+def _searched_long_ago(root: Path) -> None:
+    from manuscript_guard.currency import records
+
+    records.write_search(load_project(root)[0], {
+        "entry": "c1", "number": 1, "step": "S2", "source": "pubmed",
+        "query": "drug class AND hepatic injury", "searched_on": "2025-01-10", "hits": 1,
+        "candidates": ["doi:10.5555/class.trial.2023"]})  # fmt: skip
+
+
+def _answered_by_the_rules(root: Path) -> None:
+    """Round 1 of #499: an answer signed `rules` cleared `currency-change-unanswered`."""
+    path = root / "literature" / "currency.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["answer"] = {"status": "accepted", "by": "rules",
+                                        "answered_on": "2026-11-04"}  # fmt: skip
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def _read_on_a_scale_there_is_not(root: Path) -> None:
+    import currency_records as case
+
+    from manuscript_guard.currency import records
+
+    records.file_reading(load_project(root)[0], {**case.reading("Cy Example"),
+                                                 "scale": "harms-everything"}, "2026-11-04")
+
+
+_UNANSWERED = ("currency-change-unanswered", "warn")
+
+
+@pytest.mark.parametrize(
+    ("corrupt", "stage", "said"),
+    [
+        pytest.param(None, "drafting", [_UNANSWERED], id="as filed"),
+        pytest.param(None, "submission", [("currency-change-unanswered", "fail")],
+                     id="unanswered at submission"),
+        pytest.param(("    action: replace\n    candidate: doi:10.5555/class.trial.2023\n",
+                      "    action: keep\n"), "drafting",
+                     [("currency-decision-mismatch", "fail")], id="the decision rewritten"),
+        pytest.param(("    by: rules\n", "    by: Claude\n    why: it read them\n"), "drafting",
+                     [_UNANSWERED, ("currency-decision-not-human", "fail")],
+                     id="the decision signed by a model"),
+        pytest.param(_answered_by_the_rules, "submission", [("schema-violation", "fail")],
+                     id="an answer signed by the rules"),
+        pytest.param(_a_reading_edited, "drafting",
+                     [_UNANSWERED, ("currency-decision-mismatch", "fail"),
+                      ("currency-record-edited", "fail")], id="a reading edited"),
+        pytest.param(_a_works_record_edited, "drafting",
+                     [_UNANSWERED, ("currency-quote-unchecked", "info"),
+                      ("currency-record-edited", "fail")], id="a works record edited"),
+        pytest.param(_a_quote_not_in_the_work, "drafting",
+                     [_UNANSWERED, ("currency-quote-not-found", "fail")],
+                     id="a quote not in the work"),
+        pytest.param(_the_candidate_retracted, "drafting",
+                     [("currency-candidate-retracted", "fail"), _UNANSWERED,
+                      ("currency-decision-mismatch", "fail")], id="the candidate retracted"),
+        pytest.param(_searched_long_ago, "drafting",
+                     [_UNANSWERED, ("currency-record-stale", "warn")], id="a search long ago"),
+        pytest.param(_searched_long_ago, "submission",
+                     [("currency-change-unanswered", "fail"), ("currency-record-stale", "fail")],
+                     id="a search long ago, at submission"),
+        pytest.param(_read_on_a_scale_there_is_not, "drafting",
+                     [_UNANSWERED, ("currency-reading-invalid", "fail")],
+                     id="a reading on a scale the hierarchy has not"),
+    ],
+)  # fmt: skip
+def test_a_currency_entry_that_is_not_what_its_records_say_is_caught(
+    project: Path, corrupt, stage: str, said: list
+) -> None:
+    """Each way an entry on whether a cited work is still the one to cite can be wrong: a
+    decision the readings do not give, signed by a model or left unanswered at submission; a
+    record edited by hand; a quote that is not the work's; a work now retracted; a search
+    too old to stand at submission; a reading on no scale the hierarchy has."""
+    import currency_records as case
+
+    case.case(project)
+    if callable(corrupt):
+        corrupt(project)
+    elif corrupt is not None:
+        _currency_text(project, *corrupt)
+    assert _currency_findings(project, stage) == said
+
+
+@pytest.mark.parametrize(
+    ("stage", "required", "severity"),
+    [("drafting", True, "info"), ("internal-review", False, "warn"),
+     ("submission", False, "warn"), ("submission", True, "fail")],
+)  # fmt: skip
+def test_a_claim_marked_and_never_decided_fails_at_submission_only_where_required(
+    project: Path, stage: str, required: bool, severity: str
+) -> None:
+    """Basile, 2026-11-04 (decision 3): a claim in scope with no decision warns from
+    internal-review, and fails at submission where paper.yaml requires it."""
+    import currency_records as case
+
+    case.case(project, readings=False)
+    if required:
+        with (project / "paper.yaml").open("a", encoding="utf-8") as paper:
+            paper.write("references:\n  currency: required\n")
+    found = _currency_findings(project, stage)
+    assert found == [("currency-record-missing", severity)]
+    report = _currency_messages(project, stage)
+    assert "marked, not searched" in report["currency-record-missing"]
+
+
+def _currency_messages(root: Path, stage: str) -> dict[str, str]:
+    from manuscript_guard.gates.currency import check_currency
+
+    return {f.code: f.message for f in check_currency(load_project(root)[0], stage).findings}
+
+
+def test_a_sentence_citing_a_work_with_a_later_version_is_in_scope(project: Path) -> None:
+    """A claim is in scope where the author marks it, and where the lookup record of a work
+    it cites says a later version came since (`reference-updated`)."""
+    from manuscript_guard.gates.currency import check_currency
+
+    _looked_up(project, crossref={**_CROSSREF, "updated_by": [{"type": "new_version"}]})
+    found = check_currency(load_project(project)[0], "internal-review").findings
+    # The work is cited in the Introduction and in the Discussion: each sentence is a claim.
+    assert [(f.code, f.severity, f.line) for f in found] == [
+        ("currency-record-missing", "warn", 19), ("currency-record-missing", "warn", 118)]
+    for finding in found:
+        assert f"@{_LOOKED_KEY}, which has a later version" in finding.message
+        assert "no entry in literature/currency.yaml" in finding.message
+
+
+@pytest.mark.parametrize("reworded", [False, True], ids=["as marked", "reworded"])
+@pytest.mark.parametrize("action", ["replace", "add"])
+def test_a_proposal_is_accepted_by_citing_the_work_it_proposes(
+    project: Path, action: str, reworded: bool
+) -> None:
+    """Design 2.5, round 1 of #499: once the sentence cites a key whose DOI is the
+    candidate's, the proposal is accepted, with nothing written; and a `replace` done leaves
+    the entry placed on its sentence. So too where the author reworded the sentence a
+    little when citing the work (round 3)."""
+    import currency_records as case
+
+    case.case(project)
+    if action == "add":
+        _currency_text(project, "action: replace", "action: add")
+        _currency_text(project, "    by: rules\n", "    by: Ada Example\n    why: it disagrees\n")
+    bib = project / "literature" / "references.bib"
+    with bib.open("a", encoding="utf-8") as entries:
+        entries.write("\n@article{classReview2023,\n  title = {A review},\n"
+                      "  author = {Fictional, Eve},\n  journal = {Imaginary Reviews},\n"
+                      "  year = {2023},\n  doi = {10.5555/CLASS.TRIAL.2023}\n}\n")
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    old = "[@fictionalClassSignal2019]. The"
+    new = ("[@classReview2023]. The" if action == "replace"
+           else "[@fictionalClassSignal2019; @classReview2023]. The")  # fmt: skip
+    assert old in text
+    text = text.replace(old, new, 1)
+    if reworded:
+        text = text.replace("has been reported", "has been described", 1)
+    main.write_text(text, encoding="utf-8")
+    assert _currency_findings(project, "submission") == []
+    from manuscript_guard.currency import command
+
+    rows, unplaced = command.listing(load_project(project)[0])
+    assert [row.state for row in rows] == [
+        f"{action} {case.CANDIDATE}, accepted: the sentence cites it "
+        + ("(by the rules)" if action == "replace" else "(by Ada Example)")]
+    assert unplaced == []
+
+
+#: A sentence of the Discussion that still cites the old work and holds most of the worked
+#: case's words (round 4 of #499).
+_OLD_KEY_ELSEWHERE = (
+    "\nIn a national cohort, a disproportionality signal has been reported for the drug class "
+    "as a whole (ROR {{lit.background.class_ror}}) [@fictionalClassSignal2019].\n"
+)
+
+
+def _swapped(root: Path, action: str, *, reworded: bool = False) -> None:
+    """The worked case, the trial in references.bib, and the entry's sentence citing it:
+    in place of the old work for a `replace`, beside it for an `add`; with
+    `_OLD_KEY_ELSEWHERE` at the end of the main text."""
+    import currency_records as case
+
+    case.case(root)
+    if action == "add":
+        _currency_text(root, "action: replace", "action: add")
+        _currency_text(root, "    by: rules\n", "    by: Ada Example\n    why: it disagrees\n")
+    _cite_the_trial(root, doi="10.5555/class.trial.2023")
+    main = root / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    old = "[@fictionalClassSignal2019]. The"
+    assert old in text
+    new = ("[@classTrial2023]. The" if action == "replace"
+           else "[@fictionalClassSignal2019; @classTrial2023]. The")  # fmt: skip
+    text = text.replace(old, new, 1)
+    if reworded:
+        text = text.replace("has been reported", "has been described", 1)
+    main.write_text(text + _OLD_KEY_ELSEWHERE, encoding="utf-8")
+
+
+@pytest.mark.parametrize("action", ["replace", "add"])
+def test_a_change_made_in_the_entrys_sentence_is_seen_beside_another_old_key_sentence(
+    project: Path, action: str
+) -> None:
+    """Round 4 of #499 (Basile, "exact words first"): after a `replace`, a sentence of the
+    Discussion still citing the old work and holding most of the entry's words kept the
+    entry, and the sentence that now cites the trial was never read. The sentence with the
+    entry's words is its own, whichever work it cites now."""
+    from manuscript_guard.currency.survey import survey
+
+    _swapped(project, action)
+    assert _currency_findings(project, "submission") == []
+    placed = survey(load_project(project)[0])[0].placed["c1"]
+    assert "@classTrial2023" in placed.text and "crude incidence" in placed.text
+
+
+def test_a_swap_reworded_beside_another_old_key_sentence_is_a_known_limit(
+    project: Path,
+) -> None:
+    """DESIGN.md, Known gaps: a `replace` done in a sentence also reworded, with another
+    sentence still citing the old work that holds half or more of the entry's words, is
+    not seen as done until the author puts the entry on the new sentence."""
+    from manuscript_guard.currency import command
+
+    _swapped(project, "replace", reworded=True)
+    assert _currency_findings(project, "submission") == [
+        ("currency-change-unanswered", "fail")]
+    said = command.mark(load_project(project)[0], "has been described", "@classTrial2023",
+                        None, "c1")  # fmt: skip
+    assert said.startswith("c1 placed again")
+    assert _currency_findings(project, "submission") == []
+
+
+#: The worked case's sentence, nearly: what a later trial cited beside it might be.
+_NEAR_COPY = (
+    "\nIn a national cohort, the crude incidence was {{lit.background.reported_incidence}} "
+    "per 100 000 person-years, and a disproportionality signal has been reported for the "
+    "drug class as a whole in a later trial (ROR {{lit.background.class_ror}}) "
+    "[@classTrial2023].\n"
+)
+
+
+def _cite_the_trial(root: Path, *, doi: str, pmid: str | None = None) -> None:
+    bib = root / "literature" / "references.bib"
+    with bib.open("a", encoding="utf-8") as entries:
+        entries.write("\n@article{classTrial2023,\n  title = {A trial},\n"
+                      "  author = {Fictional, Eve},\n  journal = {Imaginary Trials},\n"
+                      f"  year = {{2023}},\n  doi = {{{doi}}},\n"
+                      + (f"  pmid = {{{pmid}}},\n" if pmid else "") + "}\n")
+
+
+@pytest.mark.parametrize("reworded", [False, True], ids=["as marked", "reworded"])
+def test_a_near_copy_citing_the_candidate_elsewhere_accepts_nothing(
+    project: Path, reworded: bool
+) -> None:
+    """Rounds 2 and 3 of #499: with the entry's own sentence standing, word for word or a
+    little reworded, and citing only the old work, a sentence elsewhere that holds most of
+    its words and cites the candidate was taken for the author citing it."""
+    import currency_records as case
+
+    case.case(project)
+    _cite_the_trial(project, doi="10.5555/class.trial.2023")
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    if reworded:
+        assert "has been reported" in text
+        text = text.replace("has been reported", "has been described", 1)
+    main.write_text(text + _NEAR_COPY, encoding="utf-8")
+    assert _currency_findings(project, "submission") == [
+        ("currency-change-unanswered", "fail")]
+
+
+def test_a_candidate_filed_by_its_pmid_is_cited_by_an_entry_with_a_doi_too(
+    project: Path,
+) -> None:
+    """Round 2 of #499: the candidate was matched to a key by the key's DOI only, so one
+    filed by its PMID was never cited by an entry that gives both."""
+    import currency_records as case
+
+    case.case(project, candidate="pmid:37000001")
+    assert case.decision(project)["candidate"] == "pmid:37000001"
+    _cite_the_trial(project, doi="10.5555/class.trial.2023", pmid="37000001")
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    old = "[@fictionalClassSignal2019]. The"
+    assert old in text
+    main.write_text(text.replace(old, "[@classTrial2023]. The", 1), encoding="utf-8")
+    assert _currency_findings(project, "submission") == []
+
+
+@pytest.mark.parametrize(
+    ("change", "said"),
+    [
+        pytest.param("readings", [("currency-uncertain", "info")], id="the readings disagree"),
+        pytest.param("store", [("currency-change-unanswered", "warn"),
+                               ("currency-quote-unchecked", "info")],
+                     id="no works store in this checkout"),
+        pytest.param("sentence", [("currency-change-unanswered", "warn"),
+                                  ("currency-entry-unplaced", "info")],
+                     id="the sentence rewritten"),
+    ],
+)  # fmt: skip
+def test_what_currency_notes_is_said(project: Path, change: str, said: list) -> None:
+    import currency_records as case
+
+    case.case(project, readings=change != "readings")
+    if change == "readings":
+        case.file(project, case.reading("Ada Example"), "first")
+        case.file(project, case.reading("Bo Example", level=3), "second")
+    elif change == "store":
+        for path in (project / "literature" / "currency" / "works").glob("*.yaml"):
+            path.unlink()
+    else:
+        main = project / "manuscript" / "main.md"
+        text = main.read_text(encoding="utf-8")
+        old = "[@fictionalClassSignal2019]. The"
+        assert old in text
+        main.write_text(text.replace(old, "The", 1), encoding="utf-8")
+    assert _currency_findings(project, "drafting") == said
 
 
 # ------------------------------------------------- the methods of a similar study
@@ -9166,7 +9567,7 @@ _READS_LATEX = (
     "check_recomputed", "check_methods", "check_models", "check_related", "check_revision",
     "check_reporting", "check_prose_quotations", "check_passages",
     # It reads the citing sentences through `citing_documents`, as `check_passages` does.
-    "check_weak_sources",
+    "check_weak_sources", "check_currency",
     # It reads the main text through G4's `main_text`, which gives a LaTeX manuscript as it
     # prints (#414).
     "check_package_doi",
@@ -20406,23 +20807,34 @@ def test_an_import_does_not_bring_a_lone_colon_up_into_a_definition(
 ) -> None:
     """A hard-wrapped paragraph whose last line is a lone `:`, reworded in its first stretch:
     the merge joined the first two lines, the `:` came up to line 2, and the next build
-    printed a definition list with no identifier (#72's round-3 review)."""
+    printed a definition list with no identifier (#72's round-3 review). A stretch is
+    written from Word's text whole only where the edit cannot be written word by word,
+    here beside a straight quote of the source; written so, it is still refused. Written
+    word by word, the edit keeps the line breaks and the `:` stays where it was."""
     from manuscript_guard.cli import main
 
     path = main_md(project)
-    paragraph = "We enrolled patients over\ntwo years, reaching {{results.ror.point}} of\n:\n\n"
+    paragraph = "We 'enrolled' patients over\ntwo years, reaching {{results.ror.point}} of\n:\n\n"
     anchor = "# Data availability"
+    original = path.read_bytes()
     path.write_text(
         path.read_text(encoding="utf-8").replace(anchor, paragraph + anchor, 1), "utf-8"
     )
     source = path.read_text(encoding="utf-8")
     assert main(["build", str(project), "--offline"]) == 0
-    returned = _sent_back(
-        project, tmp_path, lambda xml: xml.replace("We enrolled", "We recruited", 1)
-    )
+    returned = _sent_back(project, tmp_path, lambda xml: xml.replace("enrolled", "recruited", 1))
 
     main(["import", str(returned), str(project), "--apply"])
     assert path.read_text(encoding="utf-8") == source, "a lone colon became a definition"
+
+    path.write_bytes(original)
+    path.write_text(path.read_text(encoding="utf-8").replace(
+        anchor, paragraph.replace("'", "") + anchor, 1), "utf-8")  # fmt: skip
+    source = path.read_text(encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = _sent_back(project, tmp_path, lambda xml: xml.replace("enrolled", "recruited", 1))
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert path.read_text(encoding="utf-8") == source.replace("enrolled", "recruited", 1)
 
 
 # ------------------------------------------- a heading run into a paragraph, beside a change

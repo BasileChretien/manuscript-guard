@@ -326,6 +326,23 @@
         }
       }
     },
+    "references": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Whether each cited work is still the one to cite (`manuscript-guard references`, literature/currency.yaml).",
+      "properties": {
+        "currency": {
+          "enum": ["required", "optional"],
+          "default": "optional",
+          "description": "`required`: a claim in scope with no decided entry fails at submission (`currency-record-missing`). `optional`, the default: it is a warning from internal-review, and stays one."
+        },
+        "hierarchy": {
+          "type": "string",
+          "pattern": "\\S",
+          "description": "A file of the project, relative to its root, holding the hierarchy of evidence readings place works on, in the shape of the toolkit's own (data/evidence_hierarchies.yaml). Without it the Oxford 2011 Levels of Evidence are used."
+        }
+      }
+    },
     "displays": {
       "type": "object",
       "additionalProperties": false,

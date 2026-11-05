@@ -661,6 +661,7 @@ def test_every_person_only_code_is_the_authors() -> None:
     """An agent may draft these; only the person the hint names signs, judges, attests,
     approves or reads, and an agent that wrote the name would pass the gate."""
     listed = {"attestation-not-human", "attestation-thin", "judgement-not-human",
+              "currency-change-unanswered", "currency-decision-not-human",
               "similar-decision-not-human", "data-source-not-a-person",
               "design-override-unsigned", "figures-not-seen", "journal-manual-unsigned",
               "approval-missing", "approval-stale",

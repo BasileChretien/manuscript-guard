@@ -3426,6 +3426,181 @@ def test_a_currency_entry_that_is_not_what_its_records_say_is_caught(
     assert _currency_findings(project, stage) == said
 
 
+def _replies(root: Path) -> Path:
+    return root / "literature" / "currency" / "replies"
+
+
+def _the_reply_gone(root: Path) -> None:
+    (_replies(root) / "c1.1.yaml").unlink()
+
+
+def _the_reply_edited(root: Path) -> None:
+    path = _replies(root) / "c1.1.yaml"
+    text = path.read_text(encoding="utf-8")
+    assert "another population" in text
+    path.write_text(text.replace("another population", "a larger population", 1), "utf-8")
+
+
+def _the_assessment_gone(root: Path) -> None:
+    (_replies(root) / "c1.1.Claude.yaml").unlink()
+
+
+def _a_reply_by_nobody_listed(root: Path) -> None:
+    """The reply written again as one by a name no author has, sealed, and the answer
+    signed so: what a hand edit that kept both records consistent would leave."""
+    from manuscript_guard.currency import records
+
+    path = _replies(root) / "c1.1.yaml"
+    record = yaml.safe_load(path.read_text(encoding="utf-8"))
+    record = {**record, "by": "Ana Author"}
+    record["reply_sha256"] = records.sealed_digest(record, "reply_sha256")
+    path.write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+    assessment = _replies(root) / "c1.1.Claude.yaml"
+    said = yaml.safe_load(assessment.read_text(encoding="utf-8"))
+    said = {**said, "reply_sha256": record["reply_sha256"]}
+    said["assessment_sha256"] = records.sealed_digest(said, "assessment_sha256")
+    assessment.write_text(yaml.safe_dump(said, sort_keys=False), encoding="utf-8")
+    _currency_text(root, "by: Ada Example\n    why: the trial",
+                   "by: Ana Author\n    why: the trial")
+
+
+def _resealed(path: Path, seal: str, **changes) -> dict:
+    from manuscript_guard.currency import records
+
+    record = {**yaml.safe_load(path.read_text(encoding="utf-8")), **changes}
+    record[seal] = records.sealed_digest(record, seal)
+    path.write_text(yaml.safe_dump(record, sort_keys=False, allow_unicode=True),
+                    encoding="utf-8")  # fmt: skip
+    return record
+
+
+def _answer_changed(root: Path, **changes) -> None:
+    path = root / "literature" / "currency.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["answer"] = {**document["entries"][0]["answer"], **changes}
+    path.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
+                    encoding="utf-8")  # fmt: skip
+
+
+def _quoted_so(quote: str):
+    """The assessment's quote and the answer's reason both written `quote`, the assessment
+    sealed again: a hand edit that kept the two records consistent."""
+
+    def corrupt(root: Path) -> None:
+        _resealed(_replies(root) / "c1.1.Claude.yaml", "assessment_sha256", quote=quote)
+        _answer_changed(root, why=quote)
+
+    return corrupt
+
+
+def _the_reason_not_the_quote(root: Path) -> None:
+    # Words of the reply, and not the ones the assessment quoted.
+    _answer_changed(root, why="it does not replace the signal")
+
+
+def _answered_another_day(root: Path) -> None:
+    _answer_changed(root, answered_on="2026-11-09")
+
+
+def _a_reply_to_another_proposal(root: Path) -> None:
+    """The reply sealed again as one to another proposal, and its assessment with it."""
+    record = _resealed(_replies(root) / "c1.1.yaml", "reply_sha256", decision="0" * 16)
+    _resealed(_replies(root) / "c1.1.Claude.yaml", "assessment_sha256",
+              reply_sha256=record["reply_sha256"])
+
+
+@pytest.mark.parametrize(
+    ("corrupt", "said"),
+    [
+        pytest.param(None, [], id="as answered"),
+        pytest.param(_the_reply_gone, [("currency-reply-missing", "fail")], id="the reply gone"),
+        pytest.param(_the_reply_edited,
+                     [("currency-record-edited", "fail"), ("currency-reply-missing", "fail")],
+                     id="the reply edited"),
+        pytest.param(_the_assessment_gone, [("currency-reply-missing", "fail")],
+                     id="the assessment gone"),
+        pytest.param(("why: the trial enrolled another population",
+                      "why: the trial enrolled nobody"),
+                     [("currency-reply-quote-not-found", "fail")], id="the reason rewritten"),
+        pytest.param(("by: Ada Example\n    why: the trial",
+                      "by: Blaise Sample\n    why: the trial"),
+                     [("currency-reply-not-a-person", "fail")], id="signed by another author"),
+        pytest.param(_a_reply_by_nobody_listed, [("currency-reply-not-a-person", "fail")],
+                     id="a reply by nobody authors.yaml names"),
+        pytest.param(_quoted_so("Kept: ... another population"),
+                     [("currency-reply-quote-not-found", "fail")], id="the reason elided"),
+        pytest.param(_quoted_so("Kept: [\N{HORIZONTAL ELLIPSIS}] another population"),
+                     [("currency-reply-quote-not-found", "fail")], id="the reason elided so"),
+        pytest.param(_quoted_so("the trial enrolled another population [sic]"),
+                     [("currency-reply-quote-not-found", "fail")], id="the reason with sic"),
+        pytest.param(_quoted_so("[sic]"), [("currency-reply-quote-not-found", "fail")],
+                     id="the reason only sic"),
+        pytest.param(_quoted_so(":"), [("currency-reply-quote-not-found", "fail")],
+                     id="the reason no word"),
+        pytest.param(_the_reason_not_the_quote, [("currency-reply-quote-not-found", "fail")],
+                     id="the reason not the quote"),
+        pytest.param(_answered_another_day, [("currency-reply-missing", "fail")],
+                     id="answered another day"),
+        pytest.param(_a_reply_to_another_proposal, [("currency-reply-missing", "fail")],
+                     id="a reply to another proposal"),
+    ],
+)  # fmt: skip
+def test_an_answer_from_a_reply_in_word_is_held_to_the_reply(
+    project: Path, corrupt, said: list
+) -> None:
+    """A refusal read from a reply in Word (`references --assess ... --says refuses`) is the
+    entry's answer only while the reply's record is there as `import` filed it, an assessment
+    of it says it refuses, the reason is the reply's words, and the replier is the person of
+    authors.yaml the answer names."""
+    import currency_records as case
+
+    from manuscript_guard.cli import main
+
+    case.case(project)
+    case.replied(project)
+    assert main(["references", str(project), "--assess", "c1", "--reply", "1", "--says",
+                 "refuses", "--quote", case.REFUSING, "--as", "Claude"]) == 0
+    if callable(corrupt):
+        corrupt(project)
+    elif corrupt is not None:
+        _currency_text(project, *corrupt)
+    assert _currency_findings(project, "drafting") == said
+
+
+def test_the_hints_for_an_answer_from_a_reply_can_be_followed(project: Path) -> None:
+    """Assessing again is refused (an assessment is written once, and a reply never changes an
+    answer given), and so is `--refuse` while an answer stands: the hints say to take the
+    answer away first. A reply's or an assessment's record has a hint of its own, not the
+    reading's."""
+    import currency_records as case
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.gates.currency import check_currency
+
+    def hints() -> dict[str, str]:
+        found = check_currency(load_project(project)[0], "drafting").findings
+        return {f"{f.code} {f.path.name}": f.hint for f in found}
+
+    case.case(project)
+    case.replied(project)
+    assert main(["references", str(project), "--assess", "c1", "--reply", "1", "--says",
+                 "refuses", "--quote", case.REFUSING, "--as", "Claude"]) == 0
+    _the_reason_not_the_quote(project)
+    _answer_changed(project, by="Blaise Sample")
+    said = hints()
+    for code in ("currency-reply-quote-not-found", "currency-reply-not-a-person"):
+        (hint,) = [hint for key, hint in said.items() if key.startswith(code)]
+        assert "take the answer away first" in hint and "hook" in hint, hint
+        assert "assess the reply again" not in hint, hint
+    _the_reply_edited(project)
+    (_replies(project) / "c1.1.Claude.yaml").write_text("schema: nothing\n", encoding="utf-8")
+    said = hints()
+    reply = said["currency-record-edited c1.1.yaml"]
+    assessment = said["currency-record-edited c1.1.Claude.yaml"]
+    assert "--reading" not in reply and "import" in reply, reply
+    assert "--reading" not in assessment and "--assess" in assessment, assessment
+
+
 @pytest.mark.parametrize(
     ("stage", "required", "severity"),
     [("drafting", True, "info"), ("internal-review", False, "warn"),

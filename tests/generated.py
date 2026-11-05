@@ -4759,6 +4759,26 @@ def word_edits(draw: st.DrawFn) -> dict[str, Any]:
     }
 
 
+@st.composite
+def comment_anchors(draw: st.DrawFn) -> dict[str, Any]:
+    """A `suggestion_paragraphs` paragraph, written once or twice, and a run of its words to
+    put a comment on, as `references --comments` puts one on a citing sentence: from one
+    word to another, or with the markup of their stretches round them."""
+    source, printed, words, tokens, _renderings = laid_out(draw(suggestion_paragraphs()))
+    first = draw(st.integers(0, len(words) - 1))
+    last = draw(st.integers(first, len(words) - 1))
+    start, end = words[first][3][0], words[last][3][1]
+    if draw(st.booleans()):
+        start -= len(STRETCHES[words[first][1]][0])
+        end += len(STRETCHES[words[last][1]][1])
+    if draw(st.booleans()):
+        shift = len(printed) + 1
+        tokens = [*tokens, *((a + shift, b + shift) for a, b in tokens)]
+        source, printed = source + " " + source, printed + " " + printed
+    return {"source": source, "start": start, "end": end, "printed": printed,
+            "tokens": [list(token) for token in tokens]}  # fmt: skip
+
+
 # ---------------------------------------------------------------------------- spellings
 
 #: Words one English writes and the other does not, with a name's capital, in capitals,
@@ -9569,6 +9589,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "suggested edit": suggested_edits(),
     "suggestion written": suggestion_writes(),
     "word merged": word_edits(),
+    "comment anchored": comment_anchors(),
     "recycled passages": st.fixed_dictionaries(
         {"text": texts(RECYCLED, REFERENCE_BLOCKS), "source": earlier_papers()}
     ),

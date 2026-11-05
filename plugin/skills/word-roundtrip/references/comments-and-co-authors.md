@@ -152,3 +152,10 @@ anything already written in the old one.
 One copy is refused in the same way when the manuscript has changed since its build, as
 each of several is: `--force` imports it anyway, an edit merged only where its paragraph
 reads as it did at the build, and every hunk still has to be read.
+
+## A review panel's edit left open
+
+An edit accepted in Word whose paragraph is refused leaves its finding open: the words are not
+in the source. Where the accepted words can no longer be written where they were (the
+`.md` changed there since, or the reading's record did), the whole paragraph is refused, as
+merging it from Word's text could flatten the markup beside them.

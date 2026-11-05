@@ -1906,6 +1906,28 @@ def test_a_refusal_of_a_proposed_citation_by_an_agent_is_put_to_the_person(
 @pytest.mark.parametrize(
     "command",
     [
+        'manuscript-guard references --assess c1 --reply 1 --says refuses --quote "x" --as A',
+        "cd paper && mguard references . --says=refuses --assess=c1 --reply 1 --quote x --as A",
+        "manuscript-guard references --assess c1 --reply 1 --says 'refuses' --quote x --as A",
+    ],
+)
+def test_an_assessment_that_a_reply_refuses_is_put_to_the_person(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    """A reply in Word read as a refusal becomes the replier's answer to a proposed change
+    (`references --assess ... --says refuses`): the hook asks, as before `--refuse`."""
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "--says refuses" in reason(result)
+    for other in ("manuscript-guard references --assess c1 --reply 1 --says agrees --quote x "
+                  "--as A", "manuscript-guard references --assess c1 --reply 1 --says other "
+                  "--quote refuses --as A"):  # fmt: skip
+        assert run("guard-submission", _shell(in_claude_code, other), capsys) is None, other
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
         'manuscript-guard references --search c1 --terms "drug class hepatic injury" --as Ada',
         "manuscript-guard references --replay c1",
         'manuscript-guard search "drug class hepatic injury"',

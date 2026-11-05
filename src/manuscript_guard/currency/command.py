@@ -30,6 +30,8 @@ class Row:
     where: str
     state: str
     sentence: str
+    #: A line for each reply in Word to the entry's comment (`replies.said_of`).
+    replies: tuple[str, ...] = ()
 
 
 def _where(project: Project, path: Path, line: int) -> str:
@@ -51,8 +53,8 @@ def state_of(entry: records.Entry | None, held, accepted: bool = False) -> str:
         by = "by the rules" if decision["by"] == "rules" else f"by {decision['by']}"
         answer = entry.answer
         if decision["action"] in (rules.REPLACE, rules.ADD):
-            said += (f", {answer['status']} by {answer['by']}" if answer
-                     else ", accepted: the sentence cites it" if accepted
+            said += (", accepted: the sentence cites it" if accepted
+                     else f", {answer['status']} by {answer['by']}" if answer
                      else ", not answered: cite it (Zotero, then `sync-bib`), or "
                      f"`references --refuse {entry.id}`")  # fmt: skip
         return f"{said} ({by})"
@@ -66,30 +68,46 @@ def state_of(entry: records.Entry | None, held, accepted: bool = False) -> str:
 
 def listing(project: Project) -> tuple[list[Row], list[records.Entry]]:
     """A row per claim in scope, and the entries no sentence matches."""
+    from manuscript_guard.currency import replies
     from manuscript_guard.gates.currency import _Records
 
     found, report = survey(project)
     if report.failures:
         raise Refused("; ".join(finding.message for finding in report.failures))
     held = _Records(project)
+    replied = replies.held(project)
     rows = [
         Row(claim.entry.id if claim.entry else None, claim.citekey,
             _where(project, claim.sentence.path, claim.sentence.line),
             state_of(claim.entry, held, bool(claim.entry and claim.entry.id in found.accepted)),
-            " ".join(claim.sentence.text.split()))
+            " ".join(claim.sentence.text.split()),
+            tuple(replies.said_of(project, claim.entry, replied,
+                                  claim.entry.id in found.accepted) if claim.entry else ()))
         for claim in found.claims
     ]  # fmt: skip
     return rows, list(found.unplaced)
 
 
-def rendered(rows: list[Row], unplaced: list[records.Entry]) -> str:
+def unplaced_replies(project: Project, unplaced: list[records.Entry]) -> dict[str, list[str]]:
+    """The lines of `replies.said_of` for each entry no sentence matches: an edit that left an
+    entry unplaced leaves the replies to its comment standing."""
+    from manuscript_guard.currency import replies
+
+    replied = replies.held(project)
+    return {entry.id: replies.said_of(project, entry, replied, False) for entry in unplaced}
+
+
+def rendered(rows: list[Row], unplaced: list[records.Entry],
+             replied: dict[str, list[str]] | None = None) -> str:  # fmt: skip
     lines = []
     for row in rows:
         lines.append(f"{row.id or '-'}  @{row.citekey}  {row.where}  {row.state}")
         lines.append(f"    {row.sentence}")
+        lines += [f"    {said}" for said in row.replies]
     for entry in unplaced:
         lines.append(f"{entry.id}  @{entry.citekey}  unplaced: no sentence reads so")
         lines.append(f"    {' '.join(entry.sentence.split())}")
+        lines += [f"    {said}" for said in (replied or {}).get(entry.id, [])]
     decided = sum(row.state not in ("no entry", "marked, not searched")
                   and "not decided" not in row.state for row in rows)  # fmt: skip
     lines.append(f"claims in scope: {len(rows)}, decided: {decided}; unplaced entries: "
@@ -155,6 +173,9 @@ def explain(project: Project, entry_id: str) -> str:
                         else ""))  # fmt: skip
     if entry.answer and entry.answer.get("why"):
         lines.append(f"  answer: {entry.answer['why']}")
+    from manuscript_guard.currency.replies import explained
+
+    lines += explained(project, entry, entry.id in survey(project)[0].accepted)
     return "\n".join(lines)
 
 
@@ -348,14 +369,23 @@ def _same(decision: dict, given: rules.Decision) -> bool:
 
 def _check_answered(entry: records.Entry, given: rules.Decision | None) -> None:
     """Refuse a reading that would take a person's answer from under them: the rules' new
-    decision is another proposal than the one answered."""
+    decision is another proposal than the one answered. An answer from a reply in Word
+    refused the proposal its comment showed, rule ids and all (`comments.decision_digest`,
+    which G7 holds the reply to), so for it other rule ids are another proposal too."""
+    from manuscript_guard.currency.comments import decision_digest
+
     if given is None or not entry.answer or not entry.decision:
         return
-    if entry.decision["by"] == "rules" and not _same(entry.decision, given):
+    other = not _same(entry.decision, given) or (
+        entry.answer.get("reply") is not None and decision_digest(entry.decision)
+        != decision_digest({"action": given.action, "candidate": given.candidate,
+                            "rules": list(given.rules)}))  # fmt: skip
+    if entry.decision["by"] == "rules" and other:
         raise Refused(
             f"{entry.id}'s proposal was answered ({entry.answer['status']} by "
             f"{entry.answer['by']}), and with this reading the rules give {given.action}"
             + (f" {given.candidate}" if given.candidate else "")
+            + f" ({', '.join(given.rules)})"
             + ": the person takes their answer away first, and the reading is filed then"
         )  # fmt: skip
 

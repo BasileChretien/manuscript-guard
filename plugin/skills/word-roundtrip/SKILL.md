@@ -205,10 +205,7 @@ the edit found them, keeping the markup beside them, and anything else changed i
 paragraph is merged as any rewording is; the panel's own comments are its findings and are
 not listed as a co-author's,
 and with `--apply` each finding gets its answer in its record (the review-panel skill, step
-3). An edit accepted in Word whose paragraph is refused leaves its finding open: the words
-are not in the source. Where the accepted words can no longer be written where they were (the
-`.md` changed there since, or the reading's record did), the whole paragraph is refused, as
-merging it from Word's text could flatten the markup beside them.
+3); what is left open is in the page named below.
 
 When the returned document carries comments, when more than one co-author sends theirs back,
 when the dry run lists paragraphs that `were not compared`, or when the stamp check refuses
@@ -218,6 +215,13 @@ files each comment and how to answer it so that G11 sees it answered, what a bui
 of each paragraph and what
 `import` merges because of it, what to carry over by hand, and how several returned copies
 are brought in one after another.
+
+## 7. Replies to reference proposals
+
+`references --comments` puts each open reference proposal in the authors' copy as a
+comment, and `import` files each reply. Record what each says, quoting it exactly; ask the
+author before recording `--says refuses`:
+[references/reference-proposals.md](references/reference-proposals.md).
 
 ## If you are a model doing this
 

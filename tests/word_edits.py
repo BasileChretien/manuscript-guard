@@ -191,6 +191,62 @@ def _anchor(root: ET.Element, number: int) -> str:
     raise AssertionError(f"suggestion {number} is not in the document")
 
 
+def reply_to(document: Path, target: Path, author: str, text: str, *, by: str = AUTHOR,
+             date: str = "2026-10-21T09:00:00Z") -> Path:  # fmt: skip
+    """`document` with a reply by `by` to the first comment whose author is `author`, as
+    Word 16 saves one: what a co-author does to a comment `references --comments` wrote."""
+    names, parts = _read(document)
+    root = ET.fromstring(parts["word/document.xml"])
+    comments = ET.fromstring(parts["word/comments.xml"])
+    parent = next(c.get(W + "id") for c in comments.iter(W + "comment")
+                  if c.get(W + "author") == author)  # fmt: skip
+    _reply(root, comments, parts, names, parent, text, by=by, date=date)
+    parts["word/document.xml"] = _serialised(root, _namespaces(parts["word/document.xml"]))
+    parts["word/comments.xml"] = _serialised(comments, _namespaces(parts["word/comments.xml"]))
+    _write(target, names, parts)
+    return target
+
+
+def comment_on(document: Path, target: Path, words: str, text: str, *,
+               by: str = AUTHOR) -> Path:  # fmt: skip
+    """`document` with a comment of `by`'s own over the run that holds `words`, as Word 16
+    saves one: a co-author's comment that is no reply to anything."""
+    names, parts = _read(document)
+    root = ET.fromstring(parts["word/document.xml"])
+    comments = ET.fromstring(parts["word/comments.xml"])
+    ident = str(1 + max((int(c.get(W + "id")) for c in comments.iter(W + "comment")),
+                        default=0))  # fmt: skip
+    for paragraph in root.iter(W + "p"):
+        children = list(paragraph)
+        for index, child in enumerate(children):
+            if child.tag == W + "r" and words in "".join(t.text or "" for t in child.iter(W + "t")):
+                reference = ET.Element(W + "r")
+                ET.SubElement(reference, W + "commentReference", {W + "id": ident})
+                paragraph.insert(index + 1, reference)
+                paragraph.insert(index + 1, ET.Element(W + "commentRangeEnd", {W + "id": ident}))
+                paragraph.insert(index, ET.Element(W + "commentRangeStart", {W + "id": ident}))
+                break
+        else:
+            continue
+        break
+    else:
+        raise AssertionError(f"{words!r} is not in one run of the document")
+    ET.register_namespace("w14", W14_NS)
+    taken = [int(p.get(W14 + "paraId"), 16)
+             for p in comments.iter(W + "p") if p.get(W14 + "paraId")]  # fmt: skip
+    comment = ET.SubElement(comments, W + "comment", {W + "id": ident, W + "author": by,
+                                                      W + "date": "2026-10-21T09:30:00Z",
+                                                      W + "initials": "AA"})  # fmt: skip
+    paragraph = ET.SubElement(comment, W + "p",
+                              {W14 + "paraId": f"{max(taken, default=0x2000) + 1:08X}"})
+    ET.SubElement(ET.SubElement(paragraph, W + "r"), W + "annotationRef")
+    ET.SubElement(ET.SubElement(paragraph, W + "r"), W + "t").text = text
+    parts["word/document.xml"] = _serialised(root, _namespaces(parts["word/document.xml"]))
+    parts["word/comments.xml"] = _serialised(comments, _namespaces(parts["word/comments.xml"]))
+    _write(target, names, parts)
+    return target
+
+
 def _reply(
     root: ET.Element,
     comments: ET.Element,
@@ -198,6 +254,9 @@ def _reply(
     names: list[str],
     parent: str,
     text: str,
+    *,
+    by: str = AUTHOR,
+    date: str = "2026-10-21T09:00:00Z",
 ) -> None:
     """A reply to the comment `parent`, as Word 16 saves one."""
     ET.register_namespace("w14", W14_NS)
@@ -218,12 +277,15 @@ def _reply(
     above = next(c for c in comments.iter(W + "comment") if c.get(W + "id") == parent)
     parent_para = list(above.iter(W + "p"))[-1].get(W14 + "paraId")
     ident = str(1 + max(int(c.get(W + "id")) for c in comments.iter(W + "comment")))
-    reply = ET.SubElement(comments, W + "comment", {W + "id": ident, W + "author": AUTHOR,
-                                                    W + "date": "2026-10-21T09:00:00Z",
+    reply = ET.SubElement(comments, W + "comment", {W + "id": ident, W + "author": by,
+                                                    W + "date": date,
                                                     W + "initials": "BC"})  # fmt: skip
-    paragraph = ET.SubElement(reply, W + "p", {W14 + "paraId": para_id()})
-    ET.SubElement(ET.SubElement(paragraph, W + "r"), W + "annotationRef")
-    ET.SubElement(ET.SubElement(paragraph, W + "r"), W + "t").text = text
+    # A line of `text` is a paragraph of the reply, as Word writes a reply typed with Enter.
+    for number, line in enumerate(text.split("\n")):
+        paragraph = ET.SubElement(reply, W + "p", {W14 + "paraId": para_id()})
+        if number == 0:
+            ET.SubElement(ET.SubElement(paragraph, W + "r"), W + "annotationRef")
+        ET.SubElement(ET.SubElement(paragraph, W + "r"), W + "t").text = line
     # Anchored over the same words as the comment it answers.
     for p in root.iter(W + "p"):
         children = list(p)

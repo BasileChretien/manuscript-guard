@@ -191,5 +191,5 @@ manuscript only part of the checks read is never passed for submission.
 
 These commands read Markdown only, and refuse a LaTeX manuscript with a sentence: `render`,
 `reworded`, `checker`, `import` (the Word round trip), `proof`, `impact`, `audit` of a `.tex`
-file, `respond --open --from` a returned Word document, `review --suggestions`, and
-`build --annotated` and `--marked-up`, which make Word copies.
+file, `respond --open --from` a returned Word document, `review --suggestions`,
+`references --comments`, and `build --annotated` and `--marked-up`, which make Word copies.

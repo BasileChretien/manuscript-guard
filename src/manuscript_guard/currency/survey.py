@@ -11,7 +11,8 @@ work whose lookup record says a later version, or a published version of a prepr
 since (`gates.lookups.currency_facts`). The sentences are those of the main text and of
 `manuscript/supplementary/`, Markdown or LaTeX (`gates.passages.citing_documents`).
 
-A proposed `replace` or `add` nobody answered counts as accepted once the entry's own
+A proposed `replace` or `add` nobody answered, or answered only by a refusal read from a
+reply in Word (the manuscript wins), counts as accepted once the entry's own
 sentence cites a key whose DOI or PMID in `references.bib` is the candidate's (design 2.5):
 the author cited the work, in Zotero and then `sync-bib`. Nothing is written. The entry's own
 sentence is, first, the one sentence whose folded words are the entry's, whichever of the old
@@ -122,7 +123,8 @@ def _accepted(entries: tuple[Entry, ...], fields: dict[str, dict[str, str]],
               sentences: list[CitedSentence], words: list[str],
               placed: dict[str, CitedSentence]
               ) -> tuple[dict[str, CitedSentence], dict[str, CitedSentence]]:  # fmt: skip
-    """Each unanswered proposal its sentence accepts, with that sentence, and the entries
+    """Each proposal its sentence accepts, unanswered or refused only by a reply in Word,
+    with that sentence, and the entries
     placed anew: on their own sentence found by its words, or on the candidate's.
 
     Exact words first (Basile, round 4 of #499). The one sentence whose folded words are
@@ -137,7 +139,10 @@ def _accepted(entries: tuple[Entry, ...], fields: dict[str, dict[str, str]],
     for entry in entries:
         decision = entry.decision or {}
         candidate = decision.get("candidate")
-        if decision.get("action") not in ("replace", "add") or not candidate or entry.answer:
+        # A refusal read from a reply in Word gives way to the manuscript (Basile,
+        # 2026-11-05): citing the work accepts it all the same. A person's own answer stands.
+        answered = entry.answer and not entry.answer.get("reply")
+        if decision.get("action") not in ("replace", "add") or not candidate or answered:
             continue
         keys = {key for key, one in fields.items() if is_work(one, candidate)}
         wanted = statement_words(entry.sentence)

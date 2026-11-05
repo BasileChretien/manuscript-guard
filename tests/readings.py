@@ -2110,6 +2110,20 @@ def _word_merged() -> Reading:
     return merged
 
 
+@reading("comment anchored")
+def _comment_anchored() -> Reading:
+    """Where `references --comments` puts a comment on a citing sentence: the sentence's
+    words as the build printed them, found once in their paragraph, or why nowhere."""
+    from manuscript_guard.currency.comments import anchor
+
+    def anchored(given: dict[str, Any]) -> dict[str, Any]:
+        tokens = [tuple(token) for token in given["tokens"]]
+        found = anchor(given["source"], given["start"], given["end"], given["printed"], tokens)
+        return {"refused": found} if isinstance(found, str) else {"span": list(found)}
+
+    return anchored
+
+
 @reading("paper.yaml set")
 def _paper_set() -> Reading:
     """Each key of `paper.yaml` that `set` writes, set on its own in the same text: the text

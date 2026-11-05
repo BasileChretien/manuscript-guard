@@ -202,6 +202,10 @@ BINDS_AT = {
     "currency-quote-not-found": DRAFTING,
     "currency-decision-mismatch": DRAFTING,
     "currency-decision-not-human": DRAFTING,
+    # An answer from a reply in Word rests on the reply as filed, its words and its author.
+    "currency-reply-missing": DRAFTING,
+    "currency-reply-quote-not-found": DRAFTING,
+    "currency-reply-not-a-person": DRAFTING,
     # What a registry said is not the author's to edit, as a lookup's is not.
     "registration-record-edited": DRAFTING,
     # An earlier output's numbers are compared as they were copied or quoted: a copy edited

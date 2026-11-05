@@ -1657,6 +1657,13 @@ def _approves(command: str) -> str | None:
             "proposed change to a citation, and why. Only that person can say so: run it "
             "yourself, as yourself."
         )
+    if _ASSESSES_REFUSAL.search(joined):
+        return (
+            "`manuscript-guard references --assess ... --says refuses` reads a co-author's "
+            "reply in Word as their refusal of a proposed change to a citation, and records it "
+            "as their answer. Whether the reply refuses is the author's to confirm: run it "
+            "yourself, or ask them."
+        )
     if _imports_answers(joined):
         return (
             "`manuscript-guard checker import` records a co-author's answers under their name "
@@ -1863,6 +1870,12 @@ def _reads_in_confidence(command: str) -> str | None:
 #: `references` with `--refuse` in the same invocation, which answers a proposed change.
 _REFUSES = re.compile(
     _TOOL + r"references\b" + _SAME_COMMAND + r"(?<![\w-])--refuse\b", re.IGNORECASE
+)
+#: `references` with `--says refuses` in the same invocation: an assessment of a reply in
+#: Word that answers a proposed change.
+_ASSESSES_REFUSAL = re.compile(
+    _TOOL + r"references\b" + _SAME_COMMAND + r"(?<![\w-])--says(?:\s+|=)[\"']?refuses\b",
+    re.IGNORECASE,
 )
 #: `references --mark ... --id <id>`, in one invocation: it puts an entry, and whatever a
 #: person decided or answered of it, on another sentence.

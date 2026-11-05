@@ -258,6 +258,83 @@ def test_the_dry_run_shows_the_number_a_refusal_is_for(
     assert "Reporting of hepatic injury" not in "".join(shown), out
 
 
+def _dry_run_of_a_planted_paragraph(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], paragraph: str,
+    replacements: dict[str, str],
+) -> list[str]:  # fmt: skip
+    """The `-` and `+` lines the dry run prints for `paragraph`, written into the example
+    after its Results paragraph and edited in the built document by `replacements`."""
+    from manuscript_guard.cli import main
+
+    path = project / "manuscript" / "main.md"
+    anchor = "independently of the drug.\n"
+    text = path.read_text(encoding="utf-8")
+    assert text.count(anchor) == 1
+    path.write_text(text.replace(anchor, f"{anchor}\n{paragraph}\n", 1), encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", replacements
+    )
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    return _shown_under(capsys.readouterr().out, "would merge into manuscript/main.md")
+
+
+@needs_pandoc
+def test_a_spacing_change_inside_a_parenthesis_prints_two_equal_lines(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Known gaps (round 1 of #515): a parenthesis is one word, compared as it is written, so
+    a no-break space typed in Word for a space inside one is a changed stretch; it is printed
+    with its spaces run together, and its `-` and `+` lines read the same."""
+    shown = _dry_run_of_a_planted_paragraph(
+        project, tmp_path, capsys,
+        "The second register agreed (as its own coders read the reports) with the first.",
+        {"(as its own coders read": "(as its own\N{NO-BREAK SPACE}coders read"},
+    )  # fmt: skip
+    assert len(shown) == 2, shown
+    assert shown[0][len("    - "):] == shown[1][len("    + "):], shown
+    assert "(as its own coders read the reports)" in shown[0], shown
+
+
+@needs_pandoc
+def test_a_bracket_is_printed_whole_however_long(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Known gaps (round 1 of #515): a bracket is one word at any length and is never cut,
+    so one word changed inside a long one prints all of it on each line."""
+    # Eighty words, none of them a number: "note", then the letters a to j for its digits.
+    words = " ".join("note" + "".join(chr(ord("a") + int(d)) for d in f"{at:02d}")
+                     for at in range(80))  # fmt: skip
+    shown = _dry_run_of_a_planted_paragraph(
+        project, tmp_path, capsys,
+        f"The second register agreed [{words}] with the first.",
+        {"noteea ": "remark "},
+    )  # fmt: skip
+    assert len(shown) == 2, shown
+    for line in shown:
+        assert "[noteaa " in line and " notehj]" in line and len(line) > 500, shown
+
+
+@needs_pandoc
+def test_a_nested_parenthesis_is_cut_and_a_line_opens_inside_it(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Known gaps (round 1 of #515): a parenthesis with another inside it is cut between its
+    words like a long one, so a changed stretch just after it opens inside it, its closing
+    bracket shown and its opening one not."""
+    shown = _dry_run_of_a_planted_paragraph(
+        project, tmp_path, capsys,
+        "The signal (seen by an earlier study (in its first form) in one cohort and two "
+        "more) was confirmed in this sample of the reports.",
+        {"was confirmed in this sample": "was refuted in this sample"},
+    )  # fmt: skip
+    assert len(shown) == 2, shown
+    for line in shown:
+        assert line.count(")") > line.count("("), shown
+        assert " cohort and two more) was " in line, shown
+
+
 def _with_refs(project: Path) -> Path:
     """The example citing its contingency table by its key, once in a paragraph and once as
     a paragraph of its own."""

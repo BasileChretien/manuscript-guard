@@ -1665,8 +1665,9 @@ def _report_plan(
 
     def changed(was: str, now: str) -> None:
         # Each changed stretch, what was there and what is there now, with a few words
-        # either side. Cut to its first 150 characters, a paragraph hid an edit past them
-        # until it was applied, and the cut could fall inside a binding.
+        # either side, every changed word in it shown, and a binding, or a bracket or a short
+        # parenthesis that holds no other, never cut (`preview.changes`); where no word
+        # changed, the paragraph's opening words.
         found, more = changes(was, now)
         for removed, added in found:
             for mark, words in (("-", removed), ("+", added)):

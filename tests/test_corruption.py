@@ -1122,6 +1122,39 @@ def test_the_year_of_a_citation_typed_as_text_fails_and_its_hint_names_the_key(
         assert "holds the work" not in hint, hint
 
 
+@pytest.mark.parametrize(
+    ("typed", "named"),
+    [
+        ("Fictional (2021)", True),
+        ("Fictional et al. (2021)", True),
+        ("Fictional~(2021)", False),
+        ("Fictional et~al. (2021)", False),
+    ],
+    ids=["space", "et al", "tie", "et~al"],
+)
+def test_a_latex_citation_typed_with_a_tie_before_its_year_is_given_the_generic_hint(
+    project: Path, typed: str, named: bool
+) -> None:
+    """Known gaps (round 1 of #510): LaTeX's tie, `Fictional~(2021)` or `Fictional et~al.
+    (2021)`, is not read as a space between the name and the year, so G2's hint for the year
+    is the generic one and names no key; written with a space, the same citation is told
+    `\\cite{fictionalHepaticCohort2021}`."""
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    path = project / "manuscript" / "main.tex"
+    anchor = "Whether the signal extends to example-drug specifically"
+    text = path.read_text(encoding="utf-8")
+    assert text.count(anchor) == 1
+    path.write_text(text.replace(anchor, f"As {typed} reported, it was studied. {anchor}"),
+                    encoding="utf-8")  # fmt: skip
+    found = [f for f in gate_report(project).failures if f.code == "unclassified-number"
+             and f.message == "'2021' is not bound to any source"]  # fmt: skip
+    assert len(found) == 1, [f.message for f in gate_report(project).failures]
+    hint = " ".join(found[0].hint.split())
+    assert ("\\cite{fictionalHepaticCohort2021}" in hint) is named, hint
+    assert ("typed as text" in hint) is named, hint
+
+
 def _in_methods(project: Path, sentence: str) -> None:
     path = main_md(project)
     anchor = "Reporting follows the checklist"

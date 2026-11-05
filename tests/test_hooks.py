@@ -764,8 +764,9 @@ def test_every_name_the_package_installs_is_one_the_guard_knows() -> None:
 
 
 #: The tool asked for its help in the one shape the guard lets through: its name, a subcommand
-#: or none, and `-h` or `--help`. Each such submission was refused in a project that fails, so
-#: an agent could not read `submit`'s options until the paper passed.
+#: or none, and `-h` or `--help`. Those for `submit` were refused in a project that fails, so
+#: an agent could not read `submit`'s options until the paper passed; the others match no
+#: marker, and were let through before as well.
 ONLY_ITS_HELP = [
     "manuscript-guard submit --help",
     "manuscript-guard submit -h",
@@ -776,7 +777,7 @@ ONLY_ITS_HELP = [
 ]
 #: And what is still a submission: the command itself, and a help beside one, or a help that
 #: is not one (after `--`, as an option's value, from a command substitution). A help is let
-#: through only as the whole command, so one among other commands is held as main held it.
+#: through only in that exact shape, so every other command is held as main held it.
 NOT_ONLY_ITS_HELP = [
     # Help in any other shape than exactly the tool, a subcommand and the help (round 3).
     "mguard submit --offline --help",

@@ -3096,13 +3096,15 @@ def test_a_sentence_citing_a_work_with_a_later_version_is_in_scope(project: Path
         assert "no entry in literature/currency.yaml" in finding.message
 
 
+@pytest.mark.parametrize("reworded", [False, True], ids=["as marked", "reworded"])
 @pytest.mark.parametrize("action", ["replace", "add"])
 def test_a_proposal_is_accepted_by_citing_the_work_it_proposes(
-    project: Path, action: str
+    project: Path, action: str, reworded: bool
 ) -> None:
     """Design 2.5, round 1 of #499: once the sentence cites a key whose DOI is the
     candidate's, the proposal is accepted, with nothing written; and a `replace` done leaves
-    the entry placed on its sentence."""
+    the entry placed on its sentence. So too where the author reworded the sentence a
+    little when citing the work (round 3)."""
     import currency_records as case
 
     case.case(project)
@@ -3120,7 +3122,10 @@ def test_a_proposal_is_accepted_by_citing_the_work_it_proposes(
     new = ("[@classReview2023]. The" if action == "replace"
            else "[@fictionalClassSignal2019; @classReview2023]. The")  # fmt: skip
     assert old in text
-    main.write_text(text.replace(old, new, 1), encoding="utf-8")
+    text = text.replace(old, new, 1)
+    if reworded:
+        text = text.replace("has been reported", "has been described", 1)
+    main.write_text(text, encoding="utf-8")
     assert _currency_findings(project, "submission") == []
     from manuscript_guard.currency import command
 
@@ -3149,16 +3154,23 @@ def _cite_the_trial(root: Path, *, doi: str, pmid: str | None = None) -> None:
                       + (f"  pmid = {{{pmid}}},\n" if pmid else "") + "}\n")
 
 
-def test_a_near_copy_citing_the_candidate_elsewhere_accepts_nothing(project: Path) -> None:
-    """Round 2 of #499: with the entry's own sentence standing word for word and citing
-    only the old work, a sentence elsewhere that holds most of its words and cites the
-    candidate was taken for the author citing it."""
+@pytest.mark.parametrize("reworded", [False, True], ids=["as marked", "reworded"])
+def test_a_near_copy_citing_the_candidate_elsewhere_accepts_nothing(
+    project: Path, reworded: bool
+) -> None:
+    """Rounds 2 and 3 of #499: with the entry's own sentence standing, word for word or a
+    little reworded, and citing only the old work, a sentence elsewhere that holds most of
+    its words and cites the candidate was taken for the author citing it."""
     import currency_records as case
 
     case.case(project)
     _cite_the_trial(project, doi="10.5555/class.trial.2023")
-    with (project / "manuscript" / "main.md").open("a", encoding="utf-8") as text:
-        text.write(_NEAR_COPY)
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    if reworded:
+        assert "has been reported" in text
+        text = text.replace("has been reported", "has been described", 1)
+    main.write_text(text + _NEAR_COPY, encoding="utf-8")
     assert _currency_findings(project, "submission") == [
         ("currency-change-unanswered", "fail")]
 

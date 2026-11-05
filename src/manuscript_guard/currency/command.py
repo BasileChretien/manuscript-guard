@@ -264,7 +264,9 @@ def file_reading(project: Project, path: Path) -> str:
     if problem or unfit:
         raise Refused(problem or unfit[0])
     named = [one["work"] for one in record["candidates"]]
-    if len(set(named)) != len(named) or record["cited"]["work"] in named:
+    # The cited work under its other identifier is the cited work too (round 3 of #499).
+    if len(set(named)) != len(named) or record["cited"]["work"] in named or any(
+            records.is_work(bib.get(entry.citekey), work) for work in named):  # fmt: skip
         raise Refused("each candidate is read once, and the cited work is not a candidate")
     held = _Records(project)
     usable = [read.record for read in held.readings.get(entry.id, []) if read.problem is None]

@@ -3673,9 +3673,12 @@ passage does, or, where none is, to the one citing it that holds most of them, h
 **Acceptance by citation** (design 2.5): an unanswered `replace` or `add` counts as accepted,
 and nothing is written, once a sentence matching the entry's words, the same or `NEAR`,
 cites a key whose DOI or PMID in `references.bib` (`doi_of`, `pmid_of`) is the candidate's:
-the author added the work to Zotero and ran `sync-bib`. The entry is then placed on that
-sentence where its own words no longer stand beside its old key, so a `replace` done is not
-unplaced.
+the author added the work to Zotero and ran `sync-bib`. Where the entry's own sentence can
+still be placed, the same or `NEAR` and citing its old key, only that sentence accepts, by
+citing the candidate too: a copy elsewhere that holds most of its words and cites the
+candidate accepts nothing (rounds 2 and 3 of #499). Where it can be placed no longer, as when
+a `replace` took the old key out, the sentence citing the candidate is the one, and the entry
+is placed on it, so a `replace` done is not unplaced.
 
 **Scope.** The claims an entry marks, and each citing sentence of the main text or the
 supplement, Markdown or LaTeX, that cites a work whose lookup record says a later version

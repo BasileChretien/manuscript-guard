@@ -95,10 +95,9 @@ def survey(project: Project) -> tuple[Survey, Report]:
     fields = read_bib(bib) if bib.is_file() else {}
     accepted = _accepted(entries, fields, sentences, words, placed)
     for entry_id, cited in accepted.items():
-        entry = next(one for one in entries if one.id == entry_id)
-        own = placed.get(entry_id)
-        if own is None or statement_words(own.text) != statement_words(entry.sentence):
-            placed[entry_id] = cited
+        # Only an entry whose own sentence can no longer be placed is placed by the
+        # candidate's citation; one that can is accepted from that sentence alone.
+        placed.setdefault(entry_id, cited)
     keys = sorted({key for cited in sentences for key in cited.keys})
     facts = {key: tuple(currency_facts(project, key, fields.get(key))) for key in keys
              if key in fields}  # fmt: skip
@@ -122,9 +121,11 @@ def _accepted(entries: tuple[Entry, ...], fields: dict[str, dict[str, str]],
               placed: dict[str, CitedSentence]) -> dict[str, CitedSentence]:  # fmt: skip
     """Each unanswered proposal a sentence accepts, with that sentence: one matching the
     entry's words that cites a key whose DOI or PMID is the candidate's. Where the entry's
-    own sentence still stands, word for word, only that sentence can accept it: another
-    that holds most of its words and cites the candidate is not the author citing it here
-    (round 2 of #499)."""
+    own sentence can still be placed, the same or `NEAR` and citing its work, only that
+    sentence can accept it, by citing the candidate: another that holds most of its words
+    and cites the candidate is not the author citing it here (rounds 2 and 3 of #499). The
+    candidate's own placement is read only where the entry's sentence can be placed no
+    longer, as when a `replace` took the old key out."""
     accepted: dict[str, CitedSentence] = {}
     for entry in entries:
         decision = entry.decision or {}
@@ -133,7 +134,7 @@ def _accepted(entries: tuple[Entry, ...], fields: dict[str, dict[str, str]],
             continue
         keys = sorted(key for key, one in fields.items() if is_work(one, candidate))
         own = placed.get(entry.id)
-        if own is not None and statement_words(own.text) == statement_words(entry.sentence):
+        if own is not None:
             if any(key in own.keys for key in keys):
                 accepted[entry.id] = own
             continue

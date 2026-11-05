@@ -438,6 +438,19 @@ def test_a_reading_that_does_not_fit_is_refused_and_nothing_filed(
     assert not (project / "literature" / "currency" / "readings").exists()
 
 
+def test_the_cited_work_under_its_other_identifier_is_no_candidate(project: Path) -> None:
+    """Round 3 of #499: the cited work, filed as `doi:...`, was refused as a candidate only
+    under that id, and under its PMID it was a candidate of its own."""
+    bib = project / "literature" / "references.bib"
+    text = bib.read_text(encoding="utf-8")
+    old = "  pages   = {45--52},\n"
+    assert old in text
+    bib.write_text(text.replace(old, old + "  pmid    = {31000099},\n", 1), encoding="utf-8")
+    with pytest.raises(command.Refused, match="the cited work is not a candidate"):
+        case.case(project, candidate="pmid:31000099")
+    assert not (project / "literature" / "currency" / "readings").exists()
+
+
 def test_a_reading_that_would_change_an_answered_proposal_is_refused(project: Path) -> None:
     case.case(project)
     loaded = load_project(project)[0]

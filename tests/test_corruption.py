@@ -1047,6 +1047,7 @@ _NAMES_IN_TEX = r"""
 }
 @report{whoReport2018, author = {{World Health Organization}}, year = {2018},}
 @article{benitezStudy2018, author = {Ben{\'\i}tez, Ana}, year = {2018},}
+@article{citanStudy2018, author = {\c{C}{\i}tan, Ali}, year = {2018},}
 """
 
 
@@ -1076,9 +1077,14 @@ _NAMES_IN_TEX = r"""
         ("(Other, 2018; Fictional, 2021)", "2018", "adding the work there first if"),
         ("(Fictional, 2018)", "2018", "adding the work there first if it is not yet in it"),
         # Round 2 of #510: a group's name, and TeX the check misreads, match no entry, and
-        # the hint must not say the work is missing.
+        # the hint must not say the work is missing. A dotless i no accent is on, before a
+        # t, is still read as `\it` (DESIGN.md, Known gaps).
         ("(World Health Organization, 2018)", "2018", "adding the work there first if"),
-        ("(Ben\N{LATIN SMALL LETTER I WITH ACUTE}tez, 2018)", "2018", "adding the work there"),
+        ("(\N{LATIN CAPITAL LETTER C WITH CEDILLA}\N{LATIN SMALL LETTER DOTLESS I}tan, 2018)",
+         "2018", "adding the work there"),
+        # An accent on a dotless i, `{\'\i}`, is read as the letter since #520.
+        ("(Ben\N{LATIN SMALL LETTER I WITH ACUTE}tez, 2018)", "2018", "[@benitezStudy2018]"),
+        ("(Benitez, 2018)", "2018", "[@benitezStudy2018]"),
         ("(Fictional, 2019)", "2019", "2 works by Fictional from 2019"),
         ("(March, 2019)", "2019", "a date is one placeholder"),
     ],

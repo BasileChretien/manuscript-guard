@@ -9991,8 +9991,9 @@ one: neither the year's letter ("2021b") nor a given name is compared, so it is 
 be the work (round 1 of #510: it was, and "(Fictional, 2021b)" was told the key of the 2021
 work). Where there is none it says to cite the work by its key, adding it to the file if
 it is not yet there, and never that the file holds no such work: a group's name, `{{World
-Health Organization}}`, or TeX the reading gets wrong, `Ben{\'\i}tez`, matches nothing
-either (round 2 of #510). The usual hint
+Health Organization}}`, or TeX the reading gets wrong, `\c{C}{\i}tan` (Known gaps, "G7 reads
+a .bib's TeX with the braces gone"), matches nothing either (round 2 of #510; its example,
+`Ben{\'\i}tez`, is read right since #520). The usual hint
 follows in every case, since a capitalised word before a year in brackets need not be an
 author. A name in `references.bib` is read as a reader sees it, its TeX read and its letters
 folded as G7 folds the names it compares (`gates.authors.name_words`): `{\AA}ngstr{\"o}m` is

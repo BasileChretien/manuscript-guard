@@ -17460,7 +17460,14 @@ Open, recorded as each change landed:
     just where a span opens or closes, `*all*` turned "all," or a word typed in front of a
     bold lead-in, may be inside it or after it, and so may a change that runs across one end.
     The span is written from Word's text with the edit, its other words with it. Words typed
-    with a space between them and the span are outside it, and placed there.
+    with a space between them and the span are put outside it only where the comparison
+    lines the edit up away from the delimiter, and `difflib` takes the longer run of equal
+    words first: "in **all** cases" with "nearly" typed before "all" can meet the
+    opening `**` and lose the bold, and "*very large*" with "large" deleted loses the
+    italics on "very". The words are right, and the loss is listed.
+  - *A run of Chinese or Japanese is one word.* Kana and kanji written without spaces are
+    compared as one word, so any edit in the run writes the whole run from Word's text,
+    and emphasis inside it is lost; the loss is listed.
   - *Any edit in inline code writes the code plain*, since words from Word's text would be
     written escaped inside it, and an escape or an entity an edit runs into is written as
     the character, which prints the same.
@@ -17483,6 +17490,11 @@ Open, recorded as each change landed:
     the words up, and of "very **very**" from "**very**" it keeps the bold on the second;
     the words are right either way, and only the formatting of a repeated word can differ
     from what the co-author meant.
+  - *The generated inputs draw the simple shapes only.* The property over Word's edits
+    never edits a paragraph's first word (the bold lead-in this was written for), draws
+    distinct ASCII words only (no repeated word, CJK, quote, `&`, `<`, entity or
+    escape), never inserts a word, and of a deletion checks only that the other spans
+    survive. Those shapes are held by unit tests and one document Word saved.
 - **Merging a reworded paragraph refuses, rather than drops, what Word does not show as its
   text.** It used to drop an inline comment, a footnote or inline math, and exit 0. Now an
   edited stretch holding what Word's text cannot carry is refused by name: a comment, a

@@ -4653,7 +4653,10 @@ def test_a_word_changed_in_word_keeps_the_bold_and_straight_quotes_beside_it(
     "Background." and "Methods."; the Methods stretch holds "another's", which the build
     printed curly.
     Each stretch used to be written whole from Word's text: both bolds were lost, and the
-    apostrophe came back curly. Only the two words are written now."""
+    apostrophe came back curly. Only the two words are written now.
+    The fixture is the example as it was built that day: a change to the example's
+    manuscript, or to what the build prints of it, makes the count of merges fail, and
+    the document is then saved again in Word as above."""
     from manuscript_guard.cli import main
 
     path = project / "manuscript" / "main.md"

@@ -266,14 +266,19 @@ DEMO_ALT = re.compile(r'<img src="docs/img/demo-light\.svg"[^>]*?\salt="([^"]*)"
 
 
 def test_the_demo_ends_with_what_check_says_once_the_number_is_bound(
-    project: Path, capsys
+    project: Path, capsys, monkeypatch
 ) -> None:
     """The demo opens on `CARD`, binds the number again and runs `check` on the example as it
     is. The line it rewrites is the one the finding quotes, put back as the manuscript has
     it, and every line of its last scene but a `...` is printed, in that order: two lines
     with no `...` between them on two lines one after the other, and the last one last. The
     README's alternative text for the demo says the finding and each of those lines, so a
-    reader who cannot see the picture is told what it shows now."""
+    reader who cannot see the picture is told what it shows now.
+
+    The demo was captured where CI runs, with no Zotero, and G7 then warns that citation keys
+    were not checked for pinning. Zotero is taken as not running here too, so the test says
+    the same on a machine where it is open."""
+    monkeypatch.setattr("manuscript_guard.gates.citations.available", lambda: False)
     script = figures_script()
     assert script.CARD[2][1].endswith(f"manuscript/main.md:{script.LINE}:17")
     lines = (project / "manuscript" / "main.md").read_text(encoding="utf-8").splitlines()

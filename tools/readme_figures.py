@@ -89,17 +89,21 @@ def card_svg(palette: dict[str, str]) -> str:
 
 #: What `check` prints on the worked example as it is committed, every number bound: its
 #: stage line, the pair of lines of its closing summary on numerical provenance, and its last
-#: line, with `...` where lines are left out. Captured as `CARD` was: the example copied
-#: whole, its two analysis scripts and its figure script run, then `manuscript-guard check`
-#: in that folder (0.2.475, 2026-11-05). `tests/test_docs.py` runs `check` on the example
-#: and fails unless it prints these lines, in this order.
+#: line, with `...` where lines are left out. Captured where CI runs it, with no Zotero
+#: running: on Ubuntu (WSL) under Python 3.13 and matplotlib 3.11.2, `check` run by the test
+#: suite's `project` fixture, the example with its analysis run and its figure review stamped
+#: (0.2.475, 2026-11-05). The one warning of numerical provenance is G7's
+#: `pinning-unchecked`, "Zotero is not running, so citation keys were not checked for
+#: pinning": with Zotero open, `check` prints one warning fewer in both counts.
+#: `tests/test_docs.py` runs `check` on the example with Zotero taken as not running, and
+#: fails unless it prints these lines, in this order.
 CLEAN: list[tuple[str, str]] = [
     ("text", "stage: drafting (writing the manuscript against results that exist)"),
     ("soft", "  ..."),
     ("text", "  numerical provenance"),
-    ("text", "    checked:     G2, G3, G7, G8: 0 failing, 0 warnings"),
+    ("text", "    checked:     G2, G3, G7, G8: 0 failing, 1 warning"),
     ("soft", "  ..."),
-    ("ok", "0 failing, 12 warnings"),
+    ("ok", "0 failing, 13 warnings"),
 ]
 
 #: The edit the demo shows, read from `CARD`: the number typed, the binding it replaced, and

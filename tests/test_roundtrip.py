@@ -7913,6 +7913,46 @@ def test_an_identifier_word_left_on_a_figure_or_an_equation_is_not_the_block(
     ]
 
 
+def test_two_identifiers_word_left_on_one_figure_are_one_block(tmp_path: Path) -> None:
+    """Known gaps (round 1 of #514): two paragraphs cut with Track Changes off from directly
+    above a figure leave both their bookmarks on the figure's paragraph. They are read as one
+    block of no text carrying both identifiers, stranded on the figure, then the figure. A
+    report that the two were joined says nothing of where their identifiers went."""
+    from manuscript_guard.docxtext import blocks as read
+
+    body = (
+        '<w:p><w:bookmarkStart w:id="1" w:name="mg-p-main-2"/><w:bookmarkEnd w:id="1"/>'
+        '<w:bookmarkStart w:id="2" w:name="mg-p-main-3"/><w:bookmarkEnd w:id="2"/>'
+        '<w:r><w:drawing><a:blip r:embed="rId7"/></w:drawing></w:r></w:p>'
+    )
+    found = read(word_document(tmp_path / "two-left.docx", body, {"rId7": b"forest"}))
+    assert [(b.names, b.text, b.kind, b.stranded) for b in found] == [
+        (("mg-p-main-2", "mg-p-main-3"), "", "", "figure"),
+        ((), "", "figure", ""),
+    ]
+
+
+def test_a_paragraph_left_with_only_its_own_picture_is_read_as_stranded(tmp_path: Path) -> None:
+    """Known gaps (round 1 of #514): a paragraph showing a picture and no text is read as a
+    figure whatever identifier is on it, so one whose words a co-author deleted around its own
+    inline picture is read as a figure with an identifier Word left on it: an empty block,
+    stranded on the figure, then the figure. The identifier did not move, and import says it
+    came back on the figure that stood after it."""
+    from manuscript_guard.docxtext import blocks as read
+
+    drawing = '<w:r><w:drawing><a:blip r:embed="rId7"/></w:drawing></w:r>'
+    words = '<w:del w:id="91" w:author="A"><w:r><w:delText>{}</w:delText></w:r></w:del>'
+    body = (
+        '<w:p><w:bookmarkStart w:id="1" w:name="mg-p-main-2"/><w:bookmarkEnd w:id="1"/>'
+        f"{words.format('The icon ')}{drawing}{words.format(' marks a signal.')}</w:p>"
+    )
+    found = read(word_document(tmp_path / "own-picture.docx", body, {"rId7": b"icon"}))
+    assert [(b.names, b.text, b.kind, b.stranded) for b in found] == [
+        (("mg-p-main-2",), "", "", "figure"),
+        ((), "", "figure", ""),
+    ]
+
+
 #: Saved by Word 16 (see `test_a_paragraph_cut_from_above_a_figure_leaves_the_figure_found`).
 CUT_BEFORE_FIGURE = Path(__file__).parent / "data" / "word" / "cut-before-figure.docx"
 
@@ -7987,6 +8027,64 @@ def test_a_paragraph_cut_from_above_a_figure_leaves_the_figure_found(
     assert "with its identifier on other text" in out, out
     assert main(["import", str(returned), str(project), "--apply"]) == 1
     assert source.read_bytes() == before
+
+
+@needs_pandoc
+def test_a_paragraph_whose_own_picture_or_maths_is_all_it_shows_reads_as_stranded(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Known gaps (round 1 of #514): a paragraph showing a picture or maths and no text is
+    read as a figure or an equation with an identifier Word left on it, even where the
+    picture or maths is the paragraph's own. The build gives a paragraph of inline maths alone
+    an identifier, and the document as sent already reads it as an empty block stranded on an
+    equation, then the equation. A paragraph whose words a co-author deleted around its own
+    inline picture reads as an empty block stranded on a figure, then the figure, and import
+    reports the paragraph deleted and says its identifier came back on the figure that stood
+    after it, which it did not."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.docxtext import blocks as read
+
+    source = project / "manuscript" / "main.md"
+    text = source.read_text(encoding="utf-8")
+    anchor = "# Data availability"
+    added = (
+        "Omega one opens.\n\n$x = y$\n\n"
+        "The icon ![](figures/forest.png) marks a signal.\n\nClosing words.\n\n"
+    )
+    source.write_text(text.replace(anchor, added + anchor, 1), encoding="utf-8")
+    document = built(project)
+
+    def paragraphs(xml: str) -> list[str]:
+        return re.findall(r"<w:p\b(?:(?!<w:p\b).)*?</w:p>", xml, re.DOTALL)
+
+    with zipfile.ZipFile(document) as archive:
+        xml = archive.read("word/document.xml").decode("utf-8")
+    maths = next(p for p in paragraphs(xml) if "<m:oMath>" in p and "oMathPara" not in p)
+    [name] = re.findall(r'w:name="(mg-p-[^"]+)"', maths)
+    found = read(document)
+    at = next(i for i, b in enumerate(found) if name in b.names)
+    assert [(b.names, b.text, b.kind, b.stranded) for b in found[at : at + 2]] == [
+        ((name,), "", "", "equation"),
+        ((), "", "equation", ""),
+    ]
+
+    def words_deleted(xml: str) -> str:
+        icon = next(p for p in paragraphs(xml) if "The icon" in p)
+        bare = re.sub(r"<w:r>(?:(?!</w:r>).)*?<w:t[^>]*>[^<]*</w:t></w:r>", "", icon)
+        return xml.replace(icon, bare, 1)
+
+    returned = rewrite(document, tmp_path / "words-deleted.docx", words_deleted)
+    found = read(returned)
+    at = next(i for i, b in enumerate(found) if b.stranded == "figure")
+    assert [(b.text, b.kind, b.stranded) for b in found[at : at + 2]] == [
+        ("", "", "figure"),
+        ("", "figure", ""),
+    ]
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "deleted in Word, left in place here: The icon" in out, out
+    assert "Its identifier came back on the figure that stood after it" in out, out
 
 
 def _deleted(inner: str) -> str:
@@ -9552,6 +9650,37 @@ def test_the_paragraph_after_a_split_is_told_it_is_its_neighbour(
     assert "split in two in Word, new text written next to it" not in after, after
     assert "after a new paragraph, 'Real work would need a case definition" in after, after
     assert "was not split itself" in after and "own edit in the .md" in after, after
+
+
+def test_a_new_paragraph_of_only_a_symbol_is_named_by_no_words(tmp_path: Path) -> None:
+    """Known gaps (round 1 of #512): a new paragraph holding only a symbol with no text, a
+    check box typed in Wingdings, is new text, and the reworded paragraph after it is refused
+    as one after a new paragraph. That paragraph is named by its text, and it has none: the
+    refusal reads "it came back after a new paragraph, ''", and the symbol is not named."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": "The task is done."})
+    sent = [Block(("a",), "The task is done.")]
+    box = Block((), "", unread=("Wingdings character F0FE",))
+    plan = plan_import(known, sent, [box, Block(("a",), "The task is now done.")])
+    assert not plan.merged
+    [refusal] = plan.refused
+    assert refusal.name == "a"
+    [why] = refusal.why
+    assert why.startswith("it came back after a new paragraph, '': "), why
+    assert "Wingdings" not in why, why
+
+
+def test_both_refusals_beside_new_text_speak_of_one_text_shown() -> None:
+    """Known gaps (round 1 of #512): the refusal after a new paragraph shows that paragraph's
+    opening words beside the paragraph's own text, and both it and the split's refusal end on
+    "the text shown", which does not say which of the two it means."""
+    from manuscript_guard.merge import _AFTER_NEW, _SPLIT
+
+    for message in (_SPLIT, _AFTER_NEW):
+        assert "If the text shown is a paragraph moved from elsewhere" in message, message
+    assert "'{opening}'" in _AFTER_NEW
 
 
 @needs_pandoc

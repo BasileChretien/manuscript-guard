@@ -2652,6 +2652,88 @@ def test_a_paper_with_no_results_section_reports_under_its_own_headings(project:
                for one in found)  # fmt: skip
 
 
+def _reported_said(project: Path, text: str) -> list:
+    """What G8's check of the abstract says of `text` as the whole manuscript."""
+    from manuscript_guard.gates import check_reported
+
+    main_md(project).write_text(text, encoding="utf-8")
+    loaded, _ = load_project(project)
+    return list(check_reported(loaded, load_namespace(loaded)[1]).findings)
+
+
+#: `_REVIEW` with the reporting odds ratio given again nowhere but in the abstract.
+_REVIEW_ROR_ALONE = _REVIEW.replace(
+    "Against all other drugs, the reporting odds ratio was {{results.ror.point}}.",
+    "Against all other drugs, the signal held.",
+).replace(
+    "A reporting odds ratio of {{results.ror.point}} is a signal and no more.",
+    "A reporting odds ratio is a signal and no more.",
+)
+
+
+@pytest.mark.parametrize(
+    "heading",
+    ["Highlights", "Key points", "Strengths and limitations", "Future directions",
+     "Implications for practice"],  # fmt: skip
+)
+def test_a_heading_that_reports_nothing_reports_where_the_paper_has_no_results(
+    project: Path, heading: str
+) -> None:
+    """Known gaps (round 1 of #508, note 2): with no Results heading, a section reports
+    unless its whole title names a part that reports nothing. A number the abstract gives
+    and only a section under one of these headings gives again is not warned of; the
+    journal's profile declares no box by any of them."""
+    assert [f.message.split()[0] for f in _reported_said(project, _REVIEW_ROR_ALONE)] == [
+        "results.ror.point"
+    ]
+    text = _REVIEW_ROR_ALONE.replace(
+        "# Discussion\n", f"# {heading}\n\nThe reporting odds ratio was "
+        "{{results.ror.point}}.\n\n# Discussion\n",
+    )  # fmt: skip
+    assert _reported_said(project, text) == []
+
+
+def test_a_number_restated_only_under_the_limitations_is_told_a_list_without_them(
+    project: Path,
+) -> None:
+    """Known gaps (round 1 of #508, note 3): the limitations report nothing, and a number
+    the abstract gives and only they give again is warned of; the message lists the parts
+    that report nothing without the limitations, the reference list, or a heading under one
+    of them."""
+    text = _REVIEW_ROR_ALONE.replace(
+        "# Discussion\n", "# Limitations\n\nThe reporting odds ratio was "
+        "{{results.ror.point}}.\n\n# Discussion\n",
+    )  # fmt: skip
+    [found] = _reported_said(project, text)
+    assert found.message.split()[0] == "results.ror.point"
+    assert ("every section reports but the abstract, a box, the Introduction, the "
+            "Discussion, a conclusion and the back matter") in found.message  # fmt: skip
+    assert "limitation" not in found.message.lower()
+    assert "reference" not in found.message.lower()
+
+
+def test_a_findings_subheading_under_a_topical_section_is_read_as_the_results(
+    project: Path,
+) -> None:
+    """Known gaps (round 1 of #508, note 4): a heading that opens with "Findings" is read as
+    the Results at any level. Under a review's own section, "## Findings in context" gives
+    the paper a Results heading, its topical sections report nothing, and the abstract's
+    numbers they give again are warned of, as where a section is called "Results"."""
+    text = _REVIEW.replace(
+        "# Regulatory responses\n",
+        "## Findings in context\n\nEarlier series found the same.\n\n# Regulatory responses\n",
+    )
+    found = [(f.message.split()[0], re.search(r"under '([^']*)'", f.message)[1])
+             for f in _reported_said(project, text)]  # fmt: skip
+    assert found == [
+        ("results.cohort.n_reports", "Abstract"),
+        ("results.case.n_cases", "Abstract"),
+        ("results.case.n_serious", "Abstract"),
+        ("results.ror.point", "Abstract"),
+        ("results.ror.point", "Conclusions"),
+    ]
+
+
 def test_a_latex_paper_with_no_results_section_reports_under_its_own_headings(
     project: Path,
 ) -> None:
@@ -2677,6 +2759,36 @@ def test_a_latex_paper_with_no_results_section_reports_under_its_own_headings(
 
     assert said("The ROR was \\mg{results.ror.point}.") == []
     assert said("Of \\mg{results.case.n_cases}.") == ["results.case.n_cases"]
+
+
+def test_a_latex_paper_s_unheaded_opening_reports_where_it_has_no_results(
+    project: Path,
+) -> None:
+    """Known gaps (round 1 of #508, note 1): the printed view closes the abstract with a
+    heading of no title, so the text after it, an introduction with no heading of its own
+    as Nature's and PNAS's papers open, reports where the paper has no Results. A number
+    the abstract gives and only that text gives again is not warned of; with
+    `\\section{Introduction}` over the same text, it is."""
+    from manuscript_guard.gates import check_reported
+
+    folder = project / "manuscript"
+    for path in folder.rglob("*.md"):
+        path.unlink()
+
+    def said(opening: str) -> list[str]:
+        (folder / "main.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}\n\\begin{abstract}\n"
+            "The ROR was \\mg{results.ror.point}.\n\\end{abstract}\n" + opening
+            + "The ROR was \\mg{results.ror.point}.\n\\section{Regulatory responses}\nx\n"
+            "\\section{Discussion}\nd\n\\end{document}\n",
+            encoding="utf-8",
+        )
+        loaded, _ = load_project(project)
+        return [f.message.split()[0] for f in
+                check_reported(loaded, load_namespace(loaded)[1]).findings]  # fmt: skip
+
+    assert said("") == []
+    assert said("\\section{Introduction}\n") == ["results.ror.point"]
 
 
 # --------------------------------------- an earlier output of the same data, and this paper
@@ -15318,6 +15430,58 @@ def test_a_figure_in_r_s_okabe_ito_palette_is_told_what_its_grey_does(project: P
     assert "okabe-ito" not in hints[GREYSCALE]
 
 
+def test_a_figure_with_a_confusion_stops_g3_where_the_palettes_cannot_be_read(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Known gaps (round 1 of #506, note 1): the hint reads the palette it offers from
+    `palettes.json`, and nothing catches a failure to read it. With the file missing, a
+    figure whose colours are confused stops G3, which `check` reports as `gate-errored`,
+    where a hint naming no palette would do; a figure with no confusion reads no palette and
+    passes."""
+    from manuscript_guard import palettes
+    from manuscript_guard.gates.figure_colours import _offered, check_figure_colours
+
+    def cleared() -> None:
+        _offered.cache_clear()
+        palettes._document.cache_clear()
+
+    loaded = load_project(project)[0]
+    try:
+        with monkeypatch.context() as patched:
+            patched.setattr(palettes, "DATA", project / "missing" / "palettes.json")
+            cleared()
+            assert check_figure_colours(loaded).findings == ()
+            _painted(project, _RED, _GREEN)
+            with pytest.raises(FileNotFoundError):
+                check_figure_colours(load_project(project)[0])
+    finally:
+        cleared()
+
+
+def test_a_figure_warned_for_a_deficiency_is_offered_a_palette_its_grey_check_warns_of(
+    project: Path,
+) -> None:
+    """Known gaps (round 1 of #506, note 2): each hint is true for its own way of seeing. A
+    figure warned for deuteranopia in a journal that prints in grey is offered `okabe-ito`,
+    which the hint for grey does not offer, and whose own colours grey makes one."""
+    from manuscript_guard import palettes
+    from manuscript_guard.colour import GREYSCALE, confusions, parse
+    from manuscript_guard.gates.figure_colours import OFFERED
+
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["figures"] = {"source_url": "https://journal.example/artwork",
+                           "read_on": "2026-10-21", "confirmed": True, "print": "greyscale"}
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    _painted(project, *_ONE_TO["deuteranopia"], *_ONE_TO[GREYSCALE])
+    assert ("figure-greyscale-confused", "warn") in _colours_said(project)
+    hints = _hints(project)
+    assert "`okabe-ito`" in hints["deuteranopia"], hints
+    assert "okabe-ito" not in hints[GREYSCALE], hints
+    own = [parse(code)[0] for code in palettes.colours(OFFERED)]
+    assert confusions(own, (GREYSCALE,)) != []
+
+
 def test_a_figure_with_no_guard_file_is_told_the_check_cannot_see_markers(
     project: Path,
 ) -> None:
@@ -26255,6 +26419,31 @@ def test_a_year_of_the_data_emitted_as_a_string_is_told_to_emit_a_number(
     fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
     write_digest(fragment)
     assert "data-date-not-declared" not in codes(gate_report(project))
+
+
+def test_a_full_date_of_the_data_emitted_as_a_string_is_told_what_a_year_does(
+    project: Path,
+) -> None:
+    """Known gaps (round 1 of #507, note 3): the hint is the same for every date warned of.
+    A full date emitted as a string is warned of, and told that a year computed from the
+    data is emitted as a number, which a full date cannot be; the rest of the hint fits
+    it."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["data.first_date"] = {"value": "2024-03-01", "display": "1 March 2024"}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\nThe reports cover the period from "
+                    "{{results.data.first_date}}.\n", encoding="utf-8")  # fmt: skip
+    [warned] = [f for f in gate_report(project).findings if f.code == "data-date-not-declared"]
+    assert warned.message == (
+        "{{results.data.first_date}} is a date of the data emitted as a string, "
+        "'1 March 2024', and nothing ties it to the data it dates"
+    )
+    assert "A year computed from the data is emitted as a number" in warned.hint
+    for route in ("em.dataset(", "em.parameter()"):
+        assert route in warned.hint, (route, warned.hint)
 
 
 def test_a_year_emitted_as_a_number_prints_with_no_separator() -> None:

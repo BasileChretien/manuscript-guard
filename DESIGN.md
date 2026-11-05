@@ -2837,12 +2837,12 @@ parts two runs, and a Latin word or a number among them is counted as it is betw
 Two, because segmented Chinese averages 1.6 to 1.7 characters a word (the PKU and MSR
 corpora of the SIGHAN 2005 bakeoff) and Japanese, whose particles are words of one letter,
 is as short; four, because the BEST 2009 corpus of Thai averages 3.6. Each size is rounded
-up and each count down, so that a quote of average words is counted no longer than a reader
-would count it: a sentence passes, "報告オッズ比2.6" (three words) and "2.6倍" (one) are
-still warned of. A quote of long words counts longer (Known gaps). A run between spaces
-that holds a letter is still a word at the least, so Chinese set with spaces around its
-numbers, "纳入 120 例, ROR 为 2.6", counts four words as it always did. Lao, Khmer and
-Myanmar are written as Thai is and were not measured.
+up and each count down (to one word at the least, below), so that a quote of average words
+is counted no longer than a reader would count it: a sentence passes, "報告オッズ比2.6"
+(three words) and "2.6倍" (one) are still warned of. A quote of long words counts longer
+(Known gaps). A run between spaces that holds a letter is still a word at the least, so
+Chinese set with spaces around its numbers, "纳入 120 例, ROR 为 2.6", counts four words as
+it always did. Lao, Khmer and Myanmar are written as Thai is and were not measured.
 
 Comparison folds the differences that are not differences: curly quotes, dash widths,
 ligatures, non-breaking spaces and line wrapping all differ between a quote copied from a
@@ -7792,7 +7792,8 @@ Japanese quote in a finding's context read "?????", and the `é` of an author's 
 lone byte 0xE9, which a reader of UTF-8 cannot decode. An agent's tool, `> file` and a CI log
 all read the output that way. `streams.utf8_when_piped` makes standard output and error UTF-8
 at the start of both entry points when they are not a console, unless `PYTHONIOENCODING` or
-`PYTHONUTF8` is set, whatever its value (`PYTHONUTF8=0` too), or Python runs with `-X utf8`:
+`PYTHONUTF8` is set to a value, whatever it is (`PYTHONUTF8=0` too; an empty one counts as
+unset, as it does to Python), or Python runs with `-X utf8`:
 the streams are then as Python opened them. Each keeps its own error handler, so standard
 error still writes a lone surrogate as `\udcxx`. A console is left as it
 is: on Windows Python writes to it as UTF-16, and elsewhere in the terminal's encoding. Where
@@ -13368,9 +13369,21 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
 - **A paper with no Results heading reports under every heading that names no part.** A
   section of a review's own that is really an introduction ("The problem of arrests"), a
   discussion ("What this means for regulators") or a summary is read as reporting, so a
-  number the abstract gives and such a section restates passes. A review whose Results
-  stand under topical headings beside one that opens with "Results" ("Results of the
-  search") has a Results heading, and its topical sections report nothing. A topical section
+  number the abstract gives and such a section restates passes. So is a heading that
+  reports nothing and is not named as a whole by the rules above: "Highlights" or "Key
+  points" where the profile declares no such box, "Strengths and limitations", "Future
+  directions", "Implications for practice". A review whose Results stand under topical
+  headings beside one that opens with "Results" or "Findings", at any level ("Results of
+  the search", or "Findings in context" under a topical section), has a Results heading,
+  and its topical sections report nothing. In LaTeX the printed view closes the abstract
+  with a heading of no title, so in a paper with no Results heading whose introduction has
+  no heading of its own, as Nature's and PNAS's open, a number the abstract gives and the
+  opening restates passes. The warning says where nothing reports as "the abstract, a box,
+  the Introduction, the Discussion, a conclusion and the back matter", and leaves out the
+  limitations, the reference list and the headings under any of these, which report nothing
+  either. No case of `BROKEN` in `tests/test_properties.py` needs `names_introduction` or
+  `names_discussion` at every draw: "Rationale and objectives" is one way in four of drawing
+  an introduction, so under some seeds a broken helper passes. A topical section
   over a subsection called "Background" is taken for the paper's title, as a heading over
   the opening is, and the text directly under it reports nothing. An abstract that no
   heading names and the profile does not either ("Overview") is a section of the paper's
@@ -13952,7 +13965,14 @@ Added by the adversarial review, verified and **not** fixed:
   The hint offers Okabe and Ito's eight only for a deficiency their own colours stay apart
   for, all three: in grey, where several of them are one grey, it names no palette and
   points to `manuscript-guard palettes`. It does not ask whether the eight are enough for
-  the figure's series.
+  the figure's series. Each hint is true for its own way of seeing and no other: a figure
+  warned of for a deficiency in a journal that prints in grey is offered Okabe and Ito's
+  eight, which the grey check then warns of. Whether the eight stay apart is asked of
+  `confusions`, which passes over pairs already close to normal vision; none of the eight
+  is, but a palette put in their place (`OFFERED`) with such a pair would be offered where
+  it fails. The palette is read from `palettes.json` when the hint is written, and nothing
+  there is caught: on an install with that file missing or corrupt, every figure with a
+  confusion gives `gate-errored` from `check`, and `communicate check` may raise.
 - **A palette's verdict is the check's, at its threshold, on its colours as written.** The
   number of a set's colours that stay apart is counted in the collection's order for that
   many, so a set whose first colours are close is rated low though a figure could take
@@ -15145,6 +15165,11 @@ Open, recorded as each change landed:
   rule says a checklist profile is written by `transcribe` from a recipe, which is untrue of
   one file: the worked example's `DEMO-OBS.yaml` is invented and written by hand, and has no
   recipe.
+- **`init` takes a `paper.yaml` alone for a project under way, whatever is in it.** In a
+  folder that holds only a `paper.yaml` written by hand, `init` writes a blank
+  `authors.yaml` and the rest of the layout, says the project was set up already and points
+  to `next`, and gives none of the first day's advice to describe the authors; `next`
+  gives it.
 - **Under Codex the hooks are tested against its source, not in a session.** The handlers are
   tested with payloads shaped as `codex-rs` builds them and patches that follow its grammar,
   as read on 2026-10-02. No hook has been seen to fire in a live Codex session, which needs a
@@ -15223,6 +15248,14 @@ Open, recorded as each change landed:
   none. A text in a code page that happens to be valid UTF-8 is read as UTF-8. And a name
   sent in one Unicode normal form and written in `paper.yaml` or on disk in another was not
   tried; macOS is where that would show.
+- **What is written to a pipe is UTF-8 unless Python was told otherwise, and two readers
+  forget that.** `tools/panel_measure.py` reads the command line's output as UTF-8, and its
+  child inherits the environment: with `PYTHONIOENCODING=cp1252` exported, the child writes
+  cp1252 and the strict read raises at its first byte outside ASCII. A developer's tool and
+  an unusual setting. And `test_a_pipe_is_made_utf8_unless_the_user_chose` and
+  `test_the_hook_writes_utf8_to_a_pipe` in `tests/test_cli.py` clear the two variables but
+  not `-X utf8`, so under `python -X utf8 -m pytest` they fail with nothing wrong in the
+  code; the test of the error handler clears `sys._xoptions` as well.
 - **The submission guard said nothing about a project it could not read.** Where
   `check --submission` stops on an error of the project's own, a results file that is not
   JSON for one, the gates raise before there is a finding. The hook took that for an
@@ -15869,6 +15902,10 @@ Open, recorded as each change landed:
   update` and Codex's `codex plugin marketplace upgrade`: a session start does not say which
   agent tool sent it, so both are named. There is no threshold: a plugin one release behind,
   as after a `pip install --upgrade` made before the plugin's update, is said of as well.
+  The commands are the marketplace's however the plugin was installed, which the hook cannot
+  tell: for a plugin loaded with `claude --plugin-dir ./plugin` from a checkout older than
+  the installed tool, or a marketplace added from a local clone that was never pulled,
+  `claude plugin update` changes nothing, and the line comes back at every session.
 - **The skills are worded for any agent tool, and the test that keeps them so knows a list.**
   The skills are in the open SKILL.md format, which other agent tools read as well as Claude
   Code. `tests/test_plugin.py` fails when a skill names an agent tool (Claude, Codex, Gemini
@@ -17857,6 +17894,22 @@ Open, recorded as each change landed:
   one, and the deletion is not reported. A figure pasted a second time into its own stretch
   matches neither copy and is reported as not found; a copy pasted into another section is
   new content, and is not reported at all.
+- **An identifier on a figure or an equation is read as one Word left there.** A paragraph
+  cut or deleted with Track Changes off leaves its bookmark on the paragraph after it, and
+  where that shows a picture or display maths and no text, the identifier is read as a
+  block of its own with no text, before the figure or equation (`Block.stranded`). Any
+  identified paragraph showing a picture or maths and no text is read so, the picture or the
+  maths its own as well: a paragraph whose words a co-author deleted around its own inline
+  picture, or a paragraph of inline maths alone, which the build gives an identifier, so
+  that the document as sent already reads so. Where such a paragraph is reported moved or
+  deleted, `import` adds that its identifier came back on the figure or equation after it,
+  which is then untrue; the advice beside it is as before. Two identifiers left on one
+  figure come back as one block with both names, and a report that the two were joined says
+  nothing of the figure. A record written by an earlier release holds a paragraph of maths
+  alone as one block, which this release reads back as two; what the comparison with that
+  record then refuses was not traced. Equations have no generated inputs and no document
+  saved by Word among the tests; the reading of figures rests on one Word 16 saved,
+  `tests/data/word/cut-before-figure.docx`.
 - **A paragraph that reaches Word in parts is only recognised by what lies around it.**
   Untagged text between it and the next paragraph of its section marks it; a paragraph with
   display maths in its source, or with a line under it that opens a block, carries no
@@ -18120,11 +18173,17 @@ Open, recorded as each change landed:
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the
   paragraph under it are both edited in one round, that paragraph's rewording is refused.
-  Its refusal says which: a paragraph with new text before it and none after it was not
-  split itself, since a split's first half keeps the identifier, and is told it came back
-  after a new paragraph, with that paragraph's opening words, and to make its own edit in
-  the .md. A paragraph with new text after it is told it may have been split, though the
-  text after it may be new text typed there.
+  Its refusal says which: a paragraph with a new paragraph of text before it and nothing
+  new after it was not split itself, since a split's first half keeps the identifier, and
+  is told it came back after a new paragraph, with that paragraph's opening words, and to
+  make its own edit in the .md. A paragraph with new text after it is told it may have been
+  split, though the text after it may be new text typed there, and so is one after a new
+  table, figure or equation, which is no paragraph of text. "Nothing new after it" is no
+  proof: the search after it stops at untagged text the document already had, so a split
+  paragraph with new text before it and a heading or a table dragged between its halves is
+  told it was not split, and to make its own edit in the .md (round 1 of #512). Both
+  refusals end "If the text shown is a paragraph moved from elsewhere", which does not say
+  which of the two texts now shown it means.
   That is the price of refusing a split, and it does not refuse every one. The search for
   new text stops at the first untagged text the document already had. A table moved with
   its caption between the halves of a split, or a heading dragged there, puts that text
@@ -19433,8 +19492,10 @@ Open, recorded as each change landed:
   computed; and a year computed and then made text (`as.character(min(d$year))`) is warned
   of as one typed, since the two cannot be told apart either: the message says the date was
   emitted as a string, and the hint that a year computed from the data is emitted as a
-  number. The sentence is the one `in_sentences` gives the binding, with its limit: a stop
-  typed against a binding with no space after it ends no sentence.
+  number. That sentence of the hint is given for a full date too ("2024-03-01"), which
+  cannot be emitted as a number; the rest of the hint is the way out there. The sentence is
+  the one `in_sentences` gives the binding, with its limit: a stop typed against a binding
+  with no space after it ends no sentence.
 - **A braced citation key is read as words.** Pandoc's `[@{who-extraction:2020}]` is not
   blanked as a key is, so its "extraction" dates the data, and a typed date beside it is
   warned of (`test_a_braced_citation_key_is_read_as_words`). No rule in the project reads a
@@ -19502,6 +19563,14 @@ Open, recorded as each change landed:
     merges is said at once to be on a paragraph changed since, which it is; and after a
     move that `--apply` makes, its identifier, which is a position, can name the
     neighbour. G11 finds the paragraph by its text, never by the identifier.
+  - *A comment made at a point is placed only while its paragraph is unchanged* (round 1
+    of #511). It covers no words, so once the paragraph has changed there is neither a
+    digest nor words to find it by, and the finding names no place at all, where before
+    #511 it gave the paragraph's identifier.
+  - *Words that stand twice are quoted, even where the paragraph named holds them* (round
+    2 of #511). How often the words stand in the document's body is counted before the
+    paragraph the identifier names is looked in, so a comment on a paragraph changed since,
+    on words the abstract gives as well, has its words quoted and no line named.
   - *A document refused whole vouches for a value paragraph it may never have carried*
     (round 1 of #375): with no build to compare with, its comment there is anchored
     where the import of its edits would first have asked the build.
@@ -19687,7 +19756,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   the paper, G14's spelling or G12's plan sections, and could clear a failing finding as a
   journal change can; they are left free because each is a statement about the paper an
   agent is usually told outright, and asking at every one would teach the author to wave
-  the question through.
+  the question through. `set study_type other` over a declared design is such a change: the
+  plan is then asked for the seven sections only, and G5 no longer warns that the design's
+  guideline is not declared. Whether replacing a design with `other` should be asked is the
+  author's to decide.
 
 - **Left by round 2 of #452 (2026-10-28), to fix later.** Each is small, and none is a
   regression against main.
@@ -20022,8 +20094,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
   project whose author knows the journal's reviewers will read the figures first may want
   another order; `check` is the gate, and nothing `next` says makes a finding pass. A choice
   is due by a rule as well: from `drafting` for a journal, an English and a guideline that
-  are not set, wherever for a study design, so a paper that follows no listed design is
-  offered one at every call.
+  are not set, wherever for a study design, until `study_type` names one of the seven or
+  `other`, which a paper that follows none of them sets.
 - **A prefix or a gate names a coarser skill than a code's own.** `registration-` goes to
   analysis-plan for every registration code, and a code no route names goes to its gate's
   skill with `check`. The command a route gives is the command that shows or does the work
@@ -20040,7 +20112,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `review --run`, `bind --apply`, `set stage` and another journal or English, and `author`
   for what only a named person may answer; the hooks enforce only `approve`, `sign`,
   `review --run --yes`, the submission guard and `set`'s; that an agent puts a choice to the
-  author rather than picking is the skill's guidance, not a check.
+  author rather than picking is the skill's guidance, not a check. A study design is offered
+  as the agent's, "None of these" (`other`) as well as the seven, though that a study fits
+  none of them may be the author's to say.
 - **A code made at run time is routed only by its prefix.** The walk of the source reads
   strings, names, conditionals and helpers' tuples; a code built from data (a table of
   codes read elsewhere, a whole f-string) is seen only where a gate reports it on the

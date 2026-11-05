@@ -192,6 +192,16 @@ def test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice(
     assert of(settled(tmp_path, study_type="other", stage="design"), "choose-study-type") == []
 
 
+def test_none_of_the_designs_is_offered_to_the_agent(tmp_path: Path) -> None:
+    """Known gaps (round 1 of #502): "None of these" is offered as the seven designs are, for
+    the agent to choose, though settling that a study fits none of them may be the author's
+    to say."""
+    from manuscript_guard.guide.model import AGENT
+
+    (action,) = of(settled(tmp_path, study_type=None, stage="design"), "choose-study-type")
+    assert [option.who for option in action.choice.options] == [AGENT] * 3
+
+
 def test_a_design_none_of_the_table_s_is_offered_every_guideline(tmp_path: Path) -> None:
     """As a paper that names no design is: `other` has no guideline of its own to put first."""
     asked = {}

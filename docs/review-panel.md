@@ -74,9 +74,10 @@ review --design --run` sends each reviewer of `review/design/panel-<n>.yaml`, or
 design panel in the first design round, the paper's facts, `design/plan.md` without its
 front matter and comments and with its feasibility results printed into it, and the
 feasibility results.
-Where `paper.yaml` declares a `study_type`, it is also sent what a plan for that design has
-to settle, each item with the guideline it comes from: the reviewers ask the plan about
-those risks. Where the project keeps `design/methods_review.yaml`, the methods of similar
+Where `paper.yaml` declares one of the seven designs as its `study_type`, it is also sent
+what a plan for that design has to settle, each item with the guideline it comes from: the
+reviewers ask the plan about those risks. With `study_type: other` nothing of the kind is
+sent. Where the project keeps `design/methods_review.yaml`, the methods of similar
 studies are sent too, each in the study's words with its appraisals and the author's
 decisions, for the reviewers to check each appraisal against its standard; a reading's digest
 holds the record, so one changed since is stale. Not the manuscript, and no result but a feasibility one. Each reply is filed under `review/design/round-<n>/`, and G12 reads it:

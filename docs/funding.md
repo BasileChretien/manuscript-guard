@@ -11,17 +11,19 @@ person. This page lists the ways to support it: three that cost money and three 
   says what the project needs.
 - **An institutional collaboration.** A group that wants the checks adapted to its journals,
   its reporting guidelines or its data setup can say so in an issue in the same way. Any work
-  that comes out of it is released in this repository under the same licence.
-- **GitHub Sponsors.** The Sponsor button on the repository page leads to the maintainer's
-  profile at [github.com/sponsors/BasileChretien](https://github.com/sponsors/BasileChretien).
+  that comes out of it is meant to be released in this repository under the same licence,
+  though a funder's terms may not allow it.
+- **GitHub Sponsors.** Once the maintainer's profile is open, the repository's Sponsor
+  button offers GitHub Sponsors, at
+  [github.com/sponsors/BasileChretien](https://github.com/sponsors/BasileChretien).
 
 ## What costs none
 
 - **Journal profiles.** A profile quotes a journal's instructions for authors in the form the
   checks read. One for a journal you submit to helps the next author who submits there. See
   [journal profiles](journal-profiles.md).
-- **Reporting checklist recipes.** A recipe turns a published checklist into the profile the
-  build checks. A recipe for a guideline that is missing is a contribution; the licence of the
+- **Reporting checklist recipes.** A recipe turns a published checklist into the profile
+  `check` reads (`transcribe` writes it). A recipe for a guideline that is missing is a contribution; the licence of the
   checklist decides whether the generated profile can be committed.
 - **Bug reports with a failing case.** The most useful report is the smallest text that shows
   a gate flagging something that is fine, or letting a defect through. The issue templates

@@ -267,9 +267,10 @@ def test_the_zenodo_file_says_what_the_citation_file_says() -> None:
         (who["name"], who["orcid"], _folded(who["affiliation"])) for who in record["creators"]
     ] == people
     assert "version" not in record and "publication_date" not in record
-    assert citation["repository-code"] in [
-        related["identifier"] for related in record["related_identifiers"]
-    ]
+    assert record["related_identifiers"] == [
+        {"identifier": citation["repository-code"], "relation": "isSupplementTo",
+         "resource_type": "software", "scheme": "url"}
+    ]  # fmt: skip
 
 
 def test_the_funding_file_leads_to_the_funding_page() -> None:

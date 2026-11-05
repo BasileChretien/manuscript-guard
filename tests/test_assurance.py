@@ -32,8 +32,11 @@ def test_check_says_what_each_dimension_rests_on_and_keeps_its_exit_code(
     assert "by Ada Example" in block and "by Claude Code" in block
     assert "score" in block.splitlines()[0]
     assert printed.rstrip().splitlines()[-1].endswith(("warnings", "warning", "hidden."))
+    # The JSON carries the same lines, so that a report kept apart from its run says them.
     assert code == main(["check", str(project), "--json"])
-    assert "What was checked" not in capsys.readouterr().out
+    said = json.loads(capsys.readouterr().out)
+    assert said["assurance"][0].startswith("What was checked, by what")
+    assert "\n".join(said["assurance"]) in printed
 
 
 def test_a_run_of_verify_is_said_until_the_results_change(project: Path) -> None:

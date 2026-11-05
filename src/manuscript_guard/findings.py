@@ -100,13 +100,21 @@ class Report:
             ),
         )
 
-    def to_json(self) -> str:
+    def to_json(self, *, stage: str | None = None, assurance: list[str] | None = None) -> str:
+        """The report as `check --json` prints it. `check` adds the stage it held the
+        manuscript to and the lines its text output ends with, so that a report kept apart
+        from its run, a CI job's artefact, says both. Never the tool's version: the reading
+        of `check` in tests/readings.py compares this whole, and would differ on every
+        release."""
+        said: dict = {"ok": self.ok}
+        if stage is not None:
+            said["stage"] = stage
+        said["counts"] = self.counts
+        said["findings"] = [f.as_dict() for f in self.sorted().findings]
+        if assurance is not None:
+            said["assurance"] = assurance
         return json.dumps(
-            {
-                "ok": self.ok,
-                "counts": self.counts,
-                "findings": [f.as_dict() for f in self.sorted().findings],
-            },
+            said,
             indent=2,
             # Escaped rather than literal. The machine-readable channel gets piped, and a
             # pipe on Windows is cp1252 — a literal em dash in a message killed `print`

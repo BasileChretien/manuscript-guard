@@ -2128,7 +2128,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         args.path, submission=args.submission, stage=args.stage
     )
     if args.json:
-        print(report.to_json())
+        print(report.to_json(stage=stage, assurance=assurance(report, project)))
     else:
         print(f"manuscript-guard {__version__} — {project.root}")
         print(f"stage: {stage} ({DESCRIPTIONS[stage]})")
@@ -6092,10 +6092,62 @@ def _note_stale_skills(start: Path) -> None:
         return
 
 
+def _adds_workflow_only(args: argparse.Namespace) -> bool:
+    """`init --github-actions` where a `paper.yaml` is: the workflow, and nothing else."""
+    return bool(getattr(args, "github_actions", False)) and (
+        Path(args.path) / "paper.yaml"
+    ).is_file()
+
+
+def _said_of_workflow(made) -> str:
+    """What `init` says of the workflow it wrote, or found there."""
+    if not made.written:
+        return (f"{made.path} was already there, and was left as it was: it checks the "
+                "folder its `path:` names")  # fmt: skip
+    pin = f"BasileChretien/manuscript-guard@v{__version__}"
+    said = [f"created {made.path}, which runs check and build with {pin}, the version "
+            "installed here"]  # fmt: skip
+    if made.repository is None:
+        said.append(
+            "No git repository holds this project yet, and GitHub reads a workflow only at "
+            "the root of one: make this folder that root (`git init` here), or move .github/ "
+            "to the root and set `path:` in the workflow to this folder from there."
+        )
+    elif made.folder != ".":
+        said.append(
+            f"The project is the folder {made.folder} of the repository at "
+            f"{made.repository}, so the workflow is at that repository's root, where GitHub "
+            "reads it, and checks that folder."
+        )
+    return "\n".join(said)
+
+
+def _init_workflow_only(args: argparse.Namespace) -> int:
+    """`init --github-actions` in a project set up already: its workflow, and nothing else."""
+    from manuscript_guard.github_workflow import write_github_workflow
+
+    given = {
+        "--title": args.title is not None,
+        "--latex": args.latex,
+        "--english": args.english is not None,
+        "--from": args.from_docx is not None,
+    }
+    others = [flag for flag, said in given.items() if said]
+    if others:
+        print(f"manuscript-guard init: this project is set up already, and --github-actions "
+              f"adds only its workflow, so {', '.join(others)} would do nothing; nothing was "
+              "made. Give --github-actions alone", file=sys.stderr)  # fmt: skip
+        return 2
+    print(_said_of_workflow(write_github_workflow(Path(args.path), __version__)))
+    return 0
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     from manuscript_guard.contracts.results import HOW_TO_EMIT
     from manuscript_guard.from_word import init_from_word, what_was_done
 
+    if _adds_workflow_only(args):
+        return _init_workflow_only(args)
     word = args.from_docx
     if word is not None and args.latex:
         print("manuscript-guard init: --from writes a Word paper as a Markdown manuscript, "
@@ -6124,6 +6176,10 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 2
     for path in created:
         print(f"created {path}")
+    if args.github_actions:
+        from manuscript_guard.github_workflow import write_github_workflow
+
+        print(_said_of_workflow(write_github_workflow(root, __version__)))
     if args.english and paper not in {path.resolve() for path in created}:
         print(
             f"\npaper.yaml was already there and was left as it was, so english_variant: "
@@ -7552,6 +7608,13 @@ def build_parser() -> argparse.ArgumentParser:
         "each table a pipe table where it can be one, its pictures in manuscript/media/, and "
         "its title page set aside in a comment",
     )
+    init.add_argument(
+        "--github-actions",
+        action="store_true",
+        help="also write .github/workflows/manuscript-guard.yml at the root of the git "
+        "repository, which runs check and build on each push and pull request; in a project "
+        "set up already, write that alone",
+    )
     init.set_defaults(func=cmd_init)
 
     skills = sub.add_parser(
@@ -7677,7 +7740,9 @@ _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
     # .docx reads the Word copy a Markdown manuscript is built to.
     "respond": lambda args: args.source is not None,
     # `init --latex` sets up a LaTeX manuscript; without it, `main.md` would go beside one.
-    "init": lambda args: not args.latex,
+    # `--github-actions` in a project set up already writes its workflow alone, and touches
+    # no manuscript, so a LaTeX one is no reason to refuse it.
+    "init": lambda args: not args.latex and not _adds_workflow_only(args),
     # A design round reads the plan, not the manuscript (round 1 of #404).
     # A panel reads a LaTeX manuscript as the submission folder writes it (step 12); Word's
     # suggestions are a Markdown manuscript's.

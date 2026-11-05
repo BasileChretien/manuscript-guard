@@ -405,6 +405,86 @@ jobs:
           hook=$(echo '{}' | "$BIN/manuscript-guard-hook" session-start)
           [[ "$hook" == *SessionStart* ]] || { echo "hook said: $hook"; exit 1; }
 
+  github-action:
+    # The action a paper's repository runs (action.yml, docs/github-actions.md), run as the
+    # workflow `init --github-actions` writes runs it: on the worked example, which passes at
+    # its stage and is built, and on a copy with a number typed over a binding, which fails,
+    # says so in its outputs and builds nothing. The second may fail, so that what it said
+    # can be read after it; tests/test_github_action.py holds what the action is made of.
+    needs: first
+    runs-on: ubuntu-24.04
+    # The action installs the tool, pandoc and pdftotext twice, and checks and builds the
+    # example: a few minutes, not yet measured.
+    timeout-minutes: 20
+    outputs:
+      ok: ${{ steps.typed.outputs.ok }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - id: example
+        uses: ./
+        with:
+          path: example
+          artifact-name: example
+          retention-days: 1
+      - name: The example passes at its stage, and is built
+        shell: bash
+        env:
+          OK: ${{ steps.example.outputs.ok }}
+          STAGE: ${{ steps.example.outputs.stage }}
+          VERSION: ${{ steps.example.outputs.version }}
+        run: |
+          [ "$OK" = true ] || { echo "ok is '$OK'"; exit 1; }
+          # example/paper.yaml declares no stage, so it is held to drafting, the default.
+          [ "$STAGE" = drafting ] || { echo "stage is '$STAGE'"; exit 1; }
+          expected=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          [ "$VERSION" = "$expected" ] || { echo "version is '$VERSION', pyproject says $expected"; exit 1; }
+          for name in check.json manuscript.docx supplementary.docx; do
+            test -s "$RUNNER_TEMP/manuscript-guard/$name" || { echo "no $name"; exit 1; }
+          done
+      - name: A copy of the example, with a number typed over a binding
+        shell: bash
+        run: |
+          cp -r example example-typed
+          sed -i '0,/{{results\.cohort\.n_reports}}/s//4,000/' example-typed/manuscript/main.md
+          bound() { grep -o '{{results\.cohort\.n_reports}}' "$1" | wc -l; }
+          [ "$(bound example-typed/manuscript/main.md)" -lt "$(bound example/manuscript/main.md)" ]
+      - id: typed
+        uses: ./
+        continue-on-error: true
+        with:
+          path: example-typed
+          artifact-name: example-typed
+          retention-days: 1
+      - name: It fails, says so, and builds nothing
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.typed.outcome }}
+          OK: ${{ steps.typed.outputs.ok }}
+          STAGE: ${{ steps.typed.outputs.stage }}
+        run: |
+          [ "$OUTCOME" = failure ] || { echo "the step's outcome is '$OUTCOME'"; exit 1; }
+          [ "$OK" = false ] || { echo "ok is '$OK'"; exit 1; }
+          [ "$STAGE" = drafting ] || { echo "stage is '$STAGE'"; exit 1; }
+          for name in manuscript.docx supplementary.docx; do
+            test ! -e "$RUNNER_TEMP/manuscript-guard/$name" || { echo "$name was built"; exit 1; }
+          done
+          python -c "import json, os; r = json.load(open(os.path.join(os.environ['RUNNER_TEMP'], 'manuscript-guard', 'check.json'), encoding='utf-8')); assert any(f['code'] == 'unclassified-number' and f['severity'] == 'fail' for f in r['findings']), r['findings'][:3]"
+
+  github-action-outputs:
+    # What the badge job of a paper's workflow does: read the check job's outputs from a job
+    # of its own, after the check job ran.
+    needs: github-action
+    if: always() && needs.github-action.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - shell: bash
+        env:
+          OK: ${{ needs.github-action.outputs.ok }}
+        run: '[ "$OK" = false ] || { echo "ok is ''$OK''"; exit 1; }'
+
   web:
     # The in-browser audit page (web/, docs/audit-page.md), built as the Pages workflow builds
     # it and held to the command line: each case's report the same in Node, in Chrome and in

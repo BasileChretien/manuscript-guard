@@ -7786,8 +7786,11 @@ and `not checked`, in words, what no gate decides, such as whether the design su
 conclusion. A dimension with nothing recorded where a record is expected says so: "no review
 of the design", "no run of `verify` in this checkout". There is no score and no percentage,
 since a single number would be read as the verdict this is not, and the exit code is the
-findings' at the project's stage, as before. It is printed text only: `check --json` is
-unchanged.
+findings' at the project's stage, as before. It was printed text only at first, so that no
+reading of the differential test moved; `check --json` now carries the same lines as
+`assurance`, with the `stage` the run held the manuscript to, so that a report kept apart from
+its run, a CI job's artefact, says both ("A paper's repository runs the check in GitHub
+Actions").
 
 `verify` now records its last full run in the build folder (`build/verify.json`): when, how
 many values it reproduced of how many, and a digest of the results fragments it re-ran. A
@@ -13423,6 +13426,53 @@ record would make `vault run` say no script changed and let an edited fragment p
 The receipt's `_run_entry` put the last 400 characters of the script's standard error into
 its error, and a script run on data can print a row of them: it now says how the run ended and
 not what it printed.
+
+## A paper's repository runs the check in GitHub Actions
+
+`init --github-actions` writes `.github/workflows/manuscript-guard.yml` at the root of the
+git repository the project is in, since GitHub reads a workflow there only, with the
+project's folder as the action's `path`. Where a `paper.yaml` is, it writes that file alone.
+Basile chose on 2026-11-05, among four ways, a composite action at this repository's root
+(`action.yml`) and a short caller of it: the caller holds what is the author's (the triggers,
+the runner, steps of their own before the action, which a reusable workflow would not let
+them add), and the action the rest, so a fix reaches a paper when its pin moves. The caller
+names the action at the installed version, the only pin `init` can know; the action installs
+the tool from its own files, so the code is the pinned ref's, a tag or a commit.
+
+The job runs `verify` only when asked (an analysis needs its environment and its inputs, and
+restricted ones are not in a checkout), and before `check`, which reads the run it records.
+It runs `check --json`, which says the stage it held the manuscript to and the lines on what
+no gate decides, so the report kept says both; never the tool's version, which the `check`
+reading of `tests/readings.py` would find changed at every release. It builds only where
+check passed, so no artefact holds a document of a manuscript that fails at its stage (the
+Word supplement of `build --skip-checks` is not named UNCHECKED). The artefact is a folder of
+the runner's holding the report and the documents, and nothing else of the project: not what
+`verify` printed, which quotes a failing script and so may hold its data (round 1). It is read
+by those who can read the repository, so it reaches no one new. The action finds the
+manuscript and the build folder where `paths:` puts them (`ci_report folders`), and the job
+summary shows each message in a code span, so that a contributor's sentence is never a link,
+and at most 200 findings of each kind, each message, place and line of what was recorded
+clipped, within a budget of bytes, so that it stays under GitHub's 1 MiB (rounds 1 and 2). The
+workflow reads only: `contents: read`, no secret, `persist-credentials: false` so no token is
+left in the checkout while `verify` runs the project's code, `pull_request` and never
+`pull_request_target`.
+
+The badge says "manuscript-guard check | passes at stage drafting", "fails at stage
+drafting" or "did not run", and nothing else: no count and no word that claims more than a
+pass at a stage. Blue for a pass at every stage, not green, since a pass at `design` holds
+almost nothing. It is off until a repository variable turns it on; then a job of its own,
+the only one that may write, checks nothing out and runs nothing of the project, writes
+shields.io's description of it from the check job's outputs, after holding the stage to the
+five and `ok` to true or false (`ci_report.badge`), and force-pushes it as the one commit of
+a branch. A weekly job of reference currency, which will need a provider's key, is left to
+the change that adds `references --run`: a workflow of its own, on a schedule only, the key
+given to its one step.
+
+`tests/test_github_action.py` holds the actions to this: no expression written into a
+script, pandoc's default the version CI pins, TeX Live the `latex` job's, a third party's
+action pinned to a commit, no secret, the order of the steps, what is uploaded, and the
+badge job alone writing. CI's `github-action` job runs the action on the worked example, and
+on a copy with a number typed over a binding, which fails and builds nothing.
 
 ## Health data warehouses: formats in the middle, adapters at the edges
 
@@ -22067,6 +22117,31 @@ What papers converted from Word showed (see "What papers converted from Word sho
     failure.
   - *The outbox and the runs stay in the vault* after a release, and `.runs/<run>/log.txt`
     holds whatever the scripts printed. Removing them is the person's.
+- **A paper's CI is not the author's machine.** The action `init --github-actions` names
+  ("A paper's repository runs the check in GitHub Actions"):
+  - *resolves the tool's dependencies when it runs.* PyYAML and jsonschema are not pinned, so
+    a release of either can change what CI says while the author's machine says otherwise.
+  - *runs its own pandoc and pdftotext*, the pinned pandoc and Ubuntu's poppler. Where the
+    author's differ, BUILD's check of TeX that Word would drop, which asks pandoc, and the
+    reading of a PDF source can answer otherwise on the two.
+  - *reads the checkout's file times.* `analysis-newer`, and `script-newer` for a fragment
+    written before the emitter recorded its script's digest, compare times that a checkout
+    sets, in no order the author chose.
+  - *has no `reference.docx` of the author's*, so its document is in pandoc's default styles,
+    and *writes no live Zotero fields*, since it builds offline.
+  - *has none of the stored sources kept out of git.* A copy the record lists and git
+    ignores is a note (`literature-source-not-here`, and its like for a passage, a quotation
+    or an earlier output), so a quote is not looked for in it and its value is counted
+    unverifiable. Any other missing copy fails `literature-source-missing` from `drafting`,
+    and so does every missing copy under `literature: {sources_in_git: true}`.
+  - *cannot run `verify` on restricted inputs*, and does not detect them: `verify` says what
+    it could not run, and the job fails on it.
+  - *may name a tag not yet published*, where `init` ran with a copy installed from the
+    repository between a number being raised and its release.
+  - *runs on Ubuntu, and on GitHub only.*
+  - *The badge* reads through shields.io from `raw.githubusercontent.com`, so it works for a
+    public repository only; it shows the last finished run on the default branch; and it is
+    check's alone, so a run that fails for its build or its verify can show "passes".
 - **The audit page (`web/`, docs/audit-page.md): what its rules and its checks do not hold.**
   - *Leaving the page.* A Content-Security-Policy has no rule for navigation: a script that
     set the page's address to `https://example.com/?…` reached example.com (tested, Chrome).

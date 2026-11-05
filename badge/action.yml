@@ -1,0 +1,45 @@
+# The badge of a paper's repository, "manuscript-guard check | passes at stage drafting",
+# from the outputs of the job that ran the action at this repository's root. It installs
+# nothing and runs nothing of the project: the words come from src/manuscript_guard/ci_report.py,
+# run by its path, and are pushed as the one commit of the branch manuscript-guard-badge, for
+# shields.io to read. docs/github-actions.md says how to show it, and its limits.
+name: manuscript-guard badge
+description: >-
+  Write the badge "manuscript-guard check | passes at stage X" from a check job's outputs, as
+  the one commit of the branch manuscript-guard-badge.
+
+inputs:
+  ok:
+    description: The check job's `ok` output.
+    required: true
+  stage:
+    description: The check job's `stage` output.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: The badge's words
+      shell: bash
+      env:
+        OK: ${{ inputs.ok }}
+        STAGE: ${{ inputs.stage }}
+      run: >-
+        python3 "$GITHUB_ACTION_PATH/../src/manuscript_guard/ci_report.py" badge
+        --ok "$OK" --stage "$STAGE" --out "$RUNNER_TEMP/manuscript-guard-badge/badge.json"
+
+    - name: Pushed as the one commit of its own branch
+      shell: bash
+      env:
+        TOKEN: ${{ github.token }}
+        RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        cd "$RUNNER_TEMP/manuscript-guard-badge"
+        git init -q
+        git checkout -q -b manuscript-guard-badge
+        git add badge.json
+        git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "The badge, from $RUN"
+        git push -q --force "https://x-access-token:${TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git" \
+            HEAD:refs/heads/manuscript-guard-badge

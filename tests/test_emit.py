@@ -117,6 +117,32 @@ def test_a_comparator_display_is_accepted_when_the_value_is_on_that_side(
     assert em.document()["values"]["p"]["display"] == display
 
 
+@pytest.mark.parametrize(
+    ("value", "display"),
+    [(0.661, ".661"), (-0.05, "−.05"), (0.0000004, "< .001"), (0.9996, "> .999")],
+)
+def test_a_display_without_the_leading_zero_is_accepted(
+    scratch: Path, value: float, display: str
+) -> None:
+    """APA style prints a p-value or a correlation, which cannot exceed one, without the
+    leading zero: ".661", "< .001". The display was refused as "not a rendering of 0.661",
+    so a paper written for an APA journal could not bind its p-values at all (a study's
+    whole Results, the athlete-leakage paper)."""
+    em = emitter(scratch)
+    em.value("p", value, display=display)
+    assert em.document()["values"]["p"]["display"] == display
+
+
+@pytest.mark.parametrize(
+    ("value", "display"), [(0.661, ".561"), (0.661, ".67"), (1.661, ".661"), (0.4, "< .001")]
+)
+def test_a_display_without_the_leading_zero_is_still_held_to_its_value(
+    scratch: Path, value: float, display: str
+) -> None:
+    with pytest.raises(DisplayError):
+        emitter(scratch).value("p", value, display=display)
+
+
 @pytest.mark.parametrize(("value", "display"), [(0.4, "<0.001"), (900, ">1000")])
 def test_a_comparator_display_is_refused_when_it_is_untrue(
     scratch: Path, value: float, display: str

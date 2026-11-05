@@ -259,7 +259,15 @@ cases <- list(
   list("p", 0.0000000032, "3.2 × 10⁻⁸", FALSE),
   list("p", 3.2, "3.2 × 10⁻⁹", FALSE),
   list("v", 0.0000012, "1.2 × 10⁻⁶", TRUE),
-  list("v", 0.0000012, "9.99 × 10⁻⁶", FALSE)
+  list("v", 0.0000012, "9.99 × 10⁻⁶", FALSE),
+  # APA's p-value and correlation, without the leading zero. Both sides refused them.
+  list("p", 0.661, ".661", TRUE),
+  list("p", -0.05, "−.05", TRUE),
+  list("p", 0.0000004, "< .001", TRUE),
+  list("p", 0.9996, "> .999", TRUE),
+  list("p", 0.661, ".561", FALSE),
+  list("p", 1.661, ".661", FALSE),
+  list("p", 0.4, "< .001", FALSE)
 )
 for (c in cases) {
   ok <- tryCatch({ mg_check_display(c[[1]], c[[2]], c[[3]]); TRUE }, error = function(e) FALSE)

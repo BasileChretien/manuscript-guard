@@ -9514,6 +9514,14 @@ def test_word_s_own_split_and_the_reworded_paragraph_after_it_are_told_apart(
     # Word" alone would also match the neighbour's "another paragraph split in two in Word"),
     # one with the neighbour's, naming the new paragraph (review of #518).
     refused = [block for block in printed.split("\n\n") if "NOT merged into" in block]
+    # The build Word's copy was saved from printed that machine's Python and statsmodels; a
+    # build elsewhere prints its own, and that paragraph is refused as a changed number. It
+    # is set aside here, and nothing else may be (CI's Ubuntu job on #518).
+    refused = [
+        block for block in refused
+        if not (keys := re.findall(r"comes from (\S+?)\. ", block))
+        or not all(key.startswith("results.software.") for key in keys)
+    ]
     assert len(refused) == 2, printed
     split_said = [b for b in refused if "split in two in Word, new text written next to it" in b]
     after = [b for b in refused if "after a new paragraph, 'Real work would need a case" in b]

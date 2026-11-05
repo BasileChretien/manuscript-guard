@@ -20406,23 +20406,34 @@ def test_an_import_does_not_bring_a_lone_colon_up_into_a_definition(
 ) -> None:
     """A hard-wrapped paragraph whose last line is a lone `:`, reworded in its first stretch:
     the merge joined the first two lines, the `:` came up to line 2, and the next build
-    printed a definition list with no identifier (#72's round-3 review)."""
+    printed a definition list with no identifier (#72's round-3 review). A stretch is
+    written from Word's text whole only where the edit cannot be written word by word,
+    here beside a straight quote of the source; written so, it is still refused. Written
+    word by word, the edit keeps the line breaks and the `:` stays where it was."""
     from manuscript_guard.cli import main
 
     path = main_md(project)
-    paragraph = "We enrolled patients over\ntwo years, reaching {{results.ror.point}} of\n:\n\n"
+    paragraph = "We 'enrolled' patients over\ntwo years, reaching {{results.ror.point}} of\n:\n\n"
     anchor = "# Data availability"
+    original = path.read_bytes()
     path.write_text(
         path.read_text(encoding="utf-8").replace(anchor, paragraph + anchor, 1), "utf-8"
     )
     source = path.read_text(encoding="utf-8")
     assert main(["build", str(project), "--offline"]) == 0
-    returned = _sent_back(
-        project, tmp_path, lambda xml: xml.replace("We enrolled", "We recruited", 1)
-    )
+    returned = _sent_back(project, tmp_path, lambda xml: xml.replace("enrolled", "recruited", 1))
 
     main(["import", str(returned), str(project), "--apply"])
     assert path.read_text(encoding="utf-8") == source, "a lone colon became a definition"
+
+    path.write_bytes(original)
+    path.write_text(path.read_text(encoding="utf-8").replace(
+        anchor, paragraph.replace("'", "") + anchor, 1), "utf-8")  # fmt: skip
+    source = path.read_text(encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = _sent_back(project, tmp_path, lambda xml: xml.replace("enrolled", "recruited", 1))
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert path.read_text(encoding="utf-8") == source.replace("enrolled", "recruited", 1)
 
 
 # ------------------------------------------- a heading run into a paragraph, beside a change

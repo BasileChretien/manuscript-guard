@@ -5682,9 +5682,11 @@ and after it gives `reworded.compare` nothing to say of a binding, a citation or
 number. An edit that changes "2 x 2" to "3 x 2" is a finding, not a tracked change.
 
 **What is accepted is written where its words were, or is not offered.** `import` merges a
-rewording from Word by rebuilding each edited stretch between two values or citations from
-Word's text, which holds no markup: emphasis, code or a link in that stretch is flattened,
-or the paragraph refused. An accepted suggestion is not merged so. Its words are known, from
+rewording from Word by writing the words that changed where the source has them, found by
+comparing Word's text with what the build printed; where an edit meets emphasis or code
+other than from inside it, that span is written from Word's text, which holds no markup,
+and a link in the edited stretch refuses the paragraph (see "Two details are
+load-bearing"). An accepted suggestion is not merged so. Its words are known, from
 the sealed record, and so is where they were found, so `import` writes the new words there
 and touches nothing else (`suggestions.write_in`); see "An accepted suggestion is written,
 then the rest is merged" below. `review --suggestions` offers an edit only where that write
@@ -10408,15 +10410,37 @@ segment with the same segment of the build, character for character but for layo
 whitespace, since both are Word's text and Word changes no character nobody typed. Quotes
 were once compared as quotes, and a co-author turning ‘em the right way round left a segment
 that read as untouched: the correction was dropped with nothing reported. And an unchanged
-segment is rebuilt from the source rather than from Word, so only a segment the co-author
-actually edited loses its inline formatting — Word text is read as plain `<w:t>` runs, and
-that is the price of using the bookmark as identity. An edited segment keeps Word's quotes
-as they are: straightening them all for pandoc to curl again turned „ein Signal“ into
-“ein Signal” and the ’90s into ‘90s. One is straightened. A straight `'` kept from the
-source can open a quotation that closes in the edited segment, and pandoc, finding nothing
-straight to close it, prints it as an apostrophe: "’a ratio of 3.84’". The read-back check
-below compares quotes as quotes and cannot see that, so the segment's first closing `’` is
-written straight, as the source had it.
+segment is rebuilt from the source rather than from Word. Word text is read as plain
+`<w:t>` runs, the price of using the bookmark as identity, and an edited segment used to be
+written from it whole: one word changed in "**Background.** Fictional described ... from
+{{results.a}}" lost the bold of the untouched lead-in, and every straight apostrophe of
+the segment came back as Word's curly one, so a diff showed changes nobody made. A segment
+is usually from the paragraph's first word to its first value. Now only the words that
+changed are written (`rewording.rewritten`). The segment as the build printed it and as it
+came back are compared word by word, and the source is lined up with what was printed
+character by character, through what each source character shows in Word; a straight
+quote is a curly one there, `--` an en dash, a run of spaces a run. Each run of changed
+words is written where its words are in the source, and every other character is kept.
+Words changed inside emphasis are written inside it. An edit that meets emphasis, code, an
+escape or an entity other than from inside its text, words typed where a span opens or
+closes or a change across one end, cannot be placed by Word's text, which does not say
+whether the new words are inside: that span is written from Word's text with the edit, and
+code is written so whatever the edit in it, since words written from Word's text would be
+escaped inside it. The dry run lists what lost emphasis or code so ("written as Word's
+plain text"); an escape or an entity written so prints as it did. Where kept text could
+read otherwise beside the edit - a straight quote of the source pandoc may pair, markup a
+deletion brings up against other text, a tag a `<` before the edit could open (Known gaps
+lists them) - where the segment cannot be lined up with what was printed, or where the
+merged paragraph does not read back as Word's text, the segment is written from Word's
+text whole, as below, and listed too where it held emphasis, code or a straight quote. A
+paragraph whose prose has a bare brace is written so throughout. An edited segment written
+so keeps Word's quotes as they are: straightening them all for pandoc to curl again turned
+„ein Signal“ into “ein Signal” and the ’90s into ‘90s. One is straightened. A straight `'`
+kept from the source can open a quotation that closes in the edited segment, and pandoc,
+finding nothing straight to close it, prints it as an apostrophe: "’a ratio of 3.84’". The
+read-back check below compares quotes as quotes and cannot see that, so the segment's first
+closing `’` is written straight, as the source had it; a segment written word by word is
+not tried while a quote stands open.
 
 Losing bold is a cost; losing a footnote is a corruption. Word's text holds nothing of an
 HTML comment, a footnote, an equation or raw TeX; it holds a link's words without the
@@ -17408,10 +17432,38 @@ Open, recorded as each change landed:
   analysis or they fail the gate. That is the intended answer — the reported study period
   should be the data's actual range — but it is friction, and the finding's hint now says
   what to do rather than leaving the author to guess.
-- **A merged segment loses its inline formatting.** Word text is read as plain `<w:t>` runs,
-  because the bookmark that identifies the paragraph is discarded by pandoc's markdown
-  writer. Only a segment the co-author actually edited is affected; unchanged prose is
-  rebuilt from the source.
+- **A merged edit can lose the inline formatting it meets.** Word text is read as plain
+  `<w:t>` runs, because the bookmark that identifies the paragraph is discarded by pandoc's
+  markdown writer. Only the words the co-author changed are written, so formatting is lost
+  only where Word's text cannot say where the new words go, and the dry run lists each
+  place under "written as Word's plain text":
+  - *An edit that meets one end of emphasis or code writes that span plain.* Words typed
+    just where a span opens or closes, `*all*` turned "all," or a word typed in front of a
+    bold lead-in, may be inside it or after it, and so may a change that runs across one end.
+    The span is written from Word's text with the edit, its other words with it. Words typed
+    with a space between them and the span are outside it, and placed there.
+  - *Any edit in inline code writes the code plain*, since words from Word's text would be
+    written escaped inside it, and an escape or an entity an edit runs into is written as
+    the character, which prints the same.
+  - *Some edits write their whole stretch plain*, between the values or citations either
+    side, its apostrophes as Word's curly ones, as every edited stretch was written before.
+    A straight `'` or `"` of the source that pandoc may pair, in the changed words or next
+    to them, could pair otherwise once they change. Words deleted next to a character
+    Markdown reads as markup (`]`, `(`, `{`, `<`, `&`, `` ` ``, `$`, `~` and the like, but
+    not a delimiter of emphasis round them) bring the source either side up against each
+    other or against a value: `{k={{results.a}} y}` without its ` y` is attributes, which
+    this module's reading of brackets does not see. Words typed straight after a kept `<` or
+    `&` can open a tag or an entity, and an edit after a `<` that can open a tag, with a bare
+    `>` of the source after it, can turn what pandoc read as text into a tag. A paragraph
+    whose prose has a bare brace is not written word by word at all, so the refusals of a
+    brace pair split across a value (#90) stand as they were. So too a stretch while a
+    straight quote opened before it is still open, one whose source does not line up with
+    what the build printed of it, and any paragraph whose merge does not read back as
+    Word's text.
+  - *Which of two equal words was edited is the comparison's to choose.* `difflib` lines
+    the words up, and of "very **very**" from "**very**" it keeps the bold on the second;
+    the words are right either way, and only the formatting of a repeated word can differ
+    from what the co-author meant.
 - **Merging a reworded paragraph refuses, rather than drops, what Word does not show as its
   text.** It used to drop an inline comment, a footnote or inline math, and exit 0. Now an
   edited stretch holding what Word's text cannot carry is refused by name: a comment, a
@@ -17478,9 +17530,9 @@ Open, recorded as each change landed:
     and `--offline` prints as "–offline", as it does on a move into another paragraph. And
     an edit that deleted the code but left a literal `--`, `...` or straight quote in its
     stretch is refused under the code's name.
-  - *Formatting inside an edited stretch is still lost*, as the entry above says, and so is
-    the source's own way of writing a character: `&lt;` comes back as `\<`, and `\ ` or
-    `&nbsp;` as the no-break space itself, each of which prints the same. An escaped
+  - *What is written from Word's text loses its formatting*, where the entry above says it
+    is, and the source's own way of writing a character: `&lt;` comes back as `\<`, and
+    `\ ` or `&nbsp;` as the no-break space itself, each of which prints the same. An escaped
     straight quote, `\"`, comes back bare and pandoc curls it: a pandoc conversion from
     Word writes those.
   - *Pandoc's own no-break spaces are written back as spaces, only where pandoc makes them

@@ -2092,6 +2092,24 @@ def _suggestion_written() -> Reading:
     return written
 
 
+@reading("word merged")
+def _word_merged() -> Reading:
+    """A paragraph reworded in Word merged into its source, as `import` merges one: the
+    source rebuilt with the co-author's words and its own bindings and citations, and the
+    words written plain over markup, or what refused it."""
+    from manuscript_guard.merge import why
+    from manuscript_guard.roundtrip import align
+
+    def merged(given: dict[str, Any]) -> dict[str, Any]:
+        tokens = [tuple(token) for token in given["tokens"]]
+        aligned = align(given["source"], given["printed"], given["returned"], tokens)
+        if aligned.rebuilt is None:
+            return {"refused": list(why(aligned))}
+        return {"rebuilt": aligned.rebuilt, "flattened": list(aligned.flattened)}
+
+    return merged
+
+
 @reading("paper.yaml set")
 def _paper_set() -> Reading:
     """Each key of `paper.yaml` that `set` writes, set on its own in the same text: the text

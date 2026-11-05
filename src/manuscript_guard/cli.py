@@ -1811,6 +1811,14 @@ def _report_plan(
     for name, rebuilt in plan.merged.items():
         print(f"\n{verb} into {where(name)}:")
         changed(known[name][1], rebuilt)
+        for words in plan.flattened.get(name, ()):
+            print(f"    written as Word's plain text: '{words[:110]}'")
+        if plan.flattened.get(name):
+            print(
+                "    The edit there meets bold, italics, code or a straight quote of the .md, "
+                "and Word's text does not say how they go round the new words, so they are "
+                "not kept there. Put them back in the .md where they mattered."
+            )
 
     for refusal in plan.refused:
         print(f"\nNOT merged into {where(refusal.name)}:")

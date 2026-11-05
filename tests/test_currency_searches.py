@@ -643,7 +643,11 @@ def test_the_command_searches_and_exits_by_whether_every_source_answered(
      (["--search", "c9", "--terms", TERMS, "--as", "Ada"], "no entry c9"),
      (["--terms", TERMS], "go with --search or --replay"),
      (["--explain", "c1", "--dry-run"], "go with --search or --replay"),
-     (["--replay", "c1", "--terms", TERMS], "takes no --terms")],
+     (["--replay", "c1", "--terms", TERMS], "takes no --terms"),
+     # An assessment's flags were dropped without a word (the review of #531's merge).
+     (["--search", "c1", "--terms", TERMS, "--as", "Ada", "--says", "refuses", "--quote", "y"],
+      "--says and --quote go with --assess"),
+     (["--replay", "c1", "--reply", "1"], "--reply goes with --assess")],
 )  # fmt: skip
 def test_the_command_refuses_what_it_cannot_run(marked: Path, monkeypatch, capsys, argv,
                                                said) -> None:  # fmt: skip
@@ -922,13 +926,47 @@ def test_a_cited_work_that_could_not_be_fetched_leaves_s3_unanswered(marked: Pat
     assert any(line.startswith("S3 PubMed: did not answer") for line in run.lines)
 
 
+def test_a_cited_work_whose_record_its_schema_refuses_leaves_s3_unanswered(
+    marked: Path, monkeypatch
+) -> None:
+    """Round 2 of #530: only a fetch that said "not fetched" left S3 unanswered, so a record
+    the schema refused filed S3 as not asked, for want of a date, and the run exited 0."""
+    from manuscript_guard.contracts import ContractError
+
+    real = records.write_work
+
+    def refusing(project, record):
+        if record["work"] == case.CITED:
+            raise ContractError("the record is not valid")
+        return real(project, record)
+
+    monkeypatch.setattr(records, "write_work", refusing)
+    run = _search(marked, Registry())
+    assert not any(one["step"] == "S3" for one in _records(marked))
+    assert any(line.startswith("S3 PubMed: did not answer") for line in run.lines)
+    assert not run.whole
+
+
 def test_a_first_dry_run_says_s3_is_asked_from_the_date_the_fetch_gives(marked: Path) -> None:
-    """Item 11."""
+    """Item 11. Only if the record gives one: a real run whose fetch gives no date files S3
+    as not asked (round 2 of #530)."""
     run = searching.run_search(load_project(marked)[0], "c1", terms_text=TERMS, by="Ada",
                                dry_run=True, transport=Registry(), services=SERVICES)
     s3 = [line for line in run.lines if line.startswith("S3 ")]
     assert len(s3) == 3 and all("cited work's publication date" in line for line in s3)
+    assert all("if its works record" in line and "gives one" in line for line in s3), s3
     assert not any("not asked" in line for line in s3)
+
+
+def test_of_two_equally_fine_crossref_dates_the_earlier_is_taken() -> None:
+    """Round 2 of #530: online and print, both days and both within `issued`, gave whichever
+    came first rather than the earlier."""
+    for order in (("online", "print"), ("print", "online")):
+        given = dict(zip(order, ("2019-06-20", "2019-06-03"), strict=True))
+        dates = {"issued": "2019-06", **given}
+        record = works.composed(works.wanted("doi:10.5/x"), {"crossref": {"dates": dates}},
+                                TODAY)  # fmt: skip
+        assert record["published"] == "2019-06-03", dates
 
 
 def test_an_unplaced_entry_is_put_back_on_its_sentence_before_it_is_searched(
@@ -958,4 +996,5 @@ def test_the_skill_keeps_unclear_to_r2_and_runs_against_with_the_terms() -> None
                 if line.startswith("manuscript-guard references --search")]  # fmt: skip
     assert commands and all("--terms" in line for line in commands)
     assert sum("--against" in line and "--dry-run" not in line for line in commands) == 1
-    assert all("--against" in line for line in commands if "--dry-run" not in line)
+    # The dry run shows the run it stands for, the S8 requests with it (round 2 of #530).
+    assert all("--against" in line for line in commands)

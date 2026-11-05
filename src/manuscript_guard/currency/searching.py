@@ -55,9 +55,10 @@ FORWARD = ("Update in", "Comment in")
 NAMES = {**search.NAMES, "clinicaltrials": "ClinicalTrials.gov"}
 #: The searches a replay runs again: those that were asked.
 ASKED = records.ASKED
-#: Why S3 has no date to ask from, where the cited work's record could not be fetched.
-UNFETCHED = ("the cited work's works record could not be fetched, so there is no date to "
-             "ask from")  # fmt: skip
+#: Why S3 has no date to ask from, where the cited work has no record though a registry knows
+#: it: one did not answer, or the record was refused by its schema (round 2 of #530).
+UNFETCHED = ("the cited work's works record could not be fetched or written, so there is no "
+             "date to ask from")  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -85,7 +86,7 @@ class Planned:
     #: Why it cannot be asked now, though it is to be: no record is written, and the run is
     #: not whole (round 1 of #530: a cited work not fetched was filed as "not asked").
     unanswered: str = ""
-    #: A dry run's S3, asked from the date the cited work's fetch, run first, will give.
+    #: A dry run's S3, asked from the date the cited work's fetch, run first, gives, if any.
     dated_by_fetch: bool = False
 
     @property
@@ -345,8 +346,9 @@ def requests(one: Planned, claim: Claim, services: Services,
     if one.why:
         return [f"not asked: {one.why}"]
     if one.dated_by_fetch:
-        return ["would ask from the cited work's publication date, which its works record, "
-                "fetched first, gives"]  # fmt: skip
+        # A real run whose fetch gives no date files it as not asked (round 2 of #530).
+        return ["would ask from the cited work's publication date, if its works record, "
+                "fetched first, gives one"]  # fmt: skip
     if one.step == "S1" and one.source == "pubmed" and claim.lookup is None:
         # Round 1 of #530: a replay's dry run read the record it does not have.
         return [f"would not be read: @{claim.entry.citekey}'s lookup record is not current "
@@ -535,7 +537,7 @@ def run_search(project: Project, entry_id: str, *, terms_text: str | None, by: s
     run = Run()
     cited = works.fetch(project, [claim.cited], ask, services.registries, credentials, today)
     _said_works(run, cited, "the cited work")
-    unfetched = UNFETCHED if cited[0].record is None and "not fetched" in cited[0].why else ""
+    unfetched = UNFETCHED if cited[0].record is None and cited[0].why != works.UNKNOWN else ""
     searches = planned(claim, query, against, by.strip(), limit, cutoff(project, claim),
                        unfetched)  # fmt: skip
     return _finish(project, claim, run, searches, ask, services, credentials, today, set())

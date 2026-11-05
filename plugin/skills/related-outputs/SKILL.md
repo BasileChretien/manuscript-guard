@@ -95,6 +95,9 @@ From a published text, or from copied outputs, record each value as the literatu
 does: the value as the earlier output prints it, the sentence that states it, copied from the
 stored copy and never retyped, and that copy under `literature/` (`sources/<citekey>.pdf`, or
 one of the entry's `files`). The literature-verify skill says how to get and store a source.
+Where the copy is recorded in `literature/sources.yaml`, kept out of git and not on this
+computer, as in CI, `check` notes `related-source-not-here` and checks the quote where the
+copies are; the value is still compared with this paper's.
 
 ```yaml
     values:

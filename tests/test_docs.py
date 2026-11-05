@@ -307,7 +307,19 @@ def test_the_demo_ends_with_what_check_says_once_the_number_is_bound(
     alt = DEMO_ALT.search(text_of(README))
     assert alt, "the README shows the demo with no alternative text"
     for line in [said(script.CARD[2][1]), said(script.CARD[3][1]), *shown]:
-        assert line in said(alt.group(1)), f"the demo's alternative text does not say: {line}"
+        assert says(said(alt.group(1)), line), f"the demo's alternative text does not say: {line}"
+
+
+def says(text: str, line: str) -> bool:
+    """Whether `text` says `line` whole: not "10 failing" for "0 failing", nor "1 warnings"
+    for "1 warning" (round 2 of #532: the check was a substring test)."""
+    return re.search(rf"(?<!\w){re.escape(line)}(?!\w)", text) is not None
+
+
+def test_a_line_of_the_demo_is_said_only_whole() -> None:
+    assert says("check says 0 failing, 13 warnings.", "0 failing, 13 warnings")
+    assert not says("check says 10 failing, 13 warnings.", "0 failing, 13 warnings")
+    assert not says("G8: 0 failing, 1 warnings", "G8: 0 failing, 1 warning")
 
 
 def test_the_readme_quotes_what_check_says_of_an_edited_results_file(

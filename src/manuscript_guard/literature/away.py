@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 
 from manuscript_guard.contracts._schema import ContractError
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.literature.copies import FOLDER, read_record, recorded_name
+from manuscript_guard.literature.copies import FOLDER, FROM_AUTHOR, read_record, recorded_name
 
 
 @dataclass(frozen=True)
@@ -33,10 +33,17 @@ class Away:
     each with the work it is a copy of."""
 
     works: dict[str, str] = field(default_factory=dict)
+    #: Those the record says the author saved there (`from: author`): `sync-sources` never
+    #: writes into their names, so they come back from whoever saved them.
+    by_hand: frozenset[str] = frozenset()
 
     def holds(self, source_file: str) -> bool:
         """Whether a ledger's `source_file`, relative to `literature/`, is a copy away."""
         return recorded_name(source_file) in self.works
+
+    def saved_by_hand(self, source_file: str) -> bool:
+        """Whether a ledger's `source_file` is a copy away that the author saved."""
+        return recorded_name(source_file) in self.by_hand
 
     @property
     def keys(self) -> frozenset[str]:
@@ -89,7 +96,9 @@ def _away(project: Project) -> Away:
         except ValueError:  # `paths:` can put the literature outside the project
             continue
     ignored = ignored_by_git(project, list(paths))
-    return Away({paths[path]: absent[paths[path]] for path in sorted(paths) if path in ignored})
+    works = {paths[path]: absent[paths[path]] for path in sorted(paths) if path in ignored}
+    return Away(works, frozenset(name for name in works
+                                 if record[name]["from"] == FROM_AUTHOR))  # fmt: skip
 
 
 def ignored_by_git(project: Project, paths: list[str]) -> frozenset[str]:

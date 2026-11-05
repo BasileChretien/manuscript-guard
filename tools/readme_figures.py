@@ -94,7 +94,7 @@ def card_svg(palette: dict[str, str]) -> str:
 #: suite's `project` fixture, the example with its analysis run and its figure review stamped
 #: (0.2.475, 2026-11-05). The one warning of numerical provenance is G7's
 #: `pinning-unchecked`, "Zotero is not running, so citation keys were not checked for
-#: pinning": with Zotero open, `check` prints one warning fewer in both counts.
+#: pinning": with Zotero open and read, `check` prints one warning fewer in both counts.
 #: `tests/test_docs.py` runs `check` on the example with Zotero taken as not running, and
 #: fails unless it prints these lines, in this order.
 CLEAN: list[tuple[str, str]] = [

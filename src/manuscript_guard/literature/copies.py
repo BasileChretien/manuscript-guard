@@ -197,6 +197,16 @@ def recorded_names(project: Project) -> frozenset[str] | None:
         return None
 
 
+def newer_record(project: Project) -> str | None:
+    """The schema of a record a newer manuscript-guard wrote, which this one cannot read, for
+    a hint; None for any other record, or none (round 2 of #525: such a record was said to be
+    one `sync-sources` did not write)."""
+    try:
+        return _newer(read_structured(record_path(project)))
+    except (ContractError, OSError):
+        return None
+
+
 def recorded_name(source_file: str) -> str | None:
     """The name a ledger's `source_file`, relative to `literature/`, has in the record: that of
     a file directly under `sources/`, or None for a file anywhere else."""
@@ -352,13 +362,31 @@ def _said(status: str, candidate: Candidate, dry_run: bool) -> str:
     )
 
 
-def _without_copy(folder: Path, key: str, why: list[str], holder: str = "Zotero") -> Outcome:
+def _without_copy(folder: Path, key: str, why: list[str], holder: str = "Zotero",
+                  away: tuple[str, ...] = ()) -> Outcome:  # fmt: skip
+    """What became of a work nothing was copied for. A file of the author's that the record
+    lists and that is not on this computer (`away`) is stored, for G7, which notes it."""
     reasons = "; ".join(why) or "no attachment"
     stored = [p.name for p in stored_files(folder, key)]
-    if stored:
+    said = [f"{', '.join(stored)} is stored already"] if stored else []
+    said += [_by_hand_away(name) for name in away]
+    if said:
         return Outcome(key, STORED, f"nothing to copy from {holder} ({reasons}); "
-                       f"{', '.join(stored)} is stored already")  # fmt: skip
+                       + "; ".join(said))  # fmt: skip
     return Outcome(key, NO_COPY, f"no copy: {reasons}")
+
+
+def _by_hand_away(name: str) -> str:
+    return (f"literature/sources/{name} was saved there by hand and is not on this computer: "
+            "get it from whoever saved it")  # fmt: skip
+
+
+def _away_of(recorded: dict[str, dict[str, Any]], folder: Path, key: str) -> tuple[str, ...]:
+    """The names of the work's files the author saved, as the record lists them, that are not
+    on this computer, as on a fresh clone."""
+    return tuple(sorted(name for name, entry in recorded.items()
+                        if entry["key"] == key and entry["from"] == FROM_AUTHOR
+                        and not (folder / name).exists()))  # fmt: skip
 
 
 def wanted_keys(project: Project) -> list[str]:
@@ -419,13 +447,19 @@ def sync(
                 chosen, why = [], ["not in Zotero"]
             else:
                 chosen, why = candidates(key, held)
+            away = _away_of(recorded, folder, key)
             if not chosen:
-                outcomes.append(_without_copy(folder, key, why, holder))
+                outcomes.append(_without_copy(folder, key, why, holder, away))
                 continue
             for candidate in chosen:
                 outcomes.append(
                     _file(key, candidate, folder, recorded, files, dry_run, today or date.today())
                 )
+            # An absent file of the author's that no copy offered shares a name with, a page
+            # where Zotero has a PDF, is said too (round 2 of #525).
+            names = {candidate.name for candidate in chosen}
+            outcomes.extend(Outcome(key, KEPT, _by_hand_away(name), name)
+                            for name in away if name not in names)  # fmt: skip
     finally:
         # Zotero stopping halfway leaves the files copied so far recorded as the command's.
         if not dry_run and files != on_disk:
@@ -501,8 +535,7 @@ def _file(
         # The author's own file, recorded and not on this computer, as on a fresh clone:
         # another copy put in its name would be taken for theirs (Basile, 2026-11-05).
         holder = _holder(candidate.kind)
-        said = (f"{where} was saved there by hand and is not on this computer: get it from "
-                f"whoever saved it; {holder}'s copy is not put in its place")  # fmt: skip
+        said = f"{_by_hand_away(candidate.name)}; {holder}'s copy is not put in its place"
         return Outcome(key, KEPT, said, candidate.name)
     try:
         status = _decide(dest, candidate, ours)
@@ -599,6 +632,7 @@ __all__ = [
     "NothingToCopy",
     "Outcome",
     "candidates",
+    "newer_record",
     "read_record",
     "recorded_name",
     "recorded_names",

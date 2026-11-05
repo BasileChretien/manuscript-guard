@@ -226,8 +226,8 @@ def _sources_exist(project: Project, literature: Literature) -> Report:
                     "was not checked against it here",
                     path=value.source,
                     hint="on the computer that holds the copies, `check` holds the quote to it; "
-                    "to have the copy here, run `manuscript-guard sync-sources` or save the "
-                    "file again. A private repository that commits the copies sets "
+                    + _back_here(kept.saved_by_hand(source))
+                    + ". A private repository that commits the copies sets "
                     "`literature: {sources_in_git: true}` in paper.yaml",
                 )
             )
@@ -243,12 +243,33 @@ def _sources_exist(project: Project, literature: Literature) -> Report:
                 hint="restore the file, or move the entry to attested.yaml and say who read it. "
                 "A file you saved by hand is recorded by `manuscript-guard sync-sources`, and "
                 "a recorded copy git ignores is then a note where it is absent, as in CI"
-                + ("; literature/sources.yaml is not a record `sync-sources` wrote, so it "
-                   "vouches for no copy" if unread else ""),
+                + (_unread_record(project) if unread else ""),
             )
         )
     return report.with_counts(literature_sources_missing=missing,
                               literature_sources_not_here=not_here)  # fmt: skip
+
+
+def _back_here(by_hand: bool) -> str:
+    """How a copy kept out of git gets onto this computer: `sync-sources` takes again what it
+    took, and never writes into the name of a file the author saved (round 2 of #525)."""
+    if by_hand:
+        return ("it was saved there by hand, so get it from whoever saved it: "
+                "`sync-sources` puts no other copy in its name")  # fmt: skip
+    return "to have the copy here, run `manuscript-guard sync-sources`"
+
+
+def _unread_record(project: Project) -> str:
+    """Why literature/sources.yaml vouches for no copy, for a hint."""
+    from manuscript_guard.literature.copies import newer_record
+
+    newer = newer_record(project)
+    if newer is not None:
+        return (f"; literature/sources.yaml was written by a newer version of manuscript-guard "
+                f"({newer}), which this one cannot read: upgrade it (pip install --upgrade "
+                "manuscript-guard)")  # fmt: skip
+    return ("; literature/sources.yaml is not a record `sync-sources` wrote, so it vouches "
+            "for no copy")  # fmt: skip
 
 
 def _nearest(citekey: str, known: frozenset[str], raw: str = "") -> str:

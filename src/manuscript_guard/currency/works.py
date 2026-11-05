@@ -45,6 +45,8 @@ SUMMARY_BATCH = 100
 OPENALEX_BATCH = search.MAX_LIMIT
 NAMES = {"europepmc": "Europe PMC", "crossref": "Crossref", "pubmed": "PubMed",
          "openalex": "OpenAlex"}  # fmt: skip
+#: Why a work has no record where every registry answered and none knows it.
+UNKNOWN = "no registry asked knows the work"
 
 
 @dataclass(frozen=True)
@@ -162,7 +164,7 @@ def _written(project: Project, one: Wanted, answers: dict[str, dict[str, Any]],
     found = {name: answer for name, answer in answers.items()
              if answer["status"] == sources.FOUND}  # fmt: skip
     if not found:
-        return Fetched(one.work, why="no registry asked knows the work")
+        return Fetched(one.work, why=UNKNOWN)
     record = composed(one, found, today)
     _never_kept(record, credentials)
     try:
@@ -229,8 +231,12 @@ def _crossref_date(crossref: dict[str, Any]) -> str | None:
                     None)  # fmt: skip
     agreeing = [dates[name] for name in ("online", "print")
                 if dates.get(name) and dates[name][: len(issued)] == issued]  # fmt: skip
-    return max(agreeing, key=len) if agreeing and len(max(agreeing, key=len)) > len(issued) \
-        else issued  # fmt: skip
+    finest = max(map(len, agreeing), default=0)
+    if finest <= len(issued):
+        return issued
+    # Of two as fine, the earlier, as `issued` is (round 2 of #530); Crossref's dates are
+    # zero-padded, so the earlier is the lesser.
+    return min(one for one in agreeing if len(one) == finest)
 
 
-__all__ = ["PLANNED", "Fetched", "Wanted", "composed", "fetch", "wanted"]
+__all__ = ["PLANNED", "UNKNOWN", "Fetched", "Wanted", "composed", "fetch", "wanted"]

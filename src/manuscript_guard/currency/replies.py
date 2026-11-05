@@ -140,8 +140,9 @@ class Found:
     by: str
     date: str
     text: str
-    #: The reply's own comment in Word: the id of its first paragraph (`w14:paraId`), else
-    #: its `w:id` (DESIGN.md, Known gaps). Two replies of the same words are two replies.
+    #: The reply's own comment in Word: the id of its first paragraph (`w14:paraId`), by which
+    #: Word ties it to its comment, so a reply with none is not read (DESIGN.md, Known gaps).
+    #: Two replies of the same words are two replies.
     word_id: str
 
 
@@ -164,9 +165,9 @@ def replies_in(document: Path, offered: list[dict]) -> list[Found]:
             for reply in comments:
                 if reply is comment or not any(parents.get(p) in own for p in reply.paragraphs):
                     continue
+                # A reply here has a paragraph: it was found by one (round 2 of #531).
                 found = Found(entry, reply.author, reply.date[:10],
-                              texts.get(reply.identifier, reply.text),
-                              (reply.paragraphs or (reply.identifier,))[0])  # fmt: skip
+                              texts.get(reply.identifier, reply.text), reply.paragraphs[0])
                 if found not in out:
                     out.append(found)
     return out

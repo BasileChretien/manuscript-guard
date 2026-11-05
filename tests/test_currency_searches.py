@@ -75,6 +75,8 @@ class Registry:
         self.down: set[str] = set()
         self.retracted_by: str | None = None
         self.newer = False
+        #: OpenAlex leaves `is_retracted` out of what it says of each DOI.
+        self.no_flag = False
         #: PMID: (DOI, title, PubMed types)
         self.pubmed = {
             CITED_PMID: (CITED_DOI, "A disproportionality signal", ["Journal Article"]),
@@ -169,6 +171,8 @@ class Registry:
             items = [{"id": f"https://openalex.org/W{n}", "doi": f"https://doi.org/{doi}",
                       "is_retracted": doi == TRIAL_DOI and self.retracted_by == "openalex"}
                      for n, doi in enumerate(flt.removeprefix("doi:").split("|"), 100)]
+            if self.no_flag:
+                items = [{k: v for k, v in item.items() if k != "is_retracted"} for item in items]
             return _json(200, {"meta": {"count": len(items)}, "results": items})
         if flt.startswith("cites:"):
             items = [{"id": "https://openalex.org/W200", "doi": f"https://doi.org/{REVIEW_OA}",
@@ -717,3 +721,241 @@ def test_a_filed_search_record_edited_by_hand_is_caught(marked: Path) -> None:
     path.write_text(text.replace(f"doi:{SR_DOI}", "doi:10.5555/another"), encoding="utf-8")
     codes = {f.code for f in check_currency(loaded).findings}
     assert "currency-record-edited" in codes
+
+
+# ----------------------------------------------------------------- round 1 of #530
+
+
+DOWN = {"esearch", "esummary", "europepmc", "openalex", "crossref", "ctgov"}
+
+
+def _asked(registry: Registry):
+    return lambda request: registry(request, 1.0)
+
+
+def test_a_search_nothing_answered_leaves_an_old_entry_stale(marked: Path, monkeypatch) -> None:
+    """Item 1: the `not asked` records a run files when no source answers freshened
+    `currency-record-stale`, at submission too."""
+    from manuscript_guard.findings import FAIL
+    from manuscript_guard.gates import currency as gate
+    from manuscript_guard.policy import SUBMISSION
+
+    _search(marked, Registry(), today=date(2026, 11, 5))
+    registry = Registry()
+    registry.down = set(DOWN)
+    later = date(2027, 6, 10)
+    assert not _search(marked, registry, today=later).whole
+    assert any(one["searched_on"] == str(later) for one in _records(marked))
+    monkeypatch.setattr(gate, "today", lambda: later)
+    found = gate.check_currency(load_project(marked)[0], SUBMISSION).findings
+    stale = [f for f in found if f.code == "currency-record-stale"]
+    assert stale and stale[0].severity == FAIL and "2026-11-05" in stale[0].message
+
+
+def test_a_record_of_a_search_not_asked_is_no_search(marked: Path, monkeypatch) -> None:
+    """Item 1: a run record seven months old and a `not asked` one of today."""
+    from manuscript_guard.gates import currency as gate
+
+    loaded = load_project(marked)[0]
+    base = {"entry": "c1", "source": "openalex", "query": TERMS, "candidates": []}
+    records.file_search(loaded, {**base, "step": "S2", "status": "run", "hits": 0,
+                                 "searched_on": "2026-04-02"})  # fmt: skip
+    records.file_search(loaded, {**base, "step": "S3", "status": "not asked", "why": "x",
+                                 "searched_on": "2026-11-05"})  # fmt: skip
+    monkeypatch.setattr(gate, "today", lambda: date(2026, 11, 5))
+    found = gate.check_currency(loaded).findings
+    stale = [f for f in found if f.code == "currency-record-stale"]
+    assert stale and "2026-04-02" in stale[0].message
+    # Counted, only the search asked is a search.
+    missing = [f for f in found if f.code == "currency-record-missing" and "c1" in f.message]
+    assert "searched (1), not read" in missing[0].message
+    rows, _unplaced = command.listing(loaded)
+    assert any(row.state.startswith("searched 1,") for row in rows)
+
+
+def test_a_dry_replay_with_no_current_lookup_record_says_so(marked: Path) -> None:
+    """Item 2: it crashed on the S1 PubMed search."""
+    _search(marked, Registry())
+    (marked / "literature" / "lookups" / f"{case.CITED_KEY}.yaml").unlink()
+    run = searching.replay(load_project(marked)[0], "c1", dry_run=True, transport=Registry(),
+                           services=SERVICES)  # fmt: skip
+    line = next(line for line in run.lines if line.startswith("S1 PubMed"))
+    assert "not current" in line and "lookup" in line
+
+
+@pytest.mark.parametrize(
+    ("dates", "published"),
+    [({"issued": "2019", "print": "2019", "online": "2019-06-03"}, "2019-06-03"),
+     ({"issued": "2019-05", "online": "2019-06-03", "print": "2019-05-20"}, "2019-05-20"),
+     ({"issued": "2019", "online": "2020-01-02"}, "2019"),
+     ({"issued": "2019-06-03", "online": "2019-06"}, "2019-06-03"),
+     ({"online": "2018-02"}, "2018-02")],
+)  # fmt: skip
+def test_crossref_s_finest_date_that_agrees_with_issued_is_taken(dates, published) -> None:
+    """Item 3."""
+    record = works.composed(works.wanted("doi:10.5/x"), {"crossref": {"dates": dates}}, TODAY)
+    assert record["published"] == published
+
+
+def test_a_europe_pmc_record_with_a_field_named_status_is_still_read() -> None:
+    """Item 4: a `status` in the record itself was taken for the answer's."""
+    item = {"id": "1", "source": "MED", "pmid": "1", "title": "T", "status": "ppublish",
+            "abstractText": "Text."}  # fmt: skip
+    answer = _json(200, {"hitCount": 1, "resultList": {"result": [item]}})
+    said = search.europepmc_work(None, "1", lambda r: answer, search.Services())
+    assert said == {"status": "found", "abstract": "Text.", "title": "T"}
+
+
+def test_a_doi_only_work_is_asked_of_pubmed_by_the_pmid_europe_pmc_gives(marked: Path) -> None:
+    """Item 5."""
+    registry = Registry()
+    registry.retracted_by = "pubmed"
+    done = works.fetch(load_project(marked)[0], [works.wanted(f"doi:{TRIAL_DOI}")],
+                       _asked(registry), SERVICES.registries, Credentials(), TODAY)  # fmt: skip
+    record = done[0].record
+    assert "pubmed" in record["sources"] and record["integrity"]["retracted"] is True
+    assert record["identifiers"] == {"doi": TRIAL_DOI}
+
+
+def test_openalex_saying_nothing_of_a_retraction_is_no_answer(marked: Path) -> None:
+    """Item 6."""
+    registry = Registry()
+    registry.no_flag = True
+    done = works.fetch(load_project(marked)[0], [works.wanted(f"doi:{TRIAL_DOI}")],
+                       _asked(registry), SERVICES.registries, Credentials(), TODAY)  # fmt: skip
+    assert done[0].record is None and "OpenAlex" in done[0].why
+
+
+def test_a_preprint_of_written_as_a_url_is_read_as_its_doi() -> None:
+    """Item 7."""
+    record = works.composed(works.wanted("doi:10.5/x"), {"crossref": {
+        "preprint_of": ["https://doi.org/10.5/Y"], "dates": {"issued": "2020"}}}, TODAY)
+    assert record["integrity"]["published_as"] == ["doi:10.5/y"]
+
+
+def test_one_work_that_cannot_be_written_does_not_stop_the_rest(marked: Path,
+                                                                monkeypatch) -> None:  # fmt: skip
+    """Item 7."""
+    from manuscript_guard.contracts import ContractError
+
+    real = records.write_work
+
+    def refusing(project, record):
+        if record["work"] == f"doi:{SR_DOI}":
+            raise ContractError("the record is not valid")
+        return real(project, record)
+
+    monkeypatch.setattr(records, "write_work", refusing)
+    done = works.fetch(load_project(marked)[0],
+                       [works.wanted(f"doi:{SR_DOI}"), works.wanted(f"doi:{TRIAL_DOI}")],
+                       _asked(Registry()), SERVICES.registries, Credentials(), TODAY)
+    assert done[0].record is None and "not written" in done[0].why
+    assert done[1].record is not None
+
+
+def test_a_search_record_copied_under_another_name_is_edited(marked: Path) -> None:
+    """Item 8."""
+    _search(marked, Registry())
+    loaded = load_project(marked)[0]
+    source = records.search_path(loaded, "c1", 1)
+    records.search_path(loaded, "c1", 99).write_bytes(source.read_bytes())
+    read = {one.path.name: one for one in records.read_searches(loaded)}
+    assert read["c1-99.yaml"].edited and read["c1-1.yaml"].problem is None
+
+
+def test_openalex_is_read_for_the_reviews_citing_a_work() -> None:
+    """Item 9: `openalex_citing` read on its own."""
+    sent: list[Request] = []
+    answer = Registry()._openalex(Request(""), {"filter": "cites:W100"})
+    said = search.openalex_citing("W100", 5, lambda r: (sent.append(r), answer)[1],
+                                  search.Services(), Credentials())  # fmt: skip
+    assert (said.status, said.count) == ("found", 54)
+    assert [(hit.doi, hit.openalex_id, hit.rank) for hit in said.hits] == [(REVIEW_OA, "W200", 1)]
+    assert sent[0].params["filter"] == "cites:W100,type:review"
+    refused = search.openalex_citing("W100", 5, lambda r: _json(400, {}), search.Services(),
+                                     Credentials())  # fmt: skip
+    assert refused.status == "unresolvable"
+    empty = _json(200, {"meta": {"count": 0}, "results": []})
+    nothing = search.openalex_citing("W1", 5, lambda r: empty, search.Services(), Credentials())
+    assert (nothing.status, nothing.count) == ("absent", 0)
+
+
+def test_file_search_numbers_seals_and_refuses_what_its_schema_does_not_allow(
+    marked: Path,
+) -> None:
+    """Item 9: `file_search` on its own."""
+    from manuscript_guard.contracts import ContractError
+
+    loaded = load_project(marked)[0]
+    one = {"entry": "c1", "step": "S2", "source": "openalex", "query": TERMS,
+           "status": "not asked", "why": "x", "searched_on": "2026-11-05", "candidates": []}
+    first, second = records.file_search(loaded, one), records.file_search(loaded, one)
+    assert (first.name, second.name) == ("c1-1.yaml", "c1-2.yaml")
+    assert [read.problem for read in records.read_searches(loaded)] == [None, None]
+    with pytest.raises(ContractError, match="not valid"):
+        records.file_search(loaded, {**one, "candidates": [f"doi:{SR_DOI}"]})
+    with pytest.raises(ContractError, match="not the id"):
+        records.file_search(loaded, {**one, "entry": "x1"})
+    assert len(records.read_searches(loaded)) == 2
+
+
+def test_works_fetch_writes_each_work_and_asks_in_batches(marked: Path) -> None:
+    """Item 9: `works.fetch` on its own."""
+    registry = Registry()
+    wanted = [works.wanted(f"doi:{SR_DOI}"), works.wanted(f"pmid:{COMMENT}"),
+              works.wanted("doi:10.5555/unknown")]
+    done = works.fetch(load_project(marked)[0], wanted, _asked(registry), SERVICES.registries,
+                       Credentials(), TODAY)  # fmt: skip
+    assert [one.record is not None for one in done] == [True, True, True]
+    assert done[1].record["sources"] == ["europepmc", "pubmed"]
+    assert done[2].record["sources"] == ["crossref", "openalex"]
+    # One ESummary and one OpenAlex request for all of them.
+    assert len(registry.asked("esummary")) == 1 and len(registry.asked("openalex")) == 1
+
+
+def test_a_cited_work_that_could_not_be_fetched_leaves_s3_unanswered(marked: Path) -> None:
+    """Item 10: it was filed as "not asked: the publication date is not known"."""
+    registry = Registry()
+    registry.down = {"crossref"}
+    run = _search(marked, registry)
+    assert not any(one["step"] == "S3" for one in _records(marked))
+    assert any(line.startswith("S3 PubMed: did not answer") for line in run.lines)
+
+
+def test_a_first_dry_run_says_s3_is_asked_from_the_date_the_fetch_gives(marked: Path) -> None:
+    """Item 11."""
+    run = searching.run_search(load_project(marked)[0], "c1", terms_text=TERMS, by="Ada",
+                               dry_run=True, transport=Registry(), services=SERVICES)
+    s3 = [line for line in run.lines if line.startswith("S3 ")]
+    assert len(s3) == 3 and all("cited work's publication date" in line for line in s3)
+    assert not any("not asked" in line for line in s3)
+
+
+def test_an_unplaced_entry_is_put_back_on_its_sentence_before_it_is_searched(
+    marked: Path,
+) -> None:
+    """Item 15."""
+    path = marked / "literature" / "currency.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["sentence"] = "A sentence the manuscript does not have at all."
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    registry = Registry()
+    with pytest.raises(command.Refused, match=r"--mark .* --id c1"):
+        _search(marked, registry)
+    assert registry.sent == []
+
+
+SKILL = Path(__file__).resolve().parents[1] / "plugin" / "skills" / "literature-currency"
+
+
+def test_the_skill_keeps_unclear_to_r2_and_runs_against_with_the_terms() -> None:
+    """Items 12 and 13."""
+    raw = (SKILL / "SKILL.md").read_text(encoding="utf-8")
+    text = " ".join(raw.split())
+    assert "A field the abstract does not support is `unclear`" not in text
+    assert "does not settle is `unclear`" in text
+    commands = [line for line in raw.splitlines()
+                if line.startswith("manuscript-guard references --search")]  # fmt: skip
+    assert commands and all("--terms" in line for line in commands)
+    assert sum("--against" in line and "--dry-run" not in line for line in commands) == 1
+    assert all("--against" in line for line in commands if "--dry-run" not in line)

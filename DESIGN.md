@@ -3773,7 +3773,11 @@ The steps, in order:
 - **S3, primary studies since the cutoff.** The cutoff is the later of the cited work's
   publication date (its works record) and the newest search end date a filed reading gives
   for a synthesis an S2 search of the entry found (R4); before any reading, the cited work's
-  date, so the steps do not wait on each other. A date of any precision is asked from the
+  date, so the steps do not wait on each other. Where the cited work's record could not be
+  fetched and the store holds none with a date, S3 did not answer: no record is written
+  and the run exits 1, rather than a "not asked" that a replay would never run again
+  (round 1 of #530). A dry run says S3 is asked from the date the fetch, run first, gives.
+  A date of any precision is asked from the
   first day it names, at each source's finest filter: PubMed `mindate` (`2019/03/01`),
   Europe PMC `FIRST_PDATE:[2019-03-01 TO 3000-12-31]`, OpenAlex `from_publication_date`.
   The record says the cutoff and what gave it. Syntheses are not filtered out; the rules
@@ -3797,7 +3801,13 @@ wrote them, the request as sent without its key or contact address, the filters,
 the date, the source's count, the candidates by DOI or else PMID with the cited work left
 out, and how many works came with neither, which no record can name. A source that did not
 answer writes no record: a record of a search that did not happen would make the entry look
-searched, and freshen `currency-record-stale`. The command says which, and exits 1.
+searched. The command says which, and exits 1. Only a search that was asked, `run` or
+`pending`, counts as one: `currency-record-stale` reads its date, and "searched (n)" counts
+it; a `not asked` record, filed the day of a run where nothing answered, freshens nothing
+(round 1 of #530). A record whose name is not its entry and its number is
+`currency-record-edited`, as a reading so named is: a copy keeps its seal. An entry no
+sentence reads as is not searched for; the command says to put it back with `references
+--mark ... --id` first.
 
 **The works store** is filled for the cited work, first, and for every candidate: Europe PMC's
 core record (the abstract, `pubTypeList`, `firstPublicationDate`, "Retraction in",
@@ -3806,8 +3816,15 @@ notices that update the work, `is-preprint-of`), PubMed's ESummary where there i
 (publication types, "Retracted Publication", the retraction and concern links), and
 OpenAlex's `is_retracted` where there is a DOI. ESummary is asked 100 PMIDs at a time and
 OpenAlex 50 DOIs. `publication_types` are PubMed's where it answered for a PMID, else Europe
-PMC's; `published` is Crossref's `issued` date (else online, print, posted) where there is a
-DOI, else Europe PMC's first publication date. The cited work is asked of PubMed by the PMID
+PMC's; `published` is Crossref's date where there is a DOI: `issued`, the earlier of print and
+online at the coarser's precision, or the finer of online and print where it agrees with
+`issued` at `issued`'s precision (a print year 2019 and an online day 2019-06-03 give the
+day), else online, print or posted; without a DOI, Europe PMC's first publication date.
+A work known by its DOI alone is asked of PubMed by the PMID Europe PMC gives it, for its
+types and links only. OpenAlex saying nothing of `is_retracted` is no answer, and a
+preprint's `is-preprint-of` is read as a DOI or not at all; a record its schema refuses is
+said, and the other works are still written (round 1 of #530). The cited work is asked of
+PubMed by the PMID
 its lookup found for its DOI (`pubmed_by_doi`), for its types only: that PMID is not written
 among its identifiers. Any source saying retracted, withdrawn or under concern counts. A works
 record is the one record written over, sealed afresh each time, since its facts change; but
@@ -19647,8 +19664,8 @@ Open, recorded as each change landed:
     not one made by somebody who computes the digest again; and the hook asks about an
     agent's ordinary edit of a person's decision or answer, not a deliberate evasion (a shell
     command, a patch that deletes the file).
-  - `currency-record-stale` reads the newest search record of an entry, whatever its
-    step: one step run again freshens the entry, though the others are older.
+  - `currency-record-stale` reads the newest search of an entry that was asked, whatever
+    its step: one step run again freshens the entry, though the others are older.
   - The recorded searches find what the registries index under the terms the reader wrote.
     PubMed and Europe PMC are biomedical, and all three lean towards work in English; a
     query can miss the words a study used, and nothing checks the terms against the

@@ -54,7 +54,10 @@ SYNTHESES = ("systematic-review",)
 FORWARD = ("Update in", "Comment in")
 NAMES = {**search.NAMES, "clinicaltrials": "ClinicalTrials.gov"}
 #: The searches a replay runs again: those that were asked.
-ASKED = ("run", "pending")
+ASKED = records.ASKED
+#: Why S3 has no date to ask from, where the cited work's record could not be fetched.
+UNFETCHED = ("the cited work's works record could not be fetched, so there is no date to "
+             "ask from")  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -79,6 +82,11 @@ class Planned:
     why: str = ""
     terms_by: str | None = None
     replay_of: int | None = None
+    #: Why it cannot be asked now, though it is to be: no record is written, and the run is
+    #: not whole (round 1 of #530: a cited work not fetched was filed as "not asked").
+    unanswered: str = ""
+    #: A dry run's S3, asked from the date the cited work's fetch, run first, will give.
+    dated_by_fetch: bool = False
 
     @property
     def shown(self) -> str:
@@ -133,6 +141,19 @@ def _claim(project: Project, entry_id: str) -> Claim:
                           by_doi.get("pmid") if by_doi.get("status") == sources.FOUND
                           else None)  # fmt: skip
     return Claim(entry, raw, wanted, fields, record, reason)
+
+
+def _refuse_unplaced(project: Project, claim: Claim) -> None:
+    """Refuse to search for an entry no sentence of the manuscript reads as: its claim is
+    put back on its sentence first (round 1 of #530: the refusal said to run `lookup`)."""
+    from manuscript_guard.currency.survey import survey
+
+    found, _report = survey(project)
+    if claim.entry.id not in found.placed:
+        key, entry = claim.entry.citekey, claim.entry.id
+        raise Refused(f"{entry} is unplaced: no sentence citing @{key} reads as it does. Put "
+                      f"it on its sentence first, with `manuscript-guard references --mark "
+                      f"\"<words>\" @{key} --id {entry}`")  # fmt: skip
 
 
 def _refuse_without_lookup(claim: Claim) -> None:
@@ -226,8 +247,10 @@ def _later(one: str, other: str) -> bool:
 
 
 def planned(claim: Claim, query: str, against: str | None, by: str, limit: int,
-            cut: dict[str, str] | None) -> list[Planned]:  # fmt: skip
-    """Every search of the protocol for the claim, in order."""
+            cut: dict[str, str] | None, without_cut: str = "") -> list[Planned]:  # fmt: skip
+    """Every search of the protocol for the claim, in order. `without_cut` says what S3 is
+    where there is no cutoff: "" not asked, since the cited work's date is not known;
+    `UNFETCHED` unanswered; "later" for a dry run, dated by the fetch it would run first."""
     out = [_s1_pubmed(claim, by, limit), _s1_openalex(claim, by, limit)]
     for step, words, as_step in (("S2", query, None), ("S3", query, None), ("S4", query, None),
                                  ("S8", against, "S2"), ("S8", against, "S3")):  # fmt: skip
@@ -235,12 +258,13 @@ def planned(claim: Claim, query: str, against: str | None, by: str, limit: int,
             continue
         kind = as_step or step
         for source in STEPS[kind]:
-            out.append(_planned(step, source, words, by, limit, cut, as_step))
+            out.append(_planned(step, source, words, by, limit, cut, as_step, without_cut))
     return out
 
 
 def _planned(step: str, source: str, words: str, by: str, limit: int,
-             cut: dict[str, str] | None, as_step: str | None = None) -> Planned:  # fmt: skip
+             cut: dict[str, str] | None, as_step: str | None = None,
+             without_cut: str = "") -> Planned:  # fmt: skip
     kind = as_step or step
     one = Planned(step, source, words, {"limit": limit}, as_step=as_step, terms_by=by)
     if kind == "S2":
@@ -248,6 +272,10 @@ def _planned(step: str, source: str, words: str, by: str, limit: int,
         why = search.asks(filters)[source]
         return replace(one, filters={"types": list(SYNTHESES), "limit": limit}, why=why)
     if kind == "S3":
+        if cut is None and without_cut == "later":
+            return replace(one, dated_by_fetch=True)
+        if cut is None and without_cut:
+            return replace(one, unanswered=without_cut)
         if cut is None:
             return replace(one, why="the cited work's publication date is not known, so there "
                            "is no date to ask from")  # fmt: skip
@@ -316,6 +344,13 @@ def requests(one: Planned, claim: Claim, services: Services,
     registries, filters = services.registries, _filters(one)
     if one.why:
         return [f"not asked: {one.why}"]
+    if one.dated_by_fetch:
+        return ["would ask from the cited work's publication date, which its works record, "
+                "fetched first, gives"]  # fmt: skip
+    if one.step == "S1" and one.source == "pubmed" and claim.lookup is None:
+        # Round 1 of #530: a replay's dry run read the record it does not have.
+        return [f"would not be read: @{claim.entry.citekey}'s lookup record is not current "
+                f"({claim.lookup_reason}); run `manuscript-guard lookup`"]  # fmt: skip
     if one.step == "S1" and one.source == "pubmed":
         return [f"would read the {', '.join(FORWARD)} links of literature/lookups/"
                 f"{claim.entry.citekey}.yaml (looked up on {claim.lookup.get('looked_up_on')}); "
@@ -350,6 +385,8 @@ def ask_one(one: Planned, claim: Claim, ask: sources.Ask, services: Services,
             "searched_on": today.isoformat()}  # fmt: skip
     if one.why:
         return Asked(one, {**base, "status": "not asked", "why": one.why, "candidates": []})
+    if one.unanswered:
+        return Asked(one, failed=one.unanswered)
     if one.step == "S1" and one.source == "pubmed":
         return _links(one, claim, base)
     if one.source == "clinicaltrials":
@@ -483,6 +520,7 @@ def run_search(project: Project, entry_id: str, *, terms_text: str | None, by: s
     if by is None or not by.strip():
         raise Refused("--as names who wrote the terms: a person, or the model that wrote them")
     claim = _claim(project, entry_id)
+    _refuse_unplaced(project, claim)
     _refuse_without_lookup(claim)
     framed(project, claim.raw, question)
     services = services or Services()
@@ -490,13 +528,16 @@ def run_search(project: Project, entry_id: str, *, terms_text: str | None, by: s
     limit, today = limit_of(project), today or date.today()
     if dry_run:
         return _dry(project, claim, planned(claim, query, against, by.strip(), limit,
-                                            cutoff(project, claim)), services, credentials)
+                                            cutoff(project, claim), "later"),
+                    services, credentials)  # fmt: skip
     _write_question(project, entry_id, question)
     ask = _asker_for(transport, pacer, credentials)
     run = Run()
     cited = works.fetch(project, [claim.cited], ask, services.registries, credentials, today)
     _said_works(run, cited, "the cited work")
-    searches = planned(claim, query, against, by.strip(), limit, cutoff(project, claim))
+    unfetched = UNFETCHED if cited[0].record is None and "not fetched" in cited[0].why else ""
+    searches = planned(claim, query, against, by.strip(), limit, cutoff(project, claim),
+                       unfetched)  # fmt: skip
     return _finish(project, claim, run, searches, ask, services, credentials, today, set())
 
 

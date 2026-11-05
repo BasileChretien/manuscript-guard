@@ -372,13 +372,37 @@ def write_search(project: Project, record: dict[str, Any]) -> Path:
     return path
 
 
+#: A search record's name: its entry and its number.
+_SEARCH_NAME = re.compile(r"(c[1-9][0-9]*)-([1-9][0-9]*)\.yaml")
+#: The statuses of a search that was asked: one recorded as not asked is no search.
+ASKED = ("run", "pending")
+
+
+def asked(record: dict | None) -> bool:
+    """Whether a search record is of a search that was asked (round 1 of #530: one recorded
+    as not asked, dated the day of a run where nothing answered, freshened the entry)."""
+    return bool(record) and record.get("status", "run") in ASKED
+
+
 def read_searches(project: Project) -> list[Read]:
-    """Every search record, in the order of their names."""
+    """Every search record, in the order of their names. One whose name is not its entry
+    and its number is edited, as a reading so named is: a copy keeps its seal, and would
+    count twice (round 1 of #530)."""
     found = folder(project) / SEARCHES
     if not found.is_dir():
         return []
-    return [_sealed(path, "currency-search", "answers_sha256")
-            for path in sorted(found.glob("*.yaml"))]  # fmt: skip
+    read = []
+    for path in sorted(found.glob("*.yaml")):
+        one = _sealed(path, "currency-search", "answers_sha256")
+        record = one.record
+        if one.problem is None and record is not None:
+            named = _SEARCH_NAME.fullmatch(path.name)
+            said = (str(record.get("entry")), str(record.get("number")))
+            if named is None or named.groups() != said:
+                one = Read(path, record, f"its name is not that of {said[0]}'s search "
+                           f"{said[1]}", edited=True)  # fmt: skip
+        read.append(one)
+    return read
 
 
 # --------------------------------------------------------------------------------- readings

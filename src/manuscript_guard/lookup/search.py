@@ -462,36 +462,37 @@ def europepmc_work(doi: str | None, pmid: str | None, ask: Ask,
     where no work it holds has that identifier, `unresolvable` where no answer of its shape
     came. A work it returns under another identifier is none (`absent`): asked by a DOI,
     a search can match more than the DOI's own work."""
-    item = _europepmc_item(doi, pmid, ask, services)
-    if "status" in item:
-        return item
+    item, said = _europepmc_item(doi, pmid, ask, services)
+    if item is None:
+        return said
     found = {"abstract": _abstract(item.get("abstractText")), "title": _clean(item.get("title")),
              "year": _year(item.get("pubYear"))}  # fmt: skip
     return {"status": FOUND, **{k: v for k, v in found.items() if v not in (None, "")}}
 
 
 def _europepmc_item(doi: str | None, pmid: str | None, ask: Ask,
-                    services: Services) -> dict[str, Any]:  # fmt: skip
-    """Europe PMC's core record of one work, or an answer with a `status` where there is
-    none to read (a record of its shape has no `status` field)."""
+                    services: Services) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """Europe PMC's core record of one work and `found`; or None and the answer there is
+    instead, `absent` or `unresolvable`. The status is kept apart from the record, which
+    may have a field of that name (round 1 of #530)."""
     answer = _ask(ask, europepmc_work_search(doi, pmid, services))
     if isinstance(answer, dict):
-        return answer
+        return None, answer
     said = _status_only(answer)
     if said:
-        return said
+        return None, said
     data = _json(answer)
     listed = data.get("resultList") if isinstance(data, dict) else None
     results = listed.get("result") if isinstance(listed, dict) else None
     if not isinstance(results, list):
-        return unresolvable(SHAPE)
+        return None, unresolvable(SHAPE)
     if not results:
-        return {"status": ABSENT}
+        return None, {"status": ABSENT}
     item = results[0]
-    if not isinstance(item, dict) or not _text(item.get("id")) or "status" in item:
-        return unresolvable(SHAPE)
+    if not isinstance(item, dict) or not _text(item.get("id")):
+        return None, unresolvable(SHAPE)
     same = (_digits(item.get("pmid")) == pmid) if pmid else (_doi(item.get("doi")) == doi)
-    return item if same else {"status": ABSENT}
+    return (item, {"status": FOUND}) if same else (None, {"status": ABSENT})
 
 
 #: A day as Europe PMC writes `firstPublicationDate`.
@@ -504,9 +505,9 @@ def europepmc_facts(doi: str | None, pmid: str | None, ask: Ask,
     `europepmc_work`, and its publication types as written (`pubTypeList`), its first
     publication date (`firstPublicationDate`), whether it marks the work retracted or under
     concern, and the published versions of a preprint ("Preprint of")."""
-    item = _europepmc_item(doi, pmid, ask, services)
-    if "status" in item:
-        return item
+    item, said = _europepmc_item(doi, pmid, ask, services)
+    if item is None:
+        return said
     hit = _europepmc_hit(1, item)
     pubtypes = [p.strip() for p in map(str, _listed(item, "pubTypeList", "pubType")) if p.strip()]
     notes = [c for c in _listed(item, "commentCorrectionList", "commentCorrection")

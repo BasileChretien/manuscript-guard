@@ -56,12 +56,13 @@ opposite direction.
 
 ```bash
 manuscript-guard references --search c1 --terms "<terms>" --question "<question>" --as "<your name or model>" --dry-run
-manuscript-guard references --search c1 --terms "<terms>" --question "<question>" --as "<your name or model>"
-manuscript-guard references --search c1 --terms "<terms>" --against "<terms against>" --as "<your name or model>"
+manuscript-guard references --search c1 --terms "<terms>" --against "<terms against>" --question "<question>" --as "<your name or model>"
 ```
 
-`--as` is who wrote the terms; a model that wrote them gives its own name. The dry run prints
-every request and sends nothing. The search runs every step: S1 forward from the cited work
+One run carries both the terms and, where there are any, the terms against: a second
+`--search` runs every step again and files every record twice. `--as` is who wrote the
+terms; a model that wrote them gives its own name. The dry run prints every request and
+sends nothing. The search runs every step: S1 forward from the cited work
 (PubMed's update and comment links, the reviews OpenAlex lists as citing it), S2 systematic
 reviews on the terms, S3 primary studies published since the cutoff, S4 ongoing trials
 (recorded as pending, never as candidates), and S8 with `--against`. Each is recorded,
@@ -88,8 +89,8 @@ and nowhere else. For each, fill:
 - R4 `search_end`, for a synthesis whose abstract states when its search ended.
 
 Each field carries a quote of the stored abstract or title, copied word for word; mark words
-left out with an ellipsis. A field the abstract does not support is `unclear`, with the
-quote that comes nearest. Read every candidate, including the ones that look off the
+left out with an ellipsis. A population, exposure or outcome the abstract does not settle is
+`unclear`, with the quote that comes nearest; `unclear` is no value of the other fields. Read every candidate, including the ones that look off the
 question: the rules need each.
 
 Write the reading as a YAML file in the shape of the reading schema and file it:

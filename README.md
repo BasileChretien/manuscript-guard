@@ -369,7 +369,7 @@ claude plugin marketplace add BasileChretien/manuscript-guard
 claude plugin install manuscript-guard@manuscript-guard
 ```
 
-Twenty-two skills. Start with `project-setup`, and work through the paper with `guide`;
+Twenty-three skills. Start with `project-setup`, and work through the paper with `guide`;
 most of the others name the finding codes that should send you to them.
 
 | Skill | For |

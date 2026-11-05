@@ -25,10 +25,11 @@ The clients are `lookup`'s; nothing here reads the manuscript.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from typing import Any
 
+from manuscript_guard.contracts import ContractError
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.currency import records
 from manuscript_guard.lookup import search, sources
@@ -89,15 +90,19 @@ PLANNED = ("Europe PMC by its PMID or DOI; Crossref and OpenAlex where it has a 
 def fetch(project: Project, works: list[Wanted], ask: sources.Ask,
           services: search.Services, credentials: Credentials,
           today: date) -> list[Fetched]:  # fmt: skip
-    """Fetch each work, write the records that can be written, and say what came of each."""
+    """Fetch each work, write the records that can be written, and say what came of each.
+    Europe PMC is asked first: the PMID it gives a work known by its DOI alone is asked of
+    PubMed for its types and links (round 1 of #530), and not written among the work's
+    identifiers."""
+    epmc = {one.work: search.europepmc_facts(one.doi, one.pmid or None, ask, services)
+            for one in works}  # fmt: skip
+    works = [one if one.summary_pmid or not epmc[one.work].get("pmid")
+             else replace(one, types_pmid=epmc[one.work]["pmid"]) for one in works]  # fmt: skip
     summaries = _summaries(works, ask, services, credentials)
     retracted = _openalex(works, ask, services, credentials)
     done = []
     for one in works:
-        answers: dict[str, dict[str, Any]] = {
-            "europepmc": search.europepmc_facts(one.doi, one.pmid or None, ask, services)
-            if (one.pmid or one.doi) else {"status": sources.ABSENT},
-        }  # fmt: skip
+        answers: dict[str, dict[str, Any]] = {"europepmc": epmc[one.work]}
         if one.doi:
             answers["crossref"] = sources.crossref(one.doi, ask, services.crossref,
                                                    credentials.contact)  # fmt: skip
@@ -136,8 +141,14 @@ def _openalex(works: list[Wanted], ask: sources.Ask, services: search.Services,
         held = {hit.doi: hit for hit in answer.hits if hit.doi}
         for doi in batch:
             hit = held.get(doi)
-            said[doi] = ({"status": sources.FOUND, "is_retracted": bool(hit.retracted)}
-                         if hit is not None else {"status": sources.ABSENT})  # fmt: skip
+            if hit is None:
+                said[doi] = {"status": sources.ABSENT}
+            elif hit.retracted is None:
+                # A work with no `is_retracted` is no answer, as `sources.openalex` reads it
+                # (round 1 of #530).
+                said[doi] = sources.unresolvable("OpenAlex said nothing of a retraction")
+            else:
+                said[doi] = {"status": sources.FOUND, "is_retracted": hit.retracted}
     return said
 
 
@@ -154,7 +165,11 @@ def _written(project: Project, one: Wanted, answers: dict[str, dict[str, Any]],
         return Fetched(one.work, why="no registry asked knows the work")
     record = composed(one, found, today)
     _never_kept(record, credentials)
-    records.write_work(project, record)
+    try:
+        records.write_work(project, record)
+    except ContractError as exc:
+        # One work's record that its schema refuses stops no other (round 1 of #530).
+        return Fetched(one.work, why=f"not written: {exc}")
     return Fetched(one.work, record)
 
 
@@ -167,7 +182,9 @@ def composed(one: Wanted, found: dict[str, dict[str, Any]], today: date) -> dict
     pubtypes = pubmed.get("pubtypes") if pubmed else epmc.get("pubtypes")
     published = _crossref_date(crossref) if one.doi else None
     published = published or epmc.get("first_published")
-    published_as = [f"doi:{doi}" for doi in crossref.get("preprint_of") or []]
+    # Crossref's id may be a URL; `search._doi` reads it as the DOI, or as none.
+    published_as = [f"doi:{doi}" for doi in map(search._doi, crossref.get("preprint_of") or [])
+                    if doi]  # fmt: skip
     published_as += epmc.get("published_as") or []
     integrity = {
         "retracted": bool(notices & RETRACTED or "Retracted Publication" in (pubmed.get(
@@ -201,11 +218,19 @@ def composed(one: Wanted, found: dict[str, dict[str, Any]], today: date) -> dict
 
 
 def _crossref_date(crossref: dict[str, Any]) -> str | None:
-    """Crossref's publication date: `issued`, the earlier of print and online, else online,
-    print, or a preprint's `posted`, as far as Crossref gives it."""
+    """Crossref's publication date. `issued` is the earlier of print and online, at the
+    precision of the coarser: the finest of online and print that agrees with it at its own
+    precision is taken, else `issued` (round 1 of #530: a print year and an online day gave
+    the year). With no `issued`, online, print, or a preprint's `posted`."""
     dates = crossref.get("dates") or {}
-    return next((dates[name] for name in ("issued", "online", "print", "posted")
-                 if dates.get(name)), None)  # fmt: skip
+    issued = dates.get("issued")
+    if not issued:
+        return next((dates[name] for name in ("online", "print", "posted") if dates.get(name)),
+                    None)  # fmt: skip
+    agreeing = [dates[name] for name in ("online", "print")
+                if dates.get(name) and dates[name][: len(issued)] == issued]  # fmt: skip
+    return max(agreeing, key=len) if agreeing and len(max(agreeing, key=len)) > len(issued) \
+        else issued  # fmt: skip
 
 
 __all__ = ["PLANNED", "Fetched", "Wanted", "composed", "fetch", "wanted"]

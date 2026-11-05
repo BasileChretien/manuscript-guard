@@ -108,6 +108,13 @@ def test_the_readme_lists_exactly_the_skills_that_ship():
     section = readme.split("### The Claude Code plugin", 1)[1].split("\n## ", 1)[0]
     listed = set(re.findall(r"^\| `([a-z-]+)` \|", section, re.MULTILINE))
     assert listed == skill_names()
+    # The count in words, here and in docs/agent-tools.md (round 1 of #530: a skill was added
+    # and the word stayed).
+    said = {22: "twenty-two", 23: "twenty-three", 24: "twenty-four",
+            25: "twenty-five"}[len(skill_names())]  # fmt: skip
+    assert f"{said.capitalize()} skills." in section
+    agents = (REPO / "docs" / "agent-tools.md").read_text(encoding="utf-8")
+    assert agents.count(said) == 3
 
 
 def test_every_hook_the_plugin_registers_has_a_handler():

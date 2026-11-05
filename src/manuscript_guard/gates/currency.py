@@ -426,7 +426,7 @@ def _decision(entry: Entry, usable: list[dict], held: _Records, bib: dict, path:
 
 def _stale(entry: Entry, searches: list[Read], path: Path, stage: str) -> list[Finding]:
     dates = sorted(str(read.record["searched_on"]) for read in searches
-                   if read.problem is None and read.record)  # fmt: skip
+                   if read.problem is None and records.asked(read.record))  # fmt: skip
     if not dates:
         return []
     newest = date.fromisoformat(dates[-1])
@@ -468,7 +468,8 @@ def _missing_said(claim: Claim, held: _Records) -> str:
     if claim.entry is None:
         return f"@{claim.citekey}{facts}: no entry in literature/currency.yaml"
     entry = claim.entry
-    searched = [read for read in held.searches.get(entry.id, []) if read.problem is None]
+    searched = [read for read in held.searches.get(entry.id, [])
+                if read.problem is None and records.asked(read.record)]  # fmt: skip
     read = [one for one in held.readings.get(entry.id, []) if one.problem is None]
     if not searched and not read:
         how = "marked, not searched"

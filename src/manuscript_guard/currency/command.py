@@ -57,7 +57,8 @@ def state_of(entry: records.Entry | None, held, accepted: bool = False) -> str:
                      f"`references --refuse {entry.id}`")  # fmt: skip
         return f"{said} ({by})"
     readings = [read for read in held.readings.get(entry.id, []) if read.problem is None]
-    searches = [read for read in held.searches.get(entry.id, []) if read.problem is None]
+    searches = [read for read in held.searches.get(entry.id, [])
+                if read.problem is None and records.asked(read.record)]  # fmt: skip
     if not readings and not searches:
         return "marked, not searched"
     return f"searched {len(searches)}, read {len(readings)} of {rules.READINGS}, not decided"

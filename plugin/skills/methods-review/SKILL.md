@@ -69,7 +69,9 @@ Each entry has the `passage`, copied from the stored copy word for word (words l
 marked `[...]`), and a `locator` precise enough for a co-author to find it: "Methods,
 Exposure, p. 3". A `summary` of a few words is for the table. G7 looks for every passage in
 the study's stored files; one that is not there fails once the analysis runs
-(`similar-passage-not-in-source`). A field the study does not report has no entry: what it
+(`similar-passage-not-in-source`). A copy recorded in `literature/sources.yaml`, kept out of
+git and not on this computer, as in CI, is a note (`similar-passage-not-here`): the passage
+is checked where the copies are. A field the study does not report has no entry: what it
 leaves unsaid can be said in an appraisal of a field it does report.
 
 ## 3. Judge each method against a standard

@@ -55,7 +55,7 @@ opposite direction.
 ## 3. Run the searches
 
 ```bash
-manuscript-guard references --search c1 --terms "<terms>" --question "<question>" --as "<your name or model>" --dry-run
+manuscript-guard references --search c1 --terms "<terms>" --against "<terms against>" --question "<question>" --as "<your name or model>" --dry-run
 manuscript-guard references --search c1 --terms "<terms>" --against "<terms against>" --question "<question>" --as "<your name or model>"
 ```
 
@@ -113,6 +113,12 @@ After the second reading, `references --reading` writes the rules' decision: `re
 `add` (a work against the sentence), `keep`, or `uncertain`, with the rule ids. A proposed
 change waits for the author: they accept it by citing the work (Zotero, then
 `manuscript-guard sync-bib`) or refuse it with a reason. Never answer for them.
+
+To put the proposals to co-authors, `manuscript-guard references --comments` writes a copy
+of the document with each proposal as a Word comment on its citing sentence. A co-author
+replies to the comment; `manuscript-guard import <the copy> --apply` files each reply, and
+`references --assess` records what a reply says. The word-roundtrip skill says how, and the
+author is asked before a refusal is recorded.
 
 ## If you are a model doing this
 

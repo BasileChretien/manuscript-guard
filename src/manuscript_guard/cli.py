@@ -3536,8 +3536,10 @@ def cmd_references(args: argparse.Namespace) -> int:
     """Whether each cited work is still the one to cite: alone, a row per claim in scope;
     `--explain`, one entry; `--mark`, a claim marked; `--reading`, a reading filed and the
     rules run; `--refuse`, a proposed change refused; `--comments`, the proposals as Word
-    comments; `--assess`, what a reply to one says. Exit 2 where it will not do what it is
-    asked, with the reason."""
+    comments; `--assess`, what a reply to one says; `--search`, the fixed searches for one
+    entry run and recorded; `--replay`, the recorded searches run again as recorded. Exit 2
+    where it will not do what it is asked, with the reason; `--search` and `--replay` exit 1
+    where a source did not answer."""
     import json
     from dataclasses import asdict
 
@@ -3637,6 +3639,16 @@ def _references_search(project, args: argparse.Namespace) -> int:
     misplaced = _search_flags(args)
     if args.search is None and args.replay is None:
         raise command.Refused(f"{', '.join(misplaced)} go with --search or --replay")
+    # Another action's flags were dropped without a word (the review of #531's merge, and
+    # round 1 of #534).
+    for action, flags in (("--assess", ("reply", "says", "quote")), ("--refuse", ("why",)),
+                          ("--mark", ("id",))):  # fmt: skip
+        given = [f"--{flag}" for flag in flags if getattr(args, flag) is not None]
+        if len(given) == 1:
+            raise command.Refused(f"{given[0]} goes with {action}, not with --search or --replay")
+        if given:
+            named = f"{', '.join(given[:-1])} and {given[-1]}"
+            raise command.Refused(f"{named} go with {action}, not with --search or --replay")
     if args.replay is not None:
         if args.terms or args.against or args.question:
             raise command.Refused("--replay runs the recorded searches as they were: it takes "

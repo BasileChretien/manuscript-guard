@@ -108,13 +108,40 @@ def test_the_readme_lists_exactly_the_skills_that_ship():
     section = readme.split("### The Claude Code plugin", 1)[1].split("\n## ", 1)[0]
     listed = set(re.findall(r"^\| `([a-z-]+)` \|", section, re.MULTILINE))
     assert listed == skill_names()
-    # A count in words, here or in docs/agent-tools.md, is the number of skills (round 1 of
-    # #530: a skill was added and the word stayed).
-    said = {22: "twenty-two", 23: "twenty-three", 24: "twenty-four",
-            25: "twenty-five"}[len(skill_names())]  # fmt: skip
+    # A count, here or in docs/agent-tools.md, is the number of skills (round 1 of #530: a
+    # skill was added and the word stayed). Neither states one now; this keeps one that comes
+    # back true.
     agents = (REPO / "docs" / "agent-tools.md").read_text(encoding="utf-8")
-    counts = re.findall(r"(?i)\b(?:twenty|thirty)(?:-[a-z]+)?\b", section + agents)
-    assert all(word.lower() == said for word in counts), counts
+    counts = skill_counts(section + agents)
+    assert all(count == len(skill_names()) for count in counts), counts
+
+
+_TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50}
+_ONES = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+         "eight": 8, "nine": 9}  # fmt: skip
+
+
+def skill_counts(text: str) -> list[int]:
+    """The counts of the skills a text states: a number from twenty in words anywhere, or in
+    digits before "skills" with one word between at most ("25 skills", "25 plugin skills").
+    A smaller number is taken as a few of them, not the count."""
+    counts = []
+    for word in re.findall(r"(?i)\b((?:twenty|thirty|forty|fifty)(?:-[a-z]+)?)\b", text):
+        head, _, tail = word.lower().partition("-")
+        if not tail or tail in _ONES:
+            counts.append(_TENS[head] + _ONES.get(tail, 0))
+    counts += [int(n) for n in re.findall(r"(?i)\b(\d+)\s+(?:[a-z-]+\s+)?skills\b", text)
+               if int(n) >= 20]  # fmt: skip
+    return counts
+
+
+def test_a_count_of_the_skills_is_read_in_words_and_in_digits() -> None:
+    """Round 2 of #530: the check of the README's count read words only, from twenty-two to
+    twenty-five, and passed on a text with no count."""
+    assert skill_counts("The plugin has twenty-six skills.") == [26]
+    assert skill_counts("It ships 31 skills, and 25 plugin skills.") == [31, 25]
+    assert skill_counts("Thirty of them.") == [30]
+    assert skill_counts("Two skills deal with Word; 3 skills with the panel.") == []
 
 
 def test_every_hook_the_plugin_registers_has_a_handler():

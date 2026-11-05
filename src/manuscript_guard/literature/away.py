@@ -33,10 +33,18 @@ class Away:
     each with the work it is a copy of."""
 
     works: dict[str, str] = field(default_factory=dict)
+    #: Where the record says each came from (its `from`): `sync-sources` takes Zotero's copy
+    #: again, a folder's with `--from`, and never writes into the name of the author's own,
+    #: which comes back from whoever saved it.
+    taken_from: dict[str, str] = field(default_factory=dict)
 
     def holds(self, source_file: str) -> bool:
         """Whether a ledger's `source_file`, relative to `literature/`, is a copy away."""
         return recorded_name(source_file) in self.works
+
+    def source_of(self, source_file: str) -> str | None:
+        """Where the record says a copy away came from, by a ledger's `source_file`."""
+        return self.taken_from.get(recorded_name(source_file) or "")
 
     @property
     def keys(self) -> frozenset[str]:
@@ -61,14 +69,15 @@ def away(project: Project) -> Away:
     held = _SEEN.get(id(project))
     if held is not None and held[0]() is project:
         return held[1]
-    found = _away(project)
+    found = kept_away(project)
     number = id(project)
     ref = weakref.ref(project, lambda _gone: _SEEN.pop(number, None))
     _SEEN[number] = (ref, found)
     return found
 
 
-def _away(project: Project) -> Away:
+def kept_away(project: Project) -> Away:
+    """The copies away, git asked now: for `sync-sources`, which writes the record again."""
     if project.sources_in_git:
         return NOTHING
     try:
@@ -89,7 +98,8 @@ def _away(project: Project) -> Away:
         except ValueError:  # `paths:` can put the literature outside the project
             continue
     ignored = ignored_by_git(project, list(paths))
-    return Away({paths[path]: absent[paths[path]] for path in sorted(paths) if path in ignored})
+    works = {paths[path]: absent[paths[path]] for path in sorted(paths) if path in ignored}
+    return Away(works, {name: str(record[name]["from"]) for name in works})
 
 
 def ignored_by_git(project: Project, paths: list[str]) -> frozenset[str]:
@@ -119,4 +129,4 @@ def ignored_by_git(project: Project, paths: list[str]) -> frozenset[str]:
     return frozenset(part for part in asked.stdout.split("\0") if part)
 
 
-__all__ = ["NOTHING", "Away", "away", "ignored_by_git"]
+__all__ = ["NOTHING", "Away", "away", "ignored_by_git", "kept_away"]

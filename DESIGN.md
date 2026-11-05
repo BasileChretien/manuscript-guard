@@ -3859,18 +3859,18 @@ day, or the reply's decision digest is not the entry's decision now),
 in the reply word for word and whole), `currency-reply-not-a-person` (the replier is no
 person of authors.yaml, or the answer is signed by another; the author's to answer). A reply
 or assessment record that no longer reads as filed is `currency-record-edited`, with a hint
-of its own kind: import the document again, or assess the reply again. Since re-assessing
-is refused while the answer stands, and `--refuse` too, the reply codes' hints say to take
-the answer away first, an edit the hook asks about. Because the gate holds the reply to the
-decision digest, rule ids included, a reading after which the rules give the same action
-and candidate from other rules is refused where the answer came from a reply, as one that
-changes the proposal is: the reply refused the proposal its comment showed.
+of its own kind: delete it and import the document again, or assess the reply again. Since
+re-assessing is refused while the answer stands, and `--refuse` too, the reply codes' hints
+say to take the answer away first, an edit the hook asks about. Because the gate holds the
+reply to the decision digest, rule ids included, a reading after which the rules give the
+same action and candidate from other rules is refused where the answer came from a reply, as
+one that changes the proposal is: the reply refused the proposal its comment showed.
 
 Each reply is known at import by its comment's id in Word as well as its words (`word_id`:
-the `w14:paraId` of its first paragraph, else its `w:id`), so two replies of the same words to
-one comment are two replies; and its words keep its paragraphs, a line to each
-(`replies._paragraphed`; `tracked.comments_of`, which the panel's records read, still joins
-them with a space).
+the `w14:paraId` of its first paragraph, by which Word ties it to its comment), so two
+replies of the same words to one comment are two replies; and its words keep its paragraphs,
+a line to each (`replies._paragraphed`; `tracked.comments_of`, which the panel's records
+read, still joins them with a space).
 
 ### The searches are recorded, and run again as recorded
 
@@ -20252,7 +20252,11 @@ Open, recorded as each change landed:
   output to its copy: each is a note there, and only the computer that holds the copies checks
   them, at submission too. A record that a checkout holding the copies passed G7 at this
   manuscript's digest, which `check --stage submission` would ask for, is to come in a pull
-  request of its own (Basile, 2026-11-05). Nothing warns before a push that a file saved by
+  request of its own (Basile, 2026-11-05). Until then a copy deleted or renamed on the
+  author's own computer is a note there too, at every stage, submission included: the ledger
+  still names it and git ignores its path, so its quote is checked nowhere (round 2 of #525;
+  `test_a_recorded_source_not_on_this_computer_is_noted_and_unverifiable` holds the note at
+  submission). Nothing warns before a push that a file saved by
   hand, which git ignores, is not in the record: it passes on the author's computer and fails
   in CI until `sync-sources` is run. Recording needs Zotero running, or `--from` a folder:
   without either the run records the author's files and then stops with Zotero's error. The
@@ -20630,6 +20634,10 @@ Open, recorded as each change landed:
   - An assessment can misread a reply: the quote is the reply's words, and a quote of
     "not the trial" from "I would not say it is not the trial" passes. The hook asks the
     author before an agent records a refusal, and nothing checks an `agrees` or an `other`.
+  - An ellipsis the replier typed is read in a quote as words left out, so a reply holding
+    one cannot be quoted whole; a part of it without the ellipsis can (round 2 of #531;
+    `test_an_ellipsis_the_replier_typed_cannot_be_quoted_whole`). Telling the replier's
+    ellipsis from one marking a cut would mean guessing which was meant.
   - A comment Word lost is not seen: a co-author who deletes it and replies elsewhere, or
     pastes the sentence into a new document, leaves no reply for `import` to find, and the
     proposal stays unanswered. So does a comment whose words were edited in Word, which no
@@ -20641,7 +20649,9 @@ Open, recorded as each change landed:
   - A reply is known at import by the `w14:paraId` of its first paragraph. That Word keeps it
     when a copy is saved again has not been checked in Word: where it gives the paragraph
     another id, importing the later copy files the same reply again, as another reply. A
-    reply with no `w14:paraId` is known by its `w:id`, which Word renumbers.
+    reply with no `w14:paraId` is not read at all: nothing ties it to its comment, and its
+    `w:id`, which Word renumbers, does not stand in (round 2 of #531). Word gives every
+    comment's paragraph one when it saves.
 - **An appraisal of a similar study's method is judgement, not a guarantee.** G12 holds it
   to a standard and a domain that exist, and nothing more: that the method departs from the
   standard as the appraisal says, that the concern is the right one, and that the studies

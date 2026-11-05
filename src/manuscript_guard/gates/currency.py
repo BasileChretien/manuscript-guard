@@ -168,8 +168,8 @@ def _bib(project: Project) -> dict[str, dict[str, str]]:
 #: What to do about a record of the tool's that no longer reads as written, by its kind.
 _EDITED_HINTS = {
     "reading": "file the reading again with `manuscript-guard references --reading`",
-    "reply": "import the document it came back in again with `--apply`, which files the reply "
-             "anew",
+    "reply": "delete it and import the document it came back in again with `--apply`, which "
+             "files the reply anew",
     "assessment": "delete it and assess the reply again with `manuscript-guard references "
                   "--assess`",
 }  # fmt: skip

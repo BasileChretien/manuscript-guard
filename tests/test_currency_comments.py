@@ -483,6 +483,45 @@ def test_a_reply_s_quote_is_its_own_words_whole(
     assert "answer" not in currency_yaml(project)["entries"][0]
 
 
+def test_an_ellipsis_the_replier_typed_cannot_be_quoted_whole(project: Path, capsys) -> None:
+    """A limit (DESIGN.md, Known gaps; round 2 of #531): an ellipsis in the reply itself is
+    read in the quote as words left out, so the reply is not quoted whole; a part of it
+    without the ellipsis is."""
+    case.case(project)
+    typed = "Kept... the trial enrolled another population"
+    case.replied(project, text=f"{typed}, so it does not replace the signal.")
+    assert assess(project, "refuses", quote=typed)[0] == 2
+    assert "--quote is the reply's own words, whole" in capsys.readouterr().err
+    assert assess(project, "refuses", quote=case.REFUSING)[0] == 0
+
+
+def test_a_reply_with_no_paragraph_id_is_not_read(tmp_path: Path) -> None:
+    """A reply is tied to its comment by its paragraphs' `w14:paraId` (`w15:paraIdParent`),
+    so one with none is not read, and nothing stands in for the id (round 2 of #531: the
+    docs said its `w:id` did). Word gives every comment's paragraph one when it saves."""
+    import re
+    import zipfile
+
+    from manuscript_guard import tracked
+    from manuscript_guard.currency import replies
+
+    (offered,) = tracked.currency_offered_of(WORD_SAVED)
+    assert len(replies.replies_in(WORD_SAVED, [offered])) == 1
+    stripped = tmp_path / "no-ids.docx"
+    with zipfile.ZipFile(WORD_SAVED) as source, zipfile.ZipFile(stripped, "w") as target:
+        for item in source.infolist():
+            data = source.read(item)
+            if item.filename == "word/comments.xml":
+                text = data.decode("utf-8")
+                reply = re.search(r'<w:comment [^>]*w:author="Ada Example".*?</w:comment>',
+                                  text, re.DOTALL)  # fmt: skip
+                assert reply and "w14:paraId=" in reply.group(0)
+                bare = re.sub(r' w14:paraId="[0-9A-F]+"', "", reply.group(0))
+                data = text.replace(reply.group(0), bare).encode("utf-8")
+            target.writestr(item, data)
+    assert replies.replies_in(stripped, [offered]) == []
+
+
 @needs_pandoc
 def test_a_reply_of_several_paragraphs_is_filed_with_its_breaks(
     project: Path, tmp_path: Path

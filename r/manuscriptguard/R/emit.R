@@ -52,8 +52,9 @@ mg_check_display <- function(key, value, display) {
   # 3.2e-9 as a programmer types it, "3.2 x 10^-9" with superscripts as a journal prints it.
   # Without it a p-value worth stating precisely could be written only in a notation no
   # journal uses, and the alternative an author reaches for is `digits`, which rounds it away.
-  # The number's third form is APA's, without the leading zero of a p or an r: ".661",
-  # "< .001", as Python accepts it.
+  # The number's third form has no leading zero, as APA prints a p or an r: ".661",
+  # "< .001", as Python accepts it. Nothing holds it to values under one; it is held to its
+  # value like the others.
   pattern <- paste0(
     "^\\s*(<=|>=|<|>|\u2264|\u2265)?\\s*([-+\u2212]?)",
     "((?:\\d{1,3}(?:[,\u00a0\u202f ]\\d{3})+(?:\\.\\d+)?)|(?:\\d+(?:\\.\\d+)?)|(?:\\.\\d+))",

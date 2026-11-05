@@ -266,6 +266,7 @@ cases <- list(
   list("p", 0.0000004, "< .001", TRUE),
   list("p", 0.9996, "> .999", TRUE),
   list("p", 0.661, ".561", FALSE),
+  list("p", 0.661, ".67", FALSE),
   list("p", 1.661, ".661", FALSE),
   list("p", 0.4, "< .001", FALSE)
 )

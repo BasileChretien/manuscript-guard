@@ -3713,7 +3713,7 @@ came since or a preprint was published (`lookups.currency_facts`, what gives
 |---|---|---|
 | `currency-record-missing` | a claim in scope has no entry, or its entry no decision ("marked, not searched", "read once") | a note while drafting, a warning from internal-review, a failure at submission under `references.currency: required` |
 | `currency-record-stale` | an entry's newest search is more than six months old | warning, failure at submission |
-| `currency-record-edited` | a search, works or reading record no longer matches its digest or its schema | fails from drafting |
+| `currency-record-edited` | a search, works, reading, reply or assessment record no longer matches its digest or its schema | fails from drafting |
 | `currency-reading-invalid` | a sealed reading names a hierarchy, scale or level the hierarchy in force lacks, or another cited work | fails from drafting |
 | `currency-quote-not-found` | a reading's quote is not in the work's stored abstract or text | fails from drafting |
 | `currency-quote-unchecked` | nothing stored to look in, or no works store in this checkout | note |
@@ -3722,6 +3722,9 @@ came since or a preprint was published (`lookups.currency_facts`, what gives
 | `currency-change-unanswered` | a `replace` or `add` nobody answered | warning, failure at submission; a person's |
 | `currency-uncertain`, `currency-entry-unplaced` | the readings disagree; no sentence matches | notes |
 | `currency-candidate-retracted` | a work the decision keeps or proposes is retracted, by its works record | fails from drafting |
+| `currency-reply-missing` | an answer from a reply in Word lacks the reply's sound record or an assessment of it as a refusal, or is not of the reply's day or of the proposal its comment showed | fails from drafting |
+| `currency-reply-quote-not-found` | an answer from a reply gives a reason that is not its assessment's quote, whole and word for word in the reply | fails from drafting |
+| `currency-reply-not-a-person` | an answer from a reply whose author is no person of authors.yaml, or is signed by another | fails from drafting; a person's |
 
 `currency-reading-invalid` is a code the design did not list: a reading the rules cannot read
 is neither edited nor a mismatch. `currency-decision-not-human` is the author's to answer, as
@@ -3776,7 +3779,10 @@ Word kept it (the name Word gives its author, the date, the words), sealed by
 A reader (the agent through the word-roundtrip skill, a person, in PR 6 the models) records
 what a reply says: `references --assess ID --reply N --says refuses|agrees|other --quote
 "..." --as READER`, written once per reader and sealed by `assessment_sha256` beside the
-reply, the quote held to the reply word for word. `refuses` makes the entry's answer
+reply, the quote held to the reply word for word and whole: a reply is short and to hand, so
+its quote leaves nothing out (no `...`, `…` or `[...]`, which could make "I do not refuse
+this" read "I do ... refuse this"), carries no `[sic]`, and has a letter or digit in it
+(round 1 of #531). `refuses` makes the entry's answer
 `refused`, `by` the replier as authors.yaml names them, `why` the quote, `answered_on` the
 reply's date, with `reply` and `assessed_by` (the answer's schema gained the two). The
 replier is a person of authors.yaml by full name, folded for case and composed form; a
@@ -3796,10 +3802,24 @@ reader.
 
 G7 holds an answer from a reply to its records, each failing from drafting:
 `currency-reply-missing` (the reply's sound record, or a sound assessment of it by
-`assessed_by` as a refusal, is not there), `currency-reply-quote-not-found` (the answer's
-reason is not in the reply word for word), `currency-reply-not-a-person` (the replier is no
+`assessed_by` as a refusal, is not there; or the answer's `answered_on` is not the reply's
+day, or the reply's decision digest is not the entry's decision now),
+`currency-reply-quote-not-found` (the answer's reason is not the assessment's quote, or not
+in the reply word for word and whole), `currency-reply-not-a-person` (the replier is no
 person of authors.yaml, or the answer is signed by another; the author's to answer). A reply
-or assessment record that no longer reads as filed is `currency-record-edited`.
+or assessment record that no longer reads as filed is `currency-record-edited`, with a hint
+of its own kind: import the document again, or assess the reply again. Since re-assessing
+is refused while the answer stands, and `--refuse` too, the reply codes' hints say to take
+the answer away first, an edit the hook asks about. Because the gate holds the reply to the
+decision digest, rule ids included, a reading after which the rules give the same action
+and candidate from other rules is refused where the answer came from a reply, as one that
+changes the proposal is: the reply refused the proposal its comment showed.
+
+Each reply is known at import by its comment's id in Word as well as its words (`word_id`:
+the `w14:paraId` of its first paragraph, else its `w:id`), so two replies of the same words to
+one comment are two replies; and its words keep its paragraphs, a line to each
+(`replies._paragraphed`; `tracked.comments_of`, which the panel's records read, still joins
+them with a space).
 
 ## Text from the authors' earlier papers is found before the journal finds it
 
@@ -19640,6 +19660,10 @@ Open, recorded as each change landed:
     once in their paragraph: two sentences that read alike in one paragraph get none. A
     sentence whose emphasis runs across its edge, or whose words the sentence splitter cuts
     otherwise than pandoc prints them, gets none either, with the reason.
+  - A reply is known at import by the `w14:paraId` of its first paragraph. That Word keeps it
+    when a copy is saved again has not been checked in Word: where it gives the paragraph
+    another id, importing the later copy files the same reply again, as another reply. A
+    reply with no `w14:paraId` is known by its `w:id`, which Word renumbers.
 - **An appraisal of a similar study's method is judgement, not a guarantee.** G12 holds it
   to a standard and a domain that exist, and nothing more: that the method departs from the
   standard as the appraisal says, that the concern is the right one, and that the studies

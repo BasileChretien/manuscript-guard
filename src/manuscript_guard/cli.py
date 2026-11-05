@@ -3540,6 +3540,7 @@ def cmd_references(args: argparse.Namespace) -> int:
     from dataclasses import asdict
 
     from manuscript_guard.currency import command
+    from manuscript_guard.tracked import TrackedError
 
     project, _ = load_project(args.path)
     try:
@@ -3571,8 +3572,10 @@ def cmd_references(args: argparse.Namespace) -> int:
                                   "unplaced": [entry.id for entry in unplaced]},
                                  indent=2, ensure_ascii=False))  # fmt: skip
             else:
-                print(command.rendered(rows, unplaced))
-    except (command.Refused, ContractError, FileExistsError) as exc:
+                print(command.rendered(rows, unplaced,
+                                       command.unplaced_replies(project, unplaced)))
+    except (command.Refused, ContractError, FileExistsError, TrackedError) as exc:
+        # TrackedError: the copy `--comments` wrote does not read as the build (`_check`).
         print(f"manuscript-guard references: {exc}", file=sys.stderr)
         return 2
     return 0

@@ -10,8 +10,8 @@ network:
   marked and not searched, or read fewer times than the rules need.
 - `currency-record-stale`: the newest search of an entry is more than six months old (a
   warning, a failure at submission).
-- `currency-record-edited`: a search, works or reading record no longer matches its digest,
-  or no longer fits its schema.
+- `currency-record-edited`: a search, works, reading, reply or assessment record no longer
+  matches its digest, or no longer fits its schema.
 - `currency-reading-invalid`: a sealed reading names a hierarchy, a scale or a level the
   hierarchy in force does not have, or an entry there is none of.
 - `currency-quote-not-found`: a reading's quote is not in the work's stored abstract or text;
@@ -24,12 +24,20 @@ network:
 - `currency-uncertain`, `currency-entry-unplaced`: notes.
 - `currency-candidate-retracted`: a work the decision keeps or proposes is now retracted, by
   its works record.
+- An answer from a reply in Word (`references --assess`, `currency/replies.py`) is held to
+  its records: `currency-reply-missing`, the reply's sound record, an assessment of it as a
+  refusal by `assessed_by`, its day or the proposal its comment showed is not there or not
+  the answer's; `currency-reply-quote-not-found`, the answer's reason is not the
+  assessment's quote, whole and word for word in the reply; `currency-reply-not-a-person`,
+  the replier is no person of authors.yaml, or the answer is signed by another (the
+  author's to answer). Each fails from drafting.
 
 Where the works store holds no record of a work an entry's readings name, as in a clone,
 since git leaves the store out, the rules decide nothing for it and G7 checks no decision of
-theirs, and a note says so (`currency-quote-unchecked`). A proposed change counts as accepted
-once a sentence matching the entry cites the candidate, by its DOI or PMID in
-`references.bib`.
+theirs, and a note says so (`currency-quote-unchecked`). A proposed change nobody answered,
+or one refused only by a reply in Word, counts as accepted once a sentence matching the
+entry cites the candidate, by its DOI or PMID in `references.bib`; a person's own refusal
+stands.
 """
 
 from __future__ import annotations
@@ -157,11 +165,21 @@ def _bib(project: Project) -> dict[str, dict[str, str]]:
     return read_bib(bib) if bib.is_file() else {}
 
 
-def _edited(read: Read) -> Finding:
+#: What to do about a record of the tool's that no longer reads as written, by its kind.
+_EDITED_HINTS = {
+    "reading": "file the reading again with `manuscript-guard references --reading`",
+    "reply": "import the document it came back in again with `--apply`, which files the reply "
+             "anew",
+    "assessment": "delete it and assess the reply again with `manuscript-guard references "
+                  "--assess`",
+}  # fmt: skip
+
+
+def _edited(read: Read, kind: str = "reading") -> Finding:
     return _finding(
         "currency-record-edited", f"{read.path.name}: {read.problem}", read.path,
         "these records are the tool's: put the file back as it was written (git checkout), "
-        "or file the reading again with `manuscript-guard references --reading`")  # fmt: skip
+        f"or {_EDITED_HINTS[kind]}")  # fmt: skip
 
 
 def _of_entry(entry: Entry, found: Survey, held: _Records, known, bib: dict,
@@ -272,6 +290,33 @@ def quote_in(texts: Iterable[str], quote: str) -> bool:
         elif _as_words(normalise(text).lower(), whole, 0) >= 0:
             return True
     return False
+
+
+def reply_quote_problem(quote: str) -> str:
+    """Why `quote` cannot be a reply's words that say what it says, or nothing where it can.
+    A reply is short and to hand, so its quote is its own words, whole: nothing left out,
+    which could turn "I do not refuse this" into a refusal, nothing marked `[sic]`, and a
+    letter or digit in it."""
+    from manuscript_guard.gates.quotations import _ELIDED, _SIC
+
+    if _ELIDED.search(quote):
+        return "with no words left out (no ..., \N{HORIZONTAL ELLIPSIS} or [...])"
+    if _SIC.search(quote):
+        return "with no [sic]"
+    if not any(char.isalnum() for char in quote):
+        return "with a letter or digit in it"
+    return ""
+
+
+def in_reply(text: str, quote: str) -> bool:
+    """Whether `quote` is in a reply's `text` word for word, whole, as words of its own
+    (`reply_quote_problem` says what a quote may not hold)."""
+    from manuscript_guard.gates.quotations import _as_words
+    from manuscript_guard.literature.sources import normalise
+
+    if reply_quote_problem(quote):
+        return False
+    return _as_words(normalise(text).lower(), normalise(quote).lower(), 0) >= 0
 
 
 def cited_id(entry: Entry, usable: list[dict], bib: dict) -> str | None:
@@ -505,58 +550,81 @@ def replied(project: Project, entries: Iterable[Entry], path: Path) -> list[Find
     """The records of the replies in Word to the proposals' comments, and each answer that
     came from one (`currency/replies.py`): a reply or assessment record that no longer reads
     as written is `currency-record-edited`; an answer from a reply needs the reply's sound
-    record and an assessment of it as a refusal (`currency-reply-missing`), the reason word
-    for word in the reply (`currency-reply-quote-not-found`), and the reply's author, a
+    record, an assessment of it as a refusal, the day it was written and the proposal the
+    comment showed (`currency-reply-missing`), the reason the assessment's quote and word for
+    word in the reply, whole (`currency-reply-quote-not-found`), and the reply's author, a
     person of authors.yaml (`currency-reply-not-a-person`). Each fails from drafting."""
     from manuscript_guard.currency import replies
 
     found = replies.held(project)
-    out = [_edited(read) for read in found.broken]
+    out = [_edited(read, replies.kind_of(read.path)) for read in found.broken]
     for entry in entries:
-        answer = entry.answer or {}
-        if not answer.get("reply"):
-            continue
-        number = int(answer["reply"])
-        read = found.replies.get((entry.id, number))
-        if read is None or read.problem or not read.record:
-            out.append(_finding(
-                "currency-reply-missing", f"{entry.named}: its answer is reply {number} in Word, "
-                "and literature/currency/replies/ holds no sound record of it", path,
-                "put the reply's record back as `import` filed it (git checkout), or take the "
-                "answer away and have the person answer"))  # fmt: skip
-            continue
-        reply = read.record
-        assessed = [one.record for one in found.assessments.get((entry.id, number), [])
-                    if one.record and one.record["reader"] == answer.get("assessed_by")
-                    and one.record["says"] == "refuses"
-                    and one.record["reply_sha256"] == reply["reply_sha256"]]  # fmt: skip
-        if not assessed:
-            out.append(_finding(
-                "currency-reply-missing", f"{entry.named}: its answer says "
-                f"{answer.get('assessed_by')} read reply {number} as a refusal, and no sound "
-                "assessment of theirs says so", path,
-                "record the assessment with `manuscript-guard references --assess`, which "
-                "writes the answer, or take the answer away"))  # fmt: skip
-        if not quote_in([str(reply["text"])], str(answer.get("why") or "")):
-            out.append(_finding(
-                "currency-reply-quote-not-found", f"{entry.named}: the reason its answer gives, "
-                f"{_shown(str(answer.get('why')))!r}, is not in reply {number}, word for word",
-                path, "the reason of an answer from a reply is the reply's own words: assess "
-                "the reply again with its words, or take the answer away"))  # fmt: skip
-        from manuscript_guard.checking.people import fold
-
-        problem = replies.not_a_person(project, str(reply["by"]))
-        if not problem and fold(str(answer["by"])) != fold(str(reply["by"])):
-            problem = f"the answer is signed {answer['by']!r}, and the reply is {reply['by']!r}'s"
-        if problem:
-            out.append(_finding(
-                "currency-reply-not-a-person", f"{entry.named}: its answer is reply {number} "
-                f"in Word, and {problem}", path,
-                "a reply answers a proposal only from a person of authors.yaml, under their "
-                "name: they refuse it with `references --refuse`, or the answer is taken "
-                "away"))  # fmt: skip
+        if (entry.answer or {}).get("reply"):
+            out += _from_reply(project, entry, found, path)
     return out
 
 
-__all__ = ["GATE", "STALE_MONTHS", "check_currency", "months_before", "quote_in",
-           "readers_of", "replied", "rules_decision", "today"]
+#: Where an answer from a reply is not what its records give, it is taken away by hand, an
+#: edit the hook asks about, before anything else can answer the proposal.
+_TAKE_AWAY = ("take the answer away first (an edit of literature/currency.yaml the hook asks "
+              "about)")  # fmt: skip
+
+
+def _from_reply(project: Project, entry: Entry, found, path: Path) -> list[Finding]:
+    """What G7 says of an answer that came from reply `answer.reply` (`replied`)."""
+    from manuscript_guard.checking.people import fold
+    from manuscript_guard.currency import replies
+
+    answer = entry.answer or {}
+    number = int(answer["reply"])
+    read = found.replies.get((entry.id, number))
+    if read is None or read.problem or not read.record:
+        return [_finding(
+            "currency-reply-missing", f"{entry.named}: its answer is reply {number} in Word, "
+            "and literature/currency/replies/ holds no sound record of it", path,
+            "put the reply's record back as `import` filed it (git checkout), or "
+            f"{_TAKE_AWAY} and have the person answer")]  # fmt: skip
+    reply = read.record
+    assessed = [one.record for one in found.assessments.get((entry.id, number), [])
+                if one.record and one.record["reader"] == answer.get("assessed_by")
+                and one.record["says"] == "refuses"
+                and one.record["reply_sha256"] == reply["reply_sha256"]]  # fmt: skip
+    why = " ".join(str(answer.get("why") or "").split())
+    day = reply["date"] or reply["filed_on"]
+    if not assessed:
+        missing = "no sound assessment of theirs says so"
+    elif str(answer.get("answered_on")) != day:
+        missing = f"the answer is dated {answer.get('answered_on')}, and the reply {day}"
+    else:
+        missing = replies.changed(entry, reply)
+    out = []
+    if missing:
+        out.append(_finding(
+            "currency-reply-missing", f"{entry.named}: its answer says "
+            f"{answer.get('assessed_by')} read reply {number} as a refusal, and {missing}",
+            path, "put literature/currency.yaml and the reply's records back as `references "
+            f"--assess` wrote them (git checkout), or {_TAKE_AWAY}"))  # fmt: skip
+    quoted = [" ".join(str(one["quote"]).split()) for one in assessed]
+    if not in_reply(str(reply["text"]), why) or (assessed and why not in quoted):
+        out.append(_finding(
+            "currency-reply-quote-not-found", f"{entry.named}: the reason its answer gives, "
+            f"{_shown(why)!r}, is not the words {answer.get('assessed_by')} quoted from reply "
+            f"{number}, whole and word for word in it", path,
+            "the reason of an answer from a reply is the reply's own words as its assessment "
+            f"quotes them: put the answer back as `references --assess` wrote it (git "
+            f"checkout), or {_TAKE_AWAY}"))  # fmt: skip
+    problem = replies.not_a_person(project, str(reply["by"]))
+    if not problem and fold(str(answer["by"])) != fold(str(reply["by"])):
+        problem = f"the answer is signed {answer['by']!r}, and the reply is {reply['by']!r}'s"
+    if problem:
+        out.append(_finding(
+            "currency-reply-not-a-person", f"{entry.named}: its answer is reply {number} "
+            f"in Word, and {problem}", path,
+            "a reply answers a proposal only from a person of authors.yaml, under their name: "
+            f"{_TAKE_AWAY}, and the person refuses it with `references --refuse ID --why ... "
+            "--as <them>`"))  # fmt: skip
+    return out
+
+
+__all__ = ["GATE", "STALE_MONTHS", "check_currency", "in_reply", "months_before", "quote_in",
+           "readers_of", "replied", "reply_quote_problem", "rules_decision", "today"]

@@ -447,3 +447,154 @@ def _cite_the_candidate(project: Path) -> None:
     old = "[@fictionalClassSignal2019]. The"
     assert old in text
     main_md.write_text(text.replace(old, "[@classTrial2023]. The", 1), "utf-8")
+
+
+# ------------------------------------------------- round 1 of #531: the reply's own words
+
+
+def _assessments(project: Path) -> list[str]:
+    return sorted(p.name for p in (project / "literature" / "currency" / "replies").iterdir()
+                  if p.name.count(".") == 3)  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("quote", "said"),
+    [("...", "no words left out"),
+     ("I do ... refuse this", "no words left out"),
+     ("I do [\N{HORIZONTAL ELLIPSIS}] refuse this", "no words left out"),
+     ("I do not refuse this [sic]", "no [sic]"),
+     ("[sic]", "no [sic]"),
+     (";", "a letter or digit")],
+)  # fmt: skip
+def test_a_reply_s_quote_is_its_own_words_whole(
+    project: Path, quote: str, said: str, capsys
+) -> None:
+    """A reply is short and to hand: its quote is its own words, with nothing left out, nothing
+    marked [sic] and at least a letter or digit. `I do ... refuse this` would make "I do not
+    refuse this" a refusal."""
+    case.case(project)
+    case.replied(project, text="I do not refuse this; cite it.")
+    assert main(["references", str(project), "--assess", "c1", "--reply", "1", "--says",
+                 "refuses", "--quote", quote, "--as", "Claude"]) == 2
+    err = capsys.readouterr().err
+    assert "--quote is the reply's own words, whole" in err and said in err, err
+    assert "Traceback" not in err
+    assert _assessments(project) == []
+    assert "answer" not in currency_yaml(project)["entries"][0]
+
+
+@needs_pandoc
+def test_a_reply_of_several_paragraphs_is_filed_with_its_breaks(
+    project: Path, tmp_path: Path
+) -> None:
+    from word_edits import reply_to
+
+    from manuscript_guard import tracked
+    from manuscript_guard.currency import replies
+
+    document = written(project)
+    text = "Kept.\nThe trial enrolled another population."
+    returned = reply_to(document, tmp_path / "back.docx", AUTHOR, text, by="Ada Example")
+    (offered,) = tracked.currency_offered_of(returned)
+    assert [one.text for one in replies.replies_in(returned, [offered])] == [text]
+    code, said = run("import", str(returned), str(project), "--apply")
+    assert code == 0, said
+    record = yaml.safe_load((project / "literature" / "currency" / "replies" / "c1.1.yaml")
+                            .read_text("utf-8"))  # fmt: skip
+    assert record["text"] == text
+    code, explained = run("references", str(project), "--explain", "c1")
+    assert "      > Kept.\n      > The trial enrolled another population." in explained, explained
+
+
+@needs_pandoc
+def test_two_replies_of_the_same_words_are_two_replies(project: Path, tmp_path: Path) -> None:
+    """Two people under one Word name, or one person twice, each `Kept.`: two replies, filed
+    as two, and once each however often the document is imported."""
+    from word_edits import reply_to
+
+    document = written(project)
+    returned = reply_to(document, tmp_path / "back.docx", AUTHOR, "Kept.", by="Ada Example")
+    returned = reply_to(returned, returned, AUTHOR, "Kept.", by="Ada Example")
+    code, said = run("import", str(returned), str(project), "--apply")
+    assert code == 0, said
+    folder = project / "literature" / "currency" / "replies"
+    assert sorted(p.name for p in folder.iterdir()) == ["c1.1.yaml", "c1.2.yaml"], said
+    code, said = run("import", str(returned), str(project), "--apply")
+    assert said.count("is filed already") == 2, said
+    assert sorted(p.name for p in folder.iterdir()) == ["c1.1.yaml", "c1.2.yaml"]
+
+
+def test_the_replies_of_an_unplaced_entry_are_listed(project: Path) -> None:
+    case.case(project)
+    case.replied(project)
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text("utf-8")
+    old = text[text.index("In a national cohort"):text.index(" [@fictionalClassSignal2019]")]
+    main_md.write_text(text.replace(old, "One study saw something odd", 1), "utf-8")
+    shown = listed(project)
+    assert "c1  @fictionalClassSignal2019  unplaced" in shown, shown
+    assert "    reply 1 by Ada Example (2026-11-06): not assessed" in shown, shown
+
+
+def test_a_document_the_comments_cannot_be_written_in_is_refused_with_the_reason(
+    project: Path, monkeypatch, capsys
+) -> None:
+    from manuscript_guard.currency import comments
+    from manuscript_guard.tracked import TrackedError
+
+    def refused(*_args, **_kwargs):
+        raise TrackedError("the copy does not read as the build with every change rejected")
+
+    case.case(project)
+    monkeypatch.setattr(comments, "write_comments", refused)
+    assert main(["references", str(project), "--comments"]) == 2
+    err = capsys.readouterr().err
+    assert "the copy does not read as the build" in err and "Traceback" not in err, err
+
+
+def test_a_reading_that_changes_a_proposal_a_reply_refused_is_refused() -> None:
+    """The comment showed the proposal with its rule ids, and the reply refused that one: a
+    reading after which the rules give it from other rules would leave the answer refusing a
+    proposal nobody was shown, so it is refused, as G7 would fail the answer."""
+    from manuscript_guard.currency import command, records, rules
+
+    decision = {"action": "replace", "candidate": "10.5555/x", "rules": ["K1", "D1"],
+                "by": "rules", "decided_on": "2026-11-01"}
+    raw = {"id": "c1", "citekey": "old2019", "sentence": "It was so.", "decision": decision,
+           "answer": {"status": "refused", "by": "Ada Example", "why": "Kept",
+                      "answered_on": "2026-11-02", "reply": 1, "assessed_by": "Claude"}}
+    entry = records._entry(raw)
+    with pytest.raises(command.Refused, match="takes their answer away first"):
+        command._check_answered(entry, rules.Decision("replace", "10.5555/x", ("K2", "D1"), ""))
+    command._check_answered(entry, rules.Decision("replace", "10.5555/x", ("K1", "D1"), ""))
+    # A person's own refusal is of the work, whatever rules gave it.
+    by_hand = records._entry({**raw, "answer": {"status": "refused", "by": "Ada Example",
+                                                "why": "Kept", "answered_on": "2026-11-02"}})
+    command._check_answered(by_hand, rules.Decision("replace", "10.5555/x", ("K2", "D1"), ""))
+
+
+def test_the_skill_says_to_ask_the_author_before_recording_a_refusal() -> None:
+    skills = Path(__file__).parents[1] / "plugin" / "skills" / "word-roundtrip"
+    body = (skills / "SKILL.md").read_text("utf-8")
+    section = body[body.index("## 7. Replies to reference proposals"):]
+    section = section[:section.index("\n## ", 4)]
+    assert "ask the author before recording `--says refuses`" in " ".join(section.split())
+    page = (skills / "references" / "reference-proposals.md").read_text("utf-8")
+    assert "--says refuses --quote" not in page
+
+
+def test_the_gate_s_codes_for_a_reply_are_documented() -> None:
+    from manuscript_guard.gates import currency
+
+    design = (Path(__file__).parents[1] / "DESIGN.md").read_text("utf-8")
+    table = design[design.index("| `currency-record-missing`"):]
+    table = table[:table.index("\n\n")]
+    for code in ("currency-reply-missing", "currency-reply-quote-not-found",
+                 "currency-reply-not-a-person"):  # fmt: skip
+        assert f"`{code}`" in currency.__doc__, code
+        assert f"| `{code}` |" in table, code
+    edited = next(line for line in table.splitlines() if "`currency-record-edited`" in line)
+    assert "reply" in edited and "assessment" in edited, edited
+    said = " ".join(currency.__doc__.split())
+    assert "reply or assessment record" in said
+    assert "refused only by a reply" in said

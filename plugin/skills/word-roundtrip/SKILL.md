@@ -218,9 +218,9 @@ are brought in one after another.
 
 ## 7. Replies to reference proposals
 
-`references --comments` writes each unanswered proposal to change a citation as a comment
-in a copy for the authors; `import` files each reply and decides nothing. Record what each
-reply says, quoting it exactly:
+`references --comments` puts each open reference proposal in the authors' copy as a
+comment, and `import` files each reply. Record what each says, quoting it exactly; ask the
+author before recording `--says refuses`:
 [references/reference-proposals.md](references/reference-proposals.md).
 
 ## If you are a model doing this

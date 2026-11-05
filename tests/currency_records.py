@@ -123,16 +123,17 @@ REFUSING = "the trial enrolled another population"
 
 
 def replied(root: Path, by: str = "Ada Example", text: str = REPLY,
-            day: str = "2026-11-06") -> Path:  # fmt: skip
+            day: str = "2026-11-06", word_id: str = "00001002") -> Path:  # fmt: skip
     """A reply to the case's comment in Word, filed as `import` files it, without the
-    document: the comment as `references --comments` records it, and the reply."""
+    document: the comment as `references --comments` records it, and the reply, its own
+    comment in Word known by `word_id`."""
     from manuscript_guard.currency import replies
     from manuscript_guard.currency.comments import AUTHOR, decision_digest
 
     project = load_project(root)[0]
     offered = {"n": 1, "entry": "c1", "decision": decision_digest(decision(root)),
                "author": AUTHOR, "written": "0123456789abcdef", "date": "2026-11-05"}
-    found = replies.Found(offered, by, day, text)
+    found = replies.Found(offered, by, day, text, word_id)
     said = replies.file_replies(project, root / "suggestions.docx", [found], applying=True)
     assert said and "filed as" in said[-1], said
     return sorted(replies.folder(project).glob("c1.*.yaml"))[-1]

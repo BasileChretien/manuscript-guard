@@ -87,7 +87,17 @@ def listing(project: Project) -> tuple[list[Row], list[records.Entry]]:
     return rows, list(found.unplaced)
 
 
-def rendered(rows: list[Row], unplaced: list[records.Entry]) -> str:
+def unplaced_replies(project: Project, unplaced: list[records.Entry]) -> dict[str, list[str]]:
+    """The lines of `replies.said_of` for each entry no sentence matches: an edit that left an
+    entry unplaced leaves the replies to its comment standing."""
+    from manuscript_guard.currency import replies
+
+    replied = replies.held(project)
+    return {entry.id: replies.said_of(project, entry, replied, False) for entry in unplaced}
+
+
+def rendered(rows: list[Row], unplaced: list[records.Entry],
+             replied: dict[str, list[str]] | None = None) -> str:  # fmt: skip
     lines = []
     for row in rows:
         lines.append(f"{row.id or '-'}  @{row.citekey}  {row.where}  {row.state}")
@@ -96,6 +106,7 @@ def rendered(rows: list[Row], unplaced: list[records.Entry]) -> str:
     for entry in unplaced:
         lines.append(f"{entry.id}  @{entry.citekey}  unplaced: no sentence reads so")
         lines.append(f"    {' '.join(entry.sentence.split())}")
+        lines += [f"    {said}" for said in (replied or {}).get(entry.id, [])]
     decided = sum(row.state not in ("no entry", "marked, not searched")
                   and "not decided" not in row.state for row in rows)  # fmt: skip
     lines.append(f"claims in scope: {len(rows)}, decided: {decided}; unplaced entries: "
@@ -333,14 +344,23 @@ def _same(decision: dict, given: rules.Decision) -> bool:
 
 def _check_answered(entry: records.Entry, given: rules.Decision | None) -> None:
     """Refuse a reading that would take a person's answer from under them: the rules' new
-    decision is another proposal than the one answered."""
+    decision is another proposal than the one answered. An answer from a reply in Word
+    refused the proposal its comment showed, rule ids and all (`comments.decision_digest`,
+    which G7 holds the reply to), so for it other rule ids are another proposal too."""
+    from manuscript_guard.currency.comments import decision_digest
+
     if given is None or not entry.answer or not entry.decision:
         return
-    if entry.decision["by"] == "rules" and not _same(entry.decision, given):
+    other = not _same(entry.decision, given) or (
+        entry.answer.get("reply") is not None and decision_digest(entry.decision)
+        != decision_digest({"action": given.action, "candidate": given.candidate,
+                            "rules": list(given.rules)}))  # fmt: skip
+    if entry.decision["by"] == "rules" and other:
         raise Refused(
             f"{entry.id}'s proposal was answered ({entry.answer['status']} by "
             f"{entry.answer['by']}), and with this reading the rules give {given.action}"
             + (f" {given.candidate}" if given.candidate else "")
+            + f" ({', '.join(given.rules)})"
             + ": the person takes their answer away first, and the reading is filed then"
         )  # fmt: skip
 

@@ -280,9 +280,12 @@ def _reply(
     reply = ET.SubElement(comments, W + "comment", {W + "id": ident, W + "author": by,
                                                     W + "date": date,
                                                     W + "initials": "BC"})  # fmt: skip
-    paragraph = ET.SubElement(reply, W + "p", {W14 + "paraId": para_id()})
-    ET.SubElement(ET.SubElement(paragraph, W + "r"), W + "annotationRef")
-    ET.SubElement(ET.SubElement(paragraph, W + "r"), W + "t").text = text
+    # A line of `text` is a paragraph of the reply, as Word writes a reply typed with Enter.
+    for number, line in enumerate(text.split("\n")):
+        paragraph = ET.SubElement(reply, W + "p", {W14 + "paraId": para_id()})
+        if number == 0:
+            ET.SubElement(ET.SubElement(paragraph, W + "r"), W + "annotationRef")
+        ET.SubElement(ET.SubElement(paragraph, W + "r"), W + "t").text = line
     # Anchored over the same words as the comment it answers.
     for p in root.iter(W + "p"):
         children = list(p)

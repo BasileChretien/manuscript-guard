@@ -40,6 +40,11 @@ def folder(project: Project) -> Path:
     return records.folder(project) / FOLDER
 
 
+def kind_of(path: Path) -> str:
+    """`reply` or `assessment`, by a record's name under the folder."""
+    return "reply" if _REPLY_NAME.fullmatch(path.name) else "assessment"
+
+
 def reply_path(project: Project, entry: str, number: int) -> Path:
     return folder(project) / f"{entry}.{number}.yaml"
 
@@ -135,43 +140,73 @@ class Found:
     by: str
     date: str
     text: str
+    #: The reply's own comment in Word: the id of its first paragraph (`w14:paraId`), else
+    #: its `w:id` (DESIGN.md, Known gaps). Two replies of the same words are two replies.
+    word_id: str
 
 
 def replies_in(document: Path, offered: list[dict]) -> list[Found]:
     """Each reply Word records to a comment the document's list of proposals names: the
     comment known by its author and the digest of its words (`tracked.currency_offered_of`).
-    A comment deleted, or resolved with no reply, gives nothing."""
+    A reply's words keep its paragraphs, one to a line. A comment deleted, or resolved with
+    no reply, gives nothing."""
     from manuscript_guard import tracked
     from manuscript_guard.suggestions import short_digest
 
     comments, parents = tracked.comments_of(document)
+    texts = _paragraphed(document)
     out = []
     for entry in offered:
         for comment in comments:
             if comment.author != entry["author"] or short_digest(comment.text) != entry["written"]:
                 continue
-            for reply in tracked.replies_to(comment, comments, parents):
-                found = Found(entry, reply.author, reply.date[:10], reply.text)
+            own = set(comment.paragraphs)
+            for reply in comments:
+                if reply is comment or not any(parents.get(p) in own for p in reply.paragraphs):
+                    continue
+                found = Found(entry, reply.author, reply.date[:10],
+                              texts.get(reply.identifier, reply.text),
+                              (reply.paragraphs or (reply.identifier,))[0])  # fmt: skip
                 if found not in out:
                     out.append(found)
+    return out
+
+
+def _paragraphed(document: Path) -> dict[str, str]:
+    """Each comment's words by its `w:id`, a line to each of its paragraphs, as
+    `tracked.comments_of` reads them otherwise (which joins them with a space, as the
+    panel's records want)."""
+    from manuscript_guard import tracked
+    from manuscript_guard.docxtext import spaced
+    from manuscript_guard.safexml import parse_xml
+
+    parts = tracked._parts(document, tracked._COMMENTS)
+    if tracked._COMMENTS not in parts:
+        return {}
+    out = {}
+    for node in parse_xml(parts[tracked._COMMENTS], what=tracked._COMMENTS).iter(
+            tracked.W + "comment"):  # fmt: skip
+        lines = [spaced("".join(t.text or "" for t in p.iter(tracked.W + "t"))).strip()
+                 for p in node.iter(tracked.W + "p")]  # fmt: skip
+        out[node.get(tracked.W + "id", "")] = "\n".join(lines).strip()
     return out
 
 
 def file_replies(project: Project, document: Path, found: list[Found], *,
                  applying: bool) -> list[str]:  # fmt: skip
     """File each reply as it came back, once: a reply filed already, by its author, date,
-    words and comment, is not filed again. Without `applying` nothing is written, and what
-    would be is said."""
+    words, comment and its own comment's id in Word, is not filed again. Without `applying`
+    nothing is written, and what would be is said."""
     filed = held(project)
     taken = {(read.record["entry"], read.record["by"], read.record["date"], read.record["text"],
-              read.record["comment"]): read.path.name
+              read.record["comment"], read.record["word_id"]): read.path.name
              for read in filed.replies.values() if read.record and read.problem is None}
     numbers: dict[str, int] = {}
     said = []
     today = date.today().isoformat()
     for one in found:
         entry = one.offered["entry"]
-        key = (entry, one.by, one.date, one.text, one.offered["written"])
+        key = (entry, one.by, one.date, one.text, one.offered["written"], one.word_id)
         who = one.by or "an unnamed author"
         if key in taken:
             said.append(f"{entry}: the reply by {who} is filed already, as {taken[key]}")
@@ -182,6 +217,7 @@ def file_replies(project: Project, document: Path, found: list[Found], *,
         numbers[entry] = number + 1
         record = {"schema": REPLY_SCHEMA, "entry": entry, "number": number, "by": one.by,
                   "date": one.date, "text": one.text, "comment": one.offered["written"],
+                  "word_id": one.word_id,
                   "decision": one.offered["decision"], "written_on": one.offered["date"],
                   "document": document.name, "filed_on": today}  # fmt: skip
         record["reply_sha256"] = records.sealed_digest(record, "reply_sha256")
@@ -235,7 +271,7 @@ def assess(project: Project, entry_id: str, number: int, says: str, quote: str,
     nobody authors.yaml names, or a model, is refused, and nothing is written."""
     from manuscript_guard.currency.command import Refused, _entry_of
     from manuscript_guard.currency.survey import survey
-    from manuscript_guard.gates.currency import quote_in
+    from manuscript_guard.gates.currency import in_reply, reply_quote_problem
 
     if says not in SAYS:
         raise Refused(f"--says is one of {', '.join(SAYS)}")
@@ -244,6 +280,9 @@ def assess(project: Project, entry_id: str, number: int, says: str, quote: str,
         raise Refused("--as names who read the reply")
     if not quote.strip():
         raise Refused("--quote gives the reply's words that say it")
+    problem = reply_quote_problem(quote)
+    if problem:
+        raise Refused(f"--quote is the reply's own words, whole, {problem}")
     document, raw = _entry_of(project, entry_id)
     entry = records._entry(raw)
     read = held(project).replies.get((entry_id, number))
@@ -252,7 +291,7 @@ def assess(project: Project, entry_id: str, number: int, says: str, quote: str,
     if read.problem:
         raise Refused(f"{read.path.name}: {read.problem}")
     reply = read.record
-    if not quote_in([str(reply["text"])], quote):
+    if not in_reply(str(reply["text"]), quote):
         raise Refused(f"the quote is not in reply {number}, word for word")
     path = assessment_path(project, entry_id, number, reader)
     if path.exists():

@@ -1018,6 +1018,104 @@ def test_near_miss_conventions_are_not_waved_through(project: Path, convention: 
     assert "unclassified-number" in codes(gate_report(project))
 
 
+_TWIN = (
+    "\n@article{fictionalSecondSignal2019,\n  title = {A second fictional signal},\n"
+    "  author = {Fictional, Eve},\n  year = {2019},\n}\n"
+)
+#: Authors whose names a .bib writes in TeX, as Better BibTeX's BibTeX export does, and one
+#: whose TeX the check does not read (`\IJ`).
+_NAMES_IN_TEX = r"""
+@article{angstromNotes2018,
+  title = {Fictional notes},
+  author = {{\AA}ngstr{\"o}m, Nils and Other, Eve},
+  year = {2018},
+}
+@article{lokkeSurvey2017,
+  title = {A fictional survey},
+  author = {Anne L{\o}kke},
+  year = {2017},
+}
+@article{sebekCohort2016,
+  title = {A fictional cohort},
+  author = {\v{S}ebek, Petr},
+  year = {2016},
+}
+@article{ijsselRegister2015,
+  title = {A fictional register},
+  author = {{\IJ}ssel, Jan},
+  year = {2015},
+}
+@report{whoReport2018, author = {{World Health Organization}}, year = {2018},}
+@article{benitezStudy2018, author = {Ben{\'\i}tez, Ana}, year = {2018},}
+"""
+
+
+@pytest.mark.parametrize(
+    ("typed", "year", "said"),
+    [
+        ("(Fictional, 2021)", "2021", "holds a work by Fictional from 2021: if it is the one "
+         "meant, cite it with its key, [@fictionalHepaticCohort2021],"),
+        # The year's letter and the given names are not compared: a work by that name and
+        # year is one the author may mean, not the one they meant.
+        ("(Fictional, 2021b)", "2021b", "holds a work by Fictional from 2021: if it is the one "
+         "meant, cite it with its key, [@fictionalHepaticCohort2021],"),
+        # A name the .bib writes in TeX is read as a reader sees it, and typed with or
+        # without its accents or its letters of their own.
+        ("(\N{LATIN CAPITAL LETTER A WITH RING ABOVE}ngstr"
+         "\N{LATIN SMALL LETTER O WITH DIAERESIS}m, 2018)", "2018", "[@angstromNotes2018]"),
+        ("(Angstrom, 2018)", "2018", "[@angstromNotes2018]"),
+        ("L\N{LATIN SMALL LETTER O WITH STROKE}kke (2017)", "2017", "[@lokkeSurvey2017]"),
+        ("(Lokke, 2017)", "2017", "[@lokkeSurvey2017]"),
+        ("(\N{LATIN CAPITAL LETTER S WITH CARON}ebek, 2016)", "2016", "[@sebekCohort2016]"),
+        ("(IJssel, 2015)", "2015", "the name of [@ijsselRegister2015], from 2015, holds TeX"),
+        ("(Fictional et al., 2019)", "2019", "[@fictionalClassSignal2019]"),
+        ("(Fictional & Other, 2019)", "2019", "[@fictionalClassSignal2019]"),
+        ("Fictional (2019)", "2019", "[@fictionalClassSignal2019]"),
+        ("Fictional and Other (2021)", "2021", "[@fictionalHepaticCohort2021]"),
+        ("(Other, 2018; Fictional, 2021)", "2021", "[@fictionalHepaticCohort2021]"),
+        ("(Other, 2018; Fictional, 2021)", "2018", "adding the work there first if"),
+        ("(Fictional, 2018)", "2018", "adding the work there first if it is not yet in it"),
+        # Round 2 of #510: a group's name, and TeX the check misreads, match no entry, and
+        # the hint must not say the work is missing.
+        ("(World Health Organization, 2018)", "2018", "adding the work there first if"),
+        ("(Ben\N{LATIN SMALL LETTER I WITH ACUTE}tez, 2018)", "2018", "adding the work there"),
+        ("(Fictional, 2019)", "2019", "2 works by Fictional from 2019"),
+        ("(March, 2019)", "2019", "a date is one placeholder"),
+    ],
+)
+def test_the_year_of_a_citation_typed_as_text_fails_and_its_hint_names_the_key(
+    project: Path, typed: str, year: str, said: str
+) -> None:
+    """A co-author types "(Fictional, 2018)" in Word, `import` merges it as text, and G2 fails
+    the year as a number nobody bound: it still does, matched or not. Its hint said to bind
+    it with {{results.<key>}}, where the author needed the work's key: it names the key now,
+    each of them where `references.bib` holds two works of that first author and year, and
+    says to add the work if it is not there yet. A month is no name.
+
+    Round 1 of #510: a work by that family name and year was said to be the one meant, though
+    neither the year's letter nor a given name is compared, and the old hint was dropped; and
+    a name the .bib writes in TeX, `{\\AA}ngstr{\\"o}m`, was said to be missing, which invites
+    a second entry. The hint says what may be, and a name it cannot read is not missing."""
+    bib = project / "literature" / "references.bib"
+    added = _NAMES_IN_TEX + (_TWIN if "2 works" in said else "")
+    bib.write_text(bib.read_text(encoding="utf-8") + added, encoding="utf-8")
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8") + f"\n\nThe counts were as reported {typed}.\n",
+        encoding="utf-8",
+    )
+    report = gate_report(project)
+    found = [f for f in report.failures if f.code == "unclassified-number"
+             and f.message == f"{year!r} is not bound to any source"]  # fmt: skip
+    assert len(found) == 1, report.render(project)
+    hint = " ".join(found[0].hint.split())
+    assert said in hint and "holds no work" not in hint, hint
+    if "[@" in said:
+        # Said as what may be, never as fact, and the hint G2 gave before stays after it.
+        assert "typed as text" in hint and "Otherwise, bind it with {{results" in hint, hint
+        assert "holds the work" not in hint, hint
+
+
 def _in_methods(project: Path, sentence: str) -> None:
     path = main_md(project)
     anchor = "Reporting follows the checklist"

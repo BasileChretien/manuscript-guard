@@ -5,9 +5,12 @@ name: Pages
 #
 # publish.yml makes a release and tags it with the workflow's own token, and a tag pushed so
 # starts no workflow. So this starts when a run of publish.yml has finished, and builds only
-# where that run released: where a `v` tag points at the commit it released. A run that
-# released nothing ends here. By hand, it builds the tag it is given: the first page, or a
-# release's page put back.
+# where that run released: where its job that tags the commit succeeded, and then from the
+# newest `v` tag, which that job has just made (a version only goes up). Not from the run's
+# head commit: a run started by workflow_run has main's head as it stood when it started,
+# which a merge during the release's CI moves past the commit released (round 1 of #527). A
+# run that released nothing ends here. By hand, it builds the tag it is given: the first
+# page, or a release's page put back.
 #
 # The page is built and checked as CI's `web` job builds and checks it (the audit-page
 # action), from the tag's own files, and deployed only if the check passed.
@@ -40,25 +43,33 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      actions: read
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.workflow_run.head_sha }}
           fetch-depth: 0
       - id: tag
         shell: bash
         env:
           GIVEN: ${{ inputs.tag }}
+          RUN: ${{ github.event.workflow_run.id }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           if [ -n "$GIVEN" ]; then
             tag="$GIVEN"
             git rev-parse --quiet --verify "refs/tags/$tag" > /dev/null || { echo "no tag $tag"; exit 1; }
           else
-            tag=$(git tag --points-at HEAD --list 'v*' | sort -V | tail -n 1)
+            tagged=$(gh api "repos/$REPO/actions/runs/$RUN/jobs?per_page=100" --jq \
+              '[.jobs[] | select(.name == "Tag the commit and make the GitHub Release" and .conclusion == "success")] | length')
+            tag=""
+            if [ "$tagged" != "0" ]; then
+              tag=$(git tag --list 'v*' --sort=-v:refname | head -n 1)
+            fi
           fi
-          if [ -n "$tag" ] && [ ! -f web/build.py ]; then
+          if [ -n "$tag" ] && ! git cat-file -e "refs/tags/$tag:web/build.py" 2>/dev/null; then
             echo "$tag has no web/ folder: its page cannot be built"; exit 1
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"

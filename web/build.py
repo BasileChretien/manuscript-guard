@@ -144,7 +144,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not args.wheel.is_file() or not args.wheel.name.startswith("manuscript_guard-"):
         parser.error(f"--wheel {args.wheel}: not a manuscript-guard wheel")
-    manifest = build(args.wheel, args.out, args.cache)
+    # Absolute, since esbuild runs in web/: a relative --out put the bundle in web/_site.
+    args.out, args.cache = args.out.resolve(), args.cache.resolve()
+    manifest = build(args.wheel.resolve(), args.out, args.cache)
     size = sum(p.stat().st_size for p in args.out.rglob("*") if p.is_file())
     print(f"built {args.out} ({size / 1e6:.1f} MB): manuscript-guard "
           f"{manifest['manuscript_guard']}, Pyodide {manifest['pyodide']}, "

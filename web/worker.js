@@ -50,23 +50,42 @@ function requests() {
   }));
 }
 
-const safe = (name) => name.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.+/, "_") || "file";
+// Each file under the name the reader gave it, so that the report names it as the command
+// line would. A name is not changed to make it fit: two names made one would put one file
+// over the other, and the audit would read one file twice and the other not at all.
+function names(files) {
+  const given = files.map((file) => file.name);
+  for (const name of given) {
+    if (!name || name === "." || name === ".." || /[/\0]/.test(name)) {
+      throw new Error(`the checker cannot use a file named "${name}": rename it`);
+    }
+  }
+  const twice = given.find((name, at) => given.indexOf(name) !== at);
+  if (twice) {
+    throw new Error(`two of the files chosen are named ${twice}: rename one, as a command line `
+      + "could not be given both either");
+  }
+  return given;
+}
+
+// A name that starts with "-" would be read as an option; "./" before it is the same file.
+const argument = (name) => (name.startsWith("-") ? "./" + name : name);
 
 function run({ paper, against, lookup }) {
+  const [paperName, ...outputNames] = names([paper, ...against]);
   py.runPython(`import os, shutil
 os.chdir("/")
 shutil.rmtree("/work", ignore_errors=True)
 os.makedirs("/work", exist_ok=True)
 os.chdir("/work")`);
-  const args = ["audit", safe(paper.name)];
-  py.FS.writeFile("/work/" + args[1], new Uint8Array(paper.data));
+  py.FS.writeFile("/work/" + paperName, new Uint8Array(paper.data));
+  const args = ["audit", argument(paperName)];
   if (against.length) {
     args.push("--against");
-    for (const file of against) {
-      const name = safe(file.name);
-      py.FS.writeFile("/work/" + name, new Uint8Array(file.data));
-      args.push(name);
-    }
+    against.forEach((file, at) => {
+      py.FS.writeFile("/work/" + outputNames[at], new Uint8Array(file.data));
+      args.push(argument(outputNames[at]));
+    });
   }
   if (lookup) args.push("--lookup");
   performance.clearResourceTimings();

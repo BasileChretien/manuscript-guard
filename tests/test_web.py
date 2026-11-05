@@ -18,6 +18,7 @@ import zlib
 from pathlib import Path
 
 import pytest
+import yaml
 
 from manuscript_guard import from_word, web
 from manuscript_guard.cli import main
@@ -340,6 +341,18 @@ def test_the_pages_policy_names_the_hosts_lookup_asks_and_no_others() -> None:
     assert policy["form-action"] == ["'none'"] and policy["base-uri"] == ["'none'"]
     # Read before anything is loaded, or what loads first is under no policy.
     assert page.index("Content-Security-Policy") < min(page.index("<script"), page.index("<link"))
+
+
+def test_the_pages_workflow_asks_after_the_job_publish_tags_with() -> None:
+    """pages.yml deploys where that job of the release run succeeded, found by its name: a
+    name changed in one file and not the other would leave every release without its page,
+    and nothing would fail."""
+    workflows = ROOT / ".github" / "workflows"
+    pages = (workflows / "pages.yml").read_text(encoding="utf-8")
+    named = re.search(r'select\(\.name == "([^"]+)"', pages).group(1)
+    publish = yaml.safe_load((workflows / "publish.yml").read_text(encoding="utf-8"))
+    assert named in {job.get("name") for job in publish["jobs"].values()}
+    assert 'workflows: ["Publish to PyPI"]' in pages and publish["name"] == "Publish to PyPI"
 
 
 # --------------------------------------------------------------------- a command, printed

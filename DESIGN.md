@@ -20966,8 +20966,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
     LaTeX projects, figures, packages, `--journal`, `--authors`, `--cited` and
     `--report-draft` are the command line's.
   - *The word-for-word check is on the worked example* (the `.docx` with and without its
-    results, `main.md`), in Node and in two browsers. A paper that Pyodide's Python 3.14 reads
-    otherwise than the command line's Python would differ there unseen; none is known.
+    results, `main.md`, and the `.docx` and results under names outside ASCII), in Node and
+    in two browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
+    line's Python would differ there unseen; none is known.
+  - *Lookups from the page are not in that check.* CI opens no connection to a registry, so
+    no case ticks the box. That the five registries answer a page (CORS) was tested by hand
+    on 2026-11-05; one that stops would be refused by the browser, and every lookup to it
+    said to have had no connection, with nothing in CI to notice.
+  - *pandoc.wasm's exit status is not read.* A failure is judged by nothing printed with
+    something on stderr, where the command line reads pandoc's exit code. A failure that says
+    nothing on stderr reaches `json.loads`, whose ValueError `gates._stage` turns into the note
+    that G6 and G14 were not run, rather than the message the command line gives (round 1 of
+    #527).
 
 Closed since, and why each mattered (an open gap goes above this line):
 

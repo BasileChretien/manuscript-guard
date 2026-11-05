@@ -78,6 +78,7 @@ $("form").addEventListener("submit", async (event) => {
     window.mgLast = result;
   } catch (error) {
     say(`The audit could not run: ${error.message}`);
+    window.mgLast = { error: error.message };
   } finally {
     $("run").disabled = false;
   }

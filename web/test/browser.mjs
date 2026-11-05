@@ -68,7 +68,7 @@ try {
       const put = async (id, names) => {
         const files = new DataTransfer();
         for (const name of names) {
-          const blob = await (await fetch("/__cases__/" + name)).blob();
+          const blob = await (await fetch("/__cases__/" + encodeURIComponent(name))).blob();
           files.items.add(new File([blob], name));
         }
         document.getElementById(id).files = files.files;
@@ -80,14 +80,21 @@ try {
       while (!window.mgLast) await new Promise((wait) => setTimeout(wait, 100));
       return window.mgLast;
     }, one.paper, one.against || []);
-    const expected = readFileSync(join(casesDir, one.expect), "utf-8").replace(/\r\n/g, "\n");
-    if (result.out !== expected) {
-      fail(`${one.name}: the page's report is not the command line's`);
-      console.error(`--- command line\n${expected}\n--- page\n${result.out}`);
+    if (result.error) {
+      fail(`${one.name}: the audit could not run: ${result.error}`);
+      continue;
+    }
+    // What the command line printed, its notes and its exit code (check.py).
+    const said = JSON.parse(readFileSync(join(casesDir, one.expect), "utf-8"));
+    const wrong = ["out", "err", "code"].filter((part) =>
+      (typeof said[part] === "string" ? said[part].replace(/\r\n/g, "\n") : said[part]) !== result[part]);
+    if (wrong.length) {
+      fail(`${one.name}: the page's ${wrong.join(", ")} not the command line's`);
+      console.error(`--- command line\n${said.out}${said.err}\n--- page\n${result.out}${result.err}`);
     }
     const elsewhere = result.sent.filter((entry) => !entry.url.startsWith(origin));
     if (elsewhere.length) fail(`${one.name}: the audit sent ${elsewhere.map((e) => e.url).join(", ")}`);
-    console.log(`${one.name}: ${result.out === expected ? "same report" : "DIFFERENT"}, ` +
+    console.log(`${one.name}: ${wrong.length ? "DIFFERENT" : "same report, notes and exit code"}, ` +
       `${(result.ms / 1000).toFixed(1)} s, ${result.sent.length} requests`);
   }
 

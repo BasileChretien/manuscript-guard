@@ -3,11 +3,14 @@
     python web/test/check.py --site _site --docx build/manuscript.docx \\
         --results results/01_disproportionality.json --markdown manuscript/main.md
 
-For each case (the .docx against the results, the .docx alone, the Markdown alone), the
-command line's `audit` is run here, then the same command is run as the page runs it, in Node
-(`parity.mjs`), and its `--json` and its report must be the command line's. Then the page is
-opened in each browser named (`browser.mjs`): it must start under its own policy, print the
-same reports, send nothing, and refuse every request "Test the rules" tries.
+For each case (the .docx against the results, the .docx alone, the Markdown alone, and the
+.docx against the results under names a reader may give them, outside ASCII and with
+spaces), the command line's `audit` is run here, then the same command is run as the page
+runs it, in Node (`parity.mjs`): its report, what it says on stderr, its exit code and its
+`--json` must be the command line's. Then the page is opened in each browser named
+(`browser.mjs`): it must start under its own policy, give the same report, notes and exit
+code for each case from the files as chosen, send nothing, and refuse every request "Test the
+rules" tries.
 
 The command line here must be the one the wheel was built from, with the pandoc the page's
 pandoc.wasm is (pins.json), which is what CI's `web` job and the Pages workflow install.
@@ -25,13 +28,16 @@ from pathlib import Path
 
 TEST = Path(__file__).resolve().parent
 NODE = shutil.which("node") or "node"
+#: A paper and an output named as a reader may name them. The page once wrote each file
+#: under its name made ASCII, so two such names became one file (round 1 of #527).
+PAPER, OUTPUT = "Mon article (v3).docx", "résultats 結果.json"
 
 
-def native(folder: Path, arguments: list[str]) -> str:
+def native(folder: Path, arguments: list[str]) -> dict:
     done = subprocess.run([sys.executable, "-m", "manuscript_guard.cli", *arguments], cwd=folder,
                           capture_output=True, text=True, encoding="utf-8", timeout=600,
                           check=False)  # fmt: skip
-    return done.stdout
+    return {"code": done.returncode, "out": done.stdout, "err": done.stderr}
 
 
 def in_node(site: Path, folder: Path, arguments: list[str]) -> dict:
@@ -41,6 +47,14 @@ def in_node(site: Path, folder: Path, arguments: list[str]) -> dict:
     if done.returncode != 0:
         raise SystemExit(f"parity.mjs failed:\n{done.stderr}")
     return json.loads(done.stdout)
+
+
+def differences(said: dict, page: dict, as_json: bool) -> list[str]:
+    """What the page said otherwise than the command line."""
+    found = [part for part in ("code", "err") if said[part] != page[part]]
+    same_out = (json.loads(said["out"]) == json.loads(page["out"]) if as_json
+                else said["out"] == page["out"])  # fmt: skip
+    return found if same_out else ["out", *found]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -56,27 +70,30 @@ def main(argv: list[str] | None = None) -> int:
         ("the .docx against its results", "paper.docx", ["results.json"]),
         ("the .docx alone", "paper.docx", []),
         ("the Markdown alone", "paper.md", []),
+        ("names outside ASCII, with spaces", PAPER, [OUTPUT]),
     ]
     failed = 0
     with tempfile.TemporaryDirectory(prefix="mg-page-") as scratch:
         folder = Path(scratch)
-        shutil.copyfile(args.docx, folder / "paper.docx")
-        shutil.copyfile(args.results, folder / "results.json")
-        shutil.copyfile(args.markdown, folder / "paper.md")
+        for source, names in ((args.docx, ("paper.docx", PAPER)),
+                              (args.results, ("results.json", OUTPUT)),
+                              (args.markdown, ("paper.md",))):  # fmt: skip
+            for name in names:
+                shutil.copyfile(source, folder / name)
         listed = []
         for number, (name, paper, against) in enumerate(cases):
             arguments = ["audit", paper, *(["--against", *against] if against else [])]
-            text, as_json = native(folder, arguments), native(folder, [*arguments, "--json"])
-            page_text = in_node(args.site, folder, arguments)["out"]
-            page_json = in_node(args.site, folder, [*arguments, "--json"])["out"]
-            same = page_text == text and json.loads(page_json) == json.loads(as_json)
-            print(f"node, {name}: {'same' if same else 'DIFFERENT'}", flush=True)
-            if not same:
-                failed += 1
-                print(f"--- command line\n{text}\n--- page\n{page_text}", file=sys.stderr)
-            (folder / f"expect-{number}.txt").write_text(text, encoding="utf-8", newline="\n")
-            listed.append({"name": name, "paper": paper, "against": against,
-                           "expect": f"expect-{number}.txt"})  # fmt: skip
+            said = native(folder, arguments)
+            wrong = [*differences(said, in_node(args.site, folder, arguments), False),
+                     *(f"--json {part}" for part in differences(
+                         native(folder, [*arguments, "--json"]),
+                         in_node(args.site, folder, [*arguments, "--json"]), True))]  # fmt: skip
+            print(f"node, {name}: {'same' if not wrong else 'DIFFERENT: ' + ', '.join(wrong)}",
+                  flush=True)  # fmt: skip
+            failed += bool(wrong)
+            expect = f"expect-{number}.json"
+            (folder / expect).write_text(json.dumps(said), encoding="utf-8")
+            listed.append({"name": name, "paper": paper, "against": against, "expect": expect})
         (folder / "cases.json").write_text(json.dumps(listed), encoding="utf-8")
         for browser in [b for b in args.browsers.split(",") if b and b != "none"]:
             done = subprocess.run([NODE, str(TEST / "browser.mjs"), str(args.site), str(folder),

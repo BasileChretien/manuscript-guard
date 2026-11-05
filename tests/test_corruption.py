@@ -1047,6 +1047,7 @@ _NAMES_IN_TEX = r"""
 }
 @report{whoReport2018, author = {{World Health Organization}}, year = {2018},}
 @article{benitezStudy2018, author = {Ben{\'\i}tez, Ana}, year = {2018},}
+@article{citanStudy2018, author = {\c{C}{\i}tan, Ali}, year = {2018},}
 """
 
 
@@ -1076,9 +1077,14 @@ _NAMES_IN_TEX = r"""
         ("(Other, 2018; Fictional, 2021)", "2018", "adding the work there first if"),
         ("(Fictional, 2018)", "2018", "adding the work there first if it is not yet in it"),
         # Round 2 of #510: a group's name, and TeX the check misreads, match no entry, and
-        # the hint must not say the work is missing.
+        # the hint must not say the work is missing. A dotless i no accent is on, before a
+        # t, is still read as `\it` (DESIGN.md, Known gaps).
         ("(World Health Organization, 2018)", "2018", "adding the work there first if"),
-        ("(Ben\N{LATIN SMALL LETTER I WITH ACUTE}tez, 2018)", "2018", "adding the work there"),
+        ("(\N{LATIN CAPITAL LETTER C WITH CEDILLA}\N{LATIN SMALL LETTER DOTLESS I}tan, 2018)",
+         "2018", "adding the work there"),
+        # An accent on a dotless i, `{\'\i}`, is read as the letter since #520.
+        ("(Ben\N{LATIN SMALL LETTER I WITH ACUTE}tez, 2018)", "2018", "[@benitezStudy2018]"),
+        ("(Benitez, 2018)", "2018", "[@benitezStudy2018]"),
         ("(Fictional, 2019)", "2019", "2 works by Fictional from 2019"),
         ("(March, 2019)", "2019", "a date is one placeholder"),
     ],
@@ -11267,6 +11273,10 @@ def test_a_lookup_that_got_no_answer_at_all_is_a_warning(project: Path) -> None:
          "\N{GREEK SMALL LETTER BETA}-Lactam allergy in children"),
         ("$\N{REVERSE SOLIDUS}kappa$ and $\N{REVERSE SOLIDUS}tau$ in hepatic injury",
          "\N{GREEK SMALL LETTER KAPPA} and \N{GREEK SMALL LETTER TAU} in hepatic injury"),
+        # An accent on a dotless i, as Better BibTeX writes it: with the braces gone, its
+        # `\i` and the letters after it were the `\it` of italics and "ica".
+        ("Pol{\N{REVERSE SOLIDUS}'\N{REVERSE SOLIDUS}i}tica and hepatic injury",
+         "Pol\N{LATIN SMALL LETTER I WITH ACUTE}tica and hepatic injury"),
     ],
 )  # fmt: skip
 def test_a_title_marked_up_on_either_side_is_the_same_title(
@@ -11518,6 +11528,24 @@ def test_a_work_of_the_title_by_other_people_is_said(
     found = _g7_codes(project)
     assert found.get(code) == severity, found
     assert "reference-not-found" not in found
+
+
+@pytest.mark.parametrize("written", ["Sal{\\'\\i}tez", "Sal\\'{\\i}tez", "Sal{\\'{\\i}}tez"])
+def test_a_cited_name_with_an_accent_on_a_dotless_i_is_the_person_listed(
+    project: Path, written: str
+) -> None:
+    """Better BibTeX writes \N{LATIN SMALL LETTER I WITH ACUTE} as `{\\'\\i}`. With the
+    braces gone, the accent's `\\i` ran on into "tez" and was read as `\\it`, the command of
+    italics, so "Sal{\\'\\i}tez" was "Salez": a work whose one author both registries list
+    failed as by people none of whom wrote it."""
+    printed = "Sal\N{LATIN SMALL LETTER I WITH ACUTE}tez"
+    _bib_field(project, "author", f"{written}, Ana")
+    pubmed = {**_PUBMED_HIT, "authors": [{"family": printed, "given": "A"}]}
+    crossref = {**_CROSSREF_HIT, "authors": [{"family": printed, "given": "Ana"}]}
+    _searched(project, pubmed_search=_hits(pubmed), crossref_search=_hits(crossref))
+    found = _g7_codes(project)
+    assert not {"reference-authors-disjoint", "reference-authors-differ",
+                "reference-not-found"} & set(found), found  # fmt: skip
 
 
 def test_none_of_the_authors_fails_from_internal_review(project: Path) -> None:

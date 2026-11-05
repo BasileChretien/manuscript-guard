@@ -3065,7 +3065,7 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
   once Crossref or DataCite has found the DOI: with neither, no title is compared; of
   Crossref's titles only the first is kept, so a further one is not compared; markup, TeX, case, accents and punctuation are folded (a tag or a
   command is part of the word it marks, `PM<sub>2.5</sub>` and `PM\textsubscript{2.5}`
-  being "PM2.5", and an accent command keeps its letter), British
+  being "PM2.5", and an accent command keeps its letter, a dotless `\i` under it too), British
   spellings are read as American through G14's list, and no word is dropped for being
   short, since "CT" and "MRI" are the difference between two papers. A title mostly in
   another script than Latin is not compared. A cited year more than one off each of the
@@ -9992,8 +9992,9 @@ one: neither the year's letter ("2021b") nor a given name is compared, so it is 
 be the work (round 1 of #510: it was, and "(Fictional, 2021b)" was told the key of the 2021
 work). Where there is none it says to cite the work by its key, adding it to the file if
 it is not yet there, and never that the file holds no such work: a group's name, `{{World
-Health Organization}}`, or TeX the reading gets wrong, `Ben{\'\i}tez`, matches nothing
-either (round 2 of #510). The usual hint
+Health Organization}}`, or TeX the reading gets wrong, `\c{C}{\i}tan` (Known gaps, "G7 reads
+a .bib's TeX with the braces gone"), matches nothing either (round 2 of #510; its example,
+`Ben{\'\i}tez`, is read right since #520). The usual hint
 follows in every case, since a capitalised word before a year in brackets need not be an
 author. A name in `references.bib` is read as a reader sees it, its TeX read and its letters
 folded as G7 folds the names it compares (`gates.authors.name_words`): `{\AA}ngstr{\"o}m` is
@@ -13174,6 +13175,20 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   proper nouns included. A digest that depends on the machine is not a digest of the paper, so
   pandoc is not used here. The built document's bibliography is still pandoc's reading of the
   same file under a style, so the page and the paper can print a reference differently.
+- **G7 reads a .bib's TeX with the braces gone.** The reader takes them away before G7 reads
+  a title's or a family name's TeX (`gates/lookups`, `_untex`), so a command's name runs on
+  into the letters it was given, `\textsubscript{2.5}` as `\textsubscript2.5`, and the
+  longest command it knows is read off the front. After an accent, `\i` and `\j` are the
+  letter whatever letters follow, since an accent's argument is one letter: `{\'\i}tez` is
+  "ítez". The accent counts where it is written just before the `\i` or one space before
+  it, as Better BibTeX writes `{\v \i}`; two spaces, a tab or a line break between them
+  leave the `\i` read as before, and a sign after a TeX line break, `\\'\i`, is taken for an
+  accent. With no accent before it, a `{\i}` is read as the longest command it opens: before
+  a t as `\it`, as `\it{...}` would be, and before "ota" as the Greek `\iota`, which cannot
+  be told apart without the braces. A name written `\c{C}{\i}tan` is "Can", and is compared
+  as another person's (pinned in `tests/test_names.py`). Before any other letter the `\i` is
+  the letter. A command it does not know, `{\IJ}ssel`, is dropped with the letters run on
+  into it.
 - **No test runs the page's JavaScript.** The template is checked by reading it and by opening a
   built page in a browser by hand; its storage, its download, its dialog, its clipboard and its
   keyboard handling are held by nothing. A defect there reaches a co-author and not the suite.
@@ -20860,6 +20875,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
     holds whatever the scripts printed. Removing them is the person's.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **An accent on a dotless i was read as italics (2026-11-05).** Better BibTeX writes í as
+  `{\'\i}`, and with the braces gone G7 read
+  `Sal\'\itez` by its longest command, the `\it` of italics, and "ez": a work whose one
+  author both registries list as Salítez failed as by people none of whom wrote it
+  (`reference-authors-disjoint`), and a title's "política" was "polica" when it was
+  compared, searched for and held to another entry. An accent's argument is one letter now,
+  `\i` and `\j` among them; see "G7 reads a .bib's TeX with the braces gone" above for the
+  `{\i}` no accent is on.
 
 - **A plugin left releases behind the tool was said nothing of.** A copy of the plugin
   installed once stayed at a release a month old while the tool was upgraded with pip, and

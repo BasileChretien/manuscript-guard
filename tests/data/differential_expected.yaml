@@ -207,3 +207,9 @@ expected:
       new with this pull request: `checking.in_english` decides whether a communication
       text is held to the claim ladder and G6 by its front matter's `language`, and the
       base has no such function, so it cannot be asked
+  - reading: search words
+    why: >-
+      after an accent, `\i` is the dotless letter and the letters after it are the word's,
+      since an accent's argument is one letter: `pol\^\itica` is searched for as "politica",
+      where the longest command, the `\it` of italics, made it "polica"; the lines drawn
+      now hold an accent on a dotless i before a t, braced and not

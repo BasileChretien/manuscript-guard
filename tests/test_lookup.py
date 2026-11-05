@@ -847,6 +847,26 @@ def test_a_word_pubmed_does_not_index_is_never_searched_for() -> None:
     assert "trial" in unidentified.crossref_text(q)
 
 
+def test_an_accent_on_a_dotless_i_is_one_letter_of_a_cited_title() -> None:
+    """Better BibTeX writes \N{LATIN SMALL LETTER I WITH ACUTE} as `{\\'\\i}`, and the .bib
+    reader takes the braces away: `pol\\'\\itica` was read as the `\\it` of italics and
+    "ica", so the title G7 compared with the registry's, searched the registries for and
+    held to another entry's was "polica"."""
+    from manuscript_guard.gates.duplicates import title_of
+    from manuscript_guard.gates.lookups import title_held, title_words
+    from manuscript_guard.gates.searched import search_words
+
+    acute, circumflex = ("\N{LATIN SMALL LETTER I WITH ACUTE}",
+                         "\N{LATIN SMALL LETTER I WITH CIRCUMFLEX}")  # fmt: skip
+    tex = "Una cr\\'\\itica pol\\'\\itica of hepatic injury and its ma\\^\\itrise"
+    printed = f"Una cr{acute}tica pol{acute}tica of hepatic injury and its ma{circumflex}trise"
+    assert title_words(tex) == title_words(printed)
+    assert "politica" in title_words(tex)
+    assert title_held(tex, printed) == 1.0
+    assert search_words(tex) == search_words(printed)
+    assert title_of({"title": tex}) == title_of({"title": printed})
+
+
 def test_crossref_s_search_keeps_to_the_cited_years(searched: Path) -> None:
     """Fabricated copies of a famous paper, posted years later, rank first once the authors
     are in the query (five under 10.65215 for "Attention is all you need", 2026-10-20)."""

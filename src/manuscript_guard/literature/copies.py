@@ -21,9 +21,8 @@ different files that would take one name are neither of them copied: which is th
 which the supplement is not a thing to guess. A file under `literature/sources/` that this
 command did not write, or that was changed since it wrote it, is never written over; one it
 wrote, and that is as it wrote it, is replaced when Zotero's copy has changed. A file found in
-place with Zotero's bytes is left out of the record, so it stays the author's (round 1 of
-#361), and an entry whose file is gone is dropped at the start of a run. Nothing is
-deleted. What it wrote is recorded in `literature/sources.yaml`: each file's
+place with Zotero's bytes is entered as the author's, so it stays theirs (round 1 of #361).
+Nothing is deleted. What it wrote is recorded in `literature/sources.yaml`: each file's
 name, the work, the SHA-256 and size of what was written, and whether it is the file or
 Zotero's text. The record holds no path on anyone's computer.
 
@@ -31,8 +30,10 @@ A file saved by hand under a cited work's name, or one the ledger names, is ente
 record too, as the author's (`from: author`), with its digest as it is now; it is never
 replaced. A new project keeps `literature/sources/` out of git and the record in it (Basile,
 2026-10-20, confirmed 2026-11-05), so the record is what CI has of the folder: G7 notes a copy
-it lists that is not on the computer, where it fails one that nobody stored
-(`recorded_names`).
+it lists that is not on the computer and git ignores (`away`), where it fails one that nobody
+stored. So an entry stays while its file is absent, as it is on every fresh clone (Basile,
+2026-11-05, reversing round 2 of #361 for this case): the command's copy is taken again and its
+entry rewritten, and nothing is written into the name of an absent file of the author's.
 
 With `--from <folder>` the files are taken from a folder of PDFs named by DOI instead of from
 Zotero (`downloads`), under the same rules, and recorded as from the folder with the DOI they
@@ -70,7 +71,12 @@ from manuscript_guard.zotero import Attachment, client
 if TYPE_CHECKING:
     from manuscript_guard.literature.downloads import Offer
 
-SCHEMA = "manuscript-guard/sources/1"
+#: The second version can hold the author's own files (`from: author`); the first is read as
+#: it was written, and the record is written again as the second.
+SCHEMA = "manuscript-guard/sources/2"
+#: The versions this tool reads. A later one was written by a newer manuscript-guard.
+READS = ("manuscript-guard/sources/1", SCHEMA)
+_VERSION = re.compile(r"manuscript-guard/sources/(\d+)")
 #: Under `literature/`, beside `sources/` rather than in it, so that it can be kept in git
 #: where the sources are not.
 RECORD = "sources.yaml"
@@ -102,10 +108,11 @@ _NAME = re.compile(r"[A-Za-z0-9_.-]+")
 _OTHERS = "the other source's"
 
 HEADER = (
-    "# Written by `manuscript-guard sync-sources`: the files it copied from Zotero, or from a\n"
-    "# folder of downloaded PDFs, into literature/sources/. A file listed here is one the\n"
-    "# command may replace when the copy it came from changes, and only while it is as the\n"
-    "# command wrote it. Not edited by hand.\n"
+    "# Written by `manuscript-guard sync-sources`: the files under literature/sources/, kept\n"
+    "# in git where the copies are not. One it copied from Zotero, or from a folder of\n"
+    "# downloaded PDFs, it may replace when the copy it came from changes, and only while it\n"
+    "# is as the command wrote it. One marked `from: author` was saved there by hand, and is\n"
+    "# never replaced. Not edited by hand.\n"
 )
 
 
@@ -154,6 +161,13 @@ def read_record(project: Project) -> dict[str, dict[str, Any]]:
     document = read_structured(path)
     if document is None:
         return {}
+    newer = _newer(document)
+    if newer is not None:
+        raise ContractError(
+            f"{path} was written by a newer version of manuscript-guard ({newer}). Upgrade "
+            "this one (pip install --upgrade manuscript-guard) and run it again; keep the "
+            "record as it is, since it says which files are the authors' own"
+        )
     report = validate(document, "sources", path)
     if not report.ok:
         problems = "; ".join(f.message for f in report.failures)
@@ -162,6 +176,15 @@ def read_record(project: Project) -> dict[str, dict[str, Any]]:
             "it: the files it listed are then treated as put there by hand, and kept"
         )
     return dict(document["files"])
+
+
+def _newer(document: object) -> str | None:
+    """The version a record says it is, where it is one this tool does not know and later."""
+    schema = document.get("schema") if isinstance(document, dict) else None
+    found = _VERSION.fullmatch(schema) if isinstance(schema, str) else None
+    if found is None or schema in READS:
+        return None
+    return schema if int(found.group(1)) > len(READS) else None
 
 
 def recorded_names(project: Project) -> frozenset[str] | None:
@@ -378,9 +401,11 @@ def sync(
     holder = "Zotero" if offered is None else "the folder"
     folder = project.path("literature") / FOLDER
     on_disk = read_record(project)
-    # An entry whose file is gone says nothing of a file saved under that name later: kept, it
-    # made the author's copy the command's (round 2 of #361).
-    recorded = {name: entry for name, entry in on_disk.items() if (folder / name).is_file()}
+    # An entry stays while its file is absent: with the copies out of git, every fresh clone
+    # lacks them, and dropping the entries emptied the record CI reads (Basile, 2026-11-05,
+    # reversing round 2 of #361 for this case). A file saved in its place with the bytes the
+    # command wrote is then taken for the command's (#364).
+    recorded = dict(on_disk)
     files = dict(recorded)
     outcomes: list[Outcome] = []
     try:
@@ -471,8 +496,16 @@ def _file(
     #361)."""
     dest = folder / candidate.name
     where = f"literature/sources/{candidate.name}"
+    ours = recorded.get(candidate.name)
+    if ours is not None and ours["from"] == FROM_AUTHOR and not dest.exists():
+        # The author's own file, recorded and not on this computer, as on a fresh clone:
+        # another copy put in its name would be taken for theirs (Basile, 2026-11-05).
+        holder = _holder(candidate.kind)
+        said = (f"{where} was saved there by hand and is not on this computer: get it from "
+                f"whoever saved it; {holder}'s copy is not put in its place")  # fmt: skip
+        return Outcome(key, KEPT, said, candidate.name)
     try:
-        status = _decide(dest, candidate, recorded.get(candidate.name))
+        status = _decide(dest, candidate, ours)
     except OSError as exc:
         said = f"{where} could not be read ({exc.strerror or exc}): left as it is"
         return Outcome(key, KEPT, said, candidate.name)

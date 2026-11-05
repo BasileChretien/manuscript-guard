@@ -242,6 +242,52 @@ def test_a_passage_of_a_work_with_no_stored_copy_is_a_warning(project: Path) -> 
     assert found.counts["passages_unchecked"] == 1
 
 
+def test_a_passage_of_a_work_whose_copy_is_kept_out_of_git_is_noted(project: Path) -> None:
+    """In CI the copy is recorded and not there: not checked here, a note, not a warning."""
+    from kept_away import keep_away
+
+    keep_away(project, f"{CLASS}.txt", CLASS)
+    found = report(project)
+    assert ("passage-not-here", INFO) in said(project)
+    assert ("passage-unchecked", WARN) not in said(project)
+    note = next(f for f in found.findings if f.code == "passage-not-here")
+    assert "not on this computer" in note.message
+    assert (found.counts["passages_not_here"], found.counts["passages_unchecked"]) == (1, 0)
+
+
+def test_a_passage_not_in_the_abstract_here_waits_for_the_full_text_kept_away(
+    project: Path,
+) -> None:
+    """The abstract is committed and the full text is out of git: a passage of the full text
+    is not in the abstract, and is not checked here rather than failed. One the abstract
+    holds is verified."""
+    from kept_away import keep_away
+
+    sources = project / "literature" / "sources"
+    (sources / f"{CLASS}.abstract.txt").write_text("An abstract that says little.\n", "utf-8")
+    keep_away(project, f"{CLASS}.txt", CLASS)
+    assert ("passage-not-in-source", FAIL) not in said(project)
+    assert ("passage-not-here", INFO) in said(project)
+    (sources / f"{CLASS}.abstract.txt").write_text(
+        "A signal was detected for the class as a whole.\n", "utf-8")
+    assert report(project).counts["passages_verified"] == 1
+    # A copy git does not ignore is not kept out of git: it is unchecked, as before.
+    (sources / f"{CLASS}.abstract.txt").unlink()
+    (project / ".gitignore").unlink()
+    assert ("passage-unchecked", WARN) in said(project)
+
+
+def test_passages_lists_a_copy_kept_away_with_the_stored_ones(project: Path, capsys) -> None:
+    from kept_away import keep_away
+
+    keep_away(project, f"{CLASS}.txt", CLASS)
+    assert main(["passages", str(project), "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    cites = [c for s in listed["statements"] for c in s["cites"] if c["key"] == CLASS]
+    assert cites and all(c["stored"] == [] for c in cites)
+    assert all(c["recorded_not_here"] == [f"{CLASS}.txt"] for c in cites)
+
+
 def test_a_short_passage_is_a_warning(project: Path) -> None:
     write(project, entry(passage="the class as"))
     assert ("passage-too-short", WARN) in said(project)

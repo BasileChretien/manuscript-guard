@@ -193,9 +193,11 @@ build/
 __pycache__/
 
 # The copies of cited works, paywalled papers among them, which a public repository would
-# publish. literature/sources.yaml, the record of what was stored, is kept. To commit the
-# copies in a private repository, delete this line and see `literature:` in paper.yaml.
-literature/sources/
+# publish. literature/sources.yaml, the record of what was stored, is kept. To commit one
+# copy, an open-access paper or an abstract, add a line `!literature/sources/<its name>`
+# below; to commit them all in a private repository, delete this line and see
+# `literature:` in paper.yaml.
+literature/sources/*
 """
 
 # Not cosmetic. Several of this toolkit's guarantees are byte-level: the .sha256 beside every

@@ -386,27 +386,95 @@ def test_a_data_or_citation_file_is_not_copied_as_the_work(
     assert not list(sources(paper).iterdir())
 
 
-def test_an_entry_whose_file_is_gone_does_not_make_a_new_file_the_commands(
+def test_an_entry_whose_file_is_gone_is_kept_and_its_copy_taken_again(
     paper, tmp_path, monkeypatch
 ):
-    """Round 2 of #361: the command copied A, the author deleted it, Zotero stopped offering
-    it, the author saved A again by hand, and Zotero then offered C: the stale entry matched
-    the author's file, and C replaced it."""
+    """Basile, 2026-11-05, reversing round 2 of #361 for this case: with the copies out of
+    git, a file is gone on every fresh clone, and dropping its entry emptied the record CI
+    reads. The entry stays while its file is absent; the command's copy is taken again and
+    its entry rewritten. A file saved by hand in its place with other bytes is still the
+    author's; one with the bytes the command wrote is taken for the command's (#364)."""
     zotero = Storage(tmp_path)
     cite(paper, "smith2020")
-    held: dict[str, list] = {"smith2020": [zotero.file("a.pdf", PDF)]}
+    held: dict[str, list | None] = {"smith2020": [zotero.file("a.pdf", PDF)]}
     fake = FakeBBT({1: held})
     sync(paper, monkeypatch, fake)
     (sources(paper) / "smith2020.pdf").unlink()
     held["smith2020"] = None
     sync(paper, monkeypatch, fake)
-    assert "smith2020.pdf" not in record(paper)["files"], "the entry goes with its file"
+    assert record(paper)["files"]["smith2020.pdf"]["from"] == "zotero", "the entry stays"
 
-    (sources(paper) / "smith2020.pdf").write_bytes(PDF)
-    held["smith2020"] = [zotero.file("c.pdf", PDF + b"% another version\n")]
+    newer = PDF + b"% another version\n"
+    held["smith2020"] = [zotero.file("c.pdf", newer)]
+    (outcome,) = sync(paper, monkeypatch, fake)
+    assert outcome.status == copies.COPIED
+    assert record(paper)["files"]["smith2020.pdf"]["sha256"] == hashlib.sha256(newer).hexdigest()
+
+    (sources(paper) / "smith2020.pdf").write_bytes(b"%PDF-1.4\nthe author's own\n")
+    held["smith2020"] = [zotero.file("d.pdf", PDF + b"% a third\n")]
     (outcome,) = sync(paper, monkeypatch, fake)
     assert outcome.status == copies.KEPT
+
+
+def test_a_run_in_a_clone_keeps_every_entry_and_writes_no_author_s_name(
+    paper, tmp_path, monkeypatch, capsys
+):
+    """A co-author's clone holds none of the copies: the run keeps the entries of both, takes
+    the command's copy again, and does not write Zotero's copy into the name of a file an
+    author saved, which it says to get from whoever saved it."""
+    zotero = Storage(tmp_path)
+    cite(paper, "printed2010", "smith2020")
+    sources(paper).mkdir(parents=True, exist_ok=True)
+    mine = b"%PDF-1.4\nthe report, saved by hand\n"
+    (sources(paper) / "printed2010.pdf").write_bytes(mine)
+    fake = FakeBBT({1: {"printed2010": None, "smith2020": [zotero.file("s.pdf", PDF)]}})
+    sync(paper, monkeypatch, fake)
+    before = record(paper)["files"]
+    assert {name: entry["from"] for name, entry in before.items()} == {
+        "printed2010.pdf": "author", "smith2020.pdf": "zotero"}  # fmt: skip
+
+    for name in before:
+        (sources(paper) / name).unlink()
+    clone = FakeBBT({1: {"printed2010": [zotero.file("p.pdf", PDF + b"% Zotero's\n")],
+                         "smith2020": [zotero.file("s2.pdf", PDF)]}})  # fmt: skip
+    assert run(paper, monkeypatch, clone) == 0
+    out = capsys.readouterr().out
+    assert not (sources(paper) / "printed2010.pdf").exists()
     assert (sources(paper) / "smith2020.pdf").read_bytes() == PDF
+    assert record(paper)["files"]["printed2010.pdf"] == before["printed2010.pdf"]
+    assert "printed2010.pdf" in out and "whoever saved it" in out
+
+
+def test_the_record_says_which_files_are_the_authors(paper, monkeypatch):
+    cite(paper, "printed2010")
+    sources(paper).mkdir(parents=True, exist_ok=True)
+    (sources(paper) / "printed2010.txt").write_bytes(b"Read from the printed report.")
+    sync(paper, monkeypatch, FakeBBT({1: {"printed2010": None}}))
+    header = (paper / "literature" / copies.RECORD).read_text("utf-8").split("schema:")[0]
+    assert "from: author" in header and "never replaced" in header
+
+
+def test_the_record_is_written_as_the_second_version_and_the_first_is_read(paper, monkeypatch):
+    cite(paper, "printed2010")
+    sources(paper).mkdir(parents=True, exist_ok=True)
+    (sources(paper) / "printed2010.txt").write_bytes(b"Read from the printed report.")
+    files = {"other.txt": {"key": "other2020", "sha256": "0" * 64, "bytes": 1,
+                           "from": "zotero", "copied": "2026-10-20"}}  # fmt: skip
+    (paper / "literature" / copies.RECORD).write_text(
+        yaml.safe_dump({"schema": "manuscript-guard/sources/1", "files": files}), "utf-8")
+    sync(paper, monkeypatch, FakeBBT({1: {"printed2010": None}}))
+    written = record(paper)
+    assert written["schema"] == "manuscript-guard/sources/2"
+    assert set(written["files"]) == {"other.txt", "printed2010.txt"}
+
+
+def test_a_record_of_a_newer_version_is_not_to_be_deleted(paper, capsys, monkeypatch):
+    cite(paper, "smith2020")
+    (paper / "literature" / copies.RECORD).write_text(
+        yaml.safe_dump({"schema": "manuscript-guard/sources/9", "files": {}}), "utf-8")
+    assert run(paper, monkeypatch, FakeBBT({1: {}})) == 2
+    err = capsys.readouterr().err
+    assert "newer" in err and "delete it" not in err
 
 
 def test_a_dry_run_writes_nothing(paper, tmp_path, monkeypatch, capsys):

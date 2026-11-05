@@ -34,6 +34,7 @@ from manuscript_guard.literature.passages import (
     CHANGED,
     DOES_NOT,
     NO_SOURCE,
+    NOT_HERE,
     PARTLY,
     PASSAGES_FILE,
     UNCITED,
@@ -56,10 +57,13 @@ WORDS = 4
 def survey_of(project: Project) -> tuple[Survey, Report]:
     """The manuscript's cited sentences and the project's passages, matched and looked for,
     with what stopped the passages file being read."""
+    from manuscript_guard.literature.away import away
+
     passages, report = read_passages(project.path("literature"))
     documents = citing_documents(project)
     sources = project.path("literature") / "sources"
-    return survey(sources, cited_sentences(documents), passages), report
+    kept = away(project).keys
+    return survey(sources, cited_sentences(documents), passages, kept), report
 
 
 def citing_documents(project: Project) -> list:
@@ -136,6 +140,7 @@ def check_passages(project: Project, stage: str = DRAFTING) -> Report:
         passages_verified=sum(c.found == VERIFIED for c in checked),
         passages_failed=sum(c.found == ABSENT for c in checked),
         passages_unchecked=sum(c.found in (NO_SOURCE, UNREADABLE) for c in checked),
+        passages_not_here=sum(c.found == NOT_HERE for c in checked),
         passages_stale=sum(c.stale is not None for c in checked),
         # A judgement of the words the manuscript has, by a person: neither one of a stale
         # passage nor one a model's name signs (round 1 of #374).
@@ -169,6 +174,19 @@ def _findings(checked: Checked, path: Path) -> list[Finding]:
             context=context,
             hint="copy the words from the stored source rather than retyping them, marking "
             "words left out with [...]; or cite the work that says them",
+        ))  # fmt: skip
+    elif checked.found == NOT_HERE:
+        found.append(Finding(
+            gate=GATE,
+            code="passage-not-here",
+            severity=INFO,
+            message=f"{passage.named}: the passage was not checked here: a copy of "
+            f"@{passage.citekey} is recorded in literature/sources.yaml, kept out of git, and "
+            "is not on this computer"
+            + (f" (looked in {', '.join(checked.looked_in)})" if checked.looked_in else ""),
+            path=path,
+            context=context,
+            hint="on the computer that holds the copies, `check` holds the passage to it",
         ))  # fmt: skip
     elif checked.found in (NO_SOURCE, UNREADABLE):
         found.append(Finding(

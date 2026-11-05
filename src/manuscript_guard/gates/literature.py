@@ -79,12 +79,11 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
     source to read used to be passed over: it was counted in none of these, reported by
     nothing, and the run said everything it had checked was verified.
     """
-    from manuscript_guard.gates.citations import source_elsewhere
-    from manuscript_guard.literature.copies import recorded_names
+    from manuscript_guard.literature.away import away
 
     report = Report()
     root = project.path("literature")
-    recorded = None if project.sources_in_git else recorded_names(project)
+    kept = away(project)
     verified = 0
     unverifiable = 0
     failed = 0
@@ -102,19 +101,18 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
         source_file = str(detail.get("source_file") or "").strip()
         quote = detail.get("quote", "")
         path = root / source_file
-        if source_file and not path.exists() and source_elsewhere(project, source_file, recorded):
-            # A recorded copy kept out of git, not on this computer: `_sources_exist` notes it
-            # (literature-source-not-here). Nothing was read, and nothing found wrong.
-            unverifiable += 1
-            continue
-        if not source_file or not path.exists():
+        # A recorded copy git ignores, not on this computer: `_sources_exist` notes it
+        # (literature-source-not-here). Only the quote's being in the copy waits for it; what
+        # reads the ledger alone runs here too.
+        here = not (source_file and not path.exists() and kept.holds(source_file))
+        if here and (not source_file or not path.exists()):
             # `_sources_exist` reports both as literature-source-missing; one finding is
             # enough. The value was checked against nothing, so it is not verified.
             failed += 1
             continue
 
         try:
-            text = read_source(path)
+            text = read_source(path) if here else ""
         except UnreadableSource as exc:
             unverifiable += 1
             report = report.with_findings(
@@ -129,7 +127,7 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
             )
             continue
 
-        if not contains(text, quote):
+        if here and not contains(text, quote):
             failed += 1
             # What the source holds of the quote, and what stands in the way: said, and
             # deciding nothing (`literature/placement.py`).
@@ -164,7 +162,10 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
             )
             continue
 
-        verified += 1
+        if here:
+            verified += 1
+        else:
+            unverifiable += 1
         if quote not in judged:
             judged.add(quote)
             report = report.merge(_tests_in_quote(key, value, quote))

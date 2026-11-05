@@ -122,6 +122,11 @@ Do not summarise the abstract. The editor has it.
 ## Before you send
 
 - Read the pack, not the source. It is a different document once it is assembled.
+- The submission check counts only where the copies of the cited works are, not in CI
+  alone. A new project keeps `literature/sources/` out of git, so CI notes each quote,
+  passage and earlier output it could not hold to its copy (`*-not-here`) and fails none of
+  them: only the computer that holds the copies has checked them. Ask the user to run it
+  there.
 - Open the .docx and confirm the citations resolved and the figures are where you expect
   them, at the resolution the journal wants. `--offline` formats citations from
   `references.bib`, in the style given with `--csl`, or else the journal's style where

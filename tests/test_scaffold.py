@@ -112,7 +112,9 @@ def test_init_keeps_the_copies_of_cited_works_out_of_git(tmp_path: Path) -> None
     root = tmp_path / "paper"
     init_project(root)
     lines = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
-    assert "literature/sources/" in lines
+    # The files under it, not the folder: git re-includes no file of an excluded folder, so a
+    # folder pattern would leave no way to commit an abstract or an open-access copy.
+    assert "literature/sources/*" in lines
     if shutil.which("git") is None:
         pytest.skip("git is not installed")
 
@@ -126,6 +128,10 @@ def test_init_keeps_the_copies_of_cited_works_out_of_git(tmp_path: Path) -> None
     assert ignored("literature/sources/smith2020.pdf")
     assert not ignored("literature/sources.yaml")
     assert not ignored("literature/ledger.yaml")
+    with (root / ".gitignore").open("a", encoding="utf-8") as gitignore:
+        gitignore.write("!literature/sources/smith2020.abstract.txt\n")
+    assert not ignored("literature/sources/smith2020.abstract.txt")
+    assert ignored("literature/sources/smith2020.pdf")
 
 
 def test_paper_yaml_can_keep_the_copies_in_git(tmp_path: Path) -> None:

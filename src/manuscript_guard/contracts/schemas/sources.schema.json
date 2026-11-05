@@ -7,7 +7,7 @@
   "required": ["schema", "files"],
   "additionalProperties": false,
   "properties": {
-    "schema": { "const": "manuscript-guard/sources/1" },
+    "schema": { "enum": ["manuscript-guard/sources/1", "manuscript-guard/sources/2"] },
     "files": {
       "type": "object",
       "propertyNames": { "pattern": "^[A-Za-z0-9_.-]+$" },

@@ -178,6 +178,11 @@ BINDS_AT = {
     # A note, at every stage: a recorded copy kept out of git and not on this computer, as in
     # CI (Basile, 2026-10-20). Listed so that its stage is written down if it ever fails.
     "literature-source-not-here": DRAFTING,
+    # The same, for the other readers of a copy (Basile, 2026-11-05).
+    "related-source-not-here": DRAFTING,
+    "passage-not-here": DRAFTING,
+    "similar-passage-not-here": DRAFTING,
+    "quotation-not-here": DRAFTING,
     "attestation-not-human": DRAFTING,
     # So does a passage recorded as a cited work's words, and only a person judges one.
     "passage-not-in-source": DRAFTING,

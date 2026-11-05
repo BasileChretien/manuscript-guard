@@ -3478,8 +3478,10 @@ def cmd_passages(args: argparse.Namespace) -> int:
         for finding in report.failures:
             print(f"manuscript-guard passages: {finding.message}", file=sys.stderr)
         return 2
+    from manuscript_guard.literature.away import away
+
     sources = project.path("literature") / "sources"
-    listed = listing(found, project.root, sources, missing=args.missing)
+    listed = listing(found, project.root, sources, missing=args.missing, away=away(project))
     print(json.dumps(listed, indent=2, ensure_ascii=False) if args.json else rendered(listed))
     return 0
 

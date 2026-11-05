@@ -3031,6 +3031,30 @@ def test_a_misquotation_names_only_the_works_looked_in(project: Path) -> None:
     assert found.message.endswith("is not in the stored source of @fictionalHepaticCohort2021")
 
 
+def test_a_quotation_of_a_work_whose_copy_is_kept_out_of_git_is_noted(project: Path) -> None:
+    """In CI the copy is recorded and not there: the quotation is not checked here, which the
+    note says, and its hint does not ask for a copy that is stored."""
+    from kept_away import keep_away
+
+    from manuscript_guard.gates import check_prose_quotations
+
+    path = main_md(project)
+    sentence = ("The cohort found that “incidence fell with age and differed by sex” "
+                "[@fictionalHepaticCohort2021].")  # fmt: skip
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("\n# Discussion\n", "\n" + sentence + "\n\n# Discussion\n", 1),
+                    encoding="utf-8")  # fmt: skip
+    sources = project / "literature" / "sources"
+    (sources / "fictionalHepaticCohort2021.abstract.txt").write_text("An abstract.\n", "utf-8")
+    keep_away(project, "fictionalHepaticCohort2021.txt", "fictionalHepaticCohort2021")
+    [found] = check_prose_quotations(load_project(project)[0]).findings
+    assert (found.code, found.severity) == ("quotation-not-here", "info")
+    assert "not on this computer" in found.message
+    (sources / "fictionalHepaticCohort2021.abstract.txt").unlink()
+    [found] = check_prose_quotations(load_project(project)[0]).findings
+    assert found.code == "quotation-not-here"
+
+
 # ----------------------------- a passage repeated from the authors' own earlier paper
 
 
@@ -12380,21 +12404,18 @@ def test_every_literature_value_ends_in_one_verdict(
 # New projects keep literature/sources/ out of git, and literature/sources.yaml in it (Basile,
 # 2026-10-20, confirmed 2026-11-05). On a fresh clone or in CI a source the record lists is
 # then missing for a reason that is not a fault: G7 notes it, and the quote is unverifiable
-# rather than failed. A project that keeps the copies in git asks for the failure back.
+# rather than failed. A copy counts as kept out of git only where git says its path is
+# ignored (Basile, 2026-11-05): a tracked copy, one git does not ignore, and any copy where
+# git cannot be asked fail as before. A project that commits its copies asks for the failure
+# back in paper.yaml.
 
 _HEPATIC = "fictionalHepaticCohort2021.txt"
 
 
-def _recorded_then_gone(root: Path, *, sources_in_git: bool | None = None) -> None:
-    from manuscript_guard.literature import copies
+def _recorded_then_gone(root: Path, *, sources_in_git: bool | None = None, **away) -> None:
+    from kept_away import keep_away
 
-    source = root / "literature" / "sources" / _HEPATIC
-    data = source.read_bytes()
-    files = {_HEPATIC: {"key": "fictionalHepaticCohort2021",
-                        "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data),
-                        "from": "author", "copied": "2026-11-05"}}  # fmt: skip
-    copies.write_record(load_project(root)[0], files)
-    source.unlink()
+    keep_away(root, _HEPATIC, "fictionalHepaticCohort2021", **away)
     if sources_in_git is not None:
         paper = root / "paper.yaml"
         document = yaml.safe_load(paper.read_text(encoding="utf-8"))
@@ -12469,6 +12490,93 @@ def test_a_recorded_file_of_another_folder_vouches_for_nothing(project: Path) ->
     path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
     report = _literature_report(project)
     assert "literature-source-missing" in {f.code for f in report.failures}
+
+
+def test_a_missing_source_s_hint_says_a_file_saved_by_hand_is_recorded(project: Path) -> None:
+    """A file the author saved and never recorded passes on their computer and fails in CI:
+    the failure says how a hand-saved file gets into the record."""
+    _source_removed(project)
+    report = _literature_report(project)
+    (failed,) = [f for f in report.failures if f.code == "literature-source-missing"]
+    assert "sync-sources" in failed.hint and "by hand" in failed.hint
+
+
+def test_a_recorded_copy_git_tracks_fails_when_it_is_missing(project: Path) -> None:
+    """A project that commits its copies, as one made before this change does, and has a
+    record: a copy deleted from its checkout is a failure, as it always was."""
+    from kept_away import a_repository, git
+
+    a_repository(project, ignore=False)
+    git(project, "add", f"literature/sources/{_HEPATIC}")
+    git(project, "commit", "-q", "-m", "the copies are committed")
+    _recorded_then_gone(project)
+    report = _literature_report(project)
+    assert "literature-source-missing" in {f.code for f in report.failures}
+    assert "literature-source-not-here" not in {f.code for f in report.findings}
+
+
+def test_a_recorded_copy_git_does_not_ignore_fails_when_it_is_missing(project: Path) -> None:
+    _recorded_then_gone(project, ignore=False)
+    report = _literature_report(project)
+    assert "literature-source-missing" in {f.code for f in report.failures}
+
+
+def test_a_recorded_copy_outside_any_git_repository_fails_when_it_is_missing(
+    project: Path,
+) -> None:
+    _recorded_then_gone(project, repository=False)
+    report = _literature_report(project)
+    assert "literature-source-missing" in {f.code for f in report.failures}
+
+
+def test_a_recorded_copy_fails_where_git_cannot_be_asked(project: Path, monkeypatch) -> None:
+    import subprocess
+
+    _recorded_then_gone(project)
+
+    def refused(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0] if args else "git", 10)
+
+    monkeypatch.setattr(subprocess, "run", refused)
+    report = _literature_report(project)
+    assert "literature-source-missing" in {f.code for f in report.failures}
+
+
+def test_git_is_asked_once_for_a_run(project: Path, monkeypatch) -> None:
+    import subprocess
+
+    _recorded_then_gone(project)
+    asked = []
+    real = subprocess.run
+
+    def counted(command, *args, **kwargs):
+        if "check-ignore" in command:
+            asked.append(command)
+        return real(command, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", counted)
+    report = _literature_report(project)
+    assert "literature-source-not-here" in {f.code for f in report.findings}
+    assert len(asked) == 1, asked
+
+
+def test_a_value_its_quote_does_not_state_fails_with_its_copy_away(project: Path) -> None:
+    """Only the quote's being in the copy waits for the copy: what reads the ledger alone,
+    the value in its quote among them, runs in CI too."""
+    _value_not_quoted(project)
+    _recorded_then_gone(project)
+    report = _literature_report(project)
+    assert "value-not-in-quote" in {f.code for f in report.failures}, report.render(project)
+    assert report.counts["literature_failed"] == 1
+
+
+def test_a_value_from_an_abstract_kept_away_is_still_said_to_be_one(project: Path) -> None:
+    from kept_away import keep_away
+
+    keep_away(project, "fictionalClassSignal2019.txt", "fictionalClassSignal2019")
+    report = _literature_report(project)
+    assert "value-from-abstract" in {f.code for f in report.findings}
+    assert report.counts["literature_unverifiable"] == 1
 
 
 # ------------------------------------------------------- a P worked out from its statistic

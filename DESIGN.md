@@ -7627,6 +7627,18 @@ that the hook fires on every shell command, so it has its own console script
 (`manuscript-guard-hook`) that imports nothing heavy until it knows it has work: 152 ms for
 the no-op path against roughly 400 ms through the full CLI.
 
+One command goes through for its help, in one exact shape (`hooks._ONLY_HELP`): the tool
+by its name, `manuscript-guard` or `mguard` with or without `.exe`, a subcommand or none, and
+`-h` or `--help`, one space between and nothing else, as `manuscript-guard submit --help`.
+That prints the options of `submit` and exits, and it was refused while the submission check
+failed, so an agent could not read those options until the paper passed. Every other command
+is read as before, a help with an option beside it, quoted, after a path, an assignment or
+`python -m` among them. The shape is exact because three rounds of review of #513 each found a
+way past a broader reading: a line continued in one shell and not the other into a copy of the
+document, a submission quoted for `sh -c` before the tool's name, an expression PowerShell
+evaluates inside an argument, and a quote inside a word that Windows PowerShell 5.1 hands to
+the program unescaped, so that the help ends inside the argument before it.
+
 It is registered for the three tools through which Claude Code runs a shell command: `Bash`,
 `PowerShell` and `Monitor`. Each sends the command in `tool_input.command`, and the guard
 reads the command, not the tool's name. It was registered for `Bash` alone until 2026-10-02,
@@ -9967,6 +9979,27 @@ red — and it is the same collision that makes a lone table cell weaker than a 
 Replacement is by offset, never by text. "Replace 1 with a binding" done by search-and-
 replace would be a catastrophe in a paper full of 1s, and structural numbers — Table 8, item
 8 — must be left exactly where they are.
+
+A year is often a citation's. A co-author who types "(Fictional, 2018)" in Word sends back
+text, `import` merges it as text, and G2 fails the year as a number nobody bound. The hint
+told the author to bind it with `{{results.<key>}}` or call it a convention, where what they
+needed was the work's key. G2 still fails the year, matched or not; its hint now reads it as
+the year of a citation typed as text (`gates.typed_citations`), in brackets, in a group or
+in the sentence, finds the entries of `references.bib` with that first author's family name
+and that year, and names the key of each as a work the author may mean, to cite if it is the
+one: neither the year's letter ("2021b") nor a given name is compared, so it is never said to
+be the work (round 1 of #510: it was, and "(Fictional, 2021b)" was told the key of the 2021
+work). Where there is none it says to cite the work by its key, adding it to the file if
+it is not yet there, and never that the file holds no such work: a group's name, `{{World
+Health Organization}}`, or TeX the reading gets wrong, `Ben{\'\i}tez`, matches nothing
+either (round 2 of #510). The usual hint
+follows in every case, since a capitalised word before a year in brackets need not be an
+author. A name in `references.bib` is read as a reader sees it, its TeX read and its letters
+folded as G7 folds the names it compares (`gates.authors.name_words`): `{\AA}ngstr{\"o}m` is
+found for "(Ångström, 2018)" and "(Angstrom, 2018)", `L{\o}kke` for "Løkke" and "Lokke"
+(round 1 of #510: TeX was read as letters, `{\aa}` as "aa", and the hint said the work was
+missing). A name holding TeX that reading does not know is never said to be missing: the
+hint names its entry, to look at before adding the work.
 
 ## The round trip carries prose, and refuses everything else
 
@@ -14227,6 +14260,21 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   ("2025" in "Global B3 March 2025") draws a second finding. A slug with a doubled or
   trailing underscore ("MedDRA®") is never found. A `release_file` is an input, and R
   looks for a relative one where it looks for any (see "The emitters").
+- **The year of a citation typed as text is read in the author-year forms only.** G2's hint
+  names the key for "(Name, 2018)", "(Name 2018)", "(Name et al., 2018)", "(Name & Other,
+  2018)", "(Name, Other, & Third, 2018)", each part of a group, and "Name (2018)" with "et
+  al." or one or two more names. A year with a page after it, "(Name, 2018, p. 4)", a part
+  that opens with a lower-case word and a comma, "(e.g., Name, 2018)", and a name that does
+  not open with a capital, a Chinese or a Japanese one among them, get the generic hint. A
+  possessive, "Name's (2018)", is read with its "'s" and matches no entry. A capitalised word
+  before a year in brackets reads as a name, "Japan (2018)", and its hint says what to do if
+  it is a citation and what otherwise. A family name is compared by its last word, folded
+  as G7 folds names, so "van Berg" and "Berg" are one, and so are "Müller" and "Muller"; a
+  work by another person of that family name from that year is named as one the author may
+  mean. TeX in a name that `gates.lookups` does not read (`{\IJ}ssel`) leaves that entry
+  out of the comparison, and the hint names it for each typed citation of that year that
+  matches no other entry; an entry whose `author` is a `@string` macro is not found. The hint is G2's alone: `bind` and
+  the annotated copy still give the generic one.
 - **Figure estimates.** `def std(values):` is read as a call; an `.Rmd` or `.qmd` is lexed
   as R throughout, its Python chunks missed and "sample (" in its prose read; a form feed
   counts as a line break for one count and not the other. `stripplot` is not marked seeded,
@@ -15622,7 +15670,16 @@ Open, recorded as each change landed:
   nothing else was considered and left (Basile, 2026-10-02): the rule has to tell
   `manuscript-guard check --submission` from the same words followed by `&& scp`, and a
   mistake in it lets a submission through, which is what the guard exists to stop. An author
-  typing in a terminal is not affected, since a hook sees only the agent's commands.
+  typing in a terminal is not affected, since a hook sees only the agent's commands. A help
+  is let through only as the tool, a subcommand and the help: `check --submission --help`
+  is held.
+- **A help is let through only in one exact shape.** `cd paper && manuscript-guard submit
+  --help`, `manuscript-guard check --submission --help`, `submit --offline --help`, a quoted
+  `"--help"`, `./mguard submit --help`, `FOO=1 manuscript-guard submit --help`, `python -m
+  manuscript_guard.cli submit --help` and a help with a space too many are each held as a
+  submission. `--hel` is held too, and argparse refuses it, since the parser takes no
+  abbreviation (`allow_abbrev=False`). Each costs an agent one refusal, and none lets a
+  submission through.
 - **From a folder with no project, the submission guard finds only a project the command
   spells out.** It used to find none. It matched the command, then ran the submission check
   in the folder the event names as the agent's, and from the folder above a project there is

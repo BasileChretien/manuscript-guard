@@ -183,7 +183,10 @@ Read the whole diff. What to look for:
   nothing visible changed. The one pandoc puts after "e.g." or "et al." is written back as a
   plain space, because pandoc puts it back at the next build.
 - A number or citation the co-author typed. These merge as literals, and `check` then
-  reports them as unbound. Bind the number, and turn the citation into `[@citekey]`.
+  reports them as unbound. Bind the number, and turn the citation into `[@citekey]`: for
+  the year of a citation typed as "(Name, 2018)" or "Name (2018)", the hint names the key
+  of each work `references.bib` holds by that first author's name from that year, or says
+  to add the work if it is not there. Check that the work named is the one meant.
 - A binding cut short, a `{{` without its `}}`. `check` now reports it as a malformed
   placeholder; it should not happen, and if it does, it is a bug to report.
 

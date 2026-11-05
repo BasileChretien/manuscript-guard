@@ -5,16 +5,13 @@ description: Send a co-author a Word document built from the Markdown source, an
 
 # Bringing a co-author's Word edits back
 
-The .docx is a build artefact: the Markdown is the source, and the document is regenerated
-from it. That rule is right, and on its own it is unusable, because co-authors edit in
-Word. So the round trip exists, and the whole question is what it may carry back.
+The .docx is built from the Markdown source, but co-authors edit in Word: the round trip
+decides what their edits may carry back.
 
-It carries prose back and refuses everything that was generated. A naive import would
-replace each binding with the number it currently shows, and the manuscript would still pass
-every check, because the literals match the analysis today. It would fail quietly months
-later, the first time the analysis changed. So a paragraph where a number or a citation
-changed is refused, and the co-author's point has to be made at its source, in the analysis
-or the ledger.
+It carries prose back and refuses everything that was generated: a binding replaced by the
+number it shows would pass every check until the analysis changed. So a paragraph where a
+number or a citation changed is refused, and the co-author's point is made at its source, in
+the analysis or the ledger.
 
 **The round trip has never been through a real co-author round.** Earlier versions lost text
 while reporting success (step 4 lists what is now refused instead). Treat every `--apply` as
@@ -225,9 +222,8 @@ are brought in one after another.
 ## If you are a model doing this
 
 Never run `--apply` without having read the dry run in full, and never report an import as
-done without having read `git diff`. In earlier versions the command's exit code and its
-"bindings intact" line were both seen alongside a corrupted source, and the round trip has
-still not been through a real co-author round.
+done without having read `git diff`: its exit code and its "bindings intact" line have
+been seen beside a corrupted source.
 
 When a co-author changed a number, do not type their number into the source to make the
 paragraph merge. Ask whether the analysis should change, and if so, change it there.

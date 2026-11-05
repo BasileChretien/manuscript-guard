@@ -1018,6 +1018,26 @@ def test_near_miss_conventions_are_not_waved_through(project: Path, convention: 
     assert "unclassified-number" in codes(gate_report(project))
 
 
+@pytest.mark.parametrize(
+    ("sentence", "unbound"),
+    [
+        # The athlete-leakage study, 2026-11-06: "Table 2's are not" failed as "2's".
+        ("The models of Table 1's first rows are adjusted.", False),
+        ("The bars of Figure 1\N{RIGHT SINGLE QUOTATION MARK}s upper panel are intervals.", False),
+        ("The counts were 7's and 8's.", True),
+    ],
+)
+def test_a_possessive_pointer_is_a_pointer_and_a_possessive_number_is_not(
+    project: Path, sentence: str, unbound: bool
+) -> None:
+    """A table or a figure named in the possessive is pointed at: the cross-reference rule
+    covered "Table 2" and left the word "2's" a number bound to nothing. A number with an
+    apostrophe and nothing before it to point is still a number."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + f"\n\n{sentence}\n", encoding="utf-8")
+    assert ("unclassified-number" in codes(gate_report(project))) is unbound
+
+
 _TWIN = (
     "\n@article{fictionalSecondSignal2019,\n  title = {A second fictional signal},\n"
     "  author = {Fictional, Eve},\n  year = {2019},\n}\n"

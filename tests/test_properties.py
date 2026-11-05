@@ -61,6 +61,7 @@ from generated import (
     LOWERED,
     NOTATED,
     PLACEHOLDERS,
+    PREVIEWED,
     PROOF_ABBREVIATED,
     PROOF_CORRECTIONS,
     PROOF_EDIT,
@@ -152,6 +153,7 @@ from generated import (
     plan_pairs,
     planned_plans,
     post_links,
+    previewed_edits,
     printings,
     profile_tables,
     proofs,
@@ -9015,6 +9017,36 @@ def test_every_word_planted_as_a_claim_is_read_as_one_and_nothing_else_is() -> N
         assert sentence.words == (), (word, sentence)
 
 
+@holds(30, previewed_edits())
+def test_import_shows_each_change_whole_and_never_cuts_inside_a_citation(
+    drawn: tuple[dict[str, str], list[list[tuple[str, str]]]],
+) -> None:
+    """What the dry run shows of an edit is each changed stretch, the words removed and the
+    words added, with a few words either side; it is cut only between words, and a citation
+    with spaces in it is one word. So each stretch shown, its marks of words left out
+    aside, is a stretch of the paragraph as it was or as it is, holding every word removed
+    or added there, however long the stretch, and every bracket and parenthesis in it is
+    closed."""
+    given_, expected = drawn
+    found = answer(READINGS["preview"](), given_)
+    assert "raised" not in found, found
+    shown, more = found["answer"]["shown"], found["answer"]["more"]
+    assert more == 0 and len(shown) == len(PREVIEWED), shown
+    was, now = (" ".join(given_[side].split()) for side in ("was", "now"))
+    for (removed, added), stretch in zip(shown, expected, strict=True):
+        for line, text, words in ((removed, was, [o for o, _n in stretch]),
+                                  (added, now, [n for _o, n in stretch])):  # fmt: skip
+            assert line.startswith("... ") and line.endswith(" ..."), line
+            inner = line.removeprefix("... ").removesuffix(" ...")
+            assert inner in text, (inner, text)
+            for word in words:
+                assert not word or f" {word} " in f" {inner} ", (word, line)
+            assert inner.count("[") == inner.count("]"), line
+            assert inner.count("(") == inner.count(")"), line
+            # The words beside it: a citation whole on either side.
+            assert inner[0] in "[(" and inner[-1] in "])", line
+
+
 @holds(30, claim_edits())
 def test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands(
     drawn: tuple[str, str, list[tuple[str, int]]],
@@ -14704,6 +14736,32 @@ def _a_count_held_beside_is_read_as_any(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(disclosure, "beside_bounds", lambda cells, chosen, minimum: (0, math.inf))
 
 
+def _a_citation_is_cut_at_its_spaces(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import preview
+
+    patch.setattr(preview, "_WORD", re.compile(r"\S+"))
+
+
+def _a_change_is_shown_alone(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import preview
+
+    patch.setattr(preview, "CONTEXT", 0)
+
+
+def _a_long_stretch_is_shown_by_its_ends(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import preview
+
+    shown = preview._shown
+
+    def ends(text: str, spans: list[tuple[int, int]], start: int, end: int) -> str:
+        if end - start <= 40:
+            return shown(text, spans, start, end)
+        first, last = shown(text, spans, start, start + 20), shown(text, spans, end - 20, end)
+        return f"{first.removesuffix(' ...')} ... {last.removeprefix('... ')}"
+
+    patch.setattr(preview, "_shown", ends)
+
+
 def _a_figure_with_an_identifier_is_a_paragraph(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import docxtext
 
@@ -14809,6 +14867,18 @@ BROKEN = {
     "no help is let through": (
         _no_help_is_let_through,
         test_a_submission_asked_only_for_its_help_is_let_through_and_no_other,
+    ),
+    "import cuts a citation it shows at its spaces": (
+        _a_citation_is_cut_at_its_spaces,
+        test_import_shows_each_change_whole_and_never_cuts_inside_a_citation,
+    ),
+    "import shows a change without the words beside it": (
+        _a_change_is_shown_alone,
+        test_import_shows_each_change_whole_and_never_cuts_inside_a_citation,
+    ),
+    "import shows a long changed stretch by its two ends": (
+        _a_long_stretch_is_shown_by_its_ends,
+        test_import_shows_each_change_whole_and_never_cuts_inside_a_citation,
     ),
     "a figure Word left an identifier on is read as a paragraph": (
         _a_figure_with_an_identifier_is_a_paragraph,

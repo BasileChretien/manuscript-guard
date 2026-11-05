@@ -7276,6 +7276,71 @@ def edits(draw: st.DrawFn) -> tuple[str, str]:
     return before, "\n\n".join(paragraphs)
 
 
+#: The kinds of edit `previewed_edits` makes, one of each in every paragraph.
+PREVIEWED = ("replaced", "inserted", "deleted")
+#: The words of context `preview.CONTEXT` shows beside a change, written here so that the
+#: inputs do not change with the rule they test; `tests/test_preview.py` holds the two equal.
+PREVIEW_CONTEXT = 5
+
+
+@st.composite
+def previewed_edits(draw: st.DrawFn) -> tuple[dict[str, str], list[list[tuple[str, str]]]]:
+    """A paragraph as the source has it and as an edit left it, and for each changed stretch,
+    in order, the word each of its changes removed and added ("" for none). Every paragraph
+    has a stretch opening with an edit of each kind of `PREVIEWED`, in an order drawn each
+    time, and in one of them, drawn, a word replaced every six to ten words after it, as a
+    copy-editor goes through a sentence, so that it runs past forty words; the others have
+    up to two such. The words between changes hold spaces: citations of several works, in
+    brackets as the source writes them or in parentheses as Word prints them, each of more
+    space-separated pieces than `PREVIEW_CONTEXT`, so that wherever the words beside a change
+    are cut by spaces, it is inside one. Changes in one stretch stand at most twice the
+    context apart, which makes one stretch of them; two stretches stand further apart. The
+    words are drawn into lines as an author wraps them."""
+    context = PREVIEW_CONTEXT
+    cited = iter(range(1, 10_000, 10))
+
+    def held() -> str:
+        # Each citation its own, so that the two texts line up in one way only.
+        works, start = draw(st.integers(context + 1, context + 3)), next(cited)
+        if draw(st.booleans()):
+            return "[" + "; ".join(f"@key{start + n}" for n in range(works)) + "]"
+        return "(" + " ".join(f"Fictional{start + n}" for n in range(works - 1)) + " 2021)"
+
+    def run(least: int, most: int) -> list[str]:
+        return [held() for _ in range(draw(st.integers(least, most)))]
+
+    was = run(2 * context + 1, 2 * context + 3)
+    now = list(was)
+    expected: list[list[tuple[str, str]]] = []
+    kinds = draw(st.permutations(PREVIEWED))
+    long = draw(st.sampled_from(kinds))
+    for number, kind in enumerate(kinds):
+        old, new = {"replaced": (f"old{number}", f"new{number}"),
+                    "inserted": ("", f"added{number}"),
+                    "deleted": (f"removed{number}", "")}[kind]  # fmt: skip
+        was += [old] if old else []
+        now += [new] if new else []
+        stretch = [(old, new)]
+        more = draw(st.integers(6, 8)) if kind == long else draw(st.integers(0, 2))
+        for edit in range(more):
+            gap = run(context + 1, 2 * context)
+            was += [*gap, f"was{number}x{edit}"]
+            now += [*gap, f"now{number}x{edit}"]
+            stretch.append((f"was{number}x{edit}", f"now{number}x{edit}"))
+        expected.append(stretch)
+        tail = run(2 * context + 1, 2 * context + 3)
+        was += tail
+        now += tail
+
+    def written(words: list[str]) -> str:
+        return "".join(
+            (draw(st.sampled_from((" ", " ", "\n"))) if n else "") + word
+            for n, word in enumerate(words)
+        )
+
+    return {"was": written(was), "now": written(now)}, expected
+
+
 # ------------------------------------------------------- a response letter quoting a revision
 
 #: Where the words a response letter quotes stand: in v2 only, in both versions, in v1 only,
@@ -9561,6 +9626,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "import": sessions(),
     "supplementary methods": supplements().map(lambda drawn: drawn[0]),
     "reworded": edits(),
+    "preview": previewed_edits().map(lambda drawn: drawn[0]),
     "response letter": response_letters().map(lambda drawn: drawn[0]),
     "marked up": revisions().map(lambda drawn: drawn[0]),
     "word blocks": figures_left_on().map(lambda drawn: drawn[0]),

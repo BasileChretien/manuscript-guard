@@ -87,7 +87,7 @@ authors.yaml           authors, affiliations, CRediT roles, funding, competing i
 design/plan.md         the analysis plan
 analysis/              scripts that publish results through the emitter
 results/               machine-written; never edited by hand
-literature/            ledger.yaml, attested.yaml, references.bib, sources/
+literature/            ledger.yaml, attested.yaml, references.bib, sources.yaml, sources/
 manuscript/main.md     prose with {{results.x}}, {{lit.y}}, [@citekey]
                        (main.tex and mgvalues.sty under --latex, with \mg{results.x})
 figures/  review/  build/
@@ -97,6 +97,12 @@ AGENTS.md              the rules of the project, for any agent working in it
 
 **Keep the `.gitattributes`.** Every digest is byte-exact, and a checkout that turns line
 endings into CRLF makes clean results look hand-edited.
+
+**`literature/sources/` stays out of git.** The `.gitignore` leaves out the copies of the
+cited works, paywalled papers among them, which a public repository would publish;
+`literature/sources.yaml`, which `sync-sources` writes, records them and is committed. CI
+then notes each quote it could not hold to its copy. Whether a private repository commits
+them (`literature: {sources_in_git: true}` in `paper.yaml`) is the user's choice.
 
 Then fill in, in this order:
 

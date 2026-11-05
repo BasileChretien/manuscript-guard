@@ -36,6 +36,7 @@ from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.literature.passages import (
     ABSENT,
     NO_SOURCE,
+    NOT_HERE,
     UNREADABLE,
     VERIFIED,
     looked_for,
@@ -65,11 +66,15 @@ def check_method_passages(project: Project) -> Report:
     if review is None:
         return report
     path = review_path(project)
+    from manuscript_guard.literature.away import away
+
     sources = project.path("literature") / "sources"
     read: dict[Path, str | UnreadableSource] = {}
-    found = {VERIFIED: 0, ABSENT: 0, NO_SOURCE: 0, UNREADABLE: 0}
+    kept = away(project).keys
+    found = {VERIFIED: 0, ABSENT: 0, NO_SOURCE: 0, UNREADABLE: 0, NOT_HERE: 0}
     for method in review.methods:
-        outcome, looked_in, why = looked_for(sources, method.citekey, method.passage, read)
+        outcome, looked_in, why = looked_for(sources, method.citekey, method.passage, read,
+                                             kept)  # fmt: skip
         found[outcome] += 1
         report = report.with_findings(*_passage_findings(method, outcome, looked_in, why, path))
     return report.with_counts(
@@ -77,6 +82,7 @@ def check_method_passages(project: Project) -> Report:
         similar_passages_verified=found[VERIFIED],
         similar_passages_failed=found[ABSENT],
         similar_passages_unchecked=found[NO_SOURCE] + found[UNREADABLE],
+        similar_passages_not_here=found[NOT_HERE],
     )
 
 
@@ -97,6 +103,18 @@ def _passage_findings(
             context=context,
             hint="copy the study's words from its stored copy rather than retyping them, "
             "marking words left out with [...]",
+        ))  # fmt: skip
+    elif outcome == NOT_HERE:
+        found.append(Finding(
+            gate="G7",
+            code="similar-passage-not-here",
+            severity=INFO,
+            message=f"{method.named}: the passage was not checked here: a copy of "
+            f"@{method.citekey} is recorded in literature/sources.yaml, kept out of git, and "
+            "is not on this computer",
+            path=path,
+            context=context,
+            hint="on the computer that holds the copies, `check` holds the passage to it",
         ))  # fmt: skip
     elif outcome in (NO_SOURCE, UNREADABLE):
         found.append(Finding(

@@ -595,6 +595,17 @@ def test_an_earlier_output_with_no_stored_copy_is_said_not_to_be_compared(projec
     assert f"earlier ({KEY})" in finding.message and "sent nowhere" in finding.hint
 
 
+def test_an_earlier_output_whose_copy_is_kept_out_of_git_says_so(project: Path) -> None:
+    from kept_away import keep_away
+
+    stored(project)
+    keep_away(project, f"{KEY}.txt", KEY)
+    (finding,) = found(project)
+    assert (finding.code, finding.severity) == ("earlier-output-not-compared", INFO)
+    assert "not on this computer" in finding.message
+    assert "store your own copy" not in finding.hint
+
+
 def test_a_project_that_declares_no_earlier_output_reads_nothing(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

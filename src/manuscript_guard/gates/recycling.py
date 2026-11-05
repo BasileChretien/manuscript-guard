@@ -590,11 +590,15 @@ def check_recycling(project: Project, stage: str = DRAFTING) -> Report:
     folder = project.path("manuscript")
     manuscript = _manuscript(folder, named)
     report, compared, reported = Report(), 0, 0
+    from manuscript_guard.literature.away import away
+
+    kept = away(project)
     for output in outputs:
         key = output.citekey
         copies, unread = _copies(stored, key) if key else ([], [])
         if not copies:
-            report = report.with_findings(_not_compared(listed, output, unread))
+            elsewhere = kept.of(key) if key else []
+            report = report.with_findings(_not_compared(listed, output, unread, elsewhere))
             continue
         compared += 1
         texts = dict(copies)
@@ -801,11 +805,18 @@ def _repeats_a_version(
     )
 
 
-def _not_compared(listed: Path, output: Output, unread: list[str]) -> Finding:
+def _not_compared(
+    listed: Path, output: Output, unread: list[str], elsewhere: list[str] | None = None
+) -> Finding:
     key = output.citekey
     if key is None:
         why = "it has no citation key to name its stored copy by"
         hint = "give it its citekey from references.bib, and store your own copy under it"
+    elif elsewhere:
+        # A copy recorded, kept out of git and not on this computer, as in CI.
+        why = (f"its copy {', '.join(elsewhere)} is recorded in literature/sources.yaml, kept "
+               "out of git, and is not on this computer")  # fmt: skip
+        hint = "on the computer that holds the copies, `check` compares the manuscript with it"
     else:
         why = "; ".join(unread) if unread else f"no copy is stored as literature/sources/{key}.*"
         hint = (

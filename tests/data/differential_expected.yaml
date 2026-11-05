@@ -62,10 +62,11 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G7 reads whether each cited work is still the one to cite (`gates/currency.py`), and
-      its counts, `currency_entries`, `currency_claims`, `currency_by_rules` and
-      `currency_by_person`, are said of every project, 0 where it has no
-      literature/currency.yaml and cites no work whose lookup record shows a later version
+      G7 counts the values and passages whose stored copy is recorded in
+      literature/sources.yaml, kept out of git and not on this computer
+      (`literature_sources_not_here`, `passages_not_here`, both 0 in the inputs drawn): a
+      new project keeps literature/sources/ out of git (Basile, 2026-10-20, confirmed
+      2026-11-05), and such a copy is noted rather than failed
   - reading: numbers
     why: >-
       an e-mail address is structural, `email-address`, and an interleukin, "IL-4",

@@ -51,6 +51,9 @@ VERIFIED = "verified"
 ABSENT = "not in its source"
 NO_SOURCE = "no stored copy"
 UNREADABLE = "no stored copy can be read"
+#: Not found in a copy here, and the work has a copy recorded, kept out of git and not on this
+#: computer, as in CI (`literature/away.py`): not checked here, rather than failed.
+NOT_HERE = "its copy is recorded and not on this computer"
 
 #: Why a passage belongs to no sentence of the manuscript.
 UNCITED = "uncited"
@@ -205,10 +208,14 @@ class Survey:
 
 
 def survey(
-    sources: Path, sentences: list[CitedSentence], passages: tuple[Passage, ...]
+    sources: Path,
+    sentences: list[CitedSentence],
+    passages: tuple[Passage, ...],
+    away: frozenset[str] = frozenset(),
 ) -> Survey:
     """Each passage matched to the sentences it belongs to and looked for in the stored
-    files of its work, each file read once."""
+    files of its work, each file read once; `away` are the works with a copy kept out of git
+    and not on this computer."""
     belonging = Belonging(passages)
     words = [statement_words(cited.text) for cited in sentences]
     belongs: dict[tuple[int, str], list[Passage]] = {}
@@ -223,7 +230,8 @@ def survey(
     read: dict[Path, str | UnreadableSource] = {}
     checked = []
     for passage in passages:
-        found, looked_in, why = looked_for(sources, passage.citekey, passage.passage, read)
+        found, looked_in, why = looked_for(sources, passage.citekey, passage.passage, read,
+                                           away)  # fmt: skip
         mine = tuple(sentences_of.get(passage.number, ()))
         stale, near = (None, None) if mine else _why_stale(passage, sentences, words)
         checked.append(Checked(passage, found, looked_in, why, mine, stale, near))
@@ -236,11 +244,28 @@ def survey(
 
 
 def looked_for(
-    sources: Path, citekey: str, words: str, read: dict[Path, str | UnreadableSource]
+    sources: Path,
+    citekey: str,
+    words: str,
+    read: dict[Path, str | UnreadableSource],
+    away: frozenset[str] = frozenset(),
 ) -> tuple[str, tuple[str, ...], str | None]:
     """What the stored files of work `citekey` say of `words`: verified where one holds them,
     with the files read and, where none does, what stands in the way. `read` keeps each file
-    read, for the next passage. A methods review's passages are looked for here too."""
+    read, for the next passage. A methods review's passages are looked for here too.
+
+    Where no copy here holds them and the work is in `away`, a copy recorded, kept out of git
+    and not on this computer, they are not checked here (`NOT_HERE`): the abstract committed
+    beside a full text kept out of git is not the whole work."""
+    found = _looked_for(sources, citekey, words, read)
+    if found[0] in (ABSENT, NO_SOURCE, UNREADABLE) and citekey in away and passage_words(words):
+        return NOT_HERE, found[1], None
+    return found
+
+
+def _looked_for(
+    sources: Path, citekey: str, words: str, read: dict[Path, str | UnreadableSource]
+) -> tuple[str, tuple[str, ...], str | None]:
     from manuscript_guard.gates.quotations import _ELIDED, _SIC, _as_words, quoted_in
 
     if not passage_words(words):
@@ -301,7 +326,9 @@ def _why_stale(
     return (CHANGED, near) if near is not None and best >= NEAR else (GONE, None)
 
 
-def listing(found: Survey, root: Path, sources: Path, *, missing: bool = False) -> dict:
+def listing(
+    found: Survey, root: Path, sources: Path, *, missing: bool = False, away=None
+) -> dict:
     """What `manuscript-guard passages` prints: each cited statement, once, with each work it
     cites, the stored files of that work and its passages; and the stale passages. With
     `missing`, only the statements that carry no passage of any work they cite."""
@@ -321,6 +348,9 @@ def listing(found: Survey, root: Path, sources: Path, *, missing: bool = False) 
                 {
                     "key": key,
                     "stored": [path.name for path in stored_files(sources, key)],
+                    # A copy recorded, kept out of git and not on this computer, as in CI.
+                    **({"recorded_not_here": away.of(key)}
+                       if away is not None and away.of(key) else {}),
                     "passages": [_listed(one) for one in found.of(index, key)],
                 }
                 for key in cited.keys

@@ -117,6 +117,9 @@ try {
     if (!left.hidden || left.report) fail("a refused run left the last report on screen");
     console.log(`two outputs of one name: ${refused.error ? "refused" : "run"}, ` +
       `${left.hidden && !left.report ? "no report left" : "the last report left"}`);
+  } else if (status.startsWith("Ready")) {
+    // Not passed over without a word (round 1 of #535).
+    fail("no case has an output: the refused run was not tried");
   }
 
   await page.click("#probe");

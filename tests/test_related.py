@@ -1110,6 +1110,30 @@ def test_a_value_whose_quote_is_not_in_its_source_fails(project: Path) -> None:
     assert _found(_check(project)) == [("related-source-missing", FAIL)]
 
 
+def test_a_value_whose_copy_is_kept_out_of_git_is_noted_and_still_compared(
+    project: Path,
+) -> None:
+    """In CI the earlier output's copy is recorded and not there: a note, not a failure, and
+    what needs no copy still runs: the value in its quote, the pair, the comparison."""
+    from kept_away import keep_away
+
+    quote = "Of 4,012 reports in the database, 77 described hepatic injury."
+    source = _source(project, f"Results. {quote} More text.")
+    value = {"here": "cohort.n_reports", "value": "4,012", "source_file": source, "quote": quote}
+    _declare(project, _entry(values=[value]))
+    keep_away(project, "abstract2025.txt", "abstract2025")
+    report = _check(project)
+    assert _found(report) == [("related-source-not-here", INFO), ("related-number-differs", WARN)]
+    assert "not on this computer" in report.findings[0].message
+    assert report.counts["related_values_not_here"] == 1
+    _declare(project, _entry(values=[{**value, "value": "4,013"}]))
+    assert _found(_check(project)) == [("related-source-not-here", INFO),
+                                       ("related-value-not-in-quote", FAIL)]  # fmt: skip
+    # A copy git does not ignore is not kept out of git: missing, it fails as before.
+    (project / ".gitignore").unlink()
+    assert _found(_check(project)) == [("related-source-missing", FAIL)]
+
+
 def test_a_value_from_the_text_of_a_key_this_paper_lacks_says_so(project: Path) -> None:
     quote = "Of 4,000 reports in the database, 77 described hepatic injury."
     source = _source(project, quote)

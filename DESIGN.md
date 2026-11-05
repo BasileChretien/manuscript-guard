@@ -3299,9 +3299,10 @@ and 92 neither. So each attachment gives its file, where it is there and is a PD
 page or plain text, or else, where the file is not here or is an EPUB, Zotero's text of it as
 `<key>.txt`, or else a reason, and the works left with no copy are listed with theirs and what
 to do in Zotero. Zotero's text is not taken for a table or a citation file, here or not,
-which Zotero may index too (round 2 of #361, and #364). A record entry whose file is gone is
-dropped by a run made while it is gone, so that a file saved later under its name stays the
-author's. A work with a file saved under its name by hand is not listed. The other kinds G7
+which Zotero may index too (round 2 of #361, and #364). A record entry whose file is gone
+stays while it is gone (Basile, 2026-11-05; see "Out of git by default" below, which reverses
+round 2 of #361 for this case). A work with a file saved under its name by hand is not
+listed. The other kinds G7
 reads, a table or a citation file, are not taken: attached to an item in Zotero they are a
 supplement's data or the item's own reference, and G7 would read them as the work's text.
 
@@ -3318,6 +3319,56 @@ the author's copy (round 1 of #361). Nothing is deleted. The record holds no pat
 computer, and lives beside `sources/` rather than in it, so that it can be kept where the
 sources are not. A record that is not one stops the command, since without it the command
 cannot tell its files from the author's; deleting it makes every file the author's.
+
+**Out of git by default.** A new project keeps `literature/sources/` out of git, and the
+record in it (Basile, 2026-10-20, confirmed 2026-11-05): the copies are of paywalled papers
+among others, and a public repository, or one made public later, would publish them with its
+history. `init`'s `.gitignore` leaves out `literature/sources/*`, the files rather than the
+folder, since git re-includes no file of an excluded folder: a line
+`!literature/sources/<name>` then commits one copy, an open-access paper or an abstract. A file
+saved there by hand, under a cited work's name or a name the ledger gives, is entered in the
+record by each run of `sync-sources` as the author's (`from: author`, the record's second
+version), with its digest as it is then, and is never replaced, whatever Zotero or the folder
+hold; the entry follows the file when the author changes it. So the record is what CI has of
+the folder.
+
+A copy counts as kept out of git where the record lists it, it is not on the computer,
+`paper.yaml` does not say the copies are committed (`literature: {sources_in_git: true}`), and
+git says its path is ignored (Basile, 2026-11-05: `git check-ignore --stdin`, asked once for a
+loaded project, with the timeout and C locale of `gates/custodian._git`;
+`literature/away.py`). A tracked path is never ignored, so a project that commits its copies,
+as one made before this change does, still fails a deleted copy; so does a copy git does not
+ignore, one where git cannot be asked, and any copy outside a git repository. Each reader of a
+copy then says that it was not checked here, a note at every stage, and still runs what needs
+no copy:
+
+- the ledger (`literature-source-not-here`): the value is counted unverifiable, and its quote
+  is still held to the value, the tests in it, the whole-number mean, its length and its
+  depth;
+- an earlier output's values (`related-source-not-here`): each still held to its quote and
+  compared with this paper's result;
+- a passage, and a methods review's passage (`passage-not-here`,
+  `similar-passage-not-here`): one found in a copy here passes, and one not found there whose
+  work has a copy kept out of git is not checked here rather than failed, so that an abstract
+  committed beside a full text out of git does not fail a passage of the full text;
+- a prose quotation (`quotation-not-here`), text recycling (`earlier-output-not-compared`, its
+  message naming the recorded copy), the checker page, and `passages`
+  (`recorded_not_here`).
+
+A copy neither recorded nor here fails as before (`literature-source-missing`), whose hint says
+that `sync-sources` records a file saved by hand, and so does a recorded one where the record
+is not one.
+
+A record entry stays while its file is absent (Basile, 2026-11-05). Round 2 of #361 dropped
+it, so that a file saved later under its name stayed the author's; with the copies out of git,
+every fresh clone lacks them, and a co-author's run of `sync-sources` there emptied the record
+CI reads. Now the command's copy is taken again where it is absent and its entry rewritten, and
+nothing is written into the name of an absent file of the author's: the run says to get it
+from whoever saved it. What round 2 of #361 guarded against becomes #364's limit across runs:
+a copy the author deletes and saves again with the bytes the command wrote is taken for the
+command's. The second version of the record (`manuscript-guard/sources/2`) is written from the
+first; a record of a version later than this tool knows is refused with "written by a newer
+version of manuscript-guard", and never with advice to delete it.
 
 Zotero is one way to the author's own access, and a downloader is another: auto-paper-harvester
 (github.com/jxtse/auto-paper-harvester) fetches each DOI from an open copy, then a publisher's
@@ -3820,6 +3871,108 @@ the `w14:paraId` of its first paragraph, else its `w:id`), so two replies of the
 one comment are two replies; and its words keep its paragraphs, a line to each
 (`replies._paragraphed`; `tracked.comments_of`, which the panel's records read, still joins
 them with a space).
+
+### The searches are recorded, and run again as recorded
+
+`references --search ID --terms "TERMS" --as WHO` runs every search of the protocol for one
+entry and records each (design 2.2, sources S1 to S8). Basile settled four things on
+2026-11-04 and 2026-11-05. The reader writes the terms: the agent through the
+`literature-currency` skill, a model unattended, or a person, and `--as` names who, refused
+when it names nobody. Nothing derives them from the sentence or from MeSH, and there is no
+list of keywords anywhere. The terms are held to `search`'s rule for a query, one function
+for both (`lookup/search.folded_query`): whitespace folded, at most 300 characters, so that
+a sentence of the manuscript pasted in is refused. `--question` writes the entry's
+`question` (F1), here and on `--mark`; it is kept in the entry and never sent. Every
+candidate is read as supporting the sentence, contradicting it or neither (R3), and the
+reader may add one query of its own aimed at contrary findings, `--against`, recorded as S8.
+Each source keeps ten works at each step, or `references.search_limit` in `paper.yaml` (1 to
+50), and the record keeps the source's own count beside them.
+
+The steps, in order:
+
+- **S1, forward from the cited work.** PubMed's "Update in" and "Comment in" links are read
+  from the cited work's lookup record (schema 3) and not asked again; the record says which
+  lookup record and of what date, and that date is its `searched_on`. The reviews OpenAlex
+  lists as citing the work (`filter=cites:W…,type:review`, `sort=publication_date:desc`),
+  after one request by DOI for its OpenAlex id, which the record then keeps, so a replay
+  does not ask for it again. A cited work with no DOI is not asked of OpenAlex; one PubMed
+  has no record of is not read there; each is recorded as `not asked`, with the reason. A
+  claim whose cited work has no current lookup record is refused, and the author is told to
+  run `lookup`.
+- **S2, syntheses on the question.** PubMed with `systematic review[pt]`, Europe PMC with
+  `PUB_TYPE:"systematic review"`. OpenAlex types no systematic review and is recorded as not
+  asked, as `search` says it.
+- **S3, primary studies since the cutoff.** The cutoff is the later of the cited work's
+  publication date (its works record) and the newest search end date a filed reading gives
+  for a synthesis an S2 search of the entry found (R4); before any reading, the cited work's
+  date, so the steps do not wait on each other. Where the cited work's record could not be
+  fetched and the store holds none with a date, S3 did not answer: no record is written
+  and the run exits 1, rather than a "not asked" that a replay would never run again
+  (round 1 of #530). A dry run says S3 is asked from the date the fetch, run first, gives.
+  A date of any precision is asked from the
+  first day it names, at each source's finest filter: PubMed `mindate` (`2019/03/01`),
+  Europe PMC `FIRST_PDATE:[2019-03-01 TO 3000-12-31]`, OpenAlex `from_publication_date`.
+  The record says the cutoff and what gave it. Syntheses are not filtered out; the rules
+  deal with them.
+- **S4, ongoing trials.** ClinicalTrials.gov API v2, `GET /api/v2/studies` with the terms as
+  `query.term` and `filter.overallStatus` set to the statuses of a study under way
+  (not yet recruiting, recruiting, enrolling by invitation, active and not recruiting),
+  paced at the host's 1.2 seconds as the lookup of registrations is. Recorded as `pending`
+  with the NCT numbers, never as candidates. The shape was read from a live answer on
+  2026-11-05: `totalCount` with `countTotal=true`, and `studies[]`, each with
+  `protocolSection.identificationModule.nctId`.
+- **S5 and S6** are not run: grey literature and a semantic tool's suggestion are a reader's,
+  filed by hand. **S7**, no candidate from memory, is the skill's rule.
+- **S8**, with `--against`: the reader's query run as S2 and as S3.
+
+**The records.** One for each step and source, `literature/currency/searches/<id>-<n>.yaml`,
+numbered as the entry's next and written once, as a reading is; a name already taken is never
+written over. Each holds the step (and for S8 the step it ran as), the source, its status
+(`run`, `not asked` with the reason, or `pending` with the trials), the terms as sent and who
+wrote them, the request as sent without its key or contact address, the filters, the cutoff,
+the date, the source's count, the candidates by DOI or else PMID with the cited work left
+out, and how many works came with neither, which no record can name. A source that did not
+answer writes no record: a record of a search that did not happen would make the entry look
+searched. The command says which, and exits 1. Only a search that was asked, `run` or
+`pending`, counts as one: `currency-record-stale` reads its date, and "searched (n)" counts
+it; a `not asked` record, filed the day of a run where nothing answered, freshens nothing
+(round 1 of #530). A record whose name is not its entry and its number is
+`currency-record-edited`, as a reading so named is: a copy keeps its seal. An entry no
+sentence reads as is not searched for; the command says to put it back with `references
+--mark ... --id` first.
+
+**The works store** is filled for the cited work, first, and for every candidate: Europe PMC's
+core record (the abstract, `pubTypeList`, `firstPublicationDate`, "Retraction in",
+"Expression of concern in", "Preprint of"), Crossref where there is a DOI (its dates, the
+notices that update the work, `is-preprint-of`), PubMed's ESummary where there is a PMID
+(publication types, "Retracted Publication", the retraction and concern links), and
+OpenAlex's `is_retracted` where there is a DOI. ESummary is asked 100 PMIDs at a time and
+OpenAlex 50 DOIs. `publication_types` are PubMed's where it answered for a PMID, else Europe
+PMC's; `published` is Crossref's date where there is a DOI: `issued`, the earlier of print and
+online at the coarser's precision, or the finer of online and print where it agrees with
+`issued` at `issued`'s precision (a print year 2019 and an online day 2019-06-03 give the
+day), else online, print or posted; without a DOI, Europe PMC's first publication date.
+A work known by its DOI alone is asked of PubMed by the PMID Europe PMC gives it, for its
+types and links only. OpenAlex saying nothing of `is_retracted` is no answer, and a
+preprint's `is-preprint-of` is read as a DOI or not at all; a record its schema refuses is
+said, and the other works are still written (round 1 of #530). The cited work is asked of
+PubMed by the PMID
+its lookup found for its DOI (`pubmed_by_doi`), for its types only: that PMID is not written
+among its identifiers. Any source saying retracted, withdrawn or under concern counts. A works
+record is the one record written over, sealed afresh each time, since its facts change; but
+only where every source asked answered and one knew the work. Where one did not answer, the
+record held stays as it was, since a lookup that did not work says nothing, and never "not
+retracted".
+
+**Replay.** `--replay ID` runs the newest recorded search at each step and source again, with
+the query, filters and cutoff as recorded (`replay_of` names the record), refreshes the works
+records of the cited work and of everything found, and lists the works new since the last
+run. A search recorded as not asked is not run again; `--search` frames them afresh. `--dry-run`
+on either prints each request and sends and writes nothing.
+
+**What leaves the machine:** the terms, and the identifiers of the cited work and of the
+works found. The question is not sent, and no sentence of the manuscript is. The command's
+help says so.
 
 ## Text from the authors' earlier papers is found before the journal finds it
 
@@ -20043,11 +20196,26 @@ Open, recorded as each change landed:
   copied so far recorded, rather than listing that key and going on. A copy the author
   deletes and saves again with the same bytes before the next run is still taken for the
   command's, since the same bytes cannot be told apart (#364).
-- **`literature/sources/` is kept in git unless the author says otherwise.** `init` does not
-  ignore it, so the copies `sync-sources` makes, of paywalled papers among them, are
-  committed with the project, and published with it if the repository is public, including
-  in its history if it is made public later. Leaving them out of git leaves CI unable to
-  hold a quote to its source. Which way a project goes is not yet decided here.
+- **Copies kept out of git leave CI quotes it cannot check, and an older project as it was.**
+  A new project's `.gitignore` leaves `literature/sources/*` out (see "A cited work's copy is
+  taken from Zotero"), so CI, and a co-author's fresh clone, hold no quote, passage or earlier
+  output to its copy: each is a note there, and only the computer that holds the copies checks
+  them, at submission too. A record that a checkout holding the copies passed G7 at this
+  manuscript's digest, which `check --stage submission` would ask for, is to come in a pull
+  request of its own (Basile, 2026-11-05). Nothing warns before a push that a file saved by
+  hand, which git ignores, is not in the record: it passes on the author's computer and fails
+  in CI until `sync-sources` is run. Recording needs Zotero running, or `--from` a folder:
+  without either the run records the author's files and then stops with Zotero's error. The
+  record holds flat names only (`[A-Za-z0-9_.-]+`): a copy the ledger names with a space, or in
+  a folder under `sources/`, is not recorded, and fails in CI as an unrecorded one does.
+  `init` never rewrites an existing `.gitignore`, so a project made before 2026-11-05 still
+  commits its copies, and nothing says so: the author adds the line, and
+  `git rm -r --cached literature/sources`, which leaves the copies in the history. A
+  `sync-sources` older than this change reads the second version of the record as one it
+  cannot use and says to put it right or delete it; deleting it makes every recorded file the
+  author's and drops what CI knows. With `literature: {sources_in_git: true}` and the line left
+  in `.gitignore`, every recorded copy fails where it is absent, which says the setting and the
+  file disagree only by failing.
 - **`sync-sources --from` matches only a name a DOI spells, at the places the harvester puts
   it.** A PDF named by its title, its PMID or its citation key is counted as named for no
   cited DOI and not copied, and one deeper in the folder than `<name>/` or
@@ -20378,8 +20546,33 @@ Open, recorded as each change landed:
     not one made by somebody who computes the digest again; and the hook asks about an
     agent's ordinary edit of a person's decision or answer, not a deliberate evasion (a shell
     command, a patch that deletes the file).
-  - `currency-record-stale` reads the search records, which nothing in this version writes:
-    the recorded searches are to come.
+  - `currency-record-stale` reads the newest search of an entry that was asked, whatever
+    its step: one step run again freshens the entry, though the others are older.
+  - The recorded searches find what the registries index under the terms the reader wrote.
+    PubMed and Europe PMC are biomedical, and all three lean towards work in English; a
+    query can miss the words a study used, and nothing checks the terms against the
+    question. A search that found nothing says only that these terms found nothing there.
+  - The terms, and the identifiers of the cited work and of each work found, tell PubMed,
+    Europe PMC, OpenAlex, Crossref and ClinicalTrials.gov what the paper is about.
+  - The registry facts of the works store are as of its `fetched_on`, and the search counts
+    as of each record's date; a retraction since is seen at the next `--search` or
+    `--replay`. PubMed's forward links (S1) are as of the cited work's lookup, not of the
+    search.
+  - S1 at OpenAlex asks for the reviews that cite the work, as OpenAlex types them, and only
+    by the cited work's DOI: a work cited by its PMID alone is not asked there, and a trial
+    that cites it is not looked for. A work PubMed links to by its PMID alone (S1) is kept
+    as `pmid:`, and the same work found elsewhere by its DOI is a second candidate, read
+    twice.
+  - S4 asks ClinicalTrials.gov only, for the studies its `overallStatus` says are under way;
+    other registries' trials, and a trial whose status there is out of date, are not seen.
+  - A source that did not answer leaves its step unrecorded for that run, and the command
+    exits 1; the entry's other searches stand, so an entry can be read with a step missing
+    until `--search` is run again.
+  - The cutoff of S3 reads every filed reading's search end date for a synthesis an S2
+    search of the entry found, and takes the latest, though another reading may give an
+    earlier one: two readings that disagree on it move the cutoff to the later.
+  - A work a source returned with neither a DOI nor a PMID is counted (`unidentified`) and
+    not kept, since no record can name it.
   - A reply's author is the name Word was set to on the replier's machine, a label and not
     an identity: anyone whose Word gives an author's full name can refuse a proposal under
     it, and an author whose Word gives another form of their name ("Example, Ada", initials)

@@ -194,6 +194,20 @@ def test_a_passage_of_a_study_with_no_stored_copy_is_unchecked(project: Path) ->
     assert said(project)[0] == ("similar-passage-unchecked", WARN)
 
 
+def test_a_passage_of_a_study_whose_copy_is_kept_out_of_git_is_noted(project: Path) -> None:
+    from kept_away import keep_away
+
+    sources = project / "literature" / "sources"
+    (sources / f"{COHORT}.abstract.txt").write_text("An abstract that says little.\n", "utf-8")
+    keep_away(project, f"{COHORT}.txt", COHORT)
+    found = said(project)
+    assert ("similar-passage-not-here", INFO) in found
+    assert not {"similar-passage-not-in-source", "similar-passage-unchecked"} & {
+        code for code, _severity in found}  # fmt: skip
+    counts = check_method_passages(load_project(project)[0]).counts
+    assert (counts["similar_passages_not_here"], counts["similar_passages_failed"]) == (1, 0)
+
+
 def test_a_passage_of_three_words_shows_little(project: Path) -> None:
     with_method(project, passage="toxic liver disease")
     assert said(project)[0] == ("similar-passage-too-short", WARN)

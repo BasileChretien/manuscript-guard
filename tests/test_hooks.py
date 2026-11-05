@@ -1925,6 +1925,22 @@ def test_an_assessment_that_a_reply_refuses_is_put_to_the_person(
         assert run("guard-submission", _shell(in_claude_code, other), capsys) is None, other
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        'manuscript-guard references --search c1 --terms "drug class hepatic injury" --as Ada',
+        "manuscript-guard references --replay c1",
+        'manuscript-guard search "drug class hepatic injury"',
+        "manuscript-guard lookup",
+    ],
+)
+def test_a_recorded_search_runs_as_search_and_lookup_do(in_claude_code: Path, command: str,
+                                                       capsys) -> None:  # fmt: skip
+    """`references --search` and `--replay` send the terms and identifiers, as `search` and
+    `lookup` do, and are let through as they are: nothing of the manuscript goes."""
+    assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
+
+
 def test_a_file_named_attested_elsewhere_is_no_attestation(in_claude_code: Path, capsys) -> None:
     other = in_claude_code / "notes" / "attested.yaml"
     other.parent.mkdir()

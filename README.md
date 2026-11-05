@@ -5,15 +5,24 @@
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange)](#status)
 
-**Run a study from its plan to its publication so that every step can be checked and
-repeated.**
+**From research idea to a reproducible, submission-ready manuscript:
+AI assistance, human oversight, deterministic checks.**
 
-`manuscript-guard` keeps a study to its record, from the analysis plan to the published
-paper. The plan is written before the analysis and frozen when the first results are
-written. Every number in the manuscript is bound to the result or the published sentence it
-came from, or justified as a convention of writing. The analysis can be run again and its
-results compared value by value. The checks and approvals that need a person are recorded,
-with who gave them and when, for a co-author, an editor or a reader to look at later.
+manuscript-guard is an AI-assisted environment for scientific
+research and manuscript production. It helps researchers go from a
+research idea to a reproducible, submission-ready manuscript, with
+human oversight and deterministic quality assurance throughout.
+
+An agent can do much of the work; a person makes the calls; no check
+asks a model anything, and everything runs without an agent. It keeps
+a record of the scientific judgements made: it does not make them.
+
+It keeps a study to its record, from the analysis plan to the published paper. The plan is
+written before the analysis and frozen when the first results are written. Every number in
+the manuscript is bound to the result or the published sentence it came from, or justified
+as a convention of writing. The analysis can be run again and its results compared value by
+value. The checks and approvals that need a person are recorded, with who gave them and
+when, for a co-author, an editor or a reader to look at later.
 
 It holds the study to the guidelines it answers to, each read from its source rather than
 remembered: the reporting checklist of its design (CONSORT 2025, SPIRIT 2025, STROBE,
@@ -22,17 +31,16 @@ recommendations, the study's registration and the norms on text recycling. Each 
 on every run from the first draft, so what a guideline asks is found while there is still
 time to do it, not the night before submission ([the guidelines](#the-guidelines-it-answers-to)).
 
-An agent can do much of the work. Claude Code, Codex or another agent tool, with a skill for
-each step, drafts the plan, writes and runs the analysis, binds the numbers, drafts the prose
-and fixes what the check finds, and `manuscript-guard next` tells it, or you, what to do now.
-It decides none of the calls that matter. The seventeen gates are deterministic code that
-runs offline and in CI, and no gate asks a model anything; two of them read a recorded
-review, of each figure and of the manuscript, which a person or a model may have written
+Claude Code, Codex or another agent tool, with a skill for each step, drafts the plan,
+writes and runs the analysis, binds the numbers, drafts the prose and fixes what the check
+finds, and `manuscript-guard next` tells it, or you, what to do now. The seventeen gates are
+deterministic code that runs offline and in CI; two of them read a recorded review, of each
+figure and of the manuscript, which a person or a model may have written
 ([principles](docs/principles.md)). What only a person should do is put to a person: an
 author's approval, a statistician's sign-off, an attestation that a value was read in its
 source, sending the manuscript to a model provider, releasing what an analysis wrote from the
 data, publishing a deposit. Co-authors are asked, one page each, what no gate can see:
-whether a sentence says what its source says. Without an agent the tool runs the same.
+whether a sentence says what its source says.
 
 Numbers are where it is strictest. A number in a paper comes from one of three places: your
 results, the literature, or a convention of scientific writing. A number from your analysis
@@ -42,11 +50,79 @@ from; anything else has to be justified. Change the analysis, run it again and r
 every bound number in the paper and its supplement follows. A number with no source is a
 finding of the check, not something left for a reviewer to notice.
 
-It is alpha. One real manuscript has been through it. How much of a study an agent can carry
-with it, and whether the research is better for it, have not been measured; [Status](#status)
-says what has run on real papers.
+> **What it rests on so far.** It is alpha.
+>
+> - **A real paper.** One manuscript, a narrative review by the toolkit's author, has been
+>   through `check`, `build`, `verify`, which ran the analysis again and reproduced each of
+>   its 1,483 values, and `import` of two rounds of edits made in Word, by script rather
+>   than by a co-author.
+> - **A measured set.** G7's reference checks, on the 740 references of 16 published
+>   open-access pharmacology and epidemiology papers: as published, 1.49 false alarms per
+>   100 references in all, of which 0.68 from the search by title and the comparison of
+>   authors; 1.08 from those two with every DOI and PMID taken out.
+> - **Not measured.** How much of a study an agent can carry with it, and whether the
+>   research is better for it. No study has yet gone from its plan to publication with the
+>   toolkit.
+>
+> [Status](#status) has the rest.
 
-What it covers:
+On the worked example: one binding of the abstract replaced by the number it stood for,
+`check` failing on it, the number bound again, and `check` passing.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/demo-dark.svg">
+  <img src="docs/img/demo-light.svg" width="860"
+       alt="manuscript-guard check prints [FAIL] G2 manuscript/main.md:11:17, '4,000' is not bound to any source. The author replaces 4,000 with {{results.cohort.n_reports}} on line 11, and check runs again: stage: drafting (writing the manuscript against results that exist); numerical provenance, checked: G2, G3, G7, G8: 0 failing, 1 warning; and its last line, 0 failing, 13 warnings.">
+</picture>
+
+## Two ways in
+
+**I have a manuscript.** `audit` checks a paper written some other way: its numbers against
+each other and against the analysis outputs you give it, its Abstract against its Results,
+its words and its reference list. The [audit page](docs/audit-page.md) runs it on a .docx in
+a web browser, and the paper is not uploaded; the page goes live with the next release.
+<!-- TODO(after 0.2.476): link https://basilechretien.github.io/manuscript-guard/ here once it answers. -->
+At a terminal, with [uv](https://docs.astral.sh/uv/) and nothing else installed:
+
+```bash
+uvx manuscript-guard audit paper.docx
+```
+
+**I am starting a project.**
+
+```bash
+pip install manuscript-guard
+manuscript-guard init my-paper
+cd my-paper
+manuscript-guard next
+```
+
+`init` writes the project, and `next` says what to do now, with the command to run, from the
+analysis plan on. [Install](#install) has what else a build needs, and
+[Quick start](#quick-start) the worked example.
+
+## Who it is for
+
+Guided, not replaced: three kinds of user, using the same tool differently.
+
+- **PhD students and researchers new to a step.** `manuscript-guard next` and the skills walk
+  you through each step and say what each check asks. The methods still need a supervisor's
+  or a statistician's judgement, and the tool records their sign-off.
+- **Experienced researchers.** Less copying of numbers and checking by hand; the analysis
+  reruns (`verify`); co-authors stay in Word (`import`).
+- **PIs and research groups.** The same stages and checks across a group's papers; a GitHub
+  Action that runs them in each paper's repository (in progress); and the records of who
+  approved what.
+
+## Who does what
+
+| Who | What |
+|---|---|
+| An agent, through the skills | drafts the analysis plan, writes and runs the analysis, binds the numbers, drafts the prose, fixes what `check` finds |
+| The gates | decide from the records, offline and in CI, and ask no model anything |
+| A person | answers the findings only a person may close, among them: an attestation that a value was read in its source, a judgement that a passage supports its sentence, an answer to a co-author's comment or to a major finding of a review; approves the manuscript (`approve`); signs off what is theirs to close (`sign`); answers a co-author's page of things to confirm (`checker`); is asked before the manuscript is sent to a model provider (`review --run`) and before a deposit is published (`deposit --publish`) |
+
+## What it covers
 
 - **The plan and the data.** An analysis plan, a data dictionary, the record of the datasets
   considered and the one chosen, the study's registration; the data held, where need be, in
@@ -388,9 +464,9 @@ number in the file and the rule that classified it.
 | `lookup` | look up each cited DOI and PMID once, search PubMed, Crossref and OpenAlex by its title for a reference with neither, and keep what the registries said in `literature/lookups/`; `--journals` asks the NLM Catalog and DOAJ about each shortlisted journal's ISSN; `--registrations` asks ClinicalTrials.gov, the EU PAS register, OSF or ISRCTN about each registration `paper.yaml` lists, and keeps the answer in `design/registrations/`; `--paper` asks Crossref about the paper's own DOI, and keeps the answer in `communication/lookups/` for `communicate check` |
 | `search` | ask PubMed, Europe PMC and OpenAlex for works a claim could cite, each with its identifiers, kind, retraction status, later version and open copy; it proposes, the author chooses, and nothing is written |
 | `sync-bib` | rewrite `references.bib` from Zotero |
-| `sync-sources` | copy each cited work's PDF or saved page from Zotero into `literature/sources/`, or Zotero's text of it where the file is not on this computer or is an EPUB, and list the works with no copy; `--from` takes the PDFs of a folder named by DOI instead, as a downloader such as auto-paper-harvester saves them |
+| `sync-sources` | copy each cited work's PDF or saved page from Zotero into `literature/sources/`, or Zotero's text of it where the file is not on this computer or is an EPUB, and list the works with no copy; `--from` takes the PDFs of a folder named by DOI instead, as a downloader such as auto-paper-harvester saves them. The folder stays out of git in a new project, and `literature/sources.yaml` records what is in it, the files saved by hand among them |
 | `passages` | list each sentence that cites a work, with the passage of that work recorded as supporting it and what G7 found of it; `--missing` lists those with none |
-| `references` | whether each cited work is still the one to cite: alone, a row for each claim in scope (a sentence and a work it cites that `literature/currency.yaml` marks, or whose lookup record shows a later version or a published preprint) with how far its entry got; `--explain ID` its searches, readings and what the rules give; `--mark "WORDS" @KEY` marks a claim; `--reading FILE` files a reading once, sealed, and writes the rules' decision once two are filed; `--refuse ID --why ... --as PERSON` records a person's refusal of a proposed change; `--comments` writes each unanswered proposal as a Word comment on its citing sentence, in `build/currency/suggestions.docx`, a copy for the authors and never for the journal, whose replies `import` files under `literature/currency/replies/`; `--assess ID --reply N --says WHAT --quote "..." --as READER` records whether a reply refuses, agrees or says something else, and a refusal by a person of `authors.yaml` answers the proposal. It searches nothing and calls no model |
+| `references` | whether each cited work is still the one to cite: alone, a row for each claim in scope (a sentence and a work it cites that `literature/currency.yaml` marks, or whose lookup record shows a later version or a published preprint) with how far its entry got; `--explain ID` its searches, readings and what the rules give; `--mark "WORDS" @KEY` marks a claim; `--reading FILE` files a reading once, sealed, and writes the rules' decision once two are filed; `--refuse ID --why ... --as PERSON` records a person's refusal of a proposed change; `--search ID --terms "TERMS" --as WHO` runs the fixed searches for an entry (the cited work's forward links and citing reviews, systematic reviews, primary studies since the cutoff, ongoing trials, and with `--against` a query for evidence against the sentence), records each one sealed and fills the works store, `--question` writing the claim as a question, which is never sent; `--replay ID` runs the recorded searches again and lists the works new since; `--dry-run` prints the requests and sends nothing; `--comments` writes each unanswered proposal as a Word comment on its citing sentence, in `build/currency/suggestions.docx`, a copy for the authors and never for the journal, whose replies `import` files under `literature/currency/replies/`; `--assess ID --reply N --says WHAT --quote "..." --as READER` records whether a reply refuses, agrees or says something else, and a refusal by a person of `authors.yaml` answers the proposal. It calls no model |
 
 ### Co-Authors & Review
 
@@ -450,6 +526,7 @@ finding codes that should send you to them.
 | `manuscript-writing` | prose that reads as written |
 | `methods-writer` | Methods that describe the code that was actually run |
 | `literature-verify` | a number from a paper, with its verbatim quote and stored source |
+| `literature-currency` | whether a cited work is still the one to cite: the claim framed, the searches run and recorded, two readings, and the rules' decision |
 | `figure-review` | looking at a rendered figure and recording what was seen |
 | `figure-design` | a figure's look and palette, chosen with the author, readable by every reader |
 | `journal-profile` | choosing a journal with the author, and encoding its rules |
@@ -566,8 +643,17 @@ paper is right. What the toolkit cannot see is listed under "Known gaps" in
 [DESIGN.md](DESIGN.md), because a gate whose limits are undocumented gets trusted beyond
 them.
 
-The most useful contribution now is a case where a gate is wrong, in either direction:
-[CONTRIBUTING.md](CONTRIBUTING.md) says how.
+## Contributing without code
+
+The most useful contribution now is a case where a gate is wrong, in either direction: a
+false alarm or a miss, reported with the smallest text that shows it. The
+[issue templates](.github/ISSUE_TEMPLATE/gate-got-it-wrong.md) ask for that, and
+`manuscript-guard report-issue --about G2 --flagged --snippet "…"` (or `--missed`) writes the
+report for you to read and post. A profile of a journal you submit to
+([journal profiles](docs/journal-profiles.md)) and a recipe for a reporting checklist that
+is missing are contributions too.
+[CONTRIBUTING.md](CONTRIBUTING.md) says how, and [supporting the project](docs/funding.md)
+lists the ways to help, with and without money.
 
 ## Citing
 

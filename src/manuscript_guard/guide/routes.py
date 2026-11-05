@@ -131,6 +131,8 @@ ROUTES: dict[str, Route] = {
            "value-from-abstract", "no-reference-source", "zotero-unreadable",
            "pinning-unchecked", "no-live-citations", "citation-"),
     **_all("literature-verify", ("passages",), "passage-"),
+    # A recorded copy kept out of git: the command puts it on this computer again.
+    **_all("literature-verify", ("sync-sources",), "literature-source-not-here"),
     # The sentence is reworded, hedged or given a study that can show the effect: no command.
     **_all("literature-verify", None, "effect-claim-weak-source"),
     **_all("literature-verify", ("lookup",), "reference-", "lookup-", "doi-unregistered",
@@ -143,9 +145,9 @@ ROUTES: dict[str, Route] = {
     # is read, and the citation or the quote is put right in Zotero and the ledger.
     **_all("literature-verify", None, "reference-updated", "reference-corrected",
            "number-from-secondary-source"),
-    # Whether a cited work is still the one to cite: `references` lists the claims, explains
-    # an entry and files a reading.
-    **_all("literature-verify", ("references",), "currency-"),
+    # Whether a cited work is still the one to cite: `references` lists the claims, runs the
+    # searches, explains an entry and files a reading.
+    **_all("literature-currency", ("references",), "currency-"),
     # A reply in Word to a proposal's comment is filed by `import` and read by
     # `references --assess`, as the word-roundtrip skill says.
     **_all("word-roundtrip", ("references",), "currency-reply-missing",
@@ -204,7 +206,7 @@ ROUTES: dict[str, Route] = {
            "judgement-not-human", who="author"),
     # A proposed change to a citation is answered by a person, and only a person overrules
     # the rules (`references --refuse`, or `by` and `why` in literature/currency.yaml).
-    **_all("literature-verify", ("references",), "currency-change-unanswered",
+    **_all("literature-currency", ("references",), "currency-change-unanswered",
            "currency-decision-not-human", who="author"),
     # A refusal from a reply is a person's of authors.yaml, under their name.
     **_all("word-roundtrip", ("references",), "currency-reply-not-a-person", who="author"),

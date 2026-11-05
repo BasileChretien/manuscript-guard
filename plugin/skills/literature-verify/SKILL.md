@@ -37,6 +37,15 @@ works it found no copy of. Zotero's copies came through the user's own access: t
 Connector in their browser, or Find Available PDF through their library's proxy. It writes
 over no file it did not write.
 
+A new project keeps `literature/sources/` out of git, since a public repository would
+publish the copies, and commits `literature/sources.yaml`, the record of each file stored
+there; `sync-sources` enters the files the user saved by hand too, as theirs. Where a
+recorded copy is not on the computer, in CI or a fresh clone, `check` says
+literature-source-not-here, a note: the quote is checked where the copies are, and
+`sync-sources` puts them here again. A private repository that commits them sets
+`literature: {sources_in_git: true}` in `paper.yaml` and takes the line out of `.gitignore`;
+the user decides that, not you.
+
 Where the user already has a folder of PDFs named by DOI, such as the one a downloader like
 auto-paper-harvester writes, `manuscript-guard sync-sources --from <folder>` files them the
 same way, matched by the DOI in `references.bib`, and asks Zotero nothing. It refuses a file

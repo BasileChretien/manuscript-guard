@@ -56,6 +56,8 @@ HEADER = (
 )
 _SAFE = re.compile(r"[A-Za-z0-9_-]")
 _ENTRY_ID = re.compile(r"c([1-9][0-9]*)")
+#: A work as a record names it: a DOI in lower case, or a PMID.
+WORK = re.compile(r"doi:10\.[^\sA-Z]+|pmid:[1-9][0-9]*")
 #: A reading's file name: the entry, the reader as `safe_name` writes it, the number.
 _READING_NAME = re.compile(r"(c[1-9][0-9]*)\.([^.]+)\.([1-9][0-9]*)\.yaml")
 #: The fields of a candidate's reading, in the order they are shown.
@@ -322,10 +324,40 @@ def search_path(project: Project, entry: str, number: int) -> Path:
     return folder(project) / SEARCHES / f"{entry}-{number}.yaml"
 
 
+def file_search(project: Project, record: dict[str, Any]) -> Path:
+    """File one search record: numbered as its entry's next, sealed, held to its schema, and
+    written once. A number already taken is never written over: the next is used."""
+    record = {key: value for key, value in record.items()
+              if key not in ("schema", "number", "answers_sha256")}  # fmt: skip
+    entry = str(record.get("entry"))
+    if not _ENTRY_ID.fullmatch(entry):
+        raise ContractError(f"{entry!r} is not the id of an entry of literature/currency.yaml")
+    number = 1
+    while True:
+        while search_path(project, entry, number).exists():
+            number += 1
+        sealed = {"schema": SEARCH_SCHEMA, "entry": entry, "number": number, **record}
+        sealed["answers_sha256"] = sealed_digest(sealed, "answers_sha256")
+        path = search_path(project, entry, number)
+        report = validate(sealed, "currency-search", path)
+        if not report.ok:
+            problems = "; ".join(finding.message for finding in report.failures)
+            raise ContractError(f"the search record is not valid: {problems}")
+        text = ("# Written by `manuscript-guard references --search` or `--replay`. Sealed by\n"
+                "# `answers_sha256`: a search run again is a further record, never this one.\n"
+                + yaml.safe_dump(sealed, sort_keys=False, allow_unicode=True, width=100))
+        try:
+            _write_new(path, text)
+        except FileExistsError:
+            number += 1
+            continue
+        return path
+
+
 def write_search(project: Project, record: dict[str, Any]) -> Path:
-    """Write one search record, sealed, after holding it to its schema. Nothing in this
-    version runs a search: the recorded searches, still to come, are to write them
-    (DESIGN.md, "A cited work is held to newer evidence by fixed rules")."""
+    """Write one search record under the number it gives, sealed, after holding it to its
+    schema, over what that name held. The command files with `file_search`, which never
+    writes over a record; this is for a record written whole, as the tests write one."""
     record = {key: value for key, value in record.items() if key != "answers_sha256"}
     record = {"schema": SEARCH_SCHEMA, **record}
     record["answers_sha256"] = sealed_digest(record, "answers_sha256")
@@ -340,13 +372,37 @@ def write_search(project: Project, record: dict[str, Any]) -> Path:
     return path
 
 
+#: A search record's name: its entry and its number.
+_SEARCH_NAME = re.compile(r"(c[1-9][0-9]*)-([1-9][0-9]*)\.yaml")
+#: The statuses of a search that was asked: one recorded as not asked is no search.
+ASKED = ("run", "pending")
+
+
+def asked(record: dict | None) -> bool:
+    """Whether a search record is of a search that was asked (round 1 of #530: one recorded
+    as not asked, dated the day of a run where nothing answered, freshened the entry)."""
+    return bool(record) and record.get("status", "run") in ASKED
+
+
 def read_searches(project: Project) -> list[Read]:
-    """Every search record, in the order of their names."""
+    """Every search record, in the order of their names. One whose name is not its entry
+    and its number is edited, as a reading so named is: a copy keeps its seal, and would
+    count twice (round 1 of #530)."""
     found = folder(project) / SEARCHES
     if not found.is_dir():
         return []
-    return [_sealed(path, "currency-search", "answers_sha256")
-            for path in sorted(found.glob("*.yaml"))]  # fmt: skip
+    read = []
+    for path in sorted(found.glob("*.yaml")):
+        one = _sealed(path, "currency-search", "answers_sha256")
+        record = one.record
+        if one.problem is None and record is not None:
+            named = _SEARCH_NAME.fullmatch(path.name)
+            said = (str(record.get("entry")), str(record.get("number")))
+            if named is None or named.groups() != said:
+                one = Read(path, record, f"its name is not that of {said[0]}'s search "
+                           f"{said[1]}", edited=True)  # fmt: skip
+        read.append(one)
+    return read
 
 
 # --------------------------------------------------------------------------------- readings
@@ -480,7 +536,7 @@ def _write_new(path: Path, text: str) -> None:
 
 
 __all__ = ["CURRENCY_FILE", "Entry", "Read", "as_reading", "as_work", "currency_path",
-           "ensure_gitignore", "file_reading", "folder", "next_id", "quotes_of",
+           "ensure_gitignore", "file_reading", "file_search", "folder", "next_id", "quotes_of",
            "read_document", "read_entries", "read_readings", "read_searches", "read_work",
            "reading_path", "safe_name", "sealed_digest", "store_here", "work_id",
            "work_path", "write_document", "write_search", "write_work"]

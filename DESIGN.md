@@ -13220,7 +13220,7 @@ through the emitter as if the script had called it. The column names are the sch
 | `bounds`, `bound`, `level` | no | the estimate a bound belongs to, `low` or `high`, and the level ("95%"), as `interval()` writes them |
 | `of`, `over`, `family`, `spread` | no | what a statistic belongs to, as `em.value` takes them |
 | `quoted` | no | `false` for an intermediate |
-| `dataset`, `analysis` | no | M1's context |
+| `dataset`, `analysis` | no | M1's context; refused until the pull request that brings it (4 below) |
 | `table`, `row`, `column` | no | the cell of `table.<entry>_<table>` the value is placed in; one value to a cell, rows and columns in the order they first appear |
 | `note` | no | |
 
@@ -13288,7 +13288,7 @@ analysis run on the 2024 release and a quality report run on the 2023 one),
 `database-content-differs` (one identity, two `content` digests: a CDM refreshed without its
 CDM_SOURCE row being updated),
 and `database-unidentified` (a value's context names a database no fragment identifies; a
-warning, and a failure at submission). A database marked `synthetic` counts as a synthetic input
+warning, and a failure at submission; it comes with M1's context). A database marked `synthetic` counts as a synthetic input
 wherever one does now: `synthetic-input-quoted` in G1, and `freeze_plan` in both emitters and in
 `harvest`, which freezes the plan unless every input is synthetic and would otherwise freeze it
 on a run against a synthetic database, which has no file inputs.
@@ -13615,8 +13615,8 @@ What the Methods are held to (answer 5):
   typed in the Methods fails G2 now, each number unclassified (tried on a copy of the example,
   2026-11-05), and nothing in the analysis holds the number to bind it to. With these emitted the
   paragraph binds `{{results.cohort.target.prior_observation_days}}`, which prints what the
-  definition holds. `typed-parameter` is no help here: it fires only on a number G2 had read as a
-  convention. The other numbers of a definition are the author's to emit.
+  definition holds. `typed-parameter` is no help here: it fires only on a number G2 had
+  classified. The other numbers of a definition are the author's to emit.
 - *The codes.* Each concept set becomes a code list (`em.code_list`), RECORD 6.1's table: the
   set's name, the vocabulary, and the vocabulary's own codes. A `code_lists` entry takes
   `concept`, `system` and `codes` and nothing else, so the schema gains three optional keys on an
@@ -13642,7 +13642,7 @@ and 2.1 (namespaces `http://www.cdisc.org/ns/def/v2.0` and `.../v2.1`, over ODM 
 | `datasets` (`id`, `label`, `source`) | `ItemGroupDef`: `Name` lowered, `Description`, and `Purpose` and `def:Structure` as words in `source` |
 | variable name and `column` | `<dataset>.<ItemDef Name>` and the name: USUBJID is in every dataset |
 | label | `ItemDef/Description/TranslatedText` |
-| type | `DataType`: `text`, `integer`, `float`, `date`, `datetime`, `time`, and the partial dates as text |
+| type | `DataType`: `text` as `text`; `integer` as `continuous` (`count` only where a code list says so); `float` as `continuous`; `date`, `datetime` and `time` as themselves; the partial dates as `text` |
 | codes | `CodeListRef` to `CodeList`: `CodeListItem` with its `Decode`, or `EnumeratedItem` |
 | `standard` | `def:Standard` (name and version), the variable's name as `term`, and the item's `Alias Context="nci:ExtCodeID"` as `code` |
 | `derivation` | the `MethodDef` named by the `ItemRef`'s `MethodOID`, in the dataset's `ItemGroupDef` |
@@ -13728,21 +13728,24 @@ broken rule tried under a dozen seeds.
    under the entry's key but `quality.`, its schema; `docs/harvest.md`. Every path the emitter
    refuses is tried as a row: a display not of its value, a fraction with no digits, a bound with
    no estimate, a count below the minimum, a row with the role `software`, `dictionary` or
-   `dataset`, a text with a number, two values to a cell, a flat reader's key beside it. A
-   property draws tables of every column. Needs nothing before it.
+   `dataset`, a text with a number, two values to a cell, a flat reader's key beside it, and a
+   `dataset` or `analysis` column until 4. A property draws tables of every column. Needs
+   nothing before it.
 2. **M3, a database as a dataset.** The schema (`kind`, `inputs` for files only, `identity`,
    `extracted_from`, `released`, `vocabulary`, `content`), the canonical identity and its shared
    fixture, `em.database` in Python and R, `DATE_PARTS`, `dataset-pin-mismatch` for a database,
-   the three new codes, a synthetic database in G1 and in `freeze_plan`; `docs/vault.md` on
+   the first two new codes, a synthetic database in G1 and in `freeze_plan`; `docs/vault.md` on
    Eunomia as the synthetic CDM. Needs nothing before it.
 3. **The vault and a database.** `vault init --connection`; answer 8, for files and databases
    alike, in both emitters and G1; Known gaps on the network. After 2.
 4. **The adapter layer.** `adapters/` with its registry, the test that no gate imports it, M1's
-   `context` in the schema and both emitters with `context-dataset-unknown`, the zip and folder
-   outputs and their manifest digest in the harvest schema and G1, `select:`, `identity:` and
-   `dataset:`. After 1 and 2.
+   `context` in the schema and both emitters with `context-dataset-unknown` and
+   `database-unidentified`, the zip and folder outputs and their manifest digest in
+   `harvest.schema.json`, in `results.schema.json`'s `harvested` and in G1, `select:`,
+   `identity:` and `dataset:`. After 1 and 2.
 5. **Adapters from other packages.** The entry-point group, the adapter's name and version in
-   `provenance.harvested` with the refusals in `verify` and `vault release`, the clash of names,
+   `provenance.harvested` (`results.schema.json`, beside `harvest.schema.json`) with the
+   refusals in `verify` and `vault release`, the clash of names,
    `manuscript-guard adapters` (its row in the README and in `test_reads_nothing.py`), the
    conformance kit, and a test package installed into a scratch environment that proves an
    adapter found by its entry point is held as a built-in one is. After 4, and before the first
@@ -13751,7 +13754,8 @@ broken rule tried under a dozen seeds.
    `harvested.spec`, read by `deposit`, `package` and G2; the adapter's count reading in `verify
    --receipt` and `vault release`. After 4.
 7. **CohortMethod 6.** The reader, the censoring, the attrition flows, `database_meta_data` as
-   M3, Strategus's run record, the derived specification and its `tools/` script. Fixtures:
+   M3, Strategus's run record (`harvested.runs`, in `results.schema.json` beside
+   `harvest.schema.json`), the derived specification and its `tools/` script. Fixtures:
    `Results_Eunomia.zip` with and without the metadata. After 5 and 6.
 8. **SelfControlledCaseSeries**, then **Characterization**, then **EvidenceSynthesis**, a pull
    request each. After 7.

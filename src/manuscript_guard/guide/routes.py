@@ -143,9 +143,9 @@ ROUTES: dict[str, Route] = {
     # is read, and the citation or the quote is put right in Zotero and the ledger.
     **_all("literature-verify", None, "reference-updated", "reference-corrected",
            "number-from-secondary-source"),
-    # Whether a cited work is still the one to cite: `references` lists the claims, explains
-    # an entry and files a reading.
-    **_all("literature-verify", ("references",), "currency-"),
+    # Whether a cited work is still the one to cite: `references` lists the claims, runs the
+    # searches, explains an entry and files a reading.
+    **_all("literature-currency", ("references",), "currency-"),
     **_all("related-outputs", ("related",), "related-"),
     # -- figures --------------------------------------------------------------------------
     **_all("figure-review", None, "figure-unreviewed", "figure-review-", "figure-alt-"),
@@ -200,7 +200,7 @@ ROUTES: dict[str, Route] = {
            "judgement-not-human", who="author"),
     # A proposed change to a citation is answered by a person, and only a person overrules
     # the rules (`references --refuse`, or `by` and `why` in literature/currency.yaml).
-    **_all("literature-verify", ("references",), "currency-change-unanswered",
+    **_all("literature-currency", ("references",), "currency-change-unanswered",
            "currency-decision-not-human", who="author"),
     **_all("methods-review", None, "similar-decision-not-human", who="author"),
     **_all("data-sources", None, "data-source-not-a-person", who="author"),

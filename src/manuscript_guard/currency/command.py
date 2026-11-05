@@ -123,10 +123,7 @@ def explain(project: Project, entry_id: str) -> str:
         if read.problem:
             lines.append(f"  search {read.path.name}: {read.problem}")
             continue
-        one = read.record
-        lines.append(f"  search {one['number']} ({one['step']}, {one['source']}, "
-                     f"{one['searched_on']}): {one['query']!r}, {one['hits']} hit(s), "
-                     f"candidates: {', '.join(one['candidates']) or 'none'}")  # fmt: skip
+        lines.append(_search_line(read.record))
     usable = []
     for read in held.readings.get(entry.id, []):
         if read.problem:
@@ -160,6 +157,23 @@ def explain(project: Project, entry_id: str) -> str:
     return "\n".join(lines)
 
 
+def _search_line(one: dict) -> str:
+    """One search record in a line: its step, source and date, the terms and who wrote them,
+    and what came back."""
+    step = one["step"] + (f" as {one['as_step']}" if one.get("as_step") else "")
+    said = f"  search {one['number']} ({step}, {one['source']}, {one['searched_on']}): "
+    said += repr(one["query"]) + (f" by {one['terms_by']}" if one.get("terms_by") else "")
+    if one.get("cutoff"):
+        said += f", from {one['cutoff']['date']}"
+    status = one.get("status", "run")
+    if status == "not asked":
+        return said + f", not asked: {one['why']}"
+    if status == "pending":
+        return said + f", {one['hits']} ongoing, pending: {', '.join(one['trials']) or 'none'}"
+    return said + (f", {one['hits']} hit(s), candidates: "
+                   f"{', '.join(one['candidates']) or 'none'}")  # fmt: skip
+
+
 def _reading_lines(record: dict) -> list[str]:
     who = record["reader"] + (f" ({record['provenance'].get('model')})"
                               if (record.get("provenance") or {}).get("model") else "")
@@ -176,7 +190,7 @@ def _reading_lines(record: dict) -> list[str]:
 
 
 def mark(project: Project, words: str, citekey: str, by: str | None,
-         entry_id: str | None = None) -> str:  # fmt: skip
+         entry_id: str | None = None, question: str | None = None) -> str:  # fmt: skip
     """Mark the citing sentence of `citekey` that holds `words` as a claim to check: a new
     entry, or, with `entry_id`, an entry put on it again: one unplaced, or placed only on a
     sentence that does not read as it does. With `entry_id`, `citekey` may be the entry's
@@ -197,7 +211,8 @@ def mark(project: Project, words: str, citekey: str, by: str | None,
     document = document or {"schema": records.SCHEMA, "entries": []}
     entries = [dict(raw) for raw in document.get("entries") or []]
     if entry_id is not None:
-        return _place_again(project, document, entries, entry_id, citekey, sentence, found)
+        return _place_again(project, document, entries, entry_id, citekey, sentence, found,
+                            question)  # fmt: skip
     for raw in entries:
         placed = found.placed.get(raw["id"])
         if raw["citekey"] == citekey and placed is not None and placed.text == sentence.text:
@@ -206,6 +221,10 @@ def mark(project: Project, words: str, citekey: str, by: str | None,
            "citekey": citekey}  # fmt: skip
     if by:
         new |= {"marked_by": by, "marked_on": date.today().isoformat()}
+    if question is not None:
+        from manuscript_guard.currency.searching import framed
+
+        new = framed(project, new, question)
     records.write_document(project, {**document, "entries": [*entries, new]})
     records.ensure_gitignore(project)
     return f"marked as {new['id']}: {_where(project, sentence.path, sentence.line)}"
@@ -217,7 +236,8 @@ def _check_mark_by(by: str | None) -> None:
 
 
 def _place_again(project: Project, document: dict, entries: list[dict], entry_id: str,
-                 citekey: str, sentence, found: Survey) -> str:  # fmt: skip
+                 citekey: str, sentence, found: Survey,
+                 question: str | None = None) -> str:  # fmt: skip
     from manuscript_guard.gates.currency import _bib
     from manuscript_guard.literature.passages import statement_words
 
@@ -234,6 +254,10 @@ def _place_again(project: Project, document: dict, entries: list[dict], entry_id
                 raw["sentence"]):  # fmt: skip
             raise Refused(f"{entry_id} is placed already: a sentence reads as it does")
         raw["sentence"] = " ".join(sentence.text.split())
+        if question is not None:
+            from manuscript_guard.currency.searching import framed
+
+            raw.update(framed(project, raw, question))
         records.write_document(project, {**document, "entries": entries})
         return f"{entry_id} placed again: {_where(project, sentence.path, sentence.line)}"
     raise Refused(f"literature/currency.yaml has no entry {entry_id}")

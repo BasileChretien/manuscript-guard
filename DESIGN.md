@@ -3740,6 +3740,91 @@ once two are filed and the works store holds every work they name, leaving a per
 decision as it is and refusing a reading that would change a proposal a person answered;
 `--refuse ID --why ... --as PERSON`, refused where the proposal is answered already.
 
+### The searches are recorded, and run again as recorded
+
+`references --search ID --terms "TERMS" --as WHO` runs every search of the protocol for one
+entry and records each (design 2.2, sources S1 to S8). Basile settled four things on
+2026-11-04 and 2026-11-05. The reader writes the terms: the agent through the
+`literature-currency` skill, a model unattended, or a person, and `--as` names who, refused
+when it names nobody. Nothing derives them from the sentence or from MeSH, and there is no
+list of keywords anywhere. The terms are held to `search`'s rule for a query, one function
+for both (`lookup/search.folded_query`): whitespace folded, at most 300 characters, so that
+a sentence of the manuscript pasted in is refused. `--question` writes the entry's
+`question` (F1), here and on `--mark`; it is kept in the entry and never sent. Every
+candidate is read as supporting the sentence, contradicting it or neither (R3), and the
+reader may add one query of its own aimed at contrary findings, `--against`, recorded as S8.
+Each source keeps ten works at each step, or `references.search_limit` in `paper.yaml` (1 to
+50), and the record keeps the source's own count beside them.
+
+The steps, in order:
+
+- **S1, forward from the cited work.** PubMed's "Update in" and "Comment in" links are read
+  from the cited work's lookup record (schema 3) and not asked again; the record says which
+  lookup record and of what date, and that date is its `searched_on`. The reviews OpenAlex
+  lists as citing the work (`filter=cites:W…,type:review`, `sort=publication_date:desc`),
+  after one request by DOI for its OpenAlex id, which the record then keeps, so a replay
+  does not ask for it again. A cited work with no DOI is not asked of OpenAlex; one PubMed
+  has no record of is not read there; each is recorded as `not asked`, with the reason. A
+  claim whose cited work has no current lookup record is refused, and the author is told to
+  run `lookup`.
+- **S2, syntheses on the question.** PubMed with `systematic review[pt]`, Europe PMC with
+  `PUB_TYPE:"systematic review"`. OpenAlex types no systematic review and is recorded as not
+  asked, as `search` says it.
+- **S3, primary studies since the cutoff.** The cutoff is the later of the cited work's
+  publication date (its works record) and the newest search end date a filed reading gives
+  for a synthesis an S2 search of the entry found (R4); before any reading, the cited work's
+  date, so the steps do not wait on each other. A date of any precision is asked from the
+  first day it names, at each source's finest filter: PubMed `mindate` (`2019/03/01`),
+  Europe PMC `FIRST_PDATE:[2019-03-01 TO 3000-12-31]`, OpenAlex `from_publication_date`.
+  The record says the cutoff and what gave it. Syntheses are not filtered out; the rules
+  deal with them.
+- **S4, ongoing trials.** ClinicalTrials.gov API v2, `GET /api/v2/studies` with the terms as
+  `query.term` and `filter.overallStatus` set to the statuses of a study under way
+  (not yet recruiting, recruiting, enrolling by invitation, active and not recruiting),
+  paced at the host's 1.2 seconds as the lookup of registrations is. Recorded as `pending`
+  with the NCT numbers, never as candidates. The shape was read from a live answer on
+  2026-11-05: `totalCount` with `countTotal=true`, and `studies[]`, each with
+  `protocolSection.identificationModule.nctId`.
+- **S5 and S6** are not run: grey literature and a semantic tool's suggestion are a reader's,
+  filed by hand. **S7**, no candidate from memory, is the skill's rule.
+- **S8**, with `--against`: the reader's query run as S2 and as S3.
+
+**The records.** One for each step and source, `literature/currency/searches/<id>-<n>.yaml`,
+numbered as the entry's next and written once, as a reading is; a name already taken is never
+written over. Each holds the step (and for S8 the step it ran as), the source, its status
+(`run`, `not asked` with the reason, or `pending` with the trials), the terms as sent and who
+wrote them, the request as sent without its key or contact address, the filters, the cutoff,
+the date, the source's count, the candidates by DOI or else PMID with the cited work left
+out, and how many works came with neither, which no record can name. A source that did not
+answer writes no record: a record of a search that did not happen would make the entry look
+searched, and freshen `currency-record-stale`. The command says which, and exits 1.
+
+**The works store** is filled for the cited work, first, and for every candidate: Europe PMC's
+core record (the abstract, `pubTypeList`, `firstPublicationDate`, "Retraction in",
+"Expression of concern in", "Preprint of"), Crossref where there is a DOI (its dates, the
+notices that update the work, `is-preprint-of`), PubMed's ESummary where there is a PMID
+(publication types, "Retracted Publication", the retraction and concern links), and
+OpenAlex's `is_retracted` where there is a DOI. ESummary is asked 100 PMIDs at a time and
+OpenAlex 50 DOIs. `publication_types` are PubMed's where it answered for a PMID, else Europe
+PMC's; `published` is Crossref's `issued` date (else online, print, posted) where there is a
+DOI, else Europe PMC's first publication date. The cited work is asked of PubMed by the PMID
+its lookup found for its DOI (`pubmed_by_doi`), for its types only: that PMID is not written
+among its identifiers. Any source saying retracted, withdrawn or under concern counts. A works
+record is the one record written over, sealed afresh each time, since its facts change; but
+only where every source asked answered and one knew the work. Where one did not answer, the
+record held stays as it was, since a lookup that did not work says nothing, and never "not
+retracted".
+
+**Replay.** `--replay ID` runs the newest recorded search at each step and source again, with
+the query, filters and cutoff as recorded (`replay_of` names the record), refreshes the works
+records of the cited work and of everything found, and lists the works new since the last
+run. A search recorded as not asked is not run again; `--search` frames them afresh. `--dry-run`
+on either prints each request and sends and writes nothing.
+
+**What leaves the machine:** the terms, and the identifiers of the cited work and of the
+works found. The question is not sent, and no sentence of the manuscript is. The command's
+help says so.
+
 ## Text from the authors' earlier papers is found before the journal finds it
 
 A journal puts each submission through a similarity check (Crossref Similarity Check, which
@@ -19562,8 +19647,33 @@ Open, recorded as each change landed:
     not one made by somebody who computes the digest again; and the hook asks about an
     agent's ordinary edit of a person's decision or answer, not a deliberate evasion (a shell
     command, a patch that deletes the file).
-  - `currency-record-stale` reads the search records, which nothing in this version writes:
-    the recorded searches are to come.
+  - `currency-record-stale` reads the newest search record of an entry, whatever its
+    step: one step run again freshens the entry, though the others are older.
+  - The recorded searches find what the registries index under the terms the reader wrote.
+    PubMed and Europe PMC are biomedical, and all three lean towards work in English; a
+    query can miss the words a study used, and nothing checks the terms against the
+    question. A search that found nothing says only that these terms found nothing there.
+  - The terms, and the identifiers of the cited work and of each work found, tell PubMed,
+    Europe PMC, OpenAlex, Crossref and ClinicalTrials.gov what the paper is about.
+  - The registry facts of the works store are as of its `fetched_on`, and the search counts
+    as of each record's date; a retraction since is seen at the next `--search` or
+    `--replay`. PubMed's forward links (S1) are as of the cited work's lookup, not of the
+    search.
+  - S1 at OpenAlex asks for the reviews that cite the work, as OpenAlex types them, and only
+    by the cited work's DOI: a work cited by its PMID alone is not asked there, and a trial
+    that cites it is not looked for. A work PubMed links to by its PMID alone (S1) is kept
+    as `pmid:`, and the same work found elsewhere by its DOI is a second candidate, read
+    twice.
+  - S4 asks ClinicalTrials.gov only, for the studies its `overallStatus` says are under way;
+    other registries' trials, and a trial whose status there is out of date, are not seen.
+  - A source that did not answer leaves its step unrecorded for that run, and the command
+    exits 1; the entry's other searches stand, so an entry can be read with a step missing
+    until `--search` is run again.
+  - The cutoff of S3 reads every filed reading's search end date for a synthesis an S2
+    search of the entry found, and takes the latest, though another reading may give an
+    earlier one: two readings that disagree on it move the cutoff to the later.
+  - A work a source returned with neither a DOI nor a PMID is counted (`unidentified`) and
+    not kept, since no record can name it.
 - **An appraisal of a similar study's method is judgement, not a guarantee.** G12 holds it
   to a standard and a domain that exist, and nothing more: that the method departs from the
   standard as the appraisal says, that the concern is the right one, and that the studies

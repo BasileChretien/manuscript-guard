@@ -19,7 +19,7 @@ import re
 #: up to `PARENTHESIS` characters such as a citation as Word prints it, or any other run of
 #: characters that are not spaces, all of them joined where they touch, as in
 #: `({{results.n}}%)`. A longer parenthesis is a clause more than a citation, and is cut
-#: between its words like the rest.
+#: between its words like the rest, as is one with another parenthesis inside it.
 PARENTHESIS = 160
 _WORD = re.compile(
     r"(?:\{\{.*?\}\}|\[[^\[\]]*\]|\([^()]{0," + str(PARENTHESIS - 2) + r"}\)|\S)+"

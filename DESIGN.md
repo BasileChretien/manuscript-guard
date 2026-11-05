@@ -14058,13 +14058,20 @@ Added by the adversarial review, verified and **not** fixed:
   five words either side, at most three stretches a paragraph (`preview.py`); the rest are
   counted, not shown. Edits ten words apart or fewer are one stretch, and a stretch is
   shown whole, every changed word in it: a paragraph copy-edited throughout prints at its
-  full length, where showing a long stretch by its two ends hid the edits between. Words are
-  compared, so spacing alone, a line wrapped otherwise, shows nothing. A binding, a
-  bracketed citation and a parenthesis of up to 160 characters are one word and never cut;
-  a longer parenthesis, a clause rather than a citation, is cut between its words. A
-  refusal is shown against what the paragraph printed when the document was built, from the
-  build's record, and where there is none against the fresh build: in a forced import, a
-  value re-run since then shows as changed beside the co-author's edit.
+  full length, with nothing to mark which of its words changed, where showing a long stretch
+  by its two ends hid the edits between. Words are compared, so spacing between them, a line
+  wrapped otherwise, shows nothing. A binding, a bracket and a parenthesis of up to 160
+  characters are each one word, compared as written and never cut. So a no-break space
+  typed in Word for a space inside a parenthesis prints a `-` and a `+` line that read the
+  same, and a bracket prints whole on each line however long it is, as does any run of text
+  with no space in it, Chinese or Japanese among them. A longer parenthesis, a clause rather
+  than a citation, is cut between its words, and so is one with another inside it, so a
+  stretch beside it can open or close inside it. A refusal is shown against what the
+  paragraph printed when the document was built, from the build's record, and where there is
+  none against the fresh build: in a forced import, a value re-run since then shows as
+  changed beside the co-author's edit. The generated edits (`previewed_edits`) never pass
+  the three stretches a paragraph shows, and hold no binding, no parenthesis inside another
+  and no refusal. A run of `{{` never closed takes time in the square of its length.
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
@@ -14285,7 +14292,9 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   2018)", "(Name, Other, & Third, 2018)", each part of a group, and "Name (2018)" with "et
   al." or one or two more names. A year with a page after it, "(Name, 2018, p. 4)", a part
   that opens with a lower-case word and a comma, "(e.g., Name, 2018)", and a name that does
-  not open with a capital, a Chinese or a Japanese one among them, get the generic hint. A
+  not open with a capital, a Chinese or a Japanese one among them, get the generic hint. So
+  does a LaTeX citation that ties the name to the year, `Name~(2018)` or `Name et~al.
+  (2018)`: the tie is not read as a space. A
   possessive, "Name's (2018)", is read with its "'s" and matches no entry. A capitalised word
   before a year in brackets reads as a name, "Japan (2018)", and its hint says what to do if
   it is a citation and what otherwise. A family name is compared by its last word, folded
@@ -14293,7 +14302,13 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   work by another person of that family name from that year is named as one the author may
   mean. TeX in a name that `gates.lookups` does not read (`{\IJ}ssel`) leaves that entry
   out of the comparison, and the hint names it for each typed citation of that year that
-  matches no other entry; an entry whose `author` is a `@string` macro is not found. The hint is G2's alone: `bind` and
+  matches no other entry; an entry whose `author` is a `@string` macro is not found. Where
+  no entry matches, the hint says to "cite it with its key from references.bib, ..., adding
+  the work there first if it is not yet in it", whose "it" is the citation, then the work,
+  then the file. The rows of `tests/test_corruption.py` that end in that branch do not check that
+  the generic hint follows it, as the rows that name a key do; and the property of names in
+  TeX (`names_in_tex`) draws no citation that matches no entry, so its check that the hint
+  never says a work is missing cannot fail. The hint is G2's alone: `bind` and
   the annotated copy still give the generic one.
 - **Figure estimates.** `def std(values):` is read as a call; an `.Rmd` or `.qmd` is lexed
   as R throughout, its Python chunks missed and "sample (" in its prose read; a form feed
@@ -15712,7 +15727,10 @@ Open, recorded as each change landed:
   manuscript_guard.cli submit --help` and a help with a space too many are each held as a
   submission. `--hel` is held too, and argparse refuses it, since the parser takes no
   abbreviation (`allow_abbrev=False`). Each costs an agent one refusal, and none lets a
-  submission through.
+  submission through. That a help with a line end after it is held rests on the match being
+  of the whole command (`fullmatch`), and no test holds `manuscript-guard submit --help`
+  followed by a line end alone. The generated commands (`help_commands`) quote a `;` and
+  never an `&` or a `|`.
 - **From a folder with no project, the submission guard finds only a project the command
   spells out.** It used to find none. It matched the command, then ran the submission check
   in the folder the event names as the agent's, and from the folder above a project there is

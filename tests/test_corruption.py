@@ -3136,6 +3136,70 @@ def test_a_proposal_is_accepted_by_citing_the_work_it_proposes(
     assert unplaced == []
 
 
+#: A sentence of the Discussion that still cites the old work and holds most of the worked
+#: case's words (round 4 of #499).
+_OLD_KEY_ELSEWHERE = (
+    "\nIn a national cohort, a disproportionality signal has been reported for the drug class "
+    "as a whole (ROR {{lit.background.class_ror}}) [@fictionalClassSignal2019].\n"
+)
+
+
+def _swapped(root: Path, action: str, *, reworded: bool = False) -> None:
+    """The worked case, the trial in references.bib, and the entry's sentence citing it:
+    in place of the old work for a `replace`, beside it for an `add`; with
+    `_OLD_KEY_ELSEWHERE` at the end of the main text."""
+    import currency_records as case
+
+    case.case(root)
+    if action == "add":
+        _currency_text(root, "action: replace", "action: add")
+        _currency_text(root, "    by: rules\n", "    by: Ada Example\n    why: it disagrees\n")
+    _cite_the_trial(root, doi="10.5555/class.trial.2023")
+    main = root / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    old = "[@fictionalClassSignal2019]. The"
+    assert old in text
+    new = ("[@classTrial2023]. The" if action == "replace"
+           else "[@fictionalClassSignal2019; @classTrial2023]. The")  # fmt: skip
+    text = text.replace(old, new, 1)
+    if reworded:
+        text = text.replace("has been reported", "has been described", 1)
+    main.write_text(text + _OLD_KEY_ELSEWHERE, encoding="utf-8")
+
+
+@pytest.mark.parametrize("action", ["replace", "add"])
+def test_a_change_made_in_the_entrys_sentence_is_seen_beside_another_old_key_sentence(
+    project: Path, action: str
+) -> None:
+    """Round 4 of #499 (Basile, "exact words first"): after a `replace`, a sentence of the
+    Discussion still citing the old work and holding most of the entry's words kept the
+    entry, and the sentence that now cites the trial was never read. The sentence with the
+    entry's words is its own, whichever work it cites now."""
+    from manuscript_guard.currency.survey import survey
+
+    _swapped(project, action)
+    assert _currency_findings(project, "submission") == []
+    placed = survey(load_project(project)[0])[0].placed["c1"]
+    assert "@classTrial2023" in placed.text and "crude incidence" in placed.text
+
+
+def test_a_swap_reworded_beside_another_old_key_sentence_is_a_known_limit(
+    project: Path,
+) -> None:
+    """DESIGN.md, Known gaps: a `replace` done in a sentence also reworded, with another
+    sentence still citing the old work that holds half or more of the entry's words, is
+    not seen as done until the author puts the entry on the new sentence."""
+    from manuscript_guard.currency import command
+
+    _swapped(project, "replace", reworded=True)
+    assert _currency_findings(project, "submission") == [
+        ("currency-change-unanswered", "fail")]
+    said = command.mark(load_project(project)[0], "has been described", "@classTrial2023",
+                        None, "c1")  # fmt: skip
+    assert said.startswith("c1 placed again")
+    assert _currency_findings(project, "submission") == []
+
+
 #: The worked case's sentence, nearly: what a later trial cited beside it might be.
 _NEAR_COPY = (
     "\nIn a national cohort, the crude incidence was {{lit.background.reported_incidence}} "

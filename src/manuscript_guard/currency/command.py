@@ -178,8 +178,10 @@ def _reading_lines(record: dict) -> list[str]:
 def mark(project: Project, words: str, citekey: str, by: str | None,
          entry_id: str | None = None) -> str:  # fmt: skip
     """Mark the citing sentence of `citekey` that holds `words` as a claim to check: a new
-    entry, or, with `entry_id`, an unplaced entry put on it again. Exactly one sentence must
-    hold the words; more or none is refused."""
+    entry, or, with `entry_id`, an entry put on it again: one unplaced, or placed only on a
+    sentence that does not read as it does. With `entry_id`, `citekey` may be the entry's
+    work or the candidate it proposes, for a sentence where the author made the change.
+    Exactly one sentence must hold the words; more or none is refused."""
     citekey = citekey.removeprefix("@")
     found, report = survey(project)
     if report.failures:
@@ -216,12 +218,20 @@ def _check_mark_by(by: str | None) -> None:
 
 def _place_again(project: Project, document: dict, entries: list[dict], entry_id: str,
                  citekey: str, sentence, found: Survey) -> str:  # fmt: skip
+    from manuscript_guard.gates.currency import _bib
+    from manuscript_guard.literature.passages import statement_words
+
     for raw in entries:
         if raw["id"] != entry_id:
             continue
-        if raw["citekey"] != citekey:
-            raise Refused(f"{entry_id} is of @{raw['citekey']}, not @{citekey}")
-        if entry_id in found.placed:
+        candidate = (raw.get("decision") or {}).get("candidate")
+        if raw["citekey"] != citekey and not (
+                candidate and records.is_work(_bib(project).get(citekey), candidate)):
+            raise Refused(f"{entry_id} is of @{raw['citekey']}, and @{citekey} is not the "
+                          "work it proposes")  # fmt: skip
+        placed = found.placed.get(entry_id)
+        if placed is not None and statement_words(placed.text) == statement_words(
+                raw["sentence"]):  # fmt: skip
             raise Refused(f"{entry_id} is placed already: a sentence reads as it does")
         raw["sentence"] = " ".join(sentence.text.split())
         records.write_document(project, {**document, "entries": entries})

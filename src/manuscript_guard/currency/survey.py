@@ -11,11 +11,16 @@ work whose lookup record says a later version, or a published version of a prepr
 since (`gates.lookups.currency_facts`). The sentences are those of the main text and of
 `manuscript/supplementary/`, Markdown or LaTeX (`gates.passages.citing_documents`).
 
-A proposed `replace` or `add` nobody answered counts as accepted once a sentence matching the
-entry's words, the same or `NEAR`, cites a key whose DOI or PMID in `references.bib` is the
-candidate's (design 2.5): the author cited the work, in Zotero and then `sync-bib`. Nothing is
-written; the entry is placed on that sentence where its own words no longer stand beside its
-old key.
+A proposed `replace` or `add` nobody answered counts as accepted once the entry's own
+sentence cites a key whose DOI or PMID in `references.bib` is the candidate's (design 2.5):
+the author cited the work, in Zotero and then `sync-bib`. Nothing is written. The entry's own
+sentence is, first, the one sentence whose folded words are the entry's, whichever of the old
+work and the candidate it cites now; it accepts if and only if it cites the candidate, and
+the entry is placed on it. Where two or more such sentences cite either, none accepts. Only
+where no sentence has the entry's words does `NEAR` decide: the sentence citing the old work
+that holds most of them is the entry's, and accepts if it cites the candidate too; failing
+that, the one citing the candidate that holds most of them accepts, and the entry is placed
+on it (Basile, "exact words first", round 4 of #499).
 """
 
 from __future__ import annotations
@@ -93,11 +98,8 @@ def survey(project: Project) -> tuple[Survey, Report]:
             placed[entry.id] = found
     bib = project.path("literature") / "references.bib"
     fields = read_bib(bib) if bib.is_file() else {}
-    accepted = _accepted(entries, fields, sentences, words, placed)
-    for entry_id, cited in accepted.items():
-        # Only an entry whose own sentence can no longer be placed is placed by the
-        # candidate's citation; one that can is accepted from that sentence alone.
-        placed.setdefault(entry_id, cited)
+    accepted, moved = _accepted(entries, fields, sentences, words, placed)
+    placed = {**placed, **moved}
     keys = sorted({key for cited in sentences for key in cited.keys})
     facts = {key: tuple(currency_facts(project, key, fields.get(key))) for key in keys
              if key in fields}  # fmt: skip
@@ -118,33 +120,49 @@ def survey(project: Project) -> tuple[Survey, Report]:
 
 def _accepted(entries: tuple[Entry, ...], fields: dict[str, dict[str, str]],
               sentences: list[CitedSentence], words: list[str],
-              placed: dict[str, CitedSentence]) -> dict[str, CitedSentence]:  # fmt: skip
-    """Each unanswered proposal a sentence accepts, with that sentence: one matching the
-    entry's words that cites a key whose DOI or PMID is the candidate's. Where the entry's
-    own sentence can still be placed, the same or `NEAR` and citing its work, only that
-    sentence can accept it, by citing the candidate: another that holds most of its words
-    and cites the candidate is not the author citing it here (rounds 2 and 3 of #499). The
-    candidate's own placement is read only where the entry's sentence can be placed no
-    longer, as when a `replace` took the old key out."""
+              placed: dict[str, CitedSentence]
+              ) -> tuple[dict[str, CitedSentence], dict[str, CitedSentence]]:  # fmt: skip
+    """Each unanswered proposal its sentence accepts, with that sentence, and the entries
+    placed anew: on their own sentence found by its words, or on the candidate's.
+
+    Exact words first (Basile, round 4 of #499). The one sentence whose folded words are
+    the entry's, citing the old work, the candidate or both, is the entry's own: it accepts
+    if and only if it cites the candidate, and the entry is placed on it. Two or more such
+    sentences accept nothing. With none, the entry's placement by `NEAR` on a sentence
+    citing the old work decides (round 3): it accepts if it cites the candidate too, and a
+    copy elsewhere citing the candidate does not. Only where that fails is the candidate's
+    own placement read, and the entry placed on it."""
     accepted: dict[str, CitedSentence] = {}
+    moved: dict[str, CitedSentence] = {}
     for entry in entries:
         decision = entry.decision or {}
         candidate = decision.get("candidate")
         if decision.get("action") not in ("replace", "add") or not candidate or entry.answer:
             continue
-        keys = sorted(key for key, one in fields.items() if is_work(one, candidate))
-        own = placed.get(entry.id)
-        if own is not None:
-            if any(key in own.keys for key in keys):
+        keys = {key for key, one in fields.items() if is_work(one, candidate)}
+        wanted = statement_words(entry.sentence)
+        exact = [cited for cited, theirs in zip(sentences, words, strict=True)
+                 if theirs == wanted and (entry.citekey in cited.keys or keys & set(cited.keys))]
+        if len(exact) > 1:
+            continue  # several sentences say it: none is taken for the entry's own
+        if exact:
+            own = exact[0]
+            moved[entry.id] = own
+            if keys & set(own.keys):
                 accepted[entry.id] = own
             continue
-        for key in keys:
+        own = placed.get(entry.id)
+        if own is not None:
+            if keys & set(own.keys):
+                accepted[entry.id] = own
+            continue
+        for key in sorted(keys):
             cited = place(entry.sentence, key, sentences, words)
             if cited is not None:
                 accepted[entry.id] = cited
+                moved[entry.id] = cited
                 break
-    return accepted
-
+    return accepted, moved
 
 def find_sentence(words: str, citekey: str, sentences: tuple[CitedSentence, ...]
                   ) -> list[CitedSentence]:  # fmt: skip

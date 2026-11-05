@@ -7105,7 +7105,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="--refuse: who refuses; --mark: who marks the claim",
     )  # fmt: skip
     references.add_argument("--id", metavar="ID",
-                            help="--mark: put this unplaced entry on the sentence again")
+                            help="--mark: put this entry on the sentence again, where no "
+                            "sentence reads as it does; KEY may be the work it proposes")
     references.add_argument("--json", action="store_true", help="the listing as JSON")
     references.set_defaults(func=cmd_references)
 

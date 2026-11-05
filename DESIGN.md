@@ -3673,12 +3673,15 @@ passage does, or, where none is, to the one citing it that holds most of them, h
 **Acceptance by citation** (design 2.5): an unanswered `replace` or `add` counts as accepted,
 and nothing is written, once a sentence matching the entry's words, the same or `NEAR`,
 cites a key whose DOI or PMID in `references.bib` (`doi_of`, `pmid_of`) is the candidate's:
-the author added the work to Zotero and ran `sync-bib`. Where the entry's own sentence can
-still be placed, the same or `NEAR` and citing its old key, only that sentence accepts, by
-citing the candidate too: a copy elsewhere that holds most of its words and cites the
-candidate accepts nothing (rounds 2 and 3 of #499). Where it can be placed no longer, as when
-a `replace` took the old key out, the sentence citing the candidate is the one, and the entry
-is placed on it, so a `replace` done is not unplaced.
+the author added the work to Zotero and ran `sync-bib`. Exact words first (Basile, round 4
+of #499): the one sentence whose folded words are the entry's, citing the old work, the
+candidate or both, is the entry's own; it accepts if and only if it cites the candidate, and
+the entry is placed on it, so a `replace` done is not unplaced. Where two or more such
+sentences cite either, none accepts. Only where no sentence has the entry's words does
+`NEAR` decide: the sentence citing the old work that holds most of them is the entry's, and
+accepts only by citing the candidate too, so a copy elsewhere that holds most of its words
+and cites the candidate accepts nothing (rounds 2 and 3); failing that, the sentence citing
+the candidate that holds most of them accepts, and the entry is placed on it.
 
 **Scope.** The claims an entry marks, and each citing sentence of the main text or the
 supplement, Markdown or LaTeX, that cites a work whose lookup record says a later version
@@ -3709,7 +3712,8 @@ puts an entry a person decided or answered on another sentence. `check`'s litera
 many entries the rules decided and from whose readings, and how many a person did.
 
 **The command**, `references`: alone, a row per claim in scope; `--explain ID`; `--mark
-"WORDS" @KEY` (with `--id`, an unplaced entry put back); `--reading FILE`, which holds the
+"WORDS" @KEY` (with `--id`, an entry no sentence reads as put on the sentence again, `KEY`
+the entry's work or the one it proposes); `--reading FILE`, which holds the
 reading to its schema, the hierarchy and its entry, files it, and writes the rules' decision
 once two are filed and the works store holds every work they name, leaving a person's
 decision as it is and refusing a reading that would change a proposal a person answered;
@@ -19200,6 +19204,11 @@ Open, recorded as each change landed:
     a decision the rules wrote are not checked, entry by entry, and a note says so
     (`currency-quote-unchecked`). So there a `by: rules` decision edited by hand is caught by
     neither the hook, which leaves the rules' decisions to the gate, nor `check`.
+  - A `replace` done in a sentence also reworded, where another sentence still citing the
+    old work holds half or more of the entry's words, is not seen as done: the entry stays on
+    that other sentence, and `currency-change-unanswered` fails at submission until the author
+    places the entry on the new sentence with `manuscript-guard references --mark "<words>"
+    @<key> --id <id>`.
   - A value recorded in the literature ledger from the cited work after the rules decided
     turns an earlier `by: rules` `replace` with a synthesis into
     `currency-decision-mismatch` (K5 now sets the synthesis aside). Nothing decides again

@@ -449,4 +449,54 @@ def host_of(base: str) -> str:
     return urlsplit(base).hostname or ""
 
 
-__all__ = ["Services", "clinicaltrials", "host_of", "isrctn", "osf"]
+# ------------------------------------------------- ClinicalTrials.gov, searched by its topic
+
+#: The statuses of a study still under way, as API v2 writes `overallStatus`: what a
+#: currency search records as pending (step S4). A completed, terminated, withdrawn or
+#: suspended study, or one whose status is unknown, is not asked for.
+ONGOING = ("NOT_YET_RECRUITING", "RECRUITING", "ENROLLING_BY_INVITATION",
+           "ACTIVE_NOT_RECRUITING")  # fmt: skip
+_NCT = re.compile(r"NCT[0-9]{8}")
+
+
+def clinicaltrials_search_request(terms: str, limit: int, base: str) -> Request:
+    """`GET /api/v2/studies` with the terms as `query.term`, the ongoing studies only, their
+    number and status alone, and the count of all that match."""
+    return Request(base.rstrip("/"), params={
+        "query.term": terms, "filter.overallStatus": "|".join(ONGOING),
+        "fields": "NCTId|BriefTitle|OverallStatus", "pageSize": str(limit),
+        "countTotal": "true", "format": "json"})  # fmt: skip
+
+
+def clinicaltrials_search(terms: str, limit: int, ask: Ask, base: str) -> dict[str, Any]:
+    """The ongoing studies ClinicalTrials.gov lists for the terms: `found` with `trials`,
+    their NCT numbers in its order, and `count`, how many match in all; `absent` where none
+    does; `unresolvable` otherwise. The shape was read from a live answer on 2026-11-05:
+    `totalCount`, and `studies[]` each with `protocolSection.identificationModule.nctId`
+    and `protocolSection.statusModule.overallStatus`."""
+    answer = _ask(ask, clinicaltrials_search_request(terms, limit, base))
+    if isinstance(answer, dict):
+        return answer
+    said = _status_only(answer)
+    if said:
+        return said
+    data = _json(answer)
+    studies = data.get("studies") if isinstance(data, dict) else None
+    count = data.get("totalCount") if isinstance(data, dict) else None
+    if not isinstance(studies, list) or isinstance(count, bool) or not isinstance(count, int):
+        return unresolvable(SHAPE)
+    trials = []
+    for study in studies[:limit]:
+        protocol = study.get("protocolSection") if isinstance(study, dict) else None
+        module = protocol.get("identificationModule") if isinstance(protocol, dict) else None
+        nct = module.get("nctId") if isinstance(module, dict) else None
+        if not isinstance(nct, str) or not _NCT.fullmatch(nct):
+            return unresolvable(SHAPE)
+        trials.append(nct)
+    if not trials:
+        return {"status": ABSENT, "count": count}
+    return {"status": FOUND, "count": count, "trials": list(dict.fromkeys(trials))}
+
+
+__all__ = ["ONGOING", "Services", "clinicaltrials", "clinicaltrials_search",
+           "clinicaltrials_search_request", "host_of", "isrctn", "osf"]

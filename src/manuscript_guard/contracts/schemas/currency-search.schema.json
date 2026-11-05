@@ -2,24 +2,79 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://manuscript-guard.org/schemas/currency-search/1",
   "title": "manuscript-guard currency search record",
-  "description": "literature/currency/searches/<id>-<n>.yaml: one search run for a currency entry, as it was sent and what came back: the step of the protocol (S1 to S8), the source, the query as sent, its filters, the date, the hits and the candidates returned. Written by the tool and sealed by `answers_sha256`.",
+  "description": "literature/currency/searches/<id>-<n>.yaml: one search run for a currency entry, at one source, as it was sent and what came back: the step of the protocol (S1 to S8), the source, the terms and who wrote them, the request as sent, its filters and the cutoff they used, the date, how many works the source matched in all and the ones kept as candidates. `references --search` and `--replay` write one for each step and source, numbered, once each; sealed by `answers_sha256`.",
   "type": "object",
-  "required": ["schema", "entry", "number", "step", "source", "query", "searched_on", "hits", "candidates", "answers_sha256"],
+  "required": ["schema", "entry", "number", "step", "source", "query", "searched_on", "candidates", "answers_sha256"],
   "additionalProperties": false,
   "properties": {
     "schema": { "const": "manuscript-guard/currency-search/1" },
     "entry": { "type": "string", "pattern": "^c[1-9][0-9]*$" },
     "number": { "type": "integer", "minimum": 1 },
     "step": { "type": "string", "pattern": "^S[1-8]$" },
+    "as_step": {
+      "enum": ["S2", "S3"],
+      "description": "For S8, a search for evidence against the sentence: the step whose sources and filters it was run with."
+    },
     "source": { "type": "string", "pattern": "\\S" },
-    "query": { "type": "string", "pattern": "\\S" },
+    "status": {
+      "enum": ["run", "not asked", "pending"],
+      "default": "run",
+      "description": "`run`: the source answered. `not asked`: it was not asked, for the reason in `why`. `pending`: ClinicalTrials.gov's ongoing studies (S4), recorded in `trials` and never as candidates."
+    },
+    "why": { "type": "string", "pattern": "\\S", "description": "Why the source was not asked." },
+    "query": { "type": "string", "pattern": "\\S", "description": "The terms as sent, their whitespace folded; for S1, the work whose citing works or links were asked for." },
+    "terms_by": { "type": "string", "pattern": "\\S", "description": "Who wrote the terms: a person, or the model that wrote them." },
+    "sent": { "type": "string", "description": "The request as sent, without its key or contact address." },
     "filters": { "type": "object" },
+    "cutoff": {
+      "type": "object",
+      "required": ["date", "from"],
+      "additionalProperties": false,
+      "description": "For S3, and S8 as S3: the date works were asked for from, and what gave it.",
+      "properties": {
+        "date": { "type": "string", "pattern": "^[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?$" },
+        "from": { "type": "string", "pattern": "\\S" }
+      }
+    },
+    "from_lookup": {
+      "type": "object",
+      "required": ["record", "looked_up_on"],
+      "additionalProperties": false,
+      "description": "For S1 at PubMed: the lookup record whose links were read; PubMed was not asked again.",
+      "properties": {
+        "record": { "type": "string", "pattern": "\\S" },
+        "looked_up_on": { "type": "string", "format": "date" }
+      }
+    },
+    "replay_of": { "type": "integer", "minimum": 1, "description": "The number of the record this one ran again, with its query, filters and cutoff." },
     "searched_on": { "type": "string", "format": "date" },
-    "hits": { "type": "integer", "minimum": 0 },
+    "hits": { "type": "integer", "minimum": 0, "description": "How many works the source matched in all, of which `candidates` are the first kept." },
     "candidates": {
       "type": "array",
       "items": { "type": "string", "pattern": "^(doi:10\\.[^\\sA-Z]+|pmid:[1-9][0-9]*)$" }
     },
+    "unidentified": { "type": "integer", "minimum": 0, "description": "Works the source returned with neither a DOI nor a PMID: no record can name them, and none was kept." },
+    "trials": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^NCT[0-9]{8}$" },
+      "description": "S4: the ongoing studies ClinicalTrials.gov listed."
+    },
     "answers_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
-  }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "not asked" } }, "required": ["status"] },
+      "then": { "required": ["why"], "properties": { "candidates": { "maxItems": 0 } } },
+      "else": { "required": ["hits"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "pending" } }, "required": ["status"] },
+      "then": { "required": ["trials"], "properties": { "candidates": { "maxItems": 0 } } }
+    },
+    {
+      "if": { "properties": { "step": { "const": "S8" } } },
+      "then": { "required": ["as_step"] },
+      "else": { "not": { "required": ["as_step"] } }
+    }
+  ]
 }

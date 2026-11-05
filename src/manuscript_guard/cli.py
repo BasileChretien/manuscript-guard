@@ -3509,9 +3509,11 @@ def cmd_references(args: argparse.Namespace) -> int:
 
     project, _ = load_project(args.path)
     try:
+        if args.search is not None or args.replay is not None or _search_flags(args):
+            return _references_search(project, args)
         if args.mark is not None:
             words, key = args.mark
-            print(command.mark(project, words, key, args.as_, args.id))
+            print(command.mark(project, words, key, args.as_, args.id, args.question))
         elif args.reading is not None:
             print(command.file_reading(project, args.reading))
         elif args.refuse is not None:
@@ -3533,6 +3535,37 @@ def cmd_references(args: argparse.Namespace) -> int:
         print(f"manuscript-guard references: {exc}", file=sys.stderr)
         return 2
     return 0
+
+
+def _search_flags(args: argparse.Namespace) -> list[str]:
+    """The flags of `references --search` and `--replay` given without either."""
+    given = [("--terms", args.terms), ("--against", args.against),
+             ("--dry-run", args.dry_run or None)]  # fmt: skip
+    if args.mark is None:
+        given.append(("--question", args.question))
+    return [flag for flag, value in given if value is not None]
+
+
+def _references_search(project, args: argparse.Namespace) -> int:
+    """`references --search ID` and `--replay ID`: exit 0 where every source answered and
+    every work found was fetched, 1 where one did not (it is to be run again), 2 where the
+    search cannot be run as asked."""
+    from manuscript_guard.currency import command, searching
+
+    misplaced = _search_flags(args)
+    if args.search is None and args.replay is None:
+        raise command.Refused(f"{', '.join(misplaced)} go with --search or --replay")
+    if args.replay is not None:
+        if args.terms or args.against or args.question:
+            raise command.Refused("--replay runs the recorded searches as they were: it takes "
+                                  "no --terms, --against or --question")  # fmt: skip
+        run = searching.replay(project, args.replay, dry_run=args.dry_run)
+    else:
+        run = searching.run_search(project, args.search, terms_text=args.terms, by=args.as_,
+                                   against_text=args.against, question=args.question,
+                                   dry_run=args.dry_run)  # fmt: skip
+    print("\n".join(run.lines))
+    return 0 if run.whole else 1
 
 
 def cmd_reworded(args: argparse.Namespace) -> int:
@@ -4922,11 +4955,6 @@ def cmd_lookup(args: argparse.Namespace) -> int:
     return 0
 
 
-#: The longest query sent: a search is for a topic, and a passage of the manuscript pasted
-#: in would leave the machine with it.
-MAX_QUERY = 300
-
-
 def _search_filters(args: argparse.Namespace):
     """The filters as asked, or the reason they cannot be used."""
     from manuscript_guard.lookup.search import LANGUAGES, MAX_LIMIT, TYPES, Filters
@@ -4954,17 +4982,11 @@ def cmd_search(args: argparse.Namespace) -> int:
     from manuscript_guard.contracts.project import find_root
     from manuscript_guard.lookup import proposals
     from manuscript_guard.lookup.run import Credentials
+    from manuscript_guard.lookup.search import folded_query
 
-    query = " ".join(args.query.split())
-    if not query:
-        print("manuscript-guard: nothing to search for: the query is empty", file=sys.stderr)
-        return 2
-    if len(query) > MAX_QUERY:
-        print(
-            f"manuscript-guard: a query of {len(query)} characters is not sent: write the "
-            f"topic in at most {MAX_QUERY}, not a passage of the manuscript",
-            file=sys.stderr,
-        )
+    query, problem = folded_query(args.query)
+    if problem:
+        print(f"manuscript-guard: {problem}", file=sys.stderr)
         return 2
     filters = _search_filters(args)
     if isinstance(filters, str):
@@ -7168,8 +7190,10 @@ def build_parser() -> argparse.ArgumentParser:
         "work it cites that literature/currency.yaml marks, or whose lookup record says a "
         "later version came since) with how far its entry got. --mark adds a claim; "
         "--reading files a reading, sealed, and writes the rules' decision from two; "
-        "--refuse records a person's refusal of a proposed change. It searches nothing and "
-        "calls no model.",
+        "--refuse records a person's refusal of a proposed change. --search runs the fixed "
+        "searches for one entry and records each, and --replay runs the recorded ones again; "
+        "they send the terms and the identifiers of the cited work and of the works found, "
+        "never the question or a sentence of the manuscript. It calls no model.",
     )
     references.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     action = references.add_mutually_exclusive_group()
@@ -7182,13 +7206,29 @@ def build_parser() -> argparse.ArgumentParser:
     action.add_argument("--refuse", metavar="ID",
                         help="refuse an entry's proposed change (with --why and --as)")
     references.add_argument("--why", help="--refuse: the reason")
+    action.add_argument("--search", metavar="ID",
+                        help="run the fixed searches for an entry (with --terms and --as) and "
+                        "record each one")  # fmt: skip
+    action.add_argument("--replay", metavar="ID",
+                        help="run an entry's recorded searches again, as they were recorded")
     references.add_argument(
         "--as", dest="as_", metavar="PERSON",
-        help="--refuse: who refuses; --mark: who marks the claim",
+        help="--refuse: who refuses; --mark: who marks the claim; --search: who wrote the "
+        "terms, a person or the model that wrote them",
     )  # fmt: skip
     references.add_argument("--id", metavar="ID",
                             help="--mark: put this entry on the sentence again, where no "
                             "sentence reads as it does; KEY may be the work it proposes")
+    references.add_argument("--terms", metavar="TERMS",
+                            help="--search: the terms, sent as written (300 characters at most)")
+    references.add_argument("--against", metavar="TERMS",
+                            help="--search: terms of the reader's own for evidence against the "
+                            "sentence, run as steps S2 and S3 (S8)")  # fmt: skip
+    references.add_argument("--question", metavar="QUESTION",
+                            help="--search, --mark: the claim written as a question (F1), kept "
+                            "in the entry and never sent")  # fmt: skip
+    references.add_argument("--dry-run", action="store_true",
+                            help="--search, --replay: print the requests and send nothing")
     references.add_argument("--json", action="store_true", help="the listing as JSON")
     references.set_defaults(func=cmd_references)
 

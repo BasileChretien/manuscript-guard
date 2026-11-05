@@ -466,7 +466,7 @@ number in the file and the rule that classified it.
 | `sync-bib` | rewrite `references.bib` from Zotero |
 | `sync-sources` | copy each cited work's PDF or saved page from Zotero into `literature/sources/`, or Zotero's text of it where the file is not on this computer or is an EPUB, and list the works with no copy; `--from` takes the PDFs of a folder named by DOI instead, as a downloader such as auto-paper-harvester saves them. The folder stays out of git in a new project, and `literature/sources.yaml` records what is in it, the files saved by hand among them |
 | `passages` | list each sentence that cites a work, with the passage of that work recorded as supporting it and what G7 found of it; `--missing` lists those with none |
-| `references` | whether each cited work is still the one to cite: alone, a row for each claim in scope (a sentence and a work it cites that `literature/currency.yaml` marks, or whose lookup record shows a later version or a published preprint) with how far its entry got; `--explain ID` its searches, readings and what the rules give; `--mark "WORDS" @KEY` marks a claim; `--reading FILE` files a reading once, sealed, and writes the rules' decision once two are filed; `--refuse ID --why ... --as PERSON` records a person's refusal of a proposed change. It searches nothing and calls no model |
+| `references` | whether each cited work is still the one to cite: alone, a row for each claim in scope (a sentence and a work it cites that `literature/currency.yaml` marks, or whose lookup record shows a later version or a published preprint) with how far its entry got; `--explain ID` its searches, readings and what the rules give; `--mark "WORDS" @KEY` marks a claim; `--reading FILE` files a reading once, sealed, and writes the rules' decision once two are filed; `--refuse ID --why ... --as PERSON` records a person's refusal of a proposed change; `--search ID --terms "TERMS" --as WHO` runs the fixed searches for an entry (the cited work's forward links and citing reviews, systematic reviews, primary studies since the cutoff, ongoing trials, and with `--against` a query for evidence against the sentence), records each one sealed and fills the works store, `--question` writing the claim as a question, which is never sent; `--replay ID` runs the recorded searches again and lists the works new since; `--dry-run` prints the requests and sends nothing. It calls no model |
 
 ### Co-Authors & Review
 
@@ -526,6 +526,7 @@ finding codes that should send you to them.
 | `manuscript-writing` | prose that reads as written |
 | `methods-writer` | Methods that describe the code that was actually run |
 | `literature-verify` | a number from a paper, with its verbatim quote and stored source |
+| `literature-currency` | whether a cited work is still the one to cite: the claim framed, the searches run and recorded, two readings, and the rules' decision |
 | `figure-review` | looking at a rendered figure and recording what was seen |
 | `figure-design` | a figure's look and palette, chosen with the author, readable by every reader |
 | `journal-profile` | choosing a journal with the author, and encoding its rules |

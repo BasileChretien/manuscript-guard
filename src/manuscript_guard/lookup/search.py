@@ -141,6 +141,34 @@ class Filters:
     #: ISO 639-1.
     language: str | None = None
     limit: int = 10
+    #: The first date a work may be published on, at the precision it is known: "2019",
+    #: "2019-03" or "2019-03-14". Each registry is asked from the first day it names, by its
+    #: finest date filter (`references --search`, step S3).
+    from_date: str | None = None
+
+
+#: The longest query sent: a search is for a topic, and a passage of the manuscript pasted
+#: in would leave the machine with it.
+MAX_QUERY = 300
+
+
+def folded_query(text: str) -> tuple[str, str | None]:
+    """A query as it is sent, its whitespace folded, and why it cannot be sent, or None:
+    empty, or longer than `MAX_QUERY`. `search` and `references --search` hold their terms
+    to it."""
+    query = " ".join(text.split())
+    if not query:
+        return query, "nothing to search for: the query is empty"
+    if len(query) > MAX_QUERY:
+        return query, (f"a query of {len(query)} characters is not sent: write the topic in "
+                       f"at most {MAX_QUERY}, not a passage of the manuscript")  # fmt: skip
+    return query, None
+
+
+def first_day(date: str) -> str:
+    """The first day of the period a date of any precision names: "2019" is 2019-01-01."""
+    parts = date.split("-")
+    return "-".join([parts[0], *(parts[1:] + ["01", "01"])[:2]])
 
 
 @dataclass(frozen=True)
@@ -178,6 +206,8 @@ class Hit:
     later: tuple[dict[str, str], ...] = ()
     open_copy: str | None = None
     cited_by: int | None = None
+    #: OpenAlex's own id of the work, `W` and digits, where OpenAlex gave it.
+    openalex_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -273,7 +303,10 @@ def pubmed_search(query: str, filters: Filters, credentials: Credentials,
                   services: Services) -> Request:  # fmt: skip
     params = {"term": pubmed_term(query, filters), "retmax": str(filters.limit),
               "sort": "relevance"}  # fmt: skip
-    if filters.since:
+    if filters.from_date:
+        params.update(datetype="pdat", mindate=first_day(filters.from_date).replace("-", "/"),
+                      maxdate="3000")  # fmt: skip
+    elif filters.since:
         params.update(datetype="pdat", mindate=str(filters.since), maxdate="3000")
     return _eutils(services.esearch, params, credentials)
 
@@ -380,7 +413,9 @@ def europepmc_query(query: str, filters: Filters) -> str:
         parts.append("(" + " OR ".join(EUROPEPMC_TYPES[t] for t in filters.types) + ")")
     if filters.language:
         parts.append(f'LANG:"{LANGUAGES[filters.language]}"')
-    if filters.since:
+    if filters.from_date:
+        parts.append(f"FIRST_PDATE:[{first_day(filters.from_date)} TO 3000-12-31]")
+    elif filters.since:
         parts.append(f"PUB_YEAR:[{filters.since} TO 3000]")
     return " AND ".join(parts)
 
@@ -427,28 +462,73 @@ def europepmc_work(doi: str | None, pmid: str | None, ask: Ask,
     where no work it holds has that identifier, `unresolvable` where no answer of its shape
     came. A work it returns under another identifier is none (`absent`): asked by a DOI,
     a search can match more than the DOI's own work."""
+    item, said = _europepmc_item(doi, pmid, ask, services)
+    if item is None:
+        return said
+    found = {"abstract": _abstract(item.get("abstractText")), "title": _clean(item.get("title")),
+             "year": _year(item.get("pubYear"))}  # fmt: skip
+    return {"status": FOUND, **{k: v for k, v in found.items() if v not in (None, "")}}
+
+
+def _europepmc_item(doi: str | None, pmid: str | None, ask: Ask,
+                    services: Services) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """Europe PMC's core record of one work and `found`; or None and the answer there is
+    instead, `absent` or `unresolvable`. The status is kept apart from the record, which
+    may have a field of that name (round 1 of #530)."""
     answer = _ask(ask, europepmc_work_search(doi, pmid, services))
     if isinstance(answer, dict):
-        return answer
+        return None, answer
     said = _status_only(answer)
     if said:
-        return said
+        return None, said
     data = _json(answer)
     listed = data.get("resultList") if isinstance(data, dict) else None
     results = listed.get("result") if isinstance(listed, dict) else None
     if not isinstance(results, list):
-        return unresolvable(SHAPE)
+        return None, unresolvable(SHAPE)
     if not results:
-        return {"status": ABSENT}
+        return None, {"status": ABSENT}
     item = results[0]
     if not isinstance(item, dict) or not _text(item.get("id")):
-        return unresolvable(SHAPE)
+        return None, unresolvable(SHAPE)
     same = (_digits(item.get("pmid")) == pmid) if pmid else (_doi(item.get("doi")) == doi)
-    if not same:
-        return {"status": ABSENT}
-    found = {"abstract": _abstract(item.get("abstractText")), "title": _clean(item.get("title")),
-             "year": _year(item.get("pubYear"))}  # fmt: skip
-    return {"status": FOUND, **{k: v for k, v in found.items() if v not in (None, "")}}
+    return (item, {"status": FOUND}) if same else (None, {"status": ABSENT})
+
+
+#: A day as Europe PMC writes `firstPublicationDate`.
+_EPMC_DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+
+
+def europepmc_facts(doi: str | None, pmid: str | None, ask: Ask,
+                    services: Services) -> dict[str, Any]:  # fmt: skip
+    """What the works store keeps of Europe PMC's core record of one work: as
+    `europepmc_work`, and its publication types as written (`pubTypeList`), its first
+    publication date (`firstPublicationDate`), whether it marks the work retracted or under
+    concern, and the published versions of a preprint ("Preprint of")."""
+    item, said = _europepmc_item(doi, pmid, ask, services)
+    if item is None:
+        return said
+    hit = _europepmc_hit(1, item)
+    pubtypes = [p.strip() for p in map(str, _listed(item, "pubTypeList", "pubType")) if p.strip()]
+    notes = [c for c in _listed(item, "commentCorrectionList", "commentCorrection")
+             if isinstance(c, dict)]  # fmt: skip
+    published_as = []
+    for note in notes:
+        if str(note.get("type", "")).casefold() == "preprint of":
+            later = _later(note.get("id") if note.get("source") == "MED" else None,
+                           note.get("reference"))  # fmt: skip
+            if later:
+                published_as.append(f"doi:{later['doi']}" if later.get("doi")
+                                    else f"pmid:{later['pmid']}")  # fmt: skip
+    day = str(item.get("firstPublicationDate") or "").strip()
+    found = {
+        "abstract": _abstract(item.get("abstractText")), "title": _clean(item.get("title")),
+        "pmid": hit.pmid, "doi": hit.doi, "pubtypes": pubtypes,
+        "first_published": day if _EPMC_DAY.fullmatch(day) else None,
+        "retracted": bool(hit.retracted), "under_concern": hit.concern,
+        "published_as": list(dict.fromkeys(published_as)),
+    }  # fmt: skip
+    return {"status": FOUND, **{k: v for k, v in found.items() if v not in (None, "", [])}}
 
 
 #: The markup Europe PMC leaves in an abstract, opening, closing or empty, with its
@@ -533,7 +613,9 @@ def _europepmc_hit(rank: int, item: dict[str, Any]) -> Hit:
 
 def openalex_filter(filters: Filters) -> str:
     parts = []
-    if filters.since:
+    if filters.from_date:
+        parts.append(f"from_publication_date:{first_day(filters.from_date)}")
+    elif filters.since:
         parts.append(f"from_publication_date:{filters.since}-01-01")
     if filters.types:
         parts.append("type:" + "|".join(OPENALEX_TYPES[t] for t in filters.types))
@@ -596,6 +678,33 @@ def openalex_by_doi(dois: list[str], ask: Ask, services: Services,
     return Answer(FOUND if hits else ABSENT, hits, count)
 
 
+def openalex_citing_search(work: str, limit: int, credentials: Credentials,
+                           services: Services) -> Request:  # fmt: skip
+    """The request for the reviews that cite one work, by its OpenAlex id, newest first
+    (`filter=cites:W...,type:review`, `sort=publication_date:desc`)."""
+    return Request(services.openalex, params={
+        "filter": f"cites:{work},type:review", "sort": "publication_date:desc",
+        "per_page": str(limit), "select": OPENALEX_SELECT},
+        secret={"api_key": credentials.openalex_key or ""})  # fmt: skip
+
+
+def openalex_citing(work: str, limit: int, ask: Ask, services: Services,
+                    credentials: Credentials) -> Answer:  # fmt: skip
+    """The reviews OpenAlex lists as citing the work `work` (an OpenAlex id), newest first,
+    at most `limit`; the count is all it lists."""
+    request = openalex_citing_search(work, limit, credentials, services)
+    read = _openalex_results(_ask(ask, request), limit)
+    if isinstance(read, Answer):
+        return read
+    results, count = read
+    hits = tuple(_openalex_hit(rank, r) for rank, r in enumerate(results, 1))
+    return Answer(FOUND if hits else ABSENT, hits, count)
+
+
+#: OpenAlex's id at the end of its URL for a work: https://openalex.org/W2741809807.
+_OPENALEX_ID = re.compile(r"(?<![A-Za-z0-9])W[0-9]+$")
+
+
 def _openalex_hit(rank: int, item: dict[str, Any]) -> Hit:
     ids = _dict(item.get("ids"))
     source = _dict(_dict(item.get("primary_location")).get("source"))
@@ -619,6 +728,7 @@ def _openalex_hit(rank: int, item: dict[str, Any]) -> Hit:
         retracted=retracted if isinstance(retracted, bool) else None,
         open_copy=_text(oa.get("oa_url")) if oa.get("is_oa") is True else None,
         cited_by=_count(item.get("cited_by_count")),
+        openalex_id=_text(_OPENALEX_ID.findall(str(item.get("id") or ""))),
     )
 
 
@@ -658,6 +768,7 @@ def asks(filters: Filters) -> dict[str, str]:
 __all__ = [
     "LANGUAGES",
     "MAX_LIMIT",
+    "MAX_QUERY",
     "NAMES",
     "NOT_ASKED",
     "REGISTRIES",
@@ -671,10 +782,15 @@ __all__ = [
     "esearch",
     "europepmc",
     "europepmc_search",
+    "europepmc_facts",
     "europepmc_work",
     "europepmc_work_search",
+    "first_day",
+    "folded_query",
     "openalex",
     "openalex_by_doi",
+    "openalex_citing",
+    "openalex_citing_search",
     "openalex_search",
     "pubmed",
     "pubmed_search",

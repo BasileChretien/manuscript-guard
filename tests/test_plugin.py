@@ -108,6 +108,13 @@ def test_the_readme_lists_exactly_the_skills_that_ship():
     section = readme.split("### The Claude Code plugin", 1)[1].split("\n## ", 1)[0]
     listed = set(re.findall(r"^\| `([a-z-]+)` \|", section, re.MULTILINE))
     assert listed == skill_names()
+    # A count in words, here or in docs/agent-tools.md, is the number of skills (round 1 of
+    # #530: a skill was added and the word stayed).
+    said = {22: "twenty-two", 23: "twenty-three", 24: "twenty-four",
+            25: "twenty-five"}[len(skill_names())]  # fmt: skip
+    agents = (REPO / "docs" / "agent-tools.md").read_text(encoding="utf-8")
+    counts = re.findall(r"(?i)\b(?:twenty|thirty)(?:-[a-z]+)?\b", section + agents)
+    assert all(word.lower() == said for word in counts), counts
 
 
 def test_every_hook_the_plugin_registers_has_a_handler():
@@ -897,6 +904,8 @@ NAMED_NOWHERE = {
     "profiles/reporting/sources/": "where `fetch` puts the guidelines, kept out of git",
     "literature/related.yaml": "written with the author by the related-outputs skill",
     "literature/sources.yaml": "written by `sync-sources`, the record of the stored copies",
+    "literature/currency.yaml": "written by `references --mark`",
+    "literature/currency/": "written by `references --search` and `--reading`",
     "manuscript/main.tex": "written by `init --latex`, in place of main.md",
     "manuscript/media/": "written by `init --from`, the pictures of a Word paper",
     "communication/graphical-abstract/": "made by the communicate commands, still to come",
@@ -1148,6 +1157,7 @@ READS_OUTSIDE_TEXT = {
     "word-roundtrip": "Word comments and returned documents",
     "co-author-checking": "answer files",
     "literature-verify": "retrieved sources",
+    "literature-currency": "the abstracts of the works store",
     "journal-profile": "fetched instructions for authors",
     "data-sources": "custodians' access pages and data catalogues",
     "guide": "findings' messages, which quote the manuscript, comments and fetched pages",

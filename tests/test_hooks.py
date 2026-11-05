@@ -1715,6 +1715,194 @@ def test_a_file_named_passages_elsewhere_holds_no_judgement(in_claude_code: Path
     assert run("guard-write", payload, capsys) is None
 
 
+#: literature/currency.yaml with one entry, its proposal answered by a person.
+_CURRENCY = """schema: manuscript-guard/currency/1
+entries:
+- id: c1
+  sentence: A disproportionality signal has been reported for the drug class.
+  citekey: fictionalClassSignal2019
+  marked_by: Bo Example
+  decision:
+    action: replace
+    candidate: doi:10.5555/class.review.2023
+    rules: [K1, K2, K3, D1]
+    by: rules
+    decided_on: 2026-11-02
+  answer:
+    status: refused
+    by: Ada Example
+    why: the review pools another population
+    answered_on: 2026-11-03
+"""
+
+
+def _currency(project: Path) -> Path:
+    path = project / "literature" / "currency.yaml"
+    path.write_text(_CURRENCY, encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "asked"),
+    [
+        # A person's answer, who gave it, why, or the sentence and work it is of.
+        ("status: refused", "status: accepted", True),
+        ("by: Ada Example", "by: Bo Example", True),
+        ("why: the review pools another population", "why: no reason", True),
+        ("drug class.", "drug class as a whole.", True),
+        # The rules' decision, rewritten by a person with their name and why.
+        ("    by: rules\n", "    by: Ada Example\n    why: read it myself\n", True),
+        # What no person said: who marked the claim, the question.
+        ("marked_by: Bo Example", "marked_by: Cy Example", False),
+        ("  marked_by: Bo Example\n", "  marked_by: Bo Example\n  question: does it harm?\n",
+         False),
+    ],
+)  # fmt: skip
+def test_an_edit_of_a_persons_answer_on_a_cited_work_is_put_to_them(
+    in_claude_code: Path, old: str, new: str, asked: bool, capsys
+) -> None:
+    """The rules decide a currency entry from its readings; only a person overrules them or
+    answers a proposed change, and the hook asks before an agent's edit changes either."""
+    path = _currency(in_claude_code)
+    payload = _writes(in_claude_code, "Edit", file_path=str(path), old_string=old, new_string=new)
+    result = run("guard-write", payload, capsys)
+    assert decision(result) == ("ask" if asked else None)
+    if asked:
+        assert "a person's decision on a cited work" in reason(result)
+
+
+def test_taking_an_answer_on_a_cited_work_away_is_put_to_the_person(
+    in_claude_code: Path, capsys
+) -> None:
+    path = _currency(in_claude_code)
+    answer = _CURRENCY[_CURRENCY.index("  answer:"):]
+    payload = _writes(in_claude_code, "Edit", file_path=str(path), old_string=answer,
+                      new_string="")  # fmt: skip
+    result = run("guard-write", payload, capsys)
+    assert decision(result) == "ask"
+    assert "Ada Example" in reason(result)
+
+
+def test_an_answer_signed_by_the_rules_is_put_to_the_person(in_claude_code: Path, capsys) -> None:
+    """Round 1 of #499: an answer `by: rules` was left out, as the rules' decision is, and an
+    agent's edit adding one to an unanswered proposal was not asked about."""
+    path = in_claude_code / "literature" / "currency.yaml"
+    unanswered = _CURRENCY[:_CURRENCY.index("  answer:")]
+    path.write_text(unanswered, encoding="utf-8")
+    added = "  answer:\n    status: accepted\n    by: rules\n    answered_on: 2026-11-03\n"
+    payload = _writes(in_claude_code, file_path=str(path), content=unanswered + added)
+    assert decision(run("guard-write", payload, capsys)) == "ask"
+
+
+@pytest.mark.parametrize(("answered", "asked"), [(True, "ask"), (False, None)])
+def test_putting_an_entry_a_person_answered_on_another_sentence_is_put_to_them(
+    in_claude_code: Path, answered: bool, asked: str | None, capsys
+) -> None:
+    """Round 1 of #499: `references --mark ... --id` moved a person's answer to another
+    sentence, where an Edit doing the same is asked."""
+    path = in_claude_code / "literature" / "currency.yaml"
+    path.write_text(_CURRENCY if answered else _CURRENCY[:_CURRENCY.index("  answer:")],
+                    encoding="utf-8")  # fmt: skip
+    command = 'manuscript-guard references --mark "a signal" @fictionalClassSignal2019 --id c1'
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == asked
+    if asked:
+        assert "--id c1" in reason(result)
+
+
+def _proposal_unanswered(project: Path) -> None:
+    """The hook tests' currency.yaml with its proposal unanswered, and the work it proposes
+    in references.bib as @classReview2023."""
+    text = _CURRENCY[:_CURRENCY.index("  answer:")]
+    (project / "literature" / "currency.yaml").write_text(text, encoding="utf-8")
+    with (project / "literature" / "references.bib").open("a", encoding="utf-8") as bib:
+        bib.write("\n@article{classReview2023,\n  title = {A review},\n"
+                  "  author = {Fictional, Eve},\n  journal = {Imaginary Reviews},\n"
+                  "  year = {2023},\n  doi = {10.5555/class.review.2023}\n}\n")
+
+
+@pytest.mark.parametrize("by", ["key", "sentence"])
+def test_moving_an_unanswered_proposal_onto_the_work_it_proposes_is_put_to_the_person(
+    in_claude_code: Path, by: str, capsys
+) -> None:
+    """Basile, 2026-11-05: an entry whose proposed change nobody answered, put by `--mark
+    --id` on a sentence citing the work proposed, counts as accepting it; an agent could
+    clear `currency-change-unanswered`, which is a person's, by placing it on a near copy."""
+    _proposal_unanswered(in_claude_code)
+    if by == "key":
+        command = ('manuscript-guard references --mark "a disproportionality signal" '
+                   "@classReview2023 --id c1")  # fmt: skip
+    else:
+        main = in_claude_code / "manuscript" / "main.md"
+        text = main.read_text(encoding="utf-8")
+        old = "[@fictionalClassSignal2019]. The"
+        assert old in text
+        main.write_text(text.replace(old, "[@fictionalClassSignal2019; @classReview2023]. The",
+                                     1), encoding="utf-8")  # fmt: skip
+        command = ("manuscript-guard references --mark 'disproportionality signal has been "
+                   "reported' @fictionalClassSignal2019 --id=c1")  # fmt: skip
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "counts as accepting the change" in reason(result)
+
+
+@pytest.mark.parametrize("case", ["no proposal", "no --id", "not the work proposed"])
+def test_a_mark_that_accepts_no_proposal_is_the_agents_to_run(
+    in_claude_code: Path, case: str, capsys
+) -> None:
+    _proposal_unanswered(in_claude_code)
+    command = ('manuscript-guard references --mark "a disproportionality signal" '
+               "@classReview2023 --id c1")  # fmt: skip
+    if case == "no proposal":
+        path = in_claude_code / "literature" / "currency.yaml"
+        text = path.read_text(encoding="utf-8")
+        old = "    action: replace\n    candidate: doi:10.5555/class.review.2023\n"
+        assert old in text
+        path.write_text(text.replace(old, "    action: keep\n")
+                        .replace("[K1, K2, K3, D1]", "[K1, K2, K3, D3]"), encoding="utf-8")
+    elif case == "no --id":
+        command = command.removesuffix(" --id c1")
+    else:
+        command = ('manuscript-guard references --mark "disproportionality signal has been '
+                   'reported" @fictionalClassSignal2019 --id c1')  # fmt: skip
+    assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
+
+
+def test_moving_a_proposal_where_the_bibliography_is_missing_is_put_to_the_person(
+    in_claude_code: Path, capsys
+) -> None:
+    _proposal_unanswered(in_claude_code)
+    (in_claude_code / "literature" / "references.bib").unlink()
+    command = ('manuscript-guard references --mark "a disproportionality signal" '
+               "@fictionalClassSignal2019 --id c1")  # fmt: skip
+    assert decision(run("guard-submission", _shell(in_claude_code, command), capsys)) == "ask"
+
+
+def test_a_file_named_currency_elsewhere_holds_no_decision(in_claude_code: Path, capsys) -> None:
+    other = in_claude_code / "notes" / "currency.yaml"
+    other.parent.mkdir()
+    payload = _writes(in_claude_code, file_path=str(other), content=_CURRENCY)
+    assert run("guard-write", payload, capsys) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'manuscript-guard references --refuse c1 --why "another population" --as "Ada Example"',
+        "cd paper && mguard references . --refuse=c1 --why x --as Ada",
+    ],
+)
+def test_a_refusal_of_a_proposed_citation_by_an_agent_is_put_to_the_person(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "references --refuse" in reason(result)
+    for other in ("manuscript-guard references --explain c1",
+                  'manuscript-guard references --mark "a signal" @key'):  # fmt: skip
+        assert run("guard-submission", _shell(in_claude_code, other), capsys) is None, other
+
+
 def test_a_file_named_attested_elsewhere_is_no_attestation(in_claude_code: Path, capsys) -> None:
     other = in_claude_code / "notes" / "attested.yaml"
     other.parent.mkdir()

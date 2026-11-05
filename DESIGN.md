@@ -3608,6 +3608,138 @@ at the same time, adds a public `publication_types(record)` to `gates/lookups.py
 reads a PMID PubMed gives for a DOI; whichever of the two merges second switches the reader
 to it.
 
+## A cited work is held to newer evidence by fixed rules
+
+The currency half of the reference-currency design (2026-11-04, its sections 2.2 to 2.6, all
+seven of its decisions as recommended): has the cited work been overtaken? This part holds
+the records, the rules and G7's reading of them, with no model and no network. The recorded
+searches and their replay, the proposals as Word comments and the unattended run come after
+it, each with the options of `references` it needs.
+
+**The protocol.** A reader frames the claim as a question (F1), which picks a scale of the
+hierarchy (F2). For the cited work and each candidate a search found, the reader fills fixed
+fields, each with a quote of the work's stored abstract or text, word for word: R1 the level
+on the scale, R2 whether the population, the exposure and the outcome are the `same`,
+`different` or `unclear`, R3 whether it `supports` the sentence, `contradicts` it or
+`neither`, R4 a synthesis's search end date. The rules (`currency/rules.py`, one pure
+function) decide:
+
+- K1: a candidate with no works record, retracted, withdrawn, under concern, or a preprint
+  whose published version is known, is out. K2 the level, 1 the strongest; K3 `same` on all
+  of R2; K4 recency, at the same or a stronger level; K5, for a sentence that quotes a
+  number the literature ledger records from the cited work, the primary study only: no
+  synthesis replaces it, at whatever level, since a number is cited from the study that
+  measured it (`number-from-secondary-source`); a synthesis against the sentence may still be
+  added. Basile chose this, "primary only", on 2026-11-04 (item 6 of round 1 of #499), over a
+  primary study put first at one level only. The sentence quotes such a number where it
+  binds a value the ledger, or attested.yaml, records from the cited work, `{{lit.key}}`, or
+  writes its display as words of their own, the ledger read as `number-from-secondary-source`
+  reads it (`lookups.values_quoted_from`); a year, another digit, or another work's value is
+  not one.
+- D1 `replace`: a candidate passes K1, is `same` on R2, does not contradict the sentence,
+  and is at a stronger level, or at the same level with a search end date after the cited
+  work's publication; dates compare at the finest precision both have, and equal there is
+  not after. D2 `add`: it contradicts the sentence at the same or a stronger level. D3 `keep`
+  otherwise. D4 `uncertain`: two readings disagree on the hierarchy, the scale or the cited
+  work's level, or, for a candidate that passes K1, on what can change what the rules give:
+  R2 always; where R2 is `same` on all three, whether the candidate is weaker than the
+  cited work; for one that is not weaker, its level, which ranks it, and whether it
+  contradicts the sentence; and at the cited work's level, not contradicting it, whether
+  its search ended after the cited work was published. A weaker candidate's exact level or
+  stance, `supports` against `neither`, and two search end dates on the same side of the
+  publication may differ. A candidate one reading names and the other does not is a
+  disagreement. Basile chose this on 2026-11-05 (item 3 of round 2 of #499). Before it,
+  every field of every candidate was compared (#499 as opened), and then R2, the exact
+  level and stance where R2 was `same`, and the raw search end date at the cited level
+  (round 1), so that a weaker candidate read at two weaker levels still made a clear
+  `replace` `uncertain`.
+
+Settled here, where the design left it open: the rules decide nothing from one reading, so
+that a change is proposed only where two agree, and a reading counts once, by its reader and
+its number (a copy filed under another name is `currency-record-edited`); a candidate that
+contradicts the sentence is added and never put in its citation's place, and where one
+candidate gives `add` and another `replace`, the entry is `add`, since the contradiction is
+what the author has to read first. The rule ids a decision records are `K1, K2, K3`, the D
+rule, and `K4` or `K5` only where it decided: K5 where it set a synthesis aside, K4 where
+recency chose or D1 rests on the date. No
+decision is written, and none of the rules' is checked, while the works store holds no sound
+record of the cited work or of a candidate a reading names: K1 would put such a candidate
+out and write `keep` from an empty store (round 1 of #499).
+
+**The hierarchy** is the Oxford 2011 Levels of Evidence (`data/evidence_hierarchies.yaml`),
+seven scales after the table's questions (`frequency`, `diagnosis`, `prognosis`, `benefit`,
+`harms-common`, `harms-rare`, `screening`), levels 1 to 5, and 1 to 4 where the table gives
+a row no fifth (`frequency`, `prognosis`). The Centre's site grants no
+licence to copy the table, so the file holds ids and descriptions in this project's own
+words, with CEBM's citation for the table and its introductory document (ATTRIBUTION.md). A
+project may name its own in paper.yaml, `references.hierarchy`, in the same shape.
+
+**The records.** `literature/currency.yaml` holds one entry per citing sentence and work: a
+stable id (`c1`, `c2` ...), the sentence, the key, the question, who marked it, the decision
+(`action`, `candidate`, `rules`, `by`: `rules` or a person with `why`, `decided_on`) and the
+answer to a proposed change (`accepted`, or `refused` with the person and the reason; its `by`
+is a person, never `rules`). The dates are `decided_on` and `answered_on`, never a key `on`, which YAML reads as `true`. The
+search, works and reading records live under `literature/currency/` and are the tool's,
+each sealed by a digest; a reading is written once, numbered as its reader's next of the
+entry, as a panel's reading is filed (its writer is copied, since nothing a gate imports may
+import `panel/`). The works store is out of git by default: `references` writes its
+`.gitignore`. A DOI is folded to lower case wherever a reading or a works record names a
+work. An entry belongs to the sentence citing its work whose folded words are its own, as a
+passage does, or, where none is, to the one citing it that holds most of them, half or more
+(`NEAR`); with neither it is unplaced.
+
+**Acceptance by citation** (design 2.5): an unanswered `replace` or `add` counts as accepted,
+and nothing is written, once a sentence matching the entry's words, the same or `NEAR`,
+cites a key whose DOI or PMID in `references.bib` (`doi_of`, `pmid_of`) is the candidate's:
+the author added the work to Zotero and ran `sync-bib`. Exact words first (Basile, round 4
+of #499): the one sentence whose folded words are the entry's, citing the old work, the
+candidate or both, is the entry's own; it accepts if and only if it cites the candidate, and
+the entry is placed on it, so a `replace` done is not unplaced. Where two or more such
+sentences cite either, none accepts. Only where no sentence has the entry's words does
+`NEAR` decide: the sentence citing the old work that holds most of them is the entry's, and
+accepts only by citing the candidate too, so a copy elsewhere that holds most of its words
+and cites the candidate accepts nothing (rounds 2 and 3); failing that, the sentence citing
+the candidate that holds most of them accepts, and the entry is placed on it.
+
+**Scope.** The claims an entry marks, and each citing sentence of the main text or the
+supplement, Markdown or LaTeX, that cites a work whose lookup record says a later version
+came since or a preprint was published (`lookups.currency_facts`, what gives
+`reference-updated` and `preprint-published`).
+
+**The gate** reads the records only:
+
+| Finding | When | Level |
+|---|---|---|
+| `currency-record-missing` | a claim in scope has no entry, or its entry no decision ("marked, not searched", "read once") | a note while drafting, a warning from internal-review, a failure at submission under `references.currency: required` |
+| `currency-record-stale` | an entry's newest search is more than six months old | warning, failure at submission |
+| `currency-record-edited` | a search, works or reading record no longer matches its digest or its schema | fails from drafting |
+| `currency-reading-invalid` | a sealed reading names a hierarchy, scale or level the hierarchy in force lacks, or another cited work | fails from drafting |
+| `currency-quote-not-found` | a reading's quote is not in the work's stored abstract or text | fails from drafting |
+| `currency-quote-unchecked` | nothing stored to look in, or no works store in this checkout | note |
+| `currency-decision-mismatch` | an entry decided by `rules` says other than the rules give from its readings | fails from drafting |
+| `currency-decision-not-human` | a decision's or an answer's `by` names a model | fails from drafting |
+| `currency-change-unanswered` | a `replace` or `add` nobody answered | warning, failure at submission; a person's |
+| `currency-uncertain`, `currency-entry-unplaced` | the readings disagree; no sentence matches | notes |
+| `currency-candidate-retracted` | a work the decision keeps or proposes is retracted, by its works record | fails from drafting |
+
+`currency-reading-invalid` is a code the design did not list: a reading the rules cannot read
+is neither edited nor a mismatch. `currency-decision-not-human` is the author's to answer, as
+`currency-change-unanswered` is. The hook asks before an agent's edit changes a person's
+decision or any answer, before `references --refuse`, and before `references --mark ... --id`
+puts an entry a person decided or answered on another sentence, or puts one whose proposed
+change nobody answered on a sentence citing the work it proposes, which would accept the
+change (Basile, 2026-11-05); it asks too where currency.yaml or references.bib cannot be
+read. `check`'s literature line says how many entries the rules decided and from whose
+readings, and how many a person did.
+
+**The command**, `references`: alone, a row per claim in scope; `--explain ID`; `--mark
+"WORDS" @KEY` (with `--id`, an entry no sentence reads as put on the sentence again, `KEY`
+the entry's work or the one it proposes); `--reading FILE`, which holds the
+reading to its schema, the hierarchy and its entry, files it, and writes the rules' decision
+once two are filed and the works store holds every work they name, leaving a person's
+decision as it is and refusing a reading that would change a proposal a person answered;
+`--refuse ID --why ... --as PERSON`, refused where the proposal is answered already.
+
 ## Text from the authors' earlier papers is found before the journal finds it
 
 A journal puts each submission through a similarity check (Crossref Similarity Check, which
@@ -19381,6 +19513,57 @@ Open, recorded as each change landed:
   by the names they are sold under and not every name an agent could sign. G7 reads a
   work's stored files once for the passages and once for the quotations in the prose, so a
   PDF goes through `pdftotext` twice a `check`.
+- **Whether a cited work is still the one to cite rests on readings, which the rules do not
+  check (`currency-*`).**
+  - A reading varies between runs and between models, and two readings by one model are not
+    independent: they count as two (decision 4), and the summary says "one model, read
+    twice". A third reading that differs from the other two on a field the rules use makes
+    an agreed entry `uncertain`.
+  - A quote found word for word in a work can still back the wrong field: a cohort quoted
+    from a trial's background, a population from its discussion.
+  - A level on a hierarchy is a guide to where the likely best evidence lies, not a study's
+    quality; risk of bias within a level is not judged.
+  - A search end date is read only where a review states it, and dates of unequal precision
+    compare at the coarser: a review whose search ended in 2020 does not replace a work
+    published in 2020, whatever the months.
+  - K5 knows a synthesis by its PubMed publication types in its works record (a review, a
+    systematic review, a meta-analysis): one whose types are not known is read as a primary
+    study, and a number typed in the sentence is known only as the ledger's display of it.
+  - Without the works store, which git leaves out (decision 7), the quotes of candidates and
+    a decision the rules wrote are not checked, entry by entry, and a note says so
+    (`currency-quote-unchecked`). So there a `by: rules` decision edited by hand is caught by
+    neither the hook, which leaves the rules' decisions to the gate, nor `check`.
+  - A `replace` done in a sentence also reworded, where another sentence still citing the
+    old work holds half or more of the entry's words, is not seen as done: the entry stays on
+    that other sentence, and `currency-change-unanswered` fails at submission until the author
+    places the entry on the new sentence with `manuscript-guard references --mark "<words>"
+    @<key> --id <id>`.
+  - A value recorded in the literature ledger from the cited work after the rules decided
+    turns an earlier `by: rules` `replace` with a synthesis into
+    `currency-decision-mismatch` (K5 now sets the synthesis aside). Nothing decides again
+    from the readings filed, and a further reading is refused once the proposal is answered.
+  - A ledger display that is a bare whole number ("12") is found in any equal number of the
+    sentence ("in 12 countries [@cited]"), so K5 can set a synthesis aside where the
+    sentence quotes no value of the cited work.
+  - That a reading is of the cited work (`currency-reading-invalid`, "the reading is of")
+    is checked only where `references.bib` gives the cited work a DOI or a PMID.
+  - G7 reads a work's stored source once for each quote of it, with nothing kept between.
+  - An entry is placed on a sentence reworded beyond its words only while that sentence
+    holds half or more of them (`NEAR`), and may then be placed on a sentence that no longer
+    makes the claim its decision was of; further than that it is unplaced, a note. `--mark`
+    finds its sentence by its words folded and taken as one run, and refuses where more than
+    one sentence citing the work holds them.
+  - Scope reads what `lookup` recorded, as of its date: a later version deposited since is
+    not in scope until `lookup` asks again. The Introduction and Discussion of the unattended
+    run are not yet read.
+  - `references` writes `literature/currency.yaml` whole, so a comment written in it is not
+    kept.
+  - The digests of the search, works and reading records catch an edit made without care,
+    not one made by somebody who computes the digest again; and the hook asks about an
+    agent's ordinary edit of a person's decision or answer, not a deliberate evasion (a shell
+    command, a patch that deletes the file).
+  - `currency-record-stale` reads the search records, which nothing in this version writes:
+    the recorded searches are to come.
 - **An appraisal of a similar study's method is judgement, not a guarantee.** G12 holds it
   to a standard and a domain that exist, and nothing more: that the method departs from the
   standard as the appraisal says, that the concern is the right one, and that the studies

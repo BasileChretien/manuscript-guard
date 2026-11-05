@@ -590,17 +590,48 @@ def _sealed(project: Project, citekey: str, fields: dict[str, str] | None) -> di
     return record if wanted and record["identifiers"] == wanted else None
 
 
+def currency_facts(project: Project, citekey: str, fields: dict[str, str] | None) -> list[str]:
+    """What the lookup record of `citekey` says has come after the work, in words: what
+    gives `reference-updated` (a later version or edition at Crossref, an "Update in" at
+    PubMed) or `preprint-published`. Its citations are then in the scope of reference
+    currency (`gates/currency.py`). Nothing where the record is not sealed as `lookup` wrote
+    it or not of the identifiers the entry has now, as `number-from-secondary-source` reads
+    one."""
+    record = _sealed(project, citekey, fields)
+    if record is None:
+        return []
+    answers = record.get("sources") or {}
+    crossref = _found(answers, "crossref")
+    said = []
+    if any(n["type"] in UPDATING for n in crossref.get("updated_by", [])) \
+            or _links(answers, "Update in"):  # fmt: skip
+        said.append(f"has a later version (looked up on {record['looked_up_on']})")
+    if crossref.get("type") == "posted-content" and crossref.get("preprint_of"):
+        published = ", ".join(f"doi:{d}" for d in crossref["preprint_of"])
+        said.append(f"is a preprint published since as {published} (looked up on "
+                    f"{record['looked_up_on']})")  # fmt: skip
+    return said
+
+
+def values_quoted_from(literature: Any) -> dict[str, list[Any]]:
+    """The values of the literature ledger and of attested.yaml, by the citekey of the work
+    each is quoted from, in the order of their keys. Read so for `number-from-secondary-
+    source` and for reference currency's K5 (`gates/currency.py`)."""
+    by_work: dict[str, list[Any]] = {}
+    for _key, value in sorted(literature.values.items()):
+        citekey = str((value.detail or {}).get("citekey") or "").strip()
+        if citekey:
+            by_work.setdefault(citekey, []).append(value)
+    return by_work
+
+
 def _secondary_sources(project: Project, literature: Any,
                        entries: dict[str, dict[str, str]]) -> Report:  # fmt: skip
     """`number-from-secondary-source`: a value of the literature ledger, or of attested.yaml,
     quoted from a work PubMed types only as an editorial or a comment (a warning) or as a
     review (a note; `secondary`), one finding per work. A work with no type known says
     nothing."""
-    by_work: dict[str, list[Any]] = {}
-    for _key, value in sorted(literature.values.items()):
-        citekey = str((value.detail or {}).get("citekey") or "").strip()
-        if citekey:
-            by_work.setdefault(citekey, []).append(value)
+    by_work = values_quoted_from(literature)
     found = []
     for citekey, values in by_work.items():
         record = _sealed(project, citekey, entries.get(citekey))

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/currency-search/1",
+  "title": "manuscript-guard currency search record",
+  "description": "literature/currency/searches/<id>-<n>.yaml: one search run for a currency entry, as it was sent and what came back: the step of the protocol (S1 to S8), the source, the query as sent, its filters, the date, the hits and the candidates returned. Written by the tool and sealed by `answers_sha256`.",
+  "type": "object",
+  "required": ["schema", "entry", "number", "step", "source", "query", "searched_on", "hits", "candidates", "answers_sha256"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/currency-search/1" },
+    "entry": { "type": "string", "pattern": "^c[1-9][0-9]*$" },
+    "number": { "type": "integer", "minimum": 1 },
+    "step": { "type": "string", "pattern": "^S[1-8]$" },
+    "source": { "type": "string", "pattern": "\\S" },
+    "query": { "type": "string", "pattern": "\\S" },
+    "filters": { "type": "object" },
+    "searched_on": { "type": "string", "format": "date" },
+    "hits": { "type": "integer", "minimum": 0 },
+    "candidates": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^(doi:10\\.[^\\sA-Z]+|pmid:[1-9][0-9]*)$" }
+    },
+    "answers_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

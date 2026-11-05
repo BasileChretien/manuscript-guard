@@ -186,6 +186,14 @@ BINDS_AT = {
     # and a record edited by hand may be hiding one.
     "reference-retracted": DRAFTING,
     "lookup-record-edited": DRAFTING,
+    # So is one a currency decision keeps or proposes; and the records it rests on are the
+    # tool's, a quote is the work's words, and only the rules or a named person decide.
+    "currency-candidate-retracted": DRAFTING,
+    "currency-record-edited": DRAFTING,
+    "currency-reading-invalid": DRAFTING,
+    "currency-quote-not-found": DRAFTING,
+    "currency-decision-mismatch": DRAFTING,
+    "currency-decision-not-human": DRAFTING,
     # What a registry said is not the author's to edit, as a lookup's is not.
     "registration-record-edited": DRAFTING,
     # An earlier output's numbers are compared as they were copied or quoted: a copy edited
@@ -206,6 +214,13 @@ BINDS_AT = {
     # review (`gates/figure_alt.py` reads the stage); it fails only at submission, and only
     # where the journal's profile requires one.
     "figure-alt-missing": SUBMISSION,
+    # A claim in scope with no decided entry is a note while drafting and a warning from
+    # internal review; it fails at submission only where paper.yaml sets `references.currency:
+    # required`. A search older than six months, and a proposed change nobody answered, warn
+    # until submission (`gates/currency.py` reads the stage).
+    "currency-record-missing": SUBMISSION,
+    "currency-record-stale": SUBMISSION,
+    "currency-change-unanswered": SUBMISSION,
     "journal-profile-missing": INTERNAL_REVIEW,
     # How many rows a model lost to missing values is for the finished draft to say.
     "model-rows-dropped": INTERNAL_REVIEW,

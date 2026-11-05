@@ -134,6 +134,8 @@ COMMANDS = {
     "passages": Zero("the sentences that cite, and the passages recorded for them",
                      why="it prints how many cited statements carry a passage, 0 of 0 "
                      "included"),
+    "references": Zero("the sentences that cite, and literature/currency.yaml",
+                       why="it prints how many claims are in scope, 0 included"),
     "related": Zero("the earlier outputs in literature/related.yaml", exits=2,
                     argv=("related", "{project}")),
     "render": Zero("the manuscript", why="it says how many files it rendered, 0 included"),
@@ -304,6 +306,8 @@ LATEX = {
     "palettes": ("no manuscript", ("palettes",)),
     "passages": ("reads", ("passages", "{project}")),
     "proof": ("refuses", ("proof", "{project}/proof.pdf", "{project}")),
+    # Its claims are G7's cited sentences, which read LaTeX from step 8.
+    "references": ("reads", ("references", "{project}")),
     "related": ("reads", ("related", "{project}")),
     "render": ("refuses", ("render", "{project}")),
     "respond": ("refuses", ("respond", "{project}", "--from", "{project}/returned.docx")),

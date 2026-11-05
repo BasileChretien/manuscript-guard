@@ -13274,8 +13274,9 @@ the runner's holding the report and the documents, and nothing else of the proje
 `verify` printed, which quotes a failing script and so may hold its data (round 1). It is read
 by those who can read the repository, so it reaches no one new. The action finds the
 manuscript and the build folder where `paths:` puts them (`ci_report folders`), and the job
-summary shows each message in a code span, the first 200 findings of each kind, so that a
-contributor's sentence is never a link and the summary stays under GitHub's 1 MiB. The
+summary shows each message in a code span, so that a contributor's sentence is never a link,
+and at most 200 findings of each kind, each message, place and line of what was recorded
+clipped, within a budget of bytes, so that it stays under GitHub's 1 MiB (rounds 1 and 2). The
 workflow reads only: `contents: read`, no secret, `persist-credentials: false` so no token is
 left in the checkout while `verify` runs the project's code, `pull_request` and never
 `pull_request_target`.

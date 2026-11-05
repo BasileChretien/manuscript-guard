@@ -26,10 +26,16 @@ STAGES = ("design", "analysis", "drafting", "internal-review", "submission")
 #: request.
 ANNOTATIONS = 50
 
-#: How many findings of each kind the summary lists, and how much of a message: GitHub drops
-#: a summary larger than 1 MiB whole. `check.json` in the artefact has every finding.
+#: How many findings of each kind the summary lists, how much of a message and of a place,
+#: and of the lines on what was recorded: GitHub drops a summary larger than 1 MiB whole, so
+#: the findings listed also stop where `BUDGET` bytes would be passed, room kept for the
+#: lines the action adds after it. `check.json` in the artefact has every finding.
 LISTED = 200
 MESSAGE = 500
+PLACE = 300
+RECORDED_LINE = 300
+RECORDED_LINES = 200
+BUDGET = 900_000
 
 #: The badge's label, and the colour of each outcome. Blue for a pass at every stage, not
 #: green: a pass at `design` holds almost nothing, and green reads as "all is well".
@@ -144,10 +150,8 @@ def fenced(lines: list[str]) -> list[str]:
 
 def _item(finding: dict, workspace: Path) -> str:
     """One finding as a line of the summary: its gate and code, its place, its message."""
-    place = _place(finding, workspace)
-    message = str(finding.get("message") or "")
-    if len(message) > MESSAGE:
-        message = message[:MESSAGE] + " ..."
+    place = _clipped(_place(finding, workspace), PLACE)
+    message = _clipped(str(finding.get("message") or ""), MESSAGE)
     at = f" {code(place)}" if place else ""
     return f"- **{finding.get('gate')}** {code(str(finding.get('code')))}{at}: {code(message)}"
 
@@ -167,19 +171,46 @@ def summary(report: dict | None, exit_code: int, version: str, workspace: Path) 
     lines.append("A pass means that no finding due at this stage is open, and is not evidence "
                  "that the paper is right; what no gate decides is listed below.")  # fmt: skip
     findings = report.get("findings", [])
+    notes = sum(1 for f in findings if f.get("severity") == "info")
+    tail = ["", f"And {notes} note{'' if notes == 1 else 's'}, in check.json."] if notes else []
+    tail += _recorded(report.get("assurance") or [])
+    # What is left of the budget for the findings, each kind's "more" line kept room for.
+    room = BUDGET - _size(lines) - _size(tail) - 200
     for severity, heading in (("fail", "Failing"), ("warn", "Warnings")):
         found = [f for f in findings if f.get("severity") == severity]
-        if found:
-            lines += ["", f"### {heading}", ""]
-            lines += [_item(f, workspace) for f in found[:LISTED]]
-            if len(found) > LISTED:
-                lines.append(f"- and {len(found) - LISTED} more, in check.json")
-    notes = sum(1 for f in findings if f.get("severity") == "info")
-    if notes:
-        lines += ["", f"And {notes} note{'' if notes == 1 else 's'}, in check.json."]
-    if report.get("assurance"):
-        lines += ["", "### What was checked, by what", "", *fenced(list(report["assurance"]))]
-    return "\n".join(lines) + "\n"
+        if not found:
+            continue
+        lines += ["", f"### {heading}", ""]
+        shown = 0
+        for finding in found[:LISTED]:
+            item = _item(finding, workspace)
+            if _size([item]) > room:
+                break
+            lines.append(item)
+            room -= _size([item])
+            shown += 1
+        if shown < len(found):
+            lines.append(f"- and {len(found) - shown} more, in check.json")
+    return "\n".join(lines + tail) + "\n"
+
+
+def _size(lines: list[str]) -> int:
+    """How many bytes `lines` take in the summary, a line break after each."""
+    return sum(len(line.encode("utf-8")) + 1 for line in lines)
+
+
+def _clipped(text: str, most: int) -> str:
+    return text if len(text) <= most else text[:most] + " ..."
+
+
+def _recorded(lines: list) -> list[str]:
+    """The lines on what was checked and recorded, as a block of text: each clipped, and
+    no more of them than the summary has room for. A reviewer's name is the project's text,
+    and a long one must not take GitHub's summary away."""
+    kept = [_clipped(str(line), RECORDED_LINE) for line in lines[:RECORDED_LINES]]
+    if len(lines) > RECORDED_LINES:
+        kept.append(f"... and {len(lines) - RECORDED_LINES} more lines, in check.json")
+    return ["", "### What was checked, by what", "", *fenced(kept)] if kept else []
 
 
 def badge(ok: str, stage: str) -> dict:

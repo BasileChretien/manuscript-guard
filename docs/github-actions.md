@@ -116,8 +116,8 @@ its inputs are:
    the job's log.
 4. It runs `manuscript-guard check --json` at the stage `paper.yaml` declares. The job's
    summary gives the version and the stage, the failing findings and the warnings with their
-   places (the first 200 of each, since GitHub drops a summary larger than 1 MiB), and what
-   no gate decides. Failures and warnings are also annotations, which a pull request shows
+   places (at most 200 of each, and fewer where they are long, since GitHub drops a summary
+   larger than 1 MiB), and what no gate decides. Failures and warnings are also annotations, which a pull request shows
    beside the lines they are about; GitHub shows only some of them there. `check.json` has
    every finding.
 5. Where check passed, it runs `manuscript-guard build --offline`. Where it failed, nothing is
@@ -160,6 +160,10 @@ not in it:
 - **A stored source kept out of git.** `literature/sources/` is in git unless you leave it
   out. A project that leaves it out fails G7's `literature-source-missing` from the
   `drafting` stage, in CI and in any clone.
+- **The works store of reference currency**, `literature/currency/works/`, which stays out of
+  git: a quote in a reading of currency has nothing stored to be looked for in, and is noted
+  as unchecked (`currency-quote-unchecked`). Run `manuscript-guard references` where the
+  store is to have it checked.
 - **Restricted inputs.** They reach CI as a Git LFS or git-annex pointer, whose digest G1
   compares; in a [vault](vault.md), whose record G1 reads; or covered by a site's receipt. An
   input that is only left out of git fails `input-missing` from the `analysis` stage.

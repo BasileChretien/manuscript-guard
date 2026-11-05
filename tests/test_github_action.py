@@ -143,10 +143,10 @@ ARTEFACT_LINES = {
 
 
 def _names_the_artefact(scripts: list[str]) -> list[str]:
-    """Each line of `scripts` that names the artefact's folder and is none of those."""
+    """Each line of `scripts` that names the runner's folder, in any spelling, and is none
+    of those: the action's scripts name it for the artefact and for nothing else."""
     lines = [line.strip() for script in scripts for line in script.splitlines()]
-    return [line for line in lines
-            if "$RUNNER_TEMP/manuscript-guard" in line and line not in ARTEFACT_LINES]  # fmt: skip
+    return [line for line in lines if "RUNNER_TEMP" in line and line not in ARTEFACT_LINES]
 
 
 def test_the_folders_are_asked_of_the_project_before_they_are_used() -> None:
@@ -177,6 +177,8 @@ def test_only_the_report_and_the_documents_are_uploaded() -> None:
     # A copy of anything else into the folder is found, under each spelling of it.
     for planted in ('cp -r "$PROJECT/results" "$RUNNER_TEMP/manuscript-guard/"',
                     'cp -r "$PROJECT/data" "$RUNNER_TEMP/manuscript-guard"',
+                    'cp -r "$PROJECT/results" "${RUNNER_TEMP}/manuscript-guard/"',
+                    'cp -r "$PROJECT/data" "$RUNNER_TEMP"/manuscript-guard',
                     'cp "$BUILD/manuscript.md" "$RUNNER_TEMP/manuscript-guard/$name"'):  # fmt: skip
         assert _names_the_artefact([*scripts, planted]) == [planted]
 
@@ -394,12 +396,18 @@ def test_no_line_of_what_was_recorded_closes_its_block() -> None:
 
 
 def test_the_summary_stays_under_the_size_github_keeps(tmp_path: Path) -> None:
-    """GitHub drops a step summary larger than 1 MiB whole."""
-    many = [_finding("warn", message="w" * 2000) for _ in range(6000)]
-    report = {"ok": True, "stage": "drafting", "findings": many, "assurance": ["a"] * 50}
-    said = ci_report.summary(report, 0, "1.2.3", tmp_path)
+    """GitHub drops a step summary larger than 1 MiB whole: at the worst, both kinds of
+    finding past the count listed, each message and place long and in four-byte characters,
+    and a reviewer's name of two million characters among a thousand lines recorded."""
+    long = "\N{GRINNING FACE}" * 5000
+    many = [_finding(kind, message=long, path=str(tmp_path / ("p" * 4000)))
+            for kind in ("fail", "warn") for _ in range(ci_report.LISTED + 50)]  # fmt: skip
+    recorded = ["x" * 2_000_000, *(long for _ in range(1000))]
+    report = {"ok": False, "stage": "drafting", "findings": many, "assurance": recorded}
+    said = ci_report.summary(report, 1, "1.2.3", tmp_path)
     assert len(said.encode("utf-8")) < 1024 * 1024
-    assert f"- and {6000 - ci_report.LISTED} more, in check.json" in said
+    assert said.count(" more, in check.json") == 2
+    assert "more lines, in check.json" in said
 
 
 @pytest.mark.parametrize(
@@ -486,12 +494,13 @@ def test_a_badge_no_report_said_is_refused(ok: str, stage: str) -> None:
 
 def test_the_badge_runs_from_its_file_with_nothing_installed(tmp_path: Path) -> None:
     """The badge's action runs the module by its path, with no package installed: `-I`
-    keeps the package and this checkout off the path, as on a runner that installed none."""
+    keeps the environment's variables and this checkout off the path, and `-S` the
+    site-packages that hold the installed package, as on a runner that installed none."""
     out = tmp_path / "badge.json"
     module = REPO / "src" / "manuscript_guard" / "ci_report.py"
     ran = subprocess.run(
-        [sys.executable, "-I", str(module), "badge", "--ok", "true", "--stage", "drafting",
-         "--out", str(out)],
+        [sys.executable, "-I", "-S", str(module), "badge", "--ok", "true", "--stage",
+         "drafting", "--out", str(out)],
         cwd=tmp_path, capture_output=True, text=True, timeout=60, check=False,
     )  # fmt: skip
     assert ran.returncode == 0, ran.stderr

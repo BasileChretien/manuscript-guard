@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/currency-assessment/1",
+  "title": "manuscript-guard currency assessment record",
+  "description": "literature/currency/replies/<id>.<n>.<reader>.yaml: what a reader says a reply in Word says of a proposal: that it `refuses` it, `agrees` with it, or says something `other`, with the reply's own words that say so. Written once by `references --assess` and sealed by `assessment_sha256`. A refusal from a person of authors.yaml answers the proposal; nothing else does.",
+  "type": "object",
+  "required": ["schema", "entry", "reply", "reader", "says", "quote", "assessed_on", "reply_sha256", "assessment_sha256"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/currency-assessment/1" },
+    "entry": { "type": "string", "pattern": "^c[1-9][0-9]*$" },
+    "reply": { "type": "integer", "minimum": 1 },
+    "reader": { "type": "string", "pattern": "\\S", "description": "Who read the reply: a person, an agent session, or a model." },
+    "says": { "enum": ["refuses", "agrees", "other"] },
+    "quote": { "type": "string", "pattern": "\\S", "description": "The reply's words that say it, word for word." },
+    "assessed_on": { "type": "string", "format": "date" },
+    "reply_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "The seal of the reply record as it was read." },
+    "provenance": { "type": "object", "description": "Where a model read it: the provider and the model." },
+    "assessment_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

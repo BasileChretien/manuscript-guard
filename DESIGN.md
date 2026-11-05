@@ -3740,6 +3740,63 @@ once two are filed and the works store holds every work they name, leaving a per
 decision as it is and refusing a reading that would change a proposal a person answered;
 `--refuse ID --why ... --as PERSON`, refused where the proposal is answered already.
 
+**Proposals in Word** (design 2.5, PR 5; Basile, 2026-11-04 and 2026-11-05).
+`references --comments` writes each proposal nobody answered and the manuscript has not
+accepted as a Word comment on its citing sentence, in a copy for the authors built offline
+into `build/currency/suggestions.docx` (and `-supplementary.docx` for one in the
+supplement), as `review --suggestions` builds its own. Normal and submission builds carry no
+tool comment, so blinding is untouched. A LaTeX manuscript is refused, and its listing still
+works. The comment is by `manuscript-guard (references)`, never a person or a model, and
+says what is proposed, the work (its DOI or PMID, title and year from its works record), the
+decision's reason and rule ids, one quote of the first reading for each of R1 to R3, each cut
+at 200 characters, and how to answer: cite the work to accept, reply to refuse. Nothing else
+of the abstract.
+
+The comment is written alone, with no tracked change (`tracked.Placement.comment_only`), over
+the sentence's words as the build printed them (`currency/comments.anchor`): the sentence is
+found once in its paragraph's source, read as Word shows it with each value and citation as
+the build printed it (`roundtrip._read` with the marked build's extents), and those words are
+found once in the printed paragraph, as typed or as pandoc typesets them. Only the comment's
+two ends have to be in plain text: a field or a link may stand inside its range, which moves
+no run. A sentence found twice, an unplaced entry, a paragraph the build does not mark, or a
+works record missing, gets no comment, and the command lists each with the reason. `_check`
+still holds the document to the build with every change accepted and every one rejected.
+
+What the document records of its comments is a list in a property of its own,
+`manuscript-guard-currency-<k>`, so that a version reading only `manuscript-guard-suggestions`
+never refuses it: for each, the entry, a digest of the decision (action, candidate, rule
+ids), the comment's author, a digest of its words as written, and the day. `import` knows a
+currency comment by property, author and digest, so neither it nor a reply to it is filed as
+a co-author's comment; a co-author's comment elsewhere is filed as before. Each reply is
+filed, whatever becomes of the edits, under `literature/currency/replies/<id>.<n>.yaml`, as
+Word kept it (the name Word gives its author, the date, the words), sealed by
+`reply_sha256`, once: a reply filed already is not filed again. It decides nothing.
+
+A reader (the agent through the word-roundtrip skill, a person, in PR 6 the models) records
+what a reply says: `references --assess ID --reply N --says refuses|agrees|other --quote
+"..." --as READER`, written once per reader and sealed by `assessment_sha256` beside the
+reply, the quote held to the reply word for word. `refuses` makes the entry's answer
+`refused`, `by` the replier as authors.yaml names them, `why` the quote, `answered_on` the
+reply's date, with `reply` and `assessed_by` (the answer's schema gained the two). The
+replier is a person of authors.yaml by full name, folded for case and composed form; a
+model's name, a name no author has, or no name, is refused with nothing written, and the
+listing says why. The hook asks before an agent runs `references --assess ... --says
+refuses`. `agrees` answers nothing: the listing and `--explain` say "agreed in Word, not yet
+cited". `other` is listed for the authors. A reply to a proposal that has changed since the
+copy was written (another decision digest, or no proposal now) is filed and answers nothing,
+and the listing says the proposal changed; a reply never changes an answer given already.
+Accepted by citation and refused by a reply at once, the manuscript wins: the assessment is
+filed, no answer is written, and the listing shows the reply beside the acceptance. Room is
+left for PR 6, where two assessments will have to agree: a reply takes one assessment per
+reader.
+
+G7 holds an answer from a reply to its records, each failing from drafting:
+`currency-reply-missing` (the reply's sound record, or a sound assessment of it by
+`assessed_by` as a refusal, is not there), `currency-reply-quote-not-found` (the answer's
+reason is not in the reply word for word), `currency-reply-not-a-person` (the replier is no
+person of authors.yaml, or the answer is signed by another; the author's to answer). A reply
+or assessment record that no longer reads as filed is `currency-record-edited`.
+
 ## Text from the authors' earlier papers is found before the journal finds it
 
 A journal puts each submission through a similarity check (Crossref Similarity Check, which
@@ -19564,6 +19621,24 @@ Open, recorded as each change landed:
     command, a patch that deletes the file).
   - `currency-record-stale` reads the search records, which nothing in this version writes:
     the recorded searches are to come.
+  - A reply's author is the name Word was set to on the replier's machine, a label and not
+    an identity: anyone whose Word gives an author's full name can refuse a proposal under
+    it, and an author whose Word gives another form of their name ("Example, Ada", initials)
+    cannot, and refuses with `references --refuse` instead.
+  - An assessment can misread a reply: the quote is the reply's words, and a quote of
+    "not the trial" from "I would not say it is not the trial" passes. The hook asks the
+    author before an agent records a refusal, and nothing checks an `agrees` or an `other`.
+  - A comment Word lost is not seen: a co-author who deletes it and replies elsewhere, or
+    pastes the sentence into a new document, leaves no reply for `import` to find, and the
+    proposal stays unanswered. So does a comment whose words were edited in Word, which no
+    longer matches the digest the document recorded.
+  - A comment is put on a sentence only where its words, as the build printed them, are
+    once in their paragraph: two sentences that read alike in one paragraph get none. A
+    sentence whose emphasis runs across its edge, or whose words the sentence splitter cuts
+    otherwise than pandoc prints them, gets none either, with the reason.
+  - An answer refused from a reply stands where the sentence cites the work afterwards: the
+    acceptance by citation reads only unanswered proposals, as before; the manuscript wins
+    only where the citation came before the assessment.
 - **An appraisal of a similar study's method is judgement, not a guarantee.** G12 holds it
   to a standard and a domain that exist, and nothing more: that the method departs from the
   standard as the appraisal says, that the concern is the right one, and that the studies

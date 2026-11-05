@@ -146,6 +146,10 @@ ROUTES: dict[str, Route] = {
     # Whether a cited work is still the one to cite: `references` lists the claims, explains
     # an entry and files a reading.
     **_all("literature-verify", ("references",), "currency-"),
+    # A reply in Word to a proposal's comment is filed by `import` and read by
+    # `references --assess`, as the word-roundtrip skill says.
+    **_all("word-roundtrip", ("references",), "currency-reply-missing",
+           "currency-reply-quote-not-found"),
     **_all("related-outputs", ("related",), "related-"),
     # -- figures --------------------------------------------------------------------------
     **_all("figure-review", None, "figure-unreviewed", "figure-review-", "figure-alt-"),
@@ -202,6 +206,8 @@ ROUTES: dict[str, Route] = {
     # the rules (`references --refuse`, or `by` and `why` in literature/currency.yaml).
     **_all("literature-verify", ("references",), "currency-change-unanswered",
            "currency-decision-not-human", who="author"),
+    # A refusal from a reply is a person's of authors.yaml, under their name.
+    **_all("word-roundtrip", ("references",), "currency-reply-not-a-person", who="author"),
     **_all("methods-review", None, "similar-decision-not-human", who="author"),
     **_all("data-sources", None, "data-source-not-a-person", who="author"),
     **_all("review-panel", None, "design-override-unsigned", "figures-not-seen", who="author"),
@@ -221,7 +227,7 @@ ROUTES: dict[str, Route] = {
 #: `who="author"`, and a test holds the list to that.
 PERSON_ONLY = frozenset({
     "attestation-not-human", "attestation-thin", "judgement-not-human",
-    "currency-change-unanswered", "currency-decision-not-human",
+    "currency-change-unanswered", "currency-decision-not-human", "currency-reply-not-a-person",
     "similar-decision-not-human", "data-source-not-a-person", "design-override-unsigned",
     "figures-not-seen", "journal-manual-unsigned", "approval-missing", "approval-stale",
     "comment-unanswered", "open-major-finding", "design-major-open",

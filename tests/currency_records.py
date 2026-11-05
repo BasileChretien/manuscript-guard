@@ -115,3 +115,24 @@ def case(root: Path, *, readings: bool = True, candidate: str = CANDIDATE) -> Pa
 def decision(root: Path) -> dict:
     document = yaml.safe_load((root / "literature" / "currency.yaml").read_text("utf-8"))
     return document["entries"][0].get("decision")
+
+
+#: The reply the tests file to the case's comment, and words of it a reader quotes.
+REPLY = "Kept: the trial enrolled another population, so it does not replace the signal."
+REFUSING = "the trial enrolled another population"
+
+
+def replied(root: Path, by: str = "Ada Example", text: str = REPLY,
+            day: str = "2026-11-06") -> Path:  # fmt: skip
+    """A reply to the case's comment in Word, filed as `import` files it, without the
+    document: the comment as `references --comments` records it, and the reply."""
+    from manuscript_guard.currency import replies
+    from manuscript_guard.currency.comments import AUTHOR, decision_digest
+
+    project = load_project(root)[0]
+    offered = {"n": 1, "entry": "c1", "decision": decision_digest(decision(root)),
+               "author": AUTHOR, "written": "0123456789abcdef", "date": "2026-11-05"}
+    found = replies.Found(offered, by, day, text)
+    said = replies.file_replies(project, root / "suggestions.docx", [found], applying=True)
+    assert said and "filed as" in said[-1], said
+    return sorted(replies.folder(project).glob("c1.*.yaml"))[-1]

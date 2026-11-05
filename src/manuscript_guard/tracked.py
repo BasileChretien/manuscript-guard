@@ -110,7 +110,11 @@ class TrackedError(Exception):
 @dataclass(frozen=True)
 class Placement:
     """One edit to write: in the paragraph carrying `paragraph`, `old` as Word shows it
-    becomes `new`, authored by `author` on `date`, with `comment` over it."""
+    becomes `new`, authored by `author` on `date`, with `comment` over it.
+
+    `comment_only` writes the comment over `old` and changes nothing: no `w:del`, no
+    `w:ins` and no bookmark, so that the document reads as built whatever is accepted.
+    `new` is then not read. A line break in `comment` starts a paragraph of the comment."""
 
     number: int
     paragraph: str
@@ -119,6 +123,7 @@ class Placement:
     author: str
     date: str
     comment: str
+    comment_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -275,14 +280,19 @@ def _comment(identifier: str, placement: Placement) -> ET.Element:
             W + "initials": _initials(placement.author),
         },
     )
-    paragraph = ET.SubElement(comment, W + "p")
-    ET.SubElement(ET.SubElement(paragraph, W + "pPr"), W + "pStyle").set(W + "val", "CommentText")
-    mark = ET.SubElement(paragraph, W + "r")
-    ET.SubElement(ET.SubElement(mark, W + "rPr"), W + "rStyle").set(W + "val", "CommentReference")
-    ET.SubElement(mark, W + "annotationRef")
-    t = ET.SubElement(ET.SubElement(paragraph, W + "r"), W + "t")
-    t.text = placement.comment
-    t.set(_XML + "space", "preserve")
+    lines = placement.comment.split("\n") if placement.comment_only else [placement.comment]
+    for index, line in enumerate(lines):
+        paragraph = ET.SubElement(comment, W + "p")
+        ET.SubElement(ET.SubElement(paragraph, W + "pPr"), W + "pStyle").set(
+            W + "val", "CommentText")  # fmt: skip
+        if index == 0:
+            mark = ET.SubElement(paragraph, W + "r")
+            ET.SubElement(ET.SubElement(mark, W + "rPr"), W + "rStyle").set(
+                W + "val", "CommentReference")  # fmt: skip
+            ET.SubElement(mark, W + "annotationRef")
+        t = ET.SubElement(ET.SubElement(paragraph, W + "r"), W + "t")
+        t.text = line
+        t.set(_XML + "space", "preserve")
     return comment
 
 
@@ -311,6 +321,14 @@ def _locate(paragraph: ET.Element, placement: Placement) -> tuple[int, int] | st
     if len(starts) > 1:
         return f"its words are in the paragraph {len(starts)} times as the build printed it"
     end = _pattern(placement.old).match(text, starts[0]).end()
+    if placement.comment_only:
+        # A comment's range is put between runs and moves none of them, so only its two
+        # ends have to be in plain text: a field, a link or a mark the build placed may
+        # stand whole inside it.
+        if where[starts[0]].run is None or where[end - 1].run is None:
+            return ("its words begin or end in a field, a link or something else that is not "
+                    "plain text")  # fmt: skip
+        return starts[0], end
     if any(char.run is None for char in where[starts[0] : end]):
         return "its words run into a field, a link or something else that is not plain text"
     children = list(paragraph)
@@ -385,10 +403,46 @@ def _write_one(
     comments.append(_comment(note, placement))
 
 
-def _with_offered(existing: str, offered: Sequence[dict]) -> str:
-    """The custom-properties part with the list of suggestions in it, every other property
-    kept: the build's stamp, its record of paragraphs, and whatever pandoc and Word put
-    there."""
+def _write_comment(
+    paragraph: ET.Element,
+    placement: Placement,
+    span: tuple[int, int],
+    ids: _Ids,
+    comments: ET.Element,
+) -> None:
+    """Write one located comment, and nothing else: its range opens before the run its words
+    begin in and closes after the one they end in, each split where the words begin and end,
+    and the text of every run is as it was. Written from the last to the first, as edits
+    are."""
+    _text, where = _chars(paragraph)
+    start, end = span
+    first, last = where[start], where[end - 1]
+    if last.offset + 1 < len(last.text.text or ""):
+        _split(paragraph, last.run, last.text, last.offset + 1)
+    head = first.run
+    if first.offset > 0:
+        head = _split(paragraph, first.run, first.text, first.offset)
+        if last.run is first.run:
+            last = _Char(head, head.find(W + "t"), last.offset - first.offset)
+    note = ids.take("comment")
+    reference = ET.Element(W + "r")
+    ET.SubElement(ET.SubElement(reference, W + "rPr"), W + "rStyle").set(
+        W + "val", "CommentReference"
+    )
+    ET.SubElement(reference, W + "commentReference", {W + "id": note})
+    after = list(paragraph).index(last.run) + 1
+    paragraph.insert(after, reference)
+    paragraph.insert(after, ET.Element(W + "commentRangeEnd", {W + "id": note}))
+    paragraph.insert(list(paragraph).index(head), ET.Element(W + "commentRangeStart",
+                                                             {W + "id": note}))  # fmt: skip
+    comments.append(_comment(note, placement))
+
+
+def _with_offered(existing: str, offered: Sequence[dict],
+                  name: str = SUGGESTIONS_PROPERTY) -> str:  # fmt: skip
+    """The custom-properties part with the list `offered` in it under the properties
+    `name`, every other property kept: the build's stamp, its record of paragraphs, the
+    other list, and whatever pandoc and Word put there."""
     from manuscript_guard.roundtrip import _CUSTOM_PROPERTY, _CUSTOM_XML, _PROPERTY_ELEMENT
 
     encoded = json.dumps(list(offered), ensure_ascii=True, separators=(",", ":"))
@@ -396,10 +450,10 @@ def _with_offered(existing: str, offered: Sequence[dict]) -> str:
     kept = [
         element
         for element in _PROPERTY_ELEMENT.findall(existing)
-        if f'name="{SUGGESTIONS_PROPERTY}-' not in element
+        if f'name="{name}-' not in element
     ]
     ours = [
-        _CUSTOM_PROPERTY.format(name=f"{SUGGESTIONS_PROPERTY}-{number}", value=escape(chunk))
+        _CUSTOM_PROPERTY.format(name=f"{name}-{number}", value=escape(chunk))
         for number, chunk in enumerate(chunks, start=1)
     ]
     numbered = [
@@ -410,11 +464,14 @@ def _with_offered(existing: str, offered: Sequence[dict]) -> str:
 
 
 def write(
-    source: Path, target: Path, placements: Sequence[Placement], offered: Sequence[dict]
-) -> list[Written]:
+    source: Path, target: Path, placements: Sequence[Placement], offered: Sequence[dict],
+    *, listed_as: str = SUGGESTIONS_PROPERTY,
+) -> list[Written]:  # fmt: skip
     """Copy the built document `source` to `target` (which may be `source`) with each
-    placement written as a tracked change, and say of each whether it was. `offered` is what
-    the document records of each suggestion, by its number: only those written are kept."""
+    placement written as a tracked change, or as a comment alone where it is
+    `comment_only`, and say of each whether it was. `offered` is what the document records
+    of each placement, by its number, under the properties `listed_as`: only those written are
+    kept. Comments alone may cover some of the same words; an edit may not."""
     with open_archive(source) as archive:
         names = archive.namelist()
         parts = {name: read_member(archive, name) for name in names}
@@ -441,8 +498,9 @@ def write(
             said[placement.number] = span
             continue
         clash = next(
-            (n for n, (p, _pl, (a, b)) in located.items()
-             if p is paragraph and a < span[1] and span[0] < b),
+            (n for n, (p, other, (a, b)) in located.items()
+             if p is paragraph and a < span[1] and span[0] < b
+             and not (placement.comment_only and other.comment_only)),
             None,
         )  # fmt: skip
         if clash is not None:
@@ -455,12 +513,14 @@ def write(
     for _n, (paragraph, placement, span) in sorted(
         located.items(), key=lambda item: item[1][2][0], reverse=True
     ):
-        _write_one(paragraph, placement, span, ids, comments)
+        (_write_comment if placement.comment_only else _write_one)(
+            paragraph, placement, span, ids, comments)  # fmt: skip
 
     parts[_DOCUMENT] = _serialised(document, declared)
     parts[_COMMENTS] = _serialised(comments, _namespaces(parts[_COMMENTS]))
     keep = [entry for entry in offered if entry.get("n") in located]
-    parts[_CUSTOM] = _with_offered(parts[_CUSTOM].decode("utf-8"), keep).encode("utf-8")
+    parts[_CUSTOM] = _with_offered(parts[_CUSTOM].decode("utf-8"), keep, listed_as).encode(
+        "utf-8")
     written = [Written(p.number, said.get(p.number, "")) for p in placements]
     with tempfile.TemporaryDirectory() as scratch:
         made = Path(scratch) / target.name
@@ -511,8 +571,10 @@ def _check(built: Path, made: Path, placements: Sequence[Placement]) -> None:
     for block in before:
         if block.names and not block.table:
             expected[block.names[0]] = block.text
-    # From the last edit in a paragraph to the first, so that the offsets before hold.
-    order = sorted(placements, key=lambda p: -_found(expected[p.paragraph], p.old)[0])
+    # From the last edit in a paragraph to the first, so that the offsets before hold. A
+    # comment alone changes no words: with it the document reads as built either way.
+    edits = [p for p in placements if not p.comment_only]
+    order = sorted(edits, key=lambda p: -_found(expected[p.paragraph], p.old)[0])
     for placement in order:
         text = expected[placement.paragraph]
         start = _found(text, placement.old)[0]
@@ -545,11 +607,37 @@ def _parts(document: Path, *wanted: str) -> dict[str, bytes]:
 def offered_of(document: Path) -> list[dict] | None:
     """The suggestions the document records, or None where it records none. A list that
     does not read as one this tool writes raises `TrackedError`."""
+    return _listed(document, _PROPERTY, _OFFERED, _OPTIONAL, "suggestions")
+
+
+#: The list of reference-currency proposals a document carries as comments
+#: (`references --comments`), under a name of its own: a version that reads only
+#: `SUGGESTIONS_PROPERTY` never sees it, and never refuses the document for it.
+CURRENCY_PROPERTY = "manuscript-guard-currency"
+_CURRENCY = re.compile(
+    rf'<property\b[^>]*\bname="{CURRENCY_PROPERTY}-(\d+)"[^>]*>\s*<vt:lpwstr>(.*?)</vt:lpwstr>',
+    re.DOTALL,
+)
+#: The keys of one proposal as the document records it: its number, the entry of
+#: literature/currency.yaml, a digest of the decision it shows (`decision_digest`), the
+#: comment's author, the digest of the comment as Word holds it, and the day it was written.
+_PROPOSED = {"n": int, "entry": str, "decision": str, "author": str, "written": str,
+             "date": str}  # fmt: skip
+
+
+def currency_offered_of(document: Path) -> list[dict] | None:
+    """The proposals of reference currency the document records, or None where it records
+    none. A list that does not read as one this tool writes raises `TrackedError`."""
+    return _listed(document, _CURRENCY, _PROPOSED, frozenset(), "proposals")
+
+
+def _listed(document: Path, pattern: re.Pattern[str], keys: dict, optional: frozenset,
+            what: str) -> list[dict] | None:  # fmt: skip
     custom = _parts(document, _CUSTOM).get(_CUSTOM)
     if custom is None:
         return None
     chunks = sorted(
-        (int(number), value) for number, value in _PROPERTY.findall(custom.decode("utf-8"))
+        (int(number), value) for number, value in pattern.findall(custom.decode("utf-8"))
     )
     if not chunks:
         return None
@@ -561,14 +649,14 @@ def offered_of(document: Path) -> list[dict] | None:
         listed = None
     ok = isinstance(listed, list) and all(
         isinstance(entry, dict)
-        and set(_OFFERED) - _OPTIONAL <= set(entry) <= set(_OFFERED)
+        and set(keys) - optional <= set(entry) <= set(keys)
         and all(isinstance(entry[key], kind) and not isinstance(entry[key], bool)
-                for key, kind in _OFFERED.items() if key in entry)
+                for key, kind in keys.items() if key in entry)
         for entry in listed
     )  # fmt: skip
     if not ok or len({entry["n"] for entry in listed}) != len(listed):
         raise TrackedError(
-            f"{document.name} records suggestions in a form this version does not write"
+            f"{document.name} records {what} in a form this version does not write"
         )
     return listed
 
@@ -696,6 +784,7 @@ def replies_to(
 
 
 __all__ = [
+    "CURRENCY_PROPERTY",
     "SUGGESTION",
     "SUGGESTIONS_PROPERTY",
     "Comment",
@@ -704,6 +793,7 @@ __all__ = [
     "TrackedError",
     "Written",
     "comments_of",
+    "currency_offered_of",
     "decided",
     "offered_of",
     "pending",

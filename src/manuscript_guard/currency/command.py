@@ -30,6 +30,8 @@ class Row:
     where: str
     state: str
     sentence: str
+    #: A line for each reply in Word to the entry's comment (`replies.said_of`).
+    replies: tuple[str, ...] = ()
 
 
 def _where(project: Project, path: Path, line: int) -> str:
@@ -65,17 +67,21 @@ def state_of(entry: records.Entry | None, held, accepted: bool = False) -> str:
 
 def listing(project: Project) -> tuple[list[Row], list[records.Entry]]:
     """A row per claim in scope, and the entries no sentence matches."""
+    from manuscript_guard.currency import replies
     from manuscript_guard.gates.currency import _Records
 
     found, report = survey(project)
     if report.failures:
         raise Refused("; ".join(finding.message for finding in report.failures))
     held = _Records(project)
+    replied = replies.held(project)
     rows = [
         Row(claim.entry.id if claim.entry else None, claim.citekey,
             _where(project, claim.sentence.path, claim.sentence.line),
             state_of(claim.entry, held, bool(claim.entry and claim.entry.id in found.accepted)),
-            " ".join(claim.sentence.text.split()))
+            " ".join(claim.sentence.text.split()),
+            tuple(replies.said_of(project, claim.entry, replied,
+                                  claim.entry.id in found.accepted) if claim.entry else ()))
         for claim in found.claims
     ]  # fmt: skip
     return rows, list(found.unplaced)
@@ -86,6 +92,7 @@ def rendered(rows: list[Row], unplaced: list[records.Entry]) -> str:
     for row in rows:
         lines.append(f"{row.id or '-'}  @{row.citekey}  {row.where}  {row.state}")
         lines.append(f"    {row.sentence}")
+        lines += [f"    {said}" for said in row.replies]
     for entry in unplaced:
         lines.append(f"{entry.id}  @{entry.citekey}  unplaced: no sentence reads so")
         lines.append(f"    {' '.join(entry.sentence.split())}")
@@ -157,6 +164,9 @@ def explain(project: Project, entry_id: str) -> str:
                         else ""))  # fmt: skip
     if entry.answer and entry.answer.get("why"):
         lines.append(f"  answer: {entry.answer['why']}")
+    from manuscript_guard.currency.replies import explained
+
+    lines += explained(project, entry, entry.id in survey(project)[0].accepted)
     return "\n".join(lines)
 
 

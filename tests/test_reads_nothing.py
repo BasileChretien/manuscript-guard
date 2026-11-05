@@ -306,8 +306,10 @@ LATEX = {
     "palettes": ("no manuscript", ("palettes",)),
     "passages": ("reads", ("passages", "{project}")),
     "proof": ("refuses", ("proof", "{project}/proof.pdf", "{project}")),
-    # Its claims are G7's cited sentences, which read LaTeX from step 8.
-    "references": ("reads", ("references", "{project}")),
+    # Its claims are G7's cited sentences, which read LaTeX from step 8; its proposals as
+    # Word comments are written into a Markdown manuscript's build, as `review --suggestions`'
+    # edits are.
+    "references": ("refuses", ("references", "{project}", "--comments")),
     "related": ("reads", ("related", "{project}")),
     "render": ("refuses", ("render", "{project}")),
     "respond": ("refuses", ("respond", "{project}", "--from", "{project}/returned.docx")),
@@ -398,5 +400,9 @@ def test_the_refusal_is_for_a_latex_manuscript_only(empty: Path) -> None:
         ("review", "{project}", "--files"),
         # A round opened, and one checked, read a LaTeX manuscript (step 8).
         ("respond", "{project}", "--open"), ("respond", "{project}"),
+        # The claims of reference currency, and a reply in Word read, read a LaTeX manuscript.
+        ("references", "{project}"),
+        ("references", "{project}", "--assess", "c1", "--reply", "1", "--says", "agrees",
+         "--quote", "x", "--as", "A"),
     ):  # fmt: skip
         assert cli._refused_for_latex(_parsed(argv, empty)) is None, argv

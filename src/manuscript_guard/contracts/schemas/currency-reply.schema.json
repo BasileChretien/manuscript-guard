@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/currency-reply/1",
+  "title": "manuscript-guard currency reply record",
+  "description": "literature/currency/replies/<id>.<n>.yaml: one reply in Word to the comment `references --comments` wrote for a proposal of literature/currency.yaml, as Word kept it: the name Word gave its author, its date and its words. Filed by `import`, word for word, and sealed by `reply_sha256`. It decides nothing: a reader's assessment of it does (`references --assess`).",
+  "type": "object",
+  "required": ["schema", "entry", "number", "by", "date", "text", "comment", "decision", "written_on", "document", "filed_on", "reply_sha256"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/currency-reply/1" },
+    "entry": { "type": "string", "pattern": "^c[1-9][0-9]*$" },
+    "number": { "type": "integer", "minimum": 1 },
+    "by": { "type": "string", "description": "The name Word gives the reply's author: a label the replier's copy of Word was set to, not an identity." },
+    "date": { "type": "string", "pattern": "^([0-9]{4}-[0-9]{2}-[0-9]{2})?$", "description": "The day Word dated the reply, or empty where it gave none." },
+    "text": { "type": "string" },
+    "comment": { "type": "string", "pattern": "^[0-9a-f]{16}$", "description": "The digest of the comment it replies to, as the document recorded it." },
+    "decision": { "type": "string", "pattern": "^[0-9a-f]{16}$", "description": "The digest of the proposal the comment showed: its action, candidate and rule ids." },
+    "written_on": { "type": "string", "format": "date", "description": "The day the comment was written." },
+    "document": { "type": "string", "pattern": "\\S", "description": "The name of the document it came back in." },
+    "filed_on": { "type": "string", "format": "date" },
+    "reply_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

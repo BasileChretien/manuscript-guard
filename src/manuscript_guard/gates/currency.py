@@ -140,6 +140,7 @@ def check_currency(project: Project, stage: str = DRAFTING, literature: Any = No
     for entry in found.entries:
         report = report.with_findings(*_of_entry(entry, found, held, known, bib, path, stage))
     report = report.with_findings(*_missing(found, held, project, path, stage))
+    report = report.with_findings(*replied(project, found.entries, path))
     decided = [entry for entry in found.entries if entry.decision]
     return report.with_counts(
         currency_entries=len(found.entries),
@@ -500,5 +501,62 @@ def readers_of(project: Project) -> list[str]:
             for name in sorted({name for said in readers.values() for name in said})]  # fmt: skip
 
 
+def replied(project: Project, entries: Iterable[Entry], path: Path) -> list[Finding]:
+    """The records of the replies in Word to the proposals' comments, and each answer that
+    came from one (`currency/replies.py`): a reply or assessment record that no longer reads
+    as written is `currency-record-edited`; an answer from a reply needs the reply's sound
+    record and an assessment of it as a refusal (`currency-reply-missing`), the reason word
+    for word in the reply (`currency-reply-quote-not-found`), and the reply's author, a
+    person of authors.yaml (`currency-reply-not-a-person`). Each fails from drafting."""
+    from manuscript_guard.currency import replies
+
+    found = replies.held(project)
+    out = [_edited(read) for read in found.broken]
+    for entry in entries:
+        answer = entry.answer or {}
+        if not answer.get("reply"):
+            continue
+        number = int(answer["reply"])
+        read = found.replies.get((entry.id, number))
+        if read is None or read.problem or not read.record:
+            out.append(_finding(
+                "currency-reply-missing", f"{entry.named}: its answer is reply {number} in Word, "
+                "and literature/currency/replies/ holds no sound record of it", path,
+                "put the reply's record back as `import` filed it (git checkout), or take the "
+                "answer away and have the person answer"))  # fmt: skip
+            continue
+        reply = read.record
+        assessed = [one.record for one in found.assessments.get((entry.id, number), [])
+                    if one.record and one.record["reader"] == answer.get("assessed_by")
+                    and one.record["says"] == "refuses"
+                    and one.record["reply_sha256"] == reply["reply_sha256"]]  # fmt: skip
+        if not assessed:
+            out.append(_finding(
+                "currency-reply-missing", f"{entry.named}: its answer says "
+                f"{answer.get('assessed_by')} read reply {number} as a refusal, and no sound "
+                "assessment of theirs says so", path,
+                "record the assessment with `manuscript-guard references --assess`, which "
+                "writes the answer, or take the answer away"))  # fmt: skip
+        if not quote_in([str(reply["text"])], str(answer.get("why") or "")):
+            out.append(_finding(
+                "currency-reply-quote-not-found", f"{entry.named}: the reason its answer gives, "
+                f"{_shown(str(answer.get('why')))!r}, is not in reply {number}, word for word",
+                path, "the reason of an answer from a reply is the reply's own words: assess "
+                "the reply again with its words, or take the answer away"))  # fmt: skip
+        from manuscript_guard.checking.people import fold
+
+        problem = replies.not_a_person(project, str(reply["by"]))
+        if not problem and fold(str(answer["by"])) != fold(str(reply["by"])):
+            problem = f"the answer is signed {answer['by']!r}, and the reply is {reply['by']!r}'s"
+        if problem:
+            out.append(_finding(
+                "currency-reply-not-a-person", f"{entry.named}: its answer is reply {number} "
+                f"in Word, and {problem}", path,
+                "a reply answers a proposal only from a person of authors.yaml, under their "
+                "name: they refuse it with `references --refuse`, or the answer is taken "
+                "away"))  # fmt: skip
+    return out
+
+
 __all__ = ["GATE", "STALE_MONTHS", "check_currency", "months_before", "quote_in",
-           "readers_of", "rules_decision", "today"]
+           "readers_of", "replied", "rules_decision", "today"]

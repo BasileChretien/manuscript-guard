@@ -9285,6 +9285,67 @@ def _an_edit_where_a_span_closes_is_written_inside_it(patch: pytest.MonkeyPatch)
     patch.setattr(rewording, "_widened", lambda edit, marks, sources: real(edit, (), sources))
 
 
+# ------------------------------------------------------- a comment on a sentence, in Word
+
+
+def _whole_stretches(words: list) -> list[tuple[tuple, tuple]]:
+    """Each run of whole stretches of a `laid_out` paragraph that Word shows words at both
+    ends of: its first word and its last."""
+    stretches: dict[int, list] = {}
+    for word in words:
+        stretches.setdefault(word[2], []).append(word)
+    order = sorted(stretches)
+    return [(stretches[one][0], stretches[other][-1])
+            for at, one in enumerate(order) for other in order[at:]
+            if stretches[one][0][4] is not None and stretches[other][-1][4] is not None]
+
+
+@holds(40, suggestion_paragraphs())
+def test_a_comment_is_put_on_a_sentence_s_printed_words_exactly_and_only_where_they_are_once(
+    paragraph: dict[str, Any],
+) -> None:
+    """`references --comments` puts each comment over its citing sentence's words as the
+    build printed them (`currency.comments.anchor`). Every run of whole stretches of a
+    paragraph, with its markup, is found exactly where Word shows it: across emphasis, hard
+    line breaks, code, a link's text, a comment and the values and citations between, each
+    read as the build printed it. A run of one to three words, cut anywhere, is found there
+    or nowhere. With the paragraph written twice, the run is in it twice, and no comment is
+    put on it."""
+    from manuscript_guard.currency.comments import anchor
+
+    source, printed, words, tokens, _renderings = laid_out(paragraph)
+    shift = len(printed) + 1
+    twice = (source + " " + source, printed + " " + printed,
+             [*tokens, *((a + shift, b + shift) for a, b in tokens)])  # fmt: skip
+    for first, last in _whole_stretches(words):
+        start = first[3][0] - len(STRETCHES[first[1]][0])
+        end = last[3][1] + len(STRETCHES[last[1]][1])
+        wanted = (first[4][0], last[4][1])
+        assert anchor(source, start, end, printed, tokens) == wanted, (source[start:end], source)
+        found = anchor(twice[0], start, end, twice[1], twice[2])
+        assert isinstance(found, str) and "2 times" in found, (source[start:end], found)
+    shown = [word for word in words if word[4] is not None]
+    for at, first in enumerate(shown):
+        for last in shown[at : at + 3]:
+            found = anchor(source, first[3][0], last[3][1], printed, tokens)
+            assert isinstance(found, str) or found == (first[4][0], last[4][1]), (
+                source[first[3][0] : last[3][1]], found, source)
+
+
+def _a_comment_is_put_on_the_first_of_two_places(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+
+    patch.setattr(suggestions, "_starts",
+                  lambda pattern, text: [m] if (m := pattern.search(text)) else [])  # fmt: skip
+
+
+def _a_sentence_s_values_are_read_as_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import roundtrip
+
+    real = roundtrip._read
+    patch.setattr(roundtrip, "_read", lambda paragraph, renderings=(): real(paragraph))
+
+
 # ------------------------------------------------------------------------- a rewording
 
 #: A fact as a finding names it. A number by its figures and the mark after them: its
@@ -18566,6 +18627,14 @@ BROKEN = {
     "an edit where a span closes is written inside it": (
         _an_edit_where_a_span_closes_is_written_inside_it,
         test_a_word_edited_in_word_is_written_where_it_stands_and_nothing_else_changes,
+    ),
+    "a comment is put on the first of two places its sentence is": (
+        _a_comment_is_put_on_the_first_of_two_places,
+        test_a_comment_is_put_on_a_sentence_s_printed_words_exactly_and_only_where_they_are_once,
+    ),
+    "a sentence's values and citations are read as typed": (
+        _a_sentence_s_values_are_read_as_typed,
+        test_a_comment_is_put_on_a_sentence_s_printed_words_exactly_and_only_where_they_are_once,
     ),
     "a rule's or a table's dashes are em dashes": (
         _a_rule_or_a_table_s_dashes_are_em_dashes,

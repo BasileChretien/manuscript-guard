@@ -74,10 +74,24 @@
           "description": "The person who answered: never `rules`, which decide and do not answer."
         },
         "why": { "type": "string", "pattern": "\\S" },
-        "answered_on": { "type": "string", "format": "date" }
+        "answered_on": { "type": "string", "format": "date" },
+        "reply": { "type": "integer", "minimum": 1, "description": "Where the refusal is a reply in Word to the proposal's comment: its number under literature/currency/replies/. `why` is then the reply's words, and `by` its author as authors.yaml names them." },
+        "assessed_by": { "$ref": "#/$defs/person", "description": "Who read the reply as a refusal (`references --assess`)." }
       },
-      "if": { "properties": { "status": { "const": "refused" } } },
-      "then": { "required": ["why"] }
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "refused" } } },
+          "then": { "required": ["why"] }
+        },
+        {
+          "if": { "required": ["reply"] },
+          "then": { "required": ["assessed_by"], "properties": { "status": { "const": "refused" } } }
+        },
+        {
+          "if": { "required": ["assessed_by"] },
+          "then": { "required": ["reply"] }
+        }
+      ]
     }
   }
 }

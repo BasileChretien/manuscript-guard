@@ -219,6 +219,13 @@ of each paragraph and what
 `import` merges because of it, what to carry over by hand, and how several returned copies
 are brought in one after another.
 
+## 7. Replies to reference proposals
+
+`references --comments` writes each unanswered proposal to change a citation as a comment
+in a copy for the authors. `import` files each reply to one and decides nothing. Read each
+reply and record what it says, quoting its words exactly; a refusal is the author's to
+confirm. See [references/reference-proposals.md](references/reference-proposals.md).
+
 ## If you are a model doing this
 
 Never run `--apply` without having read the dry run in full, and never report an import as

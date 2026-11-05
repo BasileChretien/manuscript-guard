@@ -1055,11 +1055,12 @@ def cmd_import(args: argparse.Namespace) -> int:
     # A document of a review panel's suggested edits (`review --suggestions`): each is a
     # tracked change, and one still undecided is neither accepted nor refused. Read as
     # accepted, as every other tracked change is, a suggestion nobody looked at would merge.
-    from manuscript_guard.tracked import TrackedError, offered_of, pending
+    from manuscript_guard.tracked import TrackedError, currency_offered_of, offered_of, pending
 
     try:
         offered = offered_of(edited) or []
         undecided = pending(edited, {entry["author"] for entry in offered}) if offered else 0
+        currency = currency_offered_of(edited) or []
     except TrackedError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
@@ -1070,6 +1071,11 @@ def cmd_import(args: argparse.Namespace) -> int:
             f"an edit nobody decided is neither, and nothing is imported while one is left."
         )
         return 1
+    # The comments the tool wrote, a panel's and reference currency's, which are not a
+    # co-author's; a reply to a currency comment is filed apart, whatever becomes of the edits.
+    ours = [*offered, *({**one, "comment": one["written"]} for one in currency)]
+    if currency and not _currency_replies(project, edited, currency, applying=args.apply):
+        return 2
     # Before the digest, and past --force: under other numbering an edit has no hunk to
     # check by hand, only a paragraph that is not the one it was made in.
     stale = carried != document_digest(project)
@@ -1080,7 +1086,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 2
     if numbered.refusal:
         print(numbering_refusal(edited.name, numbered.refusal))
-        _comments_all_the_same(project, edited, carried, numbered, offered, applying=args.apply)
+        _comments_all_the_same(project, edited, carried, numbered, ours, applying=args.apply)
         return 1
     if stale and not args.force:
         print(
@@ -1091,7 +1097,7 @@ def cmd_import(args: argparse.Namespace) -> int:
             f"  --force imports anyway: an edit is merged only where the paragraph it was "
             f"made in reads as it did at the build, and every hunk still has to be read."
         )
-        _comments_all_the_same(project, edited, carried, numbered, offered, applying=args.apply)
+        _comments_all_the_same(project, edited, carried, numbered, ours, applying=args.apply)
         return 1
 
     try:
@@ -1116,7 +1122,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         # The comments need no identifier to be read, and are the most useful thing in the
         # document: refusing the edits is no reason to drop them. With no telling which
         # document it is they have no record to go in, so they are printed and not filed.
-        threads = _threads(project, edited, {}, offered) or []
+        threads = _threads(project, edited, {}, ours) or []
         _report_comments(threads)
         if threads:
             print(f"\nThe comments are not filed: each is filed with the document it was made "
@@ -1349,7 +1355,7 @@ def cmd_import(args: argparse.Namespace) -> int:
 
     # Each comment, anchored where the import vouches for the paragraph it was made on, with
     # the identifier that paragraph has now, as `respond --open` anchors a point.
-    threads = _threads(project, edited, {name: name for name in trusted} | dict(followed), offered)
+    threads = _threads(project, edited, {name: name for name in trusted} | dict(followed), ours)
     unread = threads is None
     threads = threads or []
     if plan.empty and not threads and not strangers and not unaccounted and not unread:
@@ -1420,6 +1426,35 @@ def cmd_import(args: argparse.Namespace) -> int:
     ) or (not args.apply and bool(plan.moved or plan.merged))
     # A paragraph not compared is not applied either, nor a comment that could not be filed.
     return 1 if outstanding or strangers or unaccounted or not filed or unread else 0
+
+
+def _currency_replies(project, edited: Path, offered: list[dict], *, applying: bool) -> bool:
+    """What `import` says of the replies to the comments `references --comments` wrote, and
+    with `--apply` each filed under literature/currency/replies/ (`currency.replies`). Filed
+    as Word kept them, they decide nothing: `references --assess` records what each says.
+    False where they could not be read or filed, with the reason."""
+    from manuscript_guard.currency.replies import file_replies, replies_in
+    from manuscript_guard.tracked import TrackedError
+
+    try:
+        found = replies_in(edited, offered)
+        said = file_replies(project, edited, found, applying=applying)
+    except (TrackedError, ContractError, FileExistsError, OSError) as exc:
+        print(f"manuscript-guard: the replies to the reference proposals were not filed: {exc}",
+              file=sys.stderr)  # fmt: skip
+        return False
+    print(f"reference proposals in {edited.name}: {len(offered)}, replies: {len(found)}")
+    for line in said:
+        print(f"  {printable(line)}")
+    for one in found:
+        who = printable(one.by or "an unnamed author")
+        print(f"    reply by {who} to {one.offered['entry']}, quoted:")
+        print(quoted(one.text))
+    if found:
+        print("  A reply decides nothing until it is read: `manuscript-guard references "
+              "--assess <id> --reply <n> --says refuses|agrees|other --quote \"<its words>\" "
+              "--as <you>`; `references` lists them.\n")  # fmt: skip
+    return True
 
 
 def _answer_suggestions(project, decided, merged, *, applying: bool, named) -> None:
@@ -3498,7 +3533,8 @@ def cmd_passages(args: argparse.Namespace) -> int:
 def cmd_references(args: argparse.Namespace) -> int:
     """Whether each cited work is still the one to cite: alone, a row per claim in scope;
     `--explain`, one entry; `--mark`, a claim marked; `--reading`, a reading filed and the
-    rules run; `--refuse`, a proposed change refused. Exit 2 where it will not do what it is
+    rules run; `--refuse`, a proposed change refused; `--comments`, the proposals as Word
+    comments; `--assess`, what a reply to one says. Exit 2 where it will not do what it is
     asked, with the reason."""
     import json
     from dataclasses import asdict
@@ -3517,6 +3553,15 @@ def cmd_references(args: argparse.Namespace) -> int:
                 raise command.Refused("--refuse needs --why and --as, the reason and who "
                                       "refuses")  # fmt: skip
             print(command.refuse(project, args.refuse, args.why, args.as_))
+        elif args.comments:
+            return _currency_comments(project)
+        elif args.assess is not None:
+            from manuscript_guard.currency.replies import assess
+
+            if args.reply is None or not args.says or args.quote is None or not args.as_:
+                raise command.Refused("--assess needs --reply, --says, --quote and --as: the "
+                                      "reply, what it says, its words and who read it")  # fmt: skip
+            print(assess(project, args.assess, args.reply, args.says, args.quote, args.as_))
         elif args.explain is not None:
             print(command.explain(project, args.explain))
         else:
@@ -3530,6 +3575,40 @@ def cmd_references(args: argparse.Namespace) -> int:
     except (command.Refused, ContractError, FileExistsError) as exc:
         print(f"manuscript-guard references: {exc}", file=sys.stderr)
         return 2
+    return 0
+
+
+def _currency_comments(project) -> int:
+    """`references --comments`: each unanswered proposal as a Word comment on its citing
+    sentence, in a copy of the document for the authors (`currency.comments`)."""
+    from datetime import datetime, timezone
+
+    from manuscript_guard.build.document import relative_to_root
+    from manuscript_guard.currency.comments import write_comments
+
+    style = _journal_style(project, argparse.Namespace(csl=None, offline=True))
+    when = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    outcome = write_comments(project, csl=style, date=when)
+    if not outcome.proposals:
+        print("references: no proposed change waits for an answer; nothing written.")
+        return 0
+    for one in outcome.proposals:
+        decision = one.entry.decision or {}
+        said = f"{one.entry.id} @{one.entry.citekey}" + (f" {one.where}" if one.where else "")
+        what = f"{decision.get('action')} {decision.get('candidate')}"
+        print(f"  {said}: {what}: " + (f"not commented: {one.dropped}" if one.dropped
+                                       else "commented on its sentence"))  # fmt: skip
+    if outcome.report is not None and outcome.report.findings:
+        print(outcome.report.render(project.root))
+    for document in outcome.documents:
+        shown = relative_to_root(project, document)
+        print(f"\nwrote {shown}. It is for the authors, not for the journal: send it to them. "
+              "A proposal is accepted by citing the work it names (add it in Zotero, then "
+              "`manuscript-guard sync-bib`); to refuse one, reply to its comment with the "
+              f"reason. `manuscript-guard import {shown} --apply` then files each reply under "
+              "literature/currency/replies/, for `references --assess` to read.")  # fmt: skip
+    if not outcome.documents:
+        print("\nreferences: no comment could be placed; nothing written.")
     return 0
 
 
@@ -7166,8 +7245,9 @@ def build_parser() -> argparse.ArgumentParser:
         "work it cites that literature/currency.yaml marks, or whose lookup record says a "
         "later version came since) with how far its entry got. --mark adds a claim; "
         "--reading files a reading, sealed, and writes the rules' decision from two; "
-        "--refuse records a person's refusal of a proposed change. It searches nothing and "
-        "calls no model.",
+        "--refuse records a person's refusal of a proposed change; --comments writes the "
+        "proposals as Word comments in a copy for the authors, and --assess records what a "
+        "reply to one says. It searches nothing and calls no model.",
     )
     references.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     action = references.add_mutually_exclusive_group()
@@ -7179,10 +7259,22 @@ def build_parser() -> argparse.ArgumentParser:
                         help="file a reading, once and sealed, and run the rules for its entry")
     action.add_argument("--refuse", metavar="ID",
                         help="refuse an entry's proposed change (with --why and --as)")
+    action.add_argument("--comments", action="store_true",
+                        help="write each unanswered proposal as a Word comment on its sentence, "
+                        "in build/currency/suggestions.docx, for the authors")  # fmt: skip
+    action.add_argument("--assess", metavar="ID",
+                        help="record what a reply in Word to ID's comment says (with --reply, "
+                        "--says, --quote and --as); a refusal by an author answers the "
+                        "proposal")  # fmt: skip
+    references.add_argument("--reply", type=int, metavar="N",
+                            help="--assess: the reply's number")
+    references.add_argument("--says", choices=("refuses", "agrees", "other"),
+                            help="--assess: what the reply says of the proposal")
+    references.add_argument("--quote", help="--assess: the reply's words that say it, verbatim")
     references.add_argument("--why", help="--refuse: the reason")
     references.add_argument(
         "--as", dest="as_", metavar="PERSON",
-        help="--refuse: who refuses; --mark: who marks the claim",
+        help="--refuse: who refuses; --mark: who marks the claim; --assess: who read the reply",
     )  # fmt: skip
     references.add_argument("--id", metavar="ID",
                             help="--mark: put this entry on the sentence again, where no "
@@ -7640,6 +7732,9 @@ _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
     # A panel reads a LaTeX manuscript as the submission folder writes it (step 12); Word's
     # suggestions are a Markdown manuscript's.
     "review": lambda args: bool(args.suggestions),
+    # The proposals of reference currency are Word comments on a Markdown manuscript's build;
+    # the listing and the records read LaTeX.
+    "references": lambda args: bool(args.comments),
 }  # fmt: skip
 #: The commands refused a `.tex` named whatever the project's format, since they read the
 #: file given as Markdown; `impact` follows the records of any file, a header's included.

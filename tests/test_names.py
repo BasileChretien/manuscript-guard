@@ -76,6 +76,11 @@ def test_each_registry_s_way_of_writing_a_name_is_read() -> None:
         ("M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller", "Muller", True),
         ("Rei\N{LATIN SMALL LETTER SHARP S}", "Reiss", True),
         ("J{\\o}rgensen", "J\N{LATIN SMALL LETTER O WITH STROKE}rgensen", True),
+        # An accent on a dotless i, as Better BibTeX writes it, before a t: with the braces
+        # gone the accent's `\i` ran on into the letters after it and was read as `\it`.
+        ("Sal{\\'\\i}tez", "Sal\N{LATIN SMALL LETTER I WITH ACUTE}tez", True),
+        ("Sal{\\'\\i}tez", "Salez", False),
+        ("Dam{\\^\\i}tre", "Dam\N{LATIN SMALL LETTER I WITH CIRCUMFLEX}tre", True),
         ("Smith Jr.", "Smith", True),
         ("Lee", "Le", False),
         ("Chen", "Cheng", False),
@@ -88,6 +93,54 @@ def test_each_registry_s_way_of_writing_a_name_is_read() -> None:
 def test_two_family_names_are_one_person_s_by_the_lenient_folding(cited, registered, same):
     assert authors.same(cited, registered) is same
     assert authors.same(registered, cited) is same
+
+
+#: An accent's argument is one letter or one command for a letter: after an accent, `\i`
+#: and `\j` end where the letter does, whatever letters follow and however the braces
+#: stood. `B` is the `\` of TeX, `t` the letter after the accented one.
+_ON_A_DOTLESS_LETTER = [
+    ("{B'Bi}t", "\N{LATIN SMALL LETTER I WITH ACUTE}t"),
+    ("B'{Bi}t", "\N{LATIN SMALL LETTER I WITH ACUTE}t"),
+    ("B'Bi{}t", "\N{LATIN SMALL LETTER I WITH ACUTE}t"),
+    ("{B'{Bi}}t", "\N{LATIN SMALL LETTER I WITH ACUTE}t"),
+    ("{B\"Bi}t", "\N{LATIN SMALL LETTER I WITH DIAERESIS}t"),
+    ("{B^Bi}t", "\N{LATIN SMALL LETTER I WITH CIRCUMFLEX}t"),
+    ("{B`Bi}t", "\N{LATIN SMALL LETTER I WITH GRAVE}t"),
+    ("{B~Bi}t", "\N{LATIN SMALL LETTER I WITH TILDE}t"),
+    ("{B=Bi}t", "\N{LATIN SMALL LETTER I WITH MACRON}t"),
+    ("{Bu Bi}t", "\N{LATIN SMALL LETTER I WITH BREVE}t"),
+    ("{Bv Bi}t", "\N{LATIN SMALL LETTER I WITH CARON}t"),
+    ("Bv{Bi}t", "\N{LATIN SMALL LETTER I WITH CARON}t"),
+    ("{B'Bi}ota", "\N{LATIN SMALL LETTER I WITH ACUTE}ota"),
+    ("{Bv Bj}t", "\N{LATIN SMALL LETTER J WITH CARON}t"),
+    # A letter command no accent is on, and an accent on a letter.
+    ("{Bi}n", "\N{LATIN SMALL LETTER DOTLESS I}n"),
+    ("{Bc c}a", "\N{LATIN SMALL LETTER C WITH CEDILLA}a"),
+    ("Bc{c}a", "\N{LATIN SMALL LETTER C WITH CEDILLA}a"),
+    ("{Bv S}a", "\N{LATIN CAPITAL LETTER S WITH CARON}a"),
+    ("Bv{S}a", "\N{LATIN CAPITAL LETTER S WITH CARON}a"),
+]
+
+
+@pytest.mark.parametrize(("written", "printed"), _ON_A_DOTLESS_LETTER)
+def test_a_tex_letter_is_the_letter_it_prints(written: str, printed: str) -> None:
+    """Better BibTeX writes \N{LATIN SMALL LETTER I WITH ACUTE} as `{\\'\\i}`. The .bib's
+    braces are gone before the TeX is read, so "Sal{\\'\\i}tez" reached the reader as
+    `Sal\\'\\itez`, whose `\\itez` began with `\\it`, the command of italics: the name was
+    "Salez", and G7 said a work by Salitez was by somebody else."""
+    tex = written.replace("B", "\\")
+    assert authors.name_words(f"Sal{tex}ez") == authors.name_words(f"Sal{printed}ez")
+    assert authors.name_words(f"Sal{tex}ez") != authors.name_words("Salez")
+
+
+def test_a_dotless_i_no_accent_is_on_before_a_t_is_pinned() -> None:
+    """Known gaps: the braces are gone before the TeX is read, and `{\\i}t` is then `\\it`,
+    as `\\it{...}` is. No accent says the `\\i` ends there, and the longer command is read,
+    so a name written "\\c{C}{\\i}tan" is "Can"."""
+    assert authors.name_words("\\c{C}{\\i}tan") == ("can",)
+    assert authors.name_words("{\\c C}{\\i}tan") == ("can",)
+    # Before any other letter, the `\i` is the letter.
+    assert authors.name_words("\\c{C}{\\i}nar") == ("cinar",)
 
 
 def _people(*families: str) -> list[Name]:

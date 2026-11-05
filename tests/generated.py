@@ -3008,7 +3008,8 @@ def vocabularies() -> st.SearchStrategy[list[dict[str, Any]]]:
 
 # One line of a title or a keyword, for the rule that reads TeX outside maths: what opens
 # maths and what only looks as if it did, the signs past which pandoc reads none, a
-# subscript and a superscript, a character reference in each of its spellings.
+# subscript and a superscript, a character reference in each of its spellings; and for G7's
+# reading of a .bib's TeX, an accent on a dotless i before a t, braced and not.
 _LINE = (
     "\\gamma", "\\alpha", "\\textit{in vivo}", "\\pm", "\\Users", "\\", "\\\\", "\\ ", "\\$",
     "\\~", "\\^", "$", "$", "$$", "~", "^", "`", "<", ">", "[", "]", "@", "{", "}", "%",
@@ -3016,6 +3017,7 @@ _LINE = (
     "IFN-", "TNF", "release", "assays", "x", "5", "50,000", " ", " ", " ", "\t",
     "\N{NO-BREAK SPACE}", "\N{THIN SPACE}", "*", "\"", "é", "\U0002ebf0",
     "$\\gamma$", "$\\beta$1", "$p \\leq$", "$ \\gamma $", "$5", "[18F]", "CD4^+^", "CO~2~",
+    "Sal{\\'\\i}tez", "pol\\^\\itica",
 )  # fmt: skip
 
 
@@ -8876,6 +8878,11 @@ TEX_ACCENTED = (
     ('\\"O', "\N{LATIN CAPITAL LETTER O WITH DIAERESIS}"),
     ("\\c c", "\N{LATIN SMALL LETTER C WITH CEDILLA}"),
     ("\\ss ", "ss"),
+    # An accent on a dotless i, as Better BibTeX writes it with the braces gone, before the
+    # t that made `\it` of it: the t is part of the piece, so that every title has one.
+    ("\\'\\it", "\N{LATIN SMALL LETTER I WITH ACUTE}t"),
+    ("\\^\\it", "\N{LATIN SMALL LETTER I WITH CIRCUMFLEX}t"),
+    ("\\v \\it", "\N{LATIN SMALL LETTER I WITH CARON}t"),
 )  # fmt: skip
 
 

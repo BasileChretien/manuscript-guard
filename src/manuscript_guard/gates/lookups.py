@@ -114,6 +114,11 @@ _LETTERS = {"ss": "ss", "o": "o", "O": "o", "i": "i", "j": "j", "l": "l", "L": "
 #: Commands named by one letter that put an accent on the letter after them; with the braces
 #: gone that letter runs on in the command's name.
 _ACCENTS = frozenset("cvuHkrdbt")
+#: An accent written just before a command: a sign (`\'`, `\"`, `\^`) or one of `_ACCENTS`,
+#: and the space TeX passes over before the accent's argument (`{\v \i}`).
+_ACCENT_BEFORE = re.compile(r"\\(?:['`^\"~=.]|[" + "".join(sorted(_ACCENTS)) + r"]) ?\Z")
+#: The letters an accent is put on as commands: the dotless i and j.
+_DOTLESS = frozenset("ij")
 #: Commands that wrap text and leave it as it is.
 _WRAPPERS = frozenset({
     "textsubscript", "textsuperscript", "emph", "textit", "textbf", "textsc", "textrm",
@@ -146,9 +151,18 @@ def _untex(found: re.Match) -> str:
     given run on in its name (`\\ccaise`, `\\textsubscriptab`): a known name is read off
     the front and what follows it stays, and a one-letter accent leaves the letters after
     it. TeX takes the space after a command's name as part of it; where letters ran on,
-    the space after them is the word's own and stays."""
+    the space after them is the word's own and stays.
+
+    An accent's argument is one letter, or one command for a letter: after an accent, a
+    name that opens with `i` or `j` is the dotless letter and the letters after it.
+    Better BibTeX writes \N{LATIN SMALL LETTER I WITH ACUTE} as `{\\'\\i}`, so with the
+    braces gone "Sal{\\'\\i}tez" arrives as `Sal\\'\\itez`, which read by the longest name
+    was the `\\it` of italics and "ez"."""
     name, space = found.group(1), found.group(2)
-    known = next((k for k in _KNOWN if name.startswith(k)), None)
+    if name[0] in _DOTLESS and _accented(found):
+        known: str | None = name[0]
+    else:
+        known = next((k for k in _KNOWN if name.startswith(k)), None)
     if known is not None:
         rest = _LETTERS.get(known, "") + _GREEK.get(known, "") + name[len(known) :]
     elif name[0] in _ACCENTS:
@@ -156,6 +170,12 @@ def _untex(found: re.Match) -> str:
     else:
         return ""
     return rest + (space if name != known and len(name) > 1 else "")
+
+
+def _accented(found: re.Match) -> bool:
+    """Whether an accent is written just before the command `found` is."""
+    start = found.start()
+    return _ACCENT_BEFORE.search(found.string, max(0, start - 3), start) is not None
 
 
 def today() -> date:

@@ -11342,9 +11342,17 @@ _ACCENTS = (("e", "{\\'e}", "\N{LATIN SMALL LETTER E WITH ACUTE}"),
             ("o", "{\\^o}", "\N{LATIN SMALL LETTER O WITH CIRCUMFLEX}"),
             ("i", "{\\'i}", "\N{LATIN SMALL LETTER I WITH ACUTE}"))  # fmt: skip
 _PARTICLE_FORMS = ("van der", "de", "von", "da", "van")
+#: An accent on a dotless i, as a .bib writes it, and the letter a registry prints: before a
+#: t, which a reading by the longest command took with the `\i` for the `\it` of italics.
+_ON_A_DOTLESS_I = (("{\\'\\i}", "\N{LATIN SMALL LETTER I WITH ACUTE}"),
+                   ("\\'{\\i}", "\N{LATIN SMALL LETTER I WITH ACUTE}"),
+                   ("{\\^\\i}", "\N{LATIN SMALL LETTER I WITH CIRCUMFLEX}"),
+                   ('{\\"\\i}', "\N{LATIN SMALL LETTER I WITH DIAERESIS}"),
+                   ("{\\`\\i}", "\N{LATIN SMALL LETTER I WITH GRAVE}"),
+                   ("{\\v \\i}", "\N{LATIN SMALL LETTER I WITH CARON}"))  # fmt: skip
 #: What G7 is to find one person in, and what it is to find another person in.
 _SAME_NAME = ("cased", "accented", "particle", "apostrophe", "umlaut", "umlaut without its dots",
-              "hyphen", "suffix", "among the given names")
+              "hyphen", "suffix", "among the given names", "accent on a dotless i")
 _OTHER_NAME = ("a letter off", "another name", "initials are no name")
 _GIVEN = ("George", "Anna", "Maria", "Jose", "Wei", "Amara")
 
@@ -11367,6 +11375,8 @@ def _renamed(draw: st.DrawFn) -> list[tuple[str, str, str]]:
     # transcribed, and reads as another name (DESIGN.md, Known gaps).
     dot = draw(st.sampled_from([i for i in range(1, len(family)) if family[i] != "e"]))
     umlaut = family[:dot] + "\N{LATIN SMALL LETTER U WITH DIAERESIS}" + family[dot:]
+    on_i, accented_i = draw(st.sampled_from(_ON_A_DOTLESS_I))
+    within = draw(st.integers(1, len(family) - 1))
     return [
         ("cased", family, case(family)),
         ("accented", family[:at] + tex + family[at + 1 :],
@@ -11382,6 +11392,8 @@ def _renamed(draw: st.DrawFn) -> list[tuple[str, str, str]]:
         # A double surname a registry splits, its first part among the given names:
         # Crossref's given "George Davey", family "Smith", for an entry's "Davey, SG".
         ("among the given names", family, second, f"{draw(st.sampled_from(_GIVEN))} {family}"),
+        ("accent on a dotless i", f"{family[:within]}{on_i}t{family[within:]}",
+         f"{family[:within]}{accented_i}t{family[within:]}"),
         ("a letter off", family, family[:cut] + letter + family[cut + 1 :]),
         ("another name", family, second),
         ("initials are no name", family, second,
@@ -11394,10 +11406,10 @@ def test_a_family_name_is_one_person_s_however_a_registry_writes_it(
     drawn: list[tuple[str, ...]],
 ) -> None:
     """G7 holds a cited family name to a registry's by Basile's lenient folding (2026-10-20):
-    case, accents written in TeX or in Unicode, a particle, an apostrophe, ü for ue, one part
-    of a double name, a suffix and the first part of a double surname a registry filed among
-    the given names are one person's; a letter that differs, or another name, is another
-    person's."""
+    case, accents written in TeX (on a dotless i too) or in Unicode, a particle, an
+    apostrophe, ü for ue, one part of a double name, a suffix and the first part of a double
+    surname a registry filed among the given names are one person's; a letter that differs,
+    or another name, is another person's."""
     from manuscript_guard.gates import authors
 
     for kind, cited, registered, *forenames in drawn:
@@ -11968,6 +11980,13 @@ def _a_tex_command_takes_the_letters_after_it(patch: pytest.MonkeyPatch) -> None
     from manuscript_guard.gates import lookups
 
     patch.setattr(lookups, "_untex", lambda found: "")
+
+
+def _an_accent_s_dotless_i_runs_on(patch: pytest.MonkeyPatch) -> None:
+    """The reading by the longest command name alone, which took `\\'\\itez` for `\\it`."""
+    from manuscript_guard.gates import lookups
+
+    patch.setattr(lookups, "_ACCENT_BEFORE", re.compile(r"(?!)"))
 
 
 def _a_title_is_compared_both_ways(patch: pytest.MonkeyPatch) -> None:
@@ -16831,6 +16850,10 @@ BROKEN = {
         _a_title_s_tex_is_letters,
         test_a_title_in_tex_is_the_title_in_unicode,
     ),
+    "an accent's dotless i runs on into the letters after it, in a title": (
+        _an_accent_s_dotless_i_runs_on,
+        test_a_title_in_tex_is_the_title_in_unicode,
+    ),
     "a word changed ends a passage": (
         _a_word_changed_ends_the_passage,
         test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
@@ -17401,6 +17424,10 @@ BROKEN = {
     ),
     "an accent is a letter of its own": (
         _an_accent_is_a_letter_of_its_own,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "an accent's dotless i runs on into the letters after it, in a name": (
+        _an_accent_s_dotless_i_runs_on,
         test_a_family_name_is_one_person_s_however_a_registry_writes_it,
     ),
     "ue is not u with a diaeresis": (

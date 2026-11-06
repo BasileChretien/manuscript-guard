@@ -4817,6 +4817,63 @@ def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None
     assert "unemitted-table-number" in codes
 
 
+@pytest.mark.parametrize("where", ["caption", "header", "cell"])
+def test_a_binding_left_in_a_fragment_table_is_caught(project: Path, where: str) -> None:
+    """A `{{…}}` in emitted table text always prints literally, and check passed it.
+
+    A study's analysis emitted three captions still holding its own placeholders, among them
+    `{{rv10.b1_word_following.bootstrap.n_replicates}}`. Bindings are resolved in the prose
+    and never inside emitted content, so `check` reported 0 failing and `build` printed the
+    braces in the .docx. The gate reads the fragment, so it has to catch what any emitter,
+    or a hand edit, left there.
+    """
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    key = next(iter(document["tables"]))
+    binding = "{{rv10.b1_word_following.bootstrap.n_replicates}}"
+    table = document["tables"][key]
+    if where == "caption":
+        table["caption"] = f"Bootstrap of {binding} replicates."
+    elif where == "header":
+        table["columns"][0] = f"Group ({binding})"
+    else:
+        table["rows"][0][0] = f"Exposed {binding}"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    said = [f for f in gate_report(project).failures if f.code == "binding-in-table"]
+    assert len(said) == 1, said
+    assert binding in said[0].message
+
+
+def test_a_composed_caption_must_rebuild_the_caption_it_is_attached_to(project: Path) -> None:
+    """A caption can now claim composition, and the claim is held like a cell's.
+
+    Without the rebuild, one `{"caption": true}` entry with an empty template would exempt
+    whatever the caption said.
+    """
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    key = next(iter(document["tables"]))
+    document["tables"][key]["caption"] = "True mortality 4281003.55% (fabricated)."
+    document["tables"][key].setdefault("composed", []).append(
+        {"caption": True, "template": "", "parts": []}
+    )
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    said = [f for f in gate_report(project).failures if f.code == "composition-does-not-match"]
+    assert len(said) == 1 and "caption of table" in said[0].message, said
+
+
 # ------------------------------------------------- the response to the reviewers
 
 

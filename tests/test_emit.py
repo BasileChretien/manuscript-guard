@@ -214,6 +214,106 @@ def test_a_caption_built_from_emitted_values_passes(scratch: Path) -> None:
     assert em.document()["tables"]["t"]["caption"] == "Reporting odds ratio 3.84."
 
 
+def test_a_caption_can_carry_a_computed_value(scratch: Path) -> None:
+    """A caption was `str | None`, stored raw, so a count in it could only be typed.
+
+    The typed count was then refused as typed and a `Composed` failed with "'Composed' object
+    is not iterable", so the only way left was to move the sentence out of the caption into
+    the prose. A study did exactly that with three captions. Headers had the same gap and
+    were fixed by sending them through the cell formatter; the caption now goes the same way.
+    """
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.contracts import load_results
+    from manuscript_guard.gates.numbers import _emitted_tables
+
+    em = emitter(scratch)
+    em.table(
+        "t",
+        ["Group", "n"],
+        [["Exposed", 77]],
+        caption=em.cell("Reports by group, of {} reports in all.", 4000),
+    )
+    spec = em.document()["tables"]["t"]
+    assert spec["caption"] == "Reports by group, of 4000 reports in all."
+    assert {
+        "caption": True,
+        "template": "Reports by group, of {} reports in all.",
+        "parts": ["4000"],
+    } in spec["composed"]
+    write(em)
+
+    # And the gate, reading the file rather than the emitter, verifies it the same way.
+    results, report = load_results(scratch / "results")
+    assert report.ok, report.render()
+    assert results.tables["t"].caption == "Reports by group, of 4000 reports in all."
+    assert not _emitted_tables(results, Classifier.load()).findings
+
+
+def test_a_caption_composed_from_an_interval_passes(scratch: Path) -> None:
+    """Several numbers in one caption are the case the typed-composite rule exists for."""
+    em = emitter(scratch)
+    em.table(
+        "t",
+        ["Group", "n"],
+        [["Exposed", 77]],
+        caption=em.cell(
+            "Underlying the reporting odds ratio of {} (95% CI {} to {}).",
+            (12.344, 2), (8.0, 2), (19.0, 2),
+        ),
+    )
+    write(em)
+    assert em.document()["tables"]["t"]["caption"] == (
+        "Underlying the reporting odds ratio of 12.34 (95% CI 8.00 to 19.00)."
+    )
+
+
+def test_a_count_typed_into_a_caption_template_is_refused(scratch: Path) -> None:
+    """The exemption covers what the emitter formatted, not what the script typed round it."""
+    em = emitter(scratch)
+    em.table("t", ["Group", "n"], [["Exposed", 77]], caption=em.cell("{} of 412 reports.", 77))
+    with pytest.raises(DisplayError, match="caption of table 't'.*'412'"):
+        write(em)
+
+
+def test_a_single_published_value_can_be_a_caption_part(scratch: Path) -> None:
+    """A number handed straight to `caption=` is formatted like a numeric cell."""
+    em = emitter(scratch)
+    em.table("t", ["Group", "n"], [["Exposed", 77]], caption=4000)
+    write(em)
+    assert em.document()["tables"]["t"]["caption"] == "4000"
+
+
+@pytest.mark.parametrize(
+    ("where", "match"),
+    [
+        ("caption", "caption of table 't'"),
+        ("header", "column 1 header"),
+        ("cell", "row 0 column 0"),
+        ("template", "row 0 column 1"),
+    ],
+)
+def test_a_binding_left_in_emitted_table_text_is_refused(
+    scratch: Path, where: str, match: str
+) -> None:
+    """Bindings are resolved in the manuscript's prose, never inside emitted content.
+
+    A study's analysis emitted three captions still holding its own placeholders, like
+    `{{pc.design.gestural_follow_up.min_duration_minutes}}`. The emitter accepted them,
+    `check` reported nothing, and `build` printed the braces in the .docx, where a reviewer
+    found them. Inside a table a binding can only ever print literally, so it is refused.
+    """
+    binding = "{{pc.design.follow_up.min_minutes}}"
+    em = emitter(scratch)
+    caption = f"Follow-up of at least {binding} minutes." if where == "caption" else None
+    header = f"n ({binding})" if where == "header" else "n"
+    label = f"Exposed {binding}" if where == "cell" else "Exposed"
+    # In a template the braces are doubled, because `str.format` reads one pair as a slot.
+    count = em.cell("{} {{{{rv10.bootstrap.n}}}}", 77) if where == "template" else 77
+    em.table("t", ["Group", header], [[label, count]], caption=caption)
+    with pytest.raises(DisplayError, match=rf"{match}.*binding"):
+        write(em)
+
+
 def test_a_p_value_typed_into_a_cell_is_not_a_threshold(scratch: Path) -> None:
     """Cells were classified with no section, so every methods_only rule applied —
     in the one place a *reported* p-value is most likely to be written."""

@@ -98,6 +98,7 @@ ROUTES: dict[str, Route] = {
            "unit-differs-from-emitted", "estimate-outside-interval", "interval-",
            "threshold-undeclared", "prose-as-value", "quoted-alone",
            "project-exemption", "code-list-does-not-match", "composition-does-not-match",
+           "binding-in-table",
            "unemitted-table-number", "relation-", "flow-broken", "declared-same-",
            "same-as-unresolved", "family-uncorrected", "p-against-interval",
            "ratio-interval-asymmetric", "spread-label-differs", "quality-not-run",

@@ -1629,12 +1629,25 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
   # Column headers are recorded with no `row`, matching the fragment schema and the Python
   # emitter's internal keying.
   HEADER <- -2L
+  # The caption is recorded as `caption = TRUE` with no row or column, as Python does: the
+  # schema keeps `row` and `column` indexes into the table.
+  CAPTION <- -1L
 
   format_cell <- function(key, row, column, cell, digits) {
-    where <- paste0("table '", key, "' row ", row, " column ", column)
+    where <- if (identical(row, CAPTION)) {
+      paste0("caption of table '", key, "'")
+    } else if (identical(row, HEADER)) {
+      paste0("table '", key, "' column ", column, " header")
+    } else {
+      paste0("table '", key, "' row ", row, " column ", column)
+    }
     record <- function(template, parts) {
-      entry <- list(column = as.integer(column), template = template)
-      if (!identical(row, HEADER)) entry$row <- as.integer(row)
+      entry <- if (identical(row, CAPTION)) {
+        list(caption = TRUE, template = template)
+      } else {
+        list(column = as.integer(column), template = template)
+      }
+      if (!identical(row, HEADER) && !identical(row, CAPTION)) entry$row <- as.integer(row)
       if (length(parts) > 0) entry$parts <- as.list(as.character(parts))
       state$composed[[key]] <- c(state$composed[[key]], list(entry))
     }
@@ -1721,6 +1734,10 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
       function(c) format_cell(key, HEADER, c - 1L, columns[[c]], NULL),
       character(1)
     )
+    # The caption takes what a cell takes, for the reason the headers do: stored raw, a count
+    # in it could only be typed, and a typed count is refused. Formatted after the headers and
+    # before the body so the `composed` entries come out in the order Python writes them.
+    shown_caption <- if (is.null(caption)) NULL else format_cell(key, CAPTION, -1L, caption, NULL)
     body <- lapply(seq_along(rows), function(r) {
       as.list(vapply(
         seq_along(rows[[r]]),
@@ -1729,8 +1746,31 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
       ))
     })
 
+    # A binding in emitted text is never resolved, so it can only print as braces. A study's
+    # captions reached the .docx holding `{{pc.design...}}` with check clean. Python refuses
+    # this when the fragment is written; R checks no table there, so it refuses it here.
+    texts <- c(shown_caption, header, unlist(body))
+    places <- c(
+      if (!is.null(shown_caption)) paste0("caption of table '", key, "'"),
+      paste0("table '", key, "' column ", seq_along(header) - 1L, " header"),
+      unlist(lapply(seq_along(body), function(r) {
+        paste0("table '", key, "' row ", r - 1L, " column ", seq_along(body[[r]]) - 1L)
+      }))
+    )
+    found <- regmatches(texts, regexpr("\\{\\{[^{}\n]*\\}\\}", texts))
+    if (length(found) > 0) {
+      at <- which(grepl("\\{\\{[^{}\n]*\\}\\}", texts))[[1]]
+      stop(
+        places[[at]], ": '", texts[[at]], "' holds the binding ", found[[1]],
+        ", and bindings are resolved in the manuscript's prose, never inside emitted content, ",
+        "so it would print as typed. Emit the value it stands for and compose the text with ",
+        "it, as cell(\"... {} ...\", value), or move the sentence into the prose",
+        call. = FALSE
+      )
+    }
+
     spec <- list(columns = as.list(header), rows = body)
-    if (!is.null(caption)) spec$caption <- caption
+    if (!is.null(shown_caption)) spec$caption <- shown_caption
     if (!is.null(align)) {
       if (length(align) != width) {
         stop("table '", key, "': align has ", length(align), " entries, need ", width,

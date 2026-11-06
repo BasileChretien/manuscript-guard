@@ -21,16 +21,24 @@ script typed can still be checked.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 #: The heading chain claimed for table text. A table is not a Methods section and not a
 #: figure legend, so `methods_only` rules must not apply to what is written in one.
 TABLE_SECTION = ("Table",)
 
-#: A composed cell whose row is this is a column header. Fragments say `header`; this is the
-#: internal key, kept off the wire.
+#: A composed cell whose row is this is a column header. A fragment's header entry has no
+#: `row`; this is the internal key, kept off the wire.
 HEADER_ROW = -2
+#: A composed entry for the caption. A fragment says `"caption": true` and gives no row or
+#: column; this is the internal key, kept off the wire like the header's.
 CAPTION_ROW = -1
+CAPTION_COLUMN = -1
+
+#: A binding as the manuscript writes one. Bindings are resolved in the prose and nowhere
+#: else, so one inside emitted table text is printed as braces.
+_BINDING = re.compile(r"\{\{[^{}\n]*\}\}")
 
 
 @dataclass(frozen=True)
@@ -46,13 +54,18 @@ class Problem:
 def composition_of(spec: dict) -> dict[tuple[int, int], dict]:
     """The `(row, column) -> entry` map a fragment records.
 
-    A header entry omits `row`. Anything malformed is dropped rather than guessed at: an
-    unreadable claim of composition must not become an exemption, which would make a
-    corrupt fragment safer than a correct one.
+    A header entry omits `row`, and the caption's says `"caption": true` with neither. Anything
+    malformed is dropped rather than guessed at: an unreadable claim of composition must not
+    become an exemption, which would make a corrupt fragment safer than a correct one.
     """
     found: dict[tuple[int, int], dict] = {}
     for entry in spec.get("composed") or ():
-        if not isinstance(entry, dict) or not isinstance(entry.get("column"), int):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("caption") is True:
+            found[(CAPTION_ROW, CAPTION_COLUMN)] = entry
+            continue
+        if not isinstance(entry.get("column"), int):
             continue
         row = entry.get("row", HEADER_ROW)
         if not isinstance(row, int):
@@ -99,7 +112,9 @@ def places_in(key: str, spec: dict) -> list[tuple[str, str, int, int]]:
     caption reading "the reporting odds ratio of 12.34 (95% CI 8.00 to 19.00)" and a header
     reading "Hepatic injury (n = 9999)" both went into the document unchecked.
     """
-    places = [(f"caption of table {key!r}", spec.get("caption") or "", CAPTION_ROW, -1)]
+    places = [
+        (f"caption of table {key!r}", spec.get("caption") or "", CAPTION_ROW, CAPTION_COLUMN)
+    ]
     places += [
         (f"table {key!r} column {column} header", str(text), HEADER_ROW, column)
         for column, text in enumerate(spec.get("columns") or ())
@@ -129,6 +144,29 @@ def problems_in(
     found: list[Problem] = []
 
     for where, cell, row, column in places_in(key, spec):
+        # A binding in emitted text is never resolved, so it can only print as braces.
+        #
+        # A study's analysis emitted three captions still holding its own placeholders, like
+        # `{{pc.design.gestural_follow_up.min_duration_minutes}}`. Nothing here read them for
+        # one: `check` reported 0 failing and the build printed the braces in the .docx. Read
+        # on the rendered text, before any exemption, because a composed cell prints what its
+        # template renders and a code list cell prints its join, braces and all.
+        binding = _BINDING.search(cell)
+        if binding is not None:
+            found.append(
+                Problem(
+                    where=where,
+                    text=cell,
+                    code="binding-in-table",
+                    message=f"{cell!r} holds the binding {binding.group(0)}, and bindings are "
+                    f"resolved in the manuscript's prose, never inside emitted content, so it "
+                    f"would print as typed. Emit the value it stands for and compose the text "
+                    f'with it, as cell("... {{}} ...", value), or move the sentence into the '
+                    f"prose",
+                )
+            )
+            continue
+
         # A cell the emitter composed is checked on its template, not its result.
         #
         # Every part of a composed cell went through `derive_display`, so the numbers in it

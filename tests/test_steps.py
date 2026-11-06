@@ -979,3 +979,35 @@ def test_the_checking_page_shows_a_code_step_s_function_beside_its_paragraph(
     assert shown["evidence"][1]["lines"][0] == [4, "def _weights(n):"]
     edit_code(root, "return sum(r * x", "return max(r * x")
     assert {block.get("note") for block in item()["evidence"]} == {CODE_STALE}
+
+
+@needs_git
+@pytest.mark.parametrize(
+    ("was", "now", "code"),
+    [
+        ("return sum(r * x", "return max(r * x", "method-code-changed"),
+        ("def fit_stacked(rows):", "def fit_unstacked(rows):", "method-code-missing"),
+    ],
+    ids=["changed", "missing"],
+)
+def test_a_code_step_s_code_binds_from_internal_review_as_a_step_s_does(
+    tmp_path: Path, was: str, now: str, code: str
+) -> None:
+    """Basile, on round 1 of #564: the code a step names changing is held as a step whose code
+    changed is, failing from internal review onwards, and not due while drafting."""
+    from test_emit_code_step import edit as edit_code
+
+    from manuscript_guard.findings import FAIL, INFO
+    from manuscript_guard.policy import DRAFTING, apply_stage
+
+    root = code_study(tmp_path)
+    edit_code(root, was, now)
+    report = judged(root)
+    assert code in {f.code for f in report.failures}, report.render(root)
+    assert BINDS_AT[code] == BINDS_AT["method-step-changed"] == INTERNAL_REVIEW
+    drafting, deferred = apply_stage(report, DRAFTING)
+    assert [f.severity for f in drafting.findings if f.code == code] == [INFO]
+    assert deferred.get(INTERNAL_REVIEW, 0) >= 1
+    reviewing, _ = apply_stage(report, INTERNAL_REVIEW)
+    assert [f.severity for f in reviewing.findings if f.code == code] == [FAIL]
+    assert "method-code-unchecked" not in BINDS_AT, "the warning is left as it was"

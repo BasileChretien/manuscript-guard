@@ -53,9 +53,10 @@ not checked, and the run goes on: verify compares the values, which a code step 
 change. A fragment written that way in the project itself is warned of
 (`method-code-unchecked`): run the script again in the repository.
 
-`check` then holds the function in the file to the digest the run recorded, at every stage:
-edited, it fails `method-code-changed`; renamed, moved to another file or deleted,
-`method-code-missing`. The checking page marks its code as not the code that produced the
+`check` then holds the function in the file to the digest the run recorded: edited, it
+reports `method-code-changed`; renamed, moved to another file or deleted,
+`method-code-missing`. Both fail from `internal-review`, as `method-step-changed` does, and are
+not yet due while drafting. The checking page marks its code as not the code that produced the
 results.
 
 ## When the results are made again

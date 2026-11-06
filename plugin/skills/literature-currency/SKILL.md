@@ -82,8 +82,11 @@ manuscript-guard references --explain c1   # the searches, and the candidates th
 a reading says. Do not add `--readings`, which prints each filed reading's fields and
 quotes: that is for the person who answers the entry, after the readings are in.
 
-Read the cited work and each candidate from its works record under `literature/currency/`,
-and nowhere else. For each, fill:
+Read the cited work and each candidate from its works record in
+`literature/currency/works/`, and nowhere else. Until your own reading is filed, do not open
+`literature/currency/readings/`, which holds the readings filed before yours, and do not
+run `manuscript-guard check`, whose `currency-quote-not-found` quotes them. For each work,
+fill:
 
 - R1 `level` on the scale, from the hierarchy (`data/evidence_hierarchies.yaml` in the
   package, or the project's own).

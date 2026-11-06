@@ -526,6 +526,37 @@ def test_explain_shows_a_second_reader_nothing_of_the_first_reading(project: Pat
     assert "readings: 1 filed, 1 of them unusable" in said and "harms-often" not in said
 
 
+def test_explain_names_nothing_a_reading_contested_or_named(project: Path) -> None:
+    """Round 1 of #543: without `--readings`, the rules' why for `uncertain` named the
+    candidate the readings split on, and the works the store lacks named candidates only an
+    earlier reading listed. A third reader was told where to look before reading."""
+    from manuscript_guard.gates.currency import check_currency
+
+    case.case(project, readings=False)
+    case.file(project, case.reading("Bo Example"), "first")
+    case.file(project, case.reading("Cy Example", level=3), "second")
+    loaded = load_project(project)[0]
+    said = command.explain(loaded, "c1")
+    assert "the rules give: uncertain (D4): the readings disagree" in said
+    assert "what decides" not in said and case.CANDIDATE not in said
+    assert "what decides doi:10.5555/class.trial.2023" in command.explain(loaded, "c1",
+                                                                          readings=True)
+    uncertain = [f for f in check_currency(loaded).findings if f.code == "currency-uncertain"]
+    hint = uncertain[0].hint
+    assert "a person reads the readings with `manuscript-guard references --explain c1 " \
+        "--readings`" in hint  # fmt: skip
+    assert "a third reader runs `manuscript-guard references --explain c1`, without " \
+        "`--readings`" in hint  # fmt: skip
+    # A candidate only a reading names, with no works record: not named either.
+    other = "doi:10.5555/only.read.2024"
+    third = case.reading("Di Example")
+    third["candidates"].append({**third["candidates"][0], "work": other})
+    case.file(project, third, "third")
+    said = command.explain(load_project(project)[0], "c1")
+    assert other not in said and "1 work a reading names" in said, said
+    assert other in command.explain(load_project(project)[0], "c1", readings=True)
+
+
 def test_explain_says_no_decision_without_the_works_and_an_accepted_proposal_as_one(
     project: Path,
 ) -> None:

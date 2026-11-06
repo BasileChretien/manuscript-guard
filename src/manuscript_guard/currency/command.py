@@ -166,12 +166,17 @@ def explain(project: Project, entry_id: str, readings: bool = False) -> str:
         lines.append(f"  the rules: {len(usable)} reading(s); they decide from "
                      f"{rules.READINGS}")  # fmt: skip
     else:
+        # Round 1 of #543: D4's why names what the readings split on, which a third reader
+        # is not to be told before reading.
+        why = given.why if readings or given.action != rules.UNCERTAIN \
+            else "the readings disagree"  # fmt: skip
         lines.append(f"  the rules give: {given.action}"
                      + (f" {given.candidate}" if given.candidate else "")
-                     + f" ({', '.join(given.rules)}): {given.why}")  # fmt: skip
+                     + f" ({', '.join(given.rules)}): {why}")  # fmt: skip
     if absent:
-        lines.append(f"  (the works store holds no record of {', '.join(absent)}: the rules "
-                     "decide nothing until it does)")  # fmt: skip
+        shown = _absent(entry, absent, held, readings)
+        lines.append(f"  (the works store holds no record of {shown}: the rules decide "
+                     "nothing until it does)")  # fmt: skip
     if entry.decision:
         accepted = entry.id in survey(project)[0].accepted
         lines.append(f"  decision: {state_of(entry, held, accepted)}"
@@ -183,6 +188,26 @@ def explain(project: Project, entry_id: str, readings: bool = False) -> str:
 
     lines += explained(project, entry, entry.id in survey(project)[0].accepted)
     return "\n".join(lines)
+
+
+def _absent(entry: records.Entry, absent: list[str], held, readings: bool) -> str:
+    """The works the store lacks, as `explain` names them. Without `readings`, a work only a
+    reading names is counted, not named (round 1 of #543): the cited work and the works a
+    search found are no reader's."""
+    if readings:
+        return ", ".join(absent)
+    found = {str(work) for read in held.searches.get(entry.id, []) if read.problem is None
+             for work in read.record.get("candidates") or []}  # fmt: skip
+    named = [work for work in absent if work in found or not _read_only(entry, work, held)]
+    left = len(absent) - len(named)
+    return ", ".join([*named, *([f"{left} work{'s' if left > 1 else ''} a reading names"]
+                                if left else [])])  # fmt: skip
+
+
+def _read_only(entry: records.Entry, work: str, held) -> bool:
+    """Whether `work` is a candidate a filed reading names."""
+    return any(str(one["work"]) == work for read in held.readings.get(entry.id, [])
+               if read.problem is None for one in read.record.get("candidates") or [])
 
 
 def _search_line(one: dict) -> str:

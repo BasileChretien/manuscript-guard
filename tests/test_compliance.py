@@ -921,6 +921,13 @@ def test_the_example_demonstrates_every_public_emitter_api() -> None:
     # copy standing for data it does not hold apart. docs/vault.md shows it, and
     # tests/test_vault_run.py runs it in both cases and in R.
     public -= {"vault_input"}
+    # `code_step` names code an earlier pinned run executed, for a script that only renders
+    # that run's results again, held to the commit or tag of the run. The example runs its
+    # whole analysis under the emitter and is copied without its git history, so a code step
+    # in it would have no commit to name, and every copy would warn that it was never checked.
+    # The methods-writer skill's references/code-steps.md shows it, and
+    # tests/test_emit_code_step.py runs it in a repository and without one.
+    public -= {"code_step"}
 
     # Parsed, not searched. `.code_list(` inside a comment or a docstring satisfies a text
     # search, so an example could stop demonstrating an API while this still passed - the

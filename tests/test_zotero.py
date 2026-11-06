@@ -68,6 +68,10 @@ class FakeBBT:
             zotero = "9.0.6" if not self.better_bibtex.startswith(("6.", "7.")) else "6.0.30"
             return {"zotero": zotero, "betterbibtex": self.better_bibtex}
         if method == "item.export" and params[1] == "BetterBibTeX JSON":
+            # Asked of the user's library, as an export with no library is.
+            mine = {i["citation-key"] for i in self.items if i["library"] == 1}
+            if not set(params[0]) <= mine:
+                raise ZoteroRefused("Better BibTeX refused item.export: key not found")
             preferences = {"citekeyFormat": "auth.lower + shorttitle(3, 3) + year",
                            "resetKeyOnChange": self.reset_key_on_change}  # fmt: skip
             return json.dumps({"config": {"preferences": preferences}, "items": []})
@@ -224,6 +228,30 @@ def test_a_better_bibtex_8_that_renews_keys_or_gives_no_preferences_is_held_to_e
                    refuse={"item.export"})  # fmt: skip
     monkeypatch.setattr(client, "rpc", fake)
     assert lookup(("a", "b")).unpinned == {"b"}
+
+
+def test_the_preferences_are_read_by_a_key_of_the_users_library(monkeypatch) -> None:
+    """Round 2 of #540: the first key in order was a group library's, the export asked the
+    user's library for it, and every key was held to Extra again."""
+    fake = FakeBBT([csl("mineKey2019", False), csl("aGroupKey2020", False, library=7)],
+                   better_bibtex="9.0.77")  # fmt: skip
+    monkeypatch.setattr(client, "rpc", fake)
+    result = lookup(("aGroupKey2020", "mineKey2019"))
+    assert result.found == result.pinned == {"aGroupKey2020", "mineKey2019"}
+    assert ("item.export", [["mineKey2019"], "BetterBibTeX JSON"]) in fake.calls
+
+
+def test_an_export_given_as_a_list_is_read(monkeypatch) -> None:
+    """Round 2 of #540: `export` reads a result that is a list holding the text; so does the
+    reading of the preferences."""
+    fake = FakeBBT([csl("a", False)], better_bibtex="9.0.77")
+
+    def as_a_list(method: str, params, timeout: int = 20):
+        answer = fake(method, params, timeout)
+        return [answer] if method == "item.export" else answer
+
+    monkeypatch.setattr(client, "rpc", as_a_list)
+    assert lookup(("a",)).pinned == {"a"}
 
 
 def test_the_whole_library_fallback_takes_a_better_bibtex_8_key_as_pinned(monkeypatch) -> None:

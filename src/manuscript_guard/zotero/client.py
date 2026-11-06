@@ -212,6 +212,8 @@ def _preferences(sample: str, timeout: int) -> dict | None:
     is refused or holds none."""
     try:
         exported = rpc("item.export", [[sample], "BetterBibTeX JSON"], timeout=timeout)
+        if isinstance(exported, list) and exported:  # as `export` reads it too
+            exported = exported[0]
         preferences = json.loads(str(exported))["config"]["preferences"]
     except (ZoteroRefused, ValueError, KeyError, TypeError):
         return None
@@ -277,6 +279,9 @@ def lookup(citekeys: tuple[str, ...], timeout: int = GATE_TIMEOUT) -> Lookup:
         return Lookup()
     try:
         found, counts = _resolve(list(keys), None, timeout)
+        # A key of the user's own library to read the preferences by: the export is asked of
+        # that library, and the preferences are the same whichever item gives them.
+        sample = min(found) if found else None
         unresolved = sorted(k for k, n in counts.items() if n == 0)
         for library_id in _group_libraries(timeout) if unresolved else []:
             more, more_counts = _resolve(unresolved, library_id, timeout)
@@ -285,7 +290,7 @@ def lookup(citekeys: tuple[str, ...], timeout: int = GATE_TIMEOUT) -> Lookup:
             unresolved = sorted(k for k, n in more_counts.items() if n == 0)
             if not unresolved:
                 break
-        always = bool(found) and keys_always_pinned(timeout, min(found))
+        always = sample is not None and keys_always_pinned(timeout, sample)
         pinned = frozenset(found) if always else _pinned_keys(timeout)
     except ZoteroRefused:
         # A Better BibTeX without item.pandoc_filter or condition searches: fall back to

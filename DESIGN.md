@@ -160,7 +160,10 @@ These were tested, not assumed, and they determine the architecture.
   8.0.38 changelog names. `lookup` takes every found key as pinned from 8 on unless
   `resetKeyOnChange` is true; a Better BibTeX that gives no version or no preferences is
   held to Extra, as before. Nothing here was probed with that preference on: that a key
-  then changes is the preference's own description, not something seen.
+  then changes is the preference's own description, not something seen; nor is any other
+  setting read that renews keys, such as the `autoPinOverwrite` of 8.0.38. The export is
+  asked of a key the user's own library resolved, since it names no library, and a timeout
+  in it stops the Zotero side of G7 as a timeout of any other call does.
 - **Word does not carry a paragraph's identifier when it cuts the paragraph** (Word 365,
   driven over COM on the example's build, 2026-09-24). The identifier is an empty bookmark,
   and Word leaves an empty bookmark where it stood. With Track Changes on, it stays in the

@@ -7,8 +7,10 @@ Three failures this catches, in descending order of how quietly they happen:
    citation using the old key stops resolving, and the failure surfaces as a missing
    reference in a built document rather than as an error. Before Better BibTeX 8, pinning
    is one line in the item's Extra field (`Citation Key: xyz`) and it removes the whole
-   class; from 8, every key is kept in Zotero's own field, and only the preference that
-   gives an item a new key when it changes (`resetKeyOnChange`) brings the class back.
+   class; from 8, every key is kept in Zotero's own field, and the preference that gives
+   an item a new key when it changes (`resetKeyOnChange`) brings the class back. Another
+   setting that renews keys, such as the `autoPinOverwrite` Better BibTeX 8.0.38's changelog
+   names, is not read (DESIGN.md).
 2. **A citation key that resolves to nothing, or to several items.** A typo, an item deleted
    from the library, or a duplicate: two items carrying one key, which Better BibTeX refuses
    to export, so `sync-bib` stops on it.
@@ -134,8 +136,9 @@ def check_citations(project: Project, literature: Literature) -> Report:
                 hint=f"an unpinned key is regenerated from metadata and will change under "
                 "you. With Better BibTeX before 8, put the line `Citation Key: "
                 f"{citekey}` at the top of the item's Extra field, or update Better BibTeX: "
-                "from 8 it keeps every key in Zotero's own Citation Key field. From 8, turn "
-                "off its preference to update a key when the item changes",
+                "from 8 it keeps every key in Zotero's own Citation Key field. From 8, a key "
+                "is taken as pinned where its preferences can be read and the one to update "
+                "a key when the item changes is off",
             )
         )
 

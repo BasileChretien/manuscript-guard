@@ -18242,6 +18242,9 @@ Open, recorded as each change landed:
   name, not a method called on an object nor a function of another module, and `check` holds
   it to the file as it is now (`method-code-changed`, `method-code-missing`). Python only:
   `check` re-reads the definition with Python's parser, and has no R one.
+- **A code step's search for a `.git` above its file ignores `GIT_CEILING_DIRECTORIES`.** A
+  `.git` above the ceiling, which git does not look past, still keeps the step from being
+  recorded unchecked: it is refused, failing closed.
 - **A pair whose text and code both changed is one never read.** A text is a changed one
   only while the step's code is as the lock has it. With both changed since the pair was
   read, the finding is `method-pair-unread` and does not say what the text was.

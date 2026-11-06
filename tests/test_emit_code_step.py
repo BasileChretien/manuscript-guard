@@ -262,6 +262,61 @@ def test_git_that_fails_in_a_repository_refuses_and_does_not_pass_as_no_reposito
     assert "config" in str(refused.value), "git's own message is carried"
 
 
+def _french_git_mo(folder: Path) -> Path:
+    """A one-message French catalogue for git, under `folder`/fr/LC_MESSAGES/git.mo: enough
+    for git to say "not a git repository" in French, which is all the test needs."""
+    import struct
+
+    out = folder / "fr" / "LC_MESSAGES"
+    out.mkdir(parents=True, exist_ok=True)
+    pairs = sorted({
+        "": "Content-Type: text/plain; charset=UTF-8\n",
+        "not a git repository (or any of the parent directories): %s":
+            "ni ceci ni aucun de ses répertoires parents n'est un dépôt git : %s",
+    }.items())  # fmt: skip
+    ids = [key.encode() for key, _ in pairs]
+    strs = [value.encode() for _, value in pairs]
+    n = len(pairs)
+    originals, translations = 7 * 4, 7 * 4 + n * 8
+    data = translations + n * 8
+    blob, table = b"", []
+    for text in [*ids, *strs]:
+        table.append((len(text), data + len(blob)))
+        blob += text + b"\0"
+    head = struct.pack("<7I", 0x950412DE, 0, n, originals, translations, 0, 0)
+    body = b"".join(struct.pack("<2I", *entry) for entry in table)
+    (out / "git.mo").write_bytes(head + body + blob)
+    return folder
+
+
+@needs_git
+def test_git_in_another_language_still_reads_as_no_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The fix round of #564: "no repository" was read from git's English message, and git
+    speaking French made the copy `verify` runs, which has no .git, refuse the step it records
+    unchecked in English. git is run in the C locale."""
+    from manuscript_guard.emit import code_at, definition_code
+
+    root = tmp_path / "project"
+    root.mkdir()
+    if any((place / ".git").exists() for place in (root, *root.parents)):
+        pytest.skip("a .git lies above the temporary folder")
+    catalogue = _french_git_mo(tmp_path / "locale")
+    french = {"GIT_TEXTDOMAINDIR": str(catalogue), "LANGUAGE": "fr", "LANG": "fr_FR.UTF-8"}
+    said = subprocess.run(["git", "rev-parse", "--show-prefix"], cwd=root, capture_output=True,
+                          env={**os.environ, **french}, check=False)  # fmt: skip
+    if "dépôt git" not in said.stderr.decode("utf-8", "replace"):
+        pytest.skip("this git was built without gettext, and speaks English whatever is set")
+    for key, value in french.items():
+        monkeypatch.setenv(key, value)
+    file = root / "fit.py"
+    file.write_text("def fit(x):\n    return x + 1\n", encoding="utf-8")
+    now = definition_code(file.read_text(encoding="utf-8"), "fit")
+    commit, why = code_at(file, "fit.py", "fit", "results-v1", now)
+    assert commit is None and why.startswith("no git repository holds fit.py here")
+
+
 def test_git_absent_from_path_is_recorded_unchecked(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

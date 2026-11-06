@@ -41,17 +41,20 @@ athlete. {{method.model.stacked}}
 
 ## What is checked, and when
 
-When the script runs where a git repository holds the file, the function's code at `at` must
-be the code in the working tree, read as code: a comment, a docstring or a re-wrapped line
-since then changes nothing; any other change, to it or to a function it calls, is refused, as
-is an `at` that names nothing, a file not in that commit, or a function not defined there. The
-step records the commit `at` named.
+When git is on PATH and a git repository holds the file, the function's code at `at` must be
+the code in the working tree, read as code: a comment, a docstring or a re-wrapped line since
+then changes nothing; any other change, to it or to a function it calls, is refused, as is an
+`at` that names nothing, a file not in that commit, or a function not defined there. Any
+failure of git there (a broken configuration, a timeout) refuses the step too, with what git
+said: the code could not be held to its commit. The step records the commit `at` named.
 
-Where no repository holds the file (`manuscript-guard verify` re-runs the script in a copy of
-the project without `.git`), the file is read as it is, the step records that the commit was
-not checked, and the run goes on: verify compares the values, which a code step does not
-change. A fragment written that way in the project itself is warned of
-(`method-code-unchecked`): run the script again in the repository.
+The step is recorded without that check in two cases only: git is not on PATH, or git says no
+repository holds the file and there is no `.git` in its folder or any folder above it (as in
+the copy of the project without `.git` that `manuscript-guard verify` re-runs the script in).
+The file is then read as it is, the step records why the commit was not checked, and the run
+goes on: verify compares the values, which a code step does not change. A fragment written that
+way in the project itself is warned of (`method-code-unchecked`): run the script again where
+git and the repository are.
 
 `check` then holds the function in the file to the digest the run recorded: edited, it
 reports `method-code-changed`; renamed, moved to another file or deleted,

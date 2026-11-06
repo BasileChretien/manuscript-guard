@@ -1208,9 +1208,14 @@ def _git_here(folder: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
     says: a pre-push hook running the tests sets GIT_DIR to its own repository, and the code
     of the file was then compared with a commit of another project. Raises ValueError where git
     cannot be run at all: that is git failing, not the absence of a repository.
+
+    In the C locale, as git is run elsewhere in the package: `code_at` reads "not a git
+    repository" from what git says, and git speaking French made the copy `verify` runs refuse
+    a step that English records unchecked (the fix round of #564).
     """
     env = {key: value for key, value in os.environ.items()
            if key not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX")}  # fmt: skip
+    env.update({"LC_ALL": "C", "LANGUAGE": "C"})
     try:
         return subprocess.run(
             ["git", *args], cwd=folder, capture_output=True, timeout=30, check=False, env=env

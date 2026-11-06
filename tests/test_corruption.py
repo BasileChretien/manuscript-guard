@@ -788,7 +788,7 @@ def test_a_count_and_a_percentage_that_coincide_are_not_one_quantity(project: Pa
     assert "divergent-display" not in codes(gate_report(project))
 
 
-@pytest.mark.parametrize("value", [0, 1])
+@pytest.mark.parametrize("value", [0, 1, -1])
 def test_a_count_and_a_bound_that_both_are_zero_or_one_are_not_one_quantity(
     project: Path, value: int
 ) -> None:
@@ -811,8 +811,39 @@ def test_a_count_and_a_bound_that_both_are_zero_or_one_are_not_one_quantity(
     fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
     write_digest(fragment)
     said = [f.message for f in gate_report(project).findings if f.code == "divergent-display"]
-    assert said == [f"2 quoted keys hold the value {value}: reliability.ci_low, "
-                    "reliability.other"], said
+    assert said == [f"2 quoted keys hold the value {value}, written with decimals: "
+                    "reliability.ci_low, reliability.other"], said
+
+
+def _two_keys(project: Path, first: tuple, second: tuple) -> list[str]:
+    """The divergent-display findings of a fragment that holds two more keys, each given as
+    (value, display, digits)."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    point = document["values"]["ror.point"]
+    for key, (value, display, digits) in (("one.key", first), ("other.key", second)):
+        document["values"][key] = {**point, "value": value, "display": display, "digits": digits}
+        document["values"][key].pop("unit", None)
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    return [f.message for f in gate_report(project).findings if f.code == "divergent-display"]
+
+
+def test_a_count_and_a_bound_at_nought_are_two_however_the_number_was_written(
+    project: Path,
+) -> None:
+    """Round 1 of #542: R writes a double 0 as `0`, so a bound clamped at nought arrives as
+    an int beside the count. The kind is read from the display."""
+    assert _two_keys(project, (0, "0", 0), (0, "0.00", 2)) == []
+
+
+def test_a_value_written_whole_and_with_decimals_elsewhere_is_still_one_quantity(
+    project: Path,
+) -> None:
+    """Round 1 of #542: away from nought and one, a count emitted again with decimals is
+    still one quantity written two ways."""
+    assert _two_keys(project, (2, "2", 0), (2.0, "2.00", 2)) == [
+        "2 quoted keys hold the value 2: one.key, other.key"]
 
 
 def test_a_display_edited_away_from_its_value_is_caught(project: Path) -> None:

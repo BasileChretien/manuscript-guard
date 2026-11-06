@@ -14208,11 +14208,11 @@ run in CI without a licence. So (answer 7):
 
 ### Pull requests, in order
 
-None touches the version lines. Each brings its README rows, its part of this section, its Known
-gaps, its failures in `tests/test_corruption.py`, and its new codes in `policy.py`, with their
-stage and severity, which `tests/test_policy.py` pins, and in `guide/routes.py` for `next`. A
-reader of text is held over generated inputs (`tests/generated.py`, `tests/readings.py`), with a
-broken rule tried under a dozen seeds.
+None touches the version lines. Each brings its rows in `docs/commands.md`, its part of this
+section, its Known gaps, its failures in `tests/test_corruption.py`, and its new codes in
+`policy.py`, with their stage and severity, which `tests/test_policy.py` pins, and in
+`guide/routes.py` for `next`. A reader of text is held over generated inputs
+(`tests/generated.py`, `tests/readings.py`), with a broken rule tried under a dozen seeds.
 
 0. This section. Docs only.
 1. **M2, the results table.** `harvest`'s `format:` key, the reader through the emitter, the keys
@@ -14236,9 +14236,9 @@ broken rule tried under a dozen seeds.
    `identity:` and `dataset:`. After 1 and 2.
 5. **Adapters from other packages.** The entry-point group, the adapter's name and version in
    `provenance.harvested` (`results.schema.json`, beside `harvest.schema.json`) with the
-   refusals in `verify` and `vault release`, the clash of names,
-   `manuscript-guard adapters` (its row in the README and in `test_reads_nothing.py`), the
-   conformance kit, and a test package installed into a scratch environment that proves an
+   refusals in `verify` and `vault release`, the clash of names, `manuscript-guard adapters`
+   (its row in `docs/commands.md` and in `test_reads_nothing.py`), the conformance kit, and a
+   test package installed into a scratch environment that proves an
    adapter found by its entry point is held as a built-in one is. After 4, and before the first
    OMOP reader, so that the built-in readers are written to the interface a third party gets.
 6. **The counts of a harvested output.** `count` on every value, the count map in
@@ -14636,6 +14636,21 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and
   "%", "years" and "y"), is no longer reported as written two ways.
+- **G8 tells a count from a measure at nought and one by how each is written.** At 0, 1 and
+  −1 a value is keyed by its kind as well as its value and unit: written whole ("0", "1") or
+  with decimals ("0.00", "1.0"), as its display shows it (2026-11-06: a count of none
+  beside a bound clamped at nought, and a count of one beside a bound at 1.00, failed the
+  athlete-leakage paper's build as one quantity written two ways). The cost: at those three
+  values one quantity written "1" in one place and "1.0" in another, or "0" and "0.00", is
+  taken for two and nothing is said; `same_as` holds such a pair (rounds 1 and 2 of #542;
+  `test_one_quantity_written_whole_and_with_decimals_at_nought_or_one_is_not_said` holds
+  it). Any point in the display counts as decimals, one in unit text the display grammar
+  accepts or in a comparator included: two keys at 0 with no `unit`, shown "0 a.u." and
+  "0", are taken for two and nothing is said, where before #542 they failed as
+  `divergent-display`, and "<0.001" for a value of 0 is "with decimals" (round 2 of #542,
+  finding 1; the reviewer counted it contrived, since it needs a unit typed into the
+  display, no `unit` field and a value at nought or one). Closed by reading the kind from
+  the number the display grammar matched.
 - **G8 holds only the arithmetic an analysis declares.** `em.relation` and `em.flow` say
   which results are a sum, a difference, a ratio or an order of which, and G8 checks those.
   A subgroup total nobody declared is not checked, and nothing searches the prose for numbers
@@ -14694,6 +14709,23 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   the tests that assert on pandoc's output were written against. It refuses to run the
   suite with any other. An author's pandoc may be older or newer, and nothing here checks
   that the build and the import behave the same with it.
+- **The latex job's TeX packages come from the cache only once a run has kept them.** The
+  job keeps the .deb files it installs in the Actions cache, under a key made of what apt
+  would fetch, and hands apt only the kept files the mirror's index lists, each checked
+  against its checksum (#555, after five runs on 5 and 6 November 2026 spent the job's 30
+  minutes on a mirror sending 50 kB/s). A run that finds no kept files at all, as main's
+  first after #555 did, or one after the cache has gone unused for seven days, downloads
+  from the mirror as before, and in a slow spell is still cancelled at 30 minutes;
+  `apt-get update` reads the mirror's index every time. That the runner's image keeps the
+  files after the install is seen only in a run's log: were it to stop, the keep step
+  would warn and the save step would still save `~/tex-debs`, empty or partial, under the
+  key, so later runs find the key, skip both steps and download every time, and the job
+  passes (round 1 of #563). The checksum is
+  MD5, which catches a corrupt file and is not what protects the cache: only runs on main
+  write the cache that main's runs read.
+  `test_the_latex_job_keeps_its_tex_packages_under_one_key` holds the listing, restore,
+  keep and save steps to one folder and one key, in that order (round 1 of #555); nothing
+  in the suite can hold that a run finds the cache.
 - **Digests are byte-level, so line endings are part of the guarantee.** `.gitattributes`
   pins `eol=lf` here, and `init` now writes the same file into every scaffolded project:
   without it Git stores LF and hands Windows CRLF, and every byte-level check reports a
@@ -15665,6 +15697,16 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   spelt in two cases is two inputs, and a path in another case than the disk's names no
   file in a clone on Linux. A `.txt` input is digested as its bytes, so a copy checked out
   with CRLF line ends reads as changed.
+- **The Python emitter blames `paper.yaml` for any project it cannot load.** Where the
+  project root holds a `paper.yaml`, `Emitter._classifier` reports whatever `load_project`
+  raises as "paper.yaml could not be read, so its terms and conventions were not applied",
+  and `load_project` parses `authors.yaml` too: with a sound `paper.yaml` holding
+  `terms: [E2a]` and an `authors.yaml` that does not parse, a refused cell says paper.yaml
+  could not be read, followed by the parse error, which names `authors.yaml` (round 1 of
+  #544). The analysis runs on with the shipped classifier either way, and a bad
+  `authors.yaml` costs it the project's terms and conventions, as it did before #544.
+  Closed by saying the project could not be loaded, or by reading the terms and
+  conventions from `paper.yaml` alone.
 - **Inputs kept by Git LFS or git-annex.** Results written from an analysis run on an
   unfetched pointer read as `input-changed`; a pointer's size written as "²" raises; a
   large input is hashed twice.
@@ -17252,21 +17294,45 @@ Open, recorded as each change landed:
   does not (fenced code, indented code, HTML comments) and a sign flipped or prose
   vanished. A false alarm is the cheaper mistake.
 - **A number in the outputs starts at its point only where nothing joins the point to a
-  word.** APA's ".661" and "-.30" are read as 0.661 and -0.3 after a space, a bracket, a
-  sign, `=`, `:`, `,` or a pipe (2026-11-06: they went in as 661 and 30, so an APA p or r
-  never matched). After a letter, a digit, an underscore or another point, a point starts
-  none, so that `a.0.b`, `1.2.7` and `...5` stay names, versions and ellipses: an output
-  that writes a value as `est.661` holds 661 for it, not 0.661.
+  word.** APA's ".661" and "-.30" are read as 0.661 and -0.3 (2026-11-06: they went in as
+  661 and 30, so an APA p or r never matched). A point starts a number after anything but a
+  letter, a digit, an underscore or another point (a space, `=`, `(`, `%`), so that `a.0.b`,
+  `1.2.7` and `...5` stay names, versions and ellipses: an output that writes a value as
+  `est.661` holds 661 for it, not 0.661. A sign before the point counts where a sign before
+  a digit does (`_SIGN_MAY_FOLLOW`): after a space, an opening bracket, `=`, `:`, `,`, a
+  pipe, a dash and the like, and not after a closing bracket, so in "(a)-.30" the hyphen is
+  no sign (round 1 of #552, finding 3: this entry said "a bracket"). The Abstract reader's
+  `_decimal` takes an en dash for a sign before a digit only, so with "–.45" in the Results
+  and "–.5" in the Abstract the Abstract's value is listed as not found rather than as a
+  rounding of it; a hyphen or U+2212 works (finding 1; before #552 no "–.45" was read at
+  all). On the paper's side, "–.45" in a range typed with a space before its dash, "between
+  .30 –.45", reads as -0.45, as "–0.45" already did (finding 2). The property over
+  generated inputs holds the outputs' reader (`_numbers_in`) only; the paper's split of
+  ".72–.82" and the Abstract reader go through the same `_NUMBER` and are held by two fixed
+  cases (finding 4).
 - **A Markdown reference list ends at any line shaped as a thematic break.** `---`, `***`
   or `___`, spaced or indented up to three spaces, ends it as a heading does (2026-11-06: a
   note after a rule under the list was read as one more entry with no number, so the list
-  was "not numbered" and held no citation, silently). A line of dashes directly under a
-  line of text is its setext underline and no break, as in CommonMark, and a line indented
-  four spaces is code. Otherwise the shape is read, not pandoc's reading of it, so a simple
-  table's dashed rule under the heading, after a blank line, ends the list there too,
-  and the entries below it are read as the paper's text: a false alarm, the cheaper
-  mistake. A .docx has no thematic break in the text the audit reads, and a horizontal line
-  Word draws ends nothing.
+  was "not numbered" and held no citation, silently). So a break typed between two groups
+  of entries, primary and secondary sources say, ends the list at the first group, and a
+  citation of an entry after it is reported as `citation-beyond-list`; a `***` right under
+  the heading leaves the list empty (round 1 of #553, finding 2). A dash-shaped line
+  directly under a line of text is taken for a setext underline and ends nothing, whatever
+  its shape: a spaced `- - -` directly under an entry, which CommonMark reads as a break,
+  lets the list run on to the next heading, as before #553 (round 2 of #553, finding 1),
+  and so does `---` directly under an ATX `# References` (finding 3). A plain `---`
+  directly under any entry makes that entry a setext heading, which ends the list above
+  it: with entries 1 to 4 and `---` under entry 2, entries 2 to 4 are read as prose
+  (found checking round 2, widened in round 1 of #563; the same before #553). The generated
+  reference lists put every break
+  after a blank line, so a rule that passed over every dash line with text above it would
+  pass the property (round 2, finding 2). A line indented four spaces is code. Otherwise
+  the shape is read, not pandoc's reading of it, so a simple table's dashed rule under the
+  heading, after a blank line, ends the list there too, and the entries below it are read
+  as the paper's text: a false alarm, the cheaper mistake. A .docx has no thematic break in
+  the text the audit reads, and a horizontal line Word draws ends nothing. Closed, for the
+  dash lines, by passing over one only where `blocks._UNDERLINE` matches it and the line
+  above is no entry, and by drawing a break directly under an entry.
 - **A .docx list under a paragraph that is no heading ends only where its shape does.** The
   cut ends at a caption, a back-matter title or a table (see "Closed since"), and otherwise
   runs to the next styled heading or the end of the body, but the report names the lines,
@@ -18105,6 +18171,20 @@ Open, recorded as each change landed:
   read as a placeholder. The essay as read on 2026-10-15 gives none of "holds great promise", "the future looks
   bright" or "may possibly"; the hedge rule takes "may possibly" as a form of the essay's
   "could potentially", and the other two are not read.
+- **An assistant's opener is read where a paragraph opens, and a line's last character
+  decides whether one does.** `assistant-voice` passes over lower-case words on a line that
+  carries on running prose from the line before, a line ending in a word, a number, a
+  comma, a semicolon, a colon or a dash (see "The AI-writing lint measures rate, not
+  presence", which gives the rule and these limits). Wrapped prose whose line ends in
+  anything else still reads as opening the next: `}` (`Table~\ref{t1}`, or a `\footnote{...}`
+  or `\cite{...}` alone on its line inside a LaTeX paragraph), `\%`, `$`, or an
+  abbreviation's stop ("Smith et al."), so "of course" at the start of the next line fails
+  (round 2 of #538, finding 3; round 4, finding 2). A sentence that opens with "Certainly"
+  or "Of course" after a wrap at a full stop fails where the same sentence on one line
+  passes (round 4, finding 4). And a reply typed in lower case under a line that ends in a
+  letter, `\noindent` or a bold label, is missed, where the rule before #538 caught it
+  (round 4, finding 3). Closing these needs the line before read as pandoc parses it, not
+  by its last character.
 - **A frozen plan holds the plan of the first run, whenever that was.** A plan written after
   results already existed is frozen as it stood on the next run, and cannot be told from one
   written first; nor can a plan changed between writing the analysis and running it. Any
@@ -18492,6 +18572,17 @@ Open, recorded as each change landed:
 - **No formatting override in bindings.** An abstract wanting a coarser rounding than the
   Results section must emit a second key. Deliberate for now: it makes the second rounding
   a visible decision. Revisit if it proves too rigid in practice.
+- **A display without its leading zero is held by examples, not by generated inputs.** From
+  #537 both emitters take ".661" as a display of 0.661 and "< .001" of a value under 0.001,
+  and `harvest` reads a cell ".661" as 0.661 and rounds it to ".66" (2026-11-06: APA 7
+  prints p and r without the leading zero, and both emitters refused them). The forms are
+  held by cases in `tests/test_emit.py`, `tests/test_r_emitter.py` and
+  `tests/test_harvest.py`; no generator draws a leading-point display or harvested cell
+  (`HARVEST_KINDS` draws none, and no property reads `derive_display`), so a change to the
+  display grammar that broke a form the cases leave out would pass (round 1 of #537, finding
+  5). The owner held the grammar to be a contract on what an analysis emits rather than a
+  reading of prose, and left it; a property over displays and harvested cells would close
+  it.
 - **`em.cell()` launders whatever its parts are.** The emitter checks that each part is a
   number it formatted and that the template's literal text carries no claim; it cannot
   check that the numbers are the right ones. `em.cell("{} ({})", low, high)` with the
@@ -18599,6 +18690,42 @@ Open, recorded as each change landed:
   which bound is which and G2 uses it in prose; a composed cell records ordered `parts`, and
   a transposition rebuilds the template exactly. The emitter refuses a transposed interval
   through one API and renders one through another.
+- **A binding in emitted table text is found in its Markdown form only, and a composed
+  template cannot hold a literal brace.** Since #557 `tables.problems_in` refuses a `{{...}}`
+  in a caption, header or cell as `binding-in-table`, at emit time and in G2, and a caption
+  can be composed (`caption=em.cell(...)`). What that leaves (round 1 of #557):
+  - *A LaTeX binding is not read.* A cell holding `\mg{results.x}`, a LaTeX project's
+    binding, is escaped by the LaTeX build and printed as typed, and nothing reports it
+    (finding 5; the reviewer found no real input of the kind).
+  - *No generated input holds the rule.* `binding-in-table` reads text, and no generator,
+    reading or property draws it (`{{}}`, `{{ }}`, `{{{x}}}`, an unclosed `{{a`, a line
+    break inside, each place a table has text): a broken pattern passes everything but the
+    fixed cases in `tests/test_corruption.py`, `tests/test_emit.py` and
+    `tests/test_r_emitter.py` (finding 6). CLAUDE.md asks for one; this is the part to close
+    first.
+  - *A literal brace.* `Composed.render` fills its template with `str.format`, which turns
+    `{{` into `{`, while `tables.rebuilt` and the R emitter split the template on `{}` and
+    keep `{{` as written. So in Python a template with a doubled brace never rebuilds to its
+    own cell: `em.cell("n ({{a.b}}, {})", 5)` renders "n ({a.b}, 5)", `rebuilt` gives
+    "n ({{a.b}}, 5)", and the table is refused as `composition-does-not-match`, where R keeps
+    `{{a.b}}` and refuses it as `binding-in-table` (found by #557's owner, and finding 4).
+    A composed cell had this before #557; a composed caption, which #557 made possible,
+    has it too. Closed by filling the template the way `rebuilt` splits it, in both
+    emitters.
+  - *A hint meant for a typed number.* Every finding of `problems_in` gets G2's hint "a
+    cell nothing published is a number with no origin", which is false for a binding
+    (finding 2).
+  - *A bare float caption or header.* The table's `digits=` reaches the body's cells only:
+    the caption and the headers go through `_cell` with no digits (`emit.py`, and R passes
+    `NULL`), so `Emitter.table(..., caption=3.84, digits=2)` is refused with "Pass `digits=`
+    to table()", advice a caption or a header cannot take (finding 3). `Emitter.table`'s
+    docstring says "The caption and the column headers take what a cell takes", and the
+    results-binding skill as round 1 of #560 read it "A caption and a header take what a
+    cell takes" (round 1 of #563): true of a `Composed`, a string and an int, and not of a
+    bare float. Its example rounds
+    inside `em.cell` with `(x, digits)`, so an agent who copies it is not caught. Closed by
+    the message naming `em.cell(...)` for a caption or a header, or by the sentence saying
+    that the table's `digits=` covers the body only.
 - **A determined fragment editor is not caught by G2, and never could be.** The table check
   catches an *inconsistent* fragment: a cell that its own `composed` entry does not rebuild,
   a number no value published, a claim of composition attached to the wrong cell. Someone
@@ -20331,7 +20458,8 @@ Open, recorded as each change landed:
   record holds flat names only (`[A-Za-z0-9_.-]+`): a copy the ledger names with a space, or in
   a folder under `sources/`, is not recorded, and fails in CI as an unrecorded one does.
   `init` never rewrites an existing `.gitignore`, so a project made before 2026-11-05 still
-  commits its copies, and nothing says so: the author adds the line, and
+  commits its copies, and only `init` run again says so, printing the line (#546; see
+  "`init`'s advice on an existing `.gitignore`"): the author adds the line, and
   `git rm -r --cached literature/sources`, which leaves the copies in the history. A
   `sync-sources` older than this change reads the second version of the record as one it
   cannot use and says to put it right or delete it; deleting it makes every recorded file the
@@ -20720,6 +20848,34 @@ Open, recorded as each change landed:
     reply with no `w14:paraId` is not read at all: nothing ties it to its comment, and its
     `w:id`, which Word renumbers, does not stand in (round 2 of #531). Word gives every
     comment's paragraph one when it saves.
+  - The `currency-uncertain` hint, and the literature-currency skill's step 5, say a third
+    reading settles an `uncertain` entry, and send a third reader to make one. It cannot:
+    `rules.decide` reads every distinct reading (`_distinct`, then `_disagreement`), and
+    what they disagree on only grows with another, so once two readings disagree the entry
+    stays `uncertain` whatever a third says. A person's decision with why settles it, and
+    so does `--replaces N`, which sets a reading aside (round 1 of #549, finding 1; the hint
+    and step 5 said so before #549). Closed by a hint and a step 5 that name those two.
+  - Without `--readings`, `--explain` counts a missing work that only a reading names ("1
+    work a reading names") and does not say how to see it: `--explain ID --readings`, or
+    `check` (round 1 of #549, finding 2). The cited work it names is the first usable
+    reading's own identification where `references.bib` gives the work no DOI or PMID
+    (`cited_id`), so there the next reader is shown an earlier reader's choice, though
+    `_absent`'s docstring calls the cited work no reader's (finding 3).
+  - `--replaces N`, where N cannot be used: a reading N whose file fails its schema or its
+    YAML is not among those `_check_replaces` looks at, so the refusal says reading N "is
+    replaced already", which is false, since N cannot be read (round 1 of #547, finding 1).
+    An edited reading N, its seal broken, is replaced without a word, but `records.current`
+    never sets an edited reading aside, so G7 still fails `currency-record-edited` on N;
+    the paragraph "Settled here, where the design left it open" says an edited reading stays
+    so, not that `--replaces` takes one (finding 2). And the next reading's number is the
+    first free one, so with readings 1 and 3 and reading 2 deleted by hand, a new reading is
+    filed as 2 and `--replaces 3` is refused as replacing no earlier reading (finding 4;
+    contrived).
+  - A reading that carries `replaces` fails the schema of an installation older than #547,
+    whose `additionalProperties: false` knows no such field, and is reported there as
+    `currency-record-edited`: a co-author's older tool, or a CI pinned to an older release,
+    fails it. The session-start hook warns of a tool older than the plugin (round 1 of #547,
+    finding 3).
 - **An appraisal of a similar study's method is judgement, not a guarantee.** G12 holds it
   to a standard and a domain that exist, and nothing more: that the method departs from the
   standard as the appraisal says, that the concern is the right one, and that the studies
@@ -21105,6 +21261,24 @@ Open, recorded as each change landed:
   read in, and `@key` in Markdown. A quotation's finding is read in the printed view, where the
   command is gone, and names every LaTeX key `\cite{key}`. A finding about an entry of
   `references.bib`, a duplicate, an identifier or a lookup, still names it `@key`.
+- **From Better BibTeX 8, a key is taken as pinned only where a key of the user's own
+  library can ask for the preferences.** `lookup` reads `resetKeyOnChange` from Better
+  BibTeX's export of one found key, and the export names no library, so it asks with a key
+  the user's own library resolved (see "From Better BibTeX 8, every key is pinned and none
+  is in Extra"). A manuscript that cites only works of a group library has no such key: no
+  preference is read, every key is held to Extra, which Better BibTeX 8 leaves empty, and
+  G7 fails each as `citation-key-unpinned` (round 3 of #540, finding 1: with
+  `FakeBBT([csl("g", False, library=7)], better_bibtex="9.0.77")`, `lookup(("g",)).pinned`
+  is empty, and with one key of the user's library beside it both are pinned). The
+  whole-library fallback, reached only where `item.pandoc_filter` or the condition search
+  is refused, still asks with `min(in_index)` across every library, so there the key can be
+  a group's and the export refused, with the same result (finding 2). The unpinned hint's
+  "where its preferences can be read" reads as the key's preferences, not Better BibTeX's
+  (finding 3). And a timeout in the export raises `ZoteroUnavailable`, as any call's does,
+  and G7's Zotero side is skipped for the run as `zotero-unreadable` (round 2, finding 2).
+  Closed by an export that names the group's library, if `item.export` takes one, or
+  another way to read the preferences; by the fallback taking its key from the user's
+  library; and by naming Better BibTeX in the hint.
 - **In LaTeX, a straight `"` after an open ``` `` ``` closes it, whatever the font.** In
   `\texttt` a typewriter font prints both as typed, but the reader reads ``` `` ``` there as an
   opening mark already, and a `"` after it as the closing one. Babel's German shorthands other
@@ -21265,7 +21439,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
     alone: G14 said "it was defined at manuscript/main.md:476" of a paper called paper.md
     (2026-11-06). A place a gate writes in another shape, or a path outside the project, is
     left as written. The line in a converted .docx is the converted text's, as the finding's
-    own is.
+    own is. The rewrite runs over the whole message and hint, the paper's words a finding
+    quotes among them, so a sentence of paper.md "TODO: see manuscript/main.md" is quoted as
+    "see paper.md" (round 1 of #545, finding 2; contrived). `audit --journal` hands
+    `run_journal` the staged lines but not the PDF's map of them, so a place in a journal
+    finding on a PDF would read "paper.pdf:N" with the staged Markdown's line; no journal
+    message writes a place today (finding 1). A staged line outside the map would read
+    "paper.pdf, line None"; no path to one was found (finding 3).
+    `test_a_place_in_a_latex_tree_is_named_by_its_path_in_the_tree` and
+    `test_a_place_a_finding_names_in_a_pdf_is_its_page_and_line` hold a LaTeX tree's and a
+    PDF's places end to end; nothing holds the journal's (finding 4).
   - The census holds citations to a list only where the entries carry their numbers, or in a
     .docx whose list one Word numbering counts 1, 2, 3 from its first entry, by each entry's
     place in its count. A count that a paragraph with words above the list is numbered in
@@ -21575,6 +21758,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
   closed by the statistician's `manuscript-guard sign`, and `next` sends it to methods-writer
   with `models`, the agent's; `sign` is never offered, since the person who signs is the
   statistician the hint names and not an option `next` can fill.
+- **`binding-in-table` is routed to `bind`, which cannot touch emitted text.** It sits in
+  `guide/routes.py`'s group of codes put right by binding the prose, though a binding left
+  in a caption, header or cell is put right in the script that emitted it, and the comment
+  beside the groups sends such codes to `check` (round 1 of #557, finding 1). So `next`
+  offers `bind` for it, which changes the manuscript and not the fragment. Closed by moving
+  the code to the group routed to `check`.
 - **One person-only warning makes its skill's group the author's.** Warnings go one action
   to a skill, so a person-only code among them (an attestation that is thin, say) makes
   every warning of that skill `who: author`, those an agent may put right among them.
@@ -21591,6 +21780,25 @@ What papers converted from Word showed (see "What papers converted from Word sho
   where the file does not name manuscript-guard. An older project's `AGENTS.md` keeps the
   rules it had, and an agent tool that reads `CLAUDE.md` where there is one reads
   `AGENTS.md` only where that file imports it.
+- **`init`'s advice on an existing `.gitignore` and `.gitattributes` reads spellings, not
+  git's rules.** `scaffold.git_lines_to_add` counts a line present where one of a few
+  spellings of it is in the file (`build/`, `/build`, `literature/sources/*` and the like),
+  each line read with `strip()`, and `init` prints the lines it finds missing and writes
+  nothing (#546). So a broader pattern that leaves the same paths out (`literature/`,
+  `/build/**`, `**/build/`, `literature/sources/**`, or a `literature/sources/.gitignore`
+  of `*`) is asked for again, a false alarm, and `literature/sources/*` followed by
+  `!literature/sources/*.pdf`, or a later `!build/`, counts as present though git then
+  commits those files, a false pass (round 1 of #546, finding 3). A UTF-8 BOM before the
+  first line leaves that line unread, and a leading space makes ` build/` count, where git
+  does the opposite (finding 4). In `.gitattributes` only a `*` line with both
+  `text=auto` and `eol=lf` counts, so `* text eol=lf`, or the two on separate lines, both of
+  which check out LF, are asked for again (finding 5). The folders are `build/` and
+  `literature/sources/*` whatever `paths:` in `paper.yaml` names (finding 2). And the
+  reason printed for `.gitignore` is one sentence that names both lines whichever is
+  missing, so it can say the file does not leave out `build/` when `/build` does, or warn
+  of publishing paywalled copies in a project that set `sources_in_git: true` (finding 1).
+  Closed by asking `git check-ignore`, as `literature/away.py`'s `ignored_by_git` does, by
+  `project.path` for the folders, and by a reason for each missing line.
 - **The status line's "Next:" is the first action's title and no more.** Its options, its
   command and who runs it are in `next`; a status line that has to say a choice is due says
   only its title, "Name the study design", and an agent that acts on the line alone has not
@@ -22380,6 +22588,56 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `verify` compares is the results, and they do not come from the history. Found taking the
   athlete-leakage study through the loop, whose runners refuse a dirty tree and record the
   commit (`test_the_scratch_copy_has_no_git_a_limit_known_gaps_names`).
+
+- **The tests that hold the README and the docs pages to the tool read some phrasings and
+  not others.** `test_no_page_sends_a_reader_to_the_readme_for_the_commands`
+  (`tests/test_docs.py`) splits a page into sentences after "." and ":" and refuses one in
+  which "commands" comes before a link to `../README.md` with no full stop between. So "The
+  commands are listed here: [README](../README.md)." passes, split at its colon, and so do
+  "The [README](../README.md) lists the commands.", a sentence that opens with "Commands",
+  one about "subcommands", and one with a file name's point between the word and the link
+  (round 2 of #550, findings 1 and 2). It would refuse a true sentence that sends the reader
+  to the README's summary of the commands (`../README.md#commands`), and, since the page is
+  joined into one line before it is split, a table row that ends in "commands" with
+  "[Back to the README](../README.md)" under it; neither is in `docs/` today (finding 3).
+  And CLAUDE.md says a new gate needs its row in `docs/gates.md`, not that it must also join
+  a group of `assurance.DIMENSIONS` or be named after the README's table of groups, with
+  "Seventeen gates" changed: two tests fail otherwise, and their messages name what is
+  missing (round 1 of #550). Closed by reading a page's sentences through the Markdown
+  reader and matching the link on either side of the word, and by a line in CLAUDE.md.
+
+- **Five sentences of the docs pages say more or less than the tool does.** Each was found
+  by review and left, each is a sentence to change, and no test reads them (round 1 of
+  #556; round 1 of #550 for the last):
+  - `docs/teams.md`, approvals and sign-offs: "under Codex they refuse it" leaves out that
+    Codex runs the hooks only once the user has trusted them under `/hooks` (see "Under
+    Codex the hooks are tested against its source"); until then an agent's `approve` or
+    `sign` goes through.
+  - `docs/teams.md`, the layout table: `authors.yaml` is said to hold "who signs off what",
+    but the file `init` writes has no `roles:` key and no comment naming one; the section
+    below the table says where it goes.
+  - `docs/teams.md`, the badge: the warning to look at `literature/sources/` before a
+    repository is made public leaves out that a new project's `.gitignore` keeps the copies
+    out of git, and which projects commit them (`docs/github-actions.md`). Overcautious
+    rather than false.
+  - `docs/getting-started.md`, "What you need": "nothing has to be installed" is followed by
+    the `uvx` route, which needs uv; only the audit page needs nothing.
+  - The README, under "What is checked": "G0, which holds that the manuscript can be read at
+    all, is in none" gives G0 its gate's meaning only; G0 also labels a file of the project
+    that cannot be used (`schema-violation`), as `docs/gates.md` says under "G0 and BUILD".
+
+- **The brand drawings' test holds the SVGs, not the PNGs, and reads the banner's CSS for
+  one spelling.** `tests/test_brand.py` holds every SVG to what `tools/brand_assets.py`
+  writes, and the PNGs (`social-preview.png`, `emblem-512.png`, `favicon-32.png`) only to
+  their presence and size, since their pixels depend on the browser that renders them:
+  after an edit to the emblem the PNGs stay as they were and the suite passes (round 1 of
+  #551, finding 4; `brand/README.md` says so). The banner's still frame is held by the exact
+  set of drawings it hides and by its reduced-motion rule coming after the last
+  `animation-name:`; a shorthand `animation:` rule placed after it would override it and
+  pass (round 2 of #554, finding 1). The test's comment, and `brand/README.md`'s account of
+  the still frame, leave out the spark, which is shown; the assertion is right (finding 2).
+  Closed by rendering the PNGs in CI against the committed ones, and by reading the
+  shorthand too.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

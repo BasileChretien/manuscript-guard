@@ -239,6 +239,23 @@ def test_without_pdftotext_a_pdf_is_refused_with_one_sentence(
 
 
 @needs_pdftotext
+def test_a_place_a_finding_names_in_a_pdf_is_its_page_and_line(tmp_path: Path, capsys) -> None:
+    """End to end, as round 1 of #545 asked (finding 4): the place G14 names is the PDF's
+    page and line, mapped through the staged lines, and no finding names the staged
+    Markdown. `audit --journal` does not map it so (Known gaps, the audit's places)."""
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(typeset(["Methods", "We report the standard deviation (SD) of each score.",
+                               "Results",
+                               "The SD was small, and the standard deviation (SD) was stable."],
+                              columns=1))  # fmt: skip
+    assert main(["audit", str(paper), "--json"]) == 0
+    found = json.loads(capsys.readouterr().out)["findings"]
+    again = [f["message"] for f in found if f["gate"] == "G14" and "defined again" in f["message"]]
+    assert again == ["SD is defined again; it was defined at paper.pdf, page 1, line 2"], found
+    assert not any("main.md" in json.dumps(f) for f in found), found
+
+
+@needs_pdftotext
 def test_a_pdf_with_no_text_is_refused(tmp_path: Path, capsys) -> None:
     paper = tmp_path / "scan.pdf"
     paper.write_bytes(typeset([" "], columns=1))

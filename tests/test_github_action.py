@@ -109,6 +109,33 @@ def test_tex_live_is_the_latex_jobs() -> None:
     assert listed == wanted
 
 
+def test_the_latex_job_keeps_its_tex_packages_under_one_key() -> None:
+    """The latex job lists the .deb files apt-get would fetch, names the cache by that list,
+    restores the kept files before the install and keeps and saves them after it, under one
+    folder and one key. With a step gone or pointed elsewhere the job still passes, and every
+    run downloads TeX Live again (round 1 of #555; Known gaps, "The latex job's TeX packages
+    come from the cache only once a run has kept them")."""
+    steps = _yaml(CI)["jobs"]["latex"]["steps"]
+    (listing,) = [s for s in steps if s.get("id") == "tex"]
+    assert "apt-get install --print-uris" in listing["run"]
+    assert "$TEX_PACKAGES" in listing["run"]
+    assert 'echo "key=' in listing["run"] and "$GITHUB_OUTPUT" in listing["run"]
+    (restore,) = [s for s in steps if s.get("uses", "").startswith("actions/cache/restore@")]
+    (save,) = [s for s in steps if s.get("uses", "").startswith("actions/cache/save@")]
+    (keep,) = [s for s in steps if s.get("name") == "Keep the TeX packages"]
+    install = next(i for i, s in enumerate(steps) if "sudo apt-get install" in s.get("run", ""))
+    key = "${{ steps.tex.outputs.key }}"
+    assert restore["with"]["key"] == save["with"]["key"] == key
+    assert restore["with"]["path"] == save["with"]["path"]
+    assert restore["with"]["path"] in keep["run"]
+    order = [steps.index(listing), steps.index(restore), install, steps.index(keep),
+             steps.index(save)]  # fmt: skip
+    assert order == sorted(order)
+    miss = "steps.tex-cache.outputs.cache-hit != 'true'"
+    assert restore["id"] == "tex-cache"
+    assert keep["if"] == save["if"] == miss
+
+
 def test_an_action_of_a_third_party_is_pinned_to_a_commit(tmp_path: Path) -> None:
     """GitHub's own actions by their major tag, as ci.yml has them; manuscript-guard's by the
     version installed; any other by a full commit, which its owner cannot move."""

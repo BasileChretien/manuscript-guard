@@ -846,6 +846,17 @@ def test_a_value_written_whole_and_with_decimals_elsewhere_is_still_one_quantity
         "2 quoted keys hold the value 2: one.key, other.key"]
 
 
+@pytest.mark.parametrize("value", [0, 1, -1])
+def test_one_quantity_written_whole_and_with_decimals_at_nought_or_one_is_not_said(
+    project: Path, value: int
+) -> None:
+    """The cost G8 accepts (round 2 of #542, finding 3; Known gaps, "G8 tells a count from a
+    measure at nought and one by how each is written"): at nought, one and minus one, one
+    quantity written whole in one place and with decimals in another is taken for two, and
+    nothing is said. Pinned so that a change narrowing or widening the split is seen."""
+    assert _two_keys(project, (value, str(value), 0), (float(value), f"{value}.0", 1)) == []
+
+
 def test_a_display_edited_away_from_its_value_is_caught(project: Path) -> None:
     """A bonus from checking displays at emit time: the read path checks them too.
 

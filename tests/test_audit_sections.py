@@ -427,6 +427,30 @@ def test_a_place_in_a_latex_tree_or_a_pdf_is_the_papers_own() -> None:
     assert pdf("defined at manuscript/main.md:5") == "defined at paper.pdf, page 1, line 7"
 
 
+def test_a_place_in_a_latex_tree_is_named_by_its_path_in_the_tree(tmp_path: Path,
+                                                                    capsys) -> None:
+    """End to end, as round 1 of #545 asked (finding 4): G14 says where an abbreviation was
+    defined first, in a file the entry of a LaTeX tree inputs, by that file's path in the
+    tree, and no finding names the project the audit makes for the paper."""
+    (tmp_path / "sections").mkdir()
+    (tmp_path / "sections" / "methods.tex").write_text(
+        "\\section{Methods}\nWe report the standard deviation (SD) of each score.\n",
+        encoding="utf-8",
+    )
+    paper = tmp_path / "paper.tex"
+    paper.write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\input{sections/methods}\n"
+        "\\section{Results}\nThe SD was small, and the standard deviation (SD) was stable.\n"
+        "\\end{document}\n",
+        encoding="utf-8",
+    )
+    assert main(["audit", str(paper), "--json"]) == 0
+    found = json.loads(capsys.readouterr().out)["findings"]
+    again = [f["message"] for f in found if f["gate"] == "G14" and "defined again" in f["message"]]
+    assert again == ["SD is defined again; it was defined at sections/methods.tex:2"], found
+    assert not any("main.tex" in json.dumps(f) for f in found), found
+
+
 def test_submission_residue_and_english_are_what_check_reads(tmp_path: Path, capsys) -> None:
     paper = tmp_path / "paper.md"
     paper.write_text(WORDS, encoding="utf-8")

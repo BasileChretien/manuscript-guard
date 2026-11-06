@@ -117,7 +117,14 @@ from manuscript_guard.policy import (
 )
 from manuscript_guard.record import FIGURE_VERDICTS
 from manuscript_guard.record import VERDICTS as RECORD_VERDICTS
-from manuscript_guard.scaffold import _DIRS, ENGLISHES, UNTITLED, init_project, rules_to_add
+from manuscript_guard.scaffold import (
+    _DIRS,
+    ENGLISHES,
+    UNTITLED,
+    git_lines_to_add,
+    init_project,
+    rules_to_add,
+)
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import parse, substitute
 from manuscript_guard.text.reader import LATEX, manuscript_files, manuscript_format
@@ -6238,6 +6245,25 @@ def _init_workflow_only(args: argparse.Namespace) -> int:
     return 0
 
 
+#: Why each line `init` prints for a repository's own git files belongs there.
+_GIT_LINES = {
+    ".gitignore": "it does not leave out what the build writes (`build/`) or the stored copies "
+                  "of cited works, paywalled papers among them, which a public repository "
+                  "would publish (`literature/sources/*`)",
+    ".gitattributes": "it does not check text out with LF line endings everywhere, and "
+                      "manuscript-guard's digests, taken over the bytes, then differ between "
+                      "machines and read as edits nobody made",
+}  # fmt: skip
+
+
+def _say_git_lines(wanted: dict[str, list[str]]) -> None:
+    """What `init` says of an existing .gitignore or .gitattributes that lacks a line the
+    project needs: it never writes over them, so it prints the lines, as for AGENTS.md."""
+    for name, lines in wanted.items():
+        print(f"\n{name} was already there and was left as it was, and {_GIT_LINES[name]}. "
+              "Add these lines to it:\n\n" + "\n".join(lines))
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     from manuscript_guard.contracts.results import HOW_TO_EMIT
     from manuscript_guard.from_word import init_from_word, what_was_done
@@ -6290,6 +6316,7 @@ def cmd_init(args: argparse.Namespace) -> int:
             "left as it was. An agent tool reads its rules from that file. Add these to it:\n\n"
             + rules
         )
+    _say_git_lines(git_lines_to_add(args.path))
     if under_way:
         made = [path for path in missing if path.exists()]
         for path in made:

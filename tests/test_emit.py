@@ -1232,3 +1232,36 @@ def test_rows_that_share_a_label_are_not_told_apart(scratch: Path) -> None:
     em.model("second", smf.ols("y ~ x + z", second).fit(), name="Second")
     models = em.document()["models"]
     assert models["first"]["rows_sha256"] == models["second"]["rows_sha256"]
+
+
+# ------------------------------------------------------------ the project's classifier
+
+
+def test_a_paper_yaml_that_cannot_be_read_is_named_when_a_cell_is_refused(
+    scratch: Path, capsys
+) -> None:
+    """Found taking a real paper through the loop: a paper.yaml holding a backspace did not
+    parse, the emitter fell back to the shipped classifier without a word, the project's
+    `terms:` vanished, and the error named a table cell. The analysis still runs; the
+    failure says that paper.yaml could not be read, and why."""
+    paper = scratch / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8") + "terms:\n  - E2a\n", encoding="utf-8")
+    em = emitter(scratch)
+    em.table("arms", ["Arm", "n"], [["E2a", 3]])
+    write(em)  # the term is the project's, and the cell is not a claim
+    paper.write_text(paper.read_text(encoding="utf-8").replace('"T"', '"T\b"'),
+                     encoding="utf-8")  # fmt: skip
+    em = emitter(scratch)
+    em.table("arms", ["Arm", "n"], [["E2a", 3]])
+    with pytest.raises(DisplayError) as refused:
+        em.write()
+    said = str(refused.value)
+    assert "E2a" in said
+    assert "paper.yaml could not be read" in said and "#x0008" in said, said
+    assert "paper.yaml could not be read" in capsys.readouterr().err
+    # Without a paper.yaml there is nothing to name: the shipped classifier is the one.
+    paper.unlink()
+    em = emitter(scratch)
+    em.value("n", 1)
+    em.write()
+    assert "paper.yaml" not in capsys.readouterr().err

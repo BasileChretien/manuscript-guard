@@ -2261,23 +2261,33 @@ class Emitter:
         """
         known = {spec["display"] for spec in self._values.values()} | self._computed
         known |= {shown.replace(",", "") for shown in known}
-        classifier = self._classifier()
+        classifier, unread = self._classifier()
         for key, spec in self._tables.items():
             merged = {**spec, **self._composition_of(key)}
             for problem in problems_in(key, merged, known, classifier, self._code_lists):
-                raise DisplayError(f"{problem.where}: {problem.message}")
+                raise DisplayError(f"{problem.where}: {problem.message}"
+                                   + (f" ({unread})" if unread else ""))  # fmt: skip
 
     def _classifier(self):
-        """The project's classifier when there is a project, the shipped one otherwise."""
+        """The project's classifier when there is a project, the shipped one otherwise, and
+        why the project's could not be had where there is a paper.yaml. A half-configured
+        project must not stop an analysis, so the shipped one stands in; but its `terms:`
+        and `conventions:` are then not applied, which is said on stderr and in a cell's
+        refusal, rather than left to look like the cell's fault."""
         from manuscript_guard.classify import Classifier
 
         try:
             from manuscript_guard.contracts import load_project
 
             project, _report = load_project(self.root)
-            return Classifier.load(project.extra_conventions, project.extra_terms)
-        except Exception:  # noqa: BLE001 - a half-configured project must not stop an analysis
-            return Classifier.load()
+            return Classifier.load(project.extra_conventions, project.extra_terms), ""
+        except Exception as exc:  # noqa: BLE001 - a half-configured project must not stop an analysis
+            if self.root is None or not (Path(self.root) / "paper.yaml").is_file():
+                return Classifier.load(), ""
+            unread = (f"paper.yaml could not be read, so its terms and conventions were not "
+                      f"applied: {exc}")  # fmt: skip
+            print(f"manuscript-guard: {unread}", file=sys.stderr)
+            return Classifier.load(), unread
 
     def write(self, path: str | Path | None = None) -> Path:
         """Write the fragment. Defaults to results/<script stem>.json."""

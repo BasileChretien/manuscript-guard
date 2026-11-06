@@ -1,6 +1,6 @@
 # The audit page
 
-<https://basilechretien.github.io/manuscript-guard/> runs `manuscript-guard audit` inside a
+<https://basilechretien.github.io/manuscript-guard/audit/> runs `manuscript-guard audit` inside a
 web browser, for a reader who will not open a terminal: a clinician checking a colleague's
 draft, an editor, a referee. The paper is read in the browser and is not uploaded. There is
 no server behind the page, only static files on GitHub Pages, so there is nothing to upload
@@ -95,7 +95,13 @@ python web/test/check.py --site _site --docx <built example .docx> \
     --results <its results .json> --markdown <its manuscript/main.md>
 ```
 
-`web/build.py` puts every file the page loads into `_site`, from one origin, so that the
+The site's root is the project's landing page, `web/landing/`, and the audit page is in its
+folder `audit/`. The landing page runs no script and its policy lets it load only its own
+pictures, style and video. Its pictures are copied from `docs/img/` as it is built, so the
+drawings have one home. `python web/build.py --landing --out _site` builds it alone, with no
+wheel and nothing downloaded, to look at.
+
+`web/build.py` puts every file the page loads into `_site/audit/`, from one origin, so that the
 policy names no other host: Pyodide from npm (held by `package-lock.json`), the packages
 `audit` imports (each held to the SHA-256 Pyodide's lock file gives), pandoc.wasm (held to
 `web/pins.json`), the shim that runs it, bundled, the wheel, and every licence. pandoc is
@@ -103,10 +109,11 @@ GPL-2.0-or-later, and the page links to its source at the version served.
 
 `web/test/check.py` runs the command line's `audit` on the worked example (the `.docx`
 against its results, the `.docx` alone, `main.md` alone), then the same command as the page
-runs it in Node, and requires the same report and the same `--json`. Then it opens the page in
-Chrome and in Firefox, served with no policy header as GitHub Pages serves it, and requires
-that it starts, prints the same reports, sends nothing, and refuses every request *Test the
-rules* tries. CI's `web` job runs all of this, and `tests/test_web.py` holds the page's pandoc
+runs it in Node, and requires the same report and the same `--json`. Then it opens the site in
+Chrome and in Firefox, served with no policy header as GitHub Pages serves it. The landing
+page must load its style and every picture it names and ask no other host. The audit page
+must start, print the same reports, send nothing, and refuse every request *Test the rules*
+tries. CI's `web` job runs all of this, and `tests/test_web.py` holds the page's pandoc
 to CI's and its policy to the hosts `--lookup` asks.
 
 `.github/workflows/pages.yml` builds the page from each release, checks it the same way, and

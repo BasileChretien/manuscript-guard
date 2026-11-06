@@ -1,7 +1,8 @@
 name: Pages
 
-# The in-browser audit page (web/, docs/audit-page.md), built from each release and served by
-# GitHub Pages at https://basilechretien.github.io/manuscript-guard/.
+# The site served by GitHub Pages at https://basilechretien.github.io/manuscript-guard/, built
+# from each release: the landing page (web/landing/) at its root, and the in-browser audit
+# page (web/, docs/audit-page.md) at audit/.
 #
 # publish.yml makes a release and tags it with the workflow's own token, and a tag pushed so
 # starts no workflow. So this starts when a run of publish.yml has finished, and builds only

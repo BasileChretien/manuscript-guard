@@ -1,4 +1,4 @@
-"""Hold a built audit page to the command line.
+"""Hold a built audit page to the command line, and open the site's landing page.
 
     python web/test/check.py --site _site --docx build/manuscript.docx \\
         --results results/01_disproportionality.json --markdown manuscript/main.md
@@ -8,8 +8,9 @@ For each case (the .docx against the results, the .docx alone, the Markdown alon
 spaces, under names that start with "-", and against two outputs whose names the page once
 made one), the command line's `audit` is run here, then the same command is run as the page
 runs it, in Node (`parity.mjs`): its report, what it says on stderr, its exit code and its
-`--json` must be the command line's. Then the page is opened in each browser named
-(`browser.mjs`): it must start under its own policy, give the same report, notes and exit
+`--json` must be the command line's. Then the site is opened in each browser named
+(`browser.mjs`): the landing page must load its style and pictures and ask no other host,
+and the audit page must start under its own policy, give the same report, notes and exit
 code for each case from the files as chosen, send nothing, and refuse every request "Test the
 rules" tries.
 
@@ -28,6 +29,8 @@ import tempfile
 from pathlib import Path
 
 TEST = Path(__file__).resolve().parent
+#: The folder of the site the audit page is in (AUDIT in web/build.py).
+AUDIT = "audit"
 NODE = shutil.which("node") or "node"
 #: A paper and an output named as a reader may name them. The page once wrote each file
 #: under its name made ASCII, so two such names became one file (round 1 of #527).
@@ -69,7 +72,7 @@ def differences(said: dict, page: dict, as_json: bool) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--site", type=Path, required=True)
+    parser.add_argument("--site", type=Path, required=True, help="what web/build.py built")
     parser.add_argument("--docx", type=Path, required=True, help="the worked example, built")
     parser.add_argument("--results", type=Path, required=True, help="its results file")
     parser.add_argument("--markdown", type=Path, required=True, help="its manuscript/main.md")
@@ -97,10 +100,11 @@ def main(argv: list[str] | None = None) -> int:
             arguments = ["audit", argument(paper),
                          *(["--against", *map(argument, against)] if against else [])]
             said = native(folder, arguments)
-            wrong = [*differences(said, in_node(args.site, folder, arguments), False),
+            page = args.site / AUDIT
+            wrong = [*differences(said, in_node(page, folder, arguments), False),
                      *(f"--json {part}" for part in differences(
                          native(folder, [*arguments, "--json"]),
-                         in_node(args.site, folder, [*arguments, "--json"]), True))]  # fmt: skip
+                         in_node(page, folder, [*arguments, "--json"]), True))]  # fmt: skip
             print(f"node, {name}: {'same' if not wrong else 'DIFFERENT: ' + ', '.join(wrong)}",
                   flush=True)  # fmt: skip
             failed += bool(wrong)

@@ -8674,6 +8674,14 @@ workflow does and requires each report on the worked example to be the command l
 word, in Node and in Chrome and Firefox, with no request sent and every forbidden one refused.
 Its limits are under Known gaps.
 
+The site's root is the project's landing page (`web/landing/`), and the audit page is in
+`audit/` (Basile, 2026-11-06, the plan for a first visit). The landing page runs no script,
+and its policy lets it load its own pictures, style and video and nothing else. Its pictures
+are copied from `docs/img/` when the site is built, so a drawing has one home, and a picture it
+names that is not there stops the build. Where it repeats the README (the demo's alternative
+text, the commands, the numbers of the status) a test holds it to the README, and its count of
+gates is read with the README's.
+
 ## A paper read by its editor or a referee
 
 A journal sends its editors and referees manuscripts in confidence, and the publishers'

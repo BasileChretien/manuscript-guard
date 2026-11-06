@@ -1,10 +1,15 @@
-"""Build the in-browser audit page: every file it loads, in one folder, served from one origin.
+"""Build the site: the landing page at its root, and the in-browser audit page under audit/.
 
     cd web && npm ci && cd ..
     pip wheel . --no-deps --wheel-dir dist
     python web/build.py --wheel dist/manuscript_guard-<version>-py3-none-any.whl --out _site
 
-What the page loads is all here, so that its Content-Security-Policy can name no host but
+    python web/build.py --landing --out _site    # the landing page alone, to look at it
+
+The landing page (web/landing/) is static: its HTML, its style, and each picture it names as
+img/<path>, copied from docs/img/<path>, so that the drawings have one home.
+
+What the audit page loads is all here, so that its Content-Security-Policy can name no host but
 its own and the registries: Pyodide's runtime (from npm, held by package-lock.json), the
 Python packages `audit` imports (from Pyodide's own release, each held to the SHA-256 its
 pyodide-lock.json gives), pandoc.wasm (from the pandoc release CI pins, held to pins.json),
@@ -21,6 +26,7 @@ import argparse
 import hashlib
 import io
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -33,6 +39,16 @@ PAGE = ("index.html", "style.css", "app.js", "worker.js", "probe.js")
 PYODIDE_CORE = ("pyodide.mjs", "pyodide.asm.mjs", "pyodide.asm.wasm", "python_stdlib.zip",
                 "pyodide-lock.json")  # fmt: skip
 SHIM_LICENCES = ("LICENSE-MIT", "LICENSE-APACHE")
+LANDING = WEB / "landing"
+LANDING_PAGE = ("index.html", "style.css")
+#: The folder of the site the audit page is built in.
+AUDIT = "audit"
+IMAGES = WEB.parent / "docs" / "img"
+#: Where the site is served. The landing page names its social preview there, since a card
+#: is drawn by a site that reads the page, from an address it can fetch alone.
+SITE = "https://basilechretien.github.io/manuscript-guard/"
+#: A picture the landing page names: img/<its path under docs/img>.
+PICTURE = re.compile(rf'(?:src|srcset|href|poster|content)="(?:{re.escape(SITE)})?img/([^"\s]+)"')
 
 
 def sha256(data: bytes) -> str:
@@ -66,14 +82,38 @@ def needed(lock: dict, names: list[str]) -> list[str]:
     return sorted(found)
 
 
-def build(wheel: Path, out: Path, cache: Path) -> dict:
+def pictures(page: str) -> list[str]:
+    """The pictures `page` names, each a path under docs/img."""
+    return sorted(set(PICTURE.findall(page)))
+
+
+def landing(out: Path) -> list[str]:
+    """Put the landing page in `out`, with each picture it names; return those pictures."""
+    out.mkdir(parents=True, exist_ok=True)
+    for name in LANDING_PAGE:
+        shutil.copyfile(LANDING / name, out / name)
+    shown = pictures((LANDING / "index.html").read_text(encoding="utf-8"))
+    for name in shown:
+        source = (IMAGES / name).resolve()
+        if not source.is_relative_to(IMAGES.resolve()) or not source.is_file():
+            raise SystemExit(f"web/landing/index.html shows img/{name}, which is not a file "
+                             "in docs/img; nothing was built")  # fmt: skip
+        (out / "img" / name).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, out / "img" / name)
+    return shown
+
+
+def build(wheel: Path, site: Path, cache: Path) -> dict:
+    """Build the landing page in `site` and the audit page in its folder AUDIT."""
+    if site.exists():
+        shutil.rmtree(site)
+    landing(site)
+    out = site / AUDIT
     pins = json.loads((WEB / "pins.json").read_text(encoding="utf-8"))
     modules = WEB / "node_modules"
     if not (modules / "pyodide").is_dir():
         raise SystemExit("web/node_modules is missing: run `npm ci` in web/ first")
     pyodide = json.loads((modules / "pyodide" / "package.json").read_text("utf-8"))["version"]
-    if out.exists():
-        shutil.rmtree(out)
     (out / "pyodide").mkdir(parents=True)
     (out / "pandoc").mkdir()
     (out / "wheels").mkdir()
@@ -137,11 +177,21 @@ def build(wheel: Path, out: Path, cache: Path) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--wheel", type=Path, required=True, help="the manuscript-guard wheel")
+    parser.add_argument("--wheel", type=Path, help="the manuscript-guard wheel")
+    parser.add_argument("--landing", action="store_true",
+                        help="build the landing page alone, with no audit page")  # fmt: skip
     parser.add_argument("--out", type=Path, required=True, help="the folder to build the site in")
     parser.add_argument("--cache", type=Path, default=WEB / ".cache",
                         help="where downloads are kept (default web/.cache)")  # fmt: skip
     args = parser.parse_args(argv)
+    if args.landing:
+        if args.out.exists():
+            shutil.rmtree(args.out)
+        shown = landing(args.out)
+        print(f"built {args.out}: the landing page and {len(shown)} pictures, no audit page")
+        return 0
+    if args.wheel is None:
+        parser.error("--wheel is required, unless --landing")
     if not args.wheel.is_file() or not args.wheel.name.startswith("manuscript_guard-"):
         parser.error(f"--wheel {args.wheel}: not a manuscript-guard wheel")
     # Absolute, since esbuild runs in web/: a relative --out put the bundle in web/_site.

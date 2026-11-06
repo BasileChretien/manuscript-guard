@@ -1,0 +1,303 @@
+/* The landing page. Colours are the brand's (brand/README.md); the page runs no script, and
+   the drawings switch between light and dark through <picture>. */
+
+:root {
+  color-scheme: light dark;
+  --paper: #f6f4ee;
+  --card: #fffdf8;
+  --ink: #1d2840;
+  --muted: #4b5568;
+  --line: #d9dde4;
+  --navy: #1b2b4b;
+  --on-navy: #ffffff;
+  --on-navy-soft: #d4dcea;
+  --teal: #175f63;
+  --link: #175f63;
+  --brass: #e6c878;
+  --foe: #c9502f;
+  --shade: #9481a7;
+  --hero: #ebeef3;
+  --code: #121a2c;
+  --on-code: #e3e8f0;
+  --serif: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Consolas, Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0f1728;
+    --card: #16213a;
+    --ink: #e3e8f0;
+    --muted: #a3aec0;
+    --line: #28344d;
+    --navy: #3a5585;
+    --on-navy-soft: #dbe3f0;
+    --teal: #1f7479;
+    --link: #8fd0cb;
+    --foe: #d95b36;
+    --shade: #a093b4;
+    --hero: #131d33;
+    --code: #0a1120;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 1.0625rem/1.6 var(--sans);
+}
+
+img { max-width: 100%; height: auto; }
+a { color: var(--link); text-underline-offset: 0.18em; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible, .door:focus-visible {
+  outline: 3px solid var(--brass);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  background: color-mix(in srgb, var(--line) 55%, transparent);
+  padding: 0.08em 0.32em;
+  border-radius: 4px;
+}
+
+pre {
+  margin: 0.75rem 0 1rem;
+  padding: 1rem 1.1rem;
+  background: var(--code);
+  color: var(--on-code);
+  border-radius: 10px;
+  overflow-x: auto;
+  line-height: 1.55;
+}
+pre code { background: none; padding: 0; font-size: 0.92rem; color: inherit; }
+
+h1, h2, h3 { font-family: var(--serif); line-height: 1.2; margin: 0; }
+h2 { font-size: clamp(1.6rem, 3.6vw, 2.25rem); margin-bottom: 1rem; letter-spacing: -0.005em; }
+h3 { font-size: 1.15rem; }
+
+.wrap { width: min(1080px, 100% - 32px); margin-inline: auto; }
+
+.skip {
+  position: absolute;
+  left: 16px;
+  top: -3rem;
+  padding: 0.5rem 0.9rem;
+  background: var(--navy);
+  color: var(--on-navy);
+  border-radius: 6px;
+  z-index: 2;
+}
+.skip:focus { top: 0.75rem; }
+
+/* The header */
+.top { border-bottom: 1px solid var(--line); background: var(--paper); }
+.top-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1.5rem;
+  padding-block: 0.8rem;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 1.1rem;
+  text-decoration: none;
+  letter-spacing: -0.01em;
+}
+.brand img { display: block; }
+.top nav { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; font-size: 0.97rem; }
+.top nav a { color: var(--ink); text-decoration: none; }
+.top nav a:hover { color: var(--link); text-decoration: underline; }
+
+/* The first screen */
+.hero {
+  background: var(--hero);
+  border-bottom: 1px solid var(--line);
+  padding-block: clamp(1.5rem, 4vw, 3rem) clamp(2.5rem, 6vw, 4rem);
+}
+/* Capped so that the doors are on the first screen of a laptop. */
+.banner { display: block; width: 100%; max-width: 760px; margin: 0 auto clamp(1rem, 2.5vw, 1.75rem); }
+.hero h1 {
+  font-size: clamp(2.1rem, 5.6vw, 3.6rem);
+  letter-spacing: -0.015em;
+  max-width: 18ch;
+}
+.lede { font-size: clamp(1.1rem, 2.1vw, 1.3rem); max-width: 60ch; margin: 1rem 0 0.5rem; }
+.for { color: var(--muted); max-width: 60ch; margin: 0 0 1.75rem; }
+
+.doors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+}
+.door {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  height: 100%;
+  padding: 1rem 1.1rem 1.1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  text-decoration: none;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.door strong { font-size: 1.05rem; }
+.door strong::after { content: " \2192"; color: var(--link); }
+.door span { color: var(--muted); font-size: 0.95rem; line-height: 1.45; }
+.door:hover { border-color: var(--link); transform: translateY(-2px); }
+.door.primary { background: var(--navy); border-color: var(--navy); color: var(--on-navy); }
+.door.primary strong::after { color: var(--brass); }
+.door.primary span { color: var(--on-navy-soft); }
+.door.primary:hover { border-color: var(--brass); }
+
+/* Sections */
+main > section { padding-block: clamp(2.75rem, 7vw, 5rem); }
+main > section + section { border-top: 1px solid var(--line); }
+.kicker {
+  margin: 0 0 0.4rem;
+  color: var(--link);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.text { max-width: 68ch; }
+.more { margin-top: 1.25rem; font-weight: 600; }
+.more a::after { content: " \2192"; }
+.subhead { margin-top: clamp(2.25rem, 5vw, 3.25rem); font-size: 1.4rem; }
+
+.sources {
+  list-style: none;
+  counter-reset: source;
+  margin: 1.5rem 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 0.9rem;
+}
+.sources li {
+  counter-increment: source;
+  padding: 1rem 1.1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--teal);
+  border-radius: 10px;
+}
+.sources h3::before {
+  content: counter(source) ". ";
+  color: var(--link);
+}
+.sources p { margin: 0.35rem 0 0; color: var(--muted); }
+
+.screen { margin: 1.5rem 0 0; }
+.screen img { display: block; width: 100%; border-radius: 12px; }
+/* On a phone the terminal's text would be too small to read: it scrolls sideways instead. */
+@media (max-width: 640px) {
+  .screen { overflow-x: auto; border-radius: 12px; }
+  .screen img { width: 600px; max-width: none; }
+  .screen:focus-visible { outline: 3px solid var(--brass); outline-offset: 3px; }
+}
+
+.lanes {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 0.9rem;
+}
+.lane {
+  padding: 1.1rem 1.2rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-top: 5px solid var(--navy);
+  border-radius: 10px;
+}
+.lane.agent { border-top-color: var(--teal); }
+.lane.person { border-top-color: var(--brass); }
+.lane p { margin: 0.45rem 0 0; color: var(--muted); }
+
+.foes {
+  list-style: none;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  display: grid;
+  /* Six villains: rows of 2, 3 or 6, never 5 and 1. The shadows keep the same widths. */
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.9rem;
+}
+@media (min-width: 640px) { .foes { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1000px) { .foes { grid-template-columns: repeat(6, 1fr); } }
+.foe {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 1rem 0.9rem 1.1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-bottom: 4px solid var(--foe);
+  border-radius: 12px;
+}
+.foe img { display: block; width: 96px; height: 96px; }
+.foe h3 { font-size: 1.02rem; margin-top: 0.6rem; }
+.foe p { margin: 0.3rem 0 0.7rem; color: var(--muted); font-size: 0.93rem; line-height: 1.45; }
+.gate {
+  margin-top: auto;
+  padding: 0.12rem 0.6rem;
+  background: var(--navy);
+  color: var(--on-navy);
+  border-radius: 999px;
+  font: 700 0.82rem/1.5 var(--mono);
+}
+.shadows .foe { border-style: dashed; border-bottom: 4px dashed var(--shade); }
+.shadows .ally { border-style: solid; border-bottom: 4px solid var(--brass); }
+
+.evidence { max-width: 68ch; padding-left: 1.2rem; }
+.evidence li { margin-bottom: 0.6rem; }
+
+.ways {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem 2rem;
+}
+.way p { margin: 0.5rem 0; }
+
+/* The footer */
+.foot {
+  border-top: 1px solid var(--line);
+  padding-block: 2rem 2.5rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.foot p { margin: 0.3rem 0; }
+.foot a { margin-right: 1.25rem; }
+
+@media (max-width: 520px) {
+  .ways { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .door { transition: none; }
+  .door:hover { transform: none; }
+}

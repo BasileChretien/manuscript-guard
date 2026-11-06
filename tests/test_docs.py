@@ -202,7 +202,8 @@ def test_the_readme_sorts_the_gates_as_check_ends_by_grouping_them() -> None:
 
 
 #: The pages that say in words how many gates or hooks there are.
-COUNTED = [README, DOCS / "agent-tools.md", GATES]
+#: The landing page says its count of gates too.
+COUNTED = [README, DOCS / "agent-tools.md", GATES, REPO / "web" / "landing" / "index.html"]
 COUNT = re.compile(r"\b([a-z]+(?:-[a-z]+)?)\s+(gates|hooks)\b")
 
 

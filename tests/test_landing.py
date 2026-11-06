@@ -197,7 +197,9 @@ def cues(vtt: str) -> list[tuple[str, str, str]]:
     for block in vtt.strip().split("\n\n")[1:]:
         lines = block.splitlines()
         start, end = lines[1].split(" --> ")
-        found.append((start, end, decoded(" ".join(lines[2:]))))
+        words = " ".join(lines[2:])
+        assert not re.search(r"<|&(?!(?:amp|lt|gt);)", words), f"unescaped in WebVTT: {words}"
+        found.append((start, end, decoded(words)))
     return found
 
 
@@ -249,15 +251,19 @@ def test_the_videos_terminal_prints_what_check_prints() -> None:
     # finding names, and the sentence the finding quotes.
     typed = re.search(r"\[(\"[^\]]*)\]\.forEach\(\(v, i\) => layer\(\"L-t\"", composed).group(1)
     states = [json.loads(f'"{one}"') for one in re.findall(string, typed)]
-    assert states[-1] == figures.TYPED
-    assert all(figures.TYPED.startswith(state) for state in states)
+    assert states == [figures.TYPED[:n] for n in range(1, len(figures.TYPED) + 1)]
     for shown in ("L-flag", "L-sel2"):
         assert value(rf'layer\("{shown}", STRING') == figures.TYPED
     assert value(r'<span id="g11" class="gutter">(\d+)</span>') == figures.LINE
     where = re.search(r"manuscript/main\.md:\d+:\d+", figures.CARD[2][1]).group()
     assert set(re.findall(r"manuscript/main\.md:\d+:\d+", composed)) == {where}
     cases = value(r"const CASES = STRING;")
-    assert f"**Results.** Of {figures.TYPED} reports, {cases} described" == figures.QUOTED
+    # The line as layer() writes it with the number typed: its literals and the two values.
+    written = re.search(r"div\.innerHTML =\s*(.*?);\n", composed, re.DOTALL).group(1)
+    pieces = re.findall(r"'((?:[^'\\]|\\.)*)'|\"((?:[^\"\\]|\\.)*)\"|esc\((\w+)\)", written)
+    shown = "".join({"value": figures.TYPED, "CASES": cases}.get(name, single or double)
+                    for single, double, name in pieces)  # fmt: skip
+    assert re.sub(r"<[^>]*>", "", shown) == figures.QUOTED
 
 
 def test_each_villain_on_the_landing_page_is_named_with_the_gate_the_banner_gives_it() -> None:

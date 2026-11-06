@@ -47,8 +47,10 @@ three. Run `node cli.mjs <command>` rather than `npx hyperframes` for anything e
 fetches nothing: GSAP comes from `node_modules`, the fonts and drawings from
 this folder.
 
-The words inside the drawings (4,000, RETRACTED, PLAN, Methods) are drawn in the fonts of the
-machine that renders, as on the page, since a drawing shown as an image cannot use the
+The words inside the drawings (4,000 on the Stray Number; `"n": 3986`, `"p": 0.04` and 4000 on
+the Forger's file; RETRACTED; doi:10.; PLAN; Methods and the "z z" of Stale Methods; train and test on
+the data-leakage shadow) are drawn in the fonts of the machine that
+renders, as on the page, since a drawing shown as an image cannot use the
 composition's fonts. A render on another machine can differ in those words' typeface.
 
 ## What is in the folder

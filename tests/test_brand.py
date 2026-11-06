@@ -6,6 +6,7 @@ model G3 holds a figure's colours to."""
 from __future__ import annotations
 
 import importlib.util
+import re
 import struct
 from pathlib import Path
 
@@ -96,11 +97,12 @@ def test_the_banner_loops_and_holds_still_for_a_reader_who_turns_motion_off(shad
     assert "animation-iteration-count:infinite" in css
     still = "@media (prefers-reduced-motion:reduce){.a{animation:none}}"
     assert still in css
-    # Of rules equally specific, the later wins: before a rule that names an animation, the
-    # reduced-motion rule would be overridden and the banner would keep moving.
-    assert css.rindex("animation-name:") < css.index(still)
-    # Still, it rests on the first villain blocked, its tag and the co-author: every other
-    # villain and tag, and the shadows, are hidden, and nothing else is.
+    # Of rules equally specific, the later wins: before a rule that names an animation, in
+    # the longhand or the shorthand, the reduced-motion rule would be overridden and the banner
+    # would keep moving.
+    assert not re.search(r"animation(?:-name)?\s*:", css.split(still, 1)[1])
+    # Still, it rests on the first villain blocked, its tag, the spark and the co-author: every
+    # other villain and tag, and the shadows, are hidden, and nothing else is.
     hidden = set(css.split("{opacity:0}@media", 1)[0].rsplit("}", 1)[1].split(","))
     later = range(1, len(script.CAST))
     assert hidden == {*(f".k{n}" for n in later), *(f".t{n}" for n in later), ".sh"}

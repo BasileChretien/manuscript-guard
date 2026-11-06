@@ -277,6 +277,70 @@ def test_a_count_of_gates_or_hooks_is_the_number_there_are() -> None:
 
 # ------------------------------------------------------------------------------ pictures
 
+#: The pages a reader sees pictures on: the README, the docs and the character sheet.
+SHOWN = [*PAGES, REPO / "brand" / "README.md"]
+
+
+def test_every_html_picture_on_the_pages_has_alternative_text() -> None:
+    """Empty for a drawing whose name is written beside it, as the villains' are; but
+    present, so that a screen reader does not read out the file's name instead. A Markdown
+    picture always has its alternative text, if empty, so only HTML ones are read."""
+    seen = 0
+    for page in SHOWN:
+        for tag in re.findall(r"<img\b[^>]*>", text_of(page)):
+            seen += 1
+            assert re.search(r'\salt="', tag), f"{page.name}: a picture with no alt: {tag}"
+    assert seen
+
+
+def test_every_animated_picture_holds_still_for_a_reader_who_turns_motion_off() -> None:
+    animated = [path for path in sorted((DOCS / "img").rglob("*.svg"))
+                if "@keyframes" in path.read_text(encoding="utf-8")]  # fmt: skip
+    assert animated, "no animated picture found; the pattern no longer matches"
+    # Which elements the rule reaches is held for the banner by tests/test_brand.py.
+    still = re.compile(r"prefers-reduced-motion:\s*reduce\)\s*\{[^@]*?animation:\s*none")
+    for path in animated:
+        assert still.search(path.read_text(encoding="utf-8")), (
+            f"{path.relative_to(REPO).as_posix()} moves for a reader who asked for less motion"
+        )
+
+
+def brand_script():
+    spec = importlib.util.spec_from_file_location(
+        "brand_assets", REPO / "tools" / "brand_assets.py"
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def picture_alt(text: str, source: str) -> str:
+    found = re.search(rf'<img\b[^>]*\ssrc="{re.escape(source)}"[^>]*?\salt="([^"]*)"', text)
+    assert found, f"no picture {source} with alternative text"
+    return " ".join(found.group(1).split())
+
+
+def test_the_readme_describes_the_banner_as_the_character_sheet_does() -> None:
+    sheet = text_of(REPO / "brand" / "README.md")
+    assert picture_alt(text_of(README), "docs/img/brand/banner-light.svg") == picture_alt(
+        sheet, "../docs/img/brand/banner-light.svg"
+    )
+
+
+def test_the_readmes_villains_are_named_with_the_gates_the_banner_gives_them() -> None:
+    """The row of drawings above "What it catches": each column's drawing, and under it its
+    name and gate, are the banner's cast in its order."""
+    lines = text_of(README).splitlines()
+    (at,) = [n for n, line in enumerate(lines) if "docs/img/brand/stray-number-light.svg" in line]
+    drawn = [re.search(r"docs/img/brand/([a-z-]+)-light\.svg", cell).group(1)
+             for cell in cells(lines[at])]  # fmt: skip
+    under = [re.fullmatch(r"(.+), (G\d+)", cell).groups() for cell in cells(lines[at + 2])]
+    script = brand_script()
+    names = {name: title.split(",")[0] for name, _, _, _, title in script.DRAWINGS}
+    assert [(names[one], gate) for one, gate in script.CAST] == under
+    assert list(zip(drawn, [gate for _, gate in under], strict=True)) == list(script.CAST)
+
 
 def figures_script():
     spec = importlib.util.spec_from_file_location(

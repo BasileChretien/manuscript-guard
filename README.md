@@ -1,21 +1,44 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/brand/banner-dark.svg">
+    <img src="docs/img/brand/banner-light.svg" width="860" alt="Vord before a manuscript, blocking each mistake in turn with the gate that catches it, while a co-author reads.">
+  </picture>
+</p>
+
 # manuscript-guard
 
+[![PyPI](https://img.shields.io/pypi/v/manuscript-guard)](https://pypi.org/project/manuscript-guard/)
 [![CI](https://github.com/BasileChretien/manuscript-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/BasileChretien/manuscript-guard/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange)](#status)
 
-**From research idea to a reproducible, submission-ready manuscript:
-AI assistance, human oversight, deterministic checks.**
+**Every number traceable to its source.**
 
-manuscript-guard is an AI-assisted environment for scientific
-research and manuscript production. It helps researchers go from a
-research idea to a reproducible, submission-ready manuscript, with
-human oversight and deterministic quality assurance throughout.
+From research idea to a reproducible, submission-ready manuscript: AI assistance, human
+oversight, deterministic checks. manuscript-guard holds a scientific manuscript to the
+analysis that produced it, the sources it cites and the plan it was written to. An agent can
+do much of the work; a person makes the calls; no check asks a model anything, and everything
+runs without an agent. It keeps a record of the scientific judgements made: it does not make
+them.
 
-An agent can do much of the work; a person makes the calls; no check
-asks a model anything, and everything runs without an agent. It keeps
-a record of the scientific judgements made: it does not make them.
+**[Check a paper in your browser](https://basilechretien.github.io/manuscript-guard/audit/)** ·
+**[Start a paper](docs/getting-started.md)** ·
+**[See it catch a mistake](https://github.com/BasileChretien/manuscript-guard#see-it-catch-a-mistake)** ·
+**[For supervisors and groups](docs/teams.md)**
+
+## See it catch a mistake
+
+On the worked example: one binding of the abstract replaced by the number it stood for,
+`check` failing on it, the number bound again, and `check` passing.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/demo-dark.svg">
+  <img src="docs/img/demo-light.svg" width="860"
+       alt="manuscript-guard check prints [FAIL] G2 manuscript/main.md:11:17, '4,000' is not bound to any source. The author replaces 4,000 with {{results.cohort.n_reports}} on line 11, and check runs again: stage: drafting (writing the manuscript against results that exist); numerical provenance, checked: G2, G3, G7, G8: 0 failing, 1 warning; and its last line, 0 failing, 13 warnings.">
+</picture>
+
+## What it does
 
 It keeps a study to its record, from the analysis plan to the published paper. The plan is
 written before the analysis and frozen when the first results are written. Every number in
@@ -66,22 +89,13 @@ finding of the check, not something left for a reviewer to notice.
 >
 > [Status](#status) has the rest.
 
-On the worked example: one binding of the abstract replaced by the number it stood for,
-`check` failing on it, the number bound again, and `check` passing.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/demo-dark.svg">
-  <img src="docs/img/demo-light.svg" width="860"
-       alt="manuscript-guard check prints [FAIL] G2 manuscript/main.md:11:17, '4,000' is not bound to any source. The author replaces 4,000 with {{results.cohort.n_reports}} on line 11, and check runs again: stage: drafting (writing the manuscript against results that exist); numerical provenance, checked: G2, G3, G7, G8: 0 failing, 1 warning; and its last line, 0 failing, 13 warnings.">
-</picture>
-
 ## Two ways in
 
 **I have a manuscript.** `audit` checks a paper written some other way: its numbers against
 each other and against the analysis outputs you give it, its Abstract against its Results,
-its words and its reference list. The [audit page](docs/audit-page.md) runs it on a .docx in
-a web browser, and the paper is not uploaded; the page goes live with the next release.
-<!-- TODO(after 0.2.476): link https://basilechretien.github.io/manuscript-guard/ here once it answers. -->
+its words and its reference list. The
+[audit page](https://basilechretien.github.io/manuscript-guard/audit/) runs it on a .docx in a
+web browser, and the paper is not uploaded ([how it works](docs/audit-page.md)).
 At a terminal, with [uv](https://docs.astral.sh/uv/) and nothing else installed:
 
 ```bash
@@ -159,7 +173,17 @@ Guided, not replaced: three kinds of user, using the same tool differently.
 
 ## What it catches
 
-Each row names the stage from which its finding fails the run. Before that stage the
+Vord, the project's guard, stands for the gates, and each villain for a mistake that one of
+them catches, named with that gate. Five are rows of the table below. The Plan Rewriter changes
+the analysis plan after the first results and says nothing under Deviations, which G12 warns
+of. What no gate sees is drawn as a shadow ([the part no gate can check](#the-part-no-gate-can-check);
+[the character sheet](brand/README.md)).
+
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/brand/stray-number-dark.svg"><img src="docs/img/brand/stray-number-light.svg" width="72" alt=""></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/brand/forger-dark.svg"><img src="docs/img/brand/forger-light.svg" width="72" alt=""></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/brand/ghost-citation-dark.svg"><img src="docs/img/brand/ghost-citation-light.svg" width="72" alt=""></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/brand/impostor-doi-dark.svg"><img src="docs/img/brand/impostor-doi-light.svg" width="72" alt=""></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/brand/plan-rewriter-dark.svg"><img src="docs/img/brand/plan-rewriter-light.svg" width="72" alt=""></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/brand/stale-methods-dark.svg"><img src="docs/img/brand/stale-methods-light.svg" width="72" alt=""></picture> |
+|:-:|:-:|:-:|:-:|:-:|:-:|
+| The Stray Number, G2 | The Forger, G1 | The Ghost Citation, G7 | The Impostor DOI, G7 | The Plan Rewriter, G12 | Stale Methods, G9 |
+
+In the table below, each row names the stage from which its finding fails the run. Before that stage the
 finding is printed and counted, and the run passes: a new project starts at `design`,
 where the manuscript can wait ([stages](docs/stages.md)).
 
@@ -318,6 +342,12 @@ sentence say what the document says.** A value can be right, its quote can be ri
 sentence around it can still name the wrong denominator, subgroup or year with every check
 passing. On the first manuscript written with this toolkit, that is what happened, and a
 co-author reading one item against one quote is what found it.
+
+Such a mistake is drawn as a shadow: Vord's sword passes through it, so Vord calls a co-author.
+
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/brand/confirmation-bias-dark.svg"><img src="docs/img/brand/confirmation-bias-light.svg" width="72" alt=""></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/brand/data-leakage-dark.svg"><img src="docs/img/brand/data-leakage-light.svg" width="72" alt=""></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/brand/co-author-dark.svg"><img src="docs/img/brand/co-author-light.svg" width="72" alt=""></picture> |
+|:-:|:-:|:-:|
+| Confirmation bias | Data leakage | The co-author |
 
 ```bash
 manuscript-guard checker build --all                    # one file per author, to send each
@@ -570,4 +600,5 @@ the reference, from [CITATION.cff](CITATION.cff).
 
 ## Licence
 
-MIT.
+The code is under the MIT licence. Vord, the emblem and the other drawings in `brand/` and
+`docs/img/brand/` are under CC BY 4.0 ([brand/LICENSE](brand/LICENSE)).

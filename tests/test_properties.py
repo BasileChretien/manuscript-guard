@@ -7250,17 +7250,21 @@ def test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_cl
     negation new or a word up the ladder is told as stronger and a move both ways as moved,
     on the line the sentence's paragraph starts on; a claim made weaker, a synonym or a
     look-alike is told nothing, and so is a passage not in its source or of a sentence
-    reworded since (`gates/passages.py`). Each finding stands where the sentence its passage
-    belongs to stands, as G7 places that sentence."""
+    reworded since (`gates/passages.py`). Each finding stands where a sentence its passage
+    belongs to stands, as G7 places that sentence, one at each copy of a sentence written
+    twice (round 1 of #571)."""
     given, written = drawn
     found = READINGS["passage claims"]()(given)
     belonging = READINGS["passages"]()(given)
     for told, (belongs, _stale), (n, kind) in zip(found, belonging, written, strict=True):
         expected = PASSAGE_CLAIMS[kind]
-        codes = [code for code, _line in told]
-        assert codes == ([] if expected is None else [expected]), (kind, told, given)
         placed = [line for line, text in belongs if f"Claim {n}:" in text]
-        assert [line for _code, line in told] == placed[: len(told)], (kind, told, belongs)
+        assert len(placed) == {"sentence reworded": 0, "written twice": 2}.get(kind, 1), (
+            kind, belongs)  # fmt: skip
+        if expected is None:
+            assert told == [], (kind, told, given)
+        else:
+            assert told == [[expected, line] for line in placed], (kind, told, given)
 
 
 @holds(60, credited_plans())
@@ -15185,6 +15189,14 @@ def _a_passage_not_in_its_source_is_compared(patch: pytest.MonkeyPatch) -> None:
         dataclasses.replace(checked, found=passages_module.VERIFIED)))  # fmt: skip
 
 
+def _only_the_first_copy_of_a_sentence_is_compared(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import passages as passages_gate
+
+    real = passages_gate.claimed
+    patch.setattr(passages_gate, "claimed", lambda checked: real(
+        dataclasses.replace(checked, sentences=checked.sentences[:1])))  # fmt: skip
+
+
 def _a_sentence_is_compared_as_its_passage_records_it(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import passages as passages_gate
 
@@ -16197,6 +16209,10 @@ BROKEN = {
     ),
     "a passage not in its source is compared": (
         _a_passage_not_in_its_source_is_compared,
+        test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_claims,
+    ),
+    "only the first copy of a sentence is compared with its passage": (
+        _only_the_first_copy_of_a_sentence_is_compared,
         test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_claims,
     ),
     "a sentence is compared as its passage records it": (

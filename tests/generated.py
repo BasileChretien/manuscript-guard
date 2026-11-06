@@ -3503,10 +3503,11 @@ def passage_files(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[int, str]
 
 #: Each way a cited sentence may claim against the passage recorded for it, and what G7
 #: tells of it (item 2 of the plan of 2026-11-06): more, a negation gone or new among it, a
-#: move both ways, or nothing. Three are of passages not compared, each with its sentence
+#: move both ways, or nothing. Two are of passages not compared, each with its sentence
 #: claiming more: one not in its work's source, and one whose sentence was reworded since.
 #: One whose sentence is recorded in capitals is the manuscript's sentence, and is compared
-#: as the manuscript writes it.
+#: as the manuscript writes it; one whose sentence the manuscript writes twice is told at
+#: each (round 1 of #571).
 PASSAGE_CLAIMS = {
     "as strong": None, "synonyms": None, "look-alikes": None,
     "hedge gone": "passage-claim-stronger", "hedge new": None,
@@ -3514,7 +3515,7 @@ PASSAGE_CLAIMS = {
     "negation gone": "passage-claim-stronger", "negation new": "passage-claim-stronger",
     "up": "passage-claim-stronger", "down": None, "both ways": "passage-claim-moved",
     "not in its source": None, "sentence reworded": None,
-    "recorded in capitals": "passage-claim-stronger",
+    "recorded in capitals": "passage-claim-stronger", "written twice": "passage-claim-stronger",
 }  # fmt: skip
 
 
@@ -3562,7 +3563,8 @@ def passage_claims(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[int, str
             passage, sentence = said([word(high)]), said([word(low)])
         elif kind == "both ways":
             passage, sentence = said([word(low)]), said([word("hedge"), word(high)])
-        elif kind in ("not in its source", "sentence reworded", "recorded in capitals"):
+        elif kind in ("not in its source", "sentence reworded", "recorded in capitals",
+                      "written twice"):
             one = word(draw(st.sampled_from(rungs[1:])) if kind.startswith("recorded") else rung)
             passage, sentence = said([word("hedge"), one]), said([one])
         else:
@@ -3571,7 +3573,7 @@ def passage_claims(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[int, str
             with_it, without = said([extra, plain]), said([plain])
             passage, sentence = (with_it, without) if how == "gone" else (without, with_it)
         cited = f"Claim {n}: {sentence} [@k{n}]."
-        pieces.append(cited)
+        pieces += [cited] * (2 if kind == "written twice" else 1)
         sources[f"k{n}"] = f"Words of the work come first. {passage}. Then the work ends.\n"
         recorded = {
             "sentence reworded": cited.replace(f"Claim {n}:", f"Claim {n} again:"),

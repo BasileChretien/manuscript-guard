@@ -509,15 +509,55 @@ def test_a_cited_sentence_is_held_to_how_strongly_its_passage_claims(
     assert one.context.startswith(sentence)
 
 
+def stored(root: Path, words: str) -> str:
+    """`words` added to the cohort's stored source, as a sentence of its own."""
+    source = root / "literature" / "sources" / f"{COHORT}.txt"
+    source.write_text(source.read_text(encoding="utf-8") + f"\n{words}.\n", "utf-8")
+    return words
+
+
 def test_a_hedge_of_the_work_dropped_claims_more(project: Path) -> None:
-    source = project / "literature" / "sources" / f"{COHORT}.txt"
-    source.write_text(source.read_text(encoding="utf-8")
-                      + "\nThe excess in women may be explained by exposure.\n", "utf-8")
     cited_claim(project, "The excess in women is explained by exposure",
-                passage="The excess in women may be explained by exposure")
+                passage=stored(project, "The excess in women may be explained by exposure"))
     [one] = claim_findings(project)
     assert (one.code, one.message.rsplit(": ", 1)[-1]) == ("passage-claim-stronger",
                                                             "'may' is gone")  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("passage", "sentence", "code"),
+    [
+        pytest.param("Use was associated with lower incidence and reduced admissions",
+                     "Use was associated with lower incidence", "passage-claim-moved",
+                     id="a higher rung dropped, the lowest kept"),
+        pytest.param("Incidence was higher among women",
+                     "Female sex was associated with a higher incidence",
+                     "passage-claim-stronger", id="a result cited as an association"),
+        pytest.param(FINDING, "Incidence rose with age and was similar in men and women",
+                     "passage-claim-stronger", id="a negation paraphrased away"),
+    ],
+)  # fmt: skip
+def test_what_a_list_of_words_cannot_tell_is_as_known_gaps_says(
+    project: Path, passage: str, sentence: str, code: str
+) -> None:
+    """Round 1 of #571: `compare_pair` reads a sentence by its lowest rung, a sentence with no
+    word of the ladder as one that states, and a negation by its word, so a sentence that
+    claims less is told moved, and a faithful paraphrase can warn. DESIGN.md, Known gaps."""
+    if passage != FINDING:
+        stored(project, passage)
+    cited_claim(project, sentence, passage=passage)
+    assert [f.code for f in claim_findings(project)] == [code]
+
+
+def test_a_sentence_written_twice_is_held_to_its_passage_in_each_place(project: Path) -> None:
+    """Round 1 of #571: a passage belongs to every copy of its sentence, the main text's and
+    the supplement's, and each copy that claims more is told where it stands."""
+    cited = cited_claim(project, "Incidence differed by sex")
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(supplement.read_text(encoding="utf-8") + f"\n{cited}\n", "utf-8")
+    found = claim_findings(project)
+    assert sorted((f.code, f.path.name) for f in found) == [
+        ("passage-claim-stronger", "S1_code_lists.md"), ("passage-claim-stronger", "main.md")]
 
 
 @pytest.mark.parametrize("stage", ["design", "analysis", "drafting", "internal-review",

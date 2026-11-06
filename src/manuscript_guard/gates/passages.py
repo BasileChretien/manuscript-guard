@@ -19,8 +19,9 @@ that sentence claims (`claims.compare_pair`, the passage read as the source): a 
 limit or a negation of the work's dropped, a word moved up the ladder ("was associated with"
 made "increases") or a negation new is a warning (`passage-claim-stronger`), and so is a
 move both ways (`passage-claim-moved`), at every stage (D2.1 of 2026-11-06). A sentence that
-claims less than its work says nothing. The person's judgement is read as before, and does
-not change what is said here (D2.2).
+`compare_pair` reads as claiming less than its work says nothing; one that drops a word of a
+higher rung and keeps the lowest is read as moved. The person's judgement is read as before,
+and does not change what is said here (D2.2).
 
 The sentences that cite and carry no passage of any work they cite are counted: one note
 while drafting, one warning from internal-review, never a failure, since a citation of the
@@ -249,7 +250,7 @@ def _findings(checked: Checked, path: Path) -> list[Finding]:
 def claimed(checked: Checked) -> list[Finding]:
     """How strongly each sentence a passage belongs to claims against it: a warning, on the
     sentence, where it claims more, may say the opposite or moved both ways, naming the words
-    that moved; nothing where it claims less or as much.
+    that moved; nothing where it claims as much, or less as `compare_pair` reads it.
 
     Only a passage found in its work's stored source is read. One that is not there fails
     already, and one that could not be checked is not yet known to be the work's words. A

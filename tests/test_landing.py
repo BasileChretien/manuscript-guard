@@ -14,6 +14,7 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
@@ -63,6 +64,11 @@ def test_each_link_of_the_landing_page_leads_somewhere_once_the_site_is_built(
     shown = build.landing(tmp_path)
     assert shown, "the landing page shows no picture"
     text = page()
+    # A picture from anywhere else would be refused by the page's policy. Headless browsers
+    # draw the light scheme, so a dark <source> is never loaded by browser.mjs: it is held
+    # here (round 1 of #559).
+    for picture in re.findall(r'(?:src|srcset|poster)="([^"]+)"', text):
+        assert not re.match(r"[a-z]+:|//", picture), f"{picture}: a picture from elsewhere"
     ids = set(re.findall(r'\sid="([^"]+)"', text))
     addresses = [*re.findall(r'(?:href|src|srcset)="([^"]+)"', text),
                  *re.findall(rf'content="({re.escape(build.SITE)}[^"]*)"', text)]
@@ -101,7 +107,21 @@ def test_a_picture_the_landing_page_names_that_docs_img_lacks_stops_the_build(
     monkeypatch.setattr(build, "LANDING", landing)
     with pytest.raises(SystemExit, match="nothing was built"):
         build.landing(tmp_path / "site")
-    assert not (tmp_path / "site" / "pyproject.toml").exists()
+    assert not (tmp_path / "site").exists(), "the build stopped after copying"
+
+
+def test_the_landing_pages_example_of_a_convention_is_one_the_tool_has_built_in() -> None:
+    """A convention the shipped list has needs no entry in paper.yaml, so an example of one
+    the author must justify there would send a new user to write one (round 1 of #559)."""
+    card = re.search(r"<h3>A convention of writing</h3>\s*<p>(.*?)</p>", page(), re.DOTALL)
+    words = " ".join(card.group(1).split())
+    assert "built in" in words and "paper.yaml" in words
+    example = re.search(r"such as the \d+ of an? (.+?)\.", words).group(1)
+    shipped = yaml.safe_load((ROOT / "src" / "manuscript_guard" / "data" / "conventions.yaml")
+                             .read_text(encoding="utf-8"))["conventions"]  # fmt: skip
+    assert any(re.search(rule["pattern"], example) for rule in shipped), (
+        f"{example!r} is not on the shipped list of conventions"
+    )
 
 
 def alt(text: str, source: str) -> str:

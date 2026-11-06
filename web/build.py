@@ -88,18 +88,20 @@ def pictures(page: str) -> list[str]:
 
 
 def landing(out: Path) -> list[str]:
-    """Put the landing page in `out`, with each picture it names; return those pictures."""
-    out.mkdir(parents=True, exist_ok=True)
-    for name in LANDING_PAGE:
-        shutil.copyfile(LANDING / name, out / name)
+    """Put the landing page in `out`, with each picture it names; return those pictures.
+    Every picture is found before anything is copied."""
     shown = pictures((LANDING / "index.html").read_text(encoding="utf-8"))
     for name in shown:
         source = (IMAGES / name).resolve()
         if not source.is_relative_to(IMAGES.resolve()) or not source.is_file():
             raise SystemExit(f"web/landing/index.html shows img/{name}, which is not a file "
                              "in docs/img; nothing was built")  # fmt: skip
+    out.mkdir(parents=True, exist_ok=True)
+    for name in LANDING_PAGE:
+        shutil.copyfile(LANDING / name, out / name)
+    for name in shown:
         (out / "img" / name).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, out / "img" / name)
+        shutil.copyfile(IMAGES / name, out / "img" / name)
     return shown
 
 

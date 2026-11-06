@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- What this page may do, enforced by the browser: show pictures, video and a style from
      where it is served, and nothing else. It runs no script and sends no form.
-     tests/test_web.py holds the policy; web/test/browser.mjs loads the page under it. -->
+     tests/test_landing.py holds the policy; web/test/browser.mjs loads the page under it. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'self'; media-src 'self'; base-uri 'none'; form-action 'none'">
 <title>manuscript-guard: every number traceable to its source</title>
 <meta name="description" content="manuscript-guard holds a scientific manuscript to the analysis that produced it, the sources it cites and the plan it was written to, with checks that are code, not a model.">
@@ -95,8 +95,8 @@
           <p>A binding into a ledger, beside the sentence of the stored source it was quoted
             from.</p></li>
         <li><h3>A convention of writing</h3>
-          <p>Justified once in <code>paper.yaml</code>, such as the 95 of a 95% confidence
-            interval.</p></li>
+          <p>The common ones are built in, such as the 95 of a 95% confidence interval. Any
+            other is justified once, in <code>paper.yaml</code>.</p></li>
       </ol>
       <p class="text">A number that is none of these is a finding of the check, not
         something left for a reviewer to notice.</p>
@@ -239,7 +239,7 @@
           author, has been through <code>check</code>, <code>build</code> and <code>verify</code>,
           which ran its analysis again and reproduced each of its 1,483 values.</li>
         <li><strong>A measured set.</strong> The reference checks, on the 740 references of
-          16 published open-access papers: as published, 1.49 false alarms per 100
+          16 published open-access pharmacology and epidemiology papers: as published, 1.49 false alarms per 100
           references.</li>
         <li><strong>Not measured.</strong> How much of a study an agent can carry with it, and
           whether the research is better for it. No study has yet gone from its plan to

@@ -51,14 +51,19 @@ TITLE_SPAN = 6
 HEAD_LINES = 12
 PDF_HEADER = b"%PDF-"
 
-#: A DOI where a PDF's metadata says which work it is, in the XMP packet or the Info
-#: dictionary, both of which are mostly written uncompressed. Its brackets are kept: a
-#: Lancet DOI holds "(20)" (round 1 of #565: it was cut at the first one).
-_META_DOI = re.compile(
-    rb"(?i)(?:prism:doi|pdfx:doi|crossmark:doi|dc:identifier|/doi)"
-    rb"[\s>(\"'=]{0,8}(?:<rdf:li>)?\s*(?:doi:|https?://(?:dx\.)?doi\.org/)?"
-    rb"(10\.\d{4,9}/[^\s<>\"'\]\[]+)"
+#: A DOI where the XMP packet says which work a PDF is, mostly written uncompressed: an
+#: element's text or an attribute's value, which ends at `<` or a quote. Its brackets are
+#: kept: a Lancet DOI holds "(20)" (round 1 of #565: it was cut at the first one).
+_XMP_DOI = re.compile(
+    rb"(?i)(?:prism:doi|pdfx:doi|crossmark:doi|dc:identifier)"
+    rb"[\s>\"'=]{0,8}(?:<rdf:li>)?\s*(?:doi:|https?://(?:dx\.)?doi\.org/)?"
+    rb"(10\.\d{4,9}/[^\s<>\"']+)"
 )
+#: Where the Info dictionary gives a DOI: its `/doi` key, then a literal string, read by
+#: `_literal` to the bracket that closes it (round 2 of #565: Nature, BMC and Elsevier write
+#: `/doi(...)/Author(...)` with nothing between, and the DOI ran on into the next key).
+_INFO_DOI = re.compile(rb"(?i)/doi\s*\(")
+_A_DOI = re.compile(r"(?i)^(?:doi:\s*|https?://(?:dx\.)?doi\.org/)?(10\.\d{4,9}/\S+)$")
 #: A DOI printed on a page.
 _PAGE_DOI = re.compile(r"10\.\d{4,9}/[^\s\"<>\]\[]+")
 _LATEX = re.compile(r"\\[A-Za-z]+\s*")
@@ -168,9 +173,37 @@ def _whole(doi: str) -> str:
     return doi.lower()
 
 
+def _literal(raw: bytes, start: int) -> bytes | None:
+    """A PDF literal string from just after its opening bracket: to the bracket that balances
+    it, a bracket escaped with a backslash being a character of the string; None where it is
+    not closed within a DOI's length."""
+    depth, out, at = 1, bytearray(), start
+    while at < len(raw) and at - start < 512:
+        byte = raw[at]
+        if byte == 0x5C and at + 1 < len(raw):  # a backslash escapes the next byte
+            out.append(raw[at + 1])
+            at += 2
+            continue
+        if byte == 0x28:
+            depth += 1
+        elif byte == 0x29:
+            depth -= 1
+            if depth == 0:
+                return bytes(out)
+        out.append(byte)
+        at += 1
+    return None
+
+
 def metadata_dois(raw: bytes) -> set[str]:
     """The DOIs a PDF's metadata names, in lower case and without a closing stop."""
-    return {_whole(found.group(1).decode("latin-1")) for found in _META_DOI.finditer(raw)}
+    found = {_whole(one.group(1).decode("latin-1")) for one in _XMP_DOI.finditer(raw)}
+    for one in _INFO_DOI.finditer(raw):
+        value = _literal(raw, one.end())
+        doi = _A_DOI.match(value.decode("latin-1").strip()) if value is not None else None
+        if doi:
+            found.add(_whole(doi.group(1)))
+    return found
 
 
 def doi_in(text: str, doi: str) -> bool:
@@ -250,29 +283,51 @@ def shows(path: Path, doi: str | None, title: str | None, text: str | None = Non
     return judged(raw, text, doi, title)
 
 
+def _own(printed: str, doi: str | None) -> bool:
+    """Whether a DOI read on a page is the work's: the same, the start of it cut at a line
+    break, or it with a word `-layout` set against it (round 2 of #565:
+    `10.1177/25152459221106366deffner` was taken for another). `<doi>.s001`, a supplement's,
+    is not."""
+    if not doi:
+        return False
+    if printed == doi or doi.startswith(printed):
+        return True
+    return printed.startswith(doi) and printed[len(doi)].isalpha()
+
+
 def judged(raw: bytes, text: str | None, doi: str | None, title: str | None) -> Shown:
-    """`shows`, on bytes and text already read."""
+    """`shows`, on bytes and text already read.
+
+    Another DOI refuses only a PDF that the work's own DOI is not in: one that has it names
+    others beside it, a dataset, a comment, a page shared with other articles (round 2 of
+    #565: refused, 27 of 52 real PDFs were). The metadata is the PDF's word for which work it
+    is, so a PDF whose metadata names another DOI and not the work's is refused even where
+    the work's DOI is in its text: that is another paper citing it."""
     meta = metadata_dois(raw)
     doi = doi.lower() if doi else None
     if text is None and not meta:
         return Shown(None, "nothing on this computer reads a PDF's text (install poppler's "
                            "pdftotext, or pypdf), and its metadata names no DOI")  # fmt: skip
     pages = (text or "").split("\f")[:PAGES]
-    by_doi = bool(doi) and (doi in meta or doi_in("\n".join(pages), doi))
+    printed = _on_the_page("\n".join(pages))
+    in_text = bool(doi) and (doi_in("\n".join(pages), doi)
+                             or any(_own(one, doi) for one in printed))  # fmt: skip
     wanted = title_key(title)
     at = title_at(pages, wanted) if wanted else None
-    near = by_doi or at is not None
+    near = in_text or at is not None or bool(doi and doi in meta)
     others = sorted(meta - {doi})
-    if others:
+    if others and not (doi and doi in meta):
         return Shown(None, f"its metadata names another DOI ({', '.join(others)}), so it is "
                            "taken for another work", near)  # fmt: skip
-    # A DOI cut at a line break is read as the start of the work's.
-    printed = sorted(one for one in _on_the_page(pages[0] if pages else "")
-                     if not (doi and doi.startswith(one)))  # fmt: skip
-    if printed:
-        return Shown(None, f"its first page gives another DOI ({', '.join(printed)}), so it "
-                           "is another work, or one about several", near)  # fmt: skip
-    if near:
+    by_doi = bool(doi) and (doi in meta or in_text)
+    if not by_doi:
+        page_one = sorted(one for one in _on_the_page(pages[0] if pages else "")
+                          if not _own(one, doi))  # fmt: skip
+        if page_one:
+            return Shown(None, f"its first page gives another DOI ({', '.join(page_one)}) and "
+                               "not the work's, so it is another work, or one about several",
+                         near)  # fmt: skip
+    if by_doi or at is not None:
         kind = _kind(pages, at, title or "")
         if kind:
             return Shown(None, f"its head says it is {kind}, not the work itself", near)

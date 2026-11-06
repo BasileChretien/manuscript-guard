@@ -14,8 +14,9 @@ them, under its own rules:
   metadata at 169.254.169.254. So a URL whose host is a loopback, private, link-local,
   multicast, reserved or unspecified address is refused, and so is a name that resolves to
   one, resolved again before each hop (round 1 of #565: a 302 to `http://127.0.0.1:9/x` was
-  followed). The tests answer from a server on this machine, and say so with `local=True`;
-  nothing else does.
+  followed). A name that does not resolve here while an https proxy is set is left to the
+  proxy, which resolves it on its own network: that is not checked. The tests answer from a
+  server on this machine, and say so with `local=True`; nothing else does.
 * **No key, no address, no cookie of the user's travels.** The request carries a
   User-Agent naming the toolkit and nothing else of the person running it. A cookie a
   publisher sets on the way through its redirects is kept in memory for that run only, as a

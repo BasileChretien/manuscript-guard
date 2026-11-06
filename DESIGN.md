@@ -3435,14 +3435,17 @@ at 64 MB; the User-Agent names the toolkit, and no e-mail address goes to any of
 services, `lookup`'s contact address included. No link is followed to this computer or its
 network: a host that is, or resolves to, a loopback, private, link-local, multicast, reserved
 or unspecified address is refused at every hop, since a publisher's redirect could otherwise
-set off Zotero's connector or a router (round 1 of #565); the tests' server on this machine is
+set off Zotero's connector or a router (round 1 of #565), except a name that does not resolve
+here while an https proxy is set, which the proxy resolves on its own network; the tests' server on this machine is
 reached only with `local=True`, which nothing but a test passes. A link no URL parser reads
 lists the work as wanted, and the run goes on. A PDF is kept only where it is the work
 (`literature/matching.py`), and where the evidence is not exact it is refused rather than
 guessed at: it begins with `%PDF-`; its first two pages give the work's DOI, or its title makes
 up whole lines near the top of one of them, compared on letters and digits (a title running on
-in a sentence is not a title), or its metadata gives its DOI; its metadata and its first page
-name no other DOI; its head does not say it is a supplement, a correction or a reply, unless
+in a sentence is not a title), or its metadata gives its DOI; its metadata names no other DOI
+unless it names the work's too, and, where the work's DOI is nowhere on it, its first page
+names no other (round 2 of #565: a dataset's or a comment's DOI printed beside the work's own
+refused 27 of 52 real PDFs); its head does not say it is a supplement, a correction or a reply, unless
 the cited work's own title does; and it has at least half the pages `references.bib` gives
 the work, from the publisher and from `--inbox` alike, since a first-page preview passes every
 other test. A landing page, a preview, a supplement or another paper under the key would be
@@ -20373,9 +20376,13 @@ Open, recorded as each change landed:
 - **What `sync-sources` fetches from the web is held to the work's DOI or title, not read
   through.** A PDF whose first pages give the work's title is kept even where it is a version
   other than the published one that OpenAlex did not label, or a reprint with other page
-  numbers; a quote then fails G7 where the versions differ, which is how it shows. A paper
+  numbers, so long as it prints no DOI of its own; a quote then fails G7 where the versions
+  differ, which is how it shows. A preprint copy that prints its own DOI (bioRxiv's
+  `10.1101/...`) is refused, and so is a copy that prints the work's DOI where
+  `references.bib` gives the work none: beside another DOI, a title is not evidence. A paper
   that names another cited work's DOI on its second page only, and no other, is taken for that
-  work where `--inbox` reads it. A title set on one line with something else, a running head
+  work where `--inbox` reads it, and so is one that prints a cited work's DOI on its first
+  pages, its metadata naming none. A title set on one line with something else, a running head
   beside it in a layout pdftotext keeps, is not found, and the work is left as wanted. A head
   other than those listed ("Online Appendix", "Data Supplement" further down) is not known. A
   publisher behind a bot check answers this computer with that page, which is not kept, so its
@@ -20401,6 +20408,23 @@ Open, recorded as each change landed:
   - A name is resolved before each request and again by `urllib` when it connects, so a
     resolver that answers the two differently (DNS rebinding) can still reach this
     computer's network; the connection is not pinned to the address checked.
+  Round 2 of #565 left these, each not done:
+  - Where a name does not resolve here and an https proxy is set, it is not checked: the
+    proxy resolves it on its own network, so a GET can reach the proxy's LAN.
+  - `own_network` misses 100.64.0.0/10 (carrier-grade NAT, Tailscale) and fec0::/10, which
+    `not ip.is_global` would catch; and a proxy tool in fake-IP mode, answering 198.18.0.0/15
+    for every name, has every fetch refused.
+  - `Fetcher.__call__` catches `ValueError` over the whole of `_full_text`, staging and
+    matching included, so a fault there is said to be a link that cannot be read, and the
+    work's other places are skipped.
+  - No test of `::ffff:127.0.0.1`, `0.0.0.0`, a decimal host, a name with several addresses
+    one of them private, the proxy branch, or a public address passing `default_transport`.
+  - A journal's own label above the title, "SUPPLEMENT ARTICLE" (Clin Infect Dis, J Infect
+    Dis), is read as a supplement's head, and the article refused.
+  - The methods review says "no stored copy of @key" of a work whose only copy is its
+    abstract, and its `similar-passage-not-in-source` became a warning there, unsaid here.
+  - A passage mistyped from an abstract that is the work's only copy, the author's own saved
+    one included, failed on main and now warns; a near match could keep it failing.
 - **`sync-sources --from` matches only a name a DOI spells, at the places the harvester puts
   it.** A PDF named by its title, its PMID or its citation key is counted as named for no
   cited DOI and not copied, and one deeper in the folder than `<name>/` or

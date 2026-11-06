@@ -319,11 +319,22 @@ def test_a_landing_page_is_followed_to_the_pdf_it_names_once(paper: Path) -> Non
 
 
 def test_a_pubmed_central_copy_is_taken_by_the_pmcid(paper: Path) -> None:
+    """The copy prints the work's DOI, as a PMC copy does (round 2 of #565: a copy was given
+    with no DOI on it, which hid the copy's own DOI being refused)."""
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI, "pmcid": "PMC1234567"})
+    url = f"{PLACES.europepmc}?accid=PMC1234567&blobtype=pdf"
+    table = Table({url: pdf_answer(THE_WORK), PLACES.crossref + DOI: crossref(None)})
+    (outcome,), _ = sync(paper, table)
+    assert outcome.status == copies.COPIED and "from pmc.test" in outcome.said
+    assert record(paper)["hepatic2021.pdf"]["matched"] == "doi"
+
+
+def test_a_copy_with_no_doi_is_taken_by_its_title(paper: Path) -> None:
     cite(paper, nodoi2020={"title": TITLE, "pmcid": "PMC1234567"})
     url = f"{PLACES.europepmc}?accid=PMC1234567&blobtype=pdf"
     table = Table({url: pdf_answer(TITLE_ONLY)})
     (outcome,), _ = sync(paper, table)
-    assert outcome.status == copies.COPIED and "from pmc.test" in outcome.said
+    assert outcome.status == copies.COPIED
     assert record(paper)["nodoi2020.pdf"]["matched"] == "title"
     assert "doi" not in record(paper)["nodoi2020.pdf"]
 
@@ -706,3 +717,55 @@ def test_a_preview_saved_in_the_inbox_is_not_filed(paper, tmp_path) -> None:
     (downloads / "preview.pdf").write_bytes(article(TITLE, f"doi: {DOI}", pages=9))
     inbox_sync(paper, downloads)
     assert (sources(paper) / "hepatic2021.pdf").exists()
+
+
+
+# --------------------------------------------------------------- round 2 of #565
+
+
+@pytest.mark.parametrize(("raw", "doi"), [
+    (rb"<</doi(10.1038/s41598-018-33980-0)/Author(Adrien Fictional)/Title(x)>>",
+     "10.1038/s41598-018-33980-0"),
+    (rb"<</doi(10.1186/s12888-019-2190-5)/CrossMarkDomains[1](springer.com)>>",
+     "10.1186/s12888-019-2190-5"),
+    (rb"<</doi(10.1016/j.bbr.2020.112345)/robots(noindex)>>", "10.1016/j.bbr.2020.112345"),
+    (rb"<</doi(10.1016/S0140-6736\(20\)30183-5)/Title(x)>>", "10.1016/s0140-6736(20)30183-5"),
+    (rb"<</doi(10.1016/S0140-6736(20)30183-5)/Title(x)>>", "10.1016/s0140-6736(20)30183-5"),
+    (rb"<</doi (doi:10.1000/abc.1) /Subject(x)>>", "10.1000/abc.1"),
+    (b"<prism:doi>10.1016/S0140-6736(20)30183-5</prism:doi>", "10.1016/s0140-6736(20)30183-5"),
+])  # fmt: skip
+def test_an_info_dictionarys_doi_is_read_to_the_bracket_that_closes_it(raw, doi) -> None:
+    """Round 2 of #565: Nature, BMC and Elsevier write the Info dictionary with no space
+    between its keys, `/doi(...)/Author(...)`, and the DOI ran on into the next key, so the
+    work's own PDF was refused as naming another DOI."""
+    assert matching.metadata_dois(b"%PDF-1.7\n" + raw) == {doi}
+    assert matching.judged(b"%PDF-1.7\n" + raw, "", doi, None).by == "doi"
+
+
+@pytest.mark.parametrize("beside", [
+    "Data Availability: https://doi.org/10.5061/dryad.abc123",
+    "See Online/Comment https://doi.org/10.1016/S0140-6736(20)30183-5",
+    "This article is a reply to doi:10.5555/another.2020.9",
+])  # fmt: skip
+def test_another_doi_printed_beside_the_works_own_does_not_refuse_it(beside: str) -> None:
+    """Round 2 of #565: any other DOI on page 1 refused the PDF, though the work's own DOI
+    was there too. Another DOI refuses a title match only."""
+    text = f"Journal of Examples\nhttps://doi.org/{DOI}\nA study\n{beside}\n"
+    assert matching.judged(b"%PDF-1.4", text, DOI, TITLE).by == "doi"
+
+
+def test_the_works_doi_with_a_word_glued_on_is_still_the_works() -> None:
+    """`-layout` set the next word against the DOI, `10.1177/25152459221106366deffner`, and
+    the work's own DOI was read as another."""
+    doi = "10.1177/25152459221106366"
+    text = f"Advances in Examples\nhttps://doi.org/{doi}deffner et al.\nA study\n"
+    assert matching.judged(b"%PDF-1.4", text, doi, None).by == "doi"
+
+
+def test_a_preprint_printing_its_own_doi_is_not_taken_by_the_title() -> None:
+    """A bioRxiv copy of the cited article prints the preprint's DOI and the article's
+    title: the title is not evidence beside another DOI, and it is refused."""
+    text = ("bioRxiv preprint\nHepatic injury in a fictional\nnational cohort\n"
+            "doi: 10.1101/2020.01.01.123")
+    shown = matching.judged(b"%PDF-1.4", text, DOI, TITLE)
+    assert shown.by is None and "10.1101/2020.01.01.123" in shown.why

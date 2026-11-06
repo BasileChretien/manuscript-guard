@@ -22346,6 +22346,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
   author's two institutions go in as one, matched to no organisation (ROR), as CITATION.cff's
   one field does.
 
+- **`verify` runs the analysis in a copy without `.git`.** `IGNORED_DIRS` leaves out the
+  build tree and `.git`, so the scratch copy has no history. An analysis that checks its own
+  git provenance, such as whether the commit it runs from is in the history, carries a tag,
+  or has a clean tree, cannot make that check in the copy: it fails there, or has to detect
+  the copy and skip the check, which is then not verified. Copying `.git` would carry the
+  author's whole history, hooks and configuration into a tree where somebody else's code
+  runs, and the check would then read the scratch copy's state, not the checkout's. What
+  `verify` compares is the results, and they do not come from the history. Found taking the
+  athlete-leakage study through the loop, whose runners refuse a dirty tree and record the
+  commit (`test_the_scratch_copy_has_no_git_a_limit_known_gaps_names`).
+
 Closed since, and why each mattered (an open gap goes above this line):
 
 - **An accent on a dotless i was read as italics (2026-11-05).** Better BibTeX writes í as

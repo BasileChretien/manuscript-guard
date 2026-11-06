@@ -280,9 +280,10 @@ def test_a_count_of_gates_or_hooks_is_the_number_there_are() -> None:
 SHOWN = [*PAGES, REPO / "brand" / "README.md"]
 
 
-def test_every_picture_on_the_pages_has_alternative_text() -> None:
+def test_every_html_picture_on_the_pages_has_alternative_text() -> None:
     """Empty for a drawing whose name is written beside it, as the villains' are; but
-    present, so that a screen reader does not read out the file's name instead."""
+    present, so that a screen reader does not read out the file's name instead. A Markdown
+    picture always has its alternative text, if empty, so only HTML ones are read."""
     seen = 0
     for page in SHOWN:
         for tag in re.findall(r"<img\b[^>]*>", text_of(page)):
@@ -295,8 +296,10 @@ def test_every_animated_picture_holds_still_for_a_reader_who_turns_motion_off() 
     animated = [path for path in sorted((DOCS / "img").rglob("*.svg"))
                 if "@keyframes" in path.read_text(encoding="utf-8")]  # fmt: skip
     assert animated, "no animated picture found; the pattern no longer matches"
+    # Which elements the rule reaches is held for the banner by tests/test_brand.py.
+    still = re.compile(r"prefers-reduced-motion:\s*reduce\)\s*\{[^@]*?animation:\s*none")
     for path in animated:
-        assert "prefers-reduced-motion" in path.read_text(encoding="utf-8"), (
+        assert still.search(path.read_text(encoding="utf-8")), (
             f"{path.relative_to(REPO).as_posix()} moves for a reader who asked for less motion"
         )
 
@@ -331,8 +334,11 @@ def test_the_readmes_villains_are_named_with_the_gates_the_banner_gives_them() -
     (at,) = [n for n, line in enumerate(lines) if "docs/img/brand/stray-number-light.svg" in line]
     drawn = [re.search(r"docs/img/brand/([a-z-]+)-light\.svg", cell).group(1)
              for cell in cells(lines[at])]  # fmt: skip
-    gates = [re.search(r"\b(G\d+)$", cell).group(1) for cell in cells(lines[at + 2])]
-    assert list(zip(drawn, gates, strict=True)) == list(brand_script().CAST)
+    under = [re.fullmatch(r"(.+), (G\d+)", cell).groups() for cell in cells(lines[at + 2])]
+    script = brand_script()
+    names = {name: title.split(",")[0] for name, _, _, _, title in script.DRAWINGS}
+    assert [(names[one], gate) for one, gate in script.CAST] == under
+    assert list(zip(drawn, [gate for _, gate in under], strict=True)) == list(script.CAST)
 
 
 def figures_script():

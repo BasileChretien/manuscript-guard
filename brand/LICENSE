@@ -1,0 +1,8 @@
+The drawings in this folder (brand/) and in docs/img/brand/ are licensed under the
+Creative Commons Attribution 4.0 International licence (CC BY 4.0), not under the MIT
+licence of the repository's LICENSE file:
+https://creativecommons.org/licenses/by/4.0/legalcode
+
+Credit them as "Vord and the manuscript-guard emblem, by the manuscript-guard project,
+CC BY 4.0". The code that writes them, tools/brand_assets.py, is under the MIT licence
+like the rest of the repository.

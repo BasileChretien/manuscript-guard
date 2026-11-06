@@ -24,7 +24,7 @@ them.
 
 **[Check a paper in your browser](https://basilechretien.github.io/manuscript-guard/audit/)** ·
 **[Start a paper](docs/getting-started.md)** ·
-**[See it catch a mistake](#see-it-catch-a-mistake)** ·
+**[See it catch a mistake](https://github.com/BasileChretien/manuscript-guard#see-it-catch-a-mistake)** ·
 **[For supervisors and groups](docs/teams.md)**
 
 ## See it catch a mistake
@@ -601,4 +601,4 @@ the reference, from [CITATION.cff](CITATION.cff).
 ## Licence
 
 The code is under the MIT licence. Vord, the emblem and the other drawings in `brand/` and
-`docs/img/brand/` are under CC BY 4.0 ([the character sheet](brand/README.md)).
+`docs/img/brand/` are under CC BY 4.0 ([brand/LICENSE](brand/LICENSE)).

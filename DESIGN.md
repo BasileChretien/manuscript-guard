@@ -4340,16 +4340,17 @@ on the comment. And the line is the one the matched words begin on, not the matc
 for a chat assistant's opening word reads from the start of a line through any blank lines,
 and its finding was put on the blank line above the paragraph. That rule passes over a
 match whose words carry on a sentence from the line before (`paragraph_start`,
-`writing._continues_a_sentence`): the line before is prose and ends in a word, a number, a
-comma or a semicolon, with any closing marks. Read at every line, it failed a hard-wrapped
-sentence whose line began "here is the" (the athlete-leakage study, 2026-11-06). Anything
-else before the words, a blank line, markup (front matter's dashes, a heading, a comment, a
-fence, a command) or a sentence's end, leaves them read as an opening, since the file is
-read as typed and a list of what ends a paragraph missed most of it (rounds 1 and 2 of
-#538). Two limits: a line of prose with no stop, a footnote command alone on its line in a
-LaTeX paragraph say, before "of course" still fails as it did, and a sentence that opens
-with "Certainly" after a wrap at a full stop fails where the same sentence on one line does
-not.
+`writing._continues_a_sentence`): the words are in lower case, and the line before is prose
+that ends in a word, a number, a comma, a semicolon, a colon or a dash, with any closing
+marks. Read at every line, it failed a hard-wrapped sentence whose line began "here is the"
+(the athlete-leakage study, 2026-11-06). A capital is read as an opening whatever stands
+before it, since a chat assistant's reply opens with one, and so is a lower-case word after
+anything but running prose: the file is read as typed, and a list of what ends a paragraph,
+then a test of the line before alone, each missed markup the other caught (rounds 1 to 3 of
+#538). Two limits: a lower-case opener under a line of prose with no stop, a footnote
+command alone on its line in a LaTeX paragraph say, still fails as it did, and a sentence
+that opens with "Certainly" after a wrap at a full stop fails where the same sentence on one
+line does not.
 
 **Vague attribution gets the one check an encyclopedia cannot use.** "Studies have shown" is
 reported only when no citation sits within 240 characters, because in a manuscript the fix

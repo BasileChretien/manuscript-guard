@@ -163,6 +163,9 @@ def test_ordinary_scientific_prose_passes(project: Path) -> None:
         "We were not\nsure whether the second reader had seen the first reading.",
         "The difference was\ncertainly smaller in the second period.",
         "The cohort was, as the protocol required and\nof course before the analysis, fixed.",
+        # Round 3 of #538: a wrap after a dash or a colon.
+        "The effect was small \N{EN DASH}\nof course, the sample was small.",
+        "The reason was plain:\ncertainly not the sample, which was fixed.",
     ],
 )
 def test_an_opening_word_inside_a_wrapped_paragraph_passes(project: Path, paragraph: str) -> None:
@@ -201,6 +204,15 @@ def test_an_opening_word_after_a_heading_or_a_line_of_spaces_fails(
         "```\ncode\n```\nCertainly! Here is the revised section.\n",
         ":::\nCertainly! Here is the revised section.\n",
         "As in Table 2.\nCertainly! Here is the revised Discussion.\n",
+        # Round 3 of #538: a capital is an opening whatever runs before it.
+        "\\maketitle\nCertainly! Here is the revised abstract.\n",
+        "\\noindent\nCertainly! Here is the revised abstract.\n",
+        "**Methods**\nCertainly! Here is the revised Methods section.\n",
+        "_Statistical analysis_\nSure, here is the revised analysis.\n",
+        "Table 1. Baseline characteristics\nHere is the revised table.\n",
+        "\\section{Methods} % revised by the model\nSure, here is the revised one.\n",
+        "As reported before.[12]\nCertainly! Here is the revised Discussion.\n",
+        "As reported before.[^1]\nSure, here is the revised Discussion.\n",
     ],
 )
 def test_an_opening_word_after_markup_or_a_sentence_end_is_an_artefact(text: str) -> None:

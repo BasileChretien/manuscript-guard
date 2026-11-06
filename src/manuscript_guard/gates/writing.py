@@ -394,21 +394,23 @@ def artefacts_in(
 
 
 #: The end of a line of prose whose sentence runs on into the next line: a word or a number,
-#: a comma or a semicolon, and any closing marks after it ("reported", "Table 2,", "[@key]").
-_RUNS_ON = re.compile(r"[\w,;][)\]*_'\"’”]*[ \t\r]*$")
+#: a comma, a semicolon, a colon or a dash, and any closing marks after it ("reported",
+#: "Table 2,", "[@key]", "small –").
+_RUNS_ON = re.compile(r"[\w,;:–—][)\]*_'\"’”]*[ \t\r]*$")
 #: A line that is no prose whatever it ends with: a heading, a LaTeX or an HTML comment.
 _NOT_PROSE = re.compile(r"[ \t]{0,3}#{1,6}(?:[ \t]|$)|[ \t]*%|[ \t]*<!--")
 
 
 def _continues_a_sentence(text: str, at: int) -> bool:
     """Whether the words at `at` carry on a sentence from the line before: they begin their
-    line, and the line before is prose that does not end its sentence. In a hard-wrapped
-    paragraph a line can start in the middle of a sentence, "The analysis reported / here is
-    the third protocol"; anything else before the words leaves them read as an opening,
-    a blank line, a heading, front matter's `---`, a comment, a fence, a command, a sentence's
-    end (round 2 of #538)."""
+    line in lower case, and the line before is prose that does not end its sentence. In a
+    hard-wrapped paragraph a line can start in the middle of a sentence, "The analysis
+    reported / here is the third protocol". A chat assistant's reply opens with a capital,
+    "Certainly!", "Here is the", so a capital is read as an opening whatever stands before
+    it, a bold label, `\\maketitle`, a sentence's end before a citation mark (round 3 of
+    #538); so is a word in lower case after anything but running prose (round 2)."""
     start = text.rfind("\n", 0, at) + 1
-    if start == 0 or text[start:at].strip():
+    if start == 0 or text[start:at].strip() or not text[at : at + 1].islower():
         return False
     before = text[text.rfind("\n", 0, start - 1) + 1 : start - 1]
     return _NOT_PROSE.match(before) is None and _RUNS_ON.search(before) is not None

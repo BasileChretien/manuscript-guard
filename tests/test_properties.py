@@ -8378,6 +8378,8 @@ _PARAGRAPH_ENDS = (
     "\n\n", "\n \n", "\n\t\n", "\n\n\n", "\n\n## Results\n\n", "\n\n## Results\n",
     "\n\\section{Results}\n", "\n% a note\n", "\n---\n", "\n<!-- a note -->\n",
     "\nResults\n-------\n", "\n```\n", "\n:::\n", "\n",
+    # Round 3 of #538: what ends in a letter and is no running prose.
+    "\n\\noindent\n", "\n**Results**\n", "[12]\n",
 )  # fmt: skip
 
 
@@ -13381,6 +13383,22 @@ def _a_paragraph_opens_only_after_the_ends_it_names(patch: pytest.MonkeyPatch) -
         return not (not before.strip() or heading.fullmatch(before) or command.fullmatch(before))
 
     patch.setattr(writing, "_continues_a_sentence", not_after_a_named_end)
+
+
+def _an_opener_in_capitals_can_run_on(patch: pytest.MonkeyPatch) -> None:
+    # As the third head of #538 read it: a line that ends in a letter ran on into the next,
+    # a capital or not, so `\noindent` or a bold label above a reply hid it (round 3).
+    from manuscript_guard.gates import writing
+
+    def runs_on(text: str, at: int) -> bool:
+        start = text.rfind("\n", 0, at) + 1
+        if start == 0 or text[start:at].strip():
+            return False
+        before = text[text.rfind("\n", 0, start - 1) + 1 : start - 1]
+        return (writing._NOT_PROSE.match(before) is None
+                and writing._RUNS_ON.search(before) is not None)  # fmt: skip
+
+    patch.setattr(writing, "_continues_a_sentence", runs_on)
 
 
 def _a_field_wholly_in_brackets_is_read_without_them(patch: pytest.MonkeyPatch) -> None:
@@ -18934,6 +18952,10 @@ BROKEN = {
     ),
     "a paragraph opens only after the ends it names": (
         _a_paragraph_opens_only_after_the_ends_it_names,
+        test_an_assistant_opener_is_found_where_a_paragraph_opens_however_it_is_wrapped,
+    ),
+    "an opener in capitals can run on from the line before": (
+        _an_opener_in_capitals_can_run_on,
         test_an_assistant_opener_is_found_where_a_paragraph_opens_however_it_is_wrapped,
     ),
     "the reviewers are read as one reviewer": (

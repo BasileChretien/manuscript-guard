@@ -14709,8 +14709,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   first after #555 did, or one after the cache has gone unused for seven days, downloads
   from the mirror as before, and in a slow spell is still cancelled at 30 minutes;
   `apt-get update` reads the mirror's index every time. That the runner's image keeps the
-  files after the install is seen only in a run's log: were it to stop, the keep step would
-  warn and save nothing, and the job would pass, downloading every time. The checksum is
+  files after the install is seen only in a run's log: were it to stop, the keep step
+  would warn and the save step would still save `~/tex-debs`, empty or partial, under the
+  key, so later runs find the key, skip both steps and download every time, and the job
+  passes (round 1 of #563). The checksum is
   MD5, which catches a corrupt file and is not what protects the cache: only runs on main
   write the cache that main's runs read.
   `test_the_latex_job_keeps_its_tex_packages_under_one_key` holds the listing, restore,
@@ -17308,12 +17310,13 @@ Open, recorded as each change landed:
   citation of an entry after it is reported as `citation-beyond-list`; a `***` right under
   the heading leaves the list empty (round 1 of #553, finding 2). A dash-shaped line
   directly under a line of text is taken for a setext underline and ends nothing, whatever
-  its shape: a spaced `- - -` or an indented `   ---` directly under an entry, which
-  CommonMark reads as a break, lets the list run on to the next heading, as before #553
-  (round 2 of #553, finding 1), and so does `---` directly under an ATX `# References`
-  (finding 3). A plain `---` directly under the last entry makes that entry a setext
-  heading, which ends the list above it, so the entry is left out of the list (found
-  checking round 2; the same before #553). The generated reference lists put every break
+  its shape: a spaced `- - -` directly under an entry, which CommonMark reads as a break,
+  lets the list run on to the next heading, as before #553 (round 2 of #553, finding 1),
+  and so does `---` directly under an ATX `# References` (finding 3). A plain `---`
+  directly under any entry makes that entry a setext heading, which ends the list above
+  it: with entries 1 to 4 and `---` under entry 2, entries 2 to 4 are read as prose
+  (found checking round 2, widened in round 1 of #563; the same before #553). The generated
+  reference lists put every break
   after a blank line, so a rule that passed over every dash line with text above it would
   pass the property (round 2, finding 2). A line indented four spaces is code. Otherwise
   the shape is read, not pandoc's reading of it, so a simple table's dashed rule under the
@@ -18707,9 +18710,11 @@ Open, recorded as each change landed:
   - *A bare float caption or header.* The table's `digits=` reaches the body's cells only:
     the caption and the headers go through `_cell` with no digits (`emit.py`, and R passes
     `NULL`), so `Emitter.table(..., caption=3.84, digits=2)` is refused with "Pass `digits=`
-    to table()", advice a caption or a header cannot take (finding 3). The results-binding
-    skill as round 1 of #560 read it says "A caption and a header take what a cell takes",
-    true of a `Composed`, a string and an int, and not of a bare float. Its example rounds
+    to table()", advice a caption or a header cannot take (finding 3). `Emitter.table`'s
+    docstring says "The caption and the column headers take what a cell takes", and the
+    results-binding skill as round 1 of #560 read it "A caption and a header take what a
+    cell takes" (round 1 of #563): true of a `Composed`, a string and an int, and not of a
+    bare float. Its example rounds
     inside `em.cell` with `(x, digits)`, so an agent who copies it is not caught. Closed by
     the message naming `em.cell(...)` for a caption or a header, or by the sentence saying
     that the table's `digits=` covers the body only.

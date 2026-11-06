@@ -91,13 +91,19 @@ def test_a_villain_that_turns_into_brass_for_some_readers_is_found() -> None:
 
 @pytest.mark.parametrize("shade", ["light", "dark"])
 def test_the_banner_loops_and_holds_still_for_a_reader_who_turns_motion_off(shade: str) -> None:
-    text = brand_script().drawings()[f"banner-{shade}.svg"]
-    assert "animation-iteration-count:infinite" in text
-    assert "@media (prefers-reduced-motion:reduce){.a{animation:none}}" in text
-    # Still, it rests on the first villain blocked: every other villain and tag is hidden.
-    hidden = text.split("{opacity:0}@media", 1)[0].rsplit("}", 1)[1].split(",")
-    assert ".k0" not in hidden and ".t0" not in hidden
-    assert {".k1", ".t1", ".sh"} <= set(hidden)
+    script = brand_script()
+    css = script.drawings()[f"banner-{shade}.svg"].split("<style>", 1)[1].split("</style>", 1)[0]
+    assert "animation-iteration-count:infinite" in css
+    still = "@media (prefers-reduced-motion:reduce){.a{animation:none}}"
+    assert still in css
+    # Of rules equally specific, the later wins: before a rule that names an animation, the
+    # reduced-motion rule would be overridden and the banner would keep moving.
+    assert css.rindex("animation-name:") < css.index(still)
+    # Still, it rests on the first villain blocked, its tag and the co-author: every other
+    # villain and tag, and the shadows, are hidden, and nothing else is.
+    hidden = set(css.split("{opacity:0}@media", 1)[0].rsplit("}", 1)[1].split(","))
+    later = range(1, len(script.CAST))
+    assert hidden == {*(f".k{n}" for n in later), *(f".t{n}" for n in later), ".sh"}
 
 
 def test_the_banner_names_each_villain_by_the_gate_its_drawing_names() -> None:
@@ -105,6 +111,7 @@ def test_the_banner_names_each_villain_by_the_gate_its_drawing_names() -> None:
     titles = {name: title for name, _, _, _, title in script.DRAWINGS}
     for name, gate in script.CAST:
         assert f"({gate})" in titles[name], f"{name} is shown blocked by {gate}"
+        assert f"({gate})" in script.BANNER_TITLE, f"the banner's title does not name {gate}"
 
 
 def png_size(path: Path) -> tuple[int, int]:

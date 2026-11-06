@@ -56,9 +56,11 @@ The emblem is Vord's helmet on a round shield.
 2. The two shadows pass through the shield.
 3. The co-author reads the manuscript through a magnifying glass.
 
-The motion is CSS inside the SVG, so it plays wherever the SVG is shown as an image, GitHub
-included, with no script. A reader whose system asks for less motion sees one still frame:
-the Stray Number blocked by G2, and the co-author reading. The order and the timing are
+The motion is CSS inside the SVG, so it plays in a browser that shows the SVG as an image,
+GitHub included, with no script. A renderer that reads the style but not the animation, such
+as librsvg in some converters, shows the still frame. So does a browser whose reader asks for
+less motion. The still frame is the Stray Number blocked by G2, and the co-author reading.
+The order and the timing are
 `CAST` and `LOOP` with the constants beside them in `tools/brand_assets.py`. The test holds
 each villain's gate in the banner to the gate its drawing's title names.
 
@@ -104,8 +106,8 @@ lilac were chosen with `manuscript_guard.colour`, the model G3 holds a figure to
 Oliveira and Fernandes (2009) at full severity, and CIEDE2000. For protanopia, deuteranopia
 and tritanopia alike, each stays at least 10 apart from the brass, teal, navy, plates and
 steel of the guard, and from the other. Vord's other colours (dark teal, visor, paper, eye,
-ink, the crest's edge and his shadow on the ground) are not compared. Within Vord, steel and brass become the same grey in print. They are
-trim on one figure and carry no meaning apart.
+ink, the crest's edge and his shadow on the ground) are not compared. Within Vord, steel and
+brass become the same grey in print. They are trim on one figure and carry no meaning apart.
 
 ## Using the drawings
 

@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- What this page may do, enforced by the browser: show pictures, video and a style from
+     where it is served, and nothing else. It runs no script and sends no form.
+     tests/test_landing.py holds the policy; web/test/browser.mjs loads the page under it. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'self'; media-src 'self'; base-uri 'none'; form-action 'none'">
+<title>manuscript-guard: every number traceable to its source</title>
+<meta name="description" content="manuscript-guard holds a scientific manuscript to the analysis that produced it, the sources it cites and the plan it was written to, with checks that are code, not a model.">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="website">
+<meta property="og:title" content="manuscript-guard">
+<meta property="og:description" content="Every number traceable to its source. Checks that hold a scientific manuscript to its analysis, its sources and its plan.">
+<meta property="og:url" content="https://basilechretien.github.io/manuscript-guard/">
+<meta property="og:image" content="https://basilechretien.github.io/manuscript-guard/img/brand/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="The manuscript-guard emblem, a helmet on a round shield, with the words: Every number traceable to its source.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="img/brand/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="img/brand/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="./">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="img/brand/emblem-small-dark.svg">
+        <img src="img/brand/emblem-small-light.svg" width="32" height="32" alt="">
+      </picture>
+      manuscript-guard
+    </a>
+    <nav aria-label="Site">
+      <a href="audit/">Audit a paper</a>
+      <a href="https://github.com/BasileChretien/manuscript-guard/blob/main/docs/getting-started.md">Get started</a>
+      <a href="https://github.com/BasileChretien/manuscript-guard">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero">
+    <div class="wrap">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="img/brand/banner-dark.svg">
+        <img class="banner" src="img/brand/banner-light.svg" width="860" height="240" alt="Vord before a manuscript, blocking each mistake in turn with the gate that catches it, while a co-author reads.">
+      </picture>
+      <h1>Every number traceable to its source.</h1>
+      <p class="lede">manuscript-guard holds a scientific manuscript to the analysis that
+        produced it, the sources it cites and the plan it was written to. Its checks are code,
+        not a model: they run offline, on your computer or in continuous integration (CI),
+        and give the same answer each time.</p>
+      <p class="for">For researchers writing a paper, and for the co-authors, supervisors,
+        editors and referees who read one.</p>
+      <ul class="doors">
+        <li><a class="door primary" href="audit/">
+          <strong>Check a paper in your browser</strong>
+          <span>A .docx or Markdown file, read on your computer and not uploaded. Nothing to
+            install.</span></a></li>
+        <li><a class="door" href="https://github.com/BasileChretien/manuscript-guard/blob/main/docs/getting-started.md">
+          <strong>Start a paper</strong>
+          <span>What you need, what the gates, an agent and you each do, and the first
+            hour.</span></a></li>
+        <li><a class="door" href="#demo">
+          <strong>See it catch a mistake</strong>
+          <span>One number typed into the abstract, and what the check says.</span></a></li>
+        <li><a class="door" href="https://github.com/BasileChretien/manuscript-guard/blob/main/docs/teams.md">
+          <strong>For supervisors and groups</strong>
+          <span>The same checks across a group's papers, and a record of who approved
+            what.</span></a></li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="problem">
+    <div class="wrap">
+      <p class="kicker">The problem</p>
+      <h2>A number typed is a number that can drift</h2>
+      <p class="text">Say the abstract reads 4,000 reports. The data are cleaned, the analysis
+        is run again, and it now says 3,986. The abstract still says 4,000, because someone
+        typed it.</p>
+      <p class="text">In a manuscript-guard project the abstract holds
+        <code>{{results.cohort.n_reports}}</code> instead, and the build writes in the number
+        the analysis wrote. Run the analysis again and rebuild, and every bound number
+        follows. A number in a paper comes from one of three places:</p>
+      <ol class="sources">
+        <li><h3>Your results</h3>
+          <p>A binding into the results file your Python or R code writes.</p></li>
+        <li><h3>The literature</h3>
+          <p>A binding into a ledger, beside the sentence of the stored source it was quoted
+            from.</p></li>
+        <li><h3>A convention of writing</h3>
+          <p>The common ones are built in, such as the 95 of a 95% confidence interval. Any
+            other is justified once, in <code>paper.yaml</code>.</p></li>
+      </ol>
+      <p class="text">A number that is none of these is a finding of the check, not
+        something left for a reviewer to notice.</p>
+    </div>
+  </section>
+
+  <section id="demo">
+    <div class="wrap">
+      <p class="kicker">The demo</p>
+      <h2>See it catch a mistake</h2>
+      <p class="text">On the worked example that comes with the tool: one binding of the
+        abstract replaced by the number it stood for, <code>check</code> failing on it, the
+        number bound again, and <code>check</code> passing.</p>
+      <figure class="screen" tabindex="0">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="img/demo-dark.svg">
+          <img src="img/demo-light.svg" width="860" height="420"
+               alt="manuscript-guard check prints [FAIL] G2 manuscript/main.md:11:17, '4,000' is not bound to any source. The author replaces 4,000 with {{results.cohort.n_reports}} on line 11, and check runs again: stage: drafting (writing the manuscript against results that exist); numerical provenance, checked: G2, G3, G7, G8: 0 failing, 1 warning; and its last line, 0 failing, 13 warnings.">
+        </picture>
+      </figure>
+    </div>
+  </section>
+
+  <section id="who">
+    <div class="wrap">
+      <p class="kicker">Who decides</p>
+      <h2>The gates decide, an agent helps, a person judges</h2>
+      <ul class="lanes">
+        <li class="lane gates"><h3>The gates</h3>
+          <p>Seventeen gates, each code that decides from the project's records, offline and
+            in CI. No gate asks a model anything; two of them read a recorded review, which a
+            person or a model may have written.</p></li>
+        <li class="lane agent"><h3>An agent, if you use one</h3>
+          <p>Claude Code, Codex or another agent tool, with a skill for each step, drafts the
+            plan, writes and runs the analysis, binds the numbers, drafts the prose and fixes
+            what the check finds. Everything runs without one.</p></li>
+        <li class="lane person"><h3>A person</h3>
+          <p>Approves the manuscript, signs off what is theirs to close, and judges whether a
+            passage supports its sentence. You are asked before the manuscript is sent to a
+            model provider.</p></li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="catches">
+    <div class="wrap">
+      <p class="kicker">What it catches</p>
+      <h2>Vord and the mistakes the gates catch</h2>
+      <p class="text">Vord, the guard, stands for the gates. Each villain is a mistake that a
+        gate catches, named with that gate.</p>
+      <ul class="foes">
+        <li class="foe">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/brand/stray-number-dark.svg">
+            <img src="img/brand/stray-number-light.svg" width="96" height="96" alt="">
+          </picture>
+          <h3>The Stray Number</h3>
+          <p>A number typed into the text, bound to nothing.</p>
+          <span class="gate">G2</span></li>
+        <li class="foe">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/brand/forger-dark.svg">
+            <img src="img/brand/forger-light.svg" width="96" height="96" alt="">
+          </picture>
+          <h3>The Forger</h3>
+          <p>A results file edited by hand.</p>
+          <span class="gate">G1</span></li>
+        <li class="foe">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/brand/ghost-citation-dark.svg">
+            <img src="img/brand/ghost-citation-light.svg" width="96" height="96" alt="">
+          </picture>
+          <h3>The Ghost Citation</h3>
+          <p>A retracted work, still cited.</p>
+          <span class="gate">G7</span></li>
+        <li class="foe">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/brand/impostor-doi-dark.svg">
+            <img src="img/brand/impostor-doi-light.svg" width="96" height="96" alt="">
+          </picture>
+          <h3>The Impostor DOI</h3>
+          <p>A DOI that names another work than the one cited.</p>
+          <span class="gate">G7</span></li>
+        <li class="foe">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/brand/plan-rewriter-dark.svg">
+            <img src="img/brand/plan-rewriter-light.svg" width="96" height="96" alt="">
+          </picture>
+          <h3>The Plan Rewriter</h3>
+          <p>The plan changed after the first results, and the Deviations say nothing.</p>
+          <span class="gate">G12</span></li>
+        <li class="foe">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/brand/stale-methods-dark.svg">
+            <img src="img/brand/stale-methods-light.svg" width="96" height="96" alt="">
+          </picture>
+          <h3>Stale Methods</h3>
+          <p>The analysis changed since the Methods were last read against it.</p>
+          <span class="gate">G9</span></li>
+      </ul>
+      <p class="more"><a href="https://github.com/BasileChretien/manuscript-guard/blob/main/docs/gates.md">What each gate checks</a></p>
+
+      <h3 class="subhead">What no gate catches</h3>
+      <p class="text">A mistake no gate sees is a shadow. Vord's sword passes through it, so
+        Vord calls a co-author, who reads what no gate can. Each co-author gets a page of
+        things to confirm: whether a sentence says what its source says.</p>
+      <ul class="foes shadows">
+        <li class="foe shadow">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/brand/confirmation-bias-dark.svg">
+            <img src="img/brand/confirmation-bias-light.svg" width="96" height="96" alt="">
+          </picture>
+          <h3>Confirmation bias</h3>
+          <p>It lies in what the authors chose to look at.</p></li>
+        <li class="foe shadow">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/brand/data-leakage-dark.svg">
+            <img src="img/brand/data-leakage-light.svg" width="96" height="96" alt="">
+          </picture>
+          <h3>Data leakage</h3>
+          <p>No gate reads the analysis code for test data used in training.</p></li>
+        <li class="foe ally">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/brand/co-author-dark.svg">
+            <img src="img/brand/co-author-light.svg" width="96" height="96" alt="">
+          </picture>
+          <h3>The co-author</h3>
+          <p>The person who reads what no gate can.</p></li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="status">
+    <div class="wrap">
+      <p class="kicker">Status</p>
+      <h2>What it rests on so far</h2>
+      <p class="text">It is alpha.</p>
+      <ul class="evidence">
+        <li><strong>A real paper.</strong> One manuscript, a narrative review by the toolkit's
+          author, has been through <code>check</code>, <code>build</code> and <code>verify</code>,
+          which ran its analysis again and reproduced each of its 1,483 values.</li>
+        <li><strong>A measured set.</strong> The reference checks, on the 740 references of
+          16 published open-access pharmacology and epidemiology papers: as published, 1.49 false alarms per 100
+          references.</li>
+        <li><strong>Not measured.</strong> How much of a study an agent can carry with it, and
+          whether the research is better for it. No study has yet gone from its plan to
+          publication with the toolkit.</li>
+      </ul>
+      <p class="more"><a href="https://github.com/BasileChretien/manuscript-guard#status">The full status</a></p>
+    </div>
+  </section>
+
+  <section id="start">
+    <div class="wrap">
+      <p class="kicker">Install</p>
+      <h2>Two ways in</h2>
+      <div class="ways">
+        <div class="way">
+          <h3>I have a manuscript</h3>
+          <p>Open the <a href="audit/">audit page</a>, or at a terminal, with
+            <a href="https://docs.astral.sh/uv/">uv</a> and nothing else installed:</p>
+          <pre><code>uvx manuscript-guard audit paper.docx</code></pre>
+        </div>
+        <div class="way">
+          <h3>I am starting a project</h3>
+          <p>With Python 3.10 or later:</p>
+          <pre><code>pip install manuscript-guard
+manuscript-guard init my-paper
+cd my-paper
+manuscript-guard next</code></pre>
+          <p><code>next</code> says what to do now, with the command to run. To build a .docx
+            you also need pandoc; <a href="https://github.com/BasileChretien/manuscript-guard/blob/main/docs/install.md">installing</a>
+            has the rest.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <p>manuscript-guard is open source under the MIT licence. Vord and the emblem are under
+      CC BY 4.0.</p>
+    <p><a href="https://github.com/BasileChretien/manuscript-guard">GitHub</a>
+      <a href="https://pypi.org/project/manuscript-guard/">PyPI</a>
+      <a href="audit/">Audit page</a></p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,20 +1,25 @@
-// The built page in a real browser, served as GitHub Pages serves it (no policy header):
-// it starts under its own Content-Security-Policy, each case's report is the command line's
-// word for word, no audit sends a request anywhere, a run it refuses leaves no report on
-// screen, and "Test the rules" finds every forbidden request refused.
+// The built site in a real browser, served as GitHub Pages serves it (no policy header). The
+// landing page at / loads its style and every picture it names, and asks no other host for
+// anything. The audit page at /audit/ starts under its own Content-Security-Policy, each
+// case's report is the command line's word for word, no audit sends a request anywhere, a run
+// it refuses leaves no report on screen, and "Test the rules" finds every forbidden request
+// refused.
 //
 //   node web/test/browser.mjs <site> <cases> chrome|firefox [executable]
 //
+// <site> is what web/build.py writes: the landing page, and the audit page in audit/.
 // <cases> holds cases.json, [{"name", "paper", "against": [...], "expect"}], and the files it
 // names; "expect" names a file holding what the command line printed.
 import { createServer } from "node:http";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import puppeteer from "puppeteer-core";
 
 const [site, casesDir, browserName, given] = process.argv.slice(2);
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript",
-  ".css": "text/css", ".json": "application/json", ".wasm": "application/wasm" };
+  ".css": "text/css", ".json": "application/json", ".wasm": "application/wasm",
+  // The landing page's: a picture sent under another type is not drawn.
+  ".svg": "image/svg+xml", ".png": "image/png", ".mp4": "video/mp4", ".vtt": "text/vtt" };
 const KNOWN = {
   chrome: ["/usr/bin/google-chrome", "C:/Program Files/Google/Chrome/Application/chrome.exe",
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"],
@@ -28,13 +33,16 @@ if (!executable) {
   process.exit(2);
 }
 
-// The site at /, and the test cases at /__cases__/, which no built site has.
+// The site at /, and the test cases at /__cases__/, which no built site has. A folder's
+// address is its index.html, as on GitHub Pages.
+const AUDIT = "/audit/";
 function serve(request, response) {
   const path = decodeURIComponent(new URL(request.url, "http://x").pathname);
-  const [folder, rest] = path.startsWith("/__cases__/")
-    ? [resolve(casesDir), path.slice("/__cases__/".length)] : [resolve(site), path.slice(1) || "index.html"];
+  const [folder, named] = path.startsWith("/__cases__/")
+    ? [resolve(casesDir), path.slice("/__cases__/".length)] : [resolve(site), path.slice(1)];
+  const rest = !named || named.endsWith("/") ? named + "index.html" : named;
   const file = normalize(join(folder, rest));
-  if (!file.startsWith(folder + sep) || !existsSync(file)) {
+  if (!file.startsWith(folder + sep) || !existsSync(file) || !statSync(file).isFile()) {
     response.writeHead(404).end();
     return;
   }
@@ -52,11 +60,32 @@ const fail = (what) => { failures.push(what); console.error(`FAIL ${browserName}
 const args = browserName === "chrome" && process.env.CI ? ["--no-sandbox"] : [];
 const browser = await puppeteer.launch({ browser: browserName, executablePath: executable, headless: true, args });
 try {
+  const front = await browser.newPage();
+  const asked = [];
+  front.on("request", (request) => asked.push(request.url()));
+  await front.goto(origin + "/", { waitUntil: "load" });
+  const shown = await front.evaluate(() => ({
+    // style.css defines --ink; a style the policy refused leaves it undefined.
+    styled: getComputedStyle(document.body).getPropertyValue("--ink").trim() !== "",
+    pictures: document.images.length,
+    broken: [...document.images].filter((image) => !image.complete || !image.naturalWidth)
+      .map((image) => image.currentSrc || image.src),
+  }));
+  if (!shown.styled) fail("the landing page loaded without its style");
+  if (!shown.pictures) fail("the landing page shows no picture");
+  if (shown.broken.length) fail(`the landing page did not load ${shown.broken.join(", ")}`);
+  // Over the network only: Firefox loads a font of its own from a data: address.
+  const away = asked.filter((url) => /^(https?|wss?):/.test(url) && !url.startsWith(origin));
+  if (away.length) fail(`the landing page asked ${away.join(", ")}`);
+  console.log(`landing page: ${shown.pictures} pictures, ${shown.broken.length} not loaded, ` +
+    `${asked.length} requests, ${away.length} to another host`);
+  await front.close();
+
   const page = await browser.newPage();
   page.setDefaultTimeout(600000);
   page.setDefaultNavigationTimeout(300000);
   const started = Date.now();
-  await page.goto(origin + "/index.html");
+  await page.goto(origin + AUDIT);
   await page.waitForFunction("window.mgReady || /could not start/.test(document.getElementById('status').textContent)");
   const status = await page.$eval("#status", (element) => element.textContent);
   console.log(`${await browser.version()}: ${status} (${((Date.now() - started) / 1000).toFixed(1)} s)`);

@@ -1,7 +1,8 @@
 name: Build and check the audit page
 description: >-
-  Builds the in-browser audit page (web/) into _site from the checkout, and holds it to the
-  command line (web/test/check.py). CI's `web` job and the Pages workflow both run this, so
+  Builds the site into _site from the checkout: the landing page (web/landing/) at its root
+  and the in-browser audit page (web/) in _site/audit, and holds the audit page to the command
+  line (web/test/check.py), which also opens the landing page. CI's `web` job and the Pages workflow both run this, so
   the page served is a page CI has checked, built the same way.
 
 runs:

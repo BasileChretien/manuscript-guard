@@ -1,6 +1,7 @@
 """The brand's drawings are what tools/brand_assets.py makes of brand/source.svg, each says
-what it shows, and a villain stays apart from the guard for a reader with a colour-vision
-deficiency, by the model G3 holds a figure's colours to."""
+what it shows, the banner moves and holds still for a reader who asks, and the villains and
+the shadows stay apart from the guard for a reader with a colour-vision deficiency, by the
+model G3 holds a figure's colours to."""
 
 from __future__ import annotations
 
@@ -78,7 +79,7 @@ def too_close(palette: dict[str, str]) -> list[str]:
 
 
 @pytest.mark.parametrize("shade", ["light", "dark"])
-def test_a_villain_stays_apart_from_the_guard_for_every_reader(shade: str) -> None:
+def test_the_villains_and_shadows_stay_apart_from_the_guard_for_every_reader(shade: str) -> None:
     assert too_close(brand_script().PALETTES[shade]) == []
 
 
@@ -86,6 +87,31 @@ def test_a_villain_that_turns_into_brass_for_some_readers_is_found() -> None:
     # Pink is far from the brass to normal vision, and next to it under tritanopia.
     palette = dict(brand_script().PALETTES["light"], **{"v-foe": "#e4b0c0"})
     assert any(line.startswith("v-foe and g-brass") for line in too_close(palette))
+
+
+@pytest.mark.parametrize("shade", ["light", "dark"])
+def test_the_banner_loops_and_holds_still_for_a_reader_who_turns_motion_off(shade: str) -> None:
+    script = brand_script()
+    css = script.drawings()[f"banner-{shade}.svg"].split("<style>", 1)[1].split("</style>", 1)[0]
+    assert "animation-iteration-count:infinite" in css
+    still = "@media (prefers-reduced-motion:reduce){.a{animation:none}}"
+    assert still in css
+    # Of rules equally specific, the later wins: before a rule that names an animation, the
+    # reduced-motion rule would be overridden and the banner would keep moving.
+    assert css.rindex("animation-name:") < css.index(still)
+    # Still, it rests on the first villain blocked, its tag and the co-author: every other
+    # villain and tag, and the shadows, are hidden, and nothing else is.
+    hidden = set(css.split("{opacity:0}@media", 1)[0].rsplit("}", 1)[1].split(","))
+    later = range(1, len(script.CAST))
+    assert hidden == {*(f".k{n}" for n in later), *(f".t{n}" for n in later), ".sh"}
+
+
+def test_the_banner_names_each_villain_by_the_gate_its_drawing_names() -> None:
+    script = brand_script()
+    titles = {name: title for name, _, _, _, title in script.DRAWINGS}
+    for name, gate in script.CAST:
+        assert f"({gate})" in titles[name], f"{name} is shown blocked by {gate}"
+        assert f"({gate})" in script.BANNER_TITLE, f"the banner's title does not name {gate}"
 
 
 def png_size(path: Path) -> tuple[int, int]:

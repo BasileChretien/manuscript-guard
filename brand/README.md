@@ -42,6 +42,28 @@ The emblem is Vord's helmet on a round shield.
 - `social-preview.png` is the card GitHub shows where the repository is linked. It is
   uploaded by hand under Settings, General, Social preview.
 
+## The banner
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../docs/img/brand/banner-dark.svg">
+  <img src="../docs/img/brand/banner-light.svg" width="860" alt="Vord before a manuscript, blocking each mistake in turn with the gate that catches it, while a co-author reads.">
+</picture>
+
+`banner-light.svg` and `banner-dark.svg` are 860 by 240 pixels and loop every 14 seconds:
+
+1. Each villain in turn runs at the manuscript. Vord's shield shows the gate that catches its
+   mistake, and the villain fades.
+2. The two shadows pass through the shield.
+3. The co-author reads the manuscript through a magnifying glass.
+
+The motion is CSS inside the SVG, so it plays in a browser that shows the SVG as an image,
+GitHub included, with no script. A renderer that reads the style but not the animation, such
+as librsvg in some converters, shows the still frame. So does a browser whose reader asks for
+less motion. The still frame is the Stray Number blocked by G2, and the co-author reading.
+The order and the timing are
+`CAST` and `LOOP` with the constants beside them in `tools/brand_assets.py`. The test holds
+each villain's gate in the banner to the gate its drawing's title names.
+
 ## What Vord fights
 
 Each villain stands for a mistake that a gate catches, and is named with that gate.
@@ -84,8 +106,8 @@ lilac were chosen with `manuscript_guard.colour`, the model G3 holds a figure to
 Oliveira and Fernandes (2009) at full severity, and CIEDE2000. For protanopia, deuteranopia
 and tritanopia alike, each stays at least 10 apart from the brass, teal, navy, plates and
 steel of the guard, and from the other. Vord's other colours (dark teal, visor, paper, eye,
-ink) are not compared. Within Vord, steel and brass become the same grey in print. They are
-trim on one figure and carry no meaning apart.
+ink, the crest's edge and his shadow on the ground) are not compared. Within Vord, steel and
+brass become the same grey in print. They are trim on one figure and carry no meaning apart.
 
 ## Using the drawings
 
@@ -100,9 +122,11 @@ trim on one figure and carry no meaning apart.
   say otherwise.
 
 Some drawings carry words: 4,000 on the Stray Number; the Forger's results file (`"n": 3986`,
-`"p": 0.04` and the 4000 written over it); RETRACTED; doi:10.; PLAN; Methods; and train and
-test on the data-leakage shadow. They name JetBrains Mono or Atkinson Hyperlegible first and
-fall back to system fonts, so most readers see them in a system font.
+`"p": 0.04` and the 4000 written over it); RETRACTED; doi:10.; PLAN; Methods and the "z z" of
+Stale Methods; and train and test on the data-leakage shadow. These name JetBrains Mono or
+Atkinson Hyperlegible first and fall back to system fonts. The words of the social preview
+and the gates on the banner's shield name system fonts only. Most readers see all of them in
+a system font.
 
 The test holds the SVGs to the source, but not the PNGs, whose pixels depend on the browser
 that renders them. After a change to the emblem, run the script with `--png` too, or the PNGs

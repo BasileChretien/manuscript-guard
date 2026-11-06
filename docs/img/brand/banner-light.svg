@@ -1,0 +1,257 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="240" viewBox="0 0 860 240" role="img" aria-labelledby="title">
+  <title id="title">Vord, the manuscript-guard mascot, stands before a manuscript. Mistakes run at it one by one, and Vord's shield blocks each, showing the gate that catches it: a typed number (G2), a results file edited by hand (G1), a retracted work and a DOI that names another (G7), a plan rewritten after the results (G12), Methods out of date with the analysis (G9). Two shadows, confirmation bias and data leakage, pass through the shield, and a co-author reads the manuscript through a magnifying glass. With motion turned off, the picture holds still on the first mistake blocked and the co-author reading.</title>
+  <defs>
+    <path id="bl" d="M10 1.5C5.5 1.5 4.5 3.5 4.5 7v4c0 2-1 3-3 3c2 0 3 1 3 3v4c0 3.5 1 5.5 5.5 5.5" />
+    <path id="br" d="M2 1.5C6.5 1.5 7.5 3.5 7.5 7v4c0 2 1 3 3 3c-2 0-3 1-3 3v4c0 3.5-1 5.5-5.5 5.5" />
+    <symbol id="crest" viewBox="-2 -1 60 30">
+      <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <g stroke="#1b2b4b" stroke-width="5.2">
+          <use href="#bl" />
+          <use href="#bl" x="9" />
+          <use href="#br" x="35" />
+          <use href="#br" x="44" />
+        </g>
+        <g stroke="#e6c878" stroke-width="2.8">
+          <use href="#bl" />
+          <use href="#bl" x="9" />
+          <use href="#br" x="35" />
+          <use href="#br" x="44" />
+        </g>
+      </g>
+      <circle cx="28" cy="14" r="3.6" fill="#1b2b4b" />
+      <circle cx="28" cy="14" r="2.4" fill="#e6c878" />
+    </symbol>
+    <symbol id="helmet" viewBox="52 22 96 76">
+      <path d="M71 64 L129 64 L143 86 Q100 95 57 86 Z" fill="#1b2b4b" />
+      <path d="M65 74 Q100 81 135 74 M60.5 82 Q100 89 139.5 82" fill="none" stroke="#c3ccd7" stroke-width="1.4" opacity=".6" />
+      <path d="M72 63 L58 58 L57 72 L67 75 Z" fill="#2e4570" />
+      <path d="M128 63 L142 58 L143 72 L133 75 Z" fill="#2e4570" />
+      <path d="M83 64 L117 64 L115 88 Q100 95 85 88 Z" fill="#0c1424" />
+      <ellipse cx="92.4" cy="72.6" rx="3.5" ry="2.1" fill="#e8f4f2" />
+      <ellipse cx="107.6" cy="72.6" rx="3.5" ry="2.1" fill="#e8f4f2" />
+      <path d="M85.5 79 Q100 83 114.5 79 L113.5 89 Q100 96 86.5 89 Z" fill="#2e4570" />
+      <path d="M95 86.4 L105 86.4" stroke="#c3ccd7" stroke-width="1.2" stroke-linecap="round" />
+      <path d="M98.2 60 L101.8 60 L101.2 81 L98.8 81 Z" fill="#c3ccd7" />
+      <path d="M74 64 Q74.5 39 100 37 Q125.5 39 126 64 Z" fill="#1b2b4b" />
+      <path d="M100 38 L100 63 M88.5 40.5 Q86 52 86 63 M111.5 40.5 Q114 52 114 63" fill="none" stroke="#2e4570" stroke-width="1.7" />
+      <path d="M69 64.5 Q100 58 131 64.5 L131 68 Q100 61.5 69 68 Z" fill="#c3ccd7" />
+      <use href="#crest" x="76" y="26" width="48" height="24" />
+    </symbol>
+    <symbol id="guard" viewBox="0 0 200 240">
+      <ellipse cx="100" cy="229" rx="66" ry="6" fill="rgba(27,43,75,0.13)" />
+      <path d="M150.5 30 C153 32 154.5 36 154.5 42 C155.5 76 155 104 153.5 132 L148.5 132 C150 104 150.5 76 149.5 44 C149.5 38 149.8 33 150.5 30 Z" fill="#c3ccd7" />
+      <path d="M152.6 44 C153.3 76 153 104 152 130" fill="none" stroke="#f3f1ea" stroke-width="1" opacity=".85" />
+      <ellipse cx="151" cy="134.5" rx="9" ry="3.2" fill="#e6c878" />
+      <rect x="148" y="137" width="6" height="26" rx="2" fill="#1b2b4b" />
+      <path d="M148 142 L154 146 M154 142 L148 146 M148 150 L154 154 M154 150 L148 154 M148 158 L154 162 M154 158 L148 162" stroke="#c3ccd7" stroke-width=".9" />
+      <rect x="147.5" y="162" width="7" height="3.4" rx="1.6" fill="#e6c878" />
+      <rect x="66" y="212" width="30" height="10" rx="4" fill="#0c1424" />
+      <rect x="104" y="212" width="30" height="10" rx="4" fill="#0c1424" />
+      <path d="M77 148 L63 214 Q100 221 137 214 L123 148 Z" fill="#175f63" />
+      <path d="M100 152 L100 218 M89 152 L84 216 M111 152 L116 216" stroke="#0f4447" stroke-width="1.6" />
+      <path d="M124 100 L138 98 L157 142 L146 150 Z" fill="#2e4570" />
+      <path d="M136 116 L147 112 M140 126 L151 122" stroke="#c3ccd7" stroke-width="1.2" opacity=".7" />
+      <path d="M72 98 Q100 89 128 98 L131 146 Q100 153 69 146 Z" fill="#1b2b4b" />
+      <path d="M71 111 Q100 104 129 111 M70 123 Q100 116 130 123 M70 135 Q100 128 130 135" fill="none" stroke="#c3ccd7" stroke-width="1.5" opacity=".55" />
+      <path d="M74 100 Q100 92 126 100" fill="none" stroke="#e6c878" stroke-width="2.2" stroke-linecap="round" />
+      <path d="M69 144 Q100 151 131 144 L131 152 Q100 159 69 152 Z" fill="#2e4570" />
+      <path d="M124 92 L148 96 L145 134 L121 128 Z" fill="#2e4570" />
+      <path d="M124.5 102 L147.2 106 M123.6 112 L146.4 116 M122.7 122 L145.6 126" stroke="#c3ccd7" stroke-width="1.3" opacity=".7" />
+      <path d="M52 96 L76 92 L79 128 L55 134 Z" fill="#2e4570" />
+      <path d="M52.8 106 L76.7 102 M53.6 116 L77.5 112 M54.4 126 L78.3 122" stroke="#c3ccd7" stroke-width="1.3" opacity=".7" />
+      <rect x="91" y="84" width="18" height="13" fill="#0c1424" />
+      <use href="#helmet" x="52" y="22" width="96" height="76" />
+      <circle cx="151" cy="146" r="6.6" fill="#1b2b4b" stroke="#2e4570" stroke-width="1.6" />
+      <circle cx="64" cy="150" r="40" fill="#c3ccd7" />
+      <circle cx="64" cy="150" r="35.5" fill="#2e4570" />
+      <g fill="#1b2b4b">
+        <circle cx="101.8" cy="150" r="1.7" />
+        <circle cx="90.7" cy="176.7" r="1.7" />
+        <circle cx="64" cy="187.8" r="1.7" />
+        <circle cx="37.3" cy="176.7" r="1.7" />
+        <circle cx="26.2" cy="150" r="1.7" />
+        <circle cx="37.3" cy="123.3" r="1.7" />
+        <circle cx="64" cy="112.2" r="1.7" />
+        <circle cx="90.7" cy="123.3" r="1.7" />
+      </g>
+      <path d="M49 128 L70 128 L79 137 L79 166 L49 166 Z" fill="#f3f1ea" />
+      <path d="M70 128 L70 137 L79 137 Z" fill="#c3ccd7" />
+      <path d="M54 143 L74 143 M54 150 L74 150 M54 157 L68 157" stroke="#2a3346" stroke-width="1.8" stroke-linecap="round" opacity=".5" />
+      <rect x="54" y="133" width="11" height="4.2" rx="2.1" fill="#175f63" />
+    </symbol>
+    <symbol id="manuscript" viewBox="0 0 60 100">
+      <ellipse cx="30" cy="50" rx="29" ry="49" fill="#175f63" opacity=".1" />
+      <path d="M5 5 L44 5 L55 16 L55 95 L5 95 Z" fill="#f3f1ea" stroke="#c3ccd7" stroke-width="2" stroke-linejoin="round" />
+      <path d="M44 5 L44 16 L55 16" fill="none" stroke="#c3ccd7" stroke-width="2" stroke-linejoin="round" />
+      <path d="M12 22 L37 22" stroke="#2a3346" stroke-width="3.4" stroke-linecap="round" opacity=".7" />
+      <path d="M12 33 L48 33 M12 41 L48 41 M12 49 L40 49 M12 67 L48 67 M12 75 L48 75 M12 83 L33 83" stroke="#2a3346" stroke-width="2" stroke-linecap="round" opacity=".33" />
+      <rect x="12" y="55" width="21" height="6" rx="3" fill="#175f63" />
+    </symbol>
+    <symbol id="stray-number" viewBox="0 0 120 120">
+      <ellipse cx="62" cy="113" rx="34" ry="4" fill="rgba(27,43,75,0.13)" />
+      <g fill="none" stroke="#c3ccd7" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+        <use href="#bl" transform="translate(2 4) scale(.62)" />
+        <use href="#bl" transform="translate(7.6 4) scale(.62)" />
+        <use href="#br" transform="translate(19 4) scale(.62)" />
+        <use href="#br" transform="translate(24.6 4) scale(.62)" />
+      </g>
+      <path d="M3 58 L13 58 M1 70 L11 70" stroke="#c3ccd7" stroke-width="2.6" stroke-linecap="round" />
+      <path d="M50 92 L40 109 M74 92 L86 106" stroke="#c9502f" stroke-width="6.5" stroke-linecap="round" />
+      <rect x="16" y="26" width="92" height="68" rx="26" fill="#c9502f" />
+      <circle cx="46" cy="45" r="8" fill="#f3f1ea" />
+      <circle cx="78" cy="45" r="8" fill="#f3f1ea" />
+      <circle cx="49.5" cy="46" r="3.5" fill="#2a3346" />
+      <circle cx="81.5" cy="46" r="3.5" fill="#2a3346" />
+      <text x="62" y="80" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, Consolas, monospace" font-weight="700" font-size="21" fill="#f3f1ea">4,000</text>
+    </symbol>
+    <symbol id="forger" viewBox="0 0 120 120">
+      <ellipse cx="60" cy="113" rx="34" ry="4" fill="rgba(27,43,75,0.13)" />
+      <g transform="rotate(-6 58 62)">
+        <path d="M26 16 L76 16 L90 30 L90 108 L26 108 Z" fill="#f3f1ea" stroke="#2a3346" stroke-width="2.4" stroke-linejoin="round" />
+        <path d="M76 16 L76 30 L90 30" fill="none" stroke="#2a3346" stroke-width="2.4" stroke-linejoin="round" />
+        <g font-family="JetBrains Mono, ui-monospace, Consolas, monospace" font-size="10" fill="#2a3346">
+          <text x="33" y="58">{</text>
+          <text x="38" y="72">"n": 3986</text>
+          <text x="38" y="86">"p": 0.04</text>
+          <text x="33" y="100">}</text>
+        </g>
+        <path d="M62 68.5 L86 68.5" stroke="#c9502f" stroke-width="2.2" />
+        <text x="64" y="61" font-family="JetBrains Mono, ui-monospace, Consolas, monospace" font-size="10" font-weight="700" font-style="italic" fill="#c9502f">4000</text>
+        <path d="M20 29 Q58 19 96 29 L94 44 Q58 35 22 44 Z" fill="#c9502f" />
+        <circle cx="44" cy="35.5" r="4.6" fill="#f3f1ea" />
+        <circle cx="72" cy="34.5" r="4.6" fill="#f3f1ea" />
+        <circle cx="45.5" cy="36" r="2" fill="#2a3346" />
+        <circle cx="73.5" cy="35" r="2" fill="#2a3346" />
+      </g>
+      <path d="M101 48 L111 54 L86 99 L78 102 L78 95 Z" fill="#e6c878" stroke="#2a3346" stroke-width="1.4" stroke-linejoin="round" />
+      <path d="M78 95 L78 102 L83.6 99.6 Z" fill="#2a3346" />
+      <path d="M101 48 L111 54 L114 49 L104 43 Z" fill="#c9502f" stroke="#2a3346" stroke-width="1.4" stroke-linejoin="round" />
+    </symbol>
+    <symbol id="ghost-citation" viewBox="0 0 120 120">
+      <ellipse cx="60" cy="113" rx="26" ry="3.5" fill="rgba(27,43,75,0.13)" />
+      <path d="M30 102 L30 52 Q30 18 60 18 Q90 18 90 52 L90 102 L80 94 L70 102 L60 94 L50 102 L40 94 Z" fill="#e9ecf1" stroke="#c3ccd7" stroke-width="2.5" stroke-linejoin="round" />
+      <ellipse cx="50" cy="47" rx="5" ry="7" fill="#2a3346" />
+      <ellipse cx="70" cy="47" rx="5" ry="7" fill="#2a3346" />
+      <ellipse cx="60" cy="61" rx="4" ry="5" fill="#2a3346" opacity=".8" />
+      <g transform="rotate(-12 60 80)">
+        <rect x="16" y="72" width="88" height="16" rx="2" fill="#c9502f" />
+        <text x="60" y="84" text-anchor="middle" font-family="Atkinson Hyperlegible, Segoe UI, Helvetica, Arial, sans-serif" font-weight="700" font-size="10" letter-spacing="1.6" fill="#f3f1ea">RETRACTED</text>
+      </g>
+    </symbol>
+    <symbol id="impostor-doi" viewBox="0 0 120 120">
+      <ellipse cx="60" cy="113" rx="28" ry="3.5" fill="rgba(27,43,75,0.13)" />
+      <path d="M60 22 C56 12 64 6 70 3" fill="none" stroke="#c3ccd7" stroke-width="2.2" stroke-linecap="round" />
+      <path d="M34 34 L60 15 L86 34 L86 102 Q86 108 80 108 L40 108 Q34 108 34 102 Z" fill="#c9502f" stroke-linejoin="round" />
+      <circle cx="60" cy="28" r="4" fill="#f3f1ea" />
+      <path d="M40 41 Q49 36 56 41 M64 41 Q71 36 80 41" fill="none" stroke="#2a3346" stroke-width="3" stroke-linecap="round" />
+      <circle cx="49" cy="54" r="9" fill="#f3f1ea" stroke="#2a3346" stroke-width="3" />
+      <circle cx="71" cy="54" r="9" fill="#f3f1ea" stroke="#2a3346" stroke-width="3" />
+      <path d="M58 54 L62 54" stroke="#2a3346" stroke-width="3" />
+      <circle cx="51" cy="55" r="2.6" fill="#2a3346" />
+      <circle cx="73" cy="55" r="2.6" fill="#2a3346" />
+      <ellipse cx="60" cy="66" rx="5.5" ry="7" fill="#e3a07e" />
+      <path d="M44 76 Q52 69 60 75 Q68 69 76 76 Q68 82 60 78 Q52 82 44 76 Z" fill="#2a3346" />
+      <text x="60" y="98" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, Consolas, monospace" font-weight="700" font-size="10" fill="#f3f1ea">doi:10.…</text>
+    </symbol>
+    <symbol id="plan-rewriter" viewBox="0 0 120 120">
+      <ellipse cx="60" cy="114" rx="34" ry="4" fill="rgba(27,43,75,0.13)" />
+      <rect x="24" y="20" width="72" height="90" rx="7" fill="#5b6577" />
+      <rect x="31" y="30" width="58" height="72" rx="2" fill="#f3f1ea" />
+      <rect x="45" y="13" width="30" height="13" rx="3" fill="#c3ccd7" stroke="#2a3346" stroke-width="1.5" />
+      <text x="60" y="44" text-anchor="middle" font-family="Atkinson Hyperlegible, Segoe UI, Helvetica, Arial, sans-serif" font-weight="700" font-size="10" letter-spacing="1.6" fill="#2a3346">PLAN</text>
+      <path d="M42 51 L54 54 M78 51 L66 54" stroke="#2a3346" stroke-width="2.5" stroke-linecap="round" />
+      <ellipse cx="48" cy="59" rx="3.5" ry="4" fill="#2a3346" />
+      <ellipse cx="72" cy="59" rx="3.5" ry="4" fill="#2a3346" />
+      <path d="M51 68 Q61 75 70 66" fill="none" stroke="#2a3346" stroke-width="2.5" stroke-linecap="round" />
+      <path d="M38 82 L82 82" stroke="#2a3346" stroke-width="2.5" stroke-linecap="round" opacity=".45" />
+      <path d="M38 92 L72 92" stroke="#2a3346" stroke-width="2.5" stroke-dasharray="3 4" opacity=".45" />
+      <g transform="rotate(-24 84 92)">
+        <rect x="72" y="86" width="26" height="12" rx="2.5" fill="#c9502f" />
+        <rect x="72" y="86" width="9" height="12" rx="2" fill="#f3f1ea" opacity=".85" />
+      </g>
+      <circle cx="64" cy="98" r="1.6" fill="#c9502f" />
+      <circle cx="69" cy="101" r="1.3" fill="#c9502f" />
+      <rect x="86" y="16" width="22" height="16" rx="3" fill="#e6c878" stroke="#1b2b4b" stroke-width="1.5" />
+      <path d="M90.5 16 V10 Q90.5 4 97 4 Q103.5 4 103.5 10 V11" fill="none" stroke="#e6c878" stroke-width="3" stroke-linecap="round" />
+      <circle cx="97" cy="23" r="2" fill="#1b2b4b" />
+    </symbol>
+    <symbol id="stale-methods" viewBox="0 0 120 120">
+      <ellipse cx="60" cy="114" rx="34" ry="4" fill="rgba(27,43,75,0.13)" />
+      <path d="M24 14 L84 14 L98 28 L98 108 L24 108 Z" fill="#f3f1ea" stroke="#c3ccd7" stroke-width="2.5" stroke-linejoin="round" />
+      <path d="M84 14 L84 28 L98 28" fill="none" stroke="#c3ccd7" stroke-width="2.5" stroke-linejoin="round" />
+      <text x="33" y="34" font-family="Atkinson Hyperlegible, Segoe UI, Helvetica, Arial, sans-serif" font-weight="700" font-size="11" fill="#2a3346">Methods</text>
+      <g font-family="Atkinson Hyperlegible, Segoe UI, Helvetica, Arial, sans-serif" font-weight="700" fill="#2a3346" opacity=".55">
+        <text x="68" y="27" font-size="8">z</text>
+        <text x="74" y="21" font-size="10">z</text>
+      </g>
+      <circle cx="48" cy="58" r="7" fill="#f3f1ea" stroke="#2a3346" stroke-width="2" />
+      <circle cx="74" cy="58" r="7" fill="#f3f1ea" stroke="#2a3346" stroke-width="2" />
+      <path d="M41 58 A7 7 0 0 1 55 58 Z M67 58 A7 7 0 0 1 81 58 Z" fill="#c9d0da" stroke="#2a3346" stroke-width="2" stroke-linejoin="round" />
+      <circle cx="48" cy="61.6" r="2.4" fill="#2a3346" />
+      <circle cx="74" cy="61.6" r="2.4" fill="#2a3346" />
+      <path d="M52 76 Q61 73 70 76" fill="none" stroke="#2a3346" stroke-width="2" stroke-linecap="round" />
+      <path d="M50 90 L88 90 M50 98 L80 98" stroke="#2a3346" stroke-width="2.5" stroke-linecap="round" opacity=".3" />
+      <path d="M24 108 L24 86 M24 108 L46 108 M24 108 L40 92 M24 100 Q31 100 31 108 M24 93 Q38 95 38 108" fill="none" stroke="#c3ccd7" stroke-width="1.2" />
+      <g fill="#c3ccd7">
+        <circle cx="90" cy="42" r="1.3" />
+        <circle cx="92" cy="54" r="1" />
+        <circle cx="34" cy="46" r="1.2" />
+        <circle cx="88" cy="70" r="1.1" />
+      </g>
+      <circle cx="98" cy="98" r="13" fill="#c9502f" />
+      <path d="M98 90 V98 L104 101.5" fill="none" stroke="#f3f1ea" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
+    </symbol>
+    <symbol id="confirmation-bias" viewBox="0 0 120 120">
+      <g fill="#9481a7" fill-opacity=".34" stroke="#9481a7" stroke-width="2.5" stroke-dasharray="5 4">
+        <circle cx="60" cy="47" r="32" />
+        <rect x="54" y="80" width="12" height="32" rx="5" />
+      </g>
+      <path d="M45 47 L56 58 L77 35" fill="none" stroke="#9481a7" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" />
+    </symbol>
+    <symbol id="data-leakage" viewBox="0 0 120 120">
+      <g fill="#9481a7" fill-opacity=".3" stroke="#9481a7" stroke-width="2.5" stroke-dasharray="5 4">
+        <rect x="8" y="64" width="46" height="40" rx="6" />
+        <rect x="66" y="16" width="46" height="40" rx="6" />
+      </g>
+      <g font-family="JetBrains Mono, ui-monospace, Consolas, monospace" font-size="10" font-weight="700" fill="#1d2840" text-anchor="middle" opacity=".8">
+        <text x="31" y="88">train</text>
+        <text x="89" y="40">test</text>
+      </g>
+      <path d="M74 56 C70 66 62 66 58 72" fill="none" stroke="#9481a7" stroke-width="3" stroke-linecap="round" />
+      <path d="M56 64 C56 64 51 71 51 74 A5 5 0 0 0 61 74 C61 71 56 64 56 64 Z" fill="#9481a7" />
+    </symbol>
+    <symbol id="co-author" viewBox="0 0 120 120">
+      <ellipse cx="54" cy="113" rx="30" ry="4" fill="rgba(27,43,75,0.13)" />
+      <path d="M28 110 Q28 76 52 72 Q76 76 76 110 Z" fill="#175f63" />
+      <circle cx="52" cy="50" r="15" fill="#c3ccd7" />
+      <path d="M66 86 L82 74" stroke="#175f63" stroke-width="9" stroke-linecap="round" />
+      <circle cx="82" cy="74" r="5" fill="#c3ccd7" />
+      <path d="M86 68 L80 76" stroke="#1b2b4b" stroke-width="5" stroke-linecap="round" />
+      <circle cx="94" cy="58" r="13" fill="#f3f1ea" fill-opacity=".6" stroke="#1b2b4b" stroke-width="4" />
+      <path d="M88 52 Q92 48 97 49" fill="none" stroke="#f3f1ea" stroke-width="2" stroke-linecap="round" />
+    </symbol>
+    <symbol id="spark" viewBox="0 0 30 50">
+      <path d="M6 4 Q18 25 6 46" fill="none" stroke="#e6c878" stroke-width="3.2" stroke-linecap="round" />
+      <path d="M14 9 L22 5 M16 25 L26 25 M14 41 L22 45" stroke="#e6c878" stroke-width="2.2" stroke-linecap="round" />
+    </symbol>
+  </defs>
+  <style>.a{animation-duration:14s;animation-iteration-count:infinite;animation-timing-function:linear}.v{transform-box:fill-box;transform-origin:50% 50%}.k0{animation-name:k0}.t0{animation-name:t0}.k1{animation-name:k1}.t1{animation-name:t1}.k2{animation-name:k2}.t2{animation-name:t2}.k3{animation-name:k3}.t3{animation-name:t3}.k4{animation-name:k4}.t4{animation-name:t4}.k5{animation-name:k5}.t5{animation-name:t5}.sp{animation-name:sp}.sh{animation-name:sh}.ca{animation-name:ca}.k1,.k2,.k3,.k4,.k5,.t1,.t2,.t3,.t4,.t5,.sh{opacity:0}@media (prefers-reduced-motion:reduce){.a{animation:none}}@keyframes k0{0.00%{opacity:0;transform:translateX(480px)}2.86%{opacity:0;transform:translateX(480px)}3.29%{opacity:1;transform:translateX(444px)}8.57%{opacity:1;transform:translateX(0)}10.71%{opacity:1;transform:translateX(0)}13.57%{opacity:0;transform:translate(10px,-16px) scale(.4)}100.00%{opacity:0;transform:translate(10px,-16px) scale(.4)}}@keyframes t0{0.00%{opacity:0}8.43%{opacity:0}8.57%{opacity:1}13.57%{opacity:1}13.93%{opacity:0}100.00%{opacity:0}}@keyframes k1{0.00%{opacity:0;transform:translateX(480px)}14.29%{opacity:0;transform:translateX(480px)}14.71%{opacity:1;transform:translateX(444px)}20.00%{opacity:1;transform:translateX(0)}22.14%{opacity:1;transform:translateX(0)}25.00%{opacity:0;transform:translate(10px,-16px) scale(.4)}100.00%{opacity:0;transform:translate(10px,-16px) scale(.4)}}@keyframes t1{0.00%{opacity:0}19.86%{opacity:0}20.00%{opacity:1}25.00%{opacity:1}25.36%{opacity:0}100.00%{opacity:0}}@keyframes k2{0.00%{opacity:0;transform:translateX(480px)}25.71%{opacity:0;transform:translateX(480px)}26.14%{opacity:1;transform:translateX(444px)}31.43%{opacity:1;transform:translateX(0)}33.57%{opacity:1;transform:translateX(0)}36.43%{opacity:0;transform:translate(10px,-16px) scale(.4)}100.00%{opacity:0;transform:translate(10px,-16px) scale(.4)}}@keyframes t2{0.00%{opacity:0}31.29%{opacity:0}31.43%{opacity:1}36.43%{opacity:1}36.79%{opacity:0}100.00%{opacity:0}}@keyframes k3{0.00%{opacity:0;transform:translateX(480px)}37.14%{opacity:0;transform:translateX(480px)}37.57%{opacity:1;transform:translateX(444px)}42.86%{opacity:1;transform:translateX(0)}45.00%{opacity:1;transform:translateX(0)}47.86%{opacity:0;transform:translate(10px,-16px) scale(.4)}100.00%{opacity:0;transform:translate(10px,-16px) scale(.4)}}@keyframes t3{0.00%{opacity:0}42.71%{opacity:0}42.86%{opacity:1}47.86%{opacity:1}48.21%{opacity:0}100.00%{opacity:0}}@keyframes k4{0.00%{opacity:0;transform:translateX(480px)}48.57%{opacity:0;transform:translateX(480px)}49.00%{opacity:1;transform:translateX(444px)}54.29%{opacity:1;transform:translateX(0)}56.43%{opacity:1;transform:translateX(0)}59.29%{opacity:0;transform:translate(10px,-16px) scale(.4)}100.00%{opacity:0;transform:translate(10px,-16px) scale(.4)}}@keyframes t4{0.00%{opacity:0}54.14%{opacity:0}54.29%{opacity:1}59.29%{opacity:1}59.64%{opacity:0}100.00%{opacity:0}}@keyframes k5{0.00%{opacity:0;transform:translateX(480px)}60.00%{opacity:0;transform:translateX(480px)}60.43%{opacity:1;transform:translateX(444px)}65.71%{opacity:1;transform:translateX(0)}67.86%{opacity:1;transform:translateX(0)}70.71%{opacity:0;transform:translate(10px,-16px) scale(.4)}100.00%{opacity:0;transform:translate(10px,-16px) scale(.4)}}@keyframes t5{0.00%{opacity:0}65.57%{opacity:0}65.71%{opacity:1}70.71%{opacity:1}71.07%{opacity:0}100.00%{opacity:0}}@keyframes sp{0.00%{opacity:0}8.43%{opacity:0}8.57%{opacity:1}10.71%{opacity:1}11.07%{opacity:0}19.86%{opacity:0}20.00%{opacity:1}22.14%{opacity:1}22.50%{opacity:0}31.29%{opacity:0}31.43%{opacity:1}33.57%{opacity:1}33.93%{opacity:0}42.71%{opacity:0}42.86%{opacity:1}45.00%{opacity:1}45.36%{opacity:0}54.14%{opacity:0}54.29%{opacity:1}56.43%{opacity:1}56.79%{opacity:0}65.57%{opacity:0}65.71%{opacity:1}67.86%{opacity:1}68.21%{opacity:0}100.00%{opacity:0}}@keyframes sh{0.00%{opacity:0;transform:translateX(480px)}71.43%{opacity:0;transform:translateX(480px)}72.86%{opacity:.95;transform:translateX(440px)}87.14%{opacity:.95;transform:translateX(-200px)}90.00%{opacity:0;transform:translateX(-240px)}100.00%{opacity:0;transform:translateX(-240px)}}@keyframes ca{0.00%{opacity:0;transform:translateX(-30px)}82.86%{opacity:0;transform:translateX(-30px)}87.14%{opacity:1;transform:translateX(0)}96.43%{opacity:1;transform:translateX(0)}99.29%{opacity:0}100.00%{opacity:0}}</style>
+  <path d="M0 214.5 H860" stroke="#d3d9e2" stroke-width="1.5"/>
+  <use href="#manuscript" x="130" y="40" width="104" height="173"/>
+  <g class="a ca"><use href="#co-author" x="30" y="96" width="118" height="118"/></g>
+  <use href="#guard" transform="translate(420 0) scale(-1 1)" y="12" width="170" height="204"/>
+  <g class="a sp"><use href="#spark" x="401" y="112" width="22" height="37"/></g>
+  <g class="a sh"><use href="#confirmation-bias" x="440" y="60" width="96" height="96"/><use href="#data-leakage" x="520" y="110" width="96" height="96"/></g>
+  <g class="a v k0"><use href="#stray-number" x="424" y="104" width="110" height="110"/></g>
+  <g class="a v k1"><use href="#forger" x="424" y="104" width="110" height="110"/></g>
+  <g class="a v k2"><use href="#ghost-citation" x="424" y="104" width="110" height="110"/></g>
+  <g class="a v k3"><use href="#impostor-doi" x="424" y="104" width="110" height="110"/></g>
+  <g class="a v k4"><use href="#plan-rewriter" x="424" y="104" width="110" height="110"/></g>
+  <g class="a v k5"><use href="#stale-methods" x="424" y="104" width="110" height="110"/></g>
+  <g class="a t0"><rect x="348.6" y="130.5" width="34" height="18" rx="4" fill="#e6c878" stroke="#1b2b4b" stroke-width="1.5"/><text x="365.6" y="143.7" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Consolas, Menlo, monospace" font-size="12" font-weight="700" fill="#1b2b4b">G2</text></g>
+  <g class="a t1"><rect x="348.6" y="130.5" width="34" height="18" rx="4" fill="#e6c878" stroke="#1b2b4b" stroke-width="1.5"/><text x="365.6" y="143.7" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Consolas, Menlo, monospace" font-size="12" font-weight="700" fill="#1b2b4b">G1</text></g>
+  <g class="a t2"><rect x="348.6" y="130.5" width="34" height="18" rx="4" fill="#e6c878" stroke="#1b2b4b" stroke-width="1.5"/><text x="365.6" y="143.7" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Consolas, Menlo, monospace" font-size="12" font-weight="700" fill="#1b2b4b">G7</text></g>
+  <g class="a t3"><rect x="348.6" y="130.5" width="34" height="18" rx="4" fill="#e6c878" stroke="#1b2b4b" stroke-width="1.5"/><text x="365.6" y="143.7" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Consolas, Menlo, monospace" font-size="12" font-weight="700" fill="#1b2b4b">G7</text></g>
+  <g class="a t4"><rect x="343.6" y="130.5" width="44" height="18" rx="4" fill="#e6c878" stroke="#1b2b4b" stroke-width="1.5"/><text x="365.6" y="143.7" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Consolas, Menlo, monospace" font-size="12" font-weight="700" fill="#1b2b4b">G12</text></g>
+  <g class="a t5"><rect x="348.6" y="130.5" width="34" height="18" rx="4" fill="#e6c878" stroke="#1b2b4b" stroke-width="1.5"/><text x="365.6" y="143.7" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Consolas, Menlo, monospace" font-size="12" font-weight="700" fill="#1b2b4b">G9</text></g>
+</svg>

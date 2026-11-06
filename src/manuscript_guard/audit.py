@@ -553,6 +553,33 @@ def _markdown_heading_lines(text: str) -> frozenset[int]:
     )
 
 
+#: A Markdown thematic break: three or more of one of `-`, `*` and `_`, spaces between them
+#: allowed, indented three spaces at most (four is code), and nothing else on the line.
+_THEMATIC_BREAK = re.compile(r" {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*")
+
+
+def thematic_breaks(lines: list[str]) -> set[int]:
+    """The lines that are Markdown thematic breaks, `---`, `***` or `___`. One ends a
+    reference list as a heading does: a block under it, a note on where the numbers came
+    from, was read as one more entry with no number, so the list was "not numbered" and no
+    citation was held to it.
+
+    A line of dashes directly under a line of text is that line's setext underline, as in
+    CommonMark, and no break: read as one, the dashes under a setext `References` ended the
+    list they open (review of #553). Where the line above is an entry, `heading_shaped` has
+    already ended the list there. Stars and underscores underline nothing."""
+    breaks = set()
+    for number, line in enumerate(lines):
+        rule = _THEMATIC_BREAK.fullmatch(line.rstrip("\r"))
+        if rule is None:
+            continue
+        above = lines[number - 1] if number else ""
+        if rule[1] == "-" and above.strip():
+            continue
+        breaks.add(number)
+    return breaks
+
+
 def bibliography_spans(
     text: str,
     headings: frozenset[int] | None = None,
@@ -560,10 +587,11 @@ def bibliography_spans(
 ) -> list[tuple[int, int]]:
     """Where the reference lists are, as 0-based lines `[start, end)`.
 
-    Each runs from a bibliography heading to the next heading of another kind, or to the end
-    if there is none. The first version ran to the end regardless, so an appendix after the
-    references was never audited, and it used only the first heading, so an appendix's own
-    reference list was read as prose.
+    Each runs from a bibliography heading to the next heading of another kind, in Markdown
+    or a thematic break (`thematic_breaks`), or to the end if there is none. The first
+    version ran to the end regardless, so an appendix after the references was never
+    audited, and it used only the first heading, so an appendix's own reference list was
+    read as prose.
 
     `headings` says which lines are headings when the text cannot: a .docx read as plain text
     knows them only from paragraph styles. Omitted, they are read as Markdown, and a line in
@@ -583,7 +611,7 @@ def bibliography_spans(
         # entry has no heading in the printed paper, and running the cut on past it would
         # hide the appendix as more references. An early end costs a false alarm; a late
         # one hides numbers.
-        ends = headings | heading_shaped(lines)
+        ends = headings | heading_shaped(lines) | thematic_breaks(lines)
     else:
         ends = headings
     # A final newline ends the last line; it does not start another.

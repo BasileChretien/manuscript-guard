@@ -46,10 +46,10 @@ MANUSCRIPT_GUARD_SEED=7 pytest -q tests/test_properties.py             # other i
 MANUSCRIPT_GUARD_BASE=origin/main pytest -q -rs tests/test_differential.py
 ```
 
-`tests/test_generated_sessions.py` draws twelve sessions from its seed `PINNED`. A change to
-`sessions()` in `tests/generated.py`, to `TAGS` or `SAYS` in `tests/readings.py`, or to the
-Hypothesis pin draws twelve others, and the test of what they hold may then fail with
-nothing wrong: its message says which numbers to try. Under the first two variables above,
+`tests/test_generated_sessions.py` draws twelve sessions from its seed `PINNED`, and holds
+what the twelve contain. A change to `sessions()` in `tests/generated.py`, to `TAGS` or
+`SAYS` in `tests/readings.py`, or to the Hypothesis pin draws twelve others, and that test
+may then fail with nothing wrong in the import: its message says which numbers to try. Under the first two variables above,
 the two tests of the pinned twelve are skipped.
 
 Unset, the base is where the branch left `origin/main`. CI's `old-against-new` job compares
@@ -70,7 +70,8 @@ coordinating session raises the number on `main` after merges that change `src/`
 for a number and do not pick one. A branch that already carries a bump puts `main`'s version
 lines back, whether a merge of `main` conflicts on them or not; on a conflict, take `main`'s
 side on all four lines. `tests/test_version.py` holds the four equal and
-`tests/test_plugin.py` the two manifests.
+`tests/test_plugin.py` the two manifests. The session-start hook's warning that the tool and
+the plugin differ blocks nothing.
 
 The example doubles as the test fixture. To see the whole loop:
 
@@ -119,7 +120,8 @@ Two data files are derived and never edited by hand; a wrong row is put right in
 that writes it, with the authority for it. G14's spellings,
 `src/manuscript_guard/data/spelling_variants.tsv`, come from VarCon through
 `python tools/derive_spelling_variants.py path/to/varcon.txt`, which refuses any source but
-the one whose SHA-256 it names (the file and ATTRIBUTION.md keep VarCon's notices). The
+the one whose SHA-256 it names; `varcon.txt` is not in the repository, and the file and
+ATTRIBUTION.md keep VarCon's notices. The
 palettes, `src/manuscript_guard/data/palettes.json`, their licences and the R package's
 copies come from each collection's files at pinned commits through
 `python tools/derive_palettes.py path/to/folder --fetch`. With `MANUSCRIPT_GUARD_VARCON` or

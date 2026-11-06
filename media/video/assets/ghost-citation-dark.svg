@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-labelledby="title">
+  <title id="title">The Ghost Citation, a retracted work still cited (G7)</title>
+  <defs>
+    <symbol id="ghost-citation" viewBox="0 0 120 120">
+      <ellipse cx="60" cy="113" rx="26" ry="3.5" fill="rgba(0,0,0,0.35)" />
+      <path d="M30 102 L30 52 Q30 18 60 18 Q90 18 90 52 L90 102 L80 94 L70 102 L60 94 L50 102 L40 94 Z" fill="#d9dde6" stroke="#c3ccd7" stroke-width="2.5" stroke-linejoin="round" />
+      <ellipse cx="50" cy="47" rx="5" ry="7" fill="#2a3346" />
+      <ellipse cx="70" cy="47" rx="5" ry="7" fill="#2a3346" />
+      <ellipse cx="60" cy="61" rx="4" ry="5" fill="#2a3346" opacity=".8" />
+      <g transform="rotate(-12 60 80)">
+        <rect x="16" y="72" width="88" height="16" rx="2" fill="#d95b36" />
+        <text x="60" y="84" text-anchor="middle" font-family="Atkinson Hyperlegible, Segoe UI, Helvetica, Arial, sans-serif" font-weight="700" font-size="10" letter-spacing="1.6" fill="#e9e6dc">RETRACTED</text>
+      </g>
+    </symbol>
+  </defs>
+  <use href="#ghost-citation" width="120" height="120"/>
+</svg>

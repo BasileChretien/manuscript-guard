@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=720" />
+    <title>Vord: every number traceable to its source</title>
+    <script src="node_modules/gsap/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Atkinson Hyperlegible";
+        src: url("fonts/atkinson-hyperlegible-latin-400-normal.woff2") format("woff2");
+        font-weight: 400;
+      }
+      @font-face {
+        font-family: "Atkinson Hyperlegible";
+        src: url("fonts/atkinson-hyperlegible-latin-700-normal.woff2") format("woff2");
+        font-weight: 700;
+      }
+      @font-face {
+        font-family: "JetBrains Mono";
+        src: url("fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2");
+        font-weight: 400;
+      }
+      @font-face {
+        font-family: "JetBrains Mono";
+        src: url("fonts/jetbrains-mono-latin-700-normal.woff2") format("woff2");
+        font-weight: 700;
+      }
+      /* The brand's dark-page colours (PALETTES in tools/brand_assets.py), and the terminal
+         colours of the README's demo (the dark palette of tools/readme_figures.py). */
+      :root {
+        --ground: #0f1728;
+        --paper: #e9e6dc;
+        --ink: #2a3346;
+        --teal: #1f7479;
+        --brass: #e6c878;
+        --steel: #c3ccd7;
+        --edge: #0a1120;
+        --line: #28344d;
+        --text: #f3f1ea;
+        --term-box: #161b22;
+        --term-line: #3d444d;
+        --term-text: #f0f6fc;
+        --term-soft: #9198a1;
+        --term-fail: #f85149;
+        --term-ok: #3fb950;
+        --sans: "Atkinson Hyperlegible", sans-serif;
+        --mono: "JetBrains Mono", monospace;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+        background: var(--ground);
+      }
+      #root {
+        position: relative;
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+        background: var(--ground);
+        font-family: var(--sans);
+        color: var(--text);
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+      }
+      .abs {
+        position: absolute;
+        display: block;
+      }
+      .floor {
+        position: absolute;
+        left: 60px;
+        right: 60px;
+        top: 532px;
+        height: 2px;
+        background: var(--line);
+      }
+
+      /* The manuscript page, drawn as the brand's page: paper, grey lines, bound values in teal. */
+      .page {
+        position: absolute;
+        background: var(--paper);
+        border-radius: 4px;
+        box-shadow: 0 8px 0 rgba(0, 0, 0, 0.25);
+        overflow: hidden;
+      }
+      .page .fold {
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 0;
+        height: 0;
+        border-style: solid;
+        border-width: 0 34px 34px 0;
+        border-color: var(--ground) var(--ground) #c9c5b8 #c9c5b8;
+      }
+      .page .row {
+        position: absolute;
+        height: 9px;
+        border-radius: 5px;
+        background: #b9b6ad;
+      }
+      .page .row.title {
+        height: 13px;
+        background: #59606e;
+      }
+      .page .chip {
+        position: absolute;
+        height: 13px;
+        border-radius: 6px;
+        background: var(--teal);
+        display: block;
+      }
+
+      /* Scene 2: the editor line and the terminal. */
+      .pane {
+        position: absolute;
+        left: 50px;
+        right: 50px;
+        background: var(--term-box);
+        border: 1px solid var(--term-line);
+        border-radius: 10px;
+        font-family: var(--mono);
+        font-size: 20px;
+        color: var(--term-text);
+      }
+      .pane .bar {
+        height: 34px;
+        border-bottom: 1px solid var(--term-line);
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 0 14px;
+        font-size: 19px;
+        color: var(--term-soft);
+      }
+      .pane .dot {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: var(--term-line);
+      }
+      .pane .bar .name {
+        margin-left: 10px;
+      }
+      #editor {
+        top: 46px;
+        height: 150px;
+      }
+      #editor .lines {
+        position: relative;
+        padding: 14px 0 0 0;
+      }
+      #editor .ln {
+        position: relative;
+        height: 30px;
+        line-height: 30px;
+        white-space: pre;
+      }
+      #editor .gutter {
+        position: absolute;
+        left: 0;
+        width: 52px;
+        text-align: right;
+        color: var(--term-soft);
+      }
+      #editor .code {
+        position: absolute;
+        left: 70px;
+        top: 0;
+      }
+      #editor .faint {
+        position: absolute;
+        left: 70px;
+        top: 11px;
+        height: 8px;
+        border-radius: 4px;
+        background: #2a313b;
+      }
+      .bind {
+        background: var(--teal);
+        color: #e8f4f2;
+        border-radius: 3px;
+      }
+      .bind.sel,
+      .typed.sel {
+        background: #3b5b8f;
+        color: #ffffff;
+      }
+      .mark {
+        color: var(--term-soft);
+      }
+      .flagged {
+        text-decoration: underline wavy var(--term-fail);
+        text-decoration-thickness: 2px;
+        text-underline-offset: 5px;
+      }
+      #terminal {
+        top: 214px;
+        height: 340px;
+      }
+      #terminal .out {
+        position: absolute;
+        left: 22px;
+        top: 50px;
+        right: 22px;
+      }
+      #terminal .tl {
+        height: 34px;
+        line-height: 34px;
+        font-size: 21px;
+        white-space: pre;
+      }
+      .t-prompt {
+        color: var(--term-ok);
+        font-weight: 700;
+      }
+      .t-fail {
+        color: var(--term-fail);
+        font-weight: 700;
+      }
+      .t-soft {
+        color: var(--term-soft);
+      }
+      .t-ok {
+        color: var(--term-ok);
+        font-weight: 700;
+      }
+      .where {
+        position: relative;
+      }
+      .where .hl {
+        position: absolute;
+        left: -6px;
+        right: -6px;
+        top: -2px;
+        bottom: -2px;
+        border: 2px solid var(--brass);
+        border-radius: 5px;
+        opacity: 0;
+      }
+      .ch {
+        opacity: 0;
+      }
+
+      /* Scenes 3 and 4: the guard, the shield's gate, the villains and the shadows. */
+      .tag {
+        position: absolute;
+        height: 40px;
+        line-height: 36px;
+        border-radius: 7px;
+        background: var(--brass);
+        border: 2px solid var(--edge);
+        color: var(--edge);
+        font-family: var(--mono);
+        font-weight: 700;
+        font-size: 25px;
+        text-align: center;
+        opacity: 0;
+      }
+
+      /* The end card. */
+      #endcard .stack {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 62px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      #endcard img {
+        width: 190px;
+        height: 190px;
+        display: block;
+      }
+      #endcard h1 {
+        margin-top: 26px;
+        font-size: 60px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        color: var(--text);
+      }
+      #endcard .tagline {
+        margin-top: 10px;
+        font-size: 32px;
+        color: var(--steel);
+      }
+      #endcard .url {
+        margin-top: 22px;
+        font-family: var(--mono);
+        font-size: 23px;
+        color: var(--brass);
+      }
+
+      /* Captions: one cue at a time, on a band, at the foot of the frame. */
+      .cap {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 26px;
+        display: flex;
+        justify-content: center;
+        padding: 0 70px;
+      }
+      .cap span {
+        display: block;
+        max-width: 1100px;
+        padding: 10px 26px 12px;
+        border-radius: 10px;
+        background: rgba(5, 9, 18, 0.88);
+        font-family: var(--sans);
+        font-size: 36px;
+        line-height: 1.3;
+        font-weight: 700;
+        color: #ffffff;
+        text-align: center;
+        text-wrap: balance;
+      }
+      .cap .nb {
+        display: inline;
+        padding: 0;
+        background: none;
+        white-space: nowrap;
+      }
+      #fader {
+        position: absolute;
+        inset: 0;
+        background: var(--ground);
+        opacity: 1;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="58"
+      data-width="1280"
+      data-height="720"
+    >
+      <!-- Scene 1: Vord beside a manuscript page full of bound numbers. -->
+      <section id="s1" class="scene clip" data-start="0" data-duration="7.4" data-track-index="1">
+        <div class="floor"></div>
+        <img id="s1-vord" class="abs" src="assets/vord-dark.svg" alt=""
+             style="left: 300px; top: 116px; width: 350px; height: 420px; transform: scaleX(-1)" />
+        <div id="s1-page" class="page" style="left: 690px; top: 128px; width: 300px; height: 396px">
+          <div class="fold"></div>
+          <div class="row title" style="left: 30px; top: 34px; width: 180px"></div>
+          <div class="row" style="left: 30px; top: 74px; width: 236px"></div>
+          <div class="row" style="left: 30px; top: 96px; width: 120px"></div>
+          <div class="row" style="left: 210px; top: 96px; width: 56px"></div>
+          <div class="row" style="left: 30px; top: 118px; width: 236px"></div>
+          <div class="row" style="left: 30px; top: 140px; width: 60px"></div>
+          <div class="row" style="left: 140px; top: 140px; width: 126px"></div>
+          <div class="row" style="left: 30px; top: 182px; width: 236px"></div>
+          <div class="row" style="left: 30px; top: 204px; width: 170px"></div>
+          <div class="row" style="left: 30px; top: 226px; width: 236px"></div>
+          <div class="row" style="left: 30px; top: 248px; width: 92px"></div>
+          <div class="row" style="left: 176px; top: 248px; width: 90px"></div>
+          <div class="row" style="left: 30px; top: 290px; width: 236px"></div>
+          <div class="row" style="left: 30px; top: 312px; width: 150px"></div>
+          <div class="row" style="left: 30px; top: 334px; width: 236px"></div>
+          <div class="chip s1chip" style="left: 154px; top: 94px; width: 50px"></div>
+          <div class="chip s1chip" style="left: 94px; top: 138px; width: 42px"></div>
+          <div class="chip s1chip" style="left: 204px; top: 202px; width: 62px"></div>
+          <div class="chip s1chip" style="left: 126px; top: 246px; width: 46px"></div>
+          <div class="chip s1chip" style="left: 184px; top: 310px; width: 52px"></div>
+          <div class="chip s1chip" style="left: 30px; top: 356px; width: 70px"></div>
+        </div>
+      </section>
+
+      <!-- Scene 2: a number typed over its binding, check failing on it, the binding back, check passing. -->
+      <section id="s2" class="scene clip" data-start="7.2" data-duration="13.8" data-track-index="2">
+        <div id="editor" class="pane">
+          <div class="bar"><div class="dot"></div><div class="dot"></div><div class="dot"></div><span class="name">manuscript/main.md</span></div>
+          <div class="lines">
+            <div class="ln"><span class="gutter">10</span><span class="faint" style="width: 640px"></span></div>
+            <div class="ln"><span id="g11" class="gutter">11</span><span id="edline"></span></div>
+            <div class="ln"><span class="gutter">12</span><span class="faint" style="width: 820px"></span></div>
+          </div>
+        </div>
+        <div id="terminal" class="pane">
+          <div class="bar"><div class="dot"></div><div class="dot"></div><div class="dot"></div><span class="name">terminal</span></div>
+          <div id="run1" class="out"></div>
+          <div id="run2" class="out"></div>
+        </div>
+      </section>
+
+      <!-- Scenes 3 and 4: each villain blocked by the gate on Vord's shield; the shadows pass; the co-author reads. -->
+      <section id="s3" class="scene clip" data-start="20.8" data-duration="32.8" data-track-index="1">
+        <div class="floor"></div>
+        <div class="group" style="position: absolute; inset: 0; transform: translateX(90px)">
+        <img id="coauthor" class="abs" src="assets/co-author-dark.svg" alt=""
+             style="left: 18px; top: 334px; width: 200px; height: 200px; opacity: 0" />
+        <div id="s3-page" class="page" style="left: 196px; top: 300px; width: 170px; height: 224px">
+          <div class="fold" style="border-width: 0 24px 24px 0"></div>
+          <div class="row title" style="left: 18px; top: 24px; width: 96px; height: 10px"></div>
+          <div class="row" style="left: 18px; top: 52px; width: 130px; height: 7px"></div>
+          <div class="row" style="left: 18px; top: 70px; width: 130px; height: 7px"></div>
+          <div class="row" style="left: 18px; top: 88px; width: 80px; height: 7px"></div>
+          <div class="chip" style="left: 18px; top: 112px; width: 70px; height: 11px"></div>
+          <div class="row" style="left: 18px; top: 140px; width: 130px; height: 7px"></div>
+          <div class="row" style="left: 18px; top: 158px; width: 130px; height: 7px"></div>
+          <div class="row" style="left: 18px; top: 176px; width: 100px; height: 7px"></div>
+        </div>
+        <img id="s3-vord" class="abs" src="assets/vord-dark.svg" alt=""
+             style="left: 390px; top: 132px; width: 336px; height: 403px; transform: scaleX(-1)" />
+        <img id="v0" class="abs villain" src="assets/stray-number-dark.svg" alt="" style="left: 686px; top: 312px; width: 210px; height: 210px; opacity: 0" />
+        <img id="v1" class="abs villain" src="assets/forger-dark.svg" alt="" style="left: 686px; top: 312px; width: 210px; height: 210px; opacity: 0" />
+        <img id="v2" class="abs villain" src="assets/ghost-citation-dark.svg" alt="" style="left: 686px; top: 312px; width: 210px; height: 210px; opacity: 0" />
+        <img id="v3" class="abs villain" src="assets/impostor-doi-dark.svg" alt="" style="left: 686px; top: 312px; width: 210px; height: 210px; opacity: 0" />
+        <img id="v4" class="abs villain" src="assets/plan-rewriter-dark.svg" alt="" style="left: 686px; top: 312px; width: 210px; height: 210px; opacity: 0" />
+        <img id="v5" class="abs villain" src="assets/stale-methods-dark.svg" alt="" style="left: 686px; top: 312px; width: 210px; height: 210px; opacity: 0" />
+        <div id="t0" class="tag" style="left: 583px; top: 364px; width: 64px">G2</div>
+        <div id="t1" class="tag" style="left: 583px; top: 364px; width: 64px">G1</div>
+        <div id="t2" class="tag" style="left: 583px; top: 364px; width: 64px">G7</div>
+        <div id="t3" class="tag" style="left: 583px; top: 364px; width: 64px">G7</div>
+        <div id="t4" class="tag" style="left: 575px; top: 364px; width: 80px">G12</div>
+        <div id="t5" class="tag" style="left: 583px; top: 364px; width: 64px">G9</div>
+        <img id="sh0" class="abs" src="assets/confirmation-bias-dark.svg" alt="" style="left: 700px; top: 236px; width: 180px; height: 180px; opacity: 0" />
+        <img id="sh1" class="abs" src="assets/data-leakage-dark.svg" alt="" style="left: 850px; top: 330px; width: 180px; height: 180px; opacity: 0" />
+        </div>
+      </section>
+
+      <!-- Scene 5: the end card. -->
+      <section id="endcard" class="scene clip" data-start="53.2" data-duration="4.8" data-track-index="3">
+        <div class="stack">
+          <img src="assets/emblem-dark.svg" alt="" />
+          <h1>manuscript-guard</h1>
+          <div class="tagline">Every number traceable to its source.</div>
+          <div class="url">basilechretien.github.io/manuscript-guard</div>
+        </div>
+      </section>
+
+      <!-- Captions. make-vtt.mjs writes vord.en.vtt from these elements, so the two cannot differ. -->
+      <div id="cap-01" class="cap clip" data-start="0.6" data-duration="3.3" data-track-index="4"><span>A paper is full of numbers.</span></div>
+      <div id="cap-02" class="cap clip" data-start="3.9" data-duration="3.3" data-track-index="4"><span>Each one should come from somewhere.</span></div>
+      <div id="cap-03" class="cap clip" data-start="7.6" data-duration="4.8" data-track-index="4"><span>Type one in by hand, and it drifts from the analysis.</span></div>
+      <div id="cap-04" class="cap clip" data-start="12.4" data-duration="3.4" data-track-index="4"><span><span class="nb">manuscript-guard</span> finds it, and says where.</span></div>
+      <div id="cap-05" class="cap clip" data-start="15.9" data-duration="4.7" data-track-index="4"><span>Bind it to the result, and it follows the analysis.</span></div>
+      <div id="cap-06" class="cap clip" data-start="21.2" data-duration="4.5" data-track-index="4"><span>A number typed into the text, bound to nothing — G2</span></div>
+      <div id="cap-07" class="cap clip" data-start="25.7" data-duration="3.6" data-track-index="4"><span>A results file edited by hand — G1</span></div>
+      <div id="cap-08" class="cap clip" data-start="29.3" data-duration="3.5" data-track-index="4"><span>A retracted work, still cited — G7</span></div>
+      <div id="cap-09" class="cap clip" data-start="32.8" data-duration="3.6" data-track-index="4"><span>A DOI that names another work — G7</span></div>
+      <div id="cap-10" class="cap clip" data-start="36.4" data-duration="5.1" data-track-index="4"><span>The plan changed after the first results, and nothing said — G12 warns</span></div>
+      <div id="cap-11" class="cap clip" data-start="41.5" data-duration="4.2" data-track-index="4"><span>The analysis changed since the Methods were read — G9</span></div>
+      <div id="cap-12" class="cap clip" data-start="45.7" data-duration="3.3" data-track-index="4"><span>Some mistakes no check can see.</span></div>
+      <div id="cap-13" class="cap clip" data-start="49.0" data-duration="4.5" data-track-index="4"><span>A co-author reads those. <span class="nb">manuscript-guard</span> asks them, one page each.</span></div>
+      <div id="cap-14" class="cap clip" data-start="53.5" data-duration="4.2" data-track-index="4"><span>Check a paper in your browser, or start one.</span></div>
+
+      <!-- Fades the whole frame from and to the ground, so the loop's last frame meets its first. -->
+      <div id="fader" class="clip" data-start="0" data-duration="58" data-track-index="5"></div>
+    </div>
+
+    <script>
+      // ---- Text, built synchronously before the timeline -------------------------------
+      // The manuscript line and the two runs of `check`. CARD and CLEAN are copied from
+      // tools/readme_figures.py, which tests/test_docs.py holds to what `check` prints.
+      const BINDING = "{{results.cohort.n_reports}}";
+      const CASES = "{{results.case.n_cases}}";
+      const COMMAND = "$ manuscript-guard check";
+      const CARD = [
+        ["text", "stage: drafting (writing the manuscript against results that exist)"],
+        ["fail", "  [FAIL] G2 manuscript/main.md:11:17"],
+        ["text", "         '4,000' is not bound to any source"],
+        ["soft", "         > **Results.** Of 4,000 reports, {{results.case.n_cases}} described"],
+        ["soft", "         hint: bind it with {{results.<key>}} or {{lit.<key>}}; if it is a writing"],
+        ["soft", "         convention, add it to `conventions:` in paper.yaml with a justification"],
+        ["soft", "  ..."],
+      ];
+      const CLEAN = [
+        ["text", "stage: drafting (writing the manuscript against results that exist)"],
+        ["soft", "  ..."],
+        ["text", "  numerical provenance"],
+        ["text", "    checked:     G2, G3, G7, G8: 0 failing, 1 warning"],
+        ["soft", "  ..."],
+        ["ok", "0 failing, 13 warnings"],
+      ];
+
+      function esc(s) {
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      }
+
+      // Each state of the manuscript line is a layer of its own; the timeline shows one at a time.
+      const edline = document.getElementById("edline");
+      function layer(id, value, cls) {
+        const div = document.createElement("span");
+        div.id = id;
+        div.className = "code";
+        div.style.opacity = id === "L-bound" ? "1" : "0";
+        div.innerHTML =
+          '<span class="mark">**</span>Results.<span class="mark">**</span> Of ' +
+          (value ? '<span class="' + cls + '">' + esc(value) + "</span>" : "") +
+          ' reports, <span class="bind">' + esc(CASES) + "</span> described";
+        edline.appendChild(div);
+      }
+      layer("L-bound", BINDING, "bind");
+      layer("L-sel", BINDING, "bind sel");
+      ["4", "4,", "4,0", "4,00", "4,000"].forEach((v, i) => layer("L-t" + i, v, "typed"));
+      layer("L-flag", "4,000", "typed flagged");
+      layer("L-sel2", "4,000", "typed sel");
+
+      // A terminal run: the command, typed one character at a time, then the output.
+      function run(el, lines, prefix) {
+        let html = '<div class="tl t-prompt">';
+        for (let i = 0; i < COMMAND.length; i++) {
+          html += '<span class="ch ' + prefix + '-c">' + esc(COMMAND[i]) + "</span>";
+        }
+        html += "</div>";
+        lines.forEach(([kind, text]) => {
+          let body = esc(text);
+          if (text.includes("manuscript/main.md:11:17")) {
+            body = body.replace(
+              "manuscript/main.md:11:17",
+              '<span class="where">manuscript/main.md:11:17<span class="hl"></span></span>'
+            );
+          }
+          html += '<div class="tl ' + prefix + "-o t-" + kind + '" style="opacity:0">' + body + "</div>";
+        });
+        el.innerHTML = html;
+      }
+      run(document.getElementById("run1"), CARD, "r1");
+      run(document.getElementById("run2"), CLEAN, "r2");
+
+      // ---- The timeline ----------------------------------------------------------------
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      const ease = "power2.out";
+
+      // The loop's seam: fade in from the ground, fade out to it.
+      tl.fromTo("#fader", { opacity: 1 }, { opacity: 0, duration: 0.7, ease: "sine.inOut" }, 0);
+      tl.to("#fader", { opacity: 1, duration: 0.3, ease: "sine.inOut" }, 57.7);
+
+      // Captions: a short fade in, held for the whole cue.
+      document.querySelectorAll(".cap").forEach((cap) => {
+        const start = parseFloat(cap.dataset.start);
+        tl.fromTo(cap, { opacity: 0 }, { opacity: 1, duration: 0.18, ease: "none" }, start);
+      });
+
+      // Scene 1 (0 to 7.4): the page fills with bound values, one at a time.
+      tl.fromTo("#s1-vord", { x: -30 }, { x: 0, duration: 1.2, ease }, 0.1);
+      tl.fromTo("#s1-page", { y: 20 }, { y: 0, duration: 1.2, ease }, 0.2);
+      tl.fromTo(".s1chip", { opacity: 0, scaleX: 0.3, transformOrigin: "0% 50%" },
+        { opacity: 1, scaleX: 1, duration: 0.45, ease, stagger: 0.4 }, 1.0);
+      tl.to("#s1", { opacity: 0, duration: 0.45, ease: "sine.inOut" }, 6.95);
+
+      // Scene 2 (7.2 to 21.0).
+      tl.fromTo("#s2", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "sine.inOut" }, 7.2);
+      const show = (id, at) => {
+        tl.set("#edline .code", { opacity: 0 }, at);
+        tl.set(id, { opacity: 1 }, at);
+      };
+      // The binding is selected and 4,000 typed over it.
+      show("#L-sel", 8.5);
+      ["#L-t0", "#L-t1", "#L-t2", "#L-t3", "#L-t4"].forEach((id, i) => show(id, 9.1 + 0.16 * i));
+      // check runs and fails.
+      const typeIn = (sel, at) => {
+        document.querySelectorAll(sel).forEach((c, i) => tl.set(c, { opacity: 1 }, at + 0.035 * i));
+      };
+      typeIn(".r1-c", 10.1);
+      tl.to(".r1-o", { opacity: 1, duration: 0.2, ease: "none", stagger: 0.09 }, 11.2);
+      // It says where: the file, line and column, and the number in the line.
+      tl.to("#run1 .hl", { opacity: 1, duration: 0.35, ease: "sine.inOut" }, 12.6);
+      tl.to("#g11", { color: "#e6c878", duration: 0.35, ease: "sine.inOut" }, 12.6);
+      show("#L-flag", 12.75);
+      // The number is bound again.
+      tl.to("#run1 .hl", { opacity: 0, duration: 0.3, ease: "sine.inOut" }, 15.6);
+      tl.to("#g11", { color: "#9198a1", duration: 0.3, ease: "sine.inOut" }, 15.6);
+      show("#L-sel2", 16.0);
+      show("#L-bound", 16.6);
+      tl.to("#run1", { opacity: 0, duration: 0.3, ease: "sine.inOut" }, 16.55);
+      // check runs again and passes.
+      typeIn(".r2-c", 16.9);
+      tl.to(".r2-o", { opacity: 1, duration: 0.2, ease: "none", stagger: 0.09 }, 17.85);
+      tl.to("#s2", { opacity: 0, duration: 0.4, ease: "sine.inOut" }, 20.6);
+
+      // Scenes 3 and 4 (20.8 to 53.6).
+      tl.fromTo("#s3", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "sine.inOut" }, 20.8);
+      // CAST order (tools/brand_assets.py): each villain's slot is its caption's cue.
+      const SLOTS = [[21.2, 25.7], [25.7, 29.3], [29.3, 32.8], [32.8, 36.4], [36.4, 41.5], [41.5, 45.7]];
+      SLOTS.forEach(([start, end], n) => {
+        const v = "#v" + n;
+        const t = "#t" + n;
+        tl.set(v, { opacity: 1 }, start);
+        tl.fromTo(v, { x: 640 }, { x: 0, duration: 1.0, ease: "power1.in" }, start);
+        tl.to(v, { x: 16, duration: 0.35, ease: "power2.out" }, start + 1.0);
+        tl.fromTo(t, { opacity: 0, scale: 0.85 }, { opacity: 1, scale: 1, duration: 0.25, ease }, start + 0.95);
+        tl.to(v, { opacity: 0, x: 40, y: -26, scale: 0.4, duration: 0.5, ease: "power1.in" }, end - 0.95);
+        tl.to(t, { opacity: 0, duration: 0.3, ease: "sine.inOut" }, end - 0.4);
+      });
+      // The shadows pass through the shield; no gate shows.
+      tl.fromTo("#sh0", { x: 600, opacity: 0 }, { x: -560, opacity: 0.92, duration: 3.1, ease: "sine.inOut" }, 45.8);
+      tl.fromTo("#sh1", { x: 600, opacity: 0 }, { x: -640, opacity: 0.92, duration: 3.1, ease: "sine.inOut" }, 46.1);
+      tl.to(["#sh0", "#sh1"], { opacity: 0, duration: 0.5, ease: "sine.inOut", stagger: 0.3 }, 48.6);
+      // The co-author comes and reads the page.
+      tl.fromTo("#coauthor", { x: -40, opacity: 0 }, { x: 0, opacity: 1, duration: 0.8, ease }, 49.2);
+      // and reads down it, slowly.
+      tl.to("#coauthor", { x: 12, duration: 3.2, ease: "sine.inOut" }, 50.0);
+      tl.to("#s3", { opacity: 0, duration: 0.45, ease: "sine.inOut" }, 53.15);
+
+      // Scene 5 (53.2 to 58.0): the end card.
+      tl.fromTo("#endcard", { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 53.25);
+      tl.fromTo("#endcard .stack", { y: 16 }, { y: 0, duration: 0.9, ease }, 53.25);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

@@ -8721,9 +8721,12 @@ The site's root is the project's landing page (`web/landing/`), and the audit pa
 `audit/` (Basile, 2026-11-06, the plan for a first visit). The landing page runs no script,
 and its policy lets it load its own pictures, style and video and nothing else. Its pictures
 are copied from `docs/img/` when the site is built, so a drawing has one home, and a picture it
-names that is not there stops the build. Where it repeats the README (the demo's alternative
-text, the commands, the numbers of the status) a test holds it to the README, and its count of
-gates is read with the README's.
+names that is not there stops the build. Where it repeats the README (the commands, the numbers
+of the status) a test holds it to the README, and its count of gates is read with the
+README's. Its video (`media/video/`, rendered to `web/landing/media/`) plays muted and loops
+with controls, and a rule of the style shows its still frame instead to a reader who asks for
+less motion. Tests hold its captions file to the captions the composition burns in, the words
+the page lists under it to that file, and its terminal to the lines of the README's demo.
 
 ## A paper read by its editor or a referee
 

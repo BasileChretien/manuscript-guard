@@ -1,0 +1,18 @@
+{
+  "name": "manuscript-guard-landing-video",
+  "private": true,
+  "description": "The landing page's short video of Vord, made with HyperFrames",
+  "license": "MIT",
+  "scripts": {
+    "check": "node cli.mjs check",
+    "render": "node cli.mjs render --quality high --fps 30 --output renders/vord-raw.mp4",
+    "encode": "ffmpeg -y -v error -i renders/vord-raw.mp4 -an -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -profile:v high -level:v 4.0 -r 30 -movflags +faststart -map_metadata -1 ../../web/landing/media/vord.mp4",
+    "poster": "ffmpeg -y -v error -ss 24 -i ../../web/landing/media/vord.mp4 -frames:v 1 -compression_level 9 ../../web/landing/media/vord-poster.png",
+    "vtt": "node make-vtt.mjs",
+    "build": "npm run render && npm run encode && npm run poster && npm run vtt"
+  },
+  "devDependencies": {
+    "gsap": "3.14.2",
+    "hyperframes": "0.8.190"
+  }
+}

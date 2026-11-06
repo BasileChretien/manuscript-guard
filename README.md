@@ -601,4 +601,5 @@ the reference, from [CITATION.cff](CITATION.cff).
 ## Licence
 
 The code is under the MIT licence. Vord, the emblem and the other drawings in `brand/` and
-`docs/img/brand/` are under CC BY 4.0 ([brand/LICENSE](brand/LICENSE)).
+`docs/img/brand/`, and the landing page's video, are under CC BY 4.0
+([brand/LICENSE](brand/LICENSE)).

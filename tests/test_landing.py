@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import html
 import importlib.util
+import json
 import re
 from pathlib import Path
 
@@ -100,7 +101,11 @@ def test_each_link_of_the_landing_page_leads_somewhere_once_the_site_is_built(
     assert checked >= len(shown) + 5
 
 
-@pytest.mark.parametrize("named", ["img/nothing-here.svg", "img/../../pyproject.toml"])
+@pytest.mark.parametrize(
+    "named",
+    ["img/nothing-here.svg", "img/../../pyproject.toml", "media/nothing.mp4",
+     "media/../../build.py"],
+)
 def test_a_picture_the_landing_page_names_that_docs_img_lacks_stops_the_build(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, named: str
 ) -> None:
@@ -110,6 +115,7 @@ def test_a_picture_the_landing_page_names_that_docs_img_lacks_stops_the_build(
     (landing / "index.html").write_text(f'<img src="{named}" alt="">', encoding="utf-8")
     (landing / "style.css").write_text("", encoding="utf-8")
     monkeypatch.setattr(build, "LANDING", landing)
+    monkeypatch.setattr(build, "MEDIA", landing / "media")
     with pytest.raises(SystemExit, match="nothing was built"):
         build.landing(tmp_path / "site")
     assert not (tmp_path / "site").exists(), "the build stopped after copying"
@@ -138,17 +144,126 @@ def alt(text: str, source: str) -> str:
 
 def test_each_picture_on_the_landing_page_has_its_words() -> None:
     """Every picture has alternative text, empty for a drawing whose name is written beside
-    it. The demo's is the README's, which the README's test holds to what `check` prints, and
-    the banner's is the character sheet's."""
+    it, and the banner's is the character sheet's."""
     text = page()
     pictures = re.findall(r"<img\b[^>]*>", text)
     assert pictures and all(re.search(r'\salt="', picture) for picture in pictures)
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert alt(text, "img/demo-light.svg") == alt(readme, "docs/img/demo-light.svg")
     sheet = (ROOT / "brand" / "README.md").read_text(encoding="utf-8")
     assert alt(text, "img/brand/banner-light.svg") == alt(
         sheet, "../docs/img/brand/banner-light.svg"
     )
+
+
+def video() -> tuple[str, str]:
+    """The page's one video: its opening tag, and the whole element."""
+    (whole,) = re.findall(r"<video\b[^>]*>.*?</video>", page(), re.DOTALL)
+    return re.match(r"<video\b[^>]*>", whole).group(), whole
+
+
+def test_the_video_plays_muted_with_controls_and_its_captions_and_still_frame(
+    tmp_path: Path,
+) -> None:
+    """It plays muted and loops, as Basile chose, with controls to pause it. Its captions are
+    in a WebVTT track as well as on screen, and its still frame takes its place for a reader
+    who asks for less motion, by a rule of the style, since the page runs no script."""
+    opening, whole = video()
+    for attribute in ("autoplay", "muted", "loop", "playsinline", "controls"):
+        assert re.search(rf"\s{attribute}[\s>]", opening), f"the video is not {attribute}"
+    poster = re.search(r'\sposter="([^"]+)"', opening).group(1)
+    track = re.search(r'<track\b[^>]*\skind="captions"[^>]*>', whole).group()
+    captions = re.search(r'\ssrc="([^"]+)"', track).group(1)
+    film = re.search(r'<source\b[^>]*\ssrc="([^"]+)"[^>]*\stype="video/mp4"', whole).group(1)
+    build_script().landing(tmp_path)
+    for name in (poster, captions, film):
+        assert (tmp_path / name).is_file(), f"{name} is not in the built site"
+    assert (tmp_path / film).stat().st_size < 4_000_000, "the video is 4 MB or more"
+    assert (tmp_path / captions).read_text(encoding="utf-8").startswith("WEBVTT\n")
+    assert alt(page(), poster), "the still frame has no words"
+    css = (WEB / "landing" / "style.css").read_text(encoding="utf-8")
+    assert re.search(r"\.film \.still \{ display: none; \}\s*@media \(prefers-reduced-motion: "
+                     r"reduce\) \{\s*\.film video \{ display: none; \}\s*\.film \.still \{ "
+                     r"display: block; \}\s*\}", css), "the still does not replace the video"
+
+
+def decoded(text: str) -> str:
+    """The three references make-vtt.mjs reads, and WebVTT escapes, in the order that
+    cannot read one twice."""
+    return text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+
+
+def cues(vtt: str) -> list[tuple[str, str, str]]:
+    """Each cue of a WebVTT file: its start, its end and its words."""
+    found = []
+    for block in vtt.strip().split("\n\n")[1:]:
+        lines = block.splitlines()
+        start, end = lines[1].split(" --> ")
+        words = " ".join(lines[2:])
+        assert not re.search(r"<|&(?!(?:amp|lt|gt);)", words), f"unescaped in WebVTT: {words}"
+        found.append((start, end, decoded(words)))
+    return found
+
+
+def stamp(seconds: float) -> str:
+    ms = round(seconds * 1000)
+    return f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d}.{ms % 1000:03d}"
+
+
+def test_the_captions_file_says_what_the_video_shows_and_the_page_lists_it() -> None:
+    """The WebVTT file has the words and times of the captions the composition burns in
+    (media/video/index.html), and the page's list of the video's words is the file's."""
+    composed = (ROOT / "media" / "video" / "index.html").read_text(encoding="utf-8")
+    burned = [(stamp(float(start)), stamp(float(start) + float(length)),
+               decoded(re.sub(r"<[^>]+>", "", words)))
+              for start, length, words in re.findall(
+                  r'<div id="cap-\d+" class="cap clip" data-start="([\d.]+)" '
+                  r'data-duration="([\d.]+)"[^>]*><span>(.+?)</span></div>$', composed,
+                  re.MULTILINE)]  # fmt: skip
+    assert burned and len(burned) == composed.count('class="cap clip"')
+    vtt = (WEB / "landing" / "media" / "vord.en.vtt").read_text(encoding="utf-8")
+    assert cues(vtt) == burned
+    listed = re.search(r'<ol class="words">(.*?)</ol>', page(), re.DOTALL).group(1)
+    items = [" ".join(html.unescape(re.sub(r"<[^>]+>", "", item)).split())
+             for item in re.findall(r"<li>(.*?)</li>", listed, re.DOTALL)]  # fmt: skip
+    assert items == [words for _, _, words in burned]
+
+
+def test_the_videos_terminal_prints_what_check_prints() -> None:
+    """The composition copies the lines of the README's demo, which tests/test_docs.py holds
+    to what `check` prints on the worked example; a copy changed in one place only would show
+    readers a finding the tool does not give."""
+    figures = script("readme_figures", ROOT / "tools" / "readme_figures.py")
+    composed = (ROOT / "media" / "video" / "index.html").read_text(encoding="utf-8")
+
+    string = r'"((?:[^"\\]|\\.)*)"'
+
+    def lines(name: str) -> list[tuple[str, str]]:
+        body = re.search(rf"const {name} = \[\n(.*?)\n\s*\];", composed, re.DOTALL).group(1)
+        return [(kind, json.loads(f'"{text}"'))
+                for kind, text in re.findall(rf'\["(\w+)", {string}\]', body)]  # fmt: skip
+
+    def value(pattern: str) -> str:
+        return json.loads(f'"{re.search(pattern.replace("STRING", string), composed).group(1)}"')
+
+    assert [("prompt", value(r"const COMMAND = STRING;")), *lines("CARD")] == figures.CARD
+    assert lines("CLEAN") == figures.CLEAN
+    assert value(r"const BINDING = STRING;") == figures.BINDING
+    # The editor: the number typed, a character at a time, the line it is on, the place the
+    # finding names, and the sentence the finding quotes.
+    typed = re.search(r"\[(\"[^\]]*)\]\.forEach\(\(v, i\) => layer\(\"L-t\"", composed).group(1)
+    states = [json.loads(f'"{one}"') for one in re.findall(string, typed)]
+    assert states == [figures.TYPED[:n] for n in range(1, len(figures.TYPED) + 1)]
+    for shown in ("L-flag", "L-sel2"):
+        assert value(rf'layer\("{shown}", STRING') == figures.TYPED
+    assert value(r'<span id="g11" class="gutter">(\d+)</span>') == figures.LINE
+    where = re.search(r"manuscript/main\.md:\d+:\d+", figures.CARD[2][1]).group()
+    assert set(re.findall(r"manuscript/main\.md:\d+:\d+", composed)) == {where}
+    cases = value(r"const CASES = STRING;")
+    # The line as layer() writes it with the number typed: its literals and the two values.
+    written = re.search(r"div\.innerHTML =\s*(.*?);\n", composed, re.DOTALL).group(1)
+    pieces = re.findall(r"'((?:[^'\\]|\\.)*)'|\"((?:[^\"\\]|\\.)*)\"|esc\((\w+)\)", written)
+    shown = "".join({"value": figures.TYPED, "CASES": cases}.get(name, single or double)
+                    for single, double, name in pieces)  # fmt: skip
+    assert re.sub(r"<[^>]*>", "", shown) == figures.QUOTED
 
 
 def test_each_villain_on_the_landing_page_is_named_with_the_gate_the_banner_gives_it() -> None:

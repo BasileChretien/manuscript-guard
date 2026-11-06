@@ -116,6 +116,18 @@ def test_the_banner_names_each_villain_by_the_gate_its_drawing_names() -> None:
         assert f"({gate})" in script.BANNER_TITLE, f"the banner's title does not name {gate}"
 
 
+def test_the_videos_drawings_are_the_brands() -> None:
+    """The video's composition keeps copies of the drawings (media/video/assets/), which a
+    change to the brand would leave stale."""
+    copies = sorted((REPO / "media" / "video" / "assets").glob("*.svg"))
+    assert copies
+    for copy in copies:
+        drawn = REPO / "docs" / "img" / "brand" / copy.name
+        assert drawn.is_file() and copy.read_bytes() == drawn.read_bytes(), (
+            f"media/video/assets/{copy.name} is not docs/img/brand/{copy.name}: copy it again"
+        )
+
+
 def png_size(path: Path) -> tuple[int, int]:
     head = path.read_bytes()[:24]
     assert head[:8] == b"\x89PNG\r\n\x1a\n", f"{path.name} is not a PNG"

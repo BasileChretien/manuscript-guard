@@ -489,11 +489,41 @@ def test_references_lists_explains_and_says_why_it_refuses(project: Path, capsys
     assert main(["references", str(project), "--explain", "c1"]) == 0
     out = capsys.readouterr().out
     assert "the rules give: replace doi:10.5555/class.trial.2023 (K1, K2, K3, D1)" in out
-    assert "reading 1 by gpt-test (gpt-test)" in out
+    assert "readings: 2 filed" in out
+    assert main(["references", str(project), "--explain", "c1", "--readings"]) == 0
+    assert "reading 1 by gpt-test (gpt-test)" in capsys.readouterr().out
+    assert main(["references", str(project), "--readings"]) == 2
+    assert "--readings goes with --explain" in capsys.readouterr().err
     assert main(["references", str(project), "--refuse", "c1", "--why", "no"]) == 2
     assert "--refuse needs --why and --as" in capsys.readouterr().err
     assert main(["references", str(project), "--explain", "c7"]) == 2
     assert "no entry c7" in capsys.readouterr().err
+
+
+def test_explain_shows_a_second_reader_nothing_of_the_first_reading(project: Path) -> None:
+    """Found taking a real paper through the loop: the skill has each reader run `--explain`
+    first and says the second reading is made without seeing the first, and `--explain`
+    printed every filed reading's levels, fields and quotes. It now says how many are filed;
+    their fields are printed with `--readings` only."""
+    case.case(project, readings=False)
+    case.file(project, case.reading("Bo Example", quote="associated with hepatic injury in "
+                                    "the pooled analysis"), "first")  # fmt: skip
+    loaded = load_project(project)[0]
+    said = command.explain(loaded, "c1")
+    assert "readings: 1 filed" in said
+    assert "the rules: 1 reading(s); they decide from 2" in said
+    for shown in ("Bo Example", "level 4", "associated with hepatic injury in the pooled",
+                  "This randomized trial", "harms-rare", "population"):  # fmt: skip
+        assert shown not in said, shown
+    full = command.explain(loaded, "c1", readings=True)
+    assert "reading 1 by Bo Example on 2026-11-02: ocebm-2011, harms-rare" in full
+    assert "associated with hepatic injury in the pooled analysis" in full
+    # A reading the rules cannot read is counted, and what is wrong with it is not shown.
+    bad = next((project / "literature" / "currency" / "readings").glob("c1.*.yaml"))
+    bad.write_text(bad.read_text(encoding="utf-8").replace("harms-rare", "harms-often"),
+                   encoding="utf-8")  # fmt: skip
+    said = command.explain(load_project(project)[0], "c1")
+    assert "readings: 1 filed, 1 of them unusable" in said and "harms-often" not in said
 
 
 def test_explain_says_no_decision_without_the_works_and_an_accepted_proposal_as_one(

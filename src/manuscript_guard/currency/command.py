@@ -125,9 +125,10 @@ def _entry_of(project: Project, entry_id: str) -> tuple[dict, dict]:
     raise Refused(f"literature/currency.yaml has no entry {entry_id}")
 
 
-def explain(project: Project, entry_id: str) -> str:
-    """One entry: its question, searches, the readings' fields and quotes, and what the rules
-    give, with why."""
+def explain(project: Project, entry_id: str, readings: bool = False) -> str:
+    """One entry: its question, searches, how many readings are filed, and what the rules
+    give, with why. The readings' fields and quotes are printed only with `readings`: a
+    reader runs this before reading, and the second reading is made without the first."""
     from manuscript_guard.gates.currency import _bib, _Records, rules_decision
 
     _document, raw = _entry_of(project, entry_id)
@@ -143,13 +144,18 @@ def explain(project: Project, entry_id: str) -> str:
             lines.append(f"  search {read.path.name}: {read.problem}")
             continue
         lines.append(_search_line(read.record))
-    usable = []
-    for read in held.readings.get(entry.id, []):
-        if read.problem:
-            lines.append(f"  reading {read.path.name}: {read.problem}")
-            continue
-        usable.append(read.record)
-        lines += _reading_lines(read.record)
+    filed = held.readings.get(entry.id, [])
+    usable = [read.record for read in filed if not read.problem]
+    if readings:
+        for read in filed:
+            lines += ([f"  reading {read.path.name}: {read.problem}"] if read.problem
+                      else _reading_lines(read.record))  # fmt: skip
+    elif filed:
+        unusable = len(filed) - len(usable)
+        lines.append(f"  readings: {len(filed)} filed"
+                     + (f", {unusable} of them unusable" if unusable else "")
+                     + f"; `references --explain {entry.id} --readings` prints them, which a "
+                     "reader still to read the entry does not run")  # fmt: skip
     from manuscript_guard.gates.currency import missing_works
 
     absent = missing_works(entry, usable, held, _bib(project))

@@ -3803,7 +3803,10 @@ change (Basile, 2026-11-05); it asks too where currency.yaml or references.bib c
 read. `check`'s literature line says how many entries the rules decided and from whose
 readings, and how many a person did.
 
-**The command**, `references`: alone, a row per claim in scope; `--explain ID`; `--mark
+**The command**, `references`: alone, a row per claim in scope; `--explain ID`, which
+says how many readings are filed and what the rules give, and prints the readings' fields
+and quotes only with `--readings`, since a reader runs it before reading and each reading is
+made without the others; `--mark
 "WORDS" @KEY` (with `--id`, an entry no sentence reads as put on the sentence again, `KEY`
 the entry's work or the one it proposes); `--reading FILE`, which holds the
 reading to its schema, the hierarchy and its entry, files it, and writes the rules' decision

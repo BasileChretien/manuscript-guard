@@ -449,13 +449,15 @@ def _decision(entry: Entry, usable: list[dict], held: _Records, bib: dict, path:
         out.append(_finding(
             "currency-uncertain", f"{entry.named}: the readings disagree, and nothing is "
             "proposed", path, "read the readings with `manuscript-guard references --explain "
-            f"{entry.id}`; a third reading, or a person's decision with why, settles it",
+            f"{entry.id} --readings`; a third reading, made without them, or a person's "
+            "decision with why, settles it",
             INFO))  # fmt: skip
     if action in _PROPOSALS and not entry.answer and not accepted:
         out.append(_finding(
             "currency-change-unanswered", f"{entry.named}: {action} {candidate} is proposed "
             f"({', '.join(decision['rules'])}), and nobody has answered", path,
-            f"read the proposal with `manuscript-guard references --explain {entry.id}`; "
+            f"read the proposal with `manuscript-guard references --explain {entry.id} "
+            "--readings`; "
             "accept it by citing the work in the sentence (add it to Zotero, then "
             f"`manuscript-guard sync-bib`), or refuse it with `references --refuse {entry.id} "
             "--why ... --as <you>`", FAIL if stage == SUBMISSION else WARN))  # fmt: skip

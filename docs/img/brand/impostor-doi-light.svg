@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-labelledby="title">
+  <title id="title">The Impostor DOI, a DOI that names another work than the one cited (G7)</title>
+  <defs>
+    <symbol id="impostor-doi" viewBox="0 0 120 120">
+      <ellipse cx="60" cy="113" rx="28" ry="3.5" fill="rgba(27,43,75,0.13)" />
+      <path d="M60 22 C56 12 64 6 70 3" fill="none" stroke="#c3ccd7" stroke-width="2.2" stroke-linecap="round" />
+      <path d="M34 34 L60 15 L86 34 L86 102 Q86 108 80 108 L40 108 Q34 108 34 102 Z" fill="#c9502f" stroke-linejoin="round" />
+      <circle cx="60" cy="28" r="4" fill="#f3f1ea" />
+      <path d="M40 41 Q49 36 56 41 M64 41 Q71 36 80 41" fill="none" stroke="#2a3346" stroke-width="3" stroke-linecap="round" />
+      <circle cx="49" cy="54" r="9" fill="#f3f1ea" stroke="#2a3346" stroke-width="3" />
+      <circle cx="71" cy="54" r="9" fill="#f3f1ea" stroke="#2a3346" stroke-width="3" />
+      <path d="M58 54 L62 54" stroke="#2a3346" stroke-width="3" />
+      <circle cx="51" cy="55" r="2.6" fill="#2a3346" />
+      <circle cx="73" cy="55" r="2.6" fill="#2a3346" />
+      <ellipse cx="60" cy="66" rx="5.5" ry="7" fill="#e3a07e" />
+      <path d="M44 76 Q52 69 60 75 Q68 69 76 76 Q68 82 60 78 Q52 82 44 76 Z" fill="#2a3346" />
+      <text x="60" y="98" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, Consolas, monospace" font-weight="700" font-size="10" fill="#f3f1ea">doi:10.…</text>
+    </symbol>
+  </defs>
+  <use href="#impostor-doi" width="120" height="120"/>
+</svg>

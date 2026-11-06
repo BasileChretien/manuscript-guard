@@ -11,8 +11,8 @@ folder holds the drawings and the rules for using them.
   set `MANUSCRIPT_GUARD_BROWSER` to its path if it is not found.
 
 `tests/test_brand.py` fails while the files under `docs/img/brand/` differ from what the
-script writes, and while a villain's colour comes too close to one of Vord's for a reader with
-a colour-vision deficiency.
+script writes, and while the villains' or the shadows' colour comes within 10 of Vord's brass,
+teal, navy, plates or steel, or of each other, for a reader with a colour-vision deficiency.
 
 ## Vord
 
@@ -77,14 +77,15 @@ shadow, not a villain, so that the drawings never claim a check the tool does no
 | `g-steel` | `#c3ccd7` | `#c3ccd7` | blade, rims, brim |
 | `g-brass` | `#e6c878` | `#e6c878` | crest, sword guard, trim |
 | `v-foe` | `#c9502f` | `#d95b36` | the villains |
-| `v-shade` | `#a39cba` | `#c6c0db` | the shadows |
+| `v-shade` | `#9481a7` | `#a093b4` | the shadows |
 
 The full list is `PALETTES` in `tools/brand_assets.py`. The villain's ember and the shadow's
 lilac were chosen with `manuscript_guard.colour`, the model G3 holds a figure to: Machado,
 Oliveira and Fernandes (2009) at full severity, and CIEDE2000. For protanopia, deuteranopia
 and tritanopia alike, each stays at least 10 apart from the brass, teal, navy, plates and
-steel of the guard. Within Vord, steel and brass become the same grey in print. They are trim
-on one figure and carry no meaning apart.
+steel of the guard, and from the other. Vord's other colours (dark teal, visor, paper, eye,
+ink) are not compared. Within Vord, steel and brass become the same grey in print. They are
+trim on one figure and carry no meaning apart.
 
 ## Using the drawings
 
@@ -98,8 +99,14 @@ on one figure and carry no meaning apart.
   or approved. A passing `check` is not evidence that a paper is right, and the emblem must not
   say otherwise.
 
-Some villains carry words: 4,000, RETRACTED, doi:10., PLAN, Methods, train, test. They are set
-in system fonts and show in whichever font the reader's system has.
+Some drawings carry words: 4,000 on the Stray Number; the Forger's results file (`"n": 3986`,
+`"p": 0.04` and the 4000 written over it); RETRACTED; doi:10.; PLAN; Methods; and train and
+test on the data-leakage shadow. They name JetBrains Mono or Atkinson Hyperlegible first and
+fall back to system fonts, so most readers see them in a system font.
+
+The test holds the SVGs to the source, but not the PNGs, whose pixels depend on the browser
+that renders them. After a change to the emblem, run the script with `--png` too, or the PNGs
+keep the old drawing.
 
 ## Licence
 

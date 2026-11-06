@@ -2,7 +2,7 @@
   <title id="title">Data leakage, test data seeping into training: a shadow that no gate sees</title>
   <defs>
     <symbol id="data-leakage" viewBox="0 0 120 120">
-      <g fill="#c6c0db" fill-opacity=".3" stroke="#c6c0db" stroke-width="2.5" stroke-dasharray="5 4">
+      <g fill="#a093b4" fill-opacity=".3" stroke="#a093b4" stroke-width="2.5" stroke-dasharray="5 4">
         <rect x="8" y="64" width="46" height="40" rx="6" />
         <rect x="66" y="16" width="46" height="40" rx="6" />
       </g>
@@ -10,8 +10,8 @@
         <text x="31" y="88">train</text>
         <text x="89" y="40">test</text>
       </g>
-      <path d="M74 56 C70 66 62 66 58 72" fill="none" stroke="#c6c0db" stroke-width="3" stroke-linecap="round" />
-      <path d="M56 64 C56 64 51 71 51 74 A5 5 0 0 0 61 74 C61 71 56 64 56 64 Z" fill="#c6c0db" />
+      <path d="M74 56 C70 66 62 66 58 72" fill="none" stroke="#a093b4" stroke-width="3" stroke-linecap="round" />
+      <path d="M56 64 C56 64 51 71 51 74 A5 5 0 0 0 61 74 C61 71 56 64 56 64 Z" fill="#a093b4" />
     </symbol>
   </defs>
   <use href="#data-leakage" width="120" height="120"/>

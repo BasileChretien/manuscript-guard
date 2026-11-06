@@ -61,7 +61,8 @@ def test_a_drawing_that_names_no_palette_colour_is_refused() -> None:
 #: The colours that tell a villain from the guard, or a shadow from either.
 APART = (
     ("v-foe", "g-brass"), ("v-foe", "g-teal"), ("v-foe", "g-navy"), ("v-foe", "g-plate"),
-    ("v-foe", "g-steel"), ("v-shade", "g-teal"), ("v-shade", "v-foe"),
+    ("v-foe", "g-steel"), ("v-shade", "g-brass"), ("v-shade", "g-teal"), ("v-shade", "g-navy"),
+    ("v-shade", "g-plate"), ("v-shade", "g-steel"), ("v-shade", "v-foe"),
 )
 
 

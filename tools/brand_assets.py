@@ -7,8 +7,9 @@ Each drawing in brand/source.svg is a <symbol> whose colours are tokens, `var(--
 writes every drawing `DRAWINGS` names as a file of its own, once in each of `PALETTES`, with
 the tokens replaced and only the symbols it uses copied in, so that it shows wherever an SVG
 shows: on GitHub, on PyPI, in a browser. `tests/test_brand.py` fails while the files differ
-from what this writes, and while a villain's colour comes closer than `colour.THRESHOLD` to
-one of the guard's for a reader with a colour-vision deficiency.
+from what this writes, and while the villains' or the shadows' colour comes closer than
+`colour.THRESHOLD` to the guard's brass, teal, navy, plates or steel, or to each other, for a
+reader with a colour-vision deficiency.
 
 The PNGs (the social preview GitHub shows when the repository is linked, the emblem at 512
 pixels, the favicon at 32) are rendered from the same SVGs by a headless Chrome or Edge. Their
@@ -44,7 +45,7 @@ PALETTES: dict[str, dict[str, str]] = {
         "g-navy": "#1b2b4b", "g-plate": "#2e4570", "g-steel": "#c3ccd7", "g-brass": "#e6c878",
         "g-teal": "#175f63", "g-teal-dk": "#0f4447", "g-paper": "#f3f1ea", "g-ink": "#2a3346",
         "g-visor": "#0c1424", "g-eye": "#e8f4f2", "g-edge": "#1b2b4b",
-        "g-ground": "rgba(27,43,75,0.13)", "v-foe": "#c9502f", "v-shade": "#a39cba",
+        "g-ground": "rgba(27,43,75,0.13)", "v-foe": "#c9502f", "v-shade": "#9481a7",
         "v-ghost": "#e9ecf1", "v-board": "#5b6577", "v-lid": "#c9d0da", "v-nose": "#e3a07e",
         "t-ink": "#1d2840",
     },
@@ -52,7 +53,7 @@ PALETTES: dict[str, dict[str, str]] = {
         "g-navy": "#3a5585", "g-plate": "#5070a3", "g-steel": "#c3ccd7", "g-brass": "#e6c878",
         "g-teal": "#1f7479", "g-teal-dk": "#155458", "g-paper": "#e9e6dc", "g-ink": "#2a3346",
         "g-visor": "#070c16", "g-eye": "#e8f4f2", "g-edge": "#0a1120",
-        "g-ground": "rgba(0,0,0,0.35)", "v-foe": "#d95b36", "v-shade": "#c6c0db",
+        "g-ground": "rgba(0,0,0,0.35)", "v-foe": "#d95b36", "v-shade": "#a093b4",
         "v-ghost": "#d9dde6", "v-board": "#8a94a6", "v-lid": "#c9d0da", "v-nose": "#e3a07e",
         "t-ink": "#e3e8f0",
     },

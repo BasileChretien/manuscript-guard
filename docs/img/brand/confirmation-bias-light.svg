@@ -2,11 +2,11 @@
   <title id="title">Confirmation bias, a shadow that no gate sees</title>
   <defs>
     <symbol id="confirmation-bias" viewBox="0 0 120 120">
-      <g fill="#a39cba" fill-opacity=".34" stroke="#a39cba" stroke-width="2.5" stroke-dasharray="5 4">
+      <g fill="#9481a7" fill-opacity=".34" stroke="#9481a7" stroke-width="2.5" stroke-dasharray="5 4">
         <circle cx="60" cy="47" r="32" />
         <rect x="54" y="80" width="12" height="32" rx="5" />
       </g>
-      <path d="M45 47 L56 58 L77 35" fill="none" stroke="#a39cba" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="M45 47 L56 58 L77 35" fill="none" stroke="#9481a7" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" />
     </symbol>
   </defs>
   <use href="#confirmation-bias" width="120" height="120"/>

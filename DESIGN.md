@@ -21225,6 +21225,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     text and used in a supplement given beside it is undefined in the supplement. Nothing of
     a `paper.yaml` is read but the English: no journal profile, no `language:` settings, no
     accepted spellings. A .docx's lines are those of the text pandoc converts it to.
+  - A place a finding's message or hint names in the project made for the paper is put back
+    in the paper by its shape, `manuscript/<file>` with or without `:<line>`, standing
+    alone: G14 said "it was defined at manuscript/main.md:476" of a paper called paper.md
+    (2026-11-06). A place a gate writes in another shape, or a path outside the project, is
+    left as written. The line in a converted .docx is the converted text's, as the finding's
+    own is.
   - The census holds citations to a list only where the entries carry their numbers, or in a
     .docx whose list one Word numbering counts 1, 2, 3 from its first entry, by each entry's
     place in its count. A count that a paragraph with words above the list is numbered in

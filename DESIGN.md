@@ -7788,8 +7788,8 @@ their options and each command's own `--help` are as they were, and `tests/test_
 parses 218 command lines recorded from the parser before the change, every spelling of every
 option and every value of a fixed list among them, and compares what they give. A command added later goes into
 one of the groups, or the test that every command but `hook` is in exactly one fails. The
-README's "Commands" table is split under the same headings in the same order, and
-`tests/test_docs.py` holds each part to its group.
+"Commands" table, in the README then and in `docs/commands.md` since, is split under the
+same headings in the same order, and `tests/test_docs.py` holds each part to its group.
 
 ## One setting is written, and the file kept
 

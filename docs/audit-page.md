@@ -14,7 +14,7 @@ word (below).
 
 A `.docx` or Markdown paper, with the analysis outputs to compare its numbers with if the
 reader has them (`.json`, `.csv`, `.tsv`, `.txt`, `.yaml`). That is everything
-[`audit`](../README.md#checking--audit) reads in a paper of that kind:
+[`audit`](commands.md#checking--audit) reads in a paper of that kind:
 
 - the numbers against the outputs, and what a match is worth there;
 - the arithmetic, the Abstract against the Results, and the small cells a total gives away;

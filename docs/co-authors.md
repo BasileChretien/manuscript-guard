@@ -3,7 +3,7 @@
 A co-author's part has two halves. They read and edit the manuscript in Word, and their
 edits and comments come back into the source. And they answer, from a page of their own,
 the question no gate can ask: whether a sentence says what its source says. This page has
-both. The commands are listed in the [README](../README.md#commands).
+both. The commands are listed in [Commands](commands.md#co-authors--review).
 
 ## Edits and comments in Word
 

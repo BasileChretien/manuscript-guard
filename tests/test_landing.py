@@ -67,8 +67,13 @@ def test_each_link_of_the_landing_page_leads_somewhere_once_the_site_is_built(
     # A picture from anywhere else would be refused by the page's policy. Headless browsers
     # draw the light scheme, so a dark <source> is never loaded by browser.mjs: it is held
     # here (round 1 of #559).
-    for picture in re.findall(r'(?:src|srcset|poster)="([^"]+)"', text):
-        assert not re.match(r"[a-z]+:|//", picture), f"{picture}: a picture from elsewhere"
+    named = re.findall(r"""(?:src|srcset|poster)\s*=\s*(?:"([^"]*)"|'([^']*)')""", text, re.I)
+    for value in ("".join(pair) for pair in named):
+        for candidate in filter(None, (part.split()[:1] for part in value.split(","))):
+            picture = candidate[0]
+            assert not re.match(r"[a-z][a-z0-9+.-]*:|//", picture, re.I), (
+                f"{picture}: a picture from elsewhere"
+            )
     ids = set(re.findall(r'\sid="([^"]+)"', text))
     addresses = [*re.findall(r'(?:href|src|srcset)="([^"]+)"', text),
                  *re.findall(rf'content="({re.escape(build.SITE)}[^"]*)"', text)]
@@ -116,7 +121,8 @@ def test_the_landing_pages_example_of_a_convention_is_one_the_tool_has_built_in(
     card = re.search(r"<h3>A convention of writing</h3>\s*<p>(.*?)</p>", page(), re.DOTALL)
     words = " ".join(card.group(1).split())
     assert "built in" in words and "paper.yaml" in words
-    example = re.search(r"such as the \d+ of an? (.+?)\.", words).group(1)
+    number, example = re.search(r"such as the ([\d.]*\d) of an? (.+?)\.(?:\s|$)", words).groups()
+    assert re.search(rf"(?<![\d.]){re.escape(number)}(?![\d.])", example), (number, example)
     shipped = yaml.safe_load((ROOT / "src" / "manuscript_guard" / "data" / "conventions.yaml")
                              .read_text(encoding="utf-8"))["conventions"]  # fmt: skip
     assert any(re.search(rule["pattern"], example) for rule in shipped), (
@@ -165,6 +171,9 @@ def test_the_status_on_the_landing_page_has_the_readmes_numbers() -> None:
     box = readme.split("> **What it rests on so far.**", 1)[1].split("[Status](#status)", 1)[0]
     numbers = re.findall(r"\d[\d,.]*\d|\d", re.sub(r"<[^>]+>", " ", status))
     assert numbers
+    scope = "740 references of 16 published open-access pharmacology and epidemiology papers"
+    flat = " ".join(re.sub(r"<[^>]+>", " ", status).split())
+    assert scope in " ".join(box.replace(">", " ").split()) and scope in flat, scope
     for number in numbers:
         assert re.search(rf"(?<![\d,.]){re.escape(number)}(?![\d,]|\.\d)", box), (
             f"the landing page's status says {number}; the README's box does not"

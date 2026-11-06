@@ -32,6 +32,7 @@ from manuscript_guard.contracts._schema import read_structured, validate
 from manuscript_guard.findings import Finding, Report
 from manuscript_guard.literature.sources import (
     UnreadableSource,
+    is_abstract,
     normalise,
     read_source,
     stored_files,
@@ -294,6 +295,12 @@ def _looked_for(
            else _as_words(normalise(text).lower(), whole, 0) >= 0
            for _path, text in readable):  # fmt: skip
         return VERIFIED, names, None
+    if all(is_abstract(path) for path, _text in readable):
+        # An abstract alone verifies a passage it holds, and cannot fail one it does not: the
+        # passage may be in the body (round 1 of #565: `sync-sources` writes the abstract of
+        # each work it finds no full text of, and a passage of the Results, unchecked before,
+        # then failed).
+        return NO_SOURCE, names, f"only its abstract is stored ({', '.join(names)})"
     why = None
     if len(readable) == 1 and not _ELIDED.search(words):
         from manuscript_guard.literature.placement import why_not_found

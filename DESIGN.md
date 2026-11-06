@@ -3432,12 +3432,21 @@ its words), written as `<key>.abstract.txt`. A landing page is read only for its
 `citation_pdf_url`, tried once. Redirects are followed over https only (`lookup/download.py`),
 at most eight, a cookie a publisher sets on the way kept in memory for the run, the size capped
 at 64 MB; the User-Agent names the toolkit, and no e-mail address goes to any of these
-services, `lookup`'s contact address included. A PDF is kept only where it is the work
-(`literature/matching.py`): it begins with `%PDF-`, and its first two pages give the work's
-DOI or its title, compared on letters and digits, or its metadata gives its DOI and names no
-other; one from the publisher also has at least half the pages `references.bib` gives the
-work, since a first-page preview passes the other two tests. A landing page, a preview or
-another paper under the key would be worse than no copy. The record says `from: open`,
+services, `lookup`'s contact address included. No link is followed to this computer or its
+network: a host that is, or resolves to, a loopback, private, link-local, multicast, reserved
+or unspecified address is refused at every hop, since a publisher's redirect could otherwise
+set off Zotero's connector or a router (round 1 of #565); the tests' server on this machine is
+reached only with `local=True`, which nothing but a test passes. A link no URL parser reads
+lists the work as wanted, and the run goes on. A PDF is kept only where it is the work
+(`literature/matching.py`), and where the evidence is not exact it is refused rather than
+guessed at: it begins with `%PDF-`; its first two pages give the work's DOI, or its title makes
+up whole lines near the top of one of them, compared on letters and digits (a title running on
+in a sentence is not a title), or its metadata gives its DOI; its metadata and its first page
+name no other DOI; its head does not say it is a supplement, a correction or a reply, unless
+the cited work's own title does; and it has at least half the pages `references.bib` gives
+the work, from the publisher and from `--inbox` alike, since a first-page preview passes every
+other test. A landing page, a preview, a supplement or another paper under the key would be
+worse than no copy. The record says `from: open`,
 `publisher` or `abstract`, the URL it was asked at (never the URL a redirect ended at, which
 can carry a token), how it matched and, for an open copy, its version; it is the record's third
 version, which an older manuscript-guard refuses as a newer one's. A work with a full text on
@@ -20365,12 +20374,33 @@ Open, recorded as each change landed:
   through.** A PDF whose first pages give the work's title is kept even where it is a version
   other than the published one that OpenAlex did not label, or a reprint with other page
   numbers; a quote then fails G7 where the versions differ, which is how it shows. A paper
-  that names another cited work's DOI on its first two pages, in a short reference list, is
-  taken for that work where `--inbox` reads it and it shows no other. A publisher behind a
-  bot check answers this computer with that page, which is not kept, so its works are left to
-  the browser. PubMed's abstract is not asked for (`lookup` reaches only its summaries, which
-  hold none), nor a cited web page with no DOI. Zotero not running still stops the run before
-  the web is asked, as it did.
+  that names another cited work's DOI on its second page only, and no other, is taken for that
+  work where `--inbox` reads it. A title set on one line with something else, a running head
+  beside it in a layout pdftotext keeps, is not found, and the work is left as wanted. A head
+  other than those listed ("Online Appendix", "Data Supplement" further down) is not known. A
+  publisher behind a bot check answers this computer with that page, which is not kept, so its
+  works are left to the browser. PubMed's abstract is not asked for (`lookup` reaches only its
+  summaries, which hold none), nor a cited web page with no DOI. Zotero not running still
+  stops the run before the web is asked, as it did. Round 1 of #565 left these, each not done:
+  - An `http://` open location (OpenAlex often gives `http://europepmc.org/...`) is dropped,
+    not tried as https, and the work is then said to have no open copy known to OpenAlex.
+  - The preview test needs a page range in `references.bib`: an entry with an article number
+    (`pages = {e0245}`) or none keeps a publisher's first-page preview.
+  - No bound on a run's whole time: the 60 s timeout is per socket operation, so a host that
+    is down costs a minute for each place and work, and publisher hosts are paced at about
+    five requests a second, which an institution's licence may count as systematic
+    downloading.
+  - A work whose author-saved copy is recorded and absent, on a fresh clone, is still fetched
+    in full, and the copy then refused by `_file`; it should not be asked about at all.
+  - `matching.py` reads text with no property in `tests/test_properties.py` and no BROKEN
+    twin.
+  - Untested: reading a second-version record (only the first is); the inbox's "two PDFs
+    that differ"; the inbox's file left in place after filing; an inbox file over 64 MB.
+  - `--inbox <folder> --no-fetch`, the command the literature-verify skill gives, ends with
+    the Zotero advice and no DOI links, though the skill's last step expects them.
+  - A name is resolved before each request and again by `urllib` when it connects, so a
+    resolver that answers the two differently (DNS rebinding) can still reach this
+    computer's network; the connection is not pinned to the address checked.
 - **`sync-sources --from` matches only a name a DOI spells, at the places the harvester puts
   it.** A PDF named by its title, its PMID or its citation key is counted as named for no
   cited DOI and not copied, and one deeper in the folder than `<name>/` or

@@ -196,7 +196,13 @@ class Fetcher:
             self.why[key] = said
             return [], said
         said: list[str] = []
-        found = self._full_text(work, said)
+        try:
+            found = self._full_text(work, said)
+        except ValueError:
+            # A link no URL parser reads, from a registry, a redirect or a page: the work is
+            # listed as wanted and the next is tried (round 1 of #565: it stopped the run).
+            said.append("a link given for it cannot be read as a URL")
+            found = None
         if found is not None:
             self.why.pop(key, None)
             return [found], []
@@ -204,7 +210,11 @@ class Fetcher:
             said = [f"not looked for on the web: {self.offline}"]
             self.why[key] = said
             return [], said
-        abstract = self._abstract(work, said)
+        try:
+            abstract = self._abstract(work, said)
+        except ValueError:
+            said.append("a link given for its abstract cannot be read as a URL")
+            abstract = None
         self.why[key] = said
         return ([abstract] if abstract else []), said
 
@@ -228,7 +238,9 @@ class Fetcher:
             if found is not None or self.offline:
                 return found
         if work.doi:
-            return self._try(work, Place(self.places.resolver + work.doi, FROM_PUBLISHER), said)
+            # Quoted, so that a DOI holding `#` or `<` goes whole (round 1 of #565).
+            link = self.places.resolver + quote(work.doi, safe="/;:()")
+            return self._try(work, Place(link, FROM_PUBLISHER), said)
         return None
 
     def _open_places(self, work: Work, record: dict[str, Any] | None) -> list[Place]:
@@ -290,12 +302,10 @@ class Fetcher:
         if shown.by is None:
             said.append(f"the PDF {where} gave is not shown to be the work: {shown.why}")
             return None
-        if place.kind == FROM_PUBLISHER and work.pages:
-            counted = matching.page_count(staged)
-            if counted is not None and counted * 2 < work.pages:
-                said.append(f"the PDF {where} gave has {counted} page"
-                            f"{'' if counted == 1 else 's'} where {BIB_FILE} gives the work "
-                            f"{work.pages}: a preview, most likely")  # fmt: skip
+        if place.kind == FROM_PUBLISHER:
+            short = matching.preview(staged, work.pages)
+            if short:
+                said.append(f"the PDF {where} gave {short}")
                 return None
         sha, size = digest(staged)
         version = VERSIONS.get(place.version or "") if place.kind == FROM_OPEN else None
@@ -442,7 +452,10 @@ def citation_pdf_url(body: bytes, base: str) -> str | None:
         attributes = {name.lower(): double or single
                       for name, double, single in _ATTRIBUTE.findall(tag)}  # fmt: skip
         if attributes.get("name", "").lower() == "citation_pdf_url" and attributes.get("content"):
-            link = urljoin(base, html.unescape(attributes["content"].strip()))
+            try:
+                link = urljoin(base, html.unescape(attributes["content"].strip()))
+            except ValueError:
+                return None
             return link if download.allowed(link) else None
     return None
 

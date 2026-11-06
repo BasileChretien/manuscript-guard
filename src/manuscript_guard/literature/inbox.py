@@ -10,10 +10,12 @@ This reads what each shows instead (`literature/matching.py`): its DOI or its ti
 first two pages, or its DOI in its metadata.
 
 Only the PDFs directly in the folder are read, not those in folders under it: a Downloads
-folder holds years of other files, and its subfolders are someone else's. A PDF that shows two
-cited works, a review that names another cited paper on its first page, is filed for neither,
-and two that show one work and differ are both left, as with Zotero and `--from`. A PDF that
-shows no cited work is counted, so that a wrong folder shows; what it is is not said.
+folder holds years of other files, and its subfolders are someone else's. Import refuses
+rather than guesses (round 1 of #565): a PDF that shows two cited works, or another DOI, a
+supplement, a correction or a reply that shows the work's DOI and title, and a preview with
+fewer than half the work's pages are filed for none, and the work is said to be still wanted,
+with why; two that show one work and differ are both left, as with Zotero and `--from`. A PDF
+that shows no cited work is counted, so that a wrong folder shows; what it is is not said.
 """
 
 from __future__ import annotations
@@ -39,24 +41,33 @@ def _pdfs(folder: Path) -> list[Path]:
         raise FolderUnreadable(f"{folder} could not be read ({exc.strerror or exc})") from exc
 
 
-def _shown(path: Path, works: dict[str, Work]) -> tuple[dict[str, str], str | None]:
-    """The works a PDF shows it is, each with how; or why it was not read."""
+def _shown(path: Path, works: dict[str, Work]
+           ) -> tuple[dict[str, str], dict[str, str], str | None]:  # fmt: skip
+    """The works a PDF shows it is, each with how; those it showed and was refused for, each
+    with why; or why it was not read."""
     try:
         if path.stat().st_size > MAX_BYTES:
-            return {}, f"the folder's {path.name} is over {MAX_BYTES >> 20} MB, and was not read"
+            return {}, {}, (f"the folder's {path.name} is over {MAX_BYTES >> 20} MB, and was "
+                            "not read")  # fmt: skip
         raw = path.read_bytes()
     except OSError as exc:
-        return {}, f"the folder's {path.name} could not be read ({exc.strerror or exc})"
+        return {}, {}, f"the folder's {path.name} could not be read ({exc.strerror or exc})"
     if not raw.startswith(matching.PDF_HEADER):
-        return {}, (f"the folder's {path.name} does not begin with %PDF-, so it is not a PDF "
-                    "(a sign-in or paywall page saved under that name, most likely)")
+        return {}, {}, (f"the folder's {path.name} does not begin with %PDF-, so it is not a "
+                        "PDF (a sign-in or paywall page saved under that name, most likely)")
     text = matching.first_pages(path)
-    found = {}
+    found, refused = {}, {}
     for key, work in works.items():
         shown = matching.judged(raw, text, work.doi, work.title)
         if shown.by is not None:
-            found[key] = shown.by
-    return found, None
+            short = matching.preview(path, work.pages)
+            if short:
+                refused[key] = f"the folder's {path.name} {short}"
+            else:
+                found[key] = shown.by
+        elif shown.near:
+            refused[key] = f"the folder's {path.name} was not filed: {shown.why}"
+    return found, refused, None
 
 
 def _same_work(works: dict[str, Work], keys: list[str]) -> bool:
@@ -74,13 +85,15 @@ def offer(project: Project, folder: Path) -> Offer:
     unread: list[str] = []
     unmatched = 0
     for path in pdfs:
-        shown, problem = _shown(path, works)
+        shown, refused, problem = _shown(path, works)
         if problem:
             unread.append(problem)
             continue
+        for key, reason in refused.items():
+            why.setdefault(key, []).append(reason)
         keys = sorted(shown)
         if not keys:
-            unmatched += 1
+            unmatched += not refused
             continue
         if not _same_work(works, keys):
             for key in keys:

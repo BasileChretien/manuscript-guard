@@ -1,17 +1,29 @@
-"""Whether a PDF is the cited work: its DOI or its title on its first pages.
+"""Whether a PDF is the cited work: its DOI or its title where a work's own are printed.
 
 A file kept under a citation key is what G7 holds every quote of that work to, and what a
 co-author is shown as the work. A publisher's landing page saved as the PDF, a preview of the
-first page, or another paper filed under the key would then pass for the source, and a quote
-checked against it would prove nothing. So a PDF fetched from the web, or found in a folder of
-downloads, is kept only where it shows it is the work:
+first page, a supplement, a correction notice, or another paper filed under the key would then
+pass for the source, and a quote checked against it would prove nothing. So a PDF fetched from
+the web, or found in a folder of downloads, is kept only where it shows it is the work, and
+where the evidence is not exact it is refused rather than guessed at (round 1 of #565):
 
 * **its DOI** is on its first two pages, or in its metadata (XMP's `prism:doi`, the Info
-  dictionary's `/doi`, `dc:identifier`), and its metadata names no other DOI; or
-* **its title,** as `references.bib` gives it, is on its first two pages, compared on letters
-  and digits only, so that the line breaks, hyphens, capitals and accents of a typeset title
-  do not matter. A title shorter than twenty letters and digits ("Editorial", "Erratum") is no
-  evidence: too many papers would show it.
+  dictionary's `/doi`, `dc:identifier`); or
+* **its title,** as `references.bib` gives it, makes up whole lines near the top of one of its
+  first two pages, compared on letters and digits only, so that the line breaks, hyphens,
+  capitals and accents of a typeset title do not matter. A title running on in a sentence is
+  not a title: a paper whose abstract uses a cited review's title as a phrase was filed as the
+  review. A title shorter than twenty letters and digits ("Editorial") is no evidence.
+
+And it is refused, whatever it shows, where
+
+* **its metadata names another DOI,** or its first page prints one: it is another work, which
+  names this one, or several;
+* **its head says it is about the work rather than the work:** a supplement ("Supplementary
+  Appendix", "Supplement to:", "Supporting Information"), a correction ("Correction to:",
+  "Erratum", "Corrigendum", "Retraction"), a reply or a comment ("In reply", "Reply to",
+  "Response to", "Comment on"), unless the cited work's own title says so;
+* **it is a preview:** fewer than half the pages `references.bib` gives the work (`preview`).
 
 Only the first two pages are read. A paper's reference list, which names other works' DOIs
 and titles, comes at its end; a cover page a repository adds before the article names the
@@ -31,16 +43,34 @@ from pathlib import Path
 PAGES = 2
 #: The fewest letters and digits a title is held as evidence with.
 SHORTEST_TITLE = 20
+#: How far down a page its title is looked for, in lines: below that is the running text.
+TITLE_LINES = 40
+#: How many lines a typeset title is set over, at most.
+TITLE_SPAN = 6
+#: Where a head saying what kind of document it is stands when no title is found: the top.
+HEAD_LINES = 12
 PDF_HEADER = b"%PDF-"
 
 #: A DOI where a PDF's metadata says which work it is, in the XMP packet or the Info
-#: dictionary, both of which are mostly written uncompressed.
+#: dictionary, both of which are mostly written uncompressed. Its brackets are kept: a
+#: Lancet DOI holds "(20)" (round 1 of #565: it was cut at the first one).
 _META_DOI = re.compile(
     rb"(?i)(?:prism:doi|pdfx:doi|crossmark:doi|dc:identifier|/doi)"
     rb"[\s>(\"'=]{0,8}(?:<rdf:li>)?\s*(?:doi:|https?://(?:dx\.)?doi\.org/)?"
-    rb"(10\.\d{4,9}/[^\s<>()\"'\]\[]+)"
+    rb"(10\.\d{4,9}/[^\s<>\"'\]\[]+)"
 )
+#: A DOI printed on a page.
+_PAGE_DOI = re.compile(r"10\.\d{4,9}/[^\s\"<>\]\[]+")
 _LATEX = re.compile(r"\\[A-Za-z]+\s*")
+#: The heads of a document about a work rather than the work, each with what it is called.
+_KINDS = (
+    (re.compile(r"(?i)^\W*(?:supplement(?:ary|al)?\b|supporting information\b)"),
+     "a supplement"),
+    (re.compile(r"(?i)^\W*(?:correction\b|erratum\b|corrigendum\b|retraction\b"
+                r"|expression of concern\b)"), "a correction or a retraction"),
+    (re.compile(r"(?i)^\W*(?:in reply\b|reply\b|response to\b|author'?s'? reply\b"
+                r"|comment on\b)"), "a reply or a comment"),
+)  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -49,6 +79,10 @@ class Shown:
 
     by: str | None
     why: str = ""
+    #: Refused, though it showed the work's DOI or title: a document about the work, or one
+    #: that names others too. The inbox says so of the work, where it says nothing of a PDF
+    #: that showed no cited work.
+    near: bool = False
 
 
 def key_of(text: str) -> str:
@@ -72,14 +106,18 @@ def begins_as_pdf(path: Path) -> bool:
 
 
 def first_pages(path: Path, pages: int = PAGES) -> str | None:
-    """The text of a PDF's first pages, or None where nothing on this computer can read it.
+    """The text of a PDF's first pages, each ended by a form feed, or None where nothing on
+    this computer can read it.
 
     `pdftotext` first, with its encoding stated (`literature/sources._pdftotext` says why),
-    then pypdf; neither is a dependency."""
+    then pypdf; neither is a dependency. Laid out as the page is: in reading order pdftotext
+    runs the lines of a block into one, the journal's name, the title and the authors, and a
+    title is known by the lines it makes up (`title_at`)."""
     if shutil.which("pdftotext"):
         try:
             finished = subprocess.run(
-                ["pdftotext", "-f", "1", "-l", str(pages), "-enc", "UTF-8", str(path), "-"],
+                ["pdftotext", "-layout", "-f", "1", "-l", str(pages), "-enc", "UTF-8",
+                 str(path), "-"],
                 capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=60, check=False,
             )  # fmt: skip
@@ -93,7 +131,7 @@ def first_pages(path: Path, pages: int = PAGES) -> str | None:
         return None
     try:
         reader = pypdf.PdfReader(str(path))
-        return "\n".join(page.extract_text() or "" for page in reader.pages[:pages])
+        return "".join((page.extract_text() or "") + "\f" for page in reader.pages[:pages])
     except Exception:  # noqa: BLE001 - pypdf raises a wide variety; the file is then unread
         return None
 
@@ -110,29 +148,92 @@ def page_count(path: Path) -> int | None:
         return None
 
 
+def preview(path: Path, expected: int | None) -> str | None:
+    """Why a PDF is a preview of a work of `expected` pages, or None: fewer than half of them.
+    A first-page preview shows the DOI and the title, and passes every other test."""
+    if not expected:
+        return None
+    counted = page_count(path)
+    if counted is None or counted * 2 >= expected:
+        return None
+    return (f"has {counted} page{'' if counted == 1 else 's'} where references.bib gives the "
+            f"work {expected}: a preview, most likely")  # fmt: skip
+
+
+def _whole(doi: str) -> str:
+    """A DOI as read, less a closing stop and a closing bracket it does not open."""
+    doi = doi.replace("\\(", "(").replace("\\)", ")").rstrip(".,;:")
+    while doi.endswith(")") and doi.count(")") > doi.count("("):
+        doi = doi[:-1].rstrip(".,;:")
+    return doi.lower()
+
+
 def metadata_dois(raw: bytes) -> set[str]:
     """The DOIs a PDF's metadata names, in lower case and without a closing stop."""
-    found = set()
-    for match in _META_DOI.finditer(raw):
-        doi = match.group(1).decode("latin-1").lower().rstrip(".,;")
-        found.add(doi)
-    return found
+    return {_whole(found.group(1).decode("latin-1")) for found in _META_DOI.finditer(raw)}
 
 
 def doi_in(text: str, doi: str) -> bool:
     """Whether a DOI is in a page's text, line breaks inside it allowed, and not as the start
-    of a longer one (10.1/abc.1 is not in 10.1/abc.12). Where it ends at a line break or a
-    space, a digit after that is another line's: a page listing two DOIs, one under the
-    other, gives both."""
+    of a longer one: 10.1/abc.1 is not in 10.1/abc.12, nor in 10.1/abc.1.s001, PLoS's name
+    for a supplement (round 1 of #565). Where it ends at a line break or a space, what follows
+    is another line's: a page listing two DOIs, one under the other, gives both."""
     kept = [(at, ch) for at, ch in enumerate(text.lower()) if not ch.isspace()]
     flat = "".join(ch for _, ch in kept)
     for found in re.finditer(re.escape(doi.lower()), flat):
         end = found.end()
-        if end == len(flat) or not flat[end].isdigit():
+        if end == len(flat) or kept[end][0] != kept[end - 1][0] + 1:
             return True
-        if kept[end][0] != kept[end - 1][0] + 1:
-            return True
+        after = flat[end]
+        if after.isalnum():
+            continue
+        joined = end + 1 < len(flat) and kept[end + 1][0] == kept[end][0] + 1
+        if after in "./_-;:()" and joined and flat[end + 1].isalnum():
+            continue
+        return True
     return False
+
+
+def _lines(page: str) -> list[str]:
+    return [line for line in page.splitlines() if key_of(line)][:TITLE_LINES]
+
+
+def title_at(pages: list[str], wanted: str) -> tuple[int, int] | None:
+    """Where the title makes up whole lines near the top of a page, as (page, line): the
+    lines' letters and digits are the title's, with at most a footnote's two digits after."""
+    for number, page in enumerate(pages):
+        lines = [key_of(line) for line in _lines(page)]
+        for first in range(len(lines)):
+            joined = ""
+            for last in range(first, min(first + TITLE_SPAN, len(lines))):
+                joined += lines[last]
+                rest = joined[len(wanted):]
+                if joined.startswith(wanted) and (not rest or (rest.isdigit() and len(rest) <= 2)):
+                    return number, first
+                if len(joined) >= len(wanted):
+                    break
+    return None
+
+
+def _kind(pages: list[str], at: tuple[int, int] | None, title: str) -> str | None:
+    """What a document is about the work, by its head: the lines above its title, or its top
+    lines where no title was found; None for the work itself. A kind its own title names, a
+    cited reply titled "In reply: ...", is the work's."""
+    page, line = at if at is not None else (0, HEAD_LINES)
+    if page >= len(pages):
+        return None
+    head = _lines(pages[page])[: line + 1]
+    own = title.lower()
+    for pattern, called in _KINDS:
+        for one in head:
+            found = pattern.match(one)
+            if found and found.group().strip(" \t:.-").lower() not in own:
+                return called
+    return None
+
+
+def _on_the_page(page: str) -> set[str]:
+    return {_whole(found) for found in _PAGE_DOI.findall(page)}
 
 
 def shows(path: Path, doi: str | None, title: str | None, text: str | None = None) -> Shown:
@@ -153,27 +254,37 @@ def judged(raw: bytes, text: str | None, doi: str | None, title: str | None) -> 
     """`shows`, on bytes and text already read."""
     meta = metadata_dois(raw)
     doi = doi.lower() if doi else None
-    by_doi = bool(doi) and (doi in meta or (text is not None and doi_in(text, doi)))
-    wanted = title_key(title)
-    by_title = bool(wanted) and text is not None and wanted in key_of(text)
-    if by_doi and (not meta or doi in meta):
-        return Shown("doi")
-    if by_title:
-        return Shown("title")
     if text is None and not meta:
         return Shown(None, "nothing on this computer reads a PDF's text (install poppler's "
                            "pdftotext, or pypdf), and its metadata names no DOI")  # fmt: skip
-    if by_doi:
-        others = ", ".join(sorted(meta))
-        return Shown(None, f"its metadata names another DOI ({others}), and its first pages "
-                           "do not give the work's title")  # fmt: skip
+    pages = (text or "").split("\f")[:PAGES]
+    by_doi = bool(doi) and (doi in meta or doi_in("\n".join(pages), doi))
+    wanted = title_key(title)
+    at = title_at(pages, wanted) if wanted else None
+    near = by_doi or at is not None
+    others = sorted(meta - {doi})
+    if others:
+        return Shown(None, f"its metadata names another DOI ({', '.join(others)}), so it is "
+                           "taken for another work", near)  # fmt: skip
+    # A DOI cut at a line break is read as the start of the work's.
+    printed = sorted(one for one in _on_the_page(pages[0] if pages else "")
+                     if not (doi and doi.startswith(one)))  # fmt: skip
+    if printed:
+        return Shown(None, f"its first page gives another DOI ({', '.join(printed)}), so it "
+                           "is another work, or one about several", near)  # fmt: skip
+    if near:
+        kind = _kind(pages, at, title or "")
+        if kind:
+            return Shown(None, f"its head says it is {kind}, not the work itself", near)
+        return Shown("doi" if by_doi else "title")
     if doi and wanted:
-        return Shown(None, "its first pages give neither the work's DOI nor its title")
+        return Shown(None, "its first pages give neither the work's DOI nor its title as a "
+                           "title")  # fmt: skip
     if doi:
         return Shown(None, "its first pages do not give the work's DOI, and its title is "
                            "too short to know it by")  # fmt: skip
     if wanted:
-        return Shown(None, "its first pages do not give the work's title")
+        return Shown(None, "its first pages do not give the work's title as a title")
     return Shown(None, "the work has no DOI, and its title is too short to know it by")
 
 
@@ -188,6 +299,8 @@ __all__ = [
     "key_of",
     "metadata_dois",
     "page_count",
+    "preview",
     "shows",
+    "title_at",
     "title_key",
 ]

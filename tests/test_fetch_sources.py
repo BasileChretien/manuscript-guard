@@ -61,6 +61,9 @@ def article(*lines: str, pages: int = 1) -> bytes:
 
 THE_WORK = article("Journal of Examples 12 (2021) 101-109", "Hepatic injury in a fictional",
                    "national cohort", f"https://doi.org/{DOI}")  # fmt: skip
+#: The work with its title and no DOI, as a copy at PubMed Central or arXiv may be.
+TITLE_ONLY = article("Journal of Examples 12 (2021) 101-109", "Hepatic injury in a fictional",
+                     "national cohort", "A. Fictional and B. Fictional")  # fmt: skip
 ANOTHER = article("Imaginary Drug Safety Reports 7 (2019) 45-52",
                   "A disproportionality signal for a fictional drug class",
                   f"https://doi.org/{OTHER}")  # fmt: skip
@@ -196,7 +199,7 @@ def test_another_paper_is_not_the_work(tmp_path: Path) -> None:
     path = tmp_path / "x.pdf"
     path.write_bytes(ANOTHER)
     shown = matching.shows(path, DOI, TITLE)
-    assert shown.by is None and "neither the work's DOI nor its title" in shown.why
+    assert shown.by is None and f"another DOI ({OTHER})" in shown.why
 
 
 def test_metadata_that_names_another_doi_is_not_outweighed_by_the_doi_in_the_text() -> None:
@@ -270,9 +273,10 @@ def test_the_real_transport_caps_the_size_and_names_no_one(monkeypatch) -> None:
     try:
         url = f"http://127.0.0.1:{server.server_address[1]}/a.pdf"
         with pytest.raises(NoAnswer, match="over the"):
-            download.get(url, download.session())
+            download.get(url, download.session(local=True), local=True)
         monkeypatch.setattr(download, "MAX_BYTES", 1 << 20)
-        assert download.get(url, download.session()).body.startswith(b"%PDF-")
+        assert download.get(url, download.session(local=True),
+                            local=True).body.startswith(b"%PDF-")
     finally:
         server.shutdown()
     agent = {k.lower(): v for k, v in seen[0].items()}["user-agent"]
@@ -317,7 +321,7 @@ def test_a_landing_page_is_followed_to_the_pdf_it_names_once(paper: Path) -> Non
 def test_a_pubmed_central_copy_is_taken_by_the_pmcid(paper: Path) -> None:
     cite(paper, nodoi2020={"title": TITLE, "pmcid": "PMC1234567"})
     url = f"{PLACES.europepmc}?accid=PMC1234567&blobtype=pdf"
-    table = Table({url: pdf_answer(THE_WORK)})
+    table = Table({url: pdf_answer(TITLE_ONLY)})
     (outcome,), _ = sync(paper, table)
     assert outcome.status == copies.COPIED and "from pmc.test" in outcome.said
     assert record(paper)["nodoi2020.pdf"]["matched"] == "title"
@@ -326,7 +330,7 @@ def test_a_pubmed_central_copy_is_taken_by_the_pmcid(paper: Path) -> None:
 
 def test_an_arxiv_copy_is_taken_by_its_identifier(paper: Path) -> None:
     cite(paper, preprint2021={"title": TITLE, "eprint": "2101.01234", "archiveprefix": "arXiv"})
-    table = Table({PLACES.arxiv + "2101.01234": pdf_answer(THE_WORK)})
+    table = Table({PLACES.arxiv + "2101.01234": pdf_answer(TITLE_ONLY)})
     (outcome,), _ = sync(paper, table)
     assert outcome.status == copies.COPIED and "submitted version" in outcome.said
     assert record(paper)["preprint2021.pdf"]["version"] == "submitted"
@@ -519,7 +523,8 @@ def test_a_saved_pdf_that_shows_two_cited_works_is_filed_for_neither(paper, tmp_
     (downloads / "review.pdf").write_bytes(article("A review", DOI, OTHER))
     outcomes, _ = inbox_sync(paper, downloads)
     assert not list(sources(paper).glob("*.pdf"))
-    assert all("shows several cited works" in one.said for one in outcomes)
+    assert all("another DOI" in one.said or "several cited works" in one.said
+               for one in outcomes), outcomes
 
 
 def test_the_inbox_flag_needs_a_folder(paper: Path, capsys) -> None:
@@ -548,3 +553,156 @@ def test_a_fetched_copy_is_read_as_the_works_by_g7_and_the_checker_page(paper: P
     (item,) = [one for one in items if "hepatic2021" in one["title"]]
     rows = dict(item["evidence"][0]["rows"])
     assert rows["Stored copy"] == "hepatic2021.abstract.txt"
+
+
+
+# --------------------------------------------------------------- round 1 of #565
+
+
+@pytest.mark.parametrize("url", [
+    "http://127.0.0.1:23119/better-bibtex/json-rpc", "http://127.0.0.1:9/x",
+    "https://127.0.0.1/x.pdf", "https://localhost/x.pdf", "https://[::1]/x.pdf",
+    "https://192.168.1.1/x.pdf", "https://10.0.0.5/x.pdf", "https://169.254.169.254/latest",
+    "https://[fe80::1]/x.pdf", "http://publisher.test/x.pdf", "https://[x/a.pdf",
+])  # fmt: skip
+def test_no_link_to_this_machine_or_its_network_is_asked(url: str) -> None:
+    """Round 1 of #565: plain http to this machine, which is how the tests answer, and https
+    to any address were allowed, so a publisher's redirect could reach Zotero's port or a
+    router. The tests' exception is a flag now, and no address of this machine or its network
+    is asked for."""
+    assert not download.allowed(url)
+
+
+def test_this_machine_is_asked_only_where_a_test_says_so() -> None:
+    assert download.allowed("http://127.0.0.1:8000/a.pdf", local=True)
+    assert not download.allowed("http://127.0.0.1:8000/a.pdf")
+
+
+def test_a_redirect_to_this_machine_is_not_followed() -> None:
+    table = Table({"https://doi.test/b": answer(302, Location="http://127.0.0.1:9/x"),
+                   "https://doi.test/c": answer(302, Location="https://10.1.2.3/x")})
+    for url in ("https://doi.test/b", "https://doi.test/c"):
+        with pytest.raises(NoAnswer):
+            download.get(url, table)
+    assert table.asked == ["https://doi.test/b", "https://doi.test/c"]
+
+
+def test_a_name_that_resolves_to_this_network_is_not_asked(monkeypatch) -> None:
+    """The name is resolved before each request, every hop, and a private, loopback or
+    link-local address refused: `allowed` sees only the name."""
+    import socket
+
+    monkeypatch.delenv(download.NO_NETWORK, raising=False)
+    asked: list[str] = []
+
+    def resolve(host, *args, **kwargs):
+        asked.append(host)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.20.30.40", 443))]
+
+    def no_connection(*args, **kwargs):
+        raise AssertionError("a connection was opened")
+
+    monkeypatch.setattr(socket, "getaddrinfo", resolve)
+    monkeypatch.setattr(socket, "create_connection", no_connection)
+    with pytest.raises(NoAnswer, match="this computer's own network"):
+        download.default_transport(Request("https://intranet.example/x.pdf"), 1.0)
+    assert asked == ["intranet.example"]
+
+
+@pytest.mark.parametrize("bad", ["pdf_url", "location", "meta"])
+def test_a_malformed_link_lists_the_work_as_wanted_and_the_run_goes_on(paper, bad) -> None:
+    """Round 1 of #565: `https://[x/a.pdf` raised ValueError out of `urlsplit` and stopped the
+    run, and the works after it were not tried."""
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI}, other2019={"title": TITLE, "doi": OTHER})
+    broken = "https://[x/a.pdf"
+    answers = {PLACES.crossref + DOI: crossref(None)}
+    if bad == "pdf_url":
+        answers[PLACES.openalex + DOI] = openalex(pdf_url=broken)
+    elif bad == "location":
+        answers[PLACES.openalex + DOI] = openalex(pdf_url="https://repository.test/a.pdf")
+        answers["https://repository.test/a.pdf"] = answer(302, Location=broken)
+    else:
+        answers[PLACES.openalex + DOI] = openalex(landing="https://repository.test/r")
+        answers["https://repository.test/r"] = page(f'<meta name="citation_pdf_url" '
+                                                    f'content="{broken}">')
+    table = Table(answers)
+    outcomes, wanted = sync(paper, table)
+    assert [one.key for one in wanted] == ["hepatic2021", "other2019"]
+    assert any(PLACES.openalex + OTHER == url for url in table.asked), "the next work is tried"
+
+
+def test_a_title_in_the_running_text_is_not_the_title() -> None:
+    """Round 1 of #565: a title anywhere on the first two pages was evidence, so a paper whose
+    abstract used the cited review's title as a phrase was filed as the review."""
+    text = ("Journal of Other Things\nA cohort of adults\nBackground: we studied hepatic "
+            "injury in a fictional national cohort of adults, and found little.\n")
+    assert matching.judged(b"%PDF-1.4", text, None, TITLE).by is None
+
+
+def test_a_title_is_no_evidence_where_the_metadata_names_another_doi() -> None:
+    raw = b"%PDF-1.7\n<prism:doi>10.5555/someone.else</prism:doi>"
+    text = "Hepatic injury in a fictional\nnational cohort\nA. Fictional"
+    shown = matching.judged(raw, text, DOI, TITLE)
+    assert shown.by is None and "10.5555/someone.else" in shown.why
+
+
+def test_a_title_is_no_evidence_where_the_first_page_gives_another_doi() -> None:
+    text = "Hepatic injury in a fictional\nnational cohort\nhttps://doi.org/10.5555/someone.else"
+    assert matching.judged(b"%PDF-1.4", text, DOI, TITLE).by is None
+    assert matching.judged(b"%PDF-1.4", text, None, TITLE).by is None
+
+
+def test_a_lancet_doi_in_the_metadata_is_read_whole() -> None:
+    doi = "10.1016/s0140-6736(20)30183-5"
+    raw = b"%PDF-1.7\n<prism:doi>10.1016/S0140-6736(20)30183-5</prism:doi>"
+    assert matching.metadata_dois(raw) == {doi}
+    assert matching.judged(raw, "", doi, None).by == "doi"
+
+
+def test_a_supplements_doi_is_not_the_works() -> None:
+    """PLoS names a supplement `<doi>.s001`: that is another DOI, not the work's."""
+    assert not matching.doi_in(f"https://doi.org/{DOI}.s001", DOI)
+    assert matching.doi_in(f"doi: {DOI}.\nReceived 2020", DOI)
+
+
+@pytest.mark.parametrize("head", [
+    "Supplementary Appendix", "Supplement to: Fictional A. Hepatic injury.",
+    "Supporting Information", "Correction to: Hepatic injury in a fictional national cohort",
+    "Erratum", "In reply", "Reply to the letter by Smith",
+])  # fmt: skip
+def test_a_document_about_the_work_is_not_filed_as_the_work(paper, tmp_path, head) -> None:
+    """Round 1 of #565: a supplement, a correction or a reply shows the work's DOI and title,
+    and was filed as its full text. Import refuses rather than guesses."""
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI})
+    downloads = tmp_path / "Downloads"
+    downloads.mkdir()
+    (downloads / "appendix.pdf").write_bytes(article(head, "Hepatic injury in a fictional",
+                                                     "national cohort", f"doi: {DOI}"))
+    outcomes, _ = inbox_sync(paper, downloads)
+    assert not (sources(paper) / "hepatic2021.pdf").exists()
+    assert any("not the work itself" in one.said for one in outcomes), outcomes
+
+
+def test_a_work_whose_own_title_says_reply_is_still_filed(paper, tmp_path) -> None:
+    title = "In reply: hepatic injury in a fictional national cohort"
+    cite(paper, reply2021={"title": title, "doi": DOI})
+    downloads = tmp_path / "Downloads"
+    downloads.mkdir()
+    (downloads / "r.pdf").write_bytes(article("In reply: hepatic injury in a fictional",
+                                              "national cohort", f"doi: {DOI}"))
+    inbox_sync(paper, downloads)
+    assert (sources(paper) / "reply2021.pdf").exists()
+
+
+def test_a_preview_saved_in_the_inbox_is_not_filed(paper, tmp_path) -> None:
+    """Round 1 of #565: the half-the-pages rule held only for the publisher's fetch."""
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI, "pages": "101--109"})
+    downloads = tmp_path / "Downloads"
+    downloads.mkdir()
+    (downloads / "preview.pdf").write_bytes(THE_WORK)
+    outcomes, _ = inbox_sync(paper, downloads)
+    assert not (sources(paper) / "hepatic2021.pdf").exists()
+    assert any("a preview, most likely" in one.said for one in outcomes)
+    (downloads / "preview.pdf").write_bytes(article(TITLE, f"doi: {DOI}", pages=9))
+    inbox_sync(paper, downloads)
+    assert (sources(paper) / "hepatic2021.pdf").exists()

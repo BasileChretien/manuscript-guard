@@ -242,6 +242,24 @@ def test_a_passage_of_a_work_with_no_stored_copy_is_a_warning(project: Path) -> 
     assert found.counts["passages_unchecked"] == 1
 
 
+def test_a_passage_not_in_the_only_stored_abstract_is_unchecked_not_failed(project) -> None:
+    """Round 1 of #565: `sync-sources` writes `<key>.abstract.txt` for each work it finds no
+    full text of, and a passage from the paper's Results, unchecked before, then failed
+    against the abstract. An abstract alone verifies a passage it holds, and leaves one it
+    does not hold unchecked."""
+    sources = project / "literature" / "sources"
+    (sources / f"{CLASS}.txt").unlink()
+    (sources / f"{CLASS}.abstract.txt").write_text("An abstract that says little.\n", "utf-8")
+    found = report(project)
+    assert ("passage-not-in-source", FAIL) not in said(project)
+    (unchecked,) = [f for f in found.findings if f.code == "passage-unchecked"]
+    assert "only its abstract" in unchecked.message
+    assert found.counts["passages_unchecked"] == 1
+    (sources / f"{CLASS}.abstract.txt").write_text(
+        "A signal was detected for the class as a whole.\n", "utf-8")
+    assert report(project).counts["passages_verified"] == 1
+
+
 def test_a_passage_of_a_work_whose_copy_is_kept_out_of_git_is_noted(project: Path) -> None:
     """In CI the copy is recorded and not there: not checked here, a note, not a warning."""
     from kept_away import keep_away

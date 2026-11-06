@@ -26,6 +26,7 @@ from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.literature.sources import (
     UnreadableSource,
     contains,
+    is_abstract,
     normalise,
     read_source,
     stored_files,
@@ -180,10 +181,14 @@ def check_prose_quotations(project: Project) -> Report:
             report = report.with_findings(_unchecked(path, quotation, latex))
             continue
         # Named only where a source was read: a work with none was not looked in (round 1 of
-        # #282: every cited key was named).
-        looked_in = list(dict.fromkeys(key for key, text in texts if text is not None))
+        # #282: every cited key was named). An abstract alone is no evidence that the words
+        # are not in the work (round 1 of #565): such a work was not looked in either.
+        whole = [key for (key, text), (_k, source) in zip(texts, stored, strict=True)
+                 if text is not None and not is_abstract(source)]  # fmt: skip
+        looked_in = list(dict.fromkeys(whole))
         if not looked_in:
-            report = report.with_findings(_unchecked(path, quotation, latex))
+            abstract_only = any(text is not None for _key, text in texts)
+            report = report.with_findings(_unchecked(path, quotation, latex, abstract_only))
             continue
         report = report.with_findings(
             Finding(
@@ -251,14 +256,16 @@ def _not_here(path: Path, quotation: Quotation, keys: list[str], latex: bool) ->
     )
 
 
-def _unchecked(path: Path, quotation: Quotation, latex: bool = False) -> Finding:
+def _unchecked(path: Path, quotation: Quotation, latex: bool = False,
+               abstract_only: bool = False) -> Finding:  # fmt: skip
+    works = ", ".join(cited_as(key, latex=latex) for key in quotation.keys)
     return Finding(
         gate=GATE,
         code="quotation-unchecked",
         severity=INFO,
-        message=f"the quotation {_shown(quotation.quote)} could not be checked: no stored "
-        f"source of {', '.join(cited_as(key, latex=latex) for key in quotation.keys)} can be "
-        "read",
+        message=f"the quotation {_shown(quotation.quote)} could not be checked: "
+        + (f"only its abstract is stored of {works}, and it does not hold the quotation"
+           if abstract_only else f"no stored source of {works} can be read"),
         path=path,
         line=quotation.line,
         hint="store the source under literature/sources/, named by its citation key",

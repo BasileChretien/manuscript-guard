@@ -3126,6 +3126,27 @@ def test_a_quotation_in_the_prose_is_in_the_source_it_cites(
     assert [(f.code, f.severity) for f in found] == said
 
 
+def test_a_quotation_not_in_the_only_stored_abstract_is_unchecked(project: Path) -> None:
+    """Round 1 of #565: `sync-sources` writes an abstract for each work it finds no full text
+    of, and a quotation of the paper's body was then said not to be in its source. Held to an
+    abstract alone it is unchecked, unless the abstract holds it."""
+    from manuscript_guard.gates import check_prose_quotations
+
+    sources = project / "literature" / "sources"
+    (sources / "fictionalHepaticCohort2021.txt").unlink()
+    (sources / "fictionalHepaticCohort2021.abstract.txt").write_text(
+        "Incidence rose with age.\n", encoding="utf-8")
+    path = main_md(project)
+    sentence = ("The cohort found that “incidence fell with age and differed by sex” "
+                "[@fictionalHepaticCohort2021].")  # fmt: skip
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("\n# Discussion\n", "\n" + sentence + "\n\n# Discussion\n", 1),
+                    encoding="utf-8")  # fmt: skip
+    found = check_prose_quotations(load_project(project)[0]).findings
+    assert [(f.code, f.severity) for f in found] == [("quotation-unchecked", "info")]
+    assert "only its abstract" in found[0].message
+
+
 def test_a_misquotation_names_only_the_works_looked_in(project: Path) -> None:
     """Round 1 of #282: every cited key was named, a work with no stored source as well."""
     from manuscript_guard.gates import check_prose_quotations

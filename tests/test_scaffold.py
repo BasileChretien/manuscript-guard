@@ -664,3 +664,41 @@ def test_the_englishes_init_takes_are_the_ones_paper_yaml_may_declare() -> None:
 
     enum = load_schema("paper")["properties"]["english_variant"]["enum"]
     assert tuple(enum) == ENGLISHES
+
+
+def test_init_in_a_repository_says_which_git_lines_its_files_lack(tmp_path: Path,
+                                                                  capsys) -> None:  # fmt: skip
+    """Found taking a real paper through the loop: `init` in a repository with its own
+    .gitignore and .gitattributes left them without `build/`, `literature/sources/*` (the
+    stored copies of cited works, paywalled ones among them) and `* text=auto eol=lf`, and
+    said nothing, while for an AGENTS.md it prints the rules to add. It prints the lines."""
+    from manuscript_guard.cli import main
+
+    root = tmp_path / "analysis-repo"
+    root.mkdir()
+    (root / ".gitignore").write_text("*.csv\n/build\n", encoding="utf-8")
+    (root / ".gitattributes").write_text("*.R text\n", encoding="utf-8")
+    assert main(["init", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert ".gitignore was already there" in out
+    assert "\nliterature/sources/*\n" in out
+    assert "\nbuild/\n" not in out  # `/build` leaves it out already
+    assert ".gitattributes was already there" in out and "\n* text=auto eol=lf" in out
+    assert (root / ".gitignore").read_text(encoding="utf-8") == "*.csv\n/build\n"
+    # With the lines there, and with files init wrote itself, nothing is said of them.
+    (root / ".gitignore").write_text("build/\nliterature/sources/*\n", encoding="utf-8")
+    (root / ".gitattributes").write_text("*   eol=lf text=auto\n", encoding="utf-8")
+    assert main(["init", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert ".gitignore was already" not in out and ".gitattributes was already" not in out
+    fresh = tmp_path / "fresh"
+    assert main(["init", str(fresh)]) == 0
+    out = capsys.readouterr().out
+    assert ".gitignore was already" not in out and ".gitattributes was already" not in out
+    # A private repository that commits the copies says so in paper.yaml, and is not asked.
+    paper = root / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8")
+                     + "literature: {sources_in_git: true}\n", encoding="utf-8")  # fmt: skip
+    (root / ".gitignore").write_text("build/\n", encoding="utf-8")
+    assert main(["init", str(root)]) == 0
+    assert ".gitignore was already" not in capsys.readouterr().out

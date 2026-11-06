@@ -8943,6 +8943,56 @@ def glued_intervals(draw: st.DrawFn) -> tuple[str, list[tuple[int, int]]]:
     return "".join(parts), expected
 
 
+#: How a point stands in an output the audit reads numbers from: where it begins a number,
+#: as APA writes ".661", with a sign or without, and where it does not.
+BACKING_POINTS = (
+    "leading", "signed leading", "after a letter", "after a digit", "after a point",
+    "a dotted name", "a plain decimal",
+)  # fmt: skip
+
+
+@st.composite
+def backing_points(draw: st.DrawFn) -> tuple[str, set[str]]:
+    """An output's text with a point standing in each way of `BACKING_POINTS`, in an order
+    drawn, and the numbers the audit is to read in it, as it compares them. A point after a
+    space, a bracket, an equals sign, a colon, a comma or a table's pipe begins a number,
+    with a hyphen, an en dash or a minus before it as its sign; one after a letter (`a.12`),
+    a digit (`1.2.7`) or another point (`...5`) does not, and what follows it is read alone.
+    Each number's last digit is no nought, so that what it reads as is written here and not
+    worked out."""
+    digits = st.text("0123456789", min_size=0, max_size=3).flatmap(
+        lambda head: st.sampled_from("123456789").map(lambda last: head + last)
+    )
+    tokens: list[str] = []
+    expected: set[str] = set()
+    for kind in draw(st.permutations(BACKING_POINTS)):
+        number = draw(digits)
+        before = draw(st.sampled_from((" ", "(", "= ", ": ", ", ", "[", "| ", "\t")))
+        if kind == "leading":
+            tokens.append(f"{before}.{number}")
+            expected.add(f"0.{number}")
+        elif kind == "signed leading":
+            sign = draw(st.sampled_from(("-", "–", "−")))
+            tokens.append(f"{before}{sign}.{number}")
+            expected.add(f"-0.{number}")
+        elif kind == "after a letter":
+            tokens.append(f"{draw(st.sampled_from(('a', 'row', 'est', 'B')))}.{number}")
+            expected.add(str(int(number)))
+        elif kind == "after a digit":
+            major, minor = draw(st.integers(1, 9)), draw(st.integers(1, 9))
+            tokens.append(f"v{major}.{minor}.{number}")
+            expected |= {f"{major}.{minor}", str(int(number))}
+        elif kind == "after a point":
+            tokens.append(f"wait...{number}")
+            expected.add(str(int(number)))
+        elif kind == "a dotted name":
+            tokens.append(draw(st.sampled_from(("results.json", "a.b.c", "model.fit"))))
+        else:
+            tokens.append(f"0.{number}")
+            expected.add(f"0.{number}")
+    return " x ".join(tokens), expected
+
+
 #: Paragraphs of a .docx or text of a figure with HTML's comment markers printed as typed,
 #: `{n}` and `{m}` numbers each listed, `{u}` one in an address, which is masked.
 PRINTED_MARKERS = {

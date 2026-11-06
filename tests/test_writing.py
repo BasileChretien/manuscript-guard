@@ -155,6 +155,91 @@ def test_ordinary_scientific_prose_passes(project: Path) -> None:
     assert not report.findings, messages(report)
 
 
+@pytest.mark.parametrize(
+    "paragraph",
+    [
+        # The athlete-leakage study, 2026-11-06: the wrap fell before "here".
+        "The analysis reported\nhere is the third protocol, unchanged, on the corrected index.",
+        "We were not\nsure whether the second reader had seen the first reading.",
+        "The difference was\ncertainly smaller in the second period.",
+        "The cohort was, as the protocol required and\nof course before the analysis, fixed.",
+        # Round 3 of #538: a wrap after a dash or a colon.
+        "The effect was small \N{EN DASH}\nof course, the sample was small.",
+        "The reason was plain:\ncertainly not the sample, which was fixed.",
+        "The effect was small --\nof course, the sample was small.",
+    ],
+)
+def test_an_opening_word_inside_a_wrapped_paragraph_passes(project: Path, paragraph: str) -> None:
+    """The assistant-voice rule reads a paragraph's first words. It read the first words of
+    every line, and in a hard-wrapped paragraph a line can start in the middle of a sentence."""
+    report = written(project, f"# Methods\n\n{paragraph}\n")
+    assert "model-artefact" not in codes(report), messages(report)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Round 1 of #538: a heading, or a line of spaces or a tab, opens the next paragraph.
+        "# Methods\nCertainly! Here is the revised Methods section.\n",
+        "# Methods\n\nPrior paragraph.\n  \nCertainly! Here is the revised section.\n",
+        "# Methods\n\nPrior paragraph.\n\t\nSure, here is the revised section.\n",
+    ],
+)
+def test_an_opening_word_after_a_heading_or_a_line_of_spaces_fails(
+    project: Path, text: str
+) -> None:
+    assert "model-artefact" in codes(written(project, text))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "\\section{Methods}\nSure, here is the revised Methods section.\n",
+        # Round 2 of #538: what is no prose, or ends a sentence, before the words.
+        "---\ntitle: X\n---\nCertainly! Here is the revised abstract.\n",
+        "abstract: |\n  Certainly! Here is the revised abstract.\n",
+        "\\section{Discussion}\n% draft from the assistant\nSure, here is the revised one.\n",
+        "\\section{Methods}%\nSure, here is the revised Methods section.\n",
+        "<!-- note -->\nCertainly! Here is the revised section.\n",
+        "Results\n-------\nSure, here is the revised Results section.\n",
+        "```\ncode\n```\nCertainly! Here is the revised section.\n",
+        ":::\nCertainly! Here is the revised section.\n",
+        "As in Table 2.\nCertainly! Here is the revised Discussion.\n",
+        # Round 3 of #538: a capital is an opening whatever runs before it.
+        "\\maketitle\nCertainly! Here is the revised abstract.\n",
+        "\\noindent\nCertainly! Here is the revised abstract.\n",
+        "**Methods**\nCertainly! Here is the revised Methods section.\n",
+        "_Statistical analysis_\nSure, here is the revised analysis.\n",
+        "Table 1. Baseline characteristics\nHere is the revised table.\n",
+        "\\section{Methods} % revised by the model\nSure, here is the revised one.\n",
+        "As reported before.[12]\nCertainly! Here is the revised Discussion.\n",
+        "As reported before.[^1]\nSure, here is the revised Discussion.\n",
+        # Round 4 of #538: a lower-case opener is read too, after anything but running prose.
+        "# Methods\n\nPrior paragraph.\n\nsure, here is the revised section.\n",
+        "As in Table 2.\nhere is the revised Discussion.\n",
+        "---\nhere is the revised abstract.\n",
+    ],
+)
+def test_an_opening_word_after_markup_or_a_sentence_end_is_an_artefact(text: str) -> None:
+    """A source is read as typed, so the line before the words is often markup: a LaTeX
+    command or comment, front matter, an HTML comment, a fence. Only prose that runs on into
+    them makes them the middle of a sentence (rounds 1 and 2 of #538)."""
+    from manuscript_guard.gates.writing import artefacts_in, load_rules
+
+    found = [m.group(0).strip() for rule, m in artefacts_in(load_rules(), text, manuscript=True)
+             if rule["id"] == "assistant-voice"]  # fmt: skip
+    assert len(found) == 1, (text, found)
+
+
+def test_a_post_that_opens_under_its_dashes_is_an_artefact() -> None:
+    """`texts.posts` cuts a thread at a line of dashes after a blank line, so a post can open
+    right under it (round 2 of #538)."""
+    from manuscript_guard.gates.writing import judge_texts
+
+    report, _totals = judge_texts([(Path("t.md"), "First post.\n\n---\nSure! Here is a thread.\n")])
+    assert [f.code for f in report.findings if f.code == "model-artefact"] == ["model-artefact"]
+
+
 def test_technical_senses_are_not_counted(project: Path) -> None:
     """"Robust standard errors" is not a tell; it is the name of the estimator."""
     text = (

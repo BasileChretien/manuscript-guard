@@ -82,10 +82,14 @@ FIGURE_SUFFIXES = {".svg", ".pdf"}
 # LaTeX's `$-0.51$`, went into the outputs as 0.51.
 # With no sign at all, -0.51 in the outputs went in as 0.51, so a paper quoting it correctly
 # never matched and a paper printing 0.51 for it did.
+# A number may start at its point, as APA writes a p or an r: ".661" is 0.661. It needed a
+# digit first, so "p = .661" in the outputs went in as 661, and the paper's .661 never
+# matched. A point after a letter, a digit, an underscore or another point is no such start:
+# "a.0.b" and "results.json" are names, "1.2.7" a version, "...5" an ellipsis.
 _SIGN_MAY_FOLLOW = r"\s(\[{|*=:;,<>~/$\u00b1\u2264\u2265\u2013\u2014\"'\u201c\u2018\-"
 _NUMBER = re.compile(
     rf"(?:(?<![^{_SIGN_MAY_FOLLOW}])[-\u2013]|\u2212)?"
-    r"\d[\d,\u202f\xa0]*(?:\.\d+)?(?:[eE][+-]?\d+)?"
+    r"(?:\d[\d,\u202f\xa0]*(?:\.\d+)?|(?<![\w.])\.\d+)(?:[eE][+-]?\d+)?"
 )
 
 # `--` between digits is a separator and a minus in every format, Markdown included,
@@ -232,7 +236,7 @@ def normalise_number(text: str) -> str:
     cleaned = (
         text.replace(",", "").replace(" ", "").replace("\xa0", "").replace("−", "-")
     ).rstrip("%")
-    cleaned = re.sub(r"^\u2013(?=\d)", "-", cleaned)
+    cleaned = re.sub(r"^\u2013(?=\.?\d)", "-", cleaned)
     if len(cleaned) > _MAX_DIGITS:
         return cleaned
     try:

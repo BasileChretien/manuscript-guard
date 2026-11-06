@@ -148,6 +148,22 @@ These were tested, not assumed, and they determine the architecture.
 - **A pinned key comes back as `citation-key: xyz`**, in the CSL `note`, although it is typed
   in Extra as `Citation Key: xyz`. `item.search` keeps that line; `item.pandoc_filter` and
   `item.export` strip it, so they cannot tell pinned from unpinned.
+- **From Better BibTeX 8, every key is pinned and none is in Extra** (Zotero 9.0.6 with
+  9.0.77, the athlete-leakage study, 2026-11-06). Its 8.0.0 changelog: "keys are always
+  pinned now. Zotero doesn't have a place I can store whether a key is pinned or not." Every
+  key is in Zotero's own Citation Key field, pinned from the menu or not, and Extra stays
+  empty, so the Extra search found no pin at all and G7 failed every cited key. `api.ready`
+  answered `{"zotero": "9.0.6", "betterbibtex": "9.0.77"}`, and the JSON export of an item
+  (`item.export([key], "BetterBibTeX JSON")`) carries Better BibTeX's preferences under
+  `config.preferences`, among them `resetKeyOnChange` (false there), under which a key is
+  given anew when its item changes; 9.0.77 lists no `autoPinOverwrite`, the setting its
+  8.0.38 changelog names. `lookup` takes every found key as pinned from 8 on unless
+  `resetKeyOnChange` is true; a Better BibTeX that gives no version or no preferences is
+  held to Extra, as before. Nothing here was probed with that preference on: that a key
+  then changes is the preference's own description, not something seen; nor is any other
+  setting read that renews keys, such as the `autoPinOverwrite` of 8.0.38. The export is
+  asked of a key the user's own library resolved, since it names no library, and a timeout
+  in it stops the Zotero side of G7 as a timeout of any other call does.
 - **Word does not carry a paragraph's identifier when it cuts the paragraph** (Word 365,
   driven over COM on the example's build, 2026-09-24). The identifier is an empty bookmark,
   and Word leaves an empty bookmark where it stood. With Track Changes on, it stays in the
@@ -3707,7 +3723,18 @@ function) decide:
 
 Settled here, where the design left it open: the rules decide nothing from one reading, so
 that a change is proposed only where two agree, and a reading counts once, by its reader and
-its number (a copy filed under another name is `currency-record-edited`); a candidate that
+its number (a copy filed under another name is `currency-record-edited`). A reader's further
+reading of an entry counts as one more, so one model read twice in two fresh contexts gives
+two; a reading filed with `references --reading FILE --replaces N` corrects its reader's
+reading N instead, and the gate, the rules, the cutoff and `check`'s summary all read it in
+that one's place (`records.current`). The latest reading of each reader was the other choice,
+and was not taken: it would have made one model read twice one reading. A replaced reading
+stays filed and sealed; one edited is still `currency-record-edited`. `--reading` refuses a
+reading any of whose quotes G7 would refuse, each named, so that one is not filed to fail:
+a quote starts and ends at a word's edge, a hyphen-joined word whole, as a passage's does
+(`quote_in`); a quote of a work nothing is stored of is filed, and G7 notes it unchecked
+(found taking the athlete-leakage study through the loop, where a registry had turned a
+dash into a hyphen). A candidate that
 contradicts the sentence is added and never put in its citation's place, and where one
 candidate gives `add` and another `replace`, the entry is `add`, since the contradiction is
 what the author has to read first. The rule ids a decision records are `K1, K2, K3`, the D
@@ -3787,7 +3814,10 @@ change (Basile, 2026-11-05); it asks too where currency.yaml or references.bib c
 read. `check`'s literature line says how many entries the rules decided and from whose
 readings, and how many a person did.
 
-**The command**, `references`: alone, a row per claim in scope; `--explain ID`; `--mark
+**The command**, `references`: alone, a row per claim in scope; `--explain ID`, which
+says how many readings are filed and what the rules give, and prints the readings' fields
+and quotes only with `--readings`, since a reader runs it before reading and each reading is
+made without the others; `--mark
 "WORDS" @KEY` (with `--id`, an entry no sentence reads as put on the sentence again, `KEY`
 the entry's work or the one it proposes); `--reading FILE`, which holds the
 reading to its schema, the hierarchy and its entry, files it, and writes the rules' decision
@@ -4338,7 +4368,21 @@ included, and an offset is the same in both. Counted in the copy, the line fell 
 every line blanked above it: a phrase under a four-line comment was reported three lines up,
 on the comment. And the line is the one the matched words begin on, not the match: the rule
 for a chat assistant's opening word reads from the start of a line through any blank lines,
-and its finding was put on the blank line above the paragraph.
+and its finding was put on the blank line above the paragraph. That rule passes over a
+match whose words carry on a sentence from the line before (`paragraph_start`,
+`writing._continues_a_sentence`): the words are in lower case, and the line before is prose
+that ends in a word, a number, a comma, a semicolon, a colon or a dash, with any closing
+marks. Read at every line, it failed a hard-wrapped sentence whose line began "here is the"
+(the athlete-leakage study, 2026-11-06). A capital is read as an opening whatever stands
+before it, since a chat assistant's reply opens with one, and so is a lower-case word after
+anything but running prose: the file is read as typed, and a list of what ends a paragraph,
+then a test of the line before alone, each missed markup the other caught (rounds 1 to 3 of
+#538). Its limits, each as base had it or narrower: wrapped prose whose line ends in
+something else, `}` (`Table~\ref{t1}`), `\%`, `$`, an abbreviation's stop ("Smith et
+al."), still fails at a lower-case opener after it; a sentence that opens with "Certainly"
+or "Of course" after a wrap at a full stop fails where the same sentence on one line does
+not; and a reply typed in lower case under a line that ends in a letter, `\noindent` or a
+bold label, is missed, where base caught it.
 
 **Vague attribution gets the one check an encyclopedia cannot use.** "Studies have shown" is
 reported only when no citation sits within 240 characters, because in a manuscript the fix
@@ -17199,6 +17243,12 @@ Open, recorded as each change landed:
   review rounds went into reading it as pandoc does, and each found a place where pandoc
   does not (fenced code, indented code, HTML comments) and a sign flipped or prose
   vanished. A false alarm is the cheaper mistake.
+- **A number in the outputs starts at its point only where nothing joins the point to a
+  word.** APA's ".661" and "-.30" are read as 0.661 and -0.3 after a space, a bracket, a
+  sign, `=`, `:`, `,` or a pipe (2026-11-06: they went in as 661 and 30, so an APA p or r
+  never matched). After a letter, a digit, an underscore or another point, a point starts
+  none, so that `a.0.b`, `1.2.7` and `...5` stay names, versions and ellipses: an output
+  that writes a value as `est.661` holds 661 for it, not 0.661.
 - **A Markdown reference list ends at any line shaped as a thematic break.** `---`, `***`
   or `___`, spaced or indented up to three spaces, ends it as a heading does (2026-11-06: a
   note after a rule under the list was read as one more entry with no number, so the list
@@ -21202,6 +21252,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     text and used in a supplement given beside it is undefined in the supplement. Nothing of
     a `paper.yaml` is read but the English: no journal profile, no `language:` settings, no
     accepted spellings. A .docx's lines are those of the text pandoc converts it to.
+  - A place a finding's message or hint names in the project made for the paper is put back
+    in the paper by its shape, `manuscript/<file>` with or without `:<line>`, standing
+    alone: G14 said "it was defined at manuscript/main.md:476" of a paper called paper.md
+    (2026-11-06). A place a gate writes in another shape, or a path outside the project, is
+    left as written. The line in a converted .docx is the converted text's, as the finding's
+    own is.
   - The census holds citations to a list only where the entries carry their numbers, or in a
     .docx whose list one Word numbering counts 1, 2, 3 from its first entry, by each entry's
     place in its count. A count that a paragraph with words above the list is numbered in
@@ -22305,6 +22361,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
 - **`.zenodo.json` names one affiliation per creator.** Zenodo's field is one string, so the
   author's two institutions go in as one, matched to no organisation (ROR), as CITATION.cff's
   one field does.
+
+- **`verify` runs the analysis in a copy without `.git`.** `IGNORED_DIRS` leaves out the
+  build tree and `.git`, so the scratch copy has no history. An analysis that checks its own
+  git provenance, such as whether the commit it runs from is in the history, carries a tag,
+  or has a clean tree, cannot make that check in the copy: it fails there, or has to detect
+  the copy and skip the check, which is then not verified. Copying `.git` would carry the
+  author's whole history, hooks and configuration into a tree where somebody else's code
+  runs, and the check would then read the scratch copy's state, not the checkout's. What
+  `verify` compares is the results, and they do not come from the history. Found taking the
+  athlete-leakage study through the loop, whose runners refuse a dirty tree and record the
+  commit (`test_the_scratch_copy_has_no_git_a_limit_known_gaps_names`).
 
 Closed since, and why each mattered (an open gap goes above this line):
 

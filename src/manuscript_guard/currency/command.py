@@ -125,9 +125,10 @@ def _entry_of(project: Project, entry_id: str) -> tuple[dict, dict]:
     raise Refused(f"literature/currency.yaml has no entry {entry_id}")
 
 
-def explain(project: Project, entry_id: str) -> str:
-    """One entry: its question, searches, the readings' fields and quotes, and what the rules
-    give, with why."""
+def explain(project: Project, entry_id: str, readings: bool = False) -> str:
+    """One entry: its question, searches, how many readings are filed, and what the rules
+    give, with why. The readings' fields and quotes are printed only with `readings`: a
+    reader runs this before reading, and the second reading is made without the first."""
     from manuscript_guard.gates.currency import _bib, _Records, rules_decision
 
     _document, raw = _entry_of(project, entry_id)
@@ -143,13 +144,18 @@ def explain(project: Project, entry_id: str) -> str:
             lines.append(f"  search {read.path.name}: {read.problem}")
             continue
         lines.append(_search_line(read.record))
-    usable = []
-    for read in held.readings.get(entry.id, []):
-        if read.problem:
-            lines.append(f"  reading {read.path.name}: {read.problem}")
-            continue
-        usable.append(read.record)
-        lines += _reading_lines(read.record)
+    filed = held.readings.get(entry.id, [])
+    usable = [read.record for read in filed if not read.problem]
+    if readings:
+        for read in filed:
+            lines += ([f"  reading {read.path.name}: {read.problem}"] if read.problem
+                      else _reading_lines(read.record))  # fmt: skip
+    elif filed:
+        unusable = len(filed) - len(usable)
+        lines.append(f"  readings: {len(filed)} filed"
+                     + (f", {unusable} of them unusable" if unusable else "")
+                     + f"; `references --explain {entry.id} --readings` prints them, which a "
+                     "reader still to read the entry does not run")  # fmt: skip
     from manuscript_guard.gates.currency import missing_works
 
     absent = missing_works(entry, usable, held, _bib(project))
@@ -285,11 +291,13 @@ def _place_again(project: Project, document: dict, entries: list[dict], entry_id
     raise Refused(f"literature/currency.yaml has no entry {entry_id}")
 
 
-def file_reading(project: Project, path: Path) -> str:
-    """Hold a reading to its schema, the hierarchy and its entry, file it once and sealed,
-    then run the rules for the entry and write their decision (`by: rules`). A person's
-    decision is left as it is, and so is the reading's entry where the rules would change a
-    decision somebody answered: nothing is filed then."""
+def file_reading(project: Project, path: Path, replaces: int | None = None) -> str:
+    """Hold a reading to its schema, the hierarchy, its entry and the stored texts its
+    quotes are of, file it once and sealed, then run the rules for the entry and write their
+    decision (`by: rules`). With `replaces`, the reading corrects its reader's reading of
+    that number, which the gate and the rules then no longer read (`records.current`). A
+    person's decision is left as it is, and so is the reading's entry where the rules would
+    change a decision somebody answered: nothing is filed then."""
     from manuscript_guard.currency.hierarchy import hierarchies, level_problem
     from manuscript_guard.gates.currency import (
         _bib,
@@ -307,6 +315,11 @@ def file_reading(project: Project, path: Path) -> str:
         raise Refused(f"{path}: no such file")
     if isinstance(record, dict):
         record = records.folded_reading(record)
+        if replaces is not None:
+            if record.get("replaces") not in (None, replaces):
+                raise Refused(f"{path.name} says it replaces reading {record['replaces']}, "
+                              f"and --replaces says {replaces}")  # fmt: skip
+            record = {**record, "replaces": replaces}
     report = validate(record, "currency-reading", path)
     if not report.ok:
         raise Refused("; ".join(finding.message for finding in report.failures))
@@ -325,11 +338,15 @@ def file_reading(project: Project, path: Path) -> str:
             records.is_work(bib.get(entry.citekey), work) for work in named):  # fmt: skip
         raise Refused("each candidate is read once, and the cited work is not a candidate")
     held = _Records(project)
-    usable = [read.record for read in held.readings.get(entry.id, []) if read.problem is None]
-    usable, _unfit = _fitting(usable, entry, hierarchies(project), bib)
+    _check_quotes(entry, record, held)
     number = 1
     while records.reading_path(project, entry.id, str(record["reader"]), number).exists():
         number += 1
+    _check_replaces(project, entry.id, record, held, number)
+    replaced = (str(record["reader"]), record.get("replaces"))
+    usable = [read.record for read in held.readings.get(entry.id, []) if read.problem is None
+              and (str(read.record["reader"]), read.record.get("number")) != replaced]
+    usable, _unfit = _fitting(usable, entry, hierarchies(project), bib)
     numbered = {**record, "number": number}
     given = rules_decision(entry, [*usable, numbered], held, bib)
     absent = missing_works(entry, [*usable, numbered], held, bib)
@@ -361,6 +378,45 @@ def file_reading(project: Project, path: Path) -> str:
     return (f"{said}; the rules give {given.action}"
             + (f" {given.candidate}" if given.candidate else "")
             + f" ({', '.join(given.rules)}): {given.why}")  # fmt: skip
+
+
+def _check_quotes(entry: records.Entry, record: dict, held) -> None:
+    """Refuse a reading any of whose quotes G7 would refuse (`currency-quote-not-found`):
+    one not in the stored title, abstract or text of its work, word for word. A quote of a
+    work nothing is stored of cannot be looked for, and G7 says so (`currency-quote-unchecked`).
+    """
+    from manuscript_guard.gates.currency import _shown, _stored_texts, quote_in
+
+    cited = record["cited"]["work"]
+    missing = []
+    for work, name, quote in records.quotes_of(record):
+        texts = _stored_texts(held, work, entry.citekey, work == cited)
+        if texts and not quote_in(texts, quote):
+            missing.append(f"{name} of {work}: {_shown(quote)!r}")
+    if missing:
+        raise Refused(
+            f"the reading is not filed: {len(missing)} quote(s) are not in the work's stored "
+            f"title, abstract or text, word for word ({'; '.join(missing)}). A quote starts "
+            "and ends at a word's edge and takes a hyphen-joined word whole: \"video-collected "
+            "from\", not \"collected from\"; words left out are marked with an ellipsis"
+        )  # fmt: skip
+
+
+def _check_replaces(project: Project, entry_id: str, record: dict, held, number: int) -> None:
+    """A reading that replaces another names one of its reader's own earlier readings of the
+    entry, filed and not replaced already."""
+    replaces = record.get("replaces")
+    if replaces is None:
+        return
+    reader = str(record["reader"])
+    if replaces >= number or not records.reading_path(project, entry_id, reader,
+                                                      replaces).exists():  # fmt: skip
+        raise Refused(f"{reader} has no reading {replaces} of {entry_id} to replace")
+    still = {read.record.get("number") for read in held.readings.get(entry_id, [])
+             if read.record and str(read.record.get("reader")) == reader}  # fmt: skip
+    if replaces not in still:
+        raise Refused(f"{reader}'s reading {replaces} of {entry_id} is replaced already: "
+                      "replace the reading that replaced it")  # fmt: skip
 
 
 def _same(decision: dict, given: rules.Decision) -> bool:

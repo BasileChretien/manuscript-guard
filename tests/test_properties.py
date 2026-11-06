@@ -7971,6 +7971,7 @@ def _an_item_of_a_list_opens_one(patch: pytest.MonkeyPatch) -> None:
 # Imported here, not at the top, to keep clear of the import block other branches edit.
 from generated import (  # noqa: E402
     audit_entries,
+    backing_points,
     broken_reference_lists,
     docx_reference_ends,
     glued_intervals,
@@ -8080,6 +8081,40 @@ def _a_thousands_comma_is_read_as_a_decimal_one(patch: pytest.MonkeyPatch) -> No
         return low <= float(match["grouped"].replace(",", ".")) <= high
 
     patch.setattr(audit_module, "_encloses", encloses)
+
+
+@holds(100, backing_points())
+def test_a_point_begins_a_number_in_the_outputs_only_where_nothing_joins_it_to_a_word(
+    drawn: tuple[str, set[str]],
+) -> None:
+    """In the outputs the audit reads, `.661` is 0.661 and `-.30` is -0.3, after a space, a
+    bracket, an equals sign, a colon, a comma or a pipe; a point after a letter, a digit or
+    another point begins none, and the digits after it are read alone (`_numbers_in`). The
+    reader needed a digit before a point, so APA's p and r went in as integers."""
+    text, expected = drawn
+    assert audit_module._numbers_in(text) == expected, text
+
+
+def _no_number_begins_at_its_point(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_NUMBER", r"|(?<![\w.])\.\d+")
+
+
+def _a_point_begins_a_number_after_anything(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_NUMBER", r"(?<![\w.])")
+
+
+def _a_point_begins_a_number_after_a_point(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_NUMBER", r"(?<![\w.])", r"(?<!\w)")
+
+
+def _a_point_begins_a_number_after_a_digit(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_NUMBER", r"(?<![\w.])", r"(?<![A-Za-z_.])")
+
+
+def _an_en_dash_is_a_sign_only_before_a_digit(patch: pytest.MonkeyPatch) -> None:
+    real = audit_module.normalise_number
+    patch.setattr(audit_module, "normalise_number",
+                  lambda text: text if text.startswith("–.") else real(text))
 
 
 @holds(100, broken_reference_lists())
@@ -8406,6 +8441,72 @@ def test_every_placeholder_is_found_and_nothing_that_looks_like_one(
         alone = [m.group(0) for rule, m in artefacts_in(rules, written, manuscript=False)
                  if rule["id"].startswith("placeholder")]  # fmt: skip
         assert alone == [match], (written, alone)
+
+
+# ------------------------------------------------------ the assistant's voice, however wrapped
+
+#: What a chat assistant opens its reply with, as `assistant-voice` reads it.
+_OPENERS = (
+    "Certainly", "Sure", "Of course", "Here is the", "Here\N{RIGHT SINGLE QUOTATION MARK}s a",
+)  # fmt: skip
+
+
+#: What may stand between a paragraph and the next one's first words (rounds 1 and 2 of
+#: #538): a blank line, one of spaces or a tab, several, a heading with or without a blank
+#: line after it, a LaTeX command and a LaTeX comment on a line of their own, front matter's
+#: closing dashes, an HTML comment, a setext heading's rule, a closing fence, a div's colons,
+#: and a line break after a sentence's end.
+_PARAGRAPH_ENDS = (
+    "\n\n", "\n \n", "\n\t\n", "\n\n\n", "\n\n## Results\n\n", "\n\n## Results\n",
+    "\n\\section{Results}\n", "\n% a note\n", "\n---\n", "\n<!-- a note -->\n",
+    "\nResults\n-------\n", "\n```\n", "\n:::\n", "\n",
+    # Round 3 of #538: what ends in a letter and is no running prose.
+    "\n\\noindent\n", "\n**Results**\n", "[12]\n",
+)  # fmt: skip
+
+
+@st.composite
+def _wrapped_openers(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A paragraph with an assistant's opener in the middle of a sentence, hard-wrapped at
+    gaps drawn with a line break before the opener in every example; and a paragraph opened
+    by one after a paragraph, once after each kind of end a paragraph has."""
+    before = draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=8))
+    after = draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=8))
+    opener = draw(st.sampled_from(_OPENERS))
+
+    def wrapped(words: list[str], broken_at: int | None) -> str:
+        gaps = [draw(st.sampled_from((" ", "\n"))) for _ in words[1:]]
+        if broken_at is not None:
+            gaps[broken_at] = "\n"
+        return words[0] + "".join(gap + word for gap, word in zip(gaps, words[1:], strict=True))
+
+    inside = wrapped([*before, opener.lower(), *after], len(before) - 1)
+    opening = wrapped([opener, *after], None)
+    above = wrapped(before, None)
+    return (f"# Methods\n\n{inside}.\n",
+            [f"# Methods\n\n{above}.{end}{opening}.\n" for end in _PARAGRAPH_ENDS])  # fmt: skip
+
+
+@holds(200, _wrapped_openers())
+def test_an_assistant_opener_is_found_where_a_paragraph_opens_however_it_is_wrapped(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """`assistant-voice` reads the words a paragraph opens with, which do not move when its
+    lines are wrapped again: an opener in the middle of a sentence is prose wherever the
+    wrap falls, and one that opens a paragraph is found once, whatever ended the paragraph
+    before it (the athlete-leakage study, round 1 of #538)."""
+    from manuscript_guard.gates.writing import artefacts_in, load_rules
+
+    inside, openings = drawn
+    rules = load_rules()
+
+    def voiced(text: str) -> list[str]:
+        return [match.group(0) for rule, match in artefacts_in(rules, text, manuscript=True)
+                if rule["id"] == "assistant-voice"]  # fmt: skip
+
+    assert voiced(inside) == [], inside
+    for opening in openings:
+        assert len(voiced(opening)) == 1, opening
 
 
 # ------------------------------------------------------- words to the reviewers, left in
@@ -13324,6 +13425,62 @@ def _lines_in_capitals_are_lines(patch: pytest.MonkeyPatch) -> None:
         return {**rule, "pattern": "(?i)" + rule["pattern"]}
 
     _residue_rule(patch, "lines-cited-alone", in_any_case)
+
+
+def _an_opener_is_read_at_every_line(patch: pytest.MonkeyPatch) -> None:
+    # As `assistant-voice` read a paragraph until the athlete-leakage study: every line's
+    # first words, a hard-wrapped line's among them.
+    from manuscript_guard.gates import writing
+
+    patch.setattr(writing, "_continues_a_sentence", lambda text, at: False)
+
+
+def _a_paragraph_opens_only_after_an_empty_line(patch: pytest.MonkeyPatch) -> None:
+    # As the first head of #538 read it: the line before had to be empty, so a heading, a
+    # line of spaces or a LaTeX command before the opener hid it (round 1 of #538).
+    from manuscript_guard.gates import writing
+
+    def not_after_an_empty_line(text: str, at: int) -> bool:
+        start = text.rfind("\n", 0, at) + 1
+        return start != 0 and text[start - 2 : start] != "\n\n"
+
+    patch.setattr(writing, "_continues_a_sentence", not_after_an_empty_line)
+
+
+def _a_paragraph_opens_only_after_the_ends_it_names(patch: pytest.MonkeyPatch) -> None:
+    # As the second head of #538 read it: a blank line, a heading or a LaTeX command before
+    # the opener, and nothing else, so front matter, a comment or a fence hid it (round 2).
+    import re
+
+    from manuscript_guard.gates import writing
+
+    heading = re.compile(r"[ \t]{0,3}#{1,6}(?:[ \t][^\n]*)?")
+    command = re.compile(r"[ \t]*\\[A-Za-z]+\*?(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?[ \t]*")
+
+    def not_after_a_named_end(text: str, at: int) -> bool:
+        start = text.rfind("\n", 0, at) + 1
+        if start == 0:
+            return False
+        before = text[text.rfind("\n", 0, start - 1) + 1 : start - 1]
+        return not (not before.strip() or heading.fullmatch(before) or command.fullmatch(before))
+
+    patch.setattr(writing, "_continues_a_sentence", not_after_a_named_end)
+
+
+def _an_opener_in_capitals_can_run_on(patch: pytest.MonkeyPatch) -> None:
+    # As the third head of #538 read it: a line that ends in a letter ran on into the next,
+    # a capital or not, so `\noindent` or a bold label above a reply hid it (round 3).
+    from manuscript_guard.gates import writing
+
+    def runs_on(text: str, at: int) -> bool:
+        start = text.rfind("\n", 0, at) + 1
+        if start == 0 or text[start:at].strip():
+            return False
+        before = text[text.rfind("\n", 0, start - 1) + 1 : start - 1]
+        return (writing._NOT_PROSE.match(before) is None
+                and writing._RUNS_ON.search(before) is not None)  # fmt: skip
+
+    patch.setattr(writing, "_continues_a_sentence", runs_on)
 
 
 def _a_field_wholly_in_brackets_is_read_without_them(patch: pytest.MonkeyPatch) -> None:
@@ -18763,6 +18920,26 @@ BROKEN = {
         _a_thousands_comma_is_read_as_a_decimal_one,
         test_an_interval_after_a_value_in_any_format_is_told_from_a_citation,
     ),
+    "no number in the outputs begins at its point": (
+        _no_number_begins_at_its_point,
+        test_a_point_begins_a_number_in_the_outputs_only_where_nothing_joins_it_to_a_word,
+    ),
+    "a point begins a number in the outputs after a letter": (
+        _a_point_begins_a_number_after_anything,
+        test_a_point_begins_a_number_in_the_outputs_only_where_nothing_joins_it_to_a_word,
+    ),
+    "a point begins a number in the outputs after another point": (
+        _a_point_begins_a_number_after_a_point,
+        test_a_point_begins_a_number_in_the_outputs_only_where_nothing_joins_it_to_a_word,
+    ),
+    "a point begins a number in the outputs after a digit": (
+        _a_point_begins_a_number_after_a_digit,
+        test_a_point_begins_a_number_in_the_outputs_only_where_nothing_joins_it_to_a_word,
+    ),
+    "an en dash before a leading point is no sign": (
+        _an_en_dash_is_a_sign_only_before_a_digit,
+        test_a_point_begins_a_number_in_the_outputs_only_where_nothing_joins_it_to_a_word,
+    ),
     "no thematic break ends a reference list": (
         _no_break_ends_a_list,
         test_a_thematic_break_ends_a_markdown_reference_list,
@@ -18894,6 +19071,22 @@ BROKEN = {
     "a cited entry's field wholly in brackets is read without them": (
         _a_field_wholly_in_brackets_is_read_without_them,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "an assistant's opener is read at the start of every line": (
+        _an_opener_is_read_at_every_line,
+        test_an_assistant_opener_is_found_where_a_paragraph_opens_however_it_is_wrapped,
+    ),
+    "a paragraph opens only after an empty line": (
+        _a_paragraph_opens_only_after_an_empty_line,
+        test_an_assistant_opener_is_found_where_a_paragraph_opens_however_it_is_wrapped,
+    ),
+    "a paragraph opens only after the ends it names": (
+        _a_paragraph_opens_only_after_the_ends_it_names,
+        test_an_assistant_opener_is_found_where_a_paragraph_opens_however_it_is_wrapped,
+    ),
+    "an opener in capitals can run on from the line before": (
+        _an_opener_in_capitals_can_run_on,
+        test_an_assistant_opener_is_found_where_a_paragraph_opens_however_it_is_wrapped,
     ),
     "the reviewers are read as one reviewer": (
         _the_reviewers_are_one_reviewer,

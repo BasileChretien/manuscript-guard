@@ -34,16 +34,28 @@ def check_consistency(results: Results) -> Report:
     # with the unit forgotten no longer collides. That is a narrower miss than failing on
     # coincidence, and `same_as` exists for the author who wants two keys held together
     # regardless.
-    by_value: dict[tuple[str, str | None], list[str]] = defaultdict(list)
+    #
+    # At nought and one a value written whole and one written with decimals are two kinds as
+    # well: a count of none, "0", beside an interval's bound clamped at nought, "0.00", or a
+    # count of one beside a share at one, failed a study's build as one quantity written two
+    # ways (the athlete-leakage study, 2026-11-06). The kind is read from the display, not from
+    # the number's type, which follows how it was serialised: R writes a double 0 as `0`. The
+    # cost, at those three values only: one quantity written "1" in one place and "1.0" in
+    # another is no longer said, and `same_as` holds such a pair. Elsewhere the two kinds stay
+    # together, so that a count emitted again with decimals is still said.
+    by_value: dict[tuple[str, str | None, str | None], list[str]] = defaultdict(list)
 
     for key, value in results.values.items():
         if not value.quoted:
             continue
         if isinstance(value.value, (int, float)) and not isinstance(value.value, bool):
-            by_value[(f"{float(value.value):.12g}", value.unit)].append(key)
+            number = float(value.value)
+            kind = _kind(value.display) if number in (0.0, 1.0, -1.0) else None
+            by_value[(f"{number:.12g}", value.unit, kind)].append(key)
 
     collisions = 0
-    for (literal, _unit), keys in sorted(by_value.items(), key=lambda kv: kv[0][0]):
+    for (literal, _unit, kind), keys in sorted(by_value.items(),
+                                               key=lambda kv: (kv[0][0], kv[0][2] or "")):
         if len(keys) < 2:
             continue
         collisions += 1
@@ -55,7 +67,8 @@ def check_consistency(results: Results) -> Report:
                 code="duplicate-quantity" if same_display else "divergent-display",
                 severity=WARN if same_display else FAIL,
                 message=(
-                    f"{len(keys)} quoted keys hold the value {literal}: " + ", ".join(sorted(keys))
+                    f"{len(keys)} quoted keys hold the value {literal}"
+                    + (f", written {kind}" if kind else "") + ": " + ", ".join(sorted(keys))
                 ),
                 path=results.values[keys[0]].source,
                 context="displays: " + ", ".join(sorted(displays)),
@@ -166,3 +179,9 @@ def _check_declared_pairs(results: Results) -> Report:
                 )
             )
     return report.with_counts(declared_pairs=declared)
+
+
+def _kind(display: str) -> str:
+    """How a value at nought or one is written: "whole", with no decimal point ("0", "1"), or
+    "with decimals" ("0.00", "1.0"), whatever type its number came in as."""
+    return "with decimals" if "." in str(display) else "whole"

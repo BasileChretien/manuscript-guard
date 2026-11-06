@@ -386,8 +386,34 @@ def artefacts_in(
         for match in re.finditer(rule["pattern"], text, flags):
             if any(start < match.end() and match.start() < end for start, end in taken):
                 continue
+            words = match.start() + len(match.group(0)) - len(match.group(0).lstrip())
+            if rule.get("paragraph_start") and _continues_a_sentence(text, words):
+                continue
             taken.append(match.span())
             yield rule, match
+
+
+#: The end of a line of prose whose sentence runs on into the next line: a word or a number,
+#: a comma, a semicolon, a colon or a dash, and any closing marks after it ("reported",
+#: "Table 2,", "[@key]", "small –").
+_RUNS_ON = re.compile(r"(?:[\w,;:–—]|(?<!-)--)[)\]*_'\"’”]*[ \t\r]*$")
+#: A line that is no prose whatever it ends with: a heading, a LaTeX or an HTML comment.
+_NOT_PROSE = re.compile(r"[ \t]{0,3}#{1,6}(?:[ \t]|$)|[ \t]*%|[ \t]*<!--")
+
+
+def _continues_a_sentence(text: str, at: int) -> bool:
+    """Whether the words at `at` carry on a sentence from the line before: they begin their
+    line in lower case, and the line before is prose that does not end its sentence. In a
+    hard-wrapped paragraph a line can start in the middle of a sentence, "The analysis
+    reported / here is the third protocol". A chat assistant's reply opens with a capital,
+    "Certainly!", "Here is the", so a capital is read as an opening whatever stands before
+    it, a bold label, `\\maketitle`, a sentence's end before a citation mark (round 3 of
+    #538); so is a word in lower case after anything but running prose (round 2)."""
+    start = text.rfind("\n", 0, at) + 1
+    if start == 0 or text[start:at].strip() or not text[at : at + 1].islower():
+        return False
+    before = text[text.rfind("\n", 0, start - 1) + 1 : start - 1]
+    return _NOT_PROSE.match(before) is None and _RUNS_ON.search(before) is not None
 
 
 def _artefacts(rules: Rules, path: Path, text: str, totals: dict) -> Report:
@@ -398,7 +424,8 @@ def _artefacts(rules: Rules, path: Path, text: str, totals: dict) -> Report:
             Finding(
                 gate=GATE,
                 code="model-artefact",
-                message=f"{match.group(0)[:60]!r} — {rule['why']}",
+                # The words, not the blank lines a paragraph's rule reads through to them.
+                message=f"{match.group(0).strip()[:60]!r} — {rule['why']}",
                 path=path,
                 line=_line_of(text, match),
                 context=_context(text, match.start(), match.end()),

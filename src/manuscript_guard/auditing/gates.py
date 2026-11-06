@@ -10,7 +10,9 @@ and the two gates are passed over for it with a note. A PDF's text (`auditing.pd
 staged as Markdown, each line that holds a section's name alone made a heading
 (`_staged_pdf`). Each finding's path is put back to the paper's; in a converted .docx its line
 is a line of the converted text, and in a PDF the line of its text, which the report says as
-a page and a line.
+a page and a line. A place a finding's message names, as G14 names where an abbreviation was
+first defined, is put back the same way (`_relocated`): it named the staged copy,
+"manuscript/main.md:476", of a paper called anything else.
 
 The project's `paper.yaml` is empty but for what the audit is told: `--english` declares the
 paper's English, and `--submission-residue` makes the residue that answers a reviewer a
@@ -20,6 +22,7 @@ failure, as `check` does at the submission stage. Neither gate's finding is coun
 
 from __future__ import annotations
 
+import re
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
@@ -55,6 +58,8 @@ class _Staged:
     #: For a PDF whose headings cannot be placed exactly (`auditing.pdf.PdfText.placed`):
     #: where its Abstract ends is not read, so G4's limits on its words are not checked.
     unplaced: bool = False
+    #: For a PDF, a line of its text in words, "page 3, line 12" (`PdfText.said`).
+    said: Callable[[int | None], str] | None = None
 
 
 def _staged_pdf(paper: Path) -> _Staged:
@@ -78,7 +83,7 @@ def _staged_pdf(paper: Path) -> _Staged:
         staged += said
         lines += [at] * len(said)
     return _Staged({"main.md": "\n".join(staged) + "\n"}, {"main.md": paper}, lines=tuple(lines),
-                   unplaced=placed is None)  # fmt: skip
+                   unplaced=placed is None, said=pdf.said)  # fmt: skip
 
 
 def _stage(paper: Path, tree=None) -> _Staged:
@@ -156,7 +161,7 @@ def run_gates(
     with tempfile.TemporaryDirectory(prefix="mg-audit-") as folder:
         root = Path(folder).resolve()
         project = audit_project(root, staged, english)
-        put_back = _putting_back(root / "manuscript", staged.back, staged.lines)
+        put_back = _putting_back(root / "manuscript", staged.back, staged.lines, staged.said)
         try:
             writing = check_writing(project, submission=residue)
             language = check_language(project)
@@ -174,12 +179,17 @@ def run_gates(
         )
 
 
-def _putting_back(manuscript: Path, back: dict[str, Path],
-                  lines: tuple[int, ...] = ()) -> Callable[[Finding], Finding]:  # fmt: skip
+def _putting_back(manuscript: Path, back: dict[str, Path], lines: tuple[int, ...] = (),
+                  said: Callable[[int | None], str] | None = None,
+                  ) -> Callable[[Finding], Finding]:  # fmt: skip
     """Each finding at the paper's path; in a PDF at the line of its text, with no column,
-    which is the staged Markdown's (`_staged_pdf`)."""
+    which is the staged Markdown's (`_staged_pdf`). The places its message and its hint
+    name, the paper's too (`_relocated`)."""
+    relocated = _relocated(back, lines, said)
 
     def put_back(finding: Finding) -> Finding:
+        finding = replace(finding, message=relocated(finding.message),
+                          hint=finding.hint and relocated(finding.hint))  # fmt: skip
         if finding.path is None:
             return finding
         try:
@@ -194,3 +204,31 @@ def _putting_back(manuscript: Path, back: dict[str, Path],
         return replace(finding, path=back.get(name))
 
     return put_back
+
+
+def _relocated(
+    back: dict[str, Path], lines: tuple[int, ...] = (),
+    said: Callable[[int | None], str] | None = None,
+) -> Callable[[str], str]:  # fmt: skip
+    """What puts a place in the staged project back in the paper. A gate names a manuscript
+    file by its path from the project's root, "manuscript/main.md:476", and the staged
+    `main.md` or `main.tex` is the paper under another name: it is named by the paper's
+    name, a file of its LaTeX tree by its path in the tree, and a line of a PDF's staged
+    Markdown as the page and the line of its text, "paper.pdf, page 3, line 12"."""
+    if not back:
+        return lambda text: text
+    names = "|".join(re.escape(name) for name in sorted(back, key=len, reverse=True))
+    # Standing alone: after a space, a bracket or a quotation mark, or at the start.
+    place = re.compile(rf"(?<![^\s(\[\"'`])manuscript/({names})(?::(\d+))?(?![\w/]|\.\w)")
+
+    def shown(match: re.Match[str]) -> str:
+        name, line = match[1], match[2]
+        file = back[name].name if name in ("main.md", "main.tex") else name
+        if line is None:
+            return file
+        if lines and said is not None and name == "main.md":
+            at = int(line)
+            return f"{file}, {said(lines[at - 1] if 0 < at <= len(lines) else None)}"
+        return f"{file}:{line}"
+
+    return lambda text: place.sub(shown, text)

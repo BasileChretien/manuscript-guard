@@ -26,7 +26,9 @@ structural:
     # matched "Section 4" and left `4.2` as the atom, which the span then failed to cover.
     # A pointer to a table or a figure is held to what the document carries, by
     # `gates/pointers.py`; the words with nothing to hold them to are `numbered-part`.
-    pattern: '(?i)(?:\b(?:table|tables|figure|figures|fig\.?|figs\.?|appendix|annex|equation|eq\.?|section|chapter|supplementary(?=\s)[^\S\n]*(?:\n[^\S\n]*)?(?:table|figure|file|material|method)s?|supplement|additional(?=\s)[^\S\n]*(?:\n[^\S\n]*)?file)[^\S\n]*(?:\n[^\S\n]*)?(?:[-–][^\S\n]*(?:\n[^\S\n]*)?)?S?\d+(?:\.\d+)*[A-Za-z]?|§[^\S\n]*(?:\n[^\S\n]*)?\d+(?:\.\d+)*[A-Za-z]?)\b'
+    # A pointer in the possessive, "Table 2's rows", is one word to the classifier, "2's":
+    # the span stopped at the 2 and left it uncovered (the athlete-leakage study, 2026-11-06).
+    pattern: '(?i)(?:\b(?:table|tables|figure|figures|fig\.?|figs\.?|appendix|annex|equation|eq\.?|section|chapter|supplementary(?=\s)[^\S\n]*(?:\n[^\S\n]*)?(?:table|figure|file|material|method)s?|supplement|additional(?=\s)[^\S\n]*(?:\n[^\S\n]*)?file)[^\S\n]*(?:\n[^\S\n]*)?(?:[-–][^\S\n]*(?:\n[^\S\n]*)?)?S?\d+(?:\.\d+)*[A-Za-z]?(?:[''’]s)?|§[^\S\n]*(?:\n[^\S\n]*)?\d+(?:\.\d+)*[A-Za-z]?)\b'
 
   - id: pointer-list
     why: Several tables or figures pointed at at once, "Tables 1 and 2", "Figures 2-4".

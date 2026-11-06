@@ -98,7 +98,7 @@ class _Records:
         self._literature = literature
         self.readings: dict[str, list[Read]] = {}
         self.unfiled: list[Read] = []
-        for read in records.read_readings(project):
+        for read in records.current(records.read_readings(project)):
             entry = (read.record or {}).get("entry")
             (self.readings.setdefault(str(entry), []) if entry else self.unfiled).append(read)
         self.searches: dict[str, list[Read]] = {}
@@ -362,8 +362,10 @@ def _quotes(entry: Entry, usable: list[dict], held: _Records, path: Path,
         out.append(_finding(
             "currency-quote-not-found", f"{entry.named}: {len(missing)} quote(s) of a reading "
             f"are not in the work's stored abstract or text: {'; '.join(missing)}", path,
-            "a reading quotes each field from the work, word for word; file it again with "
-            "the words the work has"))  # fmt: skip
+            "a reading quotes each field from the work, word for word, starting and ending "
+            "at a word's edge; file it again with the words the work has, with `manuscript-"
+            "guard references --reading FILE --replaces N`, N the number of the reading it "
+            "corrects, so that the gate and the rules read it in that one's place"))  # fmt: skip
     by_rules = (entry.decision or {}).get("by") == "rules"
     if unchecked or (absent and (usable or by_rules)):
         why = (f"{unchecked} quote(s) of its readings could not be checked: nothing of the "
@@ -449,13 +451,15 @@ def _decision(entry: Entry, usable: list[dict], held: _Records, bib: dict, path:
         out.append(_finding(
             "currency-uncertain", f"{entry.named}: the readings disagree, and nothing is "
             "proposed", path, "read the readings with `manuscript-guard references --explain "
-            f"{entry.id}`; a third reading, or a person's decision with why, settles it",
+            f"{entry.id} --readings`; a third reading, made without them, or a person's "
+            "decision with why, settles it",
             INFO))  # fmt: skip
     if action in _PROPOSALS and not entry.answer and not accepted:
         out.append(_finding(
             "currency-change-unanswered", f"{entry.named}: {action} {candidate} is proposed "
             f"({', '.join(decision['rules'])}), and nobody has answered", path,
-            f"read the proposal with `manuscript-guard references --explain {entry.id}`; "
+            f"read the proposal with `manuscript-guard references --explain {entry.id} "
+            "--readings`; "
             "accept it by citing the work in the sentence (add it to Zotero, then "
             f"`manuscript-guard sync-bib`), or refuse it with `references --refuse {entry.id} "
             "--why ... --as <you>`", FAIL if stage == SUBMISSION else WARN))  # fmt: skip
@@ -534,7 +538,7 @@ def readers_of(project: Project) -> list[str]:
     by_rules = {entry.id for entry in entries if (entry.decision or {}).get("by") == "rules"}
     readers: dict[str, list[str]] = {}
     models: set[str] = set()
-    for read in records.read_readings(project):
+    for read in records.current(records.read_readings(project)):
         record = read.record
         if read.problem is None and record and record["entry"] in by_rules:
             model = (record.get("provenance") or {}).get("model")

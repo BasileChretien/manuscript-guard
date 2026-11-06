@@ -386,6 +386,47 @@ def test_g6_and_g14_read_a_markdown_paper_at_its_own_path(tmp_path: Path, capsys
     assert not any("mg-audit-" in json.dumps(f) for f in found)
 
 
+def test_a_place_a_finding_names_is_in_the_audited_file(tmp_path: Path, capsys) -> None:
+    """G14 says where an abbreviation was defined first, and that place was a line of the
+    project the audit makes for the paper: "it was defined at manuscript/main.md:3" of a
+    paper called paper.md, and of one called main.md elsewhere. It names the paper now, at
+    its own line."""
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "# Methods\n\nWe report the standard deviation (SD) of each score.\n\n"
+        "# Results\n\nThe SD was small, and the standard deviation (SD) was stable.\n",
+        encoding="utf-8",
+    )
+    assert main(["audit", str(paper), "--json"]) == 0
+    found = json.loads(capsys.readouterr().out)["findings"]
+    again = [f["message"] for f in found if f["gate"] == "G14" and "defined again" in f["message"]]
+    assert again == ["SD is defined again; it was defined at paper.md:3"], found
+    assert not any("main.md" in json.dumps(f) for f in found), found
+
+    assert main(["audit", str(paper)]) == 0
+    out = capsys.readouterr().out
+    assert "it was defined at paper.md:3" in out and "main.md" not in out
+
+
+def test_a_place_in_a_latex_tree_or_a_pdf_is_the_papers_own() -> None:
+    """The entry of a LaTeX tree is staged as main.tex and is named by its own name, another
+    file of the tree by its path in it; a line of a PDF's staged Markdown is the page and
+    the line of its text, as the report says a PDF's place."""
+    from manuscript_guard.auditing.gates import _relocated
+
+    tree = _relocated({"main.tex": Path("/x/paper.tex"), "sections/intro.tex":
+                       Path("/x/sections/intro.tex")})  # fmt: skip
+    assert tree("SD was defined at manuscript/main.tex:12 and manuscript/sections/intro.tex:4"
+                ) == "SD was defined at paper.tex:12 and sections/intro.tex:4"  # fmt: skip
+    assert tree("in manuscript/main.tex.") == "in paper.tex."
+    assert tree("(manuscript/main.tex:9).") == "(paper.tex:9)."
+    assert tree("not manuscript/main.texts:3 nor my-manuscript/main.tex:3") == (
+        "not manuscript/main.texts:3 nor my-manuscript/main.tex:3")
+    pdf = _relocated({"main.md": Path("/x/paper.pdf")}, (1, 1, 1, 2, 7),
+                     lambda line: f"page 1, line {line}")  # fmt: skip
+    assert pdf("defined at manuscript/main.md:5") == "defined at paper.pdf, page 1, line 7"
+
+
 def test_submission_residue_and_english_are_what_check_reads(tmp_path: Path, capsys) -> None:
     paper = tmp_path / "paper.md"
     paper.write_text(WORDS, encoding="utf-8")

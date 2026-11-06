@@ -3377,6 +3377,28 @@ def test_a_passage_whose_sentence_changed_is_stale(
     assert _passage_findings(project) == said
 
 
+@pytest.mark.parametrize(
+    "change",
+    [
+        pytest.param(("class as a whole", "class {{method.ror}} as a whole"), id="inside"),
+        pytest.param(("[@fictionalClassSignal2019]. The", "[@fictionalClassSignal2019] "
+                      "{{method.ror}}. The"), id="before the stop"),
+        pytest.param(("[@fictionalClassSignal2019]. The", "[@fictionalClassSignal2019]. "
+                      "{{method.ror}} The"), id="after the stop"),
+    ],
+)  # fmt: skip
+def test_a_methods_anchor_does_not_make_a_passage_stale(
+    project: Path, change: tuple[str, str]
+) -> None:
+    """An anchor prints nothing, so the sentence a reader sees is the one the passage was
+    recorded for. Read as words, or as no end of a sentence, it made the passage stale."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    assert change[0] in text
+    path.write_text(text.replace(*change, 1), encoding="utf-8")
+    assert _passage_findings(project) == []
+
+
 def test_a_passage_of_a_work_with_no_stored_copy_is_unchecked(project: Path) -> None:
     (project / "literature" / "sources" / "fictionalClassSignal2019.txt").unlink()
     assert _passage_findings(project) == [("passage-unchecked", "warn")]

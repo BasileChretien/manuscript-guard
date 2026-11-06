@@ -132,6 +132,48 @@ def test_a_passage_belongs_to_its_sentence_however_it_is_typed(
     assert "passage-stale" not in [f.code for f in found.findings]
 
 
+#: The example's cited sentence and the one after it, as main.md writes them.
+CITED_END = "[@fictionalClassSignal2019]. The\nnational agency"
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        pytest.param("class as a whole", "class {{method.ror}} as a whole", id="inside"),
+        pytest.param(CITED_END, "[@fictionalClassSignal2019] {{method.ror}}. The\nnational agency",
+                     id="before the stop"),
+        pytest.param(CITED_END, "[@fictionalClassSignal2019]. {{method.ror}} The\nnational agency",
+                     id="after the stop"),
+        pytest.param(CITED_END, "[@fictionalClassSignal2019].{{method.ror}}\nThe national agency",
+                     id="after the stop, no space"),
+        pytest.param(CITED_END, "[@fictionalClassSignal2019]. {{ method.ror }} {{method.ci}} "
+                     "The\nnational agency", id="two after the stop, spaced"),
+    ],
+)  # fmt: skip
+def test_a_sentence_that_gains_a_methods_anchor_keeps_its_passage(
+    project: Path, old: str, new: str
+) -> None:
+    """An anchor prints nothing (methods-writer). Found linking a real paper's Methods to its
+    code: two recorded passages went stale the moment their sentences took an anchor, one
+    because the anchor was read as words, one because an anchor after the full stop joined
+    the sentence to the next, and the author had to move anchors to keep them."""
+    swap(project, old, new)
+    found = report(project)
+    assert found.counts["cited_statements"] == 3
+    assert found.counts["cited_statements_with_passage"] == 1
+    assert "passage-stale" not in [f.code for f in found.findings]
+
+
+def test_an_anchor_is_no_word_of_a_statement() -> None:
+    plain = statement_words("Risk rose with age [@a].")
+    for written in ("Risk rose with age [@a] {{method.age}}.",
+                    "Risk {{ method.age }} rose with age [@a].",
+                    "Risk rose with age [@a]. {{method.age}}"):  # fmt: skip
+        assert statement_words(written) == plain
+    # A value is a word of the statement, as it is printed.
+    assert statement_words("Risk rose by {{lit.a}} [@a].") != statement_words("Risk rose by [@a].")
+
+
 def test_a_sentence_that_moves_keeps_its_passage(project: Path) -> None:
     """Keyed on the words and the key, never on a file or a line (DESIGN.md, "What the digest
     covers"): to another place in the file, and to another file."""
@@ -472,6 +514,20 @@ def test_the_checker_shows_the_passage_and_its_locator_beside_the_sentence(
     [shown] = [e for e in item["evidence"] if "supporting this sentence" in (e["caption"] or "")]
     assert shown["text"] == "A signal was detected for the class as a whole"
     assert shown["caption"].endswith(": Abstract, Results")
+
+
+def test_an_anchor_added_to_a_cited_sentence_leaves_its_item_as_it_was(project: Path) -> None:
+    """The item is the sentence a co-author reads, and an anchor prints nothing: adding one
+    gave the claim a new id, so an answer about it was lost, and showed it as `[ror]`."""
+    before = first(claim_items(project))
+    swap(project, CITED_END, "[@fictionalClassSignal2019]. {{method.ror}} The\nnational agency")
+    after = first(claim_items(project))
+    assert (after["id"], after["title"], after["digest"]) == (
+        before["id"], before["title"], before["digest"])
+    assert after["sentences"][0]["text"] == before["sentences"][0]["text"]
+    assert "[ror]" not in json.dumps(after["sentences"]) and "method" not in after["title"]
+    shown = [e for e in after["evidence"] if "supporting this sentence" in (e["caption"] or "")]
+    assert len(shown) == 1
 
 
 def test_a_passage_changed_after_a_co_author_read_it_changes_the_item(project: Path) -> None:

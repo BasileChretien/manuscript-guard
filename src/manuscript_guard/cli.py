@@ -3559,11 +3559,13 @@ def cmd_references(args: argparse.Namespace) -> int:
             raise command.Refused("--readings goes with --explain")
         if args.search is not None or args.replay is not None or _search_flags(args):
             return _references_search(project, args)
+        if args.replaces is not None and args.reading is None:
+            raise command.Refused("--replaces goes with --reading")
         if args.mark is not None:
             words, key = args.mark
             print(command.mark(project, words, key, args.as_, args.id, args.question))
         elif args.reading is not None:
-            print(command.file_reading(project, args.reading))
+            print(command.file_reading(project, args.reading, replaces=args.replaces))
         elif args.refuse is not None:
             if not args.why or not args.as_:
                 raise command.Refused("--refuse needs --why and --as, the reason and who "
@@ -3651,7 +3653,7 @@ def _references_search(project, args: argparse.Namespace) -> int:
     # Another action's flags were dropped without a word (the review of #531's merge, and
     # round 1 of #534).
     for action, flags in (("--assess", ("reply", "says", "quote")), ("--refuse", ("why",)),
-                          ("--mark", ("id",))):  # fmt: skip
+                          ("--mark", ("id",)), ("--reading", ("replaces",))):  # fmt: skip
         given = [f"--{flag}" for flag in flags if getattr(args, flag) is not None]
         if len(given) == 1:
             raise command.Refused(f"{given[0]} goes with {action}, not with --search or --replay")
@@ -7404,6 +7406,10 @@ def build_parser() -> argparse.ArgumentParser:
                             help="--assess: what the reply says of the proposal")
     references.add_argument("--quote", help="--assess: the reply's words that say it, verbatim")
     references.add_argument("--why", help="--refuse: the reason")
+    references.add_argument("--replaces", type=int, metavar="N",
+                            help="--reading: the reading corrects its reader's reading N of "
+                            "the entry, which the gate and the rules then read no longer; "
+                            "without it, a further reading counts as one more")  # fmt: skip
     action.add_argument("--search", metavar="ID",
                         help="run the fixed searches for an entry (with --terms and --as) and "
                         "record each one")  # fmt: skip

@@ -3723,7 +3723,18 @@ function) decide:
 
 Settled here, where the design left it open: the rules decide nothing from one reading, so
 that a change is proposed only where two agree, and a reading counts once, by its reader and
-its number (a copy filed under another name is `currency-record-edited`); a candidate that
+its number (a copy filed under another name is `currency-record-edited`). A reader's further
+reading of an entry counts as one more, so one model read twice in two fresh contexts gives
+two; a reading filed with `references --reading FILE --replaces N` corrects its reader's
+reading N instead, and the gate, the rules, the cutoff and `check`'s summary all read it in
+that one's place (`records.current`). The latest reading of each reader was the other choice,
+and was not taken: it would have made one model read twice one reading. A replaced reading
+stays filed and sealed; one edited is still `currency-record-edited`. `--reading` refuses a
+reading any of whose quotes G7 would refuse, each named, so that one is not filed to fail:
+a quote starts and ends at a word's edge, a hyphen-joined word whole, as a passage's does
+(`quote_in`); a quote of a work nothing is stored of is filed, and G7 notes it unchecked
+(found taking the athlete-leakage study through the loop, where a registry had turned a
+dash into a hyphen). A candidate that
 contradicts the sentence is added and never put in its citation's place, and where one
 candidate gives `add` and another `replace`, the entry is `add`, since the contradiction is
 what the author has to read first. The rule ids a decision records are `K1, K2, K3`, the D

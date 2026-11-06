@@ -20425,6 +20425,9 @@ Open, recorded as each change landed:
     abstract, and its `similar-passage-not-in-source` became a warning there, unsaid here.
   - A passage mistyped from an abstract that is the work's only copy, the author's own saved
     one included, failed on main and now warns; a near match could keep it failing.
+  - Round 3 left: `_literal` does not decode octal escapes (`\050`); every `/doi(` in the whole
+    file is scanned; a letter glued to the work's DOI makes it the work's whatever the word;
+    and some round 1 and 2 tests pass on a6f8e058 too, so do not show those fixes.
 - **`sync-sources --from` matches only a name a DOI spells, at the places the harvester puts
   it.** A PDF named by its title, its PMID or its citation key is counted as named for no
   cited DOI and not copied, and one deeper in the folder than `<name>/` or

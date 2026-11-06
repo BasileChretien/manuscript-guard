@@ -284,13 +284,13 @@ def shows(path: Path, doi: str | None, title: str | None, text: str | None = Non
 
 
 def _own(printed: str, doi: str | None) -> bool:
-    """Whether a DOI read on a page is the work's: the same, the start of it cut at a line
-    break, or it with a word `-layout` set against it (round 2 of #565:
+    """Whether a DOI read on a page is the work's: the same (not its start, as a reference cut
+    at a line break gives: round 3), or it with a word `-layout` set against it (round 2 of #565:
     `10.1177/25152459221106366deffner` was taken for another). `<doi>.s001`, a supplement's,
     is not."""
     if not doi:
         return False
-    if printed == doi or doi.startswith(printed):
+    if printed == doi:
         return True
     return printed.startswith(doi) and printed[len(doi)].isalpha()
 
@@ -320,9 +320,11 @@ def judged(raw: bytes, text: str | None, doi: str | None, title: str | None) -> 
         return Shown(None, f"its metadata names another DOI ({', '.join(others)}), so it is "
                            "taken for another work", near)  # fmt: skip
     by_doi = bool(doi) and (doi in meta or in_text)
-    if not by_doi:
-        page_one = sorted(one for one in _on_the_page(pages[0] if pages else "")
-                          if not _own(one, doi))  # fmt: skip
+    first = pages[0] if pages else ""  # the work's DOI on page 2 may be a reference's
+    on_first = _on_the_page(first)
+    if not (doi and (doi in meta or doi_in(first, doi) or any(_own(o, doi) for o in on_first))):
+        page_one = sorted(one for one in on_first
+                          if not (_own(one, doi) or (doi and doi.startswith(one))))  # fmt: skip
         if page_one:
             return Shown(None, f"its first page gives another DOI ({', '.join(page_one)}) and "
                                "not the work's, so it is another work, or one about several",

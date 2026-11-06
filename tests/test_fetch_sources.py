@@ -769,3 +769,11 @@ def test_a_preprint_printing_its_own_doi_is_not_taken_by_the_title() -> None:
             "doi: 10.1101/2020.01.01.123")
     shown = matching.judged(b"%PDF-1.4", text, DOI, TITLE)
     assert shown.by is None and "10.1101/2020.01.01.123" in shown.why
+
+
+@pytest.mark.parametrize("cited", ["10.5555/fictional.\n2018.777", "10.5555/fictional.2020.123"])
+def test_a_doi_in_another_papers_references_is_not_the_works(cited: str) -> None:
+    """Round 3 of #565: a reference's DOI cut at a line break, or the work's on page 2."""
+    text = ("Imaginary Drug Safety Reports\nhttps://doi.org/10.5555/fictional.2019.002\n"
+            f"A signal\n\fReferences\n[3] Smith. https://doi.org/{cited}\n")
+    assert matching.judged(b"%PDF-1.4\n", text, "10.5555/fictional.2020.123", None).by is None

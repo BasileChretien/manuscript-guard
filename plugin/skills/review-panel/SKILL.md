@@ -43,7 +43,7 @@ read [references/remits.md](references/remits.md), which gives each one's remit 
   comparisons it uses, and for the people whose work it says it improves on, asked apart
   whether the paper is right and whether it is new;
 - **the abstract alone**: a reader sent only the title and abstract, who says what they
-  conclude and whether the caveat that would change it is there; route A only;
+  conclude and whether the caveat that would change that conclusion is there; route A only;
 - **earlier outputs**, for a paper with an abstract or an article on the same data before it;
 - **citation support**, for a paper that rests on its references: whether each cited work
   says what the sentence citing it says; route A only.

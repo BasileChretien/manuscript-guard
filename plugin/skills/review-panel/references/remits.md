@@ -4,11 +4,17 @@ Step 1 of the skill lists these. Each section says when the remit is worth a rea
 that reader is given and asked, and by which route it is read. Each goes into the panel file
 like any other remit, with an id, the remit and a `why`.
 
+A remit read by route A only goes in a round that no model reads. `review --run` cannot
+leave a reviewer out: it gives every reviewer in the round's panel file to every model, with
+the whole manuscript. The two such remits below can share a round.
+
 ## Contradiction
 
 Worth a reviewer of its own on most papers. Where the Methods say something was done and the
 Limitations, the Discussion or the registration say otherwise, neither section's reader
-notices, because each reads its own part. Either route reads it.
+notices, because each reads its own part. Either route reads it, but `review --run` does not
+send the registration: a model compares the Methods with it only where the manuscript
+quotes it.
 
 ## The communities the paper draws on
 
@@ -44,7 +50,8 @@ The summary of the reading answers each question in a sentence of its own, so th
 which answered one and not the other shows it. A remit for the example above might read
 "whether the paper uses disproportionality measures and spontaneous reports as
 pharmacovigilance would; and, apart from that, whether what it claims as new is new to
-pharmacovigilance".
+pharmacovigilance. Answer each in a sentence of its own in the summary". A model read by
+route B is sent only its role and remit, so the remit itself has to ask for the two answers.
 
 The field readers of a default panel are some of these communities already. The list shows
 which ones are missing, and the two questions can go into each field reader's remit. One
@@ -71,7 +78,9 @@ worth having.
 
 Read it by route A only, since `review --run` sends every manuscript file. Put the title and
 abstract in the brief of a fresh agent, or give them to a person who has not read the paper.
-Never ask the context that wrote them: it knows what the abstract leaves out. Give it an id
+Never ask the context that wrote them: it knows what the abstract leaves out. Route A begins
+by reading the whole manuscript, which this reader must not do, so if your tool cannot start
+a fresh agent and no person is at hand, leave this remit out. Give it an id
 such as `abstract-alone` and the remit "what a reader of the title and abstract alone
 concludes, and whether the abstract carries the caveat that would change that conclusion".
 If the manuscript is in several files, keep under `file_sha256` only the file that holds the
@@ -86,7 +95,9 @@ not this reader's to make.
 
 Once the reading is sealed, set its conclusion beside the Results. Where they support less
 than it says, the abstract has to change, even if the reader found no caveat missing: what
-this reader concluded is what a reader of the abstract will conclude.
+this reader concluded is what a reader of the abstract will conclude. No gate makes this
+comparison and no record holds it, so give the author the conclusion and the Results it goes
+beyond, and let the next round read the abstract they write.
 
 ## Earlier outputs
 

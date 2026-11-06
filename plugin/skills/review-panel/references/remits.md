@@ -6,7 +6,11 @@ like any other remit, with an id, the remit and a `why`.
 
 A remit read by route A only goes in a round that no model reads. `review --run` cannot
 leave a reviewer out: it gives every reviewer in the round's panel file to every model, with
-the whole manuscript. The two such remits below can share a round.
+the whole manuscript, and without `--round` it runs the first round someone has not reported
+in. So record that round's readings before any run, or give every run `--round`. The two
+such remits below can share a round. It is a round like any other: it counts toward
+`review.rounds_required`, once complete it supersedes the stale rounds before it, and a later
+round without `blinded: true` draws `round-not-blinded`.
 
 ## Contradiction
 
@@ -83,8 +87,10 @@ by reading the whole manuscript, which this reader must not do, so if your tool 
 a fresh agent and no person is at hand, leave this remit out. Give it an id
 such as `abstract-alone` and the remit "what a reader of the title and abstract alone
 concludes, and whether the abstract carries the caveat that would change that conclusion".
-If the manuscript is in several files, keep under `file_sha256` only the file that holds the
-abstract, as step 2 of the skill says for a reader of some of them.
+If the manuscript is in several files and another reader of the same round, such as citation
+support, lists them all, keep under `file_sha256` only the file that holds the abstract, as
+step 2 of the skill says for a reader of some of them. Alone in its round, this reader keeps
+the whole list: a round stays incomplete while a file is on nobody's list.
 
 The reading's summary is that conclusion, and its verdict is on the abstract, not on the
 paper. Its findings are about the abstract too: a caveat the

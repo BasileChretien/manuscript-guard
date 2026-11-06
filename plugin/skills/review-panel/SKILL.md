@@ -58,7 +58,8 @@ is a place to start. A panel fitted to the paper sees more, so edit the file.
 
 ## 2. Review
 
-There are two ways to get a remit read, and one round can use both.
+There are two ways to get a remit read, and one round can use both, unless it holds a remit
+read by route A only ([references/remits.md](references/remits.md)).
 
 ### Route A: read it yourself
 

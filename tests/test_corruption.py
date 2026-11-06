@@ -788,6 +788,33 @@ def test_a_count_and_a_percentage_that_coincide_are_not_one_quantity(project: Pa
     assert "divergent-display" not in codes(gate_report(project))
 
 
+@pytest.mark.parametrize("value", [0, 1])
+def test_a_count_and_a_bound_that_both_are_zero_or_one_are_not_one_quantity(
+    project: Path, value: int
+) -> None:
+    """A count of none, "0", and an interval's lower bound clamped at nought, "0.00", failed
+    the athlete-leakage study's build as one quantity written two ways, as did a count of
+    one beside a bound at one; the author could change neither. At nought and one, where
+    bounds and shares clamp and counts are small, a whole count and a measured value are two
+    quantities. A measured value under two keys and two roundings is still one."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    point = document["values"]["ror.point"]
+    document["values"]["cohort.n_under_18"] = {**point, "value": value, "display": str(value),
+                                               "digits": 0}  # fmt: skip
+    document["values"]["reliability.ci_low"] = {**point, "value": float(value),
+                                                 "display": f"{value}.00", "digits": 2}
+    document["values"]["reliability.other"] = {**point, "value": float(value),
+                                               "display": f"{value}.0", "digits": 1}
+    for key in ("cohort.n_under_18", "reliability.ci_low", "reliability.other"):
+        document["values"][key].pop("unit", None)
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    said = [f.message for f in gate_report(project).findings if f.code == "divergent-display"]
+    assert said == [f"2 quoted keys hold the value {value}: reliability.ci_low, "
+                    "reliability.other"], said
+
+
 def test_a_display_edited_away_from_its_value_is_caught(project: Path) -> None:
     """A bonus from checking displays at emit time: the read path checks them too.
 

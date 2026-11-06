@@ -34,16 +34,24 @@ def check_consistency(results: Results) -> Report:
     # with the unit forgotten no longer collides. That is a narrower miss than failing on
     # coincidence, and `same_as` exists for the author who wants two keys held together
     # regardless.
-    by_value: dict[tuple[str, str | None], list[str]] = defaultdict(list)
+    #
+    # At nought and one a whole count and a measured value are two kinds as well: a count
+    # of none beside an interval's bound clamped at nought, or a count of one beside a share
+    # at one, failed a study's build as one quantity written two ways (the athlete-leakage
+    # study, 2026-11-06). Elsewhere an int and a float of one value stay together, so that a
+    # count emitted again with decimals is still said.
+    by_value: dict[tuple[str, str | None, str | None], list[str]] = defaultdict(list)
 
     for key, value in results.values.items():
         if not value.quoted:
             continue
         if isinstance(value.value, (int, float)) and not isinstance(value.value, bool):
-            by_value[(f"{float(value.value):.12g}", value.unit)].append(key)
+            number = float(value.value)
+            kind = (type(value.value).__name__ if number in (0.0, 1.0, -1.0) else None)
+            by_value[(f"{number:.12g}", value.unit, kind)].append(key)
 
     collisions = 0
-    for (literal, _unit), keys in sorted(by_value.items(), key=lambda kv: kv[0][0]):
+    for (literal, _unit, _kind), keys in sorted(by_value.items(), key=lambda kv: kv[0][0]):
         if len(keys) < 2:
             continue
         collisions += 1

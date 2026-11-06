@@ -1,13 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://manuscript-guard.org/schemas/sources/1",
-  "title": "manuscript-guard record of the sources copied from Zotero or from a folder of downloaded PDFs",
-  "description": "Each file `manuscript-guard sync-sources` wrote under literature/sources/, by its name there: the work it is a copy of, the SHA-256 and size of what was written, whether it is Zotero's file, Zotero's text of a file, or a PDF of the folder named with `--from` and the DOI it was matched by, and the day. It is how the command knows which files are its own to replace when the copy they came from changes, and never writes over a file it did not write. A file the author saved there is entered too, as the author's, and never replaced. A new project keeps literature/sources/ out of git and this record in it, so that G7 can tell a copy that is on another computer from one nobody stored. It holds no path on anyone's computer.",
+  "title": "manuscript-guard record of the sources copied from Zotero, from a folder of downloaded PDFs, or from the web",
+  "description": "Each file `manuscript-guard sync-sources` wrote under literature/sources/, by its name there: the work it is a copy of, the SHA-256 and size of what was written, whether it is Zotero's file, Zotero's text of a file, a PDF of the folder named with `--from` and the DOI it was matched by, a PDF of the folder named with `--inbox` and how it showed it is the work, or a copy fetched from the web (an open copy, the publisher's PDF through this computer's access, or the work's abstract) and the URL it was asked at, and the day. It is how the command knows which files are its own to replace when the copy they came from changes, and never writes over a file it did not write. A file the author saved there is entered too, as the author's, and never replaced. A new project keeps literature/sources/ out of git and this record in it, so that G7 can tell a copy that is on another computer from one nobody stored. It holds no path on anyone's computer.",
   "type": "object",
   "required": ["schema", "files"],
   "additionalProperties": false,
   "properties": {
-    "schema": { "enum": ["manuscript-guard/sources/1", "manuscript-guard/sources/2"] },
+    "schema": {
+      "enum": ["manuscript-guard/sources/1", "manuscript-guard/sources/2", "manuscript-guard/sources/3"]
+    },
     "files": {
       "type": "object",
       "propertyNames": { "pattern": "^[A-Za-z0-9_.-]+$" },
@@ -20,8 +22,8 @@
           "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "bytes": { "type": "integer", "minimum": 0 },
           "from": {
-            "enum": ["zotero", "zotero-text", "folder", "author"],
-            "description": "`zotero`: the attachment's own file. `zotero-text`: Zotero's text of an attachment whose file is not on this computer or is an EPUB, the `.zotero-ft-cache` in the attachment's folder. `folder`: a PDF of the folder named with `--from`, whose name spells the work's DOI. `author`: a file the author saved there, under the work's name or one the ledger names, recorded as it was when the command last found it and never replaced."
+            "enum": ["zotero", "zotero-text", "folder", "author", "open", "publisher", "abstract", "inbox"],
+            "description": "`zotero`: the attachment's own file. `zotero-text`: Zotero's text of an attachment whose file is not on this computer or is an EPUB, the `.zotero-ft-cache` in the attachment's folder. `folder`: a PDF of the folder named with `--from`, whose name spells the work's DOI. `author`: a file the author saved there, under the work's name or one the ledger names, recorded as it was when the command last found it and never replaced. `open`: an open copy fetched from the web, at the place OpenAlex, PubMed Central or arXiv gives. `publisher`: the PDF the work's DOI link gave this computer, through whatever access its network has. `abstract`: the work's abstract, from a registry, where no full text could be had. `inbox`: a PDF of the folder named with `--inbox`, which showed the work's DOI or title."
           },
           "attachment": {
             "type": "string",
@@ -31,7 +33,20 @@
           "doi": {
             "type": "string",
             "pattern": "^10\\.\\d{4,9}(\\.\\d+)*/\\S+$",
-            "description": "The DOI of the work's entry in references.bib, as G7 reads it (undressed, in lower case), that the folder's file was matched by."
+            "description": "The DOI of the work's entry in references.bib, as G7 reads it (undressed, in lower case): the one the folder's file was matched by, or the one a fetched copy or an inbox's PDF is of."
+          },
+          "url": {
+            "type": "string",
+            "pattern": "^https?://\\S+$",
+            "description": "Where a copy fetched from the web was asked for: the open copy's place, the DOI's link at doi.org, or the registry's record of the abstract. Never the URL a redirect ended at, which can carry a publisher's token."
+          },
+          "matched": {
+            "enum": ["doi", "title"],
+            "description": "How a fetched or an inbox's PDF showed it is the work: its DOI, or its title, on its first two pages or in its metadata."
+          },
+          "version": {
+            "enum": ["published", "accepted", "submitted"],
+            "description": "Which version of the work an open copy is, as OpenAlex says: a quote checked against an accepted or submitted manuscript may differ from the published text."
           },
           "copied": {
             "type": "string",
@@ -42,12 +57,29 @@
         "allOf": [
           {
             "if": { "properties": { "from": { "const": "folder" } } },
-            "then": { "required": ["doi"], "not": { "required": ["attachment"] } },
-            "else": { "not": { "required": ["doi"] } }
+            "then": { "required": ["doi"] }
           },
           {
-            "if": { "properties": { "from": { "const": "author" } } },
+            "if": { "properties": { "from": { "enum": ["zotero", "zotero-text", "author"] } } },
+            "then": { "not": { "anyOf": [{ "required": ["doi"] }, { "required": ["url"] }, { "required": ["matched"] }] } }
+          },
+          {
+            "if": { "properties": { "from": { "enum": ["folder", "author", "open", "publisher", "abstract", "inbox"] } } },
             "then": { "not": { "required": ["attachment"] } }
+          },
+          {
+            "if": { "properties": { "from": { "enum": ["open", "publisher", "abstract"] } } },
+            "then": { "required": ["url"] },
+            "else": { "not": { "required": ["url"] } }
+          },
+          {
+            "if": { "properties": { "from": { "enum": ["open", "publisher", "inbox"] } } },
+            "then": { "required": ["matched"] },
+            "else": { "not": { "required": ["matched"] } }
+          },
+          {
+            "if": { "properties": { "from": { "const": "open" } } },
+            "else": { "not": { "required": ["version"] } }
           }
         ]
       }

@@ -260,8 +260,9 @@ def _sources_exist(project: Project, literature: Literature) -> Report:
 def _back_here(taken_from: str | None) -> str:
     """How a copy kept out of git gets onto this computer, by where the record says it came
     from: `sync-sources` takes Zotero's again, and a folder's with `--from` (round 1 of
-    #534), and never writes into the name of a file the author saved (round 2 of #525)."""
-    from manuscript_guard.literature.copies import FROM_AUTHOR, FROM_FOLDER
+    #534), or with `--inbox`; it fetches again what it took from the web; and it never writes
+    into the name of a file the author saved (round 2 of #525)."""
+    from manuscript_guard.literature.copies import FROM_AUTHOR, FROM_FOLDER, FROM_INBOX
 
     if taken_from == FROM_AUTHOR:
         return ("it was saved there by hand, so get it from whoever saved it: "
@@ -269,6 +270,9 @@ def _back_here(taken_from: str | None) -> str:
     if taken_from == FROM_FOLDER:
         return ("to have the copy here, run `manuscript-guard sync-sources --from <folder>` "
                 "with the folder of PDFs it was taken from")  # fmt: skip
+    if taken_from == FROM_INBOX:
+        return ("to have the copy here, run `manuscript-guard sync-sources --inbox <folder>` "
+                "with the folder its PDF was saved to")  # fmt: skip
     return "to have the copy here, run `manuscript-guard sync-sources`"
 
 

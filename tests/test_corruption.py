@@ -3137,6 +3137,27 @@ def test_a_quotation_in_the_prose_is_in_the_source_it_cites(
     assert [(f.code, f.severity) for f in found] == said
 
 
+def test_a_quotation_not_in_the_only_stored_abstract_is_unchecked(project: Path) -> None:
+    """Round 1 of #565: `sync-sources` writes an abstract for each work it finds no full text
+    of, and a quotation of the paper's body was then said not to be in its source. Held to an
+    abstract alone it is unchecked, unless the abstract holds it."""
+    from manuscript_guard.gates import check_prose_quotations
+
+    sources = project / "literature" / "sources"
+    (sources / "fictionalHepaticCohort2021.txt").unlink()
+    (sources / "fictionalHepaticCohort2021.abstract.txt").write_text(
+        "Incidence rose with age.\n", encoding="utf-8")
+    path = main_md(project)
+    sentence = ("The cohort found that “incidence fell with age and differed by sex” "
+                "[@fictionalHepaticCohort2021].")  # fmt: skip
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("\n# Discussion\n", "\n" + sentence + "\n\n# Discussion\n", 1),
+                    encoding="utf-8")  # fmt: skip
+    found = check_prose_quotations(load_project(project)[0]).findings
+    assert [(f.code, f.severity) for f in found] == [("quotation-unchecked", "info")]
+    assert "only its abstract" in found[0].message
+
+
 def test_a_misquotation_names_only_the_works_looked_in(project: Path) -> None:
     """Round 1 of #282: every cited key was named, a work with no stored source as well."""
     from manuscript_guard.gates import check_prose_quotations
@@ -13236,7 +13257,7 @@ def test_a_recorded_source_not_on_this_computer_is_noted_and_unverifiable(projec
     assert "literature-source-missing" not in {f.code for f in gated.failures}
 
 
-@pytest.mark.parametrize("taken_from", ["author", "zotero", "folder"])
+@pytest.mark.parametrize("taken_from", ["author", "zotero", "folder", "inbox", "open"])
 def test_a_recorded_source_not_here_says_where_it_comes_back_from(
     project: Path, taken_from: str
 ) -> None:
@@ -13252,6 +13273,12 @@ def test_a_recorded_source_not_here_says_where_it_comes_back_from(
     document["files"][_HEPATIC]["from"] = taken_from
     if taken_from == "folder":
         document["files"][_HEPATIC]["doi"] = "10.5555/hepatic.2021"
+    if taken_from in ("inbox", "open"):
+        # A PDF the user saved comes back only from the folder it was saved to; one the web
+        # gave is fetched again by `sync-sources` as it is.
+        document["files"][_HEPATIC]["matched"] = "doi"
+    if taken_from == "open":
+        document["files"][_HEPATIC]["url"] = "https://repository.test/hepatic.pdf"
     path.write_text(yaml.safe_dump(document), encoding="utf-8")
     (note,) = [f for f in _literature_report(project).findings
                if f.code == "literature-source-not-here"]  # fmt: skip
@@ -13260,6 +13287,8 @@ def test_a_recorded_source_not_here_says_where_it_comes_back_from(
         assert "whoever saved it" in note.hint and run not in note.hint, note.hint
     elif taken_from == "folder":
         assert f"{run} --from" in note.hint and "whoever saved it" not in note.hint, note.hint
+    elif taken_from == "inbox":
+        assert f"{run} --inbox" in note.hint and "whoever saved it" not in note.hint, note.hint
     else:
         assert f"{run}`" in note.hint and "--from" not in note.hint, note.hint
 

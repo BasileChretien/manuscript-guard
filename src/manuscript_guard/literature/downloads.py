@@ -64,6 +64,8 @@ class Offer:
     pdfs: int
     unmatched: int
     unread: tuple[str, ...] = ()
+    #: Read by `--inbox`, by what each PDF shows (`literature/inbox.py`), not by its name.
+    inbox: bool = False
 
     def candidates(self, key: str) -> tuple[list[Candidate], list[str]]:
         return self.chosen.get(key, []), self.why.get(key, [])

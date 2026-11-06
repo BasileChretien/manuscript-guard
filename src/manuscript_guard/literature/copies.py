@@ -37,8 +37,13 @@ entry rewritten, and nothing is written into the name of an absent file of the a
 
 With `--from <folder>` the files are taken from a folder of PDFs named by DOI instead of from
 Zotero (`downloads`), under the same rules, and recorded as from the folder with the DOI they
-were matched by. A file one source wrote is not replaced from the other: one paper downloaded
-twice can differ in its bytes, and each run would put its own back.
+were matched by; with `--inbox <folder>`, from a folder of PDFs matched by the DOI or title
+they show (`inbox`). A file one source wrote is not replaced from the other: one paper
+downloaded twice can differ in its bytes, and each run would put its own back.
+
+A work none of these gave a full text for is then looked for on the web (`fetching`): its open
+copy, its publisher's PDF through this computer's access, else its abstract. What is fetched
+is filed by the same rules, and recorded with the URL it was asked at.
 """
 
 from __future__ import annotations
@@ -71,11 +76,13 @@ from manuscript_guard.zotero import Attachment, client
 if TYPE_CHECKING:
     from manuscript_guard.literature.downloads import Offer
 
-#: The second version can hold the author's own files (`from: author`); the first is read as
-#: it was written, and the record is written again as the second.
-SCHEMA = "manuscript-guard/sources/2"
+#: The second version can hold the author's own files (`from: author`), the third the copies
+#: fetched from the web and from an inbox; the earlier ones are read as they were written, and
+#: the record is written again as the third. A manuscript-guard that reads only the second
+#: then says the record is a newer one's and to upgrade, rather than that it is not a record.
+SCHEMA = "manuscript-guard/sources/3"
 #: The versions this tool reads. A later one was written by a newer manuscript-guard.
-READS = ("manuscript-guard/sources/1", SCHEMA)
+READS = ("manuscript-guard/sources/1", "manuscript-guard/sources/2", SCHEMA)
 _VERSION = re.compile(r"manuscript-guard/sources/(\d+)")
 #: Under `literature/`, beside `sources/` rather than in it, so that it can be kept in git
 #: where the sources are not.
@@ -95,6 +102,17 @@ NOT_THE_WORK = frozenset(TEXT_SUFFIXES) - TAKEN
 FROM_FOLDER = "folder"
 #: What `from` says of a file the author saved there: recorded, and never replaced.
 FROM_AUTHOR = "author"
+#: What `from` says of an open copy fetched from the web, of a publisher's PDF fetched
+#: through this computer's access, of an abstract fetched from a registry, and of a PDF of
+#: the folder named with `--inbox`, matched by the DOI or title it shows.
+FROM_OPEN = "open"
+FROM_PUBLISHER = "publisher"
+FROM_ABSTRACT = "abstract"
+FROM_INBOX = "inbox"
+#: Who holds the copy each kind came from, as the command names it.
+_HOLDERS = {"zotero": "Zotero", "zotero-text": "Zotero", FROM_FOLDER: "the folder",
+            FROM_INBOX: "the inbox", FROM_OPEN: "the web", FROM_PUBLISHER: "the web",
+            FROM_ABSTRACT: "the web"}  # fmt: skip
 
 COPIED = "copied"
 UPDATED = "updated"
@@ -132,12 +150,18 @@ class Candidate:
     size: int
     #: What the copy is, as the command says it: "from Zotero", or which file Zotero's text is of.
     about: str = "from Zotero"
-    #: The DOI a file of the folder was matched by.
+    #: The DOI a file of the folder was matched by, or of the work a fetched copy is of.
     doi: str | None = None
+    #: Where a fetched copy was asked for: the open copy's URL, the DOI's link, the registry's.
+    url: str | None = None
+    #: How a fetched or an inbox's PDF showed it is the work: by its "doi" or its "title".
+    matched: str | None = None
+    #: Which version an open copy is, as OpenAlex says: published, accepted or submitted.
+    version: str | None = None
 
 
 def _holder(kind: str) -> str:
-    return "the folder" if kind == FROM_FOLDER else "Zotero"
+    return _HOLDERS.get(kind, "Zotero")
 
 
 @dataclass(frozen=True)
@@ -326,8 +350,9 @@ def _entry(key: str, candidate: Candidate, written: tuple[str, int], today: date
     entry["from"] = candidate.kind
     if candidate.attachment:
         entry["attachment"] = candidate.attachment
-    if candidate.doi:
-        entry["doi"] = candidate.doi
+    for name in ("doi", "url", "matched", "version"):
+        if getattr(candidate, name):
+            entry[name] = getattr(candidate, name)
     entry["copied"] = today.isoformat()
     return entry
 
@@ -339,19 +364,20 @@ def _size(size: int) -> str:
     return f"{size} bytes"
 
 
-def _said(status: str, candidate: Candidate, dry_run: bool) -> str:
+def _said(status: str, candidate: Candidate, dry_run: bool, ours: str | None = None) -> str:
     where = f"literature/sources/{candidate.name}"
     holder = _holder(candidate.kind)
     what = candidate.about
     if status == COPIED:
-        return f"{'would copy' if dry_run else 'copied'} {where} ({what}, {_size(candidate.size)})"
+        verb = ("would download", "downloaded") if holder == "the web" else ("would copy", "copied")
+        return f"{verb[0] if dry_run else verb[1]} {where} ({what}, {_size(candidate.size)})"
     if status == UPDATED:
         verb = "would replace" if dry_run else "replaced"
         return f"{verb} {where} with {holder}'s newer copy ({what}, {_size(candidate.size)})"
     if status == UNCHANGED:
         return f"{where} is {holder}'s copy already"
     if status == _OTHERS:
-        other = "Zotero" if candidate.kind == FROM_FOLDER else "the folder"
+        other = _holder(ours or "")
         return (
             f"{where} was copied from {other}, and {holder}'s differs: left as it is. Move it "
             f"away to take {holder}'s."
@@ -431,9 +457,11 @@ def sync(
     today: date | None = None,
     fetch: Callable[[str], list[Attachment] | None] | None = None,
     offered: Offer | None = None,
+    web: Callable[[str], tuple[list[Candidate], list[str]]] | None = None,
 ) -> list[Outcome]:
     """Copy each cited work's files from Zotero, or from the folder `offered` was read from,
-    record them, and say what became of each."""
+    and, where `web` is given, look on the web for each work none of them gave a full text
+    for; record them, and say what became of each."""
     keys = wanted_keys(project)
     if not keys:
         raise NothingToCopy(f"the manuscript cites nothing and {_review_said(project)}, so "
@@ -461,6 +489,12 @@ def sync(
                 chosen, why = [], ["not in Zotero"]
             else:
                 chosen, why = candidates(key, held)
+            if web is not None and not _full_text_in(chosen) and not _full_text_stored(folder, key):
+                fetched, said = web(key)
+                # What Zotero said comes first, and "no attachment" is what it says by giving
+                # nothing; the web's reasons follow.
+                said_before = why or (["no attachment"] if offered is None else [])
+                chosen, why = chosen + fetched, said_before + said
             away = _away_of(recorded, folder, key)
             if not chosen:
                 outcomes.append(_without_copy(folder, key, why, holder, away, noted))
@@ -563,8 +597,22 @@ def _file(
             said = f"{where} could not be written ({exc.strerror or exc}): left as it was"
             return Outcome(key, KEPT, said, candidate.name)
         files[candidate.name] = _entry(key, candidate, written, today)
-    said = _said(status, candidate, dry_run)
+    said = _said(status, candidate, dry_run, ours["from"] if ours else None)
     return Outcome(key, KEPT if status == _OTHERS else status, said, candidate.name)
+
+
+def _is_abstract(name: str) -> bool:
+    return ".abstract." in name
+
+
+def _full_text_in(chosen: list[Candidate]) -> bool:
+    return any(not _is_abstract(candidate.name) for candidate in chosen)
+
+
+def _full_text_stored(folder: Path, key: str) -> bool:
+    """Whether a file of the work other than its abstract is on this computer: the web is not
+    asked again for a work it gave a copy of, nor for one the author saved."""
+    return any(not _is_abstract(path.name) for path in stored_files(folder, key))
 
 
 ZOTERO_ADVICE = (
@@ -581,6 +629,8 @@ FOLDER_ADVICE = (
 
 
 def _about_folder(offered: Offer) -> list[str]:
+    if offered.inbox:
+        return _about_inbox(offered)
     lines = [
         f"The folder's {one}: no PDF in it was looked at."
         for one in offered.unread
@@ -600,11 +650,31 @@ def _about_folder(offered: Offer) -> list[str]:
     return lines
 
 
+def _about_inbox(offered: Offer) -> list[str]:
+    lines = [one[0].upper() + one[1:] + "." for one in offered.unread]
+    if not offered.pdfs:
+        lines.append("The folder holds no PDF directly in it; those in folders under it are "
+                     "not read.")  # fmt: skip
+    elif offered.unmatched:
+        many = offered.unmatched != 1
+        lines.append(
+            f"{offered.unmatched} PDF{'s' if many else ''} in the folder show"
+            f"{'' if many else 's'} no cited work's DOI or title on {'their' if many else 'its'} "
+            f"first pages, and {'were' if many else 'was'} not copied."
+        )
+    return lines
+
+
 def report(
-    outcomes: list[Outcome], *, dry_run: bool = False, offered: Offer | None = None
+    outcomes: list[Outcome],
+    *,
+    dry_run: bool = False,
+    offered: Offer | None = None,
+    asked: list[str] | None = None,
 ) -> list[str]:
     """What `sync-sources` prints: a line for each file, a count, the works with no copy, and,
-    from a folder, how many of its PDFs no cited DOI names."""
+    from a folder, how many of its PDFs no cited DOI names. `asked` is what the web left to ask
+    the user for (`fetching.asked`), which says how to give it, in place of the advice."""
     lines = [f"@{one.key}: {one.said}" for one in outcomes]
     counts = Counter(one.status for one in outcomes)
     parts = [
@@ -627,14 +697,23 @@ def report(
     if missing:
         lines.append(f"No copy for {len(missing)} cited work{'' if len(missing) == 1 else 's'}:")
         lines.extend(f"  @{one.key}: {one.said.removeprefix('no copy: ')}" for one in missing)
-        lines.append(ZOTERO_ADVICE if offered is None else FOLDER_ADVICE)
-    return lines
+        # The list of what the web left to ask for says how to give it, Zotero's way among
+        # them; a folder named by DOI is filled by naming each file so.
+        if offered is not None and not offered.inbox:
+            lines.append(FOLDER_ADVICE)
+        elif asked is None:
+            lines.append(ZOTERO_ADVICE)
+    return lines + (asked or [])
 
 
 __all__ = [
     "COPIED",
+    "FROM_ABSTRACT",
     "FROM_AUTHOR",
     "FROM_FOLDER",
+    "FROM_INBOX",
+    "FROM_OPEN",
+    "FROM_PUBLISHER",
     "KEPT",
     "NO_COPY",
     "RECORD",

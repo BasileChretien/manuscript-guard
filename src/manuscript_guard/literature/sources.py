@@ -298,6 +298,12 @@ def filed_name(citekey: str, suffix: str) -> str:
     return f"{safe}{suffix if suffix.startswith('.') else '.' + suffix}"
 
 
+def is_abstract(path: Path) -> bool:
+    """Whether a stored file is a work's abstract, `<key>.abstract.<suffix>`: a part of the
+    work, which verifies what it holds and cannot show that the rest is not in the work."""
+    return ".abstract." in path.name
+
+
 def stored_files(sources: Path, citekey: str) -> list[Path]:
     """Every stored file of a work: its full text in each form kept, and its abstract,
     `<key>.abstract.txt` as the literature skill names it (round 1 of #282: the first file

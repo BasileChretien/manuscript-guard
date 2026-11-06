@@ -3389,7 +3389,7 @@ version of manuscript-guard", and never with advice to delete it.
 Zotero is one way to the author's own access, and a downloader is another: auto-paper-harvester
 (github.com/jxtse/auto-paper-harvester) fetches each DOI from an open copy, then a publisher's
 text-and-data-mining service, then the author's own signed-in Chrome, at a set pace and
-without answering a CAPTCHA. manuscript-guard does none of that itself: driving a browser
+without answering a CAPTCHA. manuscript-guard drives no browser and asks no such service itself: driving a browser
 would be a dependency of its own, a publisher's terms are the author's to accept, and a run
 that fetched too fast could have the institution blocked. Shadow libraries are out of its
 scope altogether. It reads the folder such a tool writes instead: `sync-sources --from
@@ -3417,6 +3417,49 @@ the DOI the file was matched by, and no path. A file one source wrote is not rep
 the other, which is the rule that the command never writes over what it did not write,
 applied between its two sources: one paper downloaded twice can differ in its bytes, where a
 publisher stamps each download, and each run would otherwise put its own copy back.
+
+A work none of these gave a full text is then looked for on the web, by default (Basile,
+2026-11-06, with none of the study paper's 54 references in Zotero: "The package should
+always fetch the open ones, and try to connect to the paywalled ones through the user
+browser ... In the case that they are not download the abstract and ask for the pdf to the
+user"). In order (`literature/fetching.py`): its open copy, at the places OpenAlex gives
+(`best_oa_location`, then each open location, PDF link before landing page), then PubMed
+Central through Europe PMC's PDF service by the PMCID, then arXiv by its identifier; else
+`https://doi.org/<doi>` asked from this computer, which on a university's network, or through
+the proxy the environment names, is the university's access, as it is for the browser; else
+its abstract, Crossref's (the publisher's deposit) before OpenAlex's (rebuilt from an index of
+its words), written as `<key>.abstract.txt`. A landing page is read only for its
+`citation_pdf_url`, tried once. Redirects are followed over https only (`lookup/download.py`),
+at most eight, a cookie a publisher sets on the way kept in memory for the run, the size capped
+at 64 MB; the User-Agent names the toolkit, and no e-mail address goes to any of these
+services, `lookup`'s contact address included. No link is followed to this computer or its
+network: a host that is, or resolves to, a loopback, private, link-local, multicast, reserved
+or unspecified address is refused at every hop, since a publisher's redirect could otherwise
+set off Zotero's connector or a router (round 1 of #565), except a name that does not resolve
+here while an https proxy is set, which the proxy resolves on its own network; the tests' server on this machine is
+reached only with `local=True`, which nothing but a test passes. A link no URL parser reads
+lists the work as wanted, and the run goes on. A PDF is kept only where it is the work
+(`literature/matching.py`), and where the evidence is not exact it is refused rather than
+guessed at: it begins with `%PDF-`; its first two pages give the work's DOI, or its title makes
+up whole lines near the top of one of them, compared on letters and digits (a title running on
+in a sentence is not a title), or its metadata gives its DOI; its metadata names no other DOI
+unless it names the work's too, and, where the work's DOI is nowhere on it, its first page
+names no other (round 2 of #565: a dataset's or a comment's DOI printed beside the work's own
+refused 27 of 52 real PDFs); its head does not say it is a supplement, a correction or a reply, unless
+the cited work's own title does; and it has at least half the pages `references.bib` gives
+the work, from the publisher and from `--inbox` alike, since a first-page preview passes every
+other test. A landing page, a preview, a supplement or another paper under the key would be
+worse than no copy. The record says `from: open`,
+`publisher` or `abstract`, the URL it was asked at (never the URL a redirect ended at, which
+can carry a token), how it matched and, for an open copy, its version; it is the record's third
+version, which an older manuscript-guard refuses as a newer one's. A work with a full text on
+this computer is not asked about again; one with only its abstract is, at each run. The works
+still wanted are listed last, each with its DOI link: a CLI cannot drive the user's own
+browser, signed in through their library, so an agent with that browser (the literature-verify
+skill says how) or the user saves the PDFs, and `sync-sources --inbox <folder>`
+(`literature/inbox.py`) files each PDF directly in the folder whose first pages show one cited
+work, by the same test; one that shows two is filed for neither. `--no-fetch` asks the web
+nothing, and `--dry-run` fetches nothing.
 
 ## A reference is proposed from a registry, and chosen by the author
 
@@ -20480,6 +20523,61 @@ Open, recorded as each change landed:
   author's and drops what CI knows. With `literature: {sources_in_git: true}` and the line left
   in `.gitignore`, every recorded copy fails where it is absent, which says the setting and the
   file disagree only by failing.
+- **What `sync-sources` fetches from the web is held to the work's DOI or title, not read
+  through.** A PDF whose first pages give the work's title is kept even where it is a version
+  other than the published one that OpenAlex did not label, or a reprint with other page
+  numbers, so long as it prints no DOI of its own; a quote then fails G7 where the versions
+  differ, which is how it shows. A preprint copy that prints its own DOI (bioRxiv's
+  `10.1101/...`) is refused, and so is a copy that prints the work's DOI where
+  `references.bib` gives the work none: beside another DOI, a title is not evidence. A paper
+  that names another cited work's DOI on its second page only, and no other, is taken for that
+  work where `--inbox` reads it, and so is one that prints a cited work's DOI on its first
+  pages, its metadata naming none. A title set on one line with something else, a running head
+  beside it in a layout pdftotext keeps, is not found, and the work is left as wanted. A head
+  other than those listed ("Online Appendix", "Data Supplement" further down) is not known. A
+  publisher behind a bot check answers this computer with that page, which is not kept, so its
+  works are left to the browser. PubMed's abstract is not asked for (`lookup` reaches only its
+  summaries, which hold none), nor a cited web page with no DOI. Zotero not running still
+  stops the run before the web is asked, as it did. Round 1 of #565 left these, each not done:
+  - An `http://` open location (OpenAlex often gives `http://europepmc.org/...`) is dropped,
+    not tried as https, and the work is then said to have no open copy known to OpenAlex.
+  - The preview test needs a page range in `references.bib`: an entry with an article number
+    (`pages = {e0245}`) or none keeps a publisher's first-page preview.
+  - No bound on a run's whole time: the 60 s timeout is per socket operation, so a host that
+    is down costs a minute for each place and work, and publisher hosts are paced at about
+    five requests a second, which an institution's licence may count as systematic
+    downloading.
+  - A work whose author-saved copy is recorded and absent, on a fresh clone, is still fetched
+    in full, and the copy then refused by `_file`; it should not be asked about at all.
+  - `matching.py` reads text with no property in `tests/test_properties.py` and no BROKEN
+    twin.
+  - Untested: reading a second-version record (only the first is); the inbox's "two PDFs
+    that differ"; the inbox's file left in place after filing; an inbox file over 64 MB.
+  - `--inbox <folder> --no-fetch`, the command the literature-verify skill gives, ends with
+    the Zotero advice and no DOI links, though the skill's last step expects them.
+  - A name is resolved before each request and again by `urllib` when it connects, so a
+    resolver that answers the two differently (DNS rebinding) can still reach this
+    computer's network; the connection is not pinned to the address checked.
+  Round 2 of #565 left these, each not done:
+  - Where a name does not resolve here and an https proxy is set, it is not checked: the
+    proxy resolves it on its own network, so a GET can reach the proxy's LAN.
+  - `own_network` misses 100.64.0.0/10 (carrier-grade NAT, Tailscale) and fec0::/10, which
+    `not ip.is_global` would catch; and a proxy tool in fake-IP mode, answering 198.18.0.0/15
+    for every name, has every fetch refused.
+  - `Fetcher.__call__` catches `ValueError` over the whole of `_full_text`, staging and
+    matching included, so a fault there is said to be a link that cannot be read, and the
+    work's other places are skipped.
+  - No test of `::ffff:127.0.0.1`, `0.0.0.0`, a decimal host, a name with several addresses
+    one of them private, the proxy branch, or a public address passing `default_transport`.
+  - A journal's own label above the title, "SUPPLEMENT ARTICLE" (Clin Infect Dis, J Infect
+    Dis), is read as a supplement's head, and the article refused.
+  - The methods review says "no stored copy of @key" of a work whose only copy is its
+    abstract, and its `similar-passage-not-in-source` became a warning there, unsaid here.
+  - A passage mistyped from an abstract that is the work's only copy, the author's own saved
+    one included, failed on main and now warns; a near match could keep it failing.
+  - Round 3 left: `_literal` does not decode octal escapes (`\050`); every `/doi(` in the whole
+    file is scanned; a letter glued to the work's DOI makes it the work's whatever the word;
+    and some round 1 and 2 tests pass on a6f8e058 too, so do not show those fixes.
 - **`sync-sources --from` matches only a name a DOI spells, at the places the harvester puts
   it.** A PDF named by its title, its PMID or its citation key is counted as named for no
   cited DOI and not copied, and one deeper in the folder than `<name>/` or

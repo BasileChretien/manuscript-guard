@@ -194,7 +194,9 @@ def _findings(checked: Checked, path: Path) -> list[Finding]:
             code="passage-unchecked",
             severity=WARN,
             message=f"{passage.named}: the passage could not be checked: "
-            + (f"no stored source of @{passage.citekey}" if checked.found == NO_SOURCE
+            + (f"no full text of @{passage.citekey} is stored: {checked.why}, which does "
+               "not hold it" if checked.found == NO_SOURCE and checked.why
+               else f"no stored source of @{passage.citekey}" if checked.found == NO_SOURCE
                else f"{checked.found} ({checked.why})"),
             path=path,
             context=context,

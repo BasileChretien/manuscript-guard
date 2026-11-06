@@ -56,11 +56,21 @@ auto-paper-harvester writes, `manuscript-guard sync-sources --from <folder>` fil
 same way, matched by the DOI in `references.bib`, and asks Zotero nothing. It refuses a file
 that is not a PDF, a sign-in page saved under a `.pdf` name, and says so.
 
-For each work it lists, use a browser the user is signed in to, where a tool that drives one
-is connected, so the user's institutional session applies and paywalled full texts are
-reachable. Saving the work into Zotero from there (the Zotero Connector) and running
-`sync-sources` again keeps Zotero and the project in step. If there is no such browser, ask
-the user to save the files. Save what you can actually read:
+For a work Zotero or the folder gave no full text, `sync-sources` then looks on the web: its
+open copy (OpenAlex, PubMed Central, arXiv), else the PDF its DOI link gives this computer,
+which on a university network is the university's access, else its abstract, saved as
+`<key>.abstract.txt`. It keeps a PDF only where its first pages show the work's DOI or
+title, sends no e-mail address, and ends with "Full text still wanted", each work with its
+DOI link. `--no-fetch` asks the web nothing; `--dry-run` fetches nothing.
+
+For each work still wanted, where a tool that drives the user's own browser is connected (a
+browser extension, not a separate headless browser), open its link there, so their library's
+session applies, and download
+the PDF only where the page offers it; then run `sync-sources --inbox <the downloads
+folder>`, which files each PDF that shows a cited work and leaves the rest. How, and what
+never to do there: [references/browser-retrieval.md](references/browser-retrieval.md). Where
+there is no such browser, or the page offers no PDF, give the user the list and ask them for
+the PDFs they can get. Save what you can actually read:
 
 - **Full text** — the PDF, or the article page saved as HTML.
 - **Abstract only** — when the full text is genuinely unreachable. Save the abstract page.

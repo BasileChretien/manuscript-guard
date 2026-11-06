@@ -4901,19 +4901,44 @@ def cmd_sync_bib(args: argparse.Namespace) -> int:
 
 def cmd_sync_sources(args: argparse.Namespace) -> int:
     """Copy each cited work's PDF, saved page or text from Zotero into literature/sources/, or
-    each PDF of a folder named by DOI with `--from`."""
-    from manuscript_guard.literature import copies, downloads
-    from manuscript_guard.zotero import ZoteroUnavailable
+    each PDF of a folder named by DOI with `--from`, or of a folder of downloads matched by what
+    each shows with `--inbox`; then fetch from the web each work none of them gave, unless
+    `--no-fetch` or `--dry-run`."""
+    from manuscript_guard.literature import copies, downloads, fetching, inbox
 
     project, _ = load_project(args.path)
     try:
-        offered = None if args.source is None else downloads.offer(project, args.source)
-        outcomes = copies.sync(project, dry_run=args.dry_run, offered=offered)
-    except (ZoteroUnavailable, copies.NothingToCopy, downloads.FolderUnreadable) as exc:
+        offered = (downloads.offer(project, args.source) if args.source is not None
+                   else inbox.offer(project, args.inbox) if args.inbox is not None
+                   else None)  # fmt: skip
+        if args.dry_run or args.no_fetch:
+            return _synced(project, args, offered, None)
+        with fetching.for_project(project) as web:
+            return _synced(project, args, offered, web)
+    except (copies.NothingToCopy, downloads.FolderUnreadable) as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
-    for line in copies.report(outcomes, dry_run=args.dry_run, offered=offered):
+
+
+def _synced(project, args: argparse.Namespace, offered, web) -> int:
+    from manuscript_guard.literature import copies, fetching
+    from manuscript_guard.zotero import ZoteroUnavailable
+
+    try:
+        outcomes = copies.sync(project, dry_run=args.dry_run, offered=offered, web=web)
+    except ZoteroUnavailable as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    asked = None
+    if web is not None:
+        wanted = fetching.still_wanted(project, copies.wanted_keys(project), web)
+        asked = fetching.asked(wanted, zotero=offered is None)
+    for line in copies.report(outcomes, dry_run=args.dry_run, offered=offered, asked=asked):
         print(line)
+    if args.dry_run and not args.no_fetch:
+        print("Nothing was looked for on the web (--dry-run). Without it, each work with no "
+              "full text is: its open copy, then its PDF through this computer's access, "
+              "else its abstract.")  # fmt: skip
     return 0
 
 
@@ -7510,20 +7535,35 @@ def build_parser() -> argparse.ArgumentParser:
 
     syncsources = sub.add_parser(
         "sync-sources",
-        help="copy each cited work's PDF or saved page from Zotero, or from a folder of PDFs "
-        "named by DOI",
+        help="copy each cited work's PDF or saved page from Zotero, or from a folder of PDFs, "
+        "and fetch from the web each work with none: its open copy, its PDF through this "
+        "computer's access, else its abstract",
     )
     syncsources.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     syncsources.add_argument(
         "--dry-run", action="store_true", help="say what would be copied, and copy nothing"
     )
-    syncsources.add_argument(
+    taken = syncsources.add_mutually_exclusive_group()
+    taken.add_argument(
         "--from",
         dest="source",
         type=Path,
         metavar="FOLDER",
         help="take each PDF of a folder named by DOI, as auto-paper-harvester saves them, "
         "instead of asking Zotero",
+    )
+    taken.add_argument(
+        "--inbox",
+        type=Path,
+        metavar="FOLDER",
+        help="take each PDF directly in a folder, such as the browser's Downloads, that shows "
+        "a cited work's DOI or title on its first pages, instead of asking Zotero",
+    )
+    syncsources.add_argument(
+        "--no-fetch",
+        action="store_true",
+        help="look nothing up on the web: by default each work with no full text is fetched, "
+        "its open copy, else its PDF through this computer's access, else its abstract",
     )
     syncsources.set_defaults(func=cmd_sync_sources)
 

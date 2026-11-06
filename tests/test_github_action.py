@@ -96,10 +96,13 @@ def test_pandoc_is_the_version_the_suite_runs_with() -> None:
 
 def test_tex_live_is_the_latex_jobs() -> None:
     """The packages a LaTeX manuscript is compiled with, and pdftotext, are those
-    manuscript-guard's own LaTeX tests pass with."""
-    latex = next(s["run"] for s in _yaml(CI)["jobs"]["latex"]["steps"]
-                 if "apt-get install" in s.get("run", ""))  # fmt: skip
-    wanted = set(latex.split("--no-install-recommends", 1)[1].split())
+    manuscript-guard's own LaTeX tests pass with: the latex job's list, which its install
+    step installs."""
+    job = _yaml(CI)["jobs"]["latex"]
+    (install,) = [s["run"] for s in job["steps"] if "sudo apt-get install" in s.get("run", "")]
+    options = "--no-install-recommends -o APT::Keep-Downloaded-Packages=true"
+    assert install.rstrip().endswith(f" {options} $TEX_PACKAGES")
+    wanted = set(job["env"]["TEX_PACKAGES"].split())
     script = _step("pdftotext, and TeX Live for a LaTeX manuscript")["run"]
     listed = {word for group in re.findall(r"packages\+?=\(([^)]*)\)", script)
               for word in group.split() if not word.startswith('"')}  # fmt: skip

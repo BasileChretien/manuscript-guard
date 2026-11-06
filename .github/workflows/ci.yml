@@ -79,6 +79,9 @@ jobs:
     timeout-minutes: 30
     env:
       MANUSCRIPT_GUARD_REQUIRE_LATEX: "TeX Live 2023"
+      TEX_PACKAGES: >-
+        latexmk texlive-latex-base texlive-latex-recommended texlive-fonts-recommended
+        cm-super-minimal texlive-luatex poppler-utils
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -89,10 +92,56 @@ jobs:
       - uses: r-lib/actions/setup-pandoc@v2
         with:
           pandoc-version: ${{ env.MANUSCRIPT_GUARD_REQUIRE_PANDOC }}
-      - run: >-
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends latexmk
-          texlive-latex-base texlive-latex-recommended texlive-fonts-recommended cm-super-minimal
-          texlive-luatex poppler-utils
+      # The runner's Ubuntu mirror now and then sends these packages at about 50 kB/s from
+      # the first file on, where a healthy run fetches their 94 MB in a second: on 5 and 6
+      # November 2026 five runs spent the job's 30 minutes on the download and were
+      # cancelled. So the job keeps the .deb files in the Actions cache, and apt-get
+      # installs from them without downloading. What is installed is unchanged: apt-get
+      # still reads the mirror's index and installs the versions it names, apt is handed
+      # only the kept files that index lists, each checked against the checksum it gives,
+      # and anything else is downloaded as before. The cache is named by that list, so a
+      # new version starts a new cache from the old one's files. (cache-apt-pkgs-action
+      # was not used: it restores the files without running the packages' install scripts,
+      # and those build the TeX formats.)
+      - name: List the TeX packages to download
+        id: tex
+        run: |
+          sudo apt-get update
+          apt-get install --print-uris -qq --no-install-recommends $TEX_PACKAGES > "$RUNNER_TEMP/tex-uris.txt"
+          # File name, size and checksum; not the address, which names the mirror.
+          cut -d' ' -f2- "$RUNNER_TEMP/tex-uris.txt" > "$RUNNER_TEMP/tex-debs.txt"
+          echo "key=tex-debs-$(sha256sum < "$RUNNER_TEMP/tex-debs.txt" | cut -c1-16)" >> "$GITHUB_OUTPUT"
+      - name: Restore the kept TeX packages
+        id: tex-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/tex-debs
+          key: ${{ steps.tex.outputs.key }}
+          restore-keys: tex-debs-
+      - name: Install the TeX packages
+        run: |
+          while read -r name _ checksum; do
+            kept="$HOME/tex-debs/$name"
+            tool="${checksum%%:*}"; tool="${tool,,}"; tool="${tool%sum}sum"
+            if [ -f "$kept" ] && [ "$("$tool" < "$kept" | cut -d' ' -f1)" = "${checksum#*:}" ]; then
+              sudo cp "$kept" /var/cache/apt/archives/
+            fi
+          done < "$RUNNER_TEMP/tex-debs.txt"
+          sudo apt-get install -y --no-install-recommends -o APT::Keep-Downloaded-Packages=true $TEX_PACKAGES
+      # A run that found no cache under its key keeps what it installed. A pull request's
+      # cache is read only by that pull request's later runs, and main's by every run.
+      - name: Keep the TeX packages
+        if: steps.tex-cache.outputs.cache-hit != 'true'
+        run: |
+          rm -rf ~/tex-debs && mkdir ~/tex-debs
+          while read -r name _ _; do
+            cp "/var/cache/apt/archives/$name" ~/tex-debs/ || echo "::warning::apt-get did not keep $name"
+          done < "$RUNNER_TEMP/tex-debs.txt"
+      - if: steps.tex-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/tex-debs
+          key: ${{ steps.tex.outputs.key }}
       - run: pdflatex --version && latexmk -v
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"

@@ -192,9 +192,15 @@ artefacts:
     # A word processor curls the apostrophe, here and in the next (round 2 of #339).
     pattern: "(?i)\\b(?:as of my (?:last )?(?:knowledge|training)|my training data|I don['’]t have access to)\\b"
     why: A model disclaiming its own limits, left in the manuscript
+  # A paragraph's first words. `paragraph_start` passes over a match whose words carry on
+  # a sentence from the line before (`writing._continues_a_sentence`): in a hard-wrapped
+  # paragraph a line can start in the middle of a sentence, and "The analysis reported /
+  # here is the third protocol" failed (the athlete-leakage study, 2026-11-06), where it
+  # would not have unwrapped. After anything else, markup or a sentence's end, it is read.
   - id: assistant-voice
     pattern: '(?i)^\s*(?:certainly|sure|of course|here(?:[''’]s| is) (?:the|a|an)\b)'
     why: Chat-assistant register, left in the manuscript
+    paragraph_start: true
 
 # Words written to the reviewers, or to a model, that end up in the paper: "As requested by
 # Reviewer 2, we added ...", "In the previous version of this manuscript ...", "We have now

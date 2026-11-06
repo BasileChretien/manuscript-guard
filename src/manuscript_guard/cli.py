@@ -117,7 +117,14 @@ from manuscript_guard.policy import (
 )
 from manuscript_guard.record import FIGURE_VERDICTS
 from manuscript_guard.record import VERDICTS as RECORD_VERDICTS
-from manuscript_guard.scaffold import _DIRS, ENGLISHES, UNTITLED, init_project, rules_to_add
+from manuscript_guard.scaffold import (
+    _DIRS,
+    ENGLISHES,
+    UNTITLED,
+    git_lines_to_add,
+    init_project,
+    rules_to_add,
+)
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import parse, substitute
 from manuscript_guard.text.reader import LATEX, manuscript_files, manuscript_format
@@ -3552,11 +3559,13 @@ def cmd_references(args: argparse.Namespace) -> int:
             raise command.Refused("--readings goes with --explain")
         if args.search is not None or args.replay is not None or _search_flags(args):
             return _references_search(project, args)
+        if args.replaces is not None and args.reading is None:
+            raise command.Refused("--replaces goes with --reading")
         if args.mark is not None:
             words, key = args.mark
             print(command.mark(project, words, key, args.as_, args.id, args.question))
         elif args.reading is not None:
-            print(command.file_reading(project, args.reading))
+            print(command.file_reading(project, args.reading, replaces=args.replaces))
         elif args.refuse is not None:
             if not args.why or not args.as_:
                 raise command.Refused("--refuse needs --why and --as, the reason and who "
@@ -3644,7 +3653,7 @@ def _references_search(project, args: argparse.Namespace) -> int:
     # Another action's flags were dropped without a word (the review of #531's merge, and
     # round 1 of #534).
     for action, flags in (("--assess", ("reply", "says", "quote")), ("--refuse", ("why",)),
-                          ("--mark", ("id",))):  # fmt: skip
+                          ("--mark", ("id",)), ("--reading", ("replaces",))):  # fmt: skip
         given = [f"--{flag}" for flag in flags if getattr(args, flag) is not None]
         if len(given) == 1:
             raise command.Refused(f"{given[0]} goes with {action}, not with --search or --replay")
@@ -6238,6 +6247,25 @@ def _init_workflow_only(args: argparse.Namespace) -> int:
     return 0
 
 
+#: Why each line `init` prints for a repository's own git files belongs there.
+_GIT_LINES = {
+    ".gitignore": "it does not leave out what the build writes (`build/`) or the stored copies "
+                  "of cited works, paywalled papers among them, which a public repository "
+                  "would publish (`literature/sources/*`)",
+    ".gitattributes": "it does not check text out with LF line endings everywhere, and "
+                      "manuscript-guard's digests, taken over the bytes, then differ between "
+                      "machines and read as edits nobody made",
+}  # fmt: skip
+
+
+def _say_git_lines(wanted: dict[str, list[str]]) -> None:
+    """What `init` says of an existing .gitignore or .gitattributes that lacks a line the
+    project needs: it never writes over them, so it prints the lines, as for AGENTS.md."""
+    for name, lines in wanted.items():
+        print(f"\n{name} was already there and was left as it was, and {_GIT_LINES[name]}. "
+              "Add these lines to it:\n\n" + "\n".join(lines))
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     from manuscript_guard.contracts.results import HOW_TO_EMIT
     from manuscript_guard.from_word import init_from_word, what_was_done
@@ -6290,6 +6318,7 @@ def cmd_init(args: argparse.Namespace) -> int:
             "left as it was. An agent tool reads its rules from that file. Add these to it:\n\n"
             + rules
         )
+    _say_git_lines(git_lines_to_add(args.path))
     if under_way:
         made = [path for path in missing if path.exists()]
         for path in made:
@@ -7377,6 +7406,10 @@ def build_parser() -> argparse.ArgumentParser:
                             help="--assess: what the reply says of the proposal")
     references.add_argument("--quote", help="--assess: the reply's words that say it, verbatim")
     references.add_argument("--why", help="--refuse: the reason")
+    references.add_argument("--replaces", type=int, metavar="N",
+                            help="--reading: the reading corrects its reader's reading N of "
+                            "the entry, which the gate and the rules then read no longer; "
+                            "without it, a further reading counts as one more")  # fmt: skip
     action.add_argument("--search", metavar="ID",
                         help="run the fixed searches for an entry (with --terms and --as) and "
                         "record each one")  # fmt: skip

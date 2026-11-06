@@ -788,6 +788,64 @@ def test_a_count_and_a_percentage_that_coincide_are_not_one_quantity(project: Pa
     assert "divergent-display" not in codes(gate_report(project))
 
 
+@pytest.mark.parametrize("value", [0, 1, -1])
+def test_a_count_and_a_bound_that_both_are_zero_or_one_are_not_one_quantity(
+    project: Path, value: int
+) -> None:
+    """A count of none, "0", and an interval's lower bound clamped at nought, "0.00", failed
+    the athlete-leakage study's build as one quantity written two ways, as did a count of
+    one beside a bound at one; the author could change neither. At nought and one, where
+    bounds and shares clamp and counts are small, a whole count and a measured value are two
+    quantities. A measured value under two keys and two roundings is still one."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    point = document["values"]["ror.point"]
+    document["values"]["cohort.n_under_18"] = {**point, "value": value, "display": str(value),
+                                               "digits": 0}  # fmt: skip
+    document["values"]["reliability.ci_low"] = {**point, "value": float(value),
+                                                 "display": f"{value}.00", "digits": 2}
+    document["values"]["reliability.other"] = {**point, "value": float(value),
+                                               "display": f"{value}.0", "digits": 1}
+    for key in ("cohort.n_under_18", "reliability.ci_low", "reliability.other"):
+        document["values"][key].pop("unit", None)
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    said = [f.message for f in gate_report(project).findings if f.code == "divergent-display"]
+    assert said == [f"2 quoted keys hold the value {value}, written with decimals: "
+                    "reliability.ci_low, reliability.other"], said
+
+
+def _two_keys(project: Path, first: tuple, second: tuple) -> list[str]:
+    """The divergent-display findings of a fragment that holds two more keys, each given as
+    (value, display, digits)."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    point = document["values"]["ror.point"]
+    for key, (value, display, digits) in (("one.key", first), ("other.key", second)):
+        document["values"][key] = {**point, "value": value, "display": display, "digits": digits}
+        document["values"][key].pop("unit", None)
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    return [f.message for f in gate_report(project).findings if f.code == "divergent-display"]
+
+
+def test_a_count_and_a_bound_at_nought_are_two_however_the_number_was_written(
+    project: Path,
+) -> None:
+    """Round 1 of #542: R writes a double 0 as `0`, so a bound clamped at nought arrives as
+    an int beside the count. The kind is read from the display."""
+    assert _two_keys(project, (0, "0", 0), (0, "0.00", 2)) == []
+
+
+def test_a_value_written_whole_and_with_decimals_elsewhere_is_still_one_quantity(
+    project: Path,
+) -> None:
+    """Round 1 of #542: away from nought and one, a count emitted again with decimals is
+    still one quantity written two ways."""
+    assert _two_keys(project, (2, "2", 0), (2.0, "2.00", 2)) == [
+        "2 quoted keys hold the value 2: one.key, other.key"]
+
+
 def test_a_display_edited_away_from_its_value_is_caught(project: Path) -> None:
     """A bonus from checking displays at emit time: the read path checks them too.
 
@@ -1016,6 +1074,26 @@ def test_near_miss_conventions_are_not_waved_through(project: Path, convention: 
         encoding="utf-8",
     )
     assert "unclassified-number" in codes(gate_report(project))
+
+
+@pytest.mark.parametrize(
+    ("sentence", "unbound"),
+    [
+        # The athlete-leakage study, 2026-11-06: "Table 2's are not" failed as "2's".
+        ("The models of Table 1's first rows are adjusted.", False),
+        ("The bars of Figure 1\N{RIGHT SINGLE QUOTATION MARK}s upper panel are intervals.", False),
+        ("The counts were 7's and 8's.", True),
+    ],
+)
+def test_a_possessive_pointer_is_a_pointer_and_a_possessive_number_is_not(
+    project: Path, sentence: str, unbound: bool
+) -> None:
+    """A table or a figure named in the possessive is pointed at: the cross-reference rule
+    covered "Table 2" and left the word "2's" a number bound to nothing. A number with an
+    apostrophe and nothing before it to point is still a number."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + f"\n\n{sentence}\n", encoding="utf-8")
+    assert ("unclassified-number" in codes(gate_report(project))) is unbound
 
 
 _TWIN = (
@@ -3326,10 +3404,25 @@ def _a_works_record_edited(root: Path) -> None:
 
 
 def _a_quote_not_in_the_work(root: Path) -> None:
+    """Filed as the tool writes it, but past `references --reading`, which refuses it."""
     import currency_records as case
 
-    case.file(root, case.reading("Cy Example", quote="The class was safe in every trial"),
-              "third")  # fmt: skip
+    from manuscript_guard.currency import records
+
+    records.file_reading(load_project(root)[0], case.reading(
+        "Cy Example", quote="The class was safe in every trial"), "2026-11-04")  # fmt: skip
+
+
+def _a_quote_cut_inside_a_hyphen_joined_word(root: Path) -> None:
+    """Found taking a real paper through the loop: the words are the abstract's, from
+    inside "Follow-up", and the quote does not start at a word's edge. Filed past
+    `references --reading`, which refuses it now, as one filed before it did was."""
+    import currency_records as case
+
+    from manuscript_guard.currency import records
+
+    records.file_reading(load_project(root)[0], case.reading(
+        "Cy Example", quote="up ended in March 2023"), "2026-11-04")  # fmt: skip
 
 
 def _the_candidate_retracted(root: Path) -> None:
@@ -3396,6 +3489,9 @@ _UNANSWERED = ("currency-change-unanswered", "warn")
         pytest.param(_a_quote_not_in_the_work, "drafting",
                      [_UNANSWERED, ("currency-quote-not-found", "fail")],
                      id="a quote not in the work"),
+        pytest.param(_a_quote_cut_inside_a_hyphen_joined_word, "drafting",
+                     [_UNANSWERED, ("currency-quote-not-found", "fail")],
+                     id="a quote cut inside a hyphen-joined word"),
         pytest.param(_the_candidate_retracted, "drafting",
                      [("currency-candidate-retracted", "fail"), _UNANSWERED,
                       ("currency-decision-mismatch", "fail")], id="the candidate retracted"),
@@ -6656,6 +6752,18 @@ def test_a_journal_templates_instruction_in_a_table_caption_fails(project: Path)
     results = replace(results, tables={**results.tables, "baseline": baseline})
     said = _placeholders(_g6(project, results))
     assert len(said) == 1 and "the caption of table 'baseline'" in said[0][1], said
+
+
+def test_an_assistant_reply_after_a_wrapped_paragraph_fails(project: Path) -> None:
+    """The rule reads a paragraph's first words, not a line's (the athlete-leakage study): a
+    reply left in after a hard-wrapped paragraph is still a paragraph's first words, and the
+    wrapped words "reported / here is the" are not."""
+    _with_paragraph(project, "The analysis reported\nhere is the third protocol, unchanged.\n\n"
+                    "Certainly! Here is the revised Methods section.")
+    said = _placeholders(_g6(project))
+    assert [(severity, message.split(" — ")[0]) for severity, message in said] == [
+        ("fail", "'Certainly'")
+    ], said
 
 
 def test_a_placeholder_drawn_in_a_figure_fails(project: Path) -> None:
@@ -12758,14 +12866,30 @@ def test_different_works_and_an_uncited_duplicate_say_nothing(project: Path) -> 
     assert _duplicate_findings(project) == []
 
 
-def _zotero(monkeypatch, items: list[dict]) -> None:
+def _zotero(monkeypatch, items: list[dict], better_bibtex: str = "6.7.140") -> None:
     from test_zotero import FakeBBT
 
     from manuscript_guard.zotero import client, reset_cache
 
     reset_cache()
-    monkeypatch.setattr(client, "rpc", FakeBBT(items))
+    monkeypatch.setattr(client, "rpc", FakeBBT(items, better_bibtex=better_bibtex))
     monkeypatch.setattr("manuscript_guard.gates.citations.available", lambda: True)
+
+
+def test_a_key_better_bibtex_8_keeps_is_pinned_and_one_before_it_is_not(
+    project: Path, monkeypatch
+) -> None:
+    """From Better BibTeX 8 every key is kept in Zotero's own Citation Key field and Extra
+    carries no pin (the athlete-leakage study, Zotero 9 with 9.0.77): G7 failed every key it
+    cited, pinned or not. Before 8, a key with no pin in Extra still fails."""
+    from test_zotero import CLASS, HEPATIC, csl
+
+    _zotero(monkeypatch, [csl(HEPATIC, False), csl(CLASS, False)], better_bibtex="9.0.77")
+    assert "citation-key-unpinned" not in codes(_g7(project, closed=False))
+    _zotero(monkeypatch, [csl(HEPATIC, False), csl(CLASS, False)], better_bibtex="7.0.5")
+    unpinned = [f for f in _g7(project, closed=False).failures
+                if f.code == "citation-key-unpinned"]  # fmt: skip
+    assert len(unpinned) == 2 and "Better BibTeX before 8" in unpinned[0].hint, unpinned
 
 
 def test_an_unpinned_cited_key_is_caught(project: Path, monkeypatch) -> None:

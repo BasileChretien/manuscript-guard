@@ -396,7 +396,7 @@ def artefacts_in(
 #: The end of a line of prose whose sentence runs on into the next line: a word or a number,
 #: a comma, a semicolon, a colon or a dash, and any closing marks after it ("reported",
 #: "Table 2,", "[@key]", "small –").
-_RUNS_ON = re.compile(r"[\w,;:–—][)\]*_'\"’”]*[ \t\r]*$")
+_RUNS_ON = re.compile(r"(?:[\w,;:–—]|(?<!-)--)[)\]*_'\"’”]*[ \t\r]*$")
 #: A line that is no prose whatever it ends with: a heading, a LaTeX or an HTML comment.
 _NOT_PROSE = re.compile(r"[ \t]{0,3}#{1,6}(?:[ \t]|$)|[ \t]*%|[ \t]*<!--")
 

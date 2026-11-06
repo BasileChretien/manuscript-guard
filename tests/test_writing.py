@@ -166,6 +166,7 @@ def test_ordinary_scientific_prose_passes(project: Path) -> None:
         # Round 3 of #538: a wrap after a dash or a colon.
         "The effect was small \N{EN DASH}\nof course, the sample was small.",
         "The reason was plain:\ncertainly not the sample, which was fixed.",
+        "The effect was small --\nof course, the sample was small.",
     ],
 )
 def test_an_opening_word_inside_a_wrapped_paragraph_passes(project: Path, paragraph: str) -> None:
@@ -213,6 +214,10 @@ def test_an_opening_word_after_a_heading_or_a_line_of_spaces_fails(
         "\\section{Methods} % revised by the model\nSure, here is the revised one.\n",
         "As reported before.[12]\nCertainly! Here is the revised Discussion.\n",
         "As reported before.[^1]\nSure, here is the revised Discussion.\n",
+        # Round 4 of #538: a lower-case opener is read too, after anything but running prose.
+        "# Methods\n\nPrior paragraph.\n\nsure, here is the revised section.\n",
+        "As in Table 2.\nhere is the revised Discussion.\n",
+        "---\nhere is the revised abstract.\n",
     ],
 )
 def test_an_opening_word_after_markup_or_a_sentence_end_is_an_artefact(text: str) -> None:

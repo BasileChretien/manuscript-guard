@@ -4347,10 +4347,12 @@ marks. Read at every line, it failed a hard-wrapped sentence whose line began "h
 before it, since a chat assistant's reply opens with one, and so is a lower-case word after
 anything but running prose: the file is read as typed, and a list of what ends a paragraph,
 then a test of the line before alone, each missed markup the other caught (rounds 1 to 3 of
-#538). Two limits: a lower-case opener under a line of prose with no stop, a footnote
-command alone on its line in a LaTeX paragraph say, still fails as it did, and a sentence
-that opens with "Certainly" after a wrap at a full stop fails where the same sentence on one
-line does not.
+#538). Its limits, each as base had it or narrower: wrapped prose whose line ends in
+something else, `}` (`Table~\ref{t1}`), `\%`, `$`, an abbreviation's stop ("Smith et
+al."), still fails at a lower-case opener after it; a sentence that opens with "Certainly"
+or "Of course" after a wrap at a full stop fails where the same sentence on one line does
+not; and a reply typed in lower case under a line that ends in a letter, `\noindent` or a
+bold label, is missed, where base caught it.
 
 **Vague attribution gets the one check an encyclopedia cannot use.** "Studies have shown" is
 reported only when no citation sits within 240 characters, because in a manuscript the fix

@@ -14,6 +14,14 @@ A person's judgement of it: a model's name may not sign it (`judgement-not-human
 judged not to support its sentence fails from internal-review (`passage-does-not-support`),
 and one judged to support it in part is a warning (`passage-partly-supports`).
 
+A passage found in its work, whose sentence the manuscript still has, is held to how strongly
+that sentence claims (`claims.compare_pair`, the passage read as the source): a hedge, a
+limit or a negation of the work's dropped, a word moved up the ladder ("was associated with"
+made "increases") or a negation new is a warning (`passage-claim-stronger`), and so is a
+move both ways (`passage-claim-moved`), at every stage (D2.1 of 2026-11-06). A sentence that
+claims less than its work says nothing. The person's judgement is read as before, and does
+not change what is said here (D2.2).
+
 The sentences that cite and carry no passage of any work they cite are counted: one note
 while drafting, one warning from internal-review, never a failure, since a citation of the
 software used or of where a method comes from needs no passage (Basile, 2026-10-20).
@@ -24,7 +32,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from manuscript_guard.checking.produce import cited_sentences, citing_document
+from manuscript_guard import claims
+from manuscript_guard.checking.produce import CitedSentence, cited_sentences, citing_document
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
@@ -41,6 +50,7 @@ from manuscript_guard.literature.passages import (
     UNREADABLE,
     VERIFIED,
     Checked,
+    Passage,
     Survey,
     passage_words,
     read_passages,
@@ -52,6 +62,21 @@ from manuscript_guard.text.reader import LATEX, manuscript_format
 GATE = "G7"
 #: The fewest words a passage holds for it to say more than that its words are in the work.
 WORDS = 4
+#: The code each way `claims.compare_pair` tells a cited sentence claims against its passage
+#: is given: a negation gone or new turns the claim round, which says more than the work did,
+#: as `communicate check` reads it. A claim made weaker is in none of them.
+CLAIM_CODES = {
+    claims.STRONGER: "passage-claim-stronger",
+    claims.NEGATION: "passage-claim-stronger",
+    claims.MOVED: "passage-claim-moved",
+}
+#: How each way is said, of the sentence against the passage.
+_CLAIM_LEADS = {
+    claims.STRONGER: "the sentence claims more than the passage does",
+    claims.NEGATION: "the sentence may say the opposite of what the passage says",
+    claims.MOVED: "how strongly the sentence claims differs from the passage, and which way "
+    "cannot be told",
+}
 
 
 def survey_of(project: Project) -> tuple[Survey, Report]:
@@ -215,9 +240,46 @@ def _findings(checked: Checked, path: Path) -> list[Finding]:
             hint="copy the sentence of the work that says what the citing sentence says",
         ))  # fmt: skip
     found += _judged(checked, path)
+    found += claimed(checked)
     if checked.stale is not None:
         found.append(_stale(checked, path))
     return found
+
+
+def claimed(checked: Checked) -> list[Finding]:
+    """How strongly each sentence a passage belongs to claims against it: a warning, on the
+    sentence, where it claims more, may say the opposite or moved both ways, naming the words
+    that moved; nothing where it claims less or as much.
+
+    Only a passage found in its work's stored source is read. One that is not there fails
+    already, and one that could not be checked is not yet known to be the work's words. A
+    stale passage belongs to no sentence, and its note says so."""
+    if checked.found != VERIFIED:
+        return []
+    found = []
+    for sentence in checked.sentences:
+        moved = claims.compare_pair(checked.passage.passage, sentence.text)
+        if moved is not None and moved.code in CLAIM_CODES:
+            found.append(_claim_finding(checked.passage, sentence, moved))
+    return found
+
+
+def _claim_finding(passage: Passage, sentence: CitedSentence, moved: Finding) -> Finding:
+    # `compare_pair` says what moved after its lead, as `communicate check` reads it.
+    parts = moved.message.split(": ", 1)[-1]
+    return Finding(
+        gate=GATE,
+        code=CLAIM_CODES[moved.code],
+        severity=WARN,
+        message=f"{passage.named}: {_CLAIM_LEADS[moved.code]}: {parts}",
+        path=sentence.path,
+        line=sentence.line,
+        context=" ".join(sentence.text.split())[:140],
+        hint="keep the words that set how strongly the work claims: its hedges, its limits, "
+        "its negations, and association where it found an association; or record the "
+        "passage of the work that says what the sentence says. If the move is meant, nothing "
+        "needs doing",
+    )
 
 
 def _judged(checked: Checked, path: Path) -> list[Finding]:

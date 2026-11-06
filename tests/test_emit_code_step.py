@@ -241,6 +241,40 @@ def test_one_name_for_a_code_step_and_a_step_is_refused(tmp_path: Path) -> None:
         run(root, adapter)
 
 
+@needs_git
+def test_git_that_fails_in_a_repository_refuses_and_does_not_pass_as_no_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 1 of #564: any failure of git was read as "no repository", so code edited since
+    `at` was recorded unchecked and passed. A broken configuration is git failing in a
+    repository, and the step must be refused with what git said."""
+    from manuscript_guard.emit import code_at, definition_code
+
+    root = study(tmp_path / "project")
+    edit(root, "return sum(r * x", "return max(r * x")
+    broken = tmp_path / "broken.gitconfig"
+    broken.write_text("[core\n\tthis is not a config\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(broken))
+    file = root / "code" / "analysis.py"
+    now = definition_code(file.read_text(encoding="utf-8"), "fit_stacked")
+    with pytest.raises(ValueError, match="git could not be asked") as refused:
+        code_at(file, "code/analysis.py", "fit_stacked", "results-v1", now)
+    assert "config" in str(refused.value), "git's own message is carried"
+
+
+def test_git_absent_from_path_is_recorded_unchecked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from manuscript_guard import emit
+
+    root = study(tmp_path, repository=False)
+    monkeypatch.setattr(emit.shutil, "which", lambda name: None)
+    file = root / "code" / "analysis.py"
+    now = emit.definition_code(file.read_text(encoding="utf-8"), "fit_stacked")
+    commit, why = emit.code_at(file, "code/analysis.py", "fit_stacked", "results-v1", now)
+    assert commit is None and why.startswith("git is not installed here")
+
+
 # ------------------------------------------------------------------- without a repository
 
 

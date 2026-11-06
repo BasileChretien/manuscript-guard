@@ -25,6 +25,7 @@ import numbers
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 from collections.abc import Mapping
@@ -1200,57 +1201,85 @@ def definition_code(source: str, qualname: str) -> dict | None:
     return record
 
 
-def _git_here(folder: Path, *args: str) -> bytes | None:
-    """What git prints run in `folder`, or None where it fails or is not installed.
+def _git_here(folder: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
+    """git run in `folder`, with what it printed and how it exited.
 
     The repository is the one that holds `folder`, found from it, whatever the environment
     says: a pre-push hook running the tests sets GIT_DIR to its own repository, and the code
-    of the file was then compared with a commit of another project.
+    of the file was then compared with a commit of another project. Raises ValueError where git
+    cannot be run at all: that is git failing, not the absence of a repository.
     """
     env = {key: value for key, value in os.environ.items()
            if key not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX")}  # fmt: skip
     try:
-        done = subprocess.run(
+        return subprocess.run(
             ["git", *args], cwd=folder, capture_output=True, timeout=30, check=False, env=env
         )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return done.stdout if done.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ValueError(f"git could not be run in {folder}: {exc}") from None
+
+
+def _said(done: subprocess.CompletedProcess[bytes]) -> str:
+    """What git said when it failed, on one line."""
+    said = done.stderr.decode("utf-8", "replace").strip() or f"exit status {done.returncode}"
+    return " ".join(said.split())
+
+
+def _git_failed(done: subprocess.CompletedProcess[bytes], shown: str, at: str) -> ValueError:
+    return ValueError(
+        f"git could not be asked whether {shown} is the code at {at}: {_said(done)}. Fix git "
+        "here and run again; the step is not recorded while its code cannot be held to its commit"
+    )
 
 
 def code_at(file: Path, shown: str, qualname: str, at: str, now: dict) -> tuple[str | None, str]:
     """Hold the code `now` records of `qualname` in `file` to the same code at commit `at`.
 
     Returns the commit `at` names and "" where the two are the same code. Returns no commit and
-    the reason where there is no repository to ask: git is not installed, or no repository
-    holds the file, as in the copy `manuscript-guard verify` runs, which has no .git. Raises
-    ValueError where there is one and the code is not the same, or `at` names nothing in it:
-    the Methods would then show code that is not what produced the results. `shown` is the
-    file as the messages name it.
+    the reason only where there is no repository to ask: git is not on PATH, or git says no
+    repository holds the file and no .git is in its folder or above it, as in the copy
+    `manuscript-guard verify` runs. Any other failure of git raises ValueError with what git
+    said: round 1 of #564 found every failure read as "no repository", so a broken git
+    configuration let code edited since `at` be recorded unchecked, and pass. Raises
+    ValueError too where the code is not the same, or `at` names nothing: the Methods would
+    then show code that is not what produced the results. `shown` is the file as the messages
+    name it.
     """
     folder = file.parent
-    if _git_here(folder, "--version") is None:
+    if shutil.which("git") is None:
         return None, (f"git is not installed here, so whether this is the code at {at} was not "
                       "checked")  # fmt: skip
     prefix = _git_here(folder, "rev-parse", "--show-prefix")
-    if prefix is None:
-        return None, (f"no git repository holds {shown} here, so whether this is the code at "
-                      f"{at} was not checked")  # fmt: skip
+    if prefix.returncode != 0:
+        alone = not any((place / ".git").exists() for place in (folder, *folder.parents))
+        if alone and "not a git repository" in _said(prefix).lower():
+            return None, (f"no git repository holds {shown} here, so whether this is the code at "
+                          f"{at} was not checked")  # fmt: skip
+        raise _git_failed(prefix, shown, at)
     commit = _git_here(folder, "rev-parse", "--verify", "--quiet", f"{at}^{{commit}}")
-    if commit is None:
+    if commit.returncode != 0 and commit.stderr.strip():
+        raise _git_failed(commit, shown, at)
+    if commit.returncode != 0:
         raise ValueError(
             f"at {at!r} names no commit or tag of the repository that holds {shown}; name the "
             "commit or the results tag whose run produced the results"
         )
-    sha = commit.decode("ascii", "replace").strip()
-    inside = prefix.decode("utf-8", "replace").strip() + file.name
-    blob = _git_here(folder, "cat-file", "blob", f"{sha}:{inside}")
-    if blob is None:
+    sha = commit.stdout.decode("ascii", "replace").strip()
+    inside = prefix.stdout.decode("utf-8", "replace").strip() + file.name
+    # Asked first, and apart: a path the commit does not hold is listed as nothing, with git
+    # succeeding, so that a failure reading the file is not taken for the file being absent.
+    listed = _git_here(folder, "ls-tree", "--full-tree", "--name-only", sha, "--", inside)
+    if listed.returncode != 0:
+        raise _git_failed(listed, shown, at)
+    if not listed.stdout.strip():
         raise ValueError(
             f"{shown} is not in {at} (commit {sha[:12]}), so the code it names did not produce "
             "results at that commit; name the commit the results came from"
         )
-    then = definition_code(blob.decode("utf-8", "replace"), qualname)
+    blob = _git_here(folder, "cat-file", "blob", f"{sha}:{inside}")
+    if blob.returncode != 0:
+        raise _git_failed(blob, shown, at)
+    then = definition_code(blob.stdout.decode("utf-8", "replace"), qualname)
     if then is None:
         raise ValueError(
             f"{qualname} is not defined in {shown} at {at} (commit {sha[:12]}); the Methods "

@@ -136,8 +136,9 @@ script. Name the code that did the work instead, without running it:
 em.code_step("model.stacked", "code/analysis.py", "fit_stacked", at="results-review8-v2")
 ```
 
-It is a step like any other to the anchors, G9 and the checking page, and it is refused
-unless the function's code at that commit or tag is the code in the working tree. When the
+It is a step like any other to the anchors, G9 and the checking page. Where a git repository
+holds the file, it is refused unless the function's code at that commit or tag is the code in
+the working tree; without one it is recorded as unchecked. When the
 code is edited afterwards, `check` fails (`method-code-changed`, `method-code-missing`).
 Before using it, read [references/code-steps.md](references/code-steps.md): what may be
 named, what happens without a repository, and what to do when the results are made again.

@@ -17199,6 +17199,12 @@ Open, recorded as each change landed:
   review rounds went into reading it as pandoc does, and each found a place where pandoc
   does not (fenced code, indented code, HTML comments) and a sign flipped or prose
   vanished. A false alarm is the cheaper mistake.
+- **A number in the outputs starts at its point only where nothing joins the point to a
+  word.** APA's ".661" and "-.30" are read as 0.661 and -0.3 after a space, a bracket, a
+  sign, `=`, `:`, `,` or a pipe (2026-11-06: they went in as 661 and 30, so an APA p or r
+  never matched). After a letter, a digit, an underscore or another point, a point starts
+  none, so that `a.0.b`, `1.2.7` and `...5` stay names, versions and ellipses: an output
+  that writes a value as `est.661` holds 661 for it, not 0.661.
 - **A .docx list under a paragraph that is no heading ends only where its shape does.** The
   cut ends at a caption, a back-matter title or a table (see "Closed since"), and otherwise
   runs to the next styled heading or the end of the body, but the report names the lines,

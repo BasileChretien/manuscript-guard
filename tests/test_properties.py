@@ -7971,6 +7971,7 @@ def _an_item_of_a_list_opens_one(patch: pytest.MonkeyPatch) -> None:
 # Imported here, not at the top, to keep clear of the import block other branches edit.
 from generated import (  # noqa: E402
     audit_entries,
+    backing_points,
     docx_reference_ends,
     glued_intervals,
     printed_markers,
@@ -8079,6 +8080,40 @@ def _a_thousands_comma_is_read_as_a_decimal_one(patch: pytest.MonkeyPatch) -> No
         return low <= float(match["grouped"].replace(",", ".")) <= high
 
     patch.setattr(audit_module, "_encloses", encloses)
+
+
+@holds(100, backing_points())
+def test_a_point_begins_a_number_in_the_outputs_only_where_nothing_joins_it_to_a_word(
+    drawn: tuple[str, set[str]],
+) -> None:
+    """In the outputs the audit reads, `.661` is 0.661 and `-.30` is -0.3, after a space, a
+    bracket, an equals sign, a colon, a comma or a pipe; a point after a letter, a digit or
+    another point begins none, and the digits after it are read alone (`_numbers_in`). The
+    reader needed a digit before a point, so APA's p and r went in as integers."""
+    text, expected = drawn
+    assert audit_module._numbers_in(text) == expected, text
+
+
+def _no_number_begins_at_its_point(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_NUMBER", r"|(?<![\w.])\.\d+")
+
+
+def _a_point_begins_a_number_after_anything(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_NUMBER", r"(?<![\w.])")
+
+
+def _a_point_begins_a_number_after_a_point(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_NUMBER", r"(?<![\w.])", r"(?<!\w)")
+
+
+def _a_point_begins_a_number_after_a_digit(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_NUMBER", r"(?<![\w.])", r"(?<![A-Za-z_.])")
+
+
+def _an_en_dash_is_a_sign_only_before_a_digit(patch: pytest.MonkeyPatch) -> None:
+    real = audit_module.normalise_number
+    patch.setattr(audit_module, "normalise_number",
+                  lambda text: text if text.startswith("–.") else real(text))
 
 
 @holds(30, printed_markers())
@@ -18715,6 +18750,26 @@ BROKEN = {
     "a thousands comma before an interval is read as a decimal one": (
         _a_thousands_comma_is_read_as_a_decimal_one,
         test_an_interval_after_a_value_in_any_format_is_told_from_a_citation,
+    ),
+    "no number in the outputs begins at its point": (
+        _no_number_begins_at_its_point,
+        test_a_point_begins_a_number_in_the_outputs_only_where_nothing_joins_it_to_a_word,
+    ),
+    "a point begins a number in the outputs after a letter": (
+        _a_point_begins_a_number_after_anything,
+        test_a_point_begins_a_number_in_the_outputs_only_where_nothing_joins_it_to_a_word,
+    ),
+    "a point begins a number in the outputs after another point": (
+        _a_point_begins_a_number_after_a_point,
+        test_a_point_begins_a_number_in_the_outputs_only_where_nothing_joins_it_to_a_word,
+    ),
+    "a point begins a number in the outputs after a digit": (
+        _a_point_begins_a_number_after_a_digit,
+        test_a_point_begins_a_number_in_the_outputs_only_where_nothing_joins_it_to_a_word,
+    ),
+    "an en dash before a leading point is no sign": (
+        _an_en_dash_is_a_sign_only_before_a_digit,
+        test_a_point_begins_a_number_in_the_outputs_only_where_nothing_joins_it_to_a_word,
     ),
     "the audit hides an HTML comment in Word and figure text": (
         _printed_text_hides_its_comments,

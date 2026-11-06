@@ -890,6 +890,29 @@ def test_a_hyphen_between_numbers_is_not_a_sign(tmp_path: Path) -> None:
     assert not {"-0.82", "-3", "-4", "-5"} & values
 
 
+def test_a_decimal_with_no_digit_before_its_point_is_read_as_one(tmp_path: Path) -> None:
+    """APA writes a p or an r with no nought before the point. The reader of the outputs
+    needed a digit before a point, so `p = .661` went into the backing set as 661: the
+    paper's .661 never matched, and a stray integer joined the set. A point after a letter,
+    a digit or another point is not a leading point: `a.0.b` and `results.json` are keys."""
+    outputs = tmp_path / "out.txt"
+    outputs.write_text(
+        "p = .661, r (.30), d -.25, s –.45, a.0.b in results.json, v1.2.7, wait...5\n", "utf-8"
+    )
+    values, _used, _skipped = load_backing([outputs])
+    assert {"0.661", "0.3", "-0.25", "-0.45", "0", "1.2", "7", "5"} <= values
+    assert not {"661", "30", "25", "0.25", "0.7", "0.5", "-0.5"} & values
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("The test gave p = .661 and r = .30.\n", encoding="utf-8")
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == []
+
+
+def test_an_interval_of_leading_point_bounds_is_split() -> None:
+    assert parts_of(".72–.82") == ["0.72", "0.82"]
+    assert parts_of("-.30–.15") == ["-0.3", "0.15"]
+
+
 @pytest.mark.parametrize(
     ("atom", "expected"),
     [

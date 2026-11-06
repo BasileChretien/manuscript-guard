@@ -1,6 +1,6 @@
 ---
 name: results-binding
-description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, results-edited, script-newer, input-changed, duplicate-quantity, pointer-to-nothing, display-not-cited, cited-out-of-order, pointer-word-mismatch, ref-number-unknown, caption-names-another, quality-not-run, entry-unchecked or rule-unchecked. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
+description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, binding-in-table, results-edited, script-newer, input-changed, duplicate-quantity, pointer-to-nothing, display-not-cited, cited-out-of-order, pointer-word-mismatch, ref-number-unknown, caption-names-another, quality-not-run, entry-unchecked or rule-unchecked. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
 ---
 
 # Binding the numbers
@@ -184,6 +184,24 @@ A cell holding more than one number must be built with `em.cell`, which records 
 An f-string produces the same characters and none of the provenance, and is refused as
 `typed-composite-cell`.
 
+A caption and a header take what a cell takes, so a value in a caption is composed, not
+typed. In Python and in R:
+
+```python
+em.table("by_group", columns, rows,
+         caption=em.cell("Reports by drug group, of {} in all.", n_reports))
+```
+
+```r
+em$table("by_group", columns, rows,
+         caption = em$cell("Reporting odds ratio {} (95% CI {} to {}).",
+                           list(or, 2), list(lo, 2), list(hi, 2)))
+```
+
+A binding left in a caption, a header or a cell is refused as `binding-in-table`, by the
+emitter and by G2: bindings resolve only in the prose, so one in a table would print as
+braces.
+
 A figure script lives in `figures/`, reads the results, and types no data values. Numbers in
 the rendered figure must be result displays, conventions, or declared ticks in
 `figures/<name>.guard.yaml`, each with a `why`. With matplotlib, set
@@ -208,40 +226,10 @@ There are four ways out, and usually it is the first:
 2. It should be published. Emit it from the analysis and bind it.
 3. It comes from the literature. Ledger entry, with the quote and the stored source.
 4. It is a convention of scientific writing, not a result. The shipped conventions
-   cover things like `p < 0.05` in the Methods, `95% CI` and `per 1,000 person-years`. For
-   a convention of your own field, add one to `paper.yaml` with a reason, pinned to the
-   value rather than to a shape:
-
-   ```yaml
-   conventions:
-     - id: maf-threshold
-       pattern: '(?i)minor allele frequency (?:below|<) 1%'
-       why: Standard genotype quality-control threshold, stated in the Methods.
-       added_on: 2026-09-24
-   ```
-
-   `id` is optional. The report and `explain` cite the rule by it, as
-   `project:maf-threshold`, and without it by the start of the pattern.
-
-   A name that contains digits, such as a gene or a product code, goes under `terms:`.
-   A name typed with a subscript or a superscript is declared without the signs:
-   `terms: [CO2]` covers `CO~2~` as well as `CO2`, and `HbA~1c~` needs nothing, since
-   `HbA1c` is built in. An isotope is declared by its mass and its element, `terms: [18F]`
-   for `^18^F-FDG`. An exponent on a unit, `kg/m^2^` or `s^-1^`, is read as `m²` is
-   and needs nothing either; `10^6^` is a number. A tilde that nothing closes is no
-   subscript: `pH~2` is a number after "about", and is bound or written out.
-
-   If `p < 0.05` is reported although it is in the Methods, look above it for a line that
-   starts with `#`, or sits over a line of `-` or `=`, inside a paragraph, a list item or a
-   quotation. Pandoc prints that line as text, not as a heading, and the gate ends the
-   Methods there. Do not add a convention. If the line is text ("# of reports" moved to the
-   start of a line by a hard wrap), rewrap it or write `\#`. If it was meant as a heading,
-   put a blank line before it. If the `-` line under it was meant as a rule, put the blank
-   line before the rule.
-
-   Every run reports how many numbers the project's own rules accounted for. A pattern
-   wide enough to cover results is allowed, and it is visible, and it switches the check
-   off.
+   cover things like `p < 0.05` in the Methods, `95% CI` and `per 1,000 person-years`.
+   One of your own field (in `paper.yaml`, with a reason), a name with digits (`terms:`),
+   or a `p < 0.05` in the Methods still reported:
+   [references/conventions.md](references/conventions.md).
 
 **A value that matches is a suggestion, never evidence.** The gate never accepts a literal
 because it matches a result. `bind` uses the match only to propose a binding, which is then
@@ -264,6 +252,7 @@ checked like any other.
 | `caption-names-another` | a caption beside a table or figure (typed under a figure, above or under a table, or emitted by the analysis with a number) names another one. Write the caption's number as `{{ref.figure.key}}`, or emit the caption without its number |
 | `ref-number-unknown` | the build cannot number this ref: its kind is also placed by hand or sent as files in that document, or its key is placed twice. Type that pointer |
 | `hand-authored-table` | emit the table |
+| `binding-in-table` | a `{{...}}` in an emitted caption, header or cell. Emit the value it stands for and compose it in with `em.cell` (`em$cell` in R), or move the sentence into the prose |
 | `script-newer`, `input-changed` | re-run the script that wrote the results; where the input is a dataset's, with the date of the new extraction and its pin |
 | `dataset-pin-mismatch`, `dataset-read-differs`, `dataset-value-unrecorded` | the results were computed from other data than the extraction the dataset dates, or a dataset's value was typed into a fragment: re-run the scripts that read the old data, through the emitter |
 | `data-date-not-declared` | a warning: a date of the data emitted as a string. Declare the data with `em.dataset()`; emit a year computed from the data as a number (`int(...)`); a date the study chose is `em.parameter()` |

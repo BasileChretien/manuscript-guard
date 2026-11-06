@@ -406,6 +406,80 @@ def test_r_refuses_a_number_typed_into_a_cell(tmp_path: Path) -> None:
     assert "number written as text" in out.stderr
 
 
+CAPTION_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$value("cohort.n", 412L)
+em$table(
+  "t", list("Group", em$cell("Exposed (n = {})", 412L)), list(list("Hepatic", 77L)),
+  caption = em$cell("Reporting odds ratio {} (95%% CI {} to {}).",
+                    list(3.84, 2), list(2.10, 2), list(7.02, 2))
+)
+em$write()
+"""
+
+
+def test_r_and_python_compose_a_caption_alike(tmp_path: Path) -> None:
+    """A caption took only text in both emitters, so a count in it could only be typed."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.emit import Emitter
+    from manuscript_guard.gates.numbers import _emitted_tables
+
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "cap.R"
+    script.write_text(
+        CAPTION_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()}, encoding="utf-8"
+    )
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    fragment = root / "results" / "cap.json"
+    r = json.loads(fragment.read_text(encoding="utf-8"))
+    assert validate(r, "results", fragment).ok
+
+    (root / "analysis" / "cap.py").write_text("# placeholder\n", encoding="utf-8")
+    em = Emitter(root / "analysis" / "cap.py", root=root)
+    em.value("cohort.n", 412)
+    em.table(
+        "t", ["Group", em.cell("Exposed (n = {})", 412)], [["Hepatic", 77]],
+        caption=em.cell("Reporting odds ratio {} (95% CI {} to {}).",
+                        (3.84, 2), (2.10, 2), (7.02, 2)),
+    )  # fmt: skip
+    assert r["tables"] == em.document()["tables"]
+    assert r["tables"]["t"]["caption"] == "Reporting odds ratio 3.84 (95% CI 2.10 to 7.02)."
+
+    results, report = load_results(root / "results")
+    assert report.ok, report.render()
+    assert not _emitted_tables(results, Classifier.load()).findings
+
+
+@pytest.mark.parametrize(
+    ("caption", "header", "where"),
+    [
+        ('"Follow-up of {{pc.design.min_minutes}} minutes."', '"n"', "caption of table 't'"),
+        ("NULL", '"n ({{rv10.bootstrap.n}})"', "table 't' column 1 header"),
+        ("NULL", 'em$cell("n ({{rv10.bootstrap.n}}, {})", 4L)', "table 't' column 1 header"),
+    ],
+)
+def test_r_refuses_a_binding_left_in_table_text(
+    tmp_path: Path, caption: str, header: str, where: str
+) -> None:
+    """Python refuses it when the fragment is written; R checks no table there."""
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "bad.R"
+    script.write_text(
+        f'source("{EMIT_R.as_posix()}")\nem <- mg_emitter("{script.as_posix()}")\n'
+        f'em$table("t", list("Group", {header}), list(list("Exposed", 77L)), '
+        f"caption = {caption})\n",
+        encoding="utf-8",
+    )
+    out = _run_r(script, root)
+    assert out.returncode != 0 and f"{where}: " in out.stderr, out.stderr
+    assert "holds the binding {{" in out.stderr, out.stderr
+
+
 ROUNDING_CHECK = """
 source("%(emit)s")
 # A rounding that turns a real number into zero is not a rounding of it.

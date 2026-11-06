@@ -37,7 +37,13 @@ from manuscript_guard.contracts.values import DisplayError, check_string_value, 
 from manuscript_guard.datasets import NAME as DATASET_NAME
 from manuscript_guard.datasets import dataset_digest, declare, pin_of, slug
 from manuscript_guard.paths import lockfiles
-from manuscript_guard.tables import HEADER_ROW, TABLE_SECTION, problems_in
+from manuscript_guard.tables import (
+    CAPTION_COLUMN,
+    CAPTION_ROW,
+    HEADER_ROW,
+    TABLE_SECTION,
+    problems_in,
+)
 
 SCHEMA = "manuscript-guard/results/1"
 
@@ -156,7 +162,12 @@ def _cell(
     verbatim: set[tuple[str, int, int]],
 ) -> str:
     """Format one table cell, refusing a number that was typed rather than computed."""
-    where = f"table {key!r} row {row} column {column}"
+    if row == CAPTION_ROW:
+        where = f"caption of table {key!r}"
+    elif row == HEADER_ROW:
+        where = f"table {key!r} column {column} header"
+    else:
+        where = f"table {key!r} row {row} column {column}"
 
     if isinstance(cell, Composed):
         text, parts = cell.render(where)
@@ -1816,7 +1827,7 @@ class Emitter:
         columns: list[str],
         rows: list[list[object]],
         *,
-        caption: str | None = None,
+        caption: str | Composed | float | None = None,
         align: list[str] | None = None,
         quoted: bool = True,
         digits: int | dict[int, int] | None = None,
@@ -1833,6 +1844,11 @@ class Emitter:
         and compared to nothing at all, so "tables are emitted, not written" was satisfied
         by *calling* the emitter while the numbers were still typed by hand. Text cells
         (labels, group names, "n/a") are unaffected.
+
+        The caption and the column headers take what a cell takes, so a count goes into
+        either as `em.cell("Reports by group, of {} in all.", n)`. A `{{...}}` binding in any
+        of them is refused: bindings are resolved in the prose, not in emitted text, and one
+        left in a caption would print as braces.
         """
         if key in self._tables:
             raise ValueError(f"table {key!r} emitted twice by {self.script}")
@@ -1869,7 +1885,16 @@ class Emitter:
             ],
         }
         if caption is not None:
-            spec["caption"] = caption
+            # The caption goes through `_cell` for the reason the headers do. Stored raw, a
+            # count in it could only be typed, which the caption check refused, and a
+            # `Composed` failed with "'Composed' object is not iterable". A study met both
+            # and its only way out was to move the sentence into the prose. The fragment
+            # keeps the rendered text, so the build and every gate reading a caption see the
+            # words as printed; the `composed` entry is what lets G2 rebuild them.
+            spec["caption"] = _cell(
+                key, CAPTION_ROW, CAPTION_COLUMN, caption, None, self._computed,
+                self._composed, self._literals, self._parts, self._verbatim,
+            )
         if align is not None:
             if len(align) != width:
                 raise ValueError(f"table {key!r}: align has {len(align)} entries, need {width}")
@@ -1883,7 +1908,7 @@ class Emitter:
         key: str,
         entries: list[dict],
         *,
-        caption: str | None = None,
+        caption: str | Composed | None = None,
         columns: tuple[str, str, str] = ("Concept", "Coding system", "Codes"),
     ) -> None:
         """The table of codes RECORD 6.1 asks for, built from the lists the analysis used.
@@ -2230,8 +2255,14 @@ class Emitter:
         for (table, row, column), template in sorted(self._literals.items()):
             if table != key:
                 continue
-            entry: dict = {"column": column, "template": template}
-            if row != HEADER_ROW:
+            # A caption has no row or column on the wire; it says so, as a code list says
+            # `codes`. The schema keeps `row` and `column` non-negative indexes into the table.
+            entry: dict = (
+                {"caption": True, "template": template}
+                if row == CAPTION_ROW
+                else {"column": column, "template": template}
+            )
+            if row not in (HEADER_ROW, CAPTION_ROW):
                 entry["row"] = row
             parts = self._parts.get((table, row, column))
             if parts:

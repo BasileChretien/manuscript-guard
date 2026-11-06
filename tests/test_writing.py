@@ -172,6 +172,32 @@ def test_an_opening_word_inside_a_wrapped_paragraph_passes(project: Path, paragr
     assert "model-artefact" not in codes(report), messages(report)
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Round 1 of #538: a heading, or a line of spaces or a tab, opens the next paragraph.
+        "# Methods\nCertainly! Here is the revised Methods section.\n",
+        "# Methods\n\nPrior paragraph.\n  \nCertainly! Here is the revised section.\n",
+        "# Methods\n\nPrior paragraph.\n\t\nSure, here is the revised section.\n",
+    ],
+)
+def test_an_opening_word_after_a_heading_or_a_line_of_spaces_fails(
+    project: Path, text: str
+) -> None:
+    assert "model-artefact" in codes(written(project, text))
+
+
+def test_an_opening_word_after_a_latex_command_line_is_an_artefact() -> None:
+    """A LaTeX source is read as typed: `\\section{Methods}` alone on its line ends what is
+    above it, as a heading does (round 1 of #538)."""
+    from manuscript_guard.gates.writing import artefacts_in, load_rules
+
+    text = "\\section{Methods}\nSure, here is the revised Methods section.\n"
+    found = [m.group(0).strip() for rule, m in artefacts_in(load_rules(), text, manuscript=True)
+             if rule["id"] == "assistant-voice"]  # fmt: skip
+    assert found == ["Sure"], found
+
+
 def test_technical_senses_are_not_counted(project: Path) -> None:
     """"Robust standard errors" is not a tell; it is the name of the estimator."""
     text = (

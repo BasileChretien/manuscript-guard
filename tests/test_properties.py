@@ -8369,11 +8369,20 @@ _OPENERS = (
 )  # fmt: skip
 
 
+#: What ends a paragraph, so that the next line opens one (round 1 of #538): a blank line,
+#: one of spaces or a tab, several, a heading with or without a blank line after it, and a
+#: LaTeX command on a line of its own.
+_PARAGRAPH_ENDS = (
+    "\n\n", "\n \n", "\n\t\n", "\n\n\n", "\n\n## Results\n\n", "\n\n## Results\n",
+    "\n\\section{Results}\n",
+)  # fmt: skip
+
+
 @st.composite
-def _wrapped_openers(draw: st.DrawFn) -> tuple[str, str]:
-    """A paragraph with an assistant's opener in the middle of a sentence, and a paragraph
-    opened by one, each hard-wrapped at gaps drawn; in the first, a line break before the
-    opener in every example."""
+def _wrapped_openers(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A paragraph with an assistant's opener in the middle of a sentence, hard-wrapped at
+    gaps drawn with a line break before the opener in every example; and a paragraph opened
+    by one after a paragraph, once after each kind of end a paragraph has."""
     before = draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=8))
     after = draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=8))
     opener = draw(st.sampled_from(_OPENERS))
@@ -8386,20 +8395,22 @@ def _wrapped_openers(draw: st.DrawFn) -> tuple[str, str]:
 
     inside = wrapped([*before, opener.lower(), *after], len(before) - 1)
     opening = wrapped([opener, *after], None)
+    above = wrapped(before, None)
     return (f"# Methods\n\n{inside}.\n",
-            f"# Methods\n\n{wrapped(before, None)}.\n\n{opening}.\n")  # fmt: skip
+            [f"# Methods\n\n{above}.{end}{opening}.\n" for end in _PARAGRAPH_ENDS])  # fmt: skip
 
 
 @holds(200, _wrapped_openers())
 def test_an_assistant_opener_is_found_where_a_paragraph_opens_however_it_is_wrapped(
-    drawn: tuple[str, str],
+    drawn: tuple[str, list[str]],
 ) -> None:
     """`assistant-voice` reads the words a paragraph opens with, which do not move when its
     lines are wrapped again: an opener in the middle of a sentence is prose wherever the
-    wrap falls, and one that opens a paragraph is found once (the athlete-leakage study)."""
+    wrap falls, and one that opens a paragraph is found once, whatever ended the paragraph
+    before it (the athlete-leakage study, round 1 of #538)."""
     from manuscript_guard.gates.writing import artefacts_in, load_rules
 
-    inside, opening = drawn
+    inside, openings = drawn
     rules = load_rules()
 
     def voiced(text: str) -> list[str]:
@@ -8407,7 +8418,8 @@ def test_an_assistant_opener_is_found_where_a_paragraph_opens_however_it_is_wrap
                 if rule["id"] == "assistant-voice"]  # fmt: skip
 
     assert voiced(inside) == [], inside
-    assert len(voiced(opening)) == 1, opening
+    for opening in openings:
+        assert len(voiced(opening)) == 1, opening
 
 
 # ------------------------------------------------------- words to the reviewers, left in
@@ -13331,18 +13343,21 @@ def _lines_in_capitals_are_lines(patch: pytest.MonkeyPatch) -> None:
 def _an_opener_is_read_at_every_line(patch: pytest.MonkeyPatch) -> None:
     # As `assistant-voice` read a paragraph until the athlete-leakage study: every line's
     # first words, a hard-wrapped line's among them.
-    from dataclasses import replace
-
     from manuscript_guard.gates import writing
 
-    rules = writing.load_rules()
-    artefacts = tuple(
-        {**rule, "pattern": rule["pattern"].replace("(?<![^\\n]\\n)", "")}
-        if rule["id"] == "assistant-voice" else rule
-        for rule in rules.artefacts
-    )
-    assert artefacts != rules.artefacts, "assistant-voice reads no paragraph's start"
-    patch.setattr(writing, "load_rules", lambda: replace(rules, artefacts=artefacts))
+    patch.setattr(writing, "_opens_paragraph", lambda text, at: True)
+
+
+def _a_paragraph_opens_only_after_an_empty_line(patch: pytest.MonkeyPatch) -> None:
+    # As the first head of #538 read it: the line before had to be empty, so a heading, a
+    # line of spaces or a LaTeX command before the opener hid it (round 1 of #538).
+    from manuscript_guard.gates import writing
+
+    def after_an_empty_line(text: str, at: int) -> bool:
+        start = text.rfind("\n", 0, at) + 1
+        return not text[start:at].strip() and (start == 0 or text[start - 2 : start] == "\n\n")
+
+    patch.setattr(writing, "_opens_paragraph", after_an_empty_line)
 
 
 def _a_field_wholly_in_brackets_is_read_without_them(patch: pytest.MonkeyPatch) -> None:
@@ -18888,6 +18903,10 @@ BROKEN = {
     ),
     "an assistant's opener is read at the start of every line": (
         _an_opener_is_read_at_every_line,
+        test_an_assistant_opener_is_found_where_a_paragraph_opens_however_it_is_wrapped,
+    ),
+    "a paragraph opens only after an empty line": (
+        _a_paragraph_opens_only_after_an_empty_line,
         test_an_assistant_opener_is_found_where_a_paragraph_opens_however_it_is_wrapped,
     ),
     "the reviewers are read as one reviewer": (

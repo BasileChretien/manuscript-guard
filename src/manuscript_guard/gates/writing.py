@@ -386,8 +386,31 @@ def artefacts_in(
         for match in re.finditer(rule["pattern"], text, flags):
             if any(start < match.end() and match.start() < end for start, end in taken):
                 continue
+            words = match.start() + len(match.group(0)) - len(match.group(0).lstrip())
+            if rule.get("paragraph_start") and not _opens_paragraph(text, words):
+                continue
             taken.append(match.span())
             yield rule, match
+
+
+#: A line that ends the paragraph before it, so that the next line opens one: a heading,
+#: Markdown's or a LaTeX command alone on its line, `\section{Methods}`, `\begin{abstract}`.
+_HEADING_LINE = re.compile(r"[ \t]{0,3}#{1,6}(?:[ \t][^\n]*)?")
+_COMMAND_LINE = re.compile(r"[ \t]*\\[A-Za-z]+\*?(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?[ \t]*")
+
+
+def _opens_paragraph(text: str, at: int) -> bool:
+    """Whether the words at `at` open a paragraph: they begin their line, and the line before
+    is none, holds only spaces or tabs, or is a heading or a LaTeX command. A line after
+    prose continues a hard-wrapped paragraph, wherever in a sentence its first word falls."""
+    start = text.rfind("\n", 0, at) + 1
+    if text[start:at].strip():
+        return False
+    if start == 0:
+        return True
+    before = text[text.rfind("\n", 0, start - 1) + 1 : start - 1].rstrip("\r")
+    return (not before.strip() or _HEADING_LINE.fullmatch(before) is not None
+            or _COMMAND_LINE.fullmatch(before) is not None)  # fmt: skip
 
 
 def _artefacts(rules: Rules, path: Path, text: str, totals: dict) -> Report:
@@ -398,7 +421,8 @@ def _artefacts(rules: Rules, path: Path, text: str, totals: dict) -> Report:
             Finding(
                 gate=GATE,
                 code="model-artefact",
-                message=f"{match.group(0)[:60]!r} — {rule['why']}",
+                # The words, not the blank lines a paragraph's rule reads through to them.
+                message=f"{match.group(0).strip()[:60]!r} — {rule['why']}",
                 path=path,
                 line=_line_of(text, match),
                 context=_context(text, match.start(), match.end()),

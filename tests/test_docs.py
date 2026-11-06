@@ -125,6 +125,19 @@ def test_the_commands_page_lists_the_commands_the_tool_has() -> None:
     assert set(listed) == set(choices) - {"hook"}
 
 
+def test_no_page_sends_a_reader_to_the_readme_for_the_commands() -> None:
+    """The commands left the README for their own page, where the README now names a few of
+    them; a sentence that still says they are listed there sends its reader to a summary,
+    and the link test passes it, since the README is there (round 1 of #550)."""
+    stale = [
+        f"{page.name}: {sentence}"
+        for page in DOCS.glob("*.md")
+        for sentence in re.split(r"(?<=[.:])\s+", " ".join(FENCE.sub("", text_of(page)).split()))
+        if re.search(r"\bcommands\b[^.]*\]\(\.\./README\.md(?:#[\w-]*)?\)", sentence)
+    ]
+    assert stale == [], stale
+
+
 def test_the_commands_page_groups_the_commands_as_the_help_does() -> None:
     """One `## ` heading per group of `manuscript-guard --help`, in its order, each over a
     table of that group's commands in the order the help lists them."""

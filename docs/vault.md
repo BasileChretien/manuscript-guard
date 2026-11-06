@@ -3,7 +3,7 @@
 The vault is the folder where the data are held, which the operating system keeps from the
 agent. The coding agent writes and tests the analysis against a synthetic copy in
 `data/synthetic/`. Only a process the person starts reads the real data. The commands are
-listed in the [README](../README.md).
+listed in [Commands](commands.md#analysis--data).
 
 Four things are said plainly here, because each is easy to believe otherwise:
 

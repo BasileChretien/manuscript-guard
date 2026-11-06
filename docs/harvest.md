@@ -4,7 +4,7 @@ Some analyses will never call the emitter. A script written before the project, 
 SAS program, a pipeline that writes `estimates.csv` and nothing else. `manuscript-guard
 harvest` takes such an output in as results, so that the manuscript binds its numbers as it
 binds emitted ones. It runs nothing, and `check` says so until something has. The commands
-are listed in the [README](../README.md).
+are listed in [Commands](commands.md#analysis--data).
 
 ## `harvest.yaml`
 

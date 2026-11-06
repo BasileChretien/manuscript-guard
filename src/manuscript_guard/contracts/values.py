@@ -196,7 +196,11 @@ _NUMERIC_DISPLAY = re.compile(
     (?P<compare><|>|≤|≥|<=|>=)?\s*
     (?P<sign>[-+−])?
     (?P<number>\d{1,3}(?:[,    ]\d{3})+(?:\.\d+)?
-              |\d+(?:\.\d+)?)
+              |\d+(?:\.\d+)?
+    # A number without its leading zero, as APA prints a p or an r: ".661", "< .001".
+    # Refused, a paper for an APA journal could bind no p-value at all. Nothing holds the
+    # form to values under one: ".5e3" for 500 is accepted, and still held to its value.
+              |\.\d+)
     # An exponent, in the two forms a paper is written in: 3.2e-9 as a programmer types it,
     # and "3.2 × 10⁻⁹" as a journal prints it. Without the second, a p-value worth stating
     # precisely could be written only in a notation no journal uses, and the alternative an

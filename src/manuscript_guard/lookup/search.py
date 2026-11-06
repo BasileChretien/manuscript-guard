@@ -261,6 +261,9 @@ def _doi(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
     doi = re.sub(r"^\s*(?:https?://(?:dx\.)?doi\.org/|doi:\s*)", "", value.strip(), flags=re.I)
+    # The old form of a DOI, a doubled slash after the prefix, is the same DOI: OpenAlex holds
+    # APA's 10.1037/0033-2909.129.1.74 as 10.1037//0033-2909.129.1.74 (2026-11-06).
+    doi = re.sub(r"^(10\.[^/\s]+)/{2,}", r"\1/", doi)
     return doi.lower() if doi.startswith("10.") else None
 
 

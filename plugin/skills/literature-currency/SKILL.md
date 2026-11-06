@@ -78,6 +78,10 @@ and lists the works new since the last run. A search older than six months is st
 manuscript-guard references --explain c1   # the searches, and the candidates they kept
 ```
 
+`--explain` says how many readings are filed and what the rules give, and nothing of what
+a reading says. Do not add `--readings`, which prints each filed reading's fields and
+quotes: that is for the person who answers the entry, after the readings are in.
+
 Read the cited work and each candidate from its works record under `literature/currency/`,
 and nowhere else. For each, fill:
 
@@ -89,7 +93,10 @@ and nowhere else. For each, fill:
 - R4 `search_end`, for a synthesis whose abstract states when its search ended.
 
 Each field carries a quote of the stored abstract or title, copied word for word; mark words
-left out with an ellipsis. A population, exposure or outcome the abstract does not settle is
+left out with an ellipsis. A quote starts and ends at a word's edge and takes a hyphen-joined
+word whole: where the abstract has "video-collected from over 100 subjects", quote
+"video-collected from", never "collected from". `references --reading` refuses a reading with
+a quote the check would refuse, and names each. A population, exposure or outcome the abstract does not settle is
 `unclear`, with the quote that comes nearest; `unclear` is no value of the other fields. Read every candidate, including the ones that look off the
 question: the rules need each.
 
@@ -99,10 +106,16 @@ Write the reading as a YAML file in the shape of the reading schema and file it:
 manuscript-guard references --reading reading.yaml
 ```
 
+To correct a reading of yours already filed, as when `check` reports
+`currency-quote-not-found` on it, file the corrected one with `--replaces N`, N the number of
+the reading it corrects (`c1.<reader>.N.yaml`): the gate and the rules then read it in that
+one's place. Filed without `--replaces`, a further reading counts as one more.
+
 ## 5. Read a second time, independently
 
 The rules decide from two readings that agree. The second is made by a second agent or a
-fresh context that has not seen the first, from the works records alone. Do not copy or
+fresh context that has not seen the first, from the works records alone, with
+`references --explain` as in step 4 and never with `--readings`. Do not copy or
 compare with the first. Where the two disagree on a field that can change the outcome, the
 entry is `uncertain` and nothing is proposed: a third reading, or a person's decision with
 why, settles it.

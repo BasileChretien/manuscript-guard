@@ -332,3 +332,19 @@ def test_shutil_is_used_rather_than_a_partial_copy(project: Path) -> None:
     assert shutil.copytree is not None
     result = run(project)
     assert result.comparisons and result.comparisons[0].ran
+
+
+def test_the_scratch_copy_has_no_git_a_limit_known_gaps_names(project: Path,
+                                                               tmp_path: Path) -> None:  # fmt: skip
+    """DESIGN.md, Known gaps: `verify` copies the project without `.git`, so an analysis that
+    checks its own git provenance (a commit's place in the history, a tag) cannot run that
+    check in the copy. Found taking the athlete-leakage study through the loop. The copy is
+    staged with `_skip`, as `verify` stages it."""
+    from manuscript_guard.verify import IGNORED_DIRS, _skip
+
+    (project / ".git").mkdir()
+    (project / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    copy = tmp_path / "copy"
+    shutil.copytree(project, copy, symlinks=True, ignore=_skip)
+    assert ".git" in IGNORED_DIRS
+    assert not (copy / ".git").exists() and (copy / "analysis").is_dir()

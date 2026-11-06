@@ -232,6 +232,8 @@ def _rounded(match: re.Match, shown: str, value: float, digits: int) -> str:
                            "which is not this number")  # fmt: skip
     if grouping:
         magnitude = magnitude.replace(",", grouping.group(1))
+    if match.group("number").startswith(".") and magnitude.startswith("0."):
+        magnitude = magnitude[1:]  # written without its leading zero, APA's ".661", kept so
     return (match.group("sign") or "") + magnitude + shown[max(ends):]
 
 

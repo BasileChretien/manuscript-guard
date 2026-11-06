@@ -30,7 +30,8 @@ two search end dates on the same side of the publication. A candidate one readin
 another does not is a disagreement.
 
 Two readings are needed before anything is decided, counted as distinct readers' numbered
-readings: one gives no decision. Where a candidate both contradicts and is stronger, it is
+readings: one gives no decision. A reading another of its reader replaces is not given to
+`decide` (`records.current`). Where a candidate both contradicts and is stronger, it is
 `add` and never `replace`: a work that says the sentence is wrong does not take its citation's
 place. Where one candidate gives `add` and another `replace`, the entry is `add`, since the
 contradiction is what the author has to read first. A decision records `K4` only where recency

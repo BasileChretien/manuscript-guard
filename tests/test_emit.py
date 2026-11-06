@@ -117,6 +117,32 @@ def test_a_comparator_display_is_accepted_when_the_value_is_on_that_side(
     assert em.document()["values"]["p"]["display"] == display
 
 
+@pytest.mark.parametrize(
+    ("value", "display"),
+    [(0.661, ".661"), (-0.05, "−.05"), (0.0000004, "< .001"), (0.9996, "> .999")],
+)
+def test_a_display_without_the_leading_zero_is_accepted(
+    scratch: Path, value: float, display: str
+) -> None:
+    """APA style prints a p-value or a correlation, which cannot exceed one, without the
+    leading zero: ".661", "< .001". The display was refused as "not a rendering of 0.661",
+    so a paper written for an APA journal could not bind its p-values at all (a study's
+    whole Results, the athlete-leakage paper)."""
+    em = emitter(scratch)
+    em.value("p", value, display=display)
+    assert em.document()["values"]["p"]["display"] == display
+
+
+@pytest.mark.parametrize(
+    ("value", "display"), [(0.661, ".561"), (0.661, ".67"), (1.661, ".661"), (0.4, "< .001")]
+)
+def test_a_display_without_the_leading_zero_is_still_held_to_its_value(
+    scratch: Path, value: float, display: str
+) -> None:
+    with pytest.raises(DisplayError):
+        emitter(scratch).value("p", value, display=display)
+
+
 @pytest.mark.parametrize(("value", "display"), [(0.4, "<0.001"), (900, ">1000")])
 def test_a_comparator_display_is_refused_when_it_is_untrue(
     scratch: Path, value: float, display: str
@@ -1232,3 +1258,36 @@ def test_rows_that_share_a_label_are_not_told_apart(scratch: Path) -> None:
     em.model("second", smf.ols("y ~ x + z", second).fit(), name="Second")
     models = em.document()["models"]
     assert models["first"]["rows_sha256"] == models["second"]["rows_sha256"]
+
+
+# ------------------------------------------------------------ the project's classifier
+
+
+def test_a_paper_yaml_that_cannot_be_read_is_named_when_a_cell_is_refused(
+    scratch: Path, capsys
+) -> None:
+    """Found taking a real paper through the loop: a paper.yaml holding a backspace did not
+    parse, the emitter fell back to the shipped classifier without a word, the project's
+    `terms:` vanished, and the error named a table cell. The analysis still runs; the
+    failure says that paper.yaml could not be read, and why."""
+    paper = scratch / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8") + "terms:\n  - E2a\n", encoding="utf-8")
+    em = emitter(scratch)
+    em.table("arms", ["Arm", "n"], [["E2a", 3]])
+    write(em)  # the term is the project's, and the cell is not a claim
+    paper.write_text(paper.read_text(encoding="utf-8").replace('"T"', '"T\b"'),
+                     encoding="utf-8")  # fmt: skip
+    em = emitter(scratch)
+    em.table("arms", ["Arm", "n"], [["E2a", 3]])
+    with pytest.raises(DisplayError) as refused:
+        em.write()
+    said = str(refused.value)
+    assert "E2a" in said
+    assert "paper.yaml could not be read" in said and "#x0008" in said, said
+    assert "paper.yaml could not be read" in capsys.readouterr().err
+    # Without a paper.yaml there is nothing to name: the shipped classifier is the one.
+    paper.unlink()
+    em = emitter(scratch)
+    em.value("n", 1)
+    em.write()
+    assert "paper.yaml" not in capsys.readouterr().err

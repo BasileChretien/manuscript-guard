@@ -77,6 +77,9 @@ class Registry:
         self.newer = False
         #: OpenAlex leaves `is_retracted` out of what it says of each DOI.
         self.no_flag = False
+        #: OpenAlex answers a DOI with its record under the DOI's old form, a doubled slash
+        #: after the prefix, as it does for APA's 10.1037//0033-2909.129.1.74.
+        self.doubled_slash = False
         #: PMID: (DOI, title, PubMed types)
         self.pubmed = {
             CITED_PMID: (CITED_DOI, "A disproportionality signal", ["Journal Article"]),
@@ -168,7 +171,10 @@ class Registry:
     def _openalex(self, request: Request, params: dict) -> Response:
         flt = params.get("filter", "")
         if flt.startswith("doi:"):
-            items = [{"id": f"https://openalex.org/W{n}", "doi": f"https://doi.org/{doi}",
+            def held(doi: str) -> str:
+                return doi.replace("/", "//", 1) if self.doubled_slash else doi
+
+            items = [{"id": f"https://openalex.org/W{n}", "doi": f"https://doi.org/{held(doi)}",
                       "is_retracted": doi == TRIAL_DOI and self.retracted_by == "openalex"}
                      for n, doi in enumerate(flt.removeprefix("doi:").split("|"), 100)]
             if self.no_flag:
@@ -584,6 +590,20 @@ def test_europe_pmc_facts_carry_types_dates_integrity_and_a_published_version() 
     other = _json(200, {"hitCount": 1, "resultList": {"result": [{**item, "doi": "10.5/o"}]}})
     assert search.europepmc_facts("10.5555/pre", None, lambda r: other,
                                   search.Services()) == {"status": "absent"}
+
+
+def test_a_work_openalex_holds_under_a_doubled_slash_is_found_by_its_doi(marked: Path) -> None:
+    """OpenAlex answered 10.1037/0033-2909.129.1.74 with its record under the old form,
+    10.1037//0033-2909.129.1.74, and S1 was filed "not asked: OpenAlex holds no work with
+    the cited work's DOI", where `lookup` had found it (the athlete-leakage study,
+    2026-11-06). A doubled slash after the prefix is the same DOI."""
+    registry = Registry()
+    registry.doubled_slash = True
+    run = _search(marked, registry)
+    assert run.whole, run.lines
+    citing = _by(_records(marked))[("S1", None, "openalex")]
+    assert citing["status"] == "run", citing
+    assert (citing["filters"]["cites"], citing["candidates"]) == ("W100", [f"doi:{REVIEW_OA}"])
 
 
 def test_openalex_is_asked_for_the_reviews_citing_a_work_newest_first() -> None:

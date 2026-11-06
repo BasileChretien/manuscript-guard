@@ -1,9 +1,9 @@
 """The README and the pages under docs/ are held to the tool they describe.
 
 The README is the first thing a reader meets and the last thing anyone re-reads after a
-change. Its tables say which commands and gates exist, its links lead to the pages the long
-sections were moved to, and its pictures quote what `check` prints. Each of those is a
-claim, so each is compared here with the thing it is a claim about.
+change. It and the pages its long tables were moved to say which commands and gates exist,
+its links lead to those pages, and its pictures quote what `check` prints. Each of those is
+a claim, so each is compared here with the thing it is a claim about.
 """
 
 from __future__ import annotations
@@ -23,6 +23,9 @@ from manuscript_guard.cli import build_parser, main
 REPO = Path(__file__).resolve().parent.parent
 README = REPO / "README.md"
 DOCS = REPO / "docs"
+#: The tables the README sums up, each on a page of its own.
+COMMANDS = DOCS / "commands.md"
+GATES = DOCS / "gates.md"
 #: The security policy is read on GitHub beside the README, and its links are held the same way;
 #: so is the file an agent tool other than Claude Code reads first.
 PAGES = [README, REPO / "SECURITY.md", REPO / "AGENTS.md", *sorted(DOCS.glob("*.md"))]
@@ -47,11 +50,28 @@ def anchors_of(path: Path) -> set[str]:
     return {anchor(heading) for heading in HEADING.findall(FENCE.sub("", text_of(path)))}
 
 
-def section(name: str) -> str:
-    """One `## ` section of the README, without its heading."""
-    readme = text_of(README)
-    assert f"\n## {name}\n" in readme, f"the README has no section {name!r}"
-    return readme.split(f"\n## {name}\n", 1)[1].split("\n## ", 1)[0]
+def section(name: str, page: Path = README, level: int = 2) -> str:
+    """One section of a page, without its heading: from the heading of that level, `## name`
+    by default, to the next heading of that level or above. A page's own title, `# name`, is
+    level 1, and its section is the whole page. A line of a listing is no heading."""
+    text = "\n" + FENCE.sub("", text_of(page))
+    heading = f"\n{'#' * level} {name}\n"
+    assert heading in text, f"{page.name} has no section {name!r}"
+    after = text.split(heading, 1)[1]
+    return re.split(rf"^#{{1,{level}}} ", after, maxsplit=1, flags=re.MULTILINE)[0]
+
+
+def test_a_section_runs_to_the_next_heading_of_its_level(tmp_path: Path) -> None:
+    page = tmp_path / "page.md"
+    page.write_text(
+        "# Title\n\nintro\n\n## One\n\na\n\n### Under\n\nb\n\n```bash\n# a comment\n```\n"
+        "\n## Two\n\nc\n",
+        encoding="utf-8",
+    )
+    assert "b" in section("One", page) and "c" not in section("One", page)
+    assert section("Two", page).strip() == "c"
+    assert "a comment" not in section("Title", page, level=1)
+    assert section("Title", page, level=1).rstrip().endswith("c")
 
 
 def first_cells(table: str, cell: str) -> list[str]:
@@ -94,27 +114,44 @@ def test_the_readme_leads_to_every_page_under_docs() -> None:
 # -------------------------------------------------------------------------------- tables
 
 
-def test_the_readme_lists_the_commands_the_tool_has() -> None:
+def test_the_commands_page_lists_the_commands_the_tool_has() -> None:
     """`hook` is left out on purpose: an agent tool calls it, an author never does."""
     choices = next(
         action.choices
         for action in build_parser()._actions  # noqa: SLF001 - argparse offers no other way
         if isinstance(action, argparse._SubParsersAction)  # noqa: SLF001
     )
-    assert set(first_cells(section("Commands"), "`([a-z-]+)`")) == set(choices) - {"hook"}
+    listed = first_cells(section("Commands", COMMANDS, level=1), "`([a-z-]+)`")
+    assert set(listed) == set(choices) - {"hook"}
 
 
-def test_the_readme_groups_the_commands_as_the_help_does() -> None:
-    """One `### ` heading per group of `manuscript-guard --help`, in its order, each over a
+def test_the_commands_page_groups_the_commands_as_the_help_does() -> None:
+    """One `## ` heading per group of `manuscript-guard --help`, in its order, each over a
     table of that group's commands in the order the help lists them."""
     from manuscript_guard.cli import COMMAND_GROUPS
 
-    commands = section("Commands")
-    headings = re.findall(r"^### (.+)$", commands, re.MULTILINE)
+    commands = section("Commands", COMMANDS, level=1)
+    headings = re.findall(r"^## (.+)$", commands, re.MULTILINE)
     assert headings == [heading for heading, _ in COMMAND_GROUPS]
-    tables = re.split(r"^### .+$", commands, flags=re.MULTILINE)[1:]
+    tables = re.split(r"^## .+$", commands, flags=re.MULTILINE)[1:]
     for (heading, names), table in zip(COMMAND_GROUPS, tables, strict=True):
         assert first_cells(table, "`([a-z-]+)`") == list(names), heading
+
+
+def test_the_readme_sums_up_each_group_of_commands() -> None:
+    """One item per group, in the help's order, leading to that group on the commands page;
+    each command it names in passing is one of that group's."""
+    from manuscript_guard.cli import COMMAND_GROUPS
+
+    items = re.findall(r"^- (.*(?:\n  .*)*)", section("Commands"), re.MULTILINE)
+    assert len(items) == len(COMMAND_GROUPS), items
+    for item, (heading, names) in zip(items, COMMAND_GROUPS, strict=True):
+        led = re.match(r"\*\*\[(.+?)\]\(docs/commands\.md#([\w-]+)\):\*\*", item)
+        assert led, f"the README's item does not lead to its group: {item[:60]}"
+        assert led.groups() == (heading, anchor(heading)), led.groups()
+        named = re.findall(r"`([a-z-]+)`", item[led.end():])
+        assert named, heading
+        assert set(named) <= set(names), f"{heading}: {sorted(set(named) - set(names))}"
 
 
 def declared_gates() -> set[str]:
@@ -128,14 +165,31 @@ def declared_gates() -> set[str]:
     return declared
 
 
-def test_the_readme_lists_the_gates_the_tool_has() -> None:
-    listed = first_cells(section("What is checked"), r"(G\d+)")
+def test_the_gates_page_lists_the_gates_the_tool_has() -> None:
+    listed = first_cells(section("What is checked", GATES, level=1), r"(G\d+)")
     assert len(listed) == len(set(listed)), "a gate is listed twice"
     assert set(listed) == declared_gates()
 
 
+def test_the_readme_sorts_the_gates_as_check_ends_by_grouping_them() -> None:
+    """The README's summary is the table of what `check` groups its last lines by, each
+    group with its gates, in its order; a gate in no group is named in the words after it."""
+    from manuscript_guard.assurance import DIMENSIONS
+
+    summary = section("What is checked")
+    table = re.search(r"^\| What it is about \| Gates \|\n\|---\|---\|\n((?:\|.*\n)+)", summary,
+                      re.MULTILINE)  # fmt: skip
+    assert table, "the README no longer sums the gates up in a table"
+    rows = [cells(row) for row in table.group(1).splitlines()]
+    assert rows == [[dimension.name, ", ".join(dimension.gates)] for dimension in DIMENSIONS]
+    grouped = {gate for dimension in DIMENSIONS for gate in dimension.gates}
+    after = summary[table.end():]
+    for gate in sorted(declared_gates() - grouped):
+        assert re.search(rf"\b{gate}\b", after), f"the README does not say where {gate} is"
+
+
 #: The pages that say in words how many gates or hooks there are.
-COUNTED = [README, DOCS / "agent-tools.md"]
+COUNTED = [README, DOCS / "agent-tools.md", GATES]
 COUNT = re.compile(r"\b([a-z]+(?:-[a-z]+)?)\s+(gates|hooks)\b")
 
 

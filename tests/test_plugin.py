@@ -103,16 +103,20 @@ def test_every_link_between_skills_resolves_inside_the_plugin():
             assert resolved.is_relative_to(plugin), f"{where} leaves plugin/"
 
 
-def test_the_readme_lists_exactly_the_skills_that_ship():
-    readme = (REPO / "README.md").read_text(encoding="utf-8")
-    section = readme.split("### The Claude Code plugin", 1)[1].split("\n## ", 1)[0]
+def test_the_agent_tools_page_lists_exactly_the_skills_that_ship():
+    """The table moved there from the README, which names only the two to start with."""
+    agents = (REPO / "docs" / "agent-tools.md").read_text(encoding="utf-8")
+    assert "\n### The skills\n" in agents, "docs/agent-tools.md has no section The skills"
+    section = re.split(r"^#{1,3} ", agents.split("\n### The skills\n", 1)[1], maxsplit=1,
+                       flags=re.MULTILINE)[0]  # fmt: skip
     listed = set(re.findall(r"^\| `([a-z-]+)` \|", section, re.MULTILINE))
     assert listed == skill_names()
-    # A count, here or in docs/agent-tools.md, is the number of skills (round 1 of #530: a
-    # skill was added and the word stayed). Neither states one now; this keeps one that comes
-    # back true.
-    agents = (REPO / "docs" / "agent-tools.md").read_text(encoding="utf-8")
-    counts = skill_counts(section + agents)
+    # A count, in the README or in docs/agent-tools.md, is the number of skills (round 1 of
+    # #530: a skill was added and the word stayed). Neither states one now; this keeps one
+    # that comes back true.
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+    plugin = readme.split("### The Claude Code plugin", 1)[1].split("\n## ", 1)[0]
+    counts = skill_counts(plugin + agents)
     assert all(count == len(skill_names()) for count in counts), counts
 
 

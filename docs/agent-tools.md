@@ -2,7 +2,7 @@
 
 This page is about the part that is optional: the skills and hooks an agent tool can load,
 how each tool installs and updates them, and what each one does and does not enforce. The
-skills are listed in the [README](../README.md#the-claude-code-plugin).
+skills are listed [below](#the-skills).
 
 ## The Claude Code plugin
 
@@ -96,6 +96,39 @@ seconds for the check, and then say that it did not finish, rather than be cut o
 agent tool at 60 and say nothing. Outside a project they say nothing, with one
 exception: the submission guard holds a command to a project the command names by a path,
 as `cd paper && manuscript-guard submit` does when it is sent from the folder above.
+
+### The skills
+
+The same skills come with the plugin under Claude Code and Codex, and `install-skills`
+copies them for the other tools (below). Start with `guide`, which works through the
+paper with its author from `manuscript-guard next`, and `project-setup`, which starts the
+project; most of the other skills name the finding codes that should send you to them.
+
+| Skill | For |
+|---|---|
+| `guide` | the paper worked through with its author turn by turn, from `manuscript-guard next`: each choice put as numbered options, each step handed to its skill |
+| `project-setup` | starting a paper project, and the daily loop from analysis to .docx |
+| `results-binding` | publishing values from the analysis, and turning a red number into a bound one |
+| `analysis-plan` | writing the plan before the analysis, and recording deviations from it |
+| `data-sources` | the datasets that could answer the question, how each is reached and on what terms, chosen by the author |
+| `data-dictionary` | deciding what a study collects, one defined entry per variable, held to the plan |
+| `methods-review` | the methods of studies of the same question, judged against published standards, and what the plan takes from them |
+| `manuscript-writing` | prose that reads as written |
+| `methods-writer` | Methods that describe the code that was actually run |
+| `literature-verify` | a number from a paper, with its verbatim quote and stored source |
+| `literature-currency` | whether a cited work is still the one to cite: the claim framed, the searches run and recorded, two readings, and the rules' decision |
+| `figure-review` | looking at a rendered figure and recording what was seen |
+| `figure-design` | a figure's look and palette, chosen with the author, readable by every reader |
+| `journal-profile` | choosing a journal with the author, and encoding its rules |
+| `reporting-checklist` | STROBE, CONSORT, PRISMA and the rest, retrieved rather than remembered |
+| `review-panel` | an internal review panel, recorded and answered |
+| `co-author-checking` | the question no gate can ask, put to a person who can answer it |
+| `related-outputs` | the earlier abstract, preprint or article on the same data: its numbers compared, its differences explained, the overlap disclosed |
+| `word-roundtrip` | a co-author's Word edits, back into the source |
+| `reviewer-response` | the point-by-point response to a journal, checked against the revision |
+| `submission-pack` | everything the journal asks for, and the covering letter |
+| `research-communication` | the slots of a post, a press release or a lay summary filled from the paper's brief, with no number or claim the paper does not make |
+| `paper-audit` | a paper that was not written with this toolkit |
 
 ### Whether each skill fires when it should
 

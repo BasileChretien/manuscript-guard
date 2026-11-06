@@ -1,8 +1,7 @@
 # What the check guarantees, and the principles behind it
 
-The table of gates is in the [README](../README.md#what-is-checked). The reasoning behind
-each choice, and an honest list of what the toolkit cannot do, is in
-[DESIGN.md](../DESIGN.md).
+The table of gates is in [What is checked](gates.md). The reasoning behind each choice,
+and an honest list of what the toolkit cannot do, is in [DESIGN.md](../DESIGN.md).
 
 ## What the check actually guarantees
 

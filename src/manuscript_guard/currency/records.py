@@ -438,6 +438,23 @@ def read_readings(project: Project) -> list[Read]:
     return read
 
 
+def _reading_key(record: dict, number: Any) -> tuple[str, str, int]:
+    return str(record.get("entry")), str(record.get("reader")), int(number or 0)
+
+
+def current(reads: list[Read]) -> list[Read]:
+    """The readings the gate and the rules read: every one filed, but for a sound reading
+    that a later sound reading by its reader of its entry replaces (`replaces`, written by
+    `references --reading FILE --replaces N`). A reading edited is never set aside here, so
+    that G7 still says so."""
+    replaced = {_reading_key(read.record, read.record["replaces"]) for read in reads
+                if read.problem is None and read.record and read.record.get("replaces")
+                and int(read.record["replaces"]) < int(read.record.get("number") or 0)}
+    return [read for read in reads
+            if read.problem is not None or not read.record
+            or _reading_key(read.record, read.record.get("number")) not in replaced]
+
+
 def file_reading(project: Project, document: dict[str, Any], filed_on: str) -> Path:
     """File one reading: numbered as its reader's next of the entry, sealed, and written once.
     A name already taken is never written over."""
@@ -535,7 +552,7 @@ def _write_new(path: Path, text: str) -> None:
             temporary.unlink(missing_ok=True)
 
 
-__all__ = ["CURRENCY_FILE", "Entry", "Read", "as_reading", "as_work", "currency_path",
+__all__ = ["CURRENCY_FILE", "Entry", "Read", "as_reading", "as_work", "currency_path", "current",
            "ensure_gitignore", "file_reading", "file_search", "folder", "next_id", "quotes_of",
            "read_document", "read_entries", "read_readings", "read_searches", "read_work",
            "reading_path", "safe_name", "sealed_digest", "store_here", "work_id",

@@ -3326,10 +3326,25 @@ def _a_works_record_edited(root: Path) -> None:
 
 
 def _a_quote_not_in_the_work(root: Path) -> None:
+    """Filed as the tool writes it, but past `references --reading`, which refuses it."""
     import currency_records as case
 
-    case.file(root, case.reading("Cy Example", quote="The class was safe in every trial"),
-              "third")  # fmt: skip
+    from manuscript_guard.currency import records
+
+    records.file_reading(load_project(root)[0], case.reading(
+        "Cy Example", quote="The class was safe in every trial"), "2026-11-04")  # fmt: skip
+
+
+def _a_quote_cut_inside_a_hyphen_joined_word(root: Path) -> None:
+    """Found taking a real paper through the loop: the words are the abstract's, from
+    inside "Follow-up", and the quote does not start at a word's edge. Filed past
+    `references --reading`, which refuses it now, as one filed before it did was."""
+    import currency_records as case
+
+    from manuscript_guard.currency import records
+
+    records.file_reading(load_project(root)[0], case.reading(
+        "Cy Example", quote="up ended in March 2023"), "2026-11-04")  # fmt: skip
 
 
 def _the_candidate_retracted(root: Path) -> None:
@@ -3396,6 +3411,9 @@ _UNANSWERED = ("currency-change-unanswered", "warn")
         pytest.param(_a_quote_not_in_the_work, "drafting",
                      [_UNANSWERED, ("currency-quote-not-found", "fail")],
                      id="a quote not in the work"),
+        pytest.param(_a_quote_cut_inside_a_hyphen_joined_word, "drafting",
+                     [_UNANSWERED, ("currency-quote-not-found", "fail")],
+                     id="a quote cut inside a hyphen-joined word"),
         pytest.param(_the_candidate_retracted, "drafting",
                      [("currency-candidate-retracted", "fail"), _UNANSWERED,
                       ("currency-decision-mismatch", "fail")], id="the candidate retracted"),

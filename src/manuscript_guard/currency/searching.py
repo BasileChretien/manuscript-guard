@@ -228,7 +228,7 @@ def cutoff(project: Project, claim: Claim) -> dict[str, str] | None:
                  if read.problem is None and read.record["entry"] == claim.entry.id
                  and "S2" in (read.record["step"], read.record.get("as_step"))
                  for work in read.record["candidates"]}  # fmt: skip
-    for read in records.read_readings(project):
+    for read in records.current(records.read_readings(project)):
         record = read.record
         if read.problem or not record or record["entry"] != claim.entry.id:
             continue

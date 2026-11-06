@@ -438,6 +438,73 @@ def test_a_reading_that_does_not_fit_is_refused_and_nothing_filed(
     assert not (project / "literature" / "currency" / "readings").exists()
 
 
+def _cut(reading: dict) -> dict:
+    """The reading with its stance quoted from inside the hyphen-joined "Follow-up": the
+    words are the abstract's, and G7 refuses the quote, which does not start at a word's
+    edge."""
+    reading["candidates"][0]["stance"]["quote"] = "up ended in March 2023"
+    return reading
+
+
+def test_a_reading_whose_quote_the_gate_refuses_is_not_filed(project: Path, capsys) -> None:
+    """Found taking a real paper through the loop: `--reading` filed a reading whose quote
+    started inside a hyphen-joined word, and G7 then failed on it. It is refused when filed,
+    each quote named, with the rule."""
+    case.case(project, readings=False)
+    with pytest.raises(command.Refused) as refused:
+        case.file(project, _cut(case.reading("Ada Example")), "first")
+    said = str(refused.value)
+    assert "stance of doi:10.5555/class.trial.2023: 'up ended in March 2023'" in said
+    assert "starts and ends at a word's edge" in said and "hyphen-joined word whole" in said
+    assert not (project / "literature" / "currency" / "readings").exists()
+    path = project / "first.yaml"
+    assert main(["references", str(project), "--reading", str(path)]) == 2
+    assert "'up ended in March 2023'" in capsys.readouterr().err
+    # A quote of a work the store holds nothing of cannot be looked for, and is filed: G7
+    # says it is unchecked.
+    for stored in (project / "literature" / "currency" / "works").glob("*trial*"):
+        stored.unlink()
+    assert "filed" in case.file(project, _cut(case.reading("Ada Example")), "first")
+
+
+def test_a_corrected_reading_replaces_the_one_it_corrects(project: Path, capsys) -> None:
+    """Found taking a real paper through the loop: a reading G7 refused a quote of could not
+    be cleared, since a reader's further reading is read beside the earlier one. One filed
+    with `--replaces N` is read in place of the reader's reading N, by the gate and by the
+    rules; one filed without it is a further reading, as before."""
+    from manuscript_guard.gates.currency import _Records, check_currency
+
+    case.case(project, readings=False)
+    loaded = load_project(project)[0]
+    # Filed before `--reading` looked at the quotes, as the paper's was.
+    records.file_reading(loaded, _cut(case.reading("Ada Example")), "2026-11-04")
+    codes = [f.code for f in check_currency(load_project(project)[0]).findings]
+    assert "currency-quote-not-found" in codes
+    path = project / "again.yaml"
+    path.write_text(yaml.safe_dump(case.reading("Ada Example"), sort_keys=False), "utf-8")
+    assert main(["references", str(project), "--reading", str(path), "--replaces", "2"]) == 2
+    assert "Ada Example has no reading 2 of c1" in capsys.readouterr().err
+    assert main(["references", str(project), "--replaces", "1"]) == 2
+    assert "--replaces goes with --reading" in capsys.readouterr().err
+    said = command.file_reading(load_project(project)[0], path, replaces=1)
+    assert "readings/c1.Ada%20Example.2.yaml" in said and "decide from 2 readings" in said
+    filed = yaml.safe_load(next((project / "literature" / "currency" / "readings").glob(
+        "c1.Ada%20Example.2.yaml")).read_text(encoding="utf-8"))  # fmt: skip
+    assert filed["replaces"] == 1
+    loaded = load_project(project)[0]
+    codes = [f.code for f in check_currency(loaded).findings]
+    assert "currency-quote-not-found" not in codes, codes
+    # The two are one reading: the rules decide nothing from them.
+    assert case.decision(project) is None
+    assert "read 1 of 2" in command.state_of(records.read_entries(loaded)[0][0],
+                                              _Records(loaded))
+    with pytest.raises(command.Refused, match="reading 1 of c1 is replaced already"):
+        command.file_reading(loaded, path, replaces=1)
+    # A further reading by the same reader, without --replaces, counts as one more.
+    said = case.file(project, case.reading("Ada Example"), "third")
+    assert "the rules give replace" in said
+
+
 def test_the_cited_work_under_its_other_identifier_is_no_candidate(project: Path) -> None:
     """Round 3 of #499: the cited work, filed as `doi:...`, was refused as a candidate only
     under that id, and under its PMID it was a candidate of its own."""

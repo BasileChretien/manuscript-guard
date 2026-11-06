@@ -32,6 +32,7 @@
       "description": "Where a model read: its provider, its name and what it was sent, as a panel's reading records them."
     },
     "number": { "type": "integer", "minimum": 1, "description": "Written when it is filed: this reader's nth reading of the entry." },
+    "replaces": { "type": "integer", "minimum": 1, "description": "The number of this reader's earlier reading of the entry that this one corrects, written by `references --reading FILE --replaces N`: the gate and the rules read this reading in its place." },
     "filed_on": { "type": "string", "format": "date" },
     "reading_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
   },

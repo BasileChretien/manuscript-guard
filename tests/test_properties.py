@@ -8369,12 +8369,15 @@ _OPENERS = (
 )  # fmt: skip
 
 
-#: What ends a paragraph, so that the next line opens one (round 1 of #538): a blank line,
-#: one of spaces or a tab, several, a heading with or without a blank line after it, and a
-#: LaTeX command on a line of its own.
+#: What may stand between a paragraph and the next one's first words (rounds 1 and 2 of
+#: #538): a blank line, one of spaces or a tab, several, a heading with or without a blank
+#: line after it, a LaTeX command and a LaTeX comment on a line of their own, front matter's
+#: closing dashes, an HTML comment, a setext heading's rule, a closing fence, a div's colons,
+#: and a line break after a sentence's end.
 _PARAGRAPH_ENDS = (
     "\n\n", "\n \n", "\n\t\n", "\n\n\n", "\n\n## Results\n\n", "\n\n## Results\n",
-    "\n\\section{Results}\n",
+    "\n\\section{Results}\n", "\n% a note\n", "\n---\n", "\n<!-- a note -->\n",
+    "\nResults\n-------\n", "\n```\n", "\n:::\n", "\n",
 )  # fmt: skip
 
 
@@ -13345,7 +13348,7 @@ def _an_opener_is_read_at_every_line(patch: pytest.MonkeyPatch) -> None:
     # first words, a hard-wrapped line's among them.
     from manuscript_guard.gates import writing
 
-    patch.setattr(writing, "_opens_paragraph", lambda text, at: True)
+    patch.setattr(writing, "_continues_a_sentence", lambda text, at: False)
 
 
 def _a_paragraph_opens_only_after_an_empty_line(patch: pytest.MonkeyPatch) -> None:
@@ -13353,11 +13356,31 @@ def _a_paragraph_opens_only_after_an_empty_line(patch: pytest.MonkeyPatch) -> No
     # line of spaces or a LaTeX command before the opener hid it (round 1 of #538).
     from manuscript_guard.gates import writing
 
-    def after_an_empty_line(text: str, at: int) -> bool:
+    def not_after_an_empty_line(text: str, at: int) -> bool:
         start = text.rfind("\n", 0, at) + 1
-        return not text[start:at].strip() and (start == 0 or text[start - 2 : start] == "\n\n")
+        return start != 0 and text[start - 2 : start] != "\n\n"
 
-    patch.setattr(writing, "_opens_paragraph", after_an_empty_line)
+    patch.setattr(writing, "_continues_a_sentence", not_after_an_empty_line)
+
+
+def _a_paragraph_opens_only_after_the_ends_it_names(patch: pytest.MonkeyPatch) -> None:
+    # As the second head of #538 read it: a blank line, a heading or a LaTeX command before
+    # the opener, and nothing else, so front matter, a comment or a fence hid it (round 2).
+    import re
+
+    from manuscript_guard.gates import writing
+
+    heading = re.compile(r"[ \t]{0,3}#{1,6}(?:[ \t][^\n]*)?")
+    command = re.compile(r"[ \t]*\\[A-Za-z]+\*?(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?[ \t]*")
+
+    def not_after_a_named_end(text: str, at: int) -> bool:
+        start = text.rfind("\n", 0, at) + 1
+        if start == 0:
+            return False
+        before = text[text.rfind("\n", 0, start - 1) + 1 : start - 1]
+        return not (not before.strip() or heading.fullmatch(before) or command.fullmatch(before))
+
+    patch.setattr(writing, "_continues_a_sentence", not_after_a_named_end)
 
 
 def _a_field_wholly_in_brackets_is_read_without_them(patch: pytest.MonkeyPatch) -> None:
@@ -18907,6 +18930,10 @@ BROKEN = {
     ),
     "a paragraph opens only after an empty line": (
         _a_paragraph_opens_only_after_an_empty_line,
+        test_an_assistant_opener_is_found_where_a_paragraph_opens_however_it_is_wrapped,
+    ),
+    "a paragraph opens only after the ends it names": (
+        _a_paragraph_opens_only_after_the_ends_it_names,
         test_an_assistant_opener_is_found_where_a_paragraph_opens_however_it_is_wrapped,
     ),
     "the reviewers are read as one reviewer": (

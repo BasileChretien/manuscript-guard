@@ -187,15 +187,40 @@ def test_an_opening_word_after_a_heading_or_a_line_of_spaces_fails(
     assert "model-artefact" in codes(written(project, text))
 
 
-def test_an_opening_word_after_a_latex_command_line_is_an_artefact() -> None:
-    """A LaTeX source is read as typed: `\\section{Methods}` alone on its line ends what is
-    above it, as a heading does (round 1 of #538)."""
+@pytest.mark.parametrize(
+    "text",
+    [
+        "\\section{Methods}\nSure, here is the revised Methods section.\n",
+        # Round 2 of #538: what is no prose, or ends a sentence, before the words.
+        "---\ntitle: X\n---\nCertainly! Here is the revised abstract.\n",
+        "abstract: |\n  Certainly! Here is the revised abstract.\n",
+        "\\section{Discussion}\n% draft from the assistant\nSure, here is the revised one.\n",
+        "\\section{Methods}%\nSure, here is the revised Methods section.\n",
+        "<!-- note -->\nCertainly! Here is the revised section.\n",
+        "Results\n-------\nSure, here is the revised Results section.\n",
+        "```\ncode\n```\nCertainly! Here is the revised section.\n",
+        ":::\nCertainly! Here is the revised section.\n",
+        "As in Table 2.\nCertainly! Here is the revised Discussion.\n",
+    ],
+)
+def test_an_opening_word_after_markup_or_a_sentence_end_is_an_artefact(text: str) -> None:
+    """A source is read as typed, so the line before the words is often markup: a LaTeX
+    command or comment, front matter, an HTML comment, a fence. Only prose that runs on into
+    them makes them the middle of a sentence (rounds 1 and 2 of #538)."""
     from manuscript_guard.gates.writing import artefacts_in, load_rules
 
-    text = "\\section{Methods}\nSure, here is the revised Methods section.\n"
     found = [m.group(0).strip() for rule, m in artefacts_in(load_rules(), text, manuscript=True)
              if rule["id"] == "assistant-voice"]  # fmt: skip
-    assert found == ["Sure"], found
+    assert len(found) == 1, (text, found)
+
+
+def test_a_post_that_opens_under_its_dashes_is_an_artefact() -> None:
+    """`texts.posts` cuts a thread at a line of dashes after a blank line, so a post can open
+    right under it (round 2 of #538)."""
+    from manuscript_guard.gates.writing import judge_texts
+
+    report, _totals = judge_texts([(Path("t.md"), "First post.\n\n---\nSure! Here is a thread.\n")])
+    assert [f.code for f in report.findings if f.code == "model-artefact"] == ["model-artefact"]
 
 
 def test_technical_senses_are_not_counted(project: Path) -> None:

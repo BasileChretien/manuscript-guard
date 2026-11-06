@@ -4338,13 +4338,18 @@ included, and an offset is the same in both. Counted in the copy, the line fell 
 every line blanked above it: a phrase under a four-line comment was reported three lines up,
 on the comment. And the line is the one the matched words begin on, not the match: the rule
 for a chat assistant's opening word reads from the start of a line through any blank lines,
-and its finding was put on the blank line above the paragraph. That rule keeps a match only
-where its words open a paragraph (`paragraph_start`, `writing._opens_paragraph`): at the
-start of the text, or after a blank line, a line of spaces or tabs, a heading or a LaTeX
-command alone on its line. Read at every line, it failed a hard-wrapped sentence whose
-line began "here is the" (the athlete-leakage study, 2026-11-06). A paragraph after a line of
-prose is not a paragraph to it: Markdown that opens one with no blank line, under a list
-item or a table, is read as the continuation pandoc would also make of it.
+and its finding was put on the blank line above the paragraph. That rule passes over a
+match whose words carry on a sentence from the line before (`paragraph_start`,
+`writing._continues_a_sentence`): the line before is prose and ends in a word, a number, a
+comma or a semicolon, with any closing marks. Read at every line, it failed a hard-wrapped
+sentence whose line began "here is the" (the athlete-leakage study, 2026-11-06). Anything
+else before the words, a blank line, markup (front matter's dashes, a heading, a comment, a
+fence, a command) or a sentence's end, leaves them read as an opening, since the file is
+read as typed and a list of what ends a paragraph missed most of it (rounds 1 and 2 of
+#538). Two limits: a line of prose with no stop, a footnote command alone on its line in a
+LaTeX paragraph say, before "of course" still fails as it did, and a sentence that opens
+with "Certainly" after a wrap at a full stop fails where the same sentence on one line does
+not.
 
 **Vague attribution gets the one check an encyclopedia cannot use.** "Studies have shown" is
 reported only when no citation sits within 240 characters, because in a manuscript the fix

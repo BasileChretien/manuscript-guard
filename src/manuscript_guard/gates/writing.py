@@ -387,30 +387,31 @@ def artefacts_in(
             if any(start < match.end() and match.start() < end for start, end in taken):
                 continue
             words = match.start() + len(match.group(0)) - len(match.group(0).lstrip())
-            if rule.get("paragraph_start") and not _opens_paragraph(text, words):
+            if rule.get("paragraph_start") and _continues_a_sentence(text, words):
                 continue
             taken.append(match.span())
             yield rule, match
 
 
-#: A line that ends the paragraph before it, so that the next line opens one: a heading,
-#: Markdown's or a LaTeX command alone on its line, `\section{Methods}`, `\begin{abstract}`.
-_HEADING_LINE = re.compile(r"[ \t]{0,3}#{1,6}(?:[ \t][^\n]*)?")
-_COMMAND_LINE = re.compile(r"[ \t]*\\[A-Za-z]+\*?(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?[ \t]*")
+#: The end of a line of prose whose sentence runs on into the next line: a word or a number,
+#: a comma or a semicolon, and any closing marks after it ("reported", "Table 2,", "[@key]").
+_RUNS_ON = re.compile(r"[\w,;][)\]*_'\"’”]*[ \t\r]*$")
+#: A line that is no prose whatever it ends with: a heading, a LaTeX or an HTML comment.
+_NOT_PROSE = re.compile(r"[ \t]{0,3}#{1,6}(?:[ \t]|$)|[ \t]*%|[ \t]*<!--")
 
 
-def _opens_paragraph(text: str, at: int) -> bool:
-    """Whether the words at `at` open a paragraph: they begin their line, and the line before
-    is none, holds only spaces or tabs, or is a heading or a LaTeX command. A line after
-    prose continues a hard-wrapped paragraph, wherever in a sentence its first word falls."""
+def _continues_a_sentence(text: str, at: int) -> bool:
+    """Whether the words at `at` carry on a sentence from the line before: they begin their
+    line, and the line before is prose that does not end its sentence. In a hard-wrapped
+    paragraph a line can start in the middle of a sentence, "The analysis reported / here is
+    the third protocol"; anything else before the words leaves them read as an opening,
+    a blank line, a heading, front matter's `---`, a comment, a fence, a command, a sentence's
+    end (round 2 of #538)."""
     start = text.rfind("\n", 0, at) + 1
-    if text[start:at].strip():
+    if start == 0 or text[start:at].strip():
         return False
-    if start == 0:
-        return True
-    before = text[text.rfind("\n", 0, start - 1) + 1 : start - 1].rstrip("\r")
-    return (not before.strip() or _HEADING_LINE.fullmatch(before) is not None
-            or _COMMAND_LINE.fullmatch(before) is not None)  # fmt: skip
+    before = text[text.rfind("\n", 0, start - 1) + 1 : start - 1]
+    return _NOT_PROSE.match(before) is None and _RUNS_ON.search(before) is not None
 
 
 def _artefacts(rules: Rules, path: Path, text: str, totals: dict) -> Report:

@@ -64,6 +64,14 @@ The order and the timing are
 `CAST` and `LOOP` with the constants beside them in `tools/brand_assets.py`. The test holds
 each villain's gate in the banner to the gate its drawing's title names.
 
+## The video
+
+`web/landing/media/vord.mp4` is the landing page's video: 58 seconds, captions and no sound,
+made from these drawings with [HyperFrames](https://github.com/heygen-com/hyperframes). Its
+source and how to render it again are in `media/video/`, and its captions are also in
+`vord.en.vtt` beside it. Its fonts, Atkinson Hyperlegible and JetBrains Mono, are under the SIL
+Open Font License, with their texts in `media/video/fonts/`.
+
 ## What Vord fights
 
 Each villain stands for a mistake that a gate catches, and is named with that gate.

@@ -47,6 +47,9 @@ IMAGES = WEB.parent / "docs" / "img"
 #: Where the site is served. The landing page names its social preview there, since a card
 #: is drawn by a site that reads the page, from an address it can fetch alone.
 SITE = "https://basilechretien.github.io/manuscript-guard/"
+#: The landing page's own files, the video and its parts, which it names as media/<name>.
+MEDIA = LANDING / "media"
+OWN = re.compile(r'(?:src|poster)="media/([^"\s]+)"')
 #: A picture the landing page names: img/<its path under docs/img>.
 PICTURE = re.compile(rf'(?:src|srcset|href|poster|content)="(?:{re.escape(SITE)})?img/([^"\s]+)"')
 
@@ -88,20 +91,24 @@ def pictures(page: str) -> list[str]:
 
 
 def landing(out: Path) -> list[str]:
-    """Put the landing page in `out`, with each picture it names; return those pictures.
-    Every picture is found before anything is copied."""
-    shown = pictures((LANDING / "index.html").read_text(encoding="utf-8"))
-    for name in shown:
-        source = (IMAGES / name).resolve()
-        if not source.is_relative_to(IMAGES.resolve()) or not source.is_file():
-            raise SystemExit(f"web/landing/index.html shows img/{name}, which is not a file "
-                             "in docs/img; nothing was built")  # fmt: skip
+    """Put the landing page in `out`, with each picture it names and each file of its own
+    (media/); return the pictures. Every file is found before anything is copied."""
+    text = (LANDING / "index.html").read_text(encoding="utf-8")
+    shown, own = pictures(text), sorted(set(OWN.findall(text)))
+    for folder, names, where in ((IMAGES, shown, "img"), (MEDIA, own, "media")):
+        for name in names:
+            source = (folder / name).resolve()
+            if not source.is_relative_to(folder.resolve()) or not source.is_file():
+                raise SystemExit(f"web/landing/index.html shows {where}/{name}, which is not a "
+                                 f"file in {folder.relative_to(WEB.parent).as_posix()}; "
+                                 "nothing was built")  # fmt: skip
     out.mkdir(parents=True, exist_ok=True)
     for name in LANDING_PAGE:
         shutil.copyfile(LANDING / name, out / name)
-    for name in shown:
-        (out / "img" / name).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(IMAGES / name, out / "img" / name)
+    for folder, names, where in ((IMAGES, shown, "img"), (MEDIA, own, "media")):
+        for name in names:
+            (out / where / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(folder / name, out / where / name)
     return shown
 
 

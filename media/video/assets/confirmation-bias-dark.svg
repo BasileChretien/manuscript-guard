@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-labelledby="title">
+  <title id="title">Confirmation bias, a shadow that no gate sees</title>
+  <defs>
+    <symbol id="confirmation-bias" viewBox="0 0 120 120">
+      <g fill="#a093b4" fill-opacity=".34" stroke="#a093b4" stroke-width="2.5" stroke-dasharray="5 4">
+        <circle cx="60" cy="47" r="32" />
+        <rect x="54" y="80" width="12" height="32" rx="5" />
+      </g>
+      <path d="M45 47 L56 58 L77 35" fill="none" stroke="#a093b4" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" />
+    </symbol>
+  </defs>
+  <use href="#confirmation-bias" width="120" height="120"/>
+</svg>

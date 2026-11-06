@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-labelledby="title">
+  <title id="title">The Plan Rewriter, a plan changed after the first results with no Deviation (G12)</title>
+  <defs>
+    <symbol id="plan-rewriter" viewBox="0 0 120 120">
+      <ellipse cx="60" cy="114" rx="34" ry="4" fill="rgba(0,0,0,0.35)" />
+      <rect x="24" y="20" width="72" height="90" rx="7" fill="#8a94a6" />
+      <rect x="31" y="30" width="58" height="72" rx="2" fill="#e9e6dc" />
+      <rect x="45" y="13" width="30" height="13" rx="3" fill="#c3ccd7" stroke="#2a3346" stroke-width="1.5" />
+      <text x="60" y="44" text-anchor="middle" font-family="Atkinson Hyperlegible, Segoe UI, Helvetica, Arial, sans-serif" font-weight="700" font-size="10" letter-spacing="1.6" fill="#2a3346">PLAN</text>
+      <path d="M42 51 L54 54 M78 51 L66 54" stroke="#2a3346" stroke-width="2.5" stroke-linecap="round" />
+      <ellipse cx="48" cy="59" rx="3.5" ry="4" fill="#2a3346" />
+      <ellipse cx="72" cy="59" rx="3.5" ry="4" fill="#2a3346" />
+      <path d="M51 68 Q61 75 70 66" fill="none" stroke="#2a3346" stroke-width="2.5" stroke-linecap="round" />
+      <path d="M38 82 L82 82" stroke="#2a3346" stroke-width="2.5" stroke-linecap="round" opacity=".45" />
+      <path d="M38 92 L72 92" stroke="#2a3346" stroke-width="2.5" stroke-dasharray="3 4" opacity=".45" />
+      <g transform="rotate(-24 84 92)">
+        <rect x="72" y="86" width="26" height="12" rx="2.5" fill="#d95b36" />
+        <rect x="72" y="86" width="9" height="12" rx="2" fill="#e9e6dc" opacity=".85" />
+      </g>
+      <circle cx="64" cy="98" r="1.6" fill="#d95b36" />
+      <circle cx="69" cy="101" r="1.3" fill="#d95b36" />
+      <rect x="86" y="16" width="22" height="16" rx="3" fill="#e6c878" stroke="#0a1120" stroke-width="1.5" />
+      <path d="M90.5 16 V10 Q90.5 4 97 4 Q103.5 4 103.5 10 V11" fill="none" stroke="#e6c878" stroke-width="3" stroke-linecap="round" />
+      <circle cx="97" cy="23" r="2" fill="#0a1120" />
+    </symbol>
+  </defs>
+  <use href="#plan-rewriter" width="120" height="120"/>
+</svg>

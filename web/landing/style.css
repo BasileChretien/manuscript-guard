@@ -211,12 +211,25 @@ main > section + section { border-top: 1px solid var(--line); }
 
 .screen { margin: 1.5rem 0 0; }
 .screen img { display: block; width: 100%; border-radius: 12px; }
-/* On a phone the terminal's text would be too small to read: it scrolls sideways instead. */
-@media (max-width: 640px) {
-  .screen { overflow-x: auto; border-radius: 12px; }
-  .screen img { width: 600px; max-width: none; }
-  .screen:focus-visible { outline: 3px solid var(--brass); outline-offset: 3px; }
+/* The video plays muted and loops, with controls to pause it. A reader who asks for less
+   motion sees its still frame instead, which the page shows without a script. */
+.film { margin: 1.5rem 0 0; }
+.film video, .film .still {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  background: #0f1728;
 }
+.film .still { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .film video { display: none; }
+  .film .still { display: block; }
+}
+.words-of { margin-top: 0.9rem; color: var(--muted); }
+.words-of summary { cursor: pointer; color: var(--ink); font-weight: 600; }
+.words { margin: 0.6rem 0 0; padding-left: 1.4rem; }
+.words li { margin-bottom: 0.2rem; }
 
 .lanes {
   list-style: none;

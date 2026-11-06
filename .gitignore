@@ -57,3 +57,10 @@ htmlcov/
 web/node_modules/
 web/.cache/
 _site/
+
+# The landing page's video (media/video/): its npm packages and what the HyperFrames CLI
+# writes while it renders and checks. The rendered video is committed under web/landing/media/.
+media/video/node_modules/
+media/video/.hyperframes/
+media/video/renders/
+media/video/snapshots/

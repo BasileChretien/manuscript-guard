@@ -347,6 +347,21 @@ is dropped. MetBrewer's Tsimshian gives rank 1 twice and no rank 2, and is kept 
 one colour of it is two, as `met.brewer` gives it. For anything but choosing a palette for a figure here, take the palettes from
 their makers' packages, which also cite them as their makers ask.
 
+## The fonts of the landing page's video
+
+Not in the package: the source of the landing page's video, `media/video/`, keeps two typefaces
+as WOFF2 files, Latin, regular and bold, which the render draws the captions and the terminal
+in. Both are under the SIL Open Font License 1.1, whose texts are beside them in
+`media/video/fonts/`.
+
+| Typeface | By | Read from |
+|---|---|---|
+| Atkinson Hyperlegible | the Braille Institute of America | `@fontsource/atkinson-hyperlegible@5.3.0` |
+| JetBrains Mono | the JetBrains Mono Project Authors | `@fontsource/jetbrains-mono@5.3.0` |
+
+The render also uses HyperFrames (Apache-2.0) and GSAP (its own no-charge licence), installed by
+`npm ci` and not kept in the repository.
+
 # Ideas from other projects
 
 No code of the projects below is in this repository; what is taken is a design, a rule or a

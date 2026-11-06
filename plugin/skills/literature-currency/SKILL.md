@@ -78,6 +78,10 @@ and lists the works new since the last run. A search older than six months is st
 manuscript-guard references --explain c1   # the searches, and the candidates they kept
 ```
 
+`--explain` says how many readings are filed and what the rules give, and nothing of what
+a reading says. Do not add `--readings`, which prints each filed reading's fields and
+quotes: that is for the person who answers the entry, after the readings are in.
+
 Read the cited work and each candidate from its works record under `literature/currency/`,
 and nowhere else. For each, fill:
 
@@ -102,7 +106,8 @@ manuscript-guard references --reading reading.yaml
 ## 5. Read a second time, independently
 
 The rules decide from two readings that agree. The second is made by a second agent or a
-fresh context that has not seen the first, from the works records alone. Do not copy or
+fresh context that has not seen the first, from the works records alone, with
+`references --explain` as in step 4 and never with `--readings`. Do not copy or
 compare with the first. Where the two disagree on a field that can change the outcome, the
 entry is `uncertain` and nothing is proposed: a third reading, or a person's decision with
 why, settles it.

@@ -3548,6 +3548,8 @@ def cmd_references(args: argparse.Namespace) -> int:
 
     project, _ = load_project(args.path)
     try:
+        if args.readings and args.explain is None:
+            raise command.Refused("--readings goes with --explain")
         if args.search is not None or args.replay is not None or _search_flags(args):
             return _references_search(project, args)
         if args.mark is not None:
@@ -3570,7 +3572,7 @@ def cmd_references(args: argparse.Namespace) -> int:
                                       "reply, what it says, its words and who read it")  # fmt: skip
             print(assess(project, args.assess, args.reply, args.says, args.quote, args.as_))
         elif args.explain is not None:
-            print(command.explain(project, args.explain))
+            print(command.explain(project, args.explain, readings=args.readings))
         else:
             rows, unplaced = command.listing(project)
             if args.json:
@@ -7350,7 +7352,12 @@ def build_parser() -> argparse.ArgumentParser:
     references.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     action = references.add_mutually_exclusive_group()
     action.add_argument("--explain", metavar="ID",
-                        help="one entry: its searches, readings and what the rules give")
+                        help="one entry: its searches, how many readings are filed and what the "
+                        "rules give")  # fmt: skip
+    references.add_argument("--readings", action="store_true",
+                            help="--explain: print each filed reading's fields and quotes too; "
+                            "a reader still to read the entry leaves it off, since each reading "
+                            "is made without seeing the others")  # fmt: skip
     action.add_argument("--mark", nargs=2, metavar=("WORDS", "@KEY"),
                         help="mark the sentence citing KEY that holds WORDS as a claim to check")
     action.add_argument("--reading", type=Path, metavar="FILE",

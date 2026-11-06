@@ -17202,8 +17202,10 @@ Open, recorded as each change landed:
 - **A Markdown reference list ends at any line shaped as a thematic break.** `---`, `***`
   or `___`, spaced or indented up to three spaces, ends it as a heading does (2026-11-06: a
   note after a rule under the list was read as one more entry with no number, so the list
-  was "not numbered" and held no citation, silently). The shape is read, not pandoc's
-  reading of it, so a simple table's dashed rule under the heading ends the list there too,
+  was "not numbered" and held no citation, silently). A line of dashes directly under a
+  line of text is its setext underline and no break, as in CommonMark, and a line indented
+  four spaces is code. Otherwise the shape is read, not pandoc's reading of it, so a simple
+  table's dashed rule under the heading, after a blank line, ends the list there too,
   and the entries below it are read as the paper's text: a false alarm, the cheaper
   mistake. A .docx has no thematic break in the text the audit reads, and a horizontal line
   Word draws ends nothing.

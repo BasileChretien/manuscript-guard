@@ -6835,24 +6835,39 @@ def numbered_citations(draw: st.DrawFn) -> tuple[str, list[Census]]:
 #: characters, spaced, indented and long.
 REFERENCE_BREAKS = ("---", "***", "___", "- - -", "   * * *", "-----", "_ _ _ _")
 
+#: The headings a reference list stands under: `#`, and a setext title, whose dashed
+#: underline is no thematic break.
+REFERENCE_HEADINGS = (("# References",), ("References", "----------"), ("References", "==="))
+
+#: A line indented four spaces is code, or a list item's own text, and ends no list.
+_INDENTED_RULE = "    ---"
+
 
 @st.composite
 def broken_reference_lists(draw: st.DrawFn) -> tuple[str, list[tuple[int, int]]]:
     """A Markdown paper with a reference list ended by each thematic break of
-    `REFERENCE_BREAKS`, in an order drawn, each list under its own heading and followed by a
-    note on where the numbers came from; with each list's span as `audit.bibliography_spans`
-    is to give it, from its heading's line to the break's. Each list holds an entry whose
-    author is a run of dashes, `---.`, as a style writes a repeated name, and one with a
-    run of stars in its title, which end nothing."""
+    `REFERENCE_BREAKS`, in an order drawn, each list under a heading of `REFERENCE_HEADINGS`,
+    every one of which is used, and followed by a note on where the numbers came from; with
+    each list's span as `audit.bibliography_spans` is to give it, from its heading's line to
+    the break's. Each list holds an entry whose author is a run of dashes, `---.`, as a
+    style writes a repeated name, one with a run of stars in its title, and a line of dashes
+    indented four spaces, which end nothing."""
     lines = ["# Results", "", "The rate rose [1].", ""]
     spans: list[tuple[int, int]] = []
-    for rule in draw(st.permutations(REFERENCE_BREAKS)):
+    headings = draw(st.permutations(REFERENCE_HEADINGS))
+    for index, rule in enumerate(draw(st.permutations(REFERENCE_BREAKS))):
         start = len(lines)
-        lines += ["# References", ""]
+        lines += [*headings[index % len(headings)], ""]
         entries = [f"{draw(word_names())} A. A study. J Ex. 2019;1:1-2.",
                    "---. Another study. J Ex. 2020;2:3-4.",
-                   f"{draw(word_names())} B. A *** study. J Ex. 2021;3:5-6."]  # fmt: skip
-        for number, entry in enumerate(draw(st.permutations(entries)), 1):
+                   f"{draw(word_names())} B. A *** study. J Ex. 2021;3:5-6.",
+                   _INDENTED_RULE]  # fmt: skip
+        number = 0
+        for entry in draw(st.permutations(entries)):
+            if entry == _INDENTED_RULE:
+                lines += [entry, ""]
+                continue
+            number += 1
             lines += [f"{number}. {entry}", ""]
         spans.append((start, len(lines)))
         commit = draw(st.integers(1, 99))

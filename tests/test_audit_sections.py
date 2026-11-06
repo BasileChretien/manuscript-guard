@@ -476,6 +476,17 @@ def test_a_thematic_break_ends_the_reference_list(tmp_path: Path, rule: str) -> 
     ]
 
 
+def test_a_setext_heading_s_underline_ends_no_list_it_opens() -> None:
+    """The dashes under a setext `References` are its underline, not a thematic break: read
+    as one, the heading ended its own list there, the entries' numbers were read as prose
+    and G7 was given an empty list (review of #553). Indented four spaces, `---` is code."""
+    from manuscript_guard.audit import bibliography_spans
+
+    entry = "1. Smith J. A cohort. Lancet. 2019;393:100-10.\n"
+    assert bibliography_spans("References\n----------\n\n" + entry) == [(0, 4)]
+    assert bibliography_spans("# References\n\n" + entry + "\n    ---\n\n" + entry) == [(0, 7)]
+
+
 SMITH, JONES = "Smith J. A cohort. Lancet. 2019;393:100-10.", "Jones K. A trial. BMJ 2020;370:m1."
 
 

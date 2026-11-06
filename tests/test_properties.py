@@ -8087,9 +8087,11 @@ def test_a_thematic_break_ends_a_markdown_reference_list(
     drawn: tuple[str, list[tuple[int, int]]],
 ) -> None:
     """A Markdown reference list ends at a thematic break, as it does at a heading: `---`,
-    `***` or `___`, spaced, indented or long. A run of dashes or stars inside an entry ends
-    nothing (`bibliography_spans`, `thematic_breaks`). The block after a rule was read as
-    one more entry with no number, and the list then held no citation to it."""
+    `***` or `___`, spaced, indented or long. A run of dashes or stars inside an entry, a
+    setext heading's dashed underline and a line of dashes indented four spaces end nothing
+    (`bibliography_spans`, `thematic_breaks`). The block after a rule was read as one more
+    entry with no number, and the list then held no citation to it; then the underline of
+    a setext `References` ended the list it opens (review of #553)."""
     text, expected = drawn
     assert audit_module.bibliography_spans(text) == expected, text
 
@@ -8108,6 +8110,17 @@ def _a_spaced_break_is_none(patch: pytest.MonkeyPatch) -> None:
 
 def _an_indented_break_is_none(patch: pytest.MonkeyPatch) -> None:
     _without(patch, "_THEMATIC_BREAK", " {0,3}")
+
+
+def _a_setext_underline_is_a_break(patch: pytest.MonkeyPatch) -> None:
+    """462c853c, the review of #553: every line of the shape was a break."""
+    patch.setattr(audit_module, "thematic_breaks", lambda lines: {
+        number for number, line in enumerate(lines)
+        if audit_module._THEMATIC_BREAK.fullmatch(line.rstrip("\r"))})  # fmt: skip
+
+
+def _a_line_indented_four_is_a_break(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_THEMATIC_BREAK", " {0,3}", " {0,4}")
 
 
 def _a_run_in_an_entry_breaks(patch: pytest.MonkeyPatch) -> None:
@@ -18768,6 +18781,14 @@ BROKEN = {
     ),
     "a run of dashes in an entry ends its reference list": (
         _a_run_in_an_entry_breaks,
+        test_a_thematic_break_ends_a_markdown_reference_list,
+    ),
+    "a setext heading's dashed underline is a thematic break": (
+        _a_setext_underline_is_a_break,
+        test_a_thematic_break_ends_a_markdown_reference_list,
+    ),
+    "a line of dashes indented four spaces is a thematic break": (
+        _a_line_indented_four_is_a_break,
         test_a_thematic_break_ends_a_markdown_reference_list,
     ),
     "the audit hides an HTML comment in Word and figure text": (

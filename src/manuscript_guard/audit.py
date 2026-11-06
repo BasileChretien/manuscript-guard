@@ -550,7 +550,7 @@ def _markdown_heading_lines(text: str) -> frozenset[int]:
 
 
 #: A Markdown thematic break: three or more of one of `-`, `*` and `_`, spaces between them
-#: allowed, indented three spaces at most, and nothing else on the line.
+#: allowed, indented three spaces at most (four is code), and nothing else on the line.
 _THEMATIC_BREAK = re.compile(r" {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*")
 
 
@@ -558,10 +558,22 @@ def thematic_breaks(lines: list[str]) -> set[int]:
     """The lines that are Markdown thematic breaks, `---`, `***` or `___`. One ends a
     reference list as a heading does: a block under it, a note on where the numbers came
     from, was read as one more entry with no number, so the list was "not numbered" and no
-    citation was held to it. A `---` under a line of text is that line's underline, and
-    `heading_shaped` has already ended the list at the line above."""
-    return {number for number, line in enumerate(lines)
-            if _THEMATIC_BREAK.fullmatch(line.rstrip("\r"))}  # fmt: skip
+    citation was held to it.
+
+    A line of dashes directly under a line of text is that line's setext underline, as in
+    CommonMark, and no break: read as one, the dashes under a setext `References` ended the
+    list they open (review of #553). Where the line above is an entry, `heading_shaped` has
+    already ended the list there. Stars and underscores underline nothing."""
+    breaks = set()
+    for number, line in enumerate(lines):
+        rule = _THEMATIC_BREAK.fullmatch(line.rstrip("\r"))
+        if rule is None:
+            continue
+        above = lines[number - 1] if number else ""
+        if rule[1] == "-" and above.strip():
+            continue
+        breaks.add(number)
+    return breaks
 
 
 def bibliography_spans(

@@ -148,6 +148,13 @@ These were tested, not assumed, and they determine the architecture.
 - **A pinned key comes back as `citation-key: xyz`**, in the CSL `note`, although it is typed
   in Extra as `Citation Key: xyz`. `item.search` keeps that line; `item.pandoc_filter` and
   `item.export` strip it, so they cannot tell pinned from unpinned.
+- **From Better BibTeX 8, every key is pinned and none is in Extra** (Zotero 9.0.6 with
+  9.0.77, the athlete-leakage study, 2026-11-06). Its 8.0.0 changelog: "keys are always
+  pinned now. Zotero doesn't have a place I can store whether a key is pinned or not." Every
+  key is in Zotero's own Citation Key field, pinned from the menu or not, and Extra stays
+  empty, so the Extra search found no pin at all and G7 failed every cited key. `lookup`
+  asks `api.ready` for Better BibTeX's version and takes every found key as pinned from 8
+  on; a Better BibTeX that gives no version is held to Extra, as before.
 - **Word does not carry a paragraph's identifier when it cuts the paragraph** (Word 365,
   driven over COM on the example's build, 2026-09-24). The identifier is an empty bookmark,
   and Word leaves an empty bookmark where it stood. With Track Changes on, it stays in the

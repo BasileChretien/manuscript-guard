@@ -45,15 +45,20 @@ class FakeBBT:
     Library 1 is the user's own library; any other number is a group library.
     """
 
-    def __init__(self, items: list[dict], refuse: set[str] = frozenset()) -> None:
+    def __init__(
+        self, items: list[dict], refuse: set[str] = frozenset(), better_bibtex: str = "6.7.140"
+    ) -> None:
         self.items = items
         self.refuse = refuse
+        self.better_bibtex = better_bibtex
         self.calls: list[tuple[str, object]] = []
 
     def __call__(self, method: str, params, timeout: int = 20):
         self.calls.append((method, params))
         if method in self.refuse:
             raise ZoteroRefused(f"Better BibTeX refused {method}: method not found")
+        if method == "api.ready":
+            return {"zotero": "6.0.30", "betterbibtex": self.better_bibtex}
         if method == "user.groups":
             ids = sorted({1} | {i["library"] for i in self.items})
             return [{"id": i, "name": "My Library" if i == 1 else f"Group {i}"} for i in ids]
@@ -165,8 +170,31 @@ def test_the_number_of_calls_does_not_grow_with_the_number_of_keys(monkeypatch) 
     monkeypatch.setattr(client, "rpc", fake)
     result = lookup(tuple(f"missingKey{i}" for i in range(3000)) + ("a",))
     assert len(result.missing) == 3000 and result.found == {"a"}
-    # the user library, the list of libraries, the one group library, the pinned search
-    assert len(fake.calls) == 4
+    # the user library, the list of libraries, the one group library, Better BibTeX's
+    # version, the pinned search
+    assert len(fake.calls) == 5
+
+
+@pytest.mark.parametrize(("better_bibtex", "pinned"), [("8.0.0", True), ("9.0.77", True),
+                                                       ("7.0.5", False), ("6.7.140", False)])
+def test_from_better_bibtex_8_every_key_is_pinned(
+    monkeypatch, better_bibtex: str, pinned: bool
+) -> None:
+    """Better BibTeX 8 moved every key into Zotero's own Citation Key field, where it is not
+    regenerated, and wrote no `Citation Key:` line in Extra: "keys are always pinned now"
+    (its 8.0.0 changelog). Its pin, on Zotero 9 with 9.0.77, left Extra empty, so every key
+    of the athlete-leakage study read as unpinned and the build was refused for good."""
+    fake = FakeBBT([csl("a", False), csl("b", False)], better_bibtex=better_bibtex)
+    monkeypatch.setattr(client, "rpc", fake)
+    result = lookup(("a", "b"))
+    assert result.found == {"a", "b"}
+    assert result.pinned == (result.found if pinned else frozenset())
+
+
+def test_a_better_bibtex_that_gives_no_version_is_held_to_extra(monkeypatch) -> None:
+    fake = FakeBBT([csl("a", True), csl("b", False)], refuse={"api.ready"})
+    monkeypatch.setattr(client, "rpc", fake)
+    assert lookup(("a", "b")).unpinned == {"b"}
 
 
 def test_a_better_bibtex_without_the_fast_calls_falls_back_to_the_library(monkeypatch) -> None:

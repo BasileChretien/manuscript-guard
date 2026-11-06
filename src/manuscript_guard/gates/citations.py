@@ -131,7 +131,8 @@ def check_citations(project: Project, literature: Literature) -> Report:
                 message=f"{cited_as(citekey, raws[citekey])} is not pinned in Zotero",
                 hint=f"in Zotero, put the line `Citation Key: {citekey}` at the top of the "
                 "item's Extra field; an unpinned key is regenerated from metadata and will "
-                "change under you",
+                "change under you. Better BibTeX 8 and later keep every key in Zotero's own "
+                "Citation Key field, where it is not regenerated, so updating it does as well",
             )
         )
 

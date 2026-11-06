@@ -176,6 +176,25 @@ def library(timeout: int = GATE_TIMEOUT) -> dict[str, Reference]:
     return found
 
 
+#: From this major version Better BibTeX keeps every key in Zotero's own Citation Key field,
+#: where it is not regenerated, and writes no pin in Extra: "keys are always pinned now.
+#: Zotero doesn't have a place I can store whether a key is pinned or not" (its 8.0.0
+#: changelog). On Zotero 9 with 9.0.77, a key pinned from the menu left Extra empty.
+ALWAYS_PINNED_FROM = 8
+
+
+def keys_always_pinned(timeout: int) -> bool:
+    """Whether the running Better BibTeX keeps every key as a pinned one, by its version as
+    `api.ready` gives it; False where it gives none, which holds the keys to Extra."""
+    try:
+        ready = rpc("api.ready", [], timeout=timeout)
+    except ZoteroRefused:
+        return False
+    version = str(ready.get("betterbibtex", "")) if isinstance(ready, dict) else ""
+    major = re.match(r"\d+", version)
+    return major is not None and int(major.group(0)) >= ALWAYS_PINNED_FROM
+
+
 def _pinned_keys(timeout: int) -> frozenset[str]:
     """The keys of every item whose citation key is pinned, from one condition search."""
     result = rpc("item.search", [PINNED_CONDITION], timeout=timeout)
@@ -242,15 +261,17 @@ def lookup(citekeys: tuple[str, ...], timeout: int = GATE_TIMEOUT) -> Lookup:
             unresolved = sorted(k for k, n in more_counts.items() if n == 0)
             if not unresolved:
                 break
-        pinned = _pinned_keys(timeout)
+        always = keys_always_pinned(timeout)
+        pinned = frozenset(found) if always else _pinned_keys(timeout)
     except ZoteroRefused:
         # A Better BibTeX without item.pandoc_filter or condition searches: fall back to
         # the whole library, which is slow but gives the same answers.
         index = library(timeout)
         in_index = frozenset(k for k in keys if k in index)
+        always = keys_always_pinned(timeout)
         return Lookup(
             found=in_index,
-            pinned=frozenset(k for k in in_index if index[k].pinned),
+            pinned=frozenset(k for k in in_index if always or index[k].pinned),
             missing=frozenset(keys) - in_index,
         )
     ambiguous = {k: n for k, n in counts.items() if n > 1 and k not in found}

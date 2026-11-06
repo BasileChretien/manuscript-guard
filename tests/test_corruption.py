@@ -12758,14 +12758,30 @@ def test_different_works_and_an_uncited_duplicate_say_nothing(project: Path) -> 
     assert _duplicate_findings(project) == []
 
 
-def _zotero(monkeypatch, items: list[dict]) -> None:
+def _zotero(monkeypatch, items: list[dict], better_bibtex: str = "6.7.140") -> None:
     from test_zotero import FakeBBT
 
     from manuscript_guard.zotero import client, reset_cache
 
     reset_cache()
-    monkeypatch.setattr(client, "rpc", FakeBBT(items))
+    monkeypatch.setattr(client, "rpc", FakeBBT(items, better_bibtex=better_bibtex))
     monkeypatch.setattr("manuscript_guard.gates.citations.available", lambda: True)
+
+
+def test_a_key_better_bibtex_8_keeps_is_pinned_and_one_before_it_is_not(
+    project: Path, monkeypatch
+) -> None:
+    """From Better BibTeX 8 every key is kept in Zotero's own Citation Key field and Extra
+    carries no pin (the athlete-leakage study, Zotero 9 with 9.0.77): G7 failed every key it
+    cited, pinned or not. Before 8, a key with no pin in Extra still fails."""
+    from test_zotero import CLASS, HEPATIC, csl
+
+    _zotero(monkeypatch, [csl(HEPATIC, False), csl(CLASS, False)], better_bibtex="9.0.77")
+    assert "citation-key-unpinned" not in codes(_g7(project, closed=False))
+    _zotero(monkeypatch, [csl(HEPATIC, False), csl(CLASS, False)], better_bibtex="7.0.5")
+    unpinned = [f for f in _g7(project, closed=False).failures
+                if f.code == "citation-key-unpinned"]  # fmt: skip
+    assert len(unpinned) == 2 and "Better BibTeX 8" in unpinned[0].hint, unpinned
 
 
 def test_an_unpinned_cited_key_is_caught(project: Path, monkeypatch) -> None:

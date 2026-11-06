@@ -10,6 +10,7 @@ Extra.
 
 from __future__ import annotations
 
+import json
 import urllib.error
 from pathlib import Path
 
@@ -46,11 +47,16 @@ class FakeBBT:
     """
 
     def __init__(
-        self, items: list[dict], refuse: set[str] = frozenset(), better_bibtex: str = "6.7.140"
+        self,
+        items: list[dict],
+        refuse: set[str] = frozenset(),
+        better_bibtex: str = "6.7.140",
+        reset_key_on_change: bool = False,
     ) -> None:
         self.items = items
         self.refuse = refuse
         self.better_bibtex = better_bibtex
+        self.reset_key_on_change = reset_key_on_change
         self.calls: list[tuple[str, object]] = []
 
     def __call__(self, method: str, params, timeout: int = 20):
@@ -58,7 +64,13 @@ class FakeBBT:
         if method in self.refuse:
             raise ZoteroRefused(f"Better BibTeX refused {method}: method not found")
         if method == "api.ready":
-            return {"zotero": "6.0.30", "betterbibtex": self.better_bibtex}
+            # As Zotero 9.0.6 with 9.0.77 answered, and Zotero 6 with a Better BibTeX of 6.
+            zotero = "9.0.6" if not self.better_bibtex.startswith(("6.", "7.")) else "6.0.30"
+            return {"zotero": zotero, "betterbibtex": self.better_bibtex}
+        if method == "item.export" and params[1] == "BetterBibTeX JSON":
+            preferences = {"citekeyFormat": "auth.lower + shorttitle(3, 3) + year",
+                           "resetKeyOnChange": self.reset_key_on_change}  # fmt: skip
+            return json.dumps({"config": {"preferences": preferences}, "items": []})
         if method == "user.groups":
             ids = sorted({1} | {i["library"] for i in self.items})
             return [{"id": i, "name": "My Library" if i == 1 else f"Group {i}"} for i in ids]
@@ -195,6 +207,32 @@ def test_a_better_bibtex_that_gives_no_version_is_held_to_extra(monkeypatch) -> 
     fake = FakeBBT([csl("a", True), csl("b", False)], refuse={"api.ready"})
     monkeypatch.setattr(client, "rpc", fake)
     assert lookup(("a", "b")).unpinned == {"b"}
+
+
+def test_a_better_bibtex_8_that_renews_keys_or_gives_no_preferences_is_held_to_extra(
+    monkeypatch,
+) -> None:
+    """Round 1 of #540: Better BibTeX 9.0.77 lists `resetKeyOnChange` among the preferences
+    its JSON export carries, and with it on, a key changes with its item. Then, or where the
+    export gives no preferences, a key is pinned only by Extra."""
+    fake = FakeBBT([csl("a", True), csl("b", False)], better_bibtex="9.0.77",
+                   reset_key_on_change=True)  # fmt: skip
+    monkeypatch.setattr(client, "rpc", fake)
+    assert lookup(("a", "b")).unpinned == {"b"}
+    reset_cache()
+    fake = FakeBBT([csl("a", True), csl("b", False)], better_bibtex="9.0.77",
+                   refuse={"item.export"})  # fmt: skip
+    monkeypatch.setattr(client, "rpc", fake)
+    assert lookup(("a", "b")).unpinned == {"b"}
+
+
+def test_the_whole_library_fallback_takes_a_better_bibtex_8_key_as_pinned(monkeypatch) -> None:
+    """Round 1 of #540: the fallback for a Better BibTeX without the fast calls reads the
+    version too."""
+    fake = FakeBBT([csl("a", False), csl("b", False)], better_bibtex="9.0.77",
+                   refuse={"item.pandoc_filter"})  # fmt: skip
+    monkeypatch.setattr(client, "rpc", fake)
+    assert lookup(("a", "b")).pinned == {"a", "b"}
 
 
 def test_a_better_bibtex_without_the_fast_calls_falls_back_to_the_library(monkeypatch) -> None:

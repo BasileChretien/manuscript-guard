@@ -5,8 +5,10 @@ Three failures this catches, in descending order of how quietly they happen:
 1. **An unpinned citation key.** Better BibTeX derives an unpinned key from metadata, so
    correcting an author's initials or a publication year silently renames it. Every
    citation using the old key stops resolving, and the failure surfaces as a missing
-   reference in a built document rather than as an error. Pinning is one line in the item's
-   Extra field (`Citation Key: xyz`) and it removes the whole class.
+   reference in a built document rather than as an error. Before Better BibTeX 8, pinning
+   is one line in the item's Extra field (`Citation Key: xyz`) and it removes the whole
+   class; from 8, every key is kept in Zotero's own field, and only the preference that
+   gives an item a new key when it changes (`resetKeyOnChange`) brings the class back.
 2. **A citation key that resolves to nothing, or to several items.** A typo, an item deleted
    from the library, or a duplicate: two items carrying one key, which Better BibTeX refuses
    to export, so `sync-bib` stops on it.
@@ -129,10 +131,11 @@ def check_citations(project: Project, literature: Literature) -> Report:
                 gate=GATE,
                 code="citation-key-unpinned",
                 message=f"{cited_as(citekey, raws[citekey])} is not pinned in Zotero",
-                hint=f"in Zotero, put the line `Citation Key: {citekey}` at the top of the "
-                "item's Extra field; an unpinned key is regenerated from metadata and will "
-                "change under you. Better BibTeX 8 and later keep every key in Zotero's own "
-                "Citation Key field, where it is not regenerated, so updating it does as well",
+                hint=f"an unpinned key is regenerated from metadata and will change under "
+                "you. With Better BibTeX before 8, put the line `Citation Key: "
+                f"{citekey}` at the top of the item's Extra field, or update Better BibTeX: "
+                "from 8 it keeps every key in Zotero's own Citation Key field. From 8, turn "
+                "off its preference to update a key when the item changes",
             )
         )
 

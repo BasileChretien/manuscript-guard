@@ -152,9 +152,15 @@ These were tested, not assumed, and they determine the architecture.
   9.0.77, the athlete-leakage study, 2026-11-06). Its 8.0.0 changelog: "keys are always
   pinned now. Zotero doesn't have a place I can store whether a key is pinned or not." Every
   key is in Zotero's own Citation Key field, pinned from the menu or not, and Extra stays
-  empty, so the Extra search found no pin at all and G7 failed every cited key. `lookup`
-  asks `api.ready` for Better BibTeX's version and takes every found key as pinned from 8
-  on; a Better BibTeX that gives no version is held to Extra, as before.
+  empty, so the Extra search found no pin at all and G7 failed every cited key. `api.ready`
+  answered `{"zotero": "9.0.6", "betterbibtex": "9.0.77"}`, and the JSON export of an item
+  (`item.export([key], "BetterBibTeX JSON")`) carries Better BibTeX's preferences under
+  `config.preferences`, among them `resetKeyOnChange` (false there), under which a key is
+  given anew when its item changes; 9.0.77 lists no `autoPinOverwrite`, the setting its
+  8.0.38 changelog names. `lookup` takes every found key as pinned from 8 on unless
+  `resetKeyOnChange` is true; a Better BibTeX that gives no version or no preferences is
+  held to Extra, as before. Nothing here was probed with that preference on: that a key
+  then changes is the preference's own description, not something seen.
 - **Word does not carry a paragraph's identifier when it cuts the paragraph** (Word 365,
   driven over COM on the example's build, 2026-09-24). The identifier is an empty bookmark,
   and Word leaves an empty bookmark where it stood. With Track Changes on, it stays in the

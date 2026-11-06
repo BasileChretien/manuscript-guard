@@ -12781,7 +12781,7 @@ def test_a_key_better_bibtex_8_keeps_is_pinned_and_one_before_it_is_not(
     _zotero(monkeypatch, [csl(HEPATIC, False), csl(CLASS, False)], better_bibtex="7.0.5")
     unpinned = [f for f in _g7(project, closed=False).failures
                 if f.code == "citation-key-unpinned"]  # fmt: skip
-    assert len(unpinned) == 2 and "Better BibTeX 8" in unpinned[0].hint, unpinned
+    assert len(unpinned) == 2 and "Better BibTeX before 8" in unpinned[0].hint, unpinned
 
 
 def test_an_unpinned_cited_key_is_caught(project: Path, monkeypatch) -> None:

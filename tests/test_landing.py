@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import html
 import importlib.util
+import json
 import re
 from pathlib import Path
 
@@ -114,6 +115,7 @@ def test_a_picture_the_landing_page_names_that_docs_img_lacks_stops_the_build(
     (landing / "index.html").write_text(f'<img src="{named}" alt="">', encoding="utf-8")
     (landing / "style.css").write_text("", encoding="utf-8")
     monkeypatch.setattr(build, "LANDING", landing)
+    monkeypatch.setattr(build, "MEDIA", landing / "media")
     with pytest.raises(SystemExit, match="nothing was built"):
         build.landing(tmp_path / "site")
     assert not (tmp_path / "site").exists(), "the build stopped after copying"
@@ -183,13 +185,19 @@ def test_the_video_plays_muted_with_controls_and_its_captions_and_still_frame(
                      r"display: block; \}\s*\}", css), "the still does not replace the video"
 
 
+def decoded(text: str) -> str:
+    """The three references make-vtt.mjs reads, and WebVTT escapes, in the order that
+    cannot read one twice."""
+    return text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+
+
 def cues(vtt: str) -> list[tuple[str, str, str]]:
     """Each cue of a WebVTT file: its start, its end and its words."""
     found = []
     for block in vtt.strip().split("\n\n")[1:]:
         lines = block.splitlines()
         start, end = lines[1].split(" --> ")
-        found.append((start, end, " ".join(lines[2:])))
+        found.append((start, end, decoded(" ".join(lines[2:]))))
     return found
 
 
@@ -203,7 +211,7 @@ def test_the_captions_file_says_what_the_video_shows_and_the_page_lists_it() -> 
     (media/video/index.html), and the page's list of the video's words is the file's."""
     composed = (ROOT / "media" / "video" / "index.html").read_text(encoding="utf-8")
     burned = [(stamp(float(start)), stamp(float(start) + float(length)),
-               html.unescape(re.sub(r"<[^>]+>", "", words)))
+               decoded(re.sub(r"<[^>]+>", "", words)))
               for start, length, words in re.findall(
                   r'<div id="cap-\d+" class="cap clip" data-start="([\d.]+)" '
                   r'data-duration="([\d.]+)"[^>]*><span>(.+?)</span></div>$', composed,
@@ -224,16 +232,32 @@ def test_the_videos_terminal_prints_what_check_prints() -> None:
     figures = script("readme_figures", ROOT / "tools" / "readme_figures.py")
     composed = (ROOT / "media" / "video" / "index.html").read_text(encoding="utf-8")
 
+    string = r'"((?:[^"\\]|\\.)*)"'
+
     def lines(name: str) -> list[tuple[str, str]]:
         body = re.search(rf"const {name} = \[\n(.*?)\n\s*\];", composed, re.DOTALL).group(1)
-        return re.findall(r'\["(\w+)", "((?:[^"\\]|\\.)*)"\]', body)
+        return [(kind, json.loads(f'"{text}"'))
+                for kind, text in re.findall(rf'\["(\w+)", {string}\]', body)]  # fmt: skip
 
-    def value(name: str) -> str:
-        return re.search(rf'const {name} = "([^"]*)";', composed).group(1)
+    def value(pattern: str) -> str:
+        return json.loads(f'"{re.search(pattern.replace("STRING", string), composed).group(1)}"')
 
-    assert [("prompt", value("COMMAND")), *lines("CARD")] == figures.CARD
+    assert [("prompt", value(r"const COMMAND = STRING;")), *lines("CARD")] == figures.CARD
     assert lines("CLEAN") == figures.CLEAN
-    assert value("BINDING") == figures.BINDING
+    assert value(r"const BINDING = STRING;") == figures.BINDING
+    # The editor: the number typed, a character at a time, the line it is on, the place the
+    # finding names, and the sentence the finding quotes.
+    typed = re.search(r"\[(\"[^\]]*)\]\.forEach\(\(v, i\) => layer\(\"L-t\"", composed).group(1)
+    states = [json.loads(f'"{one}"') for one in re.findall(string, typed)]
+    assert states[-1] == figures.TYPED
+    assert all(figures.TYPED.startswith(state) for state in states)
+    for shown in ("L-flag", "L-sel2"):
+        assert value(rf'layer\("{shown}", STRING') == figures.TYPED
+    assert value(r'<span id="g11" class="gutter">(\d+)</span>') == figures.LINE
+    where = re.search(r"manuscript/main\.md:\d+:\d+", figures.CARD[2][1]).group()
+    assert set(re.findall(r"manuscript/main\.md:\d+:\d+", composed)) == {where}
+    cases = value(r"const CASES = STRING;")
+    assert f"**Results.** Of {figures.TYPED} reports, {cases} described" == figures.QUOTED
 
 
 def test_each_villain_on_the_landing_page_is_named_with_the_gate_the_banner_gives_it() -> None:

@@ -95,17 +95,17 @@ def landing(out: Path) -> list[str]:
     (media/); return the pictures. Every file is found before anything is copied."""
     text = (LANDING / "index.html").read_text(encoding="utf-8")
     shown, own = pictures(text), sorted(set(OWN.findall(text)))
-    for folder, names, where in ((IMAGES, shown, "img"), (MEDIA, own, "media")):
+    found = ((IMAGES, shown, "img", "docs/img"), (MEDIA, own, "media", "web/landing/media"))
+    for folder, names, where, home in found:
         for name in names:
             source = (folder / name).resolve()
             if not source.is_relative_to(folder.resolve()) or not source.is_file():
                 raise SystemExit(f"web/landing/index.html shows {where}/{name}, which is not a "
-                                 f"file in {folder.relative_to(WEB.parent).as_posix()}; "
-                                 "nothing was built")  # fmt: skip
+                                 f"file in {home}; nothing was built")  # fmt: skip
     out.mkdir(parents=True, exist_ok=True)
     for name in LANDING_PAGE:
         shutil.copyfile(LANDING / name, out / name)
-    for folder, names, where in ((IMAGES, shown, "img"), (MEDIA, own, "media")):
+    for folder, names, where, _ in found:
         for name in names:
             (out / where / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(folder / name, out / where / name)

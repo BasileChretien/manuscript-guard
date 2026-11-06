@@ -15,13 +15,17 @@ const cues = [...html.matchAll(pattern)].map(([, start, duration, text]) => ({
   start: Number(start),
   end: Number(start) + Number(duration),
   // A span inside a caption only keeps a word from breaking; its words are the caption's.
-  text: text.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">"),
+  text: text.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"),
 }));
 if (cues.length === 0) {
   throw new Error("no caption elements found in index.html");
 }
 if ((html.match(/class="cap clip"/g) ?? []).length !== cues.length) {
   throw new Error("a caption element in index.html is not in the expected form");
+}
+
+function escape(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function stamp(seconds) {
@@ -33,7 +37,8 @@ function stamp(seconds) {
 }
 
 const body = cues
-  .map((cue, i) => `${i + 1}\n${stamp(cue.start)} --> ${stamp(cue.end)}\n${cue.text}\n`)
+  // WebVTT reads &, < and > as markup, as HTML does.
+  .map((cue, i) => `${i + 1}\n${stamp(cue.start)} --> ${stamp(cue.end)}\n${escape(cue.text)}\n`)
   .join("\n");
 writeFileSync(out, `WEBVTT\n\n${body}`, "utf8");
 console.log(`${cues.length} cues written to ${out}`);

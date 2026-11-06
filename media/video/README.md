@@ -41,9 +41,15 @@ npm run build    # render, encode, poster, captions
 - `vtt` writes `web/landing/media/vord.en.vtt`.
 
 The HyperFrames CLI sends usage telemetry unless `HYPERFRAMES_NO_TELEMETRY=1` or `DO_NOT_TRACK=1`
-is set, so the scripts run it through `cli.mjs`, which sets both. Run `node cli.mjs <command>`
-rather than `npx hyperframes` for anything else. The render fetches nothing: GSAP comes from `node_modules`, the fonts and drawings from
+is set, and on most commands it checks the npm registry for a newer version unless
+`HYPERFRAMES_NO_UPDATE_CHECK=1` is set. The scripts run it through `cli.mjs`, which sets all
+three. Run `node cli.mjs <command>` rather than `npx hyperframes` for anything else. The render
+fetches nothing: GSAP comes from `node_modules`, the fonts and drawings from
 this folder.
+
+The words inside the drawings (4,000, RETRACTED, PLAN, Methods) are drawn in the fonts of the
+machine that renders, as on the page, since a drawing shown as an image cannot use the
+composition's fonts. A render on another machine can differ in those words' typeface.
 
 ## What is in the folder
 
@@ -54,3 +60,7 @@ this folder.
   Both are under the SIL Open Font License 1.1, whose text is beside them.
 - `package.json` pins `hyperframes` at 0.8.190 and `gsap` at 3.14.2 (GSAP's own no-charge
   licence). `node_modules/`, `renders/` and `.hyperframes/` are not committed.
+
+The code here (the composition, `make-vtt.mjs`, `cli.mjs`) is under the MIT licence, which is
+what `package.json` says. The drawings in `assets/` and the video made from them are under
+CC BY 4.0 (`brand/LICENSE`), and the fonts under the SIL Open Font License.

@@ -4338,7 +4338,21 @@ included, and an offset is the same in both. Counted in the copy, the line fell 
 every line blanked above it: a phrase under a four-line comment was reported three lines up,
 on the comment. And the line is the one the matched words begin on, not the match: the rule
 for a chat assistant's opening word reads from the start of a line through any blank lines,
-and its finding was put on the blank line above the paragraph.
+and its finding was put on the blank line above the paragraph. That rule passes over a
+match whose words carry on a sentence from the line before (`paragraph_start`,
+`writing._continues_a_sentence`): the words are in lower case, and the line before is prose
+that ends in a word, a number, a comma, a semicolon, a colon or a dash, with any closing
+marks. Read at every line, it failed a hard-wrapped sentence whose line began "here is the"
+(the athlete-leakage study, 2026-11-06). A capital is read as an opening whatever stands
+before it, since a chat assistant's reply opens with one, and so is a lower-case word after
+anything but running prose: the file is read as typed, and a list of what ends a paragraph,
+then a test of the line before alone, each missed markup the other caught (rounds 1 to 3 of
+#538). Its limits, each as base had it or narrower: wrapped prose whose line ends in
+something else, `}` (`Table~\ref{t1}`), `\%`, `$`, an abbreviation's stop ("Smith et
+al."), still fails at a lower-case opener after it; a sentence that opens with "Certainly"
+or "Of course" after a wrap at a full stop fails where the same sentence on one line does
+not; and a reply typed in lower case under a line that ends in a letter, `\noindent` or a
+bold label, is missed, where base caught it.
 
 **Vague attribution gets the one check an encyclopedia cannot use.** "Studies have shown" is
 reported only when no citation sits within 240 characters, because in a manuscript the fix

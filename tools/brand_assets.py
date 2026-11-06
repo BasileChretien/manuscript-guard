@@ -47,7 +47,7 @@ PALETTES: dict[str, dict[str, str]] = {
         "g-visor": "#0c1424", "g-eye": "#e8f4f2", "g-edge": "#1b2b4b",
         "g-ground": "rgba(27,43,75,0.13)", "v-foe": "#c9502f", "v-shade": "#9481a7",
         "v-ghost": "#e9ecf1", "v-board": "#5b6577", "v-lid": "#c9d0da", "v-nose": "#e3a07e",
-        "t-ink": "#1d2840",
+        "t-ink": "#1d2840", "t-line": "#d3d9e2",
     },
     "dark": {
         "g-navy": "#3a5585", "g-plate": "#5070a3", "g-steel": "#c3ccd7", "g-brass": "#e6c878",
@@ -55,7 +55,7 @@ PALETTES: dict[str, dict[str, str]] = {
         "g-visor": "#070c16", "g-eye": "#e8f4f2", "g-edge": "#0a1120",
         "g-ground": "rgba(0,0,0,0.35)", "v-foe": "#d95b36", "v-shade": "#a093b4",
         "v-ghost": "#d9dde6", "v-board": "#8a94a6", "v-lid": "#c9d0da", "v-nose": "#e3a07e",
-        "t-ink": "#e3e8f0",
+        "t-ink": "#e3e8f0", "t-line": "#28344d",
     },
 }
 
@@ -91,6 +91,25 @@ TAGLINE = "Every number traceable to its source."
 PREVIEW = {"ground": "#0f1728", "name": "#e9edf3", "tagline": "#e6c878", "line": "#9ba7b9"}
 SANS = "Segoe UI, Helvetica Neue, Helvetica, Arial, sans-serif"
 MONO = "ui-monospace, SFMono-Regular, Consolas, Menlo, monospace"
+
+#: The banner's story: each villain in turn, and the gate that catches its mistake.
+CAST: tuple[tuple[str, str], ...] = (
+    ("stray-number", "G2"), ("forger", "G1"), ("ghost-citation", "G7"),
+    ("impostor-doi", "G7"), ("plan-rewriter", "G12"), ("stale-methods", "G9"),
+)
+#: Its timing, in seconds: the loop; a villain's run, hold at the shield and fade; the slot
+#: each villain has and when the first starts; when the shadows and the co-author come.
+LOOP, RUN, HOLD, FADE, SLOT, FIRST = 14.0, 0.8, 0.3, 0.4, 1.6, 0.4
+SHADOWS_AT, COAUTHOR_AT = 10.0, 11.6
+BANNER_TITLE = (
+    "Vord, the manuscript-guard mascot, stands before a manuscript. Mistakes run at it one by "
+    "one, and Vord's shield blocks each, showing the gate that catches it: a typed number "
+    "(G2), a results file edited by hand (G1), a retracted work and a DOI that names another "
+    "(G7), a plan rewritten after the results (G12), Methods out of date with the analysis "
+    "(G9). Two shadows, confirmation bias and data leakage, pass through the shield, and a "
+    "co-author reads the manuscript through a magnifying glass. With motion turned off, the "
+    "picture holds still on the first mistake blocked and the co-author reading."
+)
 
 #: The PNGs `--png` renders, and the size of each.
 RENDERED: dict[str, tuple[int, int]] = {
@@ -192,6 +211,107 @@ def social_preview(index: dict[str, ET.Element]) -> str:
     return paint(document(index, ["emblem"], 1280, 640, title, body), PALETTES["dark"])
 
 
+def _keys(name: str, stops: list[tuple[float, str]]) -> str:
+    """A CSS @keyframes rule from (second, declarations) stops over `LOOP`."""
+    frames = "".join(f"{100 * at / LOOP:.2f}%{{{rule}}}" for at, rule in stops)
+    return f"@keyframes {name}{{{frames}}}"
+
+
+def _villain_keys(n: int) -> str:
+    start = FIRST + n * SLOT
+    away = "opacity:0;transform:translateX(480px)"
+    here = "opacity:1;transform:translateX(0)"
+    gone = "opacity:0;transform:translate(10px,-16px) scale(.4)"
+    return _keys(f"k{n}", [
+        (0, away), (start, away), (start + 0.06, "opacity:1;transform:translateX(444px)"),
+        (start + RUN, here), (start + RUN + HOLD, here), (start + RUN + HOLD + FADE, gone),
+        (LOOP, gone),
+    ])
+
+
+def _tag_keys(n: int) -> str:
+    start = FIRST + n * SLOT
+    shown = start + RUN + HOLD + FADE
+    return _keys(f"t{n}", [
+        (0, "opacity:0"), (start + RUN - 0.02, "opacity:0"), (start + RUN, "opacity:1"),
+        (shown, "opacity:1"), (shown + 0.05, "opacity:0"), (LOOP, "opacity:0"),
+    ])
+
+
+def _spark_keys() -> str:
+    stops = [(0.0, "opacity:0")]
+    for n in range(len(CAST)):
+        strike = FIRST + n * SLOT + RUN
+        stops += [(strike - 0.02, "opacity:0"), (strike, "opacity:1"),
+                  (strike + HOLD, "opacity:1"), (strike + HOLD + 0.05, "opacity:0")]
+    return _keys("sp", [*stops, (LOOP, "opacity:0")])
+
+
+def _banner_css() -> str:
+    """The banner's motion. Without it, as for a reader who turns motion off, the drawing
+    rests on its still frame: the first villain blocked and the co-author reading."""
+    count = len(CAST)
+    hidden = ",".join([*(f".k{n}" for n in range(1, count)), *(f".t{n}" for n in range(1, count)),
+                       ".sh"])
+    shadows = _keys("sh", [
+        (0, "opacity:0;transform:translateX(480px)"),
+        (SHADOWS_AT, "opacity:0;transform:translateX(480px)"),
+        (SHADOWS_AT + 0.2, "opacity:.95;transform:translateX(440px)"),
+        (SHADOWS_AT + 2.2, "opacity:.95;transform:translateX(-200px)"),
+        (SHADOWS_AT + 2.6, "opacity:0;transform:translateX(-240px)"),
+        (LOOP, "opacity:0;transform:translateX(-240px)"),
+    ])
+    reader = _keys("ca", [
+        (0, "opacity:0;transform:translateX(-30px)"),
+        (COAUTHOR_AT, "opacity:0;transform:translateX(-30px)"),
+        (COAUTHOR_AT + 0.6, "opacity:1;transform:translateX(0)"),
+        (LOOP - 0.5, "opacity:1;transform:translateX(0)"), (LOOP - 0.1, "opacity:0"),
+        (LOOP, "opacity:0"),
+    ])
+    names = "".join(f".k{n}{{animation-name:k{n}}}.t{n}{{animation-name:t{n}}}"
+                    for n in range(count))
+    return (
+        f".a{{animation-duration:{LOOP:g}s;animation-iteration-count:infinite;"
+        "animation-timing-function:linear}"
+        ".v{transform-box:fill-box;transform-origin:50% 50%}"
+        f"{names}.sp{{animation-name:sp}}.sh{{animation-name:sh}}.ca{{animation-name:ca}}"
+        f"{hidden}{{opacity:0}}"
+        "@media (prefers-reduced-motion:reduce){.a{animation:none}}"
+        + "".join(_villain_keys(n) + _tag_keys(n) for n in range(count))
+        + _spark_keys() + shadows + reader
+    )
+
+
+def banner(index: dict[str, ET.Element], palette: dict[str, str]) -> str:
+    """The animated banner: Vord before the manuscript, blocking each villain in turn."""
+    left, wide = 250, 170
+    shield_x, shield_y = left + wide - 64 * wide / 200, 12 + 150 * wide / 200
+    parts = [
+        f"  <style>{_banner_css()}</style>\n",
+        '  <path d="M0 214.5 H860" stroke="var(--t-line)" stroke-width="1.5"/>\n',
+        '  <use href="#manuscript" x="130" y="40" width="104" height="173"/>\n',
+        '  <g class="a ca"><use href="#co-author" x="30" y="96" width="118" height="118"/></g>\n',
+        f'  <use href="#guard" transform="translate({left + wide} 0) scale(-1 1)" y="12" '
+        f'width="{wide}" height="204"/>\n',
+        '  <g class="a sp"><use href="#spark" x="401" y="112" width="22" height="37"/></g>\n',
+        '  <g class="a sh"><use href="#confirmation-bias" x="440" y="60" width="96" height="96"/>'
+        '<use href="#data-leakage" x="520" y="110" width="96" height="96"/></g>\n',
+    ]
+    parts += [f'  <g class="a v k{n}"><use href="#{name}" x="424" y="104" width="110" '
+              f'height="110"/></g>\n' for n, (name, _) in enumerate(CAST)]
+    for n, (_, gate) in enumerate(CAST):
+        width = 14 + 10 * len(gate)
+        parts.append(
+            f'  <g class="a t{n}"><rect x="{shield_x - width / 2:.1f}" y="{shield_y - 9:.1f}" '
+            f'width="{width}" height="18" rx="4" fill="var(--g-brass)" stroke="var(--g-edge)" '
+            f'stroke-width="1.5"/><text x="{shield_x:.1f}" y="{shield_y + 4.2:.1f}" '
+            f'text-anchor="middle" font-family="{MONO}" font-size="12" font-weight="700" '
+            f'fill="var(--g-edge)">{gate}</text></g>\n')
+    names = ["manuscript", "co-author", "guard", "spark", "confirmation-bias", "data-leakage",
+             *(name for name, _ in CAST)]
+    return paint(document(index, names, 860, 240, BANNER_TITLE, "".join(parts)), palette)
+
+
 def drawings() -> dict[str, str]:
     """Every SVG file this writes, by name."""
     index = symbols()
@@ -199,6 +319,8 @@ def drawings() -> dict[str, str]:
     for name, symbol, width, height, title in DRAWINGS:
         for shade, palette in PALETTES.items():
             made[f"{name}-{shade}.svg"] = drawing(index, symbol, width, height, title, palette)
+    for shade, palette in PALETTES.items():
+        made[f"banner-{shade}.svg"] = banner(index, palette)
     made["favicon.svg"] = drawing(index, "emblem-small", 32, 32, "manuscript-guard",
                                   PALETTES["light"])
     made["social-preview.svg"] = social_preview(index)

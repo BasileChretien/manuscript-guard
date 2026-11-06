@@ -46,12 +46,11 @@ MANUSCRIPT_GUARD_SEED=7 pytest -q tests/test_properties.py             # other i
 MANUSCRIPT_GUARD_BASE=origin/main pytest -q -rs tests/test_differential.py
 ```
 
-`tests/test_generated_sessions.py` draws its twelve sessions from the seed `PINNED` in that
-file, which also holds what the twelve have in them. A change to `sessions()` in
-`tests/generated.py`, to `TAGS` or `SAYS` in `tests/readings.py`, or to the pin of Hypothesis
-draws twelve others, and the test of what they contain may then fail with nothing wrong in
-the import: its message says so, and which numbers to try. Under the first two variables
-above, the two tests about the pinned twelve are skipped.
+`tests/test_generated_sessions.py` draws twelve sessions from its seed `PINNED`. A change to
+`sessions()` in `tests/generated.py`, to `TAGS` or `SAYS` in `tests/readings.py`, or to the
+Hypothesis pin draws twelve others, and the test of what they hold may then fail with
+nothing wrong: its message says which numbers to try. Under the first two variables above,
+the two tests of the pinned twelve are skipped.
 
 Unset, the base is where the branch left `origin/main`. CI's `old-against-new` job compares
 with the base-branch commit the pull request's merge was made on (the first parent of what
@@ -71,8 +70,7 @@ coordinating session raises the number on `main` after merges that change `src/`
 for a number and do not pick one. A branch that already carries a bump puts `main`'s version
 lines back, whether a merge of `main` conflicts on them or not; on a conflict, take `main`'s
 side on all four lines. `tests/test_version.py` holds the four equal and
-`tests/test_plugin.py` the two manifests. When the installed tool is older than the plugin,
-its session-start hook (`manuscript-guard-hook`) warns once and blocks nothing.
+`tests/test_plugin.py` the two manifests.
 
 The example doubles as the test fixture. To see the whole loop:
 
@@ -114,23 +112,18 @@ and nothing under `src/` holds a copy, so edit them only there. The test suite s
 `MANUSCRIPT_GUARD_USER_SKILLS` to a folder that does not exist, so that `check` never reads
 the copy of whoever is running it.
 
-The example's citekeys are fictional and live in its committed `references.bib`, so it
-builds offline anywhere without touching anyone's Zotero.
+The example's citekeys are fictional and live in its committed `literature/references.bib`,
+so it builds offline anywhere without touching anyone's Zotero.
 
-The list of spellings G14 reads, `src/manuscript_guard/data/spelling_variants.tsv`, is
-generated from VarCon by `python tools/derive_spelling_variants.py path/to/varcon.txt` and
-never edited by hand. The script names its source file by its SHA-256 and refuses another;
-`varcon.txt` is not in the repository, and with `MANUSCRIPT_GUARD_VARCON` naming a copy a
-test derives the list again and compares it byte for byte. A wrong row is put right in the
-script, with the authority for it. The derived file and ATTRIBUTION.md both keep VarCon's
-notices.
-
-The palettes, `src/manuscript_guard/data/palettes.json`, and their licences beside them, are
-derived from each collection's own files at pinned commits by
-`python tools/derive_palettes.py path/to/folder --fetch`, and never edited by hand; the R
-package's copies are written with them. A wrong palette is put right in the script. With
-`MANUSCRIPT_GUARD_PALETTE_SOURCES` naming the folder, a test derives both files again and
-compares them byte for byte.
+Two data files are derived and never edited by hand; a wrong row is put right in the script
+that writes it, with the authority for it. G14's spellings,
+`src/manuscript_guard/data/spelling_variants.tsv`, come from VarCon through
+`python tools/derive_spelling_variants.py path/to/varcon.txt`, which refuses any source but
+the one whose SHA-256 it names (the file and ATTRIBUTION.md keep VarCon's notices). The
+palettes, `src/manuscript_guard/data/palettes.json`, their licences and the R package's
+copies come from each collection's files at pinned commits through
+`python tools/derive_palettes.py path/to/folder --fetch`. With `MANUSCRIPT_GUARD_VARCON` or
+`MANUSCRIPT_GUARD_PALETTE_SOURCES` naming the sources, a test derives them again byte for byte.
 
 Reporting checklists are generated, not committed: `manuscript-guard fetch STROBE --url
 <link> --save-url` downloads a guideline's document and prints its licence, and
@@ -180,8 +173,7 @@ Verified 2026-08-03 on the author's machine.
   returns CSL-JSON with citation keys.
 - **Zotero replies HTTP/1.0 close-delimited.** PowerShell and .NET reject this with
   "response ended prematurely"; Python's `urllib` is fine. Reach Zotero from Python only.
-- Zotero must be **running** for the live-citation build; the build needs an offline mode
-  for when it is not.
+- Zotero must be **running** for the live-citation build; `build --offline` works without it.
 - pandoc on Windows installs per-user, at `%LOCALAPPDATA%\Pandoc\pandoc.exe`, and is often
   not on `PATH`. Verified against 3.9.0.2.
 - **`jq` is not installed.** Use `gh ... --json x --jq '...'` (gh has jq built in) or
@@ -189,13 +181,10 @@ Verified 2026-08-03 on the author's machine.
   written that way reports nothing and looks like a pending build.
 - **`gh run view <id>` needs the id as a plain integer.** Anything that formats numbers turns
   `--json databaseId` into `3.08e+10` and gets a 404; `--jq '.[0].databaseId'` keeps it intact.
-- Multiple R versions are installed; use the newest unless a project pins one via renv.
 - **Word 365 is installed and scriptable over COM** (`New-Object -ComObject Word.Application`,
   `Visible = $false`, `Quit(0)` in a `finally`): learn from it what Word writes for an edit,
   rather than guessing. Selection-based `Cut`/`Paste` borrows the clipboard; save and restore it.
-- **`codex plugin` can be tried with no login and without touching the real installation**
-  (Codex 0.158, 2026-10-02): set `CODEX_HOME` to an empty folder with a short path (a deep one
-  makes git fail with "Filename too long"), then `codex plugin marketplace add <checkout>` and
-  `codex plugin add manuscript-guard@manuscript-guard`. `tests/test_plugin.py` does this where
-  `codex` is on `PATH`, CI's `codex-plugin` job always. The desktop app keeps a Codex binary
-  off `PATH`, under `.codex/plugins` in the user's home.
+- **`codex plugin` can be tried with no login and without the real installation**: set
+  `CODEX_HOME` to an empty folder with a short path (a deep one makes git fail), as
+  `tests/test_plugin.py` does where `codex` is on `PATH` (CI's `codex-plugin` job always). The
+  desktop app keeps its Codex binary off `PATH`, under `.codex/plugins` in the user's home.

@@ -500,6 +500,63 @@ def _in_latex(rules: str) -> str:
     return rules.replace("`manuscript-guard build`, `render`, ", "`manuscript-guard build`, ", 1)
 
 
+#: The lines of `.gitignore` a project needs, each with the spellings that leave the same out.
+_IGNORED = {
+    "build/": {"build", "build/", "/build", "/build/", "build/*", "/build/*"},
+    "literature/sources/*": {"literature/sources", "literature/sources/",
+                             "literature/sources/*", "/literature/sources",
+                             "/literature/sources/", "/literature/sources/*"},
+}  # fmt: skip
+#: The line of `.gitattributes` the digests need, as its words.
+_EOL = "* text=auto eol=lf"
+
+
+def git_lines_to_add(root: Path) -> dict[str, list[str]]:
+    """The lines an existing `.gitignore` and `.gitattributes` lack, by file name.
+
+    `init` never overwrites, so a repository's own files keep what they had: a `.gitignore`
+    without `build/` commits what the build writes, one without `literature/sources/*` the
+    stored copies of cited works, paywalled papers among them, and a `.gitattributes`
+    without `* text=auto eol=lf` checks text out with each machine's line endings, which
+    the byte-exact digests then read as edits. A private repository whose paper.yaml says
+    `sources_in_git: true` commits the copies, and is not asked to leave them out."""
+    root = Path(root).resolve()
+    wanted: dict[str, list[str]] = {}
+    ignore = _lines(root / ".gitignore")
+    if ignore is not None:
+        missing = [line for line, spellings in _IGNORED.items()
+                   if not spellings & set(ignore)]  # fmt: skip
+        if "literature/sources/*" in missing and _sources_in_git(root):
+            missing.remove("literature/sources/*")
+        if missing:
+            wanted[".gitignore"] = missing
+    attributes = _lines(root / ".gitattributes")
+    if attributes is not None and not any(_is_eol(line) for line in attributes):
+        wanted[".gitattributes"] = [_EOL]
+    return wanted
+
+
+def _lines(path: Path) -> list[str] | None:
+    try:
+        return [line.strip() for line in path.read_text("utf-8", errors="replace").splitlines()]
+    except OSError:
+        return None
+
+
+def _is_eol(line: str) -> bool:
+    words = line.split()
+    return bool(words) and words[0] == "*" and set(words[1:]) >= {"text=auto", "eol=lf"}
+
+
+def _sources_in_git(root: Path) -> bool:
+    from manuscript_guard.contracts import load_project
+
+    try:
+        return load_project(root)[0].sources_in_git
+    except ContractError:
+        return False
+
+
 def rules_to_add(root: Path, *, latex: bool = False) -> str | None:
     """The rules for an agent, where the project's AGENTS.md does not have them.
 

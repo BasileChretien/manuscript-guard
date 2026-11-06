@@ -69,10 +69,13 @@ Markdown file in a LaTeX manuscript (`other-format-file`).
 
 It never overwrites an existing file, so the second form adds manuscript-guard to a
 repository that already holds an analysis, with `paper.yaml` at its root. That also means
-an existing `.gitattributes`, `.gitignore` or `README.md` is left as it was, without a word:
-add `* text=auto eol=lf` and the binary lines to `.gitattributes`, and `build/` to
-`.gitignore`, by hand. An existing `AGENTS.md` is left too, and where it does not mention
-manuscript-guard `init` prints the rules to add to it. And `results/` belongs to
+an existing `.gitattributes`, `.gitignore` or `README.md` is left as it was. Where the
+`.gitignore` lacks `build/` or `literature/sources/*` (the stored copies of cited works,
+paywalled papers among them; not asked where `paper.yaml` says `sources_in_git: true`), or
+the `.gitattributes` lacks `* text=auto eol=lf`, `init` prints the lines to add: add them by
+hand, and the binary lines of the `.gitattributes` it writes for a new project with them. An
+existing `AGENTS.md` is left too, and where it does not mention manuscript-guard `init`
+prints the rules to add to it. And `results/` belongs to
 manuscript-guard: every `.json` directly
 in it is read as a results fragment and fails the schema if it is not one, and `verify`
 empties the whole directory in its scratch copy. If the analysis already keeps its own

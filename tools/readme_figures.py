@@ -264,7 +264,7 @@ def demo_svg(palette: dict[str, str]) -> str:
 
 def gate_names() -> set[str]:
     """The gates the package declares: the `GATE` of each module of `manuscript_guard.gates`,
-    read as `tests/test_docs.py` reads them for the table of `docs/gates.md`."""
+    read as `tests/test_docs.py` reads them for the README's table."""
     import manuscript_guard.gates as package
 
     found = set()

@@ -106,6 +106,19 @@ def test_digits_round_each_number_and_keep_the_unit(tmp_path: Path) -> None:
     assert table.values("t")["t.a.n"].display == "1"
 
 
+def test_a_cell_without_its_leading_zero_is_a_number_and_rounds_without_it() -> None:
+    """APA's ".661" was text to harvest until the emitters took it as a display (round 1 of
+    #537). Read as a number now, it is rounded in the form it was written in, as a comma or a
+    unit is kept."""
+    from manuscript_guard.harvest.read import cell
+
+    assert cell(".661", None).value == 0.661
+    assert cell("\N{MINUS SIGN}.05", None).value == -0.05
+    assert cell("< .001", None).value is None
+    assert cell(".661", 2).display == ".66"
+    assert cell("0.661", 2).display == "0.66"
+
+
 @pytest.mark.parametrize(("data", "suffix", "row_key", "said"), [
     (b"a,b\n1,2,3\n", ".csv", None, "cells under a header"),
     (b'{"a": {"b": 1}}', ".json", None, "no number, text or null"),

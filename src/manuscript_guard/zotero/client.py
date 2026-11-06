@@ -15,7 +15,9 @@ Three practical notes, all learned the hard way:
 * Never ask for the whole library. `item.search("")` serialises every item as CSL; on a
   library of 4,688 items it took 51 seconds, so a gate with a 20 second budget passed or
   failed depending on how busy Zotero was. The gate asks about the keys the manuscript cites
-  and the items whose key is pinned, which takes well under a second (`lookup`).
+  and the items whose key is pinned, which takes well under a second (`lookup`). From
+  Better BibTeX 8 a key is kept in Zotero's own Citation Key field rather than pinned in
+  Extra, and `lookup` reads that from its version and its preferences.
 """
 
 from __future__ import annotations
@@ -81,7 +83,8 @@ class Reference:
 
     @property
     def pinned(self) -> bool:
-        """Whether the citation key is pinned in the item's Extra field.
+        """Whether the citation key is pinned in the item's Extra field, as Better BibTeX
+        before 8 pins one (from 8 it keeps every key in Zotero's own field: `lookup`).
 
         An unpinned key is derived from metadata, so correcting an author's initials or a
         year silently renames it and breaks every citation that used it. BBT records a
@@ -176,6 +179,47 @@ def library(timeout: int = GATE_TIMEOUT) -> dict[str, Reference]:
     return found
 
 
+#: From this major version Better BibTeX keeps every key in Zotero's own Citation Key field
+#: and writes no pin in Extra: "keys are always pinned now. Zotero doesn't have a place I
+#: can store whether a key is pinned or not" (its 8.0.0 changelog). On Zotero 9.0.6 with
+#: 9.0.77, a key pinned from the menu left Extra empty, and `api.ready` answered
+#: {"zotero": "9.0.6", "betterbibtex": "9.0.77"} (2026-11-06).
+ALWAYS_PINNED_FROM = 8
+#: The preference under which Better BibTeX gives an item a new key when its metadata
+#: changes, as its JSON export lists it among `config.preferences` (9.0.77, off there).
+RESET_ON_CHANGE = "resetKeyOnChange"
+
+
+def keys_always_pinned(timeout: int, sample: str) -> bool:
+    """Whether the running Better BibTeX keeps every key as a pinned one: 8 or later, by its
+    version as `api.ready` gives it, and not set to give a key anew when its item changes,
+    by its preferences as an export of `sample`, a key it holds, gives them. False where it
+    gives no version or no preferences, which holds the keys to Extra."""
+    try:
+        ready = rpc("api.ready", [], timeout=timeout)
+    except ZoteroRefused:
+        return False
+    version = str(ready.get("betterbibtex", "")) if isinstance(ready, dict) else ""
+    major = re.match(r"\d+", version)
+    if major is None or int(major.group(0)) < ALWAYS_PINNED_FROM:
+        return False
+    preferences = _preferences(sample, timeout)
+    return preferences is not None and preferences.get(RESET_ON_CHANGE) is False
+
+
+def _preferences(sample: str, timeout: int) -> dict | None:
+    """Better BibTeX's preferences, from its JSON export of one item; None where the export
+    is refused or holds none."""
+    try:
+        exported = rpc("item.export", [[sample], "BetterBibTeX JSON"], timeout=timeout)
+        if isinstance(exported, list) and exported:  # as `export` reads it too
+            exported = exported[0]
+        preferences = json.loads(str(exported))["config"]["preferences"]
+    except (ZoteroRefused, ValueError, KeyError, TypeError):
+        return None
+    return preferences if isinstance(preferences, dict) else None
+
+
 def _pinned_keys(timeout: int) -> frozenset[str]:
     """The keys of every item whose citation key is pinned, from one condition search."""
     result = rpc("item.search", [PINNED_CONDITION], timeout=timeout)
@@ -224,7 +268,8 @@ def lookup(citekeys: tuple[str, ...], timeout: int = GATE_TIMEOUT) -> Lookup:
 
     `item.pandoc_filter`, the call Better BibTeX's own pandoc filter makes, resolves the keys
     in the user's library; the keys it cannot find there are asked of each group library in
-    turn. Pinning comes from a single search for items whose Extra holds a pin. The number
+    turn. Pinning comes from a single search for items whose Extra holds a pin, or, from
+    Better BibTeX 8 on, from its version and preferences (`keys_always_pinned`). The number
     of calls depends on the number of libraries, never on the number of keys: a first
     version searched for each unresolved key separately, and a manuscript citing 3,000 keys
     that Zotero did not hold kept a check waiting for twenty minutes.
@@ -234,6 +279,9 @@ def lookup(citekeys: tuple[str, ...], timeout: int = GATE_TIMEOUT) -> Lookup:
         return Lookup()
     try:
         found, counts = _resolve(list(keys), None, timeout)
+        # A key of the user's own library to read the preferences by: the export is asked of
+        # that library, and the preferences are the same whichever item gives them.
+        sample = min(found) if found else None
         unresolved = sorted(k for k, n in counts.items() if n == 0)
         for library_id in _group_libraries(timeout) if unresolved else []:
             more, more_counts = _resolve(unresolved, library_id, timeout)
@@ -242,15 +290,17 @@ def lookup(citekeys: tuple[str, ...], timeout: int = GATE_TIMEOUT) -> Lookup:
             unresolved = sorted(k for k, n in more_counts.items() if n == 0)
             if not unresolved:
                 break
-        pinned = _pinned_keys(timeout)
+        always = sample is not None and keys_always_pinned(timeout, sample)
+        pinned = frozenset(found) if always else _pinned_keys(timeout)
     except ZoteroRefused:
         # A Better BibTeX without item.pandoc_filter or condition searches: fall back to
         # the whole library, which is slow but gives the same answers.
         index = library(timeout)
         in_index = frozenset(k for k in keys if k in index)
+        always = bool(in_index) and keys_always_pinned(timeout, min(in_index))
         return Lookup(
             found=in_index,
-            pinned=frozenset(k for k in in_index if index[k].pinned),
+            pinned=frozenset(k for k in in_index if always or index[k].pinned),
             missing=frozenset(keys) - in_index,
         )
     ambiguous = {k: n for k, n in counts.items() if n > 1 and k not in found}

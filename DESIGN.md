@@ -17199,6 +17199,14 @@ Open, recorded as each change landed:
   review rounds went into reading it as pandoc does, and each found a place where pandoc
   does not (fenced code, indented code, HTML comments) and a sign flipped or prose
   vanished. A false alarm is the cheaper mistake.
+- **A Markdown reference list ends at any line shaped as a thematic break.** `---`, `***`
+  or `___`, spaced or indented up to three spaces, ends it as a heading does (2026-11-06: a
+  note after a rule under the list was read as one more entry with no number, so the list
+  was "not numbered" and held no citation, silently). The shape is read, not pandoc's
+  reading of it, so a simple table's dashed rule under the heading ends the list there too,
+  and the entries below it are read as the paper's text: a false alarm, the cheaper
+  mistake. A .docx has no thematic break in the text the audit reads, and a horizontal line
+  Word draws ends nothing.
 - **A .docx list under a paragraph that is no heading ends only where its shape does.** The
   cut ends at a caption, a back-matter title or a table (see "Closed since"), and otherwise
   runs to the next styled heading or the end of the body, but the report names the lines,

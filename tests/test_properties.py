@@ -7971,6 +7971,7 @@ def _an_item_of_a_list_opens_one(patch: pytest.MonkeyPatch) -> None:
 # Imported here, not at the top, to keep clear of the import block other branches edit.
 from generated import (  # noqa: E402
     audit_entries,
+    broken_reference_lists,
     docx_reference_ends,
     glued_intervals,
     printed_markers,
@@ -8079,6 +8080,39 @@ def _a_thousands_comma_is_read_as_a_decimal_one(patch: pytest.MonkeyPatch) -> No
         return low <= float(match["grouped"].replace(",", ".")) <= high
 
     patch.setattr(audit_module, "_encloses", encloses)
+
+
+@holds(100, broken_reference_lists())
+def test_a_thematic_break_ends_a_markdown_reference_list(
+    drawn: tuple[str, list[tuple[int, int]]],
+) -> None:
+    """A Markdown reference list ends at a thematic break, as it does at a heading: `---`,
+    `***` or `___`, spaced, indented or long. A run of dashes or stars inside an entry ends
+    nothing (`bibliography_spans`, `thematic_breaks`). The block after a rule was read as
+    one more entry with no number, and the list then held no citation to it."""
+    text, expected = drawn
+    assert audit_module.bibliography_spans(text) == expected, text
+
+
+def _no_break_ends_a_list(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(audit_module, "thematic_breaks", lambda lines: set())
+
+
+def _only_dashes_break(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_THEMATIC_BREAK", "([-*_])", "([-])")
+
+
+def _a_spaced_break_is_none(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_THEMATIC_BREAK", r"(?:[ \t]*\1)", r"(?:\1)")
+
+
+def _an_indented_break_is_none(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_THEMATIC_BREAK", " {0,3}")
+
+
+def _a_run_in_an_entry_breaks(patch: pytest.MonkeyPatch) -> None:
+    pattern = audit_module._THEMATIC_BREAK.pattern
+    patch.setattr(audit_module, "_THEMATIC_BREAK", re.compile(rf"(?:\d+\.\s+)?{pattern}.*"))
 
 
 @holds(30, printed_markers())
@@ -18715,6 +18749,26 @@ BROKEN = {
     "a thousands comma before an interval is read as a decimal one": (
         _a_thousands_comma_is_read_as_a_decimal_one,
         test_an_interval_after_a_value_in_any_format_is_told_from_a_citation,
+    ),
+    "no thematic break ends a reference list": (
+        _no_break_ends_a_list,
+        test_a_thematic_break_ends_a_markdown_reference_list,
+    ),
+    "only a break of dashes ends a reference list": (
+        _only_dashes_break,
+        test_a_thematic_break_ends_a_markdown_reference_list,
+    ),
+    "a spaced thematic break ends no reference list": (
+        _a_spaced_break_is_none,
+        test_a_thematic_break_ends_a_markdown_reference_list,
+    ),
+    "an indented thematic break ends no reference list": (
+        _an_indented_break_is_none,
+        test_a_thematic_break_ends_a_markdown_reference_list,
+    ),
+    "a run of dashes in an entry ends its reference list": (
+        _a_run_in_an_entry_breaks,
+        test_a_thematic_break_ends_a_markdown_reference_list,
     ),
     "the audit hides an HTML comment in Word and figure text": (
         _printed_text_hides_its_comments,

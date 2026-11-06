@@ -6831,6 +6831,35 @@ def numbered_citations(draw: st.DrawFn) -> tuple[str, list[Census]]:
     return "\n".join(lines) + "\n", expected
 
 
+#: The thematic breaks a Markdown reference list can end at, as typed: each of the three
+#: characters, spaced, indented and long.
+REFERENCE_BREAKS = ("---", "***", "___", "- - -", "   * * *", "-----", "_ _ _ _")
+
+
+@st.composite
+def broken_reference_lists(draw: st.DrawFn) -> tuple[str, list[tuple[int, int]]]:
+    """A Markdown paper with a reference list ended by each thematic break of
+    `REFERENCE_BREAKS`, in an order drawn, each list under its own heading and followed by a
+    note on where the numbers came from; with each list's span as `audit.bibliography_spans`
+    is to give it, from its heading's line to the break's. Each list holds an entry whose
+    author is a run of dashes, `---.`, as a style writes a repeated name, and one with a
+    run of stars in its title, which end nothing."""
+    lines = ["# Results", "", "The rate rose [1].", ""]
+    spans: list[tuple[int, int]] = []
+    for rule in draw(st.permutations(REFERENCE_BREAKS)):
+        start = len(lines)
+        lines += ["# References", ""]
+        entries = [f"{draw(word_names())} A. A study. J Ex. 2019;1:1-2.",
+                   "---. Another study. J Ex. 2020;2:3-4.",
+                   f"{draw(word_names())} B. A *** study. J Ex. 2021;3:5-6."]  # fmt: skip
+        for number, entry in enumerate(draw(st.permutations(entries)), 1):
+            lines += [f"{number}. {entry}", ""]
+        spans.append((start, len(lines)))
+        commit = draw(st.integers(1, 99))
+        lines += [rule, "", f"- Every number above is rendered from commit {commit}.", ""]
+    return "\n".join(lines), spans
+
+
 def word_names() -> st.SearchStrategy[str]:
     """A family name for a reference entry."""
     return st.sampled_from(("Smith", "Jones", "Brown", "Green", "Sato", "Okafor"))

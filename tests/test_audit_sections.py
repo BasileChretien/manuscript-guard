@@ -453,6 +453,29 @@ def test_a_numbered_list_is_held_to_the_citations_by_number(tmp_path: Path) -> N
     assert "[5] cites entry 5" in census.problems[0].message
 
 
+@pytest.mark.parametrize("rule", ["---", "***", "___", "- - -", "   * * *"])
+def test_a_thematic_break_ends_the_reference_list(tmp_path: Path, rule: str) -> None:
+    """A block after a rule under the list, a note on where the numbers came from, was read
+    as one more entry with no number, so the list was "not numbered" and no citation was
+    held to it, and nothing said so. A rule ends the list, as a heading does, and what
+    follows it is the paper's text again."""
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "# Results\n\nThe rate rose [1], as before [2, 4].\n\n# References\n\n"
+        "[1] Smith J. A cohort. Lancet. 2019;393:100-10.\n\n"
+        "[2] Jones K. A trial. BMJ 2020;370:m1.\n\n"
+        "[3] Brown L. A note. Drug Saf. 2021;44:1-2.\n\n"
+        f"{rule}\n\n"
+        "- Every number above is rendered from the saved results, commit 1234567.\n",
+        encoding="utf-8",
+    )
+    [census] = audit([paper], None).references
+    assert (len(census.entries), census.style) == (3, "numbered")
+    assert [(p.code, p.line) for p in census.problems] == [
+        ("citation-beyond-list", 3), ("entry-never-cited", 11)
+    ]
+
+
 SMITH, JONES = "Smith J. A cohort. Lancet. 2019;393:100-10.", "Jones K. A trial. BMJ 2020;370:m1."
 
 

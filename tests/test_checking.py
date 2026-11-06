@@ -1252,6 +1252,40 @@ def test_a_word_with_a_stop_inside_it_never_ends_a_sentence(sentence: str, words
     assert any(piece.startswith(words) and "[@key]" in piece for piece in pieces)
 
 
+@pytest.mark.parametrize(
+    ("paragraph", "pieces"),
+    [
+        pytest.param("We scored the answers. {{method.a}} Then we fitted it.",
+                     ["We scored the answers. {{method.a}}", "Then we fitted it."],
+                     id="after the stop"),
+        pytest.param("We scored the answers.{{method.a}} Then we fitted it.",
+                     ["We scored the answers.{{method.a}}", "Then we fitted it."],
+                     id="against the stop"),
+        pytest.param("We scored the answers. {{ method.a }} {{method.b}} Then we fitted it.",
+                     ["We scored the answers. {{ method.a }} {{method.b}}",
+                      "Then we fitted it."], id="two, spaced"),
+        pytest.param("We scored the answers {{method.a}}. Then we fitted it.",
+                     ["We scored the answers {{method.a}}.", "Then we fitted it."],
+                     id="before the stop"),
+        pytest.param("Okada et al. {{method.a}} [@key] scored the answers. Then we fitted it.",
+                     ["Okada et al. {{method.a}} [@key] scored the answers.",
+                      "Then we fitted it."], id="after an abbreviation"),
+        pytest.param("We scored the answers.{{method.a}}Then we fitted it.",
+                     ["We scored the answers.{{method.a}}Then we fitted it."],
+                     id="no space either side, as it prints"),
+        pytest.param("{{method.a}} We scored the answers.", ["{{method.a}} We scored the answers."],
+                     id="opening the paragraph"),
+    ],
+)  # fmt: skip
+def test_an_anchor_is_invisible_to_the_sentence_cut(paragraph: str, pieces: list[str]) -> None:
+    """An anchor prints nothing and claims the text before it (methods-writer). The cut read it
+    as words: "... the answers. {{method.a}} Then ..." was one sentence, since a stop was
+    followed by a brace and not a capital, and a cited sentence's passage went stale."""
+    from manuscript_guard.checking.produce import _split
+
+    assert _split(paragraph) == pieces
+
+
 def test_an_items_file_that_is_a_list_is_refused_in_words(project: Path) -> None:
     """A list of items at the top level, the likeliest file to write by hand, raised an
     AttributeError."""

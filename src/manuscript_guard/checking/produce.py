@@ -26,6 +26,8 @@ items in its own file.
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -33,7 +35,7 @@ from typing import Any
 from manuscript_guard.checking.items import SCHEMA
 from manuscript_guard.checking.methods import GROUP as METHODS_GROUP
 from manuscript_guard.literature.bibfile import read_entries as _records_read_here
-from manuscript_guard.text.placeholders import PLACEHOLDER
+from manuscript_guard.text.placeholders import ANCHOR, PLACEHOLDER, without_anchors
 
 #: What is asked of each kind, in words needing no instructions.
 GROUPS = (
@@ -196,30 +198,74 @@ def _ends_a_sentence(before: str) -> bool:
 
 
 def _split(flat: str) -> list[str]:
-    """One paragraph's sentences.
+    """One paragraph's sentences, each as written.
 
     Two rules beyond the stop: a stop after an abbreviation is not an end, and a piece carrying
     no word of its own belongs to the piece before it — so a citation left alone by a split this
     reader did not foresee is put back rather than shown to a co-author as a claim to judge.
+
+    The stops are looked for in the paragraph as it prints, with its Methods anchors taken out
+    (`_printed`): "the scores. {{method.a}} Then" was one sentence, a stop followed by a brace
+    and not a capital, and the passage recorded for the first went stale the moment the anchor
+    was written. An anchor between two sentences stays with the one before it, the text it
+    claims.
     """
+    printed, written_at = _printed(flat)
     pieces: list[str] = []
     at = 0
-    for found in SENTENCE_END.finditer(flat):
-        if not _ends_a_sentence(flat[:found.start()]):
+    for found in SENTENCE_END.finditer(printed):
+        if not _ends_a_sentence(printed[:found.start()]):
             continue
-        pieces.append(flat[at : found.start()])
-        at = found.end()
+        # Cut where the next sentence starts, not after the stop: what lies between is spaces
+        # and anchors, and the anchors are the sentence's before it.
+        cut = written_at(found.end())
+        pieces.append(flat[at:cut])
+        at = cut
     pieces.append(flat[at:])
 
     joined: list[str] = []
     for piece in (p.strip() for p in pieces):
         if not piece:
             continue
-        if joined and not any(ch.isalpha() for ch in CITEKEY.sub("", piece)):
+        if joined and not _has_words(piece):
             joined[-1] = f"{joined[-1]} {piece}"
             continue
         joined.append(piece)
     return joined
+
+
+def _printed(flat: str) -> tuple[str, Callable[[int], int]]:
+    """The paragraph without its anchors, and the place in `flat` of each place in it.
+
+    A place just after an anchor's gap is put after the anchor, so a cut there leaves the
+    anchor with the text before it. Without an anchor the paragraph is its own print, and the
+    long paragraphs G7 reads at every `check` pay for nothing more."""
+    gaps = [found.span() for found in ANCHOR.finditer(flat)] if "{{" in flat else []
+    if not gaps:
+        return flat, lambda place: place
+    printed: list[str] = []
+    printed_at: list[int] = []  # where each gap falls in the printed text
+    removed: list[int] = []  # how much of `flat` lies in the gaps up to and including each
+    at = gone = 0
+    for start, end in gaps:
+        printed.append(flat[at:start])
+        printed_at.append(start - gone)
+        gone += end - start
+        removed.append(gone)
+        at = end
+    printed.append(flat[at:])
+
+    def written_at(place: int) -> int:
+        before = bisect_right(printed_at, place)
+        return place + (removed[before - 1] if before else 0)
+
+    return "".join(printed), written_at
+
+
+def _has_words(piece: str) -> bool:
+    """Whether a piece says anything a reader reads: a citation key is not a word of the
+    claim, and an anchor prints nothing."""
+    return any(ch.isalpha() for ch in CITEKEY.sub("", without_anchors(piece)))
 
 
 def _sentences_of(text: str, *, citing: bool = False) -> list[tuple[int, str]]:
@@ -245,8 +291,10 @@ def _sentences_of(text: str, *, citing: bool = False) -> list[tuple[int, str]]:
 
 def _without_bindings(sentence: str) -> str:
     """A sentence as a reader sees it: a binding stands for the value, which a co-author checking
-    the claim does not need resolved and could not check from here."""
-    return BINDING.sub(lambda found: f"[{found.group('key').split('.')[-1]}]", sentence)
+    the claim does not need resolved and could not check from here. An anchor prints nothing,
+    and is nothing here: it was shown as `[step]`, a value the paper does not print."""
+    printed = " ".join(without_anchors(sentence).split())
+    return BINDING.sub(lambda found: f"[{found.group('key').split('.')[-1]}]", printed)
 
 
 def _uses_binding(text: str, key: str) -> bool:
@@ -321,7 +369,7 @@ def cited_sentences(documents: list[Document]) -> list[CitedSentence]:
             )
             if not keys:
                 continue
-            if not any(ch.isalpha() for ch in CITEKEY.sub("", sentence)):
+            if not _has_words(sentence):
                 # A paragraph that is nothing but a citation — the splitter joins a claimless
                 # piece to the one before it, but a whole paragraph has nothing before it. There
                 # is no claim in it to judge, so nobody is asked about it.
@@ -470,7 +518,11 @@ def _claim_items(project, literature, documents, passages=()) -> list[dict]:
     seen: set[str] = set()
     for cited in cited_sentences(documents):
         path, line, sentence, keys = cited.path, cited.line, cited.text, cited.keys
-        identifier = _identifier("claim", str(path.name), sentence)
+        # Keyed on the sentence as it prints: an anchor added to it gave the claim a new id,
+        # and the answer a co-author had given about the same printed words was lost. A
+        # sentence with no anchor keeps the id it had.
+        identifier = _identifier("claim", str(path.name), " ".join(
+            without_anchors(sentence).split()))
         if identifier in seen:
             # One sentence written twice in a file is one claim, and asking it twice would
             # also give two items one id, which the schema refuses for the whole build.

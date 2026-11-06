@@ -36,7 +36,7 @@ from manuscript_guard.literature.sources import (
     read_source,
     stored_files,
 )
-from manuscript_guard.text.placeholders import PLACEHOLDER
+from manuscript_guard.text.placeholders import PLACEHOLDER, without_anchors
 from manuscript_guard.zotero.citations import bracketed
 
 PASSAGES_FILE = "passages.yaml"
@@ -136,8 +136,10 @@ def statement_words(sentence: str) -> str:
     A group (`[@a; @b, p. 4]`, read as `zotero/citations.py` reads one) is not words of the
     claim: a work added beside the one cited, or a page number changed, leaves a passage
     where it was. A narrative citation is ("@smith2020 showed"), and stays. A binding is
-    written as the renderer reads it, `{{ lit.x }}` as `{{lit.x}}` (round 1 of #374)."""
-    text = unicodedata.normalize("NFC", sentence)
+    written as the renderer reads it, `{{ lit.x }}` as `{{lit.x}}` (round 1 of #374). A Methods
+    anchor is taken out, since it prints nothing: kept as words, a cited sentence that took an
+    anchor was no longer its passage's sentence, and the passage was stale."""
+    text = without_anchors(unicodedata.normalize("NFC", sentence))
     for group in reversed(list(bracketed(text))):
         text = text[: group.start()] + " " + text[group.end() :]
     text = PLACEHOLDER.sub(lambda found: f"{{{{{found['ns']}.{found['key']}}}}}", text)
@@ -192,13 +194,15 @@ class Survey:
 
     @property
     def statements(self) -> list[tuple[int, CitedSentence]]:
-        """Each cited sentence once: one written twice in one file is one statement."""
+        """Each cited sentence once: one written twice in one file is one statement, with an
+        anchor or without one, as the checker asks it once (`_claim_items`)."""
         seen: set[tuple[Path, str]] = set()
         out = []
         for index, cited in enumerate(self.sentences):
-            if (cited.path, cited.text) in seen:
+            printed = (cited.path, " ".join(without_anchors(cited.text).split()))
+            if printed in seen:
                 continue
-            seen.add((cited.path, cited.text))
+            seen.add(printed)
             out.append((index, cited))
         return out
 

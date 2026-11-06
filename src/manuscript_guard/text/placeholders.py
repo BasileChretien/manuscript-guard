@@ -33,6 +33,20 @@ INLINE_NAMESPACES = VALUE_NAMESPACES + REF_NAMESPACES
 PLACEHOLDER = re.compile(
     r"\{\{\s*(?P<ns>[a-z]+)\.(?P<key>[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*)\s*\}\}"
 )
+#: An anchor as the renderer reads one, spaced or not. The build prints it as nothing, so a
+#: reader of sentences has to see nothing there either: read as words, it made a cited
+#: sentence no longer the one its passage was recorded for, and one after a full stop joined
+#: two sentences into one (found linking a real paper's Methods to its code).
+ANCHOR = re.compile(
+    r"\{\{\s*" + ANCHOR_NAMESPACE + r"\.[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*\s*\}\}"
+)
+
+
+def without_anchors(text: str) -> str:
+    """`text` as it prints: each anchor gone, as the build takes it out, and nothing else
+    changed. The spaces either side of one are left for the reader to fold, as pandoc folds
+    them in print."""
+    return ANCHOR.sub("", text) if "{{" in text else text
 # Anything with the shape of a placeholder. Used to catch typos that the strict pattern
 # would otherwise skip in silence, which is the worst possible outcome for a binding.
 #

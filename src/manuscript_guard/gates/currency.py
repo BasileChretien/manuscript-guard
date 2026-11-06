@@ -450,9 +450,10 @@ def _decision(entry: Entry, usable: list[dict], held: _Records, bib: dict, path:
     if action == rules.UNCERTAIN:
         out.append(_finding(
             "currency-uncertain", f"{entry.named}: the readings disagree, and nothing is "
-            "proposed", path, "read the readings with `manuscript-guard references --explain "
-            f"{entry.id} --readings`; a third reading, made without them, or a person's "
-            "decision with why, settles it",
+            "proposed", path, "a person's decision with why settles it, or a third reading: "
+            "a person reads the readings with `manuscript-guard references --explain "
+            f"{entry.id} --readings`; a third reader runs `manuscript-guard references "
+            f"--explain {entry.id}`, without `--readings`, and reads without seeing them",
             INFO))  # fmt: skip
     if action in _PROPOSALS and not entry.answer and not accepted:
         out.append(_finding(

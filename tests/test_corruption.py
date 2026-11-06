@@ -13203,7 +13203,7 @@ def test_a_recorded_source_not_on_this_computer_is_noted_and_unverifiable(projec
     assert "literature-source-missing" not in {f.code for f in gated.failures}
 
 
-@pytest.mark.parametrize("taken_from", ["author", "zotero", "folder"])
+@pytest.mark.parametrize("taken_from", ["author", "zotero", "folder", "inbox", "open"])
 def test_a_recorded_source_not_here_says_where_it_comes_back_from(
     project: Path, taken_from: str
 ) -> None:
@@ -13219,6 +13219,12 @@ def test_a_recorded_source_not_here_says_where_it_comes_back_from(
     document["files"][_HEPATIC]["from"] = taken_from
     if taken_from == "folder":
         document["files"][_HEPATIC]["doi"] = "10.5555/hepatic.2021"
+    if taken_from in ("inbox", "open"):
+        # A PDF the user saved comes back only from the folder it was saved to; one the web
+        # gave is fetched again by `sync-sources` as it is.
+        document["files"][_HEPATIC]["matched"] = "doi"
+    if taken_from == "open":
+        document["files"][_HEPATIC]["url"] = "https://repository.test/hepatic.pdf"
     path.write_text(yaml.safe_dump(document), encoding="utf-8")
     (note,) = [f for f in _literature_report(project).findings
                if f.code == "literature-source-not-here"]  # fmt: skip
@@ -13227,6 +13233,8 @@ def test_a_recorded_source_not_here_says_where_it_comes_back_from(
         assert "whoever saved it" in note.hint and run not in note.hint, note.hint
     elif taken_from == "folder":
         assert f"{run} --from" in note.hint and "whoever saved it" not in note.hint, note.hint
+    elif taken_from == "inbox":
+        assert f"{run} --inbox" in note.hint and "whoever saved it" not in note.hint, note.hint
     else:
         assert f"{run}`" in note.hint and "--from" not in note.hint, note.hint
 

@@ -3389,7 +3389,7 @@ version of manuscript-guard", and never with advice to delete it.
 Zotero is one way to the author's own access, and a downloader is another: auto-paper-harvester
 (github.com/jxtse/auto-paper-harvester) fetches each DOI from an open copy, then a publisher's
 text-and-data-mining service, then the author's own signed-in Chrome, at a set pace and
-without answering a CAPTCHA. manuscript-guard does none of that itself: driving a browser
+without answering a CAPTCHA. manuscript-guard drives no browser and asks no such service itself: driving a browser
 would be a dependency of its own, a publisher's terms are the author's to accept, and a run
 that fetched too fast could have the institution blocked. Shadow libraries are out of its
 scope altogether. It reads the folder such a tool writes instead: `sync-sources --from
@@ -3417,6 +3417,37 @@ the DOI the file was matched by, and no path. A file one source wrote is not rep
 the other, which is the rule that the command never writes over what it did not write,
 applied between its two sources: one paper downloaded twice can differ in its bytes, where a
 publisher stamps each download, and each run would otherwise put its own copy back.
+
+A work none of these gave a full text is then looked for on the web, by default (Basile,
+2026-11-06, with none of the study paper's 54 references in Zotero: "The package should
+always fetch the open ones, and try to connect to the paywalled ones through the user
+browser ... In the case that they are not download the abstract and ask for the pdf to the
+user"). In order (`literature/fetching.py`): its open copy, at the places OpenAlex gives
+(`best_oa_location`, then each open location, PDF link before landing page), then PubMed
+Central through Europe PMC's PDF service by the PMCID, then arXiv by its identifier; else
+`https://doi.org/<doi>` asked from this computer, which on a university's network, or through
+the proxy the environment names, is the university's access, as it is for the browser; else
+its abstract, Crossref's (the publisher's deposit) before OpenAlex's (rebuilt from an index of
+its words), written as `<key>.abstract.txt`. A landing page is read only for its
+`citation_pdf_url`, tried once. Redirects are followed over https only (`lookup/download.py`),
+at most eight, a cookie a publisher sets on the way kept in memory for the run, the size capped
+at 64 MB; the User-Agent names the toolkit, and no e-mail address goes to any of these
+services, `lookup`'s contact address included. A PDF is kept only where it is the work
+(`literature/matching.py`): it begins with `%PDF-`, and its first two pages give the work's
+DOI or its title, compared on letters and digits, or its metadata gives its DOI and names no
+other; one from the publisher also has at least half the pages `references.bib` gives the
+work, since a first-page preview passes the other two tests. A landing page, a preview or
+another paper under the key would be worse than no copy. The record says `from: open`,
+`publisher` or `abstract`, the URL it was asked at (never the URL a redirect ended at, which
+can carry a token), how it matched and, for an open copy, its version; it is the record's third
+version, which an older manuscript-guard refuses as a newer one's. A work with a full text on
+this computer is not asked about again; one with only its abstract is, at each run. The works
+still wanted are listed last, each with its DOI link: a CLI cannot drive the user's own
+browser, signed in through their library, so an agent with that browser (the literature-verify
+skill says how) or the user saves the PDFs, and `sync-sources --inbox <folder>`
+(`literature/inbox.py`) files each PDF directly in the folder whose first pages show one cited
+work, by the same test; one that shows two is filed for neither. `--no-fetch` asks the web
+nothing, and `--dry-run` fetches nothing.
 
 ## A reference is proposed from a registry, and chosen by the author
 
@@ -20330,6 +20361,16 @@ Open, recorded as each change landed:
   author's and drops what CI knows. With `literature: {sources_in_git: true}` and the line left
   in `.gitignore`, every recorded copy fails where it is absent, which says the setting and the
   file disagree only by failing.
+- **What `sync-sources` fetches from the web is held to the work's DOI or title, not read
+  through.** A PDF whose first pages give the work's title is kept even where it is a version
+  other than the published one that OpenAlex did not label, or a reprint with other page
+  numbers; a quote then fails G7 where the versions differ, which is how it shows. A paper
+  that names another cited work's DOI on its first two pages, in a short reference list, is
+  taken for that work where `--inbox` reads it and it shows no other. A publisher behind a
+  bot check answers this computer with that page, which is not kept, so its works are left to
+  the browser. PubMed's abstract is not asked for (`lookup` reaches only its summaries, which
+  hold none), nor a cited web page with no DOI. Zotero not running still stops the run before
+  the web is asked, as it did.
 - **`sync-sources --from` matches only a name a DOI spells, at the places the harvester puts
   it.** A PDF named by its title, its PMID or its citation key is counted as named for no
   cited DOI and not copied, and one deeper in the folder than `<name>/` or

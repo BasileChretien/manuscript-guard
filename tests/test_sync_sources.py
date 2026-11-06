@@ -503,7 +503,7 @@ def test_the_record_says_which_files_are_the_authors(paper, monkeypatch):
     assert "from: author" in header and "never replaced" in header
 
 
-def test_the_record_is_written_as_the_second_version_and_the_first_is_read(paper, monkeypatch):
+def test_the_record_is_written_as_the_third_version_and_the_first_is_read(paper, monkeypatch):
     cite(paper, "printed2010")
     sources(paper).mkdir(parents=True, exist_ok=True)
     (sources(paper) / "printed2010.txt").write_bytes(b"Read from the printed report.")
@@ -513,7 +513,7 @@ def test_the_record_is_written_as_the_second_version_and_the_first_is_read(paper
         yaml.safe_dump({"schema": "manuscript-guard/sources/1", "files": files}), "utf-8")
     sync(paper, monkeypatch, FakeBBT({1: {"printed2010": None}}))
     written = record(paper)
-    assert written["schema"] == "manuscript-guard/sources/2"
+    assert written["schema"] == "manuscript-guard/sources/3"
     assert set(written["files"]) == {"other.txt", "printed2010.txt"}
 
 

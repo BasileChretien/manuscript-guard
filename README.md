@@ -108,11 +108,12 @@ Guided, not replaced: three kinds of user, using the same tool differently.
 - **PhD students and researchers new to a step.** `manuscript-guard next` and the skills walk
   you through each step and say what each check asks. The methods still need a supervisor's
   or a statistician's judgement, and the tool records their sign-off.
+  [Getting started](docs/getting-started.md) says what you need and what to do first.
 - **Experienced researchers.** Less copying of numbers and checking by hand; the analysis
   reruns (`verify`); co-authors stay in Word (`import`).
 - **PIs and research groups.** The same stages and checks across a group's papers; a GitHub
-  Action that runs them in each paper's repository (in progress); and the records of who
-  approved what.
+  Action that runs them in each paper's repository; and the records of who approved what
+  ([for supervisors and research groups](docs/teams.md)).
 
 ## Who does what
 
@@ -395,8 +396,8 @@ That writes a project with a `paper.yaml`, an analysis plan to fill in, a manusc
 
 Or run the worked example first. [`example/`](example/) is a synthetic pharmacovigilance
 study that exercises every gate but G13, having no revision round. It is in the repository and not in the installed package,
-so it needs a clone, a Python that has `manuscript_guard` installed, and matplotlib for its
-figure:
+so it needs a clone, a Python that has `manuscript_guard` installed, statsmodels for its
+model and matplotlib for its figure:
 
 ```bash
 git clone https://github.com/BasileChretien/manuscript-guard
@@ -584,6 +585,8 @@ everywhere.
 
 | | |
 |---|---|
+| [Getting started](docs/getting-started.md) | for someone new to keeping a study in code: what you need, who decides what, the first hour, and what you still check yourself |
+| [For supervisors and research groups](docs/teams.md) | one layout for every paper, the check on every push and its badge, co-authors, approvals and sign-offs, review panels, the data custodian's rules, and what stays the supervisor's |
 | [Installing and upgrading](docs/install.md) | upgrades, optional tools, the R emitter |
 | [Checking a paper in GitHub Actions](docs/github-actions.md) | the workflow `init --github-actions` writes: check on each push and pull request, the documents built where it passes, what CI cannot reach, and a badge that says the stage the check passes at |
 | [Stages](docs/stages.md) | which findings bind when, from the analysis plan to submission |

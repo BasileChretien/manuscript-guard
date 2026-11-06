@@ -108,6 +108,7 @@ ROUTES: dict[str, Route] = {
     # does nothing for it. The literature's own `duplicate-key` and `no-display` are told
     # apart by the file they name (`route_for`).
     **_all("results-binding", ("check",), "duplicate-key", "duplicate-table", "duplicate-step",
+           "step-file-outside",
            "duplicate-model", "no-display", "variable-declared-twice", "bound-dangling",
            "bound-duplicated", "bound-uncheckable"),
     **_all("project-setup", ("check",), "front-matter-unreadable"),

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import copy
 import hashlib
 import importlib.metadata
 import json
@@ -24,6 +25,7 @@ import numbers
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 from collections.abc import Mapping
@@ -1122,6 +1124,181 @@ def step_code(script: Path, line: int, name: str) -> dict | None:
     return record
 
 
+#: What `code_step()` names in a file: a function or a class at its top level, or a method or a
+#: nested class through the classes that hold it, `Model.fit`.
+_QUALNAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*")
+_DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+
+def _definition(tree: ast.Module, qualname: str) -> ast.AST | None:
+    """The definition `qualname` names, through classes only: a function defined inside another
+    function is not reachable by import, and so names no code a reader could find by its name.
+    Defined twice in one scope, the later is the one Python binds, and the one returned."""
+    scope: list[ast.stmt] = tree.body
+    found: ast.AST | None = None
+    for part in qualname.split("."):
+        if found is not None and not isinstance(found, ast.ClassDef):
+            return None
+        named = [node for node in scope if isinstance(node, _DEFINITIONS) and node.name == part]
+        if not named:
+            return None
+        found = named[-1]
+        scope = found.body
+    return found
+
+
+def _canonical_definition(node: ast.AST) -> object:
+    """`_canonical`, with a class's docstring left out as a function's is: rewording what a
+    class is for changes nothing it does."""
+    if isinstance(node, ast.ClassDef) and ast.get_docstring(node, clean=False) is not None:
+        node = copy.copy(node)
+        node.body = node.body[1:]
+    return _canonical(node)
+
+
+def definition_code(source: str, qualname: str) -> dict | None:
+    """What `code_step()` records of the definition `qualname` in `source`: its first line
+    (its first decorator's) and last; the top-level functions of the file it calls, followed
+    through the functions they call, as `step_code` follows a step's; and a digest of it and
+    them read as code. None when `source` is no Python or defines no such name."""
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return None
+    node = _definition(tree, qualname)
+    if node is None:
+        return None
+    functions = {
+        top.name: top
+        for top in tree.body
+        if isinstance(top, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    # The definition itself is not one of what it calls: a recursive function would otherwise
+    # be counted twice, and a function named in the record as one it follows.
+    itself = qualname if "." not in qualname else None
+    follows: set[str] = set()
+    waiting: list[ast.AST] = [node]
+    while waiting:
+        for inner in ast.walk(waiting.pop()):
+            if (
+                isinstance(inner, ast.Call)
+                and isinstance(inner.func, ast.Name)
+                and inner.func.id in functions
+                and inner.func.id != itself
+                and inner.func.id not in follows
+            ):
+                follows.add(inner.func.id)
+                waiting.append(functions[inner.func.id])
+    code = [_canonical_definition(node), *(_canonical(functions[f]) for f in sorted(follows))]
+    decorators = getattr(node, "decorator_list", [])
+    record: dict = {
+        "lines": [min([node.lineno, *(d.lineno for d in decorators)]),
+                  node.end_lineno or node.lineno],
+        "digest": hashlib.sha256(json.dumps(code).encode("utf-8")).hexdigest(),
+    }  # fmt: skip
+    if follows:
+        record["follows"] = sorted(follows)
+    return record
+
+
+def _git_here(folder: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
+    """git run in `folder`, with what it printed and how it exited.
+
+    The repository is the one that holds `folder`, found from it, whatever the environment
+    says: a pre-push hook running the tests sets GIT_DIR to its own repository, and the code
+    of the file was then compared with a commit of another project. Raises ValueError where git
+    cannot be run at all: that is git failing, not the absence of a repository.
+
+    In the C locale, as git is run elsewhere in the package: `code_at` reads "not a git
+    repository" from what git says, and git speaking French made the copy `verify` runs refuse
+    a step that English records unchecked (the fix round of #564).
+    """
+    env = {key: value for key, value in os.environ.items()
+           if key not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX")}  # fmt: skip
+    env.update({"LC_ALL": "C", "LANGUAGE": "C"})
+    try:
+        return subprocess.run(
+            ["git", *args], cwd=folder, capture_output=True, timeout=30, check=False, env=env
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ValueError(f"git could not be run in {folder}: {exc}") from None
+
+
+def _said(done: subprocess.CompletedProcess[bytes]) -> str:
+    """What git said when it failed, on one line."""
+    said = done.stderr.decode("utf-8", "replace").strip() or f"exit status {done.returncode}"
+    return " ".join(said.split())
+
+
+def _git_failed(done: subprocess.CompletedProcess[bytes], shown: str, at: str) -> ValueError:
+    return ValueError(
+        f"git could not be asked whether {shown} is the code at {at}: {_said(done)}. Fix git "
+        "here and run again; the step is not recorded while its code cannot be held to its commit"
+    )
+
+
+def code_at(file: Path, shown: str, qualname: str, at: str, now: dict) -> tuple[str | None, str]:
+    """Hold the code `now` records of `qualname` in `file` to the same code at commit `at`.
+
+    Returns the commit `at` names and "" where the two are the same code. Returns no commit and
+    the reason only where there is no repository to ask: git is not on PATH, or git says no
+    repository holds the file and no .git is in its folder or above it, as in the copy
+    `manuscript-guard verify` runs. Any other failure of git raises ValueError with what git
+    said: round 1 of #564 found every failure read as "no repository", so a broken git
+    configuration let code edited since `at` be recorded unchecked, and pass. Raises
+    ValueError too where the code is not the same, or `at` names nothing: the Methods would
+    then show code that is not what produced the results. `shown` is the file as the messages
+    name it.
+    """
+    folder = file.parent
+    if shutil.which("git") is None:
+        return None, (f"git is not installed here, so whether this is the code at {at} was not "
+                      "checked")  # fmt: skip
+    prefix = _git_here(folder, "rev-parse", "--show-prefix")
+    if prefix.returncode != 0:
+        alone = not any((place / ".git").exists() for place in (folder, *folder.parents))
+        if alone and "not a git repository" in _said(prefix).lower():
+            return None, (f"no git repository holds {shown} here, so whether this is the code at "
+                          f"{at} was not checked")  # fmt: skip
+        raise _git_failed(prefix, shown, at)
+    commit = _git_here(folder, "rev-parse", "--verify", "--quiet", f"{at}^{{commit}}")
+    if commit.returncode != 0 and commit.stderr.strip():
+        raise _git_failed(commit, shown, at)
+    if commit.returncode != 0:
+        raise ValueError(
+            f"at {at!r} names no commit or tag of the repository that holds {shown}; name the "
+            "commit or the results tag whose run produced the results"
+        )
+    sha = commit.stdout.decode("ascii", "replace").strip()
+    inside = prefix.stdout.decode("utf-8", "replace").strip() + file.name
+    # Asked first, and apart: a path the commit does not hold is listed as nothing, with git
+    # succeeding, so that a failure reading the file is not taken for the file being absent.
+    listed = _git_here(folder, "ls-tree", "--full-tree", "--name-only", sha, "--", inside)
+    if listed.returncode != 0:
+        raise _git_failed(listed, shown, at)
+    if not listed.stdout.strip():
+        raise ValueError(
+            f"{shown} is not in {at} (commit {sha[:12]}), so the code it names did not produce "
+            "results at that commit; name the commit the results came from"
+        )
+    blob = _git_here(folder, "cat-file", "blob", f"{sha}:{inside}")
+    if blob.returncode != 0:
+        raise _git_failed(blob, shown, at)
+    then = definition_code(blob.stdout.decode("utf-8", "replace"), qualname)
+    if then is None:
+        raise ValueError(
+            f"{qualname} is not defined in {shown} at {at} (commit {sha[:12]}); the Methods "
+            "would point at code that did not produce the results there"
+        )
+    if then["digest"] != now["digest"]:
+        raise ValueError(
+            f"{qualname} in {shown} is not the code it was at {at} (commit {sha[:12]}): the "
+            "Methods would show code that is not what produced the results. Check out the "
+            f"code of {at} for this file, or name the commit that has this code, and run again"
+        )
+    return sha, ""
+
+
 @dataclass
 class Emitter:
     """Collects values, then writes one fragment with its provenance.
@@ -1411,6 +1588,80 @@ class Emitter:
             raise ValueError(f"step {name!r} marks two different blocks of code")
         self._steps[name] = record
         return contextlib.nullcontext()
+
+    def code_step(self, name: str, path: str | os.PathLike, function: str, *, at: str) -> None:
+        """Mark code in another file of the project as a step, without running it.
+
+            em.code_step("model.stacked", "code/analysis.py", "fit_stacked",
+                         at="results-review8-v2")
+
+        For results that came from an earlier run, pinned to its commit, which this script
+        only renders again: a `step()` here would digest this script, and no Methods text could
+        point at the code that fitted the models. `function` is a function or a class at the
+        top level of the file, or a method through its class, `Model.fit`; not a range of
+        lines, which an edit above them moves onto other code with nothing to say so. `path`
+        is the file in the project, relative to its root.
+
+        The step records what `step()` does, read from that file: the lines of the definition,
+        a digest of it read as code, with the functions of the file it calls, and the file,
+        the name and `at`, the commit or tag the results came from. The Methods point at it
+        with `{{method.model.stacked}}`, and G9 holds it as any step. Where a git repository
+        holds the file, the code at `at` must be the code in the working tree, or the step is
+        refused: the Methods would show code that is not what produced the results. Where none
+        does, as in the copy `manuscript-guard verify` runs, the file is read as it is and the
+        step records that the commit was not checked.
+        """
+        if not _STEP_NAME.fullmatch(name):
+            raise ValueError(
+                f"step {name!r}: a name is lowercase letters, digits and underscores, starting "
+                f"with a letter, in parts joined by dots, so that the Methods can bind it"
+            )
+        if not isinstance(function, str) or not _QUALNAME.fullmatch(function):
+            raise ValueError(
+                f"code step {name!r}: function {function!r} is not a name of Python code; name "
+                "a function or a class, or a method as Class.method"
+            )
+        if not isinstance(at, str) or not at.strip() or at != at.strip() or at.startswith("-"):
+            raise ValueError(
+                f"code step {name!r}: at={at!r} is no commit or tag; name the commit or the "
+                "results tag whose run produced the results"
+            )
+        given = Path(path)
+        file = (given if given.is_absolute() else self.root / given).resolve()
+        try:
+            shown = file.relative_to(self.root).as_posix()
+        except ValueError:
+            raise ValueError(
+                f"code step {name!r}: {path} is outside the project at {self.root}; the code a "
+                "Methods text points at is code a reader of the project can open"
+            ) from None
+        if file.suffix.lower() != ".py":
+            raise ValueError(
+                f"code step {name!r}: {shown} is not a Python file; a code step reads a Python "
+                "file as code (for an R analysis, mark the code with em$step() where it runs)"
+            )
+        try:
+            source = file.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ValueError(f"code step {name!r}: {shown} cannot be read: {exc}") from None
+        record = definition_code(source, function)
+        if record is None:
+            raise ValueError(
+                f"code step {name!r}: {shown} defines no {function}; name a function or a "
+                "class at its top level, or a method as Class.method"
+            )
+        try:
+            commit, unchecked = code_at(file, shown, function, at, record)
+        except ValueError as exc:
+            raise ValueError(f"code step {name!r}: {exc}") from None
+        record.update({"file": shown, "function": function, "at": at})
+        if commit:
+            record["commit"] = commit
+        else:
+            record["unchecked"] = unchecked
+        if self._steps.get(name, record) != record:
+            raise ValueError(f"step {name!r} marks two different pieces of code")
+        self._steps[name] = record
 
     def software(self, name: str) -> str:
         """Record the version of a piece of software this run used, as the run found it.

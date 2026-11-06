@@ -269,6 +269,10 @@ BINDS_AT = {
     "method-pair-unread": INTERNAL_REVIEW,
     "method-step-changed": INTERNAL_REVIEW,
     "method-claim-changed": INTERNAL_REVIEW,
+    # The code a code step names, edited or gone since the run read it: held as a step whose
+    # code changed is, from internal review, as Basile decided on round 1 of #564.
+    "method-code-changed": INTERNAL_REVIEW,
+    "method-code-missing": INTERNAL_REVIEW,
     # A stale build is normal while drafting — you rebuild when you need the document. It
     # stops being normal once the draft is something other people read.
     "document-stale": INTERNAL_REVIEW,

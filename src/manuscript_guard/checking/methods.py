@@ -63,6 +63,11 @@ UNRECORDED = (
     "the run did not record a digest of this script, so whether the code shown is what ran "
     "cannot be told"
 )
+#: The note on each block of a code step whose definition is not the one the run read.
+CODE_STALE = (
+    "this code has changed since the run read it from the commit it names, so it is not the "
+    "code that produced the results"
+)
 
 
 @dataclass(frozen=True)
@@ -78,6 +83,8 @@ class Ran:
     unrecorded: frozenset[str] = field(default_factory=frozenset)
     #: Scripts a step names that are not on disk.
     missing: frozenset[str] = field(default_factory=frozenset)
+    #: Code steps, by name, whose definition in the file is not what the run read, or is gone.
+    stale: frozenset[str] = field(default_factory=frozenset)
 
 
 def ran_of(project, results) -> Ran:
@@ -88,10 +95,20 @@ def ran_of(project, results) -> Ran:
     changed: set[str] = set()
     unrecorded: set[str] = set()
     missing: set[str] = set()
+    stale: set[str] = set()
     for step in results.steps.values():
         script = project.root / step.script
         if not script.is_file():
             missing.add(step.script)
+            continue
+        if step.named:
+            # Not the emitting script, so not its digest: the definition as the run read it,
+            # against the definition in the file now (G9's `method-code-changed`).
+            from manuscript_guard.gates.methods import code_now
+
+            now = code_now(project.root, step)
+            if now is None or now["digest"] != step.digest:
+                stale.add(step.name)
             continue
         fragment = fragments.get(step.source)
         declared = fragment.generated_by_sha256 if fragment is not None else None
@@ -100,7 +117,7 @@ def ran_of(project, results) -> Ran:
         elif not source_digest_matches(script, declared):
             changed.add(step.script)
     return Ran(dict(results.steps), project.root, frozenset(changed), frozenset(unrecorded),
-               frozenset(missing))
+               frozenset(missing), frozenset(stale))
 
 
 def _identifier(*parts: str) -> str:
@@ -200,6 +217,12 @@ def method_items(
             notes.append(f"methods: the run that recorded step(s) {said} kept no digest of "
                          f"{script}, so whether the code a co-author is shown is what ran "
                          "cannot be told; run it again before sending the round")  # fmt: skip
+    for name in sorted({step for steps in used.values() for step in steps} & ran.stale):
+        step = ran.steps[name]
+        notes.append(f"methods: {step.function} in {step.script} is not the code step {name} "
+                     f"recorded from {step.at}, so the code a co-author is shown did not produce "
+                     "the results; bring it back, or record the step again, before sending the "
+                     "round")  # fmt: skip
     first = list(placed)
 
     def place(section: str) -> int:
@@ -232,7 +255,7 @@ def _claim_item(claim, identifier: str, section: str, ran: Ran, shown: dict[str,
     evidence: list[dict] = []
     for name in claim.steps:
         step = ran.steps[name]
-        facts.append([f"Step {name}", f"{step.script} (code digest {step.digest[:16]})"])
+        facts.append([f"Step {name}", _step_fact(step)])
         evidence += code_blocks(step, ran)
     return {
         "id": identifier,
@@ -267,22 +290,48 @@ def _open_item(paragraph, section: str, n: int, shown: dict[str, str]) -> dict:
     }
 
 
+def _step_fact(step: Step) -> str:
+    """Where a step's code is, as the item's facts say it. A code step's names the function,
+    the file and the commit, and says the run read it and did not run it: a co-author asked
+    whether the text describes the code should know it is the code an earlier run executed."""
+    if not step.named:
+        return f"{step.script} (code digest {step.digest[:16]})"
+    commit = (f"commit {step.commit[:12]}" if step.commit
+              else f"commit not checked: {step.unchecked}")  # fmt: skip
+    return (f"{step.function} in {step.script}, at {step.at} ({commit}); read, not run, by "
+            f"this run (code digest {step.digest[:16]})")
+
+
 def code_blocks(step: Step, ran: Ran) -> list[dict]:
     """The code of one step as a co-author reads it, read from the script on disk: its body,
     and for a Python script each function it calls that the script defines, as the run
-    followed them, each a block of numbered lines. R gives its body only."""
+    followed them, each a block of numbered lines. R gives its body only. A code step's first
+    block is the definition it names, found by its name in the file as it is now, so that a
+    line added above it does not shift the lines shown onto other code."""
     script = ran.root / step.script
-    caption = f"step {step.name}, in {step.script}"
-    warning = (CHANGED if step.script in ran.changed
-               else UNRECORDED if step.script in ran.unrecorded else None)  # fmt: skip
+    if step.named:
+        commit = f", commit {step.commit[:12]}" if step.commit else ""
+        caption = f"step {step.name}: {step.function} in {step.script}, at {step.at}{commit}"
+        warning = CODE_STALE if step.name in ran.stale else None
+    else:
+        caption = f"step {step.name}, in {step.script}"
+        warning = (CHANGED if step.script in ran.changed
+                   else UNRECORDED if step.script in ran.unrecorded else None)  # fmt: skip
     try:
         source = script.read_text(encoding="utf-8", errors="replace")
     except OSError:
         unread = f"{step.script} cannot be read here, so its code is not shown"
         return [{"kind": "code", "caption": caption, "lines": [], "note": unread}]
     lines = source.splitlines()
-    blocks = [_block(caption, lines, step.lines, warning,
-                     "the run recorded no lines for this step")]  # fmt: skip
+    span = step.lines
+    if step.named:
+        from manuscript_guard.emit import definition_code
+
+        now = definition_code(source, step.function or "")
+        span = tuple(now["lines"]) if now else None
+    missing = (f"{step.function} is not defined in {step.script} as it is now" if step.named
+               else "the run recorded no lines for this step")  # fmt: skip
+    blocks = [_block(caption, lines, span, warning, missing)]
     if script.suffix.lower() == ".py":
         spans = functions_in(source)
         for name in step.follows:

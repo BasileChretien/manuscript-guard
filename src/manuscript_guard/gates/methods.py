@@ -812,12 +812,74 @@ def _pairs(project: Project, results: Results, lock: dict | None) -> Report:
                 "take the mark off the code",
             )
         )
+    findings += _code_step_findings(project, results)
     return Report(tuple(findings)).with_counts(
         method_steps=len(results.steps),
         method_claims=len(claims),
         method_pairs_stale=stale,
         methods_open=len(open_),
     )
+
+
+def code_now(root: Path, step: Step) -> dict | None:
+    """What a code step's definition reads as in the file now, as `code_step()` read it: None
+    where the file or the definition is not there."""
+    from manuscript_guard.emit import definition_code
+
+    try:
+        source = (root / step.script).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    return definition_code(source, step.function or "")
+
+
+def _code_step_findings(project: Project, results: Results) -> list[Finding]:
+    """A code step held to the file it names, as it is now.
+
+    The run read the code and did not execute it, and nothing re-runs it: the emitting script
+    re-renders results pinned to an earlier commit. So the code in the file is all there is to
+    show beside the Methods, and once it is edited the page shows code that did not produce
+    the results, with the run's digest still saying it did. A step whose run could not ask a
+    repository is said too, since its code was never held to the commit it names.
+    """
+    out = []
+    for name, step in sorted(results.steps.items()):
+        if not step.named:
+            continue
+        where = {"path": project.root / step.script, "line": step.lines[0] if step.lines else None}
+        now = code_now(project.root, step)
+        if now is None:
+            out.append(Finding(
+                gate=GATE,
+                code="method-code-missing",
+                message=f"step {name!r} names {step.function} in {step.script}, which is not "
+                f"there now",
+                hint=f"restore it as it was at {step.at}, or name the code that produced the "
+                "results in `code_step()` and run the script again",
+                **where,
+            ))  # fmt: skip
+        elif now["digest"] != step.digest:
+            out.append(Finding(
+                gate=GATE,
+                code="method-code-changed",
+                message=f"{step.function} in {step.script} is no longer the code step {name!r} "
+                f"recorded from {step.at}, so the Methods would be shown beside code that did "
+                "not produce the results",
+                hint=f"bring the code back to {step.at}; if the results were made again with "
+                "the new code, name that commit in `code_step()` and run the script again",
+                **where,
+            ))  # fmt: skip
+        if step.unchecked:
+            out.append(Finding(
+                gate=GATE,
+                code="method-code-unchecked",
+                severity=WARN,
+                message=f"step {name!r} was recorded without holding {step.function} to "
+                f"{step.at}: {step.unchecked}",
+                hint=f"run the script where the git repository that holds {step.script} is",
+                **where,
+            ))  # fmt: skip
+    return out
 
 
 def _anchor_line_findings(project: Project) -> list[Finding]:
@@ -858,7 +920,9 @@ def _pair_finding(pair: Pair, where: dict) -> Finding | None:
             code="method-step-unknown",
             message=f"{{{{method.{step}}}}} names no step the analysis ran",
             hint=f'mark the code with `with em.step("{step}"):` (R: `em$step("{step}", {{ ... '
-            "})`) and run it again; a step in a branch the run did not take is not recorded",
+            "})`) and run it again; a step in a branch the run did not take is not recorded. "
+            f'For code an earlier pinned run executed, `em.code_step("{step}", <file>, '
+            "<function>, at=<commit>)`",
             **where,
         )
     if pair.standing == "unread":

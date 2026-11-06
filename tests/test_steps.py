@@ -833,3 +833,181 @@ def test_an_edit_in_word_comes_back_with_the_anchor_and_the_binding(
     paragraph = text[text.index("Intervals were derived") :].split("\n\n")[0]
     assert "{{results.param.alpha}}" in paragraph
     assert paragraph.rstrip().endswith(ends)
+
+
+# ------------------------------------------------------- a code step: code an earlier run ran
+
+CODE_METHODS = (
+    "# Methods\n\n"
+    "The stacked model weighted every row alike. {{method.model.stacked}}\n\n"
+    "# Results\n\nThe estimate was {{results.estimate}}.\n"
+)
+
+
+def code_study(root: Path, methods: str = CODE_METHODS) -> Path:
+    from test_emit_code_step import run as run_adapter
+    from test_emit_code_step import study
+
+    study(root)
+    (root / "manuscript" / "main.md").write_text(methods, encoding="utf-8")
+    run_adapter(root)
+    return root
+
+
+needs_git = pytest.mark.skipif(not shutil.which("git"), reason="git is not installed")
+
+
+@needs_git
+def test_an_anchor_resolves_to_a_code_step_and_the_pair_is_held_to_it(tmp_path: Path) -> None:
+    root = code_study(tmp_path)
+    report = judged(root)
+    assert "method-step-unknown" not in codes(report), report.render(root)
+    assert report.counts["method_steps"] == 1 and report.counts["method_claims"] == 1
+    reconcile(load_project(root)[0])
+    assert not judged(root).failures, judged(root).render(root)
+
+
+@needs_git
+def test_a_code_step_no_text_points_at_is_undescribed_where_its_code_is(tmp_path: Path) -> None:
+    root = code_study(tmp_path, CODE_METHODS.replace(" {{method.model.stacked}}", ""))
+    found = [f for f in judged(root).warnings if f.code == "method-step-undescribed"]
+    assert [f.message for f in found] == [
+        "step 'model.stacked' ran, and no text in the manuscript points at it"
+    ]
+    assert Path(found[0].path) == root / "code" / "analysis.py" and found[0].line == 8
+
+
+@needs_git
+def test_a_code_step_s_function_edited_after_the_run_fails(tmp_path: Path) -> None:
+    from test_emit_code_step import edit as edit_code
+
+    root = code_study(tmp_path)
+    reconcile(load_project(root)[0])
+    edit_code(root, "return sum(r * x", "return max(r * x")
+    found = [f for f in judged(root).failures if f.code == "method-code-changed"]
+    assert len(found) == 1
+    assert found[0].message.startswith(
+        "fit_stacked in code/analysis.py is no longer the code step 'model.stacked' recorded "
+        "from results-v1"
+    )
+    edit_code(root, "return max(r * x", "return sum(r * x")
+    edit_code(root, '    """Fits the stacked model."""\n', "    # a comment\n")
+    assert not judged(root).failures, "a comment and a docstring are not code"
+
+
+@needs_git
+def test_a_code_step_whose_function_is_gone_fails(tmp_path: Path) -> None:
+    from test_emit_code_step import edit as edit_code
+
+    root = code_study(tmp_path)
+    edit_code(root, "def fit_stacked(rows):", "def fit_unstacked(rows):")
+    found = [f for f in judged(root).failures if f.code == "method-code-missing"]
+    assert [f.message for f in found] == [
+        "step 'model.stacked' names fit_stacked in code/analysis.py, which is not there now"
+    ]
+
+
+@needs_git
+def test_a_reconciled_code_step_recorded_from_another_commit_is_read_again(
+    tmp_path: Path,
+) -> None:
+    """The results made again from new code: the step is recorded from the new commit, and
+    the pair the person read against the old code is to be read again."""
+    from test_emit_code_step import ADAPTER, git
+    from test_emit_code_step import edit as edit_code
+    from test_emit_code_step import run as run_adapter
+
+    root = code_study(tmp_path)
+    reconcile(load_project(root)[0])
+    edit_code(root, "return sum(r * x", "return max(r * x")
+    git(root, "commit", "-qam", "the second run")
+    git(root, "tag", "results-v2")
+    run_adapter(root, ADAPTER.replace("results-v1", "results-v2"))
+    report = judged(root)
+    assert "method-step-changed" in {f.code for f in report.failures}, report.render(root)
+    assert "method-code-changed" not in codes(report)
+
+
+def test_a_code_step_recorded_without_a_repository_is_warned_of(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from test_emit_code_step import run as run_adapter
+    from test_emit_code_step import study
+
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
+    study(tmp_path, repository=False)
+    (tmp_path / "manuscript" / "main.md").write_text(CODE_METHODS, encoding="utf-8")
+    run_adapter(tmp_path)
+    found = [f for f in judged(tmp_path).warnings if f.code == "method-code-unchecked"]
+    assert len(found) == 1 and "no git repository holds code/analysis.py" in found[0].message
+
+
+@needs_git
+def test_explain_names_the_function_and_the_commit_of_a_code_step(tmp_path: Path) -> None:
+    root = code_study(tmp_path)
+    said = "\n".join(explain_methods(load_project(root)[0]))
+    assert "step model.stacked  code/analysis.py:8-11 (fit_stacked at results-v1)" in said
+
+
+@needs_git
+def test_the_checking_page_shows_a_code_step_s_function_beside_its_paragraph(
+    tmp_path: Path,
+) -> None:
+    """What the study's co-authors were shown for every Methods paragraph was "no code is
+    linked to this text". A paragraph pointing at a code step is shown beside its function."""
+    from test_emit_code_step import edit as edit_code
+
+    from manuscript_guard.checking.methods import CODE_STALE
+    from manuscript_guard.checking.produce import produce
+
+    root = code_study(tmp_path)
+
+    def item() -> dict:
+        document, _unread = produce(load_project(root)[0])
+        (found,) = [i for i in document["items"] if i["group"] == "methods"]
+        return found
+
+    shown = item()
+    assert shown["facts"][0] == ["Steps", "model.stacked"]
+    assert shown["facts"][1][1].startswith(
+        "fit_stacked in code/analysis.py, at results-v1 (commit "
+    )
+    code = shown["evidence"][0]
+    assert code["caption"].startswith("step model.stacked: fit_stacked in code/analysis.py, at "
+                                      "results-v1, commit ")  # fmt: skip
+    assert code["lines"][0] == [8, "def fit_stacked(rows):"] and "note" not in code
+    assert shown["evidence"][1]["lines"][0] == [4, "def _weights(n):"]
+    edit_code(root, "return sum(r * x", "return max(r * x")
+    assert {block.get("note") for block in item()["evidence"]} == {CODE_STALE}
+
+
+@needs_git
+@pytest.mark.parametrize(
+    ("was", "now", "code"),
+    [
+        ("return sum(r * x", "return max(r * x", "method-code-changed"),
+        ("def fit_stacked(rows):", "def fit_unstacked(rows):", "method-code-missing"),
+    ],
+    ids=["changed", "missing"],
+)
+def test_a_code_step_s_code_binds_from_internal_review_as_a_step_s_does(
+    tmp_path: Path, was: str, now: str, code: str
+) -> None:
+    """Basile, on round 1 of #564: the code a step names changing is held as a step whose code
+    changed is, failing from internal review onwards, and not due while drafting."""
+    from test_emit_code_step import edit as edit_code
+
+    from manuscript_guard.findings import FAIL, INFO
+    from manuscript_guard.policy import DRAFTING, apply_stage
+
+    root = code_study(tmp_path)
+    edit_code(root, was, now)
+    report = judged(root)
+    assert code in {f.code for f in report.failures}, report.render(root)
+    assert BINDS_AT[code] == BINDS_AT["method-step-changed"] == INTERNAL_REVIEW
+    drafting, deferred = apply_stage(report, DRAFTING)
+    assert [f.severity for f in drafting.findings if f.code == code] == [INFO]
+    assert deferred.get(INTERNAL_REVIEW, 0) >= 1
+    reviewing, _ = apply_stage(report, INTERNAL_REVIEW)
+    assert [f.severity for f in reviewing.findings if f.code == code] == [FAIL]
+    assert "method-code-unchecked" not in BINDS_AT, "the warning is left as it was"

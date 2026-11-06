@@ -29060,3 +29060,60 @@ def test_g4_counts_every_float_latex_numbers_as_a_display_item(project: Path) ->
     report = check_journal(load_project(project)[0])
     assert any(f.code == "over-journal-limit" and f.message.startswith("figures and tables")
                for f in report.findings)  # fmt: skip
+
+
+# --------------------------------------------------------------------------------------
+# A code step: the fragment names code an earlier pinned run executed. Each edit below is
+# re-signed, so the fragment is what its digest says, and G1 sees nothing.
+# --------------------------------------------------------------------------------------
+
+
+def _code_step_project(root: Path) -> Path:
+    from test_emit_code_step import run, study
+
+    study(root)
+    (root / "manuscript" / "main.md").write_text(
+        "# Methods\n\nThe stacked model weighted every row alike. {{method.model.stacked}}\n\n"
+        "# Results\n\nThe estimate was {{results.estimate}}.\n",
+        encoding="utf-8",
+    )
+    run(root)
+    return root
+
+
+def _re_signed(root: Path, field: str, value: str) -> None:
+    path = root / "results" / "paper.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["steps"]["model.stacked"][field] = value
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(path)
+
+
+def _g9_and_load(root: Path) -> set[str]:
+    from manuscript_guard.gates import check_methods
+
+    project, _ = load_project(root)
+    namespace, results, _literature, loaded = load_namespace(project)
+    return codes(loaded) | codes(check_methods(project, namespace, results))
+
+
+@pytest.mark.skipif(not shutil.which("git"), reason="git is not installed")
+@pytest.mark.parametrize(
+    ("field", "value", "caught"),
+    [
+        ("function", "fit_unstacked", "method-code-missing"),
+        ("digest", "0" * 64, "method-code-changed"),
+        ("file", "code/other.py", "method-code-missing"),
+        ("file", "../../outside.py", "step-file-outside"),
+    ],
+    ids=["a function that is not there", "a digest that is not the function's",
+         "a file that is not there", "a file outside the project"],
+)
+def test_a_code_step_edited_in_its_fragment_fails(
+    tmp_path: Path, field: str, value: str, caught: str
+) -> None:
+    root = _code_step_project(tmp_path)
+    assert not {"method-code-missing", "method-code-changed"} & _g9_and_load(root)
+    _re_signed(root, field, value)
+    assert "results-edited" not in codes(gate_report(root)), "G1 is satisfied, as expected"
+    assert caught in _g9_and_load(root)

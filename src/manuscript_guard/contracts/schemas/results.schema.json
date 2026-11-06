@@ -324,7 +324,39 @@
           "type": "array",
           "description": "The functions the step calls that are defined in the analysis itself, whose code the digest covers too. A function from a package is not followed.",
           "items": { "type": "string", "minLength": 1 }
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A step marked with `code_step()`: the file of the project, relative to its root, that holds the code, which this run did not execute. Its lines and digest are of the definition named by `function` in that file."
+        },
+        "function": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "The function, class or Class.method in `file` that the step is."
+        },
+        "at": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The commit or tag the results came from, as the analysis named it."
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40,64}$",
+          "description": "The commit `at` names, where a git repository held the file and the code there was found to be the code in the working tree."
+        },
+        "unchecked": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why the code could not be held to `at`: no git repository held the file, or git was not installed."
         }
+      },
+      "dependentRequired": {
+        "file": ["function", "at"],
+        "function": ["file"],
+        "at": ["file"],
+        "commit": ["file"],
+        "unchecked": ["file"]
       }
     },
     "table": {

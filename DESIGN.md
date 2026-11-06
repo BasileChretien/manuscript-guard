@@ -18231,6 +18231,17 @@ Open, recorded as each change landed:
   fails as `method-step-changed`. With its anchor deleted there is no pair: the step is one
   no text points at, `method-step-undescribed`, a warning. Whether the text still describes
   the step is then nobody's question, and `methods-drift` is what is left to ask it.
+- **A code step is held to its commit only where a repository holds its file.**
+  `code_step()` names code an earlier pinned run executed, for an emitting script that only
+  renders those results again; nothing runs it. With git and a repository, the definition at
+  `at` must read as the one in the working tree, or the step is refused. Without one, as in
+  the copy `verify` runs, it is read from the file and records why the commit was not
+  checked, and `check` warns of such a fragment (`method-code-unchecked`). That the commit
+  named is the one that produced the results is the author's word, read from the results'
+  own pin: nothing re-runs it. Its digest covers the functions of the same file it calls by
+  name, not a method called on an object nor a function of another module, and `check` holds
+  it to the file as it is now (`method-code-changed`, `method-code-missing`). Python only:
+  `check` re-reads the definition with Python's parser, and has no R one.
 - **A pair whose text and code both changed is one never read.** A text is a changed one
   only while the step's code is as the lock has it. With both changed since the pair was
   read, the finding is `method-pair-unread` and does not say what the text was.

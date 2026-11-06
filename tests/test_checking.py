@@ -2208,6 +2208,36 @@ def test_a_python_step_shows_each_function_it_calls_as_a_block(tmp_path: Path) -
     assert len(code_blocks(r_step, Ran({"s": r_step}, tmp_path))) == 1
 
 
+def test_a_code_step_shows_its_function_with_the_file_and_the_commit(tmp_path: Path) -> None:
+    """The study's Methods point at code its earlier runs executed: the page shows the
+    function itself, found by its name in the file as it is now, with the file, the function
+    and the commit named, and says when the function is no longer what the run read."""
+    from manuscript_guard.checking.methods import CODE_STALE, Ran, _step_fact, code_blocks
+    from manuscript_guard.contracts.results import Step
+    from manuscript_guard.emit import definition_code
+
+    source = ("import x\n\n\ndef helper(v):\n    return v + 1\n\n\n"
+              "def fit(v):\n    return helper(v)\n")  # fmt: skip
+    (tmp_path / "code").mkdir()
+    (tmp_path / "code" / "fit.py").write_text("# moved down\n" + source, encoding="utf-8")
+    read = definition_code(source, "fit")
+    step = Step("model.fit", "code/fit.py", read["digest"], tmp_path / "r.json", (8, 9),
+                ("helper",), function="fit", at="results-v1", commit="ab" * 20)  # fmt: skip
+    blocks = code_blocks(step, Ran({"model.fit": step}, tmp_path))
+    assert blocks[0]["caption"] == (
+        "step model.fit: fit in code/fit.py, at results-v1, commit abababababab"
+    )
+    assert blocks[0]["lines"] == [[9, "def fit(v):"], [10, "    return helper(v)"]]
+    assert blocks[1]["lines"] == [[5, "def helper(v):"], [6, "    return v + 1"]]
+    assert not any("note" in block for block in blocks)
+    assert _step_fact(step).startswith("fit in code/fit.py, at results-v1 (commit abababababab)")
+    stale = code_blocks(step, Ran({"model.fit": step}, tmp_path, stale=frozenset({"model.fit"})))
+    assert {block.get("note") for block in stale} == {CODE_STALE}
+    unchecked = Step("model.fit", "code/fit.py", read["digest"], tmp_path / "r.json",
+                     function="fit", at="results-v1", unchecked="no git repository")  # fmt: skip
+    assert "commit not checked: no git repository" in _step_fact(unchecked)
+
+
 def test_the_digest_of_code_is_its_caption_not_its_lines() -> None:
     item = {"id": "m", "group": "methods", "title": "t", "evidence": [
         {"kind": "code", "caption": "step s, in a.py", "lines": [[1, "x = 1  # one"]]}]}

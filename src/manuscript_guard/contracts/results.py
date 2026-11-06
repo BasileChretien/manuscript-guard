@@ -11,7 +11,7 @@ depend on filesystem ordering.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from manuscript_guard.contracts._schema import read_structured, validate
 from manuscript_guard.contracts.models import (
@@ -92,14 +92,29 @@ class Step:
     source: Path
     lines: tuple[int, int] | None = None
     follows: tuple[str, ...] = ()
+    # A step marked with `code_step()`: code the run named and did not execute. `script` is
+    # then the file holding it, `function` its name there, `at` the commit or tag the results
+    # came from, and `commit` what that names where the code was held to it, or `unchecked`
+    # why it was not.
+    function: str | None = None
+    at: str | None = None
+    commit: str | None = None
+    unchecked: str | None = None
+
+    @property
+    def named(self) -> bool:
+        """Whether this is a code step: the code is another file's, read and not run."""
+        return self.function is not None
 
     @property
     def where(self) -> str:
-        """The script and its lines, as an editor opens them: `analysis/a.py:12-15`."""
-        if self.lines is None:
-            return self.script
-        first, last = self.lines
-        return f"{self.script}:{first}" + (f"-{last}" if last != first else "")
+        """The script and its lines, as an editor opens them: `analysis/a.py:12-15`, and for a
+        code step the function and the commit: `code/fit.py:3-20 (fit at results-v1)`."""
+        place = self.script
+        if self.lines is not None:
+            first, last = self.lines
+            place = f"{self.script}:{first}" + (f"-{last}" if last != first else "")
+        return f"{place} ({self.function} at {self.at})" if self.named else place
 
 
 @dataclass(frozen=True)
@@ -327,16 +342,43 @@ def _read_steps(document: dict, path: Path, steps: dict[str, Step]) -> Report:
                 )
             )
             continue
+        named = spec.get("file")
+        if named is not None and not _inside(str(named)):
+            # Every reader of a step opens `root / file`: a fragment naming `../../secrets`
+            # would put that file's lines on a co-author's checking page.
+            findings.append(
+                Finding(
+                    gate="G0",
+                    code="step-file-outside",
+                    message=f"step {name!r} names {named}, which is not a file of the project",
+                    path=path,
+                    hint="a code step names a file by its path from the project's root; run "
+                    "the analysis again rather than editing its results",
+                )
+            )
+            continue
         lines = spec.get("lines")
         steps[name] = Step(
             name=name,
-            script=script,
+            script=named or script,
             digest=spec["digest"],
             source=path,
             lines=(lines[0], lines[1]) if lines else None,
             follows=tuple(spec.get("follows") or ()),
+            function=spec.get("function") if named else None,
+            at=spec.get("at") if named else None,
+            commit=spec.get("commit") if named else None,
+            unchecked=spec.get("unchecked") if named else None,
         )
     return Report(tuple(findings))
+
+
+def _inside(relative: str) -> bool:
+    """Whether a path a fragment names stays inside the project: relative, on no drive, and
+    never climbing out of the folder it starts from."""
+    pure = PurePosixPath(relative.replace("\\", "/"))
+    return (bool(relative) and not pure.is_absolute() and ":" not in relative
+            and ".." not in pure.parts)  # fmt: skip
 
 
 def _read_cards(

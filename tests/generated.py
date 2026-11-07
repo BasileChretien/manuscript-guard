@@ -5583,8 +5583,8 @@ WORDED_PAST_REACH = "{S} did not at any single dose increase the risk of {O}"
 #: heading with a word of effect directly over the sentence (round 1 of #572).
 WORDED_CALLED_NOT_SIGNIFICANT = ("The risk of {O} was higher with {s}, but the difference was "
                                  "not statistically significant")  # fmt: skip
-WORDED_ANOTHER_TEST = ("The test for interaction was significant (P = 0.02); in women the "
-                       "hazard ratio for {O} was")  # fmt: skip
+WORDED_ANOTHER_TEST = ("The interaction with sex was significant (P-interaction = 0.02); in "
+                       "women the hazard ratio for {O} was")  # fmt: skip
 #: A word of another test that names none: a claim all the same (round 2 of #572).
 WORDED_NO_TEST = "{S} increased the risk of {O} through an interaction with warfarin"
 WORDED_HEADING = "\n## Increased risk of {O}\nThe hazard ratio for {O} was"

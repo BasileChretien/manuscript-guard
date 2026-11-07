@@ -90,8 +90,9 @@ _GAP_WORD = r"[^\s\x00()\[\]{},;:]+"
 _TOKEN = re.compile(r"[^\s\x00]+")
 _WORD_BEFORE = re.compile(r"([^\W\d_]+)\s+\Z")
 _SIGNIFICAN = re.compile(r"significan", re.IGNORECASE)
-#: What says a word of another test is said of a test: a P, or the word "test".
-_A_TEST = re.compile(r"(?<![\w-])(?:[Pp]|tests?|tested)(?![\w-])")
+#: What says a word of another test is said of a test: a P, "P-interaction" too, or the
+#: word "test", "testing" and "Q-test" too (round 3 of #572).
+_A_TEST = re.compile(r"(?<![\w-])[Pp](?!\w)|(?<!\w)test(?:s|ed|ing)?(?![\w-])")
 #: How far from such a word a P or "test" may stand, in characters.
 NEAR_A_TEST = 40
 #: A Markdown heading's line, as `claims` opens a block at one.

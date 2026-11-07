@@ -15151,7 +15151,8 @@ Added by the adversarial review, verified and **not** fixed:
     characters (rounds 1 and 2 of #572). A significance said of another test that the
     sentence names in no such word, "the log-rank test was significant", or with no P or
     "test" beside it, "there was significant heterogeneity between studies", is read as
-    the interval's.
+    the interval's. A "test" of the outcome's own within 40 characters names one all the
+    same, so "improved scores on the global cognition test" claims nothing.
   - A Markdown heading ends a sentence at the end of its line; a LaTeX one does not, since
     G8 reads a LaTeX file's view with its values put in, where the heading's place is no
     longer known. So "Increased risk" as a `\subsection` title directly over "The hazard

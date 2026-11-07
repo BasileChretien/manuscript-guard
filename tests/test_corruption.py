@@ -13707,6 +13707,10 @@ def test_an_interval_that_does_not_fit_its_estimate_or_its_p_is_found(
          "1.40, 95% CI 0.95 to 2.06).", ["claim-beyond-interval"]),
         ("Treatment improved global cognition (MD 1.2, 95% CI -0.3 to 2.7).",
          ["claim-beyond-interval"]),
+        ("The interaction with sex was significant (P-interaction = 0.02); in women the "
+         "hazard ratio was 1.10 (95% CI 0.80 to 1.50).", []),
+        ("Formal testing for interaction was significant; in women the hazard ratio was 1.10 "
+         "(95% CI 0.80 to 1.50).", []),
         # Not judged: an interval that is not the plain one, one at 99%, a sentence whose
         # words may be about its other estimate, and a difference for "no effect", whose
         # scale nothing declares.

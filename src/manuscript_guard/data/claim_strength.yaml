@@ -73,13 +73,15 @@ interval:
          conferred, confers]
   describing: [a, an, the, its, their, this, these, those, any, some, each, with, without,
                of, in, for, and, or, by, at, to, from, "on", than, among]
-  # A word that states an effect or a difference.
+  # A word that states an effect or a difference. No noun but "increase" and "decrease",
+  # which are verbs too: "a dose reduction", "causal inference", "age as a predictor" name
+  # what was done (round 1 of #572).
   effect: [increase, increases, increased, decrease, decreases, decreased, reduce, reduces,
-           reduced, reduction, raises, raised, lowers, lowered, improve, improves, improved,
-           worsen, worsens, worsened, affect, affects, affected, prevent, prevents,
-           prevented, induces, induced, caused, causal, causally, lead to, leads to, led to,
-           resulted in, results in, contribute to, contributes to, contributed to, predicts,
-           predicted, predictor, predictors, predictive of, differ, differs, differed,
+           reduced, raises, raised, lowers, lowered, improve, improves, improved, worsen,
+           worsens, worsened, affect, affects, affected, prevent, prevents, prevented,
+           induces, induced, caused, causally, lead to, leads to, led to, resulted in,
+           results in, contribute to, contributes to, contributed to, predicts, predicted,
+           predictive of, differ, differs, differed, "{be} predictor", "{be} predictors",
            "{be} associated", "{be} correlated", "{be} linked", "{be} related",
            "{be} higher", "{be} lower", "{be} greater", "{be} smaller", "{be} larger",
            "{be} more likely", "{be} less likely", "{be} elevated", "{be} worse",

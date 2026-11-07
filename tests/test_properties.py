@@ -4683,8 +4683,9 @@ def test_words_that_say_more_than_their_interval_are_found_and_nothing_else(
     said to be uncertain, beside an interval that excludes the null, is not the plain one or
     is at 99%; in a sentence with another interval that excludes the null or that the reader
     does not read; for a word that describes patients, "clinically significant" or a claim
-    turned round; or for no difference. A negation five words before a claim does not turn
-    it round."""
+    turned round; for a difference stated and called not significant, a significance said of
+    another test, or a heading over the sentence; or for no difference. A negation four
+    words before a claim turns it round, and one five words or more before does not."""
     text, expected = planted
     assert READINGS["interval words"]()(text) == expected, text
 
@@ -4779,11 +4780,46 @@ def _an_interval_is_taken_to_include_its_null_past_one_bound(patch: pytest.Monke
 
 
 def _the_words_beside_any_interval_are_judged(patch: pytest.MonkeyPatch) -> None:
-    """Neither what the sentence says of the interval or its P, nor its level."""
+    """What the sentence says of the interval or its P is not read; its level still is."""
     from manuscript_guard.stats import interval_words
 
-    patch.setattr(interval_words, "judged", lambda interval, alpha=0.05: not
-                  interval_words.outside_interval(interval))  # fmt: skip
+    def judged(interval: Any, alpha: float = 0.05) -> bool:
+        level = interval_words.alpha_of(interval.level)
+        return (not interval_words.outside_interval(interval) and level is not None
+                and level >= alpha - 1e-9)  # fmt: skip
+
+    patch.setattr(interval_words, "judged", judged)
+
+
+def _a_difference_called_not_significant_is_still_claimed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "claims_effect", lambda said: bool(said.stated)
+                  and not said.hedged and not said.unsure and not said.another_test)  # fmt: skip
+
+
+def _another_test_s_words_are_the_interval_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "_OTHER_P", re.compile(r"(?!)"))
+
+
+def _a_heading_runs_into_the_sentence_under_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "heading_ends", lambda read: [])
+
+
+def _a_negation_reaches_three_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "REACH", 3)
+
+
+def _a_negation_reaches_five_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "REACH", 5)
 
 
 def _the_words_beside_an_interval_at_any_level_are_judged(patch: pytest.MonkeyPatch) -> None:
@@ -17582,6 +17618,26 @@ BROKEN = {
     ),
     "a negation anywhere in the sentence turns a claim beside an interval round": (
         _a_negation_anywhere_turns_a_claim_round,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a negation reaches three words before a claim beside an interval": (
+        _a_negation_reaches_three_words,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a negation reaches five words before a claim beside an interval": (
+        _a_negation_reaches_five_words,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a difference called not significant beside an interval is still claimed": (
+        _a_difference_called_not_significant_is_still_claimed,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "the words of another test are read as the interval's": (
+        _another_test_s_words_are_the_interval_s,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a heading runs into the sentence under it beside an interval": (
+        _a_heading_runs_into_the_sentence_under_it,
         test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
     ),
     "every bound of an interval that includes 1 is far from it": (

@@ -5423,7 +5423,9 @@ its digits allow, is `no-effect-from-interval`, a note that names those bounds: 
 interval does not exclude effects that matter. "No significant difference", "a
 non-significant increase" and "no evidence of" speak of the test or the evidence and are
 left alone, and so is a sentence that hedges or says the estimate is uncertain ("a trend",
-"imprecise", "compatible with"). The words are lists of this project's own, in
+"imprecise", "compatible with"), that calls something in it not significant ("higher, but
+the difference was not significant"), or that names another test ("the test for
+interaction was significant"). The words are lists of this project's own, in
 `data/claim_strength.yaml` under `interval`; the hedges and the negations are the ladder's.
 A negation turns a word round from up to four words before it, "did not increase", "was
 not significantly associated". An interval is judged only where G8 would judge it against
@@ -15113,14 +15115,25 @@ Added by the adversarial review, verified and **not** fixed:
   - A form of "be" or "have" with a comparative at most two words after it is a difference
     stated, "was higher", "had a lower", where it describes a group too: "whose dose was
     lower".
-  - A noun is not read as a claim, "an association was found", and nor are "associated
-    with" and "linked to" with no form of "be" before them, "the hazard associated with
-    use".
+  - No noun is read as a claim but "increase" and "decrease", which are verbs too, so
+    "after a dose increase" states a difference and "an association was found" does not.
+    Nor are "associated with" and "linked to" with no form of "be" before them, "the
+    hazard associated with use", nor "predictor" without one, "with age as a predictor"
+    (round 1 of #572).
   - A negation turns round any word of effect up to four words after it, about it or not:
     "not only increased" says no effect, and so does "among patients not taking it, use
     increased the risk". One further back is not read.
   - A word of doubt or a hedge stands the whole sentence down, of this estimate or not:
-    "trend" in "P for trend", "wide" in "a wide range of doses".
+    "trend" in "P for trend", "wide" in "a wide range of doses". So does a significance
+    turned round, "the difference was not significant", and the name of another test,
+    "interaction" or "heterogeneity" among the words `stats/intervals.py` reads as a P's
+    for another test (round 1 of #572). A significance said of another test that the
+    sentence names in no such word, "the log-rank test was significant", is read as the
+    interval's.
+  - A Markdown heading ends a sentence at the end of its line; a LaTeX one does not, since
+    G8 reads a LaTeX file's view with its values put in, where the heading's place is no
+    longer known. So "Increased risk" as a `\subsection` title directly over "The hazard
+    ratio was 1.2 (95% CI 0.9 to 1.6)." is read as a claim.
   - "No effect" is read for each ratio's interval of its sentence, so in "X had no effect
     on A (HR 1.1, 95% CI 0.9 to 1.3) but increased B (HR 1.4, 95% CI 0.6 to 2.8)", B's
     interval is read as one said to show no effect.

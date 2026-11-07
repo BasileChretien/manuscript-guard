@@ -20,8 +20,11 @@ asking what the author meant. Three things are said of an interval that includes
 
 "No significant difference", "a non-significant increase" and "no evidence of" speak of
 the test or the evidence, not of the effect, and are left alone; so is a sentence that
-hedges ("may", "suggests") or says the estimate is uncertain ("a trend", "imprecise",
-"compatible with"). The words are lists in `data/claim_strength.yaml`, under `interval`.
+hedges ("may", "suggests"), says the estimate is uncertain ("a trend", "imprecise",
+"compatible with"), calls something in it not significant ("higher, but the difference was
+not significant"), or names another test ("interaction", "heterogeneity"), whose words may
+be that test's. The words are lists in `data/claim_strength.yaml`, under `interval`; a
+Markdown heading ends a sentence at the end of its line.
 
 An interval is judged as `stats/intervals.py` judges one against its P, and nowhere else:
 over every value its printed digits allow, never in a sentence that calls the interval
@@ -58,6 +61,7 @@ from manuscript_guard.claims import (
 )
 from manuscript_guard.stats.intervals import (
     _CI_WORD,
+    _OTHER_P,
     NULL,
     ReportedInterval,
     _box,
@@ -86,6 +90,8 @@ _GAP_WORD = r"[^\s\x00()\[\]{},;:]+"
 _TOKEN = re.compile(r"[^\s\x00]+")
 _WORD_BEFORE = re.compile(r"([^\W\d_]+)\s+\Z")
 _SIGNIFICAN = re.compile(r"significan", re.IGNORECASE)
+#: A Markdown heading's line, as `claims` opens a block at one.
+_HEADING = re.compile(r"^[ \t\x00]*#[^\n]*", re.MULTILINE)
 
 
 #: One word of a list as a pattern. Its group `lead` is the form of "be" or "have" that
@@ -174,17 +180,22 @@ def worded(
     intervals = list(reported_intervals(text) if found is None else found)
     if not intervals:
         return []
-    # A carriage return made a space: the sentences are cut on line feeds, at the same
-    # offsets.
-    text = text.replace("\r", " ")
+    # Line ends made line feeds at the same offsets: the sentences are cut on line feeds.
+    text = text.replace("\r\n", " \n").replace("\r", "\n")
     read = readable(text)
     blank = _blanked(read, intervals)
     said: list[Worded] = []
-    for start, first, end in sentence_pieces(text, read):
+    for start, first, end in sentence_pieces(text, read, cuts=heading_ends(read)):
         mine = [interval for interval in intervals if start <= interval.start < end]
         if mine:
             said += _sentence(read, blank, first, end, mine, alpha)
     return said
+
+
+def heading_ends(read: str) -> list[int]:
+    """Where each heading of a Markdown file ends: the line under it opens a sentence of its
+    own, though no blank line stands between (round 1 of #572)."""
+    return [found.end() for found in _HEADING.finditer(read)]
 
 
 def _blanked(read: str, intervals: Sequence[ReportedInterval]) -> str:
@@ -204,13 +215,18 @@ class Heard:
     #: its negation: "did not affect".
     stated: tuple[Said, ...]
     turned: tuple[Said, ...]
-    #: Words of significance: all of them, and those no negation turns round.
+    #: Words of significance: all of them, those no negation turns round, and those one
+    #: does: "the difference was not significant".
     significant: tuple[Said, ...]
     tested: tuple[Said, ...]
+    untested: tuple[Said, ...]
     #: Words that say there is no effect.
     none: tuple[Said, ...]
     hedged: bool
     unsure: bool
+    #: Whether the sentence names another test, its words perhaps of that one: "the test
+    #: for interaction was significant".
+    another_test: bool
 
 
 def heard(blank: str, first: int, end: int) -> Heard:
@@ -236,29 +252,34 @@ def heard(blank: str, first: int, end: int) -> Heard:
                      if (at := negation(one)) is not None),  # fmt: skip
         significant=tuple(significant),
         tested=tuple(one for one in significant if negation(one) is None),
+        untested=tuple(one for one in significant if negation(one) is not None),
         none=tuple(_read(blank, first, end, listed.no_effect)),
         hedged=HEDGE in kinds or lists().rungs.index(HEDGING_RUNG) in kinds,
         unsure=bool(_read(blank, first, end, listed.uncertain)),
+        another_test=_OTHER_P.search(blank, first, end) is not None,
     )
 
 
 def claims_effect(said: Heard) -> bool:
-    """Whether a sentence states an effect or a difference, with no hedge and no word that
-    says it is uncertain."""
-    return bool(said.stated) and not said.hedged and not said.unsure
+    """Whether a sentence states an effect or a difference, with no hedge, no word that
+    says it is uncertain, nothing called not significant ("higher, but the difference was
+    not significant") and no other test named."""
+    return (bool(said.stated) and not said.hedged and not said.unsure and not said.untested
+            and not said.another_test)  # fmt: skip
 
 
 def calls_significant(said: Heard) -> bool:
     """Whether a sentence calls its estimate significant, with no word that says it is
-    uncertain."""
-    return bool(said.tested) and not said.unsure
+    uncertain and no other test named."""
+    return bool(said.tested) and not said.unsure and not said.another_test
 
 
 def says_no_effect(said: Heard) -> bool:
     """Whether a sentence says there is no effect, and not of the test ("no significant
-    difference"), with no hedge and no word that says it is uncertain."""
+    difference"), with no hedge, no word that says it is uncertain and no other test
+    named."""
     return (bool(said.none or said.turned) and not said.significant and not said.hedged
-            and not said.unsure)  # fmt: skip
+            and not said.unsure and not said.another_test)  # fmt: skip
 
 
 def _sentence(

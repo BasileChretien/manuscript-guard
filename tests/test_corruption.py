@@ -13656,6 +13656,20 @@ def test_an_interval_that_does_not_fit_its_estimate_or_its_p_is_found(
          "1.86).", []),
         ("Clinically significant bleeding had a hazard ratio of 1.31 (95% CI 0.92 to 1.86).",
          []),
+        # Round 1 of #572: a difference called not significant, a significance said of
+        # another test, a method's name, a model's term and a heading over the sentence.
+        ("The risk of bleeding was higher with the drug, but the difference was not "
+         "statistically significant (HR 1.31, 95% CI 0.92 to 1.86).", []),
+        ("The test for interaction was significant (P = 0.02); in women the hazard ratio was "
+         "1.10 (95% CI 0.80 to 1.50).", []),
+        ("Using causal inference methods, the hazard ratio was 1.20 (95% CI 0.90 to 1.60).",
+         []),
+        ("With age as a predictor, the hazard ratio for death was 1.20 (95% CI 0.90 to 1.60).",
+         []),
+        ("## Increased risk in older patients\nThe hazard ratio for death was 1.20 (95% CI 0.90 "
+         "to 1.60).", []),
+        ("Age was an independent predictor of death (HR 1.20, 95% CI 0.90 to 1.60).",
+         ["claim-beyond-interval"]),
         # Not judged: an interval that is not the plain one, one at 99%, a sentence whose
         # words may be about its other estimate, and a difference for "no effect", whose
         # scale nothing declares.

@@ -5487,6 +5487,16 @@ WORDED_NOT_THE_TEST = ("Bleeding was clinically significant in most cases",
 #: A negation that turns a claim round, and one too far before it to.
 WORDED_NEGATED = ("{S} did not increase the risk of {O}", "{S} was not associated with {O}")
 WORDED_FAR_NEGATION = "Among patients with no prior stroke at entry, {s} increased the risk of {O}"
+#: A negation four words before a claim, which turns it round, and five, which does not.
+WORDED_AT_REACH = "{S} did not at any dose increase the risk of {O}"
+WORDED_PAST_REACH = "{S} did not at any single dose increase the risk of {O}"
+#: A difference stated and called not significant; a significance said of another test; a
+#: heading with a word of effect directly over the sentence (round 1 of #572).
+WORDED_CALLED_NOT_SIGNIFICANT = ("The risk of {O} was higher with {s}, but the difference was "
+                                 "not statistically significant")  # fmt: skip
+WORDED_ANOTHER_TEST = ("The test for interaction was significant (P = 0.02); in women the "
+                       "hazard ratio for {O} was")  # fmt: skip
+WORDED_HEADING = "\n## Increased risk of {O}\nThe hazard ratio for {O} was"
 #: A difference stated, and none.
 WORDED_DIFFERENCE = (("{S} reduced the score", "reduced"), ("{S} lowered the score", "lowered"))
 WORDED_NO_DIFFERENCE = "The scores did not differ between groups"
@@ -5510,13 +5520,16 @@ WORDED_DIFFERENCES = (" (MD {e}, 95% CI {l} to {u})", " (mean difference {e}, 95
 #: "no significant difference"; a claim hedged, said to be uncertain, beside an interval that
 #: excludes the null, one that is not the plain one, one at 99%; a claim beside two intervals,
 #: one that excludes the null, and beside one the reader does not read; a word of effect that
-#: describes patients; "clinically significant"; a claim turned round, and one with a
-#: negation too far before it, which is said; a difference stated, and no difference, which
-#: is not read for it; and a claim with no interval.
+#: describes patients; "clinically significant"; a claim turned round, one with a negation
+#: four words before it, and one with a negation five words or more before it, which is
+#: said; a difference stated and called not significant; a significance said of another
+#: test; a heading over the sentence; a difference stated, and no difference, which is not
+#: read for it; and a claim with no interval.
 WORDED_KINDS = (
     "claim", "significant", "both", "no effect", "near", "integer bound", "not significant",
     "no significant difference", "hedged", "unsure", "excludes", "quiet", "level", "mixed",
-    "unread", "describing", "not the test", "negated", "far negation", "difference claim",
+    "unread", "describing", "not the test", "negated", "at the reach", "past the reach",
+    "far negation", "called not significant", "another test", "heading", "difference claim",
     "difference none", "no interval",
 )  # fmt: skip
 
@@ -5619,12 +5632,23 @@ def interval_wordings(draw: st.DrawFn) -> tuple[str, list[list[Any]]]:
             text = f"{said} {e} (95% CI {l_} to {u})"
         elif kind == "not the test":
             text, _at, _far = one(draw(st.sampled_from(WORDED_NOT_THE_TEST)), "far")
-        elif kind in ("negated", "far negation"):
-            template = (draw(st.sampled_from(WORDED_NEGATED)) if kind == "negated"
-                        else WORDED_FAR_NEGATION)  # fmt: skip
+        elif kind in ("negated", "at the reach", "past the reach", "far negation"):
+            template = {"negated": draw(st.sampled_from(WORDED_NEGATED)),
+                        "at the reach": WORDED_AT_REACH, "past the reach": WORDED_PAST_REACH,
+                        "far negation": WORDED_FAR_NEGATION}[kind]  # fmt: skip
             text, at, _far = one(template)
-            if kind == "far negation":
-                found = [["claim-beyond-interval", [at], ["increased"], []]]
+            if kind in ("past the reach", "far negation"):
+                word = "increased" if kind == "far negation" else "increase"
+                found = [["claim-beyond-interval", [at], [word], []]]
+        elif kind in ("called not significant", "another test", "heading"):
+            said = subject({"called not significant": WORDED_CALLED_NOT_SIGNIFICANT,
+                            "another test": WORDED_ANOTHER_TEST,
+                            "heading": WORDED_HEADING}[kind])  # fmt: skip
+            e, l_, u, _far = ratio("far")
+            if kind == "called not significant":
+                text = said + draw(st.sampled_from(WORDED_RATIOS)).format(e=e, l=l_, u=u)
+            else:
+                text = f"{said} {e} (95% CI {l_} to {u})"
         elif kind in ("difference claim", "difference none"):
             template, word = draw(st.sampled_from(WORDED_DIFFERENCE))
             if kind == "difference none":

@@ -49,15 +49,25 @@ class Part:
 
 
 def _plain(text: str) -> str:
-    """`text` in NFKC, each symbol a space first, so "™" joins no name as "TM" (round 2)."""
-    spaced = "".join(" " if unicodedata.category(c) == "So" else c for c in text)
-    return unicodedata.normalize("NFKC", spaced)
+    """`text` with each full-width or half-width form as its plain one, and each character
+    of category So, superscript or subscript as a space, so that "™" or a footnote's "¹"
+    ends the name before it rather than join it as "TM" or "1" (rounds 2 and 3)."""
+    out = []
+    for c in unicodedata.normalize("NFC", text):
+        tag = unicodedata.decomposition(c).split(" ", 1)[0]
+        if tag in ("<wide>", "<narrow>"):
+            out.append(unicodedata.normalize("NFKC", c))
+        elif tag in ("<super>", "<sub>") or unicodedata.category(c) == "So":
+            out.append(" ")
+        else:
+            out.append(c)
+    return "".join(out)
 
 
 def parts(text: str) -> list[Part]:
-    """The parts of every word of `text`, in order. The text is read in its compatibility
-    form (NFKC), so that a name typed in full-width letters and digits, as a Japanese input
-    method types them ("ＧＰＴ－５．１"), is the name typed plainly (round 1 of the code)."""
+    """The parts of every word of `text`, in order, read as `_plain` writes it: a name typed
+    in full-width letters and digits, as a Japanese input method types them ("ＧＰＴ－５．１"),
+    is the name typed plainly (round 1 of the code)."""
     found: list[Part] = []
     for word in _WORD.finditer(_plain(text)):
         token = word.group()

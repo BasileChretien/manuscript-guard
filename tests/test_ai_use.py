@@ -89,6 +89,9 @@ def test_a_name_typed_in_full_width_is_the_name_typed_plainly() -> None:
     assert not names("GPT-5.1を用いた", "gpt-5.1")
     # A symbol NFKC writes as letters still ends the name, "™" and "℠" (round 2).
     assert names("We used ChatGPT™ (OpenAI).", "ChatGPT") and names("ChatGPT℠", "ChatGPT")
+    # So do a superscript and a modifier letter, a footnote's "¹" among them (round 3).
+    assert names("ChatGPT¹ (OpenAI)", "ChatGPT") and names("GPT-4o² was used", "gpt-4o")
+    assert names("Claude Opus 4.5¹", "claude-opus-4-5") and names("ChatGPTᵀᴹ", "ChatGPT")
 
 
 def test_a_name_with_no_letter_or_digit_names_nothing() -> None:

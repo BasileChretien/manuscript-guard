@@ -20897,9 +20897,10 @@ Open, recorded as each change landed:
   - A faithful paraphrase can warn. A passage that states a result with no word of the ladder
     ("incidence was higher among women") cited as an association ("female sex was associated
     with a higher incidence") reads as stronger, since a sentence with no word of the ladder
-    states and association is above consistency; and a negation paraphrased away ("did not
-    differ by sex" cited as "was similar in men and women") reads as saying the opposite.
-    Each is a warning at every stage, with nothing to acknowledge (round 1 of #571).
+    states, which is below association and above consistency; and a negation paraphrased
+    away ("did not differ by sex" cited as "was similar in men and women") reads as saying
+    the opposite. Each is a warning at every stage, with nothing to acknowledge (round 1 of
+    #571).
   - Each passage is compared with its sentence alone. A sentence that rests on two works, an
     association in one and an effect in the other, warns for the first. A sentence that sets
     itself against the work, "unlike @a, we found no association", reads as saying the

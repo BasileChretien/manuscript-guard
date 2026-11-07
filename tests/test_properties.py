@@ -6816,15 +6816,19 @@ def test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted(
     of the Abstract, the Introduction, the Methods, a conclusion, a Limitations of its own or
     the supplement's Methods, nor a heading, a sentence with a hedge, a limit or a negation
     and no word of the ladder, or one with only a look-alike of a word of the ladder (item 10
-    of the borrowed checks)."""
+    of the borrowed checks). A citation typed against a stop cites the sentence before it,
+    and one after a space the sentence it opens (round 1 of #578)."""
     text, supplement, expected = drawn
     read = READINGS["interpretation sentences"]()({"text": text, "supplement": supplement})
     found: dict[str, bool] = {}
     for part, source in (("paper", text), ("supplement", supplement)):
         lines = source.splitlines()
         for line, said, rests in read[part]:
-            # A binding's key or an anchor's name holds its sentence's tag too.
-            (tag,) = set(re.findall(r"\bt\d\d\b", said))
+            # A binding's key or an anchor's name holds its sentence's tag too; two tags are
+            # two sentences read as one.
+            tags = set(re.findall(r"\bt\d\d\b", said))
+            assert len(tags) == 1, (said, source)
+            (tag,) = tags
             assert tag in lines[line - 1], (line, said, source)
             found[tag] = not rests
     assert found == {tag: counted for tag, counted in expected.items() if counted is not None}, (
@@ -16231,6 +16235,11 @@ def _every_heading_of_the_supplement_argues(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(interpretation_gate, "_supplement_inside", lambda text: lambda line: True)
 
 
+def _a_citation_typed_against_a_stop_cites_the_next_sentence(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #578: "injury.[@a] We" was read as one sentence, or the citation the next's.
+    patch.setattr(interpretation_gate, "_trailing", lambda text, against: [])
+
+
 def _a_chain_keeps_a_cells_crlf(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.checking import recap
 
@@ -16911,6 +16920,10 @@ BROKEN = {
     ),
     "every heading of the supplement argues": (
         _every_heading_of_the_supplement_argues,
+        test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted,
+    ),
+    "a citation typed against a stop cites the next sentence": (
+        _a_citation_typed_against_a_stop_cites_the_next_sentence,
         test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted,
     ),
     "a ladder word a bare summary leaves out is more": (

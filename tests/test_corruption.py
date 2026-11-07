@@ -2914,6 +2914,21 @@ def test_a_sentence_that_claims_on_neither_a_result_nor_a_citation_is_counted(
     assert note.context == "Example-drug caused these reports."
 
 
+def test_a_citation_typed_against_a_stop_belongs_to_the_sentence_it_ends(project: Path) -> None:
+    """Round 1 of #578: a citation typed after the full stop with no space, "injury.[@a] We",
+    as a superscript style has it, is the sentence before's, and the sentence after it is a
+    sentence of its own: the cited sentence is not counted and the one after it is. Typed
+    after a space, "[@a] showed that", it opens the sentence after."""
+    _swap(project, _LIMITATIONS, f"{_LIMITATIONS} This association was reported before."
+          f"[@fictionalClassSignal2019] {_PROBABLY}")  # fmt: skip
+    (note,) = _interpreted(project)
+    assert note.context == _PROBABLY and note.message.startswith("1 of the 2"), note.message
+    _swap(project, "before.[@fictionalClassSignal2019] Example-drug probably increased",
+          "before. [@fictionalClassSignal2019] showed that example-drug probably increased")
+    (note,) = _interpreted(project)
+    assert note.context == "This association was reported before.", note.context
+
+
 def test_the_supplement_s_interpretation_is_counted_where_it_argues(project: Path) -> None:
     """The supplement's Results and Discussion are read as the main text's, under a heading
     of the supplement's own ("eDiscussion", "Supplementary results"), the innermost heading
@@ -11101,6 +11116,25 @@ def test_g8_counts_the_twin_s_interpretation_at_its_tex_lines(project: Path) -> 
         (entry, at(entry, probably), probably), (supplement, at(supplement, affect), affect),
     ]
     assert found[0].message.startswith("1 of the 2 sentences"), found[0].message
+
+
+@pytest.mark.parametrize("typed", ["before.\\cite{fictionalClassSignal2019} ",
+                                   "before.~\\cite{fictionalClassSignal2019} "])
+def test_g8_gives_the_twin_s_citation_typed_against_a_stop_to_the_sentence_before(
+    project: Path, typed: str
+) -> None:
+    """Round 1 of #578: `\\cite` typed against the full stop, or after a tie, cites the
+    sentence that stop ends, which the printed view writes `before. [@a]  We`: the sentence
+    after it is the one counted."""
+    from manuscript_guard.gates import check_interpretation
+
+    entry = _twin(project)
+    probably = "Example-drug probably increased these reports in older patients."
+    _replace_once(entry, "Several limitations follow from the design.",
+                  "Several limitations follow from the design. This association was reported "
+                  f"{typed}{probably}")  # fmt: skip
+    (found,) = check_interpretation(load_project(project)[0]).findings
+    assert found.context == probably and found.message.startswith("1 of the 2"), found
 
 
 def test_g8_recomputes_a_p_in_the_twin_after_a_display_holding_a_percent(project: Path) -> None:

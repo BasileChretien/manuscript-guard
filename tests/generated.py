@@ -8653,12 +8653,20 @@ INTERPRETATION_KINDS = {
     "results, bound": False, "discussion, bound to the literature": False,
     "discussion, pointing at a display": False, "discussion, cited": False,
     "discussion, cited in narrative": False,
+    "discussion, cited against its stop": False,
+    "discussion, a citation opening the next sentence": True,
     "discussion, no word of the ladder": None, "discussion, a look-alike of the ladder": None,
     "abstract": None, "introduction": None, "methods": None,
     "a conclusion under the discussion": None, "a limitations section of its own": None,
     "a heading of the results": None,
     "the supplement's results": True, "the supplement's discussion": True,
     "the supplement's methods": None,
+}  # fmt: skip
+#: The kinds that write a second sentence after the first, the citation between them typed
+#: against the first's stop or after a space (round 1 of #578), and what G8 makes of it.
+INTERPRETATION_SECONDS = {
+    "discussion, cited against its stop": True,
+    "discussion, a citation opening the next sentence": False,
 }  # fmt: skip
 #: What looks like a word of the ladder and is not read as one (`UNCLAIMED`).
 LADDER_UNCLAIMED = ("drug-induced", "cause-specific", "an increased", "the associated",
@@ -8712,6 +8720,15 @@ def interpretation_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, bool | N
         elif kind == "discussion, cited in narrative":
             plain = said(tag, ladder)
             sentence = f"As @fictional{tag}2020 found, {plain[0].lower()}{plain[1:]}"
+        elif kind in INTERPRETATION_SECONDS:
+            second = next(tags)
+            expected[second] = INTERPRETATION_SECONDS[kind]
+            after = said(second, [draw(st.sampled_from(CLAIMED[draw(st.sampled_from(rungs))]))])
+            if kind == "discussion, cited against its stop":
+                sentence = f"{said(tag, ladder)}[@fictional{tag}2020] {after}"
+            else:
+                sentence = f"{said(tag, ladder)} [@fictional{second}2020] {after[0].lower()}"
+                sentence += after[1:]
         elif kind == "an anchor of the methods only":
             where, sentence = "discussion", said(tag, ladder, after=f"{{{{method.{tag}}}}}")
         elif kind == "discussion, no word of the ladder":

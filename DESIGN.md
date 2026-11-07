@@ -14863,15 +14863,23 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   paper's results is: "the class is associated with liver injury in other cohorts", written
   without its citation. A sentence rests on whatever binding or citation stands in it, so one
   that binds a single number and claims far more than it, "the risk increased with dose
-  (ROR 2.6)", is not counted, and only `summary-claim-stronger`, in a summary, holds a claim
-  to its number. A citation is one the gates read as a citation: `[@key]`, a narrative
-  `@key`, LaTeX's `\cite`. An author and year typed in the prose, a citation in a footnote
-  the sentence calls, and a sentence that leans on the citation of the one before it are
-  counted as resting on nothing, and so is a sentence that points at a display with a typed
-  number, "Figure 1 suggests". In a paper with no Results heading, as a narrative review or a
-  case report has none, only the Discussion is read. The figures that gave the reason are
-  those of an automated scientist's reports: the note says nothing of how often a person's
-  interpretation is wrong, only where it stands.
+  ({{results.ror.point}})", is not counted, and only `summary-claim-stronger`, in a summary,
+  holds a claim to its number. A citation is one the gates read as a citation: `[@key]`, a
+  narrative `@key`, LaTeX's `\cite`. One typed against the stop before it, "injury.[@a]",
+  `injury.\cite{a}` or `injury.~\cite{a}`, cites the sentence that stop ends, and one typed
+  after a space, "injury. [@a] showed", the sentence it opens (round 1 of #578). So where a
+  citation typed against the stop is the next sentence's, "injury.[@a] Smith showed", that
+  sentence is read as citing nothing, and the one before it as citing. An author and year
+  typed in the prose, a citation in a footnote the sentence calls, and a sentence that leans
+  on the citation of the one before it are counted as resting on nothing, and so is a
+  sentence that points at a display with a typed number, "Figure 1 suggests". A table typed
+  by hand, its caption line and an image's alternative text are read as sentences under the
+  Results or the Discussion, and counted where they claim; G2 reports a table typed by hand
+  already (`hand-authored-table`), and a display placed by its binding is not read. In a
+  paper with no Results heading, as a narrative review or a case report has none, only the
+  Discussion is read. The figures that gave the reason are those of an automated
+  scientist's reports: the note says nothing of how often a person's interpretation is
+  wrong, only where it stands.
 - **G8 compares only values whose units agree.** A count of 56 and a share of 56.0% are two
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and

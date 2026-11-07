@@ -141,6 +141,22 @@ def test_what_pandoc_prints_otherwise_stands_as_word_prints_it(written: str, quo
 
 
 @pytest.mark.parametrize(
+    "written, quoted",
+    [
+        ("Code is available at [GitHub](https://github.com/a/b) for review.",
+         "Code is available at [GitHub]"),
+        ("Code is available at [GitHub](https://github.com/a/b) for review.",
+         "at [GitHub](https://github.com/a/b) for review"),
+        ("We measured the levels of H~2~O in each sample.", "measured the levels of H~2"),
+    ],
+)  # fmt: skip
+def test_part_of_a_link_or_a_script_as_written_stands(written: str, quoted: str) -> None:
+    """Round 2 of #581: a model sent the Markdown may copy half of a link or a script as it
+    was written, which the text read as printed no longer holds."""
+    assert stands(quoted, written)
+
+
+@pytest.mark.parametrize(
     "heading, quote, there",
     [
         ("## 2020 cohort", "Cohort", False),
@@ -148,6 +164,8 @@ def test_what_pandoc_prints_otherwise_stands_as_word_prints_it(written: str, quo
         ("# 1 Introduction", "Introduction", True),
         ("## 12. Discussion", "Discussion", True),
         ("## S1. Code lists", "Code lists", True),
+        ("## B12 deficiency", "Deficiency", False),
+        ("## T2 diabetes outcomes", "diabetes outcomes", False),
     ],
 )
 def test_a_section_s_number_is_one_or_two_digits_or_dotted(

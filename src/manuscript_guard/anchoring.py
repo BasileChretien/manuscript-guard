@@ -48,10 +48,13 @@ _SCRIPTS = re.compile(r"([~^])([^\s~^]+)\1")
 #: Pandoc's dashes, `--` and `---`, which Word prints as an en and an em dash, and which
 #: `normalise` folds to one hyphen.
 _DASHES = re.compile(r"-{2,}")
-#: A section's number before its title, "2.", "2.1", "12" or "S1.", which a reader may
-#: leave out: one or two digits, or dotted, so that a year opening a title stays in it
-#: (round 1 of #581: "2020 cohort" was titled "cohort").
-_NUMBER = re.compile(r"^(?:[a-z]?\d{1,2}(?:\.\d+)*\.?|\d+(?:\.\d+)+\.?)\s+")
+#: A section's number before its title, "2.", "2.1", "12", "S1." or "S1.2", which a reader
+#: may leave out: one or two digits, or dotted, so that a year opening a title stays in it
+#: (round 1 of #581: "2020 cohort" was titled "cohort"), and after a letter only with its
+#: point, so that "B12 deficiency" keeps its first word (round 2).
+_NUMBER = re.compile(
+    r"^(?:\d{1,2}(?:\.\d+)*\.?|[a-z]\d{1,2}(?:(?:\.\d+)+\.?|\.)|\d+(?:\.\d+)+\.?)\s+"
+)
 #: The fewest words a piece of a quote with words left out holds for it to count.
 _PIECE_WORDS = 2
 #: What may close a heading or a quote of one, "Methods." or "Methods:".
@@ -63,8 +66,13 @@ def plain(text: str) -> str:
     walls and a heading's hashes; a link as its text, a sub- or superscript as what it
     holds, and a pandoc dash as one hyphen, as Word prints them (round 1 of #581)."""
     text = _LINK.sub(r"\1", _HASHES.sub("", text))
-    text = _DASHES.sub("-", _SCRIPTS.sub(r"\2", text))
-    return _CELLS.sub(" ", _MARKS.sub("", text))
+    return _written(_DASHES.sub("-", _SCRIPTS.sub(r"\2", text)))
+
+
+def _written(text: str) -> str:
+    """`text` as it is written, less Markdown's marks around words: what a model sent the
+    Markdown may copy part of a link or a script from (round 2 of #581)."""
+    return _CELLS.sub(" ", _MARKS.sub("", _HASHES.sub("", text)))
 
 
 def _title(text: str) -> str:
@@ -90,11 +98,12 @@ def words(quote: str) -> int:
 
 @dataclass(frozen=True)
 class Read:
-    """What a reading read, as its quotes are looked for in it: each text folded, and the
-    titles of its headings."""
+    """What a reading read, as its quotes are looked for in it: each text folded as it is
+    printed, the titles of its headings, and each text folded as it is written."""
 
     texts: tuple[str, ...]
     titles: frozenset[str]
+    written: tuple[str, ...] = ()
 
 
 def read_of(texts: Iterable[str], *, latex: bool = False) -> Read:
@@ -107,6 +116,7 @@ def read_of(texts: Iterable[str], *, latex: bool = False) -> Read:
     return Read(
         texts=tuple(normalise(plain(text)).lower() for text in texts),
         titles=frozenset(title for title in map(_title, found) if title),
+        written=tuple(normalise(_written(text)).lower() for text in texts),
     )
 
 
@@ -125,13 +135,17 @@ def _headings(text: str, latex: bool) -> list[str]:
 
 def stands(quote: str, read: Read) -> bool:
     """Whether `quote` is a heading's whole title in what was read, or holds `QUOTE_WORDS`
-    words or more that stand there as words of their own, in one of its texts."""
+    words or more that stand there as words of their own, in one of its texts: read as
+    printed in the text as printed, or as written in the text as written, so that half a
+    link copied as it was sent stands too (round 2 of #581)."""
     if _title(quote) in read.titles:
         return True
     if words(quote) < QUOTE_WORDS:
         return False
-    wanted = plain(quote)
-    return any(words_in(text, wanted) for text in read.texts)
+    printed, written = plain(quote), _written(quote)
+    return any(words_in(text, printed) for text in read.texts) or any(
+        words_in(text, written) for text in read.written
+    )
 
 
 def quoted(finding: Mapping[str, object]) -> bool:

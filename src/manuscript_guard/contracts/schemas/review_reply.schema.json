@@ -53,7 +53,7 @@
           },
           "quote": {
             "type": ["string", "null"],
-            "description": "Words copied from the manuscript the reader was sent, at least four in a row, from the place the finding is about; for something missing, the heading of the section where it belongs. When the reading is filed it is looked for in what was sent, and the finding is listed as anchored or unanchored. A reader of the manuscript is asked for one on every finding; one that gives none, null or only white space, is filed with the finding unanchored, never refused."
+            "description": "Words copied from the manuscript the reader was sent, at least four in a row, from the place the finding is about; for something missing, the heading of the section where it belongs. When the reading is filed it is looked for in what was sent, and the finding is listed as anchored or unanchored. A reader of the manuscript is asked for one on every finding; a finding that gives none, null or only white space, is filed unanchored and does not refuse the reply. A quote that is not text, or null, refuses it, as any key of the wrong type does."
           },
           "ask": {
             "enum": ["disclosure", "computation", "new-data", null],

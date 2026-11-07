@@ -11,9 +11,10 @@ One thing is read as what it plainly says. A finding's `where`, `ask`, `edits` a
 may be left out, and a model that leaves a key out often writes `null` for it. Null says what
 absence says, so the key is taken as absent (round 1 of #276: the prompt showing `ask` drew a
 null, and the whole reply was refused). No other key may be null. A reader of the manuscript
-is asked to quote every finding, and one that does not is still filed: the finding is
-counted unanchored when the reading is filed (`run.py`), and nothing paid for is refused for
-it.
+is asked to quote every finding, and a finding that quotes nothing is still filed: it is
+counted unanchored when the reading is filed (`run.py`), and the reply is not refused for
+it. A quote that is not text, a list of two places say, is of the wrong type, and refuses
+the reply as any such key does (round 2 of #581).
 
 A design round reads the plan, and its readers are not offered edits: one that suggests
 them anyway is refused, since an edit is to the manuscript's words and there are none in

@@ -16599,7 +16599,12 @@ Open, recorded as each change landed:
   - A heading is found by its whole title, its number and a closing stop set aside: a title
     the reader shortened, or numbered otherwise, is unanchored. A section's number is one or
     two digits or dotted, so a title that opens with a small number of its own, "3 drugs
-    compared", is read as numbered, and "drugs compared" anchors (round 1 of #581).
+    compared", is read as numbered, and "drugs compared" anchors (round 1 of #581); after a
+    letter it needs its point, so "S1 Code lists" keeps "S1" and a quote of "Code lists" is
+    unanchored (round 2).
+  - Only pieces of two words or more count towards the four, and two common words are found
+    in almost any paper too: "of the ... in the" anchors (round 2 of #581). The threshold is
+    Basile's, chosen in round 1.
   - Of what pandoc prints otherwise than it is written, a link, a sub- or superscript and a
     dash are read as Word shows them; LaTeX's tie, `Table~1`, is not, nor a strikeout's
     marks, so a person quoting the printed words across one is unanchored.

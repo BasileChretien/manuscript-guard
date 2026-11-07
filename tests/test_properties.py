@@ -16423,7 +16423,7 @@ def _a_quote_is_not_folded_as_g7_folds_one(patch: pytest.MonkeyPatch) -> None:
 def _markup_is_left_in_a_quote(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import anchoring
 
-    patch.setattr(anchoring, "plain", lambda text: text)
+    patch.setattr(anchoring, "_MARKS", re.compile(r"(?!)"))
 
 
 def _a_quote_of_a_word_or_two_stands(patch: pytest.MonkeyPatch) -> None:

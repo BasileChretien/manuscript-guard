@@ -536,10 +536,11 @@ def _quotes_read(project, document: dict) -> tuple[dict | None, str]:
 
 
 def _texts_read(project, names: list[str], *, every: bool) -> tuple[list[str], bool, str]:
-    """The files `names` under the manuscript directory as a person reads them, without
-    their front matter and comments, and as the build prints them, values and tables in;
-    whether they are LaTeX; and, where the printed text could not be made, why. A LaTeX
-    manuscript is printed as whole documents, which count where the reading read every file."""
+    """The files `names` under the manuscript directory as a person reads them, Markdown
+    without its front matter and comments and LaTeX as it is written, comments in, and as the
+    build prints them, values and tables in; whether they are LaTeX; and, where the printed
+    text could not be made, why. A LaTeX manuscript is printed as whole documents, which
+    count where the reading read every file."""
     from manuscript_guard.build.assemble import strip_front_matter
     from manuscript_guard.panel.prompt import PromptError, gather
     from manuscript_guard.text.masking import blank_comments

@@ -16601,7 +16601,11 @@ Open, recorded as each change landed:
     two digits or dotted, so a title that opens with a small number of its own, "3 drugs
     compared", is read as numbered, and "drugs compared" anchors (round 1 of #581); after a
     letter it needs its point, so "S1 Code lists" keeps "S1" and a quote of "Code lists" is
-    unanchored (round 2); a lettered number is matched with its point or without it.
+    unanchored (round 2); a lettered number is matched with its point or without it. A
+    title that opens with its own `#`, `## #1 ranked drug`, is titled without it, so
+    "ranked drug" anchors as its whole title (the last round of #581).
+  - The property draws a lettered number's point in the heading and not in the quote; the
+    other way round, `## S1 X Y` quoted "S1. X Y", is held by a unit test only.
   - Only pieces of two words or more count towards the four, and two common words are found
     in almost any paper too: "of the ... in the" anchors (round 2 of #581). The threshold is
     Basile's, chosen in round 1.

@@ -3564,6 +3564,166 @@ def quotations(draw: st.DrawFn) -> tuple[str, str]:
     return source, " ".join(words[first : last + 1])
 
 
+# ------------------------------------------------------- what a review finding quotes
+
+#: Each way a review finding quotes the manuscript, and where it is filed (item 1 of the plan
+#: of 2026-11-06): "anchored" where its quote stands in the files its reading read, "unanchored"
+#: where it does not, and None where it quotes nothing, which is unanchored for a model, who
+#: must quote, and in neither list for a person, who may not (D1.2).
+FINDING_QUOTES = {
+    "copied": "anchored",
+    "typed": "anchored",
+    "wrapped": "anchored",
+    "capitals": "anchored",
+    "elided": "anchored",
+    "heading": "anchored",
+    "heading with its hashes": "anchored",
+    "heading with a stop": "anchored",
+    "heading without its number": "anchored",
+    "supplement": "anchored",
+    "file not read": "unanchored",
+    "word changed": "unanchored",
+    "three words": "unanchored",
+    "inside a word": "unanchored",
+    "out of order": "unanchored",
+    "part of a heading": "unanchored",
+    "bold label": "unanchored",
+    "no quote": None,
+    "blank quote": None,
+}
+#: How Markdown and the typographer write a word that a person copying it from the printed
+#: page types otherwise: each `{}` is the word.
+_MARKED_AS = ("*{}*", "**{}**", "`{}`")
+_SET_AS = (
+    "\N{LEFT DOUBLE QUOTATION MARK}{}\N{RIGHT DOUBLE QUOTATION MARK}",
+    "{}\N{RIGHT SINGLE QUOTATION MARK}s", "{}\N{EN DASH}x", "{}\N{EM DASH}y",
+    "e\N{LATIN SMALL LIGATURE FF}ect{}",
+)  # fmt: skip
+
+
+def _as_typed(token: str) -> str:
+    """A token of `_SET_AS` as a person types it from the page: no markup, the keyboard's
+    marks."""
+    return typed(token.replace("*", "").replace("`", ""))
+
+
+@st.composite
+def finding_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, str]]]:
+    """Three manuscript files, `main.md`, `supplementary/S1.md` and `other.md`, each of
+    headings and paragraphs of words of their own (`alpha1`, `bravo2`, ...), in each
+    paragraph one in emphasis or code and one in curly quotes, beside a dash or with a
+    ligature, with drawn white space between words, a section's number before the second
+    heading of each file, and a bold label opening a paragraph; a reading that read the first
+    two; and its findings, one of each way of `FINDING_QUOTES`, in an order drawn each time,
+    each with the way it quotes.
+
+    Every way in each example, so that a rule broken for one of them fails under any seed;
+    every word is the manuscript's once, so that a quote is found where it was taken and
+    nowhere else."""
+    counted = iter(range(1, 100_000))
+
+    def word() -> str:
+        n = next(counted)
+        return f"{TAGS[n % len(TAGS)]}{n}"
+
+    def paragraph() -> list[str]:
+        words = [word() for _ in range(draw(st.integers(10, 14)))]
+        # A word marked up and one set by the typographer among the first five, so that a
+        # quote of the paragraph's opening words holds both.
+        marked, set_as = draw(st.integers(1, 2)), draw(st.integers(3, 4))
+        words[marked] = draw(st.sampled_from(_MARKED_AS)).format(words[marked])
+        words[set_as] = draw(st.sampled_from(_SET_AS)).format(words[set_as])
+        return words
+
+    def joined(words: list[str]) -> str:
+        return "".join(w + draw(st.sampled_from(SOURCE_GAPS)) for w in words[:-1]) + words[-1]
+
+    files: dict[str, str] = {}
+    paragraphs: dict[str, list[list[str]]] = {}
+    headings: dict[str, list[str]] = {}
+    label = f"Label{next(counted)}."
+    for name in ("main.md", "supplementary/S1.md", "other.md"):
+        parts, kept, titles = [], [], []
+        for section in range(draw(st.integers(2, 3))):
+            title = f"{word().capitalize()} {word()}"
+            number = f"{section + 1}.{draw(st.integers(1, 3))} " if section else ""
+            titles.append(title)
+            parts.append(f"{'#' * draw(st.integers(1, 2))} {number}{title}")
+            for _ in range(draw(st.integers(1, 2))):
+                words = paragraph()
+                kept.append(words)
+                parts.append(joined(words))
+        if name == "main.md":
+            parts.append(f"**{label}** " + joined([word() for _ in range(6)]))
+        files[name] = "\n\n".join(parts) + "\n"
+        paragraphs[name], headings[name] = kept, titles
+
+    def taken(name: str, size: int) -> list[str]:
+        words = draw(st.sampled_from(paragraphs[name]))
+        start = draw(st.integers(0, len(words) - size))
+        return words[start : start + size]
+
+    def quote_of(kind: str) -> str | None:
+        main = paragraphs["main.md"]
+        if kind == "copied":
+            return " ".join(taken("main.md", draw(st.integers(4, 8))))
+        if kind == "typed":
+            # From the first word, so that the words marked up and set otherwise are in it.
+            words = draw(st.sampled_from(main))
+            return " ".join(_as_typed(w) for w in words[: draw(st.integers(5, 8))])
+        if kind == "wrapped":
+            return "\n    ".join(taken("main.md", draw(st.integers(4, 8))))
+        if kind == "capitals":
+            return " ".join(taken("main.md", draw(st.integers(4, 8)))).upper()
+        if kind in ("elided", "out of order"):
+            words = draw(st.sampled_from(main))
+            first, last = " ".join(words[:3]), " ".join(words[-3:])
+            gap = draw(st.sampled_from((" ... ", " [...] ", " \N{HORIZONTAL ELLIPSIS} ")))
+            return first + gap + last if kind == "elided" else last + gap + first
+        if kind == "heading":
+            return draw(st.sampled_from(headings["main.md"]))
+        if kind == "heading with its hashes":
+            return "## " + draw(st.sampled_from(headings["supplementary/S1.md"]))
+        if kind == "heading with a stop":
+            return draw(st.sampled_from(headings["main.md"])) + draw(st.sampled_from(".:"))
+        if kind == "heading without its number":
+            # The second heading of each file is numbered, and quoted without its number.
+            return headings["main.md"][1]
+        if kind == "supplement":
+            return " ".join(taken("supplementary/S1.md", draw(st.integers(4, 8))))
+        if kind == "file not read":
+            return " ".join(taken("other.md", draw(st.integers(4, 8))))
+        if kind == "word changed":
+            words = taken("main.md", draw(st.integers(4, 8)))
+            words[draw(st.integers(0, len(words) - 1))] = "unwritten"
+            return " ".join(words)
+        if kind == "three words":
+            return " ".join(taken("main.md", 3))
+        if kind == "inside a word":
+            # Words of the paragraph's end, among which none is set otherwise, the first cut
+            # short: they stand in the text, but not as words of their own.
+            words = draw(st.sampled_from(main))[-5:]
+            return " ".join([words[0][1:], *words[1:]])
+        if kind == "part of a heading":
+            return draw(st.sampled_from(headings["main.md"])).split()[0]
+        if kind == "bold label":
+            return label
+        if kind == "blank quote":
+            return draw(st.sampled_from(("", " ", "\n  ")))
+        return None
+
+    kinds = draw(st.permutations(sorted(FINDING_QUOTES)))
+    findings, ways = [], []
+    for n, kind in enumerate(kinds, start=1):
+        finding: dict[str, Any] = {"id": f"f{n}", "severity": "major", "finding": "Wrong."}
+        quote = quote_of(kind)
+        if quote is not None:
+            finding["quote"] = quote
+        findings.append(finding)
+        ways.append((f"f{n}", kind))
+    return {"files": files, "read": ["main.md", "supplementary/S1.md"], "findings": findings}, ways
+
+
 # ------------------------------------------------------------ passages of cited works
 
 #: How a person writes a cited sentence into `passages.yaml` and means the same sentence:
@@ -10292,6 +10452,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "prose quotations": texts(QUOTED),
     "passages": passage_files().map(lambda drawn: drawn[0]),
     "passage claims": passage_claims().map(lambda drawn: drawn[0]),
+    "finding quotes": finding_quotes().map(lambda drawn: drawn[0]),
     "plan citations": credited_plans().map(lambda drawn: drawn[0]),
     "citations": texts((), ADDRESS_BLOCKS),
     "mask": st.one_of(texts(TERMS), masked_blocks().map(lambda drawn: drawn[0])),

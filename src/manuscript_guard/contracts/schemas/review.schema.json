@@ -43,6 +43,16 @@
       "type": "string",
       "description": "What the paper claims and whether the evidence supports it, in the reviewer's own words."
     },
+    "quotes": {
+      "type": "object",
+      "description": "What was found of the findings' quotes when the reading was filed (`review --run`) or sealed (`review --seal`): the ids of the findings whose quote stands in what the reading read, as whole words, folded as G7 folds a quote, four words or more or a heading's whole title (anchored), and of those whose quote does not, or, from a model, who gave none (unanchored). A person's finding that quotes nothing is in neither. Written by the tool and sealed with the reading where it is given; absent where no check was made, which G11 says. G11 reads this, never the text, and counts the two apart; an unanchored major finding still has to be answered.",
+      "required": ["anchored", "unanchored"],
+      "additionalProperties": false,
+      "properties": {
+        "anchored": { "type": "array", "items": { "type": "string" } },
+        "unanchored": { "type": "array", "items": { "type": "string" } }
+      }
+    },
     "reading_sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$",
@@ -117,6 +127,11 @@
             "description": "major blocks a submission build until it is resolved or overridden."
           },
           "where": { "type": "string" },
+          "quote": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Words of the manuscript the finding is about, copied as they stand, at least four in a row, or, for something missing, the heading of the section where it belongs. The reader's, and sealed with the reading where it is given. Looked for when the reading is filed (`review --run`) or sealed (`review --seal`), in the files whose digests the reading carries, as written and as the build prints them; what was found is `quotes`."
+          },
           "ask": {
             "enum": ["disclosure", "computation", "new-data"],
             "description": "What the finding asks the authors to do, where it asks something: report what they already have (disclosure), compute a new number (computation), or collect new data (new-data). A computation is a new emitted result and a new reconciliation of the Methods with the code, so it is said."

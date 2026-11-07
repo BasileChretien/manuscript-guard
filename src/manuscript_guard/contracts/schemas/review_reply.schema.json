@@ -51,6 +51,10 @@
             "type": ["string", "null"],
             "description": "The section or sentence. It may be left out, and null is read as left out."
           },
+          "quote": {
+            "type": ["string", "null"],
+            "description": "Words copied from the manuscript the reader was sent, at least four in a row, from the place the finding is about; for something missing, the heading of the section where it belongs. When the reading is filed it is looked for in what was sent, and the finding is listed as anchored or unanchored. A reader of the manuscript is asked for one on every finding; one that gives none, null or only white space, is filed with the finding unanchored, never refused."
+          },
           "ask": {
             "enum": ["disclosure", "computation", "new-data", null],
             "description": "Null is read as left out. What the finding asks the authors to do, where it asks something: report what they already have (disclosure), compute a new number (computation), or collect new data (new-data). A computation is a new emitted result and a new reconciliation of the Methods with the code, so it is said."

@@ -306,7 +306,9 @@ def _send(plan, project, yes: bool, environ: Mapping[str, str] | None) -> int:
         if outcome.filed:
             count = f"{outcome.findings} finding{'' if outcome.findings == 1 else 's'}"
             major = f" ({outcome.major} major)" if outcome.major else ""
-            print(f"{who}  filed: {outcome.verdict}, {count}{major}", flush=True)
+            quotes = (f"; {outcome.anchored} anchored, {outcome.unanchored} unanchored"
+                      if outcome.anchored or outcome.unanchored else "")  # fmt: skip
+            print(f"{who}  filed: {outcome.verdict}, {count}{major}{quotes}", flush=True)
         else:
             print(f"{who}  not filed: {outcome.failure}", flush=True)
 

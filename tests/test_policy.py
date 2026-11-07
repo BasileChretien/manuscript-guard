@@ -118,6 +118,17 @@ def test_a_summary_claiming_more_than_the_results_warns_at_every_stage() -> None
         assert (report.findings[0].severity, deferred) == (WARN, {}), stage
 
 
+def test_a_finding_whose_quote_is_not_found_is_a_note_at_every_stage() -> None:
+    """Basile, 2026-11-07 (item 1): a note at every stage, so no stage binds it. The reading
+    is sealed, so its author could never clear a warning; its major findings bind as any
+    others do (`open-major-finding`)."""
+    assert "finding-unanchored" not in BINDS_AT
+    note = Report((Finding(gate="G11", code="finding-unanchored", message="m", severity=INFO),))
+    for stage in STAGES:
+        report, deferred = apply_stage(note, stage)
+        assert (report.findings[0].severity, deferred) == (INFO, {}), stage
+
+
 def test_warnings_are_left_alone() -> None:
     """Deferral is about failures. A warning is already not fatal."""
     warning = Report((Finding(gate="G", code="no-review", message="m", severity=WARN),))

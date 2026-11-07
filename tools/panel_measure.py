@@ -47,6 +47,13 @@ have no real prevalence.
 A finding settled by words is given the one defect whose words it uses, and not another it
 raises in other words. The adjudicator does not see a finding's `where`, so a defect named
 only there ("Methods, DEMO-OBS item 3") cannot be given to it.
+
+Each finding is also anchored or not, as `review --run` files it (item 1 of the plan of
+2026-11-06, `anchoring.py`): its quote stands, four words or more or a heading's title, in
+the manuscript its copy's reader was sent, or it does not, or it quotes nothing. The report
+gives the major findings per reply with their quote found beside all of them, and each
+defect raised and rated major by an anchored finding: the blank reader can quote only the
+title and the abstract.
 """
 
 from __future__ import annotations
@@ -70,6 +77,9 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
+from manuscript_guard.anchoring import Read, read_of, sort_quotes  # noqa: E402
+from manuscript_guard.contracts import load_project  # noqa: E402
+from manuscript_guard.panel.prompt import gather  # noqa: E402
 from manuscript_guard.panel.reply import ReplyRefused, parse_reply  # noqa: E402
 
 RUBRIC = ROOT / "tools" / "data" / "panel-rubric.yaml"
@@ -289,6 +299,16 @@ def matched(finding: dict, rubric: dict) -> list[str]:
 _SCORED = ("adjudicate.yaml", "adjudication-key.yaml", "adjudicate-model.yaml", "check.yaml")
 
 
+def sent_to(work: Path, copy: str, cache: dict[str, Read]) -> Read:
+    """The manuscript as `copy`'s readers were sent it, as `review --run` looks for a
+    finding's quote in it: read again from the copy, which nothing has changed since its
+    requests were written."""
+    if copy not in cache:
+        material = gather(load_project(work / "copies" / copy)[0])
+        cache[copy] = read_of(material.texts.values(), latex=material.latex)
+    return cache[copy]
+
+
 def score(work: Path, rubric: dict, seed: int | None = None) -> dict:
     """Each reply read: its major and minor findings settled by the rubric's words where
     exactly one defect matches, and the rest, with the controls, shuffled into
@@ -304,6 +324,7 @@ def score(work: Path, rubric: dict, seed: int | None = None) -> dict:
     key = _load(work / "key.yaml")
     readings: dict[str, dict] = {}
     blind: list[dict] = []
+    sent: dict[str, Read] = {}
     for ident in key:
         path = work / "replies" / f"{ident}.txt"
         if not path.exists():
@@ -314,12 +335,17 @@ def score(work: Path, rubric: dict, seed: int | None = None) -> dict:
             readings[ident] = {"refused": str(exc), "findings": []}
             continue
         findings = []
+        numbered = [{**finding, "id": str(at)}
+                    for at, finding in enumerate(parsed.get("findings") or [])]  # fmt: skip
+        anchored = set(sort_quotes(numbered, sent_to(work, key[ident]["copy"], sent),
+                                   must_quote=True)["anchored"])  # fmt: skip
         for at, finding in enumerate(parsed.get("findings") or []):
             settled = matched(finding, rubric)
             if finding.get("severity") not in ("major", "minor"):
                 settled = []
             findings.append({"severity": finding.get("severity"),
-                             "defects": settled if len(settled) == 1 else None})  # fmt: skip
+                             "defects": settled if len(settled) == 1 else None,
+                             "anchored": str(at) in anchored})  # fmt: skip
             if len(settled) != 1:
                 text = " ".join(str(finding.get("finding") or "").split())
                 blind.append({"from": [ident, at], "finding": text})
@@ -482,16 +508,16 @@ def tally(readings: dict, key: dict, rubric: dict) -> dict:
 
     by_copy: dict[str, dict] = defaultdict(counts)
     by_reviewer: dict[tuple[str, str], dict] = defaultdict(counts)
+    anchored: dict[str, dict] = defaultdict(lambda: defaultdict(lambda: [0, 0]))
     majors: dict[str, list[int]] = defaultdict(list)
+    anchored_majors: dict[str, list[int]] = defaultdict(list)
     for ident, reading in readings.items():
         where = key[ident]
-        raised: dict[str, str] = {}
-        for finding in reading["findings"]:
-            for defect in finding["defects"] or []:
-                worst = raised.get(defect)
-                raised[defect] = "major" if "major" in (worst, finding["severity"]) \
-                    else finding["severity"]  # fmt: skip
+        raised = _raised(reading["findings"])
+        quoted = _raised([f for f in reading["findings"] if f.get("anchored")])
         majors[where["copy"]].append(sum(f["severity"] == "major" for f in reading["findings"]))
+        anchored_majors[where["copy"]].append(
+            sum(f["severity"] == "major" and bool(f.get("anchored")) for f in reading["findings"]))
         for defect in rubric["defects"]:
             if where["reviewer"] not in defect["asked"]:
                 continue
@@ -500,11 +526,27 @@ def tally(readings: dict, key: dict, rubric: dict) -> dict:
                 total[0] += 1
                 total[1] += defect["id"] in raised
                 total[2] += raised.get(defect["id"]) == "major"
+            found = anchored[where["copy"]][defect["id"]]
+            found[0] += defect["id"] in quoted
+            found[1] += quoted.get(defect["id"]) == "major"
     reviewers: dict[str, dict] = defaultdict(dict)
     for (copy, defect), each in by_reviewer.items():
         reviewers[copy][defect] = {r: list(v) for r, v in sorted(each.items())}
     return {"defects": {c: {d: list(v) for d, v in ds.items()} for c, ds in by_copy.items()},
-            "by_reviewer": dict(reviewers), "majors": dict(majors)}  # fmt: skip
+            "by_reviewer": dict(reviewers), "majors": dict(majors),
+            "anchored": {c: {d: list(v) for d, v in ds.items()} for c, ds in anchored.items()},
+            "anchored_majors": dict(anchored_majors)}  # fmt: skip
+
+
+def _raised(findings: list[dict]) -> dict[str, str]:
+    """Each defect `findings` raise, with the strictest severity it is raised at."""
+    raised: dict[str, str] = {}
+    for finding in findings:
+        for defect in finding["defects"] or []:
+            worst = raised.get(defect)
+            raised[defect] = "major" if "major" in (worst, finding["severity"]) \
+                else finding["severity"]  # fmt: skip
+    return raised
 
 
 def checked(work: Path, rubric: dict) -> tuple[int, int, int, int]:
@@ -551,20 +593,25 @@ def report(work: Path, rubric: dict) -> str:
                  copy in d["seen_in"]}  # fmt: skip
         if copy == "blank":
             shown = {d["id"] for d in rubric["defects"] if "pre-fix" in d["seen_in"]}
-        lines += [f"## {copy}", "", "| Defect | Asked | Raised | Rated major |",
-                  "|---|---|---|---|"]  # fmt: skip
+        lines += [f"## {copy}", "", "| Defect | Asked | Raised | Rated major | Raised, quote "
+                  "found | Rated major, quote found |", "|---|---|---|---|---|---|"]  # fmt: skip
         for defect, (asked, raised, major) in sorted(counted["defects"].get(copy, {}).items()):
             note = "" if defect in shown else " (not in this copy)"
-            lines.append(f"| {defect}{note} | {asked} | {raised} | {major} |")
+            found, found_major = counted["anchored"].get(copy, {}).get(defect, [0, 0])
+            lines.append(f"| {defect}{note} | {asked} | {raised} | {major} | {found} | "
+                         f"{found_major} |")  # fmt: skip
             # A defect several remits ask about, by reviewer: a remit that does not reach it
             # would otherwise hide the one that does.
             each = counted["by_reviewer"][copy][defect]
             if len(each) > 1:
-                lines += [f"| {defect}: {reviewer} | {a} | {r} | {m} |"
+                lines += [f"| {defect}: {reviewer} | {a} | {r} | {m} | | |"
                           for reviewer, (a, r, m) in each.items()]  # fmt: skip
         each = counted["majors"].get(copy, [])
+        quoted = counted["anchored_majors"].get(copy, [])
         lines += ["", f"Major findings per reply: {each} (mean "
-                  f"{sum(each) / len(each) if each else float('nan'):.1f}).", ""]  # fmt: skip
+                  f"{sum(each) / len(each) if each else float('nan'):.1f}); of them with their "
+                  f"quote found in what the reader was sent: {quoted} (mean "
+                  f"{sum(quoted) / len(quoted) if quoted else float('nan'):.1f}).", ""]  # fmt: skip
     text = "\n".join(lines)
     (work / "report.md").write_text(text, encoding="utf-8", newline="\n")
     return text

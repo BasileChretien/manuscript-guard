@@ -442,9 +442,18 @@ def write_design_review(
     return Written(path=path, panel=held)
 
 
+@dataclass(frozen=True)
+class Sealed:
+    """A reading sealed, and what was found of its findings' quotes: empty where none of
+    them quotes anything."""
+
+    path: Path
+    said: str = ""
+
+
 def seal_review(
     project, reviewer: str, *, round_number: int = 1, reading: str | None = None
-) -> Path:
+) -> Sealed:
     """Seal a reading filed by hand, once its findings are written: add `reading_sha256`.
 
     `review --run` seals each reading it files. One started by `review --record` has no
@@ -455,6 +464,12 @@ def seal_review(
     The line is added at the end of the file, and nothing else in it is touched, so the
     reader's comments and wrapping stay as they were. The file is read again with the line
     added, and if it does not then say the same with the seal beside it, nothing is written.
+
+    Where a finding quotes the manuscript, its quote is looked for first, now that the
+    findings are complete, in the files whose digests the reading carries, and what was
+    found is written before the seal as `quotes` (D1.3). Where one of those files has
+    changed since, what was read is not here to read again: no check is made, and `said`
+    says so. A finding that quotes nothing is in neither list, as a person may not quote.
     """
     from manuscript_guard.gates.review import reading_path
 
@@ -463,7 +478,7 @@ def seal_review(
     path = reading_path(project, round_number, reviewer, reading)
     if not path.exists():
         raise RecordError(f"there is no {path.name} in round {round_number} to seal")
-    return _seal(path, "review")
+    return _seal(path, "review", lambda document: _quotes_read(project, document))
 
 
 def seal_design_review(
@@ -478,11 +493,82 @@ def seal_design_review(
     path = design_record_path(project, round_number, reviewer, reading)
     if not path.exists():
         raise RecordError(f"there is no {path.name} in design round {round_number} to seal")
-    return _seal(path, "design-review")
+    return _seal(path, "design-review").path
 
 
-def _seal(path: Path, schema: str) -> Path:
-    """Add `reading_sha256` to the reading at `path`, which fits `schema`."""
+def _quotes_read(project, document: dict) -> tuple[dict | None, str]:
+    """What was found of a hand-filed reading's quotes in the files it carries the digests
+    of, and the line that says it; None and why where no check could be made, and None and
+    nothing where no finding quotes anything."""
+    from manuscript_guard.anchoring import quoted, read_of, sort_quotes
+    from manuscript_guard.gates.review import file_digests, manuscript_digest
+
+    findings = document.get("findings") or []
+    if not any(quoted(finding) for finding in findings):
+        return None, ""
+    carried = document.get("file_sha256")
+    current = file_digests(project)
+    if isinstance(carried, dict) and carried:
+        names = sorted(carried)
+        changed = [name for name in names if current.get(name) != carried[name]]
+    else:
+        names = sorted(current)
+        whole = document.get("manuscript_sha256") == manuscript_digest(project)
+        changed = [] if whole else ["the manuscript"]
+    if changed:
+        return None, (
+            f"quotes not looked for: {', '.join(changed)} changed since the reading was "
+            "filed, so what it read is not here to read again. G11 counts its findings as "
+            "not checked"
+        )
+    texts, latex, why = _texts_read(project, names, every=set(names) == set(current))
+    quotes = sort_quotes(findings, read_of(texts, latex=latex), must_quote=False)
+    missed = quotes["unanchored"]
+    said = (
+        f"quotes: {len(quotes['anchored'])} found in what the reading read, {len(missed)} not"
+        + (f" ({', '.join(missed)})" if missed else "")
+        + why
+    )
+    return quotes, said
+
+
+def _texts_read(project, names: list[str], *, every: bool) -> tuple[list[str], bool, str]:
+    """The files `names` under the manuscript directory as a person reads them, without
+    their front matter and comments, and as the build prints them, values and tables in;
+    whether they are LaTeX; and, where the printed text could not be made, why. A LaTeX
+    manuscript is printed as whole documents, which count where the reading read every file."""
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.panel.prompt import PromptError, gather
+    from manuscript_guard.text.masking import blank_comments
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    root = project.path("manuscript")
+    latex = manuscript_format(root) == LATEX
+    texts = []
+    for name in names:
+        try:
+            text = (root / name).read_bytes().decode("utf-8", errors="replace")
+        except OSError:
+            continue
+        text = text.replace("\r\n", "\n")
+        texts.append(text if latex else blank_comments(strip_front_matter(text)[0]))
+    try:
+        printed = gather(project).texts
+    except PromptError as exc:
+        return texts, latex, (
+            f"; the manuscript as the build prints it could not be made ({exc}), so the "
+            "quotes were looked for as the files are written only"
+        )
+    if latex:
+        texts += list(printed.values()) if every else []
+    else:
+        texts += [printed[name] for name in names if name in printed]
+    return texts, latex, ""
+
+
+def _seal(path: Path, schema: str, quotes_check=None) -> Sealed:
+    """Add `reading_sha256` to the reading at `path`, which fits `schema`, and before it what
+    `quotes_check` finds of its quotes, where it is given and finds anything."""
     import yaml
 
     from manuscript_guard.contracts._schema import ContractError, read_structured, validate
@@ -503,16 +589,29 @@ def _seal(path: Path, schema: str) -> Path:
             f"{path.name} is sealed already. A seal is written once: written again after an "
             "edit, it would hide the edit"
         )
+    if "quotes" in document:
+        raise RecordError(
+            f"{path.name} holds `quotes`, which is what the seal finds of the findings' quotes "
+            "and is the tool's to write. Take it out and seal again"
+        )
 
-    digest = reading_digest(document)
+    quotes, said = (None, "") if quotes_check is None else quotes_check(document)
+    added = {} if quotes is None else {"quotes": quotes}
+    digest = reading_digest({**document, **added})
     data = path.read_bytes()
     newline = b"\r\n" if b"\r\n" in data else b"\n"
     if data and not data.endswith(b"\n"):
         data += newline
-    sealed = data + b"reading_sha256: " + digest.encode("ascii") + newline
+    block = b""
+    if quotes is not None:
+        dumped = yaml.safe_dump(added, sort_keys=False, allow_unicode=True,
+                                default_flow_style=None, width=10**6)  # fmt: skip
+        block = dumped.encode("utf-8").replace(b"\n", newline)
+    sealed = data + block + b"reading_sha256: " + digest.encode("ascii") + newline
     try:
         same = yaml.safe_load(sealed.decode("utf-8")) == {
             **yaml.safe_load(path.read_bytes().decode("utf-8")),
+            **added,
             "reading_sha256": digest,
         }
     except (yaml.YAMLError, UnicodeDecodeError, TypeError):
@@ -523,7 +622,7 @@ def _seal(path: Path, schema: str) -> Path:
             "Write it as a block of `key: value` lines, as `review --record` does"
         )
     path.write_bytes(sealed)
-    return path
+    return Sealed(path, said)
 
 
 def write_figure_review(

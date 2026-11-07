@@ -155,7 +155,7 @@ def document_digest(project: Project) -> str:
 READER_FINDING_FIELDS = ("id", "severity", "where", "finding")
 #: The reader's fields a finding may leave out, sealed only where it has them, so that a
 #: record sealed before a finding could have one keeps its seal.
-SEALED_WHERE_GIVEN = ("ask", "edits")
+SEALED_WHERE_GIVEN = ("ask", "edits", "quote")
 
 
 def reading_digest(document: dict) -> str:
@@ -166,7 +166,9 @@ def reading_digest(document: dict) -> str:
     a filed reading could be made to stop binding by turning its `major` into `minor`, by
     rewording it or by deleting it, with nothing in `check` to say so. The answers are left
     out, so answering a finding is not an edit of the reading. So are the digests of what
-    was read: `file_sha256` is trimmed by hand when a reader read only some files.
+    was read: `file_sha256` is trimmed by hand when a reader read only some files. What was
+    found of the findings' quotes when the reading was filed (`quotes`) is in it where it is
+    given: a finding made anchored by hand is an edit of the reading.
 
     Serialised as `checking/items.py` serialises an item, so the same words digest the same
     on any machine whatever the YAML around them looks like.
@@ -185,6 +187,10 @@ def reading_digest(document: dict) -> str:
             for finding in document.get("findings") or []
         ],
     }
+    if "quotes" in document:
+        # Only where it is given, so that every record sealed before quotes were checked
+        # keeps its seal (D1.4).
+        core["quotes"] = document["quotes"]
     canonical = json.dumps(core, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -278,6 +284,8 @@ class Open:
     text: str
     #: What the finding asks the authors to do, where the reader said.
     ask: str | None = None
+    #: Whether its quote was found in none of what its reader read, or a model gave none.
+    unanchored: bool = False
 
 
 @dataclass(frozen=True)
@@ -531,6 +539,10 @@ class _Round:
     unresolved: tuple[Open, ...]
     #: Readings that were read: one for each reviewer, more where several read a remit.
     readings: int = 0
+    #: Findings whose quote was found in what their reader read, and findings whose quote
+    #: was not, as the readings' `quotes` say.
+    anchored: int = 0
+    unanchored: int = 0
 
     @property
     def current(self) -> bool:
@@ -633,7 +645,7 @@ def check_review(project: Project, *, submission: bool = False) -> Report:
     # remit nobody answered, whenever it was.
     latest = max((r.number for r in checked if r.current), default=0)
     complete_rounds = 0
-    readings = 0
+    readings = anchored = unanchored = 0
     open_major: list[Open] = []
     for round_ in checked:
         superseded = round_.outdated and round_.number < latest
@@ -641,6 +653,8 @@ def check_review(project: Project, *, submission: bool = False) -> Report:
         complete_rounds += int(round_.current or (superseded and not round_.unfinished))
         open_major.extend(round_.unresolved)
         readings += round_.readings
+        anchored += round_.anchored
+        unanchored += round_.unanchored
 
     if complete_rounds < required:
         report = report.with_findings(
@@ -663,9 +677,16 @@ def check_review(project: Project, *, submission: bool = False) -> Report:
                 code="open-major-finding",
                 severity=severity,
                 message=f"{item.reviewer} {item.finding_id}"
+                + (" [unanchored]" if item.unanchored else "")
                 + (f" (asks for {_ASKS[item.ask]})" if item.ask in _ASKS else "")
                 + f": {item.text[:120]}",
-                hint="record what was done in `resolution`, or why it was not in `overridden`",
+                hint="record what was done in `resolution`, or why it was not in `overridden`"
+                + (
+                    ". Its quote is not in what its reader read: weigh it so, and answer it "
+                    "as any other"
+                    if item.unanchored
+                    else ""
+                ),
             )
         )
 
@@ -674,6 +695,8 @@ def check_review(project: Project, *, submission: bool = False) -> Report:
         review_rounds_complete=complete_rounds,
         review_open_major=len(open_major),
         review_readings=readings,
+        review_findings_anchored=anchored,
+        review_findings_unanchored=unanchored,
     )
 
 
@@ -694,7 +717,7 @@ def _check_round(
     # coverage for the round. Otherwise coverage is the union of what the records listed.
     covered: set[str] = set()
     read_everything = False
-    records = 0
+    records = anchored = unanchored = 0
     # Who made each reading: a model's provider from its provenance, or None for a person.
     providers: list[str | None] = []
 
@@ -744,13 +767,18 @@ def _check_round(
             report = report.merge(_unseen(reading.path, document, reviewer, number, who))
             sent = document.get("provenance")
             providers.append(sent.get("provider") if isinstance(sent, dict) else None)
+            found, missed = quotes_of(document) or ([], [])
+            anchored += len(found)
+            unanchored += len(missed)
+            report = report.merge(_unanchored(reading.path, document, missed, number, who))
 
             # Every reading's major findings bind, whoever else read the remit: another
-            # reader's clean reading does not answer them.
+            # reader's clean reading does not answer them, and nor does a quote not found.
             for finding in document.get("findings", []):
                 if finding["severity"] == "major" and not _answered(finding):
                     unresolved.append(
-                        Open(who, finding["id"], finding["finding"], finding.get("ask"))
+                        Open(who, finding["id"], finding["finding"], finding.get("ask"),
+                             finding["id"] in missed)  # fmt: skip
                     )
 
     # What makes per-file scoping honest. A record listing the files it read is judged on
@@ -788,7 +816,59 @@ def _check_round(
                 "(review.models in paper.yaml), or by a person",
             )
         )
-    return _Round(number, report, unfinished, behind, tuple(unresolved), records)
+    return _Round(
+        number, report, unfinished, behind, tuple(unresolved), records, anchored, unanchored
+    )
+
+
+def quotes_of(document: dict) -> tuple[list[str], list[str]] | None:
+    """The findings of a reading whose quote stands in what its reader read, and those whose
+    quote does not, as its `quotes` say: the check made when it was filed (`anchoring.py`).
+    The gate never reads the text again. None where no check was made, which is every
+    reading filed before quotes were checked (D1.4), and where the reading is not sealed, or
+    no longer reads as sealed: the lists are the tool's, and only the seal says that they
+    still are. Ids of no finding of the reading are passed over."""
+    quotes = document.get("quotes")
+    sealed = document.get("reading_sha256")
+    if not isinstance(quotes, dict) or sealed is None or reading_digest(document) != sealed:
+        return None
+    ids = {str(finding["id"]) for finding in document.get("findings") or []}
+
+    def listed(key: str) -> list[str]:
+        given = quotes.get(key)
+        return [one for one in dict.fromkeys(map(str, given)) if one in ids] if isinstance(
+            given, list) else []  # fmt: skip
+
+    found = listed("anchored")
+    return found, [one for one in listed("unanchored") if one not in found]
+
+
+def _unanchored(path: Path, document: dict, missed: list[str], number: int, who: str) -> Report:
+    """A note where findings of a reading quote words that are not in what it read, or, from
+    a model, quote nothing: a finding raised is no evidence the paper was read (DESIGN.md,
+    "What the panel finds of the defects we know"). A note at every stage (Basile,
+    2026-11-07): the reading is sealed, so the author could never clear a warning, and its
+    major findings still bind as any others do (D1.1)."""
+    if not missed:
+        return Report()
+    total = len(document.get("findings") or [])
+    return Report(
+        (
+            Finding(
+                gate=GATE,
+                code="finding-unanchored",
+                severity=INFO,
+                message=f"round {number}: {len(missed)} of {total} finding"
+                f"{'' if total == 1 else 's'} of {who} quote nothing found in what it read "
+                f"({', '.join(missed)})",
+                path=path,
+                hint="each finding quotes the words it is about, or the heading where what is "
+                "missing belongs; these quotes were not found when the reading was filed. A "
+                "finding raised is no evidence that the paper was read, so weigh these so, "
+                "and answer a major one as any other",
+            ),
+        )
+    )
 
 
 def _unseen(path: Path, document: dict, reviewer: dict, number: int, who: str) -> Report:
@@ -857,9 +937,10 @@ def _check_seal(path: Path, document: dict, number: int, who: str, severity: str
             message=f"round {number}: {who}'s reading has been changed since it was sealed",
             path=path,
             hint="the seal covers what the reader wrote: the verdict, the summary, the "
-            "rejection tests, and each finding's id, severity, where, finding and ask. Put them "
-            "back as they were (`git diff` shows what changed), and answer a finding in "
-            "`resolution:` or `overridden:` instead",
+            "rejection tests, and each finding's id, severity, where, quote, finding and ask, "
+            "and the quotes found when it was filed. Put them back as they were (`git diff` "
+            "shows what changed), and answer a finding in `resolution:` or `overridden:` "
+            "instead",
         )
     )
 
@@ -872,6 +953,10 @@ class ReadingSummary:
     findings: int
     major: int
     open_major: int
+    #: Of its findings, how many quote words of what it read and how many do not, where the
+    #: quotes were checked when it was filed; None where they were not.
+    anchored: int | None = None
+    unanchored: int | None = None
 
 
 @dataclass(frozen=True)
@@ -914,6 +999,7 @@ def round_summaries(project: Project) -> list[RoundSummary]:
                     for finding in reading.document.get("findings", [])
                     if finding["severity"] == "major"
                 ]
+                quotes = quotes_of(reading.document)
                 readings.append(
                     ReadingSummary(
                         reviewer=reviewer["id"],
@@ -922,6 +1008,8 @@ def round_summaries(project: Project) -> list[RoundSummary]:
                         findings=len(reading.document.get("findings", [])),
                         major=len(majors),
                         open_major=sum(1 for finding in majors if not _answered(finding)),
+                        anchored=None if quotes is None else len(quotes[0]),
+                        unanchored=None if quotes is None else len(quotes[1]),
                     )
                 )
         summaries.append(RoundSummary(number, path, tuple(readings)))

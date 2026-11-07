@@ -280,7 +280,10 @@ words the contract does not name ("possibly", "seems", "no", "never", "non-signi
 "in this sample"); and the rules for reading them are this project's (whole words, a
 capital only where a sentence opens, a word in a compound or a participle after an article
 not read). The contract's other parts, on null findings and on asking the author before a
-claim is moved, are not used; the file's own comments say how each word is read.
+claim is moved, are not used; the file's own comments say how each word is read. The lists
+under `interval`, which G8 reads in a sentence that prints a confidence interval
+(`stats/interval_words.py`), were added on 2026-11-07 and are this project's own, not the
+contract's.
 
 ## The Oxford levels of evidence
 

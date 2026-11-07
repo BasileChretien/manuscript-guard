@@ -13648,13 +13648,116 @@ def test_an_audited_paper_s_p_that_does_not_follow_is_listed_apart(tmp_path: Pat
         # the word "difference".
         ("The odds ratio was 2.6 (95% CI 2.1 to 2.3).", ["interval-excludes-estimate"]),
         ("The mean difference was 1.4 (95% CI 0.2 to 0.9).", ["interval-excludes-estimate"]),
-        ("No difference in mortality, HR 0.83 (95% CI 0.65 to 1.05), P = 0.13.", []),
+        # Its P fits, and "No difference" leaves a 35% lower hazard in the interval: the
+        # note of the words below.
+        ("No difference in mortality, HR 0.83 (95% CI 0.65 to 1.05), P = 0.13.",
+         ["no-effect-from-interval"]),
     ],
 )  # fmt: skip
 def test_an_interval_that_does_not_fit_its_estimate_or_its_p_is_found(
     project: Path, sentence: str, found: list[str]
 ) -> None:
     assert _recomputed_codes(project, sentence) == found
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        ("Use of the drug increased the risk of liver injury (HR 1.31, 95% CI 0.92 to 1.86).",
+         ["claim-beyond-interval"]),
+        ("Use was associated with a higher risk of liver injury (OR 1.31, 95% CI 0.92 to "
+         "1.86), P = 0.13.", ["claim-beyond-interval"]),
+        ("The drug reduced the score (MD \N{MINUS SIGN}0.4, 95% CI \N{MINUS SIGN}0.9 to 0.1).",
+         ["claim-beyond-interval"]),
+        ("Exposure was significantly associated with liver injury (OR 1.31, 95% CI 0.92 to "
+         "1.86).", ["claim-beyond-interval", "significance-beyond-interval"]),
+        ("The association was statistically significant (OR 1.31, 95% CI 0.92 to 1.86).",
+         ["significance-beyond-interval"]),
+        ("There was no difference in mortality (HR 1.01, 95% CI 0.60 to 1.70).",
+         ["no-effect-from-interval"]),
+        ("Use did not affect mortality (HR 1.39, 95% CI 0.80 to 2.40).",
+         ["no-effect-from-interval"]),
+        # What the words say is what the interval shows, or they speak of the test.
+        ("There was no significant difference in mortality (HR 1.01, 95% CI 0.60 to 1.70).",
+         []),
+        ("Use did not affect mortality (HR 1.06, 95% CI 0.80 to 1.40).", []),
+        ("Use may have increased the risk (HR 1.31, 95% CI 0.92 to 1.86).", []),
+        ("There was a trend towards a higher risk (HR 1.31, 95% CI 0.92 to 1.86).", []),
+        ("Use increased the risk (HR 1.44, 95% CI 1.12 to 1.86).", []),
+        ("In patients with reduced renal function, the hazard ratio was 1.31 (95% CI 0.92 to "
+         "1.86).", []),
+        ("Clinically significant bleeding had a hazard ratio of 1.31 (95% CI 0.92 to 1.86).",
+         []),
+        # Round 1 of #572: a difference called not significant, a significance said of
+        # another test, a method's name, a model's term and a heading over the sentence.
+        ("The risk of bleeding was higher with the drug, but the difference was not "
+         "statistically significant (HR 1.31, 95% CI 0.92 to 1.86).", []),
+        ("The test for interaction was significant (P = 0.02); in women the hazard ratio was "
+         "1.10 (95% CI 0.80 to 1.50).", []),
+        ("Using causal inference methods, the hazard ratio was 1.20 (95% CI 0.90 to 1.60).",
+         []),
+        ("With age as a predictor, the hazard ratio for death was 1.20 (95% CI 0.90 to 1.60).",
+         []),
+        ("## Increased risk in older patients\nThe hazard ratio for death was 1.20 (95% CI 0.90 "
+         "to 1.60).", []),
+        ("Age was an independent predictor of death (HR 1.20, 95% CI 0.90 to 1.60).",
+         ["claim-beyond-interval"]),
+        # Round 2: a word of another test names one only beside a P or the word "test".
+        ("Drug X increased the risk of bleeding through an interaction with warfarin (HR "
+         "1.40, 95% CI 0.95 to 2.06).", ["claim-beyond-interval"]),
+        ("Treatment improved global cognition (MD 1.2, 95% CI -0.3 to 2.7).",
+         ["claim-beyond-interval"]),
+        ("The interaction with sex was significant (P-interaction = 0.02); in women the "
+         "hazard ratio was 1.10 (95% CI 0.80 to 1.50).", []),
+        ("Formal testing for interaction was significant; in women the hazard ratio was 1.10 "
+         "(95% CI 0.80 to 1.50).", []),
+        # Not judged: an interval that is not the plain one, one at 99%, a sentence whose
+        # words may be about its other estimate, and a difference for "no effect", whose
+        # scale nothing declares.
+        ("Use increased the risk (HR 1.31, 95% profile-likelihood CI 0.92 to 1.86).", []),
+        ("Users had a higher risk (HR 1.31, 99% CI 0.92 to 1.86).", []),
+        ("Use increased the risk in men (HR 1.9, 95% CI 1.2 to 3.0) and in women (HR 1.1, "
+         "95% CI 0.8 to 1.5), P = 0.40 for interaction.", []),
+        ("The scores did not differ (MD 0.4, 95% CI -0.9 to 1.7).", []),
+    ],
+)  # fmt: skip
+def test_words_that_say_more_than_their_interval_are_found(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    """Item 9 of the borrowed checks (Basile, 2026-11-06, D9.1 and D9.2): an effect stated
+    with no hedge, or the estimate called significant, beside an interval that includes its
+    null, is a warning; "no effect" beside a ratio's interval that does not exclude ratios
+    beyond 1.5 or below 1/1.5 is a note."""
+    assert _recomputed_codes(project, sentence) == found
+    severities = {f.code: f.severity for f in _recomputed(project).findings}
+    assert all(severities[code] == ("info" if code == "no-effect-from-interval" else "warn")
+               for code in found), severities  # fmt: skip
+
+
+def test_words_beyond_a_bound_interval_are_found_in_the_supplement_and_in_latex(
+    project: Path, tmp_path: Path
+) -> None:
+    """The values put in, as G8 reads the rest: a supplement's sentence, and a LaTeX
+    manuscript's, each bound."""
+    _emitted(project, crude__or="1.31", adjusted__low="0.92", adjusted__high="1.86")
+    said = ("Use increased the risk of liver injury (OR {{results.crude.or}}, 95% CI "
+            "{{results.adjusted.low}} to {{results.adjusted.high}}).")  # fmt: skip
+    supplement = project / "manuscript" / "supplementary" / "s1.md"
+    supplement.parent.mkdir(exist_ok=True)
+    supplement.write_text(f"# Supplementary results\n\n{said}\n", encoding="utf-8")
+    found = [f for f in _recomputed(project).findings if f.code == "claim-beyond-interval"]
+    assert [(f.path.name, f.line) for f in found] == [("s1.md", 3)], found
+    assert "OR 1.31 (95% CI 0.92 to 1.86) includes 1" in found[0].message
+    supplement.unlink()
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    main = project / "manuscript" / "main.tex"
+    tex = said.replace("{{results.", "\\mg{results.").replace("}}", "}").replace("%", "\\%")
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text.replace("\\end{document}", f"{tex}\n\n\\end{{document}}"), "utf-8")
+    found = [f for f in _recomputed(project).findings if f.code == "claim-beyond-interval"]
+    assert [f.path.name for f in found] == ["main.tex"], found
+    assert "OR 1.31 (95% CI 0.92 to 1.86) includes 1" in found[0].message
 
 
 def test_an_estimate_bound_from_one_analysis_and_its_interval_from_another_is_found(

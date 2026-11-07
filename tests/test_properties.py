@@ -6783,7 +6783,9 @@ def test_a_summary_is_warned_only_where_it_claims_more_than_every_results_senten
     of the claim lists is not compared, a summary with none is held only to the hedges and
     limits it dropped, and a sentence binding two keys to the Results sentences of both. A
     Results sentence that gives another result too is held only to a word of the ladder the
-    summary moves up (round 1 of #573). The supplement's Results count, under each way of
+    summary moves up (round 1 of #573), and one of those that holds no word of the ladder is
+    left out, keeping back no warning another Results sentence gives (rounds 2 and 3). The
+    supplement's Results count, under each way of
     heading them, and its other sections do not; a key is held to the sentences that bind a
     key declared the same quantity."""
     text, supplement, same, warned = drawn

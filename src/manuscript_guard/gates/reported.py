@@ -509,9 +509,10 @@ def _markdown_read(root: Path, walk: Walk) -> Read:
 def _claimed(root: Path, given: list[tuple[Path, Given]], stated: list[tuple[Path, Stated]],
              same: Callable[[str], str]) -> list[Finding]:  # fmt: skip
     """`summary-claim-stronger` for each sentence of a summary that claims more than every
-    Results sentence that binds one of its keys, or a key declared the same quantity, and
-    holds a word of the claim lists (`claims_more`); each Results sentence read with whether
-    the summary sentence gives every result it binds."""
+    Results sentence that binds one of its keys, or a key declared the same quantity, and is
+    compared (`_compared`: it holds a word of the claim lists, and a word of the ladder where
+    it binds a result the summary sentence does not give); each read with whether the summary
+    sentence gives every result it binds (`claims_more`)."""
     by_quantity: dict[str, list[tuple[Path, Stated]]] = {}
     bound_in: dict[tuple[Path, str], set[str]] = {}
     for path, one in stated:

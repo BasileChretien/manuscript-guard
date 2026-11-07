@@ -11,9 +11,11 @@ filed by hand carries, as they are written and as the build prints them.
 **Found as G7 finds a passage in a work's source** (`gates.quotations.words_in`): folded as
 G7 folds a quote, its white space, curly quotes, dashes and ligatures, as whole words, and
 piece by piece in order where words are left out. Markdown's marks of emphasis, code and
-tables are no words, and come out of both sides first. **A quote holds at least
-`QUOTE_WORDS` words, or is the whole title of a heading there**: a word or two is found in
-any paper, and the example's abstract has a bold "Methods." in its first paragraph.
+tables are no words, and come out of both sides first, with what pandoc prints otherwise
+than it is written: a link's text, a sub- or superscript and its dashes. **A quote holds at
+least `QUOTE_WORDS` words, or is the whole title of a heading there**: a word or two is
+found in any paper, and the example's abstract has a bold "Methods." in its first
+paragraph. Of a quote with words left out, only the pieces of two words or more count.
 
 What is found is kept in the record, `quotes: {anchored: [...], unanchored: [...]}`, and
 sealed with what the reader wrote. G11 reads that, and never the text: by the time `check`
@@ -39,16 +41,30 @@ _MARKS = re.compile(r"[*_`]")
 _CELLS = re.compile(r"\|")
 #: The hashes that open a heading's line.
 _HASHES = re.compile(r"(?m)^[ \t]{0,3}#+[ \t]*")
-#: A section's number before its title, "2.", "2.1" or "S1.", which a reader may leave out.
-_NUMBER = re.compile(r"^(?:[a-z]?\d+(?:\.\d+)*\.?)\s+")
+#: A Markdown link, which pandoc prints as its text, wrapped over lines or not.
+_LINK = re.compile(r"\[([^\]]*)\]\([^)\s]*\)")
+#: Pandoc's subscript and superscript, `H~2~O` and `10^3^`, printed as what they hold.
+_SCRIPTS = re.compile(r"([~^])([^\s~^]+)\1")
+#: Pandoc's dashes, `--` and `---`, which Word prints as an en and an em dash, and which
+#: `normalise` folds to one hyphen.
+_DASHES = re.compile(r"-{2,}")
+#: A section's number before its title, "2.", "2.1", "12" or "S1.", which a reader may
+#: leave out: one or two digits, or dotted, so that a year opening a title stays in it
+#: (round 1 of #581: "2020 cohort" was titled "cohort").
+_NUMBER = re.compile(r"^(?:[a-z]?\d{1,2}(?:\.\d+)*\.?|\d+(?:\.\d+)+\.?)\s+")
+#: The fewest words a piece of a quote with words left out holds for it to count.
+_PIECE_WORDS = 2
 #: What may close a heading or a quote of one, "Methods." or "Methods:".
 _CLOSING = " .:;,"
 
 
 def plain(text: str) -> str:
     """`text` without the marks Markdown sets around words: emphasis, code, a table's cell
-    walls and a heading's hashes."""
-    return _CELLS.sub(" ", _MARKS.sub("", _HASHES.sub("", text)))
+    walls and a heading's hashes; a link as its text, a sub- or superscript as what it
+    holds, and a pandoc dash as one hyphen, as Word prints them (round 1 of #581)."""
+    text = _LINK.sub(r"\1", _HASHES.sub("", text))
+    text = _DASHES.sub("-", _SCRIPTS.sub(r"\2", text))
+    return _CELLS.sub(" ", _MARKS.sub("", text))
 
 
 def _title(text: str) -> str:
@@ -61,11 +77,15 @@ def _title(text: str) -> str:
 def words(quote: str) -> int:
     """How many words a quote holds, less what marks words left out: a word is a run between
     spaces with a letter or a digit in it, a run of a script written without spaces counted
-    as G7 counts the words beside a value (`literature.sources._words_of`)."""
-    kept = _ELIDED.sub(" ", _SIC.sub(" ", plain(quote)))
-    return sum(
-        len(_words_of(piece)) or any(char.isdigit() for char in piece) for piece in kept.split()
-    )
+    as G7 counts the words beside a value (`literature.sources._words_of`). Where words are
+    left out, only the pieces of two words or more count: a word between elisions is found
+    in almost any paper (round 1 of #581; Basile, 2026-11-07)."""
+    pieces = _ELIDED.split(_SIC.sub(" ", plain(quote)))
+    counted = [
+        sum(len(_words_of(run)) or any(char.isdigit() for char in run) for run in piece.split())
+        for piece in pieces
+    ]
+    return sum(count for count in counted if count >= _PIECE_WORDS)
 
 
 @dataclass(frozen=True)

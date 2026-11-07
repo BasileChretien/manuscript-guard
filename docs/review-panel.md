@@ -125,7 +125,9 @@ each quote is looked for in what the reader read: by `review --run` in the manus
 each model was sent it, its values printed, and by `review --seal` in the files whose
 digests the reading carries, as they are written and as the build prints them. It is found
 as G7 finds a quote in a source, whatever the white space, curly quotes, dashes and
-Markdown's marks, as whole words and in order where words are left out with "...". What was
+Markdown's marks, a link read as its text, as whole words and in order where words are left
+out with "..."; a piece between elisions counts towards the four words only with two words
+or more. What was
 found is kept as `quotes`, sealed with the reading. `check` and `review` count the anchored
 and unanchored findings apart, and a reading with unanchored findings is a note
 (`finding-unanchored`) at every stage; an unanchored major finding is still to be answered.

@@ -6227,11 +6227,16 @@ folded by `normalise`, as whole words, so "nalysed" is no part of "analysed", an
 piece in order where words are left out with "...". Markdown's marks of emphasis and code,
 a table's cell walls and a heading's hashes are no words, and are taken out of both sides
 first (`anchoring.plain`), since a model is sent the Markdown and a person copies from
-Word. **A quote anchors with four words or more, or as a heading's whole title** (Basile,
-2026-11-07): a word or two is found in any paper, and the example's abstract opens its
-paragraphs with a bold "Methods." that is no heading. A heading is matched with its number
-("2.1") and a closing stop set aside; a word of it is not its title. Words of a script
-written without spaces are counted as G7 counts the words beside a value.
+Word; and what pandoc prints otherwise than it is written is read as Word shows it, a
+link as its text, `H~2~O` and `10^3^` as what they hold, `--` and `---` as a dash (round 1
+of #581). **A quote anchors with four words or more, or as a heading's whole title**
+(Basile, 2026-11-07): a word or two is found in any paper, and the example's abstract opens
+its paragraphs with a bold "Methods." that is no heading. Of a quote with words left out,
+only the pieces of two words or more count towards the four, since one word between
+elisions is found in almost any paper too (Basile, by question box, round 1 of #581). A
+heading is matched with its number ("2.1", "12", "S1.") and a closing stop set aside, a
+year opening a title being part of it; a word of a heading is not its title. Words of a
+script written without spaces are counted as G7 counts the words beside a value.
 
 **What was found is kept**, as `quotes: {anchored: [...], unanchored: [...]}` at the end of
 the record, before the seal, and sealed with it where given: a finding made anchored by
@@ -16592,7 +16597,12 @@ Open, recorded as each change landed:
   - A LaTeX manuscript is printed as whole documents, so a hand-filed reading that carries
     some of its files is held to their source only.
   - A heading is found by its whole title, its number and a closing stop set aside: a title
-    the reader shortened, or numbered otherwise, is unanchored.
+    the reader shortened, or numbered otherwise, is unanchored. A section's number is one or
+    two digits or dotted, so a title that opens with a small number of its own, "3 drugs
+    compared", is read as numbered, and "drugs compared" anchors (round 1 of #581).
+  - Of what pandoc prints otherwise than it is written, a link, a sub- or superscript and a
+    dash are read as Word shows them; LaTeX's tie, `Table~1`, is not, nor a strikeout's
+    marks, so a person quoting the printed words across one is unanchored.
   - A model's reading filed by hand, by an agent reading a remit itself (route A), is read
     as a person's: a finding in it that quotes nothing is in neither list. The skill tells
     such a reader to quote.

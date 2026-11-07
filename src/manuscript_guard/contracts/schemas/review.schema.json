@@ -45,7 +45,7 @@
     },
     "quotes": {
       "type": "object",
-      "description": "What was found of the findings' quotes when the reading was filed (`review --run`) or sealed (`review --seal`): the ids of the findings whose quote stands in what the reading read, as whole words, folded as G7 folds a quote, four words or more or a heading's whole title (anchored), and of those whose quote does not, or, from a model, who gave none (unanchored). A person's finding that quotes nothing is in neither. Written by the tool and sealed with the reading where it is given; absent where no check was made, which G11 says. G11 reads this, never the text, and counts the two apart; an unanchored major finding still has to be answered.",
+      "description": "What was found of the findings' quotes when the reading was filed (`review --run`) or sealed (`review --seal`): the ids of the findings whose quote stands in what the reading read, as whole words, folded as G7 folds a quote, four words or more or a heading's whole title (anchored), and of those whose quote does not, or, from a model, who gave none (unanchored). A person's finding that quotes nothing is in neither. Written by the tool and sealed with the reading where it is given; absent where no check was made, and then none of the reading's findings is counted either way, and `review --seal` says why it made none. G11 reads this, never the text, and counts the two apart; an unanchored major finding still has to be answered.",
       "required": ["anchored", "unanchored"],
       "additionalProperties": false,
       "properties": {

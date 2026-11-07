@@ -7514,11 +7514,13 @@ def test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_el
     drawn: tuple[dict[str, Any], list[tuple[str, str]]],
 ) -> None:
     """Item 1 of the plan of 2026-11-06: a finding's quote anchors it where its words stand,
-    as whole words, in a file its reading read, folded as G7 folds a quote, markup out and
-    pieces in order where words are left out, and it holds four words or more or is a
-    heading's whole title, its hashes, its number and a closing stop aside (Basile,
-    2026-11-07). Words of a file not read, a word changed, three words, the inside of a
-    word, pieces out of order, part of a heading and a bold label do not. A finding that
+    as whole words, in a file its reading read, folded as G7 folds a quote, markup out,
+    pandoc's dashes, links and scripts as Word prints them, and pieces in order where words
+    are left out, and it holds four words or more, in pieces of two or more, or is a
+    heading's whole title, its hashes, its number and a closing stop aside, a year being no
+    number (Basile, 2026-11-07; round 1 of #581). Words of a file not read, a word changed,
+    three words, one word between elisions, the inside of a word, pieces out of order, part
+    of a heading, a heading without its year and a bold label do not. A finding that
     quotes nothing is unanchored for a model, who must quote, and in neither list for a
     person (D1.2)."""
     given, ways = drawn
@@ -16489,6 +16491,37 @@ def _a_heading_s_hashes_are_part_of_its_quote(patch: pytest.MonkeyPatch) -> None
     patch.setattr(anchoring, "_HASHES", re.compile(r"(?!)"))
 
 
+def _a_word_between_elisions_counts(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    patch.setattr(anchoring, "_PIECE_WORDS", 1)
+
+
+def _pandoc_s_dashes_are_not_folded(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    patch.setattr(anchoring, "_DASHES", re.compile(r"(?!)"))
+
+
+def _a_link_is_read_as_written(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    # Its group kept, which the fold writes back: a pattern that matches nothing.
+    patch.setattr(anchoring, "_LINK", re.compile(r"(?!)(.)"))
+
+
+def _a_script_is_read_as_written(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    patch.setattr(anchoring, "_SCRIPTS", re.compile(r"(?!)(.)(.)"))
+
+
+def _any_number_opening_a_title_is_a_section_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    patch.setattr(anchoring, "_NUMBER", re.compile(r"^(?:[a-z]?\d+(?:\.\d+)*\.?)\s+"))
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -16574,6 +16607,26 @@ BROKEN = {
     ),
     "a heading's hashes are part of a quote of it": (
         _a_heading_s_hashes_are_part_of_its_quote,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a word between elisions counts towards a quote's four": (
+        _a_word_between_elisions_counts,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "pandoc's dashes are not folded in a quote's text": (
+        _pandoc_s_dashes_are_not_folded,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a link is looked in as it is written": (
+        _a_link_is_read_as_written,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a sub- or superscript is looked in as it is written": (
+        _a_script_is_read_as_written,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "any number opening a heading's title is a section's": (
+        _any_number_opening_a_title_is_a_section_s,
         test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
     ),
     "a synthetic copy is drawn from an unseeded stream": (

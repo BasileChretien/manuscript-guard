@@ -3581,7 +3581,13 @@ FINDING_QUOTES = {
     "heading with a stop": "anchored",
     "heading without its number": "anchored",
     "supplement": "anchored",
+    "pandoc's dash as Word prints it": "anchored",
+    "a link's text": "anchored",
+    "a subscript as Word prints it": "anchored",
+    "heading opening with a year": "anchored",
     "file not read": "unanchored",
+    "one word between elisions": "unanchored",
+    "heading without its year": "unanchored",
     "word changed": "unanchored",
     "three words": "unanchored",
     "inside a word": "unanchored",
@@ -3594,6 +3600,12 @@ FINDING_QUOTES = {
 #: How Markdown and the typographer write a word that a person copying it from the printed
 #: page types otherwise: each `{}` is the word.
 _MARKED_AS = ("*{}*", "**{}**", "`{}`")
+#: What pandoc prints otherwise than it is written, as Word shows it: a dash and a sub- or
+#: superscript, after a word.
+_PRINTED_AS = {"--x": "\N{EN DASH}x", "---y": "\N{EM DASH}y", "~2~": "2", "^3^": "3"}
+#: Where a paragraph's words are written otherwise: marked up, set by the typographer, with a
+#: pandoc dash, two in a link, and with a sub- or superscript.
+_MARKED, _SET, _DASHED, _LINKED, _SCRIPTED = (1, 2), 3, 5, (8, 9), 12
 _SET_AS = (
     "\N{LEFT DOUBLE QUOTATION MARK}{}\N{RIGHT DOUBLE QUOTATION MARK}",
     "{}\N{RIGHT SINGLE QUOTATION MARK}s", "{}\N{EN DASH}x", "{}\N{EM DASH}y",
@@ -3611,11 +3623,12 @@ def _as_typed(token: str) -> str:
 def finding_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, str]]]:
     """Three manuscript files, `main.md`, `supplementary/S1.md` and `other.md`, each of
     headings and paragraphs of words of their own (`alpha1`, `bravo2`, ...), in each
-    paragraph one in emphasis or code and one in curly quotes, beside a dash or with a
-    ligature, with drawn white space between words, a section's number before the second
-    heading of each file, and a bold label opening a paragraph; a reading that read the first
-    two; and its findings, one of each way of `FINDING_QUOTES`, in an order drawn each time,
-    each with the way it quotes.
+    paragraph one in emphasis or code, one in curly quotes, beside a dash or with a ligature,
+    one with a pandoc dash, two in a link and one with a sub- or superscript (`_MARKED` and
+    after), with drawn white space between words, a section's number before the second
+    heading of each file, a heading of `main.md` opening with a year, and a bold label
+    opening a paragraph; a reading that read the first two; and its findings, one of each way
+    of `FINDING_QUOTES`, in an order drawn each time, each with the way it quotes.
 
     Every way in each example, so that a rule broken for one of them fails under any seed;
     every word is the manuscript's once, so that a quote is found where it was taken and
@@ -3627,13 +3640,24 @@ def finding_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, str
         return f"{TAGS[n % len(TAGS)]}{n}"
 
     def paragraph() -> list[str]:
-        words = [word() for _ in range(draw(st.integers(10, 14)))]
-        # A word marked up and one set by the typographer among the first five, so that a
+        words = [word() for _ in range(draw(st.integers(16, 18)))]
+        # A word marked up and one set by the typographer among the first four, so that a
         # quote of the paragraph's opening words holds both.
-        marked, set_as = draw(st.integers(1, 2)), draw(st.integers(3, 4))
+        marked = draw(st.sampled_from(_MARKED))
         words[marked] = draw(st.sampled_from(_MARKED_AS)).format(words[marked])
-        words[set_as] = draw(st.sampled_from(_SET_AS)).format(words[set_as])
+        words[_SET] = draw(st.sampled_from(_SET_AS)).format(words[_SET])
+        words[_DASHED] += draw(st.sampled_from(("--x", "---y")))
+        first, last = _LINKED
+        words[first], words[last] = f"[{words[first]}", f"{words[last]}](https://example.org/a)"
+        words[_SCRIPTED] += draw(st.sampled_from(("~2~", "^3^")))
         return words
+
+    def printed(token: str) -> str:
+        """A word as Word prints it: a link's text, a dash and a script as pandoc prints."""
+        token = token.removeprefix("[").removesuffix("](https://example.org/a)")
+        for written, shown in sorted(_PRINTED_AS.items(), key=lambda pair: -len(pair[0])):
+            token = token.replace(written, shown)
+        return token
 
     def joined(words: list[str]) -> str:
         return "".join(w + draw(st.sampled_from(SOURCE_GAPS)) for w in words[:-1]) + words[-1]
@@ -3642,6 +3666,7 @@ def finding_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, str
     paragraphs: dict[str, list[list[str]]] = {}
     headings: dict[str, list[str]] = {}
     label = f"Label{next(counted)}."
+    dated = f"{word().capitalize()} {word()}"
     for name in ("main.md", "supplementary/S1.md", "other.md"):
         parts, kept, titles = [], [], []
         for section in range(draw(st.integers(2, 3))):
@@ -3655,12 +3680,17 @@ def finding_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, str
                 parts.append(joined(words))
         if name == "main.md":
             parts.append(f"**{label}** " + joined([word() for _ in range(6)]))
+            # A year opens this heading's title: it is no section's number.
+            parts += [f"## 2019 {dated}", joined([word() for _ in range(6)])]
         files[name] = "\n\n".join(parts) + "\n"
         paragraphs[name], headings[name] = kept, titles
 
     def taken(name: str, size: int) -> list[str]:
+        """`size` words in a row of a paragraph of `name`, a link's two whole or neither."""
         words = draw(st.sampled_from(paragraphs[name]))
-        start = draw(st.integers(0, len(words) - size))
+        starts = [start for start in range(len(words) - size + 1)
+                  if (start <= _LINKED[0] < start + size) == (start <= _LINKED[1] < start + size)]
+        start = draw(st.sampled_from(starts))
         return words[start : start + size]
 
     def quote_of(kind: str) -> str | None:
@@ -3691,6 +3721,24 @@ def finding_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, str
             return headings["main.md"][1]
         if kind == "supplement":
             return " ".join(taken("supplementary/S1.md", draw(st.integers(4, 8))))
+        if kind == "pandoc's dash as Word prints it":
+            words = draw(st.sampled_from(main))
+            return " ".join(printed(w) for w in words[_DASHED - 1 : _DASHED + 3])
+        if kind == "a link's text":
+            words = draw(st.sampled_from(main))
+            return " ".join(printed(w) for w in words[_LINKED[0] - 1 : _LINKED[1] + 2])
+        if kind == "a subscript as Word prints it":
+            words = draw(st.sampled_from(main))
+            return " ".join(printed(w) for w in words[_SCRIPTED - 1 : _SCRIPTED + 3])
+        if kind == "one word between elisions":
+            # Four words of a paragraph in order, none of them written otherwise.
+            words = draw(st.sampled_from(main))
+            gap = draw(st.sampled_from((" ... ", " [...] ", " \N{HORIZONTAL ELLIPSIS} ")))
+            return gap.join(words[at] for at in (0, 6, 10, 14))
+        if kind == "heading opening with a year":
+            return f"2019 {dated}"
+        if kind == "heading without its year":
+            return dated
         if kind == "file not read":
             return " ".join(taken("other.md", draw(st.integers(4, 8))))
         if kind == "word changed":
@@ -3700,9 +3748,9 @@ def finding_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, str
         if kind == "three words":
             return " ".join(taken("main.md", 3))
         if kind == "inside a word":
-            # Words of the paragraph's end, among which none is set otherwise, the first cut
-            # short: they stand in the text, but not as words of their own.
-            words = draw(st.sampled_from(main))[-5:]
+            # Words of the paragraph's end, after the link, the first cut short: they stand in
+            # the text, but not as words of their own.
+            words = draw(st.sampled_from(main))[-4:]
             return " ".join([words[0][1:], *words[1:]])
         if kind == "part of a heading":
             return draw(st.sampled_from(headings["main.md"])).split()[0]

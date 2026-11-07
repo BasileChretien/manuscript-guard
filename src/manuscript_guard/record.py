@@ -504,7 +504,7 @@ def _quotes_read(project, document: dict) -> tuple[dict | None, str]:
     from manuscript_guard.gates.review import file_digests, manuscript_digest
 
     findings = document.get("findings") or []
-    if not any(quoted(finding) for finding in findings):
+    if not findings or not ("provenance" in document or any(map(quoted, findings))):
         return None, ""
     carried = document.get("file_sha256")
     current = file_digests(project)
@@ -518,11 +518,14 @@ def _quotes_read(project, document: dict) -> tuple[dict | None, str]:
     if changed:
         return None, (
             f"quotes not looked for: {', '.join(changed)} changed since the reading was "
-            "filed, so what it read is not here to read again. G11 counts its findings as "
-            "not checked"
+            "filed, so what it read is not here to read again, and none of its findings is "
+            "counted anchored or unanchored"
         )
     texts, latex, why = _texts_read(project, names, every=set(names) == set(current))
-    quotes = sort_quotes(findings, read_of(texts, latex=latex), must_quote=False)
+    # A model must quote, a person may not (D1.2): a reading `review --run` filed, whose seal
+    # was taken out, is a model's still (round 1 of #581).
+    model = "provenance" in document
+    quotes = sort_quotes(findings, read_of(texts, latex=latex), must_quote=model)
     missed = quotes["unanchored"]
     said = (
         f"quotes: {len(quotes['anchored'])} found in what the reading read, {len(missed)} not"

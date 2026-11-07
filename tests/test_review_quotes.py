@@ -105,10 +105,56 @@ def test_the_whole_title_of_a_heading_stands_for_something_missing(quote: str) -
         ("We analysed a \u201csynthetic\u201d spontaneous", "quote marks the text has not"),
         ("The incidence was computed in", "words the text does not have"),
         ("...", "nothing but an elision"),
+        ("We ... analysed ... synthetic ... reporting", "a word between each elision"),
     ],
 )
 def test_a_quote_not_in_the_text_does_not_stand(quote: str, why: str) -> None:
     assert not stands(quote), why
+
+
+def test_only_pieces_of_two_words_or_more_count_towards_the_four() -> None:
+    """Round 1 of #581: one word between elisions is found in almost any paper. Basile,
+    2026-11-07, by question box: only pieces of two words or more count."""
+    common = "The aim of this study and its design in brief."
+    assert anchoring.words("the ... of ... and ... in") == 0
+    assert not stands("the ... of ... and ... in", common)
+    assert anchoring.words("The aim ... and its ... brief") == 4
+    assert stands("The aim ... and its ... brief", common)
+
+
+@pytest.mark.parametrize(
+    "written, quoted",
+    [
+        ("cases from 2010--2020 in all regions", "cases from 2010\u20132020 in all regions"),
+        ("the drug---and only the drug---was", "the drug\u2014and only the drug\u2014was"),
+        ("see [the protocol](https://example.org/p) for the codes", "see the protocol for the"),
+        ("we measured H~2~O in each sample", "we measured H2O in each"),
+        ("about 10^3^ cells per well were seen", "about 103 cells per well"),
+    ],
+)
+def test_what_pandoc_prints_otherwise_stands_as_word_prints_it(written: str, quoted: str) -> None:
+    """Round 1 of #581: a person quoting the built document sees pandoc's dashes, a link's
+    text, and sub- and superscripts as Word prints them; a model, sent the Markdown, may
+    quote it as written. Either stands."""
+    assert stands(quoted, written)
+    assert stands(written, written)
+
+
+@pytest.mark.parametrize(
+    "heading, quote, there",
+    [
+        ("## 2020 cohort", "Cohort", False),
+        ("## 2020 cohort", "2020 cohort", True),
+        ("# 1 Introduction", "Introduction", True),
+        ("## 12. Discussion", "Discussion", True),
+        ("## S1. Code lists", "Code lists", True),
+    ],
+)
+def test_a_section_s_number_is_one_or_two_digits_or_dotted(
+    heading: str, quote: str, there: bool
+) -> None:
+    """Round 1 of #581: a year that opens a heading is part of its title."""
+    assert stands(quote, f"{heading}\n\nSome text under it.\n") is there
 
 
 def test_a_quote_stands_only_in_the_texts_it_is_looked_for_in() -> None:
@@ -410,11 +456,27 @@ def test_a_reading_whose_files_changed_before_it_was_sealed_is_sealed_unchecked(
     assert seal(project) == 0
     said = capsys.readouterr().out
     assert "quotes not looked for: main.md changed since the reading was filed" in said
+    assert "none of its findings is counted anchored or unanchored" in said
     document = read_structured(path)
     assert "quotes" not in document and document["reading_sha256"] == reading_digest(document)
     report = check_review(loaded(project))
     assert report.counts["review_findings_anchored"] == 0
     assert "finding-unanchored" not in {f.code for f in report.findings}
+
+
+def test_a_model_s_reading_sealed_again_must_still_quote(read_by_a_model: Path) -> None:
+    """Round 1 of #581: a reading `review --run` filed, its seal and its `quotes` taken out
+    and sealed by hand, is still a model's (it has `provenance`), so its finding that quotes
+    nothing is unanchored (D1.2)."""
+    path = model_readings(read_by_a_model)[0]
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    del document["reading_sha256"], document["quotes"]
+    path.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True), "utf-8")
+    reviewer = path.name.split(".")[0]
+    assert main(["review", str(read_by_a_model), "--seal", reviewer, "--round", "1",
+                 "--reading", MODEL_A]) == 0  # fmt: skip
+    quotes = read_structured(path)["quotes"]
+    assert "r1-04" in quotes["unanchored"] and "r1-03" in quotes["unanchored"]
 
 
 def test_a_reading_none_of_whose_findings_quotes_is_sealed_with_one_line(

@@ -5425,6 +5425,229 @@ ESTIMATES = (
 )  # fmt: skip
 
 
+# --------------------------------------------------------- the words beside an interval, G8
+
+#: The subjects and outcomes of a sentence that reports an interval. None holds a word the
+#: reading of its words reads.
+WORDED_SUBJECTS = ("Statin use", "Exposure to the drug", "Night work", "Smoking")
+WORDED_OUTCOMES = ("liver injury", "bleeding", "stroke", "death")
+#: What states an effect, `{S}` the subject, `{s}` the same in lower case, `{O}` the
+#: outcome, each with the words the reading gives.
+WORDED_CLAIMS = (
+    ("{S} increased the risk of {O}", "increased"), ("{S} reduced the risk of {O}", "reduced"),
+    ("{S} was associated with a higher risk of {O}", "was associated"),
+    ("Users of the drug had a higher risk of {O}", "had a higher"),
+    ("The risk of {O} was higher in users of the drug", "was higher"),
+    ("{S} led to more cases of {O}", "led to"),
+)  # fmt: skip
+#: What calls an estimate significant, and nothing more.
+WORDED_SIGNIFICANT = (
+    ("The association between {s} and {O} was statistically significant",
+     "was statistically significant"),
+    ("A statistically significant excess of {O} was seen with {s}", "statistically significant"),
+)  # fmt: skip
+#: Both: the words of effect, and those of significance.
+WORDED_BOTH = (
+    ("{S} significantly increased the risk of {O}", "increased", "significantly"),
+    ("{S} was significantly associated with {O}", "was significantly associated",
+     "significantly"),
+)  # fmt: skip
+#: What says there is no effect.
+WORDED_NONE = (
+    ("There was no difference in {O}", "no difference"),
+    ("{S} did not affect the risk of {O}", "not affect"), ("{S} had no effect on {O}", "no effect"),
+    ("The risk of {O} was similar with and without {s}", "was similar"),
+    ("{S} was not associated with {O}", "was not associated"),
+)  # fmt: skip
+#: What says there is no effect of the test, and would say it of the effect without the word
+#: "significantly".
+WORDED_NOT_SIGNIFICANT = (
+    "{S} did not significantly affect the risk of {O}", "{S} was not significantly associated "
+    "with {O}", "{S} did not significantly increase the risk of {O}",
+)  # fmt: skip
+#: A claim hedged, and one said to be uncertain.
+WORDED_HEDGED = (
+    "{S} may have increased the risk of {O}", "{S} appeared to increase the risk of {O}",
+    "These data suggest that {s} increased the risk of {O}",
+)  # fmt: skip
+WORDED_UNSURE = (
+    "{S} increased the risk of {O}, although the estimate was imprecise",
+    "{S} tended to increase the risk of {O}",
+    "{S} increased the risk of {O} by an amount compatible with chance",
+    "{S} was associated with a non-significant increase in {O}",
+)  # fmt: skip
+#: A word of effect that describes a group of patients, before the interval's name.
+WORDED_DESCRIBING = (
+    "In patients with reduced renal function, the hazard ratio for {O} was",
+    "Among patients with increased body weight, the hazard ratio for {O} was",
+)  # fmt: skip
+#: "Significant" that is not the test's.
+WORDED_NOT_THE_TEST = ("Bleeding was clinically significant in most cases",
+                       "Liver injury was clinically significant in most cases")  # fmt: skip
+#: A negation that turns a claim round, and one too far before it to.
+WORDED_NEGATED = ("{S} did not increase the risk of {O}", "{S} was not associated with {O}")
+WORDED_FAR_NEGATION = "Among patients with no prior stroke at entry, {s} increased the risk of {O}"
+#: A difference stated, and none.
+WORDED_DIFFERENCE = (("{S} reduced the score", "reduced"), ("{S} lowered the score", "lowered"))
+WORDED_NO_DIFFERENCE = "The scores did not differ between groups"
+#: How a ratio's interval is written after its sentence, the name two characters in.
+WORDED_RATIOS = (
+    " (HR {e}, 95% CI {l} to {u})", " (OR {e}; 95% CI {l}\N{EN DASH}{u})",
+    " (hazard ratio {e}, 95% CI {l} to {u})", " (RR = {e}, 95% confidence interval {l}-{u})",
+    ", HR {e} (95% CI {l} to {u})",
+)  # fmt: skip
+#: An interval that is not the plain one, or beside a P that is not, and one at 99%.
+WORDED_QUIET = (
+    " (HR {e}, 95% profile-likelihood CI {l} to {u})", " (HR {e}, 95% bootstrap CI {l} to {u})",
+    " (HR {e}, exact 95% CI {l} to {u})", " (HR {e}, 95% CI {l} to {u}; one-sided P = 0.04)",
+)  # fmt: skip
+WORDED_99 = " (HR {e}, 99% CI {l} to {u})"
+WORDED_DIFFERENCES = (" (MD {e}, 95% CI {l} to {u})", " (mean difference {e}, 95% CI {l} to {u})")
+#: The kinds of sentence each text of `interval_wordings` holds one of: an effect stated, the
+#: estimate called significant, both, and no effect, beside an interval that includes the
+#: null, far from it for no effect; and what is not said: no effect beside an interval near
+#: the null, or one whose upper bound is "2", which may be 1.5; no effect of the test, and
+#: "no significant difference"; a claim hedged, said to be uncertain, beside an interval that
+#: excludes the null, one that is not the plain one, one at 99%; a claim beside two intervals,
+#: one that excludes the null, and beside one the reader does not read; a word of effect that
+#: describes patients; "clinically significant"; a claim turned round, and one with a
+#: negation too far before it, which is said; a difference stated, and no difference, which
+#: is not read for it; and a claim with no interval.
+WORDED_KINDS = (
+    "claim", "significant", "both", "no effect", "near", "integer bound", "not significant",
+    "no significant difference", "hedged", "unsure", "excludes", "quiet", "level", "mixed",
+    "unread", "describing", "not the test", "negated", "far negation", "difference claim",
+    "difference none", "no interval",
+)  # fmt: skip
+
+
+@st.composite
+def interval_wordings(draw: st.DrawFn) -> tuple[str, list[list[Any]]]:
+    """A text with a sentence of each kind of `WORDED_KINDS`, in an order drawn, and what
+    the reading of its words gives: for each sentence it reports, the code, where each
+    interval it is said of starts, the words, and for no effect the bounds far from 1."""
+
+    def hundredths(low: int, high: int) -> float:
+        return draw(st.integers(low, high)) / 100
+
+    def ratio(plan: str) -> tuple[str, str, str, list[list[str]]]:
+        """An estimate and its bounds, as printed, and the bounds far from 1: an interval
+        that excludes 1, one that includes it near 1, one far on one side or both, and one
+        whose upper bound is "2"."""
+        far: list[list[str]] = []
+        if plan == "excludes":
+            if draw(st.booleans()):
+                low = hundredths(105, 160)
+                high = low * hundredths(130, 250)
+            else:
+                high = hundredths(40, 95)
+                low = high / hundredths(130, 250)
+        elif plan == "integer":
+            low = hundredths(70, 95)
+            printed = f"{low:.2f}"
+            return f"{math.sqrt(low * 2):.2f}", printed, "2", far
+        else:
+            side = draw(st.sampled_from(("low", "high", "both"))) if plan == "far" else ""
+            low = hundredths(30, 65) if side in ("low", "both") else hundredths(68, 95)
+            high = hundredths(152, 300) if side in ("high", "both") else hundredths(105, 149)
+        e, l_, u = f"{math.sqrt(low * high):.2f}", f"{low:.2f}", f"{high:.2f}"
+        if plan == "far":
+            far = [[side, bound] for side, bound in (("low", l_), ("high", u))
+                   if side == "low" and low <= 0.65 or side == "high" and high >= 1.52]  # fmt: skip
+        return e, l_, u, far
+
+    def difference() -> tuple[str, str, str]:
+        """An estimate and bounds that include 0 and not 1."""
+        e, h = hundredths(-25, 25), hundredths(30, 70)
+        minus = draw(st.sampled_from(("-", "\N{MINUS SIGN}")))
+        return tuple(f"{x:.2f}".replace("-", minus) for x in (e, e - h, e + h))  # type: ignore[return-value]
+
+    def subject(template: str) -> str:
+        s = draw(st.sampled_from(WORDED_SUBJECTS))
+        return template.format(S=s, s=s.lower(), O=draw(st.sampled_from(WORDED_OUTCOMES)))
+
+    def one(template: str, plan: str = "near", forms: tuple[str, ...] = WORDED_RATIOS
+            ) -> tuple[str, int, list[list[str]]]:  # fmt: skip
+        """A sentence and its interval, where its name starts, and its bounds far from 1."""
+        said = subject(template)
+        e, l_, u, far = ratio(plan)
+        return said + draw(st.sampled_from(forms)).format(e=e, l=l_, u=u), len(said) + 2, far
+
+    sentences: list[tuple[str, list[list[Any]]]] = []
+    for kind in draw(st.permutations(WORDED_KINDS)):
+        found: list[list[Any]] = []
+        plan = draw(st.sampled_from(("near", "far")))
+        if kind in ("claim", "significant", "both"):
+            pool = {"claim": WORDED_CLAIMS, "significant": WORDED_SIGNIFICANT,
+                    "both": WORDED_BOTH}[kind]  # fmt: skip
+            template, *words = draw(st.sampled_from(pool))
+            text, at, _far = one(template, plan)
+            codes = {"claim": ["claim-beyond-interval"],
+                     "significant": ["significance-beyond-interval"],
+                     "both": ["claim-beyond-interval", "significance-beyond-interval"]}[kind]
+            found = [[code, [at], [word], []] for code, word in zip(codes, words, strict=True)]
+        elif kind in ("no effect", "near", "integer bound"):
+            template, word = draw(st.sampled_from(WORDED_NONE))
+            text, at, far = one(template, {"no effect": "far", "near": "near",
+                                           "integer bound": "integer"}[kind])  # fmt: skip
+            if kind == "no effect":
+                found = [["no-effect-from-interval", [at], [word], far]]
+        elif kind in ("not significant", "no significant difference", "hedged", "unsure"):
+            pool = {"not significant": WORDED_NOT_SIGNIFICANT,
+                    "no significant difference": ("There was no significant difference in {O}",),
+                    "hedged": WORDED_HEDGED, "unsure": WORDED_UNSURE}[kind]  # fmt: skip
+            text, _at, _far = one(draw(st.sampled_from(pool)), "far")
+        elif kind in ("excludes", "quiet", "level"):
+            template, _word = draw(st.sampled_from(WORDED_CLAIMS))
+            forms = {"excludes": WORDED_RATIOS, "quiet": WORDED_QUIET,
+                     "level": (WORDED_99,)}[kind]  # fmt: skip
+            text, _at, _far = one(template, "excludes" if kind == "excludes" else "far", forms)
+        elif kind in ("mixed", "unread"):
+            said = subject("{S} increased the risk of {O}")
+            inside = draw(st.sampled_from(WORDED_RATIOS)).format(
+                **dict(zip("elu", ratio("far")[:3], strict=True)))
+            e, l_, u, _far = ratio("excludes")
+            if kind == "unread":
+                text = f"{said} in women{inside} and {e} (95% CI {l_} to {u}) in men"
+            else:
+                outside = draw(st.sampled_from(WORDED_RATIOS)).format(e=e, l=l_, u=u)
+                first, second = draw(st.permutations((inside, outside)))
+                text = f"{said} in men{first} and in women{second}"
+        elif kind == "describing":
+            said = subject(draw(st.sampled_from(WORDED_DESCRIBING)))
+            e, l_, u, _far = ratio("far")
+            text = f"{said} {e} (95% CI {l_} to {u})"
+        elif kind == "not the test":
+            text, _at, _far = one(draw(st.sampled_from(WORDED_NOT_THE_TEST)), "far")
+        elif kind in ("negated", "far negation"):
+            template = (draw(st.sampled_from(WORDED_NEGATED)) if kind == "negated"
+                        else WORDED_FAR_NEGATION)  # fmt: skip
+            text, at, _far = one(template)
+            if kind == "far negation":
+                found = [["claim-beyond-interval", [at], ["increased"], []]]
+        elif kind in ("difference claim", "difference none"):
+            template, word = draw(st.sampled_from(WORDED_DIFFERENCE))
+            if kind == "difference none":
+                template = WORDED_NO_DIFFERENCE
+            said = subject(template)
+            e, l_, u = difference()
+            text = said + draw(st.sampled_from(WORDED_DIFFERENCES)).format(e=e, l=l_, u=u)
+            if kind == "difference claim":
+                found = [["claim-beyond-interval", [len(said) + 2], [word], []]]
+        else:
+            text = subject(draw(st.sampled_from(WORDED_CLAIMS))[0])
+        tail = draw(st.sampled_from(("", " among women", " in the second period")))
+        sentences.append((text + tail + ".", found))
+    parts = [draw(st.sampled_from(("", "# Results\n\n", "## 3. Results\n\n")))]
+    expected: list[list[Any]] = []
+    for text, found in sentences:
+        at = len("".join(parts))
+        expected += [[code, [at + start for start in starts], words, far]
+                     for code, starts, words, far in found]  # fmt: skip
+        parts.append(text + draw(st.sampled_from((" ", "\n", "\n\n"))))
+    return "".join(parts), expected
+
+
 # ------------------------------------------------------------------------ a table's shares
 
 #: What the rows of a table of shares are about. None names a statistic, a note or an n.
@@ -9729,6 +9952,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "typed releases": texts(RELEASED),
     "reported tests": texts(REPORTED),
     "reported intervals": texts(ESTIMATES),
+    "interval words": st.one_of(interval_wordings().map(lambda drawn: drawn[0]),
+                                texts(ESTIMATES)),
     "table shares": share_tables().map(lambda drawn: drawn[0]),
     "table margins": margin_tables().map(lambda drawn: drawn[0]),
     "flows": flow_lists().map(lambda drawn: {"markdown": drawn[0], "latex": drawn[1]}),

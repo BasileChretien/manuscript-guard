@@ -107,6 +107,7 @@ from generated import (
     harvest_tables,
     help_commands,
     holds,
+    interval_wordings,
     keyword_paragraphs,
     laid_out,
     latex_bound,
@@ -4665,6 +4666,161 @@ def _an_interval_over_two_lines_is_not_read(patch: pytest.MonkeyPatch) -> None:
     assert wrap in intervals._INTERVAL.pattern
     pattern = intervals._INTERVAL.pattern.replace(wrap, "")
     patch.setattr(intervals, "_INTERVAL", re.compile(pattern))
+
+
+# ------------------------------------------------------ the words beside an interval, G8
+
+
+@holds(100, interval_wordings())
+def test_words_that_say_more_than_their_interval_are_found_and_nothing_else(
+    planted: tuple[str, list[list[Any]]],
+) -> None:
+    """Item 9 of the borrowed checks: beside an interval that includes its null, an effect
+    stated with no hedge and the estimate called significant are found, with their words,
+    and so is no effect beside a ratio's interval that does not exclude ratios beyond 1.5
+    or below 1/1.5, with those bounds. Nothing is found for no effect near 1, or beside an
+    upper bound of "2", which may be 1.5; for no effect of the test; for a claim hedged or
+    said to be uncertain, beside an interval that excludes the null, is not the plain one or
+    is at 99%; in a sentence with another interval that excludes the null or that the reader
+    does not read; for a word that describes patients, "clinically significant" or a claim
+    turned round; or for no difference. A negation five words before a claim does not turn
+    it round."""
+    text, expected = planted
+    assert READINGS["interval words"]()(text) == expected, text
+
+
+def _interval_words(patch: pytest.MonkeyPatch, **changed: Any) -> None:
+    """The lists of the words beside an interval, some of them changed."""
+    from dataclasses import replace
+
+    from manuscript_guard.stats import interval_words
+
+    listed = replace(interval_words.words(), **changed)
+    patch.setattr(interval_words, "words", lambda: listed)
+
+
+def _a_hedge_stands_no_claim_down(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "claims_effect", lambda said: bool(said.stated)
+                  and not said.unsure)  # fmt: skip
+
+
+def _a_word_of_doubt_stands_nothing_down(patch: pytest.MonkeyPatch) -> None:
+    _interval_words(patch, uncertain=())
+
+
+def _no_effect_of_the_test_is_no_effect(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "says_no_effect", lambda said: bool(said.none or said.turned)
+                  and not said.hedged and not said.unsure)  # fmt: skip
+
+
+def _a_negation_turns_nothing_round(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "_negations", lambda blank, first, end: [])
+
+
+def _a_negation_anywhere_turns_a_claim_round(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "REACH", 1000)
+
+
+def _every_bound_is_far_from_1(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "FAR", 1.0)
+
+
+def _a_far_bound_is_read_at_its_printed_value(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    box = interval_words._box
+
+    def printed(number: str) -> tuple[float, float] | None:
+        return None if box(number) is None else (float(number), float(number))
+
+    patch.setattr(interval_words, "_box", printed)
+
+
+def _a_difference_is_held_to_a_ratio_s_far_bounds(patch: pytest.MonkeyPatch) -> None:
+    """A difference that includes 0, its bounds held to 1.5 and 1/1.5 as a ratio's are."""
+    from manuscript_guard.stats import interval_words
+
+    def far_bounds(interval: Any) -> tuple[tuple[str, str], ...]:
+        if not interval_words.includes_null(interval):
+            return ()
+        low, high = interval_words._box(interval.low), interval_words._box(interval.high)
+        return tuple((side, bound) for side, bound, far in (
+            ("low", interval.low, low[1] < 1 / interval_words.FAR),
+            ("high", interval.high, high[0] > interval_words.FAR)) if far)  # fmt: skip
+
+    patch.setattr(interval_words, "far_bounds", far_bounds)
+
+
+def _a_difference_s_words_are_held_to_1(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "NULL", {"ratio": 1, "difference": 1})
+
+
+def _an_interval_is_taken_to_include_its_null_past_one_bound(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    def includes(interval: Any) -> bool:
+        low, high = interval_words._box(interval.low), interval_words._box(interval.high)
+        null = interval_words.NULL[interval.kind]
+        return low is not None and high is not None and (low[1] < null or null < high[0])
+
+    patch.setattr(interval_words, "includes_null", includes)
+
+
+def _the_words_beside_any_interval_are_judged(patch: pytest.MonkeyPatch) -> None:
+    """Neither what the sentence says of the interval or its P, nor its level."""
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "judged", lambda interval, alpha=0.05: not
+                  interval_words.outside_interval(interval))  # fmt: skip
+
+
+def _the_words_beside_an_interval_at_any_level_are_judged(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "judged", lambda interval, alpha=0.05: not (
+        interval.quiet or interval.p_quiet or interval_words.outside_interval(interval)))
+
+
+def _one_interval_of_a_sentence_that_includes_its_null_is_enough(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.stats import interval_words
+
+    def whole(read: str, first: int, end: int, mine: Any, alpha: float) -> bool:
+        return any(interval_words.judged(one, alpha) and interval_words.includes_null(one)
+                   for one in mine)  # fmt: skip
+
+    patch.setattr(interval_words, "_whole", whole)
+
+
+def _an_interval_the_reader_does_not_read_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    def whole(read: str, first: int, end: int, mine: Any, alpha: float) -> bool:
+        return all(interval_words.judged(one, alpha) and interval_words.includes_null(one)
+                   for one in mine)  # fmt: skip
+
+    patch.setattr(interval_words, "_whole", whole)
+
+
+def _a_word_of_effect_that_describes_patients_is_read(patch: pytest.MonkeyPatch) -> None:
+    _interval_words(patch, describing=frozenset())
+
+
+def _clinically_significant_is_the_test_s(patch: pytest.MonkeyPatch) -> None:
+    _interval_words(patch, not_the_test=frozenset())
 
 
 # ---------------------------------------------------------------------- a table's shares
@@ -17407,6 +17563,70 @@ BROKEN = {
     "an interval wrapped onto a second line is not read": (
         _an_interval_over_two_lines_is_not_read,
         test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "a hedge stands no claim beside an interval down": (
+        _a_hedge_stands_no_claim_down,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a word of doubt stands nothing beside an interval down": (
+        _a_word_of_doubt_stands_nothing_down,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "no effect of the test is no effect beside an interval": (
+        _no_effect_of_the_test_is_no_effect,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a negation turns no claim beside an interval round": (
+        _a_negation_turns_nothing_round,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a negation anywhere in the sentence turns a claim beside an interval round": (
+        _a_negation_anywhere_turns_a_claim_round,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "every bound of an interval that includes 1 is far from it": (
+        _every_bound_is_far_from_1,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a far bound is read at its printed value": (
+        _a_far_bound_is_read_at_its_printed_value,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a difference's bounds are held to a ratio's 1.5": (
+        _a_difference_is_held_to_a_ratio_s_far_bounds,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "the words beside a difference are held to 1": (
+        _a_difference_s_words_are_held_to_1,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "an interval past its null on one side is taken to include it": (
+        _an_interval_is_taken_to_include_its_null_past_one_bound,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "the words beside an interval that is not the plain one are judged": (
+        _the_words_beside_any_interval_are_judged,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "the words beside an interval at 99% are judged at 0.05": (
+        _the_words_beside_an_interval_at_any_level_are_judged,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "one interval of a sentence that includes its null is enough for its words": (
+        _one_interval_of_a_sentence_that_includes_its_null_is_enough,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "an interval the reader does not read is passed over for the words": (
+        _an_interval_the_reader_does_not_read_is_passed_over,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a word of effect that describes patients is read as a claim": (
+        _a_word_of_effect_that_describes_patients_is_read,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "clinically significant is read as the test's": (
+        _clinically_significant_is_the_test_s,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
     ),
     "a mean is held to its printed value, not half a unit either side": (
         _a_mean_is_held_to_exactly_its_printed_value,

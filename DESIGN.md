@@ -5410,6 +5410,30 @@ estimate do not run across another estimate's name: "No difference in mortality,
 names a hazard ratio, held to 1. Bounds whose signs cannot be read
 for sure are not read: "-0.9--0.1" is an en dash in Markdown or a hyphen and a minus.
 
+The words of the sentence are held to its interval as well (`stats/interval_words.py`; item
+9 of the borrowed checks, Basile's decisions D9.1 and D9.2 of 2026-11-06). Where an
+interval includes its null over its whole rounding box, a sentence that states an effect or
+a difference with no hedge, "increased the risk", "was associated with a higher risk", is
+`claim-beyond-interval`, and one that calls the estimate significant is
+`significance-beyond-interval`: an interval that includes the null at a level no higher
+than one less the paper's significance level goes with a P at or above that level. Both
+are warnings. A sentence that says there is no effect, "no difference", "did not affect",
+"was similar", while a ratio's interval reaches above 1.5 or below 1/1.5 over every value
+its digits allow, is `no-effect-from-interval`, a note that names those bounds: such an
+interval does not exclude effects that matter. "No significant difference", "a
+non-significant increase" and "no evidence of" speak of the test or the evidence and are
+left alone, and so is a sentence that hedges or says the estimate is uncertain ("a trend",
+"imprecise", "compatible with"). The words are lists of this project's own, in
+`data/claim_strength.yaml` under `interval`; the hedges and the negations are the ladder's.
+A negation turns a word round from up to four words before it, "did not increase", "was
+not significantly associated". An interval is judged only where G8 would judge it against
+its P: not one the sentence calls profile-likelihood, exact, bootstrap or Bayesian, not
+beside a P it calls one-sided or adjusted, not an estimate outside its own interval, and not
+at 99% where the paper tests at 0.05. The first two are said of a sentence only where every
+interval in it includes its null and every interval it names is one the reader reads, since
+its words may be about another estimate; the third is said of each ratio's interval in a
+sentence that says there is no effect.
+
 An n (%) in a table of a paper given to `audit` is held to its denominator
 (`stats/shares.py`): the count's own, "640/1200 (53.3)", or the "n = 1200" of its column's
 header, the nearest above it in a row with no count. The count over the denominator has to
@@ -15078,6 +15102,37 @@ Added by the adversarial review, verified and **not** fixed:
   except glued to a ratio's name: "OR–1.9" is 1.9 (#336). After a ratio's name, glued to any
   letter it is a dash, so "log OR was–0.4", with no space, is read as 0.4, outside its interval, as on main
   (pinned by `test_an_en_dash_glued_to_any_word_before_a_ratio_is_a_dash`).
+- **The words beside an interval are read from lists, over the whole sentence**
+  (`stats/interval_words.py`, item 9 of the borrowed checks).
+  - A word of effect is read wherever it stands in the sentence, about this estimate or not:
+    "The risk was higher in older patients; the hazard ratio was 1.2 (95% CI 0.9 to 1.6)"
+    claims a difference. A participle directly after "with", "of", an article or another
+    word of `describing` is taken to describe, "patients with reduced renal function"; one
+    after "who had" is not, so "patients who had reduced renal function" states a
+    difference.
+  - A form of "be" or "have" with a comparative at most two words after it is a difference
+    stated, "was higher", "had a lower", where it describes a group too: "whose dose was
+    lower".
+  - A noun is not read as a claim, "an association was found", and nor are "associated
+    with" and "linked to" with no form of "be" before them, "the hazard associated with
+    use".
+  - A negation turns round any word of effect up to four words after it, about it or not:
+    "not only increased" says no effect, and so does "among patients not taking it, use
+    increased the risk". One further back is not read.
+  - A word of doubt or a hedge stands the whole sentence down, of this estimate or not:
+    "trend" in "P for trend", "wide" in "a wide range of doses".
+  - "No effect" is read for each ratio's interval of its sentence, so in "X had no effect
+    on A (HR 1.1, 95% CI 0.9 to 1.3) but increased B (HR 1.4, 95% CI 0.6 to 2.8)", B's
+    interval is read as one said to show no effect.
+  - "No effect" is not read for a difference: what is far from 0 depends on its scale, and
+    neither the analysis plan nor the data dictionary declares a minimal important
+    difference. A field for one would let it be read.
+  - A sentence that names more intervals than the reader reads is not read for the first
+    two, so one that writes "confidence interval (CI)" before its interval is passed over,
+    and so is a second interval with no name of its own.
+  - "Significant" is read after a form of "be" and before a word of `significant_of`, so
+    "significant renal impairment" is not read and "a significant risk of bleeding" is,
+    whatever the risk is of.
 - **An n (%) is held to its denominator only where the table writes both, in one cell, in
   a pipe table or a Word table.** A grid or a simple Markdown table is not read, nor a
   count and its share in columns of their own, nor a share whose denominator only a caption

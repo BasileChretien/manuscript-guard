@@ -18,6 +18,12 @@ own interval, `interval-excludes-estimate`; a ratio's interval that its estimate
 stand in the middle of on the log scale, `ratio-interval-asymmetric`; and an interval that
 excludes its null beside a P above one less its level, or includes it beside a P below,
 `p-against-interval`. Warnings too.
+
+And the words of a sentence against the interval it prints (`stats/interval_words.py`): an
+effect stated with no hedge beside an interval that includes its null,
+`claim-beyond-interval`, and the estimate called significant, `significance-beyond-interval`,
+both warnings; and a sentence that says there is no effect while its ratio's interval does
+not exclude ratios far from 1, `no-effect-from-interval`, a note.
 """
 
 from __future__ import annotations
@@ -25,7 +31,9 @@ from __future__ import annotations
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value
-from manuscript_guard.findings import WARN, Finding, Report
+from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.stats.interval_words import HINTS, NO_EFFECT, Worded, worded
+from manuscript_guard.stats.interval_words import described as described_words
 from manuscript_guard.stats.intervals import (
     ASYMMETRY,
     asymmetry,
@@ -88,9 +96,12 @@ def check_recomputed(project: Project, namespace: dict[str, Value], results: Res
                     "where the sentence says it is one",
                 )
             )
-        for interval in reported_intervals(printed):
+        intervals = reported_intervals(printed)
+        for interval in intervals:
             judged_intervals += 1
             findings += _interval_findings(interval, printed, path)
+        findings += [_worded_finding(said, printed, path, alpha)
+                     for said in worded(printed, alpha, intervals)]  # fmt: skip
     return Report(
         tuple(findings),
         {"p_values_recomputed": judged, "printed_intervals_read": judged_intervals},
@@ -174,3 +185,18 @@ def _interval_findings(interval, printed: str, path) -> list[Finding]:
             )
         )
     return found
+
+
+def _worded_finding(said: Worded, printed: str, path, alpha: float) -> Finding:
+    """What a sentence's words say beyond its interval, at its first interval."""
+    first, last = said.intervals[0], said.intervals[-1]
+    return Finding(
+        gate=GATE,
+        code=said.code,
+        severity=INFO if said.code == NO_EFFECT else WARN,
+        message=described_words(said, alpha),
+        path=path,
+        line=printed.count("\n", 0, first.start) + 1,
+        context=" ".join(printed[first.start : last.end].replace(NUL, " ").split()),
+        hint=HINTS[said.code],
+    )

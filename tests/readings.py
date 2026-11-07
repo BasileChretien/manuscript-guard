@@ -1430,6 +1430,21 @@ def _reported_intervals() -> Reading:
     return reported
 
 
+@reading("interval words")
+def _interval_words() -> Reading:
+    """What G8 says of the words of each sentence that reports an interval: the code, where
+    each interval it is said of starts, the words that say it, and for no effect the bounds
+    far from 1, each with its side."""
+    from manuscript_guard.stats.interval_words import worded
+    from manuscript_guard.text.masking import mask
+
+    def read(text: str) -> list[list[Any]]:
+        return [[said.code, [one.start for one in said.intervals], list(said.words),
+                 [list(bound) for bound in said.far]] for said in worded(mask(text))]  # fmt: skip
+
+    return read
+
+
 @reading("table shares")
 def _table_shares() -> Reading:
     """Each count and its share in a pipe table, as it is printed, with the denominator the

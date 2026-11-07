@@ -16031,6 +16031,12 @@ def _a_results_sentence_giving_another_result_with_no_ladder_states(
     patch.setattr(reported_gate, "_ladder_only", lambda text: alone(text) or "So.")
 
 
+def _a_results_sentence_left_out_keeps_the_warning_back(patch: pytest.MonkeyPatch) -> None:
+    # Round 3 of #573: read as claiming as much, it kept back another sentence's warning.
+    patch.setattr(reported_gate, "_compared", lambda stated, whole: reported_gate.holds_a_word(
+        stated))  # fmt: skip
+
+
 def _every_heading_of_the_supplement_is_its_results(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reported_gate, "_names_supplement_results", lambda title: True)
 
@@ -16687,6 +16693,10 @@ BROKEN = {
     ),
     "a Results sentence giving another result with no ladder word states": (
         _a_results_sentence_giving_another_result_with_no_ladder_states,
+        test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence,
+    ),
+    "a Results sentence left out keeps the warning back": (
+        _a_results_sentence_left_out_keeps_the_warning_back,
         test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence,
     ),
     "every heading of the supplement is its Results": (

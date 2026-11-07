@@ -14783,8 +14783,9 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   1.42)" passes. A summary sentence that holds none is held only to the hedges and limits it
   dropped: a negation the Results have and it lacks is not read, nor a word of the ladder
   ("suggests a signal" against the ratio alone, round 1 of #573), and a hedge or a limit is
-  read only where the Results sentence holds no negation and no word of the ladder above
-  consistency. So "rates may be higher in men" made "rates were higher in men" is warned,
+  read only where the Results sentence holds no negation and its lowest word of the ladder,
+  if any, is one of consistency. So "rates may be higher in men" made "rates were higher in
+  men" is warned, as is "these may be consistent with an association" made the HR alone,
   and "use may be associated with the outcome (HR 1.42)" made "The HR was 1.42" is not, the
   claim of association having gone with its hedge (Basile, 2026-11-07, round 2 of #573); nor
   is "use may not be associated". A negation gone or new is counted as claiming more,

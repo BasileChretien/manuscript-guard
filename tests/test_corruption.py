@@ -2804,6 +2804,11 @@ def test_a_results_sentence_that_gives_another_result_is_held_to_what_the_summar
     _swap(project, "Use was associated with hepatic injury in\n",
           "Hepatic injury was reported in\n")
     assert _overclaimed(project) == []
+    # Nor does it keep back the warning another Results sentence gives (round 3).
+    _swap(project, _RESULTS_END,
+          f"{_RESULTS_END} Example-drug was associated with the {{{{results.case.n_cases}}}}.")
+    (found,) = _overclaimed(project)
+    assert "the Results sentence that binds results.case.n_cases" in found.message
 
 
 def test_a_summary_sentence_that_negates_another_result_is_warned_a_known_gap(

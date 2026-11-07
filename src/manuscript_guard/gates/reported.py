@@ -529,7 +529,7 @@ def _claimed(root: Path, given: list[tuple[Path, Given]], stated: list[tuple[Pat
         keys: list[str] = []
         for one in ones:
             worded = [(where, it) for where, it in by_quantity.get(same(one.key), ())
-                      if holds_a_word(it.sentence)]  # fmt: skip
+                      if _compared(it.sentence, bound_in[where, it.sentence] <= gives)]
             if worded and one.key not in keys:
                 keys.append(one.key)
             for where, it in worded:
@@ -557,12 +557,20 @@ def holds_a_word(text: str) -> bool:
     return any(sentence.words for sentence in claims.sentences(text))
 
 
+def _compared(stated: str, whole: bool) -> bool:
+    """Whether a Results sentence is compared with a summary sentence: where it holds a word
+    of the claim lists, and, where it binds a result the summary does not give, a word of the
+    ladder, all that is read of it then (`_more_than`). One that is not is left out, and keeps
+    back no warning another Results sentence gives (round 3 of #573)."""
+    return holds_a_word(stated) and (whole or _ladder_only(stated) is not None)
+
+
 def claims_more(summary: str, stated: Sequence[tuple[str, bool]]) -> Finding | None:
     """What `claims.compare_pair` says of `summary` against the first of `stated`, where the
     summary claims more than every one of them (`_more_than`); None where it does not, or
-    where none of them holds a word of the claim lists, a sentence that holds none being left
-    out. Each Results sentence comes with whether the summary gives every result it binds."""
-    worded = [(one, whole) for one, whole in dict.fromkeys(stated) if holds_a_word(one)]
+    where none of them is compared (`_compared`), the rest being left out. Each Results
+    sentence comes with whether the summary gives every result it binds."""
+    worded = [(one, whole) for one, whole in dict.fromkeys(stated) if _compared(one, whole)]
     if not worded:
         return None
     first = None
@@ -586,7 +594,8 @@ def _more_than(summary: str, stated: str, whole: bool) -> Finding | None:
     binds a result the summary does not give, its hedges, limits and negations may be about
     that one, so only a word of the ladder the summary moves up claims more (Basile,
     2026-11-07). Such a sentence that holds no word of the ladder then states its number,
-    and is compared with nothing, as one that holds no word is (round 2 of #573)."""
+    and is compared with nothing, as one that holds no word is (`_compared`, round 2 of
+    #573)."""
     if not whole:
         said, held = _ladder_only(summary), _ladder_only(stated)
         if said is None or held is None:
@@ -604,9 +613,9 @@ def _more_than(summary: str, stated: str, whole: bool) -> Finding | None:
 def _bare_claims_more(moved: Finding, stated: str) -> bool:
     """Whether a summary that holds no word of the claim lists claims more than `stated`, as
     `compare_pair` found them to move: only by a hedge or a limit it dropped, and only where
-    that reads as claiming more. Not where `stated` negates too, nor where it holds a word
-    of the ladder above consistency, whose claim went with the hedge (Basile, 2026-11-07,
-    round 2 of #573)."""
+    that reads as claiming more. Not where `stated` negates too, nor where the lowest word
+    of the ladder it holds is above consistency, whose claim went with the hedge (Basile,
+    2026-11-07, round 2 of #573)."""
     held = {kind for sentence in claims.sentences(stated) for _word, kind in sentence.words}
     return moved.code == claims.STRONGER and bool(held & {claims.HEDGE, claims.LIMIT})
 

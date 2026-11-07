@@ -8477,6 +8477,7 @@ SUMMARY_CLAIM_KINDS = {
     "stronger than both": True, "in the methods": False, "two keys": False,
     "in a conclusion": True, "other result hedged or negated": False,
     "other result, moved up": True, "other result, no ladder here": False,
+    "other result, no ladder here, beside a weaker one": True,
     "same quantity": True,
     "in the supplement's results": True, "in the supplement's methods": False,
 }  # fmt: skip
@@ -8555,12 +8556,16 @@ def summary_claim_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, str], set
                                     f"({{{{results.{other}}}}}).")  # fmt: skip
             parts["abstract"].append(said([word(rung)], [key]))
             continue
-        elif kind == "other result, no ladder here":
-            # Its words set aside as the other result's, the sentence states its number.
+        elif kind.startswith("other result, no ladder here"):
+            # Its words set aside as the other result's, the sentence states its number, and
+            # is left out: beside a sentence that claims less, the summary is warned.
             other = next(keys)
             parts["results"].append(f"{said([], [key])[:-1]} and {word('negation')} "
                                     f"{draw(st.sampled_from(_PLAIN))} ({{{{results.{other}}}}}).")
-            parts["abstract"].append(said([word(max(high, 1))], [key]))
+            parts["abstract"].append(said([word(high)], [key]))
+            if kind.endswith("weaker one"):
+                parts["results"].append(said([word(low)], [key]))
+                warned.add(key)
             continue
         elif kind == "other result, moved up":
             other = next(keys)

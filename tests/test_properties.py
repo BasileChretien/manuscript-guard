@@ -7882,7 +7882,15 @@ def _a_page_s_size_is_not_taken_from_its_parent(patch: pytest.MonkeyPatch) -> No
 
 
 def _a_page_s_comments_are_not_read(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(hidden_html._Reader, "handle_comment", lambda self, data: None)
+    to = hidden_html._Reader._to
+
+    def broken(self, opened, ending, skip, called):
+        if called != "an HTML comment":
+            return to(self, opened, ending, skip, called)
+        closed = self.text.find(ending, opened + skip)
+        return len(self.text) if closed < 0 else closed + len(ending)
+
+    patch.setattr(hidden_html._Reader, "_to", broken)
 
 
 # ------------------------------------------------------- a response letter quoting a revision

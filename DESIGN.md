@@ -14790,17 +14790,20 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
     browser builds it: an element closed by its own slash (`<div/>`) opens nothing, and an
     end tag a browser would imply is not; a box placed by `left` with no `position`, or a
     clip that shows the whole of it, is taken as hidden. Behind text, a picture or a gradient
-    is taken as of no known colour, so no text on one is said to be faint. The page is
-    parsed by Python's own HTML parser, which in some older versions takes more than linear
-    time on some broken input, and before 3.13 refuses some, which is said as not read.
+    is taken as of no known colour, so no text on one is said to be faint. A length in
+    `vw` or `vh` is not read, the viewport being unknown. The page is read by a scanner of
+    this toolkit's own, in time linear in its length, since Python's parser took minutes
+    over some broken markup.
   - A PDF is read for the words of its text, as a stored source is read: what it hides by
     its colour, its size, its drawing mode or its place is found only where its words are
-    words to a model, and an image's text is not read. Its text is read as far as 8 MB, from
+    words to a model, and an image's text is not read. Its text is read as far as 4 MB, from
     `pdftotext` in 60 seconds; without it, pypdf's text is taken whole and then cut, and a
     PDF that gives no text, a scanned one among them, is said as not read. An e-mail is
-    read as an `.eml`, its
-    attachments named and not read. A text or an HTML file of more than 8 MB is not read,
-    nor a file of any other kind, an image, a `.doc`, an RTF: `screen` says so and exits 1.
+    read as an `.eml`, as far as 16 MB and 500 parts: its subject, and no other header, and
+    each part of text or HTML as far as 4 MB; its attachments are named and not read. A text
+    or an HTML file of more than 4 MB is not read, nor a file of any other kind, an image, a
+    `.doc`, an RTF: `screen` says so and exits 1. Of one file, 500 places are said and the
+    rest counted, and a command that screens a file prints 20 of them.
   - Words to a model are those of `to_a_model` in `data/ai_writing.yaml`, in English. They
     are read a paragraph at a time, so words split across two paragraphs are not found, nor
     words spelt with letters of another script that look the same ("іgnore" with a

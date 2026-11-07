@@ -5,7 +5,7 @@ A page is read as a browser draws it from the styles each element carries (`styl
 old `color`, `bgcolor` and `hidden` attributes), and these are reported, each with its words:
 
 - **background**: text too close in colour to what is behind it, a contrast ratio under 1.5,
-  or nearly transparent (an opacity under 0.1), as for a Word document;
+  or nearly transparent (an opacity under 0.1, `transparent`), as for a Word document;
 - **tiny**: text under 3 pt;
 - **hidden**: text a page does not show, by `display: none`, `visibility: hidden`, the
   `hidden` attribute, a place far off the page, or a box of no size, reported only where it
@@ -13,19 +13,23 @@ old `color`, `bgcolor` and `hidden` attributes), and these are reported, each wi
   their menus, dialogs and notices this way on nearly every page, and a warning on all of
   them would be read by nobody;
 - **zero-width** and **to-a-model**, as `hidden.words` reads them, in the text, and in what
-  a page holds and does not show: a comment, a script, a stylesheet, a template, an
-  element's alternative text, title, label or data.
+  a page holds and does not show: a comment, a script, a stylesheet, a template, a
+  declaration or a processing instruction, an element's alternative text, title, label or
+  data.
 
-A stylesheet's rules, and so an element's class, are not read (DESIGN.md, Known gaps).
+The page is read by a scanner of this module's own, in one pass and in time linear in its
+length (the security review of #576: Python's own parser took minutes over 30 KB of broken
+markup). It reads the markup as written, not as a browser repairs it. A stylesheet's rules,
+and so an element's class, are not read (DESIGN.md, Known gaps).
 """
 
 from __future__ import annotations
 
+import html
 import re
 from bisect import bisect_right
 from collections import Counter
 from dataclasses import dataclass, replace
-from html.parser import HTMLParser
 
 from manuscript_guard.colour import RGB, contrast, hex_of, parse
 from manuscript_guard.hidden.styles import WHITE
@@ -40,7 +44,6 @@ from manuscript_guard.hidden.word import (
     quoted,
 )
 from manuscript_guard.hidden.words import to_a_model_in, worth_reading, zero_width_in
-from manuscript_guard.safexml import UnsafeDocument
 
 #: Text under this size, in points, is too small to read.
 TINY_POINTS = 3.0
@@ -48,8 +51,9 @@ TINY_POINTS = 3.0
 OPACITY_BELOW = 0.1
 #: An element placed this far off the page, in pixels, is not seen.
 OFF_PAGE = 500.0
-#: The size of text where a page says none, in points.
+#: The size of text where a page says none, in points, and the pixels of an em of it.
 _BASE_POINTS = 12.0
+_EM_PIXELS = 16.0
 _VOID = frozenset({"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
                    "param", "source", "track", "wbr"})  # fmt: skip
 #: Elements a browser starts on a line of their own: their text is parted from their
@@ -62,20 +66,30 @@ _BLOCKS = frozenset({"address", "article", "aside", "blockquote", "body", "br", 
                      "th", "thead", "title", "tr", "ul"})  # fmt: skip
 #: Elements whose text a page never shows, by what each is called.
 _UNSHOWN = {"script": "a script", "style": "a stylesheet", "template": "a template"}
+#: Elements whose text runs to their end tag, markup inside it read as text.
+_RAW = ("script", "style")
 #: Attributes that hold words a page does not show, by what each is called.
 _ATTRIBUTES = {"alt": "a picture's alternative text", "title": "an element's title",
-               "aria-label": "a label read aloud", "content": "a meta element's content",
-               "placeholder": "a field's placeholder", "value": "a field's value"}  # fmt: skip
+               "aria-label": "a label read aloud", "aria-description": "a label read aloud",
+               "content": "a meta element's content", "placeholder": "a field's placeholder",
+               "value": "a field's value", "label": "an option's label",
+               "srcdoc": "a frame's page", "href": "a link's address"}  # fmt: skip
 #: A number as CSS writes one, with a digit before its point or not, and its unit.
 _LENGTH = re.compile(r"([+-]?(?:[0-9]{1,7}(?:\.[0-9]{1,30})?|\.[0-9]{1,30})"
-                     r"(?:[eE][+-]?[0-9]{1,3})?)\s*(px|pt|em|rem|%)?")  # fmt: skip
-#: A colour inside a shorthand: written as a hexadecimal, a function or a word.
+                     r"(?:[eE][+-]?[0-9]{1,3})?)\s*(px|pt|em|rem|%|mm|cm|in|pc|q)?")  # fmt: skip
 #: A function of CSS that names no colour itself, `var(--gray-100)`, whose words are
 #: not colours (round 2 of #576).
 _OTHER_FUNCTION = re.compile(r"\b(?!(?:rgb|hsl)a?\()[a-zA-Z][a-zA-Z0-9-]*\([^)]{0,200}\)")
+#: A colour inside a shorthand: written as a hexadecimal, a function or a word.
 _COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}\b|(?:rgb|hsl)a?\([^)]{0,80}\)|[a-zA-Z]+")
 _NO_SIZE = re.compile(r"0(?:px|pt|em|rem|%)?")
-_UNITS = {"px": 0.75, "pt": 1.0}
+#: Points in a unit of length; an em and a rem are read against the size they stand on.
+_POINTS = {"px": 0.75, "pt": 1.0, "mm": 72 / 25.4, "cm": 72 / 2.54, "in": 72.0, "pc": 12.0,
+           "q": 18 / 25.4}  # fmt: skip
+#: The properties whose value a browser drops where it cannot read it, and how each is
+#: read: a declaration of one written to slip past an earlier one is passed over.
+_COLOURED = ("color", "-webkit-text-fill-color")
+_SPACE = " \t\n\r\f"
 
 
 @dataclass(frozen=True)
@@ -91,12 +105,42 @@ class _Look:
     points: float = _BASE_POINTS
 
 
+def _without_comments(style: str) -> str:
+    """`style` with each CSS comment taken out, in one pass."""
+    out, at = [], 0
+    while (opened := style.find("/*", at)) >= 0:
+        out.append(style[at:opened])
+        closed = style.find("*/", opened + 2)
+        at = len(style) if closed < 0 else closed + 2
+    return "".join(out) + style[at:]
+
+
+def _colour_of(value: str) -> tuple[RGB, float] | None:
+    return ((0.0, 0.0, 0.0), 0.0) if value == "transparent" else parse(value)
+
+
+def _readable(name: str, value: str) -> bool:
+    """Whether a browser keeps the declaration: a colour, a size and an opacity it can
+    read; any other property as it is."""
+    if name in _COLOURED:
+        return _colour_of(value) is not None
+    if name == "font-size":
+        return _points(value, _BASE_POINTS) is not None
+    if name == "opacity":
+        found = _LENGTH.fullmatch(value)
+        return found is not None and found.group(2) in (None, "%")
+    return True
+
+
 def _declarations(style: str) -> dict[str, str]:
     found: dict[str, str] = {}
-    for declaration in style.split(";"):
+    for declaration in _without_comments(style).split(";"):
         name, colon, value = declaration.partition(":")
-        if colon:
-            found[name.strip().casefold()] = value.replace("!important", "").strip().casefold()
+        name = name.strip().casefold()
+        value = value.replace("!important", "").strip().casefold()
+        if colon and _readable(name, value):
+            found.pop(name, None)  # placed last, as the declaration that now wins
+            found[name] = value
     return found
 
 
@@ -106,8 +150,8 @@ def _points(value: str, parent: float) -> float | None:
     if length is None:
         return None
     number, unit = float(length.group(1)), length.group(2) or "px"
-    if unit in _UNITS:
-        return number * _UNITS[unit]
+    if unit in _POINTS:
+        return number * _POINTS[unit]
     if unit == "rem":
         return number * _BASE_POINTS
     return number * parent * (0.01 if unit == "%" else 1.0)
@@ -115,9 +159,12 @@ def _points(value: str, parent: float) -> float | None:
 
 def _pixels(value: str) -> float | None:
     length = _LENGTH.fullmatch(value.strip())
-    if length is None or (length.group(2) or "px") not in _UNITS:
+    if length is None or length.group(2) == "%":
         return None
-    return float(length.group(1)) / _UNITS[length.group(2) or "px"] * 0.75
+    unit = length.group(2) or "px"
+    if unit in ("em", "rem"):
+        return float(length.group(1)) * _EM_PIXELS
+    return float(length.group(1)) * _POINTS[unit] / 0.75
 
 
 def _hidden_by(style: dict[str, str], attributes: dict[str, str]) -> str:
@@ -148,7 +195,7 @@ def _looked(parent: _Look, tag: str, attributes: dict[str, str]) -> _Look:
     if not look.hidden and (how := _hidden_by(style, attributes)):
         look = replace(look, hidden=how)
     look = replace(look, behind=_behind(style, attributes, look.behind))
-    coloured = parse(style.get("color") or attributes.get("color") or "")
+    coloured = _colour_of(_later(style, *_COLOURED) or attributes.get("color") or "")
     if coloured is not None:
         look = replace(look, colour=coloured[0], opacity=look.opacity * coloured[1])
     opacity = _LENGTH.fullmatch(style.get("opacity", "").strip())
@@ -188,10 +235,10 @@ def _behind(style: dict[str, str], attributes: dict[str, str], behind: RGB | Non
     return tuple(c * alpha + b * (1 - alpha) for c, b in zip(rgb, under, strict=True))
 
 
-def _later(style: dict[str, str], first: str, second: str) -> str:
-    """The value of whichever of two properties a style declares last, as the later
-    declaration wins in CSS (round 2 of #576), or "" where it declares neither."""
-    named = [name for name in style if name in (first, second)]
+def _later(style: dict[str, str], *names: str) -> str:
+    """The value of whichever of the properties a style declares last, as the later
+    declaration wins in CSS (round 2 of #576), or "" where it declares none."""
+    named = [name for name in style if name in names]
     return style[named[-1]] if named else ""
 
 
@@ -221,50 +268,112 @@ def _kept_from_sight(look: _Look) -> tuple[str, str] | None:
     return None
 
 
-class _Reader(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.stack: list[tuple[str, _Look]] = [("", _Look())]
-        #: How many of each element are open, so that an end tag nothing opened is passed
-        #: over at once (round 1 of #576: it looked through every open element).
-        self.open: Counter[str] = Counter()
-        self.pieces: list[tuple[str, tuple[str, str] | None]] = []
-        self.lines: list[int] = []
-        self.unshown: list[tuple[str, str, int]] = []
-        #: The pieces that part one block from the next.
-        self.breaks: list[int] = []
+@dataclass
+class _Reader:
+    """A page read once from start to end, each character looked at a bounded number of
+    times: what it shows and how, piece by piece, and what it holds and does not show."""
 
-    def _parted(self, tag: str) -> None:
-        if tag in _BLOCKS and (not self.breaks or self.breaks[-1] != len(self.pieces) - 1):
-            self.breaks.append(len(self.pieces))
-            self.pieces.append(("\n", None))
-            self.lines.append(self.getpos()[0])
+    stack: list[tuple[str, _Look]]
+    #: How many of each element are open, so that an end tag nothing opened is passed over
+    #: at once (round 1 of #576: it looked through every open element).
+    open: Counter[str]
+    pieces: list[tuple[str, tuple[str, str] | None]]
+    lines: list[int]
+    unshown: list[tuple[str, str, int]]
+    #: The pieces that part one block from the next.
+    breaks: list[int]
+    text: str = ""
+    line: int = 1
+    counted: int = 0
 
-    def _attributes(self, tag: str, attrs) -> dict[str, str]:
-        attributes = {name.casefold(): value or "" for name, value in attrs}
-        line = self.getpos()[0]
+    @classmethod
+    def of(cls, text: str) -> _Reader:
+        reader = cls([("", _Look())], Counter(), [], [], [], [], text)
+        reader._read()
+        return reader
+
+    def _line_at(self, at: int) -> int:
+        self.line += self.text.count("\n", self.counted, at)
+        self.counted = at
+        return self.line
+
+    def _read(self) -> None:
+        text, at = self.text, 0
+        while at < len(text):
+            opened = text.find("<", at)
+            if opened < 0:
+                self._data(at, len(text))
+                return
+            if opened > at:
+                self._data(at, opened)
+            at = self._markup(opened)
+
+    def _data(self, start: int, end: int) -> None:
+        line = self._line_at(start)
+        data = html.unescape(self.text[start:end])
+        look = self.stack[-1][1]
+        if look.unshown:
+            self.unshown.append((data, look.unshown, line))
+            return
+        self.pieces.append((data, _kept_from_sight(look) if data.strip() else None))
+        self.lines.append(line)
+
+    def _to(self, opened: int, ending: str, skip: int, called: str) -> int:
+        """Markup that runs to `ending`, its words read as what the page does not show."""
+        closed = self.text.find(ending, opened + skip)
+        stop = len(self.text) if closed < 0 else closed
+        self.unshown.append((html.unescape(self.text[opened + skip : stop]), called,
+                             self._line_at(opened)))  # fmt: skip
+        return len(self.text) if closed < 0 else closed + len(ending)
+
+    def _markup(self, opened: int) -> int:
+        text = self.text
+        following = text[opened + 1 : opened + 2]
+        if text.startswith("<!--", opened):
+            return self._to(opened, "-->", 4, "an HTML comment")
+        if text.startswith("<![CDATA[", opened):
+            return self._to(opened, "]]>", 9, "a CDATA section")
+        if following in ("!", "?"):
+            called = "a declaration" if following == "!" else "a processing instruction"
+            return self._to(opened, ">", 2, called)
+        if following == "/":
+            name, _attributes, stop, _closing = _tag(text, opened)
+            self._line_at(opened)
+            self._ended(name)
+            return stop
+        if not following.isalpha():
+            self._data(opened, opened + 1)
+            return opened + 1
+        name, attributes, stop, closing = _tag(text, opened)
+        self._started(name, attributes, closing, self._line_at(opened))
+        if name in _RAW and not closing:
+            return self._raw(name, stop)
+        return stop
+
+    def _raw(self, name: str, start: int) -> int:
+        """A script's or a stylesheet's text, to its end tag, read as text."""
+        ending = re.compile(rf"</{name}[{_SPACE}]*>", re.IGNORECASE)
+        found = ending.search(self.text, start)
+        stop = len(self.text) if found is None else found.start()
+        if stop > start:
+            self._data(start, stop)
+        self._ended(name)
+        return len(self.text) if found is None else found.end()
+
+    def _started(self, tag: str, attributes: dict[str, str], closing: bool, line: int) -> None:
+        self._parted(tag, line)
         for name, value in attributes.items():
             label = _ATTRIBUTES.get(name) or ("an element's data" if name.startswith("data-")
                                               else None)  # fmt: skip
             if label and worth_reading(value):
                 self.unshown.append((value, label, line))
-        return attributes
+        if closing or tag in _VOID:
+            return
+        self.stack.append((tag, _looked(self.stack[-1][1], tag, attributes)))
+        self.open[tag] += 1
 
-    def handle_starttag(self, tag, attrs) -> None:
-        tag = tag.casefold()
-        self._parted(tag)
-        look = _looked(self.stack[-1][1], tag, self._attributes(tag, attrs))
-        if tag not in _VOID:
-            self.stack.append((tag, look))
-            self.open[tag] += 1
-
-    def handle_startendtag(self, tag, attrs) -> None:
-        self._parted(tag.casefold())
-        self._attributes(tag.casefold(), attrs)
-
-    def handle_endtag(self, tag) -> None:
-        tag = tag.casefold()
-        self._parted(tag)
+    def _ended(self, tag: str) -> None:
+        self._parted(tag, self.line)
         if not self.open[tag]:
             return
         while self.stack:
@@ -273,30 +382,65 @@ class _Reader(HTMLParser):
             if closed == tag:
                 return
 
-    def handle_data(self, data) -> None:
-        look = self.stack[-1][1]
-        if look.unshown:
-            self.unshown.append((data, look.unshown, self.getpos()[0]))
-            return
-        self.pieces.append((data, _kept_from_sight(look) if data.strip() else None))
-        self.lines.append(self.getpos()[0])
+    def _parted(self, tag: str, line: int) -> None:
+        if tag in _BLOCKS and (not self.breaks or self.breaks[-1] != len(self.pieces) - 1):
+            self.breaks.append(len(self.pieces))
+            self.pieces.append(("\n", None))
+            self.lines.append(line)
 
-    def handle_comment(self, data) -> None:
-        self.unshown.append((data, "an HTML comment", self.getpos()[0]))
+
+def _tag(text: str, opened: int) -> tuple[str, dict[str, str], int, bool]:
+    """The tag that opens at `opened`, `<` or `</`: its name, its attributes (the first of
+    each name, as a browser keeps it), where it ends and whether it closes itself. Each
+    character is read once: an unclosed quote takes the rest of the page as its value."""
+    at = opened + 1 + (text[opened + 1 : opened + 2] == "/")
+    start = at
+    while at < len(text) and text[at] not in _SPACE + "/>":
+        at += 1
+    name, attributes, closing = text[start:at].casefold(), {}, False
+    while at < len(text):
+        character = text[at]
+        if character in _SPACE:
+            at += 1
+            continue
+        if character == ">":
+            return name, attributes, at + 1, closing
+        if character == "/":
+            at += 1
+            closing = text[at : at + 1] == ">"
+            continue
+        start = at
+        while at < len(text) and text[at] not in _SPACE + "/>=":
+            at += 1
+        key = text[start:at].casefold()
+        while at < len(text) and text[at] in _SPACE:
+            at += 1
+        value = ""
+        if text[at : at + 1] == "=":
+            at += 1
+            while at < len(text) and text[at] in _SPACE:
+                at += 1
+            if text[at : at + 1] in ("\"", "'"):
+                closed = text.find(text[at], at + 1)
+                stop = len(text) if closed < 0 else closed
+                value, at = text[at + 1 : stop], stop + 1
+            else:
+                start = at
+                while at < len(text) and text[at] not in _SPACE + ">":
+                    at += 1
+                value = text[start:at]
+        if key:
+            attributes.setdefault(key, html.unescape(value))
+        elif at == start:
+            at += 1  # nothing a name is made of: step past it
+    return name, attributes, len(text), closing
 
 
 def read_page(text: str, part: str, label: str = "the page") -> list[Hidden]:
     """What `text`, a page of HTML or a Markdown file, holds that its reader does not see
     (see the module's docstring). `part` names it in what is found, and `label` says what
     it is: "the page", "the message"."""
-    reader = _Reader()
-    try:
-        reader.feed(text)
-        reader.close()
-    except AssertionError as exc:
-        # Python's parser, before 3.13, asserts on a marked section it does not know,
-        # `<![x[` (round 1 of #576).
-        raise UnsafeDocument(f"{part}: the page cannot be parsed ({exc})") from exc
+    reader = _Reader.of(text)
     found = _shown_text(reader, part, label)
     for words, called, line in reader.unshown:
         where = f"{label}, line {line}: {called}"
@@ -307,9 +451,9 @@ def read_page(text: str, part: str, label: str = "the page") -> list[Hidden]:
     return found
 
 
-def _spans(pieces, breaks: list[int]) -> list[tuple[int, int, str, str, int]]:
-    """Each stretch of text kept from sight alike: start, end, kind, how and the first
-    piece, two pieces kept alike with only spaces between them and in one block one
+def _spans(pieces, breaks: list[int]) -> list[tuple[int, int, str, str, int, int]]:
+    """Each stretch of text kept from sight alike: start, end, kind, how, its first piece
+    and its last, two pieces kept alike with only spaces between them and in one block one
     stretch."""
     text_at, spans, block, blocks = 0, [], 0, set(breaks)
     text = "".join(piece for piece, _ in pieces)
@@ -321,9 +465,9 @@ def _spans(pieces, breaks: list[int]) -> list[tuple[int, int, str, str, int]]:
             last = spans[-1] if spans else None
             if (last and (last[2], last[3]) == kept and started[-1] == block
                     and not text[last[1] : text_at].strip()):
-                spans[-1] = (last[0], end, *kept, last[4])
+                spans[-1] = (last[0], end, *kept, last[4], number)
             else:
-                spans.append((text_at, end, *kept, number))
+                spans.append((text_at, end, *kept, number, number))
                 started.append(block)
         text_at = end
     return spans
@@ -334,6 +478,18 @@ def worth_saying(kind: str, holds_words: bool) -> bool:
     always; text the page's layout hides only where it holds words to a model or zero-width
     characters (Basile, 2026-11-07)."""
     return kind != HIDDEN or holds_words
+
+
+def _own_words(pieces, first: int, last: int) -> tuple[str, bool]:
+    """The rule words to a model inside a stretch's own pieces match, each read alone, and
+    whether one holds a zero-width character: a hidden piece against a shown word, with no
+    space between, met no word boundary in the page's text (the security review of #576)."""
+    rule, zero = "", False
+    for piece, _kept in pieces[first : last + 1]:
+        spots = to_a_model_in(piece)
+        rule = rule or (spots[0].rule if spots else "")
+        zero = zero or bool(zero_width_in(piece))
+    return rule, zero
 
 
 def _shown_text(reader: _Reader, part: str, label: str) -> list[Hidden]:
@@ -367,9 +523,11 @@ def _shown_text(reader: _Reader, part: str, label: str) -> list[Hidden]:
     for spot in zero:
         found.append(Hidden(ZERO_WIDTH, f"{label}, line {line_of(spot.start)}",
                             quoted(spot.said), spot.why, part))  # fmt: skip
-    for number, (start, end, kind, how, first) in enumerate(spans):
-        if not worth_saying(kind, number in models or number in zero_inside):
+    for number, (start, end, kind, how, first, last) in enumerate(spans):
+        rule, own_zero = _own_words(reader.pieces, first, last)
+        model = models.get(number) or rule
+        if not worth_saying(kind, bool(model) or number in zero_inside or own_zero):
             continue
         found.append(Hidden(kind, f"{label}, line {reader.lines[first]}", quoted(text[start:end]),
-                            how, part, model=models.get(number, "")))  # fmt: skip
+                            how, part, model=model))  # fmt: skip
     return found

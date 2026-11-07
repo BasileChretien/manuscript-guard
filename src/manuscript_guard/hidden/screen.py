@@ -7,25 +7,33 @@ read on, by the command or by the agent, with that in mind (D7.2, Basile, 2026-1
 
 - a Word document (`.docx`, `.docm`, `.dotx`, `.dotm`) by `hidden.word`;
 - a page of HTML, and a Markdown file with the HTML it may hold, by `hidden.html`;
-- a text file (`.txt`, `.csv`, `.json`, `.yaml`, a `.bib` and its kin, a `.tex`) and a
-  PDF's text, read as `literature.sources` reads a stored PDF, for zero-width characters
+- a text file (`.txt`, `.csv`, `.json`, `.yaml`, `.xml`, a `.bib` and its kin, a `.tex`) and
+  a PDF's text, read as `literature.sources` reads a stored PDF, for zero-width characters
   inside words and words to a model (`hidden.words`): what a PDF hides by its colour, its
   size or its drawing is not read, only the words it holds;
 - an e-mail (`.eml`): its subject, and each part of its text and its HTML; an attachment is
   named, not read, to be saved and screened by itself.
 
-A file is read whole, within the limits the untrusted readers keep (`safexml`): 8 MB of
-text or HTML, and an e-mail or a Word file within the limit of an archive.
+A text is read in the encoding its byte-order mark names, UTF-8 where it has none, and a
+JSON file's `\\u` escapes and an XML file's character references are read as what they
+stand for (the security review of #576). Each file is read within limits, said where it
+passes one: 4 MB of text or HTML, of a PDF's text and of each part of an e-mail; an e-mail
+of 16 MB and 500 parts; and 500 places said of one file.
 """
 
 from __future__ import annotations
 
+import base64
+import codecs
+import email
+import html
+import quopri
+import re
 import shutil
 import subprocess
 import threading
 from bisect import bisect_right
-from email import policy
-from email.parser import BytesParser
+from dataclasses import replace
 from pathlib import Path
 
 from manuscript_guard.hidden.html import read_page
@@ -57,11 +65,23 @@ TEXT = frozenset({"", ".txt", ".text", ".csv", ".tsv", ".json", ".yaml", ".yml",
                   ".bib", ".nbib", ".ris", ".rst", ".tex", ".log"})  # fmt: skip
 #: The most text or HTML read from one file, or from one part of an e-mail or a PDF:
 #: reading a text for its words costs some fifty bytes of memory a character.
-MAX_TEXT_BYTES = 8 * 1024 * 1024
-#: The most of an e-mail read, its attachments among it.
-MAX_MAIL_BYTES = 32 * 1024 * 1024
+MAX_TEXT_BYTES = 4 * 1024 * 1024
+#: The most of an e-mail read, its attachments among it, and the most of its parts.
+MAX_MAIL_BYTES = 16 * 1024 * 1024
+MAX_PARTS = 500
+#: The most of an e-mail's subject read: its encoded words cost the parser more than their
+#: length (the security review of #576).
+SUBJECT_AT_MOST = 64 * 1024
+#: The most places said of one file; the rest are counted.
+MAX_FOUND = 500
 #: How long `pdftotext` is given for a PDF's text, in seconds.
 PDF_SECONDS = 60
+_JSON_ESCAPE = re.compile(r"\\u([0-9a-fA-F]{4})")
+#: An encoded word of a header (RFC 2047): its charset, its encoding and its text.
+_ENCODED_WORD = re.compile(r"=\?([^?\s]{1,40})\?([bBqQ])\?([^?\s]{0,1000})\?=")
+_BOMS = ((codecs.BOM_UTF32_LE, "utf-32"), (codecs.BOM_UTF32_BE, "utf-32"),
+         (codecs.BOM_UTF8, "utf-8-sig"), (codecs.BOM_UTF16_LE, "utf-16"),
+         (codecs.BOM_UTF16_BE, "utf-16"))  # fmt: skip
 
 #: How each kind is said, around how the place is kept from sight.
 _WHAT = {
@@ -91,8 +111,17 @@ def said(reading: Reading) -> list[str]:
 
 
 def screen(path: Path) -> Reading:
-    """What `path` holds that its reader does not see (see the module's docstring). Raises
-    `UnsafeDocument` where it cannot be read, a kind of file no reader reads among them."""
+    """What `path` holds that its reader does not see (see the module's docstring), as far
+    as `MAX_FOUND` places. Raises `UnsafeDocument` where it cannot be read, a kind of file no
+    reader reads among them."""
+    reading = _read(path)
+    if len(reading.found) <= MAX_FOUND:
+        return reading
+    return replace(reading, found=reading.found[:MAX_FOUND],
+                   unread=(*reading.unread, f"more places than the {MAX_FOUND} said"))  # fmt: skip
+
+
+def _read(path: Path) -> Reading:
     suffix = path.suffix.casefold()
     if suffix in WORD:
         return read_hidden(path)
@@ -101,11 +130,15 @@ def screen(path: Path) -> Reading:
     data = _bytes(path, MAX_MAIL_BYTES if suffix in MAIL else MAX_TEXT_BYTES)
     if suffix in MAIL:
         return _mail(path, data)
-    text = data.decode("utf-8", errors="replace")
+    text = _decoded(data)
     if suffix in HTML or suffix in MARKDOWN:
         return Reading(path, tuple(read_page(text, path.name,
                                              "the page" if suffix in HTML else "the text")))
     if suffix in TEXT:
+        if suffix == ".json":
+            text = _JSON_ESCAPE.sub(lambda found: chr(int(found.group(1), 16)), text)
+        elif suffix == ".xml":
+            text = html.unescape(text)
         return Reading(path, tuple(text_items(text, path.name, "the text")))
     raise UnsafeDocument(
         f"{path.name}: no reader of hidden text for {suffix}; save it as a Word document, a "
@@ -113,12 +146,20 @@ def screen(path: Path) -> Reading:
     )
 
 
+def _decoded(data: bytes) -> str:
+    """Text in the encoding its byte-order mark names, UTF-8 where it has none."""
+    for mark, encoding in _BOMS:
+        if data.startswith(mark):
+            return data.decode(encoding, errors="replace")
+    return data.decode("utf-8", errors="replace")
+
+
 def _bytes(path: Path, limit: int) -> bytes:
     try:
         size = path.stat().st_size
         if size > limit:
-            raise UnsafeDocument(f"{path.name} is {size // 1024 // 1024} MB, past the "
-                                 f"{limit // 1024 // 1024} MB read of one file")  # fmt: skip
+            raise UnsafeDocument(f"{path.name} is {_size(size)}, past the {_size(limit)} read "
+                                 "of one file")  # fmt: skip
         with path.open("rb") as file:
             data = file.read(limit + 1)
     except OSError as exc:
@@ -165,13 +206,14 @@ def _size(count: int) -> str:
 
 def _pdf_text(path: Path) -> tuple[str, bool]:
     """The PDF's text and whether it was cut: from `pdftotext` read as far as the
-    limit and stopped there, in `PDF_SECONDS`; else as `literature.sources` reads one."""
+    limit and stopped there, in `PDF_SECONDS`; else as `literature.sources` reads one.
+    The path is given whole, so that a file named like an option is read as a file."""
     exe = shutil.which("pdftotext")
     if exe is None:
         return _pdf_text_without(path)
     stopped = threading.Event()
     try:
-        with subprocess.Popen([exe, "-enc", "UTF-8", str(path), "-"],
+        with subprocess.Popen([exe, "-enc", "UTF-8", str(path.resolve()), "-"],
                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as running:
             timer = threading.Timer(PDF_SECONDS, lambda: (stopped.set(), running.kill()))
             timer.start()
@@ -206,22 +248,64 @@ def _pdf_text_without(path: Path) -> tuple[str, bool]:
 
 def _mail(path: Path, data: bytes) -> Reading:
     """An e-mail's subject, and each part of its text and HTML, each as far as
-    `MAX_TEXT_BYTES`; an attachment named."""
+    `MAX_TEXT_BYTES`; an attachment named. Read by the parser's first policy, which keeps a
+    header as text: the default one makes an object of each, at a cost growing as the
+    square of a subject's encoded words (the security review of #576)."""
     try:
-        return _parts_of_mail(path, BytesParser(policy=policy.default).parsebytes(data))
+        return _parts_of_mail(path, email.message_from_bytes(data))
     except RecursionError as exc:
         # Parts nested past what the parser follows (round 1 of #576).
         raise UnsafeDocument(f"{path.name}: its parts are nested too deep to read") from exc
+    except MemoryError as exc:
+        raise UnsafeDocument(f"{path.name}: too large to read") from exc
+
+
+def _subject(message, unread: list[str]) -> str:
+    raw = str(message.get("subject", "") or "")
+    if len(raw) > SUBJECT_AT_MOST:
+        unread.append(f"the subject: past the {_size(SUBJECT_AT_MOST)} of it read")
+        raw = raw[:SUBJECT_AT_MOST]
+    return _ENCODED_WORD.sub(_word, raw)
+
+
+def _word(found: re.Match[str]) -> str:
+    """An encoded word read as its text, or left as written where it cannot be: by a
+    pattern of bounded parts, each word once, where the library's own reader took time
+    growing as the square of their number (the security review of #576)."""
+    charset, encoding, data = found.groups()
+    try:
+        if encoding in "bB":
+            written = base64.b64decode(data + "=" * (-len(data) % 4))
+        else:
+            written = quopri.decodestring(data.encode("ascii", "replace"), header=True)
+        return written.decode(codecs.lookup(charset).name, errors="replace")
+    except (LookupError, ValueError):
+        return found.group(0)
+
+
+def _content(part, number: int, unread: list[str]) -> str | None:
+    """The text of one part of an e-mail, decoded, or None where it is not read."""
+    payload = part.get_payload(decode=True) or b""
+    if len(payload) > MAX_TEXT_BYTES:
+        unread.append(f"part {number} of the message: past the {_size(MAX_TEXT_BYTES)} of "
+                      "text read")  # fmt: skip
+        return None
+    charset = part.get_content_charset() or "utf-8"
+    try:
+        return payload.decode(codecs.lookup(charset).name, errors="replace")
+    except (LookupError, UnicodeError, ValueError) as exc:
+        unread.append(f"part {number} of the message: its text cannot be read ({exc})")
+        return None
 
 
 def _parts_of_mail(path: Path, message) -> Reading:
-    subject = str(message.get("subject", ""))
     unread: list[str] = []
-    if len(subject) > MAX_TEXT_BYTES:
-        unread.append(f"the subject: past the {_size(MAX_TEXT_BYTES)} of text read")
-        subject = ""
-    found = text_items(subject, path.name, "the subject")
+    found = text_items(_subject(message, unread), path.name, "the subject")
     for number, part in enumerate(message.walk(), start=1):
+        if number > MAX_PARTS:
+            unread.append(f"the message holds more than {MAX_PARTS} parts; the rest are not "
+                          "read")  # fmt: skip
+            break
         if part.is_multipart():
             continue
         name = part.get_filename()
@@ -232,20 +316,11 @@ def _parts_of_mail(path: Path, message) -> Reading:
         if not kind.startswith("text/"):
             unread.append(f"part {number} of the message, {kind}: no reader of it")
             continue
-        try:
-            content = part.get_content()
-        except (LookupError, UnicodeError, ValueError, AssertionError) as exc:
-            unread.append(f"part {number} of the message: its text cannot be read ({exc})")
-            continue
-        if len(content) > MAX_TEXT_BYTES:
-            unread.append(f"part {number} of the message: past the "
-                          f"{_size(MAX_TEXT_BYTES)} of text read")  # fmt: skip
+        content = _content(part, number, unread)
+        if content is None:
             continue
         if kind == "text/html":
-            try:
-                found += read_page(content, path.name, f"the message's HTML, part {number}")
-            except UnsafeDocument as exc:
-                unread.append(f"part {number} of the message: {exc}")
+            found += read_page(content, path.name, f"the message's HTML, part {number}")
         else:
             found += text_items(content, path.name, f"the message, part {number}")
     return Reading(path, tuple(found), tuple(unread))

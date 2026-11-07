@@ -37,9 +37,13 @@ counted as claiming more, as `communicate check` counts it. A Results sentence t
 word of the claim lists states its number and leaves the claim to the sentences round it, so
 it is not compared; a summary sentence that holds none is held only to the hedges and limits
 it dropped, since a negation it leaves out does not turn the claim round ("no association
-(HR 1.02)" against "HR 1.02"; Basile, 2026-11-07). A sentence binding several keys is held to
-the Results sentences of all of them together. A key the Results bind in no sentence, given
-only in the Methods, a table or a figure, is compared with nothing.
+(HR 1.02)" against "HR 1.02"; Basile, 2026-11-07), and a word of the ladder takes its claim
+with it. A sentence binding several keys is held to the Results sentences of all of them
+together. Against a Results sentence that also gives a result the summary sentence does not,
+only a word of the ladder the summary moves up is read: its hedges, limits and negations may
+be about that other result ("associated with A but not with B" against "associated with A";
+Basile, 2026-11-07). A key the Results bind in no sentence, given only in the Methods, a table
+or a figure, is compared with nothing.
 """
 
 from __future__ import annotations
@@ -73,15 +77,15 @@ from manuscript_guard.text.sections import Section, scannable, split_sections, s
 GATE = "G8"
 CODE = "summary-not-reported"
 CLAIM_CODE = "summary-claim-stronger"
-#: What `claims.compare_pair` may say of a summary sentence against a Results sentence for
-#: it to claim more: with a word of the claim lists, and with none (a module's docstring).
+#: What `claims.compare_pair` may say of a summary sentence that holds a word of the claim
+#: lists against a Results sentence for it to claim more (`_more_than`).
 _MORE = frozenset({claims.STRONGER, claims.NEGATION})
-_MORE_WITHOUT_A_WORD = frozenset({claims.STRONGER})
 #: A heading of the supplement over its Results: "Results" or "Findings" as the main text's
 #: are read (`names_results`), after a label of the supplement's own, "S3.", "Appendix 2:",
-#: "Supplementary", "Additional", or JAMA's "eResults".
+#: Wiley's "Appendix S1:", JAMA's "Supplement 1." or "eResults", "Supplementary",
+#: "Additional".
 _SUPPLEMENT_RESULTS = re.compile(
-    r"(?:(?:e?appendix|s)\s*\d+[a-z]?\s*[.:]?\s*)?"
+    r"(?:(?:e?appendix|supplement|s)\s*s?\d+[a-z]?\s*[.:]?\s*)?"
     r"(?:(?:supplementa(?:ry|l)|additional)\s+|e(?=results?\b|findings\b))?"
     r"(?:results?|findings)\b",
     re.IGNORECASE,
@@ -506,17 +510,21 @@ def _claimed(root: Path, given: list[tuple[Path, Given]], stated: list[tuple[Pat
              same: Callable[[str], str]) -> list[Finding]:  # fmt: skip
     """`summary-claim-stronger` for each sentence of a summary that claims more than every
     Results sentence that binds one of its keys, or a key declared the same quantity, and
-    holds a word of the claim lists (`claims_more`)."""
+    holds a word of the claim lists (`claims_more`); each Results sentence read with whether
+    the summary sentence gives every result it binds."""
     by_quantity: dict[str, list[tuple[Path, Stated]]] = {}
+    bound_in: dict[tuple[Path, str], set[str]] = {}
     for path, one in stated:
         if one.sentence:
             by_quantity.setdefault(same(one.key), []).append((path, one))
+            bound_in.setdefault((path, one.sentence), set()).add(same(one.key))
     sentences: dict[tuple[Path, int], list[Given]] = {}
     for path, one in given:
         if one.sentence:
             sentences.setdefault((path, one.opens), []).append(one)
     found = []
     for (path, _opens), ones in sentences.items():
+        gives = {same(one.key) for one in ones}
         held: dict[tuple[Path, str], tuple[Path, Stated]] = {}
         keys: list[str] = []
         for one in ones:
@@ -526,7 +534,9 @@ def _claimed(root: Path, given: list[tuple[Path, Given]], stated: list[tuple[Pat
                 keys.append(one.key)
             for where, it in worded:
                 held.setdefault((where, it.sentence), (where, it))
-        moved = claims_more(ones[0].sentence, [it.sentence for _where, it in held.values()])
+        moved = claims_more(ones[0].sentence, [
+            (it.sentence, bound_in[(where, it.sentence)] <= gives) for where, it in held.values()
+        ])  # fmt: skip
         if moved is None:
             continue
         found.append(Finding(
@@ -547,23 +557,63 @@ def holds_a_word(text: str) -> bool:
     return any(sentence.words for sentence in claims.sentences(text))
 
 
-def claims_more(summary: str, stated: Sequence[str]) -> Finding | None:
+def claims_more(summary: str, stated: Sequence[tuple[str, bool]]) -> Finding | None:
     """What `claims.compare_pair` says of `summary` against the first of `stated`, where the
-    summary claims more than every one of them; None where it does not, or where none of
-    them holds a word of the claim lists, a sentence that holds none being left out. A
-    negation gone or new counts as claiming more, unless the summary holds no word: it then
-    claims more only for a hedge or a limit it dropped."""
-    worded = [one for one in dict.fromkeys(stated) if holds_a_word(one)]
+    summary claims more than every one of them (`_more_than`); None where it does not, or
+    where none of them holds a word of the claim lists, a sentence that holds none being left
+    out. Each Results sentence comes with whether the summary gives every result it binds."""
+    worded = [(one, whole) for one, whole in dict.fromkeys(stated) if holds_a_word(one)]
     if not worded:
         return None
-    more = _MORE if holds_a_word(summary) else _MORE_WITHOUT_A_WORD
     first = None
-    for one in worded:
-        moved = claims.compare_pair(one, summary)
-        if moved is None or moved.code not in more:
+    for one, whole in worded:
+        moved = _more_than(summary, one, whole)
+        if moved is None:
             return None
         first = first or moved
     return first
+
+
+def _more_than(summary: str, stated: str, whole: bool) -> Finding | None:
+    """What `claims.compare_pair` says of `summary` against one Results sentence, where the
+    summary claims more than it; None where it does not.
+
+    Where the summary gives every result the sentence binds (`whole`), a word of the claim
+    lists dropped or moved up, or a negation gone or new, claims more. A summary that holds
+    no such word claims more only by a hedge or a limit it dropped: a negation it leaves out
+    does not turn the claim round, nor does a word of the ladder, which takes its claim with
+    it ("suggests a signal" against the ratio alone; round 1 of #573). Where the sentence
+    binds a result the summary does not give, its hedges, limits and negations may be about
+    that one, so only a word of the ladder the summary moves up claims more (Basile,
+    2026-11-07)."""
+    if not whole:
+        said = _ladder_only(summary)
+        if said is None:
+            return None
+        moved = claims.compare_pair(_ladder_only(stated) or "So.", said)
+        return moved if moved is not None and moved.code == claims.STRONGER else None
+    moved = claims.compare_pair(stated, summary)
+    if moved is None:
+        return None
+    if holds_a_word(summary):
+        return moved if moved.code in _MORE else None
+    return moved if _bare_claims_more(moved, stated) else None
+
+
+def _bare_claims_more(moved: Finding, stated: str) -> bool:
+    """Whether a summary that holds no word of the claim lists claims more than `stated`, as
+    `compare_pair` found them to move: only by a hedge or a limit it dropped."""
+    held = {kind for sentence in claims.sentences(stated) for _word, kind in sentence.words}
+    return moved.code == claims.STRONGER and bool(held & {claims.HEDGE, claims.LIMIT})
+
+
+def _ladder_only(text: str) -> str | None:
+    """The words of the ladder `text` holds, as a sentence of them alone, each read as a word
+    of its own: what is compared where only a move up the ladder is read. None where it holds
+    none."""
+    rungs = [word for sentence in claims.sentences(text) for word, kind in sentence.words
+             if isinstance(kind, int)]  # fmt: skip
+    return " ".join(["So", *rungs]) + "." if rungs else None
 
 
 def _claim_message(root: Path, heading: str, keys: list[str],

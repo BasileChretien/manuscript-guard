@@ -7950,20 +7950,38 @@ SUMMARY_CLAIM_KINDS = {
     "up": True, "hedge gone": True, "limit gone": True, "negation new": True,
     "negation gone": True, "same rung": False, "down": False, "bare results": False,
     "bare summary, hedge gone": True, "bare summary, negation gone": False,
-    "stronger than one of two": False, "stronger than both": True, "in the methods": False,
-    "two keys": False, "in a conclusion": True,
+    "bare summary, ladder gone": False, "stronger than one of two": False,
+    "stronger than both": True, "in the methods": False, "two keys": False,
+    "in a conclusion": True, "other result hedged or negated": False,
+    "other result, moved up": True, "same quantity": True,
+    "in the supplement's results": True, "in the supplement's methods": False,
 }  # fmt: skip
+#: Headings of a supplement over its Results, and over what is not its Results: the
+#: innermost heading that names the Methods or the Results decides.
+SUPPLEMENT_RESULTS = (
+    "# Supplementary results", "## eResults 2", "# Appendix S1: Results",
+    "# Supplement 1. Results", "# S3. Additional findings",
+    "# Supplementary methods\n\nThe data were given.\n\n## eResults 1",
+)  # fmt: skip
+SUPPLEMENT_OTHER = (
+    "# Supplementary methods", "## eMethods 2", "# eTable 1", "# Sensitivity analyses",
+    "# Supplementary results\n\nThe data were given.\n\n## Methods of the sensitivity analysis",
+)  # fmt: skip
 
 
 @st.composite
-def summary_claim_papers(draw: st.DrawFn) -> tuple[str, set[str]]:
+def summary_claim_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, str], set[str]]:
     """A paper whose Abstract, Methods, Results and conclusion bind a key of their own for
     each kind of `SUMMARY_CLAIM_KINDS`, each kind's sentences in an order drawn each time,
     run on in their paragraph or on lines of their own, the abstract structured or not and
-    the Results split under a heading of their own or not; and the keys of the summary
-    sentences G8 is to warn of."""
+    the Results split under a heading of their own or not; a file of its supplement, under
+    a heading drawn from those over its Results and from those over the rest; the keys
+    declared the same quantity as another; and the keys of the summary sentences G8 is to
+    warn of."""
     rungs = tuple(kind for kind in CLAIMED if isinstance(kind, int))
     keys = iter(f"k{at:02d}" for at in range(100))
+    same: dict[str, str] = {}
+    supplement: list[str] = []
 
     def word(kind: str | int) -> str:
         return draw(st.sampled_from(CLAIMED[kind]))
@@ -8002,6 +8020,34 @@ def summary_claim_papers(draw: st.DrawFn) -> tuple[str, set[str]]:
             stated, summary = [[word(draw(st.sampled_from(("hedge", "limit"))))]], []
         elif kind == "bare summary, negation gone":
             stated, summary = [[word("negation")]], []
+        elif kind == "bare summary, ladder gone":
+            stated, summary = [[word(0)]], []
+        elif kind == "other result hedged or negated":
+            # The Results sentence gives another result too, and hedges, limits or negates it.
+            other = next(keys)
+            extra = word(draw(st.sampled_from(("hedge", "limit", "negation"))))
+            said_too = said([word(rung)], [key])[:-1]
+            parts["results"].append(f"{said_too} and {extra} {draw(st.sampled_from(_PLAIN))} "
+                                    f"({{{{results.{other}}}}}).")  # fmt: skip
+            parts["abstract"].append(said([word(rung)], [key]))
+            continue
+        elif kind == "other result, moved up":
+            other = next(keys)
+            parts["results"].append(said([word(low)], [key, other]))
+            parts["abstract"].append(said([word(high)], [key]))
+            warned.add(key)
+            continue
+        elif kind == "same quantity":
+            alias = next(keys)
+            same[alias] = key
+            parts["results"].append(said([word(low)], [key]))
+            parts["abstract"].append(said([word(high)], [alias]))
+            warned.add(alias)
+            continue
+        elif kind.startswith("in the supplement's"):
+            headings = SUPPLEMENT_RESULTS if kind.endswith("results") else SUPPLEMENT_OTHER
+            supplement.append(f"{draw(st.sampled_from(headings))}\n\n{said([word(low)], [key])}")
+            stated = []
         elif kind == "stronger than one of two":
             stated = [[word(low)], [word(high)]]
         elif kind == "stronger than both":
@@ -8035,6 +8081,8 @@ def summary_claim_papers(draw: st.DrawFn) -> tuple[str, set[str]]:
         f"# Abstract\n\n{abstract}\n\n# Methods\n\n{run(parts['methods'])}\n\n"
         f"# Results\n\n{results}\n\n# Discussion\n\nThe data were given.\n\n"
         f"## Conclusions\n\n{run(parts['end'])}\n",
+        "\n\n".join(draw(st.permutations(supplement))) + "\n",
+        same,
         warned,
     )
 
@@ -9719,7 +9767,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         {"text": st.one_of(summaries(), topical_summaries()),
          "abstract title": st.sampled_from((None, "Summary"))}  # fmt: skip
     ),
-    "summary claims": summary_claim_papers().map(lambda drawn: {"text": drawn[0]}),
+    "summary claims": summary_claim_papers().map(
+        lambda drawn: {"text": drawn[0], "supplement": drawn[1], "same": drawn[2]}
+    ),
     "boxes": box_papers().map(lambda drawn: drawn[0]),
     "communicate anchors": st.one_of(
         communication_texts().map(lambda drawn: {"text": drawn[0]}),

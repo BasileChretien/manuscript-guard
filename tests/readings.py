@@ -499,16 +499,25 @@ def _summaries() -> Reading:
 @reading("summary claims")
 def _summary_claims() -> Reading:
     """Each sentence of a file's summaries G8 says claims more than every Results sentence
-    that binds its keys (`summary-claim-stronger`): its line, the message and the sentence."""
-    from manuscript_guard.gates.reported import Walk, _claimed
+    that binds its keys (`summary-claim-stronger`), held to the file's Results and to those
+    of a file of its supplement, each key read with those declared the same quantity: its
+    line, the message and the sentence."""
+    from types import SimpleNamespace
+
+    from manuscript_guard.gates.reported import Walk, _claimed, _same_quantity, supplement_stated
 
     def claimed(given: dict[str, Any]) -> list[list[Any]]:
         walk = Walk(None)
         found, _reported = walk.read(given["text"])
         given_ = [(MAIN, one) for one in found]
         stated = [(MAIN, one) for one in walk.stated]
+        supplement = MAIN.parent / "supplementary" / "s1.md"
+        stated += [(supplement, one) for one in supplement_stated(given.get("supplement", ""))]
+        declared = {key: SimpleNamespace(same_as=other)
+                    for key, other in given.get("same", {}).items()}  # fmt: skip
+        same = _same_quantity(SimpleNamespace(values=declared))
         return [[one.line, one.message, one.context]
-                for one in _claimed(MAIN.parent, given_, stated, lambda key: key)]  # fmt: skip
+                for one in _claimed(MAIN.parent, given_, stated, same)]  # fmt: skip
 
     return claimed
 

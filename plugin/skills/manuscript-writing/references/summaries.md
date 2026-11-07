@@ -11,3 +11,8 @@ stronger words are right, they belong first in the Results, beside the evidence 
 Results sentence that gives the number and no word of the claim ("The adjusted HR was 1.42")
 is compared with nothing, so a claim in the sentence before it is not seen: where you can,
 write the claim and its number in one sentence.
+
+Against a Results sentence that also gives a result the summary sentence leaves out, only a
+word moved up the ladder is read: its hedges, limits and negations may be about the other
+result. Where a summary gives one result of such a sentence, check by eye that it keeps that
+result's hedge.

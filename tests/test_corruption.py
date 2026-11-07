@@ -2720,6 +2720,8 @@ def _overclaimed(root: Path) -> list:
 _ABSTRACT_ROR = "example-drug. The reporting odds ratio was {{results.ror.point}}"
 _RESULTS_ROR = "Reporting of hepatic injury was disproportionate for example-drug, with a"
 _ASSOCIATED = "Example-drug was associated with reports of hepatic injury, with a"
+#: Where the example's Results paragraph on the ratio ends.
+_RESULTS_END = "so a reader\ncan reconstruct it."
 
 
 def test_a_summary_that_claims_more_than_the_results_is_warned(project: Path) -> None:
@@ -2759,21 +2761,44 @@ def test_a_summary_with_no_word_of_the_claim_lists_is_held_to_the_hedges_it_drop
     project: Path,
 ) -> None:
     """The example's Abstract gives the reporting odds ratio in a sentence that holds no word
-    that sets how strongly it claims. Against Results that say "may", it claims more, and is
-    warned; against Results that say "not", it does not turn the claim round, and is not
+    that sets how strongly it claims. Against a Results sentence that says "may", it claims
+    more, and is warned; against one that says "not", it does not turn the claim round, and
+    against one that says "suggests", it claims no more (round 1 of #573): neither is warned
     (Basile, 2026-11-07). An Abstract that says "not" where the Results did not is warned."""
-    _swap(project, _RESULTS_ROR,
-          "Reporting of hepatic injury may be disproportionate for example-drug, with a")
+    said = "The ratio may be disproportionate ({{results.ror.point}})."
+    _swap(project, _RESULTS_END, f"{_RESULTS_END} {said}")
     (found,) = _overclaimed(project)
     assert found.message.endswith(": 'may' is gone")
-    _swap(project, "injury may be disproportionate", "injury was not disproportionate")
+    _swap(project, said, "The ratio was not disproportionate ({{results.ror.point}}).")
     assert _overclaimed(project) == []
-    _swap(project, "injury was not disproportionate", "injury was associated")
+    _swap(project, "The ratio was not disproportionate", "The ratio suggests a signal")
+    assert _overclaimed(project) == []
+    _swap(project, "The ratio suggests a signal", "Example-drug was associated with the reports")
     _swap(project, _ABSTRACT_ROR,
           "example-drug. Example-drug was not associated with them: the reporting odds ratio "
           "was {{results.ror.point}}")  # fmt: skip
     (found,) = _overclaimed(project)
     assert found.message.endswith(": 'not' is new")
+
+
+def test_a_results_sentence_that_gives_another_result_is_held_to_what_the_summary_adds(
+    project: Path,
+) -> None:
+    """Round 1 of #573: a Results sentence that gives a result the summary sentence does not
+    give may hedge, limit or negate that other result. Against it only a word of the ladder
+    the summary moves up is read (Basile, 2026-11-07): an Abstract that keeps "associated" of
+    the cases and leaves out "and not with" the serious ones is not warned, and one that says
+    "increased" is."""
+    _swap(project, "{{results.case.n_cases}} described\nhepatic injury with example-drug.",
+          "use was associated with\nhepatic injury in {{results.case.n_cases}}.")  # fmt: skip
+    _swap(project, "Hepatic injury was reported in\n{{results.case.n_cases}} of these; "
+          "{{results.case.n_serious}} were flagged as serious",
+          "Use was associated with hepatic injury in\n{{results.case.n_cases}} of these, and not "
+          "with the {{results.case.n_serious}} flagged as serious")  # fmt: skip
+    assert _overclaimed(project) == []
+    _swap(project, "use was associated with\nhepatic injury", "use increased\nhepatic injury")
+    (found,) = _overclaimed(project)
+    assert found.message.endswith(": 'associated' (association) is now 'increased' (effect)")
 
 
 def test_a_summary_is_held_to_the_supplement_s_results_and_the_same_quantity(
@@ -10876,6 +10901,34 @@ def test_g8_says_of_the_twin_a_summary_that_claims_more_than_its_results(project
     bound = next(n for n, line in enumerate(lines, 1) if "ratio of \\mg{results.ror.point}" in line)
     assert found.path == entry and found.line == said
     assert f"(main.tex:{bound}): 'associated' (association) is now 'increased'" in found.message
+
+
+def test_g8_holds_the_twin_s_summary_to_its_supplement_s_results(project: Path) -> None:
+    """A sentence under the twin's supplement's "eResults 1" that hedges the ratio is a Results
+    sentence its Abstract is held to, named at the supplement's `.tex` file and line; under
+    its "Supplementary methods" it is not (round 1 of #573)."""
+    from manuscript_guard.gates.reported import check_reported
+
+    entry = _twin(project)
+    _replace_once(entry, "example-drug. The reporting odds ratio was \\mg{results.ror.point}",
+                  "example-drug. Example-drug increased these reports: the reporting odds ratio "
+                  "was \\mg{results.ror.point}")  # fmt: skip
+    supplement = entry.parent / "supplementary" / "main.tex"
+    hedged = "The estimate, \\mg{results.ror.point}, may be associated with the drug."
+    _replace_once(supplement, "\\subsection{Table S2. The adjusted model}",
+                  f"{hedged}\n\n\\subsection{{Table S2. The adjusted model}}")
+
+    def found() -> list:
+        projekt = load_project(project)[0]
+        return [f for f in check_reported(projekt, load_namespace(projekt)[1]).findings
+                if f.code == "summary-claim-stronger"]  # fmt: skip
+
+    assert found() == []  # under the supplement's Methods
+    _replace_once(supplement, f"{hedged}\n\n", f"\\section{{eResults 1}}\n\n{hedged}\n\n")
+    (one,) = found()
+    text = supplement.read_text(encoding="utf-8")
+    line = text.count("\n", 0, text.index(hedged)) + 1
+    assert one.path == entry and f"(supplementary/main.tex:{line}): " in one.message, one.message
 
 
 def test_g8_recomputes_a_p_in_the_twin_after_a_display_holding_a_percent(project: Path) -> None:

@@ -6567,16 +6567,20 @@ from generated import summary_claim_papers  # noqa: E402
 
 @holds(30, summary_claim_papers())
 def test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence(
-    drawn: tuple[str, set[str]],
+    drawn: tuple[str, str, dict[str, str], set[str]],
 ) -> None:
     """A sentence of the Abstract or a conclusion is warned where it claims more than every
     sentence of the Results that binds its keys, a negation gone or new counted as more, and
     on the line its binding stands: not where it claims as much or less, nor where one
     Results sentence claims as much, nor against the Methods. A Results sentence with no word
     of the claim lists is not compared, a summary with none is held only to the hedges and
-    limits it dropped, and a sentence binding two keys to the Results sentences of both."""
-    text, warned = drawn
-    read = READINGS["summary claims"]()({"text": text})
+    limits it dropped, and a sentence binding two keys to the Results sentences of both. A
+    Results sentence that gives another result too is held only to a word of the ladder the
+    summary moves up (round 1 of #573). The supplement's Results count, under each way of
+    heading them, and its other sections do not; a key is held to the sentences that bind a
+    key declared the same quantity."""
+    text, supplement, same, warned = drawn
+    read = READINGS["summary claims"]()({"text": text, "supplement": supplement, "same": same})
     found = {re.search(r"results\.(\w+)", context)[1] for _line, _message, context in read}
     assert found == warned, text
     lines = text.splitlines()
@@ -15448,10 +15452,11 @@ def _a_latex_box_environment_is_no_summary(patch: pytest.MonkeyPatch) -> None:
 def _a_summary_is_warned_against_any_one_results_sentence(patch: pytest.MonkeyPatch) -> None:
     # D3.2 the other way: stronger than one Results sentence binding the key is enough.
     def against_any(summary: str, stated) -> object:
-        for one in stated:
-            moved = claims_module.compare_pair(one, summary)
-            if reported_gate.holds_a_word(one) and moved and moved.code in reported_gate._MORE:
-                return moved
+        for one, whole in stated:
+            if reported_gate.holds_a_word(one):
+                moved = reported_gate._more_than(summary, one, whole)
+                if moved is not None:
+                    return moved
         return None
 
     patch.setattr(reported_gate, "claims_more", against_any)
@@ -15463,7 +15468,34 @@ def _a_results_sentence_with_no_claim_word_is_compared(patch: pytest.MonkeyPatch
 
 
 def _a_negation_a_bare_summary_leaves_out_is_more(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(reported_gate, "_MORE_WITHOUT_A_WORD", reported_gate._MORE)
+    patch.setattr(reported_gate, "_bare_claims_more",
+                  lambda moved, stated: moved.code in reported_gate._MORE)  # fmt: skip
+
+
+def _a_ladder_word_a_bare_summary_leaves_out_is_more(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #573: "suggests" gone made a bare number claim more.
+    patch.setattr(reported_gate, "_bare_claims_more",
+                  lambda moved, stated: moved.code == claims_module.STRONGER)  # fmt: skip
+
+
+def _a_results_sentence_giving_another_result_is_read_whole(patch: pytest.MonkeyPatch) -> None:
+    whole = reported_gate._more_than
+    patch.setattr(reported_gate, "_more_than", lambda summary, stated, _whole: whole(
+        summary, stated, True))  # fmt: skip
+
+
+def _a_results_sentence_giving_another_result_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    whole = reported_gate._more_than
+    patch.setattr(reported_gate, "_more_than", lambda summary, stated, all_given: whole(
+        summary, stated, all_given) if all_given else None)  # fmt: skip
+
+
+def _every_heading_of_the_supplement_is_its_results(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reported_gate, "_names_supplement_results", lambda title: True)
+
+
+def _no_key_is_the_same_quantity_as_another(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reported_gate, "_same_quantity", lambda results: lambda key: key)
 
 
 def _the_methods_are_read_as_the_results(patch: pytest.MonkeyPatch) -> None:
@@ -16074,6 +16106,26 @@ BROKEN = {
     ),
     "each key of a summary sentence is held alone": (
         _each_key_of_a_summary_sentence_is_held_alone,
+        test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence,
+    ),
+    "a ladder word a bare summary leaves out is more": (
+        _a_ladder_word_a_bare_summary_leaves_out_is_more,
+        test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence,
+    ),
+    "a Results sentence giving another result is read whole": (
+        _a_results_sentence_giving_another_result_is_read_whole,
+        test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence,
+    ),
+    "a Results sentence giving another result is not read": (
+        _a_results_sentence_giving_another_result_is_not_read,
+        test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence,
+    ),
+    "every heading of the supplement is its Results": (
+        _every_heading_of_the_supplement_is_its_results,
+        test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence,
+    ),
+    "no key is the same quantity as another": (
+        _no_key_is_the_same_quantity_as_another,
         test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence,
     ),
     "the abstract's heading is not looked for inside a Div": (

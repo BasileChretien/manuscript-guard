@@ -118,6 +118,18 @@ def test_a_summary_claiming_more_than_the_results_warns_at_every_stage() -> None
         assert (report.findings[0].severity, deferred) == (WARN, {}), stage
 
 
+def test_the_interpretation_note_is_a_note_at_every_stage() -> None:
+    """D10.1 of 2026-11-06: the sentences that claim on neither a result nor a citation are
+    counted in a note, never a warning, so no stage binds it."""
+    from manuscript_guard.gates.interpretation import CODE, GATE
+
+    assert CODE not in BINDS_AT
+    note = Report((Finding(gate=GATE, code=CODE, message="m", severity=INFO),))
+    for stage in STAGES:
+        report, deferred = apply_stage(note, stage)
+        assert (report.findings[0].severity, deferred) == (INFO, {}), stage
+
+
 def test_warnings_are_left_alone() -> None:
     """Deferral is about failures. A warning is already not fatal."""
     warning = Report((Finding(gate="G", code="no-review", message="m", severity=WARN),))

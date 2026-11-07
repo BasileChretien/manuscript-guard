@@ -6770,6 +6770,44 @@ A box the journal's profile asks for (`boxes:`, highlights or key points, below)
 the abstract does, and G8 reads it so: its heading is a summary's, and in LaTeX so is its
 environment, whose numbers the printed view keeps under whatever heading stands over it.
 
+## A sentence that rests on neither a result nor a citation
+
+A sentence of the Results that gives a result binds it, and G1 and G2 hold it to the
+analysis. A sentence that reports what others found cites them, and G7 holds the citation to
+the work and, through its passage, to the words that support it. What is left is the authors'
+own reading of their results: "the association probably reflects confounding by
+indication", "use increases the risk in older patients". Nothing pointed a reader at it.
+Mitchener and colleagues' evaluation of Kosmos, an automated scientist, is the reason to: of
+102 statements taken from three of its reports, expert scientists judged 85.5% of those
+based on its data analysis accurate and 82.1% of those based on the literature, but 57.9% of
+those that interpreted the two together (arXiv 2511.02824, section 2.1; DOI
+10.48550/arXiv.2511.02824, looked up with `lookup` on 2026-11-07, which OpenAlex and
+DataCite answered).
+
+So G8 counts them (`interpretation-sentences`, `gates/interpretation.py`, item 10 of the
+borrowed checks): each sentence of the Results and the Discussion, the main text's and the
+supplement's, that holds a word of the claim ladder (`data/claim_strength.yaml`, read as
+`claims.py` reads a sentence) and neither a binding nor a citation. A note for each file
+that has one says how many, of how many sentences there that claim, at the line of the first.
+It is a note at every stage and never a warning (Basile, D10.1 of 2026-11-06): these
+sentences are the paper's argument, and many of them are right. `manuscript-guard explain
+<file>` lists those of a file after its numbers, each at its line, and the review-panel
+skill's interpretation remit sends the list to a reader who says whether each follows from
+the results the paper reports. No command or flag was added for it: the list is what
+`explain` prints, and the remit carries it, since a model read by route B is sent the
+manuscript with its bindings filled in and cannot tell which sentence has one.
+
+The sections are found as G8 finds them for a summary (`reported.Walk`): the Results as
+`summary-claim-stronger` reads them, and the Discussion as the text under a heading that names
+it, outside the abstract, a box and a conclusion. A Limitations under the Discussion is the
+Discussion's, and one of its own is not. The Abstract and a conclusion are left out, since
+G8 holds them to the Results already (D10.2). In the supplement the innermost heading that
+names its Methods, its Results or its Discussion decides, and "eDiscussion" or
+"Supplementary discussion" is read as "eResults" or "Supplementary results" is. A hedge, a
+limit or a negation with no word of the ladder claims nothing to count, and a heading is no
+sentence. A binding of a result, of a value from the literature or of a display's number is
+something to rest on; an anchor of the Methods, which points at the code, is not.
+
 ## The boxes a journal prints beside the abstract
 
 Journals print short texts beside the abstract: Elsevier's highlights, JAMA's key points, the
@@ -14819,6 +14857,30 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   sentences of all of them together, so where it claims more of one result than that
   result's sentence does, another key's sentence that claims as much keeps the warning back.
   The title and the covering letter are not read (D3.1).
+- **The paper's interpretation is found by the words of the claim ladder alone**
+  (`interpretation-sentences`, item 10 of the borrowed checks, 2026-11-07). A sentence that
+  claims with no word of the ladder, "the drug is hepatotoxic", "older patients are at
+  higher risk", is not counted, and one that holds a word of it and claims nothing of this
+  paper's results is: "the class is associated with liver injury in other cohorts", written
+  without its citation. A sentence rests on whatever binding or citation stands in it, so one
+  that binds a single number and claims far more than it, "the risk increased with dose
+  ({{results.ror.point}})", is not counted, and only `summary-claim-stronger`, in a summary,
+  holds a claim to its number. A citation is one the gates read as a citation: `[@key]`, a
+  narrative `@key`, LaTeX's `\cite`. One typed against the stop before it, "injury.[@a]",
+  `injury.\cite{a}` or `injury.~\cite{a}`, cites the sentence that stop ends, and one typed
+  after a space, "injury. [@a] showed", the sentence it opens (round 1 of #578). So where a
+  citation typed against the stop is the next sentence's, "injury.[@a] Smith showed", that
+  sentence is read as citing nothing, and the one before it as citing. An author and year
+  typed in the prose, a citation in a footnote the sentence calls, and a sentence that leans
+  on the citation of the one before it are counted as resting on nothing, and so is a
+  sentence that points at a display with a typed number, "Figure 1 suggests". A table typed
+  by hand, its caption line and an image's alternative text are read as sentences under the
+  Results or the Discussion, and counted where they claim; G2 reports a table typed by hand
+  already (`hand-authored-table`), and a display placed by its binding is not read. In a
+  paper with no Results heading, as a narrative review or a case report has none, only the
+  Discussion is read. The figures that gave the reason are those of an automated
+  scientist's reports: the note says nothing of how often a person's interpretation is
+  wrong, only where it stands.
 - **G8 compares only values whose units agree.** A count of 56 and a share of 56.0% are two
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and

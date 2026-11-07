@@ -1945,6 +1945,54 @@ def _hidden_content() -> Reading:
     return found
 
 
+#: How an element of a generated page draws its word, by name: the HTML around it, `{w}`
+#: standing for the word. Each is held to what a browser shows by
+#: `test_properties._seen_as_a_browser_shows`.
+PAGE_LOOKS = {
+    "shown": "<p>{w}</p>",
+    "display": '<div style="display:none">{w}</div>',
+    "attribute": "<p hidden>{w}</p>",
+    "visibility": '<p style="visibility: hidden">{w}</p>',
+    "off-page": '<span style="position:absolute; left:-10000px">{w}</span>',
+    "white": '<p style="color:#fff">{w}</p>',
+    "inherited": '<div style="color:#fefefe"><p>{w}</p></div>',
+    "dark": '<div style="background:#000"><p style="color:#111">{w}</p></div>',
+    "transparent": '<p style="opacity:0">{w}</p>',
+    "tiny": '<p style="font-size:2px">{w}</p>',
+    "tiny-inherited": '<div style="font-size:3pt"><p style="font-size:50%">{w}</p></div>',
+    "grey": '<p style="color:#777">{w}</p>',
+    "small": '<p style="font-size:9px">{w}</p>',
+}
+
+
+def hidden_page(described: dict[str, Any]) -> str:
+    """A page of `described`: its `elements`, each [look of `PAGE_LOOKS`, word]; and
+    `planted`, words to a model in a hidden element, in a comment, and printed with markup
+    inside them."""
+    body = [PAGE_LOOKS[look].format(w=_xml_text(word)) for look, word in described["elements"]]
+    planted = described.get("planted")
+    if planted:
+        hidden, commented, printed = planted["hidden"][1], planted["comment"][1], planted["printed"]
+        body.insert(planted["at"][0], f'<div style="display:none">{_xml_text(hidden)}</div>')
+        body.insert(planted["at"][1], f"<!-- {commented} -->")
+        marked = "<b></b>".join(_xml_text(piece) for piece in printed[1])
+        body.insert(planted["at"][2], f"<p>{marked}</p>")
+    return "<html><body>" + "\n".join(body) + "</body></html>"
+
+
+@reading("hidden page")
+def _hidden_page() -> Reading:
+    """What the reader of hidden content finds in a generated page (`hidden_page`): each
+    place, its kind, its words, whether they are printed and the rule they match."""
+    from manuscript_guard.hidden.html import read_page
+
+    def found(described: dict[str, Any]) -> list[list[Any]]:
+        return [[item.kind, item.text, item.printed, item.model]
+                for item in read_page(hidden_page(described), "page.html")]  # fmt: skip
+
+    return found
+
+
 # ------------------------------------------------------------------- titles and quotes
 
 

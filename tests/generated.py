@@ -55,6 +55,7 @@ from readings import (
     HIDDEN_LOOKS,
     HIDDEN_PARAGRAPHS,
     INTERVALS,
+    PAGE_LOOKS,
     PICTURES,
     SAYS,
     TAGS,
@@ -4837,6 +4838,26 @@ def hidden_documents(draw: st.DrawFn, defaults: bool | None = None) -> dict[str,
             [f" {word()}", "plain"]]  # fmt: skip
     paragraphs.insert(draw(st.integers(0, len(paragraphs))), {"style": "Normal", "runs": runs})
     return {**described, "alt": alt, "planted": [rule, alt_rule, planted]}
+
+
+@st.composite
+def hidden_pages(draw: st.DrawFn) -> dict[str, Any]:
+    """A page for `readings.hidden_page`: every look of `PAGE_LOOKS` and a few more, each an
+    element of a word of its own (`alpha3`), in an order drawn each time; and three of
+    `TO_A_MODEL_SAID`, one in a hidden element, one in a comment and one printed, split by
+    markup at places drawn, each where it is drawn."""
+    looks = list(draw(st.permutations(sorted(PAGE_LOOKS))))
+    looks += draw(st.lists(st.sampled_from(sorted(PAGE_LOOKS)), max_size=5))
+    elements = [[look, f"{TAGS[n % len(TAGS)]}{n}"] for n, look in enumerate(looks)]
+    (hidden, comment, printed) = draw(st.permutations(TO_A_MODEL_SAID))[:3]
+    words = printed[1]
+    cuts = sorted(draw(st.lists(st.integers(1, len(words) - 1), max_size=3, unique=True)))
+    pieces = [words[start:end]
+              for start, end in zip([0, *cuts], [*cuts, len(words)], strict=True)]  # fmt: skip
+    at = [draw(st.integers(0, len(elements) + n)) for n in range(3)]
+    return {"elements": elements, "planted": {
+        "hidden": list(hidden), "comment": list(comment), "printed": [printed[0], pieces],
+        "at": at}}  # fmt: skip
 
 
 # ---------------------------------------------------------------------------- spellings
@@ -9827,6 +9848,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "same family name": st.fixed_dictionaries({"cited": lines(), "registered": lines()}),
     "blind names": texts(NAMED),
     "hidden content": hidden_documents(),
+    "hidden page": hidden_pages(),
     "quotation": st.tuples(
         quotations(),
         st.sampled_from(("as it stands", "typed", "typed", "misquoted")),

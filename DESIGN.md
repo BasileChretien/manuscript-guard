@@ -14746,11 +14746,13 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   most often holds, is read through the SVG or PDF the manuscript places beside it, when
   there is one. A journal that wants self-citations anonymised has its reference list
   unread.
-- **Hidden text is read in Word documents only, and only the ones the build writes,
-  `submit` packs and `audit` reads.** A co-author's file at `import`, a reviewer's letter,
-  a comment file and a stored literature page are not read for it, and a LaTeX
-  manuscript's PDFs are not read at all (`hidden.read_hidden`). What a reader does not see
-  is read as Word draws text, with these limits:
+- **Hidden text is read where a command reads a file, or where `screen` is run on one.**
+  The build reads the documents it writes, `submit` each one it packs, `audit` each one it
+  is given; `import`, `respond --from`, `sync-sources` (each page it stores) and `checker
+  import` screen each file first and then go on. A letter, a comment file or a page saved by
+  hand is read only where `screen` is run on it, as the skills tell an agent to; and a
+  LaTeX manuscript's PDFs are not read at all. A Word document is read as Word draws text
+  (`hidden.read_hidden`), with these limits:
   - A table style's properties, and the formats of its first row or banded columns, are
     not read: text a table style hides, colours or shrinks is not found.
   - Text kept from sight otherwise is not found: placed off the page or behind a shape or
@@ -14779,6 +14781,18 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
     space alone in an equation's run, which is inside no word.
   - A zero-width character inside a word of the source is said by no gate of `check`, and
     the build fails on it, one in a reference's record in Zotero among them.
+  - A page of HTML, and the HTML in a Markdown file, is read by its elements' own styles
+    and the old `color`, `bgcolor` and `hidden` attributes (`hidden.html`): a stylesheet's
+    rules, an element's class and what a script would change are not read. Text a page's
+    layout hides is said only where it holds words to a model or zero-width characters
+    (Basile, 2026-11-07), so the rest of what it hides is not. The page is parsed by
+    Python's own HTML parser, which in some older versions takes more than linear time on
+    some broken input.
+  - A PDF is read for the words of its text, as a stored source is read: what it hides by
+    its colour, its size, its drawing mode or its place is found only where its words are
+    words to a model, and an image's text is not read. An e-mail is read as an `.eml`, its
+    attachments named and not read. A text or an HTML file of more than 8 MB is not read,
+    nor a file of any other kind, an image, a `.doc`, an RTF: `screen` says so and exits 1.
   - Words to a model are those of `to_a_model` in `data/ai_writing.yaml`, in English. They
     are read a paragraph at a time, so words split across two paragraphs are not found, nor
     words spelt with letters of another script that look the same ("іgnore" with a

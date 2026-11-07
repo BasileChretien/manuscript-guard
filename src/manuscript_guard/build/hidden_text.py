@@ -22,6 +22,7 @@ from pathlib import Path
 
 from manuscript_guard.findings import FAIL, WARN, Finding, Report
 from manuscript_guard.hidden import TO_A_MODEL, Hidden, read_hidden
+from manuscript_guard.hidden.screen import described
 from manuscript_guard.hidden.words import printable
 from manuscript_guard.safexml import UnsafeDocument
 
@@ -34,13 +35,6 @@ CODES = frozenset({HIDES, ADDRESSES, UNREAD})
 #: How many places of each kind are said, before the rest are counted.
 SHOWN = 12
 
-#: How each kind is said, around how the place is kept from sight.
-_WHAT = {
-    "hidden": "{how}",
-    "background": "text too close in colour to what is behind it to be read, {how}",
-    "tiny": "text too small to read, {how}",
-    "zero-width": "zero-width characters, {how}",
-}
 _HINT = (
     "a model reading the document reads this and a person does not: take it out of the "
     "source, the raw Word markup, the reference document's style or the reference's record "
@@ -52,20 +46,12 @@ _HINT_PRINTED = (
 )
 
 
-def _said(item: Hidden) -> str:
-    if item.kind == TO_A_MODEL:
-        return printable(f"{item.where}: {item.how}: {item.text!r}")
-    model = "; its words are addressed to a model" if item.model else ""
-    what = _WHAT.get(item.kind, "{how}").format(how=item.how)
-    return printable(f"{item.where}: {what}: {item.text!r}{model}")
-
-
 def _finding(item: Hidden, path: Path) -> Finding:
     if item.kind == TO_A_MODEL and item.printed:
-        return Finding(gate=GATE, code=ADDRESSES, severity=WARN, message=_said(item),
+        return Finding(gate=GATE, code=ADDRESSES, severity=WARN, message=described(item),
                        path=path, hint=_HINT_PRINTED)  # fmt: skip
     code = ADDRESSES if item.kind == TO_A_MODEL else HIDES
-    return Finding(gate=GATE, code=code, severity=FAIL, message=_said(item), path=path,
+    return Finding(gate=GATE, code=code, severity=FAIL, message=described(item), path=path,
                    hint=_HINT)  # fmt: skip
 
 

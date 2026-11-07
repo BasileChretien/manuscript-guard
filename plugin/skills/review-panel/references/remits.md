@@ -109,10 +109,11 @@ beyond, and let the next round read the abstract they write.
 
 A sentence of the Results or the Discussion that gives a result binds it, and one that says
 what others found cites them, and the gates hold each to its source. The rest is the authors'
-reading of their results, "this may reflect confounding by indication", and nothing holds
-it. `check` counts those sentences, in a note for each file (`interpretation-sentences`): the
-sentences of the Results and the Discussion, the supplement's included, that hold a word of
-the claim ladder ("associated", "increased", "caused") and neither a binding nor a citation.
+reading of their results, "the association probably reflects confounding by indication",
+and nothing holds it. `check` counts those sentences, in a note for each file
+(`interpretation-sentences`): the sentences of the Results and the Discussion, the
+supplement's included, that hold a word of the claim ladder ("associated", "increased",
+"caused") and neither a binding nor a citation.
 `manuscript-guard explain <file>` prints them after the file's numbers, each with its line.
 
 Worth a reader of its own where the note counts more than a handful. Give it an id such as

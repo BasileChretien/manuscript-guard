@@ -2923,6 +2923,11 @@ def test_a_citation_typed_against_a_stop_belongs_to_the_sentence_it_ends(project
           f"[@fictionalClassSignal2019] {_PROBABLY}")  # fmt: skip
     (note,) = _interpreted(project)
     assert note.context == _PROBABLY and note.message.startswith("1 of the 2"), note.message
+    _swap(project, "[@fictionalClassSignal2019] Example", "[@fictionalClassSignal2019] "
+          "[@fictionalHepaticCohort2021] Example")  # round 2: both groups are its
+    (note,) = _interpreted(project)
+    assert note.context == _PROBABLY, note.context
+    _swap(project, " [@fictionalHepaticCohort2021]", "")
     _swap(project, "before.[@fictionalClassSignal2019] Example-drug probably increased",
           "before. [@fictionalClassSignal2019] showed that example-drug probably increased")
     (note,) = _interpreted(project)
@@ -11119,7 +11124,10 @@ def test_g8_counts_the_twin_s_interpretation_at_its_tex_lines(project: Path) -> 
 
 
 @pytest.mark.parametrize("typed", ["before.\\cite{fictionalClassSignal2019} ",
-                                   "before.~\\cite{fictionalClassSignal2019} "])
+                                   "before.~\\cite{fictionalClassSignal2019} ",
+                                   # Round 2: each group after the first is the sentence's too.
+                                   "before.\\cite{fictionalClassSignal2019}"
+                                   "\\cite{fictionalHepaticCohort2021} "])
 def test_g8_gives_the_twin_s_citation_typed_against_a_stop_to_the_sentence_before(
     project: Path, typed: str
 ) -> None:

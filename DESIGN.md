@@ -6775,13 +6775,14 @@ environment, whose numbers the printed view keeps under whatever heading stands 
 A sentence of the Results that gives a result binds it, and G1 and G2 hold it to the
 analysis. A sentence that reports what others found cites them, and G7 holds the citation to
 the work and, through its passage, to the words that support it. What is left is the authors'
-own reading of their results: "this may reflect confounding by indication", "use probably
-increases the risk in older patients". Nothing pointed a reader at it. Mitchener and
-colleagues' evaluation of Kosmos, an automated scientist, is the reason to: of 102 statements
-taken from three of its reports, expert scientists judged 85.5% of those based on its data
-analysis accurate and 82.1% of those based on the literature, but 57.9% of those that
-interpreted the two together (arXiv 2511.02824, section 2.1; DOI 10.48550/arXiv.2511.02824,
-looked up with `lookup` on 2026-11-07, which OpenAlex and DataCite answered).
+own reading of their results: "the association probably reflects confounding by
+indication", "use increases the risk in older patients". Nothing pointed a reader at it.
+Mitchener and colleagues' evaluation of Kosmos, an automated scientist, is the reason to: of
+102 statements taken from three of its reports, expert scientists judged 85.5% of those
+based on its data analysis accurate and 82.1% of those based on the literature, but 57.9% of
+those that interpreted the two together (arXiv 2511.02824, section 2.1; DOI
+10.48550/arXiv.2511.02824, looked up with `lookup` on 2026-11-07, which OpenAlex and
+DataCite answered).
 
 So G8 counts them (`interpretation-sentences`, `gates/interpretation.py`, item 10 of the
 borrowed checks): each sentence of the Results and the Discussion, the main text's and the

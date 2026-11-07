@@ -8725,7 +8725,11 @@ def interpretation_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, bool | N
             expected[second] = INTERPRETATION_SECONDS[kind]
             after = said(second, [draw(st.sampled_from(CLAIMED[draw(st.sampled_from(rungs))]))])
             if kind == "discussion, cited against its stop":
-                sentence = f"{said(tag, ladder)}[@fictional{tag}2020] {after}"
+                # One group or two, with or without a space between (round 2 of #578).
+                cited = draw(st.sampled_from((f"[@fictional{tag}2020]",
+                                              f"[@fictional{tag}2020] [@other{tag}2021]",
+                                              f"[@fictional{tag}2020][@other{tag}2021]")))
+                sentence = f"{said(tag, ladder)}{cited} {after}"
             else:
                 sentence = f"{said(tag, ladder)} [@fictional{second}2020] {after[0].lower()}"
                 sentence += after[1:]

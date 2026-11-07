@@ -3,11 +3,11 @@ citation.
 
 A sentence that gives a result binds it, and one that reports the literature cites it: the
 gates hold the first to the analysis and the second to its source and its passage. What is
-left of the Results and the Discussion is the authors' interpretation, "this may reflect
-confounding by indication", "use probably increases the risk in older patients". It is the
-paper's argument, and much of it is right, but nothing holds it to anything, and it is where
-an automated scientist was found wrong most often (DESIGN.md, "A sentence that rests on
-neither a result nor a citation").
+left of the Results and the Discussion is the authors' interpretation, "the association
+probably reflects confounding by indication", "use increases the risk in older patients". It
+is the paper's argument, and much of it is right, but nothing holds it to anything, and it
+is where an automated scientist was found wrong most often (DESIGN.md, "A sentence that
+rests on neither a result nor a citation").
 
 So each sentence of the Results and the Discussion, the main text's and the supplement's, that
 holds a word of the claim ladder (`data/claim_strength.yaml`, read as `claims` reads it) and
@@ -91,8 +91,8 @@ def sentences_in(text: str, inside: Callable[[int], bool],
     headings = _heading_lines(text)
     cuts = [offset for line in headings for offset in _line_span(breaks, line, len(text))]
     trailing = _trailing(text, against or (lambda at: _typed_against(text, at)))
-    cuts += [end for _start, end in trailing]
-    rested = _carried(_grounds(text), trailing, text)
+    cuts += [end for _start, end, _stop in trailing]
+    rested = _carried(_grounds(text), trailing)
     found = []
     for start, first, end in claims.sentence_pieces(text, read, cuts=cuts):
         line = bisect_right(breaks, first)
@@ -125,16 +125,29 @@ def _grounds(text: str) -> list[int]:
     return sorted(bound + [use.start for use in find_citations(blank_comments(text), Path())])
 
 
-def _trailing(text: str, against: Callable[[int], bool]) -> list[tuple[int, int]]:
-    """Where each citation group starts and ends that ends the sentence before it: typed
-    against its stop ("injury.[@a] We", in LaTeX "injury.\\cite{a} We" or "injury.~\\cite{a}
-    We", as a superscript style has it), and followed by a space and no word going on in
-    lower case. Typed after a space, "injury. [@a] showed", it opens the next sentence."""
+def _trailing(text: str, against: Callable[[int], bool]) -> list[tuple[int, int, int]]:
+    """Where each citation group starts and ends that ends the sentence before it, and where
+    the stop it cites up to stands: typed against its stop ("injury.[@a] We", in LaTeX
+    "injury.\\cite{a} We" or "injury.~\\cite{a} We", as a superscript style has it), or after
+    such a group with only spaces between ("injury.[@a] [@b] We", round 2 of #578), the last
+    followed by a space and no word going on in lower case. Typed after a space, "injury.
+    [@a] showed", a group opens the next sentence."""
     from manuscript_guard.text.masking import blank_comments
     from manuscript_guard.zotero.citations import bracketed
 
-    return [(group.start(), group.end()) for group in bracketed(blank_comments(text))
-            if against(group.start()) and _ENDS.match(text, group.end())]  # fmt: skip
+    groups = [(group.start(), group.end()) for group in bracketed(blank_comments(text))]
+    found: list[tuple[int, int, int]] = []
+    first = 0
+    while first < len(groups):
+        last = first
+        while last + 1 < len(groups) and not text[groups[last][1]:groups[last + 1][0]].strip():
+            last += 1
+        start = groups[first][0]
+        if against(start) and _ENDS.match(text, groups[last][1]):
+            stop = len(text[:start].rstrip()) - 1
+            found += [(begin, end, stop) for begin, end in groups[first:last + 1]]
+        first = last + 1
+    return found
 
 
 def _typed_against(text: str, at: int) -> bool:
@@ -142,18 +155,18 @@ def _typed_against(text: str, at: int) -> bool:
     return _STOPPED.search(text, max(0, at - 8), at) is not None
 
 
-def _carried(grounds: list[int], trailing: list[tuple[int, int]], text: str) -> list[int]:
+def _carried(grounds: list[int], trailing: list[tuple[int, int, int]]) -> list[int]:
     """`grounds` with each that stands in a citation group of `trailing` moved back to the
-    stop the group was typed against, which ends the sentence it cites, in order."""
+    stop the group cites up to, which ends the sentence it cites, in order."""
     if not trailing:
         return grounds
-    starts = [start for start, _end in trailing]
+    starts = [start for start, _end, _stop in trailing]
 
     def carried(at: int) -> int:
         index = bisect_right(starts, at) - 1
         if index < 0 or at >= trailing[index][1]:
             return at
-        return len(text[: starts[index]].rstrip()) - 1
+        return trailing[index][2]
 
     return sorted(carried(at) for at in grounds)
 

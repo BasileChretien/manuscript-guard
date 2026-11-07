@@ -526,6 +526,68 @@ residue:
       )\b
     why: Words a model wrote to its user, left in the paper
 
+# Words written to a model that reads the text: an order to set aside what it was told, to
+# praise the paper, to keep its faults quiet, or a model's own markup for a turn of a chat.
+# In 2025 several preprints hid such words in white or tiny text for the models some
+# reviewers read them with. G6 does not read these: they are read by `hidden.words`, in every
+# text a file holds (a Word document's text, notes, comments, alternative text and
+# properties), as a model reads it, with zero-width characters taken out and tag characters
+# read as their letters (Basile, 2026-11-07). A built document fails where they are hidden or
+# stand where a reader of the paper does not look, and warns where they are printed, since a
+# paper about such words may quote them.
+#
+# What they must not take, each a passing case in tests/test_hidden.py: "physicians ignored
+# the previous guidelines", "participants were told to disregard the earlier questions",
+# "a positive review of the evidence", "reviewers recommended minor revisions", "the
+# instructions given to the readers", "we do not report the weaknesses of each tool here".
+to_a_model:
+  - id: ignore-instructions
+    pattern: |-
+      (?ix)\b(?:ignore|disregard|forget|override|bypass|discard)\s+
+        (?:(?:all|any|every|each|the|your|these|those|of|my|our)\s+){0,3}
+        (?:(?:previous|prior|preceding|earlier|above|foregoing|original|initial|system|other)\s+){1,2}
+        (?:instructions?|prompts?|directions?|directives?|commands?|orders?)\b
+    why: An order to a model to set aside what it was told
+  - id: you-are-a-model
+    pattern: |-
+      (?ix)\b(?:you\s+are|you['’]re|act\s+as|pretend\s+to\s+be)\s+(?:now\s+)?(?:an?\s+)?
+        (?:AI|LLM|large\s+language\s+model|language\s+model|chatbot|AI\s+assistant
+        |AI\s+reviewer|automated\s+reviewer)\b
+    why: Words telling a model what it is, to steer what it says
+  - id: as-a-model-you
+    pattern: |-
+      (?ix)\bas\s+an?\s+(?:AI|LLM|large\s+language\s+model|language\s+model|automated|artificial\s+intelligence)
+        (?:\s+(?:reviewer|assistant|system|model|tool))?\s*,?\s+you\s+(?:should|must|will|shall|are\s+to|need\s+to|ought\s+to)\b
+    why: An order to a model, addressed to it as one
+  - id: to-model-readers
+    pattern: |-
+      (?ix)\b(?:note\s+to|attention|instructions?\s+for|message\s+(?:to|for)|for|to)\s*:?\s+
+        (?:(?:all|any)\s+)?(?:the\s+)?(?:AI|LLM|LLMs|language\s+models?|automated|machine)\s+
+        (?:reviewers?|readers?|assistants?|evaluators?|referees?)\s*:
+    why: Words addressed to a model reading the paper
+  - id: praise-ordered
+    pattern: |-
+      (?ix)\b(?:give|write|provide|produce|generate|output|return|offer)\s+
+        (?:only\s+)?(?:an?\s+)?(?:(?:very|highly|strongly|overwhelmingly|uniformly|wholly|entirely)\s+)?
+        (?:positive|favou?rable|glowing|enthusiastic|excellent)\s+
+        (?:reviews?|assessments?|evaluations?|reports?|feedback|ratings?|scores?|recommendations?)\b
+    why: An order to a model to praise the paper
+  - id: faults-hidden
+    pattern: |-
+      (?ix)\b(?:do\s+not|don['’]t|never|avoid|refrain\s+from)\s+
+        (?:highlight|highlighting|mention|mentioning|point(?:ing)?\s+out|rais(?:e|ing)|flag(?:ging)?|criticis(?:e|ing)|criticiz(?:e|ing))\s+
+        (?:(?:any|the|its|their)\s+)?(?:of\s+the\s+)?(?:negatives?|negative\s+(?:points?|aspects?|comments?)|weakness(?:es)?|flaws?|shortcomings?|criticisms?)\b
+    why: An order to a model to keep the paper's faults quiet
+  - id: acceptance-ordered
+    pattern: |-
+      (?ix)\b(?:recommend|recommending|suggest|advise)\s+(?:the\s+)?
+        (?:accept(?:ing|ance)|publication|publishing)\s+(?:of\s+)?(?:this|the\s+present)\s+
+        (?:paper|manuscript|submission|article|work|study)\b
+    why: An order to a model to recommend the paper for publication
+  - id: chat-markup
+    pattern: '(?i)<\|(?:im_start|im_end|system|user|assistant|endoftext|eot_id|start_header_id|end_header_id)\|>|\[/?INST\]|<</?SYS>>'
+    why: A model's markup for a turn of a chat, which steers a model reading it
+
 # Constructions worth a second look wherever they appear. Warnings, not failures: each has
 # a defensible use, and an author who disagrees should be able to say so and move on.
 phrases:

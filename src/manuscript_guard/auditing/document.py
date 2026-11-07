@@ -12,8 +12,11 @@ counted (`document_facts`):
   (`w:moveToRangeStart`), however many paragraphs it wraps in a `w:moveTo` of their own
   (Word 365, 2026-10-29); a `w:moveTo` that holds text in no named range counts once;
 - comments: each `w:comment` of `word/comments.xml`;
-- hidden text: each run with text whose own properties hide it (`w:vanish`). Text a style
-  hides is not read (Known gaps);
+- hidden text, as `hidden.read_hidden` reads it: each run with text hidden by its own
+  properties or by its styles (`w:vanish`), or in a picture or a box Word does not show;
+  and, said where there are any, the runs a reader cannot see for their colour or their
+  size, the words with zero-width characters inside them, and the places that hold words
+  to a model;
 - the names Word keeps, each with the field it is in: the document's author (`dc:creator`)
   and last editor (`cp:lastModifiedBy`), the author of each tracked change and comment
   (`w:author`), and the people `word/people.xml` lists.
@@ -28,6 +31,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from manuscript_guard.hidden import BACKGROUND, HIDDEN, TINY, TO_A_MODEL, ZERO_WIDTH, read_hidden
+from manuscript_guard.hidden.words import printable
 from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
 
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
@@ -45,8 +50,6 @@ _PARTS = ("word/document.xml", "word/footnotes.xml", "word/endnotes.xml", "word/
 _HEADER_FOOTER = ("word/header", "word/footer")
 #: What a tracked change that holds text holds it in.
 _TEXT = (f"{_W}t", f"{_W}delText", f"{_W}instrText", f"{_W}delInstrText")
-#: The values of an on-off property that turn it off.
-_OFF = ("0", "false", "off")
 
 
 @dataclass
@@ -59,6 +62,14 @@ class DocumentFacts:
     moves: int = 0
     comments: int = 0
     hidden: int = 0
+    #: Runs of text a reader cannot see for their colour or their size.
+    unseen: int = 0
+    #: Words with a zero-width character inside them, and runs of tag characters.
+    zero_width: int = 0
+    #: Places that hold words to a model.
+    to_a_model: int = 0
+    #: The parts not read for hidden text, each with why.
+    parts_unread: tuple[str, ...] = ()
     #: Each name Word keeps, with the field it is in, in the order read, once per field.
     people: list[tuple[str, str]] = field(default_factory=list)
     #: Why the document could not be read, where it could not.
@@ -77,15 +88,6 @@ def _parts(names: list[str]) -> list[str]:
 
 def _holds_text(element) -> bool:
     return any(node.tag in _TEXT and (node.text or "").strip() for node in element.iter())
-
-
-def _hidden(run) -> bool:
-    """Whether a run's own properties hide it: `w:vanish` on, and text in it."""
-    properties = run.find(f"{_W}rPr")
-    vanish = None if properties is None else properties.find(f"{_W}vanish")
-    if vanish is None or vanish.get(f"{_W}val", "1").casefold() in _OFF:
-        return False
-    return any((node.text or "").strip() for node in run.iter(f"{_W}t"))
 
 
 def _elements(root):
@@ -137,8 +139,6 @@ def document_facts(path: Path) -> DocumentFacts:
                             facts.deletions += 1
                     elif element.tag == f"{_W}comment" and name == "word/comments.xml":
                         facts.comments += 1
-                    elif element.tag == f"{_W}r" and _hidden(element):
-                        facts.hidden += 1
                     author = element.get(f"{_W}author")
                     if author and author.strip() and author.strip() not in authors:
                         authors.append(author.strip())
@@ -156,9 +156,22 @@ def document_facts(path: Path) -> DocumentFacts:
                         listed.append(person)
                 facts.people += [("the people who edited it (word/people.xml)", p)
                                  for p in listed]  # fmt: skip
+        _hidden_facts(facts)
     except UnsafeDocument as exc:
-        facts.note = f"{path.name} could not be read for what it holds besides its text: {exc}"
+        facts.note = printable(f"{path.name} could not be read for what it holds besides its "
+                               f"text: {exc}")  # fmt: skip
     return facts
+
+
+def _hidden_facts(facts: DocumentFacts) -> None:
+    """What `hidden.read_hidden` finds in the document, counted."""
+    reading = read_hidden(facts.path)
+    kinds = [item.kind for item in reading.found]
+    facts.hidden = sum(item.runs for item in reading.found if item.kind == HIDDEN)
+    facts.unseen = sum(item.runs for item in reading.found if item.kind in (BACKGROUND, TINY))
+    facts.zero_width = kinds.count(ZERO_WIDTH)
+    facts.to_a_model = kinds.count(TO_A_MODEL)
+    facts.parts_unread = reading.unread
 
 
 def pdf_facts(path: Path) -> DocumentFacts:
@@ -190,7 +203,22 @@ def described(facts: DocumentFacts) -> str:
         _counted(facts.comments, "comment"),
         _counted(facts.hidden, "run of hidden text", "runs of hidden text"),
     ]
-    return f"{facts.path.name}: " + ", ".join(held)
+    # Said where there are any, so that a document with none reads as it always has.
+    held += [
+        _counted(count, one, many)
+        for count, one, many in (
+            (facts.unseen, "run of text too faint or too small to read",
+             "runs of text too faint or too small to read"),
+            (facts.zero_width, "word with zero-width characters in it",
+             "words with zero-width characters in them"),
+            (facts.to_a_model, "place with words to a model", "places with words to a model"),
+        )
+        if count
+    ]  # fmt: skip
+    unread = ""
+    if facts.parts_unread:
+        unread = "; not read for hidden text: " + "; ".join(facts.parts_unread)
+    return f"{facts.path.name}: " + ", ".join(held) + unread
 
 
 def _counted(count: int, one: str, many: str | None = None) -> str:

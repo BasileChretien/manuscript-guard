@@ -14840,6 +14840,60 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   most often holds, is read through the SVG or PDF the manuscript places beside it, when
   there is one. A journal that wants self-citations anonymised has its reference list
   unread.
+- **Hidden text is read in Word documents only, and only the ones the build writes,
+  `submit` packs and `audit` reads.** A co-author's file at `import`, a reviewer's letter,
+  a comment file and a stored literature page are not read for it, and a LaTeX
+  manuscript's PDFs are not read at all (`hidden.read_hidden`). What a reader does not see
+  is read as Word draws text, with these limits:
+  - A table style's properties, and the formats of its first row or banded columns, are
+    not read: text a table style hides, colours or shrinks is not found.
+  - Text kept from sight otherwise is not found: placed off the page or behind a shape or
+    a picture, raised or lowered out of its line (`w:position`), squeezed (`w:w`,
+    `w:spacing`), in a frame of no size, or in the colour of a picture behind it. A
+    superscript is read at its own size, not the smaller one Word prints it at, and the
+    size for complex scripts (`w:szCs`) only where the run says it is one (`w:cs`,
+    `w:rtl`).
+  - Behind a run is its highlight, its shading, its paragraph's or its table cell's, and
+    else the page: white, and the page's background where the document shows it, so white
+    text on a dark background is said, since the paper it prints on is white. A pattern of
+    shading other than clear, solid or a percentage counts as its fill, and a theme
+    colour's tint and shade are applied to its lightness as Word describes them, which was
+    not checked against Word; nor that a picture or a box in a run Word hides is hidden with
+    it, as it is taken to be.
+  - A header or a footer is printed where a section shows it, and a note where the text
+    cites it. Words to a model the document prints somewhere count as printed wherever
+    else they stand, so their copy in a note nobody cites, or in the properties, only
+    warns. Each section is read alone: a header it inherits from the section before is
+    taken as not shown, so words to a model there fail where Word prints them; and a header
+    named only by a section's old properties (`w:sectPrChange`), or a note cited only from
+    a tracked deletion, is taken as shown, so words there only warn.
+  - An equation's text, and a chart's or a diagram's, is read one element at a time as
+    text no reader sees: words to a model there fail although they are printed, and an
+    equation's formatting is not read. Pandoc writes an empty group, `{}`, as a zero-width
+    space alone in an equation's run, which is inside no word.
+  - A zero-width character inside a word of the source is said by no gate of `check`, and
+    the build fails on it, one in a reference's record in Zotero among them.
+  - Words to a model are those of `to_a_model` in `data/ai_writing.yaml`, in English. They
+    are read a paragraph at a time, so words split across two paragraphs are not found, nor
+    words spelt with letters of another script that look the same ("іgnore" with a
+    Cyrillic і).
+  - Of the invisible characters, the five zero-width ones are said inside a Latin, Greek or
+    Cyrillic word, and tag characters anywhere: the marks that turn the direction of text
+    (U+202A to U+202E, U+2066 to U+2069), the invisible operators of mathematics (U+2061 to
+    U+2064) and variation selectors are not said. Words to a model are read with every
+    character that prints nothing taken out, and in their compatibility form (NFKC), so
+    neither splits them; letters of another script that look alike still do.
+  - A document in the Strict form of ISO/IEC 29500, which Word opens, is not read: its parts
+    are named as not read, and the build does not send it. Parts are found as the packaging
+    conventions name them, percent-escapes decoded and in any case; where the main
+    document names two styles parts, the first is read.
+  - A fallback copy Word keeps for older readers is read for words to a model one element
+    at a time, not as text; pictures, embedded files and a part Word imports as HTML
+    (`altChunk`) are not read; of a document's XML, as much as one part may hold (120 MB)
+    is read, and a paragraph or a text of more than a million characters is read for what
+    hides it but not for its words, each named as not read. A built document with
+    anything not read is not to be sent. A hostile document within those limits can still
+    take minutes to read.
 - **Checking a declared input reads the whole file into memory.** Before input digests
   normalised line endings they were streamed; a 300 MB CSV now peaks at about 1.2 GB while G1
   checks it. The R emitter peaks at about twenty times the file (600 MB for a 28 MB CSV), since
@@ -22395,8 +22449,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - `journal --template` needs a project, so an editor makes one to keep the profile in.
   - The Document section reads a .docx, and of a PDF the Author of its Info dictionary
     through `pdfinfo` only: its other fields, its XMP metadata (`dc:creator`) and its
-    annotations are not read, nor a LaTeX file's metadata. Text a style hides is not counted as hidden, only a run whose own properties hide it, and
-    a change of formatting alone is not counted as a tracked change. A text box's fallback
+    annotations are not read, nor a LaTeX file's metadata. A change of formatting alone is
+    not counted as a tracked change. A text box's fallback
     copy is not read, as `text.docx` reads none: a document whose box Word wrote only as a
     fallback has its changes there uncounted.
   - The blinding check finds a name as the build does: the given and family name, or an
@@ -22968,6 +23022,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
   shorthand too.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **The audit did not count text a style hides (2026-11-07).** It counted as hidden only a
+  run whose own properties hide it, so text set in a character or paragraph style that
+  hides it, which Word hides as surely, was said to be none: the way a document most
+  easily carries words for a model and not for its reader. It reads hidden text as the
+  build does now (`hidden.read_hidden`), by Word's rules for the styles, and says too the
+  text too faint or too small to read, zero-width characters inside words and words to a
+  model; see "Hidden text is read in Word documents only".
 
 - **An accent on a dotless i was read as italics (2026-11-05).** Better BibTeX writes í as
   `{\'\i}`, and with the braces gone G7 read

@@ -245,6 +245,12 @@ CHANGED = {
         "_RANGE = 0\n",
         "latex displays cited",
     ),
+    "text of 2 pt no longer too small to read": (
+        "hidden/word.py",
+        "TINY_BELOW = 6\n",
+        "TINY_BELOW = 4\n",
+        "hidden content",
+    ),
     "a residue read across a blank line": (
         "gates/writing.py",
         "    return [*spans, (start, len(text))]\n",

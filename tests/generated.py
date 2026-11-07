@@ -51,7 +51,15 @@ import yaml
 from hypothesis import HealthCheck, Phase, given, seed, settings
 from hypothesis import strategies as st
 from hypothesis.internal.conjecture import providers
-from readings import INTERVALS, PICTURES, SAYS, TAGS
+from readings import (
+    HIDDEN_LOOKS,
+    HIDDEN_PARAGRAPHS,
+    INTERVALS,
+    PICTURES,
+    SAYS,
+    TAGS,
+    TO_A_MODEL_SAID,
+)
 
 Test = TypeVar("Test", bound=Callable[..., Any])
 
@@ -4990,6 +4998,58 @@ def comment_anchors(draw: st.DrawFn) -> dict[str, Any]:
         source, printed = source + " " + source, printed + " " + printed
     return {"source": source, "start": start, "end": end, "printed": printed,
             "tokens": [list(token) for token in tokens]}  # fmt: skip
+
+
+# ------------------------------------------------- what a Word document hides from its reader
+
+#: The characters that print nothing and are no part of a word in the Latin script.
+ZERO_WIDTHS = tuple(chr(code) for code in (0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF))
+#: The looks a run of words to a model is drawn in: each shows its text.
+_SHOWN_LOOKS = ("plain", "own-off", "grey", "small")
+
+
+@st.composite
+def hidden_documents(draw: st.DrawFn, defaults: bool | None = None) -> dict[str, Any]:
+    """A Word document for `readings.hidden_document`: every look of `HIDDEN_LOOKS` in
+    paragraphs of each style of `HIDDEN_PARAGRAPHS`, in an order drawn each time, each run a
+    word of its own (`alpha3`), with the defaults hiding or not. Where they do not, one of
+    `TO_A_MODEL_SAID` split across runs that show it, a zero-width character inside one of
+    its words, and another as a picture's alternative text: `planted` names the two rules
+    and the word."""
+    hides = draw(st.booleans()) if defaults is None else defaults
+    counted = iter(range(10_000))
+
+    def word() -> str:
+        n = next(counted)
+        return f"{TAGS[n % len(TAGS)]}{n}"
+
+    paragraphs: list[dict[str, Any]] = []
+    for style in HIDDEN_PARAGRAPHS:
+        looks = list(draw(st.permutations(sorted(HIDDEN_LOOKS))))
+        looks += draw(st.lists(st.sampled_from(sorted(HIDDEN_LOOKS)), max_size=4))
+        while looks:
+            size = draw(st.integers(3, 8))
+            paragraphs.append({"style": style, "runs": [[f"{word()} ", look]
+                                                        for look in looks[:size]]})  # fmt: skip
+            looks = looks[size:]
+    described: dict[str, Any] = {"defaults": hides, "paragraphs": paragraphs, "alt": ""}
+    if hides:
+        return described
+    (rule, said), (alt_rule, alt) = draw(st.permutations(TO_A_MODEL_SAID))[:2]
+    words = said.split(" ")
+    at = draw(st.sampled_from([n for n, one in enumerate(words) if len(one) > 1]))
+    inside = draw(st.integers(1, len(words[at]) - 1))
+    planted = words[at]
+    words[at] = planted[:inside] + draw(st.sampled_from(ZERO_WIDTHS)) + planted[inside:]
+    phrase = " ".join(words)
+    cuts = sorted(draw(st.lists(st.integers(1, len(phrase) - 1), max_size=3, unique=True)))
+    pieces = [phrase[start:end]
+              for start, end in zip([0, *cuts], [*cuts, len(phrase)], strict=True)]  # fmt: skip
+    runs = [[f"{word()} ", "plain"],
+            *([piece, draw(st.sampled_from(_SHOWN_LOOKS))] for piece in pieces),
+            [f" {word()}", "plain"]]  # fmt: skip
+    paragraphs.insert(draw(st.integers(0, len(paragraphs))), {"style": "Normal", "runs": runs})
+    return {**described, "alt": alt, "planted": [rule, alt_rule, planted]}
 
 
 # ---------------------------------------------------------------------------- spellings
@@ -10239,6 +10299,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "authors cited": lines(),
     "same family name": st.fixed_dictionaries({"cited": lines(), "registered": lines()}),
     "blind names": texts(NAMED),
+    "hidden content": hidden_documents(),
     "quotation": st.tuples(
         quotations(),
         st.sampled_from(("as it stands", "typed", "typed", "misquoted")),

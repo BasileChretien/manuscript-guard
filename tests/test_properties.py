@@ -106,6 +106,7 @@ from generated import (
     harvest_cells,
     harvest_tables,
     help_commands,
+    hidden_documents,
     holds,
     interval_wordings,
     keyword_paragraphs,
@@ -224,6 +225,10 @@ from manuscript_guard.gates.vocabulary import (
     judge_vocabulary,
     own_words,
 )
+from manuscript_guard.hidden import BACKGROUND, HIDDEN, TINY, TO_A_MODEL, ZERO_WIDTH
+from manuscript_guard.hidden import styles as hidden_styles
+from manuscript_guard.hidden import word as hidden_word
+from manuscript_guard.hidden import words as hidden_words
 from manuscript_guard.literature import passages as passages_module
 from manuscript_guard.literature import sources as literature_sources
 from manuscript_guard.literature.sources import contains, normalise, states_value
@@ -7945,6 +7950,113 @@ def test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else(
     a city, a country, two words of an institution, nor a name a letter away."""
     text, expected = planted
     assert names_in(text, sought(PEOPLE)) == expected, text
+
+
+# ------------------------------------------------- what a Word document hides from its reader
+
+#: A run's word in a generated document (`generated.hidden_documents`).
+_RUN_WORD = re.compile(r"[a-z]+\d+")
+#: The kinds of place a run's look keeps from sight.
+_RUN_KINDS = (HIDDEN, BACKGROUND, TINY)
+
+
+def _unseen_as_word_shows(defaults: bool, style: str, look: str) -> str | None:
+    """How Word 365 keeps a run of `look` in a paragraph of `style` from sight, its
+    defaults hiding or not (tests/test_hidden.py): a run's own value is absolute; a style's
+    turns it where it differs from the defaults, and two that do cancel."""
+    if look in ("own", "own-off"):
+        hidden = look == "own"
+    else:
+        hidden = defaults
+        for level in (True if style == "PHide" else None,
+                      {"char": True, "char-off": False}.get(look)):  # fmt: skip
+            if level is not None and level != defaults:
+                hidden = not hidden
+    if hidden:
+        return HIDDEN
+    if look in ("white", "faint", "theme", "highlight"):
+        return BACKGROUND
+    return TINY if look.startswith("tiny") else None
+
+
+@holds(30, st.tuples(hidden_documents(defaults=False), hidden_documents(defaults=True)))
+def test_what_a_word_document_hides_is_found_with_its_words_and_nothing_else(
+    documents: tuple[dict[str, Any], dict[str, Any]],
+) -> None:
+    """Every look of a run, hidden by its own formatting or a style's or not, too faint or
+    too small, in a paragraph of each style, with the document's defaults hiding and not:
+    each run's word is found as the kind Word keeps it from sight as, and no other. Words to
+    a model split across runs, with a zero-width character inside one of them, are found
+    printed, the word with it found once, and words to a model in a picture's alternative
+    text are found not printed."""
+    read = READINGS["hidden content"]()
+    for described in documents:
+        expected = {
+            (kind, text.strip())
+            for paragraph in described["paragraphs"]
+            for text, look in paragraph["runs"]
+            if _RUN_WORD.fullmatch(text.strip())
+            and (kind := _unseen_as_word_shows(described["defaults"], paragraph["style"], look))
+        }
+        found = read(described)
+        seen = {(kind, word) for kind, text, _printed, _model in found if kind in _RUN_KINDS
+                for word in _RUN_WORD.findall(text)}  # fmt: skip
+        assert seen == expected, described
+        models = sorted((model, printed) for kind, _text, printed, model in found
+                        if kind == TO_A_MODEL)  # fmt: skip
+        zero = [text for kind, text, _printed, _model in found if kind == ZERO_WIDTH]
+        planted = described.get("planted")
+        if planted is None:
+            assert (models, zero) == ([], []), described
+        else:
+            rule, alt_rule, word = planted
+            assert models == sorted([(rule, True), (alt_rule, False)]), described
+            assert zero == [word], described
+
+
+def _two_styles_that_hide_leave_text_hidden(patch: pytest.MonkeyPatch) -> None:
+    def toggled(self, tag, paragraph, character):
+        levels = [hidden_styles.on_off(self._in_chain(tag, name, kind))
+                  for name, kind in ((character, "character"), (paragraph, "paragraph"))]
+        defaults = None if self.defaults is None else self.defaults.find(hidden_styles.W + tag)
+        return bool(hidden_styles.on_off(defaults)) or any(levels), []
+
+    patch.setattr(hidden_styles.Styles, "toggled", toggled)
+
+
+def _a_style_s_hiding_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(hidden_styles.Styles, "toggled", lambda self, tag, paragraph, character:
+                  (False, []))  # fmt: skip
+
+
+def _a_style_s_hiding_is_not_held_to_the_defaults(patch: pytest.MonkeyPatch) -> None:
+    def toggled(self, tag, paragraph, character):
+        defaults = None if self.defaults is None else self.defaults.find(hidden_styles.W + tag)
+        value = bool(hidden_styles.on_off(defaults))
+        for name, kind in ((character, "character"), (paragraph, "paragraph")):
+            if hidden_styles.on_off(self._in_chain(tag, name, kind)):
+                value = not value
+        return value, []
+
+    patch.setattr(hidden_styles.Styles, "toggled", toggled)
+
+
+def _a_theme_colour_is_read_from_its_value(patch: pytest.MonkeyPatch) -> None:
+    def text_colour(element, theme):
+        return None if element is None else hidden_styles.hex_colour(
+            element.get(hidden_styles.W + "val"))
+
+    patch.setattr(hidden_word, "text_colour", text_colour)
+
+
+def _a_highlight_is_not_behind_its_run(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(hidden_word, "highlight_colour", lambda element: None)
+
+
+def _words_to_a_model_are_read_with_their_zero_width_characters(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(hidden_words, "as_read", lambda text: (text, list(range(len(text)))))
 
 
 # ------------------------------------------------------- a response letter quoting a revision
@@ -16183,6 +16295,30 @@ BROKEN = {
     "an identifier Word left on a figure is dropped": (
         _an_identifier_left_on_a_figure_is_dropped,
         test_a_figure_is_read_as_one_whatever_identifier_word_left_on_it,
+    ),
+    "two styles that hide a run leave it hidden": (
+        _two_styles_that_hide_leave_text_hidden,
+        test_what_a_word_document_hides_is_found_with_its_words_and_nothing_else,
+    ),
+    "a style's hiding is not read": (
+        _a_style_s_hiding_is_not_read,
+        test_what_a_word_document_hides_is_found_with_its_words_and_nothing_else,
+    ),
+    "a style's hiding is not held to the document's defaults": (
+        _a_style_s_hiding_is_not_held_to_the_defaults,
+        test_what_a_word_document_hides_is_found_with_its_words_and_nothing_else,
+    ),
+    "a theme colour is read from the value written beside it": (
+        _a_theme_colour_is_read_from_its_value,
+        test_what_a_word_document_hides_is_found_with_its_words_and_nothing_else,
+    ),
+    "a run's highlight is not what is behind it": (
+        _a_highlight_is_not_behind_its_run,
+        test_what_a_word_document_hides_is_found_with_its_words_and_nothing_else,
+    ),
+    "words to a model are read with their zero-width characters in them": (
+        _words_to_a_model_are_read_with_their_zero_width_characters,
+        test_what_a_word_document_hides_is_found_with_its_words_and_nothing_else,
     ),
     "a facet of a post is placed in characters, not bytes": (
         _a_facet_is_placed_in_characters,

@@ -328,7 +328,8 @@ def _document_items(report) -> list[Item]:
 
     found: list[Item] = []
     for facts in report.documents:
-        held = facts.insertions + facts.deletions + facts.moves + facts.comments + facts.hidden
+        held = (facts.insertions + facts.deletions + facts.moves + facts.comments + facts.hidden
+                + facts.unseen + facts.zero_width + facts.to_a_model)
         found.append(Item(DOCUMENT, "audit", "document-unreadable" if facts.note else
                           "document-holds", described(facts), INFO if facts.note or not held
                           else WARN, False, facts.path))  # fmt: skip
@@ -465,7 +466,9 @@ def _reader_counts(report) -> dict[str, int]:
     if word:
         for key, name in (("tracked_insertions", "insertions"), ("tracked_deletions",
                           "deletions"), ("tracked_moves", "moves"), ("comments", "comments"),
-                          ("hidden_runs", "hidden")):  # fmt: skip
+                          ("hidden_runs", "hidden"), ("unseen_runs", "unseen"),
+                          ("zero_width_words", "zero_width"),
+                          ("to_a_model_places", "to_a_model")):  # fmt: skip
             counts[key] = sum(getattr(facts, name) for facts in word)
     if report.causal is not None:
         counts["causal_sentences_read"] = report.causal.read

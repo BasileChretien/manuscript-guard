@@ -194,6 +194,9 @@ ROUTES: dict[str, Route] = {
     # again, which `package-` would offer.
     **_all("submission-pack", None, "package-doi-test-prefix", "deposit-doi-differs"),
     **_all("submission-pack", ("build",), "blind-document-names-author"),
+    # Taken out of the source, its raw Word markup or the reference document, and built again.
+    **_all("submission-pack", ("build",), "document-hides-text", "document-addresses-a-model",
+           "document-unread-for-hidden-text"),
     **_all("submission-pack", None, "approval-", who="author"),
     # -- what is said of the paper outside it ---------------------------------------------
     # `communicate check` says these, never `check`: the text, the brief or the graphical

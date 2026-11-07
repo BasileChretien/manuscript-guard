@@ -2035,13 +2035,14 @@ def latex_words(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
 #: the name as typed and `{e}` with its underscores escaped, and where it is found, in the
 #: prose or in code, or None where it is not read. Read: a word with underscores, typed or
 #: escaped, in a heading and in emphasis; a key bare and after `results.`; a variable, and one
-#: in camelCase; a key and a variable in code. Not read: a word with underscores in code, a
-#: binding, a citation key, a URL, a link's target, a path, one whose folder after a backslash
-#: reads as a TeX command, a file's name, an address, maths, a comment, a listing, a word the
-#: paper keeps, a variable that is a word, an HTML tag, a TeX command in Markdown, a fenced
-#: div's attribute, a figure's caption, a key in code in one, a reference link's label and
-#: its definition, and a word of no letter. The title and the reference list hold a key in
-#: code too.
+#: in camelCase; a key and a variable in code; a variable inside an HTML tag, a word before a
+#: TeX command, and the label of a reference link nothing defines. Not read: a word with
+#: underscores in code, a binding, a citation key, a URL, a link's target, a path, one with a
+#: backslash before its folder, a file's name, an address, maths, a comment, a listing, a word
+#: the paper keeps, a variable that is a word, an HTML tag, a TeX command in Markdown, a
+#: fenced div's attribute, a figure's caption, a key in code in one, a reference link's label
+#: and its definition, and a word of no letter. The title and the reference list hold a key
+#: in code too.
 CODE_NAME_PLACES = (
     ("snake", "{n} ", "{e} ", "prose"),
     ("snake", "{e} ", "{e} ", "prose"),
@@ -2054,6 +2055,9 @@ CODE_NAME_PLACES = (
     ("camel variable", "{n} ", "{n} ", "prose"),
     ("key", "`{n}` ", "\\texttt{{{e}}} ", "code"),
     ("variable", "`{n}` ", "\\verb|{n}| ", "code"),
+    ("variable", "<u>{n}</u> ", "{e} ", "prose"),
+    ("snake", "{n}\\textsuperscript{{a}} ", "{e}\\textsuperscript{{a}} ", "prose"),
+    ("snake", "[the portal][{n}] ", "{e} ", "prose"),
     ("snake", "`{n}` ", "\\texttt{{{e}}} ", None),
     ("snake", "`{n}` ", "\\verb|{n}| ", None),
     ("key", "{{{{results.{n}}}}} ", "\\mg{{results.{n}}} ", None),
@@ -2061,7 +2065,7 @@ CODE_NAME_PLACES = (
     ("snake", "https://example.org/{n} ", "\\url{{https://example.org/{n}}} ", None),
     ("snake", "[the file](data/{n}.csv) ", "\\href{{https://example.org/{n}}}{{the file}} ", None),
     ("snake", "analysis/{n}.py ", "analysis/{e}.py ", None),
-    ("snake", "{n}\\study ", "words ", None),
+    ("snake", "{n}\\2024 ", "words ", None),
     ("snake", "{n}.csv ", "{e}.csv ", None),
     ("snake", "{n}@example.org ", "{e}@example.org ", None),
     ("snake", "${n}$ ", "${n}$ ", None),

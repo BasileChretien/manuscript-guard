@@ -5139,11 +5139,12 @@ with everything else NUL, so bindings, citation keys, URLs, link targets, listin
 comments, maths, LaTeX's commands, the front matter, captions and the reference list are
 gone before it looks; the code view hides what the prose view hides, so a key in code in a
 caption or a reference is not read either (round 1). On top of that it sets aside a word in a
-path or an address (its run of characters, as typed, holds a slash, an `@` or a backslash
-between folders), a file's name (a dotted word whose last part reads as an extension,
+path or an address (its run of characters holds a slash, an `@` or a backslash between
+folders), a file's name (a dotted word whose last part reads as an extension,
 `ckd_flag.csv`), and in Markdown what pandoc does not print into the document: a fenced
-div's line, an HTML tag, an attribute with an `=`, a TeX command, and a reference link's
-label with the line that defines it. An underscore escaped as Markdown escapes it, `hr\_adj`, or as LaTeX must,
+div's line, an HTML tag, an attribute with an `=`, a TeX command, a reference link's
+definition, and the label of a reference link the file defines (one nothing defines is
+printed as typed). Each of these was checked against what `pandoc -t plain` prints. An underscore escaped as Markdown escapes it, `hr\_adj`, or as LaTeX must,
 `hr\_adj`, is the underscore it prints.
 
 **A warning while the paper is written, a failure at submission** (D12.2). Nothing about
@@ -20396,8 +20397,11 @@ Open, recorded as each change landed:
     table's key, is read only as a word with underscores, where it has one, and without the
     key's hint. A variable is matched in the case the dictionary writes it, so `Age_group`
     opening a sentence is a word with underscores, without its label.
-  - A word in a run of characters that holds a slash, an `@` or a backslash before a letter is
-    taken for a path or an address: `n_cases/n_total` typed as a ratio is not read. A dotted
+  - A word in a run of characters that holds a slash, an `@` or a backslash before a letter or
+    a digit is taken for a path or an address: `n_cases/n_total` typed as a ratio is not read.
+    The path is looked for once what Markdown does not print is out, as pandoc prints it: a
+    Windows path typed in prose, `C:\study\raw_hr_adj`, loses `\study` and `\raw` as TeX
+    commands and prints `C:_hr_adj`, so `hr_adj` is reported (round 2). A dotted
     word whose last part reads as a file's extension is taken for a file's name, so
     `ckd_flag.csv` is not read, and nor is `ckd_flag.The`, a sentence run into the next with
     no space after its full stop.

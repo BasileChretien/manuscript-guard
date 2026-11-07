@@ -150,14 +150,34 @@ def test_a_subscript_typed_as_code_is_found() -> None:
         "A note.[^note_one]\n\n[^note_one]: The note.",
         "---\ntitle: The hr_adj_main paper\n---\n\nPlain words.",
         "Plain words.\n\n![The hr_adj_main curve](figure.png)",
-        # Round 1: the folders of a Windows path start with letters, which Markdown does
-        # not print as a TeX command does; and a reference link's label and its definition.
-        "Files are in C:\\study\\raw_hr_adj.",
+        "Files are in raw_hr_adj\\2024.",
         "See [the portal][data_portal].\n\n[data_portal]: https://example.org",
     ],
 )
 def test_what_is_not_prose_is_not_read(text: str) -> None:
     assert named(text + "\n") == []
+
+
+@pytest.mark.parametrize(
+    ("text", "found"),
+    [
+        # pandoc drops `\study` and `\raw` as TeX commands and prints "C:_hr_adj".
+        ("Files are in C:\\study\\raw_hr_adj.", ["hr_adj"]),
+        # Round 2: a tag or a TeX command against a name made its run a path's.
+        ("The <u>age_group</u> was used.", ["age_group"]),
+        ('<span style="color:red">age_group</span> was used.', ["age_group"]),
+        ("The age_group<sup>a</sup> was used.", ["age_group"]),
+        ("The age_group\\textsuperscript{a} value.", ["age_group"]),
+        # A label no definition has is printed as typed; one that has is not, in any case.
+        ("See [the portal][data_portal] here.", ["data_portal"]),
+        ("See [the portal][Data_Portal] here.\n\n[data_portal]: https://example.org", []),
+        # pandoc reads this line as a definition and prints nothing of it.
+        ("[Note]: the hr_adj values are shown.", []),
+    ],
+)
+def test_what_pandoc_prints_is_read(text: str, found: list[str]) -> None:
+    """Each case checked against what `pandoc -t plain` prints (3.9.0.2)."""
+    assert named(text + "\n", labels={"age_group": "Age group"}) == found
 
 
 def test_the_reference_list_is_not_read() -> None:

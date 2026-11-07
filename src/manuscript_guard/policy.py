@@ -355,6 +355,9 @@ BINDS_AT = {
     # Words to the reviewers left in the manuscript: G6 warns on them until submission, and
     # fails there on those that answer one reviewer or point at this manuscript.
     "revision-residue": SUBMISSION,
+    # A name from the code in the prose, a results key, a dictionary's variable or a word
+    # with underscores: G14 warns until submission and fails there (Basile, D12.2).
+    "code-name-in-prose": SUBMISSION,
     "response-claims-nothing": SUBMISSION,
     "claimed-change-did-not-happen": SUBMISSION,
             "review-stale": SUBMISSION,

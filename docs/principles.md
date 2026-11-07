@@ -160,6 +160,17 @@ counts as a number, so the notation around `{{results.p}}` is read like any othe
 thing is no matter of counting: a number that runs into its unit, "5mg", is reported
 wherever it stands, because the SI Brochure sets a space there.
 
+**No name from the code in a sentence.** "hr_adj_main was 1.42" and "patients with
+ckd_flag" are written from the script's side, and the reader has never seen the script.
+G14 reports a key of the results, `ror.point` or `results.ror.point`, a variable of the
+data dictionary, with the label the dictionary gives it, and any word written with
+underscores. A key or a variable is read where it is shaped as code is, so `sex` and `eGFR`
+are words; it is read in a code span too, which a journal prints, while any other word in a
+code span is taken for a function's or a package's name. Bindings, citation keys, URLs,
+paths, maths and LaTeX's commands are not read. The finding warns while the paper is
+written and fails at submission. A word that is right with its underscores, a taxon as
+GTDB writes it, goes under `language: code_names_kept:`.
+
 **A language edit changes the wording and nothing else.** A co-author, an editing service
 or a model that tidies a paragraph is trusted with its words, and `check` cannot see
 whether it kept to them: one confidence bound written for the other is still a binding

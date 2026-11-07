@@ -31,7 +31,8 @@ def written(
     **files: str,
 ):
     """Judge exactly this text against this vocabulary: the example's supplement goes
-    unless one is given, and its abbreviations are not this file's subject."""
+    unless one is given, and its abbreviations and its names from the code are not this
+    file's subject."""
     shutil.rmtree(project / "manuscript" / "supplementary", ignore_errors=True)
     (project / "manuscript" / "main.md").write_text(text, encoding="utf-8")
     for name, body in files.items():
@@ -46,7 +47,8 @@ def written(
     path.write_text(yaml.safe_dump(paper, sort_keys=False), encoding="utf-8")
     projekt, _ = load_project(project)
     report = check_language(projekt)
-    kept = tuple(f for f in report.findings if not f.code.startswith("abbreviation-"))
+    aside = ("abbreviation-", "code-name-in-prose")
+    kept = tuple(f for f in report.findings if not f.code.startswith(aside))
     return report, kept
 
 

@@ -293,7 +293,7 @@ All deterministic, all runnable in CI without Claude.
 | G11 | Panel review | no review round, a stale review, a file nobody read, or an unanswered major finding |
 | G12 | Methods appropriateness | the analysis plan does not answer the question asked |
 | G13 | Response to reviewers | a point unanswered, or a claimed revision that did not happen |
-| G14 | Abbreviations, terms, spelling and notation | never: it warns when an abbreviation is used before it is defined, defined twice, defined for nothing or never defined, when the manuscript uses a term its author gave up for another, when a word is in the spelling of the English the paper does not declare, when a P value, an interval or a percentage is written in two ways, and when a number runs into its unit |
+| G14 | Abbreviations, terms, spelling, notation and names from the code | at submission, a name from the code in a sentence: a key of the results, a variable of the data dictionary or a word written with underscores (a warning before); otherwise never: it warns when an abbreviation is used before it is defined, defined twice, defined for nothing or never defined, when the manuscript uses a term its author gave up for another, when a word is in the spelling of the English the paper does not declare, when a P value, an interval or a percentage is written in two ways, and when a number runs into its unit |
 | G15 | Models and their variables | a model of an outcome its kind is not for, a variable entered as another kind than it was declared, a reference or a level other than the declared one, an undeclared variable, a fit that did not converge or has a level without events, rows dropped and never stated (warnings: few events for each coefficient, an ordinal variable entered as a trend, a model the Methods name and the analysis did not fit) |
 | G16 | The data and their dictionary | at submission: a dictionary nothing was checked against, an entry or a rule no count covers, counts neither the Methods nor the supplement bind (warnings before; a variable the analysis uses with no entry warns, from the analysis stage) |
 
@@ -5107,6 +5107,52 @@ is not a rule.
 
 The example joins the bounds of its five intervals with "to", sets "%" against its number
 and states no P value with a sign, so it has nothing to report.
+
+## A name from the code is no word of the prose
+
+"hr_adj_main was 1.42" and "patients with ckd_flag" are sentences written from the
+script's side. The name is the analysis's, and the reader has never seen the analysis. A
+paper written beside its code picks these up when a sentence is drafted from a results file
+or a model's output. G14's fifth reading (`gates/code_names.py`) reports three kinds of word
+as `code-name-in-prose` (Basile, D12.1, 2026-11-06):
+
+| Kind | Example | The finding says |
+|---|---|---|
+| a key the analysis emitted, bare or with its binding's namespace | `ror.point`, `results.ror.point` | that it is a key of the results, and how to bind its value |
+| a variable of the data dictionary | `age_group` | the label the dictionary gives it, to write instead |
+| any word with underscores between its parts | `hr_adj_main`, `C_max` | to say what it is, and how a subscript is typed |
+
+**A key or a variable counts where it is shaped as code is** (D12.4, 2026-11-07): with an
+underscore or a dot in it, or in camelCase from two small letters, `ckdFlag`. The example's
+dictionary names a variable `sex`, and a clinical one may name one `BMI` or `eGFR`: those
+are the prose's words too. The camelCase rule wants a small letter after the first capital,
+so that `lncRNA`, `circRNA` and `mtDNA` are not read as names.
+
+**A code span is printed too** (D12.3). A key or a variable in one, `` `hr_adj_main` ``, is
+read as it is in a sentence: the journal prints the backticks' contents in another font, and
+the reader still does not know the name. Any other word with underscores in a code span is
+not read: it is usually a function's or a package's name, put there on purpose.
+
+**What is not prose is not read.** The reading takes the two views G14 already makes of a
+file, the sentences and headings with everything else NUL, and, new here, the code spans
+with everything else NUL, so bindings, citation keys, URLs, link targets, listings,
+comments, maths, LaTeX's commands, the front matter, captions and the reference list are
+gone before it looks. On top of that it sets aside a word in a path or an address (its run of
+characters holds a slash, an `@` or a backslash between folders), a file's name (a dotted
+word whose last part reads as an extension, `ckd_flag.csv`), and in Markdown what pandoc
+does not print into the document: a fenced div's line, an HTML tag, an attribute with an `=`
+and a TeX command. An underscore escaped as Markdown escapes it, `hr\_adj`, or as LaTeX must,
+`hr\_adj`, is the underscore it prints.
+
+**A warning while the paper is written, a failure at submission** (D12.2). Nothing about
+such a word is a question of taste: the version a journal receives should have none. A word
+that is right with its underscores, a taxon as GTDB writes it (`g__Bacteroides`), a strain,
+or a variable a data paper documents on purpose, is listed under `language:
+code_names_kept:` in `paper.yaml`, one word to an entry as printed, and is then not read
+anywhere (D12.5). Each name is reported once, where it first stands, with how often it is
+used, as G14's other readings report.
+
+The example's prose names nothing from its code, so it has nothing to report.
 
 ## Methods drift is a reconciliation ledger
 
@@ -20329,6 +20375,35 @@ Open, recorded as each change landed:
   - A table typed into the manuscript is read with the prose, so its own compact
     notation, "n=12" in a header, counts against the text's.
   - A block set off by four spaces is read, as it is for the spelling.
+  - The hook that runs after a manuscript file is saved does not run this reading.
+
+- **G14 reads a name from the code by its shape, and a key or a variable by its spelling.**
+  - A key or a variable that is a word of the prose is not read: `sex`, `BMI`, `eGFR`,
+    `CD4`, `visit1` (D12.4). Nor is a camelCase name from one small letter, `nCases`, or one
+    whose first capital has another after it, `hasCKD`, since `eGFR`, `mRNA` and `lncRNA` are
+    written the same way.
+  - A word that is right with its underscores warns, and fails at submission, until it is
+    listed under `language: code_names_kept:`. Chemical and gene names seldom carry one;
+    GTDB's taxa (`g__Bacteroides`), some strains and cell lines, and a variable a data paper
+    documents on purpose do. So does a subscript typed as code, `C_max` or `R_0`, which
+    pandoc prints with its underscore, so the finding is right about the paper there and its
+    hint says how to type a subscript.
+  - A word with underscores in a code span is not read unless it is exactly a key or a
+    variable (D12.3): a name from the code put in backticks passes as a function's would.
+  - A key is matched whole, bare or after `results.`. One written with a part changed, or a
+    table's key, is read only as a word with underscores, where it has one, and without the
+    key's hint. A variable is matched in the case the dictionary writes it, so `Age_group`
+    opening a sentence is a word with underscores, without its label.
+  - A word in a run of characters that holds a slash, an `@` or a backslash before a letter is
+    taken for a path or an address: `n_cases/n_total` typed as a ratio is not read. A dotted
+    word whose last part reads as a file's extension is taken for a file's name, so
+    `ckd_flag.csv` is not read, and nor is `ckd_flag.The`, a sentence run into the next with
+    no space after its full stop.
+  - A name with a mark of emphasis inside it, `*ckd*_flag`, is not read. An HTML tag is read
+    as one where `<` stands against a letter, so "a <b and c_d> e" hides `c_d`.
+  - What G14 does not read is not read here either: a figure's caption, the title and the
+    abstract when they are in the front matter, and a quotation the masking hides. A
+    quotation set as a block is read, since a name in it is still one the reader cannot know.
   - The hook that runs after a manuscript file is saved does not run this reading.
 
 - **G14's vocabulary is a list of words, and reads them as words.**

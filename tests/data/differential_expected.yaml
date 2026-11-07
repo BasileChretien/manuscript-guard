@@ -62,9 +62,9 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      `check --json` says the stage it held the manuscript to (`stage`) and ends with the
-      lines its text output ends with (`assurance`), so that a report kept apart from its
-      run, a CI job's artefact, says both; the findings and the counts are as they were
+      G14 reports a name from the code in a sentence, `code-name-in-prose`: a word with
+      underscores, such as the `R_0` the inputs' terms hold, a results key or a dictionary
+      variable; a warning, and a failure at the submission stage
   - reading: numbers
     why: >-
       an e-mail address is structural, `email-address`, and an interleukin, "IL-4",

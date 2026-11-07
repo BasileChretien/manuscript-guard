@@ -14785,9 +14785,14 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
     and the old `color`, `bgcolor` and `hidden` attributes (`hidden.html`): a stylesheet's
     rules, an element's class and what a script would change are not read. Text a page's
     layout hides is said only where it holds words to a model or zero-width characters
-    (Basile, 2026-11-07), so the rest of what it hides is not. The page is parsed by
-    Python's own HTML parser, which in some older versions takes more than linear time on
-    some broken input.
+    (Basile, 2026-11-07), so the rest of what it hides is not, and text inside such an
+    element is said as hidden, not as faint. The page is read as it is written, not as a
+    browser builds it: an element closed by its own slash (`<div/>`) opens nothing, and an
+    end tag a browser would imply is not; a box placed by `left` with no `position`, or a
+    clip that shows the whole of it, is taken as hidden. Behind text, a picture or a gradient
+    is taken as of no known colour, so no text on one is said to be faint. The page is
+    parsed by Python's own HTML parser, which in some older versions takes more than linear
+    time on some broken input, and before 3.13 refuses some, which is said as not read.
   - A PDF is read for the words of its text, as a stored source is read: what it hides by
     its colour, its size, its drawing mode or its place is found only where its words are
     words to a model, and an image's text is not read. An e-mail is read as an `.eml`, its

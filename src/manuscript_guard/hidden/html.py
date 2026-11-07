@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_right
+from collections import Counter
 from dataclasses import dataclass, replace
 from html.parser import HTMLParser
 
@@ -39,6 +40,7 @@ from manuscript_guard.hidden.word import (
     quoted,
 )
 from manuscript_guard.hidden.words import to_a_model_in, worth_reading, zero_width_in
+from manuscript_guard.safexml import UnsafeDocument
 
 #: Text under this size, in points, is too small to read.
 TINY_POINTS = 3.0
@@ -64,7 +66,11 @@ _UNSHOWN = {"script": "a script", "style": "a stylesheet", "template": "a templa
 _ATTRIBUTES = {"alt": "a picture's alternative text", "title": "an element's title",
                "aria-label": "a label read aloud", "content": "a meta element's content",
                "placeholder": "a field's placeholder", "value": "a field's value"}  # fmt: skip
-_LENGTH = re.compile(r"(-?[0-9]{1,7}(?:\.[0-9]{1,4})?)\s*(px|pt|em|rem|%)?")
+#: A number as CSS writes one, with a digit before its point or not, and its unit.
+_LENGTH = re.compile(r"(-?(?:[0-9]{1,7}(?:\.[0-9]{1,12})?|\.[0-9]{1,12}))"
+                     r"\s*(px|pt|em|rem|%)?")  # fmt: skip
+#: A colour inside a shorthand: written as a hexadecimal, a function or a word.
+_COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}\b|(?:rgb|hsl)a?\([^)]{0,80}\)|[a-zA-Z]+")
 _NO_SIZE = re.compile(r"0(?:px|pt|em|rem|%)?")
 _UNITS = {"px": 0.75, "pt": 1.0}
 
@@ -77,7 +83,8 @@ class _Look:
     unshown: str = ""
     colour: RGB | None = None
     opacity: float = 1.0
-    behind: RGB = WHITE
+    #: None where a picture or a gradient is behind the text, whose colour is not known.
+    behind: RGB | None = WHITE
     points: float = _BASE_POINTS
 
 
@@ -137,12 +144,7 @@ def _looked(parent: _Look, tag: str, attributes: dict[str, str]) -> _Look:
         look = replace(look, unshown=_UNSHOWN[tag])
     if not look.hidden and (how := _hidden_by(style, attributes)):
         look = replace(look, hidden=how)
-    painted = parse(style.get("background-color") or (style.get("background") or "").split(" ")[0]
-                    or attributes.get("bgcolor") or "")  # fmt: skip
-    if painted is not None and painted[1] > 0:
-        rgb, alpha = painted
-        behind = tuple(c * alpha + b * (1 - alpha) for c, b in zip(rgb, look.behind, strict=True))
-        look = replace(look, behind=behind)  # type: ignore[arg-type]
+    look = replace(look, behind=_behind(style, attributes, look.behind))
     coloured = parse(style.get("color") or attributes.get("color") or "")
     if coloured is not None:
         look = replace(look, colour=coloured[0], opacity=look.opacity * coloured[1])
@@ -150,9 +152,47 @@ def _looked(parent: _Look, tag: str, attributes: dict[str, str]) -> _Look:
     if opacity is not None and opacity.group(2) in (None, "%"):
         share = float(opacity.group(1)) / (100 if opacity.group(2) == "%" else 1)
         look = replace(look, opacity=look.opacity * min(1.0, max(0.0, share)))
-    if "font-size" in style and (points := _points(style["font-size"], look.points)) is not None:
+    sized = style.get("font-size") or _font_size(style.get("font", ""))
+    if sized and (points := _points(sized, look.points)) is not None:
         look = replace(look, points=points)
     return look
+
+
+def _colour_in(value: str) -> tuple[RGB, float] | None:
+    """The colour a background's value names, the shorthand's among its other words:
+    `rgb(0, 0, 0)`, `black no-repeat`, `url(a.png) #000` (round 1 of #576: its first
+    word alone was read)."""
+    whole = parse(value)
+    if whole is not None:
+        return whole
+    return next((found for word in _COLOUR.findall(value)
+                 if (found := parse(word)) is not None), None)  # fmt: skip
+
+
+def _behind(style: dict[str, str], attributes: dict[str, str], behind: RGB | None):
+    """What is behind an element's text: its own background over its parent's, or None
+    where a picture or a gradient is painted there, whose colours are not read."""
+    painted = " ".join((style.get("background", ""), style.get("background-image", "")))
+    if "url(" in painted or "gradient(" in painted:
+        return None
+    colour = _colour_in(style.get("background-color") or style.get("background")
+                        or attributes.get("bgcolor") or "")  # fmt: skip
+    if colour is None or colour[1] <= 0 or behind is None and colour[1] < 1:
+        return behind
+    rgb, alpha = colour
+    under = behind or WHITE
+    return tuple(c * alpha + b * (1 - alpha) for c, b in zip(rgb, under, strict=True))
+
+
+def _font_size(font: str) -> str:
+    """The size the `font` shorthand gives: its first length with a unit, before any
+    line height (`2px/10px`)."""
+    for word in font.split():
+        size = word.split("/")[0]
+        length = _LENGTH.fullmatch(size)
+        if length is not None and (length.group(2) or size == "0"):
+            return size
+    return ""
 
 
 def _kept_from_sight(look: _Look) -> tuple[str, str] | None:
@@ -160,7 +200,7 @@ def _kept_from_sight(look: _Look) -> tuple[str, str] | None:
         return HIDDEN, look.hidden
     if look.opacity < OPACITY_BELOW:
         return BACKGROUND, f"nearly transparent (opacity {look.opacity:g})"
-    if look.colour is not None:
+    if look.colour is not None and look.behind is not None:
         drawn = tuple(c * look.opacity + b * (1 - look.opacity)
                       for c, b in zip(look.colour, look.behind, strict=True))  # fmt: skip
         if contrast(drawn, look.behind) < CONTRAST_BELOW:  # type: ignore[arg-type]
@@ -174,6 +214,9 @@ class _Reader(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.stack: list[tuple[str, _Look]] = [("", _Look())]
+        #: How many of each element are open, so that an end tag nothing opened is passed
+        #: over at once (round 1 of #576: it looked through every open element).
+        self.open: Counter[str] = Counter()
         self.pieces: list[tuple[str, tuple[str, str] | None]] = []
         self.lines: list[int] = []
         self.unshown: list[tuple[str, str, int]] = []
@@ -202,6 +245,7 @@ class _Reader(HTMLParser):
         look = _looked(self.stack[-1][1], tag, self._attributes(tag, attrs))
         if tag not in _VOID:
             self.stack.append((tag, look))
+            self.open[tag] += 1
 
     def handle_startendtag(self, tag, attrs) -> None:
         self._parted(tag.casefold())
@@ -210,9 +254,12 @@ class _Reader(HTMLParser):
     def handle_endtag(self, tag) -> None:
         tag = tag.casefold()
         self._parted(tag)
-        for at in range(len(self.stack) - 1, 0, -1):
-            if self.stack[at][0] == tag:
-                del self.stack[at:]
+        if not self.open[tag]:
+            return
+        while self.stack:
+            closed, _look = self.stack.pop()
+            self.open[closed] -= 1
+            if closed == tag:
                 return
 
     def handle_data(self, data) -> None:
@@ -232,8 +279,13 @@ def read_page(text: str, part: str, label: str = "the page") -> list[Hidden]:
     (see the module's docstring). `part` names it in what is found, and `label` says what
     it is: "the page", "the message"."""
     reader = _Reader()
-    reader.feed(text)
-    reader.close()
+    try:
+        reader.feed(text)
+        reader.close()
+    except AssertionError as exc:
+        # Python's parser, before 3.13, asserts on a marked section it does not know,
+        # `<![x[` (round 1 of #576).
+        raise UnsafeDocument(f"{part}: the page cannot be parsed ({exc})") from exc
     found = _shown_text(reader, part, label)
     for words, called, line in reader.unshown:
         where = f"{label}, line {line}: {called}"

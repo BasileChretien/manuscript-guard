@@ -4107,7 +4107,8 @@ This section fixes what each list holds, and what none of them reads:
 
 - a priority turned round: "this is not the first study", "not for the first time";
 - a priority given to someone else, "Smith et al. were the first to describe it", "the first
-  case was reported in 1985" (the fourth answer of 2026-11-07);
+  case was reported in 1985" (the fourth answer of 2026-11-07), but for one said with "for
+  the first time" after a verb of reporting, which is read (below, and Known gaps);
 - an absence in the past, "had not been reported by 2015", "no trial had compared", which
   dates itself;
 - "to our knowledge" alone, a hedge any claim can carry;
@@ -4117,7 +4118,9 @@ This section fixes what each list holds, and what none of them reads:
   identify, reveal, establish) stands before it in the same clause, at most six words before
   it, any words counting and commas allowed ("we show here, for the first time, that"; "we
   show in this cohort for the first time"), a clause ending at a stop, a semicolon, a colon
-  or "that", "which", "who", "whom", "where" or "when"; or the paper as subject ("we", "our",
+  or "that", "which", "who", "whom", "where" or "when"; the words are those of the prose G14
+  reads, where a citation's keys are blank, so its brackets, a parenthesis and a dash count
+  as words and a semicolon between keys ends the clause; or the paper as subject ("we", "our",
   "this study" and the rest of the subjects above) stands right after it, a comma allowed
   between ("for the first time, we"). So not "patients treated for the first time",
   "patients we saw for the first time" or "patients seen for the first time this year";
@@ -4188,8 +4191,9 @@ numbered and sealed as currency's are, with two steps of their own:
   and each work kept goes into the works store as S2's and S3's do, so that the reader reads
   it there.
 - **N2, forward from the nearest.** The reader names the work nearest the claim, as a rule
-  one N1 found or one the manuscript cites, though `--forward` takes any work by its DOI or
-  PMID and does not check it, and OpenAlex is asked for the works that cite it,
+  one N1 found or one the manuscript cites, though `--forward` takes any work by its DOI, its
+  PMID or `@key` and does not check it (a key whose entry in references.bib has neither is
+  refused), and OpenAlex is asked for the works that cite it,
   newest first (`filter=cites:W…`, `sort=publication_date:desc`), as S1 asks for the reviews
   citing a cited work, but of every type. The record keeps the work as `seed`, and OpenAlex is
   asked for it by its DOI or else its PMID (`/works/doi:…`, `/works/pmid:…`). A seed OpenAlex
@@ -21720,9 +21724,11 @@ Open, recorded as each change landed:
     search onto another claim. The hook asks only where the entry carries a person's
     `not_a_claim`.
   - "For the first time" is read by a window of six words after a verb of reporting, whatever
-    the verb is said of, so "patients reported for the first time" and "cases described in
-    Japan were treated for the first time" warn, and a verb seven words before it is not
-    seen.
+    the verb is said of, so "patients reported for the first time", "cases described in
+    Japan were treated for the first time" and another's priority in the passive, "statin
+    myopathy was described for the first time in 1988", warn, and a verb seven words before
+    it is not seen. "That" ends the window, so "we show that, for the first time, statins
+    reduce delirium" is not read.
   - A search five months old passes at submission, though a study published since is not in
     it.
   - An entry is placed by its words exactly, so any rewording takes it off, a word changed or

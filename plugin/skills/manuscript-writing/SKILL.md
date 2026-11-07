@@ -300,6 +300,8 @@ as you would around a figure: `(P = {{results.model.p}})`,
 decimals and its leading zero, is set where the analysis emits it and is not checked
 here.
 
+Words that say more than an interval: [references/intervals.md](references/intervals.md).
+
 ## Checking your work
 
 ```bash

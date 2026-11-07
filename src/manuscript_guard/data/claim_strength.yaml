@@ -59,4 +59,63 @@ negations: ["not", "*n't", cannot, "no", never, neither, nor, none, non-signific
 # A word that bounds the claim. One gone makes it hold more widely than it did.
 limits: [only, in this sample, within this sample, under these conditions]
 
+# What a sentence that reports an estimate with its confidence interval says of it. G8 holds
+# these words to the interval (`stats/interval_words.py`). These lists are this project's,
+# chosen on 2026-11-07, and not the contract's; they are read as the words above are, with
+# two more rules:
+# - "{be}" stands for a word of `be`, and "{have}" for a word of `have`, each followed by
+#   at most two words: "{be} associated" is read in "was independently associated".
+# - A word of `effect` that ends in "ed" is not read directly after a word of `describing`,
+#   where it describes rather than states: "with reduced renal function".
+interval:
+  be: [is, are, was, were, be, been, being, remained, remains]
+  have: [has, have, had, having, show, shows, showed, found, observed, experienced, carried,
+         conferred, confers]
+  describing: [a, an, the, its, their, this, these, those, any, some, each, with, without,
+               of, in, for, and, or, by, at, to, from, "on", than, among]
+  # A word that states an effect or a difference. No noun but "increase" and "decrease",
+  # which are verbs too: "a dose reduction", "causal inference", "age as a predictor" name
+  # what was done (round 1 of #572).
+  effect: [increase, increases, increased, decrease, decreases, decreased, reduce, reduces,
+           reduced, raises, raised, lowers, lowered, improve, improves, improved, worsen,
+           worsens, worsened, affect, affects, affected, prevent, prevents, prevented,
+           induces, induced, caused, causally, lead to, leads to, led to, resulted in,
+           results in, contribute to, contributes to, contributed to, predicts, predicted,
+           predictive of, differ, differs, differed, "{be} predictor", "{be} predictors",
+           "{be} associated", "{be} correlated", "{be} linked", "{be} related",
+           "{be} higher", "{be} lower", "{be} greater", "{be} smaller", "{be} larger",
+           "{be} more likely", "{be} less likely", "{be} elevated", "{be} worse",
+           "{be} better", "{have} higher", "{have} lower", "{have} greater",
+           "{have} increased", "{have} decreased", "{have} reduced", "{have} elevated",
+           "{have} excess", "{have} more", "{have} fewer"]
+  # A word that says the estimate is statistically significant.
+  significant: [significantly, statistically significant, reached significance,
+                reached statistical significance, achieved significance,
+                achieved statistical significance, "{be} significant"]
+  # "significant" is read too directly before one of these, or one word before it: "a
+  # significant increase", "a significant positive association".
+  significant_of: [association, associations, difference, differences, effect, effects,
+                   increase, increases, decrease, decreases, reduction, reductions, rise,
+                   decline, excess, improvement, benefit, harm, risk, risks, relationship,
+                   correlation, predictor, predictors]
+  # A word directly before "significant" or "significantly" that says it is not the test's.
+  not_the_test: [clinically]
+  # A word that says there is no effect or no difference.
+  no_effect: [no difference, no differences, no effect, no effects, no association,
+              no associations, no relationship, no link, no change, no impact,
+              no influence, no increase, no decrease, no reduction, no excess, no benefit,
+              no harm, "{be} similar", "{have} similar", "{be} comparable",
+              "{be} unchanged", "{be} unaffected", "{be} unrelated"]
+  # A word that says the estimate is uncertain, or speaks of the test or of the evidence
+  # rather than of the effect. One stands the sentence down.
+  uncertain: [non-significant, nonsignificant, non-significantly, nonsignificantly,
+              insignificant, trend, trends, tendency, tended, imprecise, imprecisely,
+              imprecision, uncertain, uncertainty, inconclusive, wide, no evidence,
+              little evidence, insufficient evidence, limited evidence, weak evidence,
+              underpowered, low power, limited power, lack of power, marginally, borderline,
+              nearly, almost, approached, approaching, rule out, ruled out, be excluded,
+              "null", compatible with, point estimate, point estimates, numerically, nominally,
+              possible, potential, crossed 1, crossed one, included 1, included one,
+              includes 1, including 1]
+
 lower_case_only: [may]

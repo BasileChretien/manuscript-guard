@@ -1456,6 +1456,21 @@ def _reported_intervals() -> Reading:
     return reported
 
 
+@reading("interval words")
+def _interval_words() -> Reading:
+    """What G8 says of the words of each sentence that reports an interval: the code, where
+    each interval it is said of starts, the words that say it, and for no effect the bounds
+    far from 1, each with its side."""
+    from manuscript_guard.stats.interval_words import worded
+    from manuscript_guard.text.masking import mask
+
+    def read(text: str) -> list[list[Any]]:
+        return [[said.code, [one.start for one in said.intervals], list(said.words),
+                 [list(bound) for bound in said.far]] for said in worded(mask(text))]  # fmt: skip
+
+    return read
+
+
 @reading("table shares")
 def _table_shares() -> Reading:
     """Each count and its share in a pipe table, as it is printed, with the denominator the
@@ -1773,6 +1788,33 @@ def _passages() -> Reading:
             [[[cited.line, cited.text] for cited in one.sentences], one.stale]
             for one in found.passages
         ]
+
+    return passages
+
+
+@reading("passage claims")
+def _passage_claims() -> Reading:
+    """How strongly each cited sentence of a Markdown file claims against the passage of
+    `passages.yaml` recorded for it, each work's source stored as text: the code and the
+    line of each finding G7 gives of an entry (`gates/passages.py`, item 2 of the plan of
+    2026-11-06)."""
+    from manuscript_guard.checking.produce import cited_sentences, citing_document
+    from manuscript_guard.gates.passages import claimed
+    from manuscript_guard.literature.passages import Passage, survey
+
+    def passages(given: dict[str, Any]) -> list[list[list[Any]]]:
+        sentences = cited_sentences([citing_document(MAIN, given["text"])])
+        entries = tuple(
+            Passage(number, entry["sentence"], entry["citekey"], entry["passage"],
+                    entry["locator"])
+            for number, entry in enumerate(given["entries"], start=1)
+        )  # fmt: skip
+        with tempfile.TemporaryDirectory() as folder:
+            sources = Path(folder)
+            for key, text in given["sources"].items():
+                (sources / f"{key}.txt").write_bytes(text.encode("utf-8"))
+            found = survey(sources, sentences, entries)
+        return [[[one.code, one.line] for one in claimed(checked)] for checked in found.passages]
 
     return passages
 

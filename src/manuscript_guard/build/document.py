@@ -729,8 +729,11 @@ def build_document(
         # A document that may be sent names none of its authors where the review is blind.
         if not sent:
             from manuscript_guard.build.blinding import check_blinded
+            from manuscript_guard.build.hidden_text import check_hidden_text
 
             report = report.merge(check_blinded(project, output))
+            # Nor text its reader does not see, which a model reading it reads.
+            report = report.merge(check_hidden_text(output))
     return BuildResult(output=output, mode=mode, report=report)
 
 

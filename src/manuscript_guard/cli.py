@@ -4430,6 +4430,13 @@ def cmd_build(args: argparse.Namespace) -> int:
     named = any(f.code in (CODE, "docx-unreadable") for f in result.report.failures)
     if supplement is not None:
         named = named or not check_blinded(project, supplement).ok
+    # Nor one that holds text its reader does not see; the supplement's findings were
+    # printed as it was built.
+    from manuscript_guard.build.hidden_text import check_hidden_text, hides
+
+    hidden = hides(result.report) or (
+        supplement is not None and hides(check_hidden_text(supplement))
+    )
     if getattr(args, "marked_up", False):
         from manuscript_guard.markedup import MarkedUpError
 
@@ -4452,11 +4459,17 @@ def cmd_build(args: argparse.Namespace) -> int:
             if not blind.ok:
                 print(blind.render(project.root))
                 named = True
+            unseen = check_hidden_text(marked)
+            if hides(unseen):
+                print(unseen.render(project.root))
+                hidden = True
+    if hidden:
+        print("The document holds text its reader does not see, or words to a model where "
+              "its reader does not look: do not send it.")  # fmt: skip
     if named:
         print("The document names an author, or could not be read for their names, and the "
               "journal's review is blind: do not send it.")  # fmt: skip
-        return 1
-    return 0
+    return 1 if named or hidden else 0
 
 
 def _build_supplement(project, assembled, *, mode: str, csl: Path | None) -> Path | None:
@@ -4599,6 +4612,16 @@ def cmd_submit(args: argparse.Namespace) -> int:
         print(blind.render(project.root))
         print("\nThe document names an author, or could not be read to tell, and the "
               "journal's review is blind. The pack is not assembled.")  # fmt: skip
+        return 1
+    # Each document packed, as the one built was: a co-author's copy can hold what the
+    # build did not write. The supplement built here was checked as it was built.
+    from manuscript_guard.build.hidden_text import check_hidden_text, hides
+
+    unseen = merge_all([check_hidden_text(path) for path in packed])
+    if hides(unseen):
+        print(unseen.render(project.root))
+        print("\nA document holds text its reader does not see, or words to a model where "
+              "its reader does not look. The pack is not assembled.")  # fmt: skip
         return 1
 
     try:

@@ -183,6 +183,11 @@ def _word(project: Project) -> list[tuple[Path, str]]:
             print(built.report.render(project.root))
             raise DepositError("the document did not build cleanly")
         supplement = _build_supplement(project, assembled, mode=OFFLINE, csl=style)
+        # Its findings were printed as it was built.
+        from manuscript_guard.build.hidden_text import check_hidden_text, hides
+
+        if supplement is not None and hides(check_hidden_text(supplement)):
+            raise DepositError("the supplement holds text its reader does not see")
     except MisreadError as exc:
         raise DepositError(str(exc)) from None
     except BuildError as exc:

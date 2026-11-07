@@ -29,6 +29,15 @@ In place of a gate, a finding can carry one of two labels that are no gate of th
 `G0`, for a file of the project that cannot be used as it stands, and `BUILD`, for what
 the build would refuse or warn of.
 
+Among what `BUILD` refuses at every stage is a document that hides text from its reader,
+since a model reading it reads that text: text hidden by its own formatting or by a style,
+too close in colour to what is behind it (a contrast ratio under 1.5), under 3 pt,
+zero-width characters inside a word, and words that tell a model what to do where the
+paper's reader does not look, such as its alternative text or its properties
+(`document-hides-text`, `document-addresses-a-model`). The build checks the `.docx` it
+writes and `submit` each one it packs; words to a model that the paper prints are a
+warning, since a paper about them may quote them.
+
 ## What `check` ends with
 
 `check` ends by grouping what it did by what it is about: computational reproducibility,

@@ -78,7 +78,10 @@ MAX_FOUND = 500
 PDF_SECONDS = 60
 _JSON_ESCAPE = re.compile(r"\\u([0-9a-fA-F]{4})")
 #: An encoded word of a header (RFC 2047): its charset, its encoding and its text.
-_ENCODED_WORD = re.compile(r"=\?([^?\s]{1,40})\?([bBqQ])\?([^?\s]{0,1000})\?=")
+_ENCODED_WORD = re.compile(r"=\?([^?\s]{1,40})\?([bBqQ])\?([^?\s]*)\?=")
+#: Encoded words one after another: the spaces between them are no part of the text
+#: (RFC 2047, 6.2).
+_ENCODED_RUN = re.compile(rf"(?:{_ENCODED_WORD.pattern})(?:[ \t\r\n]+(?:{_ENCODED_WORD.pattern}))*")
 _BOMS = ((codecs.BOM_UTF32_LE, "utf-32"), (codecs.BOM_UTF32_BE, "utf-32"),
          (codecs.BOM_UTF8, "utf-8-sig"), (codecs.BOM_UTF16_LE, "utf-16"),
          (codecs.BOM_UTF16_BE, "utf-16"))  # fmt: skip
@@ -104,10 +107,12 @@ def described(item: Hidden) -> str:
 
 
 def said(reading: Reading) -> list[str]:
-    """What `reading` found, a line for each place, then each part not read."""
-    return [described(item) for item in reading.found] + [
-        f"not read: {printable(why)}" for why in reading.unread
-    ]
+    """Each part `reading` did not read, a line for each, then a line for each place it
+    found: the parts not read first, so that a command that cuts the lines keeps them
+    (the review of 1d5327d)."""
+    more = [f"and {reading.more} more places, not said"] if reading.more else []
+    unread = [f"not read: {printable(why)}" for why in reading.unread]
+    return unread + [described(item) for item in reading.found] + more
 
 
 def screen(path: Path) -> Reading:
@@ -117,8 +122,18 @@ def screen(path: Path) -> Reading:
     reading = _read(path)
     if len(reading.found) <= MAX_FOUND:
         return reading
-    return replace(reading, found=reading.found[:MAX_FOUND],
-                   unread=(*reading.unread, f"more places than the {MAX_FOUND} said"))  # fmt: skip
+    # Words to a model are kept first, then what is hidden, then zero-width characters,
+    # each in the file's order: a cut by the file's order alone let decoys push words to
+    # a model out (the review of 1d5327d).
+    kept = sorted(range(len(reading.found)), key=lambda at: _first(reading.found[at]))
+    return replace(reading, found=tuple(reading.found[at] for at in sorted(kept[:MAX_FOUND])),
+                   more=len(reading.found) - MAX_FOUND)  # fmt: skip
+
+
+def _first(item: Hidden) -> int:
+    if item.kind == TO_A_MODEL or item.model:
+        return 0
+    return 2 if item.kind == ZERO_WIDTH else 1
 
 
 def _read(path: Path) -> Reading:
@@ -261,24 +276,34 @@ def _mail(path: Path, data: bytes) -> Reading:
 
 
 def _subject(message, unread: list[str]) -> str:
-    raw = str(message.get("subject", "") or "")
+    # The header as written, its bytes past ASCII read as UTF-8: the first policy's `get`
+    # gives them as characters it could not read (the review of 1d5327d).
+    raw = next((str(value) for name, value in message.raw_items()
+                if name.casefold() == "subject"), "")  # fmt: skip
     if len(raw) > SUBJECT_AT_MOST:
         unread.append(f"the subject: past the {_size(SUBJECT_AT_MOST)} of it read")
         raw = raw[:SUBJECT_AT_MOST]
-    return _ENCODED_WORD.sub(_word, raw)
+    raw = raw.encode("utf-8", "surrogateescape").decode("utf-8", errors="replace")
+    return _ENCODED_RUN.sub(_run, raw)
+
+
+def _run(found: re.Match[str]) -> str:
+    """Encoded words one after another, read as one text."""
+    return "".join(_word(word) for word in _ENCODED_WORD.finditer(found.group(0)))
 
 
 def _word(found: re.Match[str]) -> str:
     """An encoded word read as its text, or left as written where it cannot be: by a
-    pattern of bounded parts, each word once, where the library's own reader took time
-    growing as the square of their number (the security review of #576)."""
+    pattern that reads the subject in time linear in its length, where the library's own
+    reader took time growing as the square of its words (the security review of #576)."""
     charset, encoding, data = found.groups()
     try:
         if encoding in "bB":
             written = base64.b64decode(data + "=" * (-len(data) % 4))
         else:
             written = quopri.decodestring(data.encode("ascii", "replace"), header=True)
-        return written.decode(codecs.lookup(charset).name, errors="replace")
+        # RFC 2231 may name a language after the charset, `UTF-8*en`.
+        return written.decode(codecs.lookup(charset.split("*")[0]).name, errors="replace")
     except (LookupError, ValueError):
         return found.group(0)
 

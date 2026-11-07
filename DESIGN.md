@@ -14883,7 +14883,9 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
     element is said as hidden, not as faint. The page is read as it is written, not as a
     browser builds it: an element closed by its own slash (`<div/>`) opens nothing, and an
     end tag a browser would imply is not; a box placed by `left` with no `position`, or a
-    clip that shows the whole of it, is taken as hidden. Behind text, a picture or a gradient
+    clip that shows the whole of it, is taken as hidden. A CDATA section ends at its first
+    `>`, as HTML ends one, in an XHTML page too, where it runs to `]]>`: text after that `>`
+    is read as the page's. Behind text, a picture or a gradient
     is taken as of no known colour, so no text on one is said to be faint. A length in
     `vw` or `vh` is not read, the viewport being unknown. The page is read by a scanner of
     this toolkit's own, in time linear in its length, since Python's parser took minutes
@@ -14896,8 +14898,11 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
     read as an `.eml`, as far as 16 MB and 500 parts: its subject, and no other header, and
     each part of text or HTML as far as 4 MB; its attachments are named and not read. A text
     or an HTML file of more than 4 MB is not read, nor a file of any other kind, an image, a
-    `.doc`, an RTF: `screen` says so and exits 1. Of one file, 500 places are said and the
-    rest counted, and a command that screens a file prints 20 of them.
+    `.doc`, an RTF: `screen` says so and exits 1. Of one file, 500 places are said, words to
+    a model first, and the rest counted, and a command that screens a file prints 20 lines,
+    the parts not read first. Every place is found before the cut, so it bounds what is
+    said and not the memory: 4 MB of words with zero-width characters inside them, some
+    700,000 places, took 335 MB to read.
   - Words to a model are those of `to_a_model` in `data/ai_writing.yaml`, in English. They
     are read a paragraph at a time, so words split across two paragraphs are not found, nor
     words spelt with letters of another script that look the same ("іgnore" with a

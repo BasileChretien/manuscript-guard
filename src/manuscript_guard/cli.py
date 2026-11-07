@@ -1027,14 +1027,14 @@ def _screened_first(path: Path) -> None:
             print(f"  {line}")
 
 
-#: The most lines said of one file; `screen --json` says them all.
+#: The most lines said of one file; `screen --json` says the rest.
 _SCREEN_LINES = 20
 
 
 def _first_lines(lines: list[str]) -> list[str]:
     if len(lines) <= _SCREEN_LINES:
         return lines
-    more = f"and {len(lines) - _SCREEN_LINES} more; `manuscript-guard screen --json` says them all"
+    more = f"and {len(lines) - _SCREEN_LINES} more; `manuscript-guard screen --json` says them"
     return [*lines[:_SCREEN_LINES], more]
 
 
@@ -1065,7 +1065,8 @@ def cmd_screen(args: argparse.Namespace) -> int:
             continue
         code = max(code, 1 if reading.unread else 0)
         told.append({"path": printable(str(path)), "found": [vars(item) for item in reading.found],
-                     "unread": list(reading.unread), "said": said(reading)})  # fmt: skip
+                     "unread": list(reading.unread), "more": reading.more,
+                     "said": said(reading)})  # fmt: skip
     if args.json:
         print(json.dumps(told, indent=2, ensure_ascii=True))
         return code
@@ -1073,7 +1074,8 @@ def cmd_screen(args: argparse.Namespace) -> int:
         if "error" in one:
             print(f"{one['path']}: not screened: {one['error']}")
             continue
-        print(f"{one['path']}: " + (f"{len(one['found'])} place(s) its reader does not see, or "
+        count = len(one["found"]) + one["more"]
+        print(f"{one['path']}: " + (f"{count} place(s) its reader does not see, or "
                                      "words to a model" if one["found"] else
                                      "nothing hidden from its reader found"))  # fmt: skip
         for line in _first_lines(one["said"]):

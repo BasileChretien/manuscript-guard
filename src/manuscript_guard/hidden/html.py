@@ -279,7 +279,8 @@ class _Reader:
     open: Counter[str]
     pieces: list[tuple[str, tuple[str, str] | None]]
     lines: list[int]
-    unshown: list[tuple[str, str, int]]
+    #: Text the page does not show: as written, as read for words, what it is, its line.
+    unshown: list[tuple[str, str, str, int]]
     #: The pieces that part one block from the next.
     breaks: list[int]
     text: str = ""
@@ -308,12 +309,15 @@ class _Reader:
                 self._data(at, opened)
             at = self._markup(opened)
 
-    def _data(self, start: int, end: int) -> None:
+    def _data(self, start: int, end: int, *, raw: bool = False) -> None:
         line = self._line_at(start)
-        data = html.unescape(self.text[start:end])
+        # A script's or a stylesheet's text holds no character reference, as a browser
+        # reads it, and is decoded only for its words (the review of 1d5327d).
+        data = self.text[start:end] if raw else html.unescape(self.text[start:end])
         look = self.stack[-1][1]
         if look.unshown:
-            self.unshown.append((data, look.unshown, line))
+            self.unshown.append((data, html.unescape(data) if raw else data, look.unshown,
+                                 line))  # fmt: skip
             return
         self.pieces.append((data, _kept_from_sight(look) if data.strip() else None))
         self.lines.append(line)
@@ -321,18 +325,26 @@ class _Reader:
     def _to(self, opened: int, ending: str, skip: int, called: str) -> int:
         """Markup that runs to `ending`, its words read as what the page does not show."""
         closed = self.text.find(ending, opened + skip)
+        if ending == "-->":  # a browser ends a comment at `--!>` too
+            bang = self.text.find("--!>", opened + skip, len(self.text) if closed < 0 else closed)
+            if bang >= 0:
+                closed, ending = bang, "--!>"
         stop = len(self.text) if closed < 0 else closed
-        self.unshown.append((html.unescape(self.text[opened + skip : stop]), called,
-                             self._line_at(opened)))  # fmt: skip
+        written = self.text[opened + skip : stop]  # a comment's references as written
+        self.unshown.append((written, html.unescape(written), called, self._line_at(opened)))
         return len(self.text) if closed < 0 else closed + len(ending)
 
     def _markup(self, opened: int) -> int:
         text = self.text
         following = text[opened + 1 : opened + 2]
+        for empty in ("<!-->", "<!--->"):
+            if text.startswith(empty, opened):  # a comment a browser ends at once
+                return opened + len(empty)
         if text.startswith("<!--", opened):
             return self._to(opened, "-->", 4, "an HTML comment")
         if text.startswith("<![CDATA[", opened):
-            return self._to(opened, "]]>", 9, "a CDATA section")
+            # Outside an SVG or a formula, a browser ends it at its first `>`.
+            return self._to(opened, ">", 9, "a CDATA section")
         if following in ("!", "?"):
             called = "a declaration" if following == "!" else "a processing instruction"
             return self._to(opened, ">", 2, called)
@@ -341,7 +353,7 @@ class _Reader:
             self._line_at(opened)
             self._ended(name)
             return stop
-        if not following.isalpha():
+        if not (following.isascii() and following.isalpha()):  # as a browser opens a tag
             self._data(opened, opened + 1)
             return opened + 1
         name, attributes, stop, closing = _tag(text, opened)
@@ -352,13 +364,15 @@ class _Reader:
 
     def _raw(self, name: str, start: int) -> int:
         """A script's or a stylesheet's text, to its end tag, read as text."""
-        ending = re.compile(rf"</{name}[{_SPACE}]*>", re.IGNORECASE)
+        # Ended as a browser ends it, at `</script` and a space, a slash or `>`, and the
+        # end tag read to its own end (the review of 1d5327d).
+        ending = re.compile(rf"</{name}(?=[{_SPACE}/>])", re.IGNORECASE)
         found = ending.search(self.text, start)
         stop = len(self.text) if found is None else found.start()
         if stop > start:
-            self._data(start, stop)
+            self._data(start, stop, raw=True)
         self._ended(name)
-        return len(self.text) if found is None else found.end()
+        return len(self.text) if found is None else _tag(self.text, found.start())[2]
 
     def _started(self, tag: str, attributes: dict[str, str], closing: bool, line: int) -> None:
         self._parted(tag, line)
@@ -366,7 +380,7 @@ class _Reader:
             label = _ATTRIBUTES.get(name) or ("an element's data" if name.startswith("data-")
                                               else None)  # fmt: skip
             if label and worth_reading(value):
-                self.unshown.append((value, label, line))
+                self.unshown.append((value, value, label, line))
         if closing or tag in _VOID:
             return
         self.stack.append((tag, _looked(self.stack[-1][1], tag, attributes)))
@@ -442,10 +456,10 @@ def read_page(text: str, part: str, label: str = "the page") -> list[Hidden]:
     it is: "the page", "the message"."""
     reader = _Reader.of(text)
     found = _shown_text(reader, part, label)
-    for words, called, line in reader.unshown:
+    for written, words, called, line in reader.unshown:
         where = f"{label}, line {line}: {called}"
         found += [Hidden(ZERO_WIDTH, where, quoted(spot.said), spot.why, part)
-                  for spot in zero_width_in(words)]  # fmt: skip
+                  for spot in zero_width_in(written)]  # fmt: skip
         found += [Hidden(TO_A_MODEL, where, quoted(spot.said), spot.why, part, model=spot.rule)
                   for spot in to_a_model_in(words)]  # fmt: skip
     return found

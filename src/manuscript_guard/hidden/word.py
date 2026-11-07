@@ -136,11 +136,12 @@ class Hidden:
 @dataclass(frozen=True)
 class Reading:
     """What `read_hidden` found in one document, and the parts of it not read, each with
-    why."""
+    why; `more`, how many places were found past the most `screen` says of a file."""
 
     path: Path
     found: tuple[Hidden, ...] = ()
     unread: tuple[str, ...] = ()
+    more: int = 0
 
 
 def quoted(text: str) -> str:

@@ -6997,9 +6997,11 @@ local tags and provider prefixes, and statements that spell each in every way th
 allows, beside near misses (another version, a longer number, another order, a word
 between, a name that starts or ends inside a word, a point's digits in two words), one of
 every kind in each example; `tests/readings.py` gains the reading, and
-`tests/test_properties.py` the properties. Four broken rules must each fail under a dozen
+`tests/test_properties.py` the properties. Seven broken rules must each fail under a dozen
 values of `MANUSCRIPT_GUARD_SEED`: one that drops the version, one that matches inside a
-word, one that reads case, and one that reads "4.5" and "4-5" as two versions. The cutting
+word, one that reads case, one that reads "4.5" and "4-5" as two versions, and, added in
+round 1 of the code, one that keeps a date stamp, one that keeps the provider, and one that
+lets a point's two digits stand in two words. The cutting
 out of a section or a paragraph is held in Markdown and LaTeX, the split statement among
 them. Each finding has its case in `tests/test_corruption.py`, its row in `docs/gates.md`
 and its entry for `tests/test_policy.py`, and the supplement its own cases. `kind` has its

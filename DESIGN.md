@@ -4062,6 +4062,345 @@ on either prints each request and sends and writes nothing.
 works found. The question is not sent, and no sentence of the manuscript is. The command's
 help says so.
 
+## A claim to be first, or that nothing is known, rests on a recorded search
+
+"To our knowledge, this is the first study of", "no study has examined" and "has not been
+reported" are claims about the literature, and of all that a paper says of other work they
+are the most often wrong. Until now they passed: G6's `vague-attribution` reads "it is well
+known that" and its kind, which a citation answers, and a claim that something does not
+exist has no citation to give. The journal shortlist already holds that a paper's novelty is
+the author's statement and is never graded (`shortlist.schema.json`). This holds the
+statement to the record of a search for the earlier study. It grades the record, never the
+novelty: a claim searched for can still be wrong, and G7 says nothing of whether it is.
+
+Item 4 of the borrowed checks (plan of 2026-11-06). Basile settled four things with the plan,
+D4.1 to D4.4, and four more on 2026-11-07 by question box, each time as recommended. The
+record is a currency entry of a new kind, `novelty`, with currency's search records (D4.1). A
+claim with no search, or with one more than six months old, is a warning from drafting and a
+failure at submission (D4.2). A softer phrasing gets a note (D4.3). The field saying what was
+not searched is required and may not be empty (D4.4). On 2026-11-07: a person may say that a
+sentence the list reads makes no claim about the literature, and nobody else may; the look
+forward from the nearest work found is required wherever the first search found any; a
+person may file a search run by hand, which adds to the tool's and never stands in for it;
+and only the paper's own claims are read.
+
+### What the list reads
+
+`data/novelty_claims.yaml` holds three lists, each item an id, a pattern and why:
+
+- `priority`, the paper says it is first: "this study is the first", "the present analysis
+  is, to our knowledge, the first", "ours is the first", "we are the first to", "we report
+  the first case of", "here we show for the first time", "for the first time, we". The
+  subject is the paper: this, the present or the current study (analysis, report, trial,
+  cohort, review, work), ours, we, here.
+- `absence`, the literature lacks something, said in the present or the present perfect: "no
+  study has examined", "no previous trials have compared", "no study to date", "has not been
+  reported", "have never been studied", "has not yet been described", "has yet to be
+  established", "there are no published data on", "remains unexplored", "is undescribed in
+  the literature".
+- `softer`, a claim that little is known: "little is known about", "remains unclear", "is
+  poorly understood", "few studies have", "data are limited", "a paucity of evidence", "has
+  received little attention", "a gap in the literature".
+
+The patterns are written in the code pull request, with the generated inputs that hold them.
+This section fixes what each list holds, and what none of them reads:
+
+- a priority turned round: "this is not the first study", "not for the first time";
+- a priority given to someone else, "Smith et al. were the first to describe it", "the first
+  case was reported in 1985" (the fourth answer of 2026-11-07), but for one said with "for
+  the first time" after a verb of reporting, which is read (below, and Known gaps);
+- an absence in the past, "had not been reported by 2015", "no trial had compared", which
+  dates itself;
+- "to our knowledge" alone, a hedge any claim can carry;
+- an absence of evidence, "there is no evidence that", which a result says of its own
+  analysis ("no evidence that the effect differed by sex") as often as of the literature;
+- "for the first time", unless a verb of reporting (show, report, describe, demonstrate,
+  identify, reveal, establish) stands before it in the same clause, at most six words before
+  it, any words counting and commas allowed ("we show here, for the first time, that"; "we
+  show in this cohort for the first time"), a clause ending at a stop, a semicolon, a colon
+  or "that", "which", "who", "whom", "where" or "when"; the words are those of the prose G14
+  reads, where a citation's keys are blank, so its brackets, a parenthesis and a dash count
+  as words and a semicolon between keys ends the clause; or the paper as subject ("we", "our",
+  "this study" and the rest of the subjects above) stands right after it, a comma allowed
+  between ("for the first time, we"). So not "patients treated for the first time",
+  "patients we saw for the first time" or "patients seen for the first time this year";
+- a "first" that names a part of the study: its first visit, period, dose, phase, wave or
+  line of treatment;
+- "novel" and "new" alone, which name a class of drug ("novel oral anticoagulants") or a
+  diagnosis ("new-onset") as often as they make a claim.
+
+The list reads the files G7 reads for its citing sentences (`gates.passages.citing_documents`):
+the main text and `manuscript/supplementary/`, Markdown or LaTeX, a LaTeX document as it
+prints. It has a reader of its own beside that one, since `citing_documents` cuts only the
+paragraphs with an `@` in them and gives each `.tex` file the whole printed body: this reader
+cuts each paragraph in which a pattern matches, wherever its `@`s are, and places each
+sentence back at its own file and line as `citing_documents` places a cited one, each sentence
+once. The cut reads a long paragraph slowly (`checking.produce._sentences_of`), so a paragraph
+with no match is not cut. The patterns are matched in the prose G6 masks
+(`text.masking.mask`): code, maths, bindings and comments are blank there, so a claim inside
+one is not read, and in Markdown the front matter is blank too. A LaTeX abstract written in
+the preamble is read, since the printed view puts it under Abstract, as the class prints it;
+a Markdown manuscript writes its Abstract as a section, as G4 reads it, and an `abstract:`
+field of its front matter is refused (`front-matter-abstract`, G2), so it never reaches a
+document. The claim is the sentence the match is in, its words as written, and for LaTeX as
+the printed view gives them (a `\cite` as `[@key]`, a `\citet` as a narrative `@key`), as
+`citing_documents` gives a cited sentence. Those words folded by `statement_words`, which drops
+a bracketed citation group and keeps a narrative `@key`, are what an entry is matched by.
+Case is folded, and a line break inside a phrase is a space. A sentence is one claim, of the
+first list that reads it: `priority`, then `absence`, then `softer`. Its finding stands on the
+line its paragraph starts on, as G7's findings on a cited sentence do, and names the words
+matched.
+
+### The record
+
+An entry of `literature/currency.yaml` of kind `novelty`:
+
+```yaml
+- id: c7
+  kind: novelty
+  sentence: To our knowledge, this is the first study of statin use and delirium in children.
+  also:
+    - No study has examined whether statins are associated with delirium in children.
+  question: Has any study examined statin use and delirium in children?
+  marked_by: Ada Example
+  marked_on: 2026-11-08
+```
+
+`kind` is `currency` where it is not written, so every file valid now stays valid. A
+`novelty` entry needs no `citekey`, may not have a `decision` or an `answer` (nothing is
+proposed and nothing replaced), and has two fields of its own:
+
+- `also`, further sentences that make the same claim. An Abstract, an Introduction and a
+  Discussion often say it three times, and one search answers all three. Decided here as the
+  simpler of two shapes, each of which allows the other: an author who means two claims makes
+  two entries.
+- `not_a_claim`, a person's word that the sentence makes no claim about the literature
+  ("adverse events have not been reported to the sponsor"): `by`, `why` and `decided_on`, as
+  a person's currency decision has them. A model's name in `by` is
+  `currency-decision-not-human`.
+
+The schema keeps its id, `manuscript-guard/currency/1`. A file with a `novelty` entry fails
+the schema of an older tool, as a reading with `replaces` did after #547.
+
+The searches are records under `literature/currency/searches/<id>-<n>.yaml`, written once,
+numbered and sealed as currency's are, with two steps of their own:
+
+- **N1, the earlier study.** The reader's terms, phrased to find a study that did what the
+  sentence says none did, at PubMed, Europe PMC and OpenAlex, with no limit of date or of
+  publication type. Each source keeps `references.search_limit` works (ten) and its count,
+  and each work kept goes into the works store as S2's and S3's do, so that the reader reads
+  it there.
+- **N2, forward from the nearest.** The reader names the work nearest the claim, as a rule
+  one N1 found or one the manuscript cites, though `--forward` takes any work by its DOI, its
+  PMID or `@key` and does not check it (a key whose entry in references.bib has neither is
+  refused), and OpenAlex is asked for the works that cite it,
+  newest first (`filter=cites:W…`, `sort=publication_date:desc`), as S1 asks for the reviews
+  citing a cited work, but of every type. The record keeps the work as `seed`, and OpenAlex is
+  asked for it by its DOI or else its PMID (`/works/doi:…`, `/works/pmid:…`). A seed OpenAlex
+  does not know is recorded `not asked`, which is no search, as in currency.
+
+A search run by hand, in a database the tool cannot reach (Embase, Scopus, Web of Science,
+CINAHL, a trial registry), is filed by a person with `references --hand-search ID FILE --as
+PERSON`: the same fields, its `status` `by hand`, its step N1 or N2, its `terms_by` the
+person (a model's name is refused, as for a decision), numbered and sealed like the others.
+It adds to the record and never counts as the step: only the tool's searches can be run again
+as recorded.
+
+The fields follow what PRISMA-S asks a report of a search to give so that the search can be
+repeated (Rethlefsen et al. 2021, doi:10.1186/s13643-020-01542-z, checked with
+`manuscript-guard lookup` on 2026-11-07): each database by its name and platform (its item
+1), the search as it was run (8), its limits, dates among them (9), the day it was last run
+(13), the records each source gave (15), and citing works followed from a work it names (5).
+A search record has most of these already (`source`, `query` and `sent`, `searched_on`,
+`hits`). A novelty search adds three fields:
+
+- `years`, the period searched, `from` and `to`. For the tool's searches `from` is null, no
+  lower limit, and `to` the day it ran; for a search by hand, as the person gives them.
+  `--explain` shows them, and no finding reads them: the tool's searches have no limit, and a
+  search by hand never counts as a step.
+- `seed`, for N2.
+- `not_searched` (D4.4): the databases and the kinds of work the search did not reach, in the
+  reader's words. Required on every novelty search, it holds a letter and is not a word that
+  says nothing was left out (`none`, `nothing`, `n/a`, `nil`, `not applicable`, folded for
+  case and stops): no search reaches every source, so "none" is never true. PRISMA-S has no
+  item for it. A record without it fails its schema, which G7 reports as
+  `currency-record-edited`, and the command refuses a novelty search without it.
+
+The step pattern gains N1 and N2, the status gains `by hand`, and the schema keeps its id.
+
+### When a claim is searched
+
+An entry belongs to each sentence the list reads whose folded words (`statement_words`) are
+those of the entry's `sentence` or of one of its `also`, in whatever file: a sentence written
+twice makes one claim. Nothing else places it. Currency's `NEAR`, half the words or more, is
+not used: currency looks for it only among the sentences citing the entry's work, and a
+novelty entry has none, so `NEAR` would run over every claim, and claims share their stock
+words. "To our knowledge, this is the first study of statin use and delirium in children"
+holds twelve of its fifteen words in common with "To our knowledge, this is the first study of
+opioid use and falls in adults", and a search for the first would have covered the second.
+Taking out the words the pattern matched does not help, since "to our knowledge", "study of"
+and "in" stay. So a claim reworded at all loses its entry, which is then unplaced, until it is
+marked again (below). Only sentences the list reads are looked at, so an entry never lands on
+a sentence that has stopped claiming anything.
+
+A claim is searched when an entry placed on it has:
+
+1. a sound record of an N1 the tool ran (`status: run`), at any one of its sources;
+2. where any such N1 record kept a work (`candidates` not empty), a sound record of an N2 the
+   tool ran (the second answer of 2026-11-07). A source that counted works and kept none,
+   since none had a DOI or a PMID (`unidentified`), gives no work to follow forward from.
+
+A search by hand meets neither. The claim is searched as of the earlier of its newest N1 and,
+where N2 is needed, its newest N2; that day more than six months ago, counted by
+`months_before` as `currency-record-stale` counts, makes it stale. A claim on which an entry
+with a sound `not_a_claim` by a person is placed is no claim, whatever else is placed on it.
+`--novelty` refuses a sentence an entry is placed on already and names that entry, so two
+entries are on one sentence only where a person wrote them so by hand; then the claim is
+searched where either is, as of the later of their days.
+
+### The findings
+
+| Finding | When | Level |
+|---|---|---|
+| `novelty-unsearched` | a priority or absence claim with no entry, or with an entry not searched as above; the message says how far it got: no entry, marked and not searched, searched by hand only, N1 asked of no source, or works found and none followed forward | a warning from drafting, a failure at submission (D4.2) |
+| `novelty-search-stale` | the claim was searched more than six months ago | a warning, a failure at submission |
+| `novelty-softer` | a softer claim not searched, or searched more than six months ago | a note (D4.3) |
+| `currency-entry-unplaced` | a sentence of a novelty entry that no sentence the list reads has | a note |
+| `currency-record-edited` | a novelty search record edited, or out of its schema | fails from drafting |
+| `currency-decision-not-human` | a `not_a_claim` signed by a model, or a search by hand filed in a model's name | fails from drafting |
+
+`novelty-unsearched` and `novelty-search-stale` are the author's to answer, not an agent's. A
+novelty entry is out of all else currency does: `currency-record-missing` and
+`currency-record-stale` never count one, `references --reading` refuses a reading of one, the
+rules never decide one, and `references --comments` writes no comment for one. `check`'s
+literature line says how many claims the list read, how many are searched, how many are
+stale, and how many a person said are no claim.
+
+Currency's code reads every entry as having a work, and these places change with it:
+`records._entry` and `command.mark` read `citekey` where it is given, and `Entry.citekey` is
+None for a novelty entry; `survey()` places only currency entries on cited sentences, and a
+novelty entry is placed by the reader above; `gates/currency._of_entry` takes a currency entry
+only, a novelty entry going to the novelty findings, so that `_stale`, the readings and the
+decision are never asked of one; `Entry.named`, and the message and hint of
+`currency-entry-unplaced` for a novelty entry, give the sentence and `--novelty ... --id`, not
+a key and `--mark`; and `searching._claim`, which refuses an entry with no DOI or PMID in
+references.bib, has a novelty claim beside it, with no cited work, whose steps are N1 and N2.
+
+### The command
+
+- `references --novelty "WORDS" --as WHO [--question Q] [--id ID]` writes a novelty entry for
+  the sentence the list reads that holds those words, folded and taken as one run. Sentences
+  whose folded words are the same are one sentence here, in one file or several, so a claim
+  the Abstract and the Discussion both make is found once; the command is refused where no
+  sentence holds the words, where sentences of different words do (as `--mark` is), and where
+  an entry is placed on the sentence already, which it names. With `--id` of a novelty entry,
+  the sentence goes into that entry's `also`, and each sentence of the entry, its `sentence`
+  or one of its `also`, that no sentence the list reads now has is taken out of it, the
+  command saying which; where `sentence` is taken out, the first sentence left in `also` takes
+  its place, and the sentence just given is always left. That is how a claim reworded is
+  marked again, keeping its searches. With `--not-a-claim --why "..."` it writes a person's
+  `not_a_claim`; a model's name is refused.
+- `references --search ID --terms "TERMS" --not-searched "..." --as WHO` runs N1 for a
+  novelty entry; `--forward WORK` in place of `--terms` runs N2, WORK a DOI, a PMID or
+  `@key`. `--against` is refused for a novelty entry, whose N1 is phrased against the claim
+  already, and `--forward` and `--not-searched` for a currency entry.
+- `references --hand-search ID FILE --as PERSON` files a search by hand.
+- `references --replay ID` runs again the newest N1 the tool ran at each source and the
+  newest N2, with the terms, the seed and `not_searched` as recorded, to the day of the
+  replay; a search by hand is listed and not run. The records it runs again are chosen among
+  those the tool ran and that were asked, and the newest taken from those: `replay()` takes
+  the newest at each step and source first and keeps the asked ones after, so for a novelty
+  entry a later search by hand, or a later `not asked`, at the same source would hide the
+  tool's run. `--dry-run` sends and writes nothing, as it does for currency's.
+- `references` alone lists each claim the list reads, its list, its entry and how far it got;
+  `--explain ID` gives a novelty entry's sentences and where each is placed, each search with
+  its source, status, terms, years, day, count and works, its `not_searched`, and what G7
+  says.
+
+The hook asks before an agent runs `references --novelty ... --not-a-claim` or `references
+--hand-search`, as it asks before `--refuse`, and before `references --novelty ... --id` puts
+a sentence into an entry that carries a person's `not_a_claim`, which would make the new
+sentence no claim, as it asks before `--mark ... --id` moves an entry a person decided.
+
+What leaves the machine is what currency's searches send: the terms and the identifiers of
+works, for N2 the seed's DOI or PMID. No sentence of the manuscript is sent.
+
+### The skill
+
+The literature-currency skill gains a part for these claims, with the two steps of the plan.
+The terms of N1 are written to find the earlier study, not to confirm that there is none:
+the population, the exposure and the outcome the earlier study would have, with their
+synonyms, and none of the words of the claim ("first", "no study", "novel"). The reader reads
+every work N1 kept, from the works store. Where one did what the sentence says none did, the
+reader tells the author, who rewords the claim; the search stays on record. Then the reader
+names the nearest work found, or the nearest the manuscript cites, runs N2 from it, and reads
+the works that cite it, newest first. `not_searched` names what the tool did not reach: the
+databases the author has not searched by hand, grey literature, conference abstracts, theses,
+other languages. The reader never writes a `not_a_claim` and never files a search by hand.
+
+### Beside currency's unattended run
+
+PR 6 of the reference-currency design (2026-11-04, not started) runs `references --run`:
+searches or replays, two readers, the rules and the comments, for at most 30 claims a run. A
+novelty entry lives in the same file and the same searches, so that run can take one in with
+no record of its own: a model writes N1's terms and `not_searched`, named in `terms_by`,
+picks the seed and runs N2, and a replay keeps the claim within six months, which is what the
+design's weekly job is for. Readings, rules and comments pass a novelty entry by. The run
+never writes a `not_a_claim` and never files a search by hand, which are a person's. Neither
+needs the other first: whichever is built second takes the other's kind into its scope, and
+its cap counts both.
+
+### What the generated inputs hold
+
+`tests/generated.py` gets `NOVELTY_PLACES`, each a list (`priority`, `absence`, `softer`, or
+none), a Markdown template and a LaTeX one. Read: every pattern of the three lists, one with
+a hedge inside it ("is, to our knowledge, the first"), one across a line break, one opening a
+sentence in capitals, one in a sentence that cites, one in a LaTeX command's argument that
+prints, one in a LaTeX abstract written in the preamble, and one absence a paper says of its
+own data ("no deaths have been reported in the trial"), which is read and pins that limit.
+Not read: each form of the list above of what is not read, among them "there is no evidence
+that the effect differed by sex" and "patients we saw for the first time", and a claim in a
+code span, a comment, a fenced block, maths, a binding and a Markdown front matter.
+`novelty_claims()` draws every place, in an order drawn, between filler sentences, in a
+Markdown file, its LaTeX twin and a file of the supplement, with the list and the line
+expected of each.
+
+`novelty_records()` draws a project with one claim in every state, each example holding every
+state: no entry; marked and not searched; an N1 that found nothing; an N1 that counted works
+and kept none; an N1 that kept works, with no N2; N1 and N2; an N2 seven months old; a search
+by hand only; an N1 recorded `not asked` only; an edited N1 record; an entry whose sentence
+was replaced by another claim of the same list that holds most of its words; an entry
+sentence with one word changed; the same claim in the main text and the supplement, under
+one entry; a `not_a_claim` by a person, alone and beside a searched entry, and one by a
+model; a softer claim searched and one not. The stage is drawn, and today is drawn at the end
+of a month, where six months and 180 days part.
+
+`tests/readings.py` gets `novelty claims`, what the list reads in a Markdown and a LaTeX
+file, and `novelty records`, what G7 says of a project so drawn. `tests/test_properties.py`
+holds that each claim is found once, with its list and its line, and nothing else is, in
+Markdown, LaTeX and the supplement; and that each claim's finding and level are the ones the
+table gives for its records and the stage. The `BROKEN` rules, each kept only once it fails a
+property under a dozen seeds: the patterns read with their case; a priority turned round
+read; a past absence read; another's priority read; a line break inside a phrase stopping
+it; the supplement not read; the LaTeX source read in place of its print; a softer claim
+warning; an N1 recorded `not asked` counted; a search by hand counted as N1; N2 not needed
+where N1 kept works; N2 needed where N1 kept none, though it counted some; the age taken from
+N1 alone; six months read as 180 days; an entry placed by its words unfolded; an entry placed
+on the claim that holds most of its words (`NEAR`); a claim in a second file not given its
+entry; a person's `not_a_claim` set aside for another entry's search; a model's `not_a_claim`
+standing. Both readings are new, so
+`tests/test_differential.py` finds neither in the base; an existing reading whose answer
+changes gets its entry in `tests/data/differential_expected.yaml`, with the reason.
+
+`tests/test_corruption.py` gets each finding as it fails a manuscript: a claim with no search,
+in Markdown, in LaTeX and in the supplement, a warning while drafting and a failure at
+submission; works found and none followed forward; a stale search; an edited record; a
+`not_searched` of "none", refused by the command and failing its schema; a model's
+`not_a_claim`; a search by hand alone; a claim reworded after its search, whose entry no
+longer holds it. Each code gets its row in `docs/gates.md`, its entry in
+`tests/test_policy.py` and its route to the literature-currency skill. The limits are in
+Known gaps, "A claim of novelty is held to the record of a search, not to the literature".
+
 ## Text from the authors' earlier papers is found before the journal finds it
 
 A journal puts each submission through a similarity check (Crossref Similarity Check, which
@@ -21615,6 +21954,70 @@ Open, recorded as each change landed:
     `currency-record-edited`: a co-author's older tool, or a CI pinned to an older release,
     fails it. The session-start hook warns of a tool older than the plugin (round 1 of #547,
     finding 3).
+- **A claim of novelty is held to the record of a search, not to the literature
+  (`novelty-*`).** Designed 2026-11-07; the code comes in a pull request of its own.
+  - The record is graded, never the novelty. The terms are the reader's and nothing compares
+    them with the claim: a search on another topic covers it. `references --explain` shows
+    the terms beside the sentences, for a person to read together.
+  - What N1 and N2 found is not read. A work kept that is the earlier study passes G7; the
+    skill tells the reader to say so to the author, and nothing records that they did.
+  - The list reads what it lists. A claim worded otherwise passes: "unique", "pioneering",
+    "the earliest", "unprecedented", "this gap", "has never been looked at", and every claim
+    not in English. "Novel" and "new" are never read.
+  - Only the paper's own priority is read (Basile, 2026-11-07): "Smith et al. were the first
+    to describe it [@smith]" can be wrong, and is not read; nor is an absence in the past
+    tense, "had not been reported by 2015", nor an absence of evidence, "there is no evidence
+    that", which a result says of its own analysis as often. But "for the first time" after a
+    verb of reporting is read whatever the subject, so "the reaction was described for the
+    first time in 1985" warns.
+  - An absence a paper says of its own data is read as one of the literature: "no deaths have
+    been reported in the trial" and "its results have not been published" warn until a person
+    marks them no claim. The Results and the Methods are read as the rest is, since reading
+    only the Introduction and the Discussion would leave a case report's "we report the first
+    case" unread.
+  - A claim turned round is known only by a "not" right before it ("is not the first", "not
+    for the first time"): "it is wrong to say that no study has examined this" warns, and so
+    does a conditional, "if no study has examined it". A question, "whether this is the
+    first", is not read.
+  - A sentence is what G7's splitter cuts. An abbreviation it does not know can join two
+    sentences into one claim, and an entry's words then hold both.
+  - The title, the covering letter, the response to the reviewers and the communication
+    texts are not read, though a covering letter is where "the first study" is most often
+    written.
+  - `not_searched` is the reader's words, held to a letter and to not saying "none". A list
+    that leaves out what the author knows was not searched passes, and so does one that names
+    a database that was searched.
+  - The tool asks PubMed, Europe PMC and OpenAlex, which lean towards biomedical work in
+    English. Embase, Scopus, Web of Science, CINAHL, PsycINFO, grey literature, theses and
+    conference abstracts are reached only by a person's search by hand, taken on that
+    person's word: its digest catches an edit made without care, not what the search found.
+  - N1 counts where any one source answered: a run that only OpenAlex answered covers the
+    claim. `--explain` says which sources answered. A source whose first works all lack a DOI
+    and a PMID keeps none, though it counted hundreds, and then asks for no N2.
+  - Each source keeps its first ten works, or `search_limit`: an earlier study ranked lower is
+    in the count and not in the store, and is not read.
+  - N2 follows one work, by its DOI or PMID, through OpenAlex's list of the works citing it,
+    which may lack some. The seed is the reader's choice, any work OpenAlex knows, and nothing
+    checks that it is near the claim: so N2 can always be run, and where OpenAlex knows no
+    work near the claim, the forward look G7 asks for starts from one that is not.
+  - `--id` keeps an entry's searches whatever the new sentence says, so an agent can move a
+    search onto another claim. The hook asks only where the entry carries a person's
+    `not_a_claim`.
+  - "For the first time" is read by a window of six words after a verb of reporting, whatever
+    the verb is said of, so "patients reported for the first time", "cases described in
+    Japan were treated for the first time" and another's priority in the passive, "statin
+    myopathy was described for the first time in 1988", warn, and a verb seven words before
+    it is not seen. "That" ends the window, so "we show that, for the first time, statins
+    reduce delirium" is not read.
+  - A search five months old passes at submission, though a study published since is not in
+    it.
+  - An entry is placed by its words exactly, so any rewording takes it off, a word changed or
+    a typing error mended: the claim is unsearched, a warning and at submission a failure,
+    until it is marked again with `references --novelty ... --id`, which keeps the searches
+    whatever the new words say.
+  - A `novelty` entry, or a search record with `N1`, `N2`, `by hand` or `not_searched`, fails
+    the schema of a tool older than the code that reads them, and is reported there as
+    `currency-record-edited`.
 - **An appraisal of a similar study's method is judgement, not a guarantee.** G12 holds it
   to a standard and a domain that exist, and nothing more: that the method departs from the
   standard as the appraisal says, that the concern is the right one, and that the studies

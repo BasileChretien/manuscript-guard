@@ -27,8 +27,8 @@ or white against what is behind it. What is not read is in DESIGN.md, Known gaps
 
 The file is read as every untrusted Word file is (`safexml`): no part with a DTD, none past
 the size limits, and two parts under one name refused, since which of them Word shows is not
-known. Of its XML, the parts that hold the text are always read; the rest, for words to a
-model, up to twice the limit for one part, and the parts past it are named as not read.
+known. Of its XML, as much as one part may hold is read, the parts past it named as not
+read; parts are found as the packaging conventions name them (`hidden.package`).
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ from manuscript_guard.hidden.words import (
     worth_reading,
     zero_width_in,
 )
-from manuscript_guard.safexml import MAX_ARCHIVE_BYTES, UnsafeDocument, open_archive, read_part
+from manuscript_guard.safexml import MAX_PART_BYTES, UnsafeDocument, open_archive, read_part
 
 HIDDEN, BACKGROUND, TINY, ZERO_WIDTH, TO_A_MODEL = (
     "hidden", "background", "tiny", "zero-width", "to-a-model",
@@ -72,9 +72,9 @@ CONTRAST_BELOW = 1.5
 #: How much of what a place holds a finding quotes.
 QUOTED = 160
 #: How much of a document's XML is read, the parts that hold its text among it: as
-#: much as an archive may hold (the security review of #574: the parts that hold the
+#: much as one part may hold (the security review of #574: the parts that hold the
 #: text, of any number, were read past it).
-READ_AT_MOST = MAX_ARCHIVE_BYTES
+READ_AT_MOST = MAX_PART_BYTES
 #: The most characters of one paragraph, or one text of a part, read for the words in
 #: it: no paragraph of a paper holds as many, and reading them costs memory.
 PARAGRAPH_AT_MOST = 1_000_000

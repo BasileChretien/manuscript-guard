@@ -780,6 +780,7 @@ def test_a_notes_part_with_no_note_of_its_own_is_not_printed(tmp_path: Path) -> 
         '<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE r [<!ENTITY a "a">]><r>&a;</r>'.encode(
             "utf-16"),
         '<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE r><r/>'.encode("utf-16-le"),
+        '\n<!DOCTYPE r [<!ENTITY a "aaaa">]><r>&a;</r>'.encode("utf-16-le"),
     ],
 )
 def test_a_dtd_anywhere_in_a_part_and_in_any_encoding_is_refused(data: bytes) -> None:

@@ -14795,7 +14795,7 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
     document names two styles parts, the first is read.
   - A fallback copy Word keeps for older readers is read for words to a model one element
     at a time, not as text; pictures, embedded files and a part Word imports as HTML
-    (`altChunk`) are not read; of a document's XML, as much as an archive may hold (80 MB)
+    (`altChunk`) are not read; of a document's XML, as much as one part may hold (120 MB)
     is read, and a paragraph or a text of more than a million characters is read for what
     hides it but not for its words, each named as not read. A built document with
     anything not read is not to be sent. A hostile document within those limits can still

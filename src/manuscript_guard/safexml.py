@@ -93,8 +93,9 @@ def _declares_a_dtd(data: bytes, what: str) -> bool:
     no UTF-16, is refused: a DTD in it would not be seen."""
     if data.startswith((b"\xff\xfe", b"\xfe\xff")):
         return bool(_DOCTYPE_TEXT.search(data.decode("utf-16", errors="replace")))
-    if data[:2] in (b"<\x00", b"\x00<"):
-        order = "utf-16-le" if data[:1] == b"<" else "utf-16-be"
+    # As the parser reads UTF-16 with no mark, whatever comes first (review of a0539a2).
+    if data[:1] == b"\x00" or data[1:2] == b"\x00":
+        order = "utf-16-be" if data[:1] == b"\x00" else "utf-16-le"
         return bool(_DOCTYPE_TEXT.search(data.decode(order, errors="replace")))
     declared = _DECLARED.match(data[3:] if data.startswith(b"\xef\xbb\xbf") else data)
     if declared:

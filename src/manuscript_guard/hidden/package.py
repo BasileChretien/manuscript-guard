@@ -14,6 +14,7 @@ is not known; and a main document the package does not hold is refused too.
 from __future__ import annotations
 
 import posixpath
+import string
 from collections import Counter
 from dataclasses import dataclass
 from urllib.parse import unquote
@@ -29,14 +30,15 @@ NOTES = {f"{W}footnote": f"{W}footnoteReference", f"{W}endnote": f"{W}endnoteRef
 #: The parts of these kinds hold text; a part of each other kind named here is read for the
 #: properties of the text. Word's usual names stand where no relationship names one.
 _TEXT_KINDS = frozenset({"header", "footer", "footnotes", "endnotes", "comments"})
+_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 _USUAL = {"styles": "word/styles.xml", "theme": "word/theme/theme1.xml",
           "settings": "word/settings.xml"}  # fmt: skip
 
 
 def canonical(name: str) -> str:
     """A part's name as the packaging conventions compare it: from the package's root,
-    percent-escapes decoded, any case."""
-    return posixpath.normpath(unquote(name).lstrip("/")).casefold()
+    percent-escapes decoded, its ASCII letters of any case (ISO/IEC 29500-2, 9.1.1.1)."""
+    return posixpath.normpath(unquote(name).lstrip("/")).translate(_LOWER)
 
 
 @dataclass(frozen=True)

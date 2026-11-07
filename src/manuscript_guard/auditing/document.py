@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.hidden import BACKGROUND, HIDDEN, TINY, TO_A_MODEL, ZERO_WIDTH, read_hidden
+from manuscript_guard.hidden.words import printable
 from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
 
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
@@ -157,7 +158,8 @@ def document_facts(path: Path) -> DocumentFacts:
                                  for p in listed]  # fmt: skip
         _hidden_facts(facts)
     except UnsafeDocument as exc:
-        facts.note = f"{path.name} could not be read for what it holds besides its text: {exc}"
+        facts.note = printable(f"{path.name} could not be read for what it holds besides its "
+                               f"text: {exc}")  # fmt: skip
     return facts
 
 

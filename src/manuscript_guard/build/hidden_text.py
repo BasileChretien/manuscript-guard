@@ -42,8 +42,8 @@ _WHAT = {
 }
 _HINT = (
     "a model reading the document reads this and a person does not: take it out of the "
-    "source, the raw Word markup or the reference document's style it came from, and build "
-    "again"
+    "source, the raw Word markup, the reference document's style or the reference's record "
+    "in Zotero it came from, and build again"
 )
 _HINT_PRINTED = (
     "words that tell a model reading the paper what to do; unless the paper quotes them as "

@@ -14760,10 +14760,22 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
     size for complex scripts (`w:szCs`) only where the run says it is one (`w:cs`,
     `w:rtl`).
   - Behind a run is its highlight, its shading, its paragraph's or its table cell's, and
-    else the page: white, and the page's background where the document shows it. A
-    pattern of shading other than clear, solid or a percentage counts as its fill, and a
-    theme colour's tint and shade are applied to its lightness as Word describes them,
-    which was not checked against Word.
+    else the page: white, and the page's background where the document shows it, so white
+    text on a dark background is said, since the paper it prints on is white. A pattern of
+    shading other than clear, solid or a percentage counts as its fill, and a theme
+    colour's tint and shade are applied to its lightness as Word describes them, which was
+    not checked against Word; nor that a picture or a box in a run Word hides is hidden with
+    it, as it is taken to be.
+  - A header or a footer is printed where a section shows it, and a note where the text
+    cites it. Words to a model the document prints somewhere count as printed wherever
+    else they stand, so their copy in a note nobody cites, or in the properties, only
+    warns.
+  - An equation's text, and a chart's or a diagram's, is read one element at a time as
+    text no reader sees: words to a model there fail although they are printed, and an
+    equation's formatting is not read. Pandoc writes an empty group, `{}`, as a zero-width
+    space alone in an equation's run, which is inside no word.
+  - A zero-width character inside a word of the source is said by no gate of `check`, and
+    the build fails on it, one in a reference's record in Zotero among them.
   - Words to a model are those of `to_a_model` in `data/ai_writing.yaml`, in English. They
     are read a paragraph at a time, so words split across two paragraphs are not found, nor
     words spelt with letters of another script that look the same ("іgnore" with a

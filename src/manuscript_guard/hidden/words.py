@@ -44,6 +44,8 @@ _BLACK_FLAG = "\U0001f3f4"
 #: The scripts in which no zero-width character has a use inside a word.
 _SCRIPTS = frozenset({"LATIN", "GREEK", "CYRILLIC"})
 _SPACE = re.compile(r"\s+")
+#: Two words with any space between them, a tab or a line break among them.
+_TWO_WORDS = re.compile(r"\S\s+\S")
 #: How much of a word a reason quotes.
 _WORD_SHOWN = 60
 
@@ -179,6 +181,7 @@ def to_a_model_in(text: str) -> list[Spot]:
 
 
 def worth_reading(text: str) -> bool:
-    """Whether `text` could hold anything these rules find: a space between words, or a
-    character past the ones ASCII has. Most of a Word file's attribute values hold neither."""
-    return bool(text) and (" " in text.strip() or any(ord(c) > 0x7F for c in text))
+    """Whether `text` could hold anything these rules find: a space of any kind between
+    words (a tab, a line break: round 1 of #574), or a character past the ones ASCII has.
+    Most of a Word file's attribute values hold neither."""
+    return bool(text) and (not text.isascii() or _TWO_WORDS.search(text) is not None)

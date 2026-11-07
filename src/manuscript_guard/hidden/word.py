@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import posixpath
 import re
+from bisect import bisect_right
 from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
@@ -67,6 +68,8 @@ CONTRAST_BELOW = 1.5
 QUOTED = 160
 #: How much of a document's XML, besides the parts that hold its text, is read.
 READ_AT_MOST = 2 * MAX_PART_BYTES
+#: A size as `w:sz` writes it: half-points, or points with `pt` after them.
+_SIZE = re.compile(r"([0-9]{1,6}(?:\.[0-9]{1,4})?)(pt)?")
 #: How much of a paragraph's opening words say where it is.
 _OPENING = 60
 
@@ -74,6 +77,9 @@ _FALLBACK = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallba
 _WP = "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}"
 _VML = "{urn:schemas-microsoft-com:vml}"
 _RELATIONSHIPS = "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"
+_R_ID = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+#: The notes a part holds, by the element each opens with, and the element that cites one.
+_NOTES = {f"{W}footnote": f"{W}footnoteReference", f"{W}endnote": f"{W}endnoteReference"}
 #: The parts that hold the text, by the element they open with: what each is called, and
 #: whether a reader of the printed document sees it. Comments are read in Word's margin,
 #: not in the document.
@@ -162,10 +168,20 @@ class _Page:
 
 
 @dataclass(frozen=True)
+class _Shown:
+    """The headers and footers a section shows, and the notes the text cites: None where
+    the main document could not be read, and each is then taken as shown."""
+
+    parts: frozenset[str] | None = None
+    notes: frozenset[tuple[str, str]] | None = None
+
+
+@dataclass(frozen=True)
 class _Look:
     styles: Styles
     theme: Theme
     page: _Page
+    shown: _Shown = _Shown()
 
 
 def _first(*elements: ET.Element | None) -> ET.Element | None:
@@ -177,12 +193,13 @@ def _val(element: ET.Element | None) -> str | None:
 
 
 def _half_points(element: ET.Element | None) -> float | None:
-    """A size in half-points (`w:sz`), or None where it cannot be read."""
-    value = (_val(element) or "").strip()
-    try:
-        return float(value[:-2]) * 2 if value.endswith("pt") else float(int(value))
-    except ValueError:
+    """A size in half-points (`w:sz`), or None where it cannot be read: by its pattern,
+    never by `int` alone, which raises on digits it refuses or a value too long (round 1
+    of #574)."""
+    size = _SIZE.fullmatch((_val(element) or "").strip())
+    if size is None:
         return None
+    return float(size.group(1)) * (2 if size.group(2) else 1)
 
 
 def _drawn_unseen(element: ET.Element) -> str:
@@ -227,16 +244,8 @@ def _unseen(run: ET.Element, text: str, context: _Context, look: _Look) -> tuple
 
     character = _val(direct("rStyle"))
     style = paragraph.style
-    vanish = on_off(direct("vanish"))
-    if vanish:
-        return HIDDEN, "hidden by its own formatting"
-    if vanish is None:
-        hides, turned = look.styles.toggled("vanish", style, character)
-        if hides:
-            named = " and ".join(f"'{name}'" for name in turned)
-            return HIDDEN, (f"hidden by the style {named}" if len(turned) == 1
-                            else f"hidden by the styles {named}" if turned
-                            else "hidden by the document's default formatting")  # fmt: skip
+    if how := _vanished(run, style, look):
+        return HIDDEN, how
     styled = look.styles.run_property
     colour = text_colour(_first(direct("color"), styled("color", style, character)), look.theme)
     if colour is not None:
@@ -249,6 +258,24 @@ def _unseen(run: ET.Element, text: str, context: _Context, look: _Look) -> tuple
     if size is not None and size < TINY_BELOW:
         return TINY, f"{size / 2:g} pt"
     return None
+
+
+def _vanished(run: ET.Element, style: str | None, look: _Look) -> str:
+    """How a run is hidden by its own formatting or its styles (`w:vanish`), whatever it
+    holds, or "" where it is not."""
+    properties = run.find(f"{W}rPr")
+    own = None if properties is None else properties.find(f"{W}vanish")
+    vanish = on_off(own)
+    if vanish is not None:
+        return "hidden by its own formatting" if vanish else ""
+    character = None if properties is None else _val(properties.find(f"{W}rStyle"))
+    hides, turned = look.styles.toggled("vanish", style, character)
+    if not hides:
+        return ""
+    named = " and ".join(f"'{name}'" for name in turned)
+    return (f"hidden by the style {named}" if len(turned) == 1
+            else f"hidden by the styles {named}" if turned
+            else "hidden by the document's default formatting")  # fmt: skip
 
 
 def _read_run(run: ET.Element, context: _Context, look: _Look) -> None:
@@ -317,6 +344,10 @@ def _paragraphs(root: ET.Element, look: _Look) -> list[_Paragraph]:
                 found.append(paragraph)
                 context = replace(context, paragraph=paragraph)
             _read_run(element, context, look)
+            # A picture or a box in a run Word hides is hidden with it (round 1 of #574).
+            how = context.unseen or _vanished(element, context.paragraph.style, look)
+            if how and not context.unseen:
+                context = replace(context, unseen=f"in a picture or a box in a run {how}")
         elif why := _drawn_unseen(element):
             context = replace(context, unseen=why)
         stack.extend((child, context) for child in reversed(list(element)))
@@ -350,9 +381,29 @@ def _where(label: str, paragraph: _Paragraph) -> str:
 
 
 def _story(root: ET.Element, part: str, look: _Look, printed_said: set[str]) -> list[Hidden]:
+    """What a part that holds text hides: a note at a time where it holds notes, each
+    printed only where the text cites it, and a header or a footer printed only where a
+    section shows it (round 1 of #574)."""
     label, printed = _STORIES[root.tag]
+    shown = look.shown
+    notes = [note for note in root if note.tag in _NOTES]
+    if notes:
+        found: list[Hidden] = []
+        for note in notes:
+            number = note.get(f"{W}id", "")
+            cited = shown.notes is None or (note.tag, number) in shown.notes
+            found += _items(_paragraphs(note, look), f"{label}, note {number}", part,
+                            printed and cited, printed_said)  # fmt: skip
+        return found
+    if root.tag in (f"{W}hdr", f"{W}ftr") and shown.parts is not None:
+        printed = part in shown.parts
+    return _items(_paragraphs(root, look), label, part, printed, printed_said)
+
+
+def _items(paragraphs: list[_Paragraph], label: str, part: str, printed: bool,
+           printed_said: set[str]) -> list[Hidden]:  # fmt: skip
     found: list[Hidden] = []
-    for paragraph in _paragraphs(root, look):
+    for paragraph in paragraphs:
         if not (paragraph.pieces or paragraph.gone or paragraph.codes):
             continue
         where = _where(label, paragraph)
@@ -362,10 +413,12 @@ def _story(root: ET.Element, part: str, look: _Look, printed_said: set[str]) -> 
                  for start, end, kind, how, runs in spans]  # fmt: skip
         found += [Hidden(ZERO_WIDTH, where, quoted(spot.said), spot.why, part)
                   for spot in zero_width_in(text)]  # fmt: skip
+        ends = [end for _start, end, *_rest in spans]
         for spot in to_a_model_in(text):
-            inside = next((n for n, (s, e, *_) in enumerate(spans)
-                           if s < spot.end and spot.start < e), None)  # fmt: skip
-            if inside is not None:
+            # The first span ending after the words start, found by bisection: spans are
+            # in order and apart, and a look through each was quadratic (round 1 of #574).
+            inside = bisect_right(ends, spot.start)
+            if inside < len(spans) and spans[inside][0] < spot.end:
                 if not items[inside].model:
                     items[inside] = replace(items[inside], model=spot.rule)
                 continue
@@ -427,15 +480,20 @@ def _strings(root: ET.Element, part: str, story: bool) -> Iterator[tuple[str, st
         for name, value in element.attrib.items():
             if worth_reading(value):
                 yield value, _place(part, tag, _local(name))
+        # What stands after an element inside its parent (round 1 of #574).
+        if element.tail and worth_reading(element.tail):
+            yield element.tail, _place(part, tag, None)
         inside = in_fallback or element.tag == _FALLBACK
         stack.extend((child, inside) for child in reversed(list(element)))
 
 
-def _targets(archive, names: set[str]) -> dict[str, str]:
+def _targets(archive, names: set[str]) -> tuple[dict[str, str], dict[str, str]]:
     """The parts the main document names for its styles, theme and settings, by kind,
-    where its relationships can be read; Word's usual names where they cannot."""
+    where its relationships can be read, Word's usual names where they cannot; and the part
+    each of its relationships names, by its identifier."""
     found = {"styles": "word/styles.xml", "theme": "word/theme/theme1.xml",
              "settings": "word/settings.xml"}  # fmt: skip
+    links: dict[str, str] = {}
     main = "word/document.xml"
     try:
         if "_rels/.rels" in names:
@@ -449,13 +507,38 @@ def _targets(archive, names: set[str]) -> dict[str, str]:
             for link in read_part(archive, rels).iter(_RELATIONSHIPS):
                 kind = (link.get("Type") or "").rsplit("/", 1)[-1]
                 target = (link.get("Target") or "").strip()
-                if kind in found and target and link.get("TargetMode") != "External":
-                    path = (target.lstrip("/") if target.startswith("/")
-                            else posixpath.join(folder, target))  # fmt: skip
-                    found[kind] = posixpath.normpath(path)
+                if not target or link.get("TargetMode") == "External":
+                    continue
+                path = posixpath.normpath(target.lstrip("/") if target.startswith("/")
+                                          else posixpath.join(folder, target))  # fmt: skip
+                links[link.get("Id") or ""] = path
+                if kind in found:
+                    found[kind] = path
     except UnsafeDocument:
         pass
-    return {**found, "main": main}
+    return {**found, "main": main}, links
+
+
+def _shown(main: ET.Element | None, links: dict[str, str], settings: ET.Element | None) -> _Shown:
+    """The headers and footers the sections show, and the notes the text cites: a section's
+    default header and footer, its first-page ones where it has a title page
+    (`w:titlePg`), its even-page ones where the document has them (`w:evenAndOddHeaders`)."""
+    if main is None:
+        return _Shown()
+    even = settings is not None and bool(on_off(settings.find(f"{W}evenAndOddHeaders")))
+    parts: set[str] = set()
+    for section in main.iter(f"{W}sectPr"):
+        first = bool(on_off(section.find(f"{W}titlePg")))
+        for reference in (*section.findall(f"{W}headerReference"),
+                          *section.findall(f"{W}footerReference")):  # fmt: skip
+            kind = reference.get(f"{W}type") or "default"
+            shows = kind == "default" or (kind == "first" and first) or (kind == "even" and even)
+            target = links.get(reference.get(_R_ID) or "")
+            if shows and target:
+                parts.add(target)
+    notes = {(note, cite.get(f"{W}id", "")) for note, cited in _NOTES.items()
+             for cite in main.iter(cited)}  # fmt: skip
+    return _Shown(frozenset(parts), frozenset(notes))
 
 
 def _optional(archive, name: str, names: set[str]) -> ET.Element | None:
@@ -492,12 +575,12 @@ def read_hidden(path: Path) -> Reading:
                 "is not known"
             )
         names = set(listed)
-        targets = _targets(archive, names)
+        targets, links = _targets(archive, names)
         settings = _optional(archive, targets["settings"], names)
         theme = Theme.read(_optional(archive, targets["theme"], names), settings)
         main = _optional(archive, targets["main"], names)
         look = _Look(Styles.read(_optional(archive, targets["styles"], names)), theme,
-                     _page(main, settings, theme))  # fmt: skip
+                     _page(main, settings, theme), _shown(main, links, settings))  # fmt: skip
         return _read_parts(path, archive, look)
 
 

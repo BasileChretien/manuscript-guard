@@ -24,6 +24,7 @@ read (DESIGN.md, Known gaps).
 from __future__ import annotations
 
 import colorsys
+import re
 from dataclasses import dataclass, field
 from xml.etree import ElementTree as ET
 
@@ -36,6 +37,10 @@ _OFF = frozenset({"0", "false", "off"})
 #: How far along `w:basedOn` a style is followed: no document needs more, and a chain that
 #: loops would never end.
 _DEPTH = 32
+#: A fraction of 255 in hexadecimal, as a tint or a shade is written.
+_FRACTION = re.compile(r"[0-9A-Fa-f]{1,2}")
+#: A pattern of shading that is a percentage of its colour over its fill.
+_PERCENT = re.compile(r"pct([0-9]{1,3})")
 WHITE: RGB = (1.0, 1.0, 1.0)
 #: The colours a run can be highlighted in (ST_HighlightColor), as Word paints them.
 HIGHLIGHTS: dict[str, str] = {
@@ -208,11 +213,11 @@ def _lightened(rgb: RGB, tint: str | None, shade: str | None) -> RGB:
     fraction in hexadecimal of 255, applied to its HSL lightness."""
     hue, light, saturation = colorsys.rgb_to_hls(*rgb)
     for value, lighter in ((tint, True), (shade, False)):
-        try:
-            fraction = int((value or "").strip(), 16) / 255
-        except ValueError:
+        # By its pattern, never by `int` alone: a value of any length or of digits
+        # `int` refuses is no tint (round 1 of #574).
+        if not _FRACTION.fullmatch((value or "").strip()):
             continue
-        fraction = min(1.0, max(0.0, fraction))
+        fraction = int(value.strip(), 16) / 255
         light = light * fraction + (1 - fraction) if lighter else light * fraction
     return colorsys.hls_to_rgb(hue, light, saturation)
 
@@ -246,8 +251,8 @@ def fill_colour(element: ET.Element | None, theme: Theme) -> RGB | None:
     ink = hex_colour(element.get(f"{W}color")) or (0.0, 0.0, 0.0)
     if pattern == "solid":
         return ink
-    if pattern.startswith("pct") and pattern[3:].isdigit():
-        share = min(100, int(pattern[3:])) / 100
+    if percent := _PERCENT.fullmatch(pattern):
+        share = min(100, int(percent.group(1))) / 100
         under = fill or WHITE
         return tuple(i * share + u * (1 - share) for i, u in zip(ink, under, strict=True))  # type: ignore[return-value]
     return fill

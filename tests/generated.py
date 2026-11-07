@@ -2163,6 +2163,97 @@ def code_names(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, list[list[Any
     return given, found
 
 
+#: How a statement may name a model a record holds, or nearly does (`text/model_names.py`,
+#: DESIGN.md, "How a statement names a model"), and whether it names it: the case drawn
+#: letter by letter; a version written with a hyphen in the name and a point in the text, and
+#: the other way round; a name with its provider, a date stamp, `latest` or a local tag that
+#: the text leaves out, each a kind of its own; a name glued to its version that the text
+#: spaces. Not named: another
+#: version, a longer number, another order, a word between, a name that starts inside a word
+#: of the text or ends inside one, and a point's two digits in two words.
+MODEL_NAME_KINDS = (
+    ("case", True),
+    ("hyphen version", True),
+    ("point version", True),
+    ("provider left out", True),
+    ("date left out", True),
+    ("latest left out", True),
+    ("tag left out", True),
+    ("spaced", True),
+    ("another version", False),
+    ("longer number", False),
+    ("another order", False),
+    ("a word between", False),
+    ("starts inside a word", False),
+    ("ends inside a word", False),
+    ("a point's digits apart", False),
+)
+#: Made-up model families and tiers, so that no filler word is one of them.
+_MODEL_FAMILIES = ("zorvan", "quillet", "maruka", "vexil", "tandor", "ploven")
+_MODEL_TIERS = ("nimbus", "brisk", "solace", "keel", "umber")
+#: What a record may hold around a model's name that a statement leaves out, by kind: a
+#: provider, a date stamp, `latest` and a local tag, each with the others it may come with.
+_MODEL_LEFT_OUT = {
+    "provider left out": (("acme/", ""), ("openrouter/acme/", "")),
+    "date left out": (("", "-20260714"), ("", "-2026-07-14"), ("", "@20261101"),
+                      ("acme/", "-20260714")),
+    "latest left out": (("", "-latest"), ("acme/", "-latest")),
+    "tag left out": (("", ":8b-q4_K_M"), ("", "-20260714:70b")),
+}  # fmt: skip
+
+
+@st.composite
+def model_statements(draw: st.DrawFn) -> tuple[dict[str, Any], list[bool]]:
+    """A name a record holds and a sentence for every kind of `MODEL_NAME_KINDS`, in an order
+    drawn, and whether each sentence names its model. Every kind is in every example, so
+    that a rule broken for one is seen whatever the seed."""
+    order = draw(st.permutations(range(len(MODEL_NAME_KINDS))))
+    cases, expected = [], []
+    for index in order:
+        kind, names_it = MODEL_NAME_KINDS[index]
+        family = draw(st.sampled_from(_MODEL_FAMILIES))
+        tier = draw(st.sampled_from(_MODEL_TIERS))
+        major, minor = draw(st.integers(1, 9)), draw(st.integers(0, 9))
+
+        def cased(word: str) -> str:
+            rest = "".join(draw(st.sampled_from((c, c.upper()))) for c in word[1:])
+            return word[0].upper() + rest
+
+        joint = "-" if kind == "hyphen version" else "." if kind == "point version" else (
+            draw(st.sampled_from((".", "-"))))  # fmt: skip
+        said_joint = {"hyphen version": ".", "point version": "-"}.get(kind, ".")
+        name = f"{family}-{tier}-{major}{joint}{minor}"
+        words = f"{cased(family)} {cased(tier)}"
+        version = f"{major}{said_joint}{minor}"
+        said = f"{words} {version}"
+        if kind in _MODEL_LEFT_OUT:
+            before_name, after_name = draw(st.sampled_from(_MODEL_LEFT_OUT[kind]))
+            name = f"{before_name}{name}{after_name}"
+        elif kind == "spaced":
+            name, said = f"{family}{major}.{minor}", f"{cased(family)} {major}.{minor}"
+        elif kind == "another version":
+            said = f"{words} {major}{said_joint}{(minor + 1) % 10}"
+        elif kind == "longer number":
+            said = f"{words} {version}.{draw(st.integers(0, 9))}"
+        elif kind == "another order":
+            said = f"{cased(tier)} {cased(family)} {version}"
+        elif kind == "a word between":
+            said = f"{cased(family)} the {cased(tier)} {version}"
+        elif kind == "starts inside a word":
+            said = f"{draw(st.integers(1, 9))}{words} {version}"
+        elif kind == "ends inside a word":
+            said = f"{words} {version}{draw(st.sampled_from(('o', 'x', 'b')))}"
+        elif kind == "a point's digits apart":
+            name, said = f"{family}-{tier}-{major}.{minor}", f"{words} {major}, {minor}"
+        before = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3))
+        after = draw(st.lists(st.sampled_from(FILLER), max_size=3))
+        opens, closes = draw(st.sampled_from((("", ""), ("(", ")"), ("", "."), ("", ","))))
+        text = " ".join([" ".join(before).capitalize(), f"{opens}{said}{closes}", *after])
+        cases.append({"spellings": [name], "text": text})
+        expected.append(names_it)
+    return {"cases": cases}, expected
+
+
 #: What G6 finds in a LaTeX document (`gates/writing.py`), each `{}` a word on a line of its
 #: own: a claim with a citation command beside it is supported, and one in a comment is no
 #: claim; a phrase G6 reports is found in prose and not in a comment; and a placeholder is found
@@ -10408,6 +10499,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
             "labels": {"age_group": "Age group", "R_0": "Reproduction number"}, "kept": [],
             "stage": None}),
     ),  # fmt: skip
+    "model names": model_statements().map(lambda drawn: drawn[0]),
     "reply numbers": texts(NOTATED),
     "quoted": texts(),
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),

@@ -48,6 +48,7 @@ from manuscript_guard.contracts import (
 )
 from manuscript_guard.findings import WARN, Finding, Report, merge_all
 from manuscript_guard.gates import (
+    check_ai_use,
     check_bound_units,
     check_boxes,
     check_citations,
@@ -210,6 +211,9 @@ def _gate_run(
         # It reads paper.yaml and the receipts, and none of the manuscript.
         ("G4", lambda: check_deposit_doi(project, submission=at_submission)),
         ("G4", lambda: check_statement_sources(project)),
+        # Its own, since the note for a paper whose journal asks for no statement runs with
+        # no journal chosen.
+        ("G4", lambda: check_ai_use(project, chosen)),
         ("G8r", lambda: check_reporting(project)),
         ("G6", lambda: check_writing(project, results, submission=at_submission)),
         ("G9", lambda: check_methods(project, namespace, results)),
@@ -399,6 +403,26 @@ def _round_lines(summary) -> list[str]:
     return lines
 
 
+def _ai_use(args: argparse.Namespace) -> int:
+    """`review --ai-use`: what the records show of a model's work and what the authors
+    declare, for the AI-use statement (`gates/ai_use.describe`). It writes nothing."""
+    others = (args.record or args.record_figure or args.seal or args.providers or args.run
+              or args.dry_run or args.design or args.suggestions or args.digest or args.files)
+    if others:
+        print(
+            "manuscript-guard: --ai-use lists what the records show of a model's work, on its "
+            "own: `review --ai-use`",
+            file=sys.stderr,
+        )
+        return 2
+    from manuscript_guard.gates.ai_use import describe
+
+    project, _ = load_project(args.path)
+    for line in describe(project):
+        print(printable(line))
+    return 0
+
+
 def cmd_review(args: argparse.Namespace) -> int:
     """Show where the review stands, and write the record a reviewer has to file."""
     if args.reading is not None and not (args.record or args.seal):
@@ -436,6 +460,8 @@ def cmd_review(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    if args.ai_use:
+        return _ai_use(args)
     if args.design:
         return _design_round(args)
     if args.suggestions:
@@ -7190,6 +7216,12 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--by", help="who did the reading; defaults to the reviewer id")
     review.add_argument("--remit", help="what this reviewer is responsible for noticing")
     review.add_argument("--summary", help="the reviewer's overall comment")
+    review.add_argument(
+        "--ai-use",
+        action="store_true",
+        help="list each model the records show at work, what it did and when, and the AI use "
+        "authors.yaml declares, for the AI-use statement; writes nothing",
+    )
     review.add_argument(
         "--providers",
         action="store_true",

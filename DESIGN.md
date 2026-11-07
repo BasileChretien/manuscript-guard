@@ -23378,6 +23378,37 @@ What papers converted from Word showed (see "What papers converted from Word sho
   Closed by rendering the PNGs in CI against the committed ones, and by reading the
   shorthand too.
 
+- **The AI-use statement is held to names, and to the records that say a model made them.**
+  G4's AI-use check (`gates/ai_use.py`, `text/model_names.py`; "The AI-use statement names
+  the models the records hold") has these limits, each written down when it was built:
+  - A model's work recorded under a name not written `provider/model`, with no
+    `provenance` naming the model, is read as a person's: "Claude Code", or a bare
+    "claude-opus-5", as the example's seventeen review records and its figure review name
+    their readers. Nothing tells a model's free-text name from a person's.
+  - A name that a longer name begins with, up to the end of a word, is named by it:
+    "o3-mini" names `o3`, and "GPT-4o mini" names `gpt-4o`.
+  - Two digits a hyphen joins may stand in two words, so "Claude Opus 4, 5 times" names
+    `claude-opus-4-5`; a local model's tag may be left out, so "Llama 3.1 8B" names
+    `llama3.1:70b`; a date stamp in another form ("-0605", "-002") is part of the name; and
+    a letter before a version breaks the run of parts, so "Claude Opus v4.5" does not name
+    `claude-opus-4-5`.
+  - Naming is all that is read: "we did not use GPT-5.1" names `gpt-5.1`.
+  - With no `kind: ai_use` entry, a heading of the default kind is the statement wherever it
+    is: in a paper about language models, "Use of large language models for annotation" in
+    the Methods is read as one.
+  - A wording the author took by hand, or accepted in Word and answered in their own words,
+    is not counted as taken; the reading still counts.
+  - A refused reply never filed is not counted, though the model was sent the manuscript.
+  - `ai_use` is the authors' word and is not signed, and `declared_by` is not held to the
+    people of `authors.yaml`. Nothing stops an agent writing it, and nothing records what an
+    agent did in a session that left no record.
+  - A tool declared by its product's name, "ChatGPT" or "Copilot", is held to that name;
+    nothing maps a product to the model behind it.
+  - The covering letter and the journal's submission form, where some journals also ask for
+    the statement, are not read.
+  - A paper in no project has no records, so `audit --journal` does not run the check and
+    says so among what G4 did not check.
+
 Closed since, and why each mattered (an open gap goes above this line):
 
 - **The audit did not count text a style hides (2026-11-07).** It counted as hidden only a

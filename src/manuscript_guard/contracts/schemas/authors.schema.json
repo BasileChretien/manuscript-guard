@@ -46,6 +46,30 @@
           "description": "The person responsible for the ethics approval, with the approval's reference."
         }
       }
+    },
+    "ai_use": {
+      "type": "object",
+      "description": "The AI use no record shows, in the authors' words: help with drafting or editing, analysis code, translation. The records of a model's work (the panel's readings and the rest) are read for the rest. `uses: []` under a name and a date says the records are the whole of it; no `ai_use` says nothing, and is not read as a declaration of none. G4 holds the AI-use statement to each tool here (DESIGN.md, \"The AI-use statement names the models the records hold\"). The authors' word: the check reads it and never writes it.",
+      "required": ["declared_by", "declared_on", "uses"],
+      "additionalProperties": false,
+      "properties": {
+        "declared_by": { "type": "string", "minLength": 1, "pattern": "\\S", "description": "Who declares it: a person of this file." },
+        "declared_on": { "type": "string", "format": "date" },
+        "uses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["tool", "purpose", "what"],
+            "additionalProperties": false,
+            "properties": {
+              "tool": { "type": "string", "minLength": 1, "pattern": "\\S", "description": "The tool, with its version, as the statement names it: \"Claude Opus 5\", \"GPT-5.1\", \"DeepL\"." },
+              "provider": { "type": "string", "minLength": 1 },
+              "purpose": { "enum": ["drafting", "editing", "translation", "analysis-code", "literature", "figures", "other"] },
+              "what": { "type": "string", "minLength": 1, "pattern": "\\S", "description": "What it did, and what the authors did with what it gave." }
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {

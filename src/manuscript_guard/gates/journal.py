@@ -162,6 +162,7 @@ FROM_RECORDS = (
     "the figure files' artwork",
     "the LaTeX class rules",
     "the English paper.yaml declares (the profile's English is the one G14 holds the paper to)",
+    "the AI-use statement held to the records of a model's work",
 )
 
 
@@ -225,7 +226,8 @@ def check_journal(project: Project, *, records: bool = True,
     report = report.merge(_check_limits(document, counts, path))
     report = report.merge(_check_abstract_found(document, text, path))
     report = report.merge(_check_structure(document, text, path))
-    report = report.merge(_check_statements(document, text, path))
+    report = report.merge(_check_statements(document, text, path,
+                                            ai_use=_ai_use_hint(project) if records else ""))
     report = report.merge(check_data_statement(document, text, path, project, cited=cited,
                                                from_project=records))  # fmt: skip
     if records:
@@ -518,7 +520,15 @@ def _check_structure(document: dict, text: str, path: Path) -> Report:
     return report
 
 
-def _check_statements(document: dict, text: str, path: Path) -> Report:
+def _ai_use_hint(project: Project) -> str:
+    """What a missing statement of `kind: ai_use` adds to its hint: the models on record
+    (`gates/ai_use.py`)."""
+    from manuscript_guard.gates.ai_use import statement_hint
+
+    return statement_hint(project)
+
+
+def _check_statements(document: dict, text: str, path: Path, *, ai_use: str = "") -> Report:
     # Read where a statement can be: HTML comments and fenced code blanked, as the heading
     # scan blanks them. `# Funding` is a heading in Markdown and a comment in R and Python,
     # so inside `<!-- -->` it met the funding statement and printed nothing, and inside a
@@ -533,7 +543,8 @@ def _check_statements(document: dict, text: str, path: Path) -> Report:
                     code="missing-required-statement",
                     message=f"the journal requires a {statement['id']} statement",
                     path=path,
-                    hint=statement.get("why") or f"nothing matches {statement['pattern']!r}",
+                    hint=(statement.get("why") or f"nothing matches {statement['pattern']!r}")
+                    + (ai_use if statement.get("kind") == "ai_use" else ""),
                 )
             )
     return report

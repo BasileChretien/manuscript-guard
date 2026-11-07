@@ -493,6 +493,25 @@ def test_a_name_from_the_code_warns_in_a_draft_and_fails_at_submission() -> None
     assert apply_stage(warned, DRAFTING)[0].findings[0].severity == WARN
 
 
+def test_an_ai_use_statement_naming_too_little_warns_and_fails_at_submission() -> None:
+    """G4 raises `ai-use-model-unnamed` to a failure at submission where the profile asks
+    for the statement; the policy has it bind there. Its two notes are notes everywhere."""
+    from manuscript_guard.gates.ai_use import NOT_STATED, UNDECLARED, UNNAMED
+
+    assert binds_at(UNNAMED) == SUBMISSION
+    failed = Report((Finding(gate="G4", code=UNNAMED, message="m", severity=FAIL),))
+    report, deferred = apply_stage(failed, SUBMISSION)
+    assert not report.ok and deferred == {}
+    report, deferred = apply_stage(failed, INTERNAL_REVIEW)
+    assert report.ok and deferred == {SUBMISSION: 1}
+    for code in (NOT_STATED, UNDECLARED):
+        assert code not in BINDS_AT, code
+        note = Report((Finding(gate="G4", code=code, message="m", severity=INFO),))
+        for stage in STAGES:
+            report, deferred = apply_stage(note, stage)
+            assert (report.ok, report.findings[0].severity, deferred) == (True, INFO, {})
+
+
 def test_every_way_of_saying_submission_gives_the_same_verdict(project: Path) -> None:
     """G11's severity was set from the raw `--submission` flag, not from the resolved stage.
 

@@ -79,7 +79,9 @@ leaves unsaid can be said in an appraisal of a field it does report.
 An appraisal names the standard (`standard`, by id), the standard's domain the judgement
 is of (`domain`, as the standard names it), how far the method departs from it (`concern`:
 low, some, serious or unclear), what the risk is (`says`), and who proposed it
-(`proposed_by`, `proposed_on`). An agent may propose one. Several standards may bear on one
+(`proposed_by`, `proposed_on`). An agent may propose one, and gives its model as
+`proposed_by: <provider>/<model>`, the name its provider gives it, so that the AI-use
+statement is held to it. Several standards may bear on one
 method: `appraisal` may be a list.
 
 The built-in standards are in the package's `data/method_standards.yaml`, each with its

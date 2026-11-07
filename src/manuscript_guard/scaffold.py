@@ -98,6 +98,18 @@ authors:
     # email: you@institution.example
     # credit: [Conceptualization, Formal analysis, Writing – original draft]
     # competing_interests: "None declared."
+
+# The AI use no record shows, in your words, for the AI-use statement: help with drafting or
+# editing, analysis code, translation. A model's readings the records show already. Leave it
+# out until you declare it; `uses: []` with your name and the date says there was none.
+# ai_use:
+#   declared_by: ""
+#   declared_on: 2026-01-31
+#   uses:
+#     - tool: ""                  # with its version, as the statement names it
+#       purpose: drafting         # drafting, editing, translation, analysis-code,
+#                                 # literature, figures or other
+#       what: ""
 """
 
 LEDGER = """\

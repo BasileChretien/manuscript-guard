@@ -479,7 +479,8 @@
         "properties": {
           "id": { "type": "string" },
           "pattern": { "type": "string", "description": "Python regular expression." },
-          "why": { "type": "string" }
+          "why": { "type": "string" },
+          "kind": { "enum": ["ai_use"], "description": "What G4 does with the statement besides finding it. `ai_use`: the statement of AI use, read where the pattern finds it (a heading's line and section, or a phrase's paragraph) and held to the models the records show at work and the tools authors.yaml declares under `ai_use`; a model or tool it does not name warns, and fails at submission (DESIGN.md, \"The AI-use statement names the models the records hold\")." }
         }
       }
     },

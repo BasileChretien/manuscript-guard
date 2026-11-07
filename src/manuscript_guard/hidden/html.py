@@ -68,6 +68,8 @@ _BLOCKS = frozenset({"address", "article", "aside", "blockquote", "body", "br", 
 _UNSHOWN = {"script": "a script", "style": "a stylesheet", "template": "a template"}
 #: Elements whose text runs to their end tag, markup inside it read as text.
 _RAW = ("script", "style")
+#: Where a browser ends a comment: at `-->`, or at `--!>`.
+_COMMENT_END = re.compile("--!?>")
 #: Attributes that hold words a page does not show, by what each is called.
 _ATTRIBUTES = {"alt": "a picture's alternative text", "title": "an element's title",
                "aria-label": "a label read aloud", "aria-description": "a label read aloud",
@@ -324,11 +326,11 @@ class _Reader:
 
     def _to(self, opened: int, ending: str, skip: int, called: str) -> int:
         """Markup that runs to `ending`, its words read as what the page does not show."""
-        closed = self.text.find(ending, opened + skip)
-        if ending == "-->":  # a browser ends a comment at `--!>` too
-            bang = self.text.find("--!>", opened + skip, len(self.text) if closed < 0 else closed)
-            if bang >= 0:
-                closed, ending = bang, "--!>"
+        if ending == "-->":  # or `--!>`, whichever comes first (the review of d9af8eb)
+            found = _COMMENT_END.search(self.text, opened + skip)
+            closed, ending = (-1, ending) if found is None else (found.start(), found[0])
+        else:
+            closed = self.text.find(ending, opened + skip)
         stop = len(self.text) if closed < 0 else closed
         written = self.text[opened + skip : stop]  # a comment's references as written
         self.unshown.append((written, html.unescape(written), called, self._line_at(opened)))

@@ -288,12 +288,20 @@ def _subject(message, unread: list[str]) -> str:
 
 
 def _run(found: re.Match[str]) -> str:
-    """Encoded words one after another, read as one text."""
-    return "".join(_word(word) for word in _ENCODED_WORD.finditer(found.group(0)))
+    """Encoded words one after another, read as one text: the spaces between two words
+    read are dropped, and those beside a word not read kept (the review of d9af8eb)."""
+    run, parts, end, read = found.group(0), [], 0, False
+    for word in _ENCODED_WORD.finditer(run):
+        text = _encoded_text(word)
+        if end and not (read and text is not None):
+            parts.append(run[end : word.start()])
+        parts.append(word.group(0) if text is None else text)
+        end, read = word.end(), text is not None
+    return "".join(parts)
 
 
-def _word(found: re.Match[str]) -> str:
-    """An encoded word read as its text, or left as written where it cannot be: by a
+def _encoded_text(found: re.Match[str]) -> str | None:
+    """An encoded word read as its text, or None where it cannot be: by a
     pattern that reads the subject in time linear in its length, where the library's own
     reader took time growing as the square of its words (the security review of #576)."""
     charset, encoding, data = found.groups()
@@ -305,7 +313,7 @@ def _word(found: re.Match[str]) -> str:
         # RFC 2231 may name a language after the charset, `UTF-8*en`.
         return written.decode(codecs.lookup(charset.split("*")[0]).name, errors="replace")
     except (LookupError, ValueError):
-        return found.group(0)
+        return None
 
 
 def _content(part, number: int, unread: list[str]) -> str | None:

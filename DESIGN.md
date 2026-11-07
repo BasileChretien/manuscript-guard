@@ -14884,8 +14884,8 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
     browser builds it: an element closed by its own slash (`<div/>`) opens nothing, and an
     end tag a browser would imply is not; a box placed by `left` with no `position`, or a
     clip that shows the whole of it, is taken as hidden. A CDATA section ends at its first
-    `>`, as HTML ends one, in an XHTML page too, where it runs to `]]>`: text after that `>`
-    is read as the page's. Behind text, a picture or a gradient
+    `>`, as HTML ends one outside SVG and MathML, also inside them and in an XHTML page,
+    where it runs to `]]>`: text after that `>` is read as the page's. Behind text, a picture or a gradient
     is taken as of no known colour, so no text on one is said to be faint. A length in
     `vw` or `vh` is not read, the viewport being unknown. The page is read by a scanner of
     this toolkit's own, in time linear in its length, since Python's parser took minutes

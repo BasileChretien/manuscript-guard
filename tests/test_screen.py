@@ -7,6 +7,7 @@ Each case is a file written here. A warning is what is found (D7.2): the command
 from __future__ import annotations
 
 import base64
+import email
 import json
 import shutil
 import sys
@@ -444,6 +445,13 @@ def test_an_e_mail_s_subject_is_read_as_a_mail_client_shows_it(tmp_path, subject
     assert [item.model for item in screen(mail).found] == ["ignore-instructions"]
 
 
+def test_the_spaces_beside_an_encoded_word_that_cannot_be_read_are_kept() -> None:
+    """The review of d9af8eb: they were dropped as those between two words read."""
+    message = email.message_from_bytes(b"Subject: =?x-bogus?q?a?= =?utf-8?q?b?= "
+                                       b"=?utf-8?q?c?=\r\n\r\nBody.")  # fmt: skip
+    assert screening._subject(message, []) == "=?x-bogus?q?a?= bc"
+
+
 def test_a_zero_width_character_in_a_subject_of_raw_utf_8_is_found(tmp_path: Path) -> None:
     mail = tmp_path / "raw.eml"
     mail.write_bytes(b"Subject: Re" + ZWSP.encode("utf-8") + b"vision\r\n\r\nBody.")
@@ -468,9 +476,12 @@ def test_hidden_words_beside_shown_ones_with_no_space_are_found(page: str) -> No
     assert found and all(item.kind == HIDDEN and item.model for item in found), found
 
 
-@pytest.mark.parametrize("unit", ["<a ", "<!--", "<![x[", "<a b='", "</", "<?"])
+@pytest.mark.parametrize(
+    "unit", ["<a ", "<!--", "<![x[", "<a b='", "</", "<?", "<!----!>", "<!-- --!>"]
+)
 def test_a_page_of_broken_markup_is_read_in_linear_time(unit: str, assert_linear) -> None:
-    """Security review of #576: Python's own parser took minutes over 30 KB of `<a `."""
+    """Security review of #576: Python's own parser took minutes over 30 KB of `<a `. The
+    review of d9af8eb: each comment ended at `--!>` looked for a `-->` to the page's end."""
     assert_linear(lambda n: unit * n, lambda text: read_page(text, "p"), 2000,
                   f"the reader of a page, by {unit!r}")  # fmt: skip
 

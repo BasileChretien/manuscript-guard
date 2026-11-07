@@ -10270,6 +10270,9 @@ _READS_LATEX = (
     "check_statement_sources", "check_recycling", "check_quality_reported",
     # It reads a box in its LaTeX environment or under its heading (`text/boxes.py`).
     "check_boxes",
+    # It reads the Results and the Discussion in each document's printed view, as
+    # `check_reported` does (item 10 of the borrowed checks).
+    "check_interpretation",
 )  # fmt: skip
 
 

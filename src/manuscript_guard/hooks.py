@@ -1664,6 +1664,19 @@ def _approves(command: str) -> str | None:
             "as their answer. Whether the reply refuses is the author's to confirm: run it "
             "yourself, or ask them."
         )
+    if _NOT_A_CLAIM.search(joined):
+        return (
+            "`manuscript-guard references --novelty ... --not-a-claim` records a named "
+            "person's word that a sentence makes no claim about the literature, which then "
+            "needs no search for the earlier study. Only that person can say so: run it "
+            "yourself, as yourself."
+        )
+    if _HAND_SEARCH.search(joined):
+        return (
+            "`manuscript-guard references --hand-search` files a search a named person ran by "
+            "hand, in their name, as their word for what they searched and what it found. Only "
+            "that person can say so: run it yourself, as yourself."
+        )
     if _imports_answers(joined):
         return (
             "`manuscript-guard checker import` records a co-author's answers under their name "
@@ -1712,6 +1725,7 @@ def _places_again(command: str, payload: dict) -> str | None:
         return None
     held: list[str] = []
     accepting: list[str] = []
+    no_claim: list[str] = []
     root = _project_root(payload)
     try:
         from manuscript_guard.contracts import load_project
@@ -1727,7 +1741,9 @@ def _places_again(command: str, payload: dict) -> str | None:
         for one in ids:
             entry = by_id.get(one)
             decision = (entry.decision or {}) if entry else {}
-            if entry and (entry.answer or decision.get("by") not in (None, "rules")):
+            if entry and entry.novelty and entry.not_a_claim:
+                no_claim.append(one)
+            elif entry and (entry.answer or decision.get("by") not in (None, "rules")):
                 held.append(one)
             elif (entry and decision.get("action") in ("replace", "add")
                   and decision.get("candidate")
@@ -1735,6 +1751,13 @@ def _places_again(command: str, payload: dict) -> str | None:
                 accepting.append(one)
     except Exception:  # noqa: BLE001 - what cannot be read is asked
         held = ids
+    if no_claim:
+        return (
+            f"`manuscript-guard references --novelty ... --id {no_claim[0]}` puts a sentence "
+            "into an entry that a person said makes no claim about the literature, which would "
+            "make the new sentence no claim too, unsearched. That is theirs to say: run it "
+            "yourself, or ask them."
+        )
     if held:
         return (
             f"`manuscript-guard references --mark ... --id {held[0]}` puts that entry on "
@@ -1877,8 +1900,17 @@ _ASSESSES_REFUSAL = re.compile(
     _TOOL + r"references\b" + _SAME_COMMAND + r"(?<![\w-])--says(?:\s+|=)[\"']?refuses\b",
     re.IGNORECASE,
 )
-#: `references --mark ... --id <id>`, in one invocation: it puts an entry, and whatever a
-#: person decided or answered of it, on another sentence.
+#: `references --novelty ... --not-a-claim`, which records a person's word that a sentence
+#: makes no claim about the literature, and `references --hand-search`, a person's word for a
+#: search they ran by hand.
+_NOT_A_CLAIM = re.compile(
+    _TOOL + r"references\b" + _SAME_COMMAND + r"(?<![\w-])--not-a-claim\b", re.IGNORECASE
+)
+_HAND_SEARCH = re.compile(
+    _TOOL + r"references\b" + _SAME_COMMAND + r"(?<![\w-])--hand-search\b", re.IGNORECASE
+)
+#: `references --mark ... --id <id>` (or `--novelty ... --id <id>`), in one invocation: it
+#: puts an entry, and whatever a person decided or answered of it, on another sentence.
 _PLACES_AGAIN = re.compile(
     _TOOL + r"references\b" + _SAME_COMMAND + r"(?<![\w-])--id(?:\s+|=)[\"']?(c[0-9]+)",
     re.IGNORECASE,

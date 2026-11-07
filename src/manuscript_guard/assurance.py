@@ -97,7 +97,7 @@ def assurance(report: Report, project: Project) -> list[str]:
     recorded = {
         "computational reproducibility": [*_verified(project), *_harvested(project)],
         "literature": [*_attested(project), *_passages(report, project),
-                       *_currency(report, project)],
+                       *_currency(report, project), *_novelty(report)],
         "methodological validity": ["no review of the design", *_similar(report)],
         "review": [*_rounds(project), *_comments(project), *_figures(project)],
     }
@@ -354,6 +354,18 @@ def _passages(report: Report, project: Project) -> list[str]:
             + (f", by {', '.join(people)}" if people else "")
         )
     return [said]
+
+
+def _novelty(report: Report) -> list[str]:
+    """How many claims of novelty or absence the list read, how many rest on a recorded
+    search within six months, how many on one older, and how many a person said are no claim.
+    Whether a claim is true is not among them: the search is graded, not the novelty."""
+    claims = report.counts.get("novelty_claims", 0)
+    if not claims:
+        return []
+    return [f"claims of novelty or absence: {claims}, {report.counts.get('novelty_searched', 0)} "
+            f"searched, {report.counts.get('novelty_stale', 0)} searched more than six months "
+            f"ago, {report.counts.get('novelty_not_claims', 0)} no claim by a person's word"]
 
 
 def _currency(report: Report, project: Project) -> list[str]:

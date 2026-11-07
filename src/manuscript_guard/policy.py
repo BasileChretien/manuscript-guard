@@ -233,6 +233,10 @@ BINDS_AT = {
     "currency-record-missing": SUBMISSION,
     "currency-record-stale": SUBMISSION,
     "currency-change-unanswered": SUBMISSION,
+    # A claim of novelty or absence with no recorded search, or one more than six months old,
+    # warns from drafting and fails at submission (D4.2; `gates/novelty.py` reads the stage).
+    "novelty-unsearched": SUBMISSION,
+    "novelty-search-stale": SUBMISSION,
     "journal-profile-missing": INTERNAL_REVIEW,
     # How many rows a model lost to missing values is for the finished draft to say.
     "model-rows-dropped": INTERNAL_REVIEW,

@@ -682,20 +682,43 @@ def openalex_by_doi(dois: list[str], ask: Ask, services: Services,
 
 
 def openalex_citing_search(work: str, limit: int, credentials: Credentials,
-                           services: Services) -> Request:  # fmt: skip
+                           services: Services, *, reviews: bool = True) -> Request:  # fmt: skip
     """The request for the reviews that cite one work, by its OpenAlex id, newest first
-    (`filter=cites:W...,type:review`, `sort=publication_date:desc`)."""
+    (`filter=cites:W...,type:review`, `sort=publication_date:desc`); with `reviews` false,
+    the works of every type that cite it (a novelty claim's N2)."""
     return Request(services.openalex, params={
-        "filter": f"cites:{work},type:review", "sort": "publication_date:desc",
-        "per_page": str(limit), "select": OPENALEX_SELECT},
+        "filter": f"cites:{work}" + (",type:review" if reviews else ""),
+        "sort": "publication_date:desc", "per_page": str(limit), "select": OPENALEX_SELECT},
         secret={"api_key": credentials.openalex_key or ""})  # fmt: skip
 
 
+def openalex_work(doi: str | None, pmid: str | None, ask: Ask, services: Services,
+                  credentials: Credentials) -> Answer:  # fmt: skip
+    """What OpenAlex holds of one work, asked by its DOI, else its PMID (`filter=doi:` or
+    `filter=pmid:`): the work a novelty claim's N2 starts from."""
+    if doi and not set(doi) & {"|", ","}:
+        wanted = f"doi:{doi}"
+    elif pmid and pmid.isdigit():
+        wanted = f"pmid:{pmid}"
+    else:
+        return Answer(NOT_ASKED, why="no DOI or PMID to ask about")
+    request = Request(services.openalex, params={
+        "filter": wanted, "per_page": "1", "select": OPENALEX_SELECT},
+        secret={"api_key": credentials.openalex_key or ""})  # fmt: skip
+    read = _openalex_results(_ask(ask, request), 1)
+    if isinstance(read, Answer):
+        return read
+    results, count = read
+    hits = tuple(_openalex_hit(0, r) for r in results)
+    return Answer(FOUND if hits else ABSENT, hits, count)
+
+
 def openalex_citing(work: str, limit: int, ask: Ask, services: Services,
-                    credentials: Credentials) -> Answer:  # fmt: skip
+                    credentials: Credentials, *, reviews: bool = True) -> Answer:  # fmt: skip
     """The reviews OpenAlex lists as citing the work `work` (an OpenAlex id), newest first,
-    at most `limit`; the count is all it lists."""
-    request = openalex_citing_search(work, limit, credentials, services)
+    at most `limit`, or with `reviews` false the works of every type; the count is all it
+    lists."""
+    request = openalex_citing_search(work, limit, credentials, services, reviews=reviews)
     read = _openalex_results(_ask(ask, request), limit)
     if isinstance(read, Answer):
         return read
@@ -794,6 +817,7 @@ __all__ = [
     "openalex_by_doi",
     "openalex_citing",
     "openalex_citing_search",
+    "openalex_work",
     "openalex_search",
     "pubmed",
     "pubmed_search",

@@ -32,6 +32,10 @@ network:
   the replier is no person of authors.yaml, or the answer is signed by another (the
   author's to answer). Each fails from drafting.
 
+A claim of novelty or absence ("no study has examined") is held to the search records of the
+entries of kind `novelty` placed on it, in `gates/novelty.py`: `novelty-unsearched`,
+`novelty-search-stale` and `novelty-softer`.
+
 Where the works store holds no record of a work an entry's readings name, as in a clone,
 since git leaves the store out, the rules decide nothing for it and G7 checks no decision of
 theirs, and a note says so (`currency-quote-unchecked`). A proposed change nobody answered,
@@ -149,12 +153,17 @@ def check_currency(project: Project, stage: str = DRAFTING, literature: Any = No
         report = report.with_findings(*_of_entry(entry, found, held, known, bib, path, stage))
     report = report.with_findings(*_missing(found, held, project, path, stage))
     report = report.with_findings(*replied(project, found.entries, path))
+    from manuscript_guard.gates.novelty import check_novelty
+
+    novel, counts = check_novelty(project, stage, held, path)
+    report = report.with_findings(*novel)
     decided = [entry for entry in found.entries if entry.decision]
     return report.with_counts(
         currency_entries=len(found.entries),
         currency_claims=len(found.claims),
         currency_by_rules=sum(entry.decision["by"] == "rules" for entry in decided),
         currency_by_person=sum(entry.decision["by"] != "rules" for entry in decided),
+        **counts,
     )
 
 

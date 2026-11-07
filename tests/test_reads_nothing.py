@@ -138,8 +138,9 @@ COMMANDS = {
     "passages": Zero("the sentences that cite, and the passages recorded for them",
                      why="it prints how many cited statements carry a passage, 0 of 0 "
                      "included"),
-    "references": Zero("the sentences that cite, and literature/currency.yaml; with "
-                       "--search or --replay, one entry and its recorded searches",
+    "references": Zero("the sentences that cite, the claims of novelty or absence, and "
+                       "literature/currency.yaml; with --search or --replay, one entry and "
+                       "its recorded searches",
                        why="it prints how many claims are in scope, 0 included; --search and "
                        "--replay refuse an entry there is none of (exit 2)"),
     "related": Zero("the earlier outputs in literature/related.yaml", exits=2,

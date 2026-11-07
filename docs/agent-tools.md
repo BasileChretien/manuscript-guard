@@ -116,7 +116,7 @@ project; most of the other skills name the finding codes that should send you to
 | `manuscript-writing` | prose that reads as written |
 | `methods-writer` | Methods that describe the code that was actually run |
 | `literature-verify` | a number from a paper, with its verbatim quote and stored source |
-| `literature-currency` | whether a cited work is still the one to cite: the claim framed, the searches run and recorded, two readings, and the rules' decision |
+| `literature-currency` | whether a cited work is still the one to cite: the claim framed, the searches run and recorded, two readings, and the rules' decision; and a claim to be first, or that no study has looked at something, held to a recorded search for the earlier study |
 | `figure-review` | looking at a rendered figure and recording what was seen |
 | `figure-design` | a figure's look and palette, chosen with the author, readable by every reader |
 | `journal-profile` | choosing a journal with the author, and encoding its rules |

@@ -65,7 +65,7 @@ def document(project: Path) -> Path:
 def offered_round(project: Path) -> Path:
     with_edits(
         project,
-        finding("r8-pe-02", ("has not been examined", "remains unexamined"),
+        finding("r8-pe-02", ("asks whether", "asks only whether"),
                  ("Reports were included without restriction on age or sex.",
                   "Reports of any age or sex were included.")),
         finding("r8-pe-03", ("specifically", "in particular"), severity="major"),

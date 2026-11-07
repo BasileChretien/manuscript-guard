@@ -32,6 +32,8 @@ class Row:
     sentence: str
     #: A line for each reply in Word to the entry's comment (`replies.said_of`).
     replies: tuple[str, ...] = ()
+    #: `currency`, or `novelty` for a claim the list in data/novelty_claims.yaml reads.
+    kind: str = "currency"
 
 
 def _where(project: Project, path: Path, line: int) -> str:
@@ -85,7 +87,9 @@ def listing(project: Project) -> tuple[list[Row], list[records.Entry]]:
                                   claim.entry.id in found.accepted) if claim.entry else ()))
         for claim in found.claims
     ]  # fmt: skip
-    return rows, list(found.unplaced)
+    from manuscript_guard.currency import novelty_command
+
+    return rows + novelty_command.rows(project, held), list(found.unplaced)
 
 
 def unplaced_replies(project: Project, unplaced: list[records.Entry]) -> dict[str, list[str]]:
@@ -101,17 +105,23 @@ def rendered(rows: list[Row], unplaced: list[records.Entry],
              replied: dict[str, list[str]] | None = None) -> str:  # fmt: skip
     lines = []
     for row in rows:
-        lines.append(f"{row.id or '-'}  @{row.citekey}  {row.where}  {row.state}")
+        what = "novelty" if row.kind == records.NOVELTY else f"@{row.citekey}"
+        lines.append(f"{row.id or '-'}  {what}  {row.where}  {row.state}")
         lines.append(f"    {row.sentence}")
         lines += [f"    {said}" for said in row.replies]
     for entry in unplaced:
         lines.append(f"{entry.id}  @{entry.citekey}  unplaced: no sentence reads so")
         lines.append(f"    {' '.join(entry.sentence.split())}")
         lines += [f"    {said}" for said in (replied or {}).get(entry.id, [])]
+    cited = [row for row in rows if row.kind != records.NOVELTY]
+    novel = [row for row in rows if row.kind == records.NOVELTY]
     decided = sum(row.state not in ("no entry", "marked, not searched")
-                  and "not decided" not in row.state for row in rows)  # fmt: skip
-    lines.append(f"claims in scope: {len(rows)}, decided: {decided}; unplaced entries: "
+                  and "not decided" not in row.state for row in cited)  # fmt: skip
+    lines.append(f"claims in scope: {len(cited)}, decided: {decided}; unplaced entries: "
                  f"{len(unplaced)}")  # fmt: skip
+    if novel:
+        searched = sum(": searched as of " in row.state for row in novel)
+        lines.append(f"claims of novelty or absence: {len(novel)}, searched: {searched}")
     return "\n".join(lines)
 
 
@@ -134,6 +144,10 @@ def explain(project: Project, entry_id: str, readings: bool = False) -> str:
     _document, raw = _entry_of(project, entry_id)
     entry = records._entry(raw)
     held = _Records(project)
+    if entry.novelty:
+        from manuscript_guard.currency import novelty_command
+
+        return novelty_command.explain(project, entry, held)
     lines = [f"{entry.id}  @{entry.citekey}", f"  sentence: {' '.join(entry.sentence.split())}"]
     if entry.question:
         lines.append(f"  question: {entry.question}")
@@ -268,7 +282,7 @@ def mark(project: Project, words: str, citekey: str, by: str | None,
                             question)  # fmt: skip
     for raw in entries:
         placed = found.placed.get(raw["id"])
-        if raw["citekey"] == citekey and placed is not None and placed.text == sentence.text:
+        if raw.get("citekey") == citekey and placed is not None and placed.text == sentence.text:
             raise Refused(f"the claim is marked already, as {raw['id']}")
     new = {"id": records.next_id(document), "sentence": " ".join(sentence.text.split()),
            "citekey": citekey}  # fmt: skip
@@ -297,6 +311,9 @@ def _place_again(project: Project, document: dict, entries: list[dict], entry_id
     for raw in entries:
         if raw["id"] != entry_id:
             continue
+        if raw.get("kind") == records.NOVELTY:
+            raise Refused(f"{entry_id} is a claim of novelty: mark its sentence again with "
+                          f"`references --novelty \"<words>\" --id {entry_id}`")  # fmt: skip
         candidate = (raw.get("decision") or {}).get("candidate")
         if raw["citekey"] != citekey and not (
                 candidate and records.is_work(_bib(project).get(citekey), candidate)):
@@ -350,6 +367,9 @@ def file_reading(project: Project, path: Path, replaces: int | None = None) -> s
         raise Refused("; ".join(finding.message for finding in report.failures))
     document, raw = _entry_of(project, str(record["entry"]))
     entry = records._entry(raw)
+    if entry.novelty:
+        raise Refused(f"{entry.id} is a claim of novelty, which is held to its searches and "
+                      "never read: nothing decides it")  # fmt: skip
     levels = [record["cited"]["level"]["value"],
               *(one["level"]["value"] for one in record["candidates"])]
     problem = level_problem(hierarchies(project), record["hierarchy"], record["scale"], levels)

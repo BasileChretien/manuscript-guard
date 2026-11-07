@@ -154,6 +154,9 @@ ROUTES: dict[str, Route] = {
     # Whether a cited work is still the one to cite: `references` lists the claims, runs the
     # searches, explains an entry and files a reading.
     **_all("literature-currency", ("references",), "currency-"),
+    # A claim of novelty or absence: `references --novelty` marks it and `--search` runs and
+    # records the search for the earlier study, as the same skill says.
+    **_all("literature-currency", ("references",), "novelty-"),
     # A reply in Word to a proposal's comment is filed by `import` and read by
     # `references --assess`, as the word-roundtrip skill says.
     **_all("word-roundtrip", ("references",), "currency-reply-missing",

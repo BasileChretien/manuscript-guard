@@ -505,6 +505,23 @@ def test_a_name_from_the_code_warns_in_a_draft_and_fails_at_submission() -> None
     assert apply_stage(warned, DRAFTING)[0].findings[0].severity == WARN
 
 
+def test_a_claim_of_novelty_with_no_search_warns_in_a_draft_and_fails_at_submission() -> None:
+    """G7 raises `novelty-unsearched` and `novelty-search-stale` to failures at submission
+    only (D4.2); the policy has them bind there, so that a run at submission keeps them
+    failures. `novelty-softer` is a note at every stage and binds nowhere (D4.3)."""
+    for code in ("novelty-unsearched", "novelty-search-stale"):
+        assert binds_at(code) == SUBMISSION
+        failed = Report((Finding(gate="G7", code=code, message="m", severity=FAIL),))
+        report, deferred = apply_stage(failed, SUBMISSION)
+        assert not report.ok and deferred == {}
+        report, deferred = apply_stage(failed, INTERNAL_REVIEW)
+        assert report.ok and deferred == {SUBMISSION: 1}
+        warned = Report((Finding(gate="G7", code=code, message="m", severity=WARN),))
+        assert apply_stage(warned, DRAFTING)[0].findings[0].severity == WARN
+    noted = Report((Finding(gate="G7", code="novelty-softer", message="m", severity=INFO),))
+    assert apply_stage(noted, SUBMISSION)[0].ok
+
+
 def test_every_way_of_saying_submission_gives_the_same_verdict(project: Path) -> None:
     """G11's severity was set from the raw `--submission` flag, not from the resolved stage.
 

@@ -10419,6 +10419,260 @@ def harvest_tables(draw: st.DrawFn) -> tuple[list[dict], dict[str, list]]:
     return draw(st.permutations(forms)), expected
 
 
+# ------------------------------------------------------- claims of novelty or absence, G7
+
+#: Where a claim of novelty or absence stands, and what G7's list makes of it
+#: (`currency/novelty.py`): the list that reads it, or None; the sentence in Markdown and in
+#: LaTeX, `{t}` a topic of its own and `{T}` the same in capitals; and whether it is a block
+#: of its own rather than a sentence after another in its paragraph. Read: a claim of each
+#: list, one with a hedge inside it, one in capitals, one across a line break, one in a
+#: sentence that cites, one in a LaTeX command's argument that prints, and an absence a paper
+#: says of its own data, which is read and pins that limit (DESIGN.md, Known gaps). Not read:
+#: a priority turned round, another's priority, an absence in the past, "to our knowledge"
+#: alone, an absence of evidence, "for the first time" said of patients, a first visit,
+#: "novel" alone, "unknown" said of the data, "not for the first time", and a claim in a code
+#: span, a comment, maths and a listing.
+NOVELTY_PLACES = (
+    ("priority", "To our knowledge, this is the first study of {t}.", None, False),
+    ("priority", "The present analysis is, to our knowledge, the first to report {t}.", None,
+     False),
+    ("priority", "We report the first case of {t}.", None, False),
+    ("priority", "Here we show for the first time that {t} lowers the risk.", None, False),
+    ("priority", "For the first time, we describe {t}.", None, False),
+    ("priority", "WE ARE THE FIRST TO DESCRIBE {T}.", None, False),
+    ("priority", "This study is the\nfirst to examine {t}.", None, False),
+    ("absence", "No study has examined {t} in children.", None, False),
+    ("absence", "No previous trials have compared {t}.", None, False),
+    ("absence", "The use of {t} has not been reported [@a].",
+     "The use of {t} has not been reported \\cite{{a}}.", False),
+    ("absence", "There are no published data on {t}.", None, False),
+    ("absence", "The question of {t} remains unexplored.", None, False),
+    ("absence", "No deaths have been reported in the trial of {t}.", None, False),
+    ("absence", "*No study has examined {t}.*", "\\emph{{No study has examined {t}.}}", False),
+    ("softer", "Little is known about {t}.", None, False),
+    ("softer", "The mechanism of {t} remains unclear.", None, False),
+    ("softer", "Few studies have examined {t}.", None, False),
+    (None, "This is not the first study of {t}.", None, False),
+    (None, "Smith et al. were the first to describe {t}.", None, False),
+    (None, "The use of {t} had not been reported by 2015.", None, False),
+    (None, "To our knowledge, {t} is cleared by the kidney.", None, False),
+    (None, "There is no evidence that {t} differed by sex.", None, False),
+    (None, "Patients we saw for the first time had taken {t}.", None, False),
+    (None, "Patients seen for the first time this year had taken {t}.", None, False),
+    (None, "This is the first study visit for {t}.", None, False),
+    (None, "Novel oral anticoagulants and {t} were prescribed.", None, False),
+    (None, "The denominator for {t} is unknown.", None, False),
+    (None, "The drug was given, not for the first time, with {t}.", None, False),
+    (None, "A `no study has examined {t}` code span.",
+     "A \\texttt{{no study has examined {t}}} code span.", False),
+    (None, "<!-- No study has examined {t}. -->", "% No study has examined {t}.", True),
+    (None, "Maths $no study has examined {t}$ here.", "% no study has examined {t}", False),
+    (None, "```\nNo study has examined {t}.\n```",
+     "\\begin{{verbatim}}\nNo study has examined {t}.\n\\end{{verbatim}}", True),
+)  # fmt: skip
+#: Sentences that say nothing of the literature, before each place in its paragraph.
+NOVELTY_FILLER = ("Reports were kept.", "Records were included.", "Sites were excluded.",
+                  "Women and men were included.")  # fmt: skip
+#: A Markdown file's opening and a LaTeX file's: a title holding an absence, which is not
+#: read, and an Abstract holding a priority, which is, at the line after it.
+NOVELTY_HEAD = {
+    "markdown": ("---\ntitle: No study has examined the qzz title\n---\n\n# Abstract\n\n"
+                 "To our knowledge, this is the first study of the qzy drug.\n\n"
+                 "# Introduction\n\n", 7),
+    "latex": ("\\documentclass{article}\n\\title{No study has examined the qzz title}\n"
+              "\\begin{abstract}\nTo our knowledge, this is the first study of the qzy drug.\n"
+              "\\end{abstract}\n\\begin{document}\n\\maketitle\n\\section{Introduction}\n\n", 4),
+}  # fmt: skip
+
+
+def _novelty_topic(index: int, part: str = "") -> str:
+    return f"the q{part}{chr(ord('a') + index // 26)}{chr(ord('a') + index % 26)} drug"
+
+
+def _novelty_file(form: str, places: list[tuple[int, Any]], fillers: list[str], *,
+                  supplement: bool, part: str) -> tuple[str, list[list[Any]]]:  # fmt: skip
+    """One file of `places` in the order given, and what the list reads in it, as
+    `[file, line, list]`."""
+    name = ("supplementary/s1.md" if form == "markdown" else "supplementary/main.tex") \
+        if supplement else ("main.md" if form == "markdown" else "main.tex")  # fmt: skip
+    if supplement:
+        text = ("# Supplement\n\n" if form == "markdown" else
+                "\\documentclass{article}\n\\begin{document}\n\\section{Supplement}\n\n")
+        found: list[list[Any]] = []
+    else:
+        text, line = NOVELTY_HEAD[form]
+        found = [[name, line, "priority"]]
+    for (index, (kind, typed, tex, own)), filler in zip(places, fillers, strict=True):
+        topic = _novelty_topic(index, part)
+        template = typed if form == "markdown" or tex is None else tex
+        sentence = template.format(t=topic, T=topic.upper())
+        if own:
+            text += f"{filler}\n\n"
+        line = text.count("\n") + 1
+        text += (sentence if own else f"{filler} {sentence}") + "\n\n"
+        if kind is not None:
+            found.append([name, line, kind])
+    if form == "latex":
+        text += "\\end{document}\n"
+    return text, found
+
+
+@st.composite
+def novelty_claims(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, list[list[Any]]]]:
+    """A Markdown manuscript and its LaTeX twin with a claim in every place of
+    `NOVELTY_PLACES`, in an order drawn, each after a sentence of filler, under an opening
+    whose title holds an absence and whose Abstract a priority; and a supplement to each
+    holding one place of each list and one that is not read. With what the list reads in
+    each, as `[file, line, list]`, in the order of the files and their lines. Every place is
+    in every example, so that a rule broken for one is seen whatever the seed."""
+    order = draw(st.permutations(range(len(NOVELTY_PLACES))))
+    fillers = draw(st.lists(st.sampled_from(NOVELTY_FILLER), min_size=len(order),
+                            max_size=len(order)))  # fmt: skip
+    kinds = ("priority", "absence", "softer", None)
+    chosen = [draw(st.sampled_from([index for index, place in enumerate(NOVELTY_PLACES)
+                                    if place[0] == kind])) for kind in kinds]  # fmt: skip
+    chosen = draw(st.permutations(chosen))
+    more = draw(st.lists(st.sampled_from(NOVELTY_FILLER), min_size=4, max_size=4))
+    given: dict[str, str] = {}
+    found: dict[str, list[list[Any]]] = {}
+    for form in ("markdown", "latex"):
+        main, read = _novelty_file(form, [(i, NOVELTY_PLACES[i]) for i in order], fillers,
+                                   supplement=False, part="")  # fmt: skip
+        supplement, also = _novelty_file(form, [(i, NOVELTY_PLACES[i]) for i in chosen], more,
+                                         supplement=True, part="s")  # fmt: skip
+        given[form], given[f"{form} supplement"] = main, supplement
+        found[form] = read + also
+    return given, found
+
+
+#: Every state a claim's record can be in (`gates/novelty.py`), each example holding every
+#: one: what G7 says of each is in `_novelty_said`.
+NOVELTY_STATES = (
+    "none", "marked", "n1-empty", "n1-unidentified", "n1-kept", "n1-n2", "n2-old",
+    "month-edge", "by-hand", "not-asked", "edited", "replaced", "one-word", "folded",
+    "two-files", "no-claim", "no-claim-beside", "no-claim-model", "softer-searched",
+    "softer-none",
+)  # fmt: skip
+#: Days at the end of a month, where six calendar months before and 180 days before part.
+NOVELTY_TODAYS = ("2026-08-31", "2026-10-31", "2026-12-31", "2027-05-31")
+NOVELTY_NOTE = "Embase, Web of Science, conference abstracts and work not in English"
+
+
+def _six_months_before(day: date) -> date:
+    """The day six calendar months before `day`, the last of its month where it is shorter:
+    written here apart from the gate's `months_before`, which it is held against."""
+    import calendar
+
+    month, year = day.month - 6, day.year
+    if month < 1:
+        month, year = month + 12, year - 1
+    return date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
+
+
+def _novelty_search(entry: str, number: int, step: str, on: date, **more: Any) -> dict:
+    status = more.pop("status", "run")
+    candidates = list(more.pop("candidates", ()))
+    record = {"entry": entry, "number": number, "step": step, "source": "pubmed",
+              "query": f"terms of {entry}", "terms_by": "Ada Example",
+              "searched_on": on.isoformat(), "years": {"from": None, "to": on.isoformat()},
+              "not_searched": NOVELTY_NOTE, "status": status, "candidates": candidates,
+              **more}  # fmt: skip
+    if status == "not asked":
+        record["why"] = "no source answered"
+    else:
+        record.setdefault("hits", len(candidates))
+    if step == "N2":
+        record["seed"] = "doi:10.5555/near"
+    return record
+
+
+@st.composite
+def novelty_records(draw: st.DrawFn) -> tuple[dict[str, Any], list[list[Any]]]:
+    """A Markdown manuscript with a claim in every state of `NOVELTY_STATES`, in an order
+    drawn, its entries in `literature/currency.yaml` and their search records, the stage and
+    the day drawn; and what G7 says, as `[code, severity, path, line]` sorted, the path from
+    the project's root."""
+    order = draw(st.permutations(NOVELTY_STATES))
+    stage = draw(st.sampled_from(("drafting", "internal-review", "submission")))
+    today = date.fromisoformat(draw(st.sampled_from(NOVELTY_TODAYS)))
+    binding = "fail" if stage == "submission" else "warn"
+    fresh, old = today - timedelta(days=10), today - timedelta(days=214)
+    edge = _six_months_before(today) + timedelta(days=1)
+    main = "# Introduction\n\n"
+    supplement = "# Supplement\n\n"
+    entries: list[dict] = []
+    searches: list[dict] = []
+    said: list[list[Any]] = []
+    unsearched = ["novelty-unsearched", binding]
+    for index, state in enumerate(order):
+        tag = f"q{chr(ord('a') + index // 26)}{chr(ord('a') + index % 26)}"
+        claim = f"No study has examined the {tag} drug in children."
+        if state.startswith("softer"):
+            claim = f"Little is known about the {tag} drug."
+        entry = {"id": f"c{len(entries) + 1}", "kind": "novelty", "sentence": claim}
+        written = claim
+        if state == "replaced":
+            entry["sentence"] = (f"To our knowledge, this is the first study of {tag} use and "
+                                 "delirium in children.")  # fmt: skip
+            written = f"To our knowledge, this is the first study of {tag} use and falls in adults."
+        elif state == "one-word":
+            written = claim.replace("in children", "in older children")
+        elif state == "folded":
+            written = f"No study has examined the {tag.upper()} drug\nin children [@a]."
+        line = main.count("\n") + 1
+        main += f"Reports were kept. {written}\n\n"
+        where = ["manuscript/main.md", line]
+        if state == "two-files":
+            supplement += f"Reports were kept. {claim}\n\n"
+        cid = entry["id"]
+        search = {
+            "n1-empty": [_novelty_search(cid, 1, "N1", fresh)],
+            "n1-unidentified": [_novelty_search(cid, 1, "N1", fresh, hits=25, unidentified=10)],
+            "n1-kept": [_novelty_search(cid, 1, "N1", fresh, candidates=["doi:10.5555/near"])],
+            "n1-n2": [_novelty_search(cid, 1, "N1", fresh, candidates=["doi:10.5555/near"]),
+                      _novelty_search(cid, 2, "N2", fresh)],
+            "n2-old": [_novelty_search(cid, 1, "N1", fresh, candidates=["doi:10.5555/near"]),
+                       _novelty_search(cid, 2, "N2", old)],
+            "month-edge": [_novelty_search(cid, 1, "N1", edge)],
+            "by-hand": [_novelty_search(cid, 1, "N1", fresh, status="by hand", hits=3)],
+            "not-asked": [_novelty_search(cid, 1, "N1", fresh, status="not asked")],
+            "edited": [{**_novelty_search(cid, 1, "N1", fresh), "edited": True}],
+            "replaced": [_novelty_search(cid, 1, "N1", fresh)],
+            "one-word": [_novelty_search(cid, 1, "N1", fresh)],
+            "folded": [_novelty_search(cid, 1, "N1", fresh)],
+            "two-files": [_novelty_search(cid, 1, "N1", fresh)],
+            "softer-searched": [_novelty_search(cid, 1, "N1", fresh)],
+        }.get(state, [])  # fmt: skip
+        searches += search
+        if state == "none" or state == "softer-none":
+            said.append(["novelty-softer", "info", *where] if state == "softer-none"
+                        else [*unsearched, *where])
+            continue
+        if state.startswith("no-claim"):
+            by = "Claude" if state == "no-claim-model" else "Ada Example"
+            entry["not_a_claim"] = {"by": by, "why": "said of the sponsor",
+                                    "decided_on": fresh.isoformat()}  # fmt: skip
+        entries.append(entry)
+        if state == "no-claim-beside":
+            entries.append({"id": f"c{len(entries) + 1}", "kind": "novelty", "sentence": claim})
+        if state in ("marked", "n1-kept", "by-hand", "not-asked"):
+            said.append([*unsearched, *where])
+        elif state == "n2-old":
+            said.append(["novelty-search-stale", binding, *where])
+        elif state == "edited":
+            said += [["currency-record-edited", "fail",
+                      f"literature/currency/searches/{cid}-1.yaml", None], [*unsearched, *where]]
+        elif state in ("replaced", "one-word"):
+            said += [["currency-entry-unplaced", "info", "literature/currency.yaml", None],
+                     [*unsearched, *where]]
+        elif state == "no-claim-model":
+            said += [["currency-decision-not-human", "fail", "literature/currency.yaml", None],
+                     [*unsearched, *where]]
+    given = {"main": main, "supplement": supplement, "entries": entries, "searches": searches,
+             "stage": stage, "today": today.isoformat()}  # fmt: skip
+    return given, sorted(said, key=lambda one: json.dumps(one))
+
+
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "checker sentences": texts(),
     "checker methods": method_claims().flatmap(lambda drawn: st.sampled_from(drawn[:3])),
@@ -10544,6 +10798,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
             "labels": {"age_group": "Age group", "R_0": "Reproduction number"}, "kept": [],
             "stage": None}),
     ),  # fmt: skip
+    "novelty claims": novelty_claims().map(lambda drawn: drawn[0]),
+    "novelty records": novelty_records().map(lambda drawn: drawn[0]),
     "reply numbers": texts(NOTATED),
     "quoted": texts(),
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),

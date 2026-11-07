@@ -1,0 +1,28 @@
+# Findings go below, each with an id, a severity and the finding itself. An empty
+# list is a reviewer who found nothing, which is a claim in its own right.
+schema: manuscript-guard/review/1
+round: 11
+reviewer: pharmacoepidemiologist
+reviewed_by: Claude Code
+reviewed_on: '2026-11-08'
+manuscript_sha256: ab90f23464eb05135a3002976edd9626acdbc72f3601412340eef9217c0ca51e
+file_sha256:
+  main.md: e4930aa2a68ea9cad8492d6b7b79250e03ba80dc38165760f29ad6f814ea6a70
+  supplementary/S1_code_lists.md: 8c462c203bf3c08ac5ced6eaf25d38b56f2239502952f8d8e6b3d23cbb05b9b3
+verdict: pass
+summary: 'The Introduction now ends on the question the analysis asks: whether the class signal
+  reported before extends to example-drug. It no longer says that nobody has examined this,
+  a claim about the literature the paper has no search for. The question is the one the Methods
+  and Results answer, by a reporting odds ratio for example-drug against all other drugs and
+  the signal criterion. Nothing else in the paper changed, and nothing from the earlier rounds
+  is reopened.'
+findings:
+- id: r11-pe-01
+  severity: comment
+  where: Introduction, last paragraph
+  finding: The sentence now says what the analysis asks and claims nothing about what others
+    have done, which is right for a paper with no recorded search. The Introduction no longer
+    says why the question is open, only that the class signal exists. A real study that wants
+    to say no one has looked at the drug on its own should run the search, record it, and cite
+    it beside that sentence; without one, the question as now put is the most the paper can say.
+reading_sha256: a9ef3c6d62f8d0f450def0011734ebe5e7f1478afce1fae6ca4a3397b95acf8d

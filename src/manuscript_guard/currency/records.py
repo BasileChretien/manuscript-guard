@@ -98,26 +98,45 @@ def currency_path(project: Project) -> Path:
 # --------------------------------------------------------------------- literature/currency.yaml
 
 
+#: The kind of an entry that holds a claim of novelty or absence to a recorded search.
+NOVELTY = "novelty"
+
+
 @dataclass(frozen=True)
 class Entry:
-    """One entry of `currency.yaml`, as the file gives it."""
+    """One entry of `currency.yaml`, as the file gives it. A `novelty` entry names no work
+    (`citekey` None) and may hold further sentences of the same claim (`also`)."""
 
     id: str
     sentence: str
-    citekey: str
+    citekey: str | None
     question: str | None = None
     marked_by: str | None = None
     decision: dict | None = None
     answer: dict | None = None
+    kind: str = "currency"
+    also: tuple[str, ...] = ()
+    not_a_claim: dict | None = None
 
     @property
     def number(self) -> int:
         return int(self.id[1:])
 
     @property
+    def novelty(self) -> bool:
+        return self.kind == NOVELTY
+
+    @property
+    def sentences(self) -> tuple[str, ...]:
+        """Every sentence of the entry: its `sentence`, then its `also`."""
+        return (self.sentence, *self.also)
+
+    @property
     def named(self) -> str:
         opening = " ".join(self.sentence.split())
         opening = opening if len(opening) <= 60 else opening[:57] + "..."
+        if self.novelty:
+            return f"{self.id} (a claim of novelty, {opening!r})"
         return f"{self.id} (@{self.citekey}, {opening!r})"
 
 
@@ -156,14 +175,18 @@ def read_entries(project: Project) -> tuple[tuple[Entry, ...], Report]:
 
 
 def _entry(raw: dict) -> Entry:
+    citekey = raw.get("citekey")
     return Entry(
         id=str(raw["id"]),
         sentence=str(raw["sentence"]),
-        citekey=str(raw["citekey"]).strip(),
+        citekey=str(citekey).strip() if citekey is not None else None,
         question=raw.get("question"),
         marked_by=raw.get("marked_by"),
         decision=raw.get("decision"),
         answer=raw.get("answer"),
+        kind=str(raw.get("kind") or "currency"),
+        also=tuple(str(one) for one in raw.get("also") or ()),
+        not_a_claim=raw.get("not_a_claim"),
     )
 
 

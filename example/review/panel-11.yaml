@@ -1,0 +1,18 @@
+schema: manuscript-guard/panel/1
+round: 11
+opened_on: 2026-11-08
+manuscript_sha256: ab90f23464eb05135a3002976edd9626acdbc72f3601412340eef9217c0ca51e
+blinded: false
+rationale: 'A revision round for one sentence. The Introduction used to end by saying that
+  nobody had examined whether the signal extends to example-drug, a claim about the literature
+  that no recorded search stands behind. It now ends by saying what this analysis asks. The
+  remit that reads whether the design can answer the question asked reads it, with the earlier
+  rounds in front of it.'
+reviewers:
+- id: pharmacoepidemiologist
+  role: Pharmacoepidemiologist
+  remit: Whether the design can answer the question asked. Case and exposure definitions,
+    denominators, the difference between disproportionate reporting and risk, and
+    the biases specific to spontaneous reporting.
+  why: The Introduction's last sentence now states the question the analysis asks, in place
+    of a claim that the question had not been examined.

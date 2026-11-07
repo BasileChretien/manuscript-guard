@@ -6,6 +6,9 @@ a line. Where no sentence citing the key has the same words, the sentence citing
 holds the most of the entry's words is taken, where it holds at least `NEAR` of them: a
 sentence reworded a little keeps its entry. With neither, the entry is unplaced.
 
+An entry of kind `novelty` is no part of this: it names no work, and `gates/novelty.py`
+places it on the claim the list in `data/novelty_claims.yaml` reads.
+
 In scope, as G7 reads it: each claim an entry marks, and each citing sentence that cites a
 work whose lookup record says a later version, or a published version of a preprint, has come
 since (`gates.lookups.currency_facts`). The sentences are those of the main text and of
@@ -90,6 +93,8 @@ def survey(project: Project) -> tuple[Survey, Report]:
     from manuscript_guard.literature.bibfile import read_entries as read_bib
 
     entries, report = read_entries(project)
+    # A claim of novelty names no work and is placed by its own reader (`gates/novelty.py`).
+    entries = tuple(entry for entry in entries if not entry.novelty)
     sentences = cited_sentences(citing_documents(project))
     words = [statement_words(cited.text) for cited in sentences]
     placed: dict[str, CitedSentence] = {}

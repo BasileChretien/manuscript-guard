@@ -24,7 +24,7 @@ drug class as a whole (ROR {{lit.background.class_ror}}) [@fictionalClassSignal2
 national agency estimated that {{lit.agency.withdrawn_estimate}} patients had been exposed
 by the end of its last published review.
 
-Whether the signal extends to example-drug specifically has not been examined.
+This analysis asks whether the signal extends to example-drug specifically.
 
 # Methods
 

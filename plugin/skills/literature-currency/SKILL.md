@@ -1,6 +1,6 @@
 ---
 name: literature-currency
-description: Check whether a cited work is still the one to cite - frame the claim as a question, write the search terms, run the recorded searches, read the cited work and every candidate from the works store with a verbatim quote for each field, file two independent readings, and let the fixed rules decide. Use when a claim is marked for reference currency, when a cited work has a later version or a published preprint, or when check reports currency-record-missing, currency-record-stale, currency-record-edited, currency-reading-invalid, currency-quote-not-found, currency-quote-unchecked, currency-decision-mismatch, currency-decision-not-human, currency-change-unanswered, currency-uncertain, currency-entry-unplaced or currency-candidate-retracted. Not for recording a number or a passage from a source (use literature-verify).
+description: Check whether a cited work is still the one to cite - frame the claim as a question, write the search terms, run the recorded searches, read the cited work and every candidate from the works store with a verbatim quote for each field, file two independent readings, and let the fixed rules decide. Use when a claim is marked for reference currency, when a cited work has a later version or a published preprint, when the manuscript claims to be first or that no study has looked at something, or when check reports novelty-unsearched, novelty-search-stale, novelty-softer, currency-record-missing, currency-record-stale, currency-record-edited, currency-reading-invalid, currency-quote-not-found, currency-quote-unchecked, currency-decision-mismatch, currency-decision-not-human, currency-change-unanswered, currency-uncertain, currency-entry-unplaced or currency-candidate-retracted. Not for recording a number or a passage from a source (use literature-verify).
 ---
 
 # Is the cited work still the one to cite
@@ -135,6 +135,57 @@ of the document with each proposal as a Word comment on its citing sentence. A c
 replies to the comment; `manuscript-guard import <the copy> --apply` files each reply, and
 `references --assess` records what a reply says. The word-roundtrip skill says how, and the
 author is asked before a refusal is recorded.
+
+## A claim to be first, or that nothing is known
+
+"This is the first study", "no study has examined" and "has not been reported" say something
+of the literature, and are the claims most often wrong. `check` reads them by a list and
+asks for a recorded search for the earlier study (`novelty-unsearched`, and
+`novelty-search-stale` after six months; a softer "little is known" is `novelty-softer`, a
+note). It grades the record of the search, never the claim: what the search finds is what
+tells the author whether the claim stands.
+
+1. Mark the claim by words only it holds. The same claim made again, in the Abstract and the
+   Discussion, goes into the same entry with `--id`; so does a claim the author reworded.
+
+   ```bash
+   manuscript-guard references --novelty "words of the claim" --as "<your name or model>"
+   manuscript-guard references --novelty "words of the same claim elsewhere" --id c7
+   ```
+
+2. Search for the earlier study (N1). Write the terms to find the study the sentence says
+   does not exist, not to confirm that there is none: the population, the exposure or the
+   intervention, the outcome and, where it matters, the design, each with its usual
+   synonyms. Leave out the words of the claim itself ("first", "novel", "no study"). Say what
+   the search did not reach: the databases the author has not searched (Embase, Scopus, Web
+   of Science, CINAHL), grey literature, conference abstracts, theses, trial registries,
+   other languages. "None" is refused, since no search reaches everything.
+
+   ```bash
+   manuscript-guard references --search c7 --terms "<terms>" --not-searched "<what it did not reach>" --as "<who>" --dry-run
+   manuscript-guard references --search c7 --terms "<terms>" --not-searched "<what it did not reach>" --as "<who>"
+   ```
+
+3. Read every work N1 kept, from its record in `literature/currency/works/`. Where one did
+   what the sentence says no study did, tell the author: the claim is to be reworded or
+   dropped. The search stays on record either way.
+
+4. Look forward from the nearest work (N2). Name the work N1 found, or one the manuscript
+   cites, that comes closest to the claim, ask for the works that cite it, newest first, and
+   read those too: a recent study that did it cites the older one it built on. `check` asks
+   for N2 wherever N1 kept a work.
+
+   ```bash
+   manuscript-guard references --search c7 --forward <its DOI, PMID or @key> --not-searched "<what it did not reach>" --as "<who>"
+   ```
+
+5. A search older than six months is stale: `manuscript-guard references --replay c7` runs
+   N1 and N2 again as they were recorded.
+
+Two things are the author's alone, and you never do them: saying that a sentence the list read
+makes no claim about the literature (`--novelty ... --not-a-claim --why ...`), and filing a
+search they ran by hand in a database the tool cannot reach (`--hand-search c7 FILE`), which
+adds to the record and never stands in for N1 or N2. The hook asks before either.
 
 ## If you are a model doing this
 

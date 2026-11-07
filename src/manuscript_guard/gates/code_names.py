@@ -217,18 +217,18 @@ def _names_in(
 
 
 def _label(written: str) -> str:
-    """A reference link's label as pandoc matches it: its case and its runs of blanks folded."""
-    return " ".join(written.split()).casefold()
+    """A reference link's label as pandoc matches it: in small letters, as pandoc lowers it
+    (not `casefold`, which makes `ß` `ss`), its runs of blanks folded."""
+    return " ".join(written.split()).lower()
 
 
 def _blank(found: re.Match[str]) -> str:
     return re.sub(r"[^\n]", NUL, found.group())
 
 
-def _unprinted(printed: str) -> str:
+def _unprinted(printed: str, defined: set[str]) -> str:
     """`printed` with what Markdown does not print taken out as NUL: `_UNPRINTED`, the
-    reference links' definitions, and each reference link's label that one defines."""
-    defined = {_label(found[1]) for found in _DEFINITION.finditer(printed)}
+    reference links' definitions, and each reference link's label in `defined`."""
     printed = _DEFINITION.sub(_blank, printed)
     printed = _LABEL.sub(
         lambda found: _blank(found) if _label(found[1]) in defined else found.group(), printed
@@ -241,10 +241,14 @@ def judge_code_names(passages: Iterable[Prose], names: Names, stage: str | None 
     for each name, at its first use, with how often it is used. A warning, and a failure at
     the submission stage."""
     found: dict[str, _Found] = {}
+    passages = list(passages)
+    # The labels defined anywhere, as typed: under the reference list, which `printed` has
+    # hidden, or in another file, which the build joins to this one (round 3 of #575).
+    defined = {_label(hit[1]) for prose in passages for hit in _DEFINITION.finditer(prose.text)}
     for place, prose in enumerate(passages):
         uses = [
             (offset, length, name, kind, label, in_code)
-            for text, in_code in ((_unprinted(prose.printed), False), (prose.code, True))
+            for text, in_code in ((_unprinted(prose.printed, defined), False), (prose.code, True))
             for offset, length, name, kind, label in _names_in(text, names, in_code=in_code)
         ]
         for offset, length, name, kind, label, in_code in sorted(uses, key=lambda use: use[0]):

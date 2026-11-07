@@ -171,6 +171,9 @@ def test_what_is_not_prose_is_not_read(text: str) -> None:
         # A label no definition has is printed as typed; one that has is not, in any case.
         ("See [the portal][data_portal] here.", ["data_portal"]),
         ("See [the portal][Data_Portal] here.\n\n[data_portal]: https://example.org", []),
+        # Round 3: a definition under the reference list, and a case pandoc does not fold.
+        ("See [the portal][data_portal].\n\n# References\n\n[data_portal]: https://e.org", []),
+        ("[x][straße_id] and more.\n\n[strasse_id]: https://example.org", ["straße_id"]),
         # pandoc reads this line as a definition and prints nothing of it.
         ("[Note]: the hr_adj values are shown.", []),
     ],

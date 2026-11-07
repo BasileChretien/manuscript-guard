@@ -20401,7 +20401,11 @@ Open, recorded as each change landed:
     a digit is taken for a path or an address: `n_cases/n_total` typed as a ratio is not read.
     The path is looked for once what Markdown does not print is out, as pandoc prints it: a
     Windows path typed in prose, `C:\study\raw_hr_adj`, loses `\study` and `\raw` as TeX
-    commands and prints `C:_hr_adj`, so `hr_adj` is reported (round 2). A dotted
+    commands and prints `C:_hr_adj`, so `hr_adj` is reported (round 2). A tag inside a path
+    cuts it: `data/<b>raw_hr</b>` reports `raw_hr`.
+  - A line shaped as `[label]: ...` is taken for a reference definition and not read, also
+    where pandoc prints it: inside a paragraph, or with words after a title in brackets. A
+    label defined only in the supplement is taken for defined in the main text too. A dotted
     word whose last part reads as a file's extension is taken for a file's name, so
     `ckd_flag.csv` is not read, and nor is `ckd_flag.The`, a sentence run into the next with
     no space after its full stop.

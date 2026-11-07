@@ -4685,7 +4685,9 @@ def test_words_that_say_more_than_their_interval_are_found_and_nothing_else(
     does not read; for a word that describes patients, "clinically significant" or a claim
     turned round; for a difference stated and called not significant, a significance said of
     another test, or a heading over the sentence; or for no difference. A negation four
-    words before a claim turns it round, and one five words or more before does not."""
+    words before a claim turns it round, and one five words or more before does not; a word
+    of another test with no P or test beside it, "an interaction with warfarin", names
+    none."""
     text, expected = planted
     assert READINGS["interval words"]()(text) == expected, text
 
@@ -4802,6 +4804,14 @@ def _another_test_s_words_are_the_interval_s(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import interval_words
 
     patch.setattr(interval_words, "_OTHER_P", re.compile(r"(?!)"))
+
+
+def _a_word_of_another_test_names_one_anywhere(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #572: "an interaction with warfarin" read as a test for interaction."""
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "_another_test", lambda blank, first, end:
+                  interval_words._OTHER_P.search(blank, first, end) is not None)  # fmt: skip
 
 
 def _a_heading_runs_into_the_sentence_under_it(patch: pytest.MonkeyPatch) -> None:
@@ -17634,6 +17644,10 @@ BROKEN = {
     ),
     "the words of another test are read as the interval's": (
         _another_test_s_words_are_the_interval_s,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a word of another test names one with no P or test beside it": (
+        _a_word_of_another_test_names_one_anywhere,
         test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
     ),
     "a heading runs into the sentence under it beside an interval": (

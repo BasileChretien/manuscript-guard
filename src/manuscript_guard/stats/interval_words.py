@@ -90,6 +90,10 @@ _GAP_WORD = r"[^\s\x00()\[\]{},;:]+"
 _TOKEN = re.compile(r"[^\s\x00]+")
 _WORD_BEFORE = re.compile(r"([^\W\d_]+)\s+\Z")
 _SIGNIFICAN = re.compile(r"significan", re.IGNORECASE)
+#: What says a word of another test is said of a test: a P, or the word "test".
+_A_TEST = re.compile(r"(?<![\w-])(?:[Pp]|tests?|tested)(?![\w-])")
+#: How far from such a word a P or "test" may stand, in characters.
+NEAR_A_TEST = 40
 #: A Markdown heading's line, as `claims` opens a block at one.
 _HEADING = re.compile(r"^[ \t\x00]*#[^\n]*", re.MULTILINE)
 
@@ -256,8 +260,20 @@ def heard(blank: str, first: int, end: int) -> Heard:
         none=tuple(_read(blank, first, end, listed.no_effect)),
         hedged=HEDGE in kinds or lists().rungs.index(HEDGING_RUNG) in kinds,
         unsure=bool(_read(blank, first, end, listed.uncertain)),
-        another_test=_OTHER_P.search(blank, first, end) is not None,
+        another_test=_another_test(blank, first, end),
     )
+
+
+def _another_test(blank: str, first: int, end: int) -> bool:
+    """Whether the sentence names another test: a word of `stats/intervals.py`'s list
+    ("interaction", "heterogeneity", "trend") with a P or the word "test" at most
+    `NEAR_A_TEST` characters from it, as that module reads one after a P. "An interaction
+    with warfarin" and "global cognition" name none (round 2 of #572)."""
+    for word in _OTHER_P.finditer(blank, first, end):
+        near = (max(first, word.start() - NEAR_A_TEST), min(end, word.end() + NEAR_A_TEST))
+        if _A_TEST.search(blank, *near):
+            return True
+    return False
 
 
 def claims_effect(said: Heard) -> bool:

@@ -13670,6 +13670,11 @@ def test_an_interval_that_does_not_fit_its_estimate_or_its_p_is_found(
          "to 1.60).", []),
         ("Age was an independent predictor of death (HR 1.20, 95% CI 0.90 to 1.60).",
          ["claim-beyond-interval"]),
+        # Round 2: a word of another test names one only beside a P or the word "test".
+        ("Drug X increased the risk of bleeding through an interaction with warfarin (HR "
+         "1.40, 95% CI 0.95 to 2.06).", ["claim-beyond-interval"]),
+        ("Treatment improved global cognition (MD 1.2, 95% CI -0.3 to 2.7).",
+         ["claim-beyond-interval"]),
         # Not judged: an interval that is not the plain one, one at 99%, a sentence whose
         # words may be about its other estimate, and a difference for "no effect", whose
         # scale nothing declares.

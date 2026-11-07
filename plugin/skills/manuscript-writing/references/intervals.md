@@ -20,8 +20,8 @@ Where the interval includes no effect, 1 for a ratio and 0 for a difference:
 
 None is said where the sentence hedges, calls its interval profile-likelihood, exact,
 bootstrap or Bayesian, says the difference was not significant, or names another test
-("interaction", "heterogeneity"). "No significant difference" speaks of the test and is
-left alone.
+("P for interaction", "test of heterogeneity"). "No significant difference" speaks of the
+test and is left alone.
 The words are read from lists, so a sentence can be reported for a word about something
 else: "patients who had reduced renal function" reads as a difference stated. Where the
 words are right, leave them; the findings are a warning and a note, and block nothing.

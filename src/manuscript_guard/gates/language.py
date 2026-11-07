@@ -491,17 +491,13 @@ def _views(text: str) -> tuple[str, str]:
     read in the second (`gates/code_names.py`). Masked once for both."""
     masked = mask(text)
     code = code_spans(masked)
-    spans = [
-        (0, front_matter_end(text)),
-        *code,
-        *equation_spans(masked, code),
-        *(found.span() for found in _IMAGE.finditer(text)),
-    ]
+    unread = [(0, front_matter_end(text)), *(found.span() for found in _IMAGE.finditer(text))]
+    spans = [*code, *equation_spans(masked, code), *unread]
     kept = "".join(
         "\n" if char == NUL and text[index] == "\n" else char
         for index, char in enumerate(masked)
     )
-    return _hide(kept, spans), _only(masked, code)
+    return _hide(kept, spans), _set_aside(_only(masked, code), unread)
 
 
 def _only(text: str, spans: Iterable[tuple[int, int]]) -> str:
@@ -510,6 +506,13 @@ def _only(text: str, spans: Iterable[tuple[int, int]]) -> str:
     for start, end in spans:
         chars[start:end] = text[start:end]
     return "".join(chars)
+
+
+def _set_aside(code: str, spans: Iterable[tuple[int, int]]) -> str:
+    """A view of the code spans with `spans` hidden too: where G14 reads no sentence, the
+    front matter, an image's caption, a LaTeX figure, the preamble and the reference list, it
+    reads no code either (round 1 of #575)."""
+    return _hide(code, spans) if code else code
 
 
 @dataclass(frozen=True)
@@ -963,6 +966,7 @@ def _assembled(
     definitions = [*_definitions(prose), *listed]
     restating = frozenset(at for at, _short, _long in definitions
                           if _restates(captions, glossaries, at))  # fmt: skip
+    more["code"] = _set_aside(more.get("code", ""), references)
     return _File(
         order=order,
         path=path,
@@ -1026,7 +1030,7 @@ class _LatexFile:
 
 def _latex_file(source: Source, supplementary: bool, abstract_title: str | None) -> _LatexFile:
     from manuscript_guard.text.latex.views import bindings, markdown_view
-    from manuscript_guard.text.latex.words import words
+    from manuscript_guard.text.latex.words import _preamble, words
 
     seen = words(source)
     titles = [(heading.start, max(heading.end, heading.start))
@@ -1048,7 +1052,8 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
         glossaries=tuple(glossary.sections(
             [(heading.start, max(heading.end, heading.start), heading.level, heading.title)
              for heading in source.reading.headings], len(source.text))),
-        code=_only(source.reading.masked, source.reading.code),
+        code=_set_aside(_only(source.reading.masked, source.reading.code),
+                        [*_preamble(source.reading), *source.reading.figures]),
     )  # fmt: skip
 
 

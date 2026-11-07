@@ -20,11 +20,13 @@ code span is not: it is a function or a package, put in code on purpose (D12.3).
 
 **What is not prose is not read.** The views this reads have the bindings, the citation
 keys, the URLs and link targets, the listings, the comments, the maths, LaTeX's commands and
-the reference list taken out already (`language._hidden`, `text/latex/words.py`). Here a path
-or an address is set aside too, a word in a run of characters that holds a slash, an `@` or
-a backslash before a letter, and so is a file's name, a dotted word whose last part is an
-extension; and in Markdown the opening line of a fenced div, an HTML tag, a pandoc attribute
-with an `=` in it and a TeX command, none of which is printed in the document.
+the reference list taken out already (`language._hidden`, `text/latex/words.py`), and the
+view of the code spans has the same places hidden (`language._set_aside`). Here a path or an
+address is set aside too, a word in a run of characters, as typed, that holds a slash, an
+`@` or a backslash before a letter, and so is a file's name, a dotted word whose last part is
+an extension; and in Markdown the opening line of a fenced div, an HTML tag, a pandoc
+attribute with an `=` in it, a TeX command and a reference link's label with the line that
+defines it, none of which is printed in the document.
 
 **The finding is a warning, and a failure at submission** (D12.2): the version a journal
 receives has no word its reader cannot know. A word that is right with its underscores, a
@@ -70,10 +72,13 @@ _FOLDER = re.compile(r"\\(?=[^\W_])")
 # How far either side of a word its run of characters is looked at for a path.
 _REACH = 200
 # In Markdown, what is not printed: the opening or closing line of a fenced div, an HTML
-# tag, a pandoc attribute holding an `=` (`{custom-style="Body_Text"}`) and a TeX command
-# with its arguments.
+# tag, a pandoc attribute holding an `=` (`{custom-style="Body_Text"}`), a TeX command with
+# its arguments, and a reference link's label, `[text][label]`, with the line that defines
+# it (round 1 of #575).
 _UNPRINTED = re.compile(
     r"^[ \t]*:{3,}[^\n]*"
+    r"|(?<=\])\[[^\[\]\n]*\]"
+    r"|^[ ]{0,3}\[[^\]\n\x00]+\]:[^\n]*"
     r"|</?[A-Za-z][A-Za-z0-9-]*(?:[ \t][^<>\n]*)?/?>"
     r"|\{[^{}\n]*=[^{}\n]*\}"
     r"|\\[A-Za-z]+(?:\[[^\[\]\n]*\])*(?:\{[^{}\n]*\})*",
@@ -176,16 +181,20 @@ def _parts(word: str, start: int) -> list[tuple[int, str]]:
 
 
 def _names_in(
-    text: str, names: Names, *, in_code: bool
+    text: str, names: Names, *, in_code: bool, typed_as: str | None = None
 ) -> Iterable[tuple[int, int, str, str, str | None]]:
     """Each name from the code in `text`: its offset, its length as typed, the name, what
-    it is and the variable's label. In a code span only a key or a dictionary's variable."""
+    it is and the variable's label. In a code span only a key or a dictionary's variable.
+    A path is looked for in `typed_as`, the text before what Markdown does not print was
+    taken out of it, since a folder such as `study` after a backslash reads as a TeX
+    command (round 1 of #575)."""
+    around = text if typed_as is None else typed_as
     for found in _NAME.finditer(text):
         typed = found.group()
         name = _TYPED.sub("", typed)
         if not code_shaped(name) or name in names.kept:
             continue
-        if _in_a_path(text, found.start(), found.end()):
+        if _in_a_path(around, found.start(), found.end()):
             continue
         exact = _exact(name, names)
         if exact is not None:
@@ -216,10 +225,13 @@ def judge_code_names(passages: Iterable[Prose], names: Names, stage: str | None 
     the submission stage."""
     found: dict[str, _Found] = {}
     for place, prose in enumerate(passages):
+        views = ((_unprinted(prose.printed), False, prose.printed), (prose.code, True, None))
         uses = [
             (offset, length, name, kind, label, in_code)
-            for text, in_code in ((_unprinted(prose.printed), False), (prose.code, True))
-            for offset, length, name, kind, label in _names_in(text, names, in_code=in_code)
+            for text, in_code, typed_as in views
+            for offset, length, name, kind, label in _names_in(
+                text, names, in_code=in_code, typed_as=typed_as
+            )
         ]
         for offset, length, name, kind, label, in_code in sorted(uses, key=lambda use: use[0]):
             entry = found.setdefault(name, _Found(name, kind, label))

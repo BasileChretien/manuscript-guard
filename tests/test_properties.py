@@ -7963,6 +7963,26 @@ def _a_path_is_read_for_a_name(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(gate, "_in_a_path", lambda text, start, end: False)
 
 
+def _a_backslash_is_no_folder(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_FOLDER", re.compile(r"(?!)"))
+
+
+def _a_path_is_looked_for_once_the_markup_is_out(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    names_in = gate._names_in
+    patch.setattr(gate, "_names_in", lambda text, names, *, in_code, typed_as=None: names_in(
+        text, names, in_code=in_code))  # fmt: skip
+
+
+def _code_is_read_where_the_prose_is_not(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_set_aside", lambda code, spans: code)
+
+
 def _a_file_is_read_for_a_name(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import code_names as gate
 
@@ -17384,6 +17404,18 @@ BROKEN = {
     ),
     "a file's name is read for a name": (
         _a_file_is_read_for_a_name,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a backslash between two folders is no path": (
+        _a_backslash_is_no_folder,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a path is looked for once a folder was taken for a TeX command": (
+        _a_path_is_looked_for_once_the_markup_is_out,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a key in code is read in a caption, the title and the reference list": (
+        _code_is_read_where_the_prose_is_not,
         test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
     ),
     "a key or a variable that is a word is read": (

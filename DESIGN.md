@@ -5137,11 +5137,13 @@ not read: it is usually a function's or a package's name, put there on purpose.
 file, the sentences and headings with everything else NUL, and, new here, the code spans
 with everything else NUL, so bindings, citation keys, URLs, link targets, listings,
 comments, maths, LaTeX's commands, the front matter, captions and the reference list are
-gone before it looks. On top of that it sets aside a word in a path or an address (its run of
-characters holds a slash, an `@` or a backslash between folders), a file's name (a dotted
-word whose last part reads as an extension, `ckd_flag.csv`), and in Markdown what pandoc
-does not print into the document: a fenced div's line, an HTML tag, an attribute with an `=`
-and a TeX command. An underscore escaped as Markdown escapes it, `hr\_adj`, or as LaTeX must,
+gone before it looks; the code view hides what the prose view hides, so a key in code in a
+caption or a reference is not read either (round 1). On top of that it sets aside a word in a
+path or an address (its run of characters, as typed, holds a slash, an `@` or a backslash
+between folders), a file's name (a dotted word whose last part reads as an extension,
+`ckd_flag.csv`), and in Markdown what pandoc does not print into the document: a fenced
+div's line, an HTML tag, an attribute with an `=`, a TeX command, and a reference link's
+label with the line that defines it. An underscore escaped as Markdown escapes it, `hr\_adj`, or as LaTeX must,
 `hr\_adj`, is the underscore it prints.
 
 **A warning while the paper is written, a failure at submission** (D12.2). Nothing about
@@ -20401,9 +20403,13 @@ Open, recorded as each change landed:
     no space after its full stop.
   - A name with a mark of emphasis inside it, `*ckd*_flag`, is not read. An HTML tag is read
     as one where `<` stands against a letter, so "a <b and c_d> e" hides `c_d`.
-  - What G14 does not read is not read here either: a figure's caption, the title and the
-    abstract when they are in the front matter, and a quotation the masking hides. A
-    quotation set as a block is read, since a name in it is still one the reader cannot know.
+  - What G14 does not read is not read here either, in a sentence or in code: a figure's
+    caption, the title and the abstract when they are in the front matter or the preamble,
+    and the reference list. A quotation set as a block is read, since a name in it is still
+    one the reader cannot know.
+  - In LaTeX, the argument of a command the reader does not know is read as prose, so a key
+    of `glossaries` or `acronym` with an underscore, `\gls{ckd_flag}` or `\ac{hr_adj}`, is
+    reported though the document prints the entry's text and not the key.
   - The hook that runs after a manuscript file is saved does not run this reading.
 
 - **G14's vocabulary is a list of words, and reads them as words.**

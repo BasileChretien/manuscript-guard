@@ -2036,9 +2036,12 @@ def latex_words(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
 #: prose or in code, or None where it is not read. Read: a word with underscores, typed or
 #: escaped, in a heading and in emphasis; a key bare and after `results.`; a variable, and one
 #: in camelCase; a key and a variable in code. Not read: a word with underscores in code, a
-#: binding, a citation key, a URL, a link's target, a path, a file's name, an address, maths,
-#: a comment, a listing, a word the paper keeps, a variable that is a word, an HTML tag, a TeX
-#: command in Markdown, a fenced div's attribute, a figure's caption and a word of no letter.
+#: binding, a citation key, a URL, a link's target, a path, one whose folder after a backslash
+#: reads as a TeX command, a file's name, an address, maths, a comment, a listing, a word the
+#: paper keeps, a variable that is a word, an HTML tag, a TeX command in Markdown, a fenced
+#: div's attribute, a figure's caption, a key in code in one, a reference link's label and
+#: its definition, and a word of no letter. The title and the reference list hold a key in
+#: code too.
 CODE_NAME_PLACES = (
     ("snake", "{n} ", "{e} ", "prose"),
     ("snake", "{e} ", "{e} ", "prose"),
@@ -2058,6 +2061,7 @@ CODE_NAME_PLACES = (
     ("snake", "https://example.org/{n} ", "\\url{{https://example.org/{n}}} ", None),
     ("snake", "[the file](data/{n}.csv) ", "\\href{{https://example.org/{n}}}{{the file}} ", None),
     ("snake", "analysis/{n}.py ", "analysis/{e}.py ", None),
+    ("snake", "{n}\\study ", "words ", None),
     ("snake", "{n}.csv ", "{e}.csv ", None),
     ("snake", "{n}@example.org ", "{e}@example.org ", None),
     ("snake", "${n}$ ", "${n}$ ", None),
@@ -2070,6 +2074,9 @@ CODE_NAME_PLACES = (
     ("snake", '\n\n::: {{custom-style="{n}"}}\nwords\n:::\n\n', "words ", None),
     ("snake", "\n\n![The {n}](figure.png)\n\n",
      "\n\\begin{{figure}}\\caption{{The {e}}}\\end{{figure}}\n", None),
+    ("key", "\n\n![By `{n}`](figure.png)\n\n",
+     "\n\\begin{{figure}}\\caption{{By \\texttt{{{e}}}}}\\end{{figure}}\n", None),
+    ("snake", "[the portal][{n}]\n\n[{n}]: https://example.org\n\n", "words ", None),
     ("digits", "{n} ", "{e} ", None),
 )  # fmt: skip
 #: The first part of a drawn name: a word of the prose, so that `dose_qab` reads as code
@@ -2095,11 +2102,14 @@ def code_names(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, list[list[Any
     between = draw(st.lists(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3),
                             min_size=len(order), max_size=len(order)))  # fmt: skip
     stage = draw(st.sampled_from((None, "drafting", "submission")))
-    keys, labels, kept = set(), {}, set()
-    title = f"{words[-1]}_qzy"
-    markdown = f"---\ntitle: The {title}\n---\n\n# Results\n\n"
-    latex = (f"\\documentclass{{article}}\n\\title{{The {title.replace('_', chr(92) + '_')}}}"
-             "\n\\begin{document}\n\\section{Results}\n")  # fmt: skip
+    # A key in code in the title and in the reference list, where nothing is read.
+    unread = f"{words[-2]}.n_qzx"
+    keys, labels, kept = {unread}, {}, set()
+    title, typed_unread = f"{words[-1]}_qzy", unread.replace("_", chr(92) + "_")
+    markdown = f"---\ntitle: The {title} `{unread}`\n---\n\n# Results\n\n"
+    latex = (f"\\documentclass{{article}}\n\\title{{The {title.replace('_', chr(92) + '_')} "
+             f"\\texttt{{{typed_unread}}}}}\n"
+             "\\begin{document}\n\\section{Results}\n")  # fmt: skip
     found: dict[str, list[list[Any]]] = {"markdown": [], "latex": []}
     for place, (index, sentence) in enumerate(zip(order, between, strict=True)):
         kind, typed, tex, where = CODE_NAME_PLACES[index]
@@ -2131,10 +2141,10 @@ def code_names(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, list[list[Any
             else:
                 latex = text
     cited = f"{words[-2]}_qzz"
-    markdown += f"\n# References\n\nSmith J. The {cited} paper. 2019.\n"
+    markdown += f"\n# References\n\nSmith J. The {cited} and `{unread}` paper. 2019.\n"
     latex += ("\\begin{thebibliography}{1}\n\\bibitem{a} The "
-              f"{cited.replace('_', chr(92) + '_')} paper.\n\\end{{thebibliography}}\n"
-              "\\end{document}\n")  # fmt: skip
+              f"{cited.replace('_', chr(92) + '_')} and \\texttt{{{typed_unread}}} paper.\n"
+              "\\end{thebibliography}\n\\end{document}\n")  # fmt: skip
     given = {"markdown": markdown, "latex": latex, "keys": sorted(keys), "labels": labels,
              "kept": sorted(kept), "stage": stage}  # fmt: skip
     return given, found

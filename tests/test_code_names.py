@@ -150,6 +150,10 @@ def test_a_subscript_typed_as_code_is_found() -> None:
         "A note.[^note_one]\n\n[^note_one]: The note.",
         "---\ntitle: The hr_adj_main paper\n---\n\nPlain words.",
         "Plain words.\n\n![The hr_adj_main curve](figure.png)",
+        # Round 1: the folders of a Windows path start with letters, which Markdown does
+        # not print as a TeX command does; and a reference link's label and its definition.
+        "Files are in C:\\study\\raw_hr_adj.",
+        "See [the portal][data_portal].\n\n[data_portal]: https://example.org",
     ],
 )
 def test_what_is_not_prose_is_not_read(text: str) -> None:
@@ -159,6 +163,19 @@ def test_what_is_not_prose_is_not_read(text: str) -> None:
 def test_the_reference_list_is_not_read() -> None:
     text = "Plain words.\n\n# References\n\nSmith J. The ckd_flag paper. 2019.\n"
     assert named(text) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Plain words.\n\n![Risk by `age_group` and `ror.point`](figure.png)\n",
+        "Plain words.\n\n# References\n\nSmith J. The `age_group` and `ror.point` paper.\n",
+    ],
+)
+def test_a_key_or_a_variable_in_code_is_not_read_where_the_prose_is_not(text: str) -> None:
+    """Round 1: the code spans were read in an image's caption and in the reference list,
+    where G14 reads no sentence."""
+    assert named(text, keys={"ror.point"}, labels={"age_group": "Age group"}) == []
 
 
 def test_a_word_kept_is_not_read_in_the_prose_or_in_code() -> None:
@@ -264,3 +281,16 @@ def test_a_latex_manuscript_is_read(project: Path) -> None:
     ]  # fmt: skip
     (variable,) = (f for f in report.findings if "age_group" in f.message)
     assert variable.line == 4 and variable.message.endswith("first in a code span")
+
+
+def test_a_latex_figure_s_caption_and_reference_list_are_not_read_in_code(project: Path) -> None:
+    """Round 1: `\\texttt` in a figure's caption, in the preamble's title and in
+    `thebibliography` was read, where G14 reads no word."""
+    report = _latex(project, (
+        "\\documentclass{article}\n\\title{The \\texttt{age\\_group} study}\n"
+        "\\begin{document}\n\\section{Results}\nPlain words.\n"
+        "\\begin{figure}\\caption{By \\texttt{age\\_group}}\\end{figure}\n"
+        "\\begin{thebibliography}{1}\n\\bibitem{a} The \\texttt{age\\_group} paper.\n"
+        "\\end{thebibliography}\n"
+    ) + CLOSE)  # fmt: skip
+    assert coded(report) == []

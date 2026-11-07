@@ -34,47 +34,22 @@ the therapeutic area, a **reporting-guideline auditor**, an **adversarial review
 remit is to find the reason to reject, and a **desk editor** judging triage. Take from that
 what the paper needs and add what it needs that is not there.
 
-One remit is worth a reviewer of its own on most papers: **contradiction**. Where the Methods
-say something was done and the Limitations, the Discussion or the registration say otherwise,
-neither section's reader notices, because each reads its own part.
+Some remits are worth a reader of their own, whatever the field. Before writing the panel,
+read [references/remits.md](references/remits.md), which gives each one's remit and route:
 
-A paper with earlier outputs on the same data, an abstract or an earlier article, needs an
-**earlier outputs** remit: whether each difference from them is a change of method the paper
-states and justifies. The related-outputs skill says how it is read.
+- **contradiction**, on most papers: where the Methods say one thing and the Limitations, the
+  Discussion or the registration another, which no reader of one section notices;
+- **the communities the paper draws on**: a reader for each field whose methods, data or
+  comparisons it uses, and for the people whose work it says it improves on, asked apart
+  whether the paper is right and whether it is new;
+- **the abstract alone**: a reader sent only the title and abstract, who says what they
+  conclude and whether the caveat that would change that conclusion is there; route A only;
+- **earlier outputs**, for a paper with an abstract or an article on the same data before it;
+- **citation support**, for a paper that rests on its references: whether each cited work
+  says what the sentence citing it says; route A only.
 
-A paper that rests on its references needs a second: **citation support**. G7 checks that a
-quoted number is in its stored source, and the lookup that a cited work exists and was not
-retracted. Neither asks whether the work says what the sentence citing it says. A tool cited
-to the wrong paper passes all of them: a deep-learning epigenetic clock cited to another clock
-paper from the same year, on the same subject, both real.
-
-Read this remit by route A, in the session, and never by route B: `review --run` sends
-nothing under `literature/`, by design. If your tool can start a fresh agent, have that one
-read it, not the context that drafted the prose, which reads into a source what its own
-sentence meant. Give it an id such as `citation-support` and the remit "whether each cited
-work says what the sentence citing it says". Hold each sentence that cites a work against
-that work's stored source under `literature/sources/`, and report:
-
-- a named tool, method or finding cited to a paper that does not introduce it;
-- the wrong population, denominator, subgroup or year;
-- a claim stronger than the source: a hedge dropped, an association stated as a cause;
-- a review cited for a finding that belongs to a primary study.
-
-Where `literature/passages.yaml` records a passage for a sentence, G7 has checked that its
-words are in the source: read the sentence against that passage first, then against the
-source around it, since a passage can be the source's words and still not say what the
-sentence says. Where a sentence has none, give in the finding the words of the source that
-do support it, if any, with where they stand, to be recorded with the literature-verify
-skill. Never record a judgement of a passage yourself; that is the author's.
-
-Numbers in the ledger are left to G7, which checks them better. A citation whose work has no
-stored source, or one nothing can read, is unchecked, never supported: list those citations
-in one `comment` finding, so that a reading with few findings is not taken for one that
-checked every citation. The reading does not replace a co-author's check of the same
-sentences (the co-author-checking skill). It is filed, sealed and answered like any other.
-
-Write it to `review/panel-<n>.yaml`, including *why* each reviewer is on it. Two reviewers
-with the same remit are one reviewer.
+Write the panel to `review/panel-<n>.yaml`, including *why* each reviewer is on it. Two
+reviewers with the same remit are one reviewer.
 
 If there is no panel file when `manuscript-guard review --run` is used (route B below), it
 writes a starter panel that assumes no field: design, statistics, reporting and an
@@ -83,7 +58,8 @@ is a place to start. A panel fitted to the paper sees more, so edit the file.
 
 ## 2. Review
 
-There are two ways to get a remit read, and one round can use both.
+There are two ways to get a remit read, and one round can use both, unless it holds a remit
+read by route A only ([references/remits.md](references/remits.md)).
 
 ### Route A: read it yourself
 

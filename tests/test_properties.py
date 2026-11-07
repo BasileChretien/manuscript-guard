@@ -8135,6 +8135,146 @@ def test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not(
     assert report.counts["spelling_other"] == sum(len(places) for places in stands.values())
 
 
+# ----------------------------------------------------------------- names from the code, G14
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import code_names  # noqa: E402
+
+
+def _what_is_said(message: str) -> list[str]:
+    """A code-name finding's name, what it says the name is, and where it first stands."""
+    kind = ("variable" if "a variable in the data dictionary" in message
+            else "key" if "is a key of the results" in message else "snake")  # fmt: skip
+    where = "code" if message.endswith("first in a code span") else "prose"
+    return [message.split("'")[1], kind, where]
+
+
+@holds(40, code_names())
+def test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else(
+    planted: tuple[dict[str, Any], dict[str, list[list[Any]]]],
+) -> None:
+    """A word with underscores, a key and a variable are found in a sentence, a key and a
+    variable in code too, each once, on its line, a variable with its label; and nothing is
+    found in code that is neither, in a binding, a citation, a URL, a path, a file's name,
+    an address, maths, a comment, a listing, a caption, the title or the reference list, in a
+    word kept or in a variable that is a word. In Markdown and in LaTeX alike."""
+    given, found = planted
+    answered = answer(READINGS["code names"](), given)
+    assert "raised" not in answered, answered
+    severity = "fail" if given["stage"] == "submission" else "warn"
+    for form in ("markdown", "latex"):
+        findings = answered["answer"][form]["findings"]
+        said = [[*_what_is_said(f["message"]), f["line"]] for f in findings]
+        assert said == found[form], (form, given[form])
+        assert {(f["code"], f["severity"]) for f in findings} == {("code-name-in-prose", severity)}
+        for finding in findings:
+            name = finding["message"].split("'")[1]
+            if name in given["labels"]:
+                assert f"labels it {given['labels'][name]!r}" in finding["message"]
+
+
+def _code_is_read_as_prose(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    names_in = gate._names_in
+    patch.setattr(gate, "_names_in",
+                  lambda text, names, *, in_code: names_in(text, names, in_code=False))  # fmt: skip
+
+
+def _no_code_is_read_for_a_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    names_in = gate._names_in
+    patch.setattr(gate, "_names_in", lambda text, names, *, in_code: (
+        () if in_code else names_in(text, names, in_code=False)))  # fmt: skip
+
+
+def _a_path_is_read_for_a_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_in_a_path", lambda text, start, end: False)
+
+
+def _a_backslash_is_no_folder(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_FOLDER", re.compile(r"(?!)"))
+
+
+def _a_reference_definition_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_DEFINITION", re.compile(r"(?!)"))
+
+
+def _a_defined_reference_label_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_LABEL", re.compile(r"(?!)"))
+
+
+def _every_reference_label_is_taken_for_defined(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_label", lambda written: "")
+
+
+def _code_is_read_where_the_prose_is_not(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_set_aside", lambda code, spans: code)
+
+
+def _a_file_is_read_for_a_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_EXTENSION", re.compile(r"(?!)"))
+
+
+def _every_word_is_shaped_as_code(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "code_shaped", lambda name: True)
+
+
+def _no_name_is_known(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_exact", lambda name, names: None)
+
+
+def _an_escaped_underscore_joins_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_NAME", re.compile(r"(?<![^\W_])[^\W_]+(?:(?:_+|\.)[^\W_]+)*"))
+
+
+def _no_word_is_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    names_in = gate._names_in
+    patch.setattr(gate, "_names_in", lambda text, names, *, in_code: names_in(
+        text, dataclasses.replace(names, kept=frozenset()), in_code=in_code))  # fmt: skip
+
+
+def _unprinted_markdown_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_UNPRINTED", re.compile(r"(?!)"))
+
+
+def _the_namespace_is_kept_on(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "RESULTS", NUL)
+
+
+def _camel_case_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_CAMEL", re.compile(r"(?!)"))
+
+
 # ------------------------------------------ a reference list under a line that is no heading
 
 # Imported here, not at the top, to keep clear of the import block other branches edit.
@@ -17564,6 +17704,70 @@ BROKEN = {
     "a journal's ask for definitions is not read": (
         _a_journal_s_ask_is_not_read,
         test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks,
+    ),
+    "a word with underscores in code is read as a sentence's": (
+        _code_is_read_as_prose,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "no code span is read for a name": (
+        _no_code_is_read_for_a_name,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a path or an address is read for a name": (
+        _a_path_is_read_for_a_name,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a file's name is read for a name": (
+        _a_file_is_read_for_a_name,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a backslash between two folders is no path": (
+        _a_backslash_is_no_folder,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a reference link's definition is read for a name": (
+        _a_reference_definition_is_read,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a reference link's label is read where the file defines it": (
+        _a_defined_reference_label_is_read,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a reference link's label is set aside where nothing defines it": (
+        _every_reference_label_is_taken_for_defined,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a key in code is read in a caption, the title and the reference list": (
+        _code_is_read_where_the_prose_is_not,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a key or a variable that is a word is read": (
+        _every_word_is_shaped_as_code,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a key or a variable is read only by its underscores": (
+        _no_name_is_known,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "an escaped underscore joins nothing": (
+        _an_escaped_underscore_joins_nothing,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a word the paper keeps is read": (
+        _no_word_is_kept,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "what Markdown does not print is read for a name": (
+        _unprinted_markdown_is_read,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a binding's namespace is not taken off a key": (
+        _the_namespace_is_kept_on,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "camelCase is not read": (
+        _camel_case_is_not_read,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
     ),
     "a glossary is not read": (
         _a_glossary_is_not_read,

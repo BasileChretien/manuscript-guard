@@ -235,7 +235,7 @@ def _gate_run(
         ("G8", lambda: check_recomputed(project, namespace, results)),
         ("G8", lambda: check_related(project, namespace, results, submission=at_submission)),
         ("G13", lambda: check_revision(project, submission=at_submission)),
-        ("G14", lambda: check_language(project, chosen)),
+        ("G14", lambda: check_language(project, chosen, results)),
         ("G15", lambda: check_models(project, results)),
         ("G16", lambda: check_data_quality(project, results, chosen, submission=at_submission)),
         ("G16", lambda: check_quality_reported(

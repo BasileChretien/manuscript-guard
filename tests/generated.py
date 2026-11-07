@@ -2030,6 +2030,130 @@ def latex_words(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     return text, planted
 
 
+#: Where a name from the code stands, in Markdown and in LaTeX, and what G14's fifth reading
+#: makes of it (`gates/code_names.py`): what the name is drawn as, the two templates, `{n}`
+#: the name as typed and `{e}` with its underscores escaped, and where it is found, in the
+#: prose or in code, or None where it is not read. Read: a word with underscores, typed or
+#: escaped, in a heading and in emphasis; a key bare and after `results.`; a variable, and one
+#: in camelCase; a key and a variable in code; a variable inside an HTML tag, a word before a
+#: TeX command, and the label of a reference link nothing defines. Not read: a word with
+#: underscores in code, a binding, a citation key, a URL, a link's target, a path, one with a
+#: backslash before its folder, a file's name, an address, maths, a comment, a listing, a word
+#: the paper keeps, a variable that is a word, an HTML tag, a TeX command in Markdown, a
+#: fenced div's attribute, a figure's caption, a key in code in one, a reference link's label
+#: and its definition, and a word of no letter. The title and the reference list hold a key
+#: in code too.
+CODE_NAME_PLACES = (
+    ("snake", "{n} ", "{e} ", "prose"),
+    ("snake", "{e} ", "{e} ", "prose"),
+    ("snake", "\n\n## The {n}\n\n", "\n\\section{{The {e}}}\n", "prose"),
+    ("snake", "*{n}* ", "\\emph{{{e}}} ", "prose"),
+    ("key", "{n} ", "{e} ", "prose"),
+    ("dotted key", "{n} ", "{n} ", "prose"),
+    ("results key", "results.{n} ", "results.{e} ", "prose"),
+    ("variable", "{n} ", "{e} ", "prose"),
+    ("camel variable", "{n} ", "{n} ", "prose"),
+    ("key", "`{n}` ", "\\texttt{{{e}}} ", "code"),
+    ("variable", "`{n}` ", "\\verb|{n}| ", "code"),
+    ("variable", "<u>{n}</u> ", "{e} ", "prose"),
+    ("snake", "{n}\\textsuperscript{{a}} ", "{e}\\textsuperscript{{a}} ", "prose"),
+    ("snake", "[the portal][{n}] ", "{e} ", "prose"),
+    ("snake", "`{n}` ", "\\texttt{{{e}}} ", None),
+    ("snake", "`{n}` ", "\\verb|{n}| ", None),
+    ("key", "{{{{results.{n}}}}} ", "\\mg{{results.{n}}} ", None),
+    ("snake", "[@{n}] ", "\\cite{{{n}}} ", None),
+    ("snake", "https://example.org/{n} ", "\\url{{https://example.org/{n}}} ", None),
+    ("snake", "[the file](data/{n}.csv) ", "\\href{{https://example.org/{n}}}{{the file}} ", None),
+    ("snake", "analysis/{n}.py ", "analysis/{e}.py ", None),
+    ("snake", "{n}\\2024 ", "words ", None),
+    ("snake", "{n}.csv ", "{e}.csv ", None),
+    ("snake", "{n}@example.org ", "{e}@example.org ", None),
+    ("snake", "${n}$ ", "${n}$ ", None),
+    ("snake", "<!-- {n} --> ", "% {n}\n", None),
+    ("snake", "\n\n```\n{n}\n```\n\n", "\n\\begin{{verbatim}}\n{n}\n\\end{{verbatim}}\n", None),
+    ("kept", "{n} ", "{e} ", None),
+    ("plain variable", "{n} ", "{n} ", None),
+    ("snake", '<span class="{n}">words</span> ', "words ", None),
+    ("snake", "\\label{{{n}}} ", "\\label{{{n}}} ", None),
+    ("snake", '\n\n::: {{custom-style="{n}"}}\nwords\n:::\n\n', "words ", None),
+    ("snake", "\n\n![The {n}](figure.png)\n\n",
+     "\n\\begin{{figure}}\\caption{{The {e}}}\\end{{figure}}\n", None),
+    ("key", "\n\n![By `{n}`](figure.png)\n\n",
+     "\n\\begin{{figure}}\\caption{{By \\texttt{{{e}}}}}\\end{{figure}}\n", None),
+    ("snake", "[the portal][{n}]\n\n[{n}]: https://example.org\n\n", "words ", None),
+    ("digits", "{n} ", "{e} ", None),
+)  # fmt: skip
+#: The first part of a drawn name: a word of the prose, so that `dose_qab` reads as code
+#: writes one and `doseQab` as camelCase.
+_CODE_WORDS = ("dose", "age", "event", "site", "onset", "week")
+
+
+def _code_tag(index: int) -> str:
+    """A tag of letters only, one for each place, so that no two names are the same."""
+    return "q" + chr(ord("a") + index // 26) + chr(ord("a") + index % 26)
+
+
+@st.composite
+def code_names(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, list[list[Any]]]]:
+    """A Markdown file and a LaTeX file with a name in every place of `CODE_NAME_PLACES`, in
+    an order drawn, under a title that holds one too and above a reference list that does;
+    the names the analysis and the dictionary give; and what G14 finds in each file, as
+    `[name, kind, where, line]`, kind `key`, `variable` or `snake`. Every place is in every
+    example, so that a rule broken for one is seen whatever the seed."""
+    order = draw(st.permutations(range(len(CODE_NAME_PLACES))))
+    words = draw(st.lists(st.sampled_from(_CODE_WORDS), min_size=len(order) + 2,
+                          max_size=len(order) + 2))  # fmt: skip
+    between = draw(st.lists(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3),
+                            min_size=len(order), max_size=len(order)))  # fmt: skip
+    stage = draw(st.sampled_from((None, "drafting", "submission")))
+    # A key in code in the title and in the reference list, where nothing is read.
+    unread = f"{words[-2]}.n_qzx"
+    keys, labels, kept = {unread}, {}, set()
+    title, typed_unread = f"{words[-1]}_qzy", unread.replace("_", chr(92) + "_")
+    markdown = f"---\ntitle: The {title} `{unread}`\n---\n\n# Results\n\n"
+    latex = (f"\\documentclass{{article}}\n\\title{{The {title.replace('_', chr(92) + '_')} "
+             f"\\texttt{{{typed_unread}}}}}\n"
+             "\\begin{document}\n\\section{Results}\n")  # fmt: skip
+    found: dict[str, list[list[Any]]] = {"markdown": [], "latex": []}
+    for place, (index, sentence) in enumerate(zip(order, between, strict=True)):
+        kind, typed, tex, where = CODE_NAME_PLACES[index]
+        word, tag = words[place], _code_tag(index)
+        name = {"key": f"{word}.n_{tag}", "dotted key": f"{word}.{tag}",
+                "results key": f"{word}.n_{tag}", "camel variable": f"{word}{tag.capitalize()}",
+                "plain variable": tag, "digits": f"{20 + index}_{40 + index}"}.get(
+                    kind, f"{word}_{tag}")  # fmt: skip
+        if kind in ("key", "dotted key", "results key"):
+            keys.add(name)
+        elif kind.endswith("variable"):
+            labels[name] = f"Label {tag}"
+        elif kind == "kept":
+            kept.add(name)
+        reported = "results." + name if kind == "results key" else name
+        what = "key" if "key" in kind else "variable" if "variable" in kind else "snake"
+        escaped = name.replace("_", "\\_")
+        for form, template in (("markdown", typed), ("latex", tex)):
+            text = markdown if form == "markdown" else latex
+            text += " ".join(sentence).capitalize() + " "
+            piece = template.format(n=name, e=escaped)
+            at = len(text) + min(piece.find(spelt) for spelt in (name, escaped, reported)
+                                 if spelt in piece) if where else 0  # fmt: skip
+            text += piece + "were kept.\n"
+            if where:
+                found[form].append([reported, what, where, text.count("\n", 0, at) + 1])
+            if form == "markdown":
+                markdown = text
+            else:
+                latex = text
+    cited = f"{words[-2]}_qzz"
+    markdown += f"\n# References\n\nSmith J. The {cited} and `{unread}` paper. 2019.\n"
+    latex += ("\\begin{thebibliography}{1}\n\\bibitem{a} The "
+              f"{cited.replace('_', chr(92) + '_')} and \\texttt{{{typed_unread}}} paper.\n"
+              "\\end{thebibliography}\n\\end{document}\n")  # fmt: skip
+    given = {"markdown": markdown, "latex": latex, "keys": sorted(keys), "labels": labels,
+             "kept": sorted(kept), "stage": stage}  # fmt: skip
+    return given, found
+
+
 #: What G6 finds in a LaTeX document (`gates/writing.py`), each `{}` a word on a line of its
 #: own: a claim with a citation command beside it is supported, and one in a comment is no
 #: claim; a phrase G6 reports is found in prose and not in a comment; and a placeholder is found
@@ -10036,6 +10160,13 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "code names": st.one_of(
+        code_names().map(lambda drawn: drawn[0]),
+        st.tuples(texts(TERMS), latex_texts()).map(lambda drawn: {
+            "markdown": drawn[0], "latex": drawn[1], "keys": ["ror.point", "case.n_cases"],
+            "labels": {"age_group": "Age group", "R_0": "Reproduction number"}, "kept": [],
+            "stage": None}),
+    ),  # fmt: skip
     "reply numbers": texts(NOTATED),
     "quoted": texts(),
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),

@@ -47,9 +47,12 @@ from typing import TYPE_CHECKING
 import yaml
 
 from manuscript_guard.contracts._schema import read_text
+from manuscript_guard.contracts.dictionary import load_dictionary
 from manuscript_guard.contracts.project import PAPER_FILE, Project
+from manuscript_guard.contracts.results import Results, load_results
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates import glossary
+from manuscript_guard.gates.code_names import Names, Prose, judge_code_names
 from manuscript_guard.gates.notation import judge_notation
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
 from manuscript_guard.gates.scripts import judge_scripts
@@ -479,19 +482,37 @@ def _hidden(text: str) -> str:
     read in it with the headings hidden as well and every NUL made a space, which is the
     text they have always been read in. The vocabulary is read in it as it stands, so that
     a word before a listing and a word after it are not taken for neighbours."""
+    return _views(text)[0]
+
+
+def _views(text: str) -> tuple[str, str]:
+    """`_hidden(text)`, and the text of its code spans with everything else NUL, as `mask`
+    leaves them: a binding or a URL in a code span is no word of it. The code names are
+    read in the second (`gates/code_names.py`). Masked once for both."""
     masked = mask(text)
     code = code_spans(masked)
-    spans = [
-        (0, front_matter_end(text)),
-        *code,
-        *equation_spans(masked, code),
-        *(found.span() for found in _IMAGE.finditer(text)),
-    ]
+    unread = [(0, front_matter_end(text)), *(found.span() for found in _IMAGE.finditer(text))]
+    spans = [*code, *equation_spans(masked, code), *unread]
     kept = "".join(
         "\n" if char == NUL and text[index] == "\n" else char
         for index, char in enumerate(masked)
     )
-    return _hide(kept, spans)
+    return _hide(kept, spans), _set_aside(_only(masked, code), unread)
+
+
+def _only(text: str, spans: Iterable[tuple[int, int]]) -> str:
+    """`text` with all but `spans` replaced by NUL, offsets kept."""
+    chars = [NUL] * len(text)
+    for start, end in spans:
+        chars[start:end] = text[start:end]
+    return "".join(chars)
+
+
+def _set_aside(code: str, spans: Iterable[tuple[int, int]]) -> str:
+    """A view of the code spans with `spans` hidden too: where G14 reads no sentence, the
+    front matter, an image's caption, a LaTeX figure, the preamble and the reference list, it
+    reads no code either (round 1 of #575)."""
+    return _hide(code, spans) if code else code
 
 
 @dataclass(frozen=True)
@@ -864,6 +885,9 @@ class _File:
     #: The text the spelling is read in: `printed` less the sections whose wording is
     #: somebody else's, the ones `_QUIET` finds.
     spelt: str = ""
+    #: The text of the code spans, everything else NUL, which the code names are read in
+    #: beside `printed`.
+    code: str = ""
     starts: list[int] = field(default_factory=list)
     breaks: list[int] = field(default_factory=list)
     #: The stretch of the file this reads, where a LaTeX file is read in stretches, the text
@@ -906,7 +930,7 @@ def _file(
     abstract_title: str | None = None,
 ) -> _File:
     headings = find_headings(text)
-    hidden = _hidden(text)
+    hidden, code = _views(text)
     # A heading in capitals is not an abbreviation, and one that uses an abbreviation is
     # not where a reader expects it defined: the abbreviations are read without them.
     prose = _hide(hidden, (_heading_span(text, heading) for heading in headings)).replace(
@@ -920,7 +944,7 @@ def _file(
         order, path, text, hidden, prose, regions,
         captions=tuple(glossary.markdown_captions(prose)),
         glossaries=tuple(glossary.sections(titled, len(text))),
-        headed=bool(headings), supplementary=supplementary,
+        headed=bool(headings), supplementary=supplementary, code=code,
     )  # fmt: skip
 
 
@@ -942,6 +966,7 @@ def _assembled(
     definitions = [*_definitions(prose), *listed]
     restating = frozenset(at for at, _short, _long in definitions
                           if _restates(captions, glossaries, at))  # fmt: skip
+    more["code"] = _set_aside(more.get("code", ""), references)
     return _File(
         order=order,
         path=path,
@@ -978,7 +1003,7 @@ def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
                 breaks=whole.breaks, stretch=(start, end), typed=source.text,
                 unread=tuple(span for span in whole.unread if start <= span[0] < end),
                 captions=whole.captions, glossaries=whole.glossaries,
-                supplementary=supplementary,
+                supplementary=supplementary, code=_hide(whole.code, outside),
             ))  # fmt: skip
     return files
 
@@ -999,11 +1024,13 @@ class _LatexFile:
     #: Where its captions' text runs, and its glossaries' bodies.
     captions: tuple[tuple[int, int], ...] = ()
     glossaries: tuple[tuple[int, int], ...] = ()
+    #: The text of its code, `\\verb` and `\\texttt`, as the reader masks it, NUL elsewhere.
+    code: str = ""
 
 
 def _latex_file(source: Source, supplementary: bool, abstract_title: str | None) -> _LatexFile:
     from manuscript_guard.text.latex.views import bindings, markdown_view
-    from manuscript_guard.text.latex.words import words
+    from manuscript_guard.text.latex.words import _preamble, words
 
     seen = words(source)
     titles = [(heading.start, max(heading.end, heading.start))
@@ -1025,6 +1052,8 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
         glossaries=tuple(glossary.sections(
             [(heading.start, max(heading.end, heading.start), heading.level, heading.title)
              for heading in source.reading.headings], len(source.text))),
+        code=_set_aside(_only(source.reading.masked, source.reading.code),
+                        [*_preamble(source.reading), *source.reading.figures]),
     )  # fmt: skip
 
 
@@ -1329,12 +1358,18 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
     )
 
 
-def check_language(project: Project, stage: str | None = None) -> Report:
-    """The four readings of the manuscript: its abbreviations, the terms it keeps to,
-    its spelling and its notation; and where its prose is in a script none of them reads.
-    `stage` is the one `check` runs at, which decides only whether `no-headings` is said."""
+def check_language(
+    project: Project, stage: str | None = None, results: Results | None = None
+) -> Report:
+    """The five readings of the manuscript: its abbreviations, the terms it keeps to, its
+    spelling, its notation and the names from its code; and where its prose is in a script
+    none of them reads. `stage` is the one `check` runs at, which decides whether
+    `no-headings` is said and whether a name from the code fails. `results` are the
+    analysis's, read from the project where they are not given."""
     files = _read(project)
     passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
+    prose = [Prose(file.path, file.text, file.printed, file.code, file.line_of)
+             for file in files]  # fmt: skip
     # A contributions statement names its roles as CRediT spells them and a funding
     # statement is worded by the funder, so the spelling is read without those sections.
     # The vocabulary is read in them: a term the author gave up is the author's there too.
@@ -1348,11 +1383,23 @@ def check_language(project: Project, stage: str | None = None) -> Report:
         )
         # A P value in an acknowledgement is the author's, so this one reads them all.
         .merge(judge_notation(passages))
+        .merge(judge_code_names(prose, _code_names(project, results), stage))
         # And where the prose is in a script none of the readings is written for, said once
         # for each file, which a LaTeX file read in stretches is again here.
         .merge(judge_scripts(_whole(files)))
         .merge(_not_read(files))
     )
+
+
+def _code_names(project: Project, results: Results | None) -> Names:
+    """The names the code-name reading looks for: the keys of the results, the labels of
+    the dictionary's variables by their names, and the words the paper keeps. A dictionary
+    that cannot be read gives no names here; G12 reports what is wrong with it."""
+    if results is None:
+        results, _report = load_results(project.path("results"))
+    dictionary, _report = load_dictionary(project)
+    labels = {} if dictionary is None else {v.name: v.label for v in dictionary.variables}
+    return Names(frozenset(results.values), labels, frozenset(project.code_names_kept))
 
 
 def _whole(files: list[_File]) -> list[Passage]:

@@ -27344,6 +27344,56 @@ def test_a_space_typed_on_one_side_of_a_sign_is_caught(project: Path) -> None:
     ]
 
 
+def code_name_findings(root: Path, stage: str | None = None) -> list[tuple[str, int | None, str]]:
+    from manuscript_guard.gates import check_language
+
+    report = check_language(load_project(root)[0], stage)
+    return [(f.severity, f.line, f.message.split("'")[1])
+            for f in report.findings if f.code == "code-name-in-prose"]  # fmt: skip
+
+
+def test_a_draft_written_from_the_script_s_side_is_caught(project: Path) -> None:
+    """A results key without its braces, a variable of the dictionary and a word with
+    underscores, each in a sentence; the dictionary's variable in a code span too. Warned
+    while the paper is drafted, failed at submission."""
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    edited = text.replace(old, old + " The ror.point held in each age_group, and the "
+                          "hr_adj_main model agreed; see `age_group` in Table 1.")  # fmt: skip
+    assert edited != text
+    main_md(project).write_text(edited, encoding="utf-8")
+    line = line_of(edited, "Several limitations")
+    assert code_name_findings(project) == [
+        ("warn", line, "ror.point"), ("warn", line, "age_group"), ("warn", line, "hr_adj_main")
+    ]  # fmt: skip
+    assert {severity for severity, _l, _n in code_name_findings(project, "submission")} == {
+        "fail"
+    }
+
+
+def test_a_code_name_in_the_supplement_is_caught(project: Path) -> None:
+    supplement = next((project / "manuscript" / "supplementary").glob("*.md"))
+    text = supplement.read_text(encoding="utf-8")
+    supplement.write_text(text + "\nCodes were mapped by report_id.\n", encoding="utf-8")
+    assert [name for _s, _l, name in code_name_findings(project)] == ["report_id"]
+
+
+def test_a_code_name_where_the_prose_is_not_is_not_read(project: Path) -> None:
+    """A binding, a citation key, a link to a file, a path, maths, a comment and a listing:
+    none of them is printed as a word of the paper."""
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    edited = text.replace(
+        old,
+        old + " The {{results.case.n_cases}} cases ([script](analysis/01_disproportionality.py),"
+        " analysis/01_disproportionality.py, $x_i$) <!-- hr_adj_main --> were kept, as "
+        "`tbl_summary` shows.\n\n```python\nage_group = 1\n```\n",
+    )
+    assert edited != text
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert code_name_findings(project) == []
+
+
 # --------------------------------------------------------------------------------------
 # A language pass that changed more than the words. `check` passes each of these: both
 # bounds are bindings that resolve, a sentence with one citation fewer is a sentence, and a

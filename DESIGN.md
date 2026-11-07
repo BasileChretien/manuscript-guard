@@ -6032,8 +6032,9 @@ wrote is not. Until 2026-10-14 nothing held that line: the header of a filed rea
 "Nothing else here is yours to edit", and turning a `major` into `minor`, rewording a finding
 or deleting it made it stop binding, with nothing in `check` to say so. A reading now carries
 `reading_sha256`, a digest over the verdict, the summary, the rejection tests and each
-finding's `id`, `severity`, `where` and `finding`, and its `ask` where it has one,
-serialised as a co-author item is. The
+finding's `id`, `severity`, `where` and `finding`, and its `ask`, `edits` and `quote` where
+it has them, with the record's `quotes` where it has one, serialised as a co-author item
+is. The
 answers (`resolution`, `resolved_on`, `overridden`) are not in it, and neither is
 `file_sha256`, which the review-panel skill tells a reader to trim to the files they read.
 G11 computes it again and reports `reading-altered` where it differs, as it reports the rest
@@ -6189,6 +6190,71 @@ reconciliation of the Methods with the code, so the prompt asks a reader to say 
 numbers and tables already reported cannot answer it, and an open major finding that asks
 for one says so. The ask is the reader's, and sealed with the reading where it is given:
 only there, so that every record sealed before findings could ask keeps its seal.
+
+## A finding quotes what it is about
+
+The measurement below, "What the panel finds of the defects we know", gave a reader only the
+paper's title and abstract, and that reader raised all four defects the example's first
+panel had found, nearly always as major: 5.9 major findings a reading, against 1.8 and 1.7
+from the readers of the whole paper. A finding raised is no evidence that the paper was
+read. Nothing compared a finding with the manuscript: its `where` was free text, often
+null, and a record kept the digests of the files read and none of their words. Item 1 of
+the plan of 2026-11-06 is the answer, and Basile took its four decisions that day, and four
+more on 2026-11-07, each as recommended.
+
+**A finding gives `quote`**: at least four words copied from the manuscript, from the place
+the finding is about, or, for something missing, the heading of the section where it
+belongs. The prompt asks every reader of the manuscript for one, and `review_reply` takes
+it, null or blank read as left out. The quote is the reader's, sealed with the reading
+where it is given, so every record sealed before it keeps its seal and is read as before
+(D1.4).
+
+**It is looked for once, when the reading is filed** (D1.3), in what the reading read:
+`review --run` in the manuscript as each model was sent it, file by file, with its values
+and tables printed (`Material.texts`); `review --seal` in the files whose digests a reading
+filed by hand carries, as they are written, front matter and comments out, and as the build
+prints them, since a person may have read either. `review --record` writes no findings, so
+a hand-filed reading's quotes are complete only when it is sealed, and are looked for then.
+Where a file the reading carries has changed since its digest was taken, what it read is
+not there to read again: no check is made, the seal is written all the same, and it says
+so. Checking at `check` instead would read the text against the results of the day, which
+the file digests do not cover: a model's quote of a number it was sent stops standing when
+the analysis is run again.
+
+**A quote is found as G7 finds a passage in a work's source** (`gates.quotations.words_in`,
+which `literature/passages.py` uses too): white space, curly quotes, dashes and ligatures
+folded by `normalise`, as whole words, so "nalysed" is no part of "analysed", and piece by
+piece in order where words are left out with "...". Markdown's marks of emphasis and code,
+a table's cell walls and a heading's hashes are no words, and are taken out of both sides
+first (`anchoring.plain`), since a model is sent the Markdown and a person copies from
+Word. **A quote anchors with four words or more, or as a heading's whole title** (Basile,
+2026-11-07): a word or two is found in any paper, and the example's abstract opens its
+paragraphs with a bold "Methods." that is no heading. A heading is matched with its number
+("2.1") and a closing stop set aside; a word of it is not its title. Words of a script
+written without spaces are counted as G7 counts the words beside a value.
+
+**What was found is kept**, as `quotes: {anchored: [...], unanchored: [...]}` at the end of
+the record, before the seal, and sealed with it where given: a finding made anchored by
+hand is `reading-altered`, and `review --seal` refuses a reading that already holds
+`quotes`. A model must quote and a person may not (D1.2), so a model's finding with no
+quote is unanchored, and filed: its reply is not refused, since nothing paid for is thrown
+away for a missing field (Basile, 2026-11-07, as with an empty `edits`). A person's
+finding with no quote is in neither list. G11 reads the lists of a reading whose seal holds,
+never the text, and passes over any id that is no finding of it.
+
+**Unanchored findings are counted apart and still answered** (D1.1). `check` gives
+`review_findings_anchored` and `review_findings_unanchored`, and a reading with unanchored
+findings is a note, `finding-unanchored`, naming them, at every stage: the reading is
+sealed, so a warning would be one its author could never clear (Basile, 2026-11-07). An
+open major finding that is unanchored says so, `[unanchored]`, and blocks a submission as
+any other: an unanchored finding may still be right, and the author answers it. `review`
+gives each reading's counts beside its findings, and `review --run` each reading's as it is
+filed. A design round reads the plan, and its readers are not asked to quote: a quote one
+gives is kept and sealed, and looked for nowhere (Basile, 2026-11-07; Known gaps).
+
+The next piece, not built: once findings quote sentences, findings of different readers
+that quote the same sentence can be put together without a model, so that `review` can
+show how many readers raised each.
 
 ## A reading may suggest the wording, and the author decides it in Word
 
@@ -16510,6 +16576,34 @@ Open, recorded as each change landed:
   every record written before seals existed is unsealed until somebody seals it, with
   whatever it then says. The file's history in git is the witness for all of these, and
   `check` does not read it.
+- **A quote found shows that the words are in the manuscript, not that the finding is about
+  them, nor that it is right.** A blank reader that quotes its abstract for a finding about
+  the Methods is anchored; so is any finding a reader backs with four words of the paper,
+  however little they bear on it. And what is found is only as wide as the reading of
+  `anchoring.py` (item 1 of 2026-11-06):
+  - The title is sent from `paper.yaml` and printed from the front matter, and neither is
+    looked in, so a quote of the title is unanchored; so is one of an abstract kept in the
+    front matter, which the request leaves out with it.
+  - A citation is sent and searched as the source writes it, `[@key]`, so a person quoting
+    a sentence from the built document across "(Smith 2020)" is unanchored unless the
+    citation is left out with "...". LaTeX is searched as it is sent, its commands in: a
+    quote across `\textit{a} b` is unanchored, and words in a `%` comment of a hand-filed
+    reading's source are found.
+  - A LaTeX manuscript is printed as whole documents, so a hand-filed reading that carries
+    some of its files is held to their source only.
+  - A heading is found by its whole title, its number and a closing stop set aside: a title
+    the reader shortened, or numbered otherwise, is unanchored.
+  - A model's reading filed by hand, by an agent reading a remit itself (route A), is read
+    as a person's: a finding in it that quotes nothing is in neither list. The skill tells
+    such a reader to quote.
+  - `review --seal` prints the values of the results as they are when it runs, which the
+    reading's file digests do not cover: an analysis run again between `review --record`
+    and the seal moves the printed numbers a quote is looked for in.
+  - Like the seal, `quotes` catches an edit, not a forger: a reading unsealed, its
+    `quotes` taken out and its quotes rewritten, is sealed again on what it then says.
+  - A design round's quotes are kept, sealed and not looked for: its readers are not asked
+    to quote the plan (Basile, 2026-11-07). Closed by asking them to, and checking their
+    quotes against the plan as it was sent, as a manuscript round's are.
 - **`review --seal` goes on its own, and is not told so of every flag.** It refuses
   `--record`, `--record-figure`, `--providers`, `--run` and `--dry-run`. `--digest` with it
   is answered first and nothing is sealed, and `--verdict`, `--summary`, `--by`, `--remit`,

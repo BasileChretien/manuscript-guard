@@ -117,6 +117,22 @@ the seal. A model's reading is sealed when it is filed; one written by hand is s
 once its findings are in, with `manuscript-guard review --seal <reviewer> --round <n>`
 (and `--reading <who>` for a named reading).
 
+**Each finding quotes what it is about.** A reader given only the title and abstract raised
+every defect the example's first panel found, so a finding is no evidence that the paper was
+read. A finding gives `quote`: at least four words copied from the manuscript, or for
+something missing the heading of the section where it belongs. When the reading is filed,
+each quote is looked for in what the reader read: by `review --run` in the manuscript as
+each model was sent it, its values printed, and by `review --seal` in the files whose
+digests the reading carries, as they are written and as the build prints them. It is found
+as G7 finds a quote in a source, whatever the white space, curly quotes, dashes and
+Markdown's marks, as whole words and in order where words are left out with "...". What was
+found is kept as `quotes`, sealed with the reading. `check` and `review` count the anchored
+and unanchored findings apart, and a reading with unanchored findings is a note
+(`finding-unanchored`) at every stage; an unanchored major finding is still to be answered.
+A model must quote, so its finding with no quote is unanchored; a person may leave one out.
+Where a file the reading read has changed before it is sealed, the quotes are not looked
+for, and the seal says so. A design round's readers are not asked to quote.
+
 **A finding can carry the wording it asks for, and you decide it in Word.** A finding may
 hold `edits`: the manuscript's words as they stand (`old`, enough of them to appear once in
 its prose) and the words to put in their place (`new`). Every model is offered this, ten

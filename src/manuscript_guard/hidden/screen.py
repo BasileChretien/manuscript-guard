@@ -150,6 +150,11 @@ def _pdf(path: Path) -> Reading:
     #576: a small PDF can give text of any length)."""
     _bytes(path, MAX_ARCHIVE_BYTES)  # its size and its kind, before a reader is run on it
     text, cut = _pdf_text(path)
+    if not text.strip():
+        # A page scanned as a picture gives no text, and a damaged one none either: neither
+        # is a PDF that hides nothing (round 2 of #576).
+        raise UnsafeDocument(f"{path.name} gives no text to read (a scanned page, or a "
+                             "damaged or encrypted file)")  # fmt: skip
     unread = (f"the PDF's text past the {_size(MAX_TEXT_BYTES)} read",) if cut else ()
     return Reading(path, tuple(text_items(text, path.name, "the PDF's text")), unread)
 
@@ -163,28 +168,40 @@ def _pdf_text(path: Path) -> tuple[str, bool]:
     limit and stopped there, in `PDF_SECONDS`; else as `literature.sources` reads one."""
     exe = shutil.which("pdftotext")
     if exe is None:
-        from manuscript_guard.literature.sources import UnreadableSource, read_in_reading_order
-
-        try:
-            text = read_in_reading_order(path)
-        except UnreadableSource as exc:
-            raise UnsafeDocument(str(exc)) from exc
-        return text[:MAX_TEXT_BYTES], len(text) > MAX_TEXT_BYTES
+        return _pdf_text_without(path)
+    stopped = threading.Event()
     try:
-        running = subprocess.Popen([exe, "-enc", "UTF-8", str(path), "-"],
-                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)  # fmt: skip
+        with subprocess.Popen([exe, "-enc", "UTF-8", str(path), "-"],
+                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as running:
+            timer = threading.Timer(PDF_SECONDS, lambda: (stopped.set(), running.kill()))
+            timer.start()
+            try:
+                data = running.stdout.read(MAX_TEXT_BYTES + 1) if running.stdout else b""
+                cut = len(data) > MAX_TEXT_BYTES
+                if cut:
+                    running.kill()
+                running.wait()
+            finally:
+                timer.cancel()
     except OSError as exc:
         raise UnsafeDocument(f"{path.name}: pdftotext could not be run ({exc})") from exc
-    timer = threading.Timer(PDF_SECONDS, running.kill)
-    timer.start()
-    try:
-        data = running.stdout.read(MAX_TEXT_BYTES + 1) if running.stdout else b""
-    finally:
-        running.kill()
-        running.wait()
-        timer.cancel()
-    cut = len(data) > MAX_TEXT_BYTES
+    if stopped.is_set():
+        raise UnsafeDocument(f"{path.name}: pdftotext took more than {PDF_SECONDS} "
+                             "seconds")  # fmt: skip
+    if not cut and running.returncode != 0:
+        # Refused by pdftotext: read as a stored source is, pypdf's way (round 2 of #576).
+        return _pdf_text_without(path)
     return data[:MAX_TEXT_BYTES].decode("utf-8", errors="replace"), cut
+
+
+def _pdf_text_without(path: Path) -> tuple[str, bool]:
+    from manuscript_guard.literature.sources import UnreadableSource, read_in_reading_order
+
+    try:
+        text = read_in_reading_order(path)
+    except UnreadableSource as exc:
+        raise UnsafeDocument(str(exc)) from exc
+    return text[:MAX_TEXT_BYTES], len(text) > MAX_TEXT_BYTES
 
 
 def _mail(path: Path, data: bytes) -> Reading:
@@ -198,8 +215,12 @@ def _mail(path: Path, data: bytes) -> Reading:
 
 
 def _parts_of_mail(path: Path, message) -> Reading:
-    found = text_items(str(message.get("subject", "")), path.name, "the subject")
+    subject = str(message.get("subject", ""))
     unread: list[str] = []
+    if len(subject) > MAX_TEXT_BYTES:
+        unread.append(f"the subject: past the {_size(MAX_TEXT_BYTES)} of text read")
+        subject = ""
+    found = text_items(subject, path.name, "the subject")
     for number, part in enumerate(message.walk(), start=1):
         if part.is_multipart():
             continue

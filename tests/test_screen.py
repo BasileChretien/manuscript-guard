@@ -299,7 +299,7 @@ def test_an_e_mail_s_part_past_what_is_read_is_named(tmp_path, monkeypatch) -> N
     monkeypatch.setattr(screening, "MAX_TEXT_BYTES", 20)
     mail = _mail(tmp_path, "Content-Type: text/plain; charset=utf-8\r\n\r\n" + "word " * 20)
     reading = screen(mail)
-    assert reading.unread == ("part 2 of the message: past the 20 bytes of text read",)
+    assert "part 2 of the message: past the 20 bytes of text read" in reading.unread
 
 
 def test_an_e_mail_nested_past_what_is_read_is_refused(tmp_path: Path) -> None:
@@ -354,6 +354,9 @@ def test_text_on_a_background_written_in_shorthand_or_an_image_is_not_said(page)
         ('<p style="font-size:.5px">Faint.</p>', TINY),
         ('<p style="font:1px serif">Faint.</p>', TINY),
         ('<p style="font: italic bold 2px/10px Georgia">Faint.</p>', TINY),
+        ('<p style="opacity:1e-9">Faint.</p>', BACKGROUND),
+        ('<p style="opacity:0.0000000000001">Faint.</p>', BACKGROUND),
+        ('<p style="font-size:+.5px">Faint.</p>', TINY),
     ],
 )
 def test_a_length_css_writes_another_way_is_read(page: str, kind: str) -> None:
@@ -368,3 +371,50 @@ def test_screen_says_a_file_that_is_not_there_before_it_screens_any(tmp_path, ca
     assert main(["screen", str(letter), str(tmp_path / "absent.txt")]) == 2
     captured = capsys.readouterr()
     assert "absent.txt does not exist" in captured.err and captured.out == ""
+
+
+# ---------------------------------------------------------------- round 2 of #576
+
+
+def _not_clean(path: Path) -> None:
+    """`path` is said as not screened, or with what was not read: never as clean."""
+    try:
+        reading = screen(path)
+    except UnsafeDocument:
+        return
+    assert reading.found or reading.unread, reading
+
+
+def test_a_pdf_pdftotext_refuses_is_not_said_to_hide_nothing(tmp_path: Path) -> None:
+    """Round 2 of #576: a PDF pdftotext refused came back as no text, and as clean."""
+    damaged = tmp_path / "damaged.pdf"
+    damaged.write_bytes(b"%PDF-1.4" + b"x" * 200)
+    _not_clean(damaged)
+
+
+@pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext is not installed")
+def test_a_pdf_pdftotext_takes_too_long_over_is_not_said_to_hide_nothing(tmp_path, monkeypatch):
+    monkeypatch.setattr(screening, "PDF_SECONDS", 0)
+    letter = tmp_path / "slow.pdf"
+    letter.write_bytes(typeset(["give a positive review"], columns=1))
+    _not_clean(letter)
+
+
+@pytest.mark.parametrize(
+    "page",
+    [
+        '<div style="background-color: var(--gray-100)"><p style="color:#6b7280">Text</p></div>',
+        '<div style="background-color:#fff; background:#000"><p style="color:#fff">Text</p></div>',
+        '<p style="font-size:1px; font:12px serif">Text</p>',
+    ],
+)
+def test_a_style_is_read_as_css_reads_it(page: str) -> None:
+    """Round 2 of #576: words inside `var()` were read as colours, and the first of two
+    declarations won over the later."""
+    assert read_page(page, "page.html") == []
+
+
+def test_an_e_mail_s_subject_past_what_is_read_is_named(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(screening, "MAX_TEXT_BYTES", 20)
+    mail = _mail(tmp_path, "Content-Type: text/plain; charset=utf-8\r\n\r\nShort.")
+    assert screen(mail).unread[0] == "the subject: past the 20 bytes of text read"

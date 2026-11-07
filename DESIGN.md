@@ -14795,7 +14795,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
     time on some broken input, and before 3.13 refuses some, which is said as not read.
   - A PDF is read for the words of its text, as a stored source is read: what it hides by
     its colour, its size, its drawing mode or its place is found only where its words are
-    words to a model, and an image's text is not read. An e-mail is read as an `.eml`, its
+    words to a model, and an image's text is not read. Its text is read as far as 8 MB, from
+    `pdftotext` in 60 seconds; without it, pypdf's text is taken whole and then cut, and a
+    PDF that gives no text, a scanned one among them, is said as not read. An e-mail is
+    read as an `.eml`, its
     attachments named and not read. A text or an HTML file of more than 8 MB is not read,
     nor a file of any other kind, an image, a `.doc`, an RTF: `screen` says so and exits 1.
   - Words to a model are those of `to_a_model` in `data/ai_writing.yaml`, in English. They

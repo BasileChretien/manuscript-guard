@@ -67,9 +67,12 @@ _ATTRIBUTES = {"alt": "a picture's alternative text", "title": "an element's tit
                "aria-label": "a label read aloud", "content": "a meta element's content",
                "placeholder": "a field's placeholder", "value": "a field's value"}  # fmt: skip
 #: A number as CSS writes one, with a digit before its point or not, and its unit.
-_LENGTH = re.compile(r"(-?(?:[0-9]{1,7}(?:\.[0-9]{1,12})?|\.[0-9]{1,12}))"
-                     r"\s*(px|pt|em|rem|%)?")  # fmt: skip
+_LENGTH = re.compile(r"([+-]?(?:[0-9]{1,7}(?:\.[0-9]{1,30})?|\.[0-9]{1,30})"
+                     r"(?:[eE][+-]?[0-9]{1,3})?)\s*(px|pt|em|rem|%)?")  # fmt: skip
 #: A colour inside a shorthand: written as a hexadecimal, a function or a word.
+#: A function of CSS that names no colour itself, `var(--gray-100)`, whose words are
+#: not colours (round 2 of #576).
+_OTHER_FUNCTION = re.compile(r"\b(?!(?:rgb|hsl)a?\()[a-zA-Z][a-zA-Z0-9-]*\([^)]{0,200}\)")
 _COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}\b|(?:rgb|hsl)a?\([^)]{0,80}\)|[a-zA-Z]+")
 _NO_SIZE = re.compile(r"0(?:px|pt|em|rem|%)?")
 _UNITS = {"px": 0.75, "pt": 1.0}
@@ -152,7 +155,8 @@ def _looked(parent: _Look, tag: str, attributes: dict[str, str]) -> _Look:
     if opacity is not None and opacity.group(2) in (None, "%"):
         share = float(opacity.group(1)) / (100 if opacity.group(2) == "%" else 1)
         look = replace(look, opacity=look.opacity * min(1.0, max(0.0, share)))
-    sized = style.get("font-size") or _font_size(style.get("font", ""))
+    later = _later(style, "font", "font-size")
+    sized = _font_size(later) if later == style.get("font") else later
     if sized and (points := _points(sized, look.points)) is not None:
         look = replace(look, points=points)
     return look
@@ -165,7 +169,7 @@ def _colour_in(value: str) -> tuple[RGB, float] | None:
     whole = parse(value)
     if whole is not None:
         return whole
-    return next((found for word in _COLOUR.findall(value)
+    return next((found for word in _COLOUR.findall(_OTHER_FUNCTION.sub(" ", value))
                  if (found := parse(word)) is not None), None)  # fmt: skip
 
 
@@ -175,13 +179,20 @@ def _behind(style: dict[str, str], attributes: dict[str, str], behind: RGB | Non
     painted = " ".join((style.get("background", ""), style.get("background-image", "")))
     if "url(" in painted or "gradient(" in painted:
         return None
-    colour = _colour_in(style.get("background-color") or style.get("background")
+    colour = _colour_in(_later(style, "background-color", "background")
                         or attributes.get("bgcolor") or "")  # fmt: skip
     if colour is None or colour[1] <= 0 or behind is None and colour[1] < 1:
         return behind
     rgb, alpha = colour
     under = behind or WHITE
     return tuple(c * alpha + b * (1 - alpha) for c, b in zip(rgb, under, strict=True))
+
+
+def _later(style: dict[str, str], first: str, second: str) -> str:
+    """The value of whichever of two properties a style declares last, as the later
+    declaration wins in CSS (round 2 of #576), or "" where it declares neither."""
+    named = [name for name in style if name in (first, second)]
+    return style[named[-1]] if named else ""
 
 
 def _font_size(font: str) -> str:

@@ -8644,6 +8644,139 @@ def summary_claim_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, str], set
     )
 
 
+#: Each kind of sentence a paper's sections hold, and what G8 makes of it when it reads the
+#: paper's interpretation (`gates/interpretation.py`): counted (True), read and resting on a
+#: result or a citation (False), or not read at all (None). Every kind is in every example.
+INTERPRETATION_KINDS = {
+    "results, bare": True, "discussion, bare": True, "limitations under the discussion": True,
+    "an anchor of the methods only": True,
+    "results, bound": False, "discussion, bound to the literature": False,
+    "discussion, pointing at a display": False, "discussion, cited": False,
+    "discussion, cited in narrative": False,
+    "discussion, cited against its stop": False,
+    "discussion, a citation opening the next sentence": True,
+    "discussion, no word of the ladder": None, "discussion, a look-alike of the ladder": None,
+    "abstract": None, "introduction": None, "methods": None,
+    "a conclusion under the discussion": None, "a limitations section of its own": None,
+    "a heading of the results": None,
+    "the supplement's results": True, "the supplement's discussion": True,
+    "the supplement's methods": None,
+}  # fmt: skip
+#: The kinds that write a second sentence after the first, the citation between them typed
+#: against the first's stop or after a space (round 1 of #578), and what G8 makes of it.
+INTERPRETATION_SECONDS = {
+    "discussion, cited against its stop": True,
+    "discussion, a citation opening the next sentence": False,
+}  # fmt: skip
+#: What looks like a word of the ladder and is not read as one (`UNCLAIMED`).
+LADDER_UNCLAIMED = ("drug-induced", "cause-specific", "an increased", "the associated",
+                    "a reduced", "the predicted")  # fmt: skip
+#: Headings of a supplement over its Discussion: the innermost heading that names the
+#: Methods, the Results or the Discussion decides.
+SUPPLEMENT_DISCUSSION = (
+    "# Supplementary discussion", "## eDiscussion 2", "# Appendix S2: Discussion",
+    "# S4. Discussion", "# Supplementary methods\n\nThe data were given.\n\n## eDiscussion 1",
+)  # fmt: skip
+
+
+@st.composite
+def interpretation_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, bool | None]]:
+    """A paper with an Abstract, an Introduction, Methods, Results and a Discussion, its
+    Discussion with a Limitations and a Conclusions of its own and a Limitations section
+    after it, and a file of its supplement, holding a sentence of each kind of
+    `INTERPRETATION_KINDS`; each sentence tagged with a word of its own ("t07"), in an order
+    drawn each time, run on in its paragraph or on lines of its own, the abstract structured
+    or not; the heading of the Results that claims is followed by a blank line or not. And
+    what G8 makes of each tag."""
+    tags = iter(f"t{at:02d}" for at in range(100))
+    rungs = tuple(kind for kind in CLAIMED if isinstance(kind, int))
+    parts: dict[str, list[str]] = {name: [] for name in (
+        "abstract", "introduction", "methods", "results", "discussion", "limitations",
+        "conclusions", "own limitations")}  # fmt: skip
+    supplement: list[str] = []
+    expected: dict[str, bool | None] = {}
+    heading = ""
+
+    def said(tag: str, claimed: list[str], *, after: str = "") -> str:
+        tokens = [draw(st.sampled_from(_PLAIN))]
+        for claim in [*claimed, tag]:
+            tokens += [claim, draw(st.sampled_from(_PLAIN))]
+        text = " ".join(tokens) + (f" {after}" if after else "")
+        return text[0].upper() + text[1:] + "."
+
+    for kind in draw(st.permutations(tuple(INTERPRETATION_KINDS))):
+        tag = next(tags)
+        expected[tag] = INTERPRETATION_KINDS[kind]
+        ladder = [draw(st.sampled_from(CLAIMED[draw(st.sampled_from(rungs))]))]
+        where = kind.split(",")[0]
+        if kind == "results, bound":
+            sentence = said(tag, ladder, after=f"({{{{results.{tag}}}}})")
+        elif kind == "discussion, bound to the literature":
+            sentence = said(tag, ladder, after=f"({{{{lit.background.{tag}}}}})")
+        elif kind == "discussion, pointing at a display":
+            sentence = said(tag, ladder, after=f"(Figure {{{{ref.figure.{tag}}}}})")
+        elif kind == "discussion, cited":
+            sentence = said(tag, ladder, after=f"[@fictional{tag}2020]")
+        elif kind == "discussion, cited in narrative":
+            plain = said(tag, ladder)
+            sentence = f"As @fictional{tag}2020 found, {plain[0].lower()}{plain[1:]}"
+        elif kind in INTERPRETATION_SECONDS:
+            second = next(tags)
+            expected[second] = INTERPRETATION_SECONDS[kind]
+            after = said(second, [draw(st.sampled_from(CLAIMED[draw(st.sampled_from(rungs))]))])
+            if kind == "discussion, cited against its stop":
+                # One group or two, with or without a space between (round 2 of #578).
+                cited = draw(st.sampled_from((f"[@fictional{tag}2020]",
+                                              f"[@fictional{tag}2020] [@other{tag}2021]",
+                                              f"[@fictional{tag}2020][@other{tag}2021]")))
+                sentence = f"{said(tag, ladder)}{cited} {after}"
+            else:
+                sentence = f"{said(tag, ladder)} [@fictional{second}2020] {after[0].lower()}"
+                sentence += after[1:]
+        elif kind == "an anchor of the methods only":
+            where, sentence = "discussion", said(tag, ladder, after=f"{{{{method.{tag}}}}}")
+        elif kind == "discussion, no word of the ladder":
+            other = draw(st.sampled_from(("hedge", "limit", "negation")))
+            sentence = said(tag, [draw(st.sampled_from(CLAIMED[other]))])
+        elif kind == "discussion, a look-alike of the ladder":
+            sentence = said(tag, [draw(st.sampled_from(LADDER_UNCLAIMED))])
+        elif kind.startswith("the supplement's"):
+            headings = {"results": SUPPLEMENT_RESULTS, "discussion": SUPPLEMENT_DISCUSSION,
+                        "methods": SUPPLEMENT_OTHER}[kind.split()[-1]]  # fmt: skip
+            supplement.append(f"{draw(st.sampled_from(headings))}\n\n{said(tag, ladder)}")
+            continue
+        elif kind == "a heading of the results":
+            heading = said(tag, ladder)[:-1] + draw(st.sampled_from(("\n\n", "\n")))
+            continue
+        else:
+            sentence = said(tag, ladder)
+            where = {"limitations under the discussion": "limitations",
+                     "a conclusion under the discussion": "conclusions",
+                     "a limitations section of its own": "own limitations"}.get(kind, where)
+        parts[where].append(sentence)
+
+    def run(sentences: list[str]) -> str:
+        order = draw(st.permutations(sentences))
+        return "".join(one + draw(st.sampled_from((" ", "\n"))) for one in order).rstrip()
+
+    cut = draw(st.integers(0, len(parts["results"])))
+    results = (f"{run(parts['results'][:cut])}\n\n## {heading}{run(parts['results'][cut:])}"
+               if cut else f"## {heading}{run(parts['results'])}")  # fmt: skip
+    abstract = run(parts["abstract"])
+    if draw(st.booleans()):
+        abstract = f"## Background\n\nReports were given.\n\n## Results\n\n{abstract}"
+    limits = draw(st.sampled_from(("Limitations", "Strengths and limitations")))
+    return (
+        f"# Abstract\n\n{abstract}\n\n# Introduction\n\n{run(parts['introduction'])}\n\n"
+        f"# Methods\n\n{run(parts['methods'])}\n\n# Results\n\n{results}\n\n"
+        f"# Discussion\n\n{run(parts['discussion'])}\n\n## {limits}\n\n"
+        f"{run(parts['limitations'])}\n\n## Conclusions\n\n{run(parts['conclusions'])}\n\n"
+        f"# Limitations\n\n{run(parts['own limitations'])}\n",
+        "\n\n".join(draw(st.permutations(supplement))) + "\n",
+        expected,
+    )
+
+
 #: Each way a post may say the paper is out, or seem to, and whether `said_published`
 #: reads it as this paper said out (round 2 of #470). Every kind is in every example.
 PUBLISHED_KINDS = {
@@ -10327,6 +10460,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "summary claims": summary_claim_papers().map(
         lambda drawn: {"text": drawn[0], "supplement": drawn[1], "same": drawn[2]}
+    ),
+    "interpretation sentences": interpretation_papers().map(
+        lambda drawn: {"text": drawn[0], "supplement": drawn[1]}
     ),
     "boxes": box_papers().map(lambda drawn: drawn[0]),
     "communicate anchors": st.one_of(

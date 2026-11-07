@@ -14769,7 +14769,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   - A header or a footer is printed where a section shows it, and a note where the text
     cites it. Words to a model the document prints somewhere count as printed wherever
     else they stand, so their copy in a note nobody cites, or in the properties, only
-    warns.
+    warns. Each section is read alone: a header it inherits from the section before is
+    taken as not shown, so words to a model there fail where Word prints them; and a header
+    named only by a section's old properties (`w:sectPrChange`), or a note cited only from
+    a tracked deletion, is taken as shown, so words there only warn.
   - An equation's text, and a chart's or a diagram's, is read one element at a time as
     text no reader sees: words to a model there fail although they are printed, and an
     equation's formatting is not read. Pandoc writes an empty group, `{}`, as a zero-width

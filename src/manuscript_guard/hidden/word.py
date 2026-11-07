@@ -69,7 +69,7 @@ QUOTED = 160
 #: How much of a document's XML, besides the parts that hold its text, is read.
 READ_AT_MOST = 2 * MAX_PART_BYTES
 #: A size as `w:sz` writes it: half-points, or points with `pt` after them.
-_SIZE = re.compile(r"([0-9]{1,6}(?:\.[0-9]{1,4})?)(pt)?")
+_SIZE = re.compile(r"([+-]?[0-9]{1,6}(?:\.[0-9]{1,4})?)(pt)?")
 #: How much of a paragraph's opening words say where it is.
 _OPENING = 60
 
@@ -386,14 +386,17 @@ def _story(root: ET.Element, part: str, look: _Look, printed_said: set[str]) -> 
     section shows it (round 1 of #574)."""
     label, printed = _STORIES[root.tag]
     shown = look.shown
-    notes = [note for note in root if note.tag in _NOTES]
-    if notes:
+    if any(child.tag in _NOTES for child in root):
         found: list[Hidden] = []
-        for note in notes:
-            number = note.get(f"{W}id", "")
-            cited = shown.notes is None or (note.tag, number) in shown.notes
-            found += _items(_paragraphs(note, look), f"{label}, note {number}", part,
-                            printed and cited, printed_said)  # fmt: skip
+        # Each note as the text cites it, and what stands beside the notes as unprinted: a
+        # part holding one note left the rest of it unread (round 2 of #574).
+        for child in root:
+            number = child.get(f"{W}id", "")
+            cited = shown.notes is None or (child.tag, number) in shown.notes
+            named = (f"{label}, note {number}" if number else f"{label}, a note"
+                     ) if child.tag in _NOTES else label  # fmt: skip
+            found += _items(_paragraphs(child, look), named, part,
+                            printed and cited and child.tag in _NOTES, printed_said)  # fmt: skip
         return found
     if root.tag in (f"{W}hdr", f"{W}ftr") and shown.parts is not None:
         printed = part in shown.parts

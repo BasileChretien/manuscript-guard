@@ -4114,12 +4114,13 @@ This section fixes what each list holds, and what none of them reads:
 - an absence of evidence, "there is no evidence that", which a result says of its own
   analysis ("no evidence that the effect differed by sex") as often as of the literature;
 - "for the first time", unless a verb of reporting (show, report, describe, demonstrate,
-  identify, reveal, establish) stands before it in the same clause, at most six words away,
-  with commas and "here" among them allowed ("we show here, for the first time, that"), or the
-  paper as subject ("we", "our", "this study" and the rest of the subjects above) stands right
-  after it, a comma allowed between ("for the first time, we"); so not "patients treated for
-  the first time", "patients we saw for the first time" or "patients seen for the first time
-  this year";
+  identify, reveal, establish) stands before it in the same clause, at most six words before
+  it, any words counting and commas allowed ("we show here, for the first time, that"; "we
+  show in this cohort for the first time"), a clause ending at a stop, a semicolon, a colon
+  or "that", "which", "who", "whom", "where" or "when"; or the paper as subject ("we", "our",
+  "this study" and the rest of the subjects above) stands right after it, a comma allowed
+  between ("for the first time, we"). So not "patients treated for the first time",
+  "patients we saw for the first time" or "patients seen for the first time this year";
 - a "first" that names a part of the study: its first visit, period, dose, phase, wave or
   line of treatment;
 - "novel" and "new" alone, which name a class of drug ("novel oral anticoagulants") or a
@@ -4139,9 +4140,9 @@ the preamble is read, since the printed view puts it under Abstract, as the clas
 a Markdown manuscript writes its Abstract as a section, as G4 reads it, and an `abstract:`
 field of its front matter is refused (`front-matter-abstract`, G2), so it never reaches a
 document. The claim is the sentence the match is in, its words as written, and for LaTeX as
-the printed view gives them, citations as `[@key]`, as `citing_documents` gives a cited
-sentence; those words, folded (`statement_words`, which folds the citations away), are what an
-entry is matched by.
+the printed view gives them (a `\cite` as `[@key]`, a `\citet` as a narrative `@key`), as
+`citing_documents` gives a cited sentence. Those words folded by `statement_words`, which drops
+a bracketed citation group and keeps a narrative `@key`, are what an entry is matched by.
 Case is folded, and a line break inside a phrase is a space. A sentence is one claim, of the
 first list that reads it: `priority`, then `absence`, then `softer`. Its finding stands on the
 line its paragraph starts on, as G7's findings on a cited sentence do, and names the words
@@ -4186,8 +4187,9 @@ numbered and sealed as currency's are, with two steps of their own:
   publication type. Each source keeps `references.search_limit` works (ten) and its count,
   and each work kept goes into the works store as S2's and S3's do, so that the reader reads
   it there.
-- **N2, forward from the nearest.** The reader names the work nearest the claim, one N1
-  found or one the manuscript cites, and OpenAlex is asked for the works that cite it,
+- **N2, forward from the nearest.** The reader names the work nearest the claim, as a rule
+  one N1 found or one the manuscript cites, though `--forward` takes any work by its DOI or
+  PMID and does not check it, and OpenAlex is asked for the works that cite it,
   newest first (`filter=cites:W…`, `sort=publication_date:desc`), as S1 asks for the reviews
   citing a cited work, but of every type. The record keeps the work as `seed`, and OpenAlex is
   asked for it by its DOI or else its PMID (`/works/doi:…`, `/works/pmid:…`). A seed OpenAlex
@@ -4314,9 +4316,10 @@ references.bib, has a novelty claim beside it, with no cited work, whose steps a
 The hook asks before an agent runs `references --novelty ... --not-a-claim` or `references
 --hand-search`, as it asks before `--refuse`, and before `references --novelty ... --id` puts
 a sentence into an entry that carries a person's `not_a_claim`, which would make the new
-sentence no claim, as it asks before `--mark ... --id` moves an entry a person decided. What leaves the machine is what currency's
-searches send: the terms and the identifiers of works, for N2 the seed's DOI. No sentence of
-the manuscript is sent.
+sentence no claim, as it asks before `--mark ... --id` moves an entry a person decided.
+
+What leaves the machine is what currency's searches send: the terms and the identifiers of
+works, for N2 the seed's DOI or PMID. No sentence of the manuscript is sent.
 
 ### The skill
 
@@ -21716,8 +21719,9 @@ Open, recorded as each change landed:
   - `--id` keeps an entry's searches whatever the new sentence says, so an agent can move a
     search onto another claim. The hook asks only where the entry carries a person's
     `not_a_claim`.
-  - "For the first time" is read by a window of six words after a verb of reporting, so
-    "patients reported for the first time" warns, and a verb seven words before it is not
+  - "For the first time" is read by a window of six words after a verb of reporting, whatever
+    the verb is said of, so "patients reported for the first time" and "cases described in
+    Japan were treated for the first time" warn, and a verb seven words before it is not
     seen.
   - A search five months old passes at submission, though a study published since is not in
     it.

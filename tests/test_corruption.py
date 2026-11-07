@@ -10191,6 +10191,8 @@ _READS_LATEX = (
     "check_statement_sources", "check_recycling", "check_quality_reported",
     # It reads a box in its LaTeX environment or under its heading (`text/boxes.py`).
     "check_boxes",
+    # It reads the AI-use statement in G4's `main_text`, and the supplement's printed view.
+    "check_ai_use",
 )  # fmt: skip
 
 

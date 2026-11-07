@@ -199,6 +199,9 @@ ROUTES: dict[str, Route] = {
     **_all("submission-pack", ("build",), "document-hides-text", "document-addresses-a-model",
            "document-unread-for-hidden-text"),
     **_all("submission-pack", None, "approval-", who="author"),
+    # The AI-use statement, drafted from what the records show; the skill asks the author
+    # for what no record can (`authors.yaml`, `ai_use`). Before `ai-`, the writing's.
+    **_all("submission-pack", ("review", "--ai-use"), "ai-use-"),
     # -- what is said of the paper outside it ---------------------------------------------
     # `communicate check` says these, never `check`: the text, the brief or the graphical
     # abstract is put right and the check run again, as the research-communication skill

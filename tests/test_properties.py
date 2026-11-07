@@ -15771,6 +15771,14 @@ def _a_results_sentence_giving_another_result_is_not_read(patch: pytest.MonkeyPa
         summary, stated, all_given) if all_given else None)  # fmt: skip
 
 
+def _a_results_sentence_giving_another_result_with_no_ladder_states(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    # Round 2 of #573: read as a sentence that states, it made "associated" a word moved up.
+    alone = reported_gate._ladder_only
+    patch.setattr(reported_gate, "_ladder_only", lambda text: alone(text) or "So.")
+
+
 def _every_heading_of_the_supplement_is_its_results(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reported_gate, "_names_supplement_results", lambda title: True)
 
@@ -16399,6 +16407,10 @@ BROKEN = {
     ),
     "a Results sentence giving another result is not read": (
         _a_results_sentence_giving_another_result_is_not_read,
+        test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence,
+    ),
+    "a Results sentence giving another result with no ladder word states": (
+        _a_results_sentence_giving_another_result_with_no_ladder_states,
         test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence,
     ),
     "every heading of the supplement is its Results": (

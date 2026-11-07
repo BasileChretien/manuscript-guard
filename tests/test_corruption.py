@@ -2799,6 +2799,29 @@ def test_a_results_sentence_that_gives_another_result_is_held_to_what_the_summar
     _swap(project, "use was associated with\nhepatic injury", "use increased\nhepatic injury")
     (found,) = _overclaimed(project)
     assert found.message.endswith(": 'associated' (association) is now 'increased' (effect)")
+    # Round 2: with its words about the other result set aside, a Results sentence that
+    # holds no word of the ladder states its number, and is compared with nothing.
+    _swap(project, "Use was associated with hepatic injury in\n", "Hepatic injury was reported in\n")
+    assert _overclaimed(project) == []
+
+
+def test_a_summary_sentence_that_negates_another_result_is_warned_a_known_gap(
+    project: Path,
+) -> None:
+    """Pinned, as DESIGN.md's Known gaps says (round 2 of #573): an Abstract sentence that
+    gives two results, one of them negated, is held to each result's Results sentence, and
+    its "not" is new against the first while its "associated" is new against the second. So
+    it is warned, though neither result is claimed more strongly than the Results claim it."""
+    _swap(project, "{{results.case.n_cases}} described\nhepatic injury with example-drug.",
+          "use was associated with\nhepatic injury in {{results.case.n_cases}} but not with the "
+          "{{results.case.n_serious}} serious ones.")  # fmt: skip
+    _swap(project, "Hepatic injury was reported in\n{{results.case.n_cases}} of these;",
+          "Use was associated with hepatic injury in\n{{results.case.n_cases}} of these.")
+    _swap(project, "{{results.case.n_serious}} were flagged as serious\n"
+          "({{results.case.pct_serious}}%).",
+          "Seriousness did not differ: {{results.case.n_serious}} were flagged as serious.")
+    (found,) = _overclaimed(project)
+    assert "each of the 2 Results sentences" in found.message, found.message
 
 
 def test_a_summary_is_held_to_the_supplement_s_results_and_the_same_quantity(

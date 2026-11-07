@@ -8292,7 +8292,8 @@ SUMMARY_CLAIM_KINDS = {
     "bare summary, ladder gone": False, "stronger than one of two": False,
     "stronger than both": True, "in the methods": False, "two keys": False,
     "in a conclusion": True, "other result hedged or negated": False,
-    "other result, moved up": True, "same quantity": True,
+    "other result, moved up": True, "other result, no ladder here": False,
+    "same quantity": True,
     "in the supplement's results": True, "in the supplement's methods": False,
 }  # fmt: skip
 #: Headings of a supplement over its Results, and over what is not its Results: the
@@ -8369,6 +8370,13 @@ def summary_claim_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, str], set
             parts["results"].append(f"{said_too} and {extra} {draw(st.sampled_from(_PLAIN))} "
                                     f"({{{{results.{other}}}}}).")  # fmt: skip
             parts["abstract"].append(said([word(rung)], [key]))
+            continue
+        elif kind == "other result, no ladder here":
+            # Its words set aside as the other result's, the sentence states its number.
+            other = next(keys)
+            parts["results"].append(f"{said([], [key])[:-1]} and {word('negation')} "
+                                    f"{draw(st.sampled_from(_PLAIN))} ({{{{results.{other}}}}}).")
+            parts["abstract"].append(said([word(max(high, 1))], [key]))
             continue
         elif kind == "other result, moved up":
             other = next(keys)

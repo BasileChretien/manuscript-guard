@@ -585,12 +585,13 @@ def _more_than(summary: str, stated: str, whole: bool) -> Finding | None:
     it ("suggests a signal" against the ratio alone; round 1 of #573). Where the sentence
     binds a result the summary does not give, its hedges, limits and negations may be about
     that one, so only a word of the ladder the summary moves up claims more (Basile,
-    2026-11-07)."""
+    2026-11-07). Such a sentence that holds no word of the ladder then states its number,
+    and is compared with nothing, as one that holds no word is (round 2 of #573)."""
     if not whole:
-        said = _ladder_only(summary)
-        if said is None:
+        said, held = _ladder_only(summary), _ladder_only(stated)
+        if said is None or held is None:
             return None
-        moved = claims.compare_pair(_ladder_only(stated) or "So.", said)
+        moved = claims.compare_pair(held, said)
         return moved if moved is not None and moved.code == claims.STRONGER else None
     moved = claims.compare_pair(stated, summary)
     if moved is None:
@@ -602,7 +603,10 @@ def _more_than(summary: str, stated: str, whole: bool) -> Finding | None:
 
 def _bare_claims_more(moved: Finding, stated: str) -> bool:
     """Whether a summary that holds no word of the claim lists claims more than `stated`, as
-    `compare_pair` found them to move: only by a hedge or a limit it dropped."""
+    `compare_pair` found them to move: only by a hedge or a limit it dropped, and only where
+    that reads as claiming more. Not where `stated` negates too, nor where it holds a word
+    of the ladder above consistency, whose claim went with the hedge (Basile, 2026-11-07,
+    round 2 of #573)."""
     held = {kind for sentence in claims.sentences(stated) for _word, kind in sentence.words}
     return moved.code == claims.STRONGER and bool(held & {claims.HEDGE, claims.LIMIT})
 

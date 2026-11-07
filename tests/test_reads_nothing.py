@@ -89,6 +89,8 @@ COMMANDS = {
                   "a PDF that gives no text, or none pdftotext is there to read, is refused, "
                   "exit 2 (tests/test_audit_pdf.py); "
                   "and an empty project holds no paper to give it"),
+    "screen": Zero("the files it is given", exits=2,
+                   argv=("screen", "{project}/no-such-letter.pdf")),
     # A version that is not there, or holds no words, is refused: there is nothing to set
     # beside the other; so is a PDF with no text, or with no pdftotext to read it.
     "compare": Zero("two versions of a paper, a PDF's text among them, and the letter and the "
@@ -272,6 +274,8 @@ LATEX = {
     "approve": ("reads", ("approve", "{project}", "--as", "Nobody Listed")),
     # It reads a `.tex` named with the files it inputs, as G2 reads them (Task 3, PR 1).
     "audit": ("reads", ("audit", "{tex}", "--against", "{project}/results")),
+    # It reads the files it is given, whatever the manuscript is written in.
+    "screen": ("no manuscript", ("screen", "{tex}")),
     # It reads a `.tex` named with the files it inputs, as the Markdown its document prints.
     "compare": ("reads", ("compare", "{tex}", "{tex}")),
     # It reads each file as G2 does and offers `\\mg{...}` (step 12).

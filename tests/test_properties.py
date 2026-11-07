@@ -107,6 +107,7 @@ from generated import (
     harvest_tables,
     help_commands,
     hidden_documents,
+    hidden_pages,
     holds,
     interval_wordings,
     keyword_paragraphs,
@@ -226,6 +227,7 @@ from manuscript_guard.gates.vocabulary import (
     own_words,
 )
 from manuscript_guard.hidden import BACKGROUND, HIDDEN, TINY, TO_A_MODEL, ZERO_WIDTH
+from manuscript_guard.hidden import html as hidden_html
 from manuscript_guard.hidden import styles as hidden_styles
 from manuscript_guard.hidden import word as hidden_word
 from manuscript_guard.hidden import words as hidden_words
@@ -8087,6 +8089,70 @@ def _words_to_a_model_are_read_with_their_zero_width_characters(
     patch: pytest.MonkeyPatch,
 ) -> None:
     patch.setattr(hidden_words, "as_read", lambda text: (text, list(range(len(text)))))
+
+
+#: How a browser keeps an element of each look of `readings.PAGE_LOOKS` from sight.
+_PAGE_KINDS = {
+    "display": HIDDEN, "attribute": HIDDEN, "visibility": HIDDEN, "off-page": HIDDEN,
+    "white": BACKGROUND, "inherited": BACKGROUND, "dark": BACKGROUND, "transparent": BACKGROUND,
+    "tiny": TINY, "tiny-inherited": TINY,
+}  # fmt: skip
+
+
+@holds(40, hidden_pages())
+def test_what_a_page_hides_is_said_where_it_matters_with_its_words(
+    described: dict[str, Any],
+) -> None:
+    """Every look of an element, in an order drawn: text too faint or too small is said,
+    each word as its kind, and text the page's layout hides is not, holding no words to a
+    model (Basile, 2026-11-07). Words to a model in a hidden element are said with it, in a
+    comment as not printed, and printed with markup inside them as printed."""
+    found = READINGS["hidden page"]()(described)
+    expected = {(_PAGE_KINDS[look], word) for look, word in described["elements"]
+                if _PAGE_KINDS.get(look, HIDDEN) != HIDDEN}  # fmt: skip
+    seen = {(kind, word) for kind, text, _printed, model in found if not model
+            for word in _RUN_WORD.findall(text)}  # fmt: skip
+    assert seen == expected, described
+    planted = described["planted"]
+    models = sorted((kind, model, printed) for kind, _text, printed, model in found if model)
+    assert models == sorted([(HIDDEN, planted["hidden"][0], False),
+                             (TO_A_MODEL, planted["comment"][0], False),
+                             (TO_A_MODEL, planted["printed"][0], True)]), described  # fmt: skip
+
+
+def _a_page_s_hiding_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(hidden_html, "_hidden_by", lambda style, attributes: "")
+
+
+def _every_hidden_element_is_said(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(hidden_html, "worth_saying", lambda kind, holds_words: True)
+
+
+def _a_page_s_colour_is_not_inherited(patch: pytest.MonkeyPatch) -> None:
+    looked = hidden_html._looked
+
+    def broken(parent, tag, attributes):
+        return looked(hidden_html._Look(hidden=parent.hidden, unshown=parent.unshown,
+                                        points=parent.points), tag, attributes)  # fmt: skip
+
+    patch.setattr(hidden_html, "_looked", broken)
+
+
+def _a_page_s_size_is_not_taken_from_its_parent(patch: pytest.MonkeyPatch) -> None:
+    points = hidden_html._points
+    patch.setattr(hidden_html, "_points", lambda value, parent: points(value, 12.0))
+
+
+def _a_page_s_comments_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    to = hidden_html._Reader._to
+
+    def broken(self, opened, ending, skip, called):
+        if called != "an HTML comment":
+            return to(self, opened, ending, skip, called)
+        closed = self.text.find(ending, opened + skip)
+        return len(self.text) if closed < 0 else closed + len(ending)
+
+    patch.setattr(hidden_html._Reader, "_to", broken)
 
 
 # ------------------------------------------------------- a response letter quoting a revision
@@ -16428,6 +16494,26 @@ BROKEN = {
     "words to a model are read with their zero-width characters in them": (
         _words_to_a_model_are_read_with_their_zero_width_characters,
         test_what_a_word_document_hides_is_found_with_its_words_and_nothing_else,
+    ),
+    "a page's hiding is not read": (
+        _a_page_s_hiding_is_not_read,
+        test_what_a_page_hides_is_said_where_it_matters_with_its_words,
+    ),
+    "every element a page hides is said": (
+        _every_hidden_element_is_said,
+        test_what_a_page_hides_is_said_where_it_matters_with_its_words,
+    ),
+    "a page's colour and background are not inherited": (
+        _a_page_s_colour_is_not_inherited,
+        test_what_a_page_hides_is_said_where_it_matters_with_its_words,
+    ),
+    "a page's font size is not taken from its parent's": (
+        _a_page_s_size_is_not_taken_from_its_parent,
+        test_what_a_page_hides_is_said_where_it_matters_with_its_words,
+    ),
+    "a page's comments are not read": (
+        _a_page_s_comments_are_not_read,
+        test_what_a_page_hides_is_said_where_it_matters_with_its_words,
     ),
     "a facet of a post is placed in characters, not bytes": (
         _a_facet_is_placed_in_characters,

@@ -95,7 +95,8 @@ keeps no backup.
 manuscript-guard import returned.docx
 ```
 
-It changes nothing and reports each paragraph:
+It first quotes what the document hides from its reader, if anything: tell the author. Then
+it changes nothing and reports each paragraph:
 
 | Reported as | Meaning |
 |---|---|

@@ -33,16 +33,15 @@ model, up to twice the limit for one part, and the parts past it are named as no
 
 from __future__ import annotations
 
-import posixpath
 import re
 from bisect import bisect_right
-from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from manuscript_guard.colour import RGB, contrast, hex_of
+from manuscript_guard.hidden.package import NOTES, Package, Shown, package_of, shown
 from manuscript_guard.hidden.styles import (
     WHITE,
     Styles,
@@ -54,8 +53,14 @@ from manuscript_guard.hidden.styles import (
     on_off,
     text_colour,
 )
-from manuscript_guard.hidden.words import Spot, to_a_model_in, worth_reading, zero_width_in
-from manuscript_guard.safexml import MAX_PART_BYTES, UnsafeDocument, open_archive, read_part
+from manuscript_guard.hidden.words import (
+    Spot,
+    printable,
+    to_a_model_in,
+    worth_reading,
+    zero_width_in,
+)
+from manuscript_guard.safexml import MAX_ARCHIVE_BYTES, UnsafeDocument, open_archive, read_part
 
 HIDDEN, BACKGROUND, TINY, ZERO_WIDTH, TO_A_MODEL = (
     "hidden", "background", "tiny", "zero-width", "to-a-model",
@@ -66,8 +71,13 @@ TINY_BELOW = 6
 CONTRAST_BELOW = 1.5
 #: How much of what a place holds a finding quotes.
 QUOTED = 160
-#: How much of a document's XML, besides the parts that hold its text, is read.
-READ_AT_MOST = 2 * MAX_PART_BYTES
+#: How much of a document's XML is read, the parts that hold its text among it: as
+#: much as an archive may hold (the security review of #574: the parts that hold the
+#: text, of any number, were read past it).
+READ_AT_MOST = MAX_ARCHIVE_BYTES
+#: The most characters of one paragraph, or one text of a part, read for the words in
+#: it: no paragraph of a paper holds as many, and reading them costs memory.
+PARAGRAPH_AT_MOST = 1_000_000
 #: A size as `w:sz` writes it: half-points, or points with `pt` after them.
 _SIZE = re.compile(r"([+-]?[0-9]{1,6}(?:\.[0-9]{1,4})?)(pt)?")
 #: How much of a paragraph's opening words say where it is.
@@ -76,10 +86,7 @@ _OPENING = 60
 _FALLBACK = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
 _WP = "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}"
 _VML = "{urn:schemas-microsoft-com:vml}"
-_RELATIONSHIPS = "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"
-_R_ID = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
-#: The notes a part holds, by the element each opens with, and the element that cites one.
-_NOTES = {f"{W}footnote": f"{W}footnoteReference", f"{W}endnote": f"{W}endnoteReference"}
+_NOTES = NOTES
 #: The parts that hold the text, by the element they open with: what each is called, and
 #: whether a reader of the printed document sees it. Comments are read in Word's margin,
 #: not in the document.
@@ -168,20 +175,11 @@ class _Page:
 
 
 @dataclass(frozen=True)
-class _Shown:
-    """The headers and footers a section shows, and the notes the text cites: None where
-    the main document could not be read, and each is then taken as shown."""
-
-    parts: frozenset[str] | None = None
-    notes: frozenset[tuple[str, str]] | None = None
-
-
-@dataclass(frozen=True)
 class _Look:
     styles: Styles
     theme: Theme
     page: _Page
-    shown: _Shown = _Shown()
+    shown: Shown = Shown()
 
 
 def _first(*elements: ET.Element | None) -> ET.Element | None:
@@ -272,7 +270,7 @@ def _vanished(run: ET.Element, style: str | None, look: _Look) -> str:
     hides, turned = look.styles.toggled("vanish", style, character)
     if not hides:
         return ""
-    named = " and ".join(f"'{name}'" for name in turned)
+    named = " and ".join(repr(name) for name in turned)
     return (f"hidden by the style {named}" if len(turned) == 1
             else f"hidden by the styles {named}" if turned
             else "hidden by the document's default formatting")  # fmt: skip
@@ -380,31 +378,36 @@ def _where(label: str, paragraph: _Paragraph) -> str:
     return f"{label}, paragraph {paragraph.number}{begins}"
 
 
-def _story(root: ET.Element, part: str, look: _Look, printed_said: set[str]) -> list[Hidden]:
+def _story(root: ET.Element, part: str, look: _Look, printed_said: set[str],
+           unread: list[str]) -> list[Hidden]:  # fmt: skip
     """What a part that holds text hides: a note at a time where it holds notes, each
     printed only where the text cites it, and a header or a footer printed only where a
     section shows it (round 1 of #574)."""
     label, printed = _STORIES[root.tag]
-    shown = look.shown
-    if any(child.tag in _NOTES for child in root):
+    seen = look.shown
+    if root.tag in (f"{W}footnotes", f"{W}endnotes"):
         found: list[Hidden] = []
-        # Each note as the text cites it, and what stands beside the notes as unprinted: a
-        # part holding one note left the rest of it unread (round 2 of #574).
+        # Each note as the text cites it, and what stands outside any note as unprinted,
+        # numbered across (round 2 of #574 and the review of its fix).
+        outside = ET.Element("outside")
         for child in root:
+            if child.tag not in _NOTES:
+                outside.append(child)
+                continue
             number = child.get(f"{W}id", "")
-            cited = shown.notes is None or (child.tag, number) in shown.notes
-            named = (f"{label}, note {number}" if number else f"{label}, a note"
-                     ) if child.tag in _NOTES else label  # fmt: skip
-            found += _items(_paragraphs(child, look), named, part,
-                            printed and cited and child.tag in _NOTES, printed_said)  # fmt: skip
-        return found
-    if root.tag in (f"{W}hdr", f"{W}ftr") and shown.parts is not None:
-        printed = part in shown.parts
-    return _items(_paragraphs(root, look), label, part, printed, printed_said)
+            cited = seen.notes is None or (child.tag, number) in seen.notes
+            named = f"{label}, note {printable(number)}" if number else f"{label}, a note"
+            found += _items(_paragraphs(child, look), named, part, printed and cited,
+                            printed_said, unread)  # fmt: skip
+        return found + _items(_paragraphs(outside, look), f"{label}, outside any note",
+                              part, False, printed_said, unread)  # fmt: skip
+    if root.tag in (f"{W}hdr", f"{W}ftr") and seen.parts is not None:
+        printed = part in seen.parts
+    return _items(_paragraphs(root, look), label, part, printed, printed_said, unread)
 
 
 def _items(paragraphs: list[_Paragraph], label: str, part: str, printed: bool,
-           printed_said: set[str]) -> list[Hidden]:  # fmt: skip
+           printed_said: set[str], unread: list[str]) -> list[Hidden]:  # fmt: skip
     found: list[Hidden] = []
     for paragraph in paragraphs:
         if not (paragraph.pieces or paragraph.gone or paragraph.codes):
@@ -414,6 +417,12 @@ def _items(paragraphs: list[_Paragraph], label: str, part: str, printed: bool,
         spans = _spans(paragraph.pieces)
         items = [Hidden(kind, where, quoted(text[start:end]), how, part, runs=runs)
                  for start, end, kind, how, runs in spans]  # fmt: skip
+        if len(text) > PARAGRAPH_AT_MOST:
+            # Its spans are said; its words, past what is read whole, are not.
+            unread.append(f"{part}: {label}, paragraph {paragraph.number}, more than "
+                          f"{PARAGRAPH_AT_MOST} characters")  # fmt: skip
+            found += items
+            continue
         found += [Hidden(ZERO_WIDTH, where, quoted(spot.said), spot.why, part)
                   for spot in zero_width_in(text)]  # fmt: skip
         ends = [end for _start, end, *_rest in spans]
@@ -442,7 +451,7 @@ def _model(spot: Spot, where: str, part: str, *, printed: bool) -> Hidden:
 def _unprinted(text: str, where: str, part: str) -> list[Hidden]:
     """What a text no reader of the document sees holds: zero-width characters inside
     words, and words to a model."""
-    if not worth_reading(text):
+    if not worth_reading(text) or len(text) > PARAGRAPH_AT_MOST:
         return []
     found = [Hidden(ZERO_WIDTH, where, quoted(spot.said), spot.why, part)
              for spot in zero_width_in(text)]  # fmt: skip
@@ -466,7 +475,7 @@ def _place(part: str, tag: str, attribute: str | None) -> str:
     named = next((said for prefix, said in _PLACES if part.startswith(prefix)), None)
     if named is not None:
         return f"{named} ({attribute or tag})"
-    return f"{part}, where the document's text is not ({attribute or tag})"
+    return f"{printable(part)}, where the document's text is not ({attribute or tag})"
 
 
 def _strings(root: ET.Element, part: str, story: bool) -> Iterator[tuple[str, str]]:
@@ -490,62 +499,8 @@ def _strings(root: ET.Element, part: str, story: bool) -> Iterator[tuple[str, st
         stack.extend((child, inside) for child in reversed(list(element)))
 
 
-def _targets(archive, names: set[str]) -> tuple[dict[str, str], dict[str, str]]:
-    """The parts the main document names for its styles, theme and settings, by kind,
-    where its relationships can be read, Word's usual names where they cannot; and the part
-    each of its relationships names, by its identifier."""
-    found = {"styles": "word/styles.xml", "theme": "word/theme/theme1.xml",
-             "settings": "word/settings.xml"}  # fmt: skip
-    links: dict[str, str] = {}
-    main = "word/document.xml"
-    try:
-        if "_rels/.rels" in names:
-            for link in read_part(archive, "_rels/.rels").iter(_RELATIONSHIPS):
-                if (link.get("Type") or "").endswith("/officeDocument"):
-                    main = posixpath.normpath((link.get("Target") or "").lstrip("/"))
-                    break
-        folder, name = posixpath.split(main)
-        rels = posixpath.join(folder, "_rels", f"{name}.rels")
-        if rels in names:
-            for link in read_part(archive, rels).iter(_RELATIONSHIPS):
-                kind = (link.get("Type") or "").rsplit("/", 1)[-1]
-                target = (link.get("Target") or "").strip()
-                if not target or link.get("TargetMode") == "External":
-                    continue
-                path = posixpath.normpath(target.lstrip("/") if target.startswith("/")
-                                          else posixpath.join(folder, target))  # fmt: skip
-                links[link.get("Id") or ""] = path
-                if kind in found:
-                    found[kind] = path
-    except UnsafeDocument:
-        pass
-    return {**found, "main": main}, links
-
-
-def _shown(main: ET.Element | None, links: dict[str, str], settings: ET.Element | None) -> _Shown:
-    """The headers and footers the sections show, and the notes the text cites: a section's
-    default header and footer, its first-page ones where it has a title page
-    (`w:titlePg`), its even-page ones where the document has them (`w:evenAndOddHeaders`)."""
-    if main is None:
-        return _Shown()
-    even = settings is not None and bool(on_off(settings.find(f"{W}evenAndOddHeaders")))
-    parts: set[str] = set()
-    for section in main.iter(f"{W}sectPr"):
-        first = bool(on_off(section.find(f"{W}titlePg")))
-        for reference in (*section.findall(f"{W}headerReference"),
-                          *section.findall(f"{W}footerReference")):  # fmt: skip
-            kind = reference.get(f"{W}type") or "default"
-            shows = kind == "default" or (kind == "first" and first) or (kind == "even" and even)
-            target = links.get(reference.get(_R_ID) or "")
-            if shows and target:
-                parts.add(target)
-    notes = {(note, cite.get(f"{W}id", "")) for note, cited in _NOTES.items()
-             for cite in main.iter(cited)}  # fmt: skip
-    return _Shown(frozenset(parts), frozenset(notes))
-
-
-def _optional(archive, name: str, names: set[str]) -> ET.Element | None:
-    if name not in names:
+def _optional(archive, name: str | None) -> ET.Element | None:
+    if name is None:
         return None
     try:
         return read_part(archive, name)
@@ -570,40 +525,33 @@ def read_hidden(path: Path) -> Reading:
     module's docstring). Raises `UnsafeDocument` where it cannot be read as a Word document
     is, or where a part that holds its text cannot."""
     with open_archive(path) as archive:
-        listed = Counter(info.filename for info in archive.infolist())
-        twice = sorted(name for name, count in listed.items() if count > 1)
-        if twice:
-            raise UnsafeDocument(
-                f"{path.name} holds two parts named {twice[0]}, and which of them Word shows "
-                "is not known"
-            )
-        names = set(listed)
-        targets, links = _targets(archive, names)
-        settings = _optional(archive, targets["settings"], names)
-        theme = Theme.read(_optional(archive, targets["theme"], names), settings)
-        main = _optional(archive, targets["main"], names)
-        look = _Look(Styles.read(_optional(archive, targets["styles"], names)), theme,
-                     _page(main, settings, theme), _shown(main, links, settings))  # fmt: skip
-        return _read_parts(path, archive, look)
+        package = package_of(archive, path.name)
+        settings = _optional(archive, package.settings)
+        theme = Theme.read(_optional(archive, package.theme), settings)
+        main = _optional(archive, package.main)
+        seen = shown(main, package.links, settings)
+        look = _Look(Styles.read(_optional(archive, package.styles)), theme,
+                     _page(main, settings, theme), seen)  # fmt: skip
+        return _read_parts(path, archive, look, package)
 
 
 def _size(count: int) -> str:
     return f"{count // 1024 // 1024} MB" if count >= 1024 * 1024 else f"{count} bytes"
 
 
-def _read_parts(path: Path, archive, look: _Look) -> Reading:
+def _read_parts(path: Path, archive, look: _Look, package: Package) -> Reading:
     found: list[Hidden] = []
-    unread: list[str] = []
+    unread: list[str] = list(package.missing)
     printed_said: set[str] = set()
     budget = READ_AT_MOST
     for info in archive.infolist():
         name = info.filename
-        if not name.lower().endswith((".xml", ".rels")):
+        named = name in package.stories
+        if not (named or name.lower().endswith((".xml", ".rels"))):
             continue
-        story = bool(_STORY_NAME.fullmatch(name))
-        if not story and info.file_size > budget:
-            unread.append(f"{name}: past the {_size(READ_AT_MOST)} read of the parts that "
-                          "hold no text")  # fmt: skip
+        story = named or bool(_STORY_NAME.fullmatch(name))
+        if info.file_size > budget:
+            unread.append(f"{name}: past the {_size(READ_AT_MOST)} of XML read")
             continue
         try:
             root = read_part(archive, name)
@@ -612,13 +560,22 @@ def _read_parts(path: Path, archive, look: _Look) -> Reading:
                 raise
             unread.append(f"{name}: {exc}")
             continue
-        if not story:
-            budget -= info.file_size
+        budget -= info.file_size
         is_story = root.tag in _STORIES
+        if story and not is_story:
+            # A Strict document, which Word opens, or no Word part at all: its text is not
+            # read as Word's, and is not to be taken as hiding nothing (the security review
+            # of #574).
+            unread.append(f"{name}: it opens with {root.tag}, not an element Word's text "
+                          "is read from here (a document in the Strict form, or no "
+                          "document of Word's)")  # fmt: skip
         if is_story:
-            found += _story(root, name, look, printed_said)
+            found += _story(root, name, look, printed_said, unread)
         for text, where in _strings(root, name, is_story):
+            if len(text) > PARAGRAPH_AT_MOST:
+                unread.append(f"{name}: {where}, more than {PARAGRAPH_AT_MOST} characters")
+                continue
             found += _unprinted(text, where, name)
     found = [replace(item, printed=True) if _also_printed(item, printed_said) else item
              for item in found]  # fmt: skip
-    return Reading(path, tuple(found), tuple(unread))
+    return Reading(path, tuple(found), tuple(printable(why) for why in unread))

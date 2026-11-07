@@ -22,6 +22,7 @@ from pathlib import Path
 
 from manuscript_guard.findings import FAIL, WARN, Finding, Report
 from manuscript_guard.hidden import TO_A_MODEL, Hidden, read_hidden
+from manuscript_guard.hidden.words import printable
 from manuscript_guard.safexml import UnsafeDocument
 
 GATE = "BUILD"
@@ -53,10 +54,10 @@ _HINT_PRINTED = (
 
 def _said(item: Hidden) -> str:
     if item.kind == TO_A_MODEL:
-        return f"{item.where}: {item.how}: {item.text!r}"
+        return printable(f"{item.where}: {item.how}: {item.text!r}")
     model = "; its words are addressed to a model" if item.model else ""
     what = _WHAT.get(item.kind, "{how}").format(how=item.how)
-    return f"{item.where}: {what}: {item.text!r}{model}"
+    return printable(f"{item.where}: {what}: {item.text!r}{model}")
 
 
 def _finding(item: Hidden, path: Path) -> Finding:
@@ -75,7 +76,8 @@ def check_hidden_text(path: Path) -> Report:
         reading = read_hidden(path)
     except UnsafeDocument as exc:
         unread = Finding(gate=GATE, code=UNREAD, severity=FAIL, path=path,
-                         message=f"{path.name} could not be read for hidden text: {exc}",
+                         message=printable(f"{path.name} could not be read for hidden "
+                                           f"text: {exc}"),
                          hint="rebuild it; a document that cannot be read is not sent")  # fmt: skip
         return Report((unread,))
     findings: list[Finding] = []

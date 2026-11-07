@@ -14783,15 +14783,23 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
     are read a paragraph at a time, so words split across two paragraphs are not found, nor
     words spelt with letters of another script that look the same ("іgnore" with a
     Cyrillic і).
-  - Of the invisible characters, the five zero-width ones are read inside a Latin, Greek or
+  - Of the invisible characters, the five zero-width ones are said inside a Latin, Greek or
     Cyrillic word, and tag characters anywhere: the marks that turn the direction of text
     (U+202A to U+202E, U+2066 to U+2069), the invisible operators of mathematics (U+2061 to
-    U+2064) and variation selectors are not.
+    U+2064) and variation selectors are not said. Words to a model are read with every
+    character that prints nothing taken out, and in their compatibility form (NFKC), so
+    neither splits them; letters of another script that look alike still do.
+  - A document in the Strict form of ISO/IEC 29500, which Word opens, is not read: its parts
+    are named as not read, and the build does not send it. Parts are found as the packaging
+    conventions name them, percent-escapes decoded and in any case; where the main
+    document names two styles parts, the first is read.
   - A fallback copy Word keeps for older readers is read for words to a model one element
     at a time, not as text; pictures, embedded files and a part Word imports as HTML
-    (`altChunk`) are not read; and of the parts that hold no text, twice the limit of one
-    part is read, the rest named as not read. A built document with a part not read is
-    not to be sent.
+    (`altChunk`) are not read; of a document's XML, as much as an archive may hold (80 MB)
+    is read, and a paragraph or a text of more than a million characters is read for what
+    hides it but not for its words, each named as not read. A built document with
+    anything not read is not to be sent. A hostile document within those limits can still
+    take minutes to read.
 - **Checking a declared input reads the whole file into memory.** Before input digests
   normalised line endings they were streamed; a 300 MB CSV now peaks at about 1.2 GB while G1
   checks it. The R emitter peaks at about twenty times the file (600 MB for a 28 MB CSV), since

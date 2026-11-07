@@ -46,6 +46,14 @@ _SCRIPTS = frozenset({"LATIN", "GREEK", "CYRILLIC"})
 _SPACE = re.compile(r"\s+")
 #: Two words with any space between them, a tab or a line break among them.
 _TWO_WORDS = re.compile(r"\S\s+\S")
+#: The characters that print nothing and are no format character either, which Unicode
+#: says to pass over where they cannot be shown (Default_Ignorable_Code_Point): a
+#: grapheme joiner, the Hangul fillers, the variation selectors, the Mongolian free
+#: variation selectors.
+_IGNORABLE = frozenset(chr(code) for code in (
+    0x034F, 0x115F, 0x1160, 0x17B4, 0x17B5, 0x180B, 0x180C, 0x180D, 0x180F, 0x3164, 0xFFA0,
+    *range(0xFE00, 0xFE10), *range(0xE0100, 0xE01F0),
+))  # fmt: skip
 #: How much of a word a reason quotes.
 _WORD_SHOWN = 60
 
@@ -145,16 +153,26 @@ def _inside_a_word(written: str, start: int, end: int) -> Spot:
 
 def as_read(text: str) -> tuple[str, list[int]]:
     """`text` as a model reads it, and where each of its characters came from in `text`:
-    zero-width characters and soft hyphens taken out, tag characters read as their letters,
-    and each run of spaces one space."""
+    every character that prints nothing taken out (a format character, U+200B and the
+    other zero-width ones, the soft hyphen and the marks of direction among them, and
+    those Unicode says to pass over), tag characters read as their letters, each
+    character in its compatibility form (NFKC: a full-width letter as the letter), and
+    each run of spaces one space (the security review of #574: a mark of direction
+    inside a word, or full-width letters, hid the words from the rules)."""
     out: list[str] = []
     origin: list[int] = []
     for at, character in enumerate(text):
-        if character in ZERO_WIDTH or character == SOFT_HYPHEN:
-            continue
         if _is_tag(character):
             character = _spelt(character)
             if not character:
+                continue
+        elif ord(character) > 0x7F:
+            if character in _IGNORABLE or unicodedata.category(character) == "Cf":
+                continue
+            character = unicodedata.normalize("NFKC", character)
+            if len(character) != 1:
+                out.extend(character)
+                origin.extend([at] * len(character))
                 continue
         if character.isspace():
             if out and out[-1] == " ":
@@ -178,6 +196,19 @@ def to_a_model_in(text: str) -> list[Spot]:
             spots.append(Spot(origin[match.start()], origin[match.end() - 1] + 1, rule,
                               _SPACE.sub(" ", match.group(0)).strip(), why))  # fmt: skip
     return sorted(spots, key=lambda spot: (spot.start, spot.end))
+
+
+def printable(text: str) -> str:
+    """`text` with each character that does not print written as its escape: a control
+    character, a format character, a line or paragraph separator. What a file names, a
+    part, a style, a note, is said with it, so that it cannot move a terminal's cursor,
+    turn the direction of the text or start a line of its own (the security review of
+    #574)."""
+    if text.isprintable():
+        return text
+    return "".join(character if character.isprintable()
+                   else character.encode("unicode_escape").decode("ascii")
+                   for character in text)  # fmt: skip
 
 
 def worth_reading(text: str) -> bool:

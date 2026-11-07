@@ -103,7 +103,7 @@ CLEAN: list[tuple[str, str]] = [
     ("text", "  numerical provenance"),
     ("text", "    checked:     G2, G3, G7, G8: 0 failing, 1 warning"),
     ("soft", "  ..."),
-    ("ok", "0 failing, 13 warnings"),
+    ("ok", "0 failing, 14 warnings"),
 ]
 
 #: The edit the demo shows, read from `CARD`: the number typed, the binding it replaced, and

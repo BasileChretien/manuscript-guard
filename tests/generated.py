@@ -3585,6 +3585,9 @@ FINDING_QUOTES = {
     "a link's text": "anchored",
     "a subscript as Word prints it": "anchored",
     "heading opening with a year": "anchored",
+    "half a link as written": "anchored",
+    "lettered heading retyped without its point": "anchored",
+    "lettered heading without its number": "unanchored",
     "file not read": "unanchored",
     "one word between elisions": "unanchored",
     "heading without its year": "unanchored",
@@ -3667,6 +3670,7 @@ def finding_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, str
     headings: dict[str, list[str]] = {}
     label = f"Label{next(counted)}."
     dated = f"{word().capitalize()} {word()}"
+    lettered, supplied = word().capitalize(), f"{word().capitalize()} {word()}"
     for name in ("main.md", "supplementary/S1.md", "other.md"):
         parts, kept, titles = [], [], []
         for section in range(draw(st.integers(2, 3))):
@@ -3681,7 +3685,11 @@ def finding_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, str
         if name == "main.md":
             parts.append(f"**{label}** " + joined([word() for _ in range(6)]))
             # A year opens this heading's title: it is no section's number.
-            parts += [f"## 2019 {dated}", joined([word() for _ in range(6)])]
+            parts += [f"## 2019 {dated}", joined([word() for _ in range(6)]),
+                      f"## B12 {lettered}", joined([word() for _ in range(6)])]
+        if name == "supplementary/S1.md":
+            # A lettered number with its point, which a reader may retype without.
+            parts += [f"## S1. {supplied}", joined([word() for _ in range(6)])]
         files[name] = "\n\n".join(parts) + "\n"
         paragraphs[name], headings[name] = kept, titles
 
@@ -3739,6 +3747,14 @@ def finding_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, str
             return f"2019 {dated}"
         if kind == "heading without its year":
             return dated
+        if kind == "half a link as written":
+            # The words before the link and its opening one, as a model was sent them.
+            words = draw(st.sampled_from(main))
+            return " ".join(words[_LINKED[0] - 3 : _LINKED[0] + 1])
+        if kind == "lettered heading retyped without its point":
+            return f"S1 {supplied}"
+        if kind == "lettered heading without its number":
+            return lettered
         if kind == "file not read":
             return " ".join(taken("other.md", draw(st.integers(4, 8))))
         if kind == "word changed":

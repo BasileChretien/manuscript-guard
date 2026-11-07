@@ -16601,7 +16601,7 @@ Open, recorded as each change landed:
     two digits or dotted, so a title that opens with a small number of its own, "3 drugs
     compared", is read as numbered, and "drugs compared" anchors (round 1 of #581); after a
     letter it needs its point, so "S1 Code lists" keeps "S1" and a quote of "Code lists" is
-    unanchored (round 2).
+    unanchored (round 2); a lettered number is matched with its point or without it.
   - Only pieces of two words or more count towards the four, and two common words are found
     in almost any paper too: "of the ... in the" anchors (round 2 of #581). The threshold is
     Basile's, chosen in round 1.

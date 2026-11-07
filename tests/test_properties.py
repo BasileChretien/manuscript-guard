@@ -16516,6 +16516,20 @@ def _a_script_is_read_as_written(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(anchoring, "_SCRIPTS", re.compile(r"(?!)(.)(.)"))
 
 
+def _a_quote_is_read_as_printed_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    read_of = anchoring.read_of
+    patch.setattr(anchoring, "read_of", lambda texts, *, latex=False: dataclasses.replace(
+        read_of(texts, latex=latex), written=()))  # fmt: skip
+
+
+def _a_lettered_number_s_point_must_be_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    patch.setattr(anchoring, "_POINT", re.compile(r"(?!)(.)"))
+
+
 def _any_number_opening_a_title_is_a_section_s(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import anchoring
 
@@ -16623,6 +16637,14 @@ BROKEN = {
     ),
     "a sub- or superscript is looked in as it is written": (
         _a_script_is_read_as_written,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a quote is read only as it is printed, not as it was written": (
+        _a_quote_is_read_as_printed_only,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a lettered section's number must be quoted with its point": (
+        _a_lettered_number_s_point_must_be_typed,
         test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
     ),
     "any number opening a heading's title is a section's": (

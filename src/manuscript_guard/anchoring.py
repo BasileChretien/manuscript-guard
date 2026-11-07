@@ -11,8 +11,10 @@ filed by hand carries, as they are written and as the build prints them.
 **Found as G7 finds a passage in a work's source** (`gates.quotations.words_in`): folded as
 G7 folds a quote, its white space, curly quotes, dashes and ligatures, as whole words, and
 piece by piece in order where words are left out. Markdown's marks of emphasis, code and
-tables are no words, and come out of both sides first, with what pandoc prints otherwise
-than it is written: a link's text, a sub- or superscript and its dashes. **A quote holds at
+tables are no words, and come out of both sides first; each side is then read as pandoc
+prints it, a link as its text, a sub- or superscript as what it holds, its dashes as a
+dash, and as it is written, and a quote stands where either reading is in the same reading
+of a text. **A quote holds at
 least `QUOTE_WORDS` words, or is the whole title of a heading there**: a word or two is
 found in any paper, and the example's abstract has a bold "Methods." in its first
 paragraph. Of a quote with words left out, only the pieces of two words or more count.
@@ -55,6 +57,8 @@ _DASHES = re.compile(r"-{2,}")
 _NUMBER = re.compile(
     r"^(?:\d{1,2}(?:\.\d+)*\.?|[a-z]\d{1,2}(?:(?:\.\d+)+\.?|\.)|\d+(?:\.\d+)+\.?)\s+"
 )
+#: The point after a lettered section's number, "S1.", which a reader may leave out.
+_POINT = re.compile(r"^([a-z]\d{1,2}(?:\.\d+)*)\.(?=\s)")
 #: The fewest words a piece of a quote with words left out holds for it to count.
 _PIECE_WORDS = 2
 #: What may close a heading or a quote of one, "Methods." or "Methods:".
@@ -65,8 +69,7 @@ def plain(text: str) -> str:
     """`text` without the marks Markdown sets around words: emphasis, code, a table's cell
     walls and a heading's hashes; a link as its text, a sub- or superscript as what it
     holds, and a pandoc dash as one hyphen, as Word prints them (round 1 of #581)."""
-    text = _LINK.sub(r"\1", _HASHES.sub("", text))
-    return _written(_DASHES.sub("-", _SCRIPTS.sub(r"\2", text)))
+    return _written(_DASHES.sub("-", _SCRIPTS.sub(r"\2", _LINK.sub(r"\1", text))))
 
 
 def _written(text: str) -> str:
@@ -75,11 +78,13 @@ def _written(text: str) -> str:
     return _CELLS.sub(" ", _MARKS.sub("", _HASHES.sub("", text)))
 
 
-def _title(text: str) -> str:
-    """A heading's title, or a quote of one, as the two are compared: folded, and without
-    the section's number or a closing stop."""
+def _titles(text: str) -> set[str]:
+    """A heading's title, or a quote of one, as the two are compared: folded, without a
+    closing stop, and without the section's number or with it, a lettered one's point
+    aside ("S1 Code lists" is "S1. Code lists", the fix-only round of #581)."""
     folded = normalise(plain(text)).lower().strip(_CLOSING)
-    return _NUMBER.sub("", folded).strip(_CLOSING)
+    return {title for title in (_NUMBER.sub("", folded).strip(_CLOSING),
+                                _POINT.sub(r"\1", folded)) if title}  # fmt: skip
 
 
 def words(quote: str) -> int:
@@ -115,7 +120,7 @@ def read_of(texts: Iterable[str], *, latex: bool = False) -> Read:
         found |= set(_headings(text, latex))
     return Read(
         texts=tuple(normalise(plain(text)).lower() for text in texts),
-        titles=frozenset(title for title in map(_title, found) if title),
+        titles=frozenset(title for heading in found for title in _titles(heading)),
         written=tuple(normalise(_written(text)).lower() for text in texts),
     )
 
@@ -138,7 +143,7 @@ def stands(quote: str, read: Read) -> bool:
     words or more that stand there as words of their own, in one of its texts: read as
     printed in the text as printed, or as written in the text as written, so that half a
     link copied as it was sent stands too (round 2 of #581)."""
-    if _title(quote) in read.titles:
+    if _titles(quote) & read.titles:
         return True
     if words(quote) < QUOTE_WORDS:
         return False

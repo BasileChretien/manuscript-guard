@@ -140,6 +140,12 @@ def test_what_pandoc_prints_otherwise_stands_as_word_prints_it(written: str, quo
     assert stands(written, written)
 
 
+def test_a_heading_s_hashes_come_off_once() -> None:
+    """The fix-only round of #581: `plain` took them off twice, and `## #1 ranked` lost its
+    own `#`."""
+    assert anchoring.plain("## #1 ranked drug") == "#1 ranked drug"
+
+
 @pytest.mark.parametrize(
     "written, quoted",
     [
@@ -166,6 +172,9 @@ def test_part_of_a_link_or_a_script_as_written_stands(written: str, quoted: str)
         ("## S1. Code lists", "Code lists", True),
         ("## B12 deficiency", "Deficiency", False),
         ("## T2 diabetes outcomes", "diabetes outcomes", False),
+        ("## B12 deficiency", "B12 deficiency", True),
+        ("## S1. Code lists", "S1 Code lists", True),
+        ("## S1 Code lists", "S1. Code lists", True),
     ],
 )
 def test_a_section_s_number_is_one_or_two_digits_or_dotted(

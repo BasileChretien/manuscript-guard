@@ -3501,6 +3501,95 @@ def passage_files(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[int, str]
     return {"text": text, "entries": [entry for entry, _n in entries]}, [n for _e, n in entries]
 
 
+#: Each way a cited sentence may claim against the passage recorded for it, and what G7
+#: tells of it (item 2 of the plan of 2026-11-06): more, a negation gone or new among it, a
+#: move both ways, or nothing. Two are of passages not compared, each with its sentence
+#: claiming more: one not in its work's source, and one whose sentence was reworded since.
+#: One whose sentence is recorded in capitals is the manuscript's sentence, and is compared
+#: as the manuscript writes it; one whose sentence the manuscript writes twice is told at
+#: each (round 1 of #571).
+PASSAGE_CLAIMS = {
+    "as strong": None, "synonyms": None, "look-alikes": None,
+    "hedge gone": "passage-claim-stronger", "hedge new": None,
+    "limit gone": "passage-claim-stronger", "limit new": None,
+    "negation gone": "passage-claim-stronger", "negation new": "passage-claim-stronger",
+    "up": "passage-claim-stronger", "down": None, "both ways": "passage-claim-moved",
+    "not in its source": None, "sentence reworded": None,
+    "recorded in capitals": "passage-claim-stronger", "written twice": "passage-claim-stronger",
+}  # fmt: skip
+
+
+@st.composite
+def passage_claims(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[int, str]]]:
+    """A manuscript of cited sentences, each its own paragraph among drawn text, an entry of
+    `passages.yaml` for each with its passage, and each work's stored source, which holds
+    the passage among words of its own; with each entry, its sentence's number and the kind
+    of `PASSAGE_CLAIMS` it is.
+
+    Every kind in each example, so that a rule broken for one of them fails under any seed,
+    in an order drawn each time, the words around each claim drawn again for the sentence.
+    A kind of a passage not compared has a sentence that claims more than it, and one
+    recorded in capitals claims more by its hedge gone beside a word of the ladder above
+    consistency: read as recorded, no word of it is read, and the two moved both ways."""
+    rungs = tuple(kind for kind in CLAIMED if isinstance(kind, int))
+    noise = texts().map(lambda text: text.replace("<!--", "<!-"))
+
+    def word(kind: str | int) -> str:
+        return draw(st.sampled_from(CLAIMED[kind]))
+
+    def said(claims_: list[str]) -> str:
+        tokens = [draw(st.sampled_from(_PLAIN))]
+        for claim in claims_:
+            tokens += [claim, draw(st.sampled_from(_PLAIN))]
+        return " ".join(tokens)
+
+    pieces, entries, sources = [], [], {}
+    for n, kind in enumerate(draw(st.permutations(tuple(PASSAGE_CLAIMS))), start=1):
+        low, high = sorted(draw(st.lists(st.sampled_from(rungs), min_size=2, max_size=2,
+                                         unique=True)))  # fmt: skip
+        rung = draw(st.sampled_from(rungs))
+        if kind == "as strong":
+            one = word(rung)
+            passage, sentence = said([one]), said([one])
+        elif kind == "synonyms":
+            passage, sentence = said([word(rung)]), said([word(rung)])
+        elif kind == "look-alikes":
+            one = word(rung)
+            passage = said([one])
+            sentence = said([one, *draw(st.permutations(LADDER_LOOKALIKES))])
+        elif kind == "up":
+            passage, sentence = said([word(low)]), said([word(high)])
+        elif kind == "down":
+            passage, sentence = said([word(high)]), said([word(low)])
+        elif kind == "both ways":
+            passage, sentence = said([word(low)]), said([word("hedge"), word(high)])
+        elif kind in ("not in its source", "sentence reworded", "recorded in capitals",
+                      "written twice"):
+            one = word(draw(st.sampled_from(rungs[1:])) if kind.startswith("recorded") else rung)
+            passage, sentence = said([word("hedge"), one]), said([one])
+        else:
+            what, how = kind.split(" ")
+            plain, extra = word(rung), word(what)
+            with_it, without = said([extra, plain]), said([plain])
+            passage, sentence = (with_it, without) if how == "gone" else (without, with_it)
+        cited = f"Claim {n}: {sentence} [@k{n}]."
+        pieces += [cited] * (2 if kind == "written twice" else 1)
+        sources[f"k{n}"] = f"Words of the work come first. {passage}. Then the work ends.\n"
+        recorded = {
+            "sentence reworded": cited.replace(f"Claim {n}:", f"Claim {n} again:"),
+            "recorded in capitals": cited.upper(),
+        }.get(kind, cited)
+        entries.append(({
+            "sentence": recorded, "citekey": f"k{n}", "locator": "p. 1",
+            "passage": f"unrecorded {passage}" if kind == "not in its source" else passage,
+        }, (n, kind)))  # fmt: skip
+    pieces = draw(st.permutations(pieces))
+    text = "".join(f"{draw(noise)}\n\n{piece}\n\n" for piece in pieces) + draw(noise)
+    entries = draw(st.permutations(entries))
+    given = {"text": text, "entries": [entry for entry, _n in entries], "sources": sources}
+    return given, [n for _e, n in entries]
+
+
 # ------------------------------------------- a plan citing the studies it took methods from
 
 #: How a plan cites a study whose method it took, and credits it (Basile, 2026-10-21).
@@ -9840,6 +9929,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "checker methods": method_claims().flatmap(lambda drawn: st.sampled_from(drawn[:3])),
     "prose quotations": texts(QUOTED),
     "passages": passage_files().map(lambda drawn: drawn[0]),
+    "passage claims": passage_claims().map(lambda drawn: drawn[0]),
     "plan citations": credited_plans().map(lambda drawn: drawn[0]),
     "citations": texts((), ADDRESS_BLOCKS),
     "mask": st.one_of(texts(TERMS), masked_blocks().map(lambda drawn: drawn[0])),

@@ -3665,6 +3665,21 @@ changes, so one to a file that holds a judgement outside a comment is put to the
 refused where the tool cannot ask. A passage that is all elision, `[...]`, holds no word to
 look for and is not in its source.
 
+**A sentence claims no more than its passage** (item 2 of the plan of 2026-11-06). A
+sentence citing a work can drift from the work's strength: the work says "was associated
+with", the sentence says "increases". Both are recorded, so each passage found in its
+work, whose sentence the manuscript still has, is compared with that sentence as `communicate
+check` compares a communication with the paper: `claims.compare_pair(passage, sentence)`,
+the two read whole. A hedge, a limit or a negation of the work's dropped, a negation new, or
+a word moved up the ladder is a warning (`passage-claim-stronger`), and so is a move both
+ways (`passage-claim-moved`); a sentence `compare_pair` reads as claiming less than its work
+says nothing. Each names the words that moved and stands on each sentence the passage belongs
+to. It is a warning at every stage, like
+every other claim-strength finding (D2.1), and a person's judgement is read as before and
+does not change it (D2.2). A passage not found in its work fails already, one unchecked is
+not yet known to be the work's words, and a stale one belongs to no sentence: none of them is
+compared.
+
 **What a co-author is shown.** The checker's item for a cited sentence shows each passage
 that belongs to it, with its locator in the caption, as evidence whose words are in the
 digest: a passage replaced after a co-author read it leaves their answer about one they never
@@ -20916,9 +20931,9 @@ Open, recorded as each change landed:
     Article" is not.
   - The sentence is named at the line its paragraph starts on, and a sentence is cut as G7's
     other checks of a cited sentence cut it.
-- **A supporting passage is in its work, and is not held to what its sentence says.** G7
-  finds the words in the stored source; whether they say what the sentence says is the
-  judgement it leaves to people, the author's in `passages.yaml` and the co-authors' in the
+- **A supporting passage is in its work, and is held to what its sentence says only by how
+  strongly each claims.** G7 finds the words in the stored source; whether they say what the
+  sentence says is the judgement it leaves to people, the author's in `passages.yaml` and the co-authors' in the
   checker. A binding in a sentence is a word of it, `{{lit.x}}` by its key and not its
   value, so a sentence whose bound value changes keeps its passage, as its checker item
   keeps its answers. A
@@ -20937,6 +20952,39 @@ Open, recorded as each change landed:
   by the names they are sold under and not every name an agent could sign. G7 reads a
   work's stored files once for the passages and once for the quotations in the prose, so a
   PDF goes through `pdftotext` twice a `check`.
+- **A cited sentence is held to its passage by a list of words (`passage-claim-stronger`,
+  `passage-claim-moved`).**
+  - Only the words of `data/claim_strength.yaml` are read, as `claims.compare_pair` reads a
+    communication against the paper. A sentence about another population, outcome or drug,
+    with as many hedges and the same rungs of the ladder, is told nothing. English only.
+  - Only a passage found in a copy stored here is compared. Where the copies are kept out of
+    git, CI and a fresh clone compare none, so the warning is seen where the copies are and
+    not in CI's report; a passage of a work with no readable copy is compared nowhere until
+    one is stored.
+  - The passage is read as it is recorded. A hedge left out with `[...]`, "may [...] reduce"
+    recorded as "[...] reduce", is no word of the passage, and the sentence's "reduces" is
+    told nothing. A passage of several sentences is read whole, and so is the sentence: a
+    hedge, a limit or a negation on another clause counts for the whole claim.
+  - A sentence that claims less can be told moved. `compare_pair` reads a sentence by its
+    lowest rung, so one that drops a word of a higher rung and keeps the lowest ("associated
+    with lower mortality and reduced admissions" cited as "associated with lower mortality")
+    moved, and which way cannot be told (round 1 of #571).
+  - A faithful paraphrase can warn. A passage that states a result with no word of the ladder
+    ("incidence was higher among women") cited as an association ("female sex was associated
+    with a higher incidence") reads as stronger, since a sentence with no word of the ladder
+    states, which is below association and above consistency; and a negation paraphrased
+    away ("did not differ by sex" cited as "was similar in men and women") reads as saying
+    the opposite. Each is a warning at every stage, with nothing to acknowledge (round 1 of
+    #571).
+  - Each passage is compared with its sentence alone. A sentence that rests on two works, an
+    association in one and an effect in the other, warns for the first. A sentence that sets
+    itself against the work, "unlike @a, we found no association", reads as saying the
+    opposite, and warns.
+  - A person's judgement that the passage supports the sentence changes nothing (D2.2 of
+    2026-11-06): the warning stays, with nothing to acknowledge, as every claim-strength
+    finding does.
+  - The warning stands on the line the sentence's paragraph starts on, as G7's other findings
+    on a cited sentence do, and a sentence written twice is told twice.
 - **Whether a cited work is still the one to cite rests on readings, which the rules do not
   check (`currency-*`).**
   - A reading varies between runs and between models, and two readings by one model are not

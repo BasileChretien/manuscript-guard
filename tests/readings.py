@@ -1766,6 +1766,33 @@ def _passages() -> Reading:
     return passages
 
 
+@reading("passage claims")
+def _passage_claims() -> Reading:
+    """How strongly each cited sentence of a Markdown file claims against the passage of
+    `passages.yaml` recorded for it, each work's source stored as text: the code and the
+    line of each finding G7 gives of an entry (`gates/passages.py`, item 2 of the plan of
+    2026-11-06)."""
+    from manuscript_guard.checking.produce import cited_sentences, citing_document
+    from manuscript_guard.gates.passages import claimed
+    from manuscript_guard.literature.passages import Passage, survey
+
+    def passages(given: dict[str, Any]) -> list[list[list[Any]]]:
+        sentences = cited_sentences([citing_document(MAIN, given["text"])])
+        entries = tuple(
+            Passage(number, entry["sentence"], entry["citekey"], entry["passage"],
+                    entry["locator"])
+            for number, entry in enumerate(given["entries"], start=1)
+        )  # fmt: skip
+        with tempfile.TemporaryDirectory() as folder:
+            sources = Path(folder)
+            for key, text in given["sources"].items():
+                (sources / f"{key}.txt").write_bytes(text.encode("utf-8"))
+            found = survey(sources, sentences, entries)
+        return [[[one.code, one.line] for one in claimed(checked)] for checked in found.passages]
+
+    return passages
+
+
 @reading("citations")
 def _citations() -> Reading:
     """Each citation of a Markdown file, with its key, its line and whether it is narrative:

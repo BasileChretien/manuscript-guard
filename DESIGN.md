@@ -4113,9 +4113,13 @@ This section fixes what each list holds, and what none of them reads:
 - "to our knowledge" alone, a hedge any claim can carry;
 - an absence of evidence, "there is no evidence that", which a result says of its own
   analysis ("no evidence that the effect differed by sex") as often as of the literature;
-- "for the first time" unless a verb of reporting stands before it (show, report, describe,
-  demonstrate, identify, reveal, establish) or "we", "this" or "our" right after it, so not
-  "patients treated for the first time" or "patients we saw for the first time";
+- "for the first time", unless a verb of reporting (show, report, describe, demonstrate,
+  identify, reveal, establish) stands before it in the same clause, at most six words away,
+  with commas and "here" among them allowed ("we show here, for the first time, that"), or the
+  paper as subject ("we", "our", "this study" and the rest of the subjects above) stands right
+  after it, a comma allowed between ("for the first time, we"); so not "patients treated for
+  the first time", "patients we saw for the first time" or "patients seen for the first time
+  this year";
 - a "first" that names a part of the study: its first visit, period, dose, phase, wave or
   line of treatment;
 - "novel" and "new" alone, which name a class of drug ("novel oral anticoagulants") or a
@@ -4133,8 +4137,11 @@ with no match is not cut. The patterns are matched in the prose G6 masks
 one is not read, and in Markdown the front matter is blank too. A LaTeX abstract written in
 the preamble is read, since the printed view puts it under Abstract, as the class prints it;
 a Markdown manuscript writes its Abstract as a section, as G4 reads it, and an `abstract:`
-field of its front matter is read by no gate. The claim is the sentence the match is in, its
-words as written; those words, folded (`statement_words`), are what an entry is matched by.
+field of its front matter is refused (`front-matter-abstract`, G2), so it never reaches a
+document. The claim is the sentence the match is in, its words as written, and for LaTeX as
+the printed view gives them, citations as `[@key]`, as `citing_documents` gives a cited
+sentence; those words, folded (`statement_words`, which folds the citations away), are what an
+entry is matched by.
 Case is folded, and a line break inside a phrase is a space. A sentence is one claim, of the
 first list that reads it: `priority`, then `absence`, then `softer`. Its finding stands on the
 line its paragraph starts on, as G7's findings on a cited sentence do, and names the words
@@ -4252,7 +4259,7 @@ searched where either is, as of the later of their days.
 | `novelty-unsearched` | a priority or absence claim with no entry, or with an entry not searched as above; the message says how far it got: no entry, marked and not searched, searched by hand only, N1 asked of no source, or works found and none followed forward | a warning from drafting, a failure at submission (D4.2) |
 | `novelty-search-stale` | the claim was searched more than six months ago | a warning, a failure at submission |
 | `novelty-softer` | a softer claim not searched, or searched more than six months ago | a note (D4.3) |
-| `currency-entry-unplaced` | a sentence of a novelty entry that no sentence the list reads holds | a note |
+| `currency-entry-unplaced` | a sentence of a novelty entry that no sentence the list reads has | a note |
 | `currency-record-edited` | a novelty search record edited, or out of its schema | fails from drafting |
 | `currency-decision-not-human` | a `not_a_claim` signed by a model, or a search by hand filed in a model's name | fails from drafting |
 
@@ -4281,10 +4288,12 @@ references.bib, has a novelty claim beside it, with no cited work, whose steps a
   the Abstract and the Discussion both make is found once; the command is refused where no
   sentence holds the words, where sentences of different words do (as `--mark` is), and where
   an entry is placed on the sentence already, which it names. With `--id` of a novelty entry,
-  the sentence goes into that entry, and each sentence of the entry that no sentence of the
-  manuscript now reads as is taken out of it, the command saying which: that is how a claim
-  reworded is marked again, keeping its searches. With `--not-a-claim --why "..."` it writes a
-  person's `not_a_claim`; a model's name is refused.
+  the sentence goes into that entry's `also`, and each sentence of the entry, its `sentence`
+  or one of its `also`, that no sentence the list reads now has is taken out of it, the
+  command saying which; where `sentence` is taken out, the first sentence left in `also` takes
+  its place, and the sentence just given is always left. That is how a claim reworded is
+  marked again, keeping its searches. With `--not-a-claim --why "..."` it writes a person's
+  `not_a_claim`; a model's name is refused.
 - `references --search ID --terms "TERMS" --not-searched "..." --as WHO` runs N1 for a
   novelty entry; `--forward WORK` in place of `--terms` runs N2, WORK a DOI, a PMID or
   `@key`. `--against` is refused for a novelty entry, whose N1 is phrased against the claim
@@ -4303,7 +4312,9 @@ references.bib, has a novelty claim beside it, with no cited work, whose steps a
   says.
 
 The hook asks before an agent runs `references --novelty ... --not-a-claim` or `references
---hand-search`, as it asks before `--refuse`. What leaves the machine is what currency's
+--hand-search`, as it asks before `--refuse`, and before `references --novelty ... --id` puts
+a sentence into an entry that carries a person's `not_a_claim`, which would make the new
+sentence no claim, as it asks before `--mark ... --id` moves an entry a person decided. What leaves the machine is what currency's
 searches send: the terms and the identifiers of works, for N2 the seed's DOI. No sentence of
 the manuscript is sent.
 
@@ -21683,9 +21694,9 @@ Open, recorded as each change landed:
     first", is not read.
   - A sentence is what G7's splitter cuts. An abbreviation it does not know can join two
     sentences into one claim, and an entry's words then hold both.
-  - The title, the `abstract:` field of a Markdown front matter (which no gate reads), the
-    covering letter, the response to the reviewers and the communication texts are not read,
-    though a covering letter is where "the first study" is most often written.
+  - The title, the covering letter, the response to the reviewers and the communication
+    texts are not read, though a covering letter is where "the first study" is most often
+    written.
   - `not_searched` is the reader's words, held to a letter and to not saying "none". A list
     that leaves out what the author knows was not searched passes, and so does one that names
     a database that was searched.
@@ -21694,13 +21705,20 @@ Open, recorded as each change landed:
     conference abstracts are reached only by a person's search by hand, taken on that
     person's word: its digest catches an edit made without care, not what the search found.
   - N1 counts where any one source answered: a run that only OpenAlex answered covers the
-    claim. `--explain` says which sources answered.
+    claim. `--explain` says which sources answered. A source whose first works all lack a DOI
+    and a PMID keeps none, though it counted hundreds, and then asks for no N2.
   - Each source keeps its first ten works, or `search_limit`: an earlier study ranked lower is
     in the count and not in the store, and is not read.
   - N2 follows one work, by its DOI or PMID, through OpenAlex's list of the works citing it,
-    which may lack some. The seed is the reader's choice, and nothing checks that it is near
-    the claim. Where OpenAlex knows no work N1 kept and none the manuscript cites, N2 cannot
-    be run, and the claim stays unsearched: only rewording it clears it.
+    which may lack some. The seed is the reader's choice, any work OpenAlex knows, and nothing
+    checks that it is near the claim: so N2 can always be run, and where OpenAlex knows no
+    work near the claim, the forward look G7 asks for starts from one that is not.
+  - `--id` keeps an entry's searches whatever the new sentence says, so an agent can move a
+    search onto another claim. The hook asks only where the entry carries a person's
+    `not_a_claim`.
+  - "For the first time" is read by a window of six words after a verb of reporting, so
+    "patients reported for the first time" warns, and a verb seven words before it is not
+    seen.
   - A search five months old passes at submission, though a study published since is not in
     it.
   - An entry is placed by its words exactly, so any rewording takes it off, a word changed or

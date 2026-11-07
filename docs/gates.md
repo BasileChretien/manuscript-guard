@@ -19,7 +19,7 @@ them up by what each is about ([What is checked](../README.md#what-is-checked)).
 | G11 | a recorded panel has reviewed the manuscript, its major findings are answered, every comment a co-author left in Word is answered, and no reading or filed comment was changed after it was sealed |
 | G12 | there was an analysis plan, its sections say something, and so do those its declared study design needs; while it is written the data were counted (a warning), a change to it after the first results is said under Deviations, each result its Planned results section lists by key is emitted and quoted, or the Deviations say why not (a warning), a design round's readings are of the plan as it stands, with their major findings answered (a warning until submission), and a data dictionary, where there is one, reads as its schema and its references say (a failure where it does not), defines every variable the plan names in backticks, and holds no entry that the plan, a reporting item or a reason does not need (a warning); the record of the datasets considered, `design/data_sources.yaml`, backs each access claim with a quote on its stored page or the person who said it, the plan names the dataset chosen, a dataset the analysis declares with `dataset()` is one the record chose, and its custodian's minimum cell count and ban on sending are declared in `paper.yaml` (warnings, the last failing from internal review); each appraisal of a similar study's method names a published standard and its domain, each decision to take it is a person's (failing from the analysis stage), and a method taken is cited in the plan with its standard (a warning); each registration `paper.yaml` lists is given in the manuscript, known to its registry, made before the study started and before the first results or said to be retrospective, and each registered outcome is quoted in the registry's words and role, reported as a planned result or its absence said under Deviations (a warning until submission) |
 | G13 | every reviewer point is answered, every claimed revision really happened, a quoted revision is new, and nothing in a reply should not reach the journal |
-| G14 | an abbreviation is defined once, before it is used, the manuscript keeps to the terms its author declared, it is spelt in one English, a P value, an interval and a percentage are each written one way, and prose in a script the gates do not read is said (warnings only) |
+| G14 | an abbreviation is defined once, before it is used, the manuscript keeps to the terms its author declared, it is spelt in one English, a P value, an interval and a percentage are each written one way, and prose in a script the gates do not read is said (warnings only); and no name from the code stands in a sentence, a key of the results, a variable of the data dictionary or a word written with underscores (a warning, a failure at submission) |
 | G15 | each model is the model its variables call for: the outcome is one its kind of model is for, each variable entered as the kind it was declared, with its declared reference and levels, the fit converged with events at every level, the rows of one declared unit are not taken as independent, a crude and an adjusted model were fitted on the same rows, a Poisson model of a binary outcome has a robust variance, and the Methods name the model that was fitted |
 | G16 | where the project keeps a data dictionary: each variable the analysis declares or a model reads has an entry (a warning); the data were held to it, each entry and each rule counted by the emitter's `check_data` (a warning from the analysis stage); and the Methods or the supplement bind one of the counts, so that a reader sees what the data held (a warning from drafting); the last two fail at submission |
 
@@ -28,6 +28,15 @@ them up by what each is about ([What is checked](../README.md#what-is-checked)).
 In place of a gate, a finding can carry one of two labels that are no gate of their own:
 `G0`, for a file of the project that cannot be used as it stands, and `BUILD`, for what
 the build would refuse or warn of.
+
+Among what `BUILD` refuses at every stage is a document that hides text from its reader,
+since a model reading it reads that text: text hidden by its own formatting or by a style,
+too close in colour to what is behind it (a contrast ratio under 1.5), under 3 pt,
+zero-width characters inside a word, and words that tell a model what to do where the
+paper's reader does not look, such as its alternative text or its properties
+(`document-hides-text`, `document-addresses-a-model`). The build checks the `.docx` it
+writes and `submit` each one it packs; words to a model that the paper prints are a
+warning, since a paper about them may quote them.
 
 ## What `check` ends with
 

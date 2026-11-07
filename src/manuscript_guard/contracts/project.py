@@ -164,6 +164,17 @@ class Project:
             return ()
         return tuple(entry for entry in listed if isinstance(entry, str))
 
+    @property
+    def code_names_kept(self) -> tuple[str, ...]:
+        """Words this paper prints although they are written as code writes a name: a taxon
+        as GTDB writes it, a variable a data paper documents. Read past a setting in the
+        wrong shape, which the schema reports."""
+        language = self.paper.get("language")
+        listed = language.get("code_names_kept") if isinstance(language, dict) else None
+        if not isinstance(listed, list):
+            return ()
+        return tuple(entry for entry in listed if isinstance(entry, str))
+
 
 def _accepted(schema: dict, value: Any) -> Any:
     """`value` as far as `schema` accepts it; see `Project.setting`."""

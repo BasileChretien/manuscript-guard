@@ -225,6 +225,20 @@ def simulate(rgb: RGB, deficiency: str) -> RGB:
     return (to_encoded(seen[0]), to_encoded(seen[1]), to_encoded(seen[2]))
 
 
+def luminance(rgb: RGB) -> float:
+    """Relative luminance: Y of sRGB's linear values (IEC 61966-2-1), 0 for black, 1 for
+    white."""
+    return _times(_TO_XYZ, tuple(to_linear(c) for c in rgb))[1]
+
+
+def contrast(first: RGB, second: RGB) -> float:
+    """The contrast ratio of two colours as WCAG 2.2 defines it (W3C Recommendation, 2023):
+    the lighter's relative luminance over the darker's, each plus 0.05, from 1 for two
+    colours of one luminance to 21 for black on white. Body text is asked to have 4.5."""
+    lighter, darker = sorted((luminance(first), luminance(second)), reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
 def lab(rgb: RGB) -> Lab:
     """CIELAB under D65."""
     xyz = _times(_TO_XYZ, tuple(to_linear(c) for c in rgb))

@@ -106,6 +106,7 @@ from generated import (
     harvest_cells,
     harvest_tables,
     help_commands,
+    hidden_documents,
     holds,
     interval_wordings,
     keyword_paragraphs,
@@ -224,6 +225,10 @@ from manuscript_guard.gates.vocabulary import (
     judge_vocabulary,
     own_words,
 )
+from manuscript_guard.hidden import BACKGROUND, HIDDEN, TINY, TO_A_MODEL, ZERO_WIDTH
+from manuscript_guard.hidden import styles as hidden_styles
+from manuscript_guard.hidden import word as hidden_word
+from manuscript_guard.hidden import words as hidden_words
 from manuscript_guard.literature import passages as passages_module
 from manuscript_guard.literature import sources as literature_sources
 from manuscript_guard.literature.sources import contains, normalise, states_value
@@ -7975,6 +7980,113 @@ def test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else(
     assert names_in(text, sought(PEOPLE)) == expected, text
 
 
+# ------------------------------------------------- what a Word document hides from its reader
+
+#: A run's word in a generated document (`generated.hidden_documents`).
+_RUN_WORD = re.compile(r"[a-z]+\d+")
+#: The kinds of place a run's look keeps from sight.
+_RUN_KINDS = (HIDDEN, BACKGROUND, TINY)
+
+
+def _unseen_as_word_shows(defaults: bool, style: str, look: str) -> str | None:
+    """How Word 365 keeps a run of `look` in a paragraph of `style` from sight, its
+    defaults hiding or not (tests/test_hidden.py): a run's own value is absolute; a style's
+    turns it where it differs from the defaults, and two that do cancel."""
+    if look in ("own", "own-off"):
+        hidden = look == "own"
+    else:
+        hidden = defaults
+        for level in (True if style == "PHide" else None,
+                      {"char": True, "char-off": False}.get(look)):  # fmt: skip
+            if level is not None and level != defaults:
+                hidden = not hidden
+    if hidden:
+        return HIDDEN
+    if look in ("white", "faint", "theme", "highlight"):
+        return BACKGROUND
+    return TINY if look.startswith("tiny") else None
+
+
+@holds(30, st.tuples(hidden_documents(defaults=False), hidden_documents(defaults=True)))
+def test_what_a_word_document_hides_is_found_with_its_words_and_nothing_else(
+    documents: tuple[dict[str, Any], dict[str, Any]],
+) -> None:
+    """Every look of a run, hidden by its own formatting or a style's or not, too faint or
+    too small, in a paragraph of each style, with the document's defaults hiding and not:
+    each run's word is found as the kind Word keeps it from sight as, and no other. Words to
+    a model split across runs, with a zero-width character inside one of them, are found
+    printed, the word with it found once, and words to a model in a picture's alternative
+    text are found not printed."""
+    read = READINGS["hidden content"]()
+    for described in documents:
+        expected = {
+            (kind, text.strip())
+            for paragraph in described["paragraphs"]
+            for text, look in paragraph["runs"]
+            if _RUN_WORD.fullmatch(text.strip())
+            and (kind := _unseen_as_word_shows(described["defaults"], paragraph["style"], look))
+        }
+        found = read(described)
+        seen = {(kind, word) for kind, text, _printed, _model in found if kind in _RUN_KINDS
+                for word in _RUN_WORD.findall(text)}  # fmt: skip
+        assert seen == expected, described
+        models = sorted((model, printed) for kind, _text, printed, model in found
+                        if kind == TO_A_MODEL)  # fmt: skip
+        zero = [text for kind, text, _printed, _model in found if kind == ZERO_WIDTH]
+        planted = described.get("planted")
+        if planted is None:
+            assert (models, zero) == ([], []), described
+        else:
+            rule, alt_rule, word = planted
+            assert models == sorted([(rule, True), (alt_rule, False)]), described
+            assert zero == [word], described
+
+
+def _two_styles_that_hide_leave_text_hidden(patch: pytest.MonkeyPatch) -> None:
+    def toggled(self, tag, paragraph, character):
+        levels = [hidden_styles.on_off(self._in_chain(tag, name, kind))
+                  for name, kind in ((character, "character"), (paragraph, "paragraph"))]
+        defaults = None if self.defaults is None else self.defaults.find(hidden_styles.W + tag)
+        return bool(hidden_styles.on_off(defaults)) or any(levels), []
+
+    patch.setattr(hidden_styles.Styles, "toggled", toggled)
+
+
+def _a_style_s_hiding_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(hidden_styles.Styles, "toggled", lambda self, tag, paragraph, character:
+                  (False, []))  # fmt: skip
+
+
+def _a_style_s_hiding_is_not_held_to_the_defaults(patch: pytest.MonkeyPatch) -> None:
+    def toggled(self, tag, paragraph, character):
+        defaults = None if self.defaults is None else self.defaults.find(hidden_styles.W + tag)
+        value = bool(hidden_styles.on_off(defaults))
+        for name, kind in ((character, "character"), (paragraph, "paragraph")):
+            if hidden_styles.on_off(self._in_chain(tag, name, kind)):
+                value = not value
+        return value, []
+
+    patch.setattr(hidden_styles.Styles, "toggled", toggled)
+
+
+def _a_theme_colour_is_read_from_its_value(patch: pytest.MonkeyPatch) -> None:
+    def text_colour(element, theme):
+        return None if element is None else hidden_styles.hex_colour(
+            element.get(hidden_styles.W + "val"))
+
+    patch.setattr(hidden_word, "text_colour", text_colour)
+
+
+def _a_highlight_is_not_behind_its_run(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(hidden_word, "highlight_colour", lambda element: None)
+
+
+def _words_to_a_model_are_read_with_their_zero_width_characters(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(hidden_words, "as_read", lambda text: (text, list(range(len(text)))))
+
+
 # ------------------------------------------------------- a response letter quoting a revision
 
 
@@ -8161,6 +8273,146 @@ def test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not(
     }
     assert {(f.message, f.line) for f in report.findings} == expected, (text, kept)
     assert report.counts["spelling_other"] == sum(len(places) for places in stands.values())
+
+
+# ----------------------------------------------------------------- names from the code, G14
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import code_names  # noqa: E402
+
+
+def _what_is_said(message: str) -> list[str]:
+    """A code-name finding's name, what it says the name is, and where it first stands."""
+    kind = ("variable" if "a variable in the data dictionary" in message
+            else "key" if "is a key of the results" in message else "snake")  # fmt: skip
+    where = "code" if message.endswith("first in a code span") else "prose"
+    return [message.split("'")[1], kind, where]
+
+
+@holds(40, code_names())
+def test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else(
+    planted: tuple[dict[str, Any], dict[str, list[list[Any]]]],
+) -> None:
+    """A word with underscores, a key and a variable are found in a sentence, a key and a
+    variable in code too, each once, on its line, a variable with its label; and nothing is
+    found in code that is neither, in a binding, a citation, a URL, a path, a file's name,
+    an address, maths, a comment, a listing, a caption, the title or the reference list, in a
+    word kept or in a variable that is a word. In Markdown and in LaTeX alike."""
+    given, found = planted
+    answered = answer(READINGS["code names"](), given)
+    assert "raised" not in answered, answered
+    severity = "fail" if given["stage"] == "submission" else "warn"
+    for form in ("markdown", "latex"):
+        findings = answered["answer"][form]["findings"]
+        said = [[*_what_is_said(f["message"]), f["line"]] for f in findings]
+        assert said == found[form], (form, given[form])
+        assert {(f["code"], f["severity"]) for f in findings} == {("code-name-in-prose", severity)}
+        for finding in findings:
+            name = finding["message"].split("'")[1]
+            if name in given["labels"]:
+                assert f"labels it {given['labels'][name]!r}" in finding["message"]
+
+
+def _code_is_read_as_prose(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    names_in = gate._names_in
+    patch.setattr(gate, "_names_in",
+                  lambda text, names, *, in_code: names_in(text, names, in_code=False))  # fmt: skip
+
+
+def _no_code_is_read_for_a_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    names_in = gate._names_in
+    patch.setattr(gate, "_names_in", lambda text, names, *, in_code: (
+        () if in_code else names_in(text, names, in_code=False)))  # fmt: skip
+
+
+def _a_path_is_read_for_a_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_in_a_path", lambda text, start, end: False)
+
+
+def _a_backslash_is_no_folder(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_FOLDER", re.compile(r"(?!)"))
+
+
+def _a_reference_definition_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_DEFINITION", re.compile(r"(?!)"))
+
+
+def _a_defined_reference_label_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_LABEL", re.compile(r"(?!)"))
+
+
+def _every_reference_label_is_taken_for_defined(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_label", lambda written: "")
+
+
+def _code_is_read_where_the_prose_is_not(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_set_aside", lambda code, spans: code)
+
+
+def _a_file_is_read_for_a_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_EXTENSION", re.compile(r"(?!)"))
+
+
+def _every_word_is_shaped_as_code(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "code_shaped", lambda name: True)
+
+
+def _no_name_is_known(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_exact", lambda name, names: None)
+
+
+def _an_escaped_underscore_joins_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_NAME", re.compile(r"(?<![^\W_])[^\W_]+(?:(?:_+|\.)[^\W_]+)*"))
+
+
+def _no_word_is_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    names_in = gate._names_in
+    patch.setattr(gate, "_names_in", lambda text, names, *, in_code: names_in(
+        text, dataclasses.replace(names, kept=frozenset()), in_code=in_code))  # fmt: skip
+
+
+def _unprinted_markdown_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_UNPRINTED", re.compile(r"(?!)"))
+
+
+def _the_namespace_is_kept_on(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "RESULTS", NUL)
+
+
+def _camel_case_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_CAMEL", re.compile(r"(?!)"))
 
 
 # ------------------------------------------ a reference list under a line that is no heading
@@ -16145,6 +16397,30 @@ BROKEN = {
         _an_identifier_left_on_a_figure_is_dropped,
         test_a_figure_is_read_as_one_whatever_identifier_word_left_on_it,
     ),
+    "two styles that hide a run leave it hidden": (
+        _two_styles_that_hide_leave_text_hidden,
+        test_what_a_word_document_hides_is_found_with_its_words_and_nothing_else,
+    ),
+    "a style's hiding is not read": (
+        _a_style_s_hiding_is_not_read,
+        test_what_a_word_document_hides_is_found_with_its_words_and_nothing_else,
+    ),
+    "a style's hiding is not held to the document's defaults": (
+        _a_style_s_hiding_is_not_held_to_the_defaults,
+        test_what_a_word_document_hides_is_found_with_its_words_and_nothing_else,
+    ),
+    "a theme colour is read from the value written beside it": (
+        _a_theme_colour_is_read_from_its_value,
+        test_what_a_word_document_hides_is_found_with_its_words_and_nothing_else,
+    ),
+    "a run's highlight is not what is behind it": (
+        _a_highlight_is_not_behind_its_run,
+        test_what_a_word_document_hides_is_found_with_its_words_and_nothing_else,
+    ),
+    "words to a model are read with their zero-width characters in them": (
+        _words_to_a_model_are_read_with_their_zero_width_characters,
+        test_what_a_word_document_hides_is_found_with_its_words_and_nothing_else,
+    ),
     "a facet of a post is placed in characters, not bytes": (
         _a_facet_is_placed_in_characters,
         test_each_link_of_a_post_is_marked_at_its_bytes_and_without_the_stop_after_it,
@@ -17709,6 +17985,70 @@ BROKEN = {
     "a journal's ask for definitions is not read": (
         _a_journal_s_ask_is_not_read,
         test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks,
+    ),
+    "a word with underscores in code is read as a sentence's": (
+        _code_is_read_as_prose,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "no code span is read for a name": (
+        _no_code_is_read_for_a_name,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a path or an address is read for a name": (
+        _a_path_is_read_for_a_name,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a file's name is read for a name": (
+        _a_file_is_read_for_a_name,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a backslash between two folders is no path": (
+        _a_backslash_is_no_folder,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a reference link's definition is read for a name": (
+        _a_reference_definition_is_read,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a reference link's label is read where the file defines it": (
+        _a_defined_reference_label_is_read,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a reference link's label is set aside where nothing defines it": (
+        _every_reference_label_is_taken_for_defined,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a key in code is read in a caption, the title and the reference list": (
+        _code_is_read_where_the_prose_is_not,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a key or a variable that is a word is read": (
+        _every_word_is_shaped_as_code,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a key or a variable is read only by its underscores": (
+        _no_name_is_known,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "an escaped underscore joins nothing": (
+        _an_escaped_underscore_joins_nothing,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a word the paper keeps is read": (
+        _no_word_is_kept,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "what Markdown does not print is read for a name": (
+        _unprinted_markdown_is_read,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a binding's namespace is not taken off a key": (
+        _the_namespace_is_kept_on,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "camelCase is not read": (
+        _camel_case_is_not_read,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
     ),
     "a glossary is not read": (
         _a_glossary_is_not_read,

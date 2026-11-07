@@ -293,7 +293,7 @@ All deterministic, all runnable in CI without Claude.
 | G11 | Panel review | no review round, a stale review, a file nobody read, or an unanswered major finding |
 | G12 | Methods appropriateness | the analysis plan does not answer the question asked |
 | G13 | Response to reviewers | a point unanswered, or a claimed revision that did not happen |
-| G14 | Abbreviations, terms, spelling and notation | never: it warns when an abbreviation is used before it is defined, defined twice, defined for nothing or never defined, when the manuscript uses a term its author gave up for another, when a word is in the spelling of the English the paper does not declare, when a P value, an interval or a percentage is written in two ways, and when a number runs into its unit |
+| G14 | Abbreviations, terms, spelling, notation and names from the code | at submission, a name from the code in a sentence: a key of the results, a variable of the data dictionary or a word written with underscores (a warning before); otherwise never: it warns when an abbreviation is used before it is defined, defined twice, defined for nothing or never defined, when the manuscript uses a term its author gave up for another, when a word is in the spelling of the English the paper does not declare, when a P value, an interval or a percentage is written in two ways, and when a number runs into its unit |
 | G15 | Models and their variables | a model of an outcome its kind is not for, a variable entered as another kind than it was declared, a reference or a level other than the declared one, an undeclared variable, a fit that did not converge or has a level without events, rows dropped and never stated (warnings: few events for each coefficient, an ordinal variable entered as a trend, a model the Methods name and the analysis did not fit) |
 | G16 | The data and their dictionary | at submission: a dictionary nothing was checked against, an entry or a rule no count covers, counts neither the Methods nor the supplement bind (warnings before; a variable the analysis uses with no entry warns, from the analysis stage) |
 
@@ -5122,6 +5122,55 @@ is not a rule.
 
 The example joins the bounds of its five intervals with "to", sets "%" against its number
 and states no P value with a sign, so it has nothing to report.
+
+## A name from the code is no word of the prose
+
+"hr_adj_main was 1.42" and "patients with ckd_flag" are sentences written from the
+script's side. The name is the analysis's, and the reader has never seen the analysis. A
+paper written beside its code picks these up when a sentence is drafted from a results file
+or a model's output. G14's fifth reading (`gates/code_names.py`) reports three kinds of word
+as `code-name-in-prose` (Basile, D12.1, 2026-11-06):
+
+| Kind | Example | The finding says |
+|---|---|---|
+| a key the analysis emitted, bare or with its binding's namespace | `ror.point`, `results.ror.point` | that it is a key of the results, and how to bind its value |
+| a variable of the data dictionary | `age_group` | the label the dictionary gives it, to write instead |
+| any word with underscores between its parts | `hr_adj_main`, `C_max` | to say what it is, and how a subscript is typed |
+
+**A key or a variable counts where it is shaped as code is** (D12.4, 2026-11-07): with an
+underscore or a dot in it, or in camelCase from two small letters, `ckdFlag`. The example's
+dictionary names a variable `sex`, and a clinical one may name one `BMI` or `eGFR`: those
+are the prose's words too. The camelCase rule wants a small letter after the first capital,
+so that `lncRNA`, `circRNA` and `mtDNA` are not read as names.
+
+**A code span is printed too** (D12.3). A key or a variable in one, `` `hr_adj_main` ``, is
+read as it is in a sentence: the journal prints the backticks' contents in another font, and
+the reader still does not know the name. Any other word with underscores in a code span is
+not read: it is usually a function's or a package's name, put there on purpose.
+
+**What is not prose is not read.** The reading takes the two views G14 already makes of a
+file, the sentences and headings with everything else NUL, and, new here, the code spans
+with everything else NUL, so bindings, citation keys, URLs, link targets, listings,
+comments, maths, LaTeX's commands, the front matter, captions and the reference list are
+gone before it looks; the code view hides what the prose view hides, so a key in code in a
+caption or a reference is not read either (round 1). On top of that it sets aside a word in a
+path or an address (its run of characters holds a slash, an `@` or a backslash between
+folders), a file's name (a dotted word whose last part reads as an extension,
+`ckd_flag.csv`), and in Markdown what pandoc does not print into the document: a fenced
+div's line, an HTML tag, an attribute with an `=`, a TeX command, a reference link's
+definition, and the label of a reference link the file defines (one nothing defines is
+printed as typed). Each of these was checked against what `pandoc -t plain` prints. An underscore escaped as Markdown escapes it, `hr\_adj`, or as LaTeX must,
+`hr\_adj`, is the underscore it prints.
+
+**A warning while the paper is written, a failure at submission** (D12.2). Nothing about
+such a word is a question of taste: the version a journal receives should have none. A word
+that is right with its underscores, a taxon as GTDB writes it (`g__Bacteroides`), a strain,
+or a variable a data paper documents on purpose, is listed under `language:
+code_names_kept:` in `paper.yaml`, one word to an entry as printed, and is then not read
+anywhere (D12.5). Each name is reported once, where it first stands, with how often it is
+used, as G14's other readings report.
+
+The example's prose names nothing from its code, so it has nothing to report.
 
 ## Methods drift is a reconciliation ledger
 
@@ -14837,6 +14886,60 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   most often holds, is read through the SVG or PDF the manuscript places beside it, when
   there is one. A journal that wants self-citations anonymised has its reference list
   unread.
+- **Hidden text is read in Word documents only, and only the ones the build writes,
+  `submit` packs and `audit` reads.** A co-author's file at `import`, a reviewer's letter,
+  a comment file and a stored literature page are not read for it, and a LaTeX
+  manuscript's PDFs are not read at all (`hidden.read_hidden`). What a reader does not see
+  is read as Word draws text, with these limits:
+  - A table style's properties, and the formats of its first row or banded columns, are
+    not read: text a table style hides, colours or shrinks is not found.
+  - Text kept from sight otherwise is not found: placed off the page or behind a shape or
+    a picture, raised or lowered out of its line (`w:position`), squeezed (`w:w`,
+    `w:spacing`), in a frame of no size, or in the colour of a picture behind it. A
+    superscript is read at its own size, not the smaller one Word prints it at, and the
+    size for complex scripts (`w:szCs`) only where the run says it is one (`w:cs`,
+    `w:rtl`).
+  - Behind a run is its highlight, its shading, its paragraph's or its table cell's, and
+    else the page: white, and the page's background where the document shows it, so white
+    text on a dark background is said, since the paper it prints on is white. A pattern of
+    shading other than clear, solid or a percentage counts as its fill, and a theme
+    colour's tint and shade are applied to its lightness as Word describes them, which was
+    not checked against Word; nor that a picture or a box in a run Word hides is hidden with
+    it, as it is taken to be.
+  - A header or a footer is printed where a section shows it, and a note where the text
+    cites it. Words to a model the document prints somewhere count as printed wherever
+    else they stand, so their copy in a note nobody cites, or in the properties, only
+    warns. Each section is read alone: a header it inherits from the section before is
+    taken as not shown, so words to a model there fail where Word prints them; and a header
+    named only by a section's old properties (`w:sectPrChange`), or a note cited only from
+    a tracked deletion, is taken as shown, so words there only warn.
+  - An equation's text, and a chart's or a diagram's, is read one element at a time as
+    text no reader sees: words to a model there fail although they are printed, and an
+    equation's formatting is not read. Pandoc writes an empty group, `{}`, as a zero-width
+    space alone in an equation's run, which is inside no word.
+  - A zero-width character inside a word of the source is said by no gate of `check`, and
+    the build fails on it, one in a reference's record in Zotero among them.
+  - Words to a model are those of `to_a_model` in `data/ai_writing.yaml`, in English. They
+    are read a paragraph at a time, so words split across two paragraphs are not found, nor
+    words spelt with letters of another script that look the same ("іgnore" with a
+    Cyrillic і).
+  - Of the invisible characters, the five zero-width ones are said inside a Latin, Greek or
+    Cyrillic word, and tag characters anywhere: the marks that turn the direction of text
+    (U+202A to U+202E, U+2066 to U+2069), the invisible operators of mathematics (U+2061 to
+    U+2064) and variation selectors are not said. Words to a model are read with every
+    character that prints nothing taken out, and in their compatibility form (NFKC), so
+    neither splits them; letters of another script that look alike still do.
+  - A document in the Strict form of ISO/IEC 29500, which Word opens, is not read: its parts
+    are named as not read, and the build does not send it. Parts are found as the packaging
+    conventions name them, percent-escapes decoded and in any case; where the main
+    document names two styles parts, the first is read.
+  - A fallback copy Word keeps for older readers is read for words to a model one element
+    at a time, not as text; pictures, embedded files and a part Word imports as HTML
+    (`altChunk`) are not read; of a document's XML, as much as one part may hold (120 MB)
+    is read, and a paragraph or a text of more than a million characters is read for what
+    hides it but not for its words, each named as not read. A built document with
+    anything not read is not to be sent. A hostile document within those limits can still
+    take minutes to read.
 - **Checking a declared input reads the whole file into memory.** Before input digests
   normalised line endings they were streamed; a 300 MB CSV now peaks at about 1.2 GB while G1
   checks it. The R emitter peaks at about twenty times the file (600 MB for a 28 MB CSV), since
@@ -20468,6 +20571,46 @@ Open, recorded as each change landed:
   - A block set off by four spaces is read, as it is for the spelling.
   - The hook that runs after a manuscript file is saved does not run this reading.
 
+- **G14 reads a name from the code by its shape, and a key or a variable by its spelling.**
+  - A key or a variable that is a word of the prose is not read: `sex`, `BMI`, `eGFR`,
+    `CD4`, `visit1` (D12.4). Nor is a camelCase name from one small letter, `nCases`, or one
+    whose first capital has another after it, `hasCKD`, since `eGFR`, `mRNA` and `lncRNA` are
+    written the same way.
+  - A word that is right with its underscores warns, and fails at submission, until it is
+    listed under `language: code_names_kept:`. Chemical and gene names seldom carry one;
+    GTDB's taxa (`g__Bacteroides`), some strains and cell lines, and a variable a data paper
+    documents on purpose do. So does a subscript typed as code, `C_max` or `R_0`, which
+    pandoc prints with its underscore, so the finding is right about the paper there and its
+    hint says how to type a subscript.
+  - A word with underscores in a code span is not read unless it is exactly a key or a
+    variable (D12.3): a name from the code put in backticks passes as a function's would.
+  - A key is matched whole, bare or after `results.`. One written with a part changed, or a
+    table's key, is read only as a word with underscores, where it has one, and without the
+    key's hint. A variable is matched in the case the dictionary writes it, so `Age_group`
+    opening a sentence is a word with underscores, without its label.
+  - A word in a run of characters that holds a slash, an `@` or a backslash before a letter or
+    a digit is taken for a path or an address: `n_cases/n_total` typed as a ratio is not read.
+    The path is looked for once what Markdown does not print is out, as pandoc prints it: a
+    Windows path typed in prose, `C:\study\raw_hr_adj`, loses `\study` and `\raw` as TeX
+    commands and prints `C:_hr_adj`, so `hr_adj` is reported (round 2). A tag inside a path
+    cuts it: `data/<b>raw_hr</b>` reports `raw_hr`.
+  - A line shaped as `[label]: ...` is taken for a reference definition and not read, also
+    where pandoc prints it: inside a paragraph, or with words after a title in brackets. A
+    label defined only in the supplement is taken for defined in the main text too. A dotted
+    word whose last part reads as a file's extension is taken for a file's name, so
+    `ckd_flag.csv` is not read, and nor is `ckd_flag.The`, a sentence run into the next with
+    no space after its full stop.
+  - A name with a mark of emphasis inside it, `*ckd*_flag`, is not read. An HTML tag is read
+    as one where `<` stands against a letter, so "a <b and c_d> e" hides `c_d`.
+  - What G14 does not read is not read here either, in a sentence or in code: a figure's
+    caption, the title and the abstract when they are in the front matter or the preamble,
+    and the reference list. A quotation set as a block is read, since a name in it is still
+    one the reader cannot know.
+  - In LaTeX, the argument of a command the reader does not know is read as prose, so a key
+    of `glossaries` or `acronym` with an underscore, `\gls{ckd_flag}` or `\ac{hr_adj}`, is
+    reported though the document prints the entry's text and not the key.
+  - The hook that runs after a manuscript file is saved does not run this reading.
+
 - **G14's vocabulary is a list of words, and reads them as words.**
   - Nothing is reported that the author did not declare. Two words for one thing that are
     in no entry pass in silence; finding candidates is for the writing skill and a reader.
@@ -22352,8 +22495,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - `journal --template` needs a project, so an editor makes one to keep the profile in.
   - The Document section reads a .docx, and of a PDF the Author of its Info dictionary
     through `pdfinfo` only: its other fields, its XMP metadata (`dc:creator`) and its
-    annotations are not read, nor a LaTeX file's metadata. Text a style hides is not counted as hidden, only a run whose own properties hide it, and
-    a change of formatting alone is not counted as a tracked change. A text box's fallback
+    annotations are not read, nor a LaTeX file's metadata. A change of formatting alone is
+    not counted as a tracked change. A text box's fallback
     copy is not read, as `text.docx` reads none: a document whose box Word wrote only as a
     fallback has its changes there uncounted.
   - The blinding check finds a name as the build does: the given and family name, or an
@@ -22925,6 +23068,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
   shorthand too.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **The audit did not count text a style hides (2026-11-07).** It counted as hidden only a
+  run whose own properties hide it, so text set in a character or paragraph style that
+  hides it, which Word hides as surely, was said to be none: the way a document most
+  easily carries words for a model and not for its reader. It reads hidden text as the
+  build does now (`hidden.read_hidden`), by Word's rules for the styles, and says too the
+  text too faint or too small to read, zero-width characters inside words and words to a
+  model; see "Hidden text is read in Word documents only".
 
 - **An accent on a dotless i was read as italics (2026-11-05).** Better BibTeX writes í as
   `{\'\i}`, and with the braces gone G7 read

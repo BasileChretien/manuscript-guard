@@ -478,6 +478,21 @@ def test_review_findings_do_not_block_a_draft_but_do_block_submission(project: P
     assert not report.ok
 
 
+def test_a_name_from_the_code_warns_in_a_draft_and_fails_at_submission() -> None:
+    """G14 raises `code-name-in-prose` to a failure at the submission stage only; the policy
+    has it bind there, so that a run at submission keeps it a failure."""
+    assert binds_at("code-name-in-prose") == SUBMISSION
+    failed = Report((Finding(gate="G14", code="code-name-in-prose", message="m",
+                             severity=FAIL),))  # fmt: skip
+    report, deferred = apply_stage(failed, SUBMISSION)
+    assert not report.ok and deferred == {}
+    report, deferred = apply_stage(failed, INTERNAL_REVIEW)
+    assert report.ok and deferred == {SUBMISSION: 1}
+    warned = Report((Finding(gate="G14", code="code-name-in-prose", message="m",
+                             severity=WARN),))  # fmt: skip
+    assert apply_stage(warned, DRAFTING)[0].findings[0].severity == WARN
+
+
 def test_every_way_of_saying_submission_gives_the_same_verdict(project: Path) -> None:
     """G11's severity was set from the raw `--submission` flag, not from the resolved stage.
 

@@ -51,7 +51,15 @@ import yaml
 from hypothesis import HealthCheck, Phase, given, seed, settings
 from hypothesis import strategies as st
 from hypothesis.internal.conjecture import providers
-from readings import INTERVALS, PICTURES, SAYS, TAGS
+from readings import (
+    HIDDEN_LOOKS,
+    HIDDEN_PARAGRAPHS,
+    INTERVALS,
+    PICTURES,
+    SAYS,
+    TAGS,
+    TO_A_MODEL_SAID,
+)
 
 Test = TypeVar("Test", bound=Callable[..., Any])
 
@@ -2028,6 +2036,130 @@ def latex_words(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
         text += parts[-1]
     text += between[-1] + "\\end{document}\n"
     return text, planted
+
+
+#: Where a name from the code stands, in Markdown and in LaTeX, and what G14's fifth reading
+#: makes of it (`gates/code_names.py`): what the name is drawn as, the two templates, `{n}`
+#: the name as typed and `{e}` with its underscores escaped, and where it is found, in the
+#: prose or in code, or None where it is not read. Read: a word with underscores, typed or
+#: escaped, in a heading and in emphasis; a key bare and after `results.`; a variable, and one
+#: in camelCase; a key and a variable in code; a variable inside an HTML tag, a word before a
+#: TeX command, and the label of a reference link nothing defines. Not read: a word with
+#: underscores in code, a binding, a citation key, a URL, a link's target, a path, one with a
+#: backslash before its folder, a file's name, an address, maths, a comment, a listing, a word
+#: the paper keeps, a variable that is a word, an HTML tag, a TeX command in Markdown, a
+#: fenced div's attribute, a figure's caption, a key in code in one, a reference link's label
+#: and its definition, and a word of no letter. The title and the reference list hold a key
+#: in code too.
+CODE_NAME_PLACES = (
+    ("snake", "{n} ", "{e} ", "prose"),
+    ("snake", "{e} ", "{e} ", "prose"),
+    ("snake", "\n\n## The {n}\n\n", "\n\\section{{The {e}}}\n", "prose"),
+    ("snake", "*{n}* ", "\\emph{{{e}}} ", "prose"),
+    ("key", "{n} ", "{e} ", "prose"),
+    ("dotted key", "{n} ", "{n} ", "prose"),
+    ("results key", "results.{n} ", "results.{e} ", "prose"),
+    ("variable", "{n} ", "{e} ", "prose"),
+    ("camel variable", "{n} ", "{n} ", "prose"),
+    ("key", "`{n}` ", "\\texttt{{{e}}} ", "code"),
+    ("variable", "`{n}` ", "\\verb|{n}| ", "code"),
+    ("variable", "<u>{n}</u> ", "{e} ", "prose"),
+    ("snake", "{n}\\textsuperscript{{a}} ", "{e}\\textsuperscript{{a}} ", "prose"),
+    ("snake", "[the portal][{n}] ", "{e} ", "prose"),
+    ("snake", "`{n}` ", "\\texttt{{{e}}} ", None),
+    ("snake", "`{n}` ", "\\verb|{n}| ", None),
+    ("key", "{{{{results.{n}}}}} ", "\\mg{{results.{n}}} ", None),
+    ("snake", "[@{n}] ", "\\cite{{{n}}} ", None),
+    ("snake", "https://example.org/{n} ", "\\url{{https://example.org/{n}}} ", None),
+    ("snake", "[the file](data/{n}.csv) ", "\\href{{https://example.org/{n}}}{{the file}} ", None),
+    ("snake", "analysis/{n}.py ", "analysis/{e}.py ", None),
+    ("snake", "{n}\\2024 ", "words ", None),
+    ("snake", "{n}.csv ", "{e}.csv ", None),
+    ("snake", "{n}@example.org ", "{e}@example.org ", None),
+    ("snake", "${n}$ ", "${n}$ ", None),
+    ("snake", "<!-- {n} --> ", "% {n}\n", None),
+    ("snake", "\n\n```\n{n}\n```\n\n", "\n\\begin{{verbatim}}\n{n}\n\\end{{verbatim}}\n", None),
+    ("kept", "{n} ", "{e} ", None),
+    ("plain variable", "{n} ", "{n} ", None),
+    ("snake", '<span class="{n}">words</span> ', "words ", None),
+    ("snake", "\\label{{{n}}} ", "\\label{{{n}}} ", None),
+    ("snake", '\n\n::: {{custom-style="{n}"}}\nwords\n:::\n\n', "words ", None),
+    ("snake", "\n\n![The {n}](figure.png)\n\n",
+     "\n\\begin{{figure}}\\caption{{The {e}}}\\end{{figure}}\n", None),
+    ("key", "\n\n![By `{n}`](figure.png)\n\n",
+     "\n\\begin{{figure}}\\caption{{By \\texttt{{{e}}}}}\\end{{figure}}\n", None),
+    ("snake", "[the portal][{n}]\n\n[{n}]: https://example.org\n\n", "words ", None),
+    ("digits", "{n} ", "{e} ", None),
+)  # fmt: skip
+#: The first part of a drawn name: a word of the prose, so that `dose_qab` reads as code
+#: writes one and `doseQab` as camelCase.
+_CODE_WORDS = ("dose", "age", "event", "site", "onset", "week")
+
+
+def _code_tag(index: int) -> str:
+    """A tag of letters only, one for each place, so that no two names are the same."""
+    return "q" + chr(ord("a") + index // 26) + chr(ord("a") + index % 26)
+
+
+@st.composite
+def code_names(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, list[list[Any]]]]:
+    """A Markdown file and a LaTeX file with a name in every place of `CODE_NAME_PLACES`, in
+    an order drawn, under a title that holds one too and above a reference list that does;
+    the names the analysis and the dictionary give; and what G14 finds in each file, as
+    `[name, kind, where, line]`, kind `key`, `variable` or `snake`. Every place is in every
+    example, so that a rule broken for one is seen whatever the seed."""
+    order = draw(st.permutations(range(len(CODE_NAME_PLACES))))
+    words = draw(st.lists(st.sampled_from(_CODE_WORDS), min_size=len(order) + 2,
+                          max_size=len(order) + 2))  # fmt: skip
+    between = draw(st.lists(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3),
+                            min_size=len(order), max_size=len(order)))  # fmt: skip
+    stage = draw(st.sampled_from((None, "drafting", "submission")))
+    # A key in code in the title and in the reference list, where nothing is read.
+    unread = f"{words[-2]}.n_qzx"
+    keys, labels, kept = {unread}, {}, set()
+    title, typed_unread = f"{words[-1]}_qzy", unread.replace("_", chr(92) + "_")
+    markdown = f"---\ntitle: The {title} `{unread}`\n---\n\n# Results\n\n"
+    latex = (f"\\documentclass{{article}}\n\\title{{The {title.replace('_', chr(92) + '_')} "
+             f"\\texttt{{{typed_unread}}}}}\n"
+             "\\begin{document}\n\\section{Results}\n")  # fmt: skip
+    found: dict[str, list[list[Any]]] = {"markdown": [], "latex": []}
+    for place, (index, sentence) in enumerate(zip(order, between, strict=True)):
+        kind, typed, tex, where = CODE_NAME_PLACES[index]
+        word, tag = words[place], _code_tag(index)
+        name = {"key": f"{word}.n_{tag}", "dotted key": f"{word}.{tag}",
+                "results key": f"{word}.n_{tag}", "camel variable": f"{word}{tag.capitalize()}",
+                "plain variable": tag, "digits": f"{20 + index}_{40 + index}"}.get(
+                    kind, f"{word}_{tag}")  # fmt: skip
+        if kind in ("key", "dotted key", "results key"):
+            keys.add(name)
+        elif kind.endswith("variable"):
+            labels[name] = f"Label {tag}"
+        elif kind == "kept":
+            kept.add(name)
+        reported = "results." + name if kind == "results key" else name
+        what = "key" if "key" in kind else "variable" if "variable" in kind else "snake"
+        escaped = name.replace("_", "\\_")
+        for form, template in (("markdown", typed), ("latex", tex)):
+            text = markdown if form == "markdown" else latex
+            text += " ".join(sentence).capitalize() + " "
+            piece = template.format(n=name, e=escaped)
+            at = len(text) + min(piece.find(spelt) for spelt in (name, escaped, reported)
+                                 if spelt in piece) if where else 0  # fmt: skip
+            text += piece + "were kept.\n"
+            if where:
+                found[form].append([reported, what, where, text.count("\n", 0, at) + 1])
+            if form == "markdown":
+                markdown = text
+            else:
+                latex = text
+    cited = f"{words[-2]}_qzz"
+    markdown += f"\n# References\n\nSmith J. The {cited} and `{unread}` paper. 2019.\n"
+    latex += ("\\begin{thebibliography}{1}\n\\bibitem{a} The "
+              f"{cited.replace('_', chr(92) + '_')} and \\texttt{{{typed_unread}}} paper.\n"
+              "\\end{thebibliography}\n\\end{document}\n")  # fmt: skip
+    given = {"markdown": markdown, "latex": latex, "keys": sorted(keys), "labels": labels,
+             "kept": sorted(kept), "stage": stage}  # fmt: skip
+    return given, found
 
 
 #: What G6 finds in a LaTeX document (`gates/writing.py`), each `{}` a word on a line of its
@@ -4866,6 +4998,58 @@ def comment_anchors(draw: st.DrawFn) -> dict[str, Any]:
         source, printed = source + " " + source, printed + " " + printed
     return {"source": source, "start": start, "end": end, "printed": printed,
             "tokens": [list(token) for token in tokens]}  # fmt: skip
+
+
+# ------------------------------------------------- what a Word document hides from its reader
+
+#: The characters that print nothing and are no part of a word in the Latin script.
+ZERO_WIDTHS = tuple(chr(code) for code in (0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF))
+#: The looks a run of words to a model is drawn in: each shows its text.
+_SHOWN_LOOKS = ("plain", "own-off", "grey", "small")
+
+
+@st.composite
+def hidden_documents(draw: st.DrawFn, defaults: bool | None = None) -> dict[str, Any]:
+    """A Word document for `readings.hidden_document`: every look of `HIDDEN_LOOKS` in
+    paragraphs of each style of `HIDDEN_PARAGRAPHS`, in an order drawn each time, each run a
+    word of its own (`alpha3`), with the defaults hiding or not. Where they do not, one of
+    `TO_A_MODEL_SAID` split across runs that show it, a zero-width character inside one of
+    its words, and another as a picture's alternative text: `planted` names the two rules
+    and the word."""
+    hides = draw(st.booleans()) if defaults is None else defaults
+    counted = iter(range(10_000))
+
+    def word() -> str:
+        n = next(counted)
+        return f"{TAGS[n % len(TAGS)]}{n}"
+
+    paragraphs: list[dict[str, Any]] = []
+    for style in HIDDEN_PARAGRAPHS:
+        looks = list(draw(st.permutations(sorted(HIDDEN_LOOKS))))
+        looks += draw(st.lists(st.sampled_from(sorted(HIDDEN_LOOKS)), max_size=4))
+        while looks:
+            size = draw(st.integers(3, 8))
+            paragraphs.append({"style": style, "runs": [[f"{word()} ", look]
+                                                        for look in looks[:size]]})  # fmt: skip
+            looks = looks[size:]
+    described: dict[str, Any] = {"defaults": hides, "paragraphs": paragraphs, "alt": ""}
+    if hides:
+        return described
+    (rule, said), (alt_rule, alt) = draw(st.permutations(TO_A_MODEL_SAID))[:2]
+    words = said.split(" ")
+    at = draw(st.sampled_from([n for n, one in enumerate(words) if len(one) > 1]))
+    inside = draw(st.integers(1, len(words[at]) - 1))
+    planted = words[at]
+    words[at] = planted[:inside] + draw(st.sampled_from(ZERO_WIDTHS)) + planted[inside:]
+    phrase = " ".join(words)
+    cuts = sorted(draw(st.lists(st.integers(1, len(phrase) - 1), max_size=3, unique=True)))
+    pieces = [phrase[start:end]
+              for start, end in zip([0, *cuts], [*cuts, len(phrase)], strict=True)]  # fmt: skip
+    runs = [[f"{word()} ", "plain"],
+            *([piece, draw(st.sampled_from(_SHOWN_LOOKS))] for piece in pieces),
+            [f" {word()}", "plain"]]  # fmt: skip
+    paragraphs.insert(draw(st.integers(0, len(paragraphs))), {"style": "Normal", "runs": runs})
+    return {**described, "alt": alt, "planted": [rule, alt_rule, planted]}
 
 
 # ---------------------------------------------------------------------------- spellings
@@ -10191,6 +10375,13 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "code names": st.one_of(
+        code_names().map(lambda drawn: drawn[0]),
+        st.tuples(texts(TERMS), latex_texts()).map(lambda drawn: {
+            "markdown": drawn[0], "latex": drawn[1], "keys": ["ror.point", "case.n_cases"],
+            "labels": {"age_group": "Age group", "R_0": "Reproduction number"}, "kept": [],
+            "stage": None}),
+    ),  # fmt: skip
     "reply numbers": texts(NOTATED),
     "quoted": texts(),
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),
@@ -10263,6 +10454,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "authors cited": lines(),
     "same family name": st.fixed_dictionaries({"cited": lines(), "registered": lines()}),
     "blind names": texts(NAMED),
+    "hidden content": hidden_documents(),
     "quotation": st.tuples(
         quotations(),
         st.sampled_from(("as it stands", "typed", "typed", "misquoted")),

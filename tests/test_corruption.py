@@ -2801,7 +2801,8 @@ def test_a_results_sentence_that_gives_another_result_is_held_to_what_the_summar
     assert found.message.endswith(": 'associated' (association) is now 'increased' (effect)")
     # Round 2: with its words about the other result set aside, a Results sentence that
     # holds no word of the ladder states its number, and is compared with nothing.
-    _swap(project, "Use was associated with hepatic injury in\n", "Hepatic injury was reported in\n")
+    _swap(project, "Use was associated with hepatic injury in\n",
+          "Hepatic injury was reported in\n")
     assert _overclaimed(project) == []
 
 

@@ -118,6 +118,7 @@ ROUTES: dict[str, Route] = {
     **_all("results-binding", ("values",), "values-file-", "value-not-printable"),
     **_all(None, ("build",), "document-stale", "document-unstamped"),
     # -- the prose ------------------------------------------------------------------------
+    **_all("manuscript-writing", None, "summary-claim-stronger"),
     **_all("manuscript-writing", None, "ai-", "vague-attribution", "model-artefact",
            "revision-residue", "abbreviation-", "term-avoided", "vocabulary-conflict",
            "spelling-", "notation-", "code-name-in-prose", "recycled-",

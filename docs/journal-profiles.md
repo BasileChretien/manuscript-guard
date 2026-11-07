@@ -73,7 +73,9 @@ in the manuscript either way.
 
 G8 reads a box as it reads the abstract: a number a box binds that the Methods and the
 Results do not report, nor a table or a figure, is `summary-not-reported`. In a paper with no
-Results heading, every section that names no part of the paper reports, as a review's do.
+Results heading, every section that names no part of the paper reports, as a review's do. A
+sentence of a box that claims more than every Results sentence binding the same result is
+`summary-claim-stronger`, a warning.
 
 ## A graphical abstract
 

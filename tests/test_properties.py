@@ -7237,6 +7237,36 @@ def test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work(
             assert stale == ("uncited" if how == "work not cited" else "changed"), (how, stale)
 
 
+from generated import PASSAGE_CLAIMS, passage_claims  # noqa: E402
+
+
+@holds(30, passage_claims())
+def test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_claims(
+    drawn: tuple[dict[str, Any], list[tuple[int, str]]],
+) -> None:
+    """Item 2 of the plan of 2026-11-06: a passage found in its work's source, whose sentence
+    the manuscript has, is compared with that sentence as the manuscript writes it
+    (`claims.compare_pair(passage, sentence)`). A hedge, a limit or a negation gone, a
+    negation new or a word up the ladder is told as stronger and a move both ways as moved,
+    on the line the sentence's paragraph starts on; a claim made weaker, a synonym or a
+    look-alike is told nothing, and so is a passage not in its source or of a sentence
+    reworded since (`gates/passages.py`). Each finding stands where a sentence its passage
+    belongs to stands, as G7 places that sentence, one at each copy of a sentence written
+    twice (round 1 of #571)."""
+    given, written = drawn
+    found = READINGS["passage claims"]()(given)
+    belonging = READINGS["passages"]()(given)
+    for told, (belongs, _stale), (n, kind) in zip(found, belonging, written, strict=True):
+        expected = PASSAGE_CLAIMS[kind]
+        placed = [line for line, text in belongs if f"Claim {n}:" in text]
+        assert len(placed) == {"sentence reworded": 0, "written twice": 2}.get(kind, 1), (
+            kind, belongs)  # fmt: skip
+        if expected is None:
+            assert told == [], (kind, told, given)
+        else:
+            assert told == [[expected, line] for line in placed], (kind, told, given)
+
+
 @holds(60, credited_plans())
 def test_a_study_is_credited_by_a_citation_of_the_plan_and_by_nothing_else(
     drawn: tuple[dict[str, str], dict[str, str]],
@@ -15131,6 +15161,55 @@ def _no_reworded_sentence_is_near(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(passages_module, "NEAR", 1.1)
 
 
+def _a_sentence_claiming_less_than_its_passage_warns(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import passages as passages_gate
+
+    patch.setitem(passages_gate.CLAIM_CODES, claims_module.WEAKER, "passage-claim-weaker")
+    patch.setitem(passages_gate._CLAIM_LEADS, claims_module.WEAKER, "it claims less")
+
+
+def _a_negation_against_the_passage_is_a_claim_moved(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import passages as passages_gate
+
+    patch.setitem(passages_gate.CLAIM_CODES, claims_module.NEGATION, "passage-claim-moved")
+
+
+def _a_passage_is_compared_with_its_sentence_the_wrong_way_round(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    compared = claims_module.compare_pair
+    patch.setattr(claims_module, "compare_pair", lambda source, said: compared(said, source))
+
+
+def _a_passage_not_in_its_source_is_compared(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import passages as passages_gate
+
+    real = passages_gate.claimed
+    patch.setattr(passages_gate, "claimed", lambda checked: real(
+        dataclasses.replace(checked, found=passages_module.VERIFIED)))  # fmt: skip
+
+
+def _only_the_first_copy_of_a_sentence_is_compared(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import passages as passages_gate
+
+    real = passages_gate.claimed
+    patch.setattr(passages_gate, "claimed", lambda checked: real(
+        dataclasses.replace(checked, sentences=checked.sentences[:1])))  # fmt: skip
+
+
+def _a_sentence_is_compared_as_its_passage_records_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import passages as passages_gate
+
+    real = passages_gate.claimed
+
+    def claimed(checked: Any) -> Any:
+        recorded = tuple(dataclasses.replace(one, text=checked.passage.sentence)
+                         for one in checked.sentences)  # fmt: skip
+        return real(dataclasses.replace(checked, sentences=recorded))
+
+    patch.setattr(passages_gate, "claimed", claimed)
+
+
 def _a_comment_of_the_plan_credits_its_citations(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_review_gate, "blank_comments", lambda text: text)
 
@@ -16115,6 +16194,30 @@ BROKEN = {
     "no reworded sentence is near its passage's": (
         _no_reworded_sentence_is_near,
         test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
+    ),
+    "a sentence claiming less than its passage warns": (
+        _a_sentence_claiming_less_than_its_passage_warns,
+        test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_claims,
+    ),
+    "a negation against the passage is a claim moved": (
+        _a_negation_against_the_passage_is_a_claim_moved,
+        test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_claims,
+    ),
+    "a passage is compared with its sentence the wrong way round": (
+        _a_passage_is_compared_with_its_sentence_the_wrong_way_round,
+        test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_claims,
+    ),
+    "a passage not in its source is compared": (
+        _a_passage_not_in_its_source_is_compared,
+        test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_claims,
+    ),
+    "only the first copy of a sentence is compared with its passage": (
+        _only_the_first_copy_of_a_sentence_is_compared,
+        test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_claims,
+    ),
+    "a sentence is compared as its passage records it": (
+        _a_sentence_is_compared_as_its_passage_records_it,
+        test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_claims,
     ),
     "a comment of the plan credits its citations": (
         _a_comment_of_the_plan_credits_its_citations,

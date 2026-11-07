@@ -3399,6 +3399,38 @@ def test_a_passage_whose_sentence_changed_is_stale(
 
 
 @pytest.mark.parametrize(
+    ("sentence", "said"),
+    [
+        pytest.param("Incidence differed by sex", [("passage-claim-stronger", "warn")],
+                     id="the work's negation dropped"),
+        pytest.param("Age increased incidence, which did not differ meaningfully by sex",
+                     [("passage-claim-stronger", "warn")], id="an effect the work did not claim"),
+        pytest.param("Age may have increased incidence, which did not differ meaningfully by "
+                     "sex", [("passage-claim-moved", "warn")], id="moved both ways"),
+        pytest.param("Incidence may have risen with age and did not differ meaningfully by sex",
+                     [], id="made weaker"),
+    ],
+)  # fmt: skip
+def test_a_cited_sentence_that_claims_more_than_its_passage_is_caught(
+    project: Path, sentence: str, said: list
+) -> None:
+    """Item 2 of the plan of 2026-11-06: the passage is the work's words and belongs to the
+    sentence, and the sentence claims more than they do (`claims.compare_pair`)."""
+    cited = f"{sentence} [@fictionalHepaticCohort2021]."
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    assert "\n# Discussion" in text
+    path.write_text(text.replace("\n# Discussion", f"\n{cited}\n\n# Discussion", 1), "utf-8")
+    passages = project / "literature" / "passages.yaml"
+    passages.write_text(
+        passages.read_text(encoding="utf-8")
+        + f'  - sentence: "{cited}"\n    citekey: fictionalHepaticCohort2021\n'
+        '    passage: "Incidence rose with age and did not differ meaningfully by sex"\n'
+        '    locator: "Results, paragraph 2"\n', "utf-8")  # fmt: skip
+    assert _passage_findings(project) == said
+
+
+@pytest.mark.parametrize(
     "change",
     [
         pytest.param(("class as a whole", "class {{method.ror}} as a whole"), id="inside"),

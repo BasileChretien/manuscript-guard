@@ -115,6 +115,19 @@ def test_warnings_are_left_alone() -> None:
     assert deferred == {}
 
 
+def test_a_cited_sentence_claiming_more_than_its_passage_warns_at_every_stage() -> None:
+    """D2.1 of 2026-11-06: a warning at every stage, like every other claim-strength
+    finding, so no stage binds it."""
+    from manuscript_guard.gates.passages import CLAIM_CODES
+
+    for code in sorted(set(CLAIM_CODES.values())):
+        assert code not in BINDS_AT, code
+        warning = Report((Finding(gate="G7", code=code, message="m", severity=WARN),))
+        for stage in STAGES:
+            report, deferred = apply_stage(warning, stage)
+            assert (report.findings[0].severity, deferred) == (WARN, {}), (code, stage)
+
+
 def test_the_summary_says_how_many_and_when() -> None:
     _report, deferred = apply_stage(
         report_with("no-review", "figure-unreviewed", "unclassified-number"), ANALYSIS

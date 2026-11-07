@@ -1,6 +1,6 @@
 ---
 name: literature-verify
-description: Retrieve a source, extract a value with its verbatim quote, and record it so the chain from manuscript to published sentence can be verified; and record the passage of a cited work that supports a sentence citing it. Use when adding a number from the literature, when check reports literature-source-missing, quote-not-in-source, passage-not-in-source, passage-stale or statements-without-passage, or when a citation needs a stored source or a supporting passage.
+description: Retrieve a source, extract a value with its verbatim quote, and record it so the chain from manuscript to published sentence can be verified; and record the passage of a cited work that supports a sentence citing it. Use when adding a number from the literature, when check reports literature-source-missing, quote-not-in-source, passage-not-in-source, passage-stale, passage-claim-stronger, passage-claim-moved or statements-without-passage, or when a citation needs a stored source or a supporting passage.
 ---
 
 # Recording a number from the literature
@@ -218,6 +218,12 @@ What `check` reports: `passage-not-in-source`, the words were retyped or are ano
 `passage-unchecked`, the work has no stored copy that can be read; `passage-too-short`,
 fewer than four words; `passage-stale`, the sentence was reworded or no longer cites the
 work, so write the sentence as it now reads and read the passage against it again;
+`passage-claim-stronger`, the sentence claims more than the passage: a hedge, a limit
+or a negation of the work's is gone, a negation is new, or a word moved up the ladder,
+"was associated with" made "increases"; `passage-claim-moved`, it moved both ways.
+For those two, tell the author which words moved: they reword the sentence to say what
+the work says, or you look for the passage that says what the sentence says. Both are
+warnings, and a move the author means stays.
 `statements-without-passage`, how many cited sentences carry none.
 
 **Whether a passage supports its sentence is a person's judgement.** You draft the passage;

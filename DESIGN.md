@@ -293,7 +293,7 @@ All deterministic, all runnable in CI without Claude.
 | G11 | Panel review | no review round, a stale review, a file nobody read, or an unanswered major finding |
 | G12 | Methods appropriateness | the analysis plan does not answer the question asked |
 | G13 | Response to reviewers | a point unanswered, or a claimed revision that did not happen |
-| G14 | Abbreviations, terms, spelling and notation | never: it warns when an abbreviation is used before it is defined, defined twice, defined for nothing or never defined, when the manuscript uses a term its author gave up for another, when a word is in the spelling of the English the paper does not declare, when a P value, an interval or a percentage is written in two ways, and when a number runs into its unit |
+| G14 | Abbreviations, terms, spelling, notation and names from the code | at submission, a name from the code in a sentence: a key of the results, a variable of the data dictionary or a word written with underscores (a warning before); otherwise never: it warns when an abbreviation is used before it is defined, defined twice, defined for nothing or never defined, when the manuscript uses a term its author gave up for another, when a word is in the spelling of the English the paper does not declare, when a P value, an interval or a percentage is written in two ways, and when a number runs into its unit |
 | G15 | Models and their variables | a model of an outcome its kind is not for, a variable entered as another kind than it was declared, a reference or a level other than the declared one, an undeclared variable, a fit that did not converge or has a level without events, rows dropped and never stated (warnings: few events for each coefficient, an ordinal variable entered as a trend, a model the Methods name and the analysis did not fit) |
 | G16 | The data and their dictionary | at submission: a dictionary nothing was checked against, an entry or a rule no count covers, counts neither the Methods nor the supplement bind (warnings before; a variable the analysis uses with no entry warns, from the analysis stage) |
 
@@ -3665,6 +3665,21 @@ changes, so one to a file that holds a judgement outside a comment is put to the
 refused where the tool cannot ask. A passage that is all elision, `[...]`, holds no word to
 look for and is not in its source.
 
+**A sentence claims no more than its passage** (item 2 of the plan of 2026-11-06). A
+sentence citing a work can drift from the work's strength: the work says "was associated
+with", the sentence says "increases". Both are recorded, so each passage found in its
+work, whose sentence the manuscript still has, is compared with that sentence as `communicate
+check` compares a communication with the paper: `claims.compare_pair(passage, sentence)`,
+the two read whole. A hedge, a limit or a negation of the work's dropped, a negation new, or
+a word moved up the ladder is a warning (`passage-claim-stronger`), and so is a move both
+ways (`passage-claim-moved`); a sentence `compare_pair` reads as claiming less than its work
+says nothing. Each names the words that moved and stands on each sentence the passage belongs
+to. It is a warning at every stage, like
+every other claim-strength finding (D2.1), and a person's judgement is read as before and
+does not change it (D2.2). A passage not found in its work fails already, one unchecked is
+not yet known to be the work's words, and a stale one belongs to no sentence: none of them is
+compared.
+
 **What a co-author is shown.** The checker's item for a cited sentence shows each passage
 that belongs to it, with its locator in the caption, as evidence whose words are in the
 digest: a passage replaced after a co-author read it leaves their answer about one they never
@@ -5108,6 +5123,55 @@ is not a rule.
 The example joins the bounds of its five intervals with "to", sets "%" against its number
 and states no P value with a sign, so it has nothing to report.
 
+## A name from the code is no word of the prose
+
+"hr_adj_main was 1.42" and "patients with ckd_flag" are sentences written from the
+script's side. The name is the analysis's, and the reader has never seen the analysis. A
+paper written beside its code picks these up when a sentence is drafted from a results file
+or a model's output. G14's fifth reading (`gates/code_names.py`) reports three kinds of word
+as `code-name-in-prose` (Basile, D12.1, 2026-11-06):
+
+| Kind | Example | The finding says |
+|---|---|---|
+| a key the analysis emitted, bare or with its binding's namespace | `ror.point`, `results.ror.point` | that it is a key of the results, and how to bind its value |
+| a variable of the data dictionary | `age_group` | the label the dictionary gives it, to write instead |
+| any word with underscores between its parts | `hr_adj_main`, `C_max` | to say what it is, and how a subscript is typed |
+
+**A key or a variable counts where it is shaped as code is** (D12.4, 2026-11-07): with an
+underscore or a dot in it, or in camelCase from two small letters, `ckdFlag`. The example's
+dictionary names a variable `sex`, and a clinical one may name one `BMI` or `eGFR`: those
+are the prose's words too. The camelCase rule wants a small letter after the first capital,
+so that `lncRNA`, `circRNA` and `mtDNA` are not read as names.
+
+**A code span is printed too** (D12.3). A key or a variable in one, `` `hr_adj_main` ``, is
+read as it is in a sentence: the journal prints the backticks' contents in another font, and
+the reader still does not know the name. Any other word with underscores in a code span is
+not read: it is usually a function's or a package's name, put there on purpose.
+
+**What is not prose is not read.** The reading takes the two views G14 already makes of a
+file, the sentences and headings with everything else NUL, and, new here, the code spans
+with everything else NUL, so bindings, citation keys, URLs, link targets, listings,
+comments, maths, LaTeX's commands, the front matter, captions and the reference list are
+gone before it looks; the code view hides what the prose view hides, so a key in code in a
+caption or a reference is not read either (round 1). On top of that it sets aside a word in a
+path or an address (its run of characters holds a slash, an `@` or a backslash between
+folders), a file's name (a dotted word whose last part reads as an extension,
+`ckd_flag.csv`), and in Markdown what pandoc does not print into the document: a fenced
+div's line, an HTML tag, an attribute with an `=`, a TeX command, a reference link's
+definition, and the label of a reference link the file defines (one nothing defines is
+printed as typed). Each of these was checked against what `pandoc -t plain` prints. An underscore escaped as Markdown escapes it, `hr\_adj`, or as LaTeX must,
+`hr\_adj`, is the underscore it prints.
+
+**A warning while the paper is written, a failure at submission** (D12.2). Nothing about
+such a word is a question of taste: the version a journal receives should have none. A word
+that is right with its underscores, a taxon as GTDB writes it (`g__Bacteroides`), a strain,
+or a variable a data paper documents on purpose, is listed under `language:
+code_names_kept:` in `paper.yaml`, one word to an entry as printed, and is then not read
+anywhere (D12.5). Each name is reported once, where it first stands, with how often it is
+used, as G14's other readings report.
+
+The example's prose names nothing from its code, so it has nothing to report.
+
 ## Methods drift is a reconciliation ledger
 
 Methods sections go stale in a specific way: the analysis changes, and nothing forces the
@@ -5409,6 +5473,36 @@ says it is a P for interaction, trend or heterogeneity. The words between a name
 estimate do not run across another estimate's name: "No difference in mortality, HR 0.83"
 names a hazard ratio, held to 1. Bounds whose signs cannot be read
 for sure are not read: "-0.9--0.1" is an en dash in Markdown or a hyphen and a minus.
+
+The words of the sentence are held to its interval as well (`stats/interval_words.py`; item
+9 of the borrowed checks, Basile's decisions D9.1 and D9.2 of 2026-11-06). Where an
+interval includes its null over its whole rounding box, a sentence that states an effect or
+a difference with no hedge, "increased the risk", "was associated with a higher risk", is
+`claim-beyond-interval`, and one that calls the estimate significant is
+`significance-beyond-interval`: an interval that includes the null at a level no higher
+than one less the paper's significance level goes with a P at or above that level. Both
+are warnings. A sentence that says there is no effect, "no difference", "did not affect",
+"was similar", while a ratio's interval reaches above 1.5 or below 1/1.5 over every value
+its digits allow, is `no-effect-from-interval`, a note that names those bounds: such an
+interval does not exclude effects that matter. "No significant difference", "a
+non-significant increase" and "no evidence of" speak of the test or the evidence and are
+left alone, and so is a sentence that hedges or says the estimate is uncertain ("a trend",
+"imprecise", "compatible with"), that calls something in it not significant ("higher, but
+the difference was not significant"), or that names another test ("the test for
+interaction was significant"). The words are lists of this project's own, in
+`data/claim_strength.yaml` under `interval`; the hedges and the negations are the ladder's;
+another test is named by a word of the list `stats/intervals.py` reads as a P's for
+another test (interaction, trend, heterogeneity, homogeneity, inferiority, equivalence,
+linearity, global, omnibus) with a P or the word "test" within 40 characters of it, so
+"an interaction with warfarin" names none.
+A negation turns a word round from up to four words before it, "did not increase", "was
+not significantly associated". An interval is judged only where G8 would judge it against
+its P: not one the sentence calls profile-likelihood, exact, bootstrap or Bayesian, not
+beside a P it calls one-sided or adjusted, not an estimate outside its own interval, and not
+at 99% where the paper tests at 0.05. The first two are said of a sentence only where every
+interval in it includes its null and every interval it names is one the reader reads, since
+its words may be about another estimate; the third is said of each ratio's interval in a
+sentence that says there is no effect.
 
 An n (%) in a table of a paper given to `audit` is held to its denominator
 (`stats/shares.py`): the count's own, "640/1200 (53.3)", or the "n = 1200" of its column's
@@ -15157,6 +15251,52 @@ Added by the adversarial review, verified and **not** fixed:
   except glued to a ratio's name: "OR–1.9" is 1.9 (#336). After a ratio's name, glued to any
   letter it is a dash, so "log OR was–0.4", with no space, is read as 0.4, outside its interval, as on main
   (pinned by `test_an_en_dash_glued_to_any_word_before_a_ratio_is_a_dash`).
+- **The words beside an interval are read from lists, over the whole sentence**
+  (`stats/interval_words.py`, item 9 of the borrowed checks).
+  - A word of effect is read wherever it stands in the sentence, about this estimate or not:
+    "The risk was higher in older patients; the hazard ratio was 1.2 (95% CI 0.9 to 1.6)"
+    claims a difference. A participle directly after "with", "of", an article or another
+    word of `describing` is taken to describe, "patients with reduced renal function"; one
+    after "who had" is not, so "patients who had reduced renal function" states a
+    difference.
+  - A form of "be" or "have" with a comparative at most two words after it is a difference
+    stated, "was higher", "had a lower", where it describes a group too: "whose dose was
+    lower".
+  - No noun is read as a claim but "increase" and "decrease", which are verbs too, so
+    "after a dose increase" states a difference and "an association was found" does not.
+    Nor are "associated with" and "linked to" with no form of "be" before them, "the
+    hazard associated with use", nor "predictor" without one, "with age as a predictor"
+    (round 1 of #572).
+  - A negation turns round any word of effect up to four words after it, about it or not:
+    "not only increased" says no effect, and so does "among patients not taking it, use
+    increased the risk". One further back is not read.
+  - A word of doubt or a hedge stands the whole sentence down, of this estimate or not:
+    "trend" in "P for trend", "wide" in "a wide range of doses". So does a significance
+    turned round, of another outcome too: "X increased the risk of stroke (HR 1.40, 95%
+    CI 0.95 to 2.06) but had no significant effect on bleeding" gives nothing. And so does
+    another test named, "interaction" or "heterogeneity" among the words
+    `stats/intervals.py` reads as a P's for another test, with a P or "test" within 40
+    characters (rounds 1 and 2 of #572). A significance said of another test that the
+    sentence names in no such word, "the log-rank test was significant", or with no P or
+    "test" beside it, "there was significant heterogeneity between studies", is read as
+    the interval's. A "test" of the outcome's own within 40 characters names one all the
+    same, so "improved scores on the global cognition test" claims nothing.
+  - A Markdown heading ends a sentence at the end of its line; a LaTeX one does not, since
+    G8 reads a LaTeX file's view with its values put in, where the heading's place is no
+    longer known. So "Increased risk" as a `\subsection` title directly over "The hazard
+    ratio was 1.2 (95% CI 0.9 to 1.6)." is read as a claim.
+  - "No effect" is read for each ratio's interval of its sentence, so in "X had no effect
+    on A (HR 1.1, 95% CI 0.9 to 1.3) but increased B (HR 1.4, 95% CI 0.6 to 2.8)", B's
+    interval is read as one said to show no effect.
+  - "No effect" is not read for a difference: what is far from 0 depends on its scale, and
+    neither the analysis plan nor the data dictionary declares a minimal important
+    difference. A field for one would let it be read.
+  - A sentence that names more intervals than the reader reads is not read for the first
+    two, so one that writes "confidence interval (CI)" before its interval is passed over,
+    and so is a second interval with no name of its own.
+  - "Significant" is read after a form of "be" and before a word of `significant_of`, so
+    "significant renal impairment" is not read and "a significant risk of bleeding" is,
+    whatever the risk is of.
 - **An n (%) is held to its denominator only where the table writes both, in one cell, in
   a pipe table or a Word table.** A grid or a simple Markdown table is not read, nor a
   count and its share in columns of their own, nor a share whose denominator only a caption
@@ -20410,6 +20550,46 @@ Open, recorded as each change landed:
   - A block set off by four spaces is read, as it is for the spelling.
   - The hook that runs after a manuscript file is saved does not run this reading.
 
+- **G14 reads a name from the code by its shape, and a key or a variable by its spelling.**
+  - A key or a variable that is a word of the prose is not read: `sex`, `BMI`, `eGFR`,
+    `CD4`, `visit1` (D12.4). Nor is a camelCase name from one small letter, `nCases`, or one
+    whose first capital has another after it, `hasCKD`, since `eGFR`, `mRNA` and `lncRNA` are
+    written the same way.
+  - A word that is right with its underscores warns, and fails at submission, until it is
+    listed under `language: code_names_kept:`. Chemical and gene names seldom carry one;
+    GTDB's taxa (`g__Bacteroides`), some strains and cell lines, and a variable a data paper
+    documents on purpose do. So does a subscript typed as code, `C_max` or `R_0`, which
+    pandoc prints with its underscore, so the finding is right about the paper there and its
+    hint says how to type a subscript.
+  - A word with underscores in a code span is not read unless it is exactly a key or a
+    variable (D12.3): a name from the code put in backticks passes as a function's would.
+  - A key is matched whole, bare or after `results.`. One written with a part changed, or a
+    table's key, is read only as a word with underscores, where it has one, and without the
+    key's hint. A variable is matched in the case the dictionary writes it, so `Age_group`
+    opening a sentence is a word with underscores, without its label.
+  - A word in a run of characters that holds a slash, an `@` or a backslash before a letter or
+    a digit is taken for a path or an address: `n_cases/n_total` typed as a ratio is not read.
+    The path is looked for once what Markdown does not print is out, as pandoc prints it: a
+    Windows path typed in prose, `C:\study\raw_hr_adj`, loses `\study` and `\raw` as TeX
+    commands and prints `C:_hr_adj`, so `hr_adj` is reported (round 2). A tag inside a path
+    cuts it: `data/<b>raw_hr</b>` reports `raw_hr`.
+  - A line shaped as `[label]: ...` is taken for a reference definition and not read, also
+    where pandoc prints it: inside a paragraph, or with words after a title in brackets. A
+    label defined only in the supplement is taken for defined in the main text too. A dotted
+    word whose last part reads as a file's extension is taken for a file's name, so
+    `ckd_flag.csv` is not read, and nor is `ckd_flag.The`, a sentence run into the next with
+    no space after its full stop.
+  - A name with a mark of emphasis inside it, `*ckd*_flag`, is not read. An HTML tag is read
+    as one where `<` stands against a letter, so "a <b and c_d> e" hides `c_d`.
+  - What G14 does not read is not read here either, in a sentence or in code: a figure's
+    caption, the title and the abstract when they are in the front matter or the preamble,
+    and the reference list. A quotation set as a block is read, since a name in it is still
+    one the reader cannot know.
+  - In LaTeX, the argument of a command the reader does not know is read as prose, so a key
+    of `glossaries` or `acronym` with an underscore, `\gls{ckd_flag}` or `\ac{hr_adj}`, is
+    reported though the document prints the entry's text and not the key.
+  - The hook that runs after a manuscript file is saved does not run this reading.
+
 - **G14's vocabulary is a list of words, and reads them as words.**
   - Nothing is reported that the author did not declare. Two words for one thing that are
     in no entry pass in silence; finding candidates is for the writing skill and a reader.
@@ -20920,9 +21100,9 @@ Open, recorded as each change landed:
     Article" is not.
   - The sentence is named at the line its paragraph starts on, and a sentence is cut as G7's
     other checks of a cited sentence cut it.
-- **A supporting passage is in its work, and is not held to what its sentence says.** G7
-  finds the words in the stored source; whether they say what the sentence says is the
-  judgement it leaves to people, the author's in `passages.yaml` and the co-authors' in the
+- **A supporting passage is in its work, and is held to what its sentence says only by how
+  strongly each claims.** G7 finds the words in the stored source; whether they say what the
+  sentence says is the judgement it leaves to people, the author's in `passages.yaml` and the co-authors' in the
   checker. A binding in a sentence is a word of it, `{{lit.x}}` by its key and not its
   value, so a sentence whose bound value changes keeps its passage, as its checker item
   keeps its answers. A
@@ -20941,6 +21121,39 @@ Open, recorded as each change landed:
   by the names they are sold under and not every name an agent could sign. G7 reads a
   work's stored files once for the passages and once for the quotations in the prose, so a
   PDF goes through `pdftotext` twice a `check`.
+- **A cited sentence is held to its passage by a list of words (`passage-claim-stronger`,
+  `passage-claim-moved`).**
+  - Only the words of `data/claim_strength.yaml` are read, as `claims.compare_pair` reads a
+    communication against the paper. A sentence about another population, outcome or drug,
+    with as many hedges and the same rungs of the ladder, is told nothing. English only.
+  - Only a passage found in a copy stored here is compared. Where the copies are kept out of
+    git, CI and a fresh clone compare none, so the warning is seen where the copies are and
+    not in CI's report; a passage of a work with no readable copy is compared nowhere until
+    one is stored.
+  - The passage is read as it is recorded. A hedge left out with `[...]`, "may [...] reduce"
+    recorded as "[...] reduce", is no word of the passage, and the sentence's "reduces" is
+    told nothing. A passage of several sentences is read whole, and so is the sentence: a
+    hedge, a limit or a negation on another clause counts for the whole claim.
+  - A sentence that claims less can be told moved. `compare_pair` reads a sentence by its
+    lowest rung, so one that drops a word of a higher rung and keeps the lowest ("associated
+    with lower mortality and reduced admissions" cited as "associated with lower mortality")
+    moved, and which way cannot be told (round 1 of #571).
+  - A faithful paraphrase can warn. A passage that states a result with no word of the ladder
+    ("incidence was higher among women") cited as an association ("female sex was associated
+    with a higher incidence") reads as stronger, since a sentence with no word of the ladder
+    states, which is below association and above consistency; and a negation paraphrased
+    away ("did not differ by sex" cited as "was similar in men and women") reads as saying
+    the opposite. Each is a warning at every stage, with nothing to acknowledge (round 1 of
+    #571).
+  - Each passage is compared with its sentence alone. A sentence that rests on two works, an
+    association in one and an effect in the other, warns for the first. A sentence that sets
+    itself against the work, "unlike @a, we found no association", reads as saying the
+    opposite, and warns.
+  - A person's judgement that the passage supports the sentence changes nothing (D2.2 of
+    2026-11-06): the warning stays, with nothing to acknowledge, as every claim-strength
+    finding does.
+  - The warning stands on the line the sentence's paragraph starts on, as G7's other findings
+    on a cited sentence do, and a sentence written twice is told twice.
 - **Whether a cited work is still the one to cite rests on readings, which the rules do not
   check (`currency-*`).**
   - A reading varies between runs and between models, and two readings by one model are not

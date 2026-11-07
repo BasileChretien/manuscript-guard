@@ -115,6 +115,19 @@ def test_warnings_are_left_alone() -> None:
     assert deferred == {}
 
 
+def test_a_cited_sentence_claiming_more_than_its_passage_warns_at_every_stage() -> None:
+    """D2.1 of 2026-11-06: a warning at every stage, like every other claim-strength
+    finding, so no stage binds it."""
+    from manuscript_guard.gates.passages import CLAIM_CODES
+
+    for code in sorted(set(CLAIM_CODES.values())):
+        assert code not in BINDS_AT, code
+        warning = Report((Finding(gate="G7", code=code, message="m", severity=WARN),))
+        for stage in STAGES:
+            report, deferred = apply_stage(warning, stage)
+            assert (report.findings[0].severity, deferred) == (WARN, {}), (code, stage)
+
+
 def test_the_summary_says_how_many_and_when() -> None:
     _report, deferred = apply_stage(
         report_with("no-review", "figure-unreviewed", "unclassified-number"), ANALYSIS
@@ -452,6 +465,21 @@ def test_review_findings_do_not_block_a_draft_but_do_block_submission(project: P
     assert report.ok
     report, _project, _chosen, _deferred = _run_gates(project, submission=True)
     assert not report.ok
+
+
+def test_a_name_from_the_code_warns_in_a_draft_and_fails_at_submission() -> None:
+    """G14 raises `code-name-in-prose` to a failure at the submission stage only; the policy
+    has it bind there, so that a run at submission keeps it a failure."""
+    assert binds_at("code-name-in-prose") == SUBMISSION
+    failed = Report((Finding(gate="G14", code="code-name-in-prose", message="m",
+                             severity=FAIL),))  # fmt: skip
+    report, deferred = apply_stage(failed, SUBMISSION)
+    assert not report.ok and deferred == {}
+    report, deferred = apply_stage(failed, INTERNAL_REVIEW)
+    assert report.ok and deferred == {SUBMISSION: 1}
+    warned = Report((Finding(gate="G14", code="code-name-in-prose", message="m",
+                             severity=WARN),))  # fmt: skip
+    assert apply_stage(warned, DRAFTING)[0].findings[0].severity == WARN
 
 
 def test_every_way_of_saying_submission_gives_the_same_verdict(project: Path) -> None:

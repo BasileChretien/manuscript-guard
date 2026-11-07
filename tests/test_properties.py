@@ -109,6 +109,7 @@ from generated import (
     hidden_documents,
     hidden_pages,
     holds,
+    interval_wordings,
     keyword_paragraphs,
     laid_out,
     latex_bound,
@@ -4674,6 +4675,207 @@ def _an_interval_over_two_lines_is_not_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(intervals, "_INTERVAL", re.compile(pattern))
 
 
+# ------------------------------------------------------ the words beside an interval, G8
+
+
+@holds(100, interval_wordings())
+def test_words_that_say_more_than_their_interval_are_found_and_nothing_else(
+    planted: tuple[str, list[list[Any]]],
+) -> None:
+    """Item 9 of the borrowed checks: beside an interval that includes its null, an effect
+    stated with no hedge and the estimate called significant are found, with their words,
+    and so is no effect beside a ratio's interval that does not exclude ratios beyond 1.5
+    or below 1/1.5, with those bounds. Nothing is found for no effect near 1, or beside an
+    upper bound of "2", which may be 1.5; for no effect of the test; for a claim hedged or
+    said to be uncertain, beside an interval that excludes the null, is not the plain one or
+    is at 99%; in a sentence with another interval that excludes the null or that the reader
+    does not read; for a word that describes patients, "clinically significant" or a claim
+    turned round; for a difference stated and called not significant, a significance said of
+    another test, or a heading over the sentence; or for no difference. A negation four
+    words before a claim turns it round, and one five words or more before does not; a word
+    of another test with no P or test beside it, "an interaction with warfarin", names
+    none."""
+    text, expected = planted
+    assert READINGS["interval words"]()(text) == expected, text
+
+
+def _interval_words(patch: pytest.MonkeyPatch, **changed: Any) -> None:
+    """The lists of the words beside an interval, some of them changed."""
+    from dataclasses import replace
+
+    from manuscript_guard.stats import interval_words
+
+    listed = replace(interval_words.words(), **changed)
+    patch.setattr(interval_words, "words", lambda: listed)
+
+
+def _a_hedge_stands_no_claim_down(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "claims_effect", lambda said: bool(said.stated)
+                  and not said.unsure)  # fmt: skip
+
+
+def _a_word_of_doubt_stands_nothing_down(patch: pytest.MonkeyPatch) -> None:
+    _interval_words(patch, uncertain=())
+
+
+def _no_effect_of_the_test_is_no_effect(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "says_no_effect", lambda said: bool(said.none or said.turned)
+                  and not said.hedged and not said.unsure)  # fmt: skip
+
+
+def _a_negation_turns_nothing_round(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "_negations", lambda blank, first, end: [])
+
+
+def _a_negation_anywhere_turns_a_claim_round(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "REACH", 1000)
+
+
+def _every_bound_is_far_from_1(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "FAR", 1.0)
+
+
+def _a_far_bound_is_read_at_its_printed_value(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    box = interval_words._box
+
+    def printed(number: str) -> tuple[float, float] | None:
+        return None if box(number) is None else (float(number), float(number))
+
+    patch.setattr(interval_words, "_box", printed)
+
+
+def _a_difference_is_held_to_a_ratio_s_far_bounds(patch: pytest.MonkeyPatch) -> None:
+    """A difference that includes 0, its bounds held to 1.5 and 1/1.5 as a ratio's are."""
+    from manuscript_guard.stats import interval_words
+
+    def far_bounds(interval: Any) -> tuple[tuple[str, str], ...]:
+        if not interval_words.includes_null(interval):
+            return ()
+        low, high = interval_words._box(interval.low), interval_words._box(interval.high)
+        return tuple((side, bound) for side, bound, far in (
+            ("low", interval.low, low[1] < 1 / interval_words.FAR),
+            ("high", interval.high, high[0] > interval_words.FAR)) if far)  # fmt: skip
+
+    patch.setattr(interval_words, "far_bounds", far_bounds)
+
+
+def _a_difference_s_words_are_held_to_1(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "NULL", {"ratio": 1, "difference": 1})
+
+
+def _an_interval_is_taken_to_include_its_null_past_one_bound(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    def includes(interval: Any) -> bool:
+        low, high = interval_words._box(interval.low), interval_words._box(interval.high)
+        null = interval_words.NULL[interval.kind]
+        return low is not None and high is not None and (low[1] < null or null < high[0])
+
+    patch.setattr(interval_words, "includes_null", includes)
+
+
+def _the_words_beside_any_interval_are_judged(patch: pytest.MonkeyPatch) -> None:
+    """What the sentence says of the interval or its P is not read; its level still is."""
+    from manuscript_guard.stats import interval_words
+
+    def judged(interval: Any, alpha: float = 0.05) -> bool:
+        level = interval_words.alpha_of(interval.level)
+        return (not interval_words.outside_interval(interval) and level is not None
+                and level >= alpha - 1e-9)  # fmt: skip
+
+    patch.setattr(interval_words, "judged", judged)
+
+
+def _a_difference_called_not_significant_is_still_claimed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "claims_effect", lambda said: bool(said.stated)
+                  and not said.hedged and not said.unsure and not said.another_test)  # fmt: skip
+
+
+def _another_test_s_words_are_the_interval_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "_OTHER_P", re.compile(r"(?!)"))
+
+
+def _a_word_of_another_test_names_one_anywhere(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #572: "an interaction with warfarin" read as a test for interaction."""
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "_another_test", lambda blank, first, end:
+                  interval_words._OTHER_P.search(blank, first, end) is not None)  # fmt: skip
+
+
+def _a_heading_runs_into_the_sentence_under_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "heading_ends", lambda read: [])
+
+
+def _a_negation_reaches_three_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "REACH", 3)
+
+
+def _a_negation_reaches_five_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "REACH", 5)
+
+
+def _the_words_beside_an_interval_at_any_level_are_judged(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    patch.setattr(interval_words, "judged", lambda interval, alpha=0.05: not (
+        interval.quiet or interval.p_quiet or interval_words.outside_interval(interval)))
+
+
+def _one_interval_of_a_sentence_that_includes_its_null_is_enough(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.stats import interval_words
+
+    def whole(read: str, first: int, end: int, mine: Any, alpha: float) -> bool:
+        return any(interval_words.judged(one, alpha) and interval_words.includes_null(one)
+                   for one in mine)  # fmt: skip
+
+    patch.setattr(interval_words, "_whole", whole)
+
+
+def _an_interval_the_reader_does_not_read_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import interval_words
+
+    def whole(read: str, first: int, end: int, mine: Any, alpha: float) -> bool:
+        return all(interval_words.judged(one, alpha) and interval_words.includes_null(one)
+                   for one in mine)  # fmt: skip
+
+    patch.setattr(interval_words, "_whole", whole)
+
+
+def _a_word_of_effect_that_describes_patients_is_read(patch: pytest.MonkeyPatch) -> None:
+    _interval_words(patch, describing=frozenset())
+
+
+def _clinically_significant_is_the_test_s(patch: pytest.MonkeyPatch) -> None:
+    _interval_words(patch, not_the_test=frozenset())
+
+
 # ---------------------------------------------------------------------- a table's shares
 
 
@@ -7244,6 +7446,36 @@ def test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work(
             assert stale == ("uncited" if how == "work not cited" else "changed"), (how, stale)
 
 
+from generated import PASSAGE_CLAIMS, passage_claims  # noqa: E402
+
+
+@holds(30, passage_claims())
+def test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_claims(
+    drawn: tuple[dict[str, Any], list[tuple[int, str]]],
+) -> None:
+    """Item 2 of the plan of 2026-11-06: a passage found in its work's source, whose sentence
+    the manuscript has, is compared with that sentence as the manuscript writes it
+    (`claims.compare_pair(passage, sentence)`). A hedge, a limit or a negation gone, a
+    negation new or a word up the ladder is told as stronger and a move both ways as moved,
+    on the line the sentence's paragraph starts on; a claim made weaker, a synonym or a
+    look-alike is told nothing, and so is a passage not in its source or of a sentence
+    reworded since (`gates/passages.py`). Each finding stands where a sentence its passage
+    belongs to stands, as G7 places that sentence, one at each copy of a sentence written
+    twice (round 1 of #571)."""
+    given, written = drawn
+    found = READINGS["passage claims"]()(given)
+    belonging = READINGS["passages"]()(given)
+    for told, (belongs, _stale), (n, kind) in zip(found, belonging, written, strict=True):
+        expected = PASSAGE_CLAIMS[kind]
+        placed = [line for line, text in belongs if f"Claim {n}:" in text]
+        assert len(placed) == {"sentence reworded": 0, "written twice": 2}.get(kind, 1), (
+            kind, belongs)  # fmt: skip
+        if expected is None:
+            assert told == [], (kind, told, given)
+        else:
+            assert told == [[expected, line] for line in placed], (kind, told, given)
+
+
 @holds(60, credited_plans())
 def test_a_study_is_credited_by_a_citation_of_the_plan_and_by_nothing_else(
     drawn: tuple[dict[str, str], dict[str, str]],
@@ -8079,6 +8311,146 @@ def test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not(
     }
     assert {(f.message, f.line) for f in report.findings} == expected, (text, kept)
     assert report.counts["spelling_other"] == sum(len(places) for places in stands.values())
+
+
+# ----------------------------------------------------------------- names from the code, G14
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import code_names  # noqa: E402
+
+
+def _what_is_said(message: str) -> list[str]:
+    """A code-name finding's name, what it says the name is, and where it first stands."""
+    kind = ("variable" if "a variable in the data dictionary" in message
+            else "key" if "is a key of the results" in message else "snake")  # fmt: skip
+    where = "code" if message.endswith("first in a code span") else "prose"
+    return [message.split("'")[1], kind, where]
+
+
+@holds(40, code_names())
+def test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else(
+    planted: tuple[dict[str, Any], dict[str, list[list[Any]]]],
+) -> None:
+    """A word with underscores, a key and a variable are found in a sentence, a key and a
+    variable in code too, each once, on its line, a variable with its label; and nothing is
+    found in code that is neither, in a binding, a citation, a URL, a path, a file's name,
+    an address, maths, a comment, a listing, a caption, the title or the reference list, in a
+    word kept or in a variable that is a word. In Markdown and in LaTeX alike."""
+    given, found = planted
+    answered = answer(READINGS["code names"](), given)
+    assert "raised" not in answered, answered
+    severity = "fail" if given["stage"] == "submission" else "warn"
+    for form in ("markdown", "latex"):
+        findings = answered["answer"][form]["findings"]
+        said = [[*_what_is_said(f["message"]), f["line"]] for f in findings]
+        assert said == found[form], (form, given[form])
+        assert {(f["code"], f["severity"]) for f in findings} == {("code-name-in-prose", severity)}
+        for finding in findings:
+            name = finding["message"].split("'")[1]
+            if name in given["labels"]:
+                assert f"labels it {given['labels'][name]!r}" in finding["message"]
+
+
+def _code_is_read_as_prose(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    names_in = gate._names_in
+    patch.setattr(gate, "_names_in",
+                  lambda text, names, *, in_code: names_in(text, names, in_code=False))  # fmt: skip
+
+
+def _no_code_is_read_for_a_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    names_in = gate._names_in
+    patch.setattr(gate, "_names_in", lambda text, names, *, in_code: (
+        () if in_code else names_in(text, names, in_code=False)))  # fmt: skip
+
+
+def _a_path_is_read_for_a_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_in_a_path", lambda text, start, end: False)
+
+
+def _a_backslash_is_no_folder(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_FOLDER", re.compile(r"(?!)"))
+
+
+def _a_reference_definition_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_DEFINITION", re.compile(r"(?!)"))
+
+
+def _a_defined_reference_label_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_LABEL", re.compile(r"(?!)"))
+
+
+def _every_reference_label_is_taken_for_defined(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_label", lambda written: "")
+
+
+def _code_is_read_where_the_prose_is_not(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_set_aside", lambda code, spans: code)
+
+
+def _a_file_is_read_for_a_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_EXTENSION", re.compile(r"(?!)"))
+
+
+def _every_word_is_shaped_as_code(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "code_shaped", lambda name: True)
+
+
+def _no_name_is_known(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_exact", lambda name, names: None)
+
+
+def _an_escaped_underscore_joins_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_NAME", re.compile(r"(?<![^\W_])[^\W_]+(?:(?:_+|\.)[^\W_]+)*"))
+
+
+def _no_word_is_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    names_in = gate._names_in
+    patch.setattr(gate, "_names_in", lambda text, names, *, in_code: names_in(
+        text, dataclasses.replace(names, kept=frozenset()), in_code=in_code))  # fmt: skip
+
+
+def _unprinted_markdown_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_UNPRINTED", re.compile(r"(?!)"))
+
+
+def _the_namespace_is_kept_on(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "RESULTS", NUL)
+
+
+def _camel_case_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_CAMEL", re.compile(r"(?!)"))
 
 
 # ------------------------------------------ a reference list under a line that is no heading
@@ -15309,6 +15681,55 @@ def _no_reworded_sentence_is_near(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(passages_module, "NEAR", 1.1)
 
 
+def _a_sentence_claiming_less_than_its_passage_warns(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import passages as passages_gate
+
+    patch.setitem(passages_gate.CLAIM_CODES, claims_module.WEAKER, "passage-claim-weaker")
+    patch.setitem(passages_gate._CLAIM_LEADS, claims_module.WEAKER, "it claims less")
+
+
+def _a_negation_against_the_passage_is_a_claim_moved(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import passages as passages_gate
+
+    patch.setitem(passages_gate.CLAIM_CODES, claims_module.NEGATION, "passage-claim-moved")
+
+
+def _a_passage_is_compared_with_its_sentence_the_wrong_way_round(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    compared = claims_module.compare_pair
+    patch.setattr(claims_module, "compare_pair", lambda source, said: compared(said, source))
+
+
+def _a_passage_not_in_its_source_is_compared(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import passages as passages_gate
+
+    real = passages_gate.claimed
+    patch.setattr(passages_gate, "claimed", lambda checked: real(
+        dataclasses.replace(checked, found=passages_module.VERIFIED)))  # fmt: skip
+
+
+def _only_the_first_copy_of_a_sentence_is_compared(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import passages as passages_gate
+
+    real = passages_gate.claimed
+    patch.setattr(passages_gate, "claimed", lambda checked: real(
+        dataclasses.replace(checked, sentences=checked.sentences[:1])))  # fmt: skip
+
+
+def _a_sentence_is_compared_as_its_passage_records_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import passages as passages_gate
+
+    real = passages_gate.claimed
+
+    def claimed(checked: Any) -> Any:
+        recorded = tuple(dataclasses.replace(one, text=checked.passage.sentence)
+                         for one in checked.sentences)  # fmt: skip
+        return real(dataclasses.replace(checked, sentences=recorded))
+
+    patch.setattr(passages_gate, "claimed", claimed)
+
+
 def _a_comment_of_the_plan_credits_its_citations(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_review_gate, "blank_comments", lambda text: text)
 
@@ -16337,6 +16758,30 @@ BROKEN = {
     "no reworded sentence is near its passage's": (
         _no_reworded_sentence_is_near,
         test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
+    ),
+    "a sentence claiming less than its passage warns": (
+        _a_sentence_claiming_less_than_its_passage_warns,
+        test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_claims,
+    ),
+    "a negation against the passage is a claim moved": (
+        _a_negation_against_the_passage_is_a_claim_moved,
+        test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_claims,
+    ),
+    "a passage is compared with its sentence the wrong way round": (
+        _a_passage_is_compared_with_its_sentence_the_wrong_way_round,
+        test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_claims,
+    ),
+    "a passage not in its source is compared": (
+        _a_passage_not_in_its_source_is_compared,
+        test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_claims,
+    ),
+    "only the first copy of a sentence is compared with its passage": (
+        _only_the_first_copy_of_a_sentence_is_compared,
+        test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_claims,
+    ),
+    "a sentence is compared as its passage records it": (
+        _a_sentence_is_compared_as_its_passage_records_it,
+        test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_claims,
     ),
     "a comment of the plan credits its citations": (
         _a_comment_of_the_plan_credits_its_citations,
@@ -17482,6 +17927,70 @@ BROKEN = {
         _a_journal_s_ask_is_not_read,
         test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks,
     ),
+    "a word with underscores in code is read as a sentence's": (
+        _code_is_read_as_prose,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "no code span is read for a name": (
+        _no_code_is_read_for_a_name,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a path or an address is read for a name": (
+        _a_path_is_read_for_a_name,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a file's name is read for a name": (
+        _a_file_is_read_for_a_name,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a backslash between two folders is no path": (
+        _a_backslash_is_no_folder,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a reference link's definition is read for a name": (
+        _a_reference_definition_is_read,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a reference link's label is read where the file defines it": (
+        _a_defined_reference_label_is_read,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a reference link's label is set aside where nothing defines it": (
+        _every_reference_label_is_taken_for_defined,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a key in code is read in a caption, the title and the reference list": (
+        _code_is_read_where_the_prose_is_not,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a key or a variable that is a word is read": (
+        _every_word_is_shaped_as_code,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a key or a variable is read only by its underscores": (
+        _no_name_is_known,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "an escaped underscore joins nothing": (
+        _an_escaped_underscore_joins_nothing,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a word the paper keeps is read": (
+        _no_word_is_kept,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "what Markdown does not print is read for a name": (
+        _unprinted_markdown_is_read,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a binding's namespace is not taken off a key": (
+        _the_namespace_is_kept_on,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "camelCase is not read": (
+        _camel_case_is_not_read,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
     "a glossary is not read": (
         _a_glossary_is_not_read,
         test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
@@ -17629,6 +18138,94 @@ BROKEN = {
     "an interval wrapped onto a second line is not read": (
         _an_interval_over_two_lines_is_not_read,
         test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "a hedge stands no claim beside an interval down": (
+        _a_hedge_stands_no_claim_down,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a word of doubt stands nothing beside an interval down": (
+        _a_word_of_doubt_stands_nothing_down,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "no effect of the test is no effect beside an interval": (
+        _no_effect_of_the_test_is_no_effect,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a negation turns no claim beside an interval round": (
+        _a_negation_turns_nothing_round,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a negation anywhere in the sentence turns a claim beside an interval round": (
+        _a_negation_anywhere_turns_a_claim_round,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a negation reaches three words before a claim beside an interval": (
+        _a_negation_reaches_three_words,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a negation reaches five words before a claim beside an interval": (
+        _a_negation_reaches_five_words,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a difference called not significant beside an interval is still claimed": (
+        _a_difference_called_not_significant_is_still_claimed,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "the words of another test are read as the interval's": (
+        _another_test_s_words_are_the_interval_s,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a word of another test names one with no P or test beside it": (
+        _a_word_of_another_test_names_one_anywhere,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a heading runs into the sentence under it beside an interval": (
+        _a_heading_runs_into_the_sentence_under_it,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "every bound of an interval that includes 1 is far from it": (
+        _every_bound_is_far_from_1,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a far bound is read at its printed value": (
+        _a_far_bound_is_read_at_its_printed_value,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a difference's bounds are held to a ratio's 1.5": (
+        _a_difference_is_held_to_a_ratio_s_far_bounds,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "the words beside a difference are held to 1": (
+        _a_difference_s_words_are_held_to_1,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "an interval past its null on one side is taken to include it": (
+        _an_interval_is_taken_to_include_its_null_past_one_bound,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "the words beside an interval that is not the plain one are judged": (
+        _the_words_beside_any_interval_are_judged,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "the words beside an interval at 99% are judged at 0.05": (
+        _the_words_beside_an_interval_at_any_level_are_judged,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "one interval of a sentence that includes its null is enough for its words": (
+        _one_interval_of_a_sentence_that_includes_its_null_is_enough,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "an interval the reader does not read is passed over for the words": (
+        _an_interval_the_reader_does_not_read_is_passed_over,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "a word of effect that describes patients is read as a claim": (
+        _a_word_of_effect_that_describes_patients_is_read,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
+    ),
+    "clinically significant is read as the test's": (
+        _clinically_significant_is_the_test_s,
+        test_words_that_say_more_than_their_interval_are_found_and_nothing_else,
     ),
     "a mean is held to its printed value, not half a unit either side": (
         _a_mean_is_held_to_exactly_its_printed_value,

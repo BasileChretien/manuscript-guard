@@ -120,9 +120,11 @@ ROUTES: dict[str, Route] = {
     # -- the prose ------------------------------------------------------------------------
     **_all("manuscript-writing", None, "ai-", "vague-attribution", "model-artefact",
            "revision-residue", "abbreviation-", "term-avoided", "vocabulary-conflict",
-           "spelling-", "notation-", "recycled-", "earlier-output-not-compared", "no-headings",
+           "spelling-", "notation-", "code-name-in-prose", "recycled-",
+           "earlier-output-not-compared", "no-headings",
            "fact-", "order-changed", "sign-lost", "sign-moved", "sign-new", "sign-unsure",
-           "claim-", "file-lost", "file-new"),
+           "claim-", "significance-beyond-interval", "no-effect-from-interval", "file-lost",
+           "file-new"),
     **_all("methods-writer", ("methods",), "methods-", "method-", "quality-not-reported"),
     **_all("methods-writer", ("models",), "model-", "models-on-different-rows", "variable-",
            "typed-model-kind", "poisson-binary-variance", "unit-rows-independent"),

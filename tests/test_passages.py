@@ -10,6 +10,7 @@ the passage beside the sentence, and `passages` lists them.
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -445,6 +446,197 @@ def test_check_names_only_who_judged_a_current_passage(project: Path, capsys) ->
     [line] = [line for line in capsys.readouterr().out.splitlines()
               if "cited statements with a passage" in line]  # fmt: skip
     assert line.endswith("by a person: 1, by Bo Person")
+
+
+# ------------------------------------------ how strongly the sentence claims against it
+
+#: Words of the cohort's stored source.
+FINDING = "Incidence rose with age and did not differ meaningfully by sex"
+
+
+def cited_claim(root: Path, sentence: str, passage: str = FINDING, **more: str) -> str:
+    """`sentence`, citing the cohort, written as a paragraph of its own before the Discussion,
+    with `passage` the one passage recorded for it; the sentence as the manuscript has it."""
+    cited = f"{sentence} [@{COHORT}]."
+    swap(root, "\n# Discussion", f"\n{cited}\n\n# Discussion")
+    write(root, {"sentence": cited, "citekey": COHORT, "passage": passage,
+                 "locator": "Results, paragraph 2", **more})  # fmt: skip
+    return cited
+
+
+def claim_findings(root: Path, stage: str = "drafting") -> list:
+    return [f for f in report(root, stage).findings if f.code.startswith("passage-claim-")]
+
+
+@pytest.mark.parametrize(
+    ("sentence", "code", "moved"),
+    [
+        pytest.param("Incidence differed by sex", "passage-claim-stronger", "'not' is gone",
+                     id="a negation gone"),
+        pytest.param("Incidence rose with age and did not differ by sex, nor by region",
+                     "passage-claim-stronger", "'nor' is new", id="a negation new"),
+        pytest.param("Age increased incidence, which did not differ meaningfully by sex",
+                     "passage-claim-stronger", "'increased' (effect) is new",
+                     id="a word of the ladder new"),
+        pytest.param("Age may have increased incidence, which did not differ meaningfully by "
+                     "sex", "passage-claim-moved", "'may' is new; 'increased' (effect) is new",
+                     id="both ways"),
+        pytest.param("Incidence may have risen with age and did not differ meaningfully by sex",
+                     None, None, id="weaker"),
+        pytest.param("Incidence rose with age and did not differ by sex", None, None,
+                     id="as strong"),
+    ],
+)  # fmt: skip
+def test_a_cited_sentence_is_held_to_how_strongly_its_passage_claims(
+    project: Path, sentence: str, code: str | None, moved: str | None
+) -> None:
+    """Item 2 of the plan of 2026-11-06: `claims.compare_pair(passage, sentence)`. Stronger,
+    or a negation gone or new, warns as stronger; a move both ways warns as moved; a claim
+    made weaker says nothing. The finding stands on the sentence and names the passage and
+    the words that moved."""
+    cited_claim(project, sentence)
+    found = claim_findings(project)
+    if code is None:
+        assert found == []
+        return
+    [one] = found
+    assert (one.gate, one.code, one.severity) == ("G7", code, WARN)
+    assert one.message.startswith(f"passage 1 (@{COHORT}, ")
+    assert one.message.endswith(f": {moved}"), one.message
+    assert one.path == main_md(project)
+    text = main_md(project).read_text(encoding="utf-8").splitlines()
+    assert text[one.line - 1].startswith(sentence), (one.line, text[one.line - 1])
+    assert one.context.startswith(sentence)
+
+
+def stored(root: Path, words: str) -> str:
+    """`words` added to the cohort's stored source, as a sentence of its own."""
+    source = root / "literature" / "sources" / f"{COHORT}.txt"
+    source.write_text(source.read_text(encoding="utf-8") + f"\n{words}.\n", "utf-8")
+    return words
+
+
+def test_a_hedge_of_the_work_dropped_claims_more(project: Path) -> None:
+    cited_claim(project, "The excess in women is explained by exposure",
+                passage=stored(project, "The excess in women may be explained by exposure"))
+    [one] = claim_findings(project)
+    assert (one.code, one.message.rsplit(": ", 1)[-1]) == ("passage-claim-stronger",
+                                                            "'may' is gone")  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("passage", "sentence", "code"),
+    [
+        pytest.param("Use was associated with lower incidence and reduced admissions",
+                     "Use was associated with lower incidence", "passage-claim-moved",
+                     id="a higher rung dropped, the lowest kept"),
+        pytest.param("Incidence was higher among women",
+                     "Female sex was associated with a higher incidence",
+                     "passage-claim-stronger", id="a result cited as an association"),
+        pytest.param(FINDING, "Incidence rose with age and was similar in men and women",
+                     "passage-claim-stronger", id="a negation paraphrased away"),
+    ],
+)  # fmt: skip
+def test_what_a_list_of_words_cannot_tell_is_as_known_gaps_says(
+    project: Path, passage: str, sentence: str, code: str
+) -> None:
+    """Round 1 of #571: `compare_pair` reads a sentence by its lowest rung, a sentence with no
+    word of the ladder as one that states, and a negation by its word, so a sentence that
+    claims less is told moved, and a faithful paraphrase can warn. DESIGN.md, Known gaps."""
+    if passage != FINDING:
+        stored(project, passage)
+    cited_claim(project, sentence, passage=passage)
+    assert [f.code for f in claim_findings(project)] == [code]
+
+
+def test_a_sentence_written_twice_is_held_to_its_passage_in_each_place(project: Path) -> None:
+    """Round 1 of #571: a passage belongs to every copy of its sentence, the main text's and
+    the supplement's, and each copy that claims more is told where it stands."""
+    cited = cited_claim(project, "Incidence differed by sex")
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(supplement.read_text(encoding="utf-8") + f"\n{cited}\n", "utf-8")
+    found = claim_findings(project)
+    assert sorted((f.code, f.path.name) for f in found) == [
+        ("passage-claim-stronger", "S1_code_lists.md"), ("passage-claim-stronger", "main.md")]
+
+
+@pytest.mark.parametrize("stage", ["design", "analysis", "drafting", "internal-review",
+                                   "submission"])  # fmt: skip
+def test_a_sentence_claiming_more_than_its_passage_warns_at_every_stage(
+    project: Path, stage: str, capsys
+) -> None:
+    """D2.1 of 2026-11-06: a warning at every stage, like every other claim-strength
+    finding."""
+    cited_claim(project, "Incidence differed by sex")
+    main(["check", str(project), "--json", "--stage", stage])
+    printed = json.loads(capsys.readouterr().out)
+    found = [f["severity"] for f in printed["findings"] if f["code"].startswith("passage-claim")]
+    assert found == [WARN]
+
+
+def test_a_persons_judgement_that_the_passage_supports_changes_nothing(project: Path) -> None:
+    """D2.2 of 2026-11-06: the judgement stays as it is, and is read as before."""
+    cited_claim(project, "Incidence differed by sex", support="supports",
+                judged_by="Ada Example", judged_on="2026-11-06")
+    assert [f.code for f in claim_findings(project)] == ["passage-claim-stronger"]
+    assert report(project).counts["passages_judged"] == 1
+
+
+@pytest.mark.parametrize(
+    "how",
+    ["not in its source", "no stored copy", "copy kept away", "sentence reworded"],
+)
+def test_a_passage_not_found_or_of_no_sentence_is_not_compared(project: Path, how: str) -> None:
+    """Only a passage found in its work's stored source, whose sentence the manuscript still
+    has: one not there fails already, one unchecked is not yet known to be the work's, and a
+    stale one belongs to no sentence."""
+    cited = cited_claim(project, "Incidence differed by sex",
+                        passage=FINDING.replace(" meaningfully", "")
+                        if how == "not in its source" else FINDING)  # fmt: skip
+    if how == "no stored copy":
+        (project / "literature" / "sources" / f"{COHORT}.txt").unlink()
+    elif how == "copy kept away":
+        from kept_away import keep_away
+
+        keep_away(project, f"{COHORT}.txt", COHORT)
+    elif how == "sentence reworded":
+        swap(project, cited, cited.replace("differed", "varied"))
+    assert claim_findings(project) == []
+    expected = {"not in its source": "passage-not-in-source", "no stored copy":
+                "passage-unchecked", "copy kept away": "passage-not-here",
+                "sentence reworded": "passage-stale"}[how]  # fmt: skip
+    assert expected in [f.code for f in report(project).findings]
+
+
+def test_a_sentence_of_the_supplement_is_held_to_its_passage(project: Path) -> None:
+    """Basile, 2026-10-21: the supplement is held to the same rules."""
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    cited = f"Incidence differed by sex [@{COHORT}]."
+    supplement.write_text(supplement.read_text(encoding="utf-8") + f"\n{cited}\n", "utf-8")
+    write(project, {"sentence": cited, "citekey": COHORT, "passage": FINDING,
+                    "locator": "Results, paragraph 2"})  # fmt: skip
+    [one] = claim_findings(project)
+    assert (one.code, one.path) == ("passage-claim-stronger", supplement)
+    assert supplement.read_text(encoding="utf-8").splitlines()[one.line - 1] == cited
+
+
+def test_a_latex_sentence_is_held_to_its_passage_at_its_tex_line(project: Path) -> None:
+    """A LaTeX manuscript's cited sentences are read as they print, each at its `.tex`
+    line (step 8)."""
+    folder = project / "manuscript"
+    shutil.rmtree(folder)
+    shutil.copytree(Path(__file__).parent / "data" / "latex" / "manuscript", folder)
+    tex = folder / "main.tex"
+    text = tex.read_text(encoding="utf-8")
+    assert "\n\\section{Discussion}" in text
+    tex.write_text(text.replace("\n\\section{Discussion}", "\nIncidence differed by sex "
+                                f"\\cite{{{COHORT}}}.\n\n\\section{{Discussion}}", 1), "utf-8")
+    write(project, {"sentence": f"Incidence differed by sex [@{COHORT}].", "citekey": COHORT,
+                    "passage": FINDING, "locator": "Results, paragraph 2"})  # fmt: skip
+    [one] = claim_findings(project)
+    assert (one.code, one.path) == ("passage-claim-stronger", tex)
+    assert tex.read_text(encoding="utf-8").splitlines()[one.line - 1].startswith(
+        "Incidence differed by sex")
 
 
 @pytest.mark.parametrize(

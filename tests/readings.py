@@ -1376,6 +1376,33 @@ def _notation() -> Reading:
     return notation
 
 
+@reading("code names")
+def _code_names() -> Reading:
+    from manuscript_guard.gates.code_names import Names, Prose, judge_code_names
+    from manuscript_guard.gates.language import _latex_read
+
+    def code_names(given: dict[str, Any]) -> dict[str, Any]:
+        """The names from the code G14 finds in a Markdown file and in a LaTeX file, with the
+        keys, the dictionary's labels and the words kept that are given, at the stage given.
+        The LaTeX file is read from a folder made for this one run, as G14 reads a LaTeX
+        manuscript, and is named `main.tex`."""
+        names = Names(frozenset(given["keys"]), dict(given["labels"]), frozenset(given["kept"]))
+        file = _file(given["markdown"])
+        markdown = [Prose(file.path, file.text, file.printed, file.code, file.line_of)]
+        folder = Path(tempfile.mkdtemp(prefix="mg-reading-"))
+        try:
+            (folder / "main.tex").write_text(given["latex"], encoding="utf-8", newline="")
+            latex = [Prose(Path(read.path.name), read.text, read.printed, read.code, read.line_of)
+                     for read in _latex_read(folder, None)]  # fmt: skip
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+        return {form: _told(judge_code_names(passages, names, given["stage"]))
+                for form, passages in (("markdown", markdown), ("latex", latex))}  # fmt: skip
+
+    _file("")
+    return code_names
+
+
 @reading("reported tests")
 def _reported_tests() -> Reading:
     """Each test statistic with a P after it in its sentence, as it is printed, and what
@@ -1428,6 +1455,21 @@ def _reported_intervals() -> Reading:
         return found
 
     return reported
+
+
+@reading("interval words")
+def _interval_words() -> Reading:
+    """What G8 says of the words of each sentence that reports an interval: the code, where
+    each interval it is said of starts, the words that say it, and for no effect the bounds
+    far from 1, each with its side."""
+    from manuscript_guard.stats.interval_words import worded
+    from manuscript_guard.text.masking import mask
+
+    def read(text: str) -> list[list[Any]]:
+        return [[said.code, [one.start for one in said.intervals], list(said.words),
+                 [list(bound) for bound in said.far]] for said in worded(mask(text))]  # fmt: skip
+
+    return read
 
 
 @reading("table shares")
@@ -1747,6 +1789,33 @@ def _passages() -> Reading:
             [[[cited.line, cited.text] for cited in one.sentences], one.stale]
             for one in found.passages
         ]
+
+    return passages
+
+
+@reading("passage claims")
+def _passage_claims() -> Reading:
+    """How strongly each cited sentence of a Markdown file claims against the passage of
+    `passages.yaml` recorded for it, each work's source stored as text: the code and the
+    line of each finding G7 gives of an entry (`gates/passages.py`, item 2 of the plan of
+    2026-11-06)."""
+    from manuscript_guard.checking.produce import cited_sentences, citing_document
+    from manuscript_guard.gates.passages import claimed
+    from manuscript_guard.literature.passages import Passage, survey
+
+    def passages(given: dict[str, Any]) -> list[list[list[Any]]]:
+        sentences = cited_sentences([citing_document(MAIN, given["text"])])
+        entries = tuple(
+            Passage(number, entry["sentence"], entry["citekey"], entry["passage"],
+                    entry["locator"])
+            for number, entry in enumerate(given["entries"], start=1)
+        )  # fmt: skip
+        with tempfile.TemporaryDirectory() as folder:
+            sources = Path(folder)
+            for key, text in given["sources"].items():
+                (sources / f"{key}.txt").write_bytes(text.encode("utf-8"))
+            found = survey(sources, sentences, entries)
+        return [[[one.code, one.line] for one in claimed(checked)] for checked in found.passages]
 
     return passages
 

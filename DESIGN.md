@@ -6758,7 +6758,7 @@ put to Basile named the first four; round 1 of #579 found the other three, which
 | a reading of a reply in Word to a proposed change of reference | `literature/currency/replies/` | the same |
 | a reading of a rendered figure | `figures/<name>.review.yaml` | `reviewed_by` |
 | the terms of a recorded literature search | `literature/currency/searches/` | `terms_by` |
-| a method proposed for the plan by reading similar studies | `design/methods_review.yaml` | each proposal's `proposed_by` |
+| an appraisal of a similar study's method against a published standard | `design/methods_review.yaml` | each appraisal's `proposed_by` |
 
 Each is use of a model in making the paper, and a journal that asks asks about all of it. A
 record says a model made it in one of two ways. It has a `provenance` with a `model`, and a
@@ -6774,8 +6774,8 @@ its provider gives the model.
 
 From each the check takes the provider; the model as it was asked for (`provenance.model`,
 or the name after its provider); the model as the provider named it in its answer
-(`model_reported`), where the record has it; the kind of record; its round or number; and
-its date. Every round counts, stale or not: a reading of an old draft was still a use.
+(`model_reported`), where the record has it; the kind of record; its round or number and
+its date, where it has them. Every round counts: a reading of an old draft was still a use.
 
 **A model's wording taken** is a finding of a model reading whose `resolution` begins with
 the words `import --apply` writes for an accepted suggestion, "Edited in Word as". The edit
@@ -6843,7 +6843,9 @@ inside one, and `gpt-5.1` is not named by "GPT-5, 1", since the point's two digi
 two words. Two digits a hyphen joins may stand apart, so that `qwen2.5-72b` is named by
 "Qwen 2.5 72B".
 
-Each model has several names, and the statement names it where it names any:
+Each model has several names, and the statement names it where it names any; the four
+takings-away below combine, so `openrouter/anthropic/claude-opus-4-5-20251101` is named by
+"Claude Opus 4.5":
 
 - the name asked for and the name the provider reported;
 - each without the provider, its last part after a slash: `openrouter/openai/gpt-5.1` is
@@ -6875,24 +6877,26 @@ also cuts out what each match is in, from that same text:
 
 - a match that starts on a heading's line, as G4's heading reader finds headings
   (`text.blocks.find_headings`, which `split_sections` reads), is a heading match, and
-  takes that heading's section to the next heading of its level or above (`enclosed`). A
+  takes that heading's own line and its section to the next heading of its level or above
+  (`enclosed`), so `## Use of GPT-5.1` names `gpt-5.1`. A
   LaTeX manuscript's main text is its printed view, which writes each sectioning command
   as a `#` heading of its depth, so its levels are read the same way;
 - any other match takes its paragraph: from the blank line before it to the blank line
-  after it, or to the start or end of the text.
+  after it in the text as written, where a blanked comment's line is not blank, or to the
+  start or end of the text.
 
-The statement is every place cut out so, read as one text, in the order the main text
-holds them. A journal that wants the statement in the Acknowledgements, or the analysis in
+The statement is every place cut out so, each read apart, so that no model is named across
+two. A journal that wants the statement in the Acknowledgements, or the analysis in
 the Methods and the writing in the Acknowledgements, says so in its pattern, and a model
 named in either place is named.
 
-With no such entry, or no journal chosen, the statement is the section under a heading of
+With no such entry, or with no journal, the statement is the line and section of a heading of
 the default kind, in the main text or in the supplement: a heading that holds a word for
 the tool ("AI", "artificial intelligence", "generative", "language model", "LLM",
 "chatbot") and a word for the statement ("use", "used", "using", "statement",
 "declaration", "disclosure", "assisted", "assistance"), as "Use of AI", "AI disclosure" and
 "Declaration of generative AI and AI-assisted technologies" do and "Generative models" and
-"Language model performance" do not.
+"Language model performance" do not. Each word may be singular or plural.
 
 ### The findings
 
@@ -6938,7 +6942,7 @@ among what G4 did not check there.
 `manuscript-guard review --ai-use` prints what the records show and what the authors
 declare, and writes nothing: each model with its provider and both spellings, what it did
 (read the manuscript, the plan, a figure, a cited work or a reply; wrote a search's terms;
-proposed a method), in which rounds and between which dates, and each finding whose wording
+appraised a method), in which rounds and on which dates, and each finding whose wording
 was taken; then each declared use. The submission-pack skill
 runs it, asks the author for the uses no record can show, writes each under `ai_use` in the
 author's words with their name and the date, and drafts the statement from both: every
@@ -6970,6 +6974,8 @@ The code's pull request puts each of these under "Known gaps":
   `claude-opus-4-5`; and a local model's tag may be left out, so "Llama 3.1 8B" names
   `llama3.1:70b`.
 - A date stamp in any other form ("-0605", "-002") is part of the name.
+- A letter before a version in the statement breaks the run of parts, so "Claude Opus
+  v4.5" does not name `claude-opus-4-5`.
 - Naming is all that is read, so "we did not use GPT-5.1" names `gpt-5.1`.
 - With no `ai_use` entry, a heading of the default kind is the statement wherever it is: in
   a paper about language models, "Use of large language models for annotation" in the

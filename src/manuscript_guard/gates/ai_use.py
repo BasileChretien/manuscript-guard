@@ -30,7 +30,7 @@ from manuscript_guard.contracts._schema import ContractError, read_structured, r
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
 from manuscript_guard.text.blocks import find_headings, scannable
-from manuscript_guard.text.model_names import named
+from manuscript_guard.text.model_names import named, names_of
 
 GATE = "G4"
 KIND = "ai_use"
@@ -268,8 +268,9 @@ def wanted(project: Project) -> list[Named]:
     on_record = models(model_work(project))
 
     def same(tool: Named, model: Named) -> bool:
+        # The record's spelling shortened too, as a statement is held to it (round 2).
         return named(tool.shown, model.spellings) and any(
-            named(spelt, tool.spellings) for spelt in model.spellings)
+            named(short, tool.spellings) for short in names_of(*model.spellings))
 
     tools = [tool for tool in declared(project)
              if not any(same(tool, model) for model in on_record)]  # fmt: skip

@@ -87,6 +87,8 @@ def test_a_name_typed_in_full_width_is_the_name_typed_plainly() -> None:
     assert names("ＧＰＴ－５．１", "gpt-5.1") and names("ＧＰＴ-５.１ (OpenAI)", "gpt-5.1")
     # Letters of a script written without spaces run on into the name's last word: a limit.
     assert not names("GPT-5.1を用いた", "gpt-5.1")
+    # A symbol NFKC writes as letters still ends the name, "™" and "℠" (round 2).
+    assert names("We used ChatGPT™ (OpenAI).", "ChatGPT") and names("ChatGPT℠", "ChatGPT")
 
 
 def test_a_name_with_no_letter_or_digit_names_nothing() -> None:
@@ -346,13 +348,20 @@ def test_a_declared_tool_whose_name_begins_with_a_model_s_on_record_is_still_wan
         (UNNAMED, FAIL, "the AI-use statement does not name GPT-4o mini")]
 
 
-def test_a_declared_tool_that_is_a_model_on_record_is_asked_for_once(project: Path) -> None:
+@pytest.mark.parametrize(("tool", "reader"), [
+    ("GPT-4o", "openai/gpt-4o"),
+    # The record's date is taken away when it is held to the tool's name (round 2).
+    ("Claude Opus 4.5", "anthropic/claude-opus-4-5-20251101")])  # fmt: skip
+def test_a_declared_tool_that_is_a_model_on_record_is_asked_for_once(
+    project: Path, tool: str, reader: str
+) -> None:
     _require(project)
-    _declare(project, [{"tool": "GPT-4o", "purpose": "editing", "what": "x"}])
-    _reading(project, "stats", "openai/gpt-4o", number=11)
+    _declare(project, [{"tool": tool, "purpose": "editing", "what": "x"}])
+    _reading(project, "stats", reader, number=11)
     _say(project, "## Use of AI\n\nA model read the draft.")
+    provider, model = reader.split("/")
     assert _found(project) == [
-        (UNNAMED, WARN, "the AI-use statement does not name gpt-4o (openai)")]
+        (UNNAMED, WARN, f"the AI-use statement does not name {model} ({provider})")]
 
 
 def test_a_heading_s_own_words_name_the_model(project: Path) -> None:

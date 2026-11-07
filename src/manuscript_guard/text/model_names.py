@@ -48,12 +48,18 @@ class Part:
     after_point: bool
 
 
+def _plain(text: str) -> str:
+    """`text` in NFKC, each symbol a space first, so "™" joins no name as "TM" (round 2)."""
+    spaced = "".join(" " if unicodedata.category(c) == "So" else c for c in text)
+    return unicodedata.normalize("NFKC", spaced)
+
+
 def parts(text: str) -> list[Part]:
     """The parts of every word of `text`, in order. The text is read in its compatibility
     form (NFKC), so that a name typed in full-width letters and digits, as a Japanese input
     method types them ("ＧＰＴ－５．１"), is the name typed plainly (round 1 of the code)."""
     found: list[Part] = []
-    for word in _WORD.finditer(unicodedata.normalize("NFKC", text)):
+    for word in _WORD.finditer(_plain(text)):
         token = word.group()
         # Each piece with whether a point stands just before it: a letter-digit cut and a
         # hyphen mark nothing.

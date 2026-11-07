@@ -140,14 +140,25 @@ def _trailing(text: str, against: Callable[[int], bool]) -> list[tuple[int, int,
     first = 0
     while first < len(groups):
         last = first
-        while last + 1 < len(groups) and not text[groups[last][1]:groups[last + 1][0]].strip():
+        while last + 1 < len(groups) and _joined(text[groups[last][1]:groups[last + 1][0]]):
             last += 1
         start = groups[first][0]
-        if against(start) and _ENDS.match(text, groups[last][1]):
+        # The run up to the last group a sentence starts after: a group that opens a clause
+        # in lower case, "[@b] showed", and those after it are the next sentence's.
+        ends = next((at for at in range(last, first - 1, -1)
+                     if _ENDS.match(text, groups[at][1])), None)  # fmt: skip
+        if against(start) and ends is not None:
             stop = len(text[:start].rstrip()) - 1
-            found += [(begin, end, stop) for begin, end in groups[first:last + 1]]
+            found += [(begin, end, stop) for begin, end in groups[first:ends + 1]]
         first = last + 1
     return found
+
+
+def _joined(between: str) -> bool:
+    """Whether two citation groups are one run: only spaces, tabs and at most one line
+    break between them. A blank line ends the paragraph, and the group after it opens the
+    next one."""
+    return not between.strip() and between.count("\n") < 2
 
 
 def _typed_against(text: str, at: int) -> bool:

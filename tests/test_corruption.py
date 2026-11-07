@@ -2927,6 +2927,18 @@ def test_a_citation_typed_against_a_stop_belongs_to_the_sentence_it_ends(project
           "[@fictionalHepaticCohort2021] Example")  # round 2: both groups are its
     (note,) = _interpreted(project)
     assert note.context == _PROBABLY, note.context
+    # Review of 0f2aff82: a group that opens the next paragraph is that paragraph's, and a
+    # group that opens a clause in lower case leaves the groups before it to their stop.
+    _swap(project, "[@fictionalClassSignal2019] [@fictionalHepaticCohort2021] Example",
+          "[@fictionalClassSignal2019]\n\n[@fictionalHepaticCohort2021] Example")
+    assert _interpreted(project) == []
+    _swap(project, "[@fictionalClassSignal2019]\n\n[@fictionalHepaticCohort2021] Example-drug",
+          "[@fictionalClassSignal2019] [@fictionalHepaticCohort2021] showed that example-drug")
+    _swap(project, "in older patients.", "in older patients. Example-drug caused them.")
+    (note,) = _interpreted(project)
+    assert note.message.startswith("1 of the 3"), note.message
+    _swap(project, " Example-drug caused them.", "")
+    _swap(project, "showed that example-drug", "Example-drug")
     _swap(project, " [@fictionalHepaticCohort2021]", "")
     _swap(project, "before.[@fictionalClassSignal2019] Example-drug probably increased",
           "before. [@fictionalClassSignal2019] showed that example-drug probably increased")

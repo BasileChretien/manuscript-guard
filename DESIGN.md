@@ -23391,7 +23391,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `claude-opus-4-5`; a local model's tag may be left out, so "Llama 3.1 8B" names
     `llama3.1:70b`; a date stamp in another form ("-0605", "-002") is part of the name; and
     a letter before a version breaks the run of parts, so "Claude Opus v4.5" does not name
-    `claude-opus-4-5`.
+    `claude-opus-4-5`. Letters of a script written without spaces run on into the name's
+    last word, so "GPT-5.1を用いた" does not name `gpt-5.1`; full-width forms are read as
+    their plain ones (NFKC).
+  - A phrase match takes only its paragraph, and pandoc needs a blank line before a list,
+    so "The following AI tools were used:" over a list leaves the list's tools outside the
+    statement. A profile's pattern that matches the statement's heading takes the list in.
   - Naming is all that is read: "we did not use GPT-5.1" names `gpt-5.1`.
   - With no `kind: ai_use` entry, a heading of the default kind is the statement wherever it
     is: in a paper about language models, "Use of large language models for annotation" in

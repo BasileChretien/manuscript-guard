@@ -2167,14 +2167,18 @@ def code_names(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, list[list[Any
 #: DESIGN.md, "How a statement names a model"), and whether it names it: the case drawn
 #: letter by letter; a version written with a hyphen in the name and a point in the text, and
 #: the other way round; a name with its provider, a date stamp, `latest` or a local tag that
-#: the text leaves out; a name glued to its version that the text spaces. Not named: another
+#: the text leaves out, each a kind of its own; a name glued to its version that the text
+#: spaces. Not named: another
 #: version, a longer number, another order, a word between, a name that starts inside a word
 #: of the text or ends inside one, and a point's two digits in two words.
 MODEL_NAME_KINDS = (
     ("case", True),
     ("hyphen version", True),
     ("point version", True),
-    ("shortened", True),
+    ("provider left out", True),
+    ("date left out", True),
+    ("latest left out", True),
+    ("tag left out", True),
     ("spaced", True),
     ("another version", False),
     ("longer number", False),
@@ -2187,9 +2191,15 @@ MODEL_NAME_KINDS = (
 #: Made-up model families and tiers, so that no filler word is one of them.
 _MODEL_FAMILIES = ("zorvan", "quillet", "maruka", "vexil", "tandor", "ploven")
 _MODEL_TIERS = ("nimbus", "brisk", "solace", "keel", "umber")
-#: What a record may hold at the end of a model's name that a statement leaves out.
-_MODEL_SUFFIXES = ("-20260714", "-2026-07-14", "@20261101", "-latest", ":8b-q4_K_M",
-                   "-20260714:70b")  # fmt: skip
+#: What a record may hold around a model's name that a statement leaves out, by kind: a
+#: provider, a date stamp, `latest` and a local tag, each with the others it may come with.
+_MODEL_LEFT_OUT = {
+    "provider left out": (("acme/", ""), ("openrouter/acme/", "")),
+    "date left out": (("", "-20260714"), ("", "-2026-07-14"), ("", "@20261101"),
+                      ("acme/", "-20260714")),
+    "latest left out": (("", "-latest"), ("acme/", "-latest")),
+    "tag left out": (("", ":8b-q4_K_M"), ("", "-20260714:70b")),
+}  # fmt: skip
 
 
 @st.composite
@@ -2216,9 +2226,9 @@ def model_statements(draw: st.DrawFn) -> tuple[dict[str, Any], list[bool]]:
         words = f"{cased(family)} {cased(tier)}"
         version = f"{major}{said_joint}{minor}"
         said = f"{words} {version}"
-        if kind == "shortened":
-            provider = draw(st.sampled_from(("acme", "openrouter/acme")))
-            name = f"{provider}/{name}{draw(st.sampled_from(_MODEL_SUFFIXES))}"
+        if kind in _MODEL_LEFT_OUT:
+            before_name, after_name = draw(st.sampled_from(_MODEL_LEFT_OUT[kind]))
+            name = f"{before_name}{name}{after_name}"
         elif kind == "spaced":
             name, said = f"{family}{major}.{minor}", f"{cased(family)} {major}.{minor}"
         elif kind == "another version":

@@ -189,14 +189,23 @@ def _appraisals(project: Project) -> Iterator[Work]:
     if not isinstance(document, dict):
         return
     record = _shown(project, path)
-    for study in document.get("studies") or []:
-        for method in (study.get("methods") or []) if isinstance(study, dict) else []:
-            appraisal = method.get("appraisal") if isinstance(method, dict) else None
-            if not isinstance(appraisal, dict):
-                continue
-            found = made_by(appraisal.get("proposed_by"), None)
-            if found is not None:
-                yield Work(*found, APPRAISED, record, None, _dated(appraisal.get("proposed_on")))
+    for study in _items(document.get("studies")):
+        for method in _items(study.get("methods") if isinstance(study, dict) else None):
+            given = method.get("appraisal") if isinstance(method, dict) else None
+            # One appraisal, or a list of them: the schema takes both.
+            for appraisal in _items(given) if isinstance(given, list) else [given]:
+                if not isinstance(appraisal, dict):
+                    continue
+                found = made_by(appraisal.get("proposed_by"), None)
+                if found is not None:
+                    yield Work(*found, APPRAISED, record, None,
+                               _dated(appraisal.get("proposed_on")))  # fmt: skip
+
+
+def _items(value: object) -> list:
+    """`value` where it is a list, and nothing otherwise: a record that does not fit its
+    schema is G0's to report, not a reason for this check to stop."""
+    return value if isinstance(value, list) else []
 
 
 def model_work(project: Project) -> list[Work]:
@@ -253,10 +262,17 @@ def declared(project: Project) -> list[Named]:
 
 def wanted(project: Project) -> list[Named]:
     """Everything the statement must name (D6.5): each model on record, then each tool the
-    authors declare that names no model on record."""
+    authors declare that is not one of them. A tool is one of them where each names the
+    other: "GPT-4o mini" names `gpt-4o`, a longer name naming a shorter one, and is another
+    model all the same (round 1 of the code)."""
     on_record = models(model_work(project))
+
+    def same(tool: Named, model: Named) -> bool:
+        return named(tool.shown, model.spellings) and any(
+            named(spelt, tool.spellings) for spelt in model.spellings)
+
     tools = [tool for tool in declared(project)
-             if not any(named(tool.shown, model.spellings) for model in on_record)]  # fmt: skip
+             if not any(same(tool, model) for model in on_record)]  # fmt: skip
     return on_record + tools
 
 
@@ -287,10 +303,13 @@ def _profile(project: Project) -> tuple[list[dict], Path | None]:
 _BLANK = re.compile(r"\n[ \t\r]*\n")
 
 
-def _paragraph(written: str, at: int) -> tuple[int, int]:
-    """The paragraph `at` is in: between the blank lines of the text as written around it."""
+def _paragraph(written: str, at: int, comments: list[tuple[int, int]]) -> tuple[int, int]:
+    """The paragraph `at` is in: between the blank lines of the text as written around it.
+    A blank line inside an HTML comment ends no paragraph (round 1 of the code)."""
     start, end = 0, len(written)
     for blank in _BLANK.finditer(written):
+        if any(begin < blank.start() and blank.end() < finish for begin, finish in comments):
+            continue
         if blank.end() <= at:
             start = blank.end()
         elif blank.start() >= at:
@@ -312,14 +331,18 @@ def places(text: str, pattern: str) -> list[str]:
     read"): a heading's line and section where the match starts on a heading's line, the
     paragraph otherwise. Comments and fenced listings are blanked, as G4 reads every
     required statement. In the order the text holds them, each once."""
+    from manuscript_guard.text.masking import fenced_blocks, html_comments
+
     printed = scannable(text)
     headings = find_headings(printed)
+    comments = html_comments(text, fenced_blocks(text))
     spans: dict[tuple[int, int], None] = {}
     for match in re.finditer(pattern, printed, re.IGNORECASE | re.MULTILINE):
         at = match.start()
         on = next((index for index, heading in enumerate(headings)
                    if heading.start <= at <= _line_end(printed, heading.start)), None)  # fmt: skip
-        span = _section(printed, headings, on) if on is not None else _paragraph(text, at)
+        span = (_section(printed, headings, on) if on is not None
+                else _paragraph(text, at, comments))  # fmt: skip
         spans[span] = None
     return [printed[start:end] for start, end in sorted(spans)]
 

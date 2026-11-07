@@ -82,6 +82,13 @@ def test_the_ways_of_shortening_a_name_combine() -> None:
     assert names_of(None, "", "  ") == ()
 
 
+def test_a_name_typed_in_full_width_is_the_name_typed_plainly() -> None:
+    """A Japanese input method types full-width letters, digits and marks (round 1)."""
+    assert names("ＧＰＴ－５．１", "gpt-5.1") and names("ＧＰＴ-５.１ (OpenAI)", "gpt-5.1")
+    # Letters of a script written without spaces run on into the name's last word: a limit.
+    assert not names("GPT-5.1を用いた", "gpt-5.1")
+
+
 def test_a_name_with_no_letter_or_digit_names_nothing() -> None:
     assert not names("Claude Opus 4.5", "--") and not names("", "gpt-5.1")
 
@@ -159,7 +166,10 @@ def test_every_kind_of_record_a_model_s_work_is_filed_in_is_read(project: Path) 
         "studies": [{"citekey": "s", "methods": [
             {"field": "design", "appraisal": {"proposed_by": "openai/o3",
                                               "proposed_on": "2026-09-01"}},
-            {"field": "outcome", "appraisal": {"proposed_by": "Ada Example"}}]}]})  # fmt: skip
+            {"field": "outcome", "appraisal": {"proposed_by": "Ada Example"}},
+            # The schema takes a list of appraisals for one method too (round 1 of the code).
+            {"field": "exposure", "appraisal": [{"proposed_by": "openai/o4-mini"},
+                                                {"proposed_by": "Ada Example"}]}]}]})
     # A refused reply is not read, nor a record a person made.
     (project / "review" / "round-11" / "refused").mkdir(parents=True)
     (project / "review" / "round-11" / "refused" / "stats.txt").write_text(
@@ -175,6 +185,7 @@ def test_every_kind_of_record_a_model_s_work_is_filed_in_is_read(project: Path) 
         ("deepseek-chat", "wrote a literature search's terms", 1, "2026-10-03", 0),
         ("claude-opus-5", "read a figure", None, "2026-10-04", 0),
         ("o3", APPRAISED, None, "2026-09-01", 0),
+        ("o4-mini", APPRAISED, None, None, 0),
     ])  # fmt: skip
 
 
@@ -203,6 +214,23 @@ def test_a_comment_inside_a_paragraph_does_not_split_it_and_is_not_read() -> Non
     text = "Before.\n\nWe used\n<!-- GPT-4o -->\nGPT-5.1 to edit.\n\nAfter.\n"
     [place] = places(text, "to edit")
     assert "GPT-5.1" in place and "GPT-4o" not in place and "We used" in place
+    # A blank line inside the comment ends no paragraph either (round 1).
+    [place] = places("We used GPT-5.1\n<!-- a\n\nb -->\nand Claude Opus 5 to edit.\n", "to edit")
+    assert "GPT-5.1" in place and "Claude Opus 5" in place and "a" not in place.split()
+
+
+def test_a_record_that_does_not_fit_its_schema_stops_nothing(project: Path) -> None:
+    """G0 reports the file; the check reads what it can (round 1)."""
+    from manuscript_guard.gates.journal import check_journal
+
+    _write(project / "design" / "methods_review.yaml",
+           {"schema": "manuscript-guard/methods-review/1", "studies": 3})
+    _write(project / "review" / "round-11" / "odd.yaml",
+           {"schema": "manuscript-guard/review/1", "reviewed_by": 7, "findings": "none"})
+    loaded = load_project(project)[0]
+    assert model_work(loaded) == []
+    assert check_ai_use(loaded, "submission").findings == ()
+    assert not [f for f in check_journal(loaded).findings if f.code == "gate-errored"]
 
 
 def test_a_statement_in_latex_is_read_in_the_printed_view(tmp_path: Path) -> None:
@@ -303,6 +331,28 @@ def test_every_model_and_every_declared_tool_left_out_is_listed(project: Path) -
     assert code == UNNAMED
     assert message == ("the AI-use statement does not name mistral-large-2411 (mistral), "
                        "Claude Opus 5 (Anthropic)")
+
+
+def test_a_declared_tool_whose_name_begins_with_a_model_s_on_record_is_still_wanted(
+    project: Path,
+) -> None:
+    """GPT-4o mini, declared for drafting, is another model than the GPT-4o that read: a
+    statement naming GPT-4o names the reader and not the drafting tool (round 1)."""
+    _require(project)
+    _declare(project, [{"tool": "GPT-4o mini", "purpose": "drafting", "what": "x"}])
+    _reading(project, "stats", "openai/gpt-4o", number=11)
+    _say(project, "## Use of AI\n\nGPT-4o read the draft.")
+    assert _found(project, "submission") == [
+        (UNNAMED, FAIL, "the AI-use statement does not name GPT-4o mini")]
+
+
+def test_a_declared_tool_that_is_a_model_on_record_is_asked_for_once(project: Path) -> None:
+    _require(project)
+    _declare(project, [{"tool": "GPT-4o", "purpose": "editing", "what": "x"}])
+    _reading(project, "stats", "openai/gpt-4o", number=11)
+    _say(project, "## Use of AI\n\nA model read the draft.")
+    assert _found(project) == [
+        (UNNAMED, WARN, "the AI-use statement does not name gpt-4o (openai)")]
 
 
 def test_a_heading_s_own_words_name_the_model(project: Path) -> None:

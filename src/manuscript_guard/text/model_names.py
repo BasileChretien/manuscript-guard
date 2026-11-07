@@ -18,6 +18,7 @@ taken away, alone or together.
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -48,9 +49,11 @@ class Part:
 
 
 def parts(text: str) -> list[Part]:
-    """The parts of every word of `text`, in order."""
+    """The parts of every word of `text`, in order. The text is read in its compatibility
+    form (NFKC), so that a name typed in full-width letters and digits, as a Japanese input
+    method types them ("ＧＰＴ－５．１"), is the name typed plainly (round 1 of the code)."""
     found: list[Part] = []
-    for word in _WORD.finditer(text):
+    for word in _WORD.finditer(unicodedata.normalize("NFKC", text)):
         token = word.group()
         # Each piece with whether a point stands just before it: a letter-digit cut and a
         # hyphen mark nothing.

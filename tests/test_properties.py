@@ -16417,6 +16417,30 @@ def _a_model_s_name_is_read_with_its_case(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(model_names, "_fold", lambda text: text)
 
 
+def _a_date_stamp_is_part_of_a_model_s_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import model_names
+
+    patch.setattr(model_names, "_DATE", re.compile(r"(?!)"))
+
+
+def _a_provider_is_part_of_a_model_s_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import model_names
+
+    shorter = model_names._shorter
+    patch.setattr(model_names, "_shorter", lambda name: {
+        cut for cut in shorter(name) if "/" in cut or "/" not in name})  # fmt: skip
+
+
+def _a_point_s_digits_may_stand_in_two_words(patch: pytest.MonkeyPatch) -> None:
+    import dataclasses
+
+    from manuscript_guard.text import model_names
+
+    parts = model_names.parts
+    patch.setattr(model_names, "parts", lambda text: [
+        dataclasses.replace(p, after_point=False) for p in parts(text)])
+
+
 def _a_point_and_a_hyphen_are_two_versions(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import model_names
 
@@ -16440,6 +16464,18 @@ BROKEN = {
     ),
     "a version's point and hyphen are two versions": (
         _a_point_and_a_hyphen_are_two_versions,
+        test_a_statement_names_a_model_where_its_parts_stand_in_a_row_and_nowhere_else,
+    ),
+    "a date stamp is part of a model's name": (
+        _a_date_stamp_is_part_of_a_model_s_name,
+        test_a_statement_names_a_model_where_its_parts_stand_in_a_row_and_nowhere_else,
+    ),
+    "a provider is part of a model's name": (
+        _a_provider_is_part_of_a_model_s_name,
+        test_a_statement_names_a_model_where_its_parts_stand_in_a_row_and_nowhere_else,
+    ),
+    "a point's digits may stand in two words": (
+        _a_point_s_digits_may_stand_in_two_words,
         test_a_statement_names_a_model_where_its_parts_stand_in_a_row_and_nowhere_else,
     ),
     "a level under the custodian's minimum is given by its name": (

@@ -13,6 +13,7 @@ eventually and silently. A profile older than a year is reported, because it pro
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
@@ -226,8 +227,9 @@ def check_journal(project: Project, *, records: bool = True,
     report = report.merge(_check_limits(document, counts, path))
     report = report.merge(_check_abstract_found(document, text, path))
     report = report.merge(_check_structure(document, text, path))
-    report = report.merge(_check_statements(document, text, path,
-                                            ai_use=_ai_use_hint(project) if records else ""))
+    # The models on record are read only for a missing statement of `kind: ai_use`.
+    hint = (lambda: _ai_use_hint(project)) if records else None
+    report = report.merge(_check_statements(document, text, path, ai_use=hint))
     report = report.merge(check_data_statement(document, text, path, project, cited=cited,
                                                from_project=records))  # fmt: skip
     if records:
@@ -528,7 +530,8 @@ def _ai_use_hint(project: Project) -> str:
     return statement_hint(project)
 
 
-def _check_statements(document: dict, text: str, path: Path, *, ai_use: str = "") -> Report:
+def _check_statements(document: dict, text: str, path: Path, *,
+                      ai_use: Callable[[], str] | None = None) -> Report:  # fmt: skip
     # Read where a statement can be: HTML comments and fenced code blanked, as the heading
     # scan blanks them. `# Funding` is a heading in Markdown and a comment in R and Python,
     # so inside `<!-- -->` it met the funding statement and printed nothing, and inside a
@@ -544,7 +547,7 @@ def _check_statements(document: dict, text: str, path: Path, *, ai_use: str = ""
                     message=f"the journal requires a {statement['id']} statement",
                     path=path,
                     hint=(statement.get("why") or f"nothing matches {statement['pattern']!r}")
-                    + (ai_use if statement.get("kind") == "ai_use" else ""),
+                    + (ai_use() if ai_use and statement.get("kind") == "ai_use" else ""),
                 )
             )
     return report

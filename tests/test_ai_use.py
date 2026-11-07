@@ -92,6 +92,10 @@ def test_a_name_typed_in_full_width_is_the_name_typed_plainly() -> None:
     # So do a superscript and a modifier letter, a footnote's "¹" among them (round 3).
     assert names("ChatGPT¹ (OpenAI)", "ChatGPT") and names("GPT-4o² was used", "gpt-4o")
     assert names("Claude Opus 4.5¹", "claude-opus-4-5") and names("ChatGPTᵀᴹ", "ChatGPT")
+    # A circled digit ends one too; bold and small forms are plain; a half-width sound mark
+    # stays on its kana, which runs on into the name (round 4).
+    assert names("ChatGPT① (OpenAI)", "ChatGPT") and names("𝐆𝐏𝐓-4", "gpt-4")
+    assert names("GPT-4﹒5", "gpt-4.5") and not names("ﾃﾞGPT-4 was used", "gpt-4")
 
 
 def test_a_name_with_no_letter_or_digit_names_nothing() -> None:

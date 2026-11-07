@@ -49,19 +49,20 @@ class Part:
 
 
 def _plain(text: str) -> str:
-    """`text` with each full-width or half-width form as its plain one, and each character
-    of category So, superscript or subscript as a space, so that "™" or a footnote's "¹"
-    ends the name before it rather than join it as "TM" or "1" (rounds 2 and 3)."""
+    """`text` with each full-width, half-width, bold or small form as its plain one, and each
+    character of category So, superscript, subscript or circled as a space, so that "™" or
+    a footnote's "¹" ends the name before it rather than join it (rounds 2 to 4)."""
     out = []
     for c in unicodedata.normalize("NFC", text):
         tag = unicodedata.decomposition(c).split(" ", 1)[0]
-        if tag in ("<wide>", "<narrow>"):
+        if tag in ("<wide>", "<narrow>", "<font>", "<small>"):
             out.append(unicodedata.normalize("NFKC", c))
-        elif tag in ("<super>", "<sub>") or unicodedata.category(c) == "So":
+        elif tag in ("<super>", "<sub>", "<circle>") or unicodedata.category(c) == "So":
             out.append(" ")
         else:
             out.append(c)
-    return "".join(out)
+    # Composed again: a half-width kana and its sound mark are one letter (round 4).
+    return unicodedata.normalize("NFC", "".join(out))
 
 
 def parts(text: str) -> list[Part]:

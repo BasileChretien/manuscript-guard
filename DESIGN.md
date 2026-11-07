@@ -23394,9 +23394,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `llama3.1:70b`; a date stamp in another form ("-0605", "-002") is part of the name; and
     a letter before a version breaks the run of parts, so "Claude Opus v4.5" does not name
     `claude-opus-4-5`. Letters of a script written without spaces run on into the name's
-    last word, so "GPT-5.1を用いた" does not name `gpt-5.1`. Full-width and half-width forms
-    are read as their plain ones, and a symbol, a superscript or a subscript ends a word
-    ("ChatGPT™", "GPT-4o²"); a footnote typed as `^1^` or `[^1]` was never part of one.
+    last word, so "GPT-5.1を用いた" does not name `gpt-5.1`. Full-width, half-width, bold
+    and small forms are read as their plain ones, and a symbol, a superscript, a subscript
+    or a circled digit ends a word ("ChatGPT™", "GPT-4o²", "ChatGPT①"); a footnote typed
+    as `^1^` or `[^1]` was never part of one.
   - A phrase match takes only its paragraph, and pandoc needs a blank line before a list,
     so "The following AI tools were used:" over a list leaves the list's tools outside the
     statement. A profile's pattern that matches the statement's heading takes the list in.

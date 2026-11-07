@@ -6560,6 +6560,30 @@ def test_a_paper_with_no_results_reports_under_the_headings_that_name_no_part(
         assert {one.key for one in given if one.key not in reported} == unreported, text
 
 
+# ------------------------------------------------ a summary that claims more than the Results
+
+from generated import summary_claim_papers  # noqa: E402
+
+
+@holds(30, summary_claim_papers())
+def test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence(
+    drawn: tuple[str, set[str]],
+) -> None:
+    """A sentence of the Abstract or a conclusion is warned where it claims more than every
+    sentence of the Results that binds its keys, a negation gone or new counted as more, and
+    on the line its binding stands: not where it claims as much or less, nor where one
+    Results sentence claims as much, nor against the Methods. A Results sentence with no word
+    of the claim lists is not compared, a summary with none is held only to the hedges and
+    limits it dropped, and a sentence binding two keys to the Results sentences of both."""
+    text, warned = drawn
+    read = READINGS["summary claims"]()({"text": text})
+    found = {re.search(r"results\.(\w+)", context)[1] for _line, _message, context in read}
+    assert found == warned, text
+    lines = text.splitlines()
+    for line, _message, context in read:
+        assert re.search(r"\{\{results\.\w+\}\}", context)[0] in lines[line - 1], (line, text)
+
+
 # --------------------------------------------------------------------------------- boxes
 
 from generated import box_papers  # noqa: E402
@@ -15421,6 +15445,43 @@ def _a_latex_box_environment_is_no_summary(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reported_gate, "_boxed_in", lambda view, sources, rules: None)
 
 
+def _a_summary_is_warned_against_any_one_results_sentence(patch: pytest.MonkeyPatch) -> None:
+    # D3.2 the other way: stronger than one Results sentence binding the key is enough.
+    def against_any(summary: str, stated) -> object:
+        for one in stated:
+            moved = claims_module.compare_pair(one, summary)
+            if reported_gate.holds_a_word(one) and moved and moved.code in reported_gate._MORE:
+                return moved
+        return None
+
+    patch.setattr(reported_gate, "claims_more", against_any)
+
+
+def _a_results_sentence_with_no_claim_word_is_compared(patch: pytest.MonkeyPatch) -> None:
+    # Read as `compare_pair` reads a sentence that states, on either side.
+    patch.setattr(reported_gate, "holds_a_word", lambda text: True)
+
+
+def _a_negation_a_bare_summary_leaves_out_is_more(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reported_gate, "_MORE_WITHOUT_A_WORD", reported_gate._MORE)
+
+
+def _the_methods_are_read_as_the_results(patch: pytest.MonkeyPatch) -> None:
+    # Every section that reports taken for the Results: the Methods' sentences compared too.
+    patch.setattr(reported_gate.Walk, "_in_results", lambda self: True)
+
+
+def _each_key_of_a_summary_sentence_is_held_alone(patch: pytest.MonkeyPatch) -> None:
+    # Each binding its own sentence: a sentence of two keys held to each key's apart.
+    whole = reported_gate._sentences_of
+
+    def apart(text: str):
+        sentence_at = whole(text)
+        return lambda offset: (offset, sentence_at(offset)[1])
+
+    patch.setattr(reported_gate, "_sentences_of", apart)
+
+
 def _a_chain_keeps_a_cells_crlf(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.checking import recap
 
@@ -15994,6 +16055,26 @@ BROKEN = {
     "a LaTeX box environment is no summary to G8": (
         _a_latex_box_environment_is_no_summary,
         test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a summary is warned against any one Results sentence": (
+        _a_summary_is_warned_against_any_one_results_sentence,
+        test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence,
+    ),
+    "a Results sentence with no claim word is compared": (
+        _a_results_sentence_with_no_claim_word_is_compared,
+        test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence,
+    ),
+    "a negation a bare summary leaves out is more": (
+        _a_negation_a_bare_summary_leaves_out_is_more,
+        test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence,
+    ),
+    "the Methods are read as the Results": (
+        _the_methods_are_read_as_the_results,
+        test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence,
+    ),
+    "each key of a summary sentence is held alone": (
+        _each_key_of_a_summary_sentence_is_held_alone,
+        test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence,
     ),
     "the abstract's heading is not looked for inside a Div": (
         _a_div_is_not_looked_inside,

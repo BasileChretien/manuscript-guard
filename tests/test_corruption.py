@@ -2707,6 +2707,114 @@ def test_a_number_the_supplement_reports_is_reported(project: Path) -> None:
     assert _unreported(project) == []
 
 
+def _overclaimed(root: Path) -> list:
+    """What G8 says of a summary that claims more than the Results (`summary-claim-stronger`)."""
+    from manuscript_guard.gates import check_reported
+
+    loaded, _ = load_project(root)
+    found = check_reported(loaded, load_namespace(loaded)[1]).findings
+    return [f for f in found if f.code == "summary-claim-stronger"]
+
+
+#: The example's Abstract where it gives the reporting odds ratio, and its Results.
+_ABSTRACT_ROR = "example-drug. The reporting odds ratio was {{results.ror.point}}"
+_RESULTS_ROR = "Reporting of hepatic injury was disproportionate for example-drug, with a"
+_ASSOCIATED = "Example-drug was associated with reports of hepatic injury, with a"
+
+
+def test_a_summary_that_claims_more_than_the_results_is_warned(project: Path) -> None:
+    """Item 3 of the borrowed checks: an abstract that says "increased" where the Results said
+    "associated with" claims more than they do, and is warned, on the Abstract's line, naming
+    the Results sentence and what moved. The example's Abstract claims no more than its
+    Results. A Results sentence that holds no word of the claim lists is not compared, and the
+    warning is given only where the summary claims more than every Results sentence that binds
+    its key (D3.2): one that says "increased" too keeps it back."""
+    assert _overclaimed(project) == []
+    _swap(project, _ABSTRACT_ROR,
+          "example-drug. Example-drug increased these reports: the reporting odds ratio was "
+          "{{results.ror.point}}")  # fmt: skip
+    assert _overclaimed(project) == []  # the Results sentence states, and claims nothing
+    _swap(project, _RESULTS_ROR, _ASSOCIATED)
+    (found,) = _overclaimed(project)
+    assert found.severity == "warn" and found.path == main_md(project)
+    assert found.line == _line_of(project, "Example-drug increased these reports")
+    results = _line_of(project, "ratio of {{results.ror.point}}")
+    assert found.message == (
+        "this sentence under 'Abstract' claims more than the Results sentence that binds "
+        "results.ror.point, results.ror.ci_low and results.ror.ci_high "
+        f"(main.md:{results}): 'associated' (association) is now 'increased' (effect)"
+    )
+    assert found.context.startswith("Example-drug increased these reports")
+    _swap(project, "so a reader\ncan reconstruct it.",
+          "so a reader\ncan reconstruct it. Example-drug increased these reports "
+          "({{results.ror.point}}).")  # fmt: skip
+    assert _overclaimed(project) == []  # not stronger than this one
+    _swap(project, "Example-drug increased these reports ({{results.ror.point}}).",
+          "Example-drug may have increased these reports ({{results.ror.point}}).")
+    (found,) = _overclaimed(project)
+    assert "each of the 2 Results sentences that bind results.ror.point" in found.message
+
+
+def test_a_summary_with_no_word_of_the_claim_lists_is_held_to_the_hedges_it_dropped(
+    project: Path,
+) -> None:
+    """The example's Abstract gives the reporting odds ratio in a sentence that holds no word
+    that sets how strongly it claims. Against Results that say "may", it claims more, and is
+    warned; against Results that say "not", it does not turn the claim round, and is not
+    (Basile, 2026-11-07). An Abstract that says "not" where the Results did not is warned."""
+    _swap(project, _RESULTS_ROR,
+          "Reporting of hepatic injury may be disproportionate for example-drug, with a")
+    (found,) = _overclaimed(project)
+    assert found.message.endswith(": 'may' is gone")
+    _swap(project, "injury may be disproportionate", "injury was not disproportionate")
+    assert _overclaimed(project) == []
+    _swap(project, "injury was not disproportionate", "injury was associated")
+    _swap(project, _ABSTRACT_ROR,
+          "example-drug. Example-drug was not associated with them: the reporting odds ratio "
+          "was {{results.ror.point}}")  # fmt: skip
+    (found,) = _overclaimed(project)
+    assert found.message.endswith(": 'not' is new")
+
+
+def test_a_summary_is_held_to_the_supplement_s_results_and_the_same_quantity(
+    project: Path,
+) -> None:
+    """A Results sentence of the supplement, under "Supplementary results", is held against a
+    summary as one of the main text's is, named at its file and line; one under its Methods
+    is not. A key declared the same quantity as the one the Results bind is held to their
+    sentences, either way round the declaration goes."""
+    _swap(project, _ABSTRACT_ROR,
+          "example-drug. Example-drug increased these reports: the reporting odds ratio was "
+          "{{results.ror.point}}")  # fmt: skip
+    supplement = project / "manuscript" / "supplementary" / "s2.md"
+    supplement.write_text("# Supplementary methods\n\nThe estimate, {{results.ror.point}}, may be"
+                          " associated with the drug.\n", encoding="utf-8")  # fmt: skip
+    assert _overclaimed(project) == []  # the supplement's Methods are no Results
+    supplement.write_text("# Supplementary methods\n\nm.\n\n## eResults 1\n\nThe estimate, "
+                          "{{results.ror.point}}, may be\nassociated with the drug.\n",
+                          encoding="utf-8")  # fmt: skip
+    (found,) = _overclaimed(project)
+    assert "(supplementary/s2.md:7)" in found.message, found.message
+    supplement.unlink()
+    _swap(project, "Example-drug increased these reports: the", "The")
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["ror.abstract"] = dict(document["values"]["ror.point"],
+                                              same_as="ror.point")  # fmt: skip
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    _swap(project, _RESULTS_ROR, _ASSOCIATED)
+    _swap(project, "\n**Conclusions.**",
+          " Example-drug increased these reports ({{results.ror.abstract}}).\n**Conclusions.**")
+    (found,) = _overclaimed(project)
+    assert "binds results.ror.abstract (main.md:" in found.message, found.message
+    # And the other way round: the Results bind the key that names the other.
+    _swap(project, "ratio of {{results.ror.point}}", "ratio of {{results.ror.abstract}}")
+    _swap(project, "({{results.ror.abstract}}).\n**Conclusions.**",
+          "({{results.ror.point}}).\n**Conclusions.**")
+    (found,) = _overclaimed(project)
+    assert "binds results.ror.point (main.md:" in found.message, found.message
+
+
 #: A narrative review of made-up reports, which reports under headings of its own and has no
 #: section called Results, as a review or a case report has none.
 _REVIEW = """# Abstract
@@ -10742,6 +10850,32 @@ def test_g8_says_of_the_twin_a_number_its_abstract_alone_gives(project: Path) ->
     (found,) = check_reported(projekt, load_namespace(projekt)[1]).findings
     assert found.path == entry and found.line == text.count("\n", 0, first) + 1
     assert found.message.startswith("results.cohort.n_reports is given under 'Abstract'")
+
+
+def test_g8_says_of_the_twin_a_summary_that_claims_more_than_its_results(project: Path) -> None:
+    """An Abstract that says "increased" where the twin's Results say "associated with" is
+    warned at the Abstract's line of main.tex, naming the Results sentence at its own, as in
+    the example (item 3 of the borrowed checks)."""
+    from manuscript_guard.gates.reported import check_reported
+
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    abstract = "example-drug. The reporting odds ratio was \\mg{results.ror.point}"
+    results = "Reporting of hepatic injury was disproportionate for example-drug, with a"
+    assert text.count(abstract) == text.count(results) == 1
+    text = text.replace(abstract, "example-drug. Example-drug increased these reports: the "
+                        "reporting odds ratio was \\mg{results.ror.point}")  # fmt: skip
+    text = text.replace(results, "Example-drug was associated with reports of hepatic injury, "
+                        "with a")  # fmt: skip
+    entry.write_text(text, encoding="utf-8")
+    projekt = load_project(project)[0]
+    (found,) = [f for f in check_reported(projekt, load_namespace(projekt)[1]).findings
+                if f.code == "summary-claim-stronger"]  # fmt: skip
+    lines = text.splitlines()
+    said = next(n for n, line in enumerate(lines, 1) if "ratio was \\mg{results.ror.point}" in line)
+    bound = next(n for n, line in enumerate(lines, 1) if "ratio of \\mg{results.ror.point}" in line)
+    assert found.path == entry and found.line == said
+    assert f"(main.tex:{bound}): 'associated' (association) is now 'increased'" in found.message
 
 
 def test_g8_recomputes_a_p_in_the_twin_after_a_display_holding_a_percent(project: Path) -> None:

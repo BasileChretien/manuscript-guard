@@ -14678,6 +14678,29 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   own, and its own "Results" heading is a Results heading. The paper audit's Abstract
   against the Results (`auditing/abstract.py`) still compares only a paper with a Results
   heading.
+- **A summary is held to the Results by the words of the claim lists, sentence against
+  sentence** (`summary-claim-stronger`, item 3 of the borrowed checks, 2026-11-07). Only the
+  words of `data/claim_strength.yaml` are compared, as `claims.compare_pair` compares them:
+  a claim made stronger in other words, "a higher risk" made "twice the risk", or a
+  qualifier dropped that the limits do not list, "in older women", is not seen. A Results
+  sentence that holds none of those words is compared with nothing (Basile, 2026-11-07), so
+  where the claim stands in the sentence beside the number, "Use was associated with the
+  outcome. The adjusted HR was 1.42.", an Abstract that says "use caused the outcome (HR
+  1.42)" passes. A summary sentence that holds none is held only to the hedges and limits
+  it dropped, and a negation the Results have and it lacks is not read. A negation gone or
+  new is counted as claiming more, whatever it negates: "associated with the outcome, and
+  not with death" in the Abstract, bound to the same key as a Results sentence that says
+  only "associated with the outcome", is warned. Only a Results section is read: a key
+  bound only in the Methods, a table or a figure, or, in a paper with no Results heading,
+  under its topical headings, is compared with nothing, and a Results heading under the
+  Methods is the Methods'. In the supplement a Results section is one whose heading opens
+  with "Results" or "Findings", after "Supplementary", "Supplemental" or "Additional", a
+  label such as "S3." or "Appendix 2:", or JAMA's "e" ("eResults 2"); "Sensitivity
+  analyses" and "eTable 2" are not, and there the innermost heading that names the Methods
+  or the Results decides. A summary sentence that binds several keys is held to the
+  Results sentences of all of them together, so where it claims more of one result than
+  that result's sentence does, another key's sentence that claims as much keeps the warning
+  back. The title and the covering letter are not read (D3.1).
 - **G8 compares only values whose units agree.** A count of 56 and a share of 56.0% are two
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and

@@ -107,6 +107,17 @@ def test_a_harvested_output_and_a_receipt_bind_as_an_input_and_a_results_file_do
     assert report.ok and deferred == {ANALYSIS: 1}
 
 
+def test_a_summary_claiming_more_than_the_results_warns_at_every_stage() -> None:
+    """D3.3 of 2026-11-06: a warning, so no stage binds it."""
+    from manuscript_guard.gates.reported import CLAIM_CODE, GATE
+
+    assert CLAIM_CODE not in BINDS_AT
+    warning = Report((Finding(gate=GATE, code=CLAIM_CODE, message="m", severity=WARN),))
+    for stage in STAGES:
+        report, deferred = apply_stage(warning, stage)
+        assert (report.findings[0].severity, deferred) == (WARN, {}), stage
+
+
 def test_warnings_are_left_alone() -> None:
     """Deferral is about failures. A warning is already not fatal."""
     warning = Report((Finding(gate="G", code="no-review", message="m", severity=WARN),))

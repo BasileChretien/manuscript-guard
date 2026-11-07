@@ -7943,6 +7943,102 @@ def claim_pairs(draw: st.DrawFn) -> tuple[list[list[str]], list[str | None]]:
     return pairs, expected
 
 
+#: Each way a sentence of a summary may claim against the sentences of the paper that bind
+#: its key, and whether G8 warns that it claims more than the Results
+#: (`summary-claim-stronger`). Every kind is in every example.
+SUMMARY_CLAIM_KINDS = {
+    "up": True, "hedge gone": True, "limit gone": True, "negation new": True,
+    "negation gone": True, "same rung": False, "down": False, "bare results": False,
+    "bare summary, hedge gone": True, "bare summary, negation gone": False,
+    "stronger than one of two": False, "stronger than both": True, "in the methods": False,
+    "two keys": False, "in a conclusion": True,
+}  # fmt: skip
+
+
+@st.composite
+def summary_claim_papers(draw: st.DrawFn) -> tuple[str, set[str]]:
+    """A paper whose Abstract, Methods, Results and conclusion bind a key of their own for
+    each kind of `SUMMARY_CLAIM_KINDS`, each kind's sentences in an order drawn each time,
+    run on in their paragraph or on lines of their own, the abstract structured or not and
+    the Results split under a heading of their own or not; and the keys of the summary
+    sentences G8 is to warn of."""
+    rungs = tuple(kind for kind in CLAIMED if isinstance(kind, int))
+    keys = iter(f"k{at:02d}" for at in range(100))
+
+    def word(kind: str | int) -> str:
+        return draw(st.sampled_from(CLAIMED[kind]))
+
+    def said(claims_: list[str], bound: list[str]) -> str:
+        tokens = [draw(st.sampled_from(_PLAIN))]
+        for claim in claims_:
+            tokens += [claim, draw(st.sampled_from(_PLAIN))]
+        bindings = ", ".join(f"{{{{results.{key}}}}}" for key in bound)
+        text = " ".join(tokens) + f" ({bindings})"
+        return text[0].upper() + text[1:] + "."
+
+    parts: dict[str, list[str]] = {"abstract": [], "methods": [], "results": [], "end": []}
+    warned: set[str] = set()
+    for kind in draw(st.permutations(tuple(SUMMARY_CLAIM_KINDS))):
+        key = next(keys)
+        low, high = sorted(draw(st.lists(st.sampled_from(rungs), min_size=2, max_size=2,
+                                         unique=True)))  # fmt: skip
+        rung = draw(st.sampled_from(rungs))
+        stated: list[list[str]] = []
+        where, summary = "abstract", [word(high)]
+        if kind in ("up", "in a conclusion"):
+            stated = [[word(low)]]
+            where = "end" if kind == "in a conclusion" else where
+        elif kind in ("hedge gone", "limit gone", "negation gone"):
+            stated, summary = [[word(kind.split()[0]), word(rung)]], [word(rung)]
+        elif kind == "negation new":
+            stated, summary = [[word(rung)]], [word("negation"), word(rung)]
+        elif kind == "same rung":
+            stated, summary = [[word(rung)]], [word(rung)]
+        elif kind == "down":
+            stated, summary = [[word(high)]], [word(low)]
+        elif kind == "bare results":
+            stated, summary = [[]], [word(max(high, 1))]
+        elif kind == "bare summary, hedge gone":
+            stated, summary = [[word(draw(st.sampled_from(("hedge", "limit"))))]], []
+        elif kind == "bare summary, negation gone":
+            stated, summary = [[word("negation")]], []
+        elif kind == "stronger than one of two":
+            stated = [[word(low)], [word(high)]]
+        elif kind == "stronger than both":
+            stated = [[word(low)], [word(low)]]
+        elif kind == "in the methods":
+            parts["methods"].append(said([word(low)], [key]))
+        else:  # two keys: the second's Results sentence claims less, the first's as much
+            other = next(keys)
+            parts["results"] += [said([word(high)], [key]), said([word(low)], [other])]
+            parts["abstract"].append(said(summary, [key, other]))
+            continue
+        parts["results"] += [said(claims_, [key]) for claims_ in stated]
+        parts[where].append(said(summary, [key]))
+        if SUMMARY_CLAIM_KINDS[kind]:
+            warned.add(key)
+
+    def run(sentences: list[str]) -> str:
+        order = draw(st.permutations(sentences))
+        return "".join(one + draw(st.sampled_from((" ", "\n"))) for one in order).rstrip()
+
+    results = run(parts["results"])
+    if draw(st.booleans()):
+        cut = draw(st.integers(1, len(parts["results"]) - 1))
+        results = f"{run(parts['results'][:cut])}\n\n## Secondary outcomes\n\n" + run(
+            parts["results"][cut:]
+        )
+    abstract = run(parts["abstract"])
+    if draw(st.booleans()):
+        abstract = f"## Background\n\nReports were given.\n\n## Results\n\n{abstract}"
+    return (
+        f"# Abstract\n\n{abstract}\n\n# Methods\n\n{run(parts['methods'])}\n\n"
+        f"# Results\n\n{results}\n\n# Discussion\n\nThe data were given.\n\n"
+        f"## Conclusions\n\n{run(parts['end'])}\n",
+        warned,
+    )
+
+
 #: Each way a post may say the paper is out, or seem to, and whether `said_published`
 #: reads it as this paper said out (round 2 of #470). Every kind is in every example.
 PUBLISHED_KINDS = {
@@ -9623,6 +9719,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         {"text": st.one_of(summaries(), topical_summaries()),
          "abstract title": st.sampled_from((None, "Summary"))}  # fmt: skip
     ),
+    "summary claims": summary_claim_papers().map(lambda drawn: {"text": drawn[0]}),
     "boxes": box_papers().map(lambda drawn: drawn[0]),
     "communicate anchors": st.one_of(
         communication_texts().map(lambda drawn: {"text": drawn[0]}),

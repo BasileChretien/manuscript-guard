@@ -50,7 +50,9 @@ few or too many items (`box-items`), an item too long (`box-item-long`), too man
 (`box-over-limit`) or lacks a heading the page names (`box-headings-missing`); at submission a
 required box fails. A box written only in the supplement is not the box. G8 reads a number in
 a box as it reads one in the abstract: one the Methods and the Results do not report is
-`summary-not-reported` (with no Results heading, every section that names no part reports).
+`summary-not-reported` (with no Results heading, every section that names no part reports),
+and a sentence of a box that claims more than every Results sentence binding the same result
+is `summary-claim-stronger`, a warning.
 
 `graphical_abstract` is what the page says of a graphical abstract, each line its own rule
 quoted under `quotes.graphical_abstract.<name>`: `required` (true where required, false where

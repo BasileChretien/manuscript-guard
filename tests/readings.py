@@ -496,6 +496,23 @@ def _summaries() -> Reading:
     return summaries
 
 
+@reading("summary claims")
+def _summary_claims() -> Reading:
+    """Each sentence of a file's summaries G8 says claims more than every Results sentence
+    that binds its keys (`summary-claim-stronger`): its line, the message and the sentence."""
+    from manuscript_guard.gates.reported import Walk, _claimed
+
+    def claimed(given: dict[str, Any]) -> list[list[Any]]:
+        walk = Walk(None)
+        found, _reported = walk.read(given["text"])
+        given_ = [(MAIN, one) for one in found]
+        stated = [(MAIN, one) for one in walk.stated]
+        return [[one.line, one.message, one.context]
+                for one in _claimed(MAIN.parent, given_, stated, lambda key: key)]  # fmt: skip
+
+    return claimed
+
+
 class _Shown:
     """A value as a reading of the boxes needs it: its display alone."""
 

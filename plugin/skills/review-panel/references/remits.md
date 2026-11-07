@@ -105,6 +105,32 @@ this reader concluded is what a reader of the abstract will conclude. No gate ma
 comparison and no record holds it, so give the author the conclusion and the Results it goes
 beyond, and let the next round read the abstract they write.
 
+## Interpretation
+
+A sentence of the Results or the Discussion that gives a result binds it, and one that says
+what others found cites them, and the gates hold each to its source. The rest is the authors'
+reading of their results, "this may reflect confounding by indication", and nothing holds
+it. `check` counts those sentences, in a note for each file (`interpretation-sentences`): the
+sentences of the Results and the Discussion, the supplement's included, that hold a word of
+the claim ladder ("associated", "increased", "caused") and neither a binding nor a citation.
+`manuscript-guard explain <file>` prints them after the file's numbers, each with its line.
+
+Worth a reader of its own where the note counts more than a handful. Give it an id such as
+`interpretation`, and a remit that holds the list: run `explain` on each file the note names,
+and paste what it printed under the heading of sentences, with the file's name above each
+part, after the words "whether each of the sentences below follows from the results the
+paper reports; for one that does not, say which result it goes beyond or what result it
+would need". A model read by route B is sent the manuscript with its numbers filled in and
+nothing to say which sentence binds one, so the remit has to carry the list. Either route
+reads it; by route A, have a fresh agent read it, not the context that wrote the Discussion.
+
+The reader's findings are about those sentences: a cause claimed from an association, a
+mechanism or a subgroup the paper did not study, a comparison with other work that names no
+work. Many of the sentences are right, and the reader says so once in the summary rather than
+in a finding each. The note itself needs no answer. A finding is answered as any other is: by
+rewording the sentence, binding the result it rests on, citing the work it repeats, or an
+override that says why it stands.
+
 ## Earlier outputs
 
 A paper with earlier outputs on the same data, an abstract or an earlier article, needs an

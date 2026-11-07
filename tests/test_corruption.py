@@ -2869,6 +2869,117 @@ def test_a_summary_is_held_to_the_supplement_s_results_and_the_same_quantity(
     assert "binds results.ror.point (main.md:" in found.message, found.message
 
 
+def _interpreted(root: Path) -> list:
+    """What G8 notes of the sentences that claim on neither a result nor a citation."""
+    from manuscript_guard.gates import check_interpretation
+
+    return list(check_interpretation(load_project(root)[0]).findings)
+
+
+#: Where the example's Discussion turns to its limitations, and two sentences put after it:
+#: one that claims on neither a result nor a citation, and one that cites.
+_LIMITATIONS = "Several limitations follow from the design."
+_PROBABLY = "Example-drug probably increased these reports in older patients."
+_CITED = "This association was reported before [@fictionalClassSignal2019]."
+
+
+def test_a_sentence_that_claims_on_neither_a_result_nor_a_citation_is_counted(
+    project: Path,
+) -> None:
+    """Item 10 of the borrowed checks: a sentence of the Discussion that holds a word of the
+    claim ladder ("increased") and neither a binding nor a citation is the paper's
+    interpretation, and a note counts it, on its file and at its line (D10.1). One that
+    cites, one that binds a result, one with a hedge and no word of the ladder, and one of
+    the Introduction or of a conclusion (D10.2) are not counted. The example's Results and
+    Discussion hold none."""
+    assert _interpreted(project) == []
+    _swap(project, _LIMITATIONS, f"{_LIMITATIONS} {_PROBABLY} {_CITED}")
+    (note,) = _interpreted(project)
+    assert (note.gate, note.code, note.severity) == ("G8", "interpretation-sentences", "info")
+    assert (note.path, note.line) == (main_md(project), _line_of(project, _PROBABLY))
+    assert note.message.startswith("1 of the 2 sentences of the Results and the Discussion")
+    assert note.context == _PROBABLY
+    assert "`manuscript-guard explain manuscript/main.md` lists them" in note.hint
+    _swap(project, "in older patients.", "in older patients ({{results.ror.point}}).")
+    assert _interpreted(project) == []  # it binds a result
+    _swap(project, "Example-drug probably increased these reports in older patients "
+          "({{results.ror.point}}).", "These reports may be more frequent in older patients.")
+    assert _interpreted(project) == []  # a hedge, and no word of the ladder
+    _swap(project, "# Introduction\n", "# Introduction\n\nStatins reduce events in trials.\n")
+    _swap(project, "# Data availability", "## Conclusions\n\nExample-drug caused these reports."
+          "\n\n# Data availability")  # fmt: skip
+    assert _interpreted(project) == []  # the Introduction, and a conclusion under the Discussion
+    _swap(project, "## Conclusions", "## Strengths")
+    (note,) = _interpreted(project)
+    assert note.context == "Example-drug caused these reports."
+
+
+def test_a_citation_typed_against_a_stop_belongs_to_the_sentence_it_ends(project: Path) -> None:
+    """Round 1 of #578: a citation typed after the full stop with no space, "injury.[@a] We",
+    as a superscript style has it, is the sentence before's, and the sentence after it is a
+    sentence of its own: the cited sentence is not counted and the one after it is. Typed
+    after a space, "[@a] showed that", it opens the sentence after."""
+    _swap(project, _LIMITATIONS, f"{_LIMITATIONS} This association was reported before."
+          f"[@fictionalClassSignal2019] {_PROBABLY}")  # fmt: skip
+    (note,) = _interpreted(project)
+    assert note.context == _PROBABLY and note.message.startswith("1 of the 2"), note.message
+    _swap(project, "[@fictionalClassSignal2019] Example", "[@fictionalClassSignal2019] "
+          "[@fictionalHepaticCohort2021] Example")  # round 2: both groups are its
+    (note,) = _interpreted(project)
+    assert note.context == _PROBABLY, note.context
+    # Review of 0f2aff82: a group that opens the next paragraph is that paragraph's, and a
+    # group that opens a clause in lower case leaves the groups before it to their stop.
+    _swap(project, "[@fictionalClassSignal2019] [@fictionalHepaticCohort2021] Example",
+          "[@fictionalClassSignal2019]\n\n[@fictionalHepaticCohort2021] Example")
+    assert _interpreted(project) == []
+    _swap(project, "[@fictionalClassSignal2019]\n\n[@fictionalHepaticCohort2021] Example-drug",
+          "[@fictionalClassSignal2019] [@fictionalHepaticCohort2021] showed that example-drug")
+    _swap(project, "in older patients.", "in older patients. Example-drug caused them.")
+    (note,) = _interpreted(project)
+    assert note.message.startswith("1 of the 3"), note.message
+    _swap(project, " Example-drug caused them.", "")
+    _swap(project, "showed that example-drug", "Example-drug")
+    _swap(project, " [@fictionalHepaticCohort2021]", "")
+    _swap(project, "before.[@fictionalClassSignal2019] Example-drug probably increased",
+          "before. [@fictionalClassSignal2019] showed that example-drug probably increased")
+    (note,) = _interpreted(project)
+    assert note.context == "This association was reported before.", note.context
+
+
+def test_the_supplement_s_interpretation_is_counted_where_it_argues(project: Path) -> None:
+    """The supplement's Results and Discussion are read as the main text's, under a heading
+    of the supplement's own ("eDiscussion", "Supplementary results"), the innermost heading
+    that names the Methods, the Results or the Discussion deciding; its Methods are not. The
+    note is on the supplement's file."""
+    supplement = project / "manuscript" / "supplementary" / "s2.md"
+    supplement.write_text("# Supplementary methods\n\nAge was associated with use.\n\n"
+                          "## eDiscussion 1\n\nThe drug may affect the liver.\n\n"
+                          "# Supplementary results\n\nWomen were linked to more reports.\n",
+                          encoding="utf-8")  # fmt: skip
+    (note,) = _interpreted(project)
+    assert (note.path, note.line) == (supplement, 7)
+    assert note.message.startswith("2 of the 2 sentences")
+    assert "`manuscript-guard explain manuscript/supplementary/s2.md`" in note.hint
+
+
+def test_explain_lists_the_sentences_the_interpretation_note_counts(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`explain` of a file lists, after its numbers, each sentence G8's note counts there,
+    at its line: what an interpretation reader of the panel is sent. A file with none says
+    nothing more than before."""
+    from manuscript_guard.cli import main
+
+    assert main(["explain", str(main_md(project))]) == 0
+    assert "interpretation-sentences" not in capsys.readouterr().out
+    _swap(project, _LIMITATIONS, f"{_LIMITATIONS} {_PROBABLY} {_CITED}")
+    assert main(["explain", str(main_md(project))]) == 0
+    said = capsys.readouterr().out.splitlines()
+    at = said.index("1 sentence of the Results and the Discussion that claim and rest on "
+                    "neither a result nor a citation (G8's interpretation-sentences):")
+    assert said[at + 1:] == [f"{_line_of(project, _PROBABLY):>5}  {_PROBABLY}"]
+
+
 #: A narrative review of made-up reports, which reports under headings of its own and has no
 #: section called Results, as a review or a case report has none.
 _REVIEW = """# Abstract
@@ -10193,6 +10304,9 @@ _READS_LATEX = (
     "check_boxes",
     # It reads the AI-use statement in G4's `main_text`, and the supplement's printed view.
     "check_ai_use",
+    # It reads the Results and the Discussion in each document's printed view, as
+    # `check_reported` does (item 10 of the borrowed checks).
+    "check_interpretation",
 )  # fmt: skip
 
 
@@ -10992,6 +11106,57 @@ def test_g8_holds_the_twin_s_summary_to_its_supplement_s_results(project: Path) 
     text = supplement.read_text(encoding="utf-8")
     line = text.count("\n", 0, text.index(hedged)) + 1
     assert one.path == entry and f"(supplementary/main.tex:{line}): " in one.message, one.message
+
+
+def test_g8_counts_the_twin_s_interpretation_at_its_tex_lines(project: Path) -> None:
+    """A sentence of the twin's Discussion that claims on neither a result nor a citation is
+    noted at its line of main.tex, and one that cites with `\\cite` is not; one under a new
+    "eDiscussion" of the twin's supplement is noted at its own file and line, and one under
+    its "Supplementary methods" is not (item 10 of the borrowed checks)."""
+    from manuscript_guard.gates import check_interpretation
+
+    entry = _twin(project)
+    probably = "Example-drug probably increased these reports in older patients."
+    _replace_once(entry, "Several limitations follow from the design.",
+                  "Several limitations follow from the design. " + probably + " This "
+                  "association was reported before \\cite{fictionalClassSignal2019}.")
+    supplement = entry.parent / "supplementary" / "main.tex"
+    affect = "The drug may affect the liver."
+    _replace_once(supplement, "\\subsection{Reporting}",
+                  f"Age was associated with use.\n\n\\section{{eDiscussion}}\n\n{affect}\n\n"
+                  "\\subsection{Reporting}")
+
+    def at(path: Path, words: str) -> int:
+        text = path.read_text(encoding="utf-8")
+        return text.count("\n", 0, text.index(words)) + 1
+
+    found = check_interpretation(load_project(project)[0]).findings
+    assert [(f.path, f.line, f.context) for f in found] == [
+        (entry, at(entry, probably), probably), (supplement, at(supplement, affect), affect),
+    ]
+    assert found[0].message.startswith("1 of the 2 sentences"), found[0].message
+
+
+@pytest.mark.parametrize("typed", ["before.\\cite{fictionalClassSignal2019} ",
+                                   "before.~\\cite{fictionalClassSignal2019} ",
+                                   # Round 2: each group after the first is the sentence's too.
+                                   "before.\\cite{fictionalClassSignal2019}"
+                                   "\\cite{fictionalHepaticCohort2021} "])
+def test_g8_gives_the_twin_s_citation_typed_against_a_stop_to_the_sentence_before(
+    project: Path, typed: str
+) -> None:
+    """Round 1 of #578: `\\cite` typed against the full stop, or after a tie, cites the
+    sentence that stop ends, which the printed view writes `before. [@a]  We`: the sentence
+    after it is the one counted."""
+    from manuscript_guard.gates import check_interpretation
+
+    entry = _twin(project)
+    probably = "Example-drug probably increased these reports in older patients."
+    _replace_once(entry, "Several limitations follow from the design.",
+                  "Several limitations follow from the design. This association was reported "
+                  f"{typed}{probably}")  # fmt: skip
+    (found,) = check_interpretation(load_project(project)[0]).findings
+    assert found.context == probably and found.message.startswith("1 of the 2"), found
 
 
 def test_g8_recomputes_a_p_in_the_twin_after_a_display_holding_a_percent(project: Path) -> None:

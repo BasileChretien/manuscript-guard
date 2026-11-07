@@ -183,6 +183,8 @@ ROUTES: dict[str, Route] = {
            "duplicate-reading", "duplicate-reviewer", "figures-not-seen",
            "provider-not-authorised"),
     **_all("review-panel", ("review", "--design"), "design-"),
+    # The sentences are listed by `explain <file>`, and the skill says how a reader is sent them.
+    **_all("review-panel", None, "interpretation-sentences"),
     **_all("reviewer-response", ("respond",), "point-unanswered", "claimed-change-",
            "anchor-unrecorded", "quoted-text-", "response-", "reply-unbound-number"),
     **_all("word-roundtrip", None, "comment-unanswered", "comments-", "docx-unreadable"),

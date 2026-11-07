@@ -80,16 +80,24 @@ CLAIM_CODE = "summary-claim-stronger"
 #: What `claims.compare_pair` may say of a summary sentence that holds a word of the claim
 #: lists against a Results sentence for it to claim more (`_more_than`).
 _MORE = frozenset({claims.STRONGER, claims.NEGATION})
+
+
+def _supplement_heading(words: str) -> re.Pattern[str]:
+    """A heading of the supplement that opens with `words`, after a label of the
+    supplement's own, "S3.", "Appendix 2:", Wiley's "Appendix S1:", JAMA's "Supplement 1."
+    or "e" ("eResults"), "Supplementary", "Additional"."""
+    return re.compile(
+        r"(?:(?:e?appendix|supplement|s)\s*s?\d+[a-z]?\s*[.:]?\s*)?"
+        rf"(?:(?:supplementa(?:ry|l)|additional)\s+|e(?={words}))?(?:{words})",
+        re.IGNORECASE,
+    )
+
+
 #: A heading of the supplement over its Results: "Results" or "Findings" as the main text's
-#: are read (`names_results`), after a label of the supplement's own, "S3.", "Appendix 2:",
-#: Wiley's "Appendix S1:", JAMA's "Supplement 1." or "eResults", "Supplementary",
-#: "Additional".
-_SUPPLEMENT_RESULTS = re.compile(
-    r"(?:(?:e?appendix|supplement|s)\s*s?\d+[a-z]?\s*[.:]?\s*)?"
-    r"(?:(?:supplementa(?:ry|l)|additional)\s+|e(?=results?\b|findings\b))?"
-    r"(?:results?|findings)\b",
-    re.IGNORECASE,
-)
+#: are read (`names_results`), after a label of the supplement's own.
+_SUPPLEMENT_RESULTS = _supplement_heading(r"(?:results?|findings)\b")
+#: And over its Discussion: "Supplementary discussion", "eDiscussion", "S4. Discussion".
+_SUPPLEMENT_DISCUSSION = _supplement_heading(r"discussion\b")
 
 #: Where a section's keys are reported, as against summarised or neither.
 REPORTED = object()
@@ -166,28 +174,52 @@ def supplement_stated(text: str) -> list[Stated]:
     sentence: under a heading `_SUPPLEMENT_RESULTS` reads, "Supplementary results",
     "eResults 2", the innermost heading that names the Methods or the Results deciding, since
     a supplement often has "Supplementary methods" over all of it, its results among them."""
+    starts, parts = supplement_parts(text, _methods_or_results)
+    sentence_at = _sentences_of(text)
+    found = []
+    for placeholder in parse(text)[0]:
+        if placeholder.namespace != "results":
+            continue
+        if parts[bisect_right(starts, placeholder.line) - 1] != "results":
+            continue
+        _opens, sentence = sentence_at(placeholder.start)
+        found.append(Stated(placeholder.key, sentence, placeholder.line, placeholder.start))
+    return found
+
+
+def supplement_parts(text: str, kind: Callable[[str], str | None]
+                     ) -> tuple[list[int], list[str | None]]:  # fmt: skip
+    """The line each heading of one file of the supplement starts on, and what the text under
+    it is: what `kind` says of the innermost heading over it that it names, None under none."""
     sections = [section for section in split_sections(scannable(text)) if section.level]
-    starts, inside = [0], [False]
+    starts: list[int] = [0]
+    parts: list[str | None] = [None]
     chain: list[Section] = []
     for section in sections:
         while chain and chain[-1].level >= section.level:
             chain.pop()
         chain.append(section)
         starts.append(section.line)
-        named = next((one for one in reversed(chain)
-                      if names_methods(one.title) or _names_supplement_results(one.title)),
-                     None)  # fmt: skip
-        inside.append(named is not None and _names_supplement_results(named.title))
-    sentence_at = _sentences_of(text)
-    found = []
-    for placeholder in parse(text)[0]:
-        if placeholder.namespace != "results":
-            continue
-        if not inside[bisect_right(starts, placeholder.line) - 1]:
-            continue
-        _opens, sentence = sentence_at(placeholder.start)
-        found.append(Stated(placeholder.key, sentence, placeholder.line, placeholder.start))
-    return found
+        named = (kind(one.title) for one in reversed(chain))
+        parts.append(next((part for part in named if part is not None), None))
+    return starts, parts
+
+
+def _methods_or_results(title: str) -> str | None:
+    """"results" for a heading of the supplement's Results, "methods" for one of its Methods."""
+    if _names_supplement_results(title):
+        return "results"
+    return "methods" if names_methods(title) else None
+
+
+def supplement_part(title: str) -> str | None:
+    """What a heading of the supplement names: its "results", its "discussion" or its
+    "methods", None for none of these; the Results first, "Results and discussion" theirs."""
+    if _names_supplement_results(title):
+        return "results"
+    if _SUPPLEMENT_DISCUSSION.match(plain(title)) is not None:
+        return "discussion"
+    return "methods" if names_methods(title) else None
 
 
 def _names_supplement_results(title: str) -> bool:
@@ -231,7 +263,7 @@ class Walk:
         """The results keys `text` binds in a summary, and those it binds where the paper
         reports them. Those it binds in a Results section are kept in `stated`, with their
         sentences, as each summary's binding is kept with its sentence."""
-        starts, places, results = self._placed(
+        starts, places, results, _argued = self._placed(
             [section for section in split_sections(scannable(text)) if section.level])
         sentence_at = _sentences_of(text)
         given: list[Given] = []
@@ -271,15 +303,25 @@ class Walk:
         for none of these. What `read` places a binding by, and the audit's Abstract against Results
         a number by, its sections read from a Word document's heading styles or a LaTeX
         document's printed view as well as from Markdown (`auditing.abstract`)."""
-        starts, places, _results = self._placed(sections)
+        starts, places, _results, _argued = self._placed(sections)
         return lambda line: places[bisect_right(starts, line) - 1]
 
-    def _placed(self, sections: list[Section]) -> tuple[list[int], list[object], list[bool]]:
-        """The line each heading of one file starts on, the place the text under it has, and
-        whether that text is in a Results section: one the paper's Results heading decides."""
+    def arguing(self, sections: list[Section]) -> Callable[[int], bool]:
+        """Whether each line of one file, given its headings in order, is in the Results or
+        the Discussion (`_argues`): what G8 reads the paper's interpretation in
+        (`gates/interpretation.py`)."""
+        starts, _places, _results, argued = self._placed(sections)
+        return lambda line: argued[bisect_right(starts, line) - 1]
+
+    def _placed(self, sections: list[Section]
+                ) -> tuple[list[int], list[object], list[bool], list[bool]]:  # fmt: skip
+        """The line each heading of one file starts on, the place the text under it has,
+        whether that text is in a Results section, one the paper's Results heading decides,
+        and whether it is in the Results or the Discussion."""
         self.kept += sections
         self._name(sections)
         starts, places, results = [0], [self._place()], [self._in_results()]
+        argued = [self._argues()]
         for section in sections:
             while self.chain and self.chain[-1].level >= section.level:
                 self.chain.pop()
@@ -287,9 +329,10 @@ class Walk:
             starts.append(section.line)
             places.append(self._place())
             results.append(self._in_results())
+            argued.append(self._argues())
             if id(section) in self.results and places[-1] is REPORTED:
                 self.has_results = True
-        return starts, places, results
+        return starts, places, results, argued
 
     def _name(self, sections: list[Section]) -> None:
         """Which sections of one file report and which summarise. A Results or a conclusion
@@ -357,6 +400,22 @@ class Walk:
             if id(section) in self.reports:
                 return id(section) in self.results
         return False
+
+    def _argues(self) -> bool:
+        """Whether the text under the current headings is the Results' (`_in_results`) or
+        the Discussion's: under a heading that names the Discussion and is not the paper's
+        title, outside the abstract, a box and a conclusion, which summarise, and outside the
+        Methods. A "Limitations" under the Discussion is the Discussion's, and one of its own
+        is not."""
+        discussion = False
+        for section in self.chain:
+            if section.names_abstract(self.named) or id(section) in self.summaries:
+                return False
+            if id(section) in self.reports:
+                return id(section) in self.results
+            if id(section) not in self.titles and names_discussion(section.title):
+                discussion = True
+        return discussion
 
 
 def check_reported(project: Project, results: Results) -> Report:

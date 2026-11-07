@@ -111,8 +111,10 @@ COMMANDS = {
                         exits=2, argv=("communicate", "check", "{project}")),
     "dictionary": Zero("the data dictionary", exits=2,
                        argv=("dictionary", "{project}", "--csv", "{project}/out.csv")),
-    "explain": Zero("the numbers of the file it is given",
-                    why="it explains one file and says when that file holds no number"),
+    "explain": Zero("the numbers of the file it is given, and its sentences that claim on "
+                    "neither a result nor a citation",
+                    why="it explains one file and says when that file holds no number; a "
+                    "file with no such sentence lists none, as `check` notes none"),
     "fetch": Zero("a reporting guideline's published checklist",
                   why="it downloads what it is named, and refuses a name it does not know"),
     "hook": Zero("an agent tool's event", why="a hook never stops the tool that called it"),

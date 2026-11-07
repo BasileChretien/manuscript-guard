@@ -15,6 +15,7 @@ from manuscript_guard.gates.figure_review import check_figure_reviews, review_pa
 from manuscript_guard.gates.figure_source import check_figure_source
 from manuscript_guard.gates.figures import check_figures, content_digest
 from manuscript_guard.gates.freshness import check_freshness
+from manuscript_guard.gates.interpretation import check_interpretation
 from manuscript_guard.gates.journal import check_journal
 from manuscript_guard.gates.journal_boxes import check_boxes
 from manuscript_guard.gates.language import check_language
@@ -82,6 +83,7 @@ __all__ = [
     "check_datasets",
     "check_relations",
     "check_reported",
+    "check_interpretation",
     "check_design",
     "check_figure_reviews",
     "check_figure_source",

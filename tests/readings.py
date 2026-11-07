@@ -522,6 +522,26 @@ def _summary_claims() -> Reading:
     return claimed
 
 
+@reading("interpretation sentences")
+def _interpretation_sentences() -> Reading:
+    """Each sentence of a file's Results and Discussion, and of a file of its supplement's,
+    that holds a word of the claim ladder, as G8 reads the paper's interpretation: its line,
+    its words, and whether it rests on a result or a citation, which those G8's note counts
+    do not (`interpretation-sentences`)."""
+    from manuscript_guard.gates.interpretation import paper_argued, supplement_argued
+    from manuscript_guard.gates.reported import Walk
+
+    def argued(given: dict[str, Any]) -> dict[str, list[list[Any]]]:
+        return {
+            "paper": [[line, said, rests]
+                      for _at, line, said, rests in paper_argued(given["text"], Walk(None))],
+            "supplement": [[line, said, rests] for _at, line, said, rests
+                           in supplement_argued(given.get("supplement", ""))],
+        }  # fmt: skip
+
+    return argued
+
+
 class _Shown:
     """A value as a reading of the boxes needs it: its display alone."""
 

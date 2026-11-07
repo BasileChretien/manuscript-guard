@@ -271,7 +271,7 @@ def looked_for(
 def _looked_for(
     sources: Path, citekey: str, words: str, read: dict[Path, str | UnreadableSource]
 ) -> tuple[str, tuple[str, ...], str | None]:
-    from manuscript_guard.gates.quotations import _ELIDED, _SIC, _as_words, quoted_in
+    from manuscript_guard.gates.quotations import _ELIDED, words_in
 
     if not passage_words(words):
         # All elision, "[...]" or "...": nothing to look for, which `quoted_in` finds
@@ -294,10 +294,7 @@ def _looked_for(
     names = tuple(path.name for path, _text in readable)
     # With nothing left out, as words of their own, as each piece of an elided one is: "6,
     # 95%" is no part of "2.6, 95%" (the post-budget round of #374).
-    whole = normalise(_SIC.sub("", words)).lower()
-    if any(quoted_in(text, words) if _ELIDED.search(words)
-           else _as_words(normalise(text).lower(), whole, 0) >= 0
-           for _path, text in readable):  # fmt: skip
+    if any(words_in(text, words) for _path, text in readable):
         return VERIFIED, names, None
     if all(is_abstract(path) for path, _text in readable):
         # An abstract alone verifies a passage it holds, and cannot fail one it does not: the

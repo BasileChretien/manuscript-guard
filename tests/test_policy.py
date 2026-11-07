@@ -478,6 +478,17 @@ def test_review_findings_do_not_block_a_draft_but_do_block_submission(project: P
     assert not report.ok
 
 
+def test_a_finding_whose_quote_is_not_found_is_a_note_at_every_stage() -> None:
+    """Basile, 2026-11-07 (item 1): a note at every stage, so no stage binds it. The reading
+    is sealed, so its author could never clear a warning; its major findings bind as any
+    others do (`open-major-finding`)."""
+    assert "finding-unanchored" not in BINDS_AT
+    note = Report((Finding(gate="G11", code="finding-unanchored", message="m", severity=INFO),))
+    for stage in STAGES:
+        report, deferred = apply_stage(note, stage)
+        assert (report.findings[0].severity, deferred) == (INFO, {}), stage
+
+
 def test_a_name_from_the_code_warns_in_a_draft_and_fails_at_submission() -> None:
     """G14 raises `code-name-in-prose` to a failure at the submission stage only; the policy
     has it bind there, so that a run at submission keeps it a failure."""

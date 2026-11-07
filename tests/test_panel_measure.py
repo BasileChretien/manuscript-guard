@@ -62,12 +62,17 @@ print(json.dumps({{"result": "```json\\n" + json.dumps(said) + "\\n```"}}))
 TWO = "No case definition is given, and duplicate reports are not mentioned."
 #: A comment that praises what a defect would lack, in that defect's words.
 PRAISE = "The 2 x 2 contingency table lets a reader recompute every estimate."
+#: Words of the Methods, which every copy's reader is sent but the blank one's.
+METHODS = "Reports were included without restriction on age or sex."
 #: What each reviewer says in the stand-in replies, by copy: the four known defects raised by
-#: the reviewers asked about them on the pre-fix copy, two of them in one finding; both
-#: planted ones on the minor copy by one reviewer (one rated major); praise in a defect's
-#: words on the current copy; and on every copy a finding that names no defect.
+#: the reviewers asked about them on the pre-fix copy, two of them in one finding, which
+#: quotes the Methods; the same finding and quote on the blank copy, whose reader was sent
+#: no Methods; both planted ones on the minor copy by one reviewer (one rated major); praise
+#: in a defect's words on the current copy; and on every copy a finding that names no
+#: defect.
 SAID = {
-    ("pre-fix", "pharmacoepidemiologist"): [("major", "Methods", TWO)],
+    ("pre-fix", "pharmacoepidemiologist"): [("major", "Methods", TWO, METHODS)],
+    ("blank", "pharmacoepidemiologist"): [("major", "Methods", TWO, METHODS)],
     ("pre-fix", "biostatistician"): [
         ("major", "Results", "The contingency table is not reported."),
     ],
@@ -86,8 +91,8 @@ def _reply(copy: str, reviewer: str) -> str:
     """The stand-in's reply; the repeat of a copy is answered as the copy is, since its
     requests are the same."""
     copy = copy.removesuffix("-repeat")
-    findings = [{"severity": s, "where": w, "finding": f}
-                for s, w, f in SAID.get((copy, reviewer), [])]  # fmt: skip
+    findings = [{"severity": s, "where": w, "finding": f, **({"quote": q[0]} if q else {})}
+                for s, w, f, *q in SAID.get((copy, reviewer), [])]  # fmt: skip
     findings.append({"severity": "comment", "where": "Discussion", "finding": "Well argued."})
     tests = [{"test": "A test.", "holds": False, "evidence": "Methods"}]
     return json.dumps({"verdict": "minor-revision", "summary": "A summary.",
@@ -217,8 +222,8 @@ def test_the_whole_path_answers_scores_adjudicates_and_reports(
     # two defects and the controls go to the adjudicator; nothing says where an item came
     # from, not even its `where`.
     blind = [item["finding"] for item in adjudicate["items"]]
-    assert scored["to_adjudicate"] == len(key) + 3 + 6 + len(RUBRIC["controls"])
-    assert blind.count(PRAISE) == 3 and blind.count(TWO) == 6
+    assert scored["to_adjudicate"] == len(key) + 3 + 9 + len(RUBRIC["controls"])
+    assert blind.count(PRAISE) == 3 and blind.count(TWO) == 9
     assert set(adjudicate["items"][0]) == {"item", "finding", "defects"}
     with pytest.raises(SystemExit, match="already scored"):
         tool.score(work, RUBRIC, seed=1)
@@ -234,6 +239,14 @@ def test_the_whole_path_answers_scores_adjudicates_and_reports(
     assert counted["defects"]["pre-fix"]["case-definition"] == [3, 3, 3]
     assert counted["defects"]["pre-fix"]["duplicates"] == [3, 3, 3]
     assert counted["defects"]["pre-fix"]["record-selection"] == [3, 3, 0]
+    # The finding quoting the Methods is anchored where the Methods were sent, and not on
+    # the blank copy, whose reader raised the same defects as major with nothing to quote.
+    assert counted["defects"]["blank"]["case-definition"] == [3, 3, 3]
+    assert counted["anchored"]["pre-fix"]["case-definition"] == [3, 3]
+    assert counted["anchored"]["blank"]["case-definition"] == [0, 0]
+    assert sum(counted["anchored_majors"]["pre-fix"]) == 3
+    assert sum(counted["majors"]["blank"]) == 3 and sum(counted["anchored_majors"]["blank"]) == 0
+    assert "| case-definition | 3 | 3 | 3 | 3 | 3 |" in text
     assert counted["defects"]["current"]["duplicates"] == [3, 0, 0]
     assert counted["defects"]["current"]["contingency-table"] == [3, 0, 0]
     # Of the three biostatistician replies on the minor copy, each raised both planted

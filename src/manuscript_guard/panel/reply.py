@@ -7,10 +7,13 @@ truncated object is not closed, a verdict outside the vocabulary is not mapped t
 one, and a missing field is not filled in. Each of those would be this tool writing part of
 the review, and a review nobody wrote must not be filed.
 
-One thing is read as what it plainly says. A finding's `where`, `ask` and `edits` may be left
-out, and a model that leaves a key out often writes `null` for it. Null says what absence
-says, so the key is taken as absent (round 1 of #276: the prompt showing `ask` drew a null,
-and the whole reply was refused). No other key may be null.
+One thing is read as what it plainly says. A finding's `where`, `ask`, `edits` and `quote`
+may be left out, and a model that leaves a key out often writes `null` for it. Null says what
+absence says, so the key is taken as absent (round 1 of #276: the prompt showing `ask` drew a
+null, and the whole reply was refused). No other key may be null. A reader of the manuscript
+is asked to quote every finding, and one that does not is still filed: the finding is
+counted unanchored when the reading is filed (`run.py`), and nothing paid for is refused for
+it.
 
 A design round reads the plan, and its readers are not offered edits: one that suggests
 them anyway is refused, since an edit is to the manuscript's words and there are none in
@@ -93,13 +96,23 @@ def _checked(document: dict) -> dict:
 
 
 #: The keys of a finding a reply may write as null, meaning left out.
-_MAY_BE_NULL = ("where", "ask", "edits")
+_MAY_BE_NULL = ("where", "ask", "edits", "quote")
 
 
 def _left_out(key: str, value: object) -> bool:
     # And no edits, an empty list: the prompt shows the key on every finding, and a model
     # with no wording to offer writes `[]` (round 1 of #367: the whole reading was refused).
-    return key in _MAY_BE_NULL and value is None or key == "edits" and value == []
+    # A quote of nothing but white space quotes nothing, as null does: the finding is filed
+    # unanchored (Basile, 2026-11-07), and a record holds no quote that is no words.
+    return (
+        key in _MAY_BE_NULL
+        and value is None
+        or key == "edits"
+        and value == []
+        or key == "quote"
+        and isinstance(value, str)
+        and not value.strip()
+    )
 
 
 def parse_reply(text: str, *, design: bool = False) -> dict:

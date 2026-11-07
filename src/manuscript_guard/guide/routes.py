@@ -181,7 +181,7 @@ ROUTES: dict[str, Route] = {
     **_all("review-panel", ("review",), "no-review", "review-", "reading-",
            "open-major-finding", "rounds-outstanding", "round-", "duplicate-reader",
            "duplicate-reading", "duplicate-reviewer", "figures-not-seen",
-           "provider-not-authorised"),
+           "provider-not-authorised", "finding-unanchored"),
     **_all("review-panel", ("review", "--design"), "design-"),
     **_all("reviewer-response", ("respond",), "point-unanswered", "claimed-change-",
            "anchor-unrecorded", "quoted-text-", "response-", "reply-unbound-number"),

@@ -489,10 +489,16 @@ def test_a_page_of_broken_markup_is_read_in_linear_time(unit: str, assert_linear
 @pytest.mark.parametrize(
     "unit", [b"=?utf-8?q?a?= ", b"=?utf-8?q?a?=\r\n ", b"=?a?q?", b"=?utf-8?b?QUFB"]
 )
-def test_an_e_mail_s_subject_of_encoded_words_is_read_in_linear_time(unit, assert_linear):
+def test_an_e_mail_s_subject_of_encoded_words_is_read_in_linear_time(
+    unit, assert_linear, monkeypatch
+):
     """Security review of #576: the subject's encoded words cost memory and time growing as
     the square of their number. The review of 1d5327d: words of any length are read, and a
-    run of them as one."""
+    run of them as one. The subject is read whole, as far as a mail is: past its cut, the
+    time was the library's parser alone, over one line of tens of megabytes, which Python
+    3.10 reads in more than linear time (CI on daefaef)."""
+    monkeypatch.setattr(screening, "SUBJECT_AT_MOST", screening.MAX_MAIL_BYTES)
+
     def mail(count: int) -> bytes:
         return b"Subject: " + unit * count + b"\r\n\r\nbody"
 

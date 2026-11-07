@@ -6729,6 +6729,211 @@ The covering letter is deliberately not generated. It is the one part addressed 
 particular editor about a particular paper at a particular moment, and a generated one reads
 exactly like a generated one.
 
+## The AI-use statement names the models the records hold
+
+More journals ask authors to say which AI tools they used and for what, and this toolkit is
+one of those tools. Part of the answer is already on file: a reading by a model records the
+provider and the model, and `import` records where a model's suggested wording was taken.
+What no record holds, a model that drafted a paragraph, wrote analysis code or translated a
+passage, the authors declare. G4 then holds the statement to both. Basile chose the three
+terms on 2026-11-06: what the records cannot know is in a file the author fills in (D6.1),
+the statement is matched by the model names the records hold (D6.2), and where the journal
+asks for no statement, model use with none is a note (D6.3). He chose four more on
+2026-11-07, from the options this design put to him: a reader written `provider/model` is a
+model (D6.4); the statement names every model on record and every tool the authors declare
+(D6.5); the authors' list is a block of `authors.yaml` (D6.6); and all four kinds of record
+below count (D6.7).
+
+### What the records show
+
+**A model reading** is a record of one of four kinds whose reader is a model:
+
+| Record | Where it is filed |
+|---|---|
+| a panel's reading of the manuscript | `review/round-<n>/` |
+| a design round's reading of the plan | `review/design/round-<n>/` |
+| a reading of a cited work for its currency | `literature/currency/readings/` |
+| a reading of a reply in Word to a proposed change of reference | `literature/currency/replies/` |
+
+All four are use of a model in making the paper, and a journal that asks asks about all of
+it. A record says its reader is a model in one of two ways. It has a `provenance` that names
+a model, and its provider where it says, as every reading the tool asked a provider for
+has. Or its reader
+(`reader`, else `reviewed_by`) is written `provider/model`, the form the review schema
+already gives a model's reading (`openai/gpt-5.1`): no white space and at least one slash,
+the first part the provider and the rest the model. A reader written any other way, "Claude
+Code", "claude-opus-5" or a person's name, is read as a person's. The review-panel skill now
+has an agent that reads in the session record itself as `--by <provider>/<model>`, under the
+name its provider gives the model.
+
+From each model reading the check takes the provider; the model as it was asked for
+(`provenance.model`, or the reader after its provider); the model as the provider named it
+in its answer (`model_reported`), where the record has it; the kind of record; its round;
+and its date. Every round counts, stale or not: a reading of an old draft was still a use.
+
+**A model's wording taken** is a finding of a model reading whose `resolution` begins with
+the words `import --apply` writes for an accepted suggestion, "Edited in Word as". The edit
+is the model's, the import answered the finding, and both are on file. Nothing else is read
+as taken: an edit the author copied into the source by hand, or accepted in Word and
+answered in their own words, is not. The reading still counts, so what is taken changes
+what the statement should say and not whether G4 passes.
+
+A refused reply (`review/round-<n>/refused/`) is not read, as no gate reads it: its words
+reached no record and no paper.
+
+### What the authors declare
+
+The authors' list is a block of `authors.yaml`, the file that already holds the paper's
+declarations:
+
+```yaml
+ai_use:
+  declared_by: Ada Lovelace       # a person of authors.yaml
+  declared_on: 2026-11-07
+  uses:
+    - tool: Claude Opus 5         # as the statement names it
+      provider: Anthropic         # optional
+      purpose: drafting           # drafting, editing, translation, analysis-code,
+                                  # literature, figures or other
+      what: >-
+        Suggested wording for the first draft of the Introduction; the authors rewrote
+        every sentence.
+```
+
+`uses: []` under a name and a date says that the records are the whole of it. No `ai_use`
+says nothing, and is not read as a declaration of none, as an empty `competing_interests`
+is not. `purpose` is a fixed list so that a draft can group the uses as journals ask about
+them, and `other` takes the rest, with `what` saying what it was. The block is the authors'
+word: the check reads it and never writes it, and the skills ask the author for each use
+rather than fill it in. A hook that logged what an agent edits was the other way to know
+(D6.1), and it would work under one agent tool only, where this toolkit assumes none.
+
+### How a statement names a model
+
+By the names the records hold, not by the provider (D6.2). "OpenAI's model" and "ChatGPT"
+name no model the records hold; "GPT-5.1" names `gpt-5.1`.
+
+A name and the statement are folded alike. Upper and lower case are one. Every run of
+characters that are not letters or digits is one break, except a point between two digits,
+which is a version's ("5.1"). A letter beside a digit is a break, so that `gpt4o` reads as
+"GPT-4o" does. The statement names the model where the name's folded words stand in it in a
+row, each a whole word: `claude-opus-5` is named by "Claude Opus 5" and by "claude opus 5",
+and not by "Claude 5 Opus", "Claude Opus 5.1" or "Claude Opus 50".
+
+The provider is not part of the name: `openrouter/openai/gpt-5.1` is named by "GPT-5.1",
+the last part of the model. A date a provider stamps at the end of a version, `-20261001` or
+`-2026-10-01`, and a final `latest`, may be left out or given. The name asked for and the
+name the provider reported each name the model. A tool the authors declare is named by its
+`tool` in the same way.
+
+### Where the statement is read
+
+A profile names the statement as any required statement, with one key more:
+
+```yaml
+required_statements:
+  - id: ai-use
+    kind: ai_use
+    pattern: '(?i)^#+\s*(use of (generative )?ai\b|declaration of (generative )?ai\b)'
+    why: Name each AI tool, its version, and what it was used for.
+```
+
+`kind: ai_use` tells G4 to read what the pattern finds as well as find it. The statement is
+every place the pattern matches in the main text, read as G4 reads every required
+statement, with comments and fenced listings left out: the section under a matching
+heading, to the next heading of its level or above, or the paragraph a matching phrase is
+in. A journal that wants the statement in the Acknowledgements, or the analysis in the
+Methods and the writing in the Acknowledgements, says so in its pattern. With no such
+entry, or no journal chosen, the statement is the section under any heading whose words
+include "AI", "artificial intelligence", "generative" or "language model".
+
+### The findings
+
+| Code | When | Severity |
+|---|---|---|
+| `ai-use-model-unnamed` | a statement is found, and a model the records hold or a tool the authors declare is not named in it | warning; a failure at submission where the profile names an `ai_use` statement |
+| `ai-use-not-stated` | the profile names no `ai_use` statement, no heading of the default kind is found, and a model the records hold or a tool the authors declare is named nowhere in the manuscript | note (D6.3) |
+| `ai-use-undeclared` | the profile names an `ai_use` statement and `authors.yaml` has no `ai_use` | note |
+| `missing-required-statement` | as today, for an `ai_use` entry too, its hint naming the models the records hold | a failure from internal review |
+
+`ai-use-model-unnamed` is one finding for each statement, listing every model and tool it
+does not name, the spelling to use, and the record each comes from. A statement that says
+"No AI tools were used" while a reading by `gpt-5.1` is on file is this finding: what a
+statement says of a model is not read, only whether it names it.
+
+The check is one of its own in G4 (`gates/ai_use.py`), placed beside G4's others in the
+list `check` runs, since the note has to run with no journal chosen. A LaTeX manuscript's
+statement is read in the main text's printed view, as G4's required statements are. A paper
+in no project has no records, so `audit` does not run it, and its journal report names it
+among what G4 did not check there.
+
+### The supplement
+
+- A reading counts whatever files it read, the supplement's among them, and a wording taken
+  in the supplement's document (`round-<n>-supplementary.docx`) counts as one taken in the
+  paper's.
+- A required statement is read in the main text, as every required statement is, because
+  the journal reads it in the paper. A statement only in the supplement is no statement
+  there; where the names it lacks are found in the supplement, the hint says so.
+- Where the journal asks for no statement, a model named anywhere in the manuscript is
+  disclosed, so `ai-use-not-stated` reads the supplement too: a supplementary Methods that
+  says the analysis code was written with a model's help is where that belongs.
+
+### Drafting it
+
+`manuscript-guard review --ai-use` prints what the records show and what the authors
+declare, and writes nothing: each model with its provider and both spellings, what it read
+(the manuscript, the plan, a cited work, a reply), in which rounds and between which dates,
+and each finding whose wording was taken; then each declared use. The submission-pack skill
+runs it, asks the author for the uses no record can show, writes each under `ai_use` in the
+author's words with their name and the date, and drafts the statement from both: every
+model by the name the records hold, its provider, what it did, and what the authors did
+with what it said. The statement goes where the profile's pattern looks. The journal-profile
+skill writes the entry with `kind: ai_use` where the journal's page asks for the statement,
+with the page's words under `quotes`, and the template's notes say so.
+
+Considered and not built:
+
+- **The statement written into the submission pack** beside `declarations.md`. Two
+  statements could then disagree, and the editor reads the manuscript's.
+- **A list of model families** to tell a model's free-text name from a person's. Model
+  names change faster than a release, which is why no provider preset names a model either.
+- **Reading what the statement says of each model.** Whether it names one is exact; what it
+  says of one is a reading of prose this check does not need.
+
+### Its limits
+
+The code's pull request puts each of these under "Known gaps":
+
+- A model reading whose reader is not written `provider/model` and that has no
+  `provenance` is read as a person's: "Claude Code", or a bare "claude-opus-5", as the
+  example's seventeen records name their readers.
+- A name a longer name begins with is named by it: "o3-mini" names `o3`, and "GPT-4o mini"
+  names `gpt-4o`. A break is a break whatever follows it.
+- Naming is all that is read, so "we did not use GPT-5.1" names `gpt-5.1`.
+- A wording the author took by hand is not counted as taken.
+- `ai_use` is the authors' word and is not signed. Nothing stops an agent writing it, and
+  nothing records what an agent did in a session.
+- A tool declared by its product's name, "ChatGPT" or "Copilot", is held to that name;
+  nothing maps a product to the model behind it.
+- A date stamp in any other form ("-0605", "-002") is part of the name.
+- The covering letter and the journal's submission form, where some journals also ask for
+  the statement, are not read.
+
+### Tests
+
+The reading of names reads text, so it is held over generated inputs: `tests/generated.py`
+draws model names with versions, date stamps, `latest` and provider prefixes, and
+statements that spell each in every way the folding allows, beside near misses (another
+version, another order, a word between, a longer number), one of every kind in each
+example; `tests/readings.py` gains the reading and `tests/test_properties.py` the
+properties. Three broken rules must each fail under a dozen values of
+`MANUSCRIPT_GUARD_SEED`: one that drops the version, one that matches inside a word, and
+one that reads case. Each finding has its case in `tests/test_corruption.py`, its row in
+`docs/gates.md` and its entry for `tests/test_policy.py`; `kind` has its place in the
+journal schema, the template and the journal-profile skill, and `review --ai-use` its
+place in `docs/commands.md` and the tables of `tests/test_reads_nothing.py`.
+
 ## A number a summary gives is one the paper reports
 
 An abstract summarises the paper, and a conclusion what it found: neither introduces data.

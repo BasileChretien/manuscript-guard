@@ -68,8 +68,13 @@ _OPENING_HASHES = re.compile(r"^#+(?:[ \t]+|$)")
 #: capital, so that a stop before it ends a sentence as before one of the author's, and a
 #: binding alone on its line is no blank line.
 _FILLED = "X"
+#: What ends a sentence or closes its end, kept where G8's reading blanked it.
+_CLOSING = frozenset(".!?)]\"'*_\N{RIGHT SINGLE QUOTATION MARK}\N{RIGHT DOUBLE QUOTATION MARK}")
+#: A character of a citation group: anything but a bracket, and a line break that is not a
+#: blank line's, so that a stray `[` and `]` round an `@` join no paragraphs (round 2).
+_GROUP_CHAR = r"(?:[^\[\]\n]|\n(?![ \t]*\n))"
 #: A Markdown citation group, `[@a, p. 12; @b]`, on one line or across a line break.
-_CITATION_GROUP = re.compile(r"\[[^\[\]]*@[^\[\]]*\]")
+_CITATION_GROUP = re.compile(rf"\[{_GROUP_CHAR}*@{_GROUP_CHAR}*\]")
 #: The folder of the supplement's files, where a section is the supplement's.
 _SUPPLEMENT = "supplementary/"
 
@@ -181,13 +186,19 @@ def _cut_on(text: str, latex: bool) -> str:
     if latex:
         return text
     from manuscript_guard.claims import readable
-    from manuscript_guard.text.masking import NUL
+    from manuscript_guard.text.inline import code_spans
+    from manuscript_guard.text.masking import NUL, mask
 
-    read = list(readable(text).replace(NUL, _FILLED))
-    # G8 blanks a citation's keys and not its locator, "p. 12", which ends a sentence.
-    for group in _CITATION_GROUP.finditer(text):
-        start, end = group.span()
-        read[start:end] = _FILLED * (end - start)
+    # G8 blanks an address or a citation's key with the stop after it, "@smith2020." or
+    # "(https://a.org/b).": the stop and what closes it are kept (round 2 of #587).
+    read = [shown if shown != NUL else typed if typed in _CLOSING else _FILLED
+            for typed, shown in zip(text, readable(text), strict=True)]  # fmt: skip
+    # Inline code, and a citation group, whose locator "p. 12" G8 does not blank, are filled
+    # whole, their line breaks kept.
+    spans = [*code_spans(mask(text)),
+             *(group.span() for group in _CITATION_GROUP.finditer(text))]  # fmt: skip
+    for start, end in spans:
+        read[start:end] = ["\n" if char == "\n" else _FILLED for char in text[start:end]]
     return "".join(read)
 
 

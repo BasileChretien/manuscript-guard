@@ -188,6 +188,31 @@ def test_a_citation_s_locator_does_not_cut_a_sentence() -> None:
          False)]
 
 
+@pytest.mark.parametrize("ending", [
+    "[the repository](https://github.com/a/b).", "<https://github.com/a/b>.",
+    "https://github.com/a/b.", "@smith2020.", "(https://github.com/a/b).",
+])  # fmt: skip
+def test_a_stop_after_a_link_or_a_narrative_citation_ends_its_sentence(ending: str) -> None:
+    """Round 2 of #587: G8's reading blanks an address or a citation's key with the stop
+    after it, and the two sentences were read as one."""
+    text = f"# Data availability\n\nCode is in {ending} Data are deposited in the archive.\n"
+    assert where(placed("Data are deposited in", {"main.md": text})) == [
+        ("main.md", "Data availability", "Data are deposited in the archive.", False)]
+
+
+def test_a_stop_inside_inline_code_ends_no_sentence() -> None:
+    text = "# Methods\n\nWe ran `fit(x). Then` on every site of the study.\n"
+    assert [one["sentence"] for one in placed("on every site of", {"main.md": text})] == [
+        "We ran `fit(x). Then` on every site of the study."]
+
+
+def test_a_bracket_with_an_at_sign_joins_no_paragraphs() -> None:
+    """Round 2 of #587: a citation group was filled across a blank line."""
+    text = "# Results\n\nAged [18 to 65 as @a found.\n\nThe rate rose in men] overall.\n"
+    assert [one["sentence"] for one in placed("The rate rose in", {"main.md": text})] == [
+        "The rate rose in men] overall."]
+
+
 def test_an_unanchored_finding_or_one_that_quotes_nothing_is_not_placed() -> None:
     findings = [{"id": "a", "quote": "Alpha one two three"}, {"id": "b", "quote": "Zulu"},
                 {"id": "c"}]  # fmt: skip

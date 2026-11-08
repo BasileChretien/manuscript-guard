@@ -3886,18 +3886,27 @@ def finding_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, str
 #: nowhere across three, at each copy of a sentence written twice, at a heading whose whole
 #: title it is, under the section of a subsection, in the supplement under the section of
 #: the level its file has two headings of, as written where it is not printed, after a
-#: citation whose locator ends no sentence, and not at all where it is not anchored.
+#: citation whose locator ends no sentence, after a sentence that ends in a link or in a
+#: narrative citation, whose stop ends it, and not at all where it is not anchored.
 #: "again" is a second finding of a reader on the sentence of its "within a sentence"
 #: finding: a reader of one sentence is counted once.
 FINDING_PLACES = (
     "within a sentence", "a whole sentence", "across two sentences", "across three sentences",
     "written twice", "a section's heading", "a subsection's heading", "under a subsection",
     "under a heading's line", "supplement", "elided", "as written", "again", "after a citation",
-    "not anchored",
+    "after a link", "after a narrative citation", "not anchored",
 )
 #: The binding of the one sentence that holds one, as each format writes it, and as printed.
 _PLACED_BINDING = {False: "{{results.cohort.n}}", True: "\\mg{results.cohort.n}"}
 _PLACED_VALUE = "4321"
+#: How a sentence ends on a link or on a narrative citation, by (narrative, LaTeX), `{w}` its
+#: last word: the stop after it is the sentence's.
+_PLACED_ENDINGS = {
+    (False, False): "[{w}](https://example.org/{w}).",
+    (False, True): chr(92) + "href{{https://example.org/{w}}}{{{w}}}.",
+    (True, False): "@{w}.",
+    (True, True): chr(92) + "citet{{{w}}}.",
+}
 #: A citation with its locator, as each format writes it, between two words of a sentence.
 _PLACED_CITATION = {False: " [@cited{n}, p. 3] ", True: " " + chr(92) + "citep[p.~3]{{cited{n}}} "}
 
@@ -3912,8 +3921,10 @@ def finding_places(
     paragraph straight under its heading's line, one sentence of the abstract written again
     in the Results, one sentence holding a binding on a line of its own as written, and one
     a citation with its locator, `p. 3`; and a supplement of one top heading
-    over two subsections. Two or three readers, each with one finding of every way of
-    `FINDING_PLACES`, in an order drawn, each choosing its sentence apart.
+    over two subsections. The Discussion ends with a sentence closing on a link, one closing
+    on a narrative citation, and a third. Two or three readers, each with one finding of
+    every way of `FINDING_PLACES`, in an order drawn, each choosing apart where a way leaves
+    a choice ("as written" and the three after a citation or a link quote fixed words).
 
     Returned: the reading's input for each format, and for each reader each finding's id
     with the places it is at, as (file, section, heading, first word): "main" or
@@ -3936,6 +3947,7 @@ def finding_places(
     twice = sentence()
     bound = sentence(8)
     cited = sentence(8)
+    linked, told, after = sentence(7), sentence(7), sentence(7)
     abstract = [sentence() for _ in range(draw(st.integers(2, 3)))]
     abstract.insert(draw(st.integers(0, len(abstract))), twice)
     # (title, level, whether its first paragraph is straight under its line, paragraphs)
@@ -3951,7 +3963,7 @@ def finding_places(
     second = [sentence(), sentence()]
     second.insert(draw(st.integers(0, len(second))), twice)
     main.append((title(), 1, True, [results_paragraph, second]))
-    main.append((title(), 1, False, [[sentence(), sentence()]]))
+    main.append((title(), 1, False, [[sentence(), linked, told, after]]))
     supplement = [(title(), 1, False, [[sentence()]])]
     supplement += [(title(), 2, False, [[sentence(), sentence()]]) for _ in range(2)]
 
@@ -3970,7 +3982,7 @@ def finding_places(
             section = section_of(parts, index)
             for number, paragraph in enumerate(paragraphs):
                 for words in paragraph:
-                    if words is twice or words is bound or words is cited:
+                    if any(words is one for one in (twice, bound, cited, linked, told, after)):
                         continue
                     kind = ("supplement" if name == "supplement" else
                             "subsection" if level == 2 else "any")  # fmt: skip
@@ -3987,7 +3999,12 @@ def finding_places(
     def paragraph_text(paragraph: list[list[str]], latex: bool, printed: bool) -> str:
         shown = []
         for words in paragraph:
-            if words is cited:
+            if words is linked or words is told:
+                # Its last word as a link's text or a narrative citation's key, and its stop.
+                last = words[-1][:-1]
+                ending = _PLACED_ENDINGS[words is told, latex].format(w=last)
+                shown.append(joined(words[:-1]) + " " + ending)
+            elif words is cited:
                 # A citation with its locator after the third word, which ends no sentence.
                 shown.append(joined(words[:3]) + _PLACED_CITATION[latex].format(n=len(words))
                              + joined(words[3:]))  # fmt: skip
@@ -4059,8 +4076,8 @@ def finding_places(
             rows = {(name, section, id(paragraph), at): (name, section, paragraph, at)
                     for name, section, _w, paragraph in found["any"]
                     for at in range(len(paragraph) - size + 1)
-                    if not any(one is twice or one is bound or one is cited
-                               for one in paragraph[at:at + size])}
+                    if not any(one is twice or one is bound or one is cited or one is linked
+                               or one is told for one in paragraph[at:at + size])}
             ordered = sorted(rows.values(), key=lambda row: row[2][row[3]][0])
             name, section, paragraph, at = once(pick, "at",
                                                 lambda: draw(st.sampled_from(ordered)))
@@ -4081,6 +4098,10 @@ def finding_places(
         if kind == "a subsection's heading":
             heading = once(pick, "at", lambda: draw(st.sampled_from(subsections)))
             return heading, [placed("main", methods, heading.split(), heading=True)]
+        if kind == "after a link":
+            return " ".join(told[:4]), [placed("main", main[6][0], told)]
+        if kind == "after a narrative citation":
+            return " ".join(after[:4]), [placed("main", main[6][0], after)]
         if kind == "after a citation":
             return " ".join(cited[3:7]), [placed("main", methods, cited)]
         if kind == "as written":

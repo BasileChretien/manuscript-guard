@@ -6600,6 +6600,15 @@ gives each reading's counts beside its findings, and `review --run` each reading
 filed. A design round reads the plan, and its readers are not asked to quote: a quote one
 gives is kept and sealed, and looked for nowhere (Basile, 2026-11-07; Known gaps).
 
+**Measured, the quote does not answer the question that started it.** On 2026-11-08 (in
+"What the panel finds of the defects we know") the blank reader quoted in every finding,
+and all 48 of its major findings were anchored, on its abstract's sentences and heading: a
+finding about something missing quotes the nearest words it was sent. Asking for the quote
+lowered its count only from 5.9 to 5.3 major findings a reading, less than the spread
+between its readings. A quote shows where
+in the manuscript a finding points, which the grouping below needs; it is no evidence that
+the reader read the part the finding is about.
+
 The next piece, not built: once findings quote sentences, findings of different readers
 that quote the same sentence can be put together without a model, so that `review` can
 show how many readers raised each.
@@ -7056,6 +7065,57 @@ total. The script writes the report; nothing in it is by hand.
     version found none of the four, since they are fixed there, and is not reported. The
     record's resolution of record selection says the Methods now describe inclusion
     without restriction on age or sex; that sentence was in the first version already.
+
+- **2026-11-08, Claude Opus 5.5, through Claude Code as before, 45 readings, $4.76 at API
+  prices, run under a subscription.** The requests were written at `2a6acb27`, after #581,
+  so each asks its reader to quote. No reading was refused unread. The blind findings, 292
+  with the controls, were adjudicated by the same model, which put all six controls right;
+  no person checked it. The counts for the first two copies were read again in both
+  directions by the agent session that ran the measurement, as before, and where the
+  reading differs it is given beside the script's.
+
+  | Known defect | Raised, two sets of three | Rated major | Raised by the blank reader |
+  |---|---|---|---|
+  | No case definition | 3, 3 | 3, 3 | 3 of 3, all major |
+  | The 2 x 2 table's counts not given | 1, 2 (the script: 3) | 0, 0 | 3 of 3, all major |
+  | Duplicate reports not mentioned | 3, 3 | 2, 3 | 3 of 3, all major |
+  | Record selection not described | 3, 3 | 3, 3 | 3 of 3, all major |
+
+  - A quote found does not tell a reader of the abstract from a reader of the paper. Every
+    one of the 352 findings quoted something, and 349 were anchored. All 48 major findings
+    of the blank reader were anchored, 5.3 a reading, against 1.9 and 1.7 anchored from
+    the readers of the whole (2.0 and 1.7 in all). The blank reader quoted what it had: the
+    opening of the abstract's Results, "Of 4000 reports, 77 described", for nine of them;
+    the heading "Abstract", a heading's whole title, for six; words of the abstract's
+    Methods sentence, which are the title's too, for five. A finding about something
+    missing quotes the nearest words, and they are in the manuscript, so
+    `finding-unanchored` marks a reader that quoted badly, not one that did not read.
+  - Asking for a quote lowered the blank reader's count only from 5.9 major findings a
+    reading on 2026-10-19 to 5.3, in one run, less than the spread between its readings,
+    from 3 to 9 (5, 4, 3, 8, 8, 9, 4, 3, 4). The readers of the whole gave 2.0 and 1.7,
+    against 1.8 and 1.7.
+  - Three findings were unanchored. Two quoted "426 named example-drug", three words that
+    are in the paper, one short of the four that anchor: a major finding on the version the
+    panel read and a minor one on the fixed version. A comment quoted "Reporting guideline:
+    DEMO-OBS", words of the paper's facts from `paper.yaml`, sent beside the manuscript,
+    not of it.
+  - Read, each count stands but one. In the second set the script counts the 2 x 2 table
+    for a third biostatistician reading, whose two findings given it are on the unit of
+    analysis and on a significance threshold with no p-value, and which praises the counts
+    as enough to recompute every figure. Every other reading counted as raising one of the
+    four has a finding that says it is missing, and each counted as major has that finding
+    rated major. Where a count or a major rating is absent, the reading praises the counts
+    given and raises the defect in no other words (the first set's other two
+    biostatistician readings), or rates the defect minor (the 2 x 2 table wherever a reader
+    of the whole raised it; duplicates in the first set's third pharmacoepidemiologist
+    reading). As on 2026-10-19, the 2 x 2 table,
+    major in the round-1 record, was rated major by no reader of the whole and by every
+    blank reader.
+  - On the fixed version no reading gave a major finding. The 2 x 2 table and record
+    selection were counted as minor findings in three and two readings of three; those
+    findings were not read this time. The planted minor defects were again not found: the
+    undefined acronym and the caption were each counted in none of nine readings, and the
+    copy with them gave 0.1 major findings a reading.
 
 ## A document reviewed blind names none of its authors
 
@@ -17270,8 +17330,10 @@ Open, recorded as each change landed:
   `check` does not read it.
 - **A quote found shows that the words are in the manuscript, not that the finding is about
   them, nor that it is right.** A blank reader that quotes its abstract for a finding about
-  the Methods is anchored; so is any finding a reader backs with four words of the paper,
-  however little they bear on it. And what is found is only as wide as the reading of
+  the Methods is anchored; all 48 major findings of the blank readers of 2026-11-08 were
+  anchored, on the abstract they were sent ("What the panel finds of the defects we
+  know"). So is any finding a reader backs with four words of the paper, however little
+  they bear on it. And what is found is only as wide as the reading of
   `anchoring.py` (item 1 of 2026-11-06):
   - The title is sent from `paper.yaml` and printed from the front matter, and neither is
     looked in, so a quote of the title is unanchored; so is one of an abstract kept in the

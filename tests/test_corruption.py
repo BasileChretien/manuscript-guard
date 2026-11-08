@@ -3884,7 +3884,7 @@ def test_a_currency_entry_that_is_not_what_its_records_say_is_caught(
 # ----------------------------------------------------- a claim of novelty or absence, G7
 
 _ABSENT = "No study has examined example-drug and hepatic injury in children."
-_NOTE = "Embase, Web of Science, conference abstracts and work not in English"
+_NOVELTY_NOTE = "Embase, Web of Science, conference abstracts and work not in English"
 
 
 def _claimed(root: Path, where: str) -> None:
@@ -3908,7 +3908,7 @@ def _novelty_search(root: Path, number: int, step: str = "N1", on: str = "2026-1
 
     record = {"entry": "c1", "number": number, "step": step, "source": "pubmed",
               "query": "example-drug hepatic injury children", "terms_by": "Ada Example",
-              "searched_on": on, "years": {"from": None, "to": on}, "not_searched": _NOTE,
+              "searched_on": on, "years": {"from": None, "to": on}, "not_searched": _NOVELTY_NOTE,
               "status": "run", "hits": len(more.get("candidates", ())), "candidates": [],
               **more}  # fmt: skip
     if step == "N2":

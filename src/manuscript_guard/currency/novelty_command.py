@@ -181,7 +181,8 @@ def explain(project: Project, entry: records.Entry, held) -> str:
     entries = [one for one in records.read_entries(project)[0] if one.novelty]
     said = {state_of([one for one in entries if words in {statement_words(s) for s in
                                                           one.sentences}], held)
-            for words in dict.fromkeys(statement_words(s) for s in entry.sentences)}
+            for words in dict.fromkeys(statement_words(s) for s in entry.sentences)
+            if words in {claim.folded for claim in found}}  # G7 grades claims only (round 4)
     lines += [f"  G7: {one}" for one in sorted(said)]
     return "\n".join(lines)
 

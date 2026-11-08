@@ -119,6 +119,13 @@ def test_explain_grades_each_claim_of_an_entry_as_g7_does(tmp_path: Path) -> Non
     entry = records.read_entries(project)[0][0]
     shown = novelty_command.explain(project, entry, held(project))
     assert "no claim, by Ada Example" in shown and "c1 is marked, not searched" in shown
+    # Round 4: a sentence no claim has gets no state of G7's, which grades only claims.
+    _entries(root, {**NOVEL, "also": ["A sentence the manuscript lacks."]})
+    shown = novelty_command.explain(project, records.read_entries(project)[0][0], held(project))
+    assert shown.count("G7:") == 1, shown
+    # And "the present literature" is the literature (round 4).
+    assert novelty.read_sentence("The present literature on statins is scarce.")[0].list == (
+        "softer")
 
 
 def test_novelty_refuses_a_currency_file_it_cannot_read_and_leaves_it(tmp_path: Path) -> None:

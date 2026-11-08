@@ -10430,9 +10430,9 @@ def harvest_tables(draw: st.DrawFn) -> tuple[list[dict], dict[str, list]]:
 #: says of its own data, which is read and pins that limit (DESIGN.md, Known gaps). Not read:
 #: a priority turned round, another's priority, an absence in the past, "to our knowledge"
 #: alone, an absence of evidence, "for the first time" said of patients, a first visit, a
-#: hyphenated "first-line" (where "first-ever" is read), "novel" alone, "unknown" said of
-#: the data, "our data" and "these data" limited, "not for the first time", and a claim in a
-#: code span, a comment, maths and a listing.
+#: hyphenated "first-line" (where "first-ever" is read, but not "the first-ever time"),
+#: "novel" alone, "unknown" said of the data, "our", "these" and "the present" data limited,
+#: "not for the first time", and a claim in a code span, a comment, maths and a listing.
 NOVELTY_PLACES = (
     ("priority", "To our knowledge, this is the first study of {t}.", None, False),
     ("priority", "The present analysis is, to our knowledge, the first to report {t}.", None,
@@ -10465,6 +10465,8 @@ NOVELTY_PLACES = (
     (None, "This is the first-line treatment for {t}.", None, False),
     (None, "Our data on {t} are limited.", None, False),
     (None, "These data on {t} are limited.", None, False),
+    (None, "The present data on {t} are limited.", None, False),
+    (None, "This is the first-ever time {t} was given.", None, False),
     (None, "Novel oral anticoagulants and {t} were prescribed.", None, False),
     (None, "The denominator for {t} is unknown.", None, False),
     (None, "The drug was given, not for the first time, with {t}.", None, False),

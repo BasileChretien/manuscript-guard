@@ -22028,11 +22028,12 @@ Open, recorded as each change landed:
     whether" and its kind, or beside "still", "largely", "currently" or "as yet": "the
     denominator is unknown" is said of the data, and "the effect is unknown", said of the
     literature, is not read either.
-  - A paper's own data are kept from the softer list only where it says so: "our data are
-    limited" and "these data are limited" are not read, but "the data are limited by
-    under-reporting" and "a lack of data on exposure" in the Limitations are notes (rounds
-    1 and 2 of #583). A hyphenated "first" is no priority ("first-line", "first-in-class",
-    "first-in-human") but for "first-ever" and "first-of-its-kind".
+  - A paper's own data are kept from the softer list only where it says so: "our data",
+    "these data" and "the present data are limited" are not read, but "the data are limited
+    by under-reporting" and "a lack of data on exposure" in the Limitations are notes (rounds
+    1 to 4 of #583). A hyphenated "first" is no priority ("first-line", "first-in-class",
+    "first-in-human") but for "first-ever" and "first-of-its-kind", and those not where they
+    name a part of the study ("the first-ever time the patient received it").
   - The record is graded, never the novelty. The terms are the reader's and nothing compares
     them with the claim: a search on another topic covers it. `references --explain` shows
     the terms beside the sentences, for a person to read together.

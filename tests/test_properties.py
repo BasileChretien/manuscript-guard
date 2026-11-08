@@ -8590,8 +8590,12 @@ def _a_hyphenated_first_is_read(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_papers_own_data_are_read_as_limited(patch: pytest.MonkeyPatch) -> None:
-    _novelty_patterns_changed(patch, "(?<!\\bour )", "")
-    _novelty_patterns_changed(patch, "(?<!\\bthese )", "")
+    for kept in ("(?<!\\bour )", "(?<!\\bthese )", "(?<!\\bthe present )"):
+        _novelty_patterns_changed(patch, kept, "")
+
+
+def _a_part_after_first_ever_is_read(patch: pytest.MonkeyPatch) -> None:
+    _novelty_patterns_changed(patch, "(?!(?:-ever|-of-its-kind)? (?:", "(?! (?:")
 
 
 def _another_s_priority_is_read(patch: pytest.MonkeyPatch) -> None:
@@ -18552,6 +18556,10 @@ BROKEN = {
     ),
     "a paper's own data are read as limited": (
         _a_papers_own_data_are_read_as_limited,
+        test_a_claim_of_novelty_is_read_where_it_stands_and_nowhere_else,
+    ),
+    "the part a first-ever names is read as a priority": (
+        _a_part_after_first_ever_is_read,
         test_a_claim_of_novelty_is_read_where_it_stands_and_nowhere_else,
     ),
     "a priority given to someone else is read": (

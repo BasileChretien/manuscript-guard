@@ -1,6 +1,6 @@
 ---
 name: submission-pack
-description: Assemble everything a journal asks for and write the covering letter, and later check the publisher's proof against what was sent. Use when a manuscript is ready to submit, when check --stage submission is close to clean and you want to see what remains, or when the journal's proof comes back.
+description: Assemble everything a journal asks for and write the covering letter, and later check the publisher's proof against what was sent. Use when a manuscript is ready to submit, when check --stage submission is close to clean and you want to see what remains, when check reports ai-use-model-unnamed, ai-use-not-stated or ai-use-undeclared, or when the journal's proof comes back.
 ---
 
 # Assembling a submission
@@ -46,6 +46,45 @@ Two things the generator will tell you rather than paper over. An author with no
 roles produces a statement saying the roles are missing, because most journals now require
 them. An author whose `competing_interests` field is empty is listed as having made no
 declaration — an empty field is not a declaration of none, and journals ask per author.
+
+## The AI-use statement
+
+Where the journal asks how AI tools were used, the statement is the authors', and part of
+its answer is on file: every reading a model made of the manuscript, the plan, a figure or a
+cited work, a search's terms a model wrote, an appraisal a model proposed, and the wording of
+a model's suggested edits that was taken. List it:
+
+```bash
+manuscript-guard review --ai-use    # each model at work, what it did and when; writes nothing
+```
+
+What no record shows, ask the author: did a tool help draft or edit the text, write
+analysis code, translate, search the literature or make a figure? Write each answer under
+`ai_use` in `authors.yaml`, in their words, with their name as `declared_by` and the date:
+
+```yaml
+ai_use:
+  declared_by: <the author who answers>
+  declared_on: <YYYY-MM-DD>
+  uses:
+    - tool: <the tool and its version, as the statement will name it>
+      purpose: drafting       # drafting, editing, translation, analysis-code, literature,
+                              # figures or other
+      what: <what it did, and what the authors did with what it gave>
+```
+
+`uses: []` says nothing was used beyond the records; only the author can say so, so never
+write it for them. Then draft the statement from both: each model by the name the records
+hold, with its version and its provider, what it did, and what the authors did with what it
+said; each declared use. Put it where the journal's profile looks for it (its `kind: ai_use`
+statement), or, where the journal asks for none, under a heading such as "Use of AI". `check`
+holds it to the names: `ai-use-model-unnamed` lists each model or tool it leaves out, with
+the spelling to use; a warning, and a failure at submission where the journal requires the
+statement. A statement that says "no AI was used" while the records show a reading is that
+finding. `ai-use-not-stated` is a note that the records show model use the manuscript states
+nowhere, and `ai-use-undeclared` a note that the journal asks for the statement and
+`authors.yaml` has no `ai_use`. Some journals ask for the statement in the covering letter
+or the submission form too; `check` reads neither.
 
 ## The deposit the Data availability statement cites
 

@@ -362,6 +362,10 @@ BINDS_AT = {
     # A name from the code in the prose, a results key, a dictionary's variable or a word
     # with underscores: G14 warns until submission and fails there (Basile, D12.2).
     "code-name-in-prose": SUBMISSION,
+    # An AI-use statement that leaves out a model the records show at work, or a tool the
+    # authors declare: G4 warns, and fails at submission where the journal's profile asks
+    # for the statement (Basile, D6.5). Its two notes are notes at every stage.
+    "ai-use-model-unnamed": SUBMISSION,
     "response-claims-nothing": SUBMISSION,
     "claimed-change-did-not-happen": SUBMISSION,
             "review-stale": SUBMISSION,

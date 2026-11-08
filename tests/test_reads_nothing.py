@@ -407,6 +407,8 @@ def test_the_refusal_is_for_a_latex_manuscript_only(empty: Path) -> None:
         ("related", "{project}", "--take"),
         # `--files` is a flag here, no list of files (main's `review --files`).
         ("review", "{project}", "--files"),
+        # What the records show of a model's work reads no manuscript.
+        ("review", "{project}", "--ai-use"),
         # A round opened, and one checked, read a LaTeX manuscript (step 8).
         ("respond", "{project}", "--open"), ("respond", "{project}"),
         # The claims of reference currency, and a reply in Word read, read a LaTeX manuscript.

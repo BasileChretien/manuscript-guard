@@ -63,7 +63,7 @@ as the analysis does.
 
 | Command | What it does |
 |---|---|
-| `review` | show where the review panel stands; `--run` has it read by the models you list, `--seal` seals a reading written by hand, `--design` does the same for a design round, which reads the plan; `--suggestions` writes the edits a round's findings suggest into a Word document as tracked changes, for you to accept or refuse there and `import` |
+| `review` | show where the review panel stands; `--ai-use` lists each model the records show at work and what it did, and the AI use `authors.yaml` declares, for the AI-use statement, and writes nothing; `--run` has it read by the models you list, `--seal` seals a reading written by hand, `--design` does the same for a design round, which reads the plan; `--suggestions` writes the edits a round's findings suggest into a Word document as tracked changes, for you to accept or refuse there and `import` |
 | `checker` | send a co-author one file of things to confirm, record what they answered, and recap who checked what (`recap`, `recap --check`) |
 | `import` | bring a co-author's Word edits back into the manuscript source, and file each of their Word comments as a finding to answer |
 | `respond` | open a revision round, or write the point-by-point response |

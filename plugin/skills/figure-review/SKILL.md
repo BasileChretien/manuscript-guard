@@ -94,7 +94,9 @@ That writes `figures/<name>.review.yaml` with the figure's content digest, which
 the toolkit's and not a plain file hash, because it deliberately ignores render metadata and
 generated element ids. It also lists all seven checks as `ok: false`, each with the question
 it asks, so the file is a to-do list. `--by` is required, because the record's whole content
-is that a particular person or model looked at a particular rendering. The verdict is `pass`
+is that a particular person or model looked at a particular rendering. An agent gives its
+model as `<provider>/<model>`, with the name its provider gives the model, which is how the
+record says a model looked and how the AI-use statement is held to it. The verdict is `pass`
 or `concerns`. The command refuses to overwrite a record; to record a fresh reading, delete
 the old file first.
 
@@ -105,7 +107,7 @@ you saw. A check left `ok: false` fails the gate, and the gate names each one.
 schema: manuscript-guard/figure-review/1
 figure: forest.svg
 content_sha256: <written by the command>
-reviewed_by: <your model identifier, or a person's name>
+reviewed_by: <provider>/<model> for a model, or a person's name
 reviewed_on: <YYYY-MM-DD>
 caption_checked_against: manuscript/main.md    # optional, not written by the command
 verdict: pass          # or: concerns

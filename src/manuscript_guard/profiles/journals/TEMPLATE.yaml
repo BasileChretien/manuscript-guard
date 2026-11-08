@@ -199,6 +199,17 @@ required_statements:
   # Add the journal's own. Common ones worth checking for on the page:
   #   author contributions (CRediT), patient consent, clinical trial registration number,
   #   reporting-guideline statement, use of AI in writing, data sharing plan.
+  #
+  # Where the page asks how AI tools were used, give that entry `kind: ai_use`. G4 then reads
+  # what the pattern finds, a heading's line and its section or a phrase's paragraph, and
+  # warns, failing at submission, where it leaves out a model the project's records show at
+  # work or a tool authors.yaml declares under `ai_use`. Point the pattern where the page
+  # wants the statement: a heading of its own, the Acknowledgements, the Methods.
+  #
+  #   - id: ai-use
+  #     kind: ai_use
+  #     pattern: '(?i)^#+\s*(use of (generative )?ai\b|declaration of (generative )?ai\b)'
+  #     why: Name each AI tool, its version, and what it was used for.
 
 # ── What the Data availability statement says ────────────────────────────────────────────
 #
@@ -417,7 +428,8 @@ manual: []
 #
 # Worth capturing: covering-letter contents; suggested and opposed reviewers; title-page
 # rules that differ from the manuscript; how to anonymise; supplementary-file naming; word counts the journal defines differently; portal
-# quirks; anything the page says about AI use in preparing the manuscript.
+# quirks; anything the page says about AI use that is not the statement (a required statement
+# of `kind: ai_use`, above), such as what it lets a model do.
 
 notes:
   - "Covering letter: state the study's contribution and confirm the work is unpublished."

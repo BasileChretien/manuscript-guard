@@ -16740,6 +16740,85 @@ def _a_synthetic_copy_is_drawn_unseeded(patch: pytest.MonkeyPatch) -> None:
         Random=lambda _seed: random.Random(), SystemRandom=random.SystemRandom))  # fmt: skip
 
 
+# ------------------------------------------------------ a model named in a statement, G4
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import model_statements  # noqa: E402
+
+
+@holds(40, model_statements())
+def test_a_statement_names_a_model_where_its_parts_stand_in_a_row_and_nowhere_else(
+    planted: tuple[dict[str, Any], list[bool]],
+) -> None:
+    """A statement names a model a record holds whatever its case, with a version written
+    with a point or a hyphen either side, with the provider, a date stamp, `latest` or a
+    tag left out, and with a name glued to its version spaced; and not by another version,
+    a longer number, another order, a word between, a name starting or ending inside a word,
+    or a point's two digits in two words (DESIGN.md, "How a statement names a model")."""
+    given, expected = planted
+    answered = answer(READINGS["model names"](), given)
+    assert "raised" not in answered, answered
+    assert answered["answer"] == expected, [
+        (case, got, wanted) for case, got, wanted
+        in zip(given["cases"], answered["answer"], expected, strict=True) if got != wanted
+    ]  # fmt: skip
+
+
+def _a_model_s_version_is_dropped(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import model_names
+
+    found = model_names._found
+    patch.setattr(model_names, "_found", lambda said, wanted: found(
+        [p for p in said if not p.text.isdigit()],
+        [p for p in wanted if not p.text.isdigit()]))  # fmt: skip
+
+
+def _a_model_is_named_inside_a_word(patch: pytest.MonkeyPatch) -> None:
+    import dataclasses
+
+    from manuscript_guard.text import model_names
+
+    parts = model_names.parts
+    patch.setattr(model_names, "parts", lambda text: [
+        dataclasses.replace(p, first=True, last=True, after_point=False) for p in parts(text)])
+
+
+def _a_model_s_name_is_read_with_its_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import model_names
+
+    patch.setattr(model_names, "_fold", lambda text: text)
+
+
+def _a_date_stamp_is_part_of_a_model_s_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import model_names
+
+    patch.setattr(model_names, "_DATE", re.compile(r"(?!)"))
+
+
+def _a_provider_is_part_of_a_model_s_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import model_names
+
+    shorter = model_names._shorter
+    patch.setattr(model_names, "_shorter", lambda name: {
+        cut for cut in shorter(name) if "/" in cut or "/" not in name})  # fmt: skip
+
+
+def _a_point_s_digits_may_stand_in_two_words(patch: pytest.MonkeyPatch) -> None:
+    import dataclasses
+
+    from manuscript_guard.text import model_names
+
+    parts = model_names.parts
+    patch.setattr(model_names, "parts", lambda text: [
+        dataclasses.replace(p, after_point=False) for p in parts(text)])
+
+
+def _a_point_and_a_hyphen_are_two_versions(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import model_names
+
+    patch.setattr(model_names, "_CUT", re.compile(r"(?<=\d)(?=[^\W\d_])|(?<=[^\W\d_])(?=\d)|\."))
+
+
 # ------------------------------------------------- broken rules of a finding's quote
 
 
@@ -16881,6 +16960,34 @@ def _any_number_opening_a_title_is_a_section_s(patch: pytest.MonkeyPatch) -> Non
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a model is named whatever its version": (
+        _a_model_s_version_is_dropped,
+        test_a_statement_names_a_model_where_its_parts_stand_in_a_row_and_nowhere_else,
+    ),
+    "a model is named inside a word": (
+        _a_model_is_named_inside_a_word,
+        test_a_statement_names_a_model_where_its_parts_stand_in_a_row_and_nowhere_else,
+    ),
+    "a model's name is read with its case": (
+        _a_model_s_name_is_read_with_its_case,
+        test_a_statement_names_a_model_where_its_parts_stand_in_a_row_and_nowhere_else,
+    ),
+    "a version's point and hyphen are two versions": (
+        _a_point_and_a_hyphen_are_two_versions,
+        test_a_statement_names_a_model_where_its_parts_stand_in_a_row_and_nowhere_else,
+    ),
+    "a date stamp is part of a model's name": (
+        _a_date_stamp_is_part_of_a_model_s_name,
+        test_a_statement_names_a_model_where_its_parts_stand_in_a_row_and_nowhere_else,
+    ),
+    "a provider is part of a model's name": (
+        _a_provider_is_part_of_a_model_s_name,
+        test_a_statement_names_a_model_where_its_parts_stand_in_a_row_and_nowhere_else,
+    ),
+    "a point's digits may stand in two words": (
+        _a_point_s_digits_may_stand_in_two_words,
+        test_a_statement_names_a_model_where_its_parts_stand_in_a_row_and_nowhere_else,
+    ),
     "a level under the custodian's minimum is given by its name": (
         _a_level_under_the_minimum_is_kept,
         test_a_profile_prints_no_count_under_the_custodian_minimum,

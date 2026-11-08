@@ -61,7 +61,8 @@ manuscript-guard references --search c1 --terms "<terms>" --against "<terms agai
 
 One run carries both the terms and, where there are any, the terms against: a second
 `--search` runs every step again and files every record twice. `--as` is who wrote the
-terms; a model that wrote them gives its own name. The dry run prints every request and
+terms; a model that wrote them gives its name as `<provider>/<model>`, the name its
+provider gives it, so that the AI-use statement is held to it. The dry run prints every request and
 sends nothing. The search runs every step: S1 forward from the cited work
 (PubMed's update and comment links, the reviews OpenAlex lists as citing it), S2 systematic
 reviews on the terms, S3 primary studies published since the cutoff, S4 ongoing trials
@@ -103,7 +104,8 @@ a quote the check would refuse, and names each. A population, exposure or outcom
 `unclear`, with the quote that comes nearest; `unclear` is no value of the other fields. Read every candidate, including the ones that look off the
 question: the rules need each.
 
-Write the reading as a YAML file in the shape of the reading schema and file it:
+Write the reading as a YAML file in the shape of the reading schema and file it. Its
+`reader` is who read: an agent gives its model as `<provider>/<model>`, a person their name.
 
 ```bash
 manuscript-guard references --reading reading.yaml

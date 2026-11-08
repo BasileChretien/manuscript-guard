@@ -268,6 +268,13 @@ block out, and G4 reads nothing under the heading. G4 then fails a forbidden phr
 review, and warns on a shared-drive or bare code-host link (`data-link-temporary`) and on a
 dataset DOI the reference list does not cite (`data-doi-uncited`).
 
+Where the page asks how AI tools were used in the work, add that required statement with
+`kind: ai_use`, its pattern pointing where the page wants it (a heading of its own, the
+Acknowledgements, the Methods) and its quote under `quotes`. G4 then holds what the pattern
+finds to the models the project's records show at work and the tools `authors.yaml`
+declares, and the submission-pack skill drafts it. Anything else the page says of AI use
+goes in `notes` or `manual`, quoted.
+
 Where the page asks for highlights, key points or another box beside the abstract, or says
 anything of a graphical abstract or of what its authors may share, fill `boxes`,
 `graphical_abstract` and `sharing` as

@@ -1449,6 +1449,18 @@ def _code_names() -> Reading:
     return code_names
 
 
+@reading("model names")
+def _model_names() -> Reading:
+    from manuscript_guard.text.model_names import named
+
+    def model_names(given: dict[str, Any]) -> list[bool]:
+        """Whether each text names the model its spellings are of, as G4's AI-use check
+        reads a statement (`text/model_names.py`)."""
+        return [named(case["text"], case["spellings"]) for case in given["cases"]]
+
+    return model_names
+
+
 @reading("reported tests")
 def _reported_tests() -> Reading:
     """Each test statistic with a P after it in its sentence, as it is printed, and what

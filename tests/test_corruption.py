@@ -10451,6 +10451,8 @@ _READS_LATEX = (
     "check_statement_sources", "check_recycling", "check_quality_reported",
     # It reads a box in its LaTeX environment or under its heading (`text/boxes.py`).
     "check_boxes",
+    # It reads the AI-use statement in G4's `main_text`, and the supplement's printed view.
+    "check_ai_use",
     # It reads the Results and the Discussion in each document's printed view, as
     # `check_reported` does (item 10 of the borrowed checks).
     "check_interpretation",
@@ -30037,3 +30039,93 @@ def test_a_code_step_edited_in_its_fragment_fails(
     _re_signed(root, field, value)
     assert "results-edited" not in codes(gate_report(root)), "G1 is satisfied, as expected"
     assert caught in _g9_and_load(root)
+
+
+# --------------------------------------------------------------------------------------
+# G4: the AI-use statement held to the records of a model's work and to what the authors
+# declare (DESIGN.md, "The AI-use statement names the models the records hold").
+
+
+def _ai_use_findings(root: Path, stage: str | None = None) -> list[tuple[str, str]]:
+    from manuscript_guard.cli import _run_gates
+
+    report, _project, _chosen, _deferred = _run_gates(root, stage=stage)
+    return [(f.code, f.severity) for f in report.findings if f.code.startswith("ai-use-")]
+
+
+def _a_model_read(root: Path, reader: str = "openai/gpt-5.1") -> None:
+    """A reading of round 11 by a model, filed as an agent in the session files one."""
+    folder = root / "review" / "round-11"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "statistician.yaml").write_text(yaml.safe_dump({
+        "schema": "manuscript-guard/review/1", "round": 11, "reviewer": "statistician",
+        "reviewed_by": reader, "reviewed_on": "2026-11-01", "verdict": "minor-revision",
+        "manuscript_sha256": "0" * 64}), encoding="utf-8")  # fmt: skip
+
+
+def _ai_use_required(root: Path) -> None:
+    path = root / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["required_statements"].append(
+        {"id": "ai-use", "kind": "ai_use", "pattern": r"(?im)^#+\s*use of ai"})
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def _ai_use_declared(root: Path, uses: list) -> None:
+    path = root / "authors.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["ai_use"] = {"declared_by": "Ada Example", "declared_on": "2026-11-07",
+                          "uses": uses}  # fmt: skip
+    path.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
+                    encoding="utf-8")  # fmt: skip
+
+
+def _ai_use_stated(root: Path, text: str, *, supplement: bool = False) -> None:
+    path = (next((root / "manuscript" / "supplementary").glob("*.md")) if supplement
+            else main_md(root))  # fmt: skip
+    path.write_text(path.read_text(encoding="utf-8") + "\n" + text + "\n", encoding="utf-8")
+
+
+def test_a_statement_that_leaves_out_a_model_s_reading_is_caught(project: Path) -> None:
+    """The records show a reading by GPT-5.1; the statement says no AI tool was used. A
+    warning while drafting, a failure at submission where the journal asks for it."""
+    assert _ai_use_findings(project) == []
+    _ai_use_required(project)
+    _ai_use_declared(project, [])
+    _a_model_read(project)
+    _ai_use_stated(project, "## Use of AI\n\nNo AI tools were used in this work.")
+    assert _ai_use_findings(project, "drafting") == [("ai-use-model-unnamed", "warn")]
+    assert _ai_use_findings(project, "submission") == [("ai-use-model-unnamed", "fail")]
+    _ai_use_stated(project, "GPT-5.1 (OpenAI) read a draft as a reviewer.")
+    assert _ai_use_findings(project, "submission") == []
+
+
+def test_a_tool_the_authors_declare_and_the_statement_leaves_out_is_caught(
+    project: Path,
+) -> None:
+    _ai_use_required(project)
+    _ai_use_declared(project, [{"tool": "Claude Opus 5", "purpose": "drafting",
+                                "what": "Wording for the Introduction's first draft."}])
+    _ai_use_stated(project, "## Use of AI\n\nThe authors wrote every sentence.")
+    assert _ai_use_findings(project, "submission") == [("ai-use-model-unnamed", "fail")]
+
+
+def test_model_use_and_no_statement_is_noted_where_the_journal_asks_for_none(
+    project: Path,
+) -> None:
+    _a_model_read(project)
+    assert _ai_use_findings(project, "submission") == [("ai-use-not-stated", "info")]
+
+
+def test_a_statement_in_the_supplement_that_names_no_model_is_caught(project: Path) -> None:
+    _a_model_read(project, "mistral/mistral-large-2411")
+    _ai_use_stated(project, "## Use of AI\n\nA language model helped.", supplement=True)
+    assert _ai_use_findings(project, "submission") == [("ai-use-model-unnamed", "warn")]
+
+
+def test_a_journal_s_statement_with_nothing_declared_by_the_authors_is_noted(
+    project: Path,
+) -> None:
+    _ai_use_required(project)
+    _ai_use_stated(project, "## Use of AI\n\nNo AI tool was used.")
+    assert _ai_use_findings(project) == [("ai-use-undeclared", "info")]

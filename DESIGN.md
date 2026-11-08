@@ -7411,9 +7411,11 @@ local tags and provider prefixes, and statements that spell each in every way th
 allows, beside near misses (another version, a longer number, another order, a word
 between, a name that starts or ends inside a word, a point's digits in two words), one of
 every kind in each example; `tests/readings.py` gains the reading, and
-`tests/test_properties.py` the properties. Four broken rules must each fail under a dozen
+`tests/test_properties.py` the properties. Seven broken rules must each fail under a dozen
 values of `MANUSCRIPT_GUARD_SEED`: one that drops the version, one that matches inside a
-word, one that reads case, and one that reads "4.5" and "4-5" as two versions. The cutting
+word, one that reads case, one that reads "4.5" and "4-5" as two versions, and, added in
+round 1 of the code, one that keeps a date stamp, one that keeps the provider, and one that
+lets a point's two digits stand in two words. The cutting
 out of a section or a paragraph is held in Markdown and LaTeX, the split statement among
 them. Each finding has its case in `tests/test_corruption.py`, its row in `docs/gates.md`
 and its entry for `tests/test_policy.py`, and the supplement its own cases. `kind` has its
@@ -23971,6 +23973,44 @@ What papers converted from Word showed (see "What papers converted from Word sho
   the still frame, leave out the spark, which is shown; the assertion is right (finding 2).
   Closed by rendering the PNGs in CI against the committed ones, and by reading the
   shorthand too.
+
+- **The AI-use statement is held to names, and to the records that say a model made them.**
+  G4's AI-use check (`gates/ai_use.py`, `text/model_names.py`; "The AI-use statement names
+  the models the records hold") has these limits, each written down when it was built:
+  - A model's work recorded under a name not written `provider/model`, with no
+    `provenance` naming the model, is read as a person's: "Claude Code", or a bare
+    "claude-opus-5", as the example's seventeen review records and its figure review name
+    their readers. Nothing tells a model's free-text name from a person's.
+  - A name that a longer name begins with, up to the end of a word, is named by it:
+    "o3-mini" names `o3`, and "GPT-4o mini" names `gpt-4o`.
+  - Two digits a hyphen joins may stand in two words, so "Claude Opus 4, 5 times" names
+    `claude-opus-4-5`; a local model's tag may be left out, so "Llama 3.1 8B" names
+    `llama3.1:70b`; a date stamp in another form ("-0605", "-002") is part of the name; and
+    a letter before a version breaks the run of parts, so "Claude Opus v4.5" does not name
+    `claude-opus-4-5`. Letters of a script written without spaces run on into the name's
+    last word, so "GPT-5.1を用いた" does not name `gpt-5.1`. Full-width, half-width, bold
+    and small forms are read as their plain ones, and a symbol, a superscript, a subscript
+    or a circled digit ends a word ("ChatGPT™", "GPT-4o²", "ChatGPT①"); a footnote typed
+    as `^1^` or `[^1]` was never part of one.
+  - A phrase match takes only its paragraph, and pandoc needs a blank line before a list,
+    so "The following AI tools were used:" over a list leaves the list's tools outside the
+    statement. A profile's pattern that matches the statement's heading takes the list in.
+  - Naming is all that is read: "we did not use GPT-5.1" names `gpt-5.1`.
+  - With no `kind: ai_use` entry, a heading of the default kind is the statement wherever it
+    is: in a paper about language models, "Use of large language models for annotation" in
+    the Methods is read as one.
+  - A wording the author took by hand, or accepted in Word and answered in their own words,
+    is not counted as taken; the reading still counts.
+  - A refused reply never filed is not counted, though the model was sent the manuscript.
+  - `ai_use` is the authors' word and is not signed, and `declared_by` is not held to the
+    people of `authors.yaml`. Nothing stops an agent writing it, and nothing records what an
+    agent did in a session that left no record.
+  - A tool declared by its product's name, "ChatGPT" or "Copilot", is held to that name;
+    nothing maps a product to the model behind it.
+  - The covering letter and the journal's submission form, where some journals also ask for
+    the statement, are not read.
+  - A paper in no project has no records, so `audit --journal` does not run the check and
+    says so among what G4 did not check.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

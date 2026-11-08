@@ -6609,9 +6609,47 @@ between its readings. A quote shows where
 in the manuscript a finding points, which the grouping below needs; it is no evidence that
 the reader read the part the finding is about.
 
-The next piece, not built: once findings quote sentences, findings of different readers
-that quote the same sentence can be put together without a model, so that `review` can
-show how many readers raised each.
+**Where a quote points is kept, and `review` shows which readers point at one sentence.**
+Findings of different readers that quote one sentence are put together without a model
+(`quote_places.py`), and Basile took its five decisions on 2026-11-08, each as recommended:
+
+- **The place is the sentence that holds the quote.** A quote that is a heading's whole
+  title is at that heading. One across two sentences in a row is at both; one across three
+  or more stands in the text and is placed nowhere. One whose words stand in two places, an
+  abstract repeating a sentence of the Results, is at each. A sentence is cut as G8 cuts
+  one (`claims.sentence_pieces`), and also at a heading's line, so the paragraph straight
+  under a heading is no part of it, and in LaTeX at an environment's `\begin` and `\end`.
+  Its section is the heading over it of the first level that has two headings or more in
+  its file, so that a paper's title typed as its one top heading is no section and a
+  subsection's sentence is its section's.
+- **It is found when the reading is filed, and sealed.** `review --run` and `review --seal`
+  find each anchored quote's places where they find the quote (D1.3), and keep them in
+  `quotes.places`, each with its file, its section and the sentence as written, white space
+  folded, its first 400 characters. `review --seal` looks in the files as the build prints
+  them first, and as they are written only where the quote is not found there, so that a
+  person's quote of a sentence and a model's are at one place where they can be. Found
+  later, a place would be looked for in the results of the day, which no digest covers. A
+  reading sealed before places were kept has none, and `review` says how many such readings
+  a round has.
+- **Readers are counted within one round**, each by name, a named reading's reader or else
+  its `reviewed_by`: a model that read three remits is one reader, and two findings of one
+  reader on one sentence count once.
+- **It is shown and decides nothing.** `review` lists, under each round, the sentences two
+  readers or more quote, with the number of readers, the sentence's opening, and each
+  reader's findings by remit and id; then how many places one reader quoted, how many
+  anchored findings stand in no one sentence or two, and how many readings were filed
+  before places were kept. No gate reads `places`, and G11's counts and verdicts are those
+  of a reading without them (a test holds that).
+- **Each reading's sections are shown too**, as `quotes in: Abstract 5, Methods 1`, a
+  finding once in each section its quote stands in. A reading sent the whole paper whose
+  quotes all sit in the abstract stands out. That such a reading read less of the paper is
+  not measured: the blank reader of 2026-11-08 quoted its abstract because it was sent
+  nothing else (Known gaps).
+
+A group is of findings that point at one sentence, not of findings that say one thing: the
+blank reader quoted the opening of its Results for nine findings on four defects, and
+readers who raise one defect may each quote another sentence. The count says how many
+readers looked at a sentence closely enough to quote it, and no more.
 
 ## A reading may suggest the wording, and the author decides it in Word
 
@@ -17372,6 +17410,41 @@ Open, recorded as each change landed:
   - A design round's quotes are kept, sealed and not looked for: its readers are not asked
     to quote the plan (Basile, 2026-11-07). Closed by asking them to, and checking their
     quotes against the plan as it was sent, as a manuscript round's are.
+- **Readers at one sentence are readers who quoted it, not readers who raised one
+  problem.** `review` groups findings by the sentence their quotes stand in
+  (`quote_places.py`, Basile, 2026-11-08). The blank reader of 2026-11-08 quoted the
+  opening of its Results for nine findings on four defects, and two readers who raise the
+  same defect each quote the sentence nearest to hand, so a count of readers at a sentence
+  is neither a count of agreement nor a weight for a finding; it decides nothing. And what
+  is placed is only as wide as its reading:
+  - Only readings filed or sealed since places were kept have them. One sealed before is
+    counted as such and never placed: finding its places later would read the results of
+    the day (Basile, 2026-11-08).
+  - A sentence is cut as G8 cuts one: at a stop, a space and no small letter after them.
+    "Fig. 2" and "Dr. Smith" cut a sentence in two, and a quote across the cut is at both
+    halves; across two such cuts, it is placed nowhere. A sentence is not cut at a LaTeX
+    `\item` or `\\`.
+  - A quote across three sentences or more stands in the text and is placed nowhere;
+    `review` counts it among the findings in no one sentence or two.
+  - Two places are one when their file, their section and the first 400 characters of the
+    sentence kept for each agree, whatever the case: two sentences that open alike for 400
+    characters, a table typed without a stop say, are one place.
+  - A person's quote found only as the source writes it, with its binding, is at the
+    sentence as written, which is another place than the same sentence as printed: a model
+    quoting the printed sentence and a person quoting its source are not put together.
+  - A sentence of LaTeX is kept as it is sent, its commands in, but for those that open it
+    (`\label{...}` after a heading); a quote across a command it does not hold is not found
+    there, as `anchoring.py` does not find it either.
+  - A section is the heading over a sentence of the first level its file has two headings
+    of. A manuscript whose files put their sections at different levels, or a file with a
+    single section and subsections under it, names sections otherwise than its reader
+    might: the supplement of the example is read at its tables' level.
+  - Readers are counted by name, a named reading's reader or else its `reviewed_by`, as
+    typed: one person filing plain records under two spellings of a name is two readers.
+  - `quotes in:` shows the sections of each reading's quotes, and what a reading was sent
+    decides what it can quote. That a reading sent the whole paper and quoting only its
+    abstract read less of the paper is not measured: no such reading has been seen (Basile,
+    2026-11-08: shown, with no note).
 - **`review --seal` goes on its own, and is not told so of every flag.** It refuses
   `--record`, `--record-figure`, `--providers`, `--run` and `--dry-run`. `--digest` with it
   is answered first and nothing is sealed, and `--verdict`, `--summary`, `--by`, `--remit`,

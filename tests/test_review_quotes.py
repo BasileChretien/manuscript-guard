@@ -312,8 +312,11 @@ def test_a_model_s_quotes_are_looked_for_in_what_it_was_sent(read_by_a_model: Pa
     for path in model_readings(read_by_a_model):
         document = read_structured(path)
         assert validate(document, "review", path).ok
-        assert document["quotes"] == {"anchored": ["r1-01", "r1-02", "r1-05"],
-                                      "unanchored": ["r1-03", "r1-04", "r1-06"]}  # fmt: skip
+        quotes = document["quotes"]
+        assert quotes["anchored"] == ["r1-01", "r1-02", "r1-05"]
+        assert quotes["unanchored"] == ["r1-03", "r1-04", "r1-06"]
+        # Where each anchored one stands, which `tests/test_review_places.py` holds.
+        assert sorted(quotes["places"]) == quotes["anchored"]
         assert document["findings"][0]["quote"] == contained(read_by_a_model)
         assert document["reading_sha256"] == reading_digest(document)
 
@@ -450,7 +453,9 @@ def test_a_hand_filed_reading_s_quotes_are_looked_for_when_it_is_sealed(
     said = capsys.readouterr().out
     assert "quotes: 4 found in what the reading read, 1 not (h5)" in said
     document = read_structured(path)
-    assert document["quotes"] == {"anchored": ["h1", "h2", "h3", "h4"], "unanchored": ["h5"]}
+    quotes = document["quotes"]
+    assert (quotes["anchored"], quotes["unanchored"]) == (["h1", "h2", "h3", "h4"], ["h5"])
+    assert sorted(quotes["places"]) == ["h1", "h2", "h3", "h4"]
     assert path.read_bytes().startswith(before), "nothing the reader wrote is touched"
     assert document["reading_sha256"] == reading_digest(document)
     report = check_review(loaded(project))

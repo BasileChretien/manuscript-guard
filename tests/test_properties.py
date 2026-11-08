@@ -7572,6 +7572,58 @@ def test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_el
             assert listed == wanted, (who, way, given["findings"][int(ident[1:]) - 1])
 
 
+from generated import finding_places  # noqa: E402
+
+
+def _known(files: dict[str, str], place: Any) -> tuple:
+    """A place as `finding_places` says where a quote was taken: the file's part, the
+    section, whether a heading's, and the first word of what it is at."""
+    from manuscript_guard.quote_places import Place
+
+    place = place if isinstance(place, Place) else Place(**place)
+    return files[place.file], place.section, place.heading, place.sentence.split()[0]
+
+
+@holds(40, finding_places())
+def test_a_finding_is_placed_where_its_quote_was_taken_and_each_reader_counted_once(
+    drawn: tuple[list[dict[str, Any]], dict[str, list[tuple[str, str, list[tuple]]]]],
+) -> None:
+    """Basile, 2026-11-08: an anchored finding is placed at the sentence that holds its quote,
+    at both of two in a row, at each copy of a sentence written twice, at a heading whose
+    whole title it is, under the section of the first level with two headings in its file,
+    as written where it is not printed, in Markdown and in LaTeX alike; across three
+    sentences or unanchored it is placed nowhere. A place's readers are counted by name,
+    each once however many of its findings quote it (`quote_places.py`)."""
+    from types import SimpleNamespace
+
+    from manuscript_guard import quote_places
+
+    inputs, truth = drawn
+    for one in inputs:
+        found = READINGS["finding places"]()(one)
+        files = dict(zip(one["printed"], ("main", "supplement"), strict=True))
+
+        readers_of: dict[tuple, set[str]] = {}
+        readings = []
+        for who, expected in truth.items():
+            got = found[who]
+            for ident, kind, places in expected:
+                if kind == "not anchored":
+                    assert ident not in got["anchored"], (kind, got)
+                    continue
+                assert ident in got["anchored"], (one["latex"], kind)
+                at = [_known(files, place) for place in got["places"].get(ident, [])]
+                assert at == places, (one["latex"], kind, at, places)
+                for place in places:
+                    readers_of.setdefault(place, set()).add(who)
+            readings.append(SimpleNamespace(reviewer="remit", who=who, places=tuple(
+                (ident, tuple(quote_places.Place(**place) for place in got["places"][ident]))
+                for ident in got["anchored"])))  # fmt: skip
+        counted = {_known(files, group.place): len(group.readers)
+                   for group in quote_places.groups(readings)}  # fmt: skip
+        assert counted == {place: len(who) for place, who in readers_of.items()}, one["latex"]
+
+
 @holds(60, credited_plans())
 def test_a_study_is_credited_by_a_citation_of_the_plan_and_by_nothing_else(
     drawn: tuple[dict[str, str], dict[str, str]],
@@ -16957,6 +17009,82 @@ def _any_number_opening_a_title_is_a_section_s(patch: pytest.MonkeyPatch) -> Non
     patch.setattr(anchoring, "_NUMBER", re.compile(r"^(?:[a-z]?\d+(?:\.\d+)*\.?)\s+"))
 
 
+# ------------------------------------------- broken rules of the sentence a finding quotes
+
+
+def _a_quote_is_placed_at_its_first_place_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import quote_places
+
+    once = quote_places._once
+    patch.setattr(quote_places, "_once", lambda places: once(places)[:1])
+
+
+def _a_quote_is_placed_in_one_sentence_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import quote_places
+
+    patch.setattr(quote_places, "IN_A_ROW", 1)
+
+
+def _a_quote_is_placed_across_three_sentences(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import quote_places
+
+    patch.setattr(quote_places, "IN_A_ROW", 3)
+
+
+def _a_section_is_the_nearest_heading(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import quote_places
+
+    patch.setattr(quote_places, "_top", lambda heads: 10**6)
+
+
+def _a_section_is_the_first_level_s_heading(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import quote_places
+
+    patch.setattr(quote_places, "_top", lambda heads: min(
+        [level for _start, level, _title, _end in heads] or [1]))  # fmt: skip
+
+
+def _a_heading_s_line_runs_on_into_the_line_under_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import quote_places
+
+    heads = quote_places._heads
+    patch.setattr(quote_places, "_heads", lambda text, latex: [
+        (start, level, title, start) for start, level, title, _end in heads(text, latex)])
+
+
+def _a_reader_is_counted_for_each_finding(patch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    from manuscript_guard import quote_places
+
+    groups = quote_places.groups
+    patch.setattr(quote_places, "groups", lambda readings: groups([
+        SimpleNamespace(reviewer=one.reviewer, who=f"{one.who} {ident}",
+                        places=((ident, places),))
+        for one in readings for ident, places in one.places]))  # fmt: skip
+
+
+def _a_quote_is_placed_as_printed_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import quote_places
+
+    place_quotes = quote_places.place_quotes
+    patch.setattr(quote_places, "place_quotes", lambda findings, anchored, printed,
+                  written=None, *, latex=False: place_quotes(findings, anchored, printed,
+                                                             latex=latex))  # fmt: skip
+
+
+def _a_heading_s_title_is_placed_as_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import quote_places
+
+    patch.setattr(quote_places, "_titles", lambda quote: set())
+
+
+def _a_sentence_is_cut_with_its_bindings_blanked(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import claims, quote_places
+
+    patch.setattr(quote_places, "_cut_on", claims.readable)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -17099,6 +17227,46 @@ BROKEN = {
     "any number opening a heading's title is a section's": (
         _any_number_opening_a_title_is_a_section_s,
         test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a quote is placed at the first place its words stand only": (
+        _a_quote_is_placed_at_its_first_place_only,
+        test_a_finding_is_placed_where_its_quote_was_taken_and_each_reader_counted_once,
+    ),
+    "a quote is placed in one sentence only": (
+        _a_quote_is_placed_in_one_sentence_only,
+        test_a_finding_is_placed_where_its_quote_was_taken_and_each_reader_counted_once,
+    ),
+    "a quote is placed across three sentences": (
+        _a_quote_is_placed_across_three_sentences,
+        test_a_finding_is_placed_where_its_quote_was_taken_and_each_reader_counted_once,
+    ),
+    "a quote's section is the nearest heading": (
+        _a_section_is_the_nearest_heading,
+        test_a_finding_is_placed_where_its_quote_was_taken_and_each_reader_counted_once,
+    ),
+    "a quote's section is of the file's first level": (
+        _a_section_is_the_first_level_s_heading,
+        test_a_finding_is_placed_where_its_quote_was_taken_and_each_reader_counted_once,
+    ),
+    "a heading's line runs on into the line under it": (
+        _a_heading_s_line_runs_on_into_the_line_under_it,
+        test_a_finding_is_placed_where_its_quote_was_taken_and_each_reader_counted_once,
+    ),
+    "a reader of one sentence is counted for each finding": (
+        _a_reader_is_counted_for_each_finding,
+        test_a_finding_is_placed_where_its_quote_was_taken_and_each_reader_counted_once,
+    ),
+    "a quote is placed as printed only": (
+        _a_quote_is_placed_as_printed_only,
+        test_a_finding_is_placed_where_its_quote_was_taken_and_each_reader_counted_once,
+    ),
+    "a heading's title is placed as a sentence": (
+        _a_heading_s_title_is_placed_as_a_sentence,
+        test_a_finding_is_placed_where_its_quote_was_taken_and_each_reader_counted_once,
+    ),
+    "a sentence is cut with its bindings blanked": (
+        _a_sentence_is_cut_with_its_bindings_blanked,
+        test_a_finding_is_placed_where_its_quote_was_taken_and_each_reader_counted_once,
     ),
     "a synthetic copy is drawn from an unseeded stream": (
         _a_synthetic_copy_is_drawn_unseeded,

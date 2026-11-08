@@ -957,6 +957,12 @@ class ReadingSummary:
     #: quotes were checked when it was filed; None where they were not.
     anchored: int | None = None
     unanchored: int | None = None
+    #: Who made the reading: a named reading's reader, else `reviewed_by`. The readers of
+    #: one place are counted by it (`quote_places.py`).
+    who: str = ""
+    #: Each anchored finding with the places its quote stands in, as the record keeps them;
+    #: None where its quotes are not counted or were checked before places were kept.
+    places: tuple | None = None
 
 
 @dataclass(frozen=True)
@@ -985,6 +991,8 @@ def round_summaries(project: Project) -> list[RoundSummary]:
     Only readings the gate counts: one that fails its schema or is misfiled is in the gate's
     report, not here.
     """
+    from manuscript_guard.quote_places import places_of
+
     summaries = []
     for number, path in panels(project):
         document = read_structured(path)
@@ -1010,6 +1018,11 @@ def round_summaries(project: Project) -> list[RoundSummary]:
                         open_major=sum(1 for finding in majors if not _answered(finding)),
                         anchored=None if quotes is None else len(quotes[0]),
                         unanchored=None if quotes is None else len(quotes[1]),
+                        # A named reading's reader, as the panel lists them; a plain record's
+                        # `reviewed_by`.
+                        who=str(reading.reader or reading.document.get("reviewed_by")
+                                or reviewer["id"]),
+                        places=places_of(reading.document),
                     )
                 )
         summaries.append(RoundSummary(number, path, tuple(readings)))

@@ -10791,6 +10791,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "novelty claims": novelty_claims().map(lambda drawn: drawn[0]),
+    "novelty records": novelty_records().map(lambda drawn: drawn[0]),
     "code names": st.one_of(
         code_names().map(lambda drawn: drawn[0]),
         st.tuples(texts(TERMS), latex_texts()).map(lambda drawn: {
@@ -10798,8 +10800,6 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
             "labels": {"age_group": "Age group", "R_0": "Reproduction number"}, "kept": [],
             "stage": None}),
     ),  # fmt: skip
-    "novelty claims": novelty_claims().map(lambda drawn: drawn[0]),
-    "novelty records": novelty_records().map(lambda drawn: drawn[0]),
     "reply numbers": texts(NOTATED),
     "quoted": texts(),
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),

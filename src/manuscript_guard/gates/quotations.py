@@ -129,6 +129,16 @@ def quoted_in(text: str, quote: str) -> bool:
     return True
 
 
+def words_in(text: str, words: str) -> bool:
+    """Whether `words` stand in `text` as words of their own, as G7 looks for a passage in a
+    work's stored source: whole, less any [sic], or, where the writer left words out, each
+    piece in the order given (`quoted_in`). Folded as `normalise` folds a quote. A review
+    finding's quote is looked for in the manuscript the same way (`anchoring.py`)."""
+    if _ELIDED.search(words):
+        return quoted_in(text, words)
+    return _as_words(normalise(text).lower(), normalise(_SIC.sub("", words)).lower(), 0) >= 0
+
+
 def _as_words(haystack: str, piece: str, at: int) -> int:
     """Where `piece` stands from `at` on as words of its own, or -1: not after or before a
     letter or digit, nor a hyphen or an apostrophe joining it to one, nor a point between

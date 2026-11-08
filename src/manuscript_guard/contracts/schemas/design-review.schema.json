@@ -171,6 +171,11 @@
           "where": {
             "type": "string"
           },
+          "quote": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Words of the plan the finding is about, where the reader gave them. A design round's reader is not asked to quote, and a quote here is kept and sealed with the reading where it is given, and not looked for in the plan (DESIGN.md, Known gaps)."
+          },
           "ask": {
             "enum": [
               "disclosure",

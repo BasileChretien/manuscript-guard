@@ -24929,6 +24929,40 @@ def test_a_model_that_passed_a_remit_covering_the_figures_is_said(
     assert "figures-not-seen" not in _review_warnings(project)
 
 
+def test_a_finding_whose_quote_is_not_in_what_its_reader_read_is_noted(
+    project: Path, monkeypatch
+) -> None:
+    """Item 1 of the plan of 2026-11-06. A reader sent only the title and abstract raised
+    every defect the example's first panel found, nearly always as major, so a finding raised
+    is no evidence that the paper was read. A model's finding that quotes words the
+    manuscript does not have, or quotes nothing, is noted at every stage and counted apart,
+    and as a major one it still blocks a submission until it is answered (D1.1); one that
+    quotes the manuscript, as it was sent with its values printed, is not noted."""
+    from manuscript_guard.findings import INFO
+    from manuscript_guard.gates import check_review
+
+    invented = [
+        {"severity": "major", "where": "Methods", "finding": "The de-duplication is not given.",
+         "quote": "Duplicate reports were removed by matching on age, sex and date"},
+        {"severity": "major", "where": "Methods", "finding": "No case definition is given."},
+    ]  # fmt: skip
+    filed = _read_by_models(project, monkeypatch, "openai/model-a", findings=invented)
+    report = check_review(load_project(project)[0], submission=True)
+    noted = [f for f in report.findings if f.code == "finding-unanchored"]
+    assert sorted((f.path, f.severity) for f in noted) == [(path, INFO) for path in filed]
+    assert report.counts["review_findings_unanchored"] == 2 * len(filed)
+    opened = [f.message for f in report.failures if f.code == "open-major-finding"]
+    assert len(opened) == 2 * len(filed) and all("[unanchored]" in m for m in opened)
+
+    quoted = [{"severity": "major", "where": "Methods", "finding": "Say how age was coded.",
+               "quote": "Reports were included without restriction on age or sex"}]  # fmt: skip
+    _read_by_models(project, monkeypatch, "openai/model-a", findings=quoted)
+    report = check_review(load_project(project)[0], submission=True)
+    assert "finding-unanchored" not in {f.code for f in report.findings}
+    assert report.counts["review_findings_anchored"] == len(filed)
+    assert not any("[unanchored]" in f.message for f in report.findings)
+
+
 def test_what_a_finding_asks_is_filed_said_and_sealed(project: Path, monkeypatch) -> None:
     """A finding may say it asks for a computation, which is a new result to emit and a new
     reconciliation of the Methods with the code. It is filed with the finding, named in the

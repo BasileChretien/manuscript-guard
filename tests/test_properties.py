@@ -7542,6 +7542,36 @@ def test_a_cited_sentence_is_held_to_how_strongly_the_passage_recorded_for_it_cl
             assert told == [[expected, line] for line in placed], (kind, told, given)
 
 
+from generated import FINDING_QUOTES, finding_quotes  # noqa: E402
+
+
+@holds(60, finding_quotes())
+def test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else(
+    drawn: tuple[dict[str, Any], list[tuple[str, str]]],
+) -> None:
+    """Item 1 of the plan of 2026-11-06: a finding's quote anchors it where its words stand,
+    as whole words, in a file its reading read, folded as G7 folds a quote, markup out,
+    pandoc's dashes, links and scripts as Word prints them, and pieces in order where words
+    are left out, and it holds four words or more, in pieces of two or more, or is a
+    heading's whole title, its hashes, its number and a closing stop aside, a year being no
+    number (Basile, 2026-11-07; round 1 of #581). Words of a file not read, a word changed,
+    three words, one word between elisions, the inside of a word, pieces out of order, part
+    of a heading, a heading without its year and a bold label do not. A finding that
+    quotes nothing is unanchored for a model, who must quote, and in neither list for a
+    person (D1.2)."""
+    given, ways = drawn
+    found = READINGS["finding quotes"]()(given)
+    for ident, way in ways:
+        expected = FINDING_QUOTES[way]
+        for who in ("model", "person"):
+            lists = found[who]
+            listed = [name for name in ("anchored", "unanchored") if ident in lists[name]]
+            # A finding that quotes nothing: unanchored where its reader had to quote.
+            unquoted = ["unanchored"] if who == "model" else []
+            wanted = unquoted if expected is None else [expected]
+            assert listed == wanted, (who, way, given["findings"][int(ident[1:]) - 1])
+
+
 @holds(60, credited_plans())
 def test_a_study_is_credited_by_a_citation_of_the_plan_and_by_nothing_else(
     drawn: tuple[dict[str, str], dict[str, str]],
@@ -16558,6 +16588,144 @@ def _a_point_and_a_hyphen_are_two_versions(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(model_names, "_CUT", re.compile(r"(?<=\d)(?=[^\W\d_])|(?<=[^\W\d_])(?=\d)|\."))
 
 
+# ------------------------------------------------- broken rules of a finding's quote
+
+
+def _a_quote_is_found_as_characters(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+    from manuscript_guard.literature.sources import normalise
+
+    patch.setattr(anchoring, "words_in", lambda text, words: normalise(words).lower()
+                  in normalise(text).lower())  # fmt: skip
+
+
+def _a_quote_is_not_folded_as_g7_folds_one(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+    from manuscript_guard.gates import quotations
+
+    def spaces_only(text: str) -> str:
+        return " ".join(text.split())
+
+    patch.setattr(anchoring, "normalise", spaces_only)
+    patch.setattr(quotations, "normalise", spaces_only)
+
+
+def _markup_is_left_in_a_quote(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    patch.setattr(anchoring, "_MARKS", re.compile(r"(?!)"))
+
+
+def _a_quote_of_a_word_or_two_stands(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    patch.setattr(anchoring, "QUOTE_WORDS", 1)
+
+
+def _any_word_of_a_heading_is_its_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    headings = anchoring._headings
+    patch.setattr(anchoring, "_headings", lambda text, latex: [
+        part for title in headings(text, latex) for part in (title, *title.split())])  # fmt: skip
+
+
+def _a_bold_label_is_a_heading(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    headings = anchoring._headings
+    patch.setattr(anchoring, "_headings", lambda text, latex: [
+        *headings(text, latex), *re.findall(r"\*\*([^*]+)\*\*", text)])  # fmt: skip
+
+
+def _elided_pieces_stand_in_any_order(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+    from manuscript_guard.gates.quotations import _ELIDED, words_in
+
+    def anywhere(text: str, words: str) -> bool:
+        pieces = [piece for piece in _ELIDED.split(words) if piece.strip()]
+        return all(words_in(text, piece) for piece in pieces)
+
+    patch.setattr(anchoring, "words_in", anywhere)
+
+
+def _a_model_need_not_quote(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    sort_quotes = anchoring.sort_quotes
+    patch.setattr(anchoring, "sort_quotes", lambda findings, read, *, must_quote: sort_quotes(
+        findings, read, must_quote=False))  # fmt: skip
+
+
+def _a_blank_quote_quotes_something(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    patch.setattr(anchoring, "quoted", lambda finding: isinstance(finding.get("quote"), str))
+
+
+def _a_section_s_number_is_part_of_its_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    patch.setattr(anchoring, "_NUMBER", re.compile(r"(?!)"))
+
+
+def _a_closing_stop_is_part_of_a_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    patch.setattr(anchoring, "_CLOSING", " ")
+
+
+def _a_heading_s_hashes_are_part_of_its_quote(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    patch.setattr(anchoring, "_HASHES", re.compile(r"(?!)"))
+
+
+def _a_word_between_elisions_counts(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    patch.setattr(anchoring, "_PIECE_WORDS", 1)
+
+
+def _pandoc_s_dashes_are_not_folded(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    patch.setattr(anchoring, "_DASHES", re.compile(r"(?!)"))
+
+
+def _a_link_is_read_as_written(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    # Its group kept, which the fold writes back: a pattern that matches nothing.
+    patch.setattr(anchoring, "_LINK", re.compile(r"(?!)(.)"))
+
+
+def _a_script_is_read_as_written(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    patch.setattr(anchoring, "_SCRIPTS", re.compile(r"(?!)(.)(.)"))
+
+
+def _a_quote_is_read_as_printed_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    read_of = anchoring.read_of
+    patch.setattr(anchoring, "read_of", lambda texts, *, latex=False: dataclasses.replace(
+        read_of(texts, latex=latex), written=()))  # fmt: skip
+
+
+def _a_lettered_number_s_point_must_be_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    patch.setattr(anchoring, "_POINT", re.compile(r"(?!)(.)"))
+
+
+def _any_number_opening_a_title_is_a_section_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import anchoring
+
+    patch.setattr(anchoring, "_NUMBER", re.compile(r"^(?:[a-z]?\d+(?:\.\d+)*\.?)\s+"))
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -16624,6 +16792,82 @@ BROKEN = {
     "a count held beside is read as any from nought": (
         _a_count_held_beside_is_read_as_any,
         test_no_count_a_profile_holds_back_is_one_value_in_every_table_it_could_be,
+    ),
+    "a finding's quote is found as characters, not as words": (
+        _a_quote_is_found_as_characters,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a finding's quote is folded for white space only": (
+        _a_quote_is_not_folded_as_g7_folds_one,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "Markdown's marks are left in a finding's quote and in the text": (
+        _markup_is_left_in_a_quote,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a quote of a word or two anchors its finding": (
+        _a_quote_of_a_word_or_two_stands,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "any word of a heading is its whole title": (
+        _any_word_of_a_heading_is_its_title,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a bold label opening a paragraph is a heading": (
+        _a_bold_label_is_a_heading,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "the pieces of an elided quote stand in any order": (
+        _elided_pieces_stand_in_any_order,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a model's finding that quotes nothing is in neither list": (
+        _a_model_need_not_quote,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a quote of white space quotes something": (
+        _a_blank_quote_quotes_something,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a section's number is part of its heading's title": (
+        _a_section_s_number_is_part_of_its_title,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a closing stop is part of a heading's title": (
+        _a_closing_stop_is_part_of_a_title,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a heading's hashes are part of a quote of it": (
+        _a_heading_s_hashes_are_part_of_its_quote,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a word between elisions counts towards a quote's four": (
+        _a_word_between_elisions_counts,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "pandoc's dashes are not folded in a quote's text": (
+        _pandoc_s_dashes_are_not_folded,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a link is looked in as it is written": (
+        _a_link_is_read_as_written,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a sub- or superscript is looked in as it is written": (
+        _a_script_is_read_as_written,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a quote is read only as it is printed, not as it was written": (
+        _a_quote_is_read_as_printed_only,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "a lettered section's number must be quoted with its point": (
+        _a_lettered_number_s_point_must_be_typed,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
+    ),
+    "any number opening a heading's title is a section's": (
+        _any_number_opening_a_title_is_a_section_s,
+        test_a_finding_s_quote_stands_where_its_reader_read_its_words_and_nowhere_else,
     ),
     "a synthetic copy is drawn from an unseeded stream": (
         _a_synthetic_copy_is_drawn_unseeded,

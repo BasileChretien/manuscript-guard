@@ -11,7 +11,8 @@ is left to get right is what is written down:
 * **Nothing of the review is written by this tool.** The verdict, the summary, the tests and
   the findings are the model's words. The tool adds what the model cannot know: who read,
   when, which version of the manuscript, and how the reading can be traced. It numbers the
-  findings. It writes no `resolution`: answering a finding is the author's.
+  findings, and says which of their quotes stand in the manuscript as it was sent
+  (`quotes`, `anchoring.py`). It writes no `resolution`: answering a finding is the author's.
 * **A reply that is refused is kept to read, and counted nowhere.** It goes under
   `refused/` as text, where no gate looks. The author paid for it and may want to see what
   the model said; it is not a review record and cannot become one.
@@ -36,6 +37,7 @@ from pathlib import Path
 import yaml
 
 from manuscript_guard import __version__
+from manuscript_guard.anchoring import read_of, sort_quotes
 from manuscript_guard.contracts._schema import validate
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.gates.review import reading_digest, reading_slug
@@ -77,6 +79,10 @@ class Outcome:
     verdict: str = ""
     findings: int = 0
     major: int = 0
+    #: Of the findings, how many quote words of the manuscript as it was sent, and how many
+    #: do not or quote nothing.
+    anchored: int = 0
+    unanchored: int = 0
     #: Why the reading was not filed, in words.
     failure: str = ""
     #: Where the refused reply was kept, when there was text to keep.
@@ -295,6 +301,10 @@ def _record(
             "file_sha256": dict(sorted(plan.material.file_sha256.items())),
         }
     )
+    findings = [
+        {"id": f"{'d' if plan.design else 'r'}{plan.round}-{index:02d}", **finding}
+        for index, finding in enumerate(parsed["findings"], start=1)
+    ]
     record = {
         "schema": f"manuscript-guard/{plan.schema}/1",
         "round": plan.round,
@@ -306,11 +316,14 @@ def _record(
         "verdict": parsed["verdict"],
         "summary": parsed["summary"],
         "rejection_tests": parsed["rejection_tests"],
-        "findings": [
-            {"id": f"{'d' if plan.design else 'r'}{plan.round}-{index:02d}", **finding}
-            for index, finding in enumerate(parsed["findings"], start=1)
-        ],
+        "findings": findings,
     }
+    if findings and not plan.design:
+        # Each quote looked for in the manuscript as this model was sent it, and a finding
+        # with none counted unanchored: a model reader must quote (D1.2). A design round's
+        # reader was not asked to, and its quotes are kept unchecked (Known gaps).
+        sent = read_of(plan.material.texts.values(), latex=plan.material.latex)
+        record["quotes"] = sort_quotes(findings, sent, must_quote=True)
     return {
         **record,
         "reading_sha256": reading_digest(record),
@@ -322,8 +335,8 @@ HEADER = (
     "# Filed by `manuscript-guard review --run` from the reply of the reader named below.\n"
     "# Answer each major finding by adding `resolution:` (what was done) or `overridden:`\n"
     "# (why it was not) to it. Nothing else here is yours to edit: the digests say which\n"
-    "# version was read, `reading_sha256` seals what the reader wrote, and a second\n"
-    "# reading is a further round.\n"
+    "# version was read, `quotes` which findings quote words of it, `reading_sha256` seals\n"
+    "# what the reader wrote, and a second reading is a further round.\n"
 )
 #: A design reading is filed by its own command (round 1 of #316: it named the other).
 DESIGN_HEADER = HEADER.replace("`manuscript-guard review --run`",
@@ -495,7 +508,11 @@ def _one(
         with contextlib.suppress(OSError):
             _forget(project, plan, call)
         majors = sum(1 for finding in parsed["findings"] if finding["severity"] == "major")
-        return Outcome(call, path, parsed["verdict"], len(parsed["findings"]), majors)
+        quotes = _filed_quotes(path)
+        anchored, unanchored = (len(quotes.get(key) or ()) for key in ("anchored", "unanchored"))
+        return Outcome(
+            call, path, parsed["verdict"], len(parsed["findings"]), majors, anchored, unanchored
+        )
 
     # Printed, so nothing in it that a terminal would act on or could not show.
     why = "".join(char if char.isprintable() else " " for char in _clean(why, keys))
@@ -506,6 +523,16 @@ def _one(
         except OSError as exc:
             why += f" (and the reply could not be kept to read: {type(exc).__name__})"
     return Outcome(call, failure=why, kept=kept)
+
+
+def _filed_quotes(path: Path) -> dict:
+    """What the record just filed at `path` says of its findings' quotes, or nothing."""
+    try:
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        return {}
+    quotes = document.get("quotes") if isinstance(document, dict) else None
+    return quotes if isinstance(quotes, dict) else {}
 
 
 def run_plan(

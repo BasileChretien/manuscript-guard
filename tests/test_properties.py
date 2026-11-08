@@ -7591,7 +7591,8 @@ def test_a_finding_is_placed_where_its_quote_was_taken_and_each_reader_counted_o
     """Basile, 2026-11-08: an anchored finding is placed at the sentence that holds its quote,
     at both of two in a row, at each copy of a sentence written twice, at a heading whose
     whole title it is, under the section of the first level with two headings in its file,
-    as written where it is not printed, in Markdown and in LaTeX alike; across three
+    as written where it is not printed, after a citation's locator, in Markdown and in
+    LaTeX alike; across three
     sentences or unanchored it is placed nowhere. A place's readers are counted by name,
     each once however many of its findings quote it (`quote_places.py`)."""
     from types import SimpleNamespace
@@ -17082,7 +17083,14 @@ def _a_heading_s_title_is_placed_as_a_sentence(patch: pytest.MonkeyPatch) -> Non
 def _a_sentence_is_cut_with_its_bindings_blanked(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import claims, quote_places
 
-    patch.setattr(quote_places, "_cut_on", claims.readable)
+    patch.setattr(quote_places, "_cut_on",
+                  lambda text, latex: text if latex else claims.readable(text))
+
+
+def _a_sentence_is_cut_inside_a_citation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import quote_places
+
+    patch.setattr(quote_places, "_cut_on", lambda text, latex: text)
 
 
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
@@ -17266,6 +17274,10 @@ BROKEN = {
     ),
     "a sentence is cut with its bindings blanked": (
         _a_sentence_is_cut_with_its_bindings_blanked,
+        test_a_finding_is_placed_where_its_quote_was_taken_and_each_reader_counted_once,
+    ),
+    "a sentence is cut inside a citation": (
+        _a_sentence_is_cut_inside_a_citation,
         test_a_finding_is_placed_where_its_quote_was_taken_and_each_reader_counted_once,
     ),
     "a synthetic copy is drawn from an unseeded stream": (

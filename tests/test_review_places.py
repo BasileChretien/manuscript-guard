@@ -159,6 +159,35 @@ def test_a_latex_sentence_is_cut_at_its_headings_and_environments() -> None:
         ("main.tex", "Methods", "Methods", True)]
 
 
+@pytest.mark.parametrize("opening", ["\\citet{smith2020}", "\\emph{Hepatic}", "\\mg{results.n}"])
+def test_a_latex_sentence_keeps_a_command_that_opens_it_and_prints(opening: str) -> None:
+    """Round 1 of #587: every opening command was taken out with its argument, and a
+    sentence opening with its citation was kept without its subject."""
+    latex = f"\\section{{Results}}\n{opening} reported 426 cases of liver injury.\n"
+    assert where(placed("reported 426 cases of liver", {"main.tex": latex}, latex=True)) == [
+        ("main.tex", "Results", f"{opening} reported 426 cases of liver injury.", False)]
+
+
+def test_a_command_that_prints_nothing_does_not_open_what_is_kept() -> None:
+    latex = "\\section{Results}\\label{sec:r}\n\\noindent We counted 426 cases in all.\n"
+    assert [one["sentence"] for one in placed("counted 426 cases in", {"main.tex": latex},
+                                              latex=True)] == ["We counted 426 cases in all."]
+
+
+def test_a_markdown_sentence_opening_with_a_hash_keeps_it() -> None:
+    text = "# Results\n\nThe rate rose.\n#1 ranked drug was example-drug in all reports.\n"
+    found = placed("ranked drug was example-drug", {"main.md": text})
+    assert [one["sentence"] for one in found] == ["#1 ranked drug was example-drug in all reports."]
+
+
+def test_a_citation_s_locator_does_not_cut_a_sentence() -> None:
+    """Round 1 of #587: cut on the text itself, "[@a, p. 12]" ended a sentence at "p."."""
+    text = "# Results\n\nThe rate rose [@smith2020, p. 12] in every year of the study.\n"
+    assert where(placed("in every year of", {"main.md": text})) == [
+        ("main.md", "Results", "The rate rose [@smith2020, p. 12] in every year of the study.",
+         False)]
+
+
 def test_an_unanchored_finding_or_one_that_quotes_nothing_is_not_placed() -> None:
     findings = [{"id": "a", "quote": "Alpha one two three"}, {"id": "b", "quote": "Zulu"},
                 {"id": "c"}]  # fmt: skip

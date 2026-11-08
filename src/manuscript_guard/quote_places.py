@@ -28,8 +28,8 @@ reader of a round, and the sections each reading's quotes fall in. Basile's answ
 
 A sentence is cut as G8 cuts one (`claims.sentence_pieces`), at a heading's line and, in
 LaTeX, at an environment's `\\begin` and `\\end`; its section is the heading over it of the
-first level that has two headings or more in its file, so that a paper's title typed as its
-one top heading is no section.
+first level that has two headings or more in its file, so that a paper's title typed as the
+one heading over the rest is not the section of a sentence under them.
 """
 
 from __future__ import annotations
@@ -53,11 +53,23 @@ IN_A_ROW = 2
 SHOWN_CHARS = 72
 #: A LaTeX environment's opening and closing, where a sentence ends.
 _ENVIRONMENT = re.compile(r"\\(?:begin|end)\{[^{}]*\}")
-#: The commands that open a LaTeX sentence and print no words of it, `\label{...}` after a
-#: heading: left out of what a record keeps of it.
-_OPENING_COMMANDS = re.compile(r"^(?:\\[A-Za-z]+\*?(?:\[[^\]]*\])?(?:\{[^{}]*\})?\s*)+")
-#: The hashes that open a Markdown heading's line, left out of what a record keeps of it.
-_OPENING_HASHES = re.compile(r"^#+[ \t]*")
+#: The commands that open a LaTeX sentence and print nothing, `\label{...}` after a heading
+#: or `\noindent`: left out of what a record keeps of it. Only these: a citation, an
+#: emphasis or a binding that opens a sentence prints its words (round 1 of #587).
+_OPENING_COMMANDS = re.compile(
+    r"^(?:\\(?:label|index|vspace\*?|hspace\*?)\{[^{}]*\}\s*"
+    r"|\\(?:noindent|indent|par|phantomsection|centering|smallskip|medskip|bigskip)"
+    r"(?![A-Za-z])\s*)+"
+)
+#: The hashes that open a Markdown heading's line, and the space after them, left out of
+#: what a record keeps of it; a `#` with no space after it is no heading's, and is kept.
+_OPENING_HASHES = re.compile(r"^#+(?:[ \t]+|$)")
+#: What a blanked span of a Markdown file is filled with, for its sentences to be cut: a
+#: capital, so that a stop before it ends a sentence as before one of the author's, and a
+#: binding alone on its line is no blank line.
+_FILLED = "X"
+#: A Markdown citation group, `[@a, p. 12; @b]`, on one line or across a line break.
+_CITATION_GROUP = re.compile(r"\[[^\[\]]*@[^\[\]]*\]")
 #: The folder of the supplement's files, where a section is the supplement's.
 _SUPPLEMENT = "supplementary/"
 
@@ -140,7 +152,8 @@ def _line_end(text: str, at: int) -> int:
 
 def _top(heads: Sequence[tuple[int, int, str, int]]) -> int:
     """The level a section is read at: the first that has two headings or more, so that a
-    title typed as the one heading over the rest is no section; else the first there is."""
+    title typed as the one heading over the rest is not the section of a sentence under
+    them; else the first there is."""
     levels = Counter(level for _start, level, _title, _end in heads)
     shared = [level for level, count in levels.items() if count >= 2]
     return min(shared or levels or [1])
@@ -157,13 +170,25 @@ def _section_at(heads: Sequence[tuple[int, int, str, int]], top: int, at: int) -
     return None if over is None else normalise(plain(over))
 
 
-def _cut_on(text: str) -> str:
-    """The text a file's sentences are cut on: itself. G8 cuts on it with its bindings,
-    citations and comments blanked, and a binding alone on its line was then a blank line,
-    which ended the sentence there and took the binding out of every sentence: a person's
-    quote of it, as written, stood in the text and was placed nowhere. A Markdown file read
-    as written has its comments blanked already, and a printed one holds no binding."""
-    return text
+def _cut_on(text: str, latex: bool) -> str:
+    """The text a file's sentences are cut on, at the same offsets. A LaTeX file is cut as
+    it is sent. A Markdown file is cut as G8 reads it, its bindings, citations, addresses,
+    comments and code blanked, so that "[@a, p. 12]" ends no sentence at "p." (round 1 of
+    #587); and each blanked span filled with a capital rather than left blank, since a
+    binding alone on its line, left blank, read as a blank line, which ended the sentence
+    there and took the binding out of every sentence: a person's quote of it, as written,
+    stood in the text and was placed nowhere."""
+    if latex:
+        return text
+    from manuscript_guard.claims import readable
+    from manuscript_guard.text.masking import NUL
+
+    read = list(readable(text).replace(NUL, _FILLED))
+    # G8 blanks a citation's keys and not its locator, "p. 12", which ends a sentence.
+    for group in _CITATION_GROUP.finditer(text):
+        start, end = group.span()
+        read[start:end] = _FILLED * (end - start)
+    return "".join(read)
 
 
 def _read(name: str, text: str, latex: bool) -> _Text:
@@ -178,7 +203,7 @@ def _read(name: str, text: str, latex: bool) -> _Text:
     if latex:
         cuts += [at for found in _ENVIRONMENT.finditer(text) for at in found.span()]
     sentences = []
-    for _start, first, end in sentence_pieces(text, _cut_on(text), cuts=cuts):
+    for _start, first, end in sentence_pieces(text, _cut_on(text, latex), cuts=cuts):
         piece = text[first:end]
         # As written, its white space folded: `plain` takes out every `_`, a binding's too.
         kept = normalise(piece)
@@ -375,8 +400,9 @@ def _shown(place: Place) -> str:
 def round_lines(readings: Sequence[object]) -> list[str]:
     """What `review` shows of one round's places: each sentence quoted by two readers or
     more, with its readers and their findings, then how many places one reader quoted, how
-    many anchored findings stand in no sentence, and how many readings were filed before
-    places were kept. Nothing where no reading's quotes are counted."""
+    many anchored findings stand in no one sentence or two, and how many readings with
+    anchored findings were filed before places were kept. Nothing where no reading's quotes
+    are counted."""
     placed = [reading for reading in readings if getattr(reading, "places", None) is not None]
     before = sum(1 for reading in readings
                  if getattr(reading, "places", None) is None and getattr(reading, "anchored", 0))

@@ -6619,9 +6619,11 @@ Findings of different readers that quote one sentence are put together without a
   abstract repeating a sentence of the Results, is at each. A sentence is cut as G8 cuts
   one (`claims.sentence_pieces`), and also at a heading's line, so the paragraph straight
   under a heading is no part of it, and in LaTeX at an environment's `\begin` and `\end`.
+  A Markdown file is cut on G8's reading of it, a citation group filled whole, so that
+  neither "[@a, p. 12]" nor a binding alone on its line ends a sentence (round 1 of #587).
   Its section is the heading over it of the first level that has two headings or more in
-  its file, so that a paper's title typed as its one top heading is no section and a
-  subsection's sentence is its section's.
+  its file, so that a paper's title typed as the one heading over the rest is not the
+  section of a sentence under them, and a subsection's sentence is its section's.
 - **It is found when the reading is filed, and sealed.** `review --run` and `review --seal`
   find each anchored quote's places where they find the quote (D1.3), and keep them in
   `quotes.places`, each with its file, its section and the sentence as written, white space
@@ -6629,8 +6631,8 @@ Findings of different readers that quote one sentence are put together without a
   them first, and as they are written only where the quote is not found there, so that a
   person's quote of a sentence and a model's are at one place where they can be. Found
   later, a place would be looked for in the results of the day, which no digest covers. A
-  reading sealed before places were kept has none, and `review` says how many such readings
-  a round has.
+  reading sealed before places were kept has none, and `review` says how many of a round's
+  readings with anchored findings have none.
 - **Readers are counted within one round**, each by name, a named reading's reader or else
   its `reviewed_by`: a model that read three remits is one reader, and two findings of one
   reader on one sentence count once.
@@ -17418,29 +17420,43 @@ Open, recorded as each change landed:
   is neither a count of agreement nor a weight for a finding; it decides nothing. And what
   is placed is only as wide as its reading:
   - Only readings filed or sealed since places were kept have them. One sealed before is
-    counted as such and never placed: finding its places later would read the results of
-    the day (Basile, 2026-11-08).
+    never placed: finding its places later would read the results of the day (Basile,
+    2026-11-08). `review` counts those with anchored findings; a round of readings sealed
+    before quotes were checked, or with none anchored, says nothing of places.
   - A sentence is cut as G8 cuts one: at a stop, a space and no small letter after them.
     "Fig. 2" and "Dr. Smith" cut a sentence in two, and a quote across the cut is at both
-    halves; across two such cuts, it is placed nowhere. A sentence is not cut at a LaTeX
-    `\item` or `\\`.
+    halves; across two such cuts, it is placed nowhere. A Markdown citation group is read
+    whole, but LaTeX is cut as it is sent, so `\citep[p. 12]{a}` typed with a space ends a
+    sentence at "p.". A sentence is not cut at a LaTeX `\item` or `\\`.
   - A quote across three sentences or more stands in the text and is placed nowhere;
     `review` counts it among the findings in no one sentence or two.
+  - Two sentences in a row are looked at only where no one sentence holds the quote: words
+    that stand whole in the Results and across a cut in the abstract are placed in the
+    Results only.
   - Two places are one when their file, their section and the first 400 characters of the
     sentence kept for each agree, whatever the case: two sentences that open alike for 400
     characters, a table typed without a stop say, are one place.
   - A person's quote found only as the source writes it, with its binding, is at the
     sentence as written, which is another place than the same sentence as printed: a model
     quoting the printed sentence and a person quoting its source are not put together.
-  - A sentence of LaTeX is kept as it is sent, its commands in, but for those that open it
-    (`\label{...}` after a heading); a quote across a command it does not hold is not found
-    there, as `anchoring.py` does not find it either.
+  - A sentence of LaTeX is kept as it is sent, its commands in, but for the few that open
+    it and print nothing, `\label{...}` after a heading or `\noindent` (round 1 of #587: a
+    citation opening a sentence was taken out with them); a quote across a command it does
+    not hold is not found there, as `anchoring.py` does not find it either.
   - A section is the heading over a sentence of the first level its file has two headings
     of. A manuscript whose files put their sections at different levels, or a file with a
     single section and subsections under it, names sections otherwise than its reader
-    might: the supplement of the example is read at its tables' level.
+    might: the supplement of the example is read at its tables' level. A heading above that
+    level is the section of the sentences between it and the first heading at the level, so
+    an abstract typed under a paper's title with no heading of its own is in the title's
+    section.
+  - A LaTeX reading filed by hand that carries every file is placed in the documents as
+    printed, and one whose quote stands only as written is placed in the file it is typed
+    in, under that file's own headings: a sentence of an `\input` file with no `\section`
+    in it is before any heading.
   - Readers are counted by name, a named reading's reader or else its `reviewed_by`, as
-    typed: one person filing plain records under two spellings of a name is two readers.
+    typed: one person filing plain records under two spellings of a name is two readers,
+    and so is one filing two remits with no `--by`, which writes each remit's id.
   - `quotes in:` shows the sections of each reading's quotes, and what a reading was sent
     decides what it can quote. That a reading sent the whole paper and quoting only its
     abstract read less of the paper is not measured: no such reading has been seen (Basile,

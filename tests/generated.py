@@ -3885,17 +3885,21 @@ def finding_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, str
 #: (Basile, 2026-11-08): in the sentence that holds it, at both of two sentences in a row,
 #: nowhere across three, at each copy of a sentence written twice, at a heading whose whole
 #: title it is, under the section of a subsection, in the supplement under the section of
-#: the level its file has two headings of, as written where it is not printed, and not at
-#: all where it is not anchored. "again" is a second finding of a reader on the sentence of
-#: its "within a sentence" finding: a reader of one sentence is counted once.
+#: the level its file has two headings of, as written where it is not printed, after a
+#: citation whose locator ends no sentence, and not at all where it is not anchored.
+#: "again" is a second finding of a reader on the sentence of its "within a sentence"
+#: finding: a reader of one sentence is counted once.
 FINDING_PLACES = (
     "within a sentence", "a whole sentence", "across two sentences", "across three sentences",
     "written twice", "a section's heading", "a subsection's heading", "under a subsection",
-    "under a heading's line", "supplement", "elided", "as written", "again", "not anchored",
+    "under a heading's line", "supplement", "elided", "as written", "again", "after a citation",
+    "not anchored",
 )
 #: The binding of the one sentence that holds one, as each format writes it, and as printed.
 _PLACED_BINDING = {False: "{{results.cohort.n}}", True: "\\mg{results.cohort.n}"}
 _PLACED_VALUE = "4321"
+#: A citation with its locator, as each format writes it, between two words of a sentence.
+_PLACED_CITATION = {False: " [@cited{n}, p. 3] ", True: " " + chr(92) + "citep[p.~3]{{cited{n}}} "}
 
 
 @st.composite
@@ -3906,7 +3910,8 @@ def finding_places(
     capital and ending with a stop, written as Markdown and as LaTeX, each as printed and as
     written: an abstract, then sections, the Methods with two subsections, the Results' first
     paragraph straight under its heading's line, one sentence of the abstract written again
-    in the Results, and one sentence holding a binding; and a supplement of one top heading
+    in the Results, one sentence holding a binding on a line of its own as written, and one
+    a citation with its locator, `p. 3`; and a supplement of one top heading
     over two subsections. Two or three readers, each with one finding of every way of
     `FINDING_PLACES`, in an order drawn, each choosing its sentence apart.
 
@@ -3930,6 +3935,7 @@ def finding_places(
 
     twice = sentence()
     bound = sentence(8)
+    cited = sentence(8)
     abstract = [sentence() for _ in range(draw(st.integers(2, 3)))]
     abstract.insert(draw(st.integers(0, len(abstract))), twice)
     # (title, level, whether its first paragraph is straight under its line, paragraphs)
@@ -3937,7 +3943,7 @@ def finding_places(
     main.append((title(), 1, False, [[sentence() for _ in range(draw(st.integers(3, 4)))],
                                      [sentence() for _ in range(draw(st.integers(1, 2)))]]))
     methods = title()
-    main.append((methods, 1, False, [[sentence(), sentence()]]))
+    main.append((methods, 1, False, [[sentence(), cited, sentence()]]))
     subsections = [title(), title()]
     main.append((subsections[0], 2, False, [[sentence(), sentence()]]))
     main.append((subsections[1], 2, False, [[sentence(), bound, sentence()]]))
@@ -3964,7 +3970,7 @@ def finding_places(
             section = section_of(parts, index)
             for number, paragraph in enumerate(paragraphs):
                 for words in paragraph:
-                    if words is twice or words is bound:
+                    if words is twice or words is bound or words is cited:
                         continue
                     kind = ("supplement" if name == "supplement" else
                             "subsection" if level == 2 else "any")  # fmt: skip
@@ -3981,7 +3987,11 @@ def finding_places(
     def paragraph_text(paragraph: list[list[str]], latex: bool, printed: bool) -> str:
         shown = []
         for words in paragraph:
-            if words is bound and printed:
+            if words is cited:
+                # A citation with its locator after the third word, which ends no sentence.
+                shown.append(joined(words[:3]) + _PLACED_CITATION[latex].format(n=len(words))
+                             + joined(words[3:]))  # fmt: skip
+            elif words is bound and printed:
                 shown.append(joined([*words[:3], _PLACED_VALUE, *words[4:]]))
             elif words is bound:
                 # The binding on a line of its own, as a hard wrap leaves one: a line that
@@ -4049,7 +4059,8 @@ def finding_places(
             rows = {(name, section, id(paragraph), at): (name, section, paragraph, at)
                     for name, section, _w, paragraph in found["any"]
                     for at in range(len(paragraph) - size + 1)
-                    if not any(one is twice or one is bound for one in paragraph[at:at + size])}
+                    if not any(one is twice or one is bound or one is cited
+                               for one in paragraph[at:at + size])}
             ordered = sorted(rows.values(), key=lambda row: row[2][row[3]][0])
             name, section, paragraph, at = once(pick, "at",
                                                 lambda: draw(st.sampled_from(ordered)))
@@ -4070,6 +4081,8 @@ def finding_places(
         if kind == "a subsection's heading":
             heading = once(pick, "at", lambda: draw(st.sampled_from(subsections)))
             return heading, [placed("main", methods, heading.split(), heading=True)]
+        if kind == "after a citation":
+            return " ".join(cited[3:7]), [placed("main", methods, cited)]
         if kind == "as written":
             words = [*bound[:3], _PLACED_BINDING[latex], *bound[4:6]]
             return " ".join(words[1:5]), [placed("main", methods, bound)]

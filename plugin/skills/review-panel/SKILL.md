@@ -1,6 +1,6 @@
 ---
 name: review-panel
-description: Assemble a review panel for a manuscript, have it read by an agent, by people or by models from several providers, and record the readings. Use before submission, when check reports no-review, review-missing, reading-missing, reading-altered or reading-unsealed, or when a round is complete and a second is due. Not for answering a journal's reviewers (use reviewer-response), nor for a co-author's check of the sources (use co-author-checking).
+description: Assemble a review panel for a manuscript, have it read by an agent, by people or by models from several providers, and record the readings. Use before submission, when check reports no-review, review-missing, reading-missing, reading-altered, reading-unsealed or finding-unanchored, or when a round is complete and a second is due. Not for answering a journal's reviewers (use reviewer-response), nor for a co-author's check of the sources (use co-author-checking).
 ---
 
 # Reviewing a manuscript before a journal does
@@ -94,10 +94,25 @@ Then add the findings to the file, and seal it once they are all there:
 manuscript-guard review --seal <reviewer-id> --round <n>   # --reading "<who>" for a named reading
 ```
 
+**Quote the manuscript in every finding.** A reader given only the title and abstract raised
+every defect the example's first panel found, nearly always as major: a finding is no
+evidence that the paper was read unless it shows the words it is about. Give each finding a
+`quote`: at least four words copied exactly from the manuscript, from the place the finding
+is about, or, for something missing, the heading of the section where it belongs, as the
+heading reads. Mark words you leave out with `...`. Quote what the reader read, the `.md` or
+the built document; a binding is found either way. The seal looks for each quote in the
+files the reading carries the digests of and says which it did not find; `check` counts
+those findings apart, as unanchored, and notes the reading (`finding-unanchored`). If you
+are an agent reading the remit, you are a model reader and must quote; a person may leave a
+quote out. Never adjust a quote to make it found: an unanchored finding is filed and still
+answered, and a quote changed after the seal is `reading-altered`.
+
 The seal is a digest of what the reader wrote: the verdict, the summary, the rejection tests
-and each finding. Answering a finding later is not covered by it; changing what the reader
-wrote is, and `check` reports that as `reading-altered`. Seal what the reader wrote, not a
-version you have tidied. A reading is sealed once.
+and each finding, its quote among them, and what was found of the quotes. Answering a
+finding later is not covered by it; changing what the reader wrote is, and `check` reports
+that as `reading-altered`. Seal what the reader wrote, not a version you have tidied. A
+reading is sealed once. If a file the reading read changes before the seal, the quotes are
+not looked for, and the seal says so: seal as soon as the findings are written.
 
 Where the fix for a finding is a matter of wording, the finding can carry the wording, before
 the seal:
@@ -105,6 +120,7 @@ the seal:
 ```yaml
 - id: r2-03
   severity: minor
+  quote: has not been examined
   finding: The aim is stated as a gap rather than a question.
   edits:
     - old: has not been examined

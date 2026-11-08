@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -107,6 +107,12 @@ class Material:
     #: For a design round: the digest of the plan and the feasibility results as G12 takes
     #: it (`gates.design_review.plan_digest`), which the readings carry.
     plan_sha256: str = ""
+    #: The manuscript as it is sent, each file by its path under the manuscript directory, or
+    #: for LaTeX each document by its entry file: where a finding's quote is looked for when
+    #: its reading is filed (`anchoring.py`). Empty for a design round.
+    texts: dict[str, str] = field(default_factory=dict)
+    #: Whether `texts` are LaTeX, whose headings are its sectioning commands.
+    latex: bool = False
 
 
 SYSTEM = """\
@@ -128,7 +134,7 @@ Agreeing with a paper is the easy mistake, and these tests are how you avoid it.
 3. Report findings an author can act on. Say where the problem is and what is wrong. "The \
 Methods are unclear" is not a finding. "No case definition is given, so the numerator cannot \
 be reconstructed" is.
-4. Give each finding a severity:
+{quote}4. Give each finding a severity:
    - major: the paper's claim does not follow, a method is wrong or not reported, or a number \
 cannot be reconstructed. The authors must answer it before they submit.
    - minor: should be fixed, and invalidates nothing.
@@ -165,8 +171,8 @@ remit reaches",
   ],
   "findings": [
     {{"severity": "major" | "minor" | "comment", "where": "the section or sentence", \
-"ask": "disclosure" | "computation" | "new-data", "finding": "what is wrong and why it matters"\
-{edit_shape}}}
+{quote_shape}"ask": "disclosure" | "computation" | "new-data", "finding": "what is wrong and \
+why it matters"{edit_shape}}}
   ]
 }}
 
@@ -239,10 +245,22 @@ nothing across two paragraphs, and no markup. Give at most 10 edits in all. The 
 each edit as a tracked change under your name in their document, and accept or refuse it.
 """
 _EDIT_SHAPE = ', "edits": [{"old": "the words as they stand", "new": "the words in their place"}]'
+#: What a reader of the manuscript is told of quoting it (item 1 of the plan of 2026-11-06),
+#: and the shape of a quote in the answer. A design round's reader is told nothing of it.
+QUOTE = """\
+   Give every finding a "quote": words copied exactly from the manuscript you were given, at \
+least four in a row, from the place the finding is about. For something missing, quote the \
+heading of the section where it belongs, exactly as the heading reads. Mark words you leave \
+out with "...". Each quote is looked for in the manuscript, and a finding whose quote is not \
+found there is marked for the authors as resting on nothing they wrote.
+"""
+_QUOTE_SHAPE = '"quote": "words copied from the manuscript, or the heading where it belongs", '
 _TOLD = {
-    False: {"edits": EDITS, "edit_shape": _EDIT_SHAPE, "left_out": '"where", "ask" and "edits"'},
-    True: {"edits": "", "edit_shape": "", "left_out": '"where" and "ask"'},
-}
+    False: {"edits": EDITS, "edit_shape": _EDIT_SHAPE, "left_out": '"where", "ask" and "edits"',
+            "quote": QUOTE, "quote_shape": _QUOTE_SHAPE},
+    True: {"edits": "", "edit_shape": "", "left_out": '"where" and "ask"', "quote": "",
+           "quote_shape": ""},
+}  # fmt: skip
 
 
 def system_text(reviewer: dict, *, design: bool = False) -> str:
@@ -512,6 +530,7 @@ def gather(project: Project) -> Material:
         except BuildError as exc:
             raise PromptError(str(exc)) from exc
         entries = {"manuscript": "main.tex", "supplementary": "supplementary/main.tex"}
+        texts: dict[str, str] = {}
         for name, text in written.documents:
             label = f"{manuscript_dir.name}/{entries[name]}"
             # From `\\begin{document}` on: the preamble holds the authors, `\\author` and
@@ -521,6 +540,7 @@ def gather(project: Project) -> Material:
             # authors.yaml names is withheld wherever it stands (round 2).
             shown = _withheld(project, text[_body_start(text):])
             unrendered += sum(shown.count(marker) for marker in set(written.unbound))
+            texts[entries[name]] = shown
             parts.append(_block(label, shown))
             sent.append(Sent(label, "its body as the build prints it, the files it inputs "
                                     "written in"))  # fmt: skip
@@ -530,6 +550,8 @@ def gather(project: Project) -> Material:
             file_sha256=digests,
             manuscript_sha256=whole.hexdigest(),
             unrendered=unrendered,
+            texts=texts,
+            latex=True,
         )
 
     # Sent in the order the build prints them: the paper with `main.md` first, then the
@@ -550,7 +572,9 @@ def gather(project: Project) -> Material:
         file_sha256=digests,
         manuscript_sha256=whole.hexdigest(),
         unrendered=unrendered,
-    )
+        texts={path.relative_to(manuscript_dir).as_posix(): shown
+               for path, (_label, shown) in blocks.items()},
+    )  # fmt: skip
 
 
 def gather_design(project: Project) -> Material:

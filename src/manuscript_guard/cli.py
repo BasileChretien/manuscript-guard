@@ -393,6 +393,10 @@ def _round_lines(summary) -> list[str]:
         found = f"{reading.findings} finding{'' if reading.findings == 1 else 's'}"
         if reading.major:
             found += f", {reading.major} major ({reading.open_major} open)"
+        if reading.anchored is not None:
+            # Apart, as Basile asked (D1.1): a finding whose quote is not in what its reader
+            # read is no evidence that the paper was read.
+            found += f"; {reading.anchored} anchored, {reading.unanchored} unanchored"
         rows.append((reading.reviewer, reading.reader or "", reading.verdict, found))
     widths = [max(len(row[column]) for row in rows) for column in range(3)]
     for row in rows:
@@ -484,7 +488,9 @@ def cmd_review(args: argparse.Namespace) -> int:
         except RecordError as exc:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             return 2
-        print(f"sealed {sealed}")
+        print(f"sealed {sealed.path}")
+        if sealed.said:
+            print(printable(sealed.said))
         print(
             "Answer its findings in `resolution:` or `overridden:`. Anything else changed "
             "in what the reader wrote is reported as reading-altered."

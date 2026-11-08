@@ -1813,6 +1813,24 @@ def _prose_quotations() -> Reading:
     return quotations
 
 
+@reading("finding quotes")
+def _finding_quotes() -> Reading:
+    """Which review findings' quotes stand in the files their reading read, as `review --run`
+    and `review --seal` find them (`anchoring.sort_quotes`), for a model, who must quote,
+    and for a person, who may not: `given` holds the manuscript's `files` by name, the names
+    of those the reading `read`, and the `findings`, each with an id and maybe a quote."""
+    from manuscript_guard.anchoring import read_of, sort_quotes
+
+    def found(given: dict[str, Any]) -> dict[str, Any]:
+        read = read_of([given["files"][name] for name in given["read"]])
+        return {
+            "model": sort_quotes(given["findings"], read, must_quote=True),
+            "person": sort_quotes(given["findings"], read, must_quote=False),
+        }
+
+    return found
+
+
 @reading("passages")
 def _passages() -> Reading:
     """The sentences each entry of a `passages.yaml` belongs to, with the line of each one's

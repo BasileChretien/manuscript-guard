@@ -1922,7 +1922,7 @@ def _novelty_claims() -> Reading:
         for form, names in (("markdown", ("main.md", "supplementary/s1.md")),
                             ("latex", ("main.tex", "supplementary/main.tex"))):  # fmt: skip
             with tempfile.TemporaryDirectory(prefix="mg-reading-") as folder:
-                root = Path(folder)
+                root = Path(folder).resolve()
                 project = _novelty_project(root, dict(zip(names, (
                     given[form], given[f"{form} supplement"]), strict=True)))
                 out[form] = [[claim.path.relative_to(root / "manuscript").as_posix(),
@@ -1946,7 +1946,7 @@ def _novelty_records() -> Reading:
 
     def novelty(given: dict[str, Any]) -> list[list[Any]]:
         with tempfile.TemporaryDirectory(prefix="mg-reading-") as folder:
-            root = Path(folder)
+            root = Path(folder).resolve()
             files = {"main.md": given["main"], "supplementary/s1.md": given["supplement"]}
             project = _novelty_project(root, files, given["stage"])
             records.write_document(project, {"schema": records.SCHEMA,

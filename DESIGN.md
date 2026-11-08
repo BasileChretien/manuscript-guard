@@ -6604,7 +6604,8 @@ gives is kept and sealed, and looked for nowhere (Basile, 2026-11-07; Known gaps
 "What the panel finds of the defects we know") the blank reader quoted in every finding,
 and all 48 of its major findings were anchored, on its abstract's sentences and heading: a
 finding about something missing quotes the nearest words it was sent. Asking for the quote
-left its count where it was, 5.3 major findings a reading against 5.9. A quote shows where
+lowered its count only from 5.9 to 5.3 major findings a reading, less than the spread
+between its readings. A quote shows where
 in the manuscript a finding points, which the grouping below needs; it is no evidence that
 the reader read the part the finding is about.
 
@@ -7089,14 +7090,15 @@ total. The script writes the report; nothing in it is by hand.
     Methods sentence, which are the title's too, for five. A finding about something
     missing quotes the nearest words, and they are in the manuscript, so
     `finding-unanchored` marks a reader that quoted badly, not one that did not read.
-  - Asking for a quote did not lower the blank reader's count: 5.3 major findings a
-    reading, against 5.9 on 2026-10-19, with readings from 3 to 9 (5, 4, 3, 8, 8, 9, 4, 3,
-    4). The difference is smaller than the spread. The readers of the whole gave 2.0 and
-    1.7, against 1.8 and 1.7.
+  - Asking for a quote lowered the blank reader's count only from 5.9 major findings a
+    reading on 2026-10-19 to 5.3, in one run, less than the spread between its readings,
+    from 3 to 9 (5, 4, 3, 8, 8, 9, 4, 3, 4). The readers of the whole gave 2.0 and 1.7,
+    against 1.8 and 1.7.
   - Three findings were unanchored. Two quoted "426 named example-drug", three words that
     are in the paper, one short of the four that anchor: a major finding on the version the
     panel read and a minor one on the fixed version. A comment quoted "Reporting guideline:
-    DEMO-OBS", words of the checklist sent beside the manuscript, not of it.
+    DEMO-OBS", words of the paper's facts from `paper.yaml`, sent beside the manuscript,
+    not of it.
   - Read, each count stands but one. In the second set the script counts the 2 x 2 table
     for a third biostatistician reading, whose two findings given it are on the unit of
     analysis and on a significance threshold with no p-value, and which praises the counts
@@ -17326,10 +17328,10 @@ Open, recorded as each change landed:
   `check` does not read it.
 - **A quote found shows that the words are in the manuscript, not that the finding is about
   them, nor that it is right.** A blank reader that quotes its abstract for a finding about
-  the Methods is anchored, as all 48 major findings of the blank readers of 2026-11-08 were
-  ("What the panel finds of the defects we know"); so is any finding a reader backs with
-  four words of the paper, however little they bear on it. And what is found is only as
-  wide as the reading of
+  the Methods is anchored; all 48 major findings of the blank readers of 2026-11-08 were
+  anchored, on the abstract they were sent ("What the panel finds of the defects we
+  know"). So is any finding a reader backs with four words of the paper, however little
+  they bear on it. And what is found is only as wide as the reading of
   `anchoring.py` (item 1 of 2026-11-06):
   - The title is sent from `paper.yaml` and printed from the front matter, and neither is
     looked in, so a quote of the title is unanchored; so is one of an abstract kept in the

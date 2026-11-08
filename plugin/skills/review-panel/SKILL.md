@@ -208,11 +208,7 @@ is the answer.
 
 A model's record is filed with its findings numbered and none answered, and sealed. Do not
 answer them for the author, and do not edit what the model said: the record is what that
-reader found, and an edit to it is `reading-altered`. Each model is asked to quote the
-manuscript in every finding, and the record's `quotes` says which quotes were found in what
-it was sent; `review --run` gives the count for each reading. When you go through the
-findings with the author, say which are unanchored: weigh those as resting on nothing the
-reader showed it read, and answer a major one all the same.
+reader found, and an edit to it is `reading-altered`.
 
 ## Severity means something
 

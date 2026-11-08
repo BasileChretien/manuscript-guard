@@ -103,6 +103,7 @@ NOT_READ = [
     # Round 3 of #583.
     "This is the first-ever time the patient received the drug.",
     "The present data are limited.",
+    "Our research is limited by the single-centre design.",
 ]
 
 
@@ -120,9 +121,11 @@ def test_explain_grades_each_claim_of_an_entry_as_g7_does(tmp_path: Path) -> Non
     shown = novelty_command.explain(project, entry, held(project))
     assert "no claim, by Ada Example" in shown and "c1 is marked, not searched" in shown
     # Round 4: a sentence no claim has gets no state of G7's, which grades only claims.
-    _entries(root, {**NOVEL, "also": ["A sentence the manuscript lacks."]})
+    lacks = "A sentence the manuscript lacks."
+    _entries(root, {**NOVEL, "also": [lacks]},
+             {"id": "c2", "kind": "novelty", "sentence": lacks, "not_a_claim": said})
     shown = novelty_command.explain(project, records.read_entries(project)[0][0], held(project))
-    assert shown.count("G7:") == 1, shown
+    assert shown.count("G7:") == 1 and "no claim" not in shown, shown
     # And "the present literature" is the literature (round 4).
     assert novelty.read_sentence("The present literature on statins is scarce.")[0].list == (
         "softer")

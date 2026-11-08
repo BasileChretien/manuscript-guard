@@ -97,7 +97,7 @@ softer:
   # Not a paper's own data: "our data are limited", "these data are limited", "the present
   # data are limited".
   - id: data-are-limited
-    pattern: '(?:(?<!\bour )(?<!\bthese )(?<!\bthe present )\bdata|\b(?:evidence|research|information|literature))(?: on [^.;:]{1,60}?)? (?:is|are|remains|remain) (?:(?:still|currently|very|extremely) )?(?:limited|scarce|sparse|lacking|insufficient)\b'
+    pattern: '(?<!\bour )(?<!\bthese )(?:(?<!\bthe present )\bdata|\b(?:evidence|research|information|literature))(?: on [^.;:]{1,60}?)? (?:is|are|remains|remain) (?:(?:still|currently|very|extremely) )?(?:limited|scarce|sparse|lacking|insufficient)\b'
     why: Says that the evidence is thin; the search that found it so can be recorded
   - id: a-paucity-of
     pattern: '\b(?:a|the) (?:paucity|scarcity|dearth|lack) of (?:(?:published|direct) )?(?:data|evidence|studies|research|information|literature|trials)\b'

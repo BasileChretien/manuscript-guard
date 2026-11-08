@@ -29902,7 +29902,7 @@ def _ai_use_findings(root: Path, stage: str | None = None) -> list[tuple[str, st
 def _a_model_read(root: Path, reader: str = "openai/gpt-5.1") -> None:
     """A reading of round 11 by a model, filed as an agent in the session files one."""
     folder = root / "review" / "round-11"
-    folder.mkdir(parents=True)
+    folder.mkdir(parents=True, exist_ok=True)
     (folder / "statistician.yaml").write_text(yaml.safe_dump({
         "schema": "manuscript-guard/review/1", "round": 11, "reviewer": "statistician",
         "reviewed_by": reader, "reviewed_on": "2026-11-01", "verdict": "minor-revision",

@@ -84,10 +84,8 @@ That writes `review/round-<n>/<reviewer-id>.yaml` with the digest of the manuscr
 each of its files filled in. It adds the reviewer to `review/panel-<n>.yaml`, and creates the
 panel if there is none, so put the panel's `rationale` and each reviewer's `why` there
 (step 1). The verdict is required, because a record with a placeholder verdict is a claim
-that somebody looked. `--by` names who did the reading and defaults to the reviewer id. An
-agent reading in the session gives its model, `--by <provider>/<model>`, with the name its
-provider gives the model: that is how a record says a model read, and the AI-use statement
-is held to every model on record. A person gives their name. The
+that somebody looked. `--by` names who did the reading, an agent as `<provider>/<model>`,
+and defaults to the reviewer id. The
 command refuses to overwrite a record, so a second reading of a changed manuscript is a
 further round (step 3).
 

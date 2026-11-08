@@ -46,6 +46,7 @@ from manuscript_guard.panel.client import CallFailed, Reply, Transport
 from manuscript_guard.panel.plan import Call, Plan
 from manuscript_guard.panel.providers import Provider, key_is_set, read_key
 from manuscript_guard.panel.reply import ReplyRefused, parse_reply
+from manuscript_guard.quote_places import place_quotes
 from manuscript_guard.record import RecordError, panel_lock
 
 REFUSED_DIR = "refused"
@@ -323,7 +324,12 @@ def _record(
         # with none counted unanchored: a model reader must quote (D1.2). A design round's
         # reader was not asked to, and its quotes are kept unchecked (Known gaps).
         sent = read_of(plan.material.texts.values(), latex=plan.material.latex)
-        record["quotes"] = sort_quotes(findings, sent, must_quote=True)
+        quotes = sort_quotes(findings, sent, must_quote=True)
+        # And the sentence each anchored quote stands in, in what this model was sent, for
+        # `review` to show which readers quote one place (`quote_places.py`).
+        quotes["places"] = place_quotes(findings, quotes["anchored"], plan.material.texts,
+                                        latex=plan.material.latex)  # fmt: skip
+        record["quotes"] = quotes
     return {
         **record,
         "reading_sha256": reading_digest(record),

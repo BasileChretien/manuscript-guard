@@ -3879,6 +3879,265 @@ def finding_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, str
     return {"files": files, "read": ["main.md", "supplementary/S1.md"], "findings": findings}, ways
 
 
+# ------------------------------------------------- the sentence a review finding quotes
+
+#: Each way a finding quotes the paper of `finding_places`, as `quote_places.py` places it
+#: (Basile, 2026-11-08): in the sentence that holds it, at both of two sentences in a row,
+#: nowhere across three, at each copy of a sentence written twice, at a heading whose whole
+#: title it is, under the section of a subsection, in the supplement under the section of
+#: the level its file has two headings of, as written where it is not printed, after a
+#: citation whose locator ends no sentence, after a sentence that ends in a link or in a
+#: narrative citation, whose stop ends it, and not at all where it is not anchored.
+#: "again" is a second finding of a reader on the sentence of its "within a sentence"
+#: finding: a reader of one sentence is counted once.
+FINDING_PLACES = (
+    "within a sentence", "a whole sentence", "across two sentences", "across three sentences",
+    "written twice", "a section's heading", "a subsection's heading", "under a subsection",
+    "under a heading's line", "supplement", "elided", "as written", "again", "after a citation",
+    "after a link", "after a narrative citation", "not anchored",
+)
+#: The binding of the one sentence that holds one, as each format writes it, and as printed.
+_PLACED_BINDING = {False: "{{results.cohort.n}}", True: "\\mg{results.cohort.n}"}
+_PLACED_VALUE = "4321"
+#: How a sentence ends on a link or on a narrative citation, by (narrative, LaTeX), `{w}` its
+#: last word: the stop after it is the sentence's.
+_PLACED_ENDINGS = {
+    (False, False): "[{w}](https://example.org/{w}).",
+    (False, True): chr(92) + "href{{https://example.org/{w}}}{{{w}}}.",
+    (True, False): "@{w}.",
+    (True, True): chr(92) + "citet{{{w}}}.",
+}
+#: A citation with its locator, as each format writes it, between two words of a sentence.
+_PLACED_CITATION = {False: " [@cited{n}, p. 3] ", True: " " + chr(92) + "citep[p.~3]{{cited{n}}} "}
+
+
+@st.composite
+def finding_places(
+    draw: st.DrawFn,
+) -> tuple[list[dict[str, Any]], dict[str, list[tuple[str, list[tuple]]]]]:
+    """A paper of words of its own (`alpha1`, `bravo2`, ...), each sentence opening with a
+    capital and ending with a stop, written as Markdown and as LaTeX, each as printed and as
+    written: an abstract, then sections, the Methods with two subsections, the Results' first
+    paragraph straight under its heading's line, one sentence of the abstract written again
+    in the Results, one sentence holding a binding on a line of its own as written, and one
+    a citation with its locator, `p. 3`; and a supplement of one top heading
+    over two subsections. The Discussion ends with a sentence closing on a link, one closing
+    on a narrative citation, and a third. Two or three readers, each with one finding of
+    every way of `FINDING_PLACES`, in an order drawn, each choosing apart where a way leaves
+    a choice ("as written" and the three after a citation or a link quote fixed words).
+
+    Returned: the reading's input for each format, and for each reader each finding's id
+    with the places it is at, as (file, section, heading, first word): "main" or
+    "supplement", the section's title, whether a heading's, and the first word of the
+    sentence or of the heading's title. Every word is the paper's once but the sentence
+    written twice, so that a quote is at the sentences it was taken from and no other."""
+    counted = iter(range(1, 100_000))
+
+    def word() -> str:
+        n = next(counted)
+        return f"{TAGS[n % len(TAGS)]}{n}"
+
+    def sentence(size: int | None = None) -> list[str]:
+        words = [word() for _ in range(size or draw(st.integers(6, 9)))]
+        return [words[0].capitalize(), *words[1:-1], words[-1] + "."]
+
+    def title() -> str:
+        return f"{word().capitalize()} {word()}"
+
+    twice = sentence()
+    bound = sentence(8)
+    cited = sentence(8)
+    linked, told, after = sentence(7), sentence(7), sentence(7)
+    abstract = [sentence() for _ in range(draw(st.integers(2, 3)))]
+    abstract.insert(draw(st.integers(0, len(abstract))), twice)
+    # (title, level, whether its first paragraph is straight under its line, paragraphs)
+    main: list[tuple[str, int, bool, list[list[list[str]]]]] = [("Abstract", 1, False, [abstract])]
+    main.append((title(), 1, False, [[sentence() for _ in range(draw(st.integers(3, 4)))],
+                                     [sentence() for _ in range(draw(st.integers(1, 2)))]]))
+    methods = title()
+    main.append((methods, 1, False, [[sentence(), cited, sentence()]]))
+    subsections = [title(), title()]
+    main.append((subsections[0], 2, False, [[sentence(), sentence()]]))
+    main.append((subsections[1], 2, False, [[sentence(), bound, sentence()]]))
+    results_paragraph = [sentence(), sentence()]
+    second = [sentence(), sentence()]
+    second.insert(draw(st.integers(0, len(second))), twice)
+    main.append((title(), 1, True, [results_paragraph, second]))
+    main.append((title(), 1, False, [[sentence(), linked, told, after]]))
+    supplement = [(title(), 1, False, [[sentence()]])]
+    supplement += [(title(), 2, False, [[sentence(), sentence()]]) for _ in range(2)]
+
+    def section_of(parts: list, index: int) -> str:
+        """The title of the section over part `index`: the last part of level `top` before
+        it, `top` the first level that has two parts or more."""
+        levels = [level for _title, level, _straight, _paras in parts]
+        top = min(level for level in set(levels) if levels.count(level) >= 2)
+        return next(parts[at][0] for at in range(index, -1, -1) if parts[at][1] <= top)
+
+    #: Every sentence a finding may quote, by its kind: (file, section, words, paragraph).
+    found: dict[str, list[tuple[str, str, list[str], list[list[str]]]]] = {
+        "any": [], "subsection": [], "supplement": [], "under a line": []}
+    for name, parts in (("main", main), ("supplement", supplement)):
+        for index, (_title, level, straight, paragraphs) in enumerate(parts):
+            section = section_of(parts, index)
+            for number, paragraph in enumerate(paragraphs):
+                for words in paragraph:
+                    if any(words is one for one in (twice, bound, cited, linked, told, after)):
+                        continue
+                    kind = ("supplement" if name == "supplement" else
+                            "subsection" if level == 2 else "any")  # fmt: skip
+                    found[kind].append((name, section, words, paragraph))
+                    if straight and number == 0 and words is paragraph[0]:
+                        found["under a line"].append((name, section, words, paragraph))
+
+    def gap() -> str:
+        return draw(st.sampled_from(SOURCE_GAPS))
+
+    def joined(words: list[str]) -> str:
+        return "".join(w + gap() for w in words[:-1]) + words[-1]
+
+    def paragraph_text(paragraph: list[list[str]], latex: bool, printed: bool) -> str:
+        shown = []
+        for words in paragraph:
+            if words is linked or words is told:
+                # Its last word as a link's text or a narrative citation's key, and its stop.
+                last = words[-1][:-1]
+                ending = _PLACED_ENDINGS[words is told, latex].format(w=last)
+                shown.append(joined(words[:-1]) + " " + ending)
+            elif words is cited:
+                # A citation with its locator after the third word, which ends no sentence.
+                shown.append(joined(words[:3]) + _PLACED_CITATION[latex].format(n=len(words))
+                             + joined(words[3:]))  # fmt: skip
+            elif words is bound and printed:
+                shown.append(joined([*words[:3], _PLACED_VALUE, *words[4:]]))
+            elif words is bound:
+                # The binding on a line of its own, as a hard wrap leaves one: a line that
+                # held only blanked text was read as a blank line, and ended the sentence.
+                shown.append(joined(words[:3]) + "\n" + _PLACED_BINDING[latex] + "\n"
+                             + joined(words[4:]))  # fmt: skip
+            else:
+                shown.append(joined(words))
+        return "".join(one + draw(st.sampled_from((" ", "\n", "  "))) for one in shown[:-1]) + (
+            shown[-1])
+
+    def written(parts: list, latex: bool, printed: bool) -> str:
+        out = []
+        for heading, level, straight, paragraphs in parts:
+            texts = [paragraph_text(paragraph, latex, printed) for paragraph in paragraphs]
+            if latex and heading == "Abstract":
+                out.append("\\begin{abstract}\n" + "\n\n".join(texts) + "\n\\end{abstract}")
+                continue
+            if latex:
+                command = "\\section" if level == 1 else "\\subsection"
+                line = f"{command}{{{heading}}}" + (f"\\label{{s{next(counted)}}}"
+                                                    if draw(st.booleans()) else "")  # fmt: skip
+            else:
+                line = f"{'#' * level} {heading}"
+            under = "\n" if straight else "\n\n"
+            out.append(line + under + "\n\n".join(texts))
+        return "\n\n".join(out) + "\n"
+
+    names = {False: ("main.md", "supplementary/S1.md"),
+             True: ("main.tex", "supplementary/main.tex")}  # fmt: skip
+
+    def placed(name: str, section: str, words: list[str], heading: bool = False) -> tuple:
+        return name, section, heading, words[0]
+
+    def once(pick: dict[str, Any], key: str, make: Callable[[], Any]) -> Any:
+        """What a reader chose for `key`, drawn the first time it is asked for: the LaTeX
+        pass quotes as the Markdown one did."""
+        if key not in pick:
+            pick[key] = make()
+        return pick[key]
+
+    def quote_of(kind: str, chosen: dict[str, dict], latex: bool) -> tuple[str, list[tuple]]:
+        """A finding's quote and where it is placed. `chosen` keeps each choice of the
+        reader, and the sentence of its "within a sentence" finding for its "again"."""
+        pick = chosen.setdefault(kind, {})
+        if kind in ("within a sentence", "again"):
+            name, section, words, _p = once(chosen.setdefault("within a sentence", {}), "at",
+                                            lambda: draw(st.sampled_from(found["any"])))
+            span = once(pick, "span", lambda: draw(st.integers(4, len(words) - 1)))
+            start = once(pick, "start", lambda: draw(st.integers(0, len(words) - span)))
+            return " ".join(words[start : start + span]), [placed(name, section, words)]
+        if kind in ("a whole sentence", "under a subsection", "supplement", "elided",
+                    "under a heading's line"):
+            pool = {"under a subsection": "subsection", "supplement": "supplement",
+                    "under a heading's line": "under a line"}.get(kind, "any")  # fmt: skip
+            name, section, words, _p = once(pick, "at", lambda: draw(st.sampled_from(found[pool])))
+            if kind == "elided":
+                return " ".join(words[:3]) + " ... " + " ".join(words[-3:]), [
+                    placed(name, section, words)]
+            if kind == "a whole sentence":
+                return " ".join(words), [placed(name, section, words)]
+            return " ".join(words[:4]), [placed(name, section, words)]
+        if kind in ("across two sentences", "across three sentences"):
+            size = 2 if kind == "across two sentences" else 3
+            rows = {(name, section, id(paragraph), at): (name, section, paragraph, at)
+                    for name, section, _w, paragraph in found["any"]
+                    for at in range(len(paragraph) - size + 1)
+                    if not any(one is twice or one is bound or one is cited or one is linked
+                               or one is told for one in paragraph[at:at + size])}
+            ordered = sorted(rows.values(), key=lambda row: row[2][row[3]][0])
+            name, section, paragraph, at = once(pick, "at",
+                                                lambda: draw(st.sampled_from(ordered)))
+            run = paragraph[at : at + size]
+            words = run[0][-2:] + [w for middle in run[1:-1] for w in middle] + run[-1][:2]
+            places = [placed(name, section, one) for one in run] if size == 2 else []
+            return " ".join(words), places
+        if kind == "written twice":
+            span = once(pick, "span", lambda: draw(st.integers(4, len(twice) - 1)))
+            start = once(pick, "start", lambda: draw(st.integers(0, len(twice) - span)))
+            results = main[5][0]
+            return " ".join(twice[start : start + span]), [
+                placed("main", "Abstract", twice), placed("main", results, twice)]
+        if kind == "a section's heading":
+            heading = once(pick, "at", lambda: draw(st.sampled_from(
+                [part[0] for part in main if part[1] == 1 and part[0] != "Abstract"])))
+            return heading, [placed("main", heading, heading.split(), heading=True)]
+        if kind == "a subsection's heading":
+            heading = once(pick, "at", lambda: draw(st.sampled_from(subsections)))
+            return heading, [placed("main", methods, heading.split(), heading=True)]
+        if kind == "after a link":
+            return " ".join(told[:4]), [placed("main", main[6][0], told)]
+        if kind == "after a narrative citation":
+            return " ".join(after[:4]), [placed("main", main[6][0], after)]
+        if kind == "after a citation":
+            return " ".join(cited[3:7]), [placed("main", methods, cited)]
+        if kind == "as written":
+            words = [*bound[:3], _PLACED_BINDING[latex], *bound[4:6]]
+            return " ".join(words[1:5]), [placed("main", methods, bound)]
+        # Not anchored: words of no paper.
+        absent = once(pick, "words", lambda: [word() for _ in range(5)])
+        return " ".join(absent), []
+
+    readers = [f"reader-{n}" for n in range(1, draw(st.integers(2, 3)) + 1)]
+    orders = {who: draw(st.permutations(FINDING_PLACES)) for who in readers}
+    # Each reader's choices, made on the Markdown pass and kept for the LaTeX one.
+    choices: dict[str, dict[str, dict]] = {who: {} for who in readers}
+    inputs, truth = [], {}
+    for latex in (False, True):
+        main_name, supplement_name = names[latex]
+        given_readers: dict[str, list[dict[str, Any]]] = {}
+        for who in readers:
+            findings, expected = [], []
+            for n, kind in enumerate(orders[who], start=1):
+                quote, places = quote_of(kind, choices[who], latex)
+                ident = f"f{n}"
+                findings.append({"id": ident, "severity": "minor", "quote": quote,
+                                 "finding": kind})  # fmt: skip
+                expected.append((ident, kind, places))
+            given_readers[who] = findings
+            truth.setdefault(who, expected)
+        files = {main_name: written(main, latex, True),
+                 supplement_name: written(supplement, latex, True)}  # fmt: skip
+        sources = {main_name: written(main, latex, False),
+                   supplement_name: written(supplement, latex, False)}  # fmt: skip
+        inputs.append({"printed": files, "written": sources, "latex": latex,
+                       "readers": given_readers})  # fmt: skip
+    return inputs, truth
+
+
 # ------------------------------------------------------------ passages of cited works
 
 #: How a person writes a cited sentence into `passages.yaml` and means the same sentence:
@@ -11002,6 +11261,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "passages": passage_files().map(lambda drawn: drawn[0]),
     "passage claims": passage_claims().map(lambda drawn: drawn[0]),
     "finding quotes": finding_quotes().map(lambda drawn: drawn[0]),
+    "finding places": finding_places().flatmap(lambda drawn: st.sampled_from(drawn[0])),
     "plan citations": credited_plans().map(lambda drawn: drawn[0]),
     "citations": texts((), ADDRESS_BLOCKS),
     "mask": st.one_of(texts(TERMS), masked_blocks().map(lambda drawn: drawn[0])),

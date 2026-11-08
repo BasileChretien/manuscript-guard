@@ -1843,6 +1843,28 @@ def _finding_quotes() -> Reading:
     return found
 
 
+@reading("finding places")
+def _finding_places() -> Reading:
+    """Where each anchored finding's quote stands, as `review --seal` places a hand-filed
+    reading's (`quote_places.place_quotes`): in the files as printed, else as written.
+    `given` holds the manuscript's files by name, `printed` and `written`, whether they are
+    LaTeX, and each reader's findings; the answer is each reader's anchored ids and places."""
+    from manuscript_guard.anchoring import read_of, sort_quotes
+    from manuscript_guard.quote_places import place_quotes
+
+    def found(given: dict[str, Any]) -> dict[str, Any]:
+        latex, printed, written = given["latex"], given["printed"], given["written"]
+        read = read_of([*written.values(), *printed.values()], latex=latex)
+        placed = {}
+        for who, findings in given["readers"].items():
+            anchored = sort_quotes(findings, read, must_quote=False)["anchored"]
+            placed[who] = {"anchored": anchored, "places": place_quotes(
+                findings, anchored, printed, written, latex=latex)}  # fmt: skip
+        return placed
+
+    return found
+
+
 @reading("passages")
 def _passages() -> Reading:
     """The sentences each entry of a `passages.yaml` belongs to, with the line of each one's

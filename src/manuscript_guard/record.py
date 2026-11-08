@@ -502,6 +502,7 @@ def _quotes_read(project, document: dict) -> tuple[dict | None, str]:
     nothing where no finding quotes anything."""
     from manuscript_guard.anchoring import quoted, read_of, sort_quotes
     from manuscript_guard.gates.review import file_digests, manuscript_digest
+    from manuscript_guard.quote_places import place_quotes
 
     findings = document.get("findings") or []
     if not findings or not ("provenance" in document or any(map(quoted, findings))):
@@ -521,11 +522,15 @@ def _quotes_read(project, document: dict) -> tuple[dict | None, str]:
             "filed, so what it read is not here to read again, and none of its findings is "
             "counted anchored or unanchored"
         )
-    texts, latex, why = _texts_read(project, names, every=set(names) == set(current))
+    written, printed, latex, why = _texts_read(project, names, every=set(names) == set(current))
     # A model must quote, a person may not (D1.2): a reading `review --run` filed, whose seal
     # was taken out, is a model's still (round 1 of #581).
     model = "provenance" in document
+    texts = [*written.values(), *printed.values()]
     quotes = sort_quotes(findings, read_of(texts, latex=latex), must_quote=model)
+    # The sentence each anchored quote stands in, as printed, or as written where a person
+    # copied it so (`quote_places.py`).
+    quotes["places"] = place_quotes(findings, quotes["anchored"], printed, written, latex=latex)
     missed = quotes["unanchored"]
     said = (
         f"quotes: {len(quotes['anchored'])} found in what the reading read, {len(missed)} not"
@@ -535,12 +540,14 @@ def _quotes_read(project, document: dict) -> tuple[dict | None, str]:
     return quotes, said
 
 
-def _texts_read(project, names: list[str], *, every: bool) -> tuple[list[str], bool, str]:
-    """The files `names` under the manuscript directory as a person reads them, Markdown
-    without its front matter and comments and LaTeX as it is written, comments in, and as the
-    build prints them, values and tables in; whether they are LaTeX; and, where the printed
-    text could not be made, why. A LaTeX manuscript is printed as whole documents, which
-    count where the reading read every file."""
+def _texts_read(
+    project, names: list[str], *, every: bool
+) -> tuple[dict[str, str], dict[str, str], bool, str]:
+    """The files `names` under the manuscript directory as a person reads them, by name:
+    Markdown without its front matter and comments and LaTeX as it is written, comments in,
+    and as the build prints them, values and tables in; whether they are LaTeX; and, where the
+    printed text could not be made, why. A LaTeX manuscript is printed as whole documents,
+    named by their entry files, which count where the reading read every file."""
     from manuscript_guard.build.assemble import strip_front_matter
     from manuscript_guard.panel.prompt import PromptError, gather
     from manuscript_guard.text.masking import blank_comments
@@ -548,26 +555,26 @@ def _texts_read(project, names: list[str], *, every: bool) -> tuple[list[str], b
 
     root = project.path("manuscript")
     latex = manuscript_format(root) == LATEX
-    texts = []
+    written: dict[str, str] = {}
     for name in names:
         try:
             text = (root / name).read_bytes().decode("utf-8", errors="replace")
         except OSError:
             continue
         text = text.replace("\r\n", "\n")
-        texts.append(text if latex else blank_comments(strip_front_matter(text)[0]))
+        written[name] = text if latex else blank_comments(strip_front_matter(text)[0])
     try:
         printed = gather(project).texts
     except PromptError as exc:
-        return texts, latex, (
+        return written, {}, latex, (
             f"; the manuscript as the build prints it could not be made ({exc}), so the "
             "quotes were looked for as the files are written only"
         )
     if latex:
-        texts += list(printed.values()) if every else []
+        shown = dict(printed) if every else {}
     else:
-        texts += [printed[name] for name in names if name in printed]
-    return texts, latex, ""
+        shown = {name: printed[name] for name in names if name in printed}
+    return written, shown, latex, ""
 
 
 def _seal(path: Path, schema: str, quotes_check=None) -> Sealed:

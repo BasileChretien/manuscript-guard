@@ -50,7 +50,25 @@
       "additionalProperties": false,
       "properties": {
         "anchored": { "type": "array", "items": { "type": "string" } },
-        "unanchored": { "type": "array", "items": { "type": "string" } }
+        "unanchored": { "type": "array", "items": { "type": "string" } },
+        "places": {
+          "type": "object",
+          "description": "Where each anchored finding's quote stands, by the finding's id: the sentence that holds it, or each of two sentences in a row that hold it together, or the heading whose whole title it is, at every place its words stand, each with the file of the manuscript and the section over it. Found with the quote, in what the reading read as printed, or as written where it stands only there (`quote_places.py`), and sealed with it. An anchored finding placed nowhere has an empty list. Absent from readings filed before places were kept. `review` shows the sentences quoted by two readers of a round or more, and the sections each reading quotes; no gate reads it.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["file", "section", "sentence"],
+              "additionalProperties": false,
+              "properties": {
+                "file": { "type": "string", "minLength": 1 },
+                "section": { "type": ["string", "null"] },
+                "sentence": { "type": "string" },
+                "heading": { "type": "boolean" }
+              }
+            }
+          }
+        }
       }
     },
     "reading_sha256": {

@@ -135,6 +135,16 @@ A model must quote, so its finding with no quote is unanchored; a person may lea
 Where a file the reading read has changed before it is sealed, the quotes are not looked
 for, and the seal says so. A design round's readers are not asked to quote.
 
+**`review` shows which readers quote one sentence.** With each anchored quote, the reading
+keeps the sentence it stands in and the section over it, found and sealed when the reading
+is filed: a heading's title is at its heading, a quote across two sentences at both, and one
+whose words stand twice, in the abstract and in the Results, at each. Under each reading,
+`review` shows the sections its quotes fall in (`quotes in: Abstract 5, Methods 1`); under
+each round, every sentence two readers or more quote, with the readers and their findings,
+each reader counted once however many remits it read. It decides nothing, and it groups
+places, not problems: readers who quote one sentence may each be saying something else.
+Readings sealed before places were kept are counted and not placed.
+
 **A finding can carry the wording it asks for, and you decide it in Word.** A finding may
 hold `edits`: the manuscript's words as they stand (`old`, enough of them to appear once in
 its prose) and the words to put in their place (`new`). Every model is offered this, ten

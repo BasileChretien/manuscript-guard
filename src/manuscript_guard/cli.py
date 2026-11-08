@@ -385,8 +385,12 @@ def _round_lines(summary) -> list[str]:
     """Who read each remit of a round and what each concluded, with the strictest verdict.
 
     The verdict is reported and decides nothing: what blocks a submission is an unanswered
-    major finding, which the report below lists with the reader who raised it.
+    major finding, which the report below lists with the reader who raised it. Under each
+    reading, the sections its anchored quotes stand in; after them, the sentences two readers
+    or more quote (`quote_places.py`, Basile, 2026-11-08), which decide nothing either.
     """
+    from manuscript_guard.quote_places import reading_line, round_lines
+
     if summary is None or not summary.readings:
         return []
     strictest = summary.strictest
@@ -403,10 +407,13 @@ def _round_lines(summary) -> list[str]:
             found += f"; {reading.anchored} anchored, {reading.unanchored} unanchored"
         rows.append((reading.reviewer, reading.reader or "", reading.verdict, found))
     widths = [max(len(row[column]) for row in rows) for column in range(3)]
-    for row in rows:
+    for row, reading in zip(rows, summary.readings, strict=True):
         cells = [cell.ljust(width) for cell, width in zip(row, widths, strict=False)]
         lines.append("  ".join([*cells, row[3]]).rstrip())
-    return lines
+        sections = reading_line(reading.places)
+        if sections:
+            lines.append(f"  {printable(sections)}")
+    return lines + [printable(line) for line in round_lines(summary.readings)]
 
 
 def _ai_use(args: argparse.Namespace) -> int:

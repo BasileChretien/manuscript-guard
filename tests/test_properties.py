@@ -8585,11 +8585,12 @@ def _a_past_absence_is_read(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_hyphenated_first_is_read(patch: pytest.MonkeyPatch) -> None:
-    _novelty_patterns_changed(patch, "(?!-)(?! (?:", "(?! (?:")
+    _novelty_patterns_changed(patch, "(?!-(?!ever\\b|of-its-kind\\b))(?! (?:", "(?! (?:")
 
 
 def _a_papers_own_data_are_read_as_limited(patch: pytest.MonkeyPatch) -> None:
     _novelty_patterns_changed(patch, "(?<!\\bour )", "")
+    _novelty_patterns_changed(patch, "(?<!\\bthese )", "")
 
 
 def _another_s_priority_is_read(patch: pytest.MonkeyPatch) -> None:

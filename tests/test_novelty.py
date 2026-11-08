@@ -44,6 +44,11 @@ READ = [
     ("priority", "For the first time, we describe the course of the disease."),
     # Another's priority in the passive, after a verb of reporting: read (Known gaps).
     ("priority", "Statin myopathy was described for the first time in 1988."),
+    # Round 2 of #583: a hyphenated "first" that says first is a priority.
+    ("priority", "This is the first-ever study of statins in delirium."),
+    ("priority", "We report the first-of-its-kind case of drug-induced pancreatitis."),
+    # And evidence limited by something is still a softer claim of the literature.
+    ("softer", "Existing evidence on the drug is limited by small samples."),
     ("absence", ABSENT),
     ("absence", "No previous trials have compared the two drugs."),
     ("absence", "No study to date has looked at this outcome."),
@@ -133,6 +138,18 @@ def test_the_listing_and_explain_say_what_g7_says_of_a_no_claim_and_a_stale_sear
         project, entries["c2"], held(project))
     assert "more than 6 months ago" in novelty_command.explain(project, entries["c3"],
                                                                  held(project))
+    # Round 2 of #583: `--explain` reads the claim over every entry placed on it, as G7 does:
+    # c1, marked only, shares its claim with c2's person's word.
+    assert "G7: no claim, by Ada Example" in novelty_command.explain(
+        project, entries["c1"], held(project))
+    _entries(root, NOVEL, {**NOVEL, "id": "c2", "not_a_claim": said},
+             {"id": "c3", "kind": "novelty", "sentence": CLAIM},
+             {"id": "c4", "kind": "novelty", "sentence": CLAIM})
+    _search(root, 1, entry="c3", on="2026-01-02")
+    _search(root, 1, entry="c4", on="2026-11-01")
+    entries = {one.id: one for one in records.read_entries(project)[0]}
+    assert "G7: searched as of 2026-11-01" in novelty_command.explain(
+        project, entries["c3"], held(project))
     _entries(root, NOVEL, {**NOVEL, "id": "c2", "not_a_claim": {**said, "by": "Claude"}})
     rows = {row.sentence: row.state for row in novelty_command.rows(project, held(project))}
     assert rows[ABSENT] == "absence: c1 is marked, not searched"

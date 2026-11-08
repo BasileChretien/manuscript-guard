@@ -10430,9 +10430,9 @@ def harvest_tables(draw: st.DrawFn) -> tuple[list[dict], dict[str, list]]:
 #: says of its own data, which is read and pins that limit (DESIGN.md, Known gaps). Not read:
 #: a priority turned round, another's priority, an absence in the past, "to our knowledge"
 #: alone, an absence of evidence, "for the first time" said of patients, a first visit, a
-#: hyphenated "first-line", "novel" alone, "unknown" said of the data, a paper's own data
-#: "limited by" something, "not for the first time", and a claim in a code span, a comment,
-#: maths and a listing.
+#: hyphenated "first-line" (where "first-ever" is read), "novel" alone, "unknown" said of
+#: the data, "our data" and "these data" limited, "not for the first time", and a claim in a
+#: code span, a comment, maths and a listing.
 NOVELTY_PLACES = (
     ("priority", "To our knowledge, this is the first study of {t}.", None, False),
     ("priority", "The present analysis is, to our knowledge, the first to report {t}.", None,
@@ -10442,6 +10442,7 @@ NOVELTY_PLACES = (
     ("priority", "For the first time, we describe {t}.", None, False),
     ("priority", "WE ARE THE FIRST TO DESCRIBE {T}.", None, False),
     ("priority", "This study is the\nfirst to examine {t}.", None, False),
+    ("priority", "This is the first-ever study of {t}.", None, False),
     ("absence", "No study has examined {t} in children.", None, False),
     ("absence", "No previous trials have compared {t}.", None, False),
     ("absence", "The use of {t} has not been reported [@a].",
@@ -10462,7 +10463,8 @@ NOVELTY_PLACES = (
     (None, "Patients seen for the first time this year had taken {t}.", None, False),
     (None, "This is the first study visit for {t}.", None, False),
     (None, "This is the first-line treatment for {t}.", None, False),
-    (None, "Our data on {t} are limited by under-reporting.", None, False),
+    (None, "Our data on {t} are limited.", None, False),
+    (None, "These data on {t} are limited.", None, False),
     (None, "Novel oral anticoagulants and {t} were prescribed.", None, False),
     (None, "The denominator for {t} is unknown.", None, False),
     (None, "The drug was given, not for the first time, with {t}.", None, False),

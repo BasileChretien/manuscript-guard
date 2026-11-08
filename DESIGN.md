@@ -22029,8 +22029,10 @@ Open, recorded as each change landed:
     denominator is unknown" is said of the data, and "the effect is unknown", said of the
     literature, is not read either.
   - A paper's own data are kept from the softer list only where it says so: "our data are
-    limited", "these data are limited" and "limited by" are not read, but "a lack of data
-    on exposure" in the Limitations is a note (round 1 of #583).
+    limited" and "these data are limited" are not read, but "the data are limited by
+    under-reporting" and "a lack of data on exposure" in the Limitations are notes (rounds
+    1 and 2 of #583). A hyphenated "first" is no priority ("first-line", "first-in-class",
+    "first-in-human") but for "first-ever" and "first-of-its-kind".
   - The record is graded, never the novelty. The terms are the reader's and nothing compares
     them with the claim: a search on another topic covers it. `references --explain` shows
     the terms beside the sentences, for a person to read together.

@@ -4269,8 +4269,12 @@ searched where either is, as of the later of their days.
 | `currency-record-edited` | a novelty search record edited, or out of its schema | fails from drafting |
 | `currency-decision-not-human` | a `not_a_claim` signed by a model, or a search by hand filed in a model's name | fails from drafting |
 
-`novelty-unsearched` and `novelty-search-stale` are the author's to answer, not an agent's. A
-novelty entry is out of all else currency does: `currency-record-missing` and
+`novelty-unsearched` and `novelty-search-stale` are answered by a search, which the reader
+runs (an agent through the literature-currency skill, a model or a person, named in
+`terms_by`); a `not_a_claim` and a search by hand are a person's, and the hook asks before an
+agent writes either. (The design said at first that these two codes were the author's to
+answer; the code pull request found that the skill's searches answer them.) A novelty entry is
+out of all else currency does: `currency-record-missing` and
 `currency-record-stale` never count one, `references --reading` refuses a reading of one, the
 rules never decide one, and `references --comments` writes no comment for one. `check`'s
 literature line says how many claims the list read, how many are searched, how many are
@@ -22130,7 +22134,19 @@ Open, recorded as each change landed:
     fails it. The session-start hook warns of a tool older than the plugin (round 1 of #547,
     finding 3).
 - **A claim of novelty is held to the record of a search, not to the literature
-  (`novelty-*`).** Designed 2026-11-07; the code comes in a pull request of its own.
+  (`novelty-*`).** Designed 2026-11-07 (#580), and built after it.
+  - The prose is read as G14 reads it (`gates.language._hidden`), so a claim in a figure's
+    caption is not read, nor one in a code span, the front matter or an equation.
+  - "Unknown" and "unclear" are a softer claim only after "remains", in "it is unclear
+    whether" and its kind, or beside "still", "largely", "currently" or "as yet": "the
+    denominator is unknown" is said of the data, and "the effect is unknown", said of the
+    literature, is not read either.
+  - A paper's own data are kept from the softer list only where it says so: "our data",
+    "these data" and "the present data are limited" are not read, but "the data are limited
+    by under-reporting" and "a lack of data on exposure" in the Limitations are notes (rounds
+    1 to 4 of #583). A hyphenated "first" is no priority ("first-line", "first-in-class",
+    "first-in-human") but for "first-ever" and "first-of-its-kind", and those not where they
+    name a part of the study ("the first-ever time the patient received it").
   - The record is graded, never the novelty. The terms are the reader's and nothing compares
     them with the claim: a search on another topic covers it. `references --explain` shows
     the terms beside the sentences, for a person to read together.

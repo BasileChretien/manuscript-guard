@@ -151,6 +151,23 @@ def test_a_cited_sentence_claiming_more_than_its_passage_warns_at_every_stage() 
             assert (report.findings[0].severity, deferred) == (WARN, {}), (code, stage)
 
 
+def test_a_claim_of_novelty_with_no_search_warns_in_a_draft_and_fails_at_submission() -> None:
+    """G7 raises `novelty-unsearched` and `novelty-search-stale` to failures at submission
+    only (D4.2); the policy has them bind there, so that a run at submission keeps them
+    failures. `novelty-softer` is a note at every stage and binds nowhere (D4.3)."""
+    for code in ("novelty-unsearched", "novelty-search-stale"):
+        assert binds_at(code) == SUBMISSION
+        failed = Report((Finding(gate="G7", code=code, message="m", severity=FAIL),))
+        report, deferred = apply_stage(failed, SUBMISSION)
+        assert not report.ok and deferred == {}
+        report, deferred = apply_stage(failed, INTERNAL_REVIEW)
+        assert report.ok and deferred == {SUBMISSION: 1}
+        warned = Report((Finding(gate="G7", code=code, message="m", severity=WARN),))
+        assert apply_stage(warned, DRAFTING)[0].findings[0].severity == WARN
+    noted = Report((Finding(gate="G7", code="novelty-softer", message="m", severity=INFO),))
+    assert apply_stage(noted, SUBMISSION)[0].ok
+
+
 def test_the_summary_says_how_many_and_when() -> None:
     _report, deferred = apply_stage(
         report_with("no-review", "figure-unreviewed", "unclassified-number"), ANALYSIS

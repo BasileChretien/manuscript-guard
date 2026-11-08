@@ -174,7 +174,7 @@ def test_a_reply_is_filed_as_word_kept_it_once_and_decides_nothing(
     document = written(project)
     before = (project / "literature" / "currency.yaml").read_bytes()
     returned = reply_to(document, tmp_path / "back.docx", AUTHOR, case.REPLY, by="Ada Example")
-    returned = comment_on(returned, returned, "has not been examined", "Say since when.",
+    returned = comment_on(returned, returned, "asks whether", "Say since when.",
                           by="Blaise Sample")  # fmt: skip
     code, said = run("import", str(returned), str(project))
     assert ("c1: a reply by Ada Example, to be filed as literature/currency/replies/c1.1.yaml; "
@@ -210,7 +210,9 @@ def test_what_word_saved_is_read_as_a_reply_to_the_tool_s_comment(project: Path)
     reply added to the comment with `Replies.Add`, and saved. Word kept the comment's words,
     so its digest, and the document's list of proposals, and wrote the reply's parent in
     `commentsExtended.xml`. The person who saved it is renamed `Ada Example`, with initials
-    `AE`, and Word's account record of them is removed; nothing else was changed."""
+    `AE`, and Word's account record of them is removed; nothing else was changed, but for
+    the example's sentence that is no longer a claim of absence, whose words were changed
+    in document.xml on 2026-11-08 to match the example (item 4)."""
     from manuscript_guard import tracked
     from manuscript_guard.currency import replies
     from manuscript_guard.filed_comments import threads_of

@@ -8549,6 +8549,237 @@ def _camel_case_is_not_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(gate, "_CAMEL", re.compile(r"(?!)"))
 
 
+# ------------------------------------------------------ claims of novelty or absence, G7
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import novelty_claims, novelty_records  # noqa: E402
+
+
+@holds(30, novelty_claims())
+def test_a_claim_of_novelty_is_read_where_it_stands_and_nowhere_else(
+    planted: tuple[dict[str, str], dict[str, list[list[Any]]]],
+) -> None:
+    """Each claim of `NOVELTY_PLACES` is read once, by its list, on the line its paragraph
+    starts on, and the Abstract's too; nothing is read in a place the design says is not
+    read, nor in the title; and the supplement is read as the main text is. In Markdown and
+    in LaTeX alike, the LaTeX as it prints."""
+    given, found = planted
+    answered = answer(READINGS["novelty claims"](), given)
+    assert "raised" not in answered, answered
+    for form in ("markdown", "latex"):
+        assert answered["answer"][form] == found[form], (form, given[form])
+
+
+@holds(25, novelty_records())
+def test_a_claim_of_novelty_is_held_to_its_records_as_the_design_says(
+    planted: tuple[dict[str, Any], list[list[Any]]],
+) -> None:
+    """Each claim's finding and level are the ones DESIGN.md's table gives for its records and
+    the stage: unsearched without the tool's N1, or with an N1 that kept works and no N2;
+    stale six calendar months on, by the earlier of the two; a search by hand or one not
+    asked is no step; an edited record answers nothing; an entry is placed by its words
+    folded, exactly, in every file; a person's `not_a_claim` makes no claim, beside another
+    entry too, and a model's is refused; a softer claim is a note."""
+    given, said = planted
+    answered = answer(READINGS["novelty records"](), given)
+    assert "raised" not in answered, answered
+    assert answered["answer"] == said, given
+
+
+def _novelty_patterns_read_with_their_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import novelty
+
+    held = novelty.rules()
+    patch.setattr(novelty, "rules", lambda: tuple(
+        dataclasses.replace(rule, pattern=re.compile(rule.pattern.pattern)) for rule in held))
+
+
+def _novelty_patterns_changed(patch: pytest.MonkeyPatch, old: str, new: str) -> None:
+    """Every pattern of the list with `old` written `new`, as a slip in the data would."""
+    from manuscript_guard.currency import novelty
+
+    held = novelty.rules()
+    assert any(old in rule.pattern.pattern for rule in held), old
+    patch.setattr(novelty, "rules", lambda: tuple(
+        dataclasses.replace(rule, pattern=re.compile(rule.pattern.pattern.replace(old, new),
+                                                     re.IGNORECASE)) for rule in held))
+
+
+def _a_priority_turned_round_is_read(patch: pytest.MonkeyPatch) -> None:
+    # The hedge between the verb and "the first" takes any words, "not" among them.
+    _novelty_patterns_changed(patch, "(?:, [^,.;:]{1,60},)?", "(?: [^.;:]{1,60})?")
+
+
+def _a_past_absence_is_read(patch: pytest.MonkeyPatch) -> None:
+    _novelty_patterns_changed(patch, "(?:has|have)", "(?:has|have|had)")
+
+
+def _a_hyphenated_first_is_read(patch: pytest.MonkeyPatch) -> None:
+    kept = "(?!(?:-ever|-of-its-kind)? (?:"
+    _novelty_patterns_changed(patch, "(?!-(?!ever\\b|of-its-kind\\b))" + kept, kept)
+
+
+def _a_papers_own_data_are_read_as_limited(patch: pytest.MonkeyPatch) -> None:
+    for kept in ("(?<!\\bour )", "(?<!\\bthese )", "(?<!\\bthe present )"):
+        _novelty_patterns_changed(patch, kept, "")
+
+
+def _a_part_after_first_ever_is_read(patch: pytest.MonkeyPatch) -> None:
+    _novelty_patterns_changed(patch, "(?!(?:-ever|-of-its-kind)? (?:", "(?! (?:")
+
+
+def _another_s_priority_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import novelty
+
+    held = novelty.rules()
+    loose = re.compile(r"\b(?:is|are|was|were)(?:, [^,.;:]{1,60},)? the first\b"
+                       r"(?! (?:[\w-]+ )?(?:visit|dose|time)\b)", re.IGNORECASE)  # fmt: skip
+    patch.setattr(novelty, "rules", lambda: tuple(
+        dataclasses.replace(rule, pattern=loose) if rule.id == "paper-is-first" else rule
+        for rule in held))
+
+
+def _a_line_break_stops_a_phrase(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import novelty
+
+    def read(sentence: str) -> Any:
+        for rule in novelty.rules():
+            found = rule.pattern.search(sentence.replace("\x00", " "))
+            if found:
+                return rule, found.group(0)
+        return None
+
+    patch.setattr(novelty, "read_sentence", read)
+
+
+def _the_supplement_is_not_read_for_novelty(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import novelty
+
+    claims = novelty.claims
+    patch.setattr(novelty, "claims", lambda project: [
+        claim for claim in claims(project) if "supplementary" not in claim.path.parts])
+
+
+def _the_latex_source_is_read_for_novelty(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import novelty
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    claims = novelty.claims
+
+    def read(project: Any) -> list:
+        folder = project.path("manuscript")
+        if manuscript_format(folder) != LATEX:
+            return claims(project)
+        return [novelty.Claim(path, line, sentence, rule.list, rule.id, words)
+                for path in sorted(folder.rglob("*.tex"))
+                for line, sentence, rule, words in novelty.claims_in(
+                    path.read_text(encoding="utf-8"))]  # fmt: skip
+
+    patch.setattr(novelty, "claims", read)
+
+
+def _a_softer_claim_warns(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.currency import novelty
+
+    patch.setattr(novelty, "BINDING", ("priority", "absence", "softer"))
+
+
+def _searched_as_if(patch: pytest.MonkeyPatch, change: Any) -> None:
+    from manuscript_guard.gates import novelty as gate
+
+    searched = gate.searched
+    patch.setattr(gate, "searched", lambda entry, held: searched(entry, change(held)))
+
+
+def _a_search_not_asked_counts(patch: pytest.MonkeyPatch) -> None:
+    _searched_as_if(patch, lambda held: [
+        {**one, "status": "run"} if one.get("status") == "not asked" else one for one in held])
+
+
+def _a_search_by_hand_counts_as_n1(patch: pytest.MonkeyPatch) -> None:
+    _searched_as_if(patch, lambda held: [
+        {**one, "status": "run"} if one.get("status") == "by hand" else one for one in held])
+
+
+def _no_n2_is_needed_where_n1_kept_works(patch: pytest.MonkeyPatch) -> None:
+    _searched_as_if(patch, lambda held: [
+        {**one, "candidates": []} if one["step"] == "N1" else one for one in held])
+
+
+def _n2_is_needed_where_n1_kept_none(patch: pytest.MonkeyPatch) -> None:
+    _searched_as_if(patch, lambda held: [
+        {**one, "candidates": one["candidates"] or ["doi:10.5555/any"]}
+        if one["step"] == "N1" and one.get("hits") else one for one in held])
+
+
+def _the_age_is_taken_from_n1_alone(patch: pytest.MonkeyPatch) -> None:
+    def change(held: list[dict]) -> list[dict]:
+        first = max((one["searched_on"] for one in held if one["step"] == "N1"), default=None)
+        return [{**one, "searched_on": first} if one["step"] == "N2" and first else one
+                for one in held]
+
+    _searched_as_if(patch, change)
+
+
+def _six_months_are_read_as_180_days(patch: pytest.MonkeyPatch) -> None:
+    from datetime import timedelta
+
+    from manuscript_guard.gates import currency as gate
+
+    patch.setattr(gate, "months_before",
+                  lambda day, months: day - timedelta(days=30 * months))
+
+
+def _an_entry_is_placed_by_its_words_unfolded(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import novelty as gate
+
+    patch.setattr(gate, "entries_on", lambda claim, entries, words: [
+        entry for entry in entries
+        if " ".join(claim.text.split()) in {" ".join(one.split()) for one in entry.sentences}])
+
+
+def _an_entry_is_placed_near(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import novelty as gate
+    from manuscript_guard.literature.passages import NEAR
+
+    def on(claim: Any, entries: list, words: dict[str, set[str]]) -> list:
+        mine = set(claim.folded.split())
+        return [entry for entry in entries if any(
+            len(mine & set(one.split())) / max(len(one.split()), 1) >= NEAR
+            for one in words[entry.id])]
+
+    patch.setattr(gate, "entries_on", on)
+
+
+def _a_claim_in_a_second_file_has_no_entry(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import novelty as gate
+
+    on = gate.entries_on
+    first: dict[tuple[int, str], Path] = {}
+
+    def once(claim: Any, entries: list, words: dict[str, set[str]]) -> list:
+        if first.setdefault((id(entries), claim.folded), claim.path) != claim.path:
+            return []
+        return on(claim, entries, words)
+
+    patch.setattr(gate, "entries_on", once)
+
+
+def _a_persons_not_a_claim_is_set_aside_for_another_entry(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import novelty as gate
+
+    says = gate._person_says_no_claim
+    patch.setattr(gate, "no_claim", lambda placed: bool(placed) and all(
+        says(entry) for entry in placed))
+
+
+def _a_models_not_a_claim_stands(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import novelty as gate
+
+    patch.setattr(gate, "_person_says_no_claim",
+                  lambda entry: bool((entry.not_a_claim or {}).get("by")))
+
+
 # ------------------------------------------ a reference list under a line that is no heading
 
 # Imported here, not at the top, to keep clear of the import block other branches edit.
@@ -18550,6 +18781,94 @@ BROKEN = {
     "camelCase is not read": (
         _camel_case_is_not_read,
         test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a novelty pattern is read with its case": (
+        _novelty_patterns_read_with_their_case,
+        test_a_claim_of_novelty_is_read_where_it_stands_and_nowhere_else,
+    ),
+    "a priority turned round is read": (
+        _a_priority_turned_round_is_read,
+        test_a_claim_of_novelty_is_read_where_it_stands_and_nowhere_else,
+    ),
+    "an absence in the past is read": (
+        _a_past_absence_is_read,
+        test_a_claim_of_novelty_is_read_where_it_stands_and_nowhere_else,
+    ),
+    "a hyphenated first is read as a priority": (
+        _a_hyphenated_first_is_read,
+        test_a_claim_of_novelty_is_read_where_it_stands_and_nowhere_else,
+    ),
+    "a paper's own data are read as limited": (
+        _a_papers_own_data_are_read_as_limited,
+        test_a_claim_of_novelty_is_read_where_it_stands_and_nowhere_else,
+    ),
+    "the part a first-ever names is read as a priority": (
+        _a_part_after_first_ever_is_read,
+        test_a_claim_of_novelty_is_read_where_it_stands_and_nowhere_else,
+    ),
+    "a priority given to someone else is read": (
+        _another_s_priority_is_read,
+        test_a_claim_of_novelty_is_read_where_it_stands_and_nowhere_else,
+    ),
+    "a line break inside a phrase stops it": (
+        _a_line_break_stops_a_phrase,
+        test_a_claim_of_novelty_is_read_where_it_stands_and_nowhere_else,
+    ),
+    "the supplement is not read for claims of novelty": (
+        _the_supplement_is_not_read_for_novelty,
+        test_a_claim_of_novelty_is_read_where_it_stands_and_nowhere_else,
+    ),
+    "the LaTeX source is read for claims of novelty in place of its print": (
+        _the_latex_source_is_read_for_novelty,
+        test_a_claim_of_novelty_is_read_where_it_stands_and_nowhere_else,
+    ),
+    "a softer claim warns": (
+        _a_softer_claim_warns,
+        test_a_claim_of_novelty_is_held_to_its_records_as_the_design_says,
+    ),
+    "a search not asked counts as N1": (
+        _a_search_not_asked_counts,
+        test_a_claim_of_novelty_is_held_to_its_records_as_the_design_says,
+    ),
+    "a search by hand counts as N1": (
+        _a_search_by_hand_counts_as_n1,
+        test_a_claim_of_novelty_is_held_to_its_records_as_the_design_says,
+    ),
+    "no N2 is needed where N1 kept works": (
+        _no_n2_is_needed_where_n1_kept_works,
+        test_a_claim_of_novelty_is_held_to_its_records_as_the_design_says,
+    ),
+    "N2 is needed where N1 counted works and kept none": (
+        _n2_is_needed_where_n1_kept_none,
+        test_a_claim_of_novelty_is_held_to_its_records_as_the_design_says,
+    ),
+    "a claim's age is taken from N1 alone": (
+        _the_age_is_taken_from_n1_alone,
+        test_a_claim_of_novelty_is_held_to_its_records_as_the_design_says,
+    ),
+    "six months are read as 180 days": (
+        _six_months_are_read_as_180_days,
+        test_a_claim_of_novelty_is_held_to_its_records_as_the_design_says,
+    ),
+    "a novelty entry is placed by its words unfolded": (
+        _an_entry_is_placed_by_its_words_unfolded,
+        test_a_claim_of_novelty_is_held_to_its_records_as_the_design_says,
+    ),
+    "a novelty entry is placed on the claim that holds most of its words": (
+        _an_entry_is_placed_near,
+        test_a_claim_of_novelty_is_held_to_its_records_as_the_design_says,
+    ),
+    "a claim in a second file is given no entry": (
+        _a_claim_in_a_second_file_has_no_entry,
+        test_a_claim_of_novelty_is_held_to_its_records_as_the_design_says,
+    ),
+    "a person's word that it is no claim is set aside for another entry": (
+        _a_persons_not_a_claim_is_set_aside_for_another_entry,
+        test_a_claim_of_novelty_is_held_to_its_records_as_the_design_says,
+    ),
+    "a model's word that it is no claim stands": (
+        _a_models_not_a_claim_stands,
+        test_a_claim_of_novelty_is_held_to_its_records_as_the_design_says,
     ),
     "a glossary is not read": (
         _a_glossary_is_not_read,

@@ -1884,6 +1884,82 @@ def _passage_claims() -> Reading:
     return passages
 
 
+def _novelty_project(folder: Path, files: dict[str, str], stage: str = "drafting") -> Any:
+    """A project in `folder` holding `files` under `manuscript/`, at `stage`."""
+    from manuscript_guard.contracts import load_project
+
+    (folder / "literature").mkdir(parents=True, exist_ok=True)
+    (folder / "paper.yaml").write_bytes(
+        f"schema: manuscript-guard/paper/1\ntitle: A test\nstage: {stage}\n".encode())
+    for name, text in files.items():
+        path = folder / "manuscript" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(text.encode("utf-8"))
+    return load_project(folder)[0]
+
+
+@reading("novelty claims")
+def _novelty_claims() -> Reading:
+    """Each claim of novelty or absence G7's list reads in a Markdown manuscript and in a
+    LaTeX one, each with its supplement (`currency/novelty.py`, item 4 of the plan of
+    2026-11-06): its file under `manuscript/`, its line and its list."""
+    from manuscript_guard.currency.novelty import claims
+
+    def novelty(given: dict[str, str]) -> dict[str, list[list[Any]]]:
+        out = {}
+        for form, names in (("markdown", ("main.md", "supplementary/s1.md")),
+                            ("latex", ("main.tex", "supplementary/main.tex"))):  # fmt: skip
+            with tempfile.TemporaryDirectory(prefix="mg-reading-") as folder:
+                root = Path(folder)
+                project = _novelty_project(root, dict(zip(names, (
+                    given[form], given[f"{form} supplement"]), strict=True)))
+                out[form] = [[claim.path.relative_to(root / "manuscript").as_posix(),
+                              claim.line, claim.list] for claim in claims(project)]
+        return out
+
+    return novelty
+
+
+@reading("novelty records")
+def _novelty_records() -> Reading:
+    """What G7 says of each claim of novelty or absence of a Markdown manuscript and of the
+    entries and search records given, at the stage and on the day given
+    (`gates/novelty.py`): each finding's code, severity, path from the project's root and
+    line, sorted. A search record marked `edited` is written sealed and then changed."""
+    from datetime import date
+
+    from manuscript_guard.currency import records
+    from manuscript_guard.gates import currency as gate
+    from manuscript_guard.gates import novelty as _needed  # noqa: F401 - absent in a base
+
+    def novelty(given: dict[str, Any]) -> list[list[Any]]:
+        with tempfile.TemporaryDirectory(prefix="mg-reading-") as folder:
+            root = Path(folder)
+            files = {"main.md": given["main"], "supplementary/s1.md": given["supplement"]}
+            project = _novelty_project(root, files, given["stage"])
+            records.write_document(project, {"schema": records.SCHEMA,
+                                             "entries": given["entries"]})  # fmt: skip
+            for one in given["searches"]:
+                record = {key: value for key, value in one.items() if key != "edited"}
+                path = records.write_search(project, record)
+                if one.get("edited"):
+                    path.write_bytes(path.read_bytes().replace(b"terms of", b"words of"))
+            day = date.fromisoformat(given["today"])
+            kept = gate.today
+            gate.today = lambda: day
+            try:
+                report = gate.check_currency(project, given["stage"])
+            finally:
+                gate.today = kept
+            said = [[one.code, one.severity,
+                     one.path.relative_to(root).as_posix() if one.path else None, one.line]
+                    for one in report.findings
+                    if one.code.startswith(("novelty-", "currency-"))]  # fmt: skip
+        return sorted(said, key=lambda one: json.dumps(one))
+
+    return novelty
+
+
 @reading("citations")
 def _citations() -> Reading:
     """Each citation of a Markdown file, with its key, its line and whether it is narrative:

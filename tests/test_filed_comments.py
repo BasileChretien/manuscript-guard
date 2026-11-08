@@ -12,7 +12,12 @@ with a comment added above the others, which made Word renumber every `w:id`
 (`comments-word-again.docx`); and the first converted from compatibility mode, the only way
 Word would resolve a thread in a pandoc build, with the first thread resolved
 (`comments-word-resolved.docx`). The person who saved them is renamed `Ana Author` in their
-core properties; nothing else was changed. The rest are XML made the way Word writes it.
+core properties; nothing else was changed. On 2026-11-08 the example's "Whether the signal
+extends to example-drug specifically has not been examined." became "This analysis asks
+whether the signal extends to example-drug specifically.", a claim of absence no longer
+(item 4), and that sentence's words were changed to match in the document.xml of each of the
+three, in the runs Word wrote; it holds no edit of Word's. The rest are XML made the way
+Word writes it.
 """
 
 from __future__ import annotations
@@ -236,7 +241,7 @@ def test_a_comment_of_several_paragraphs_keeps_them_and_is_known_with_its_spaces
     from manuscript_guard.suggestions import short_digest
 
     returned = commented(FIRST, tmp_path / "two.docx", [
-        {"on": "Whether the signal extends", "paragraphs": ["First line.", "Second line."]},
+        {"on": "This analysis asks whether", "paragraphs": ["First line.", "Second line."]},
     ])  # fmt: skip
     names = {n for p in paragraphs_of(returned) for n in p.names}
     kept = dict(vouched={n: n for n in names}, sources={n: n for n in names})
@@ -258,8 +263,8 @@ def test_the_panel_s_comments_are_known_by_what_they_are_not_by_their_words(
 
     finding = "Finding r8-pe-02 is about the wording."
     returned = commented(FIRST, tmp_path / "panel.docx", [
-        {"on": "Whether the signal extends", "author": "Panel Reader", "text": finding},
-        {"on": "Whether the signal", "author": "Ana Author", "text": "Agreed.", "reply_to": 0},
+        {"on": "This analysis asks whether", "author": "Panel Reader", "text": finding},
+        {"on": "This analysis asks", "author": "Ana Author", "text": "Agreed.", "reply_to": 0},
         {"on": "Drug-induced hepatic injury", "author": "Ana Author", "text": "Agreed."},
     ])  # fmt: skip
     names = {n for p in paragraphs_of(returned) for n in p.names}
@@ -280,10 +285,10 @@ def test_a_comment_with_no_words_is_filed_and_reported(project: Path, tmp_path: 
     empty `finding` the schema refused, and every `check` then failed. Without a reply it
     was not filed at all."""
     returned = commented(built(project), tmp_path / "back.docx", [
-        {"on": "Whether the signal extends", "text": ""},
-        {"on": "Whether the signal", "author": "Ben Second", "text": "What do you mean?",
+        {"on": "This analysis asks whether", "text": ""},
+        {"on": "This analysis asks", "author": "Ben Second", "text": "What do you mean?",
          "reply_to": 0},
-        {"on": "Whether the signal", "author": "Ann Coauthor", "text": "", "reply_to": 0},
+        {"on": "This analysis asks", "author": "Ann Coauthor", "text": "", "reply_to": 0},
         {"on": "Drug-induced hepatic injury", "author": "Ben Second", "text": ""},
     ])  # fmt: skip
     code, said = run("import", str(returned), str(project), "--apply")
@@ -622,9 +627,9 @@ def test_a_reply_is_kept_with_its_comment_and_a_reply_added_later_joins_it(
     project: Path, tmp_path: Path
 ) -> None:
     build = built(project)
-    note = {"on": "Whether the signal extends", "text": "Which agency?", "durable": "AB12CD34"}
+    note = {"on": "This analysis asks whether", "text": "Which agency?", "durable": "AB12CD34"}
     reply = {"author": "Ben Second", "text": "The national one.", "reply_to": 0}
-    once = commented(build, tmp_path / "once.docx", [note, {**reply, "on": "Whether the signal"}])
+    once = commented(build, tmp_path / "once.docx", [note, {**reply, "on": "This analysis asks"}])
     run("import", str(once), str(project), "--apply")
     filed = by_commenter(project)
     assert list(filed) == ["Ann Coauthor"], "a reply was filed as a comment of its own"
@@ -634,7 +639,7 @@ def test_a_reply_is_kept_with_its_comment_and_a_reply_added_later_joins_it(
     twice = commented(
         build,
         tmp_path / "twice.docx",
-        [note, {**reply, "on": "Whether the signal"}, {**later, "on": "Whether"}],
+        [note, {**reply, "on": "This analysis asks"}, {**later, "on": "This analysis"}],
     )
     code, said = run("import", str(twice), str(project), "--apply")
     assert "replies or Word's Resolve added to c1" in said, said
@@ -655,7 +660,7 @@ def test_a_comment_with_control_or_bidirectional_characters_is_stored_as_is_and_
         tmp_path / "back.docx",
         [
             {
-                "on": "Whether the signal extends",
+                "on": "This analysis asks whether",
                 "text": words,
                 "author": f"Ann{chr(0x202E)} Coauthor",
             }
@@ -679,7 +684,7 @@ def test_a_comment_on_a_paragraph_changed_since_is_said_to_be(
     returned = commented(
         built(project),
         tmp_path / "back.docx",
-        [{"on": "Whether the signal extends", "text": "Too long."}],
+        [{"on": "This analysis asks whether", "text": "Too long."}],
     )
     run("import", str(returned), str(project), "--apply")
     code, said = run("check", str(project))
@@ -687,7 +692,7 @@ def test_a_comment_on_a_paragraph_changed_since_is_said_to_be(
     main = project / "manuscript" / "main.md"
     text = main.read_text(encoding="utf-8")
     main.write_text(
-        text.replace("Whether the signal extends", "Whether the signal reaches", 1),
+        text.replace("This analysis asks whether", "This analysis asks if", 1),
         encoding="utf-8",
     )
     code, said = run("check", str(project))
@@ -705,7 +710,7 @@ def test_a_document_refused_as_built_from_another_manuscript_still_files_its_com
         built(project),
         tmp_path / "back.docx",
         [
-            {"on": "Whether the signal extends", "text": "Unchanged paragraph."},
+            {"on": "This analysis asks whether", "text": "Unchanged paragraph."},
             {"on": "Drug-induced hepatic injury remains", "text": "Changed paragraph."},
         ],
     )
@@ -734,7 +739,7 @@ def test_a_journal_reviewer_s_point_seeded_in_a_revision_round_is_not_filed_agai
         tmp_path / "back.docx",
         [
             {
-                "on": "Whether the signal extends",
+                "on": "This analysis asks whether",
                 "text": "Justify the comparator.",
                 "author": "Reviewer 2",
             },
@@ -755,8 +760,8 @@ def test_two_commenters_get_two_records_and_the_supplement_its_own(
         built(project),
         tmp_path / "back.docx",
         [
-            {"on": "Whether the signal extends", "text": "One.", "author": "Dr. Tanaka"},
-            {"on": "Whether the signal extends", "text": "Two.", "author": "Dr Tanaka"},
+            {"on": "This analysis asks whether", "text": "One.", "author": "Dr. Tanaka"},
+            {"on": "This analysis asks whether", "text": "Two.", "author": "Dr Tanaka"},
             {"on": "Drug-induced hepatic injury", "text": "Three.", "author": "Ben Second"},
         ],
     )
@@ -803,7 +808,7 @@ def test_nothing_of_a_comment_reaches_the_submission_pack(project: Path, tmp_pat
         tmp_path / "back.docx",
         [
             {
-                "on": "Whether the signal extends",
+                "on": "This analysis asks whether",
                 "text": "Private remark xyzzy.",
                 "author": "Zelda Quokka",
             },

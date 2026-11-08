@@ -333,7 +333,7 @@ def papers(built_example: Path, tmp_path_factory: pytest.TempPathFactory) -> dic
 
 # ------------------------------------------------------------- what the author did since
 
-_GONE = "Whether the signal extends to example-drug specifically has not been examined."
+_GONE = "This analysis asks whether the signal extends to example-drug specifically."
 
 
 def _source(old: str, new: str) -> Author:
@@ -357,7 +357,7 @@ AUTHORS = {
         "Reporting follows the checklist",
         "A paragraph added to the Methods after the build.\n\nReporting follows the checklist",
     ),
-    "edited the one deleted": _source(_GONE, _GONE.replace("has not been", "has never been")),
+    "edited the one deleted": _source(_GONE, _GONE.replace("asks whether", "asks again whether")),
     "dropped the one deleted": _source(f"{_GONE}\n\n", ""),
     "reworded Funding": _source("received no funding", "received no specific funding"),
     "reworded a paragraph": _source(
@@ -393,7 +393,7 @@ EDITS = {
     "year": _reworded("None declared.", "None declared in 2019."),
     "reword hepatic": _reworded(_HEPATIC, _HEPATIC.replace("single", "only")),
     "rewrite hepatic": _reworded(_HEPATIC, "The generator emits one event term, hepatic injury."),
-    "rewrite gone": _reworded(_GONE, "Nobody has examined whether the signal extends to it."),
+    "rewrite gone": _reworded(_GONE, "We ask if the signal reaches example-drug alone."),
     "rewrite left out": _reworded(_LEFT_OUT, "We counted what was left out and say no more."),
     "reword left out": _reworded(_LEFT_OUT, _LEFT_OUT.replace("counted", "tallied")),
     "reword reasons": _reworded(_REASONS, _REASONS.replace("either of two", "one of two")),
@@ -408,9 +408,9 @@ EDITS = {
     "reword steps lead": _reworded(_STEPS_LEAD, "Screening followed two steps:"),
     "reword callout": _reworded(_CALLOUT, _CALLOUT.replace("shows", "gives")),
     # Deletions, moves, splits and joins.
-    "delete": _deleted("Whether the signal extends"),
-    "delete gone": _deleted("Whether the signal extends", "gone"),
-    "delete tracked": _deleted("Whether the signal extends", "tracked"),
+    "delete": _deleted("This analysis asks whether"),
+    "delete gone": _deleted("This analysis asks whether", "gone"),
+    "delete tracked": _deleted("This analysis asks whether", "tracked"),
     "delete analysed": _deleted("We analysed a synthetic"),
     "delete hepatic": _deleted("Hepatic injury is the single"),
     "delete two": Edit(
@@ -422,14 +422,14 @@ EDITS = {
     "delete second": _deleted("Screening was repeated"),
     "delete steps lead": _deleted("Screening followed these steps"),
     "delete abbreviations": _deleted("The abbreviations used"),
-    "empty": _emptied("Whether the signal extends"),
+    "empty": _emptied("This analysis asks whether"),
     "move": _moved(_NOT_INCIDENCE, "The reporting odds ratio observed", "tracked-move"),
     "move untracked": _moved(_NOT_INCIDENCE, "The reporting odds ratio observed", "untracked"),
     "heading deleted": _item_deleted(">Competing interests<"),
     "split": _split("The reporting odds ratio was computed", "Confidence intervals were derived"),
     "join": _joined("Hepatic injury is the single", "The reporting odds ratio was computed"),
     "join analysed": _joined("We analysed a synthetic", "Hepatic injury is the single"),
-    "paste gone": _pasted_into("Whether the signal extends", "None declared."),
+    "paste gone": _pasted_into("This analysis asks whether", "None declared."),
     # Edits to blocks without an identifier.
     "heading": _in_word(">Methods<", ">Methods and data<"),
     "heading two": _in_word(">Funding<", ">Funding sources<"),

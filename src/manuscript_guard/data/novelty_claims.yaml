@@ -1,0 +1,120 @@
+# Claims of novelty or absence, which G7 holds to a recorded search for the earlier study
+# (DESIGN.md, "A claim to be first, or that nothing is known, rests on a recorded search").
+#
+# Three lists, read in this order; a sentence is one claim, of the first list that reads it:
+#   priority  the paper says it is first: a warning from drafting, a failure at submission
+#   absence   the literature lacks something, in the present or the present perfect: the same
+#   softer    a claim that little is known: a note
+#
+# Each pattern is matched, case folded, in a sentence of the prose with its whitespace folded
+# to single spaces, so ` ` in a pattern is one space. `${name}` stands for a fragment below.
+# Only the paper's own claims are read (Basile, 2026-11-07): a priority given to a cited work,
+# an absence in the past tense, "to our knowledge" alone and "novel" or "new" alone are not.
+# But "for the first time" after a verb of reporting is read whatever the verb is said of, so
+# "described for the first time in 1988" is read (DESIGN.md, Known gaps).
+
+fragments:
+  # The paper as the subject of a priority claim.
+  subject: >-
+    (?:this|the (?:present|current)|our) (?:study|analysis|report|trial|cohort|review|work|paper|article|investigation|survey|series|meta-analysis|case report|case series)
+  # A hedge set off by commas: "is, to our knowledge, the first".
+  hedge: '(?:, [^,.;:]{1,60},)?'
+  # What a "first" may name of the study itself: its first visit, period, dose, line ...;
+  # and a hyphenated "first" names a kind of thing, "first-line", "first-in-class", but for
+  # "first-ever" and "first-of-its-kind", which say first.
+  part: >-
+    (?!-(?!ever\b|of-its-kind\b))(?!(?:-ever|-of-its-kind)? (?:[\w-]+ )?(?:visit|visits|period|periods|dose|doses|phase|phases|wave|waves|line|lines|round|rounds|day|days|week|weeks|month|months|year|years|stage|stages|step|steps|part|parts|cycle|cycles|session|sessions|patient|patients|participant|participants|author|authors|quarter|half|time|times|place|instance|row|column|table|figure|section|paragraph|sentence|item|question)\b)
+  # A verb of reporting, which "for the first time" may follow.
+  reporting: >-
+    (?:show|shows|showed|shown|showing|report|reports|reported|reporting|describe|describes|described|describing|demonstrate|demonstrates|demonstrated|demonstrating|identify|identifies|identified|identifying|reveal|reveals|revealed|revealing|establish|establishes|established|establishing)
+  # The kinds of work an absence claim says there are none of.
+  kind: >-
+    (?:study|studies|trial|trials|report|reports|research|investigation|investigations|analysis|analyses|review|reviews|data|work|paper|papers|publication|publications|case|cases|series|survey|surveys)
+  # Words that may stand before the kind: "no previous randomised trials".
+  qualifier: >-
+    (?:(?:other|previous|prior|earlier|published|existing|randomi[sz]ed|controlled|clinical|large|prospective|retrospective|population-based|observational|systematic|single|such|similar|comparable|direct|formal) )*
+  # What the literature is said not to have done.
+  done: >-
+    (?:examined|investigated|assessed|evaluated|reported|described|explored|addressed|compared|studied|tested|measured|quantified|documented|analy[sz]ed|focused|looked|considered|characteri[sz]ed|identified|shown|demonstrated|published|conducted|performed|established|found|determined|elucidated|confirmed)
+
+priority:
+  - id: paper-is-first
+    pattern: '\b(?:${subject}|this|ours) (?:is|represents|constitutes|provides|offers|presents|reports|describes)${hedge} the first\b${part}'
+    why: The paper says it is the first; a search for the earlier study is to be recorded
+  - id: we-are-first
+    pattern: '\bwe are${hedge} the first\b'
+    why: The authors say they are the first; a search for the earlier study is to be recorded
+  - id: we-report-first
+    pattern: '\bwe (?:here )?(?:report|describe|present|document)(?: here)?${hedge} the first\b${part}'
+    why: The paper reports the first of something; a search for the earlier one is to be recorded
+  # At most six words between the verb and the phrase, none of them ending the clause.
+  - id: first-time-reported
+    pattern: '\b${reporting}\b(?:,? (?!(?:that|which|who|whom|where|when)\b)(?![^ ]*[.;:])[^ ]+){0,6}?(?<!\bnot),? for the first time\b'
+    why: The paper says it shows something for the first time; a search for the earlier study is to be recorded
+  - id: first-time-we
+    pattern: '(?<!\bnot )\bfor the first time,? (?:we|our|here|${subject})\b'
+    why: The paper says it shows something for the first time; a search for the earlier study is to be recorded
+
+absence:
+  - id: no-study-has
+    pattern: '\bno ${qualifier}${kind} (?:(?:to date|so far|yet|as yet),? )?(?:has|have) (?:(?:yet|previously|ever|so far|to date|specifically|directly|systematically) )?(?:been )?${done}\b'
+    why: Says that no study has done it; a search for the earlier study is to be recorded
+  # "No fatal cases have been reported", "no such interaction has been described": nothing of
+  # the kind is in the literature, whatever the noun. Read of a paper's own data too ("no
+  # deaths have been reported in the trial"), a limit in DESIGN.md's Known gaps.
+  - id: none-reported
+    pattern: '\bno (?:[\w-]+ ){1,3}(?:has|have) (?:(?:yet|previously|ever|so far|to date) )?been (?:reported|described|published|documented)\b'
+    why: Says that nothing of the kind has been reported; a search for the earlier report is to be recorded
+  - id: no-study-to-date
+    pattern: '\bno ${qualifier}${kind} (?:to date|so far|as yet)\b'
+    why: Says that there is no study yet; a search for the earlier study is to be recorded
+  - id: not-been-done
+    pattern: '\b(?:has|have)(?: not| never|n''t|n’t) (?:(?:yet|previously|before|so far|to date|ever) )?been (?:(?:previously|yet|systematically|formally|directly|fully|specifically|adequately) )?${done}\b'
+    why: Says that it has not been done; a search for the earlier study is to be recorded
+  - id: yet-to-be-done
+    pattern: '\b(?:has|have) yet to be ${done}\b'
+    why: Says that it has not been done yet; a search for the earlier study is to be recorded
+  - id: there-are-no
+    pattern: '\bthere (?:is|are|has been|have been) (?:(?:currently|still|as yet|to date|so far) )?no ${qualifier}(?:study|studies|trial|trials|report|reports|data|research|publications|literature|information) (?:on|of|about|regarding|concerning|that|examining|evaluating|comparing|assessing|investigating|describing|reporting|in)\b'
+    why: Says that there are no studies of it; a search for the earlier study is to be recorded
+  - id: unexplored
+    pattern: '\b(?:is|are|remains|remain|has remained|have remained) (?:(?:largely|still|so far|as yet|entirely|completely|virtually) )?(?:unexplored|unreported|undescribed|unstudied|uninvestigated|unexamined|unaddressed)\b'
+    why: Says that nobody has looked at it; a search for the earlier study is to be recorded
+
+softer:
+  - id: little-is-known
+    pattern: '\b(?:little|less|not much|relatively little|very little) is (?:currently |yet |still )?known\b'
+    why: Says that little is known; the search that found little can be recorded
+  # "Unknown" or "unclear" counts after "remains", in "it is unclear whether", or with
+  # "still", "largely", "currently" or "as yet": "the denominator is unknown" is said of the
+  # data, not of the literature, and is not read.
+  - id: remains-unclear
+    pattern: '\b(?:remains|remain|has remained|have remained) (?:(?:largely|still|poorly|as yet) )?(?:unclear|unknown|uncertain|poorly understood|not (?:well|fully|completely) understood|incompletely understood|understudied|under-studied|underexplored|under-explored)\b|\bit (?:is|remains) (?:(?:still|currently|largely) )?(?:unclear|unknown|uncertain|not known) (?:whether|if|how|why|what|which|to what extent)\b|\b(?:is|are) (?:still|largely|currently|as yet) (?:unclear|unknown|uncertain)\b|\b(?:is|are) (?:(?:still|largely|currently) )?(?:poorly|not well|not fully|not completely|incompletely) understood\b|\b(?:is|are) (?:understudied|under-studied|underexplored|under-explored)\b|\b(?:remains|remain) to be (?:determined|established|elucidated|clarified|investigated|explored)\b'
+    why: Says that it is not known; the search that found little can be recorded
+  - id: few-studies
+    pattern: '\b(?:few|only a few|a handful of|a limited number of) ${qualifier}${kind} (?:have|has)\b'
+    why: Says that few studies have done it; the search that found few can be recorded
+  # Not a paper's own data: "our data are limited", "these data are limited", "the present
+  # data are limited".
+  - id: data-are-limited
+    pattern: '(?<!\bour )(?<!\bthese )(?:(?<!\bthe present )\bdata|\b(?:evidence|research|information|literature))(?: on [^.;:]{1,60}?)? (?:is|are|remains|remain) (?:(?:still|currently|very|extremely) )?(?:limited|scarce|sparse|lacking|insufficient)\b'
+    why: Says that the evidence is thin; the search that found it so can be recorded
+  - id: a-paucity-of
+    pattern: '\b(?:a|the) (?:paucity|scarcity|dearth|lack) of (?:(?:published|direct) )?(?:data|evidence|studies|research|information|literature|trials)\b'
+    why: Says that the evidence is thin; the search that found it so can be recorded
+  - id: little-attention
+    pattern: '\b(?:has|have) (?:received|attracted) (?:(?:relatively|very|surprisingly) )?(?:little|limited|scant|less) (?:attention|interest)\b'
+    why: Says that few have looked at it; the search that found few can be recorded
+  - id: a-gap
+    pattern: '\b(?:a|the|this|an important) (?:[\w-]+ )?gap in (?:the |our |current )?(?:literature|knowledge|evidence|research|understanding)\b'
+    why: Says that the literature has a gap; the search that found it can be recorded
+
+# What `not_searched` may not say: no search reaches every source, so none of these is true.
+# Folded for case and stops before they are compared; the search schema refuses them too.
+nothing_left_out:
+  - none
+  - nothing
+  - n/a
+  - na
+  - nil
+  - not applicable

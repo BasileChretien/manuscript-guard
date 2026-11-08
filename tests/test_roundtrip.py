@@ -1485,13 +1485,13 @@ def test_a_paragraph_the_source_changed_and_word_deleted_is_named(
     from manuscript_guard.cli import main
 
     assert main(["build", str(project), "--offline"]) == 0
-    whether = next(n for n, text in _texts(project).items() if text.startswith("Whether"))
+    whether = next(n for n, text in _texts(project).items() if text.startswith("This analysis"))
     returned = _without_paragraph(
         project / "build" / "manuscript.docx", tmp_path / "back.docx", whether
     )
     path = project / "manuscript" / "main.md"
     path.write_text(
-        path.read_text(encoding="utf-8").replace("been examined.", "been examined before.", 1),
+        path.read_text(encoding="utf-8").replace("asks whether", "asks again whether", 1),
         encoding="utf-8",
     )
 
@@ -4648,7 +4648,9 @@ def test_a_word_changed_in_word_keeps_the_bold_and_straight_quotes_beside_it(
     off, "common" in "is a common reason" replaced by "frequent"; then, with Track Changes
     on, "repeated" in "reports repeated another's" replaced by "duplicated", the revision
     left as Word recorded it; saved as .docx. The person who saved it is renamed `Ana
-    Author` and Word's account record of them removed; nothing else was changed. The
+    Author` and Word's account record of them removed; nothing else was changed, but for
+    the example's sentence that is no longer a claim of absence, whose words were changed
+    in document.xml on 2026-11-08 to match the example (item 4). The
     abstract is one paragraph, and its first stretch, up to its first value, holds the bold
     "Background." and "Methods."; the Methods stretch holds "another's", which the build
     printed curly.
@@ -7358,13 +7360,13 @@ def test_a_move_into_another_section_is_reported_not_applied(
         # position then names a different paragraph.
         moved = next(p for p in tagged if "Several limitations" in p)
         xml = xml.replace(moved, "", 1).replace(tagged[1], moved + tagged[1], 1)
-        return xml.replace("has not been examined.", "has not yet been examined.", 1)
+        return xml.replace("asks whether", "asks again whether", 1)
 
     returned = rewrite(document, tmp_path / "across.docx", edit)
     capsys.readouterr()
     assert main(["import", str(returned), str(project), "--apply"]) == 1
     after = source.read_text(encoding="utf-8")
-    expected = before.replace("has not been examined.", "has not yet been examined.")
+    expected = before.replace("asks whether", "asks again whether")
     assert by_heading(after) == by_heading(expected), "every paragraph stays in its section"
     assert "different section" in capsys.readouterr().out
 
@@ -8240,7 +8242,9 @@ def cut_before_figure(project: Path, tmp_path: Path, change=None) -> tuple[Path,
     and the copy Word saved after the second was cut and pasted above the first, carrying
     this build's properties and picture, then passed through `change`. Word saved it from a
     build on another machine, where the analysis may draw the figure otherwise; Word keeps a
-    picture's bytes, under a new name, so this build's picture is put where Word put it."""
+    picture's bytes, under a new name, so this build's picture is put where Word put it. On
+    2026-11-08 the example's sentence that is no longer a claim of absence had its words
+    changed to match in the copy's document.xml (item 4); nothing else of Word's changed."""
     source = project / "manuscript" / "main.md"
     text = source.read_text(encoding="utf-8")
     old = "{{table.two_by_two}}\n\n{{figure.forest}}\n"
@@ -9272,11 +9276,11 @@ def test_a_paragraph_cut_beside_a_changed_heading_is_not_written_twice(
     document = built(project)
     source = project / "manuscript" / "main.md"
     if changed == "heading-retitled-in-the-md":
-        cut, words = "Whether the signal", "whether the signal extends"
+        cut, words = "This analysis asks", "whether the signal extends"
         onto = "Drug-induced hepatic injury remains"
         pasted = (
-            " Moreover, whether the signal extends to example-drug specifically has not been "
-            "examined."
+            " Moreover, this analysis asks whether the signal extends to example-drug "
+            "specifically."
         )
     else:
         cut, words = "The synthetic dataset", "the code that generates it"
@@ -9944,7 +9948,9 @@ def test_word_s_own_split_and_the_reworded_paragraph_after_it_are_told_apart(
     paragraph. Word left the identifier's bookmark on the first half, gave the second half
     none and the first half's style, wrote its own style ids (`a0` for Body Text, as its
     Japanese interface names it) and a `lastRenderedPageBreak`. The person who saved it is
-    renamed `Ana Author` in `docProps/core.xml`; nothing else was changed.
+    renamed `Ana Author` in `docProps/core.xml`; nothing else was changed, but for the
+    example's sentence that is no longer a claim of absence, whose words were changed in
+    document.xml on 2026-11-08 to match the example (item 4).
     It carries this build's properties, its source stamp and its record of paragraphs, as
     the fixtures of `tests/test_filed_comments.py` do, since the build it was saved from
     may print its results otherwise. Both paragraphs are refused, each with its own reason."""
@@ -10067,7 +10073,7 @@ def test_word_layout_markup_never_reaches_the_source(
         paragraph = tagged_xml(xml)[2]
         if markup == "tab-in-a-run":
             changed = paragraph.replace(
-                '<w:t xml:space="preserve">Whether', '<w:tab /><w:t xml:space="preserve">Whether'
+                '<w:t xml:space="preserve">This', '<w:tab /><w:t xml:space="preserve">This'
             )
         elif markup == "tab-stops":
             changed = paragraph.replace(
@@ -10076,7 +10082,7 @@ def test_word_layout_markup_never_reaches_the_source(
         else:
             changed = paragraph.replace("</w:pPr>", '<w:textAlignment w:val="auto" /></w:pPr>', 1)
         assert changed != paragraph
-        changed = changed.replace("has not been examined.", "has not yet been examined.")
+        changed = changed.replace("asks whether", "asks again whether")
         return xml.replace(paragraph, changed, 1)
 
     returned = rewrite(document, tmp_path / "tabbed.docx", edit)
@@ -10084,7 +10090,7 @@ def test_word_layout_markup_never_reaches_the_source(
     text = source.read_text(encoding="utf-8")
     assert "<w:" not in text and "</w:" not in text
     assert (
-        "Whether the signal extends to example-drug specifically has not yet been examined."
+        "This analysis asks again whether the signal extends to example-drug specifically."
         in text
     )
 
@@ -10801,12 +10807,12 @@ def test_a_paragraph_deleted_after_a_move_landed_in_front_of_it_is_reported_dele
 
     def edit(xml: str) -> str:
         tagged = tagged_xml(xml)
-        assert "Whether the signal extends" in tagged[2]
+        assert "This analysis asks whether" in tagged[2]
         xml = _word_paste(xml, [tagged[3]], tagged[2], "tracked-move")
         landing = next(
             p
             for p in re.findall(r"<w:p>.*?</w:p>", xml, re.DOTALL)
-            if "Whether the signal extends" in p
+            if "This analysis asks whether" in p
         )
         xml = xml.replace(landing, _tracked_deletion(landing), 1)
         assert ">Methods</w:t>" in xml
@@ -12102,7 +12108,7 @@ def _localised(document: Path, target: Path, change) -> Path:
 @pytest.mark.parametrize(
     "where",
     [
-        ("heading", ">Methods</w:t>", ">Study design</w:t>", "Whether the signal"),
+        ("heading", ">Methods</w:t>", ">Study design</w:t>", "This analysis asks"),
         ("caption", "Reports by drug group.", "Reports of each drug group.", "The database"),
         ("reference", "Hepatic Injury in a", "Liver Injury in a", "None declared."),
     ],

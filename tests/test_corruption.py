@@ -1231,7 +1231,7 @@ def test_a_latex_citation_typed_with_a_tie_before_its_year_is_given_the_generic_
     shutil.rmtree(project / "manuscript")
     shutil.copytree(TWIN, project / "manuscript")
     path = project / "manuscript" / "main.tex"
-    anchor = "Whether the signal extends to example-drug specifically"
+    anchor = "This analysis asks whether the signal extends to example-drug specifically"
     text = path.read_text(encoding="utf-8")
     assert text.count(anchor) == 1
     path.write_text(text.replace(anchor, f"As {typed} reported, it was studied. {anchor}"),
@@ -3879,6 +3879,155 @@ def test_a_currency_entry_that_is_not_what_its_records_say_is_caught(
     elif corrupt is not None:
         _currency_text(project, *corrupt)
     assert _currency_findings(project, stage) == said
+
+
+# ----------------------------------------------------- a claim of novelty or absence, G7
+
+_ABSENT = "No study has examined example-drug and hepatic injury in children."
+_NOVELTY_NOTE = "Embase, Web of Science, conference abstracts and work not in English"
+
+
+def _claimed(root: Path, where: str) -> None:
+    """The example given a claim of absence: in its main text, in its supplement, or in a
+    LaTeX manuscript in its place."""
+    if where == "latex":
+        entry = _as_latex(root)
+        entry.write_text("\\documentclass{article}\n\\begin{document}\n\\section{Introduction}\n"
+                         f"{_ABSENT}\n\\end{{document}}\n", encoding="utf-8")  # fmt: skip
+    elif where == "supplement":
+        path = root / "manuscript" / "supplementary" / "S2_novelty.md"
+        path.write_text(f"# Supplementary note\n\n{_ABSENT}\n", encoding="utf-8")
+    else:
+        main = main_md(root)
+        main.write_text(main.read_text(encoding="utf-8") + f"\n\n{_ABSENT}\n", encoding="utf-8")
+
+
+def _novelty_search(root: Path, number: int, step: str = "N1", on: str = "2026-11-01",
+                    **more) -> Path:  # fmt: skip
+    from manuscript_guard.currency import records
+
+    record = {"entry": "c1", "number": number, "step": step, "source": "pubmed",
+              "query": "example-drug hepatic injury children", "terms_by": "Ada Example",
+              "searched_on": on, "years": {"from": None, "to": on}, "not_searched": _NOVELTY_NOTE,
+              "status": "run", "hits": len(more.get("candidates", ())), "candidates": [],
+              **more}  # fmt: skip
+    if step == "N2":
+        record["seed"] = "doi:10.5555/near"
+    return records.write_search(load_project(root)[0], record)
+
+
+def _novelty_findings(root: Path, stage: str, monkeypatch: pytest.MonkeyPatch) -> list:
+    from datetime import date
+
+    from manuscript_guard.gates import currency as gate
+
+    monkeypatch.setattr(gate, "today", lambda: date(2026, 11, 8))
+    return [one for one in _currency_findings(root, stage)
+            if one[0].startswith(("novelty-", "currency-"))]  # fmt: skip
+
+
+@pytest.mark.parametrize("where", ["markdown", "latex", "supplement"])
+@pytest.mark.parametrize(("stage", "severity"), [("drafting", "warn"), ("submission", "fail")])
+def test_a_claim_of_absence_with_no_recorded_search_is_caught(
+    project: Path, where: str, stage: str, severity: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A claim that no study has examined something is a claim about the literature, and
+    with no recorded search for the earlier study it warns while drafting and fails at
+    submission (D4.2), in Markdown, in LaTeX and in the supplement alike."""
+    _claimed(project, where)
+    assert _novelty_findings(project, stage, monkeypatch) == [("novelty-unsearched", severity)]
+
+
+def _marked(root: Path) -> None:
+    from manuscript_guard.currency import novelty_command
+
+    novelty_command.mark(load_project(root)[0], "no study has examined example-drug",
+                         "Ada Example")  # fmt: skip
+
+
+def _kept_works_and_none_followed(root: Path) -> None:
+    _novelty_search(root, 1, candidates=["doi:10.5555/near"])
+
+
+def _searched_seven_months_ago(root: Path) -> None:
+    _novelty_search(root, 1, on="2026-04-01")
+
+
+def _a_novelty_search_edited(root: Path) -> None:
+    path = _novelty_search(root, 1)
+    path.write_bytes(path.read_bytes().replace(b"hepatic injury children", b"liver children"))
+
+
+def _by_hand_alone(root: Path) -> None:
+    _novelty_search(root, 1, status="by hand", hits=3)
+
+
+def _no_claim_by_a_model(root: Path) -> None:
+    path = root / "literature" / "currency.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["not_a_claim"] = {"by": "Claude", "why": "it reads as one",
+                                             "decided_on": "2026-11-08"}  # fmt: skip
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def _reworded_after_its_search(root: Path) -> None:
+    _novelty_search(root, 1)
+    main = main_md(root)
+    main.write_text(main.read_text(encoding="utf-8").replace(" in children", " in older children"),
+                    encoding="utf-8")  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("corrupt", "said"),
+    [
+        pytest.param(None, [("novelty-unsearched", "warn")], id="marked, not searched"),
+        pytest.param(_kept_works_and_none_followed, [("novelty-unsearched", "warn")],
+                     id="works kept and none followed forward"),
+        pytest.param(_searched_seven_months_ago, [("novelty-search-stale", "warn")],
+                     id="searched seven months ago"),
+        pytest.param(_a_novelty_search_edited, [("currency-record-edited", "fail"),
+                                                ("novelty-unsearched", "warn")],
+                     id="a search record edited"),
+        pytest.param(_by_hand_alone, [("novelty-unsearched", "warn")], id="by hand alone"),
+        pytest.param(_no_claim_by_a_model, [("currency-decision-not-human", "fail"),
+                                            ("novelty-unsearched", "warn")],
+                     id="no claim, by a model"),
+        pytest.param(_reworded_after_its_search, [("currency-entry-unplaced", "info"),
+                                                  ("novelty-unsearched", "warn")],
+                     id="reworded after its search"),
+    ],
+)  # fmt: skip
+def test_a_claim_of_novelty_that_its_record_does_not_answer_is_caught(
+    project: Path, corrupt, said: list, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each way the record of a claim's search can fail it: no search, works found and none
+    followed forward, a search more than six months old, a record edited, a search by hand
+    standing alone, a model's word that it is no claim, and the claim reworded after its
+    search, which takes it off its entry."""
+    _claimed(project, "markdown")
+    _marked(project)
+    if corrupt is not None:
+        corrupt(project)
+    assert _novelty_findings(project, "drafting", monkeypatch) == said
+
+
+def test_what_was_not_searched_may_not_say_nothing(project: Path) -> None:
+    """D4.4: the field saying what a search did not reach is required and not empty. "None"
+    is refused by the command and by the record's schema, since no search reaches every
+    source."""
+    from manuscript_guard.contracts import ContractError
+    from manuscript_guard.currency import command, novelty_search
+
+    _claimed(project, "markdown")
+    _marked(project)
+    with pytest.raises(command.Refused, match="--not-searched"):
+        novelty_search.run(load_project(project)[0], "c1", terms_text="example-drug", forward=None,
+                           not_searched="none", by="Ada Example", dry_run=True)  # fmt: skip
+    with pytest.raises(ContractError):
+        _novelty_search(project, 1, not_searched="None.")
+
+
+# ------------------------------------------------------------------------------- replies
 
 
 def _replies(root: Path) -> Path:
@@ -11941,7 +12090,7 @@ def test_an_expression_of_concern_or_a_correction_is_not_a_retraction(project: P
 #: A sentence that claims a cause and cites only the example's first reference.
 _CAUSE_ON_ONE = "Example-drug caused hepatic injury in a patient [@fictionalHepaticCohort2021]."
 #: Where the example's Introduction is given a sentence.
-_BEFORE_WHETHER = "Whether the signal extends"
+_BEFORE_WHETHER = "This analysis asks whether"
 _CASE_REPORT = {"status": "found", "doi": _LOOKED_DOI,
                 "pubtypes": ["Case Reports", "Journal Article"]}  # fmt: skip
 
@@ -18832,7 +18981,7 @@ def test_a_record_import_could_not_add_to_makes_import_exit_one(
     if shutil.which("pandoc") is None:
         pytest.skip("pandoc is not installed")
     returned = commented(built(project), tmp_path / "back.docx",
-                         [{"on": "Whether the signal extends", "text": "First."}])  # fmt: skip
+                         [{"on": "This analysis asks whether", "text": "First."}])  # fmt: skip
     assert run("import", str(returned), str(project), "--apply")[0] == 0
     (name,) = records(project)
     path = project / "review" / "comments" / name
@@ -18840,7 +18989,7 @@ def test_a_record_import_could_not_add_to_makes_import_exit_one(
     record["findings"][0]["finding"] = "Fine as it is."
     _rewrite_comments(path, record)
     again = commented(built(project), tmp_path / "again.docx", [
-        {"on": "Whether the signal extends", "text": "First."},
+        {"on": "This analysis asks whether", "text": "First."},
         {"on": "Drug-induced hepatic injury", "text": "Second."},
     ])  # fmt: skip
     code, said = run("import", str(again), str(project), "--apply")
@@ -19350,7 +19499,7 @@ def _marked_up_copy(project: Path) -> Path:
     assert main(["respond", str(project), "--open"]) == 0
     source = main_md(project)
     text = source.read_text(encoding="utf-8")
-    source.write_text(text.replace("has not been examined", "has not yet been examined", 1),
+    source.write_text(text.replace("asks whether", "asks again whether", 1),
                       encoding="utf-8")  # fmt: skip
     assert main(["build", str(project), "--offline", "--skip-checks", "--marked-up"]) == 0
     return next((project / "build" / "marked-up").glob("manuscript*.docx"))
@@ -19858,8 +20007,11 @@ def test_a_document_numbered_under_older_rules_is_not_merged(
     ("was", "now"),
     [
         ("# Introduction\n\n", "# Introduction\n\nA paragraph added after the build.\n\n"),
-        ("examined.\n\n# Methods", "examined.\n\nA paragraph added after the build.\n\n# Methods"),
-        ("Whether the signal extends to example-drug specifically has not been examined.\n\n", ""),
+        (
+            "specifically.\n\n# Methods",
+            "specifically.\n\nA paragraph added after the build.\n\n# Methods",
+        ),
+        ("This analysis asks whether the signal extends to example-drug specifically.\n\n", ""),
     ],
     ids=["added above", "added directly above a heading", "removed above"],
 )
@@ -19964,10 +20116,10 @@ def test_a_value_paragraph_retyped_into_the_one_before_is_not_merged(
 
     path = main_md(project)
     text = path.read_text(encoding="utf-8")
-    anchor = "has not been examined.\n\n# Methods"
+    anchor = "example-drug specifically.\n\n# Methods"
     assert anchor in text
     path.write_text(
-        text.replace(anchor, "has not been examined.\n\n{{results.ror.point}}\n\n# Methods"),
+        text.replace(anchor, "example-drug specifically.\n\n{{results.ror.point}}\n\n# Methods"),
         encoding="utf-8",
     )
     assert main(["build", str(project), "--offline"]) == 0
@@ -19975,7 +20127,7 @@ def test_a_value_paragraph_retyped_into_the_one_before_is_not_merged(
     def retyped(xml: str) -> str:
         value = _word_paragraph(xml, ">3.84<")
         return xml.replace(value, "", 1).replace(
-            "has not been examined.", "has not been examined. 3.84", 1
+            "example-drug specifically.", "example-drug specifically. 3.84", 1
         )
 
     returned = _sent_back(project, tmp_path, retyped, recorded=False)
@@ -20058,7 +20210,7 @@ def test_a_paragraph_joined_to_one_the_source_changed_is_not_merged(
 
     def joined(xml: str) -> str:
         first = _word_paragraph(xml, "Drug-induced hepatic injury remains")
-        second = _word_paragraph(xml, "Whether the signal")
+        second = _word_paragraph(xml, "This analysis asks")
         inner = re.sub(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", "", second, flags=re.DOTALL)
         if lost:
             inner = re.sub(r"<w:bookmark(?:Start|End)[^>]*/>", "", inner)
@@ -20068,7 +20220,7 @@ def test_a_paragraph_joined_to_one_the_source_changed_is_not_merged(
     path = main_md(project)
     path.write_text(
         path.read_text(encoding="utf-8").replace(
-            "has not been examined.", "has not been examined before.", 1
+            "asks whether", "asks again whether", 1
         ),
         encoding="utf-8",
     )
@@ -20091,7 +20243,7 @@ def test_a_block_tagged_since_the_build_joined_into_the_one_above_is_not_merged(
     from manuscript_guard.cli import main
 
     path = main_md(project)
-    signal = "Whether the signal extends to example-drug specifically has not been examined.\n"
+    signal = "This analysis asks whether the signal extends to example-drug specifically.\n"
     item = "- No other signal was examined in this analysis.\n"
     text = path.read_text(encoding="utf-8")
     assert signal in text
@@ -20099,7 +20251,7 @@ def test_a_block_tagged_since_the_build_joined_into_the_one_above_is_not_merged(
     assert main(["build", str(project), "--offline"]) == 0
 
     def joined(xml: str) -> str:
-        above = _word_paragraph(xml, "Whether the signal")
+        above = _word_paragraph(xml, "This analysis asks")
         below = next(
             p
             for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
@@ -20176,7 +20328,7 @@ def test_a_yaml_block_in_the_body_heads_nothing(project: Path) -> None:
     chosen in advance."""
     path = main_md(project)
     text = path.read_text(encoding="utf-8")
-    anchor = "Whether the signal extends to example-drug specifically has not been examined.\n"
+    anchor = "This analysis asks whether the signal extends to example-drug specifically.\n"
     assert anchor in text
     block = "\n---\nnote: x\n# Methods\n---\n\nThe difference was p < 0.001.\n"
     path.write_text(text.replace(anchor, anchor + block, 1), encoding="utf-8")
@@ -20217,7 +20369,7 @@ def test_a_yaml_block_inside_a_comment_brings_back_no_heading(project: Path) -> 
     paragraph after it, and its `p < 0.001` passed as the alpha."""
     path = main_md(project)
     text = path.read_text(encoding="utf-8")
-    anchor = "Whether the signal extends to example-drug specifically has not been examined.\n"
+    anchor = "This analysis asks whether the signal extends to example-drug specifically.\n"
     comment = "\n<!--\n\n---\nnote: x\n---\n\n# Methods\n\n-->\n\nThe difference was p < 0.001.\n"
     path.write_text(text.replace(anchor, anchor + comment, 1), encoding="utf-8")
     assert "unclassified-number" in codes(gate_report(project))
@@ -24715,8 +24867,8 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     """One record a reviewer, no readers named: nothing about them changed. Rounds three to
-    ten read revisions with the earlier rounds in front of them, so the tenth supersedes
-    the nine before it and each says it was not blinded."""
+    eleven read revisions with the earlier rounds in front of them, so the eleventh
+    supersedes the ten before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
@@ -24724,10 +24876,12 @@ def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
     superseded = [("review-superseded", f"round-{n}")
                   for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1),
-                                  (8, 1), (9, 1))
+                                  (8, 1), (9, 1), (10, 1))
                   for _ in range(many)]  # fmt: skip
-    assert said == superseded + [("round-not-blinded", "review")] * 8, report.render(project)
-    assert report.counts["review_rounds_complete"] == 10
+    # Sorted as `said` is: "round-10" stands between "round-1" and "round-2".
+    assert said == sorted(superseded + [("round-not-blinded", "review")] * 9), report.render(
+        project)
+    assert report.counts["review_rounds_complete"] == 11
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:
@@ -25524,8 +25678,8 @@ _A_MODEL_SUGGESTED = [
     {
         "severity": "minor",
         "where": "Introduction",
-        "finding": "Say plainly that nobody has looked.",
-        "edits": [{"old": "has not been examined", "new": "remains unexamined"}],
+        "finding": "Say plainly what is asked.",
+        "edits": [{"old": "asks whether", "new": "asks only whether"}],
     },
 ]
 
@@ -25533,7 +25687,7 @@ _A_MODEL_SUGGESTED = [
 @pytest.mark.parametrize(
     "mutate",
     [
-        lambda d: d["findings"][0]["edits"][0].update(new="was never examined by anyone"),
+        lambda d: d["findings"][0]["edits"][0].update(new="asks only, and plainly, whether"),
         lambda d: d["findings"][0]["edits"].append({"old": "specifically", "new": "alone"}),
         lambda d: d["findings"][0].pop("edits"),
     ],
@@ -25577,8 +25731,8 @@ def test_an_edit_that_changes_a_number_a_binding_or_a_citation_is_not_written(
     path = project / "manuscript" / "main.md"
     path.write_text(
         path.read_text(encoding="utf-8").replace(
-            "Whether the signal extends to example-drug specifically has not been examined.",
-            "Whether the signal extends to example-drug specifically has not been examined, "
+            "This analysis asks whether the signal extends to example-drug specifically.",
+            "This analysis asks whether the signal extends to example-drug specifically, "
             "as the agency said [see @fictionalClassSignal2019, p. 4].",
         ),
         encoding="utf-8",
@@ -25590,7 +25744,7 @@ def test_an_edit_that_changes_a_number_a_binding_or_a_citation_is_not_written(
             ("computed from a 2 x 2 table", "computed from a 3 x 2 table"),
             ("a period of 10 years", "ten years"),
             ("as the agency said", "as {{results.ror.point}} said"),
-            ("has not been examined", "has not been examined @fictionalClassSignal2019"),
+            ("asks whether", "asks whether @fictionalClassSignal2019"),
         ),
         finding("r8-pe-03", ("p. 4", "p. 5")),
     )
@@ -25600,7 +25754,7 @@ def test_an_edit_that_changes_a_number_a_binding_or_a_citation_is_not_written(
         "computed from a 2 x 2 table": "more than a change of words",
         "a period of 10 years": "only with a value",
         "as the agency said": "Markdown reads as markup",
-        "has not been examined": "Markdown reads as markup",
+        "asks whether": "Markdown reads as markup",
         "p. 4": "inside a citation",
     }
     for old, why in reasons.items():
@@ -25620,8 +25774,8 @@ def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: 
     path = project / "manuscript" / "main.md"
     path.write_text(
         path.read_text(encoding="utf-8").replace(
-            "Whether the signal extends to example-drug specifically has not",
-            "Whether the signal extends to *example-drug* specifically  \nhas not",
+            "This analysis asks whether the signal extends to example-drug specifically",
+            "This analysis asks  \nwhether the signal extends to *example-drug* specifically",
         ),
         encoding="utf-8",
     )
@@ -25631,8 +25785,8 @@ def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: 
             "r8-pe-02",
             ("the", "THE"),
             ("words that are nowhere", "other words"),
-            ("has not been examined.\n\nWhether", "x"),
-            ("specifically has not", "has not"),
+            ("specifically.\n\nWe analysed", "x"),
+            ("analysis asks whether", "analysis asks if"),
             ("Reports were included without", "Reports were taken without"),
             ("were included without restriction", "were included with no restriction"),
             ("example-drug specifically", "the drug specifically"),
@@ -25645,8 +25799,8 @@ def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: 
         "words that are nowhere": "not in the manuscript as it stands",
         # Quoted as the reader was sent it, across the emphasis the source holds.
         "example-drug specifically": "only as the build prints them, across markup",
-        "has not been examined. Whether": "two paragraphs",
-        "specifically has not": "across a line break",
+        "specifically. We analysed": "two paragraphs",
+        "analysis asks whether": "across a line break",
         "Reports were included without": "same words",
         "were included without restriction": "same words",
     }
@@ -25690,20 +25844,20 @@ def test_an_edit_that_written_in_would_be_more_than_its_words_is_not_written(
     path = project / "manuscript" / "main.md"
     path.write_text(
         path.read_text(encoding="utf-8").replace(
-            "Whether the signal extends to example-drug specifically",
-            "Whether the signal extends to _example-drug_, specifically",
+            "This analysis asks whether the signal extends to example-drug specifically",
+            "This analysis asks whether the signal extends to _example-drug_, specifically",
         ),
         encoding="utf-8",
     )
     with_edits(
         project,
-        finding("r8-pe-02", ("Whether the signal", "+ Whether the signal"),
+        finding("r8-pe-02", ("This analysis", "+ This analysis"),
                 (", specifically", "s specifically")),
     )  # fmt: skip
     code, said = suggest(project)
     assert code == 0, said
     reasons = {
-        "Whether the signal": "no longer be a paragraph of its own",
+        "This analysis": "no longer be a paragraph of its own",
         ", specifically": "would not read as Word shows it",
     }
     for old, why in reasons.items():
@@ -25742,7 +25896,7 @@ def test_an_accepted_suggestion_whose_words_are_not_the_document_s_is_not_merged
     assert code == 1, said
     assert "cannot be written into the source where its words were" in said, said
     text = main.read_text(encoding="utf-8")
-    assert "Whether the signal extends to example-drug specifically has not been examined." in (
+    assert "This analysis asks whether the signal extends to example-drug specifically." in (
         text
     )
     assert "in particular" not in text
@@ -28047,9 +28201,9 @@ def test_a_language_pass_that_hedged_a_comparison_is_shown(project: Path) -> Non
 def test_a_language_pass_that_dropped_a_not_is_shown(project: Path) -> None:
     assert _claim_moved(
         project,
-        "specifically has not been examined.",
-        "specifically has been examined.",
-        "Whether the signal extends",
+        "two are not directly comparable",
+        "two are directly comparable",
+        "The reporting odds ratio observed here exceeds",
     ) == ("claim-negation", "'not' is gone")
 
 

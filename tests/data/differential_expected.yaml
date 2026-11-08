@@ -62,9 +62,11 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G14 reports a name from the code in a sentence, `code-name-in-prose`: a word with
-      underscores, such as the `R_0` the inputs' terms hold, a results key or a dictionary
-      variable; a warning, and a failure at the submission stage
+      G7 reads claims of novelty or absence ("no study has examined") and counts them,
+      with how many rest on a recorded search, how many on one more than six months old and
+      how many a person said are no claim (`novelty_claims`, `novelty_searched`,
+      `novelty_stale`, `novelty_not_claims`), and a claim with no search is
+      `novelty-unsearched`, a warning, and a failure at the submission stage
   - reading: numbers
     why: >-
       an e-mail address is structural, `email-address`, and an interleukin, "IL-4",

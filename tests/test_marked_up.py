@@ -540,8 +540,8 @@ def _reword(project: Path, was: str, now: str) -> None:
     source.write_text(text.replace(was, now, 1), encoding="utf-8")
 
 
-_WAS = "Whether the signal extends to example-drug specifically has not been examined."
-_NOW = "Whether the signal extends to example-drug specifically has not yet been examined."
+_WAS = "This analysis asks whether the signal extends to example-drug specifically."
+_NOW = "This analysis asks again whether the signal extends to example-drug specifically."
 
 
 @needs_pandoc
@@ -572,7 +572,7 @@ def test_a_round_keeps_the_document_sent_and_the_build_marks_up_what_changed_sin
     marked = next((project / "build" / "marked-up").glob("manuscript*.docx"))
     assert "against revision/round-1/submitted/manuscript.docx: 1 words inserted" in said
     assert _line(shown(marked), "example-drug specifically").endswith(
-        "has not {+yet +}been examined."
+        "asks{+ again+} whether the signal extends to example-drug specifically."
     )
     assert marked_up_of(marked)["round"] == 1
     projekt, _ = load_project(project)
@@ -623,7 +623,7 @@ def test_a_round_built_from_other_text_keeps_nothing_and_says_where_the_file_goe
     # Highlighted, nothing is tracked: the word typed is a run highlighted yellow.
     assert "{+" not in _line(shown(marked), "example-drug specifically")
     assert re.search(
-        r'<w:highlight w:val="yellow" />(?:(?!</w:r>).)*<w:t xml:space="preserve">yet ',
+        r'<w:highlight w:val="yellow" />(?:(?!</w:r>).)*<w:t xml:space="preserve"> again',
         _xml(marked), re.DOTALL,
     )  # fmt: skip
 

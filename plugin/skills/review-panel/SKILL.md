@@ -124,7 +124,7 @@ the seal:
   finding: The aim is stated as a gap rather than a question.
   edits:
     - old: has not been examined
-      new: remains unexamined
+      new: is the question this analysis asks
 ```
 
 `old` is the manuscript's words exactly as the `.md` has them, enough of them to appear only

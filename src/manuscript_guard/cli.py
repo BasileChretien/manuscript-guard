@@ -3675,7 +3675,21 @@ def cmd_references(args: argparse.Namespace) -> int:
             return _references_search(project, args)
         if args.replaces is not None and args.reading is None:
             raise command.Refused("--replaces goes with --reading")
-        if args.mark is not None:
+        if args.not_a_claim and args.novelty is None:
+            raise command.Refused("--not-a-claim goes with --novelty")
+        if args.novelty is not None:
+            from manuscript_guard.currency import novelty_command
+
+            if args.not_a_claim and not args.why:
+                raise command.Refused("--not-a-claim needs --why, the reason")
+            print(novelty_command.mark(project, args.novelty, args.as_, args.id, args.question,
+                                       args.why if args.not_a_claim else None))  # fmt: skip
+        elif args.hand_search is not None:
+            from manuscript_guard.currency import novelty_search
+
+            entry_id, file = args.hand_search
+            print(novelty_search.hand_search(project, entry_id, Path(file), args.as_))
+        elif args.mark is not None:
             words, key = args.mark
             print(command.mark(project, words, key, args.as_, args.id, args.question))
         elif args.reading is not None:
@@ -3749,10 +3763,23 @@ def _currency_comments(project) -> int:
 def _search_flags(args: argparse.Namespace) -> list[str]:
     """The flags of `references --search` and `--replay` given without either."""
     given = [("--terms", args.terms), ("--against", args.against),
+             ("--forward", args.forward), ("--not-searched", args.not_searched),
              ("--dry-run", args.dry_run or None)]  # fmt: skip
-    if args.mark is None:
+    if args.mark is None and args.novelty is None:
         given.append(("--question", args.question))
     return [flag for flag, value in given if value is not None]
+
+
+def _is_novelty(project, entry_id: str) -> bool:
+    """Whether `entry_id` is an entry of kind `novelty`; False where there is no such entry,
+    which the search then refuses with the reason."""
+    from manuscript_guard.currency import command, records
+
+    try:
+        _document, raw = command._entry_of(project, entry_id)
+    except command.Refused:
+        return False
+    return raw.get("kind") == records.NOVELTY
 
 
 def _references_search(project, args: argparse.Namespace) -> int:
@@ -3764,6 +3791,8 @@ def _references_search(project, args: argparse.Namespace) -> int:
     misplaced = _search_flags(args)
     if args.search is None and args.replay is None:
         raise command.Refused(f"{', '.join(misplaced)} go with --search or --replay")
+    if args.not_a_claim:
+        raise command.Refused("--not-a-claim goes with --novelty, not with --search or --replay")
     # Another action's flags were dropped without a word (the review of #531's merge, and
     # round 1 of #534).
     for action, flags in (("--assess", ("reply", "says", "quote")), ("--refuse", ("why",)),
@@ -3774,12 +3803,30 @@ def _references_search(project, args: argparse.Namespace) -> int:
         if given:
             named = f"{', '.join(given[:-1])} and {given[-1]}"
             raise command.Refused(f"{named} go with {action}, not with --search or --replay")
+    from manuscript_guard.currency import novelty_search
+
+    novel = _is_novelty(project, args.replay or args.search)
     if args.replay is not None:
-        if args.terms or args.against or args.question:
+        if (args.terms or args.against or args.question or args.forward
+                or args.not_searched):  # fmt: skip
             raise command.Refused("--replay runs the recorded searches as they were: it takes "
-                                  "no --terms, --against or --question")  # fmt: skip
-        run = searching.replay(project, args.replay, dry_run=args.dry_run)
+                                  "no --terms, --against, --forward, --not-searched or "
+                                  "--question")  # fmt: skip
+        run = (novelty_search.replay if novel else searching.replay)(
+            project, args.replay, dry_run=args.dry_run)  # fmt: skip
+    elif novel:
+        if args.against is not None:
+            raise command.Refused(f"{args.search} is a claim of novelty, whose search for the "
+                                  "earlier study is phrased against the claim already: it "
+                                  "takes no --against")  # fmt: skip
+        run = novelty_search.run(project, args.search, terms_text=args.terms,
+                                 forward=args.forward, not_searched=args.not_searched,
+                                 by=args.as_, question=args.question,
+                                 dry_run=args.dry_run)  # fmt: skip
     else:
+        if args.forward is not None or args.not_searched is not None:
+            raise command.Refused("--forward and --not-searched go with a claim of novelty "
+                                  "(`references --novelty`), not with a cited work's entry")
         run = searching.run_search(project, args.search, terms_text=args.terms, by=args.as_,
                                    against_text=args.against, question=args.question,
                                    dry_run=args.dry_run)  # fmt: skip
@@ -7563,7 +7610,11 @@ def build_parser() -> argparse.ArgumentParser:
         "reply to one says. --search runs the fixed "
         "searches for one entry and records each, and --replay runs the recorded ones again; "
         "they send the terms and the identifiers of the cited work and of the works found, "
-        "never the question or a sentence of the manuscript. It calls no model.",
+        "never the question or a sentence of the manuscript. It also lists each claim of "
+        "novelty or absence (\"no study has examined\") with how far its search got: --novelty "
+        "marks one, --search runs its search for the earlier study (--terms, N1) and the look "
+        "forward from the nearest work found (--forward, N2), and --hand-search files a "
+        "search a person ran by hand. It calls no model.",
     )
     references.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     action = references.add_mutually_exclusive_group()
@@ -7576,6 +7627,17 @@ def build_parser() -> argparse.ArgumentParser:
                             "is made without seeing the others")  # fmt: skip
     action.add_argument("--mark", nargs=2, metavar=("WORDS", "@KEY"),
                         help="mark the sentence citing KEY that holds WORDS as a claim to check")
+    action.add_argument("--novelty", metavar="WORDS",
+                        help="mark the claim of novelty or absence that holds WORDS (\"no study "
+                        "has examined\"), to be held to a recorded search for the earlier "
+                        "study")  # fmt: skip
+    references.add_argument("--not-a-claim", action="store_true",
+                            help="--novelty: a person's word, with --why and --as, that the "
+                            "sentence makes no claim about the literature")  # fmt: skip
+    action.add_argument("--hand-search", nargs=2, metavar=("ID", "FILE"),
+                        help="file a search a person ran by hand in a database the tool cannot "
+                        "reach, for a claim of novelty (with --as, the person); it adds to the "
+                        "record and never counts as N1 or N2")  # fmt: skip
     action.add_argument("--reading", type=Path, metavar="FILE",
                         help="file a reading, once and sealed, and run the rules for its entry")
     action.add_argument("--refuse", metavar="ID",
@@ -7592,7 +7654,7 @@ def build_parser() -> argparse.ArgumentParser:
     references.add_argument("--says", choices=("refuses", "agrees", "other"),
                             help="--assess: what the reply says of the proposal")
     references.add_argument("--quote", help="--assess: the reply's words that say it, verbatim")
-    references.add_argument("--why", help="--refuse: the reason")
+    references.add_argument("--why", help="--refuse, --not-a-claim: the reason")
     references.add_argument("--replaces", type=int, metavar="N",
                             help="--reading: the reading corrects its reader's reading N of "
                             "the entry, which the gate and the rules then read no longer; "
@@ -7604,20 +7666,31 @@ def build_parser() -> argparse.ArgumentParser:
                         help="run an entry's recorded searches again, as they were recorded")
     references.add_argument(
         "--as", dest="as_", metavar="PERSON",
-        help="--refuse: who refuses; --mark: who marks the claim; --assess: who read the reply; "
-        "--search: who wrote the terms, a person or the model that wrote them",
+        help="--refuse: who refuses; --mark, --novelty: who marks the claim; --assess: who read "
+        "the reply; --search: who wrote the terms, a person or the model that wrote them; "
+        "--hand-search, --not-a-claim: the person",
     )  # fmt: skip
     references.add_argument("--id", metavar="ID",
                             help="--mark: put this entry on the sentence again, where no "
-                            "sentence reads as it does; KEY may be the work it proposes")
+                            "sentence reads as it does; KEY may be the work it proposes. "
+                            "--novelty: put the claim into this entry, taking out its "
+                            "sentences no claim reads as now")  # fmt: skip
     references.add_argument("--terms", metavar="TERMS",
                             help="--search: the terms, sent as written (300 characters at most)")
     references.add_argument("--against", metavar="TERMS",
                             help="--search: terms of the reader's own for evidence against the "
                             "sentence, run as steps S2 and S3 (S8)")  # fmt: skip
+    references.add_argument("--forward", metavar="WORK",
+                            help="--search, for a claim of novelty: in place of --terms, ask "
+                            "OpenAlex for the works citing WORK (a DOI, a PMID or @key), the "
+                            "nearest work found, newest first (N2)")  # fmt: skip
+    references.add_argument("--not-searched", metavar="TEXT",
+                            help="--search, for a claim of novelty: the databases and kinds of "
+                            "work the search did not reach, in your words (required, never "
+                            "\"none\")")  # fmt: skip
     references.add_argument("--question", metavar="QUESTION",
-                            help="--search, --mark: the claim written as a question (F1), kept "
-                            "in the entry and never sent")  # fmt: skip
+                            help="--search, --mark, --novelty: the claim written as a question "
+                            "(F1), kept in the entry and never sent")  # fmt: skip
     references.add_argument("--dry-run", action="store_true",
                             help="--search, --replay: print the requests and send nothing")
     references.add_argument("--json", action="store_true", help="the listing as JSON")

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://manuscript-guard.org/schemas/currency-search/1",
   "title": "manuscript-guard currency search record",
-  "description": "literature/currency/searches/<id>-<n>.yaml: one search run for a currency entry, at one source, as it was sent and what came back: the step of the protocol (S1 to S8), the source, the terms and who wrote them, the request as sent, its filters and the cutoff they used, the date, how many works the source matched in all and the ones kept as candidates. `references --search` and `--replay` write one for each step and source, numbered, once each; sealed by `answers_sha256`.",
+  "description": "literature/currency/searches/<id>-<n>.yaml: one search run for a currency entry, at one source, as it was sent and what came back: the step of the protocol (S1 to S8), the source, the terms and who wrote them, the request as sent, its filters and the cutoff they used, the date, how many works the source matched in all and the ones kept as candidates. `references --search` and `--replay` write one for each step and source, numbered, once each; sealed by `answers_sha256`. For a `novelty` entry the steps are N1, the search for the earlier study, and N2, the works citing the nearest one found, newest first; each records too the years searched and what the search did not reach. A search a person ran by hand is filed with the status `by hand`.",
   "type": "object",
   "required": ["schema", "entry", "number", "step", "source", "query", "searched_on", "candidates", "answers_sha256"],
   "additionalProperties": false,
@@ -10,16 +10,16 @@
     "schema": { "const": "manuscript-guard/currency-search/1" },
     "entry": { "type": "string", "pattern": "^c[1-9][0-9]*$" },
     "number": { "type": "integer", "minimum": 1 },
-    "step": { "type": "string", "pattern": "^S[1-8]$" },
+    "step": { "type": "string", "pattern": "^(S[1-8]|N[12])$" },
     "as_step": {
       "enum": ["S2", "S3"],
       "description": "For S8, a search for evidence against the sentence: the step whose sources and filters it was run with."
     },
     "source": { "type": "string", "pattern": "\\S" },
     "status": {
-      "enum": ["run", "not asked", "pending"],
+      "enum": ["run", "not asked", "pending", "by hand"],
       "default": "run",
-      "description": "`run`: the source answered. `not asked`: it was not asked, for the reason in `why`. `pending`: ClinicalTrials.gov's ongoing studies (S4), recorded in `trials` and never as candidates."
+      "description": "`run`: the source answered. `not asked`: it was not asked, for the reason in `why`. `pending`: ClinicalTrials.gov's ongoing studies (S4), recorded in `trials` and never as candidates. `by hand`: a novelty search a person ran in a database the tool cannot reach, filed with `references --hand-search` and signed in `terms_by`; it adds to the record and never counts as the step."
     },
     "why": { "type": "string", "pattern": "\\S", "description": "Why the source was not asked." },
     "query": { "type": "string", "pattern": "\\S", "description": "The terms as sent, their whitespace folded; for S1, the work whose citing works or links were asked for." },
@@ -47,6 +47,23 @@
       }
     },
     "replay_of": { "type": "integer", "minimum": 1, "description": "The number of the record this one ran again, with its query, filters and cutoff." },
+    "years": {
+      "type": "object",
+      "required": ["from", "to"],
+      "additionalProperties": false,
+      "description": "N1, N2: the period searched. The tool's searches have no lower limit (`from` null) and run to the day they ran.",
+      "properties": {
+        "from": { "type": ["string", "null"], "pattern": "^[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?$" },
+        "to": { "type": "string", "pattern": "^[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?$" }
+      }
+    },
+    "seed": { "type": "string", "pattern": "^(doi:10\\.[^\\sA-Z]+|pmid:[1-9][0-9]*)$", "description": "N2: the work whose citing works were asked for, by its DOI or PMID." },
+    "not_searched": {
+      "type": "string",
+      "pattern": "[^\\W\\d_]",
+      "not": { "pattern": "(?i)^[\\s.]*(?:none|nothing|n/a|na|nil|not\\s+applicable)[\\s.]*$" },
+      "description": "N1, N2: the databases and the kinds of work the search did not reach, in the reader's words. Required, with a letter in it, and never a word saying that nothing was left out."
+    },
     "searched_on": { "type": "string", "format": "date" },
     "hits": { "type": "integer", "minimum": 0, "description": "How many works the source matched in all, of which `candidates` are the first kept." },
     "candidates": {
@@ -75,6 +92,19 @@
       "if": { "properties": { "step": { "const": "S8" } } },
       "then": { "required": ["as_step"] },
       "else": { "not": { "required": ["as_step"] } }
+    },
+    {
+      "if": { "properties": { "step": { "pattern": "^N" } }, "required": ["step"] },
+      "then": { "required": ["not_searched", "years"] },
+      "else": { "properties": { "years": false, "seed": false, "not_searched": false, "status": { "enum": ["run", "not asked", "pending"] } } }
+    },
+    {
+      "if": { "properties": { "step": { "const": "N2" }, "status": { "enum": ["run", "by hand"] } }, "required": ["step"] },
+      "then": { "required": ["seed"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "by hand" } }, "required": ["status"] },
+      "then": { "required": ["terms_by"] }
     }
   ]
 }

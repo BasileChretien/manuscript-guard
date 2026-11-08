@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://manuscript-guard.org/schemas/currency/1",
   "title": "manuscript-guard reference currency",
-  "description": "literature/currency.yaml: for a sentence of the manuscript and one work it cites, whether the work is still the one to cite. Each entry is matched to the manuscript by the sentence's words, folded as a passage's are, and the citation key. Its decision is the rules' (`by: rules`, from two readings filed with `references --reading`) or a person's, with the reason; a proposed change waits for a person's answer.",
+  "description": "literature/currency.yaml: for a sentence of the manuscript and one work it cites, whether the work is still the one to cite. Each entry is matched to the manuscript by the sentence's words, folded as a passage's are, and the citation key. Its decision is the rules' (`by: rules`, from two readings filed with `references --reading`) or a person's, with the reason; a proposed change waits for a person's answer. An entry of kind `novelty` is a claim of novelty or absence held to a recorded search for the earlier study: it names no work, holds every sentence that makes the claim, and has no decision and no answer.",
   "type": "object",
   "required": ["schema", "entries"],
   "additionalProperties": false,
@@ -22,17 +22,34 @@
     "person": { "type": "string", "pattern": "\\S" },
     "entry": {
       "type": "object",
-      "required": ["id", "sentence", "citekey"],
+      "required": ["id", "sentence"],
       "additionalProperties": false,
       "properties": {
         "id": { "type": "string", "pattern": "^c[1-9][0-9]*$", "description": "The entry's own id, which never changes: c1, c2 ..." },
+        "kind": { "enum": ["currency", "novelty"], "default": "currency", "description": "`currency` (the default): a citing sentence and one work it cites, and whether the work is still the one to cite. `novelty`: a claim of novelty or absence, held to a recorded search for the earlier study." },
         "sentence": { "type": "string", "pattern": "\\S", "description": "The citing sentence as the manuscript writes it. Its citations, case, line breaks and typography are folded before it is matched." },
         "citekey": { "type": "string", "pattern": "\\S" },
+        "also": { "type": "array", "items": { "type": "string", "pattern": "\\S" }, "description": "For a `novelty` entry: further sentences that make the same claim, each matched by its folded words as `sentence` is. One search answers them all." },
         "question": { "type": "string", "pattern": "\\S", "description": "The claim written as a question (rule F1)." },
         "marked_by": { "$ref": "#/$defs/person" },
         "marked_on": { "type": "string", "format": "date" },
         "decision": { "$ref": "#/$defs/decision" },
-        "answer": { "$ref": "#/$defs/answer" }
+        "answer": { "$ref": "#/$defs/answer" },
+        "not_a_claim": { "$ref": "#/$defs/not_a_claim" }
+      },
+      "if": { "properties": { "kind": { "const": "novelty" } }, "required": ["kind"] },
+      "then": { "properties": { "decision": false, "answer": false } },
+      "else": { "required": ["citekey"], "properties": { "also": false, "not_a_claim": false } }
+    },
+    "not_a_claim": {
+      "type": "object",
+      "required": ["by", "why", "decided_on"],
+      "additionalProperties": false,
+      "description": "For a `novelty` entry: a person's word that the sentence makes no claim about the literature, with why. Never a model's.",
+      "properties": {
+        "by": { "$ref": "#/$defs/person", "not": { "const": "rules" } },
+        "why": { "type": "string", "pattern": "\\S" },
+        "decided_on": { "type": "string", "format": "date" }
       }
     },
     "decision": {

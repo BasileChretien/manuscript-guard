@@ -800,8 +800,8 @@ def test_the_limitations_are_a_limitations_sections_and_nothing_else(project: Pa
     """Round 2 of #470, finding 3: only a section headed "Limitations" or "Strengths and
     limitations", and of it the first paragraph whose own sentences say so; with none the
     brief has none, and the author writes it."""
-    document = _scaffolded(project, "Whether the signal extends", "Earlier studies had "
-                           "limitations of their own.\n\nWhether the signal extends")  # fmt: skip
+    document = _scaffolded(project, "This analysis asks whether", "Earlier studies had "
+                           "limitations of their own.\n\nThis analysis asks whether")  # fmt: skip
     assert document["limitations"] == []
     strengths = ("### 4.2 Strengths and limitations\n\nThe data are complete for every "
                  "report.\n\n- " + _LIMITS)  # fmt: skip

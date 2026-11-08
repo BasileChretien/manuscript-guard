@@ -75,7 +75,7 @@ text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation M
   <text class="b2" x="22" y="120" fill="#f0f6fc" xml:space="preserve">  numerical provenance</text>
   <text class="b3" x="22" y="140" fill="#f0f6fc" xml:space="preserve">    checked:     G2, G3, G7, G8: 0 failing, 1 warning</text>
   <text class="b4" x="22" y="160" fill="#9198a1" xml:space="preserve">  ...</text>
-  <text class="b5" x="22" y="180" fill="#3fb950" font-weight="600" xml:space="preserve">0 failing, 13 warnings</text>
+  <text class="b5" x="22" y="180" fill="#3fb950" font-weight="600" xml:space="preserve">0 failing, 14 warnings</text>
   </g>
   <line x1="1" y1="300.5" x2="859" y2="300.5" stroke="#3d444d"/>
   <text class="cap" x="22" y="324" fill="#9198a1">manuscript/main.md</text>

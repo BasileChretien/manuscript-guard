@@ -40,7 +40,7 @@ GOOD_REPLY = {
         {
             "severity": "minor",
             "finding": "Wordy.",
-            "edits": [{"old": "has not been examined", "new": "remains unexamined"}],
+            "edits": [{"old": "asks whether", "new": "asks only whether"}],
         }
     ],
 }
@@ -168,7 +168,7 @@ def test_each_edit_is_a_tracked_change_by_its_reader_with_its_finding_as_a_comme
     from manuscript_guard import tracked
     from manuscript_guard.docxtext import blocks
 
-    with_edits(project, finding("r8-pe-02", ("has not been examined", "remains unexamined")))
+    with_edits(project, finding("r8-pe-02", ("asks whether", "asks only whether")))
     code, said = suggest(project)
     assert code == 0, said
     document = document_of(project)
@@ -179,16 +179,15 @@ def test_each_edit_is_a_tracked_change_by_its_reader_with_its_finding_as_a_comme
     ]
     # Read as accepted, the paragraph has the new words; read as rejected, it is the build.
     texts = [b.text for b in blocks(document)]
-    assert any("specifically remains unexamined." in t for t in texts)
+    assert any("asks only whether the signal" in t for t in texts)
     comments, _parents = tracked.comments_of(document)
     assert [c.author for c in comments] == ["pharmacoepidemiologist (Claude Code)"]
     assert comments[0].text.startswith("r8-pe-02 (minor): Finding r8-pe-02")
-    # The edit takes a "not" out, which `reworded` warns of: the edit is written, and its
-    # comment says so after the finding (Basile, 2026-10-20). "Unexamined" says the same,
-    # and no list knows its prefix, so the note is one the author can dismiss.
+    # The edit puts an "only" in, which `reworded` warns of: the edit is written, and its
+    # comment says so after the finding (Basile, 2026-10-20). Here the limit is meant, so
+    # the note is one the author can dismiss.
     assert comments[0].text.endswith(
-        "Note: This sentence may now say the opposite of what it said before the edit: "
-        "'not' is gone."
+        "Note: This sentence claims less than it did before the edit: 'only' is new."
     ), comments[0].text
     assert tracked.pending(document, {"pharmacoepidemiologist (Claude Code)"}) == 2
     # Never the submission build, and nothing the freshness gate holds to the source.
@@ -200,7 +199,7 @@ def test_each_edit_is_a_tracked_change_by_its_reader_with_its_finding_as_a_comme
 def test_more_than_ten_edits_from_one_reading_are_not_all_written(project: Path) -> None:
     from manuscript_guard.suggestions import PER_READING
 
-    findings = [finding(f"r8-pe-{i:02d}", ("has not been examined", f"is open {i}"))
+    findings = [finding(f"r8-pe-{i:02d}", ("asks whether", f"asks ({i}) whether"))
                 for i in range(10, 10 + PER_READING + 1)]  # fmt: skip
     with_edits(project, *findings)
     code, said = suggest(project)
@@ -210,13 +209,13 @@ def test_more_than_ten_edits_from_one_reading_are_not_all_written(project: Path)
 
 @needs_pandoc
 def test_a_reading_not_sealed_or_altered_since_has_no_edits_written(project: Path) -> None:
-    with_edits(project, finding("r8-pe-02", ("has not been examined", "is open")), seal=False)
+    with_edits(project, finding("r8-pe-02", ("asks whether", "asks again whether")), seal=False)
     code, said = suggest(project)
     assert code == 0
     assert "not sealed" in said and "review --seal pharmacoepidemiologist --round 8" in said
     with_edits(project, seal=True)
     document = reading(project)
-    document["findings"][-1]["edits"][0]["new"] = "is wide open"
+    document["findings"][-1]["edits"][0]["new"] = "asks once more whether"
     (project / READING).write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
     code, said = suggest(project)
     assert "has changed since it was sealed" in said
@@ -239,11 +238,11 @@ def test_accepted_edits_merge_and_answer_theirfinding(project: Path, tmp_path: P
     code, said = run("import", str(returned), str(project), "--apply")
     assert code == 0, said
     main = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
-    assert "specifically remains unexamined." in main
+    assert "This analysis asks only whether the signal" in main
     assert "Reports were included without restriction on age or sex." in main
     record = reading(project)
     found = {f["id"]: f for f in record["findings"]}
-    assert "“has not been examined” now reads “remains unexamined”" in found[
+    assert "“asks whether” now reads “asks only whether”" in found[
         "r8-pe-02"
     ]["resolution"]
     assert "was refused" in found["r8-pe-02"]["resolution"]
@@ -472,7 +471,7 @@ def test_an_accepted_edit_beside_markup_comes_back_with_the_markup(
     code, said = run("import", str(returned), str(project), "--apply")
     assert code == 0, said
     text = main.read_text(encoding="utf-8")
-    assert f"Whether the signal extends to {drug} in particular remains unexamined." in text
+    assert f"This analysis asks only whether the signal extends to {drug} in particular." in text
     found = {f["id"]: f for f in reading(project)["findings"]}
     assert "now reads" in found["r8-pe-02"]["resolution"]
     assert "now reads" in found["r8-pe-03"]["resolution"]
@@ -483,17 +482,17 @@ def test_an_accepted_edit_inside_emphasis_keeps_it(project: Path, tmp_path: Path
     main = project / "manuscript" / "main.md"
     main.write_text(
         main.read_text(encoding="utf-8").replace(
-            "specifically has not been examined.", "specifically *has not been examined*."
+            "analysis asks whether the", "analysis *asks whether* the"
         ),
         encoding="utf-8",
     )
-    with_edits(project, finding("r8-pe-02", ("has not been examined", "remains unexamined")))
+    with_edits(project, finding("r8-pe-02", ("asks whether", "asks only whether")))
     code, said = suggest(project)
     assert code == 0 and "1 edit(s) written" in said, said
     returned = decide(document_of(project), tmp_path / "back.docx", {1: "accept"})
     code, said = run("import", str(returned), str(project), "--apply")
     assert code == 0, said
-    assert "specifically *remains unexamined*." in main.read_text(encoding="utf-8")
+    assert "analysis *asks only whether* the" in main.read_text(encoding="utf-8")
 
 
 METHODS_EMPHASIS = (

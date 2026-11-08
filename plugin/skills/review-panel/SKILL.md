@@ -80,14 +80,13 @@ manuscript-guard review --record <reviewer-id> --round <n> \
     --verdict <pass|minor-revision|major-revision|reject> --summary "<their overall comment>"
 ```
 
-That writes `review/round-<n>/<reviewer-id>.yaml` with the digest of the manuscript and of
-each of its files filled in. It adds the reviewer to `review/panel-<n>.yaml`, and creates the
-panel if there is none, so put the panel's `rationale` and each reviewer's `why` there
-(step 1). The verdict is required, because a record with a placeholder verdict is a claim
-that somebody looked. `--by` names who did the reading, an agent as `<provider>/<model>`,
-and defaults to the reviewer id. The
-command refuses to overwrite a record, so a second reading of a changed manuscript is a
-further round (step 3).
+That writes `review/round-<n>/<reviewer-id>.yaml`, the digests of the manuscript and its
+files filled in. It adds the reviewer to `review/panel-<n>.yaml`, creating the panel if
+there is none, so put the panel's `rationale` and each reviewer's `why` there (step 1). The
+verdict is required: a record with a placeholder verdict is a claim that somebody looked.
+`--by` names the reader, an agent as `<provider>/<model>`, and defaults to the reviewer id.
+The command refuses to overwrite a record, so a second reading of a changed manuscript is
+a further round (step 3).
 
 Then add the findings to the file, and seal it once they are all there:
 

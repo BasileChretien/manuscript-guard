@@ -177,12 +177,12 @@ def explain(project: Project, entry: records.Entry, held) -> str:
         lines.append(f"    years {years.get('from') or 'from the first'} to {years.get('to')}"
                      + (f", from {record['seed']}" if record.get("seed") else "")
                      + f"; not searched: {record.get('not_searched')}")  # fmt: skip
-    # Read over every entry that shares a sentence with this one, as G7 reads a claim over
-    # every entry placed on it (round 2 of #583).
-    mine = {statement_words(one) for one in entry.sentences}
-    together = [one for one in records.read_entries(project)[0] if one.novelty
-                and mine & {statement_words(said) for said in one.sentences}]  # fmt: skip
-    lines.append(f"  G7: {state_of(together or [entry], held)}")
+    # Each claim read over every entry placed on it, as G7 reads it (rounds 2 and 3 of #583).
+    entries = [one for one in records.read_entries(project)[0] if one.novelty]
+    said = {state_of([one for one in entries if words in {statement_words(s) for s in
+                                                          one.sentences}], held)
+            for words in dict.fromkeys(statement_words(s) for s in entry.sentences)}
+    lines += [f"  G7: {one}" for one in sorted(said)]
     return "\n".join(lines)
 
 

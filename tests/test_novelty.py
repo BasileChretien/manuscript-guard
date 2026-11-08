@@ -100,7 +100,25 @@ NOT_READ = [
     "This represents the first-in-class inhibitor.",
     "Our data are limited by under-reporting.",
     "These data are limited.",
+    # Round 3 of #583.
+    "This is the first-ever time the patient received the drug.",
+    "The present data are limited.",
 ]
+
+
+def test_explain_grades_each_claim_of_an_entry_as_g7_does(tmp_path: Path) -> None:
+    """Round 3 of #583: c1 holds two claims; a person's word on c2 answers the first only, and
+    G7 still warns on the second. `--explain c1` said "no claim" of both."""
+    from manuscript_guard.gates.currency import _Records as held
+
+    root = _project(tmp_path, _text(ABSENT, CLAIM))
+    said = {"by": "Ada Example", "why": "said of the sponsor", "decided_on": "2026-11-07"}
+    _entries(root, {**NOVEL, "also": [CLAIM]}, {**NOVEL, "id": "c2", "not_a_claim": said})
+    project = load_project(root)[0]
+    assert _codes(_g7(root)) == [("novelty-unsearched", WARN)]
+    entry = records.read_entries(project)[0][0]
+    shown = novelty_command.explain(project, entry, held(project))
+    assert "no claim, by Ada Example" in shown and "c1 is marked, not searched" in shown
 
 
 def test_novelty_refuses_a_currency_file_it_cannot_read_and_leaves_it(tmp_path: Path) -> None:

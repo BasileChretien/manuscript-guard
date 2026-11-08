@@ -23,7 +23,7 @@ fragments:
   # and a hyphenated "first" names a kind of thing, "first-line", "first-in-class", but for
   # "first-ever" and "first-of-its-kind", which say first.
   part: >-
-    (?!-(?!ever\b|of-its-kind\b))(?! (?:[\w-]+ )?(?:visit|visits|period|periods|dose|doses|phase|phases|wave|waves|line|lines|round|rounds|day|days|week|weeks|month|months|year|years|stage|stages|step|steps|part|parts|cycle|cycles|session|sessions|patient|patients|participant|participants|author|authors|quarter|half|time|times|place|instance|row|column|table|figure|section|paragraph|sentence|item|question)\b)
+    (?!-(?!ever\b|of-its-kind\b))(?!(?:-ever|-of-its-kind)? (?:[\w-]+ )?(?:visit|visits|period|periods|dose|doses|phase|phases|wave|waves|line|lines|round|rounds|day|days|week|weeks|month|months|year|years|stage|stages|step|steps|part|parts|cycle|cycles|session|sessions|patient|patients|participant|participants|author|authors|quarter|half|time|times|place|instance|row|column|table|figure|section|paragraph|sentence|item|question)\b)
   # A verb of reporting, which "for the first time" may follow.
   reporting: >-
     (?:show|shows|showed|shown|showing|report|reports|reported|reporting|describe|describes|described|describing|demonstrate|demonstrates|demonstrated|demonstrating|identify|identifies|identified|identifying|reveal|reveals|revealed|revealing|establish|establishes|established|establishing)
@@ -94,9 +94,10 @@ softer:
   - id: few-studies
     pattern: '\b(?:few|only a few|a handful of|a limited number of) ${qualifier}${kind} (?:have|has)\b'
     why: Says that few studies have done it; the search that found few can be recorded
-  # Not a paper's own data: "our data are limited", "these data are limited".
+  # Not a paper's own data: "our data are limited", "these data are limited", "the present
+  # data are limited".
   - id: data-are-limited
-    pattern: '(?<!\bour )(?<!\bthese )\b(?:data|evidence|research|information|literature)(?: on [^.;:]{1,60}?)? (?:is|are|remains|remain) (?:(?:still|currently|very|extremely) )?(?:limited|scarce|sparse|lacking|insufficient)\b'
+    pattern: '(?<!\bour )(?<!\bthese )(?<!\bthe present )\b(?:data|evidence|research|information|literature)(?: on [^.;:]{1,60}?)? (?:is|are|remains|remain) (?:(?:still|currently|very|extremely) )?(?:limited|scarce|sparse|lacking|insufficient)\b'
     why: Says that the evidence is thin; the search that found it so can be recorded
   - id: a-paucity-of
     pattern: '\b(?:a|the) (?:paucity|scarcity|dearth|lack) of (?:(?:published|direct) )?(?:data|evidence|studies|research|information|literature|trials)\b'

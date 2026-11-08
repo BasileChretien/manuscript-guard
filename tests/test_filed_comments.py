@@ -241,7 +241,7 @@ def test_a_comment_of_several_paragraphs_keeps_them_and_is_known_with_its_spaces
     from manuscript_guard.suggestions import short_digest
 
     returned = commented(FIRST, tmp_path / "two.docx", [
-        {"on": "Whether the signal extends", "paragraphs": ["First line.", "Second line."]},
+        {"on": "This analysis asks whether", "paragraphs": ["First line.", "Second line."]},
     ])  # fmt: skip
     names = {n for p in paragraphs_of(returned) for n in p.names}
     kept = dict(vouched={n: n for n in names}, sources={n: n for n in names})
@@ -263,8 +263,8 @@ def test_the_panel_s_comments_are_known_by_what_they_are_not_by_their_words(
 
     finding = "Finding r8-pe-02 is about the wording."
     returned = commented(FIRST, tmp_path / "panel.docx", [
-        {"on": "Whether the signal extends", "author": "Panel Reader", "text": finding},
-        {"on": "Whether the signal", "author": "Ana Author", "text": "Agreed.", "reply_to": 0},
+        {"on": "This analysis asks whether", "author": "Panel Reader", "text": finding},
+        {"on": "This analysis asks", "author": "Ana Author", "text": "Agreed.", "reply_to": 0},
         {"on": "Drug-induced hepatic injury", "author": "Ana Author", "text": "Agreed."},
     ])  # fmt: skip
     names = {n for p in paragraphs_of(returned) for n in p.names}

@@ -24878,7 +24878,9 @@ def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
                   for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1),
                                   (8, 1), (9, 1), (10, 1))
                   for _ in range(many)]  # fmt: skip
-    assert said == superseded + [("round-not-blinded", "review")] * 9, report.render(project)
+    # Sorted as `said` is: "round-10" stands between "round-1" and "round-2".
+    assert said == sorted(superseded + [("round-not-blinded", "review")] * 9), report.render(
+        project)
     assert report.counts["review_rounds_complete"] == 11
 
 

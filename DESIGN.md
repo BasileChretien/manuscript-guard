@@ -6619,10 +6619,10 @@ Findings of different readers that quote one sentence are put together without a
   abstract repeating a sentence of the Results, is at each. A sentence is cut as G8 cuts
   one (`claims.sentence_pieces`), and also at a heading's line, so the paragraph straight
   under a heading is no part of it, and in LaTeX at an environment's `\begin` and `\end`.
-  A Markdown file is cut on G8's reading of it, a citation group and inline code filled
-  whole, so that neither "[@a, p. 12]" nor a binding alone on its line ends a sentence
-  (round 1 of #587), and the stop G8 blanks with an address or a citation's key,
-  "(https://a.org/b)." or "@smith2020.", kept, so that it ends one (round 2).
+  A Markdown file is cut on G8's reading of it, a citation group filled whole, so that
+  neither "[@a, p. 12]" nor a binding alone on its line ends a sentence (round 1 of #587),
+  and the stop G8 blanks with an address or a citation's key, "(https://a.org/b)." or
+  "@smith2020.", kept, so that it ends one (round 2; Known gaps has where it does not).
   Its section is the heading over it of the first level that has two headings or more in
   its file, so that a paper's title typed as the one heading over the rest is not the
   section of a sentence under them, and a subsection's sentence is its section's.
@@ -17435,6 +17435,11 @@ Open, recorded as each change landed:
   - A citation group is any bracket pair with an `@` inside it within one paragraph: a
     stray `[` and `]` round an `@`, "aged [18, 65) as @a found. ... (65, 100]", are read
     as one sentence from one to the other.
+  - A link at a sentence's end with a `)` later on its line, "Code is at
+    [GitHub](https://github.com/a/b). Data (n = 1200) are deposited.", runs the next
+    sentence into it: G8's reading blanks the link's target to that `)`, the spaces between
+    included (round 3 of #587). `check` misses the number there too, which is G2's, on
+    `main`, and a task of its own.
   - A quote across three sentences or more stands in the text and is placed nowhere;
     `review` counts it among the findings in no one sentence or two.
   - Two sentences in a row are looked at only where no one sentence holds the quote: words

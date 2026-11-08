@@ -179,25 +179,22 @@ def _cut_on(text: str, latex: bool) -> str:
     """The text a file's sentences are cut on, at the same offsets. A LaTeX file is cut as
     it is sent. A Markdown file is cut as G8 reads it, its bindings, citations, addresses,
     comments and code blanked, so that "[@a, p. 12]" ends no sentence at "p." (round 1 of
-    #587); and each blanked span filled with a capital rather than left blank, since a
+    #587); and each blanked character but a stop (below) filled with a capital, since a
     binding alone on its line, left blank, read as a blank line, which ended the sentence
     there and took the binding out of every sentence: a person's quote of it, as written,
     stood in the text and was placed nowhere."""
     if latex:
         return text
     from manuscript_guard.claims import readable
-    from manuscript_guard.text.inline import code_spans
-    from manuscript_guard.text.masking import NUL, mask
+    from manuscript_guard.text.masking import NUL
 
     # G8 blanks an address or a citation's key with the stop after it, "@smith2020." or
     # "(https://a.org/b).": the stop and what closes it are kept (round 2 of #587).
     read = [shown if shown != NUL else typed if typed in _CLOSING else _FILLED
             for typed, shown in zip(text, readable(text), strict=True)]  # fmt: skip
-    # Inline code, and a citation group, whose locator "p. 12" G8 does not blank, are filled
-    # whole, their line breaks kept.
-    spans = [*code_spans(mask(text)),
-             *(group.span() for group in _CITATION_GROUP.finditer(text))]  # fmt: skip
-    for start, end in spans:
+    # A citation group, whose locator "p. 12" G8 does not blank, is filled whole, its line
+    # breaks kept.
+    for start, end in (group.span() for group in _CITATION_GROUP.finditer(text)):
         read[start:end] = ["\n" if char == "\n" else _FILLED for char in text[start:end]]
     return "".join(read)
 

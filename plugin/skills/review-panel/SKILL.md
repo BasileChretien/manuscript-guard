@@ -44,6 +44,10 @@ read [references/remits.md](references/remits.md), which gives each one's remit 
   whether the paper is right and whether it is new;
 - **the abstract alone**: a reader sent only the title and abstract, who says what they
   conclude and whether the caveat that would change that conclusion is there; route A only;
+- **interpretation**, when `check` notes `interpretation-sentences`: a reader sent the
+  sentences of the Results and the Discussion that claim and rest on neither a result nor a
+  citation, which `manuscript-guard explain <file>` lists, and asked whether each follows from
+  the results the paper reports;
 - **earlier outputs**, for a paper with an abstract or an article on the same data before it;
 - **citation support**, for a paper that rests on its references: whether each cited work
   says what the sentence citing it says; route A only.

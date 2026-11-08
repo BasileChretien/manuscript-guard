@@ -57,6 +57,7 @@ from manuscript_guard.gates import (
     check_figure_reviews,
     check_figures,
     check_freshness,
+    check_interpretation,
     check_journal,
     check_language,
     check_literature_chain,
@@ -231,6 +232,7 @@ def _gate_run(
         ("G1", lambda: check_datasets(project, results)),
         ("G1", lambda: check_values(project, namespace, results)),
         ("G8", lambda: check_reported(project, results)),
+        ("G8", lambda: check_interpretation(project)),
         ("G8", lambda: check_relations(results)),
         ("G8", lambda: check_recomputed(project, namespace, results)),
         ("G8", lambda: check_related(project, namespace, results, submission=at_submission)),
@@ -3509,7 +3511,8 @@ def cmd_explain(args: argparse.Namespace) -> int:
         failed = verdict.kind == UNCLASSIFIED or typed is not None
         rows.append((atom.line, atom.text, verdict.kind, rule, failed))
     rows += _explained_refs(project, text)
-    return _explained(rows)
+    _explained(rows)
+    return _explained_argued(project, args.file)
 
 
 def _explained(rows: list[tuple[int, str, str, str, bool]]) -> int:
@@ -3555,7 +3558,30 @@ def _explain_latex(project, file: Path) -> int:
             rule = f"{rule}, typed: write {read.spell(typed.reference)}"
         failed = verdict.kind == UNCLASSIFIED or typed is not None
         rows.append((atom.line, atom.text, verdict.kind, rule, failed))
-    return _explained(rows)
+    _explained(rows)
+    return _explained_argued(project, file)
+
+
+def _explained_argued(project, file: Path) -> int:
+    """After the numbers, the file's sentences that G8's note counts: in the Results or the
+    Discussion, holding a word of the claim ladder, and resting on neither a result nor a
+    citation (`interpretation-sentences`), each at its line, for an interpretation reader of
+    the review panel. Nothing where it has none."""
+    from manuscript_guard.gates.interpretation import listed
+
+    try:
+        found = listed(project, file)
+    except Unreadable:
+        # Another file of the manuscript cannot be read, so its headings are not known;
+        # `check` names it. This file's numbers are explained.
+        return 0
+    if found:
+        print(f"\n{len(found)} sentence{'' if len(found) == 1 else 's'} of the Results and the "
+              "Discussion that claim and rest on neither a result nor a citation (G8's "
+              "interpretation-sentences):")  # fmt: skip
+        for one in found:
+            print(f"{one.line:>5}  {one.sentence}")
+    return 0
 
 
 def _explained_refs(project, text: str) -> list[tuple[int, str, str, str, bool]]:
@@ -7332,7 +7358,10 @@ def build_parser() -> argparse.ArgumentParser:
                        "given, which its README holds")  # fmt: skip
     sign_.set_defaults(func=cmd_sign)
 
-    explain = sub.add_parser("explain", help="show how each number in a file was classified")
+    explain = sub.add_parser(
+        "explain", help="show how each number in a file was classified, and the sentences "
+        "that claim and rest on neither a result nor a citation",
+    )
     explain.add_argument("file", type=Path)
     explain.set_defaults(func=cmd_explain)
 

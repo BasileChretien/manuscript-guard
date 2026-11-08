@@ -202,6 +202,7 @@ from manuscript_guard.contracts.values import RESULTS, Value, number_in
 from manuscript_guard.deposit import counts as deposit_counts
 from manuscript_guard.gates import bound_units as bound_units_gate
 from manuscript_guard.gates import data_statement
+from manuscript_guard.gates import interpretation as interpretation_gate
 from manuscript_guard.gates import journal_quotes as journal_quotes_gate
 from manuscript_guard.gates import language as language_gate
 from manuscript_guard.gates import methods as methods_gate
@@ -6797,6 +6798,41 @@ def test_a_summary_is_warned_only_where_it_claims_more_than_every_results_senten
     lines = text.splitlines()
     for line, _message, context in read:
         assert re.search(r"\{\{results\.\w+\}\}", context)[0] in lines[line - 1], (line, text)
+
+
+# --------------------------------------- the sentences that rest on neither a result nor a citation
+
+from generated import interpretation_papers  # noqa: E402
+
+
+@holds(30, interpretation_papers())
+def test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted(
+    drawn: tuple[str, str, dict[str, bool | None]],
+) -> None:
+    """G8 reads each sentence of the Results and the Discussion, a Limitations under the
+    Discussion with them, and of the supplement's Results and Discussion, that holds a word of
+    the claim ladder, at the line it starts on; and it counts those that bind no result and
+    cite no work, an anchor of the Methods being no binding of a result. It reads no sentence
+    of the Abstract, the Introduction, the Methods, a conclusion, a Limitations of its own or
+    the supplement's Methods, nor a heading, a sentence with a hedge, a limit or a negation
+    and no word of the ladder, or one with only a look-alike of a word of the ladder (item 10
+    of the borrowed checks). A citation typed against a stop cites the sentence before it,
+    and one after a space the sentence it opens (round 1 of #578)."""
+    text, supplement, expected = drawn
+    read = READINGS["interpretation sentences"]()({"text": text, "supplement": supplement})
+    found: dict[str, bool] = {}
+    for part, source in (("paper", text), ("supplement", supplement)):
+        lines = source.splitlines()
+        for line, said, rests in read[part]:
+            # A binding's key or an anchor's name holds its sentence's tag too; two tags are
+            # two sentences read as one.
+            tags = set(re.findall(r"\bt\d\d\b", said))
+            assert len(tags) == 1, (said, source)
+            (tag,) = tags
+            assert tag in lines[line - 1], (line, said, source)
+            found[tag] = not rests
+    assert found == {tag: counted for tag, counted in expected.items() if counted is not None}, (
+        text, supplement)
 
 
 # --------------------------------------------------------------------------------- boxes
@@ -16159,6 +16195,81 @@ def _each_key_of_a_summary_sentence_is_held_alone(patch: pytest.MonkeyPatch) -> 
     patch.setattr(reported_gate, "_sentences_of", apart)
 
 
+def _a_citation_is_no_ground_for_a_claim(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.placeholders import ANCHOR_NAMESPACE, parse
+
+    patch.setattr(interpretation_gate, "_grounds", lambda text: [
+        one.start for one in parse(text)[0] if one.namespace != ANCHOR_NAMESPACE])  # fmt: skip
+
+
+def _a_binding_is_no_ground_for_a_claim(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.zotero import find_citations
+
+    patch.setattr(interpretation_gate, "_grounds", lambda text: sorted(
+        use.start for use in find_citations(text, Path())))  # fmt: skip
+
+
+def _an_anchor_is_a_ground_for_a_claim(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.placeholders import parse
+
+    grounds = interpretation_gate._grounds
+    patch.setattr(interpretation_gate, "_grounds", lambda text: sorted(
+        [*grounds(text), *(one.start for one in parse(text)[0])]))  # fmt: skip
+
+
+def _any_word_of_the_claim_lists_claims(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(interpretation_gate, "_claims", bool)
+
+
+def _the_discussion_is_not_read_for_its_interpretation(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reported_gate.Walk, "_argues", reported_gate.Walk._in_results)
+
+
+def _every_section_is_read_for_its_interpretation(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reported_gate.Walk, "_argues", lambda self: True)
+
+
+def _a_conclusion_under_the_discussion_is_read_for_its_interpretation(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    # A conclusion is read as the Discussion's other subsections are.
+    def argues(self) -> bool:
+        discussion = False
+        for section in self.chain:
+            if section.names_abstract(self.named):
+                return False
+            if id(section) in self.reports:
+                return id(section) in self.results
+            discussion = discussion or reported_gate.names_discussion(section.title)
+        return discussion
+
+    patch.setattr(reported_gate.Walk, "_argues", argues)
+
+
+def _only_the_innermost_heading_says_where_a_sentence_argues(patch: pytest.MonkeyPatch) -> None:
+    # A Limitations under the Discussion, or a heading under the Results, is read alone.
+    patch.setattr(reported_gate.Walk, "_argues", lambda self: bool(self.chain) and (
+        id(self.chain[-1]) in self.results
+        or reported_gate.names_discussion(self.chain[-1].title)))  # fmt: skip
+
+
+def _a_heading_is_read_as_a_sentence_that_claims(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(interpretation_gate, "_heading_lines", lambda text: set())
+
+
+def _the_supplement_s_discussion_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(interpretation_gate, "supplement_part", reported_gate._methods_or_results)
+
+
+def _every_heading_of_the_supplement_argues(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(interpretation_gate, "_supplement_inside", lambda text: lambda line: True)
+
+
+def _a_citation_typed_against_a_stop_cites_the_next_sentence(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #578: "injury.[@a] We" was read as one sentence, or the citation the next's.
+    patch.setattr(interpretation_gate, "_trailing", lambda text, against: [])
+
+
 def _a_chain_keeps_a_cells_crlf(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.checking import recap
 
@@ -17010,6 +17121,54 @@ BROKEN = {
     "each key of a summary sentence is held alone": (
         _each_key_of_a_summary_sentence_is_held_alone,
         test_a_summary_is_warned_only_where_it_claims_more_than_every_results_sentence,
+    ),
+    "a citation is no ground for a claim": (
+        _a_citation_is_no_ground_for_a_claim,
+        test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted,
+    ),
+    "a binding is no ground for a claim": (
+        _a_binding_is_no_ground_for_a_claim,
+        test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted,
+    ),
+    "an anchor of the Methods is a ground for a claim": (
+        _an_anchor_is_a_ground_for_a_claim,
+        test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted,
+    ),
+    "any word of the claim lists claims": (
+        _any_word_of_the_claim_lists_claims,
+        test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted,
+    ),
+    "the Discussion is not read for its interpretation": (
+        _the_discussion_is_not_read_for_its_interpretation,
+        test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted,
+    ),
+    "every section is read for its interpretation": (
+        _every_section_is_read_for_its_interpretation,
+        test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted,
+    ),
+    "a conclusion under the Discussion is read for its interpretation": (
+        _a_conclusion_under_the_discussion_is_read_for_its_interpretation,
+        test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted,
+    ),
+    "only the innermost heading says where a sentence argues": (
+        _only_the_innermost_heading_says_where_a_sentence_argues,
+        test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted,
+    ),
+    "a heading is read as a sentence that claims": (
+        _a_heading_is_read_as_a_sentence_that_claims,
+        test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted,
+    ),
+    "the supplement's Discussion is not read": (
+        _the_supplement_s_discussion_is_not_read,
+        test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted,
+    ),
+    "every heading of the supplement argues": (
+        _every_heading_of_the_supplement_argues,
+        test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted,
+    ),
+    "a citation typed against a stop cites the next sentence": (
+        _a_citation_typed_against_a_stop_cites_the_next_sentence,
+        test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted,
     ),
     "a ladder word a bare summary leaves out is more": (
         _a_ladder_word_a_bare_summary_leaves_out_is_more,

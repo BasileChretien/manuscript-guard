@@ -10,6 +10,8 @@
 # to single spaces, so ` ` in a pattern is one space. `${name}` stands for a fragment below.
 # Only the paper's own claims are read (Basile, 2026-11-07): a priority given to a cited work,
 # an absence in the past tense, "to our knowledge" alone and "novel" or "new" alone are not.
+# But "for the first time" after a verb of reporting is read whatever the verb is said of, so
+# "described for the first time in 1988" is read (DESIGN.md, Known gaps).
 
 fragments:
   # The paper as the subject of a priority claim.
@@ -17,9 +19,10 @@ fragments:
     (?:this|the (?:present|current)|our) (?:study|analysis|report|trial|cohort|review|work|paper|article|investigation|survey|series|meta-analysis|case report|case series)
   # A hedge set off by commas: "is, to our knowledge, the first".
   hedge: '(?:, [^,.;:]{1,60},)?'
-  # What a "first" may name of the study itself: its first visit, period, dose, line ...
+  # What a "first" may name of the study itself: its first visit, period, dose, line ...;
+  # and a hyphenated "first" names a kind of thing: "first-line", "first-in-class".
   part: >-
-    (?! (?:[\w-]+ )?(?:visit|visits|period|periods|dose|doses|phase|phases|wave|waves|line|lines|round|rounds|day|days|week|weeks|month|months|year|years|stage|stages|step|steps|part|parts|cycle|cycles|session|sessions|patient|patients|participant|participants|author|authors|quarter|half|time|times|place|instance|row|column|table|figure|section|paragraph|sentence|item|question)\b)
+    (?!-)(?! (?:[\w-]+ )?(?:visit|visits|period|periods|dose|doses|phase|phases|wave|waves|line|lines|round|rounds|day|days|week|weeks|month|months|year|years|stage|stages|step|steps|part|parts|cycle|cycles|session|sessions|patient|patients|participant|participants|author|authors|quarter|half|time|times|place|instance|row|column|table|figure|section|paragraph|sentence|item|question)\b)
   # A verb of reporting, which "for the first time" may follow.
   reporting: >-
     (?:show|shows|showed|shown|showing|report|reports|reported|reporting|describe|describes|described|describing|demonstrate|demonstrates|demonstrated|demonstrating|identify|identifies|identified|identifying|reveal|reveals|revealed|revealing|establish|establishes|established|establishing)
@@ -90,8 +93,9 @@ softer:
   - id: few-studies
     pattern: '\b(?:few|only a few|a handful of|a limited number of) ${qualifier}${kind} (?:have|has)\b'
     why: Says that few studies have done it; the search that found few can be recorded
+  # Not a paper's own data: "our data are limited", "these data are limited", "limited by".
   - id: data-are-limited
-    pattern: '\b(?:data|evidence|research|information|literature)(?: on [^.;:]{1,60}?)? (?:is|are|remains|remain) (?:(?:still|currently|very|extremely) )?(?:limited|scarce|sparse|lacking|insufficient)\b'
+    pattern: '(?<!\bour )(?<!\bthese )(?<!\bthe present )\b(?:data|evidence|research|information|literature)(?: on [^.;:]{1,60}?)? (?:is|are|remains|remain) (?:(?:still|currently|very|extremely) )?(?:limited|scarce|sparse|lacking|insufficient)\b(?! by\b)'
     why: Says that the evidence is thin; the search that found it so can be recorded
   - id: a-paucity-of
     pattern: '\b(?:a|the) (?:paucity|scarcity|dearth|lack) of (?:(?:published|direct) )?(?:data|evidence|studies|research|information|literature|trials)\b'

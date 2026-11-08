@@ -44,7 +44,10 @@ def mark(project: Project, words: str, by: str | None, entry_id: str | None = No
                          "; `manuscript-guard references` lists the claims it reads"))
     claim = holding[0]
     text = " ".join(claim.text.split())
-    document, _report = records.read_document(project)
+    document, report = records.read_document(project)
+    # Round 1 of #583: a file that could not be read was taken for none, and written over.
+    if report.failures:
+        raise Refused("; ".join(finding.message for finding in report.failures))
     document = document or {"schema": records.SCHEMA, "entries": []}
     entries = [dict(raw) for raw in document.get("entries") or []]
     on = [raw for raw in entries if raw.get("kind") == records.NOVELTY and claim.folded in
@@ -104,9 +107,33 @@ def _put_into(raw: dict, text: str, folded: str, have: set[str]) -> str:
     return said
 
 
+def state_of(entries: list[records.Entry], held) -> str:
+    """What G7 makes of a claim with these entries placed on it, in a few words: no entry, a
+    person's word that it is no claim, searched as of a day (stale past six months), or
+    what its search lacks. Read as `gates.novelty` reads it (round 1 of #583: the listing
+    took a model's `not_a_claim` for a person's, and a stale search for a current one)."""
+    from manuscript_guard.gates import currency as gate
+    from manuscript_guard.gates.novelty import _person_says_no_claim, searched
+
+    if not entries:
+        return "no entry"
+    noted = [entry for entry in entries if _person_says_no_claim(entry)]
+    if noted:
+        return f"no claim, by {noted[0].not_a_claim['by']}"
+    states = [searched(entry, [read.record for read in held.searches.get(entry.id, [])
+                               if read.problem is None and read.record])
+              for entry in entries]  # fmt: skip
+    days = [one.day for one in states if one.day is not None]
+    if not days:
+        return states[0].how
+    if max(days) < gate.months_before(gate.today(), gate.STALE_MONTHS):
+        return (f"stale, searched as of {max(days)}, more than {gate.STALE_MONTHS} months "
+                "ago")  # fmt: skip
+    return f"searched as of {max(days)}"
+
+
 def rows(project: Project, held) -> list[Row]:
     """A row of `references` for each claim the list reads, with how far its search got."""
-    from manuscript_guard.gates.novelty import searched
     from manuscript_guard.literature.passages import statement_words
 
     entries, _report = records.read_entries(project)
@@ -115,19 +142,9 @@ def rows(project: Project, held) -> list[Row]:
     for claim in novelty.claims(project):
         placed = [entry for entry in entries
                   if claim.folded in {statement_words(one) for one in entry.sentences}]
-        if not placed:
-            state = "no entry"
-        elif any(entry.not_a_claim for entry in placed):
-            state = f"no claim, by {placed[0].not_a_claim.get('by')}"
-        else:
-            states = [searched(entry, [read.record for read in held.searches.get(entry.id, [])
-                                       if read.problem is None and read.record])
-                      for entry in placed]  # fmt: skip
-            days = [one.day for one in states if one.day is not None]
-            state = f"searched as of {max(days)}" if days else states[0].how
         out.append(Row(placed[0].id if placed else None, "", _where(project, claim.path,
                                                                      claim.line),
-                       f"{claim.list}: {state}", " ".join(claim.text.split()),
+                       f"{claim.list}: {state_of(placed, held)}", " ".join(claim.text.split()),
                        kind=records.NOVELTY))  # fmt: skip
     return out
 
@@ -135,7 +152,6 @@ def rows(project: Project, held) -> list[Row]:
 def explain(project: Project, entry: records.Entry, held) -> str:
     """One novelty entry: its sentences and where each is placed, its question, what a person
     said of it, each search with its years and what it did not reach, and what G7 says."""
-    from manuscript_guard.gates.novelty import searched
     from manuscript_guard.literature.passages import statement_words
 
     found = novelty.claims(project)
@@ -151,21 +167,18 @@ def explain(project: Project, entry: records.Entry, held) -> str:
     if entry.not_a_claim:
         lines.append(f"  no claim, by {entry.not_a_claim.get('by')}: "
                      f"{entry.not_a_claim.get('why')}")  # fmt: skip
-    sound = []
     for read in held.searches.get(entry.id, []):
         if read.problem:
             lines.append(f"  search {read.path.name}: {read.problem}")
             continue
-        sound.append(read.record)
         lines.append(_search_line(read.record))
         record = read.record
         years = record.get("years") or {}
         lines.append(f"    years {years.get('from') or 'from the first'} to {years.get('to')}"
                      + (f", from {record['seed']}" if record.get("seed") else "")
                      + f"; not searched: {record.get('not_searched')}")  # fmt: skip
-    state = searched(entry, sound)
-    lines.append(f"  G7: searched as of {state.day}" if state.day else f"  G7: {state.how}")
+    lines.append(f"  G7: {state_of([entry], held)}")
     return "\n".join(lines)
 
 
-__all__ = ["explain", "mark", "rows"]
+__all__ = ["explain", "mark", "rows", "state_of"]

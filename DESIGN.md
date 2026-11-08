@@ -22028,6 +22028,9 @@ Open, recorded as each change landed:
     whether" and its kind, or beside "still", "largely", "currently" or "as yet": "the
     denominator is unknown" is said of the data, and "the effect is unknown", said of the
     literature, is not read either.
+  - A paper's own data are kept from the softer list only where it says so: "our data are
+    limited", "these data are limited" and "limited by" are not read, but "a lack of data
+    on exposure" in the Limitations is a note (round 1 of #583).
   - The record is graded, never the novelty. The terms are the reader's and nothing compares
     them with the claim: a search on another topic covers it. `references --explain` shows
     the terms beside the sentences, for a person to read together.

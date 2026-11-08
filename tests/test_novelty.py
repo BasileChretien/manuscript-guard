@@ -89,7 +89,71 @@ NOT_READ = [
     # "That" ends the window (Known gaps), and so does a semicolon between citation keys.
     "We show that, for the first time, statins reduce delirium.",
     "As reported [@a; @b] for the first time in children.",
+    # Round 1 of #583: a hyphenated "first" names a kind of thing, and a paper's own data
+    # being limited is a limitation, not a claim about the literature.
+    "This is the first-line treatment for gout.",
+    "This represents the first-in-class inhibitor.",
+    "Our data are limited by under-reporting.",
+    "These data are limited.",
 ]
+
+
+def test_novelty_refuses_a_currency_file_it_cannot_read_and_leaves_it(tmp_path: Path) -> None:
+    """Round 1 of #583: an unreadable literature/currency.yaml was read as empty and written
+    over with the new entry alone, every entry before it lost."""
+    root = _project(tmp_path, _text(ABSENT))
+    path = root / "literature" / "currency.yaml"
+    path.write_bytes(b"schema: manuscript-guard/currency/1\nentries: [\n- id: c1\n")
+    before = path.read_bytes()
+    with pytest.raises(command.Refused):
+        novelty_command.mark(load_project(root)[0], "no study has examined", "Ada Example")
+    assert path.read_bytes() == before
+
+
+def test_the_listing_and_explain_say_what_g7_says_of_a_no_claim_and_a_stale_search(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Round 1 of #583: the listing read the first entry's `not_a_claim` where another carried
+    it, and crashed; it took a model's for a person's, as G7 does not; it counted a stale
+    search as searched; and `--explain` said nothing of a `not_a_claim`."""
+    from manuscript_guard.gates.currency import _Records as held
+
+    monkeypatch.setattr(gate, "today", lambda: TODAY)
+    root = _project(tmp_path, _text(ABSENT, CLAIM))
+    said = {"by": "Ada Example", "why": "said of the sponsor", "decided_on": "2026-11-07"}
+    _entries(root, NOVEL, {**NOVEL, "id": "c2", "not_a_claim": said},
+             {"id": "c3", "kind": "novelty", "sentence": CLAIM})
+    _search(root, 1, entry="c3", on="2026-01-02")
+    project = load_project(root)[0]
+    rows = {row.sentence: row.state for row in novelty_command.rows(project, held(project))}
+    assert rows[ABSENT] == "absence: no claim, by Ada Example"
+    assert rows[CLAIM].startswith("priority: stale, searched as of 2026-01-02")
+    entries = {one.id: one for one in records.read_entries(project)[0]}
+    assert "G7: no claim, by Ada Example" in novelty_command.explain(
+        project, entries["c2"], held(project))
+    assert "more than 6 months ago" in novelty_command.explain(project, entries["c3"],
+                                                                 held(project))
+    _entries(root, NOVEL, {**NOVEL, "id": "c2", "not_a_claim": {**said, "by": "Claude"}})
+    rows = {row.sentence: row.state for row in novelty_command.rows(project, held(project))}
+    assert rows[ABSENT] == "absence: c1 is marked, not searched"
+
+
+def test_a_search_by_hand_that_says_what_it_left_out_in_a_list_is_refused(
+    tmp_path: Path,
+) -> None:
+    root = _project(tmp_path, _text(ABSENT))
+    project = load_project(root)[0]
+    novelty_command.mark(project, "no study has examined", "Ada Example")
+    given = tmp_path / "embase.yaml"
+    given.write_bytes(yaml.safe_dump({
+        "step": "N1", "source": "Embase", "query": "q", "searched_on": "2026-11-02",
+        "hits": 0, "not_searched": ["Scopus", "grey literature"]}).encode())
+    with pytest.raises(command.Refused, match="not-searched"):
+        novelty_search.hand_search(project, "c1", given, "Ada Example")
+
+
+def test_a_claim_after_two_blank_lines_is_placed_on_its_own_line() -> None:
+    assert novelty.claims_in("A.\n\n\nNo study has examined X.\n")[0][0] == 4
 
 
 def test_a_seed_named_by_a_key_with_no_identifier_is_refused(tmp_path: Path) -> None:

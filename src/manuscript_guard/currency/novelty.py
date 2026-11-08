@@ -99,9 +99,12 @@ def _folded_note(text: str) -> str:
     return " ".join(text.replace(".", " ").split()).casefold()
 
 
-def not_searched_problem(text: str | None) -> str:
+def not_searched_problem(text: object) -> str:
     """Why `text` cannot say what a search did not reach, or "" where it can (D4.4): it is
-    given, holds a letter, and is not a word that says nothing was left out."""
+    given, as words, holds a letter, and is not a word that says nothing was left out."""
+    if text is not None and not isinstance(text, str):
+        return ("what the search did not reach is said in words, one text, not a list or a "
+                "number")  # fmt: skip
     if text is None or not text.strip():
         return ("say what the search did not reach: the databases and the kinds of work it "
                 "left out (Embase, grey literature, conference abstracts, other languages)")
@@ -146,7 +149,9 @@ def claims_in(text: str) -> list[tuple[int, str, Rule, str]]:
     for paragraph in body.split("\n\n"):
         start, end = at, at + len(paragraph)
         at = end + 2
-        here = line
+        # A third line break in a row opens the next piece: its words start below it (round
+        # 1 of #583).
+        here = line + paragraph[:len(paragraph) - len(paragraph.lstrip("\r\n"))].count("\n")
         line += paragraph.count("\n") + 2
         prose = masked[start:end]
         if not _any_rule(prose):

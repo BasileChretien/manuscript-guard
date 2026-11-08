@@ -6,8 +6,9 @@ records (DESIGN.md, "A claim to be first, or that nothing is known, rests on a r
 search"). G7 grades the record of the search, never whether the claim is true:
 
 - `novelty-unsearched`: a priority or absence claim with no entry, or whose entry is not
-  searched: no N1 the tool ran, or an N1 that kept works and no N2 the tool ran after them. A
-  warning from drafting, a failure at submission (D4.2).
+  searched: no N1 the tool ran, or an N1 that kept works and no N2 the tool ran, whatever
+  its day (the design asks for no order). A warning from drafting, a failure at submission
+  (D4.2).
 - `novelty-search-stale`: the claim was searched more than six months ago, as of the earlier
   of its newest N1 and, where N2 is needed, its newest N2. A warning, a failure at submission.
 - `novelty-softer`: a softer claim ("little is known") not searched, or searched more than six

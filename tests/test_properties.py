@@ -8584,6 +8584,14 @@ def _a_past_absence_is_read(patch: pytest.MonkeyPatch) -> None:
     _novelty_patterns_changed(patch, "(?:has|have)", "(?:has|have|had)")
 
 
+def _a_hyphenated_first_is_read(patch: pytest.MonkeyPatch) -> None:
+    _novelty_patterns_changed(patch, "(?!-)(?! (?:", "(?! (?:")
+
+
+def _a_papers_own_data_are_read_as_limited(patch: pytest.MonkeyPatch) -> None:
+    _novelty_patterns_changed(patch, "(?<!\\bour )", "")
+
+
 def _another_s_priority_is_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.currency import novelty
 
@@ -18534,6 +18542,14 @@ BROKEN = {
     ),
     "an absence in the past is read": (
         _a_past_absence_is_read,
+        test_a_claim_of_novelty_is_read_where_it_stands_and_nowhere_else,
+    ),
+    "a hyphenated first is read as a priority": (
+        _a_hyphenated_first_is_read,
+        test_a_claim_of_novelty_is_read_where_it_stands_and_nowhere_else,
+    ),
+    "a paper's own data are read as limited": (
+        _a_papers_own_data_are_read_as_limited,
         test_a_claim_of_novelty_is_read_where_it_stands_and_nowhere_else,
     ),
     "a priority given to someone else is read": (

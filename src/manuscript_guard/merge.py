@@ -2401,10 +2401,10 @@ def _beyond_changed(
     if not said:
         # The same of each kind, in another order: a link now before the footnote.
         said.append("a footnote, an equation or a link was moved")
-    listed = said[0] if len(said) == 1 else f"{', '.join(said[:-1])} and {said[-1]}"
+    told = said[0] if len(said) == 1 else f"{', '.join(said[:-1])} and {said[-1]}"
     where = "in Word, or in the .md since the build" if stale else "in Word"
     return (
-        f"{listed} {where}. Word keeps it outside the paragraph's text, and import merges "
+        f"{told} {where}. Word keeps it outside the paragraph's text, and import merges "
         f"only that text, so the change cannot come back this way. Make the edit in the .md."
     )
 

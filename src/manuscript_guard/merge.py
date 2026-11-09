@@ -1925,17 +1925,17 @@ def plan_import(
             refused.append(Refusal(name, carried_by[name], (_BESIDE_CHANGED,)))
         elif now is None or (not now.strip() and was.strip()):
             gone.append(name)
-        elif beyond := _beyond_changed(
-            beyond_sent.get(name, ()), beyond_back.get(name), stale=stale
-        ):
-            # Before the comparison of its text, which an edit in a footnote, an equation or
-            # a link's address leaves as it was: the import said nothing had come back.
-            refused.append(Refusal(name, now, (beyond,)))
         elif _same(was, now) or (
             # Only the part that carries the identifier is compared here. With new text
             # beside it - the part after an equation reworded - skipping it lost that edit.
             name in held and name not in beside_new and _typeset_only(was, now, source)
         ):
+            # Its text came back as sent, and an edit in a footnote, an equation or a link's
+            # address leaves it so: the import said nothing had come back.
+            if beyond := _beyond_changed(
+                beyond_sent.get(name, ()), beyond_back.get(name), stale=stale
+            ):
+                refused.append(Refusal(name, now, (beyond,)))
             continue
         elif not was.strip():
             refused.append(Refusal(name, now, (_HIDDEN,)))
@@ -1970,6 +1970,12 @@ def plan_import(
             refused.append(Refusal(name, now, (_SPLIT_OFF.format(text=_squashed(part)[:60]),)))
         elif (apart := anchors_apart(source)) is None:
             refused.append(Refusal(name, now, (_ANCHORED,)))
+        elif beyond := _beyond_changed(
+            beyond_sent.get(name, ()), beyond_back.get(name), stale=stale
+        ):
+            # After what refuses a split or a join by its own reason, which a footnote or a
+            # link gone with the second half would otherwise have been refused under.
+            refused.append(Refusal(name, now, (beyond,)))
         else:
             # The anchors that end the paragraph print nothing, and go back where they were.
             bare, anchors = apart

@@ -4765,6 +4765,20 @@ def test_a_sign_or_unit_set_beside_a_value_in_word_is_refused_and_named(
             id="an-em-dash",
         ),
         pytest.param(
+            "The OR was {{results.x}} overall.",
+            "The OR was ⟦3.84⟧ overall.",
+            "The OR = 3.84 overall.",
+            "The OR = {{results.x}} overall.",
+            id="an-equals-sign",
+        ),
+        pytest.param(
+            "Shares went from {{results.lo}}% to {{results.hi}}% here.",
+            "Shares went from ⟦12⟧% to ⟦15⟧% here.",
+            "Shares went from 12% – 15% here.",
+            "Shares went from {{results.lo}}% – {{results.hi}}% here.",
+            id="a-range-in-percent",
+        ),
+        pytest.param(
             "The dose was {{results.x}} mg overall.",
             "The dose was ⟦3.84⟧ mg overall.",
             "The dose was 3.84 mg in all.",
@@ -4798,8 +4812,10 @@ def test_a_sign_or_unit_that_changes_no_value_still_merges(
     source: str, marked: str, returned: str, expected: str
 ) -> None:
     """The refusal above is of a value's own sign and unit. A dash between two numbers is a
-    range, and an em dash is punctuation, never a minus; a unit or a dash the source already
-    had is kept; a value that is a word, and a citation, have no sign or unit to change."""
+    range, a percent sign or unit after the first number included, an em dash is punctuation,
+    never a minus, and an equals sign says the value is what it was; a unit or a dash the
+    source already had is kept; a value that is a word, and a citation, have no sign or unit
+    to change."""
     assert merged(source, marked, returned) == expected
 
 
@@ -10422,6 +10438,22 @@ def test_a_paragraph_is_refused_for_what_word_keeps_outside_its_text(
     assert why.endswith("Make the edit in the .md."), why
 
 
+def test_a_split_that_took_the_footnote_is_refused_as_a_split(tmp_path: Path) -> None:
+    """A paragraph split in Word with its footnote in the second half was refused as one
+    whose footnote was deleted in Word, which is not what happened (round 1 of #597). What
+    refuses a split or a join by its own reason comes first."""
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": "First half here. Second half.^[A note.]"})
+    note = (("footnote", "A note."),)
+    sent = [Block(("a",), "First half here. Second half.", beyond=note)]
+    returned = [Block(("a",), "First half here."), Block((), "Second half.", beyond=note)]
+    plan = plan_import(known, sent, returned)
+    [refusal] = plan.refused
+    [why] = refusal.why
+    assert "footnote" not in why and "split" in why, why
+
+
 def test_a_link_inside_a_field_is_the_field_s_and_not_compared() -> None:
     """Zotero's plugin, refreshing a live build, can link each citation it formats to the
     reference list: a link inside the citation's field, which the build never wrote. Read
@@ -10446,39 +10478,110 @@ def test_a_link_inside_a_field_is_the_field_s_and_not_compared() -> None:
         '<w:hyperlink r:id="rId9"><w:r><w:t>the register</w:t></w:r></w:hyperlink>'
         "</w:p>"
     )
-    assert list(_beyond(list(_visible(paragraph)))) == [("link", "rId9")]
+    assert list(_beyond(list(_visible(paragraph)))) == [("link", "rId9\x00\x00the register")]
 
 
-def test_a_link_s_address_is_compared_with_its_escapes_decoded(tmp_path: Path) -> None:
-    """A program saving the document may write a link's `(` as `%28`; the address is the
-    same, and read as another the paragraph was refused as one whose link was changed."""
+_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+
+
+def _one_paragraph(
+    path: Path, runs: str, target: str = "", notes: str = ""
+) -> Path:
+    """A document of one identified paragraph holding `runs`, a link relationship `rId7` to
+    `target`, and the footnotes `notes`."""
+    rels = "http://schemas.openxmlformats.org/package/2006/relationships"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            f'<w:document xmlns:w="{_W}" xmlns:r="{_R}"><w:body><w:p>'
+            '<w:bookmarkStart w:id="1" w:name="mg-p-x-0"/><w:bookmarkEnd w:id="1"/>'
+            f"{runs}</w:p></w:body></w:document>",
+        )
+        archive.writestr(
+            "word/_rels/document.xml.rels",
+            f'<Relationships xmlns="{rels}"><Relationship Id="rId7" Type="hyperlink" '
+            f'Target="{target}" TargetMode="External"/></Relationships>',
+        )
+        if notes:
+            archive.writestr(
+                "word/footnotes.xml", f'<w:footnotes xmlns:w="{_W}">{notes}</w:footnotes>'
+            )
+    return path
+
+
+def test_a_link_s_address_is_compared_with_its_escapes_decoded_and_its_bookmark(
+    tmp_path: Path,
+) -> None:
+    """A program saving the document may write a link's `(` as `%28`, and may keep the part
+    after `#` apart as the link's bookmark; the address is the same, and read as another
+    the paragraph was refused as one whose link was changed (round 1 of #597)."""
     from manuscript_guard.docxtext import blocks
 
-    w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-    r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-    rels = "http://schemas.openxmlformats.org/package/2006/relationships"
-    body = (
-        f'<w:document xmlns:w="{w}" xmlns:r="{r}"><w:body><w:p>'
-        '<w:bookmarkStart w:id="1" w:name="mg-p-x-0"/><w:bookmarkEnd w:id="1"/>'
-        '<w:r><w:t xml:space="preserve">See </w:t></w:r>'
-        '<w:hyperlink r:id="rId7"><w:r><w:t>the paper</w:t></w:r></w:hyperlink>'
-        "</w:p></w:body></w:document>"
+    link = '<w:hyperlink r:id="rId7"{anchor}><w:r><w:t>the paper</w:t></w:r></w:hyperlink>'
+    runs = '<w:r><w:t xml:space="preserve">See </w:t></w:r>' + link
+    doi = "https://doi.org/10.1002/(SICI)1097-0258"
+    [plain] = blocks(_one_paragraph(tmp_path / "a.docx", runs.format(anchor=""), doi))
+    [escaped] = blocks(
+        _one_paragraph(tmp_path / "b.docx", runs.format(anchor=""), doi.replace("(", "%28"))
     )
+    assert plain.beyond == escaped.beyond == (("link", doi),)
+    [whole] = blocks(_one_paragraph(tmp_path / "c.docx", runs.format(anchor=""), doi + "#s2"))
+    [apart] = blocks(
+        _one_paragraph(tmp_path / "d.docx", runs.format(anchor=' w:anchor="s2"'), doi)
+    )
+    assert whole.beyond == apart.beyond == (("link", doi + "#s2"),)
 
-    def saved(target: str) -> Path:
-        path = tmp_path / f"{len(list(tmp_path.iterdir()))}.docx"
-        with zipfile.ZipFile(path, "w") as archive:
-            archive.writestr("word/document.xml", body)
-            archive.writestr(
-                "word/_rels/document.xml.rels",
-                f'<Relationships xmlns="{rels}"><Relationship Id="rId7" Type="hyperlink" '
-                f'Target="{target}" TargetMode="External"/></Relationships>',
-            )
-        return path
 
-    [plain] = blocks(saved("https://doi.org/10.1002/(SICI)1097-0258"))
-    [escaped] = blocks(saved("https://doi.org/10.1002/%28SICI%291097-0258"))
-    assert plain.beyond == escaped.beyond == (("link", "https://doi.org/10.1002/(SICI)1097-0258"),)
+@pytest.mark.parametrize(
+    ("shown", "target"),
+    [
+        ("https://osf.io/abc", "https://osf.io/abc"),
+        ("www.osf.io/abc", "http://www.osf.io/abc"),
+        ("data@example.org", "mailto:data@example.org"),
+    ],
+    ids=["url", "www", "e-mail"],
+)
+def test_a_link_whose_words_are_its_address_is_the_paragraph_s_text(
+    tmp_path: Path, shown: str, target: str
+) -> None:
+    """Word's AutoFormat makes a link of an address typed in a paragraph, and it is on by
+    default: read as a link added, a co-author's "Data are at https://osf.io/abc" was refused
+    where it merged as text (round 1 of #597). A link whose words are its address is the
+    paragraph's text, compared there; an autolink of the source's is one too."""
+    from manuscript_guard.docxtext import blocks
+
+    runs = (
+        '<w:r><w:t xml:space="preserve">Data are at </w:t></w:r>'
+        f'<w:hyperlink r:id="rId7"><w:r><w:t>{shown}</w:t></w:r></w:hyperlink>'
+    )
+    [block] = blocks(_one_paragraph(tmp_path / "a.docx", runs, target))
+    assert block.beyond == ()
+
+
+def test_a_citation_in_a_footnote_of_a_live_build_is_read_by_its_code(tmp_path: Path) -> None:
+    """A citation in a footnote of a live build is a Zotero field, and once Zotero refreshes
+    it the footnote shows "(Smith 2020)" where the comparison build prints it as the source
+    writes it. Read by its words, a paragraph nobody touched was refused as one whose
+    footnote was changed in Word (round 1 of #597). The note's fields are read as the
+    paragraph's are."""
+    from manuscript_guard.docxtext import blocks
+
+    field = (
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        "<w:r><w:instrText> ADDIN ZOTERO_ITEM CSL_CITATION {} </w:instrText></w:r>"
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        "<w:r><w:t>(Smith 2020)</w:t></w:r>"
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+    )
+    notes = (
+        f'<w:footnote w:id="1"><w:p><w:r><w:t xml:space="preserve">See </w:t></w:r>{field}'
+        "<w:r><w:t>.</w:t></w:r></w:p></w:footnote>"
+    )
+    runs = '<w:r><w:t>Text.</w:t></w:r><w:r><w:footnoteReference w:id="1"/></w:r>'
+    document = _one_paragraph(tmp_path / "a.docx", runs, notes=notes)
+    [block] = blocks(document, fields=lambda code: "[@smith2020]" if "ZOTERO" in code else None)
+    assert block.beyond == (("footnote", "See [@smith2020]."),)
 
 
 def test_both_refusals_beside_new_text_speak_of_one_text_shown() -> None:

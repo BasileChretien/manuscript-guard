@@ -5606,7 +5606,9 @@ def tag_paragraphs(draw: st.DrawFn) -> list[dict[str, Any]]:
     Word: one for each value of `TAG_VALUES` as the first, each as the second, and each
     breaker, the words around them drawn. Each is a `word_edits` input, with the values."""
     out = []
-    opening = draw(st.sampled_from(("<LLOQ", "<LOD", "<µg", "</x")))
+    # No closing tag: `</x` takes in whatever stands before the next `>`, so the source would
+    # print none of those words already, and Word could not show them.
+    opening = draw(st.sampled_from(("<LLOQ", "<LOD", "<µg")))
     closing = draw(st.sampled_from((">ULOQ", "> ULOQ", ">5")))
     for first in TAG_VALUES:
         for second in TAG_VALUES:

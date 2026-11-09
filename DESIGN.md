@@ -21188,8 +21188,8 @@ Open, recorded as each change landed:
   or a percent sign added after one, changed or taken out, refuse the rewording
   (`roundtrip._beside_values`). A word after a value that G2 does not read as a unit,
   "3.84 years", "3.84-fold" or "3.84×", changes what the sentence claims as "3.84 mg" does,
-  and merges. A dash typed after a number and before a value, "2 – 3.84", is read as a range
-  and merges, where the co-author may have meant a minus. Pinned by
+  and merges. A dash typed after a number and before a value, "2 – 3.84" or "12% – 15%", is
+  read as a range and merges, where the co-author may have meant a minus. Pinned by
   `tests/test_roundtrip.py::test_a_word_after_a_value_that_is_no_unit_still_merges` and
   `tests/test_roundtrip.py::test_a_sign_or_unit_that_changes_no_value_still_merges`.
 - **The annotated copy shows classification, not correctness.** Green means a number came
@@ -24655,9 +24655,12 @@ Closed since, and why each mattered (an open gap goes above this line):
   nothing was merged, and the import said nothing had come back. Each paragraph's notes,
   equations and links are now read, tracked changes accepted (`docxtext.Block.beyond`), and
   compared by what they hold, since Word renumbers them on a save; a paragraph whose list
-  differs is refused, naming what changed. A link inside a field is the field's and is not
-  compared, so Zotero linking a refreshed citation to the reference list is no edit, and an
-  address is compared with its percent-escapes decoded. Word 16's own saves of a footnote
+  differs is refused, naming what changed. A citation in a footnote is read by its field's
+  code, as the paragraph's own are; a link inside a field is the field's and is not
+  compared, so Zotero linking a refreshed citation to the reference list is no edit; a link
+  whose words are its address, as Word's AutoFormat makes of one typed, is the paragraph's
+  text; and an address is compared with its percent-escapes decoded and its bookmark, which
+  Word may keep apart, after it. Word 16's own saves of a footnote
   edited with Track Changes off and on, a footnote deleted, an equation and a link's
   address edited, and the same document saved unchanged are the tests' documents. The
   refusal costs the edit, as "The refusal costs the edit" above says of all such markup.

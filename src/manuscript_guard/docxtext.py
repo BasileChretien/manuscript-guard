@@ -649,8 +649,8 @@ _NOTE_REFERENCES = {W + "footnoteReference": "footnote", W + "endnoteReference":
 
 def _beyond(seen: list[ET.Element]) -> Iterable[tuple[str, str]]:
     """What a paragraph holds that Word keeps outside its text, in the order it stands, of
-    the nodes `_visible` found: a note's id, an equation's text, and a link's relationship id
-    or, for one to a bookmark in the document, `#` and the bookmark's name.
+    the nodes `_visible` found: a note's id, an equation's text, and a link's relationship
+    id, the bookmark it names and the words it shows, each ended by `_APART`.
 
     `import` compared paragraphs by their text alone, and Word keeps a footnote's text in
     `footnotes.xml`, an equation in `m:t` runs and a link's address in the relationships. An
@@ -673,17 +673,41 @@ def _beyond(seen: list[ET.Element]) -> Iterable[tuple[str, str]]:
         elif node.tag == _M + "oMath":
             yield "equation", "".join(n.text or "" for n in _visible(node) if n.tag == _M + "t")
         elif node.tag == W + "hyperlink" and not fields and id(node) not in simple:
-            rid = node.get(_R + "id")
-            yield "link", rid if rid else "#" + node.get(W + "anchor", "")
+            shown = "".join(n.text or "" for n in _visible(node) if n.tag == W + "t")
+            parts = (node.get(_R + "id", ""), node.get(W + "anchor", ""), shown)
+            yield "link", _APART.join(parts)
+
+
+#: What separates a link's relationship id, bookmark and words in what `_beyond` yields.
+_APART = "\x00"
+
+
+def _bare_address(text: str) -> str:
+    """An address as one would type it: no scheme, no `mailto:`, no closing `/`, any case."""
+    bare = text.strip().lower()
+    for scheme in ("mailto:", "https://", "http://"):
+        bare = bare.removeprefix(scheme)
+    return bare.rstrip("/")
 
 
 def _named_beyond(
-    archive: zipfile.ZipFile, part: str, document: Path, fonts: Fonts
-) -> Callable[[tuple[str, str]], tuple[str, str]]:
-    """What each note id and link relationship id of `_beyond` names in this document: a
-    note's text, tracked changes accepted, and a link's target, its percent-escapes decoded,
-    since a program saving the document may write `(` as `%28` and the address is the same.
-    One that names nothing reads as nothing."""
+    archive: zipfile.ZipFile,
+    part: str,
+    document: Path,
+    fonts: Fonts,
+    fields: FieldReading | None = None,
+) -> Callable[[tuple[str, str]], tuple[str, str] | None]:
+    """What each note id and link of `_beyond` names in this document: a note's text,
+    tracked changes accepted and each field in it read as the paragraph's own are
+    (`fields`), and a link's address. None for a link whose words are its address.
+
+    A citation in a footnote of a live build is a Zotero field, and the paragraph's text reads
+    one by its code; read by its words, every refreshed one was a footnote changed in Word. A
+    link's address is its target, its percent-escapes decoded, since a program saving the
+    document may write `(` as `%28`, then the bookmark it names, which Word may keep apart
+    as `w:anchor`. A link whose words are its address is one Word's AutoFormat makes of an
+    address typed, or an autolink of the source's; its words are the paragraph's text, and
+    compared there."""
     notes: dict[tuple[str, str], str] = {}
     for kind in ("footnote", "endnote"):
         name = f"word/{kind}s.xml"
@@ -691,7 +715,7 @@ def _named_beyond(
             continue
         root = read_part(archive, name, what=f"{document.name}:{name}")
         for note in root.iter(W + kind):
-            text = " ".join(_text(p, fonts) for p in note.iter(W + "p"))
+            text = " ".join(_read(p, fonts, fields)[0] for p in note.iter(W + "p"))
             notes[(kind, note.get(W + "id", ""))] = spaced(text).strip()
     rels = posixpath.join(posixpath.dirname(part), "_rels", posixpath.basename(part) + ".rels")
     targets: dict[str, str] = {}
@@ -699,13 +723,17 @@ def _named_beyond(
         for rel in read_part(archive, rels, what=f"{document.name}:{rels}").iter(_RELS):
             targets[rel.get("Id", "")] = unquote(rel.get("Target", ""))
 
-    def named(entry: tuple[str, str]) -> tuple[str, str]:
+    def named(entry: tuple[str, str]) -> tuple[str, str] | None:
         kind, held = entry
         if kind in ("footnote", "endnote"):
             return kind, notes.get((kind, held), "")
-        if kind == "link" and not held.startswith("#"):
-            return kind, targets.get(held, "")
-        return entry
+        if kind != "link":
+            return entry
+        rid, anchor, shown = held.split(_APART)
+        address = (targets.get(rid, "") if rid else "") + (f"#{anchor}" if anchor else "")
+        if shown.strip() and _bare_address(shown) == _bare_address(address):
+            return None
+        return kind, address
 
     return named
 
@@ -855,14 +883,15 @@ def paragraphs_of(
             styles = _styles(archive, document.name)
             # Which font a run is in decides what its text is; see `wordfonts`.
             fonts = Fonts.of(archive, document.name)
-            named = _named_beyond(archive, part, document, fonts)
+            named = _named_beyond(archive, part, document, fonts, fields)
     except UnsafeDocument as exc:
         raise DocumentUnreadable(str(exc)) from exc
     body = root.find(W + "body")
     body = body if body is not None else root
     walked = _walk_body(body, _move_names(body), styles, fonts=fonts, fields=fields)
     walked = [
-        replace(p, beyond=tuple(map(named, p.beyond))) if p.beyond else p for p in walked
+        replace(p, beyond=tuple(filter(None, map(named, p.beyond)))) if p.beyond else p
+        for p in walked
     ]
     return _settled(walked)
 

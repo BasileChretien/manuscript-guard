@@ -71,6 +71,10 @@ def test_a_control_is_published_as_an_interval_and_named(tmp_path: Path) -> None
          "control c.x's data"),  # fmt: skip
         (lambda em: (em.control("c.x", 1, 0, 2, inputs=["data/simulated.csv"]),
                      em.add_input("data/simulated.csv")), "control c.x's data"),  # fmt: skip
+        # Round 1: declared synthetic again, it kept the control's mark.
+        (lambda em: (em.control("c.x", 1, 0, 2, inputs=["data/simulated.csv"]),
+                     em.add_input("data/simulated.csv", synthetic=True)),
+         "control c.x's data"),  # fmt: skip
     ],
 )
 def test_a_control_refuses_what_it_cannot_record(tmp_path: Path, call, refusal: str) -> None:

@@ -2081,7 +2081,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     path <- as.character(path)
     recorded <- vapply(path, input_path, character(1), USE.NAMES = FALSE)
     owned <- recorded %in% state$recorded & recorded %in% names(state$control_inputs)
-    if (any(owned) && !isTRUE(synthetic)) {
+    if (any(owned)) {
       first <- recorded[owned][[1]]
       stop(first, " is control ", state$control_inputs[[first]], "'s data; a control's ",
            "inputs are its own, read by nothing else in the run", call. = FALSE)

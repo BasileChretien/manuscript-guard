@@ -58,8 +58,8 @@
           "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "bytes": { "type": "integer", "minimum": 0 },
           "kind": {
-            "enum": ["results", "harvested", "plan", "named"],
-            "description": "A results file, every value and cell of it read; a harvested output, every cell of it read; the plan the run's first results froze, read to hold the project's plan and nothing else; or a file no check reads, released because the person named it at the terminal."
+            "enum": ["results", "harvested", "plan", "first reads", "named"],
+            "description": "A results file, every value and cell of it read; a harvested output, every cell of it read; the plan the run's first results froze, read to hold the project's plan and nothing else; the record of first reads the run kept, read as the emitters write it and merged into the project's, entries only added; or a file no check reads, released because the person named it at the terminal."
           }
         }
       }

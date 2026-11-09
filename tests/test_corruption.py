@@ -8623,6 +8623,55 @@ def test_held_out_data_their_validation_never_read_are_said_until_the_deviations
     assert _held_out_said(project, "submission") == []
 
 
+def test_a_model_the_validation_does_not_read_leaves_the_order_unknown(project: Path) -> None:
+    """Round 1 of PR 2b: no case reached the model missing from the validation's inputs."""
+    _hold_out(project)
+    _run_held(project, "03_validate", "data/validation.csv")
+    assert _held_out_said(project) == [("G12", "held-out-order-unknown", "warn")]
+
+
+def test_a_read_under_a_plan_that_held_out_other_data_tells_nothing(project: Path) -> None:
+    """Round 1 of PR 2b: a script's first read written under a version of the plan with no
+    entry for the input says nothing of its leave to read it: unknown, not a leak."""
+    _plan_edited(project, "## Planned results", "## Other\n\n```yaml\nheld_out:\n"
+                 "  - input: data/other.csv\n    validated_by: analysis/09.py\n```\n\n"
+                 "## Planned results")  # fmt: skip
+    (project / "data" / "validation.csv").write_text("id,y\nV1,0\nV2,1\n", encoding="utf-8")
+    (project / "models").mkdir()
+    (project / "models" / "model.txt").write_text("beta 1.2\n", encoding="utf-8")
+    for script in ("03_validate", "04_describe"):
+        (project / "analysis" / f"{script}.py").write_text(f"# {script}\n", encoding="utf-8")
+    _run_held(project, "04_describe", "data/validation.csv")
+    _plan_edited(project, "  - input: data/other.csv\n",
+                 "  - input: data/validation.csv\n    validated_by: analysis/03_validate.py\n"
+                 "    model: models/model.txt\n  - input: data/other.csv\n")  # fmt: skip
+    _run_held(project, "03_validate", "data/validation.csv", "models/model.txt")
+    said = _held_out_said(project)
+    assert ("G12", "held-out-order-unknown", "warn") in said and _LEAK[0] not in said, said
+
+
+@pytest.mark.parametrize(
+    "spoil",
+    [
+        lambda read: read.update(inputs=None),
+        lambda read: read["inputs"][0].update(sha256=["x"]),
+        lambda read: read.update(plan=[]),
+    ],
+)
+def test_a_record_of_first_reads_edited_out_of_shape_is_unreadable(project: Path, spoil) -> None:
+    """Round 1 of PR 2b: a read whose inputs, digests or plan were not of the emitters' shape
+    passed the check of its shape and raised in both gates."""
+    from manuscript_guard.emit import FIRST_READS
+
+    _hold_out(project)
+    _run_held(project, "03_validate", "data/validation.csv", "models/model.txt")
+    path = project / FIRST_READS
+    record = json.loads(path.read_text(encoding="utf-8"))
+    spoil(record["reads"][0])
+    path.write_text(json.dumps(record), encoding="utf-8")
+    assert ("G12", "first-reads-unreadable", "warn") in _held_out_said(project)
+
+
 def test_what_the_record_of_first_reads_cannot_tell_is_said(project: Path) -> None:
     from manuscript_guard.emit import FIRST_READS
 

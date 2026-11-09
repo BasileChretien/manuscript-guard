@@ -281,7 +281,8 @@ def cmd_release(args: argparse.Namespace) -> int:
     named = _named(box.unread)
     if named is None:
         return _no_terminal("release")
-    going = [*box.fragments, *(one for one, _entry in box.harvested), *box.plan, *named]
+    going = [*box.fragments, *(one for one, _entry in box.harvested), *box.plan, *box.reads,
+             *named]  # fmt: skip
     if not going:
         print(f"{_PREFIX} release: nothing to release; the outbox is left as it is")
         return 0

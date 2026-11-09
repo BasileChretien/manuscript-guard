@@ -381,6 +381,35 @@ def test_release_puts_the_results_in_the_project_and_records_it(
     assert f"analysis/01_model.py: changed since run {run}" in capsys.readouterr().out
 
 
+def test_a_release_brings_the_run_s_first_reads_into_the_project(
+    paper: Path, vault: Path, terminal
+) -> None:
+    """Round 1 of PR 2b (Basile, 2026-11-09): the run kept its record of first reads in the
+    vault's copy, which no release brought back, so held-out data validated in the vault
+    read as never read. The release merges it, entries only added."""
+    from manuscript_guard.emit import FIRST_READS
+
+    plan = paper / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + "\n```yaml\nheld_out:\n"
+                    "  - input: vault:cohort.csv\n    validated_by: analysis/01_model.py\n```\n",
+                    encoding="utf-8")  # fmt: skip
+    run = _ran(paper, vault, terminal)
+    assert not (paper / FIRST_READS).exists(), "written in the vault's copy, not here"
+    answers, _asked = terminal
+    answers.append("y")
+    assert vault_cli(paper, "release", run, "--as", "Lovelace") == 0
+    record = json.loads((paper / FIRST_READS).read_text(encoding="utf-8"))
+    assert [(read["script"], read["input"]) for read in record["reads"]] == [
+        ("analysis/01_model.py", "vault:cohort.csv")]  # fmt: skip
+    released = json.loads((paper / "approvals" / "vault-releases" / f"{run}.json")
+                          .read_text(encoding="utf-8"))  # fmt: skip
+    assert "first reads" in [one["kind"] for one in released["files"]]
+    report, *_rest = _run_gates(paper, stage="submission")
+    assert not [f for f in report.findings if f.code in ("held-out-unread",
+                                                         "held-out-order-unknown") and
+                f.severity != "info"]  # fmt: skip
+
+
 @pytest.mark.parametrize("run", ["../held", "20261104-120000/..", "x"])
 def test_release_names_a_run_by_its_id_and_nothing_else(paper: Path, vault: Path, terminal,
                                                          run: str) -> None:  # fmt: skip

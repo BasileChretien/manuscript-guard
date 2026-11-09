@@ -16333,7 +16333,10 @@ been sorted yet.
   from are not found: a development script that reads the whole dataset before the split
   reads the held-out rows, and G1 says nothing. Nor does it see a read the script does not
   declare, as G1 sees no undeclared input. A script named in `read_by` is taken at the
-  author's word to build and tune no model; one that does reads the held-out data unseen.
+  author's word to build and tune no model; one that does reads the held-out data unseen. A
+  script's first read is kept by the path it declared: one that first read a copy when the
+  copy held other bytes, and reads it again once it holds the held-out bytes, has no first
+  read of those, and G12 says only that the order is unknown (round 1 of PR 2b).
   Accepted.
 - **A script is a reader by the plan it first read the input under.** A validator renamed,
   or a describing script added, is accepted by G1 where the plan names it before the new
@@ -16362,10 +16365,10 @@ been sorted yet.
   Each write reads the record and writes it whole, so two scripts run at once can each write
   it from what it held before the other's entry, and one entry is lost: the read of a script
   that has stopped declaring the held-out input is then in no record. Runs one after the
-  other, as a pipeline makes them, lose nothing. Under `vault run` the scripts run in a copy
-  inside the vault, and the record they add to there is moved to the outbox with what they
-  wrote: it reaches the project only where the person releasing the run names it, so a read
-  of `vault:<label>` not released is in no record, and G12 says the order is unknown. And a
+  other, as a pipeline makes them, lose nothing. Under `vault run` the scripts add to the record
+  in the vault's copy, and `vault release` merges what they added into the project's record,
+  entries only added (Basile, 2026-11-09, round 1 of PR 2b): a run not released, or one whose
+  record the release does not read, adds nothing, and G12 says the order is unknown. And a
   record edited by hand to an empty list where its versions belong is refused by Python and
   written over by R, which reads an empty list and an empty mapping alike. Accepted.
 - **The order is held by the model's digest at the first read.** A model changed after the

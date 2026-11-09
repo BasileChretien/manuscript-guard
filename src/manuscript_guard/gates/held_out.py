@@ -66,6 +66,8 @@ class _Held:
     then: dict[str, HeldOut] | None
     record: dict | None
     unreadable: bool
+    #: Whether the frozen copy marks an all-synthetic first run, a dry run.
+    dry_run: bool = False
     reads: dict[str, list[Read]] = field(default_factory=dict)
     #: Each script's inputs now, by path, with their digests, as its fragment declares them.
     inputs_now: dict[str, dict[str, str]] = field(default_factory=dict)
@@ -91,12 +93,12 @@ def _held(project: Project, results: Results) -> _Held | None:
     plan = plan_path(project)
     text = _read_plan(plan)[0] if plan.is_file() else ""
     now = list(read_declarations(text).held_out)
-    kept, _synthetic = frozen_plan(project)
+    kept, synthetic = frozen_plan(project)
     then = None if kept is None else {h.input: h for h in read_declarations(kept).held_out}
     if not now and not then:
         return None
     record, unreadable = _record(project.root)
-    held = _Held(plan, text, now, then, record, unreadable)
+    held = _Held(plan, text, now, then, record, unreadable, synthetic)
     for fragment in results.fragments:
         held.inputs_now.setdefault(fragment.generated_by, {}).update(
             {str(i["path"]): str(i.get("sha256")) for i in fragment.inputs
@@ -112,8 +114,10 @@ def _reads_of(
 ) -> list[Read]:
     """Each script that read the input, by its path or by its bytes under another: in a
     fragment now, an input not declared synthetic, or in the record of first reads."""
+    # Not a synthetic copy's bytes: that is no read of the held-out data (round 1 of PR 2b).
     digests = {i.get("sha256") for f in results.fragments for i in f.inputs
-               if isinstance(i, dict) and i.get("path") == entry.input}  # fmt: skip
+               if isinstance(i, dict) and i.get("path") == entry.input
+               and not i.get("synthetic")}  # fmt: skip
     for read in (record or {}).get("reads", []):
         digests |= {i.get("sha256") for i in read.get("inputs", []) if isinstance(i, dict)
                     and i.get("path") == entry.input}  # fmt: skip
@@ -184,6 +188,12 @@ def check_held_out_reads(project: Project, results: Results | None, stage: str |
     return Report(tuple(findings))
 
 
+def _said(entry: HeldOut) -> tuple:
+    """What a held-out entry declares, its model's files and its readers in any order: a list
+    written in another order is no change (round 1 of PR 2b)."""
+    return entry.validated_by, frozenset(entry.model), frozenset(entry.read_by)
+
+
 _PATH_EDGE = re.compile(r"(?<![\w./-])\./")
 
 
@@ -230,10 +240,13 @@ def check_held_out(project: Project, results: Results | None, stage: str | None)
         if held.then is not None and before is None and not named:
             said("held-out-declared-late",
                  f"the held-out input {entry.input} is not in the plan as it stood when the "
-                 "first results were written: reads of it before then were not recorded",
-                 f"say under Deviations from the plan when {entry.input} was held out, "
-                 "naming it", line=entry.line)  # fmt: skip
-        elif before is not None and before.said() != entry.said() and not named:
+                 "first results were written"
+                 + (", a dry run on synthetic data" if held.dry_run else "")
+                 + ": reads of it before then were not recorded",
+                 f"say under Deviations from the plan when {entry.input} was held out and "
+                 "whether the real data had been read by then, naming it",
+                 line=entry.line)  # fmt: skip
+        elif before is not None and _said(before) != _said(entry) and not named:
             said("held-out-changed",
                  f"the held-out input {entry.input} is declared with another script, model or "
                  "reader than in the plan as it stood when the first results were written",

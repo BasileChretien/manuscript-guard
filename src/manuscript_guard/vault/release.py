@@ -37,7 +37,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
-from manuscript_guard.emit import FROZEN_PLAN
+from manuscript_guard.emit import FIRST_READS, FROZEN_PLAN
 from manuscript_guard.findings import FAIL, INFO, Finding
 from manuscript_guard.vault import RELEASE_SCHEMA
 from manuscript_guard.vault.run import OUTBOX, RunRefused, read_manifest
@@ -71,6 +71,10 @@ class Outbox:
     #: The plan as the run's first results froze it, where it holds the project's plan and
     #: nothing else (`_plan_only`).
     plan: list[str] = field(default_factory=list)
+    #: The record of first reads the run kept in the vault's copy, where it reads as the
+    #: emitters write it: merged into the project's at the release, entries only added
+    #: (Basile, 2026-11-09, round 1 of PR 2b).
+    reads: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -136,9 +140,23 @@ def open_outbox(project, folder: Path, run: str) -> Outbox:
             box.harvested.append((relative, entries[relative]))
         elif relative == FROZEN_PLAN.as_posix() and _plan_only(project, path, manifest):
             box.plan.append(relative)
+        elif relative == FIRST_READS.as_posix() and _reads_only(path):
+            box.reads.append(relative)
         else:
             box.unread.append(relative)
     return box
+
+
+def _reads_only(path: Path) -> bool:
+    """Whether the record of first reads a run kept reads as the emitters write it: paths,
+    digests and the plan's text, nothing of the data. Anything else is a file no check
+    reads."""
+    from manuscript_guard.emit import _first_reads_shaped
+
+    try:
+        return _first_reads_shaped(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return False
 
 
 #: When a plan was frozen, as `emit.freeze_plan` writes it.
@@ -403,10 +421,22 @@ def write_release(project, box: Outbox, named: list[str], who: tuple[str, str | 
     from manuscript_guard.vault.records import release_file
 
     root = Path(project.root)
-    going = [*box.fragments, *(one for one, _entry in box.harvested), *box.plan, *named]
+    going = [*box.fragments, *(one for one, _entry in box.harvested), *box.plan, *box.reads,
+             *named]  # fmt: skip
     if blocked := through_links(root, going):
         raise Refused(f"the release would write through a link: {', '.join(blocked)}")
     files = []
+    for relative in box.reads:
+        from manuscript_guard.emit import merge_first_reads
+
+        try:
+            merge_first_reads(root, json.loads((box.folder / relative).read_text("utf-8")))
+        except ValueError as exc:
+            raise Refused(f"{relative}: {exc}") from exc
+        target = root / relative
+        if target.is_file():  # none where the run read nothing new and the project kept none
+            files.append({"path": relative, "sha256": sha256_of(target),
+                          "bytes": target.stat().st_size, "kind": "first reads"})  # fmt: skip
     for relative, kind in ([(one, "results") for one in box.fragments]
                            + [(one, "harvested") for one, _entry in box.harvested]
                            + [(one, "plan") for one in box.plan]

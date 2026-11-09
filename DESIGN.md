@@ -5145,7 +5145,12 @@ as given twice. Where the main text has no heading at all, G14 does not report
 the drafting stage only (Basile, 2026-10-23: "a note once, at drafting"). The headings are
 added while the paper is drafted; once it is past that, the note would be said at every run
 of a paper that keeps its bold lines. `check` gives G14 its stage, as it gives G3 and G12
-theirs; called with none, G14 says nothing of it. A bold line is not taken for a heading.
+theirs; called with none, G14 says nothing of it. A bold line in Markdown is not taken for a
+heading. A Word paper with no paragraph in a heading style is another matter (Basile,
+2026-11-09, after the web audit of such a paper gave mostly false warnings): there, a
+paragraph wholly in bold whose words are a section's name alone, by the closed list a PDF's
+lines are read by (`text.section_names.SECTION_NAMES`), is made a heading by `init --from`
+and read as one by the audit, and the audit's report says how the headings were read.
 
 **Every finding is a warning, at every stage.** The reading of a definition is good and not
 exact, and a name in capitals is not an abbreviation. The first plan for this gate had an
@@ -20726,42 +20731,25 @@ Open, recorded as each change landed:
     lined up and is refused whatever the edit. Where the reading takes source markup for text
     it keeps - an unnamed construct that renders nothing - the backstop or the alignment
     refuses. Where it misjudges a span around a binding, nothing does.
-  - *The read-back reads a binding as digits.* What a binding's value makes of the text
-    beside it is seen only by the escaper, at the edges it knows: a `<`, `&`, `]` or `{`
-    before a binding, a `(` after one, and a `>` in an edited stretch. That `>` is escaped
-    once Word's paragraph shows, before it, a `<` that can open a tag: one before a letter
-    of any script, `/`, `!` or `?`, whether the source kept it bare or a value brought it.
-    At the end of an unquoted attribute value, after an `=`, pandoc takes a backslash for
-    part of the value, and `=\>` closed the tag; there the `>` is written `&gt;`. The value
-    ends only at ASCII whitespace, so a no-break space does not end it, and each citation
-    ahead of it is read as its key, as pandoc reads it; the rest is Word's text. A straight
-    quote straight after the `=` opens a quoted value that runs past the paragraph's end and
-    closed at a `>` in the next one; once a `<` shown in a stretch kept from the source, or
-    in a value, stands before it, it is written `\'` or `\"`, which prints straight. Word's
-    own `<` is escaped and opens nothing, so a quote after it is left for pandoc to curl. A
-    `<` the source had escaped still counts, since a kept stretch is read as Word shows it:
-    `\<LOD`, which the merge itself writes for a `<` typed in Word, makes a later
-    `family='binomial'` print `'binomial’`. A `’` Word typed after an `=` to close a quote of
-    the source's is written straight and escaped like any other; left curly, it closed
-    nothing, and a value the source's own `='` had opened ran on. An `=` that ends an
-    edited stretch still lets a tag run on into whatever follows it: `…set to low x=` ahead
-    of a paragraph with a `>` of its own merges, and the two print as the words after that
-    `>`; so does a value of `'low` after a typed `label=`, and a source paragraph that ends
-    in `=` itself, which the next paragraph's escaper cannot see. G2 reads
-    `\>` as the `>` it prints, so `ROR \> 2` is still a threshold. A `>` kept from the
-    source is not Word's to escape, after a `<` kept from the source or brought by a value.
-    Pandoc read the two as text only because something between them was not an attribute
-    name, and an edit that deletes or changes it can make a tag: with values that are words,
-    `Samples <LLOQ in {{results.unit}} (see Table 2) at {{results.site}} and >ULOQ were
-    redone.`, with "(see Table 2)" deleted in Word, or turned into `="(see Table 2)"`,
-    merges, and pandoc prints "Samples ULOQ were redone." A `>` in a binding's value is the
-    same case. The read-back does not see it: a digit is not an attribute name, and pandoc's
-    tags are looser than its own reading, which does not take `mg/L` for one.
-  - *What Word holds outside the paragraph's text is never compared.* A footnote's text is
-    in `footnotes.xml`, an equation in `m:t` runs, a link's address in the relationships;
-    `import` reads none of them. An edit inside a footnote or an equation, a changed link
-    address, or a footnote deleted in Word leaves the paragraph's text as it was, and
-    nothing is merged or reported.
+  - *A tag left open by the paragraph before is not seen.* A rewording is read for the tags
+    pandoc would read in it once its values are in (`roundtrip._tag_made`), one paragraph at
+    a time. A paragraph that ends after the `=` of a would-be tag, or inside its quoted
+    value, carries the tag on into the next one, whose identifier is then the value; a
+    source paragraph that ends so, `Values <LOD in mg/L were set to x=`, is not read beside
+    the next one's rewording, and "(see Table 2)" deleted before a `>` there merges: pandoc
+    prints the two as the words after that `>`. Pinned by
+    `tests/test_roundtrip.py::test_a_tag_left_open_by_the_paragraph_before_is_not_seen`.
+  - *A footnote holding a citation the build's record does not know is not compared.* A
+    live build's record names each citation field it made, as the source writes it, and a
+    footnote's citations are read through it, as the paragraph's are. It knows none in a
+    footnote where an earlier release wrote it; none where the citation was inserted in the
+    footnote in Word, or edited there through Zotero (a work added, a page changed); and none
+    the source writes two ways, which it leaves out. Such a footnote cannot be told from
+    Zotero's words, so it is taken to be as it was, its text, links and equations with it,
+    and an edit to it is lost as every footnote edit was before; a paragraph's own citation
+    is refused in each of these cases. A record that said it reads footnotes would let only
+    an earlier release's be taken so. Pinned by
+    `tests/test_roundtrip.py::test_a_footnote_citation_the_record_does_not_know_is_not_compared`.
   - *Code is refused only for the characters pandoc typesets.* A `--` or `...` typed in Word
     outside code, with AutoCorrect off, is typeset like one in the source; and code holding
     such a character refuses an edit anywhere in its stretch, even one that leaves the code
@@ -21165,11 +21153,6 @@ Open, recorded as each change landed:
     identifier, as any text typed at its start does, and the paragraph is reported as moved
     in Word, though it never moved. Nothing is written. Only an empty line is given its
     identifier back.
-  - *The live build's reference list before Zotero refreshes it* is one placeholder paragraph
-    with no style, so it is not recognised as a reference entry. The last paragraph deleted
-    without Track Changes leaves its identifier on the placeholder, and its text is written
-    over that paragraph, on `main` too. After a refresh the entries carry the Bibliography
-    style and are recognised.
 - **A join into a table is neither applied nor reported.** A paragraph whose mark was
   deleted just before a table runs on in Word into the table's first cell. Import folds a
   paragraph into the next only when no table stands between them, so it reads the paragraph
@@ -21608,9 +21591,19 @@ Open, recorded as each change landed:
   Pinned by `tests/test_roundtrip.py::test_links_and_keys_are_read_as_pandoc_reads_them`,
   `tests/test_roundtrip.py::test_a_binding_inside_inline_code_is_left_unmarked`
   and `tests/test_roundtrip.py::test_an_unreadable_marked_build_refuses_rather_than_stopping`.
-- **Only a sign glued to a value is a change to it.** "– 3.84", with a space, reads as
-  punctuation and merges; so does a unit or a percent sign added after a value. Both change
-  what the sentence claims, and neither is caught here; `check` sees the binding intact.
+- **A value's unit is what G2 reads as one, and a dash after a number makes a range.** A
+  sign or a comparison set before a value in Word, glued or with a space between, and a unit
+  or a percent sign added after one, changed or taken out, refuse the rewording
+  (`roundtrip._beside_values`); a spaced equals sign and an em dash do not. A word after a
+  value that G2 does not read as a unit, "3.84 years", "3.84-fold" or "3.84×", changes what
+  the sentence claims as "3.84 mg" does, and merges. A dash typed after a number and before
+  a value, "2 – 3.84", "12% – 15%" or "12 mg/L – 15 mg/L", is read as a range and
+  merges, where the co-author may have meant a minus. And a spaced en dash or hyphen
+  before a value that opens an aside, "the ratio – 3.84 – was high", is read as a sign and
+  refuses the rewording. Pinned by
+  `tests/test_roundtrip.py::test_a_word_after_a_value_that_is_no_unit_still_merges`,
+  `tests/test_roundtrip.py::test_a_sign_or_unit_that_changes_no_value_still_merges` and
+  `tests/test_roundtrip.py::test_a_sign_or_unit_set_beside_a_value_in_word_is_refused_and_named`.
 - **The annotated copy shows classification, not correctness.** Green means a number came
   from an artefact, not that the analysis behind it was right; the tiers describe provenance
   and nothing else. An SVG figure needs `rsvg-convert` for pandoc to place it in the contact
@@ -23483,12 +23476,32 @@ Open, recorded as each change landed:
   Word's Abstract style there is the section `# Abstract` only where pandoc's reading of the
   document with its styles is, the styles taken off, its ordinary reading block for block;
   where the two differ, it is left in the comment with the rest of the title page, and
-  nothing says so. An abstract in another style, or under a line "Abstract" in bold, stays
-  in the comment, and its numbers are read by no gate until it is moved out.
-- **A Word paper's bold-text headings are no headings.** `init --from` takes as a heading only
-  a paragraph in one of Word's heading styles, as pandoc does; six of fifteen papers had none.
-  Their sections are paragraphs to every gate, so a Methods section's thresholds are not read
-  as chosen in advance, and nothing is set aside as a title page. Accepted.
+  nothing says so. An abstract in another style, or under a line "Abstract" in bold in a
+  paper that uses a heading style elsewhere, stays in the comment, and its numbers are read
+  by no gate until it is moved out.
+- **A Word paper's titles in bold are headings only by a closed list of names.** In a paper
+  with no paragraph in a heading style, `init --from` and the audit take as a heading a
+  top-level paragraph wholly in bold, as pandoc reads bold (a run's own `w:b` or its
+  character style's, not a style that one is based on, nor its paragraph style's: pandoc
+  3.9.0.2 reads neither, `tests/test_from_word.py::test_the_audit_and_init_take_the_same_titles_in_bold`
+  holds the two readings together), whose words are a section's name alone from
+  the list a PDF's lines are read by (`text.section_names.SECTION_NAMES`). A bold "Study
+  design and setting" or "Statistical analysis" stays a paragraph, its section run on under
+  the heading before it; a title numbered by Word's own numbering is a list's item to pandoc
+  and a numbered line to the audit, and no heading to either; a title holding a link or a
+  note's mark is none, as pandoc reads the link or the note in it, nor is one in a text box
+  to the audit (a link written as a field, `w:fldSimple` or a HYPERLINK `w:instrText`, is a
+  title to the audit, and what pandoc makes of it and of a text box's bold paragraph is not
+  held by a test, so there the two readers may differ);
+  and a paper that uses a heading style anywhere is read by its styles alone, its bold titles
+  text. Where the titles cannot be placed, a structured abstract's parts with no
+  Introduction after them, the order of its parts never starting again and no title it
+  cannot hold among them, the audit places nothing and says so, and `init --from` makes each
+  a heading of level 1, so the Abstract ends at its first part. The title page is set aside
+  only above a first heading that opens a paper, its Abstract or its Introduction: a short
+  paper whose first title in bold is its "References" keeps its text where every gate reads
+  it. A heading is written with the title's own words, its number kept. Pinned by
+  `tests/test_from_word.py::test_a_word_paper_titled_in_bold_has_its_sections_made_headings`.
 - **`init --from` reads no affiliation, ORCID or e-mail address, and splits no name.** Each
   name from an Author paragraph goes into `authors.yaml` in a comment over an empty entry; the
   rest of the title page is in the comment in `main.md`. Accepted.
@@ -25083,6 +25096,59 @@ What papers converted from Word showed (see "What papers converted from Word sho
 
 Closed since, and why each mattered (an open gap goes above this line):
 
+- **A sign or a unit set beside a value in Word merged (2026-11-09).** Only a sign glued to
+  a value was a change to it. "– 3.84", with a space, read as punctuation and merged, and so
+  did a percent sign or a unit added after a value: each changes what the sentence claims,
+  and `check` saw the binding intact. A sign or a comparison before a value with a space
+  between, and a unit or percent sign after it added, changed or taken out, read as G2 reads
+  a unit after a binding, now refuse the rewording, naming what Word shows and the value's
+  key, and saying where to make the edit. What stays open is in "A value's unit is what G2
+  reads as one" above.
+
+- **The read-back read a binding as digits (2026-11-09).** A rewording was read back with
+  each binding filled with digits, by a pattern of a tag stricter than pandoc's. With values
+  that are words, `Samples <LLOQ in {{results.unit}} (see Table 2) at {{results.site}} and
+  >ULOQ were redone.` printed as typed only because "(see" is no attribute's name; with
+  "(see Table 2)" deleted in Word the merge read back as text, and pandoc printed "Samples
+  ULOQ were redone.", words deleted with nothing said. The read-back now fills each value
+  with what it prints and reads tags as pandoc 3.9 does (`roundtrip._pandoc_tags`: a name
+  and each attribute's name a name, anything in a value, a closing tag and an instruction
+  to the next `>`), held to pandoc in `tests/test_pandoc_agreement.py`; a rewording that
+  makes a tag of the source's `<` and `>`, or leaves one open after an `=` or in a quote at
+  the paragraph's end, is refused, with how to write the `<` in the .md. The paragraph
+  before is still not read with it; see "A tag left open by the paragraph before" above.
+
+- **What Word keeps outside a paragraph's text was never compared (2026-11-09).** A
+  footnote's text is in `footnotes.xml`, an equation in `m:t` runs, a link's address in the
+  relationships, and `import` read none of them: an edit inside a footnote or an equation, a
+  changed link address, or a footnote deleted in Word left the paragraph's text as it was,
+  nothing was merged, and the import said nothing had come back. Each paragraph's notes,
+  equations and links are now read, tracked changes accepted (`docxtext.Block.beyond`), and
+  compared by what they hold, since Word renumbers them on a save; a paragraph whose list
+  differs is refused, naming what changed. A footnote is compared with the links' addresses
+  and the equations in it, and a citation in one is read by its field's code, as the
+  paragraph's own are (one the record does not know is the limit above, "A footnote
+  holding a citation the build's record does not know"); a link inside a field is the
+  field's and is not compared, so Zotero linking a refreshed citation to the reference
+  list is no edit; a link
+  whose words are its address, as Word's AutoFormat makes of one typed, is the paragraph's
+  text; and an address is compared with its percent-escapes decoded and its bookmark, which
+  Word may keep apart, after it. Word 16's own saves of a footnote
+  edited with Track Changes off and on, a footnote deleted, an equation and a link's
+  address edited, and the same document saved unchanged are the tests' documents. The
+  refusal costs the edit, as "The refusal costs the edit" above says of all such markup.
+
+- **The live build's reference list before a Zotero refresh took a deleted paragraph's
+  identifier (closed by #120, found 2026-11-09).** Until Zotero refreshes it, the live
+  build's reference list is one paragraph with no style holding the `ADDIN ZOTERO_BIBL`
+  field and a placeholder, and DESIGN.md had the last paragraph, deleted without Track
+  Changes, leave its identifier there and the placeholder's text written over it. An
+  identifier on a block of a kind the build gives none of its own has been taken off it
+  since #120, and the comparison build has the placeholder too, so the paragraph is
+  reported deleted. Word 16 itself, deleting that paragraph, leaves the bookmark between the
+  two paragraphs, where it names none; both shapes are held by
+  `tests/test_roundtrip.py::test_a_paragraph_deleted_before_the_live_reference_list_is_not_written_over`.
+
 - **What #565 left of `sync-sources`' fetcher and its network guard (2026-11-09).** Nine
   points listed under "What `sync-sources` fetches from the web is held to the work's DOI or
   title" above, each of which lost a copy, said the wrong thing, or let a link reach this
@@ -25171,6 +25237,20 @@ Closed since, and why each mattered (an open gap goes above this line):
   text too faint or too small to read, zero-width characters inside words and words to a
   model; see "Hidden text is read in Word documents only".
 
+- **A Word paper titled in bold was read as one text (2026-11-09).** `init --from` and the
+  audit took as a heading only a paragraph in one of Word's heading styles, and six of fifteen
+  papers had none: their title page, glossary, statements and reference list were prose to
+  G6 and G14, the Abstract was never compared with the Results, and the report said nothing
+  of it. On one such paper audited through the web page, 68 of its 100 warnings were names,
+  affiliations, initials and journals in capitals. In a paper with no heading style, a
+  paragraph wholly in bold whose words are a section's name is made a heading now, a
+  structured abstract's parts nested under the Abstract (`text.section_names.section_levels`,
+  which a PDF's lines are placed by too: a structured abstract's parts end where their order,
+  background, methods, results, conclusions, starts again, as BMC's main text opens on a
+  second "Background", and an Abstract with words under it whose next titles cannot be
+  placed so is one paragraph), and the report says how the headings were read; see "A Word
+  paper's titles in bold are headings only by a closed list of names".
+
 - **An accent on a dotless i was read as italics (2026-11-05).** Better BibTeX writes í as
   `{\'\i}`, and with the braces gone G7 read
   `Sal\'\itez` by its longest command, the `\it` of italics, and "ez": a work whose one
@@ -25179,6 +25259,18 @@ Closed since, and why each mattered (an open gap goes above this line):
   compared, searched for and held to another entry. An accent's argument is one letter now,
   `\i` and `\j` among them; see "G7 reads a .bib's TeX with the braces gone" above for the
   `{\i}` no accent is on.
+
+- **The audit's report was read by no one (2026-11-09).** Basile, after auditing a paper of
+  his through the web page: "no one will read the current output". Its sections that found
+  nothing came first, a section each, and its 103 findings on the words took three lines
+  each, one hint repeated under 90 abbreviations. The report says now what each check found,
+  a line each, before the sections (`auditing.summary.checks`); a check that found nothing is
+  that line alone; and the findings on the words are grouped by kind, each with its count,
+  its first eight places and its hint once, or a hint at each place where they differ, as
+  G6's rates do (`auditing.summary.grouped`). What `--strict` counts is never folded away:
+  a number in no output, a total off its counts, an interval that differs from its
+  counterpart are listed in their sections. `--details`, and a box on the page, give every
+  section and every place in full; `--json` is unchanged.
 
 - **A plugin left releases behind the tool was said nothing of.** A copy of the plugin
   installed once stayed at a release a month old while the tool was upgraded with pip, and

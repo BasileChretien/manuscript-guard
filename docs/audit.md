@@ -37,7 +37,14 @@ given without `--lookup`. With
 `--json` it then prints `{"ok": false, "error": ...}`, with the reason, as well as saying it
 on stderr.
 
-The report comes in sections, after what was read and what was not:
+After what was read and what was not, the report says what each check found, a line each
+("What was checked"), and then gives the sections that have something to show: a check
+that found nothing is that line alone. The findings on the words are grouped by kind, each
+kind with its count and its first eight places, its hint said once where its places share
+it and at each place where they do not, a failure marked, and G6's matched words shown
+beside each of its places. `--details` prints every
+section in full and every finding with its place, its context and its hint, as one list;
+`--json` holds all of it either way. The sections:
 
 | Section | What it holds | Counted by `--strict` |
 |---|---|---|
@@ -290,8 +297,15 @@ stage; on fifteen real papers it did so for seven. `init --from` changes three t
 - **The title page**, what stands before the first heading, is set aside in one HTML
   comment at the top of `main.md`, where it is kept and no gate reads it. Only up to 600
   words: a longer run is taken for the paper's own text, an introduction with no heading
-  over it, and stays where it is. A paper with no paragraph in a heading style has nothing
-  set aside, and its bold-text headings are no sections to any gate.
+  over it, and stays where it is.
+- **Titles typed in bold.** In a paper with no paragraph in a heading style, a paragraph
+  wholly in bold (underlined too or not) whose words are a section's name alone, "Abstract",
+  "2. Methods", "References", "Declarations", is made a heading, and the title page before
+  the first is set aside as above; the audit reads the .docx's sections the same way, and
+  says so in the report. The names are a closed list, the one a PDF's lines are read by: a
+  bold "Study design" is text. Give the titles Word's heading styles for a reading that
+  rests on no list. With neither, nothing is set aside, and the report says the paper was
+  read as one text.
 
 What Word's Title, Author, Date and Abstract styles hold is what pandoc reads as the
 document's metadata. The title goes to `paper.yaml` unless `--title` gives another, each
@@ -303,8 +317,8 @@ styles, and joins the section where that reading matches the first. An Author
 paragraph holding several names, a comma, a number or a superscript, and the date, go into
 the comment. So does the Title paragraph, as well as `paper.yaml`'s plain title, where it
 holds a note, a superscript, a link or a picture: a note on the title often names the funder
-or the corresponding author. Nothing is guessed from how a line looks, so names typed in capitals on the
-title page stay in the comment. Read it: an abstract there in no Abstract style hides its
+or the corresponding author. Nothing else is read from how a line looks, so names typed in
+capitals on the title page stay in the comment. Read it: an abstract there in no Abstract style hides its
 numbers from every gate until you move it out.
 
 A `.doc` is refused: open it in Word and save it as `.docx`. `--from` makes nothing where

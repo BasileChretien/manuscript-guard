@@ -5564,6 +5564,81 @@ def word_edits(draw: st.DrawFn) -> dict[str, Any]:
     }
 
 
+#: What a co-author types in Word beside a value that says something else of it: a sign or a
+#: comparison before it with a space between, and a unit or a percent sign after it, with a
+#: space, a no-break space or none. Typed beside a citation, none of them changes a value.
+SIGNS_TYPED = ("– ", "- ", "− ", "< ", "≤ ", "± ", "~ ", "≈ ")
+UNITS_TYPED = ("%", " %", "‰", " mg", " mg/L", " µg")
+
+
+def beside_edited(printed: str, token: tuple[int, int], typed: str, before: bool) -> str:
+    """What Word shows of a laid-out paragraph once `typed` is put in front of one of its
+    values or citations, at `token` in what it printed, or straight after it."""
+    start, end = token
+    at = start if before else end
+    return printed[:at] + typed + printed[at:]
+
+
+@st.composite
+def beside_value_edits(draw: st.DrawFn) -> dict[str, Any]:
+    """A `suggestion_paragraphs` paragraph as typed and printed, and as it came back from
+    Word with a sign typed before one of its values or citations, or a unit after one
+    (`SIGNS_TYPED`, `UNITS_TYPED`): what `import` merges, or refuses."""
+    source, printed, _words, tokens, _renderings = laid_out(draw(suggestion_paragraphs()))
+    token = draw(st.sampled_from(tokens))
+    before = draw(st.booleans())
+    typed = draw(st.sampled_from(SIGNS_TYPED if before else UNITS_TYPED))
+    return {
+        "source": source,
+        "printed": printed,
+        "tokens": [list(one) for one in tokens],
+        "returned": beside_edited(printed, token, typed, before),
+    }
+
+
+#: What a value prints between a `<` and a `>` the source keeps bare, for `tag_paragraphs`:
+#: words and a unit with a slash, which pandoc reads as attributes' names, and a number and
+#: a word with a full stop in it, which it reads as no name.
+TAG_VALUES = ("plasma", "Caen", "mg/L", "3.84", "12", "a.b")
+#: What stands between the two values and keeps pandoc from reading a tag there: a
+#: parenthesis, a number, a comma, a bracket. Word deletes it. None shares a word with a
+#: value, so that where Word deleted it is not in doubt.
+TAG_BREAKERS = ("(see Table 2)", "2", "x, y", "[z]")
+#: Words that can be an attribute's name.
+_TAG_WORDS = ("in", "at", "and", "with", "from", "by")
+
+
+@st.composite
+def tag_paragraphs(draw: st.DrawFn) -> list[dict[str, Any]]:
+    """Paragraphs with a bare `<` before two values and a bare `>` after them, and something
+    between the values that keeps pandoc from reading a tag (`TAG_BREAKERS`), deleted in
+    Word: one for each value of `TAG_VALUES` as the first, each as the second, and each
+    breaker, the words around them drawn. Each is a `word_edits` input, with the values."""
+    out = []
+    # No closing tag: `</x` takes in whatever stands before the next `>`, so the source would
+    # print none of those words already, and Word could not show them.
+    opening = draw(st.sampled_from(("<LLOQ", "<LOD", "<µg")))
+    closing = draw(st.sampled_from((">ULOQ", "> ULOQ", ">5")))
+    for first in TAG_VALUES:
+        for second in TAG_VALUES:
+            for breaker in TAG_BREAKERS:
+                words = [draw(st.sampled_from(_TAG_WORDS)) for _ in range(3)]
+                head = f"Samples {opening} {words[0]} "
+                middle = f" {breaker} {words[1]} "
+                tail = f" {words[2]} {closing} were redone."
+                source = head + "{{results.u}}" + middle + "{{results.s}}" + tail
+                printed = head + first + middle + second + tail
+                at = len(head)
+                then = at + len(first) + len(middle)
+                tokens = [[at, at + len(first)], [then, then + len(second)]]
+                returned = printed.replace(f" {breaker}", "", 1)
+                out.append({
+                    "source": source, "printed": printed, "tokens": tokens,
+                    "returned": returned, "values": {"results.u": first, "results.s": second},
+                })  # fmt: skip
+    return out
+
+
 @st.composite
 def comment_anchors(draw: st.DrawFn) -> dict[str, Any]:
     """A `suggestion_paragraphs` paragraph, written once or twice, and a run of its words to
@@ -11578,6 +11653,186 @@ def software_plans(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
     return given, found
 
 
+# --------------------------------------- titles standing alone, placed, and titles in bold
+
+#: Papers whose titles stand alone, a PDF's lines or a Word paper's titles in bold, each a
+#: list of `(title, words under it)` with `None` for words drawn, and the levels
+#: `section_levels` gives them, or None where it cannot place them: an abstract of one
+#: paragraph over the main text's "Background"; a structured abstract up to an Introduction;
+#: one up to the main text's second "Background", as BMC's journals set them; the BMJ's,
+#: whose "Objectives" and "Design" name no section and stand under its Abstract as words; a
+#: structured abstract with neither after it; a name twice in the main text; no abstract.
+PLACED_PAPERS = {
+    "one paragraph": ([("Abstract", True), ("Background", None), ("Methods", None),
+                       ("Results", None), ("Discussion", None), ("References", None)],
+                      (1, 1, 1, 1, 1, 1)),
+    "up to an Introduction": ([("Abstract", None), ("Background", None), ("Methods", None),
+                               ("Results", None), ("Conclusions", None), ("Introduction", None),
+                               ("Methods", None), ("Results", None), ("Discussion", None)],
+                              (1, 2, 2, 2, 2, 1, 1, 1, 1)),
+    "up to a name again": ([("Abstract", False), ("Background", None), ("Methods", None),
+                            ("Results", None), ("Conclusions", None), ("Background", None),
+                            ("Methods", None), ("Results", None), ("Discussion", None),
+                            ("Conclusions", None)],
+                           (1, 2, 2, 2, 2, 1, 1, 1, 1, 1)),
+    "parts named no section": ([("Abstract", True), ("Results", None), ("Conclusions", None),
+                                ("Introduction", None), ("Methods", None), ("Results", None),
+                                ("Discussion", None)],
+                               (1, 2, 2, 1, 1, 1, 1)),
+    "unplaced": ([("Abstract", False), ("Background", None), ("Methods", None),
+                  ("Results", None), ("Discussion", None)], None),
+    "a name twice": ([("Abstract", True), ("Introduction", None), ("Methods", None),
+                      ("Results", None), ("Methods", None)], None),
+    # Round 1 of #598: parts that open on Results, over a main text opening on Background,
+    # are the Abstract's up to where the order of parts starts again, not to the next Results.
+    "parts from Results": ([("Abstract", True), ("Results", None), ("Conclusions", None),
+                            ("Background", None), ("Methods", None), ("Results", None),
+                            ("Discussion", None), ("References", None)],
+                           (1, 2, 2, 1, 1, 1, 1, 1)),
+    "words, then parts": ([("Abstract", True), ("Methods", None), ("Results", None),
+                           ("Conclusions", None), ("Background", None),
+                           ("Patients and methods", None), ("Findings", None),
+                           ("Discussion", None)],
+                          (1, 2, 2, 2, 1, 1, 1, 1)),
+    # A one-paragraph abstract over the main text, and an appendix's Methods: the main text
+    # is no abstract's parts, and a name twice places nothing.
+    "an appendix's names": ([("Abstract", True), ("Background", None), ("Methods", None),
+                             ("Results", None), ("Discussion", None), ("References", None),
+                             ("Appendix", None), ("Methods", None), ("Results", None)], None),
+    # Round 2 of #598: Limitations after the Discussion goes on in the order.
+    "limitations after the discussion": ([("Abstract", True), ("Background", None),
+                                          ("Methods", None), ("Results", None),
+                                          ("Discussion", None), ("Limitations", None),
+                                          ("Conclusions", None), ("References", None)],
+                                         (1, 1, 1, 1, 1, 1, 1, 1)),
+    "no abstract": ([("Introduction", None), ("Methods", None), ("Results", None),
+                     ("Discussion", None)], (1, 1, 1, 1)),
+}  # fmt: skip
+
+
+@st.composite
+def placed_papers(
+    draw: st.DrawFn,
+) -> list[tuple[list[str], list[bool], tuple[int, ...] | None]]:
+    """Every paper of `PLACED_PAPERS`, in an order drawn, each title written as drawn, as
+    it stands or in capitals, and the words under each title that decide nothing drawn; with
+    the levels each is to be given."""
+    out = []
+    for kind in draw(st.permutations(list(PLACED_PAPERS))):
+        planted, levels = PLACED_PAPERS[kind]
+        titles = [draw(st.sampled_from((title, title.upper()))) for title, _words in planted]
+        worded = [draw(st.booleans()) if words is None else words for _title, words in planted]
+        out.append((titles, worded, levels))
+    return out
+
+
+#: A Word paragraph of each kind, as `w:p` XML with `{}` for its words, and whether pandoc
+#: reads every word of it as bold (3.9.0.2): bold by the run's own `w:b`, by its character
+#: style's; not by a style that one is based on, nor by a paragraph style's, nor with `w:b`
+#: off, nor the run's own off over its style's on, nor half of it, nor in a table's cell, nor
+#: in a link, whose words pandoc reads as a link's.
+BOLD_PARAGRAPHS = {
+    "direct": ("<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>{}</w:t></w:r></w:p>", True),
+    "character style": ('<w:p><w:r><w:rPr><w:rStyle w:val="Strong"/></w:rPr><w:t>{}</w:t>'
+                        "</w:r></w:p>", True),
+    "based on one": ('<w:p><w:r><w:rPr><w:rStyle w:val="StrongToo"/></w:rPr><w:t>{}</w:t>'
+                     "</w:r></w:p>", False),
+    "paragraph style": ('<w:p><w:pPr><w:pStyle w:val="BoldPara"/></w:pPr><w:r><w:t>{}</w:t>'
+                        "</w:r></w:p>", False),
+    "turned off": ('<w:p><w:r><w:rPr><w:b w:val="0"/></w:rPr><w:t>{}</w:t></w:r></w:p>', False),
+    "overruled": ('<w:p><w:r><w:rPr><w:rStyle w:val="Strong"/><w:b w:val="false"/></w:rPr>'
+                  "<w:t>{}</w:t></w:r></w:p>", False),
+    "half": ('<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>{}</w:t></w:r>'
+             '<w:r><w:t xml:space="preserve"> and more</w:t></w:r></w:p>', False),
+    "in a cell": ("<w:tbl><w:tr><w:tc><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>{}</w:t></w:r></w:p>"
+                  "</w:tc></w:tr></w:tbl>", False),
+    "in a link": ('<w:p><w:hyperlink w:anchor="m"><w:r><w:rPr><w:b/></w:rPr><w:t>{}</w:t></w:r>'
+                  "</w:hyperlink></w:p>", False),
+}  # fmt: skip
+#: The styles the paragraphs above name.
+BOLD_PARAGRAPH_STYLES = (
+    '<w:style w:type="character" w:styleId="Strong"><w:name w:val="Strong"/>'
+    "<w:rPr><w:b/></w:rPr></w:style>"
+    '<w:style w:type="character" w:styleId="StrongToo"><w:name w:val="Strong too"/>'
+    '<w:basedOn w:val="Strong"/></w:style>'
+    '<w:style w:type="paragraph" w:styleId="BoldPara"><w:name w:val="Bold para"/>'
+    "<w:rPr><w:b/></w:rPr></w:style>"
+)
+
+
+@st.composite
+def bold_paragraphs(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A .docx body with a paragraph of every kind of `BOLD_PARAGRAPHS`, twice over in an
+    order drawn, each with words of its own between plain paragraphs; and the words of those
+    every word of which is in bold, sorted."""
+    kinds = draw(st.permutations(list(BOLD_PARAGRAPHS) * 2))
+    body, bold = "", []
+    for number, kind in enumerate(kinds):
+        words = f"{draw(st.sampled_from(FILLER)).capitalize()} {number}"
+        shape, is_bold = BOLD_PARAGRAPHS[kind]
+        body += f"<w:p><w:r><w:t>Plain {number}.</w:t></w:r></w:p>" + shape.format(words)
+        if is_bold:
+            bold.append(words)
+    return body, sorted(bold)
+
+
+def _str(word: str) -> dict:
+    return {"t": "Str", "c": word}
+
+
+def _strong(*inlines: dict) -> dict:
+    return {"t": "Strong", "c": list(inlines)}
+
+
+_GAP = {"t": "Space"}
+#: A pandoc paragraph of each kind, as Word papers are read, and the heading
+#: `from_word.bold_headings` makes of it, or None: a name in bold; also underlined, inside
+#: the bold or around it; in a span; numbered; with a colon; a bold title that names no
+#: section; a name in bold opening a sentence; a name only half in bold; one in italics
+#: only; one in a list's item; one in a link.
+BOLD_BLOCKS = {
+    "in bold": ({"t": "Para", "c": [_strong(_str("Methods"))]}, "Methods"),
+    "underlined inside": ({"t": "Para", "c": [_strong({"t": "Underline", "c": [
+        _str("References")]})]}, "References"),
+    "underlined around": ({"t": "Para", "c": [{"t": "Underline", "c": [
+        _strong(_str("Results"))]}]}, "Results"),
+    "in a span": ({"t": "Para", "c": [{"t": "Span", "c": [["", ["mark"], []], [
+        _strong(_str("Abstract"))]]}]}, "Abstract"),
+    "numbered": ({"t": "Para", "c": [_strong(_str("2."), _GAP, _str("Discussion"))]},
+                 "2. Discussion"),
+    "with a colon": ({"t": "Para", "c": [_strong(_str("Funding:"))]}, "Funding"),
+    "no section's name": ({"t": "Para", "c": [_strong(_str("Our"), _GAP, _str("cohort"))]},
+                          None),
+    "opening a sentence": ({"t": "Para", "c": [_strong(_str("Methods")), _GAP, _str("were"),
+                                                _GAP, _str("kept.")]}, None),
+    "half in bold": ({"t": "Para", "c": [_strong(_str("Materials")), _GAP, _str("and"), _GAP,
+                                          _str("methods")]}, None),
+    "in italics": ({"t": "Para", "c": [{"t": "Emph", "c": [_str("Conclusions")]}]}, None),
+    "in a list": ({"t": "BulletList", "c": [[{"t": "Plain", "c": [_strong(
+        _str("Background"))]}]]}, None),
+    "in a link": ({"t": "Para", "c": [_strong({"t": "Link", "c": [["", [], []], [
+        _str("Methods")], ["#m", ""]]})]}, None),
+}  # fmt: skip
+
+
+@st.composite
+def bold_blocks(draw: st.DrawFn) -> tuple[list[dict], list[str]]:
+    """Pandoc's blocks of a Word paper with no heading, a block of every kind of
+    `BOLD_BLOCKS` in an order drawn, each after a paragraph of words; and the titles of the
+    headings to be made of them, in order."""
+    blocks: list[dict] = []
+    titles: list[str] = []
+    for kind in draw(st.permutations(list(BOLD_BLOCKS))):
+        block, title = BOLD_BLOCKS[kind]
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4))
+        # A copy: `bold_headings` makes a new list, and each draw its own blocks.
+        copy = json.loads(json.dumps(block))
+        blocks += [{"t": "Para", "c": [_str(word) for word in words]}, copy]
+        if title is not None:
+            titles.append(title)
+    return blocks, titles
+
+
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "checker sentences": texts(),
     "checker methods": method_claims().flatmap(lambda drawn: st.sampled_from(drawn[:3])),
@@ -11684,7 +11939,13 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "quote placement": nearly_quoted(),
     "suggested edit": suggested_edits(),
     "suggestion written": suggestion_writes(),
-    "word merged": word_edits(),
+    "word merged": st.one_of(
+        word_edits(),
+        beside_value_edits(),
+        tag_paragraphs().flatmap(lambda drawn: st.sampled_from(drawn)).map(
+            lambda case: {key: case[key] for key in ("source", "printed", "tokens", "returned")}
+        ),
+    ),
     "comment anchored": comment_anchors(),
     "recycled passages": st.fixed_dictionaries(
         {"text": texts(RECYCLED, REFERENCE_BLOCKS), "source": earlier_papers()}

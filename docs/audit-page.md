@@ -22,6 +22,10 @@ reader has them (`.json`, `.csv`, `.tsv`, `.txt`, `.yaml`). That is everything
 - the reference list (G7), and with the box ticked, whether a cited work was retracted or is
   in no registry.
 
+The report says first what each check found, a line each, and groups the findings on the
+words by kind with their first places. A second box asks for every place of every finding,
+with its context and what to do (`audit --details`).
+
 It does not read PDFs, which need `pdftotext`, a program a browser cannot start. Nor does it
 read LaTeX projects of several files, figures, or reproducibility packages: the command line
 reads those.

@@ -71,7 +71,7 @@ function names(files) {
 // A name that starts with "-" would be read as an option; "./" before it is the same file.
 const argument = (name) => (name.startsWith("-") ? "./" + name : name);
 
-function run({ paper, against, lookup }) {
+function run({ paper, against, lookup, details }) {
   const [paperName, ...outputNames] = names([paper, ...against]);
   py.runPython(`import os, shutil
 os.chdir("/")
@@ -88,6 +88,7 @@ os.chdir("/work")`);
     });
   }
   if (lookup) args.push("--lookup");
+  if (details) args.push("--details");
   performance.clearResourceTimings();
   py.globals.set("ARGS", py.toPy(args));
   const start = now();

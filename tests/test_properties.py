@@ -69,6 +69,7 @@ from generated import (
     RESIDUE,
     RESIDUE_LOOKALIKES,
     SHORT_QUOTATION,
+    SIGNS_TYPED,
     SOURCE_GAPS,
     SOURCE_WORDS,
     STRETCHES,
@@ -76,11 +77,13 @@ from generated import (
     TERMS,
     TYPOGRAPHY,
     UNCLAIMED,
+    UNITS_TYPED,
     WORD_EDITS,
     WRITTEN_WORDS,
     abstract_papers,
     abstract_trees,
     alt_texts,
+    beside_edited,
     bindings,
     bold_planted,
     built_briefs,
@@ -175,6 +178,7 @@ from generated import (
     sources,
     suggestion_paragraphs,
     supplements,
+    tag_paragraphs,
     text_languages,
     texts,
     title_pairs,
@@ -10386,6 +10390,123 @@ def _an_edit_where_a_span_closes_is_written_inside_it(patch: pytest.MonkeyPatch)
     patch.setattr(rewording, "_widened", lambda edit, marks, sources: real(edit, (), sources))
 
 
+@holds(40, suggestion_paragraphs())
+def test_a_sign_or_unit_typed_beside_a_value_is_refused_and_beside_a_citation_is_not(
+    paragraph: dict[str, Any],
+) -> None:
+    """`import` refuses a rewording that sets a sign or a comparison before a value, a space
+    between, or a unit or a percent sign after it (`roundtrip._beside_values`): each says
+    something else of the value, and `check` sees the binding intact. Every kind of each
+    (`SIGNS_TYPED`, `UNITS_TYPED`) is typed beside every value and every citation of the
+    paragraph, in every kind of stretch. Beside a value the merge is refused, naming it,
+    unless the sign is a dash after a number, which makes a range; beside a citation it is
+    refused for nothing of the kind."""
+    from manuscript_guard.roundtrip import _tokens, align
+
+    source, printed, _words, tokens, _renderings = laid_out(paragraph)
+    protected = [token.text for token in _tokens(source)]
+    for index, token in enumerate(tokens):
+        value = protected[index].startswith("{{")
+        for before, kinds in ((True, SIGNS_TYPED), (False, UNITS_TYPED)):
+            for put in kinds:
+                returned = beside_edited(printed, token, put, before)
+                aligned = align(source, printed, returned, tokens)
+                named = [entry[2] for entry in aligned.beside]
+                ranged = (
+                    before
+                    and put.strip() in ("–", "-")
+                    and printed[: token[0]].rstrip()[-1:].isdigit()
+                )
+                if not value or ranged:
+                    assert not named, (put, returned, source)
+                    continue
+                assert aligned.rebuilt is None, (put, returned, source)
+                assert named == [protected[index]], (put, returned, source)
+
+
+def _a_sign_or_unit_beside_a_value_is_merged(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import roundtrip
+
+    patch.setattr(roundtrip, "_beside_values", lambda *given, **named: ())
+
+
+def _every_dash_before_a_value_is_a_range(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import roundtrip
+
+    patch.setattr(roundtrip, "_a_range", lambda after, sign: after[sign] in ("–", "-"))
+
+
+def _pandoc_prints(paragraphs: list[str]) -> list[str]:
+    """What pandoc prints of each paragraph, each opened with an identifier as the build
+    opens it, with each run of spaces one space, and raw HTML, which it does not print,
+    left out."""
+    pandoc = shutil.which("pandoc")
+    if pandoc is None:
+        pytest.skip("pandoc is not installed, and what it prints is the question")
+    markdown = "\n\n".join(f"[]{{#mg-p-x-{n}}}{text}" for n, text in enumerate(paragraphs))
+    read = subprocess.run(
+        [pandoc, "-f", "markdown", "-t", "json"],
+        input=markdown.encode("utf-8"), capture_output=True, check=True, timeout=120,
+    )  # fmt: skip
+
+    def said(inline: dict) -> str:
+        kind = inline["t"]
+        return inline["c"] if kind == "Str" else " " if kind in ("Space", "SoftBreak") else ""
+
+    blocks = [b for b in json.loads(read.stdout)["blocks"] if b["t"] == "Para"]
+    return [" ".join("".join(said(inline) for inline in b["c"]).split()) for b in blocks]
+
+
+@holds(15, tag_paragraphs())
+def test_an_edit_between_a_kept_angle_and_its_partner_prints_every_word_or_is_refused(
+    cases: list[dict[str, Any]],
+) -> None:
+    """`import` merges a rewording that takes out what kept a `<` and a `>` of the source
+    from being a tag to pandoc only where pandoc, given the merge and its values, prints
+    what Word showed; otherwise it refuses it as a tag (`roundtrip._tag_made`). Every value
+    of `TAG_VALUES` stands first and second, beside every breaker of `TAG_BREAKERS`, in
+    each example. Each refused one is merged as it was before the refusal, and pandoc then
+    prints otherwise than Word showed: nothing is refused that would have printed."""
+    from unittest import mock
+
+    from manuscript_guard import roundtrip
+    from manuscript_guard.text.placeholders import substitute
+
+    merged, would = [], []
+    for case in cases:
+        tokens = [tuple(token) for token in case["tokens"]]
+        aligned = roundtrip.align(case["source"], case["printed"], case["returned"], tokens)
+        if aligned.rebuilt is not None:
+            merged.append((case, substitute(aligned.rebuilt, case["values"])))
+            continue
+        assert aligned.tag, (case, aligned)
+        with mock.patch.object(roundtrip, "_tag_made", lambda *given, **named: ""):
+            before = roundtrip.align(case["source"], case["printed"], case["returned"], tokens)
+        assert before.rebuilt is not None, (case, before)
+        would.append((case, substitute(before.rebuilt, case["values"])))
+    printed = _pandoc_prints([text for _case, text in merged + would])
+    assert len(printed) == len(merged) + len(would), printed
+    for (case, text), shown in zip(merged, printed, strict=False):
+        assert shown == " ".join(case["returned"].split()), (text, shown)
+    for (case, text), shown in zip(would, printed[len(merged) :], strict=True):
+        assert shown != " ".join(case["returned"].split()), (text, shown)
+
+
+def _a_tag_made_of_the_source_s_angles_is_merged(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import roundtrip
+
+    patch.setattr(roundtrip, "_tag_made", lambda *given, **named: "")
+
+
+def _a_value_is_read_as_digits_for_its_tags(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import roundtrip
+
+    real = roundtrip._valued
+    patch.setattr(
+        roundtrip, "_valued", lambda text, renderings: real(text, ["0" for _ in renderings])
+    )
+
+
 # ------------------------------------------------------- a comment on a sentence, in Word
 
 
@@ -17398,9 +17519,206 @@ def _a_list_of_modules_read_line_by_line_gives_its_first(patch: pytest.MonkeyPat
     patch.setattr(software, "_import_list", lambda written: listed(written)[:1])
 
 
+# ----------------------------------------- titles standing alone placed, and titles in bold
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import (  # noqa: E402
+    BOLD_PARAGRAPH_STYLES,
+    bold_blocks,
+    bold_paragraphs,
+    placed_papers,
+)
+
+
+@holds(60, placed_papers())
+def test_titles_standing_alone_are_placed_as_their_paper_sets_them(
+    drawn: list[tuple[list[str], list[bool], tuple[int, ...] | None]],
+) -> None:
+    """A structured abstract's titles standing alone, a PDF's lines or a Word paper's titles
+    in bold, are the Abstract's up to an Introduction or to where the order of its parts
+    starts again; an Abstract with words under it whose next titles cannot be placed so is
+    one paragraph, and the title after it the main text's; a structured abstract with
+    neither after it, a title no abstract holds among its parts, and a name twice in the
+    main text, are not placed (`section_levels`)."""
+    from manuscript_guard.text.section_names import section_levels
+
+    for titles, worded, levels in drawn:
+        assert section_levels(titles, worded) == levels, (titles, worded)
+
+
+def _a_structured_abstract_ends_only_at_an_introduction(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "_parts_end", lambda keys, first: next(
+        (at for at in range(first + 1, len(keys)) if keys[at] == "introduction"), None))
+
+
+def _a_titles_order_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    """A title no abstract holds is taken for a part, at the end of the order: as though the
+    abstract ran on over "References" and "Appendix"."""
+    from manuscript_guard.text import section_names
+
+    class AtTheEnd(dict):
+        def get(self, key: str, default: int | None = None) -> int:  # type: ignore[override]
+            return super().get(key, 9)
+
+    patch.setattr(section_names, "_PART_ORDER", AtTheEnd(section_names._PART_ORDER))
+
+
+def _a_structured_abstract_ends_at_a_name_again(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #598: the parts ended at the first title that named one of them again."""
+    from manuscript_guard.text import section_names
+
+    def again(keys: list[str], first: int) -> int | None:
+        seen: set[str] = set()
+        for at in range(first + 1, len(keys)):
+            if keys[at] in seen:
+                return at
+            seen.add(keys[at])
+        return None
+
+    patch.setattr(section_names, "_parts_end", again)
+
+
+def _an_abstract_with_words_under_it_is_never_one_paragraph(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "_one_paragraph", lambda worded, first: False)
+
+
+@holds(40, bold_paragraphs())
+def test_a_word_paragraph_is_in_bold_as_pandoc_reads_bold(drawn: tuple[str, list[str]]) -> None:
+    """A paragraph whose every word is bold by its run's own `w:b` or its character style's
+    is in bold, as pandoc reads it; one bold by a style its character style is based on, by
+    its paragraph style, with `w:b` off, overruled by the run, half in bold or in a table's
+    cell is not (`text.docx._run_bold`)."""
+    import tempfile
+    import zipfile
+
+    from manuscript_guard.text.docx import read_docx_text
+
+    body, bold = drawn
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "paper.docx"
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", f"<w:document {_WORD_NAMESPACE}><w:body>"
+                                                  f"{body}</w:body></w:document>")  # fmt: skip
+            archive.writestr("word/styles.xml", f"<w:styles {_WORD_NAMESPACE}>"
+                                                f"{BOLD_PARAGRAPH_STYLES}</w:styles>")  # fmt: skip
+        document = read_docx_text(path)
+    lines = document.body.split("\n")
+    assert sorted(lines[at] for at in document.bold) == bold
+
+
+def _a_paragraph_style_s_bold_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import docx as docx_module
+
+    real = docx_module._run_bold
+    patch.setattr(docx_module, "_run_bold", lambda run, styles: real(run, styles) or (
+        run is not None and run.find(docx_module.W + "rPr") is None))  # fmt: skip
+
+
+def _bold_turned_off_is_on(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import docx as docx_module
+
+    patch.setattr(docx_module, "_on", lambda toggle: True)
+
+
+def _a_style_s_base_is_read(patch: pytest.MonkeyPatch) -> None:
+    """A character style is read as bold where the style it is based on is, which pandoc
+    does not read: the one based on `Strong` in `BOLD_PARAGRAPH_STYLES` taken for bold."""
+    from manuscript_guard.text import docx as docx_module
+
+    real = docx_module._bold_styles
+    patch.setattr(docx_module, "_bold_styles",
+                  lambda archive, names, what: {**real(archive, names, what), "StrongToo": True})
+
+
+@holds(60, bold_blocks())
+def test_a_paragraph_wholly_in_bold_that_names_a_section_is_made_a_heading(
+    drawn: tuple[list[dict], list[str]],
+) -> None:
+    """In a Word paper with no heading style, a paragraph wholly in bold, also underlined,
+    in a span, numbered or with a colon, whose words name a section is made a heading of its
+    name; a bold title that names none, a bold word opening a sentence, a name in italics,
+    in a list's item or in a link stays text (`from_word.bold_headings`)."""
+    from manuscript_guard.from_word import bold_headings
+
+    blocks, titles = drawn
+    made, named = bold_headings(blocks)
+    assert list(named) == titles
+    assert [_text_of_heading(block) for block in made if block["t"] == "Header"] == titles
+
+
+def _text_of_heading(block: dict) -> str:
+    from manuscript_guard.from_word import text_of
+
+    return " ".join(text_of(block["c"][2]).split())
+
+
+def _any_bold_title_is_a_section_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "section_name_alone", lambda text: " ".join(text.split()) or None)
+
+
+def _a_paragraph_partly_in_bold_is_a_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import from_word
+
+    real = from_word._bold_words
+    patch.setattr(from_word, "_bold_words", lambda inlines, bold=False: (
+        None if (found := real(inlines, bold)) is None else [any(found)] * len(found)))
+
+
+def _a_title_also_underlined_is_none(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import from_word
+
+    patch.setattr(from_word, "_LOOKS", {"Emph": None})
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a structured abstract's parts end only at an Introduction": (
+        _a_structured_abstract_ends_only_at_an_introduction,
+        test_titles_standing_alone_are_placed_as_their_paper_sets_them,
+    ),
+    "a structured abstract's parts end at the first name again": (
+        _a_structured_abstract_ends_at_a_name_again,
+        test_titles_standing_alone_are_placed_as_their_paper_sets_them,
+    ),
+    "a title no abstract holds is a structured abstract's part": (
+        _a_titles_order_is_not_read,
+        test_titles_standing_alone_are_placed_as_their_paper_sets_them,
+    ),
+    "an Abstract with words under it is never one paragraph": (
+        _an_abstract_with_words_under_it_is_never_one_paragraph,
+        test_titles_standing_alone_are_placed_as_their_paper_sets_them,
+    ),
+    "a paragraph style's bold is read": (
+        _a_paragraph_style_s_bold_is_read,
+        test_a_word_paragraph_is_in_bold_as_pandoc_reads_bold,
+    ),
+    "bold turned off is on": (
+        _bold_turned_off_is_on,
+        test_a_word_paragraph_is_in_bold_as_pandoc_reads_bold,
+    ),
+    "a style's base is read for bold": (
+        _a_style_s_base_is_read,
+        test_a_word_paragraph_is_in_bold_as_pandoc_reads_bold,
+    ),
+    "any bold title is a section's": (
+        _any_bold_title_is_a_section_s,
+        test_a_paragraph_wholly_in_bold_that_names_a_section_is_made_a_heading,
+    ),
+    "a paragraph partly in bold is a title": (
+        _a_paragraph_partly_in_bold_is_a_title,
+        test_a_paragraph_wholly_in_bold_that_names_a_section_is_made_a_heading,
+    ),
+    "a title also underlined is none": (
+        _a_title_also_underlined_is_none,
+        test_a_paragraph_wholly_in_bold_that_names_a_section_is_made_a_heading,
+    ),
     "a model is named whatever its version": (
         _a_model_s_version_is_dropped,
         test_a_statement_names_a_model_where_its_parts_stand_in_a_row_and_nowhere_else,
@@ -21133,6 +21451,22 @@ BROKEN = {
     "an edit where a span closes is written inside it": (
         _an_edit_where_a_span_closes_is_written_inside_it,
         test_a_word_edited_in_word_is_written_where_it_stands_and_nothing_else_changes,
+    ),
+    "a sign or unit set beside a value merges": (
+        _a_sign_or_unit_beside_a_value_is_merged,
+        test_a_sign_or_unit_typed_beside_a_value_is_refused_and_beside_a_citation_is_not,
+    ),
+    "every dash before a value is a range": (
+        _every_dash_before_a_value_is_a_range,
+        test_a_sign_or_unit_typed_beside_a_value_is_refused_and_beside_a_citation_is_not,
+    ),
+    "a tag made of the source's angles merges": (
+        _a_tag_made_of_the_source_s_angles_is_merged,
+        test_an_edit_between_a_kept_angle_and_its_partner_prints_every_word_or_is_refused,
+    ),
+    "a value is read as digits for its tags": (
+        _a_value_is_read_as_digits_for_its_tags,
+        test_an_edit_between_a_kept_angle_and_its_partner_prints_every_word_or_is_refused,
     ),
     "a comment is put on the first of two places its sentence is": (
         _a_comment_is_put_on_the_first_of_two_places,

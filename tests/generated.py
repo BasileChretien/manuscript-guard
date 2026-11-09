@@ -5555,6 +5555,81 @@ def word_edits(draw: st.DrawFn) -> dict[str, Any]:
     }
 
 
+#: What a co-author types in Word beside a value that says something else of it: a sign or a
+#: comparison before it with a space between, and a unit or a percent sign after it, with a
+#: space, a no-break space or none. Typed beside a citation, none of them changes a value.
+SIGNS_TYPED = ("– ", "- ", "− ", "< ", "≤ ", "± ", "~ ", "≈ ")
+UNITS_TYPED = ("%", " %", "‰", " mg", " mg/L", " µg")
+
+
+def beside_edited(printed: str, token: tuple[int, int], typed: str, before: bool) -> str:
+    """What Word shows of a laid-out paragraph once `typed` is put in front of one of its
+    values or citations, at `token` in what it printed, or straight after it."""
+    start, end = token
+    at = start if before else end
+    return printed[:at] + typed + printed[at:]
+
+
+@st.composite
+def beside_value_edits(draw: st.DrawFn) -> dict[str, Any]:
+    """A `suggestion_paragraphs` paragraph as typed and printed, and as it came back from
+    Word with a sign typed before one of its values or citations, or a unit after one
+    (`SIGNS_TYPED`, `UNITS_TYPED`): what `import` merges, or refuses."""
+    source, printed, _words, tokens, _renderings = laid_out(draw(suggestion_paragraphs()))
+    token = draw(st.sampled_from(tokens))
+    before = draw(st.booleans())
+    typed = draw(st.sampled_from(SIGNS_TYPED if before else UNITS_TYPED))
+    return {
+        "source": source,
+        "printed": printed,
+        "tokens": [list(one) for one in tokens],
+        "returned": beside_edited(printed, token, typed, before),
+    }
+
+
+#: What a value prints between a `<` and a `>` the source keeps bare, for `tag_paragraphs`:
+#: words and a unit with a slash, which pandoc reads as attributes' names, and a number and
+#: a word with a full stop in it, which it reads as no name.
+TAG_VALUES = ("plasma", "Caen", "mg/L", "3.84", "12", "a.b")
+#: What stands between the two values and keeps pandoc from reading a tag there: a
+#: parenthesis, a number, a comma, a bracket. Word deletes it. None shares a word with a
+#: value, so that where Word deleted it is not in doubt.
+TAG_BREAKERS = ("(see Table 2)", "2", "x, y", "[z]")
+#: Words that can be an attribute's name.
+_TAG_WORDS = ("in", "at", "and", "with", "from", "by")
+
+
+@st.composite
+def tag_paragraphs(draw: st.DrawFn) -> list[dict[str, Any]]:
+    """Paragraphs with a bare `<` before two values and a bare `>` after them, and something
+    between the values that keeps pandoc from reading a tag (`TAG_BREAKERS`), deleted in
+    Word: one for each value of `TAG_VALUES` as the first, each as the second, and each
+    breaker, the words around them drawn. Each is a `word_edits` input, with the values."""
+    out = []
+    # No closing tag: `</x` takes in whatever stands before the next `>`, so the source would
+    # print none of those words already, and Word could not show them.
+    opening = draw(st.sampled_from(("<LLOQ", "<LOD", "<µg")))
+    closing = draw(st.sampled_from((">ULOQ", "> ULOQ", ">5")))
+    for first in TAG_VALUES:
+        for second in TAG_VALUES:
+            for breaker in TAG_BREAKERS:
+                words = [draw(st.sampled_from(_TAG_WORDS)) for _ in range(3)]
+                head = f"Samples {opening} {words[0]} "
+                middle = f" {breaker} {words[1]} "
+                tail = f" {words[2]} {closing} were redone."
+                source = head + "{{results.u}}" + middle + "{{results.s}}" + tail
+                printed = head + first + middle + second + tail
+                at = len(head)
+                then = at + len(first) + len(middle)
+                tokens = [[at, at + len(first)], [then, then + len(second)]]
+                returned = printed.replace(f" {breaker}", "", 1)
+                out.append({
+                    "source": source, "printed": printed, "tokens": tokens,
+                    "returned": returned, "values": {"results.u": first, "results.s": second},
+                })  # fmt: skip
+    return out
+
+
 @st.composite
 def comment_anchors(draw: st.DrawFn) -> dict[str, Any]:
     """A `suggestion_paragraphs` paragraph, written once or twice, and a run of its words to
@@ -11411,7 +11486,13 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "quote placement": nearly_quoted(),
     "suggested edit": suggested_edits(),
     "suggestion written": suggestion_writes(),
-    "word merged": word_edits(),
+    "word merged": st.one_of(
+        word_edits(),
+        beside_value_edits(),
+        tag_paragraphs().flatmap(lambda drawn: st.sampled_from(drawn)).map(
+            lambda case: {key: case[key] for key in ("source", "printed", "tokens", "returned")}
+        ),
+    ),
     "comment anchored": comment_anchors(),
     "recycled passages": st.fixed_dictionaries(
         {"text": texts(RECYCLED, REFERENCE_BLOCKS), "source": earlier_papers()}

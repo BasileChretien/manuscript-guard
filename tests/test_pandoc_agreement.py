@@ -2007,3 +2007,87 @@ def test_the_toolkit_reads_the_citations_pandoc_reads(name: str) -> None:
     _cited(pandoc_ast(text), pandoc)
     ours = [use.citekey for use in find_citations(text, Path("main.md"))]
     assert sorted(ours) == sorted(pandoc)
+
+
+# ------------------------------------------------------- a tag made of a `<` and a `>`
+
+#: What may stand between `<LLOQ` and `>ULOQ` in a paragraph, alone or two together: words,
+#: values and signs a paragraph holds, each read by pandoc as an attribute's name, a value,
+#: or neither. `import` asks `roundtrip._pandoc_tags` whether a merge made a tag of the
+#: source's `<` and `>`, with the values in (KG410.3 of the Known-gaps triage).
+TAG_PIECES = (
+    "in", "plasma", "2", "3.84", "mg/L", "a,", "(x)", "x=y", 'x="y"', "x='y'", "x=", "=",
+    "/", "a.b", "a-b", "a_b", "a:b", "µg", "été", 'x=a"b', "x=a'b", "x=a<b",
+    "x=a`b", "&", "&amp;", "\\", 'x="a"b', "x=5", "5=x", "a/", "/a", "x =y", "x= y", "-a",
+    "_a", ":a", "a b", "x=a=b", "x=\\", "[@k]", "@k", "a;", "<b", "x=<", "aB9",
+)  # fmt: skip
+#: Openers pandoc reads otherwise: a closing tag and a processing instruction take anything
+#: up to the next `>`, `<!x` is text, and a `/` with no `>` after it separates attributes.
+TAG_OPENERS = ("<LLOQ", "</x", "<?x", "<!x", "<x/", "<µg", "<a.b")
+TAG_SHAPES = sorted(
+    {f"Samples {opener} {piece} and >ULOQ were redone.\n"
+     for opener in TAG_OPENERS for piece in ("in", "2", "(see)")}
+    | {f"Samples <LLOQ {piece} and >ULOQ were redone.\n" for piece in TAG_PIECES}
+    | {f"Samples <LLOQ {one} {other} and >ULOQ were redone.\n"
+       for one, other in zip(TAG_PIECES, TAG_PIECES[7:] + TAG_PIECES[:7], strict=True)}
+    | {"Samples <LLOQ in\nplasma and\n>ULOQ were redone.\n", "a<b c>d and more.\n",
+       "Samples `<LLOQ` in and >ULOQ were redone.\n", "Samples \<LLOQ in and >ULOQ.\n",
+       "Samples <!-- in and --> were redone.\n", "Samples <https://e.org/x> and >ULOQ.\n"}
+)  # fmt: skip
+
+
+def _raw(node, out: list[str]) -> None:
+    if isinstance(node, list):
+        for item in node:
+            _raw(item, out)
+    elif isinstance(node, dict):
+        if node.get("t") == "RawInline" and node["c"][0] == "html":
+            out.append(node["c"][1])
+        for value in node.values():
+            _raw(value, out)
+
+
+@pytest.mark.parametrize("text", TAG_SHAPES)
+def test_the_merge_reads_the_tags_pandoc_reads(text: str) -> None:
+    """Pandoc reads a tag where its name is a name and, in an opening tag, each attribute's
+    is too; a value may hold anything. The toolkit's own pattern of a tag is stricter, which
+    is why the merge's read-back passed `<LLOQ in mg/L at Caen and >` and pandoc deleted it.
+    Each tag pandoc reads in these paragraphs is one the merge reads, and no other."""
+    from manuscript_guard.roundtrip import _pandoc_tags
+
+    pandoc: list[str] = []
+    _raw(pandoc_ast(text), pandoc)
+    ours = [tag for tag in _pandoc_tags(text) if not tag.endswith("...")]
+    # Pandoc reads a comment as raw HTML too; an end tag it reads as written.
+    assert [" ".join(tag.split()) for tag in ours] == [" ".join(tag.split()) for tag in pandoc]
+
+
+@pytest.mark.parametrize(
+    ("ending", "runs_on"),
+    [
+        pytest.param("were set to low x=", True, id="an-equals"),
+        pytest.param("were set to label='low", True, id="an-open-quote"),
+        pytest.param("were set to </x", True, id="a-closing-tag"),
+        pytest.param("were set to low", False, id="between-attributes"),
+        pytest.param("were set to low x=y", False, id="after-a-value"),
+    ],
+)
+def test_a_tag_open_at_a_paragraph_s_end_is_read_as_pandoc_carries_it_on(
+    ending: str, runs_on: bool
+) -> None:
+    """TagSoup reads on past a paragraph's end. The next paragraph opens with its
+    identifier, which is no attribute's name, so a tag open between attributes is text; open
+    after an `=`, in a quote, or as a closing tag, it takes the identifier and the words
+    after it, and closes at the next paragraph's `>`. The merge refuses a rewording that
+    leaves the first kind."""
+    from manuscript_guard.roundtrip import _pandoc_tags
+
+    first = f"Values <LOD in mg/L {ending}"
+    # An apostrophe in the next paragraph closes a quote left open in the first; anywhere
+    # else, it is no attribute's name and the tag would end there as text.
+    words = "the cohort's records" if "'" in ending else "all records"
+    text = f"{first}\n\n[]{{#mg-p-x-1}}Then {words} were kept >ULOQ.\n"
+    raw: list[str] = []
+    _raw(pandoc_ast(text), raw)
+    assert any("Then" in tag for tag in raw) is runs_on, raw
+    assert any(tag.endswith("...") for tag in _pandoc_tags(first)) is runs_on

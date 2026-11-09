@@ -1130,6 +1130,10 @@ LINK_CASES = {
     "in a link's address": "See [A](https://example.org/9.99) now (b).\n",
     "in a link's title": 'See [A](https://example.org/a "Title 9.99") now (b).\n',
     "in a link's title in brackets": "See [A](https://example.org/a (Title 9.99)) now (b).\n",
+    # A binding in a file link's target is masked before the target is looked for (round 1
+    # of #589): the target is found where it is typed, and hidden whole, as `main` hid it.
+    "in a link's target after a binding": "See [c]({{u}}/tree/v9.99) now (b).\n",
+    "after a link whose target is a binding": "See [c]({{u}}). Data (n = 9.99) are kept.\n",
     # Pandoc prints an address that is no link, and the mask hides it all the same: an
     # address is no claim. What follows it is read.
     "after a bare address": "Code: https://example.org/a). Data (n = 9.99) are kept.\n",

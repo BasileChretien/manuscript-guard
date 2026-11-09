@@ -827,6 +827,7 @@ LINK_TARGETS = {
     "an address in angle brackets": ("(<https://example.org/{w} {n}>)", True),
     "an address spaced inside": ("( https://example.org/{w}{n} )", True),
     "a file": ("({w}{n}.md)", False),
+    "a file after a binding": ("({{{{results.x}}}}/{w}{n}.md)", False),
 }
 #: What may stand straight after a link's `)`: a stop, a comma, nothing, or the `)` of a
 #: bracket round the link.

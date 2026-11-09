@@ -19074,6 +19074,17 @@ Open, recorded as each change landed:
   escaped. Where the old comment rule hid the start of such a match, text read again now
   meets them: `` We strip `<!--` see https://x.org/a`-->`9.99 `` hides a 9.99 that the old
   rule left readable. The patterns are to be fixed separately.
+- **A link's target is read in the shapes pandoc writes most, not in all of them.** A
+  target that is an address is masked after its `(` up to its own `)` when the address holds
+  brackets one deep at most and a title holds no escaped quote. Two deep,
+  `[t](https://x.org/a_((b)))`, or a title with `\"` in it, the bare address takes the
+  link's `)` and stop again, or the title is left: a number in it is read, and the next
+  sentence is read into the link's (round 1 of #589). An attribute block after a link or an
+  image, `![x](https://x.org/f.png){width=50%}`, is read, as it was after an image of a file
+  (`![x](figures/f.png){width=50%}`) before; the bare address used to take it. And a target
+  that is an address leaves its `(` with no `)`, as it did in the common case before: a
+  reader that pairs brackets may pair it with a later `)`, which round 1 found no ordinary
+  manuscript to do.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, one directly under a line of prose, or a Word paragraph typed
   as `# References` without a heading style: pandoc or Word prints each as text, so nothing
@@ -24179,11 +24190,13 @@ Closed since, and why each mattered (an open gap goes above this line):
   the build prints, and G8 read the two sentences as one, so a panel's quote of the second
   was placed in both (round 3 of #587). A link's target that is an address is masked now
   after its `(` up to its own `)`: brackets in the address one deep, a title in quotes or
-  brackets, angle brackets and spaces inside it. Its `](` is left, as before, so
-  `[ROR](https://...)` still defines ROR and the reference census reads `[11](https://...)`
-  as a link and not as citation 11. The pattern for any other link's target no longer runs
-  across what is masked already. `tests/test_pandoc_agreement.py` holds the mask to what
-  pandoc prints of each form.
+  brackets, angle brackets round it, spaces between the brackets and the address. Its `](`
+  is left, as before, so `[ROR](https://...)` still defines ROR and the reference census
+  reads `[11](https://...)` as a link and not as citation 11. Any other link's target is
+  found where it is typed, to its first `)`, so a binding in it is hidden with it,
+  `[the code]({{repo}}/tree/v2.1)`, and it runs over nothing masked before it.
+  `tests/test_pandoc_agreement.py` holds the mask to what pandoc prints of each form; the
+  shapes it does not read are under Known gaps.
 
 - **The audit did not count text a style hides (2026-11-07).** It counted as hidden only a
   run whose own properties hide it, so text set in a character or paragraph style that

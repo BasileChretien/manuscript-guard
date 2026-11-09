@@ -511,9 +511,11 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("link-address", _LINK_ADDRESS),
     ("autolink", re.compile(r"<(?:https?|doi|mailto):[^>\s]+>")),
     ("url", _URL),
-    # A link's target that is no address. Not across what is masked already: it ran from a
-    # link's `](` over the masked address and on to the next `)` on the line.
-    ("link-target", re.compile(r"\]\([^)\n\x00]*\)")),
+    # A link's target that is no address, found where it is typed (`_IN_THE_SOURCE`): found
+    # in what was left, it ran from a link's `](` over the masked address and on to the next
+    # `)` on the line, and kept from crossing what is masked, it missed a target holding a
+    # binding, `[the code]({{repo}}/tree/v2.1)` (round 1 of #589).
+    ("link-target", re.compile(rf"\]\((?![ \t]*<?{_ADDRESS_START})[^)\n]*\)", re.IGNORECASE)),
     ("footnote", re.compile(r"\[\^[^\]\n]+\]")),
     # Citation KEYS, not whole citation brackets. Better BibTeX keys routinely end in a year,
     # so the key itself must go; everything else in the bracket must stay.
@@ -743,6 +745,20 @@ def _either_side(pattern: re.Pattern[str], text: str, head: int) -> list[re.Matc
     return [*front.finditer(text, 0, head), *pattern.finditer(text, head)]
 
 
+#: The patterns matched in the source and not in what the earlier ones left: a match counts
+#: where its first two characters, a link's `](`, are left.
+_IN_THE_SOURCE = frozenset({"link-target"})
+
+
+def _matched(name: str, pattern: re.Pattern[str], text: str, working: str,
+             head: int) -> list[re.Match[str]]:  # fmt: skip
+    """The matches of the pattern `name` in `text`, of which `working` is what is left."""
+    if name not in _IN_THE_SOURCE:
+        return _either_side(pattern, working, head)
+    return [found for found in _either_side(pattern, text, head)
+            if NUL not in working[found.start() : found.start() + 2]]  # fmt: skip
+
+
 def _blank(chars: list[str], start: int, end: int, *, breaks: bool = True) -> None:
     """`chars` from `start` to `end` replaced by NUL, its line breaks kept unless `breaks` is
     false."""
@@ -784,8 +800,8 @@ def mask(text: str) -> str:
     # before a listing ends at a `-->` inside it, and the prose after it is printed.
     for start, end in html_comments(text, fences):
         _blank(chars, start, end, breaks=False)
-    for _name, pattern in _PATTERNS:
-        for match in _either_side(pattern, "".join(chars), head):
+    for name, pattern in _PATTERNS:
+        for match in _matched(name, pattern, text, "".join(chars), head):
             _blank(chars, match.start(), match.end())
     for index in comparison_escapes(text):
         chars[index] = NUL
@@ -820,7 +836,7 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
             _blank(chars, start, end, breaks=False)
         working = "".join(chars)
     for name, pattern in _PATTERNS:
-        spans = [(m.start(), m.end()) for m in _either_side(pattern, working, head)]
+        spans = [(m.start(), m.end()) for m in _matched(name, pattern, text, working, head)]
         if spans:
             found[name] = spans
             chars = list(working)

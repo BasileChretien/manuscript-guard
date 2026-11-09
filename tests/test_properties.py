@@ -658,6 +658,22 @@ def _the_mask_with(name: str, pattern: str) -> Callable[[pytest.MonkeyPatch], No
     return break_it
 
 
+def _a_link_s_target_found_in_what_is_left(
+    pattern: str | None = None,
+) -> Callable[[pytest.MonkeyPatch], None]:
+    """Break the Markdown mask by finding a link's target in what the patterns before it left,
+    as `main` found it, with `pattern` in place of its own if one is given."""
+
+    def break_it(patch: pytest.MonkeyPatch) -> None:
+        from manuscript_guard.text import masking
+
+        patch.setattr(masking, "_IN_THE_SOURCE", frozenset())
+        if pattern is not None:
+            _the_mask_with("link-target", pattern)(patch)
+
+    return break_it
+
+
 #: The link's address as it was found before brackets in it, a title, angle brackets and
 #: spaces inside were read, one at a time; and hidden with its `](`.
 _AN_ADDRESS = r"(?:https?://|www\.|doi:\s*|10\.\d{4,9}/)"
@@ -18501,7 +18517,15 @@ BROKEN = {
         _the_mask_with("link-address", _LINK_ADDRESS_WITHOUT["its brackets kept"]),
         test_the_mask_hides_a_link_s_target_and_nothing_after_it,
     ),
-    "a link's target runs on over what is masked": (
+    "a link's target is found in what is left and runs on over it": (
+        _a_link_s_target_found_in_what_is_left(),
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
+    "a link's target is found in what is left and stops at what is masked": (
+        _a_link_s_target_found_in_what_is_left(r"\]\([^)\n\x00]*\)"),
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
+    "a link's target to an address is taken with its brackets": (
         _the_mask_with("link-target", r"\]\([^)\n]*\)"),
         test_the_mask_hides_a_link_s_target_and_nothing_after_it,
     ),

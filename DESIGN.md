@@ -5080,7 +5080,13 @@ A reference list is not read at all. In a contributions, acknowledgements, fundi
 section, capitals are people and institutions, so nothing there is reported as undefined,
 and a funder named once with its acronym is not reported as unused. Those sections are
 found by a word anywhere in their title, since each publisher words the heading its own
-way: "CRediT authorship contribution statement", "Role of the funding source".
+way: "CRediT authorship contribution statement", "Role of the funding source". A Word
+paper often runs a statement on from a bold label instead, under one "Declarations"
+heading or none: "**Authors' contributions** JMD, BC and CD designed the study". Such a
+paragraph is the statement too, and so is the paragraph under a label that stands alone,
+unless a heading stands there. The label's whole text has to name a statement, as a
+statement's heading does (`STATEMENT_TITLE`), and be one of these: "**Contributions of
+this study**" is the paper's own, and so is a label inside a paragraph.
 
 **What may stand undefined is data.** `data/abbreviations.yaml` holds a short list of what
 general English reads as a word or a name, `DNA`, `UK`, `DOI`, and a few unit symbols with
@@ -21453,8 +21459,10 @@ Open, recorded as each change landed:
     genes *dishevelled* and *colourless*. Emphasis cannot excuse them, since "the
     *color* was recorded" has to be read. Each goes under `accepted_spellings`.
   - The spelling is not read in a contributions, acknowledgements, funding or
-    competing-interests section, nor in its subsections: a word of the author's own
-    that is misspelt there passes. Those sections are found by the words listed above
+    competing-interests section, nor in its subsections, nor in such a statement run on
+    from its bold label: a word of the author's own that is misspelt there passes. A
+    label in a span, `**[Funding]{.underline}**`, opens no statement, and a label in
+    LaTeX, `\textbf{Funding}`, is not read at all. Those sections are found by the words listed above
     for the abbreviations, "disclosure", "financial support" and "author statement"
     among them, anywhere in a title. So a section of the paper proper whose title
     holds one, "Funding of primary care" or "Barriers to disclosure", is not read
@@ -24176,6 +24184,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     says so among what G4 did not check.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A statement run on from a bold label was read as prose (2026-11-09).** G14 knew a
+  contributions or funding statement only by its heading, and a Word paper that runs it on
+  from a bold label, "**Authors' contributions** JMD, BC, PMM and CD contributed ...", had
+  each author's initials and each programme in capitals reported as an undefined
+  abbreviation: 13 of the 100 warnings on one paper audited through the web page. Such a
+  paragraph is read as the statement now (`gates.language._run_in_statements`).
 
 - **The audit did not count text a style hides (2026-11-07).** It counted as hidden only a
   run whose own properties hide it, so text set in a character or paragraph style that

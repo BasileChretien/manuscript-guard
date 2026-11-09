@@ -1243,6 +1243,30 @@ def test_initials_and_funders_are_not_abbreviations(project: Path, heading: str)
     assert not report.findings, found(report)
 
 
+@pytest.mark.parametrize(
+    "label", ["**Authors\\' contributions**", "**Author contributions:**", "__Funding__",
+              "**Acknowledgements.**", "**Competing interests**:"],
+)  # fmt: skip
+def test_initials_after_a_bold_statement_label_are_not_abbreviations(
+    project: Path, label: str
+) -> None:
+    """A Word paper runs its statements on from a bold label, under one Declarations
+    heading or none: "**Authors' contributions** JMD, BC and CD designed the study". Its
+    initials and funders were reported as abbreviations, one finding each; they are people
+    and institutions as under a heading that names the statement. The label alone over its
+    paragraph does the same, unless a heading stands under it; and the paragraph after a
+    statement is the paper's again."""
+    statement = "JB and CD analysed the data, funded by the NIHR and the ANR."
+    report = written(project, f"# Methods\n\n{PLAIN}\n\n# Declarations\n\n{label} {statement}\n")
+    assert not report.findings, found(report)
+    alone = written(project, f"# Methods\n\n{PLAIN}\n\n# Declarations\n\n{label}\n\n{statement}\n")
+    assert not alone.findings, found(alone)
+    after = written(project, f"# Methods\n\n{PLAIN}\n\n{label} {statement}\n\nThe EMA agreed.\n")
+    assert [f.message.split()[0] for f in after.findings] == ["EMA"], found(after)
+    headed = written(project, f"# Methods\n\n{PLAIN}\n\n{label}\n\n# Results\n\n{statement}\n")
+    assert sorted(f.message.split()[0] for f in headed.findings) == ["ANR", "CD", "JB", "NIHR"]
+
+
 def test_a_funder_named_once_with_its_acronym_is_not_unused(project: Path) -> None:
     report = written(
         project,

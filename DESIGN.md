@@ -16247,21 +16247,21 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   script that emitted the control is the one that emitted the result it stands beside, not
   that the control's data went through the code that gave that result: a copy of the
   function, changed until the control passed, passes. Nor does it check that the control ran
-  on the code as it is now, beyond G1's digest of the script.
+  on the code as it is now, beyond G1's digest of the script. Accepted.
 - **A control's kind is the plan's word.** Nothing checks that a negative control's exposure
   or outcome is one with no effect, that a positive control's association is known, or that
   a simulated control's file holds the effect the plan says was planted. Nothing checks either
   that a positive or a negative control read the study's data rather than data of its own:
   `inputs` is a simulated control's, and a positive or negative control that names files
   there has them declared synthetic, real data or not, with nothing said. Whether a control
-  tests what it claims to is the panel's and the co-authors' to judge.
+  tests what it claims to is the panel's and the co-authors' to judge. Accepted.
 - **A control's rule is judged on the scale emitted, as the numbers are stored.** `within`
   compares the estimate and the expected value on the scale the analysis emits them, so a
   ratio emitted as a ratio is held to a distance in its own units, not on the log scale; the
   author writes the distance for the scale. A bound is compared as the float the fragment
   holds, so a value that equals a bound in its display and not in its digits is judged by its
   digits. One control of each kind says whether the analysis found what it should, not how
-  far its intervals should be widened: empirical calibration is not done (D5.1).
+  far its intervals should be widened: empirical calibration is not done (D5.1). Accepted.
 - **A control declared late is dated by the frozen plan.** The frozen copy is the plan at
   the first write of any results, so a control added after a first run on part of the data
   is late, and one added after a dry run on synthetic data alone is a note, since that run
@@ -16270,12 +16270,12 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   frozen copy, because the plan was not UTF-8 text when the first results were written or
   the copy was deleted, the next write freezes the plan as it then stands, controls and
   held-out data added late included, and they read as declared on time; G12 says only
-  `plan-not-frozen`, a note, until then. The time is this machine's clock.
+  `plan-not-frozen`, a note, until then. The time is this machine's clock. Accepted.
 - **A control stands beside a result of one script.** Where the group `of` names spans
   several scripts, a control emitted by any one of them is in the same script, whichever of
   the group's results it was meant for. A harvested result has no control in the same
   script, since `harvest` takes in outputs and emits no control: a control of a result
-  harvested is `control-other-script` wherever it is emitted.
+  harvested is `control-other-script` wherever it is emitted. Accepted.
 - **A held-out input is known by its path and its bytes.** Another script's read is found
   where it declares the input's path, or a file with its digest under another name. A copy
   saved again, a subset, a file derived from it, and the data the held-out set was split
@@ -16283,6 +16283,7 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   reads the held-out rows, and G1 says nothing. Nor does it see a read the script does not
   declare, as G1 sees no undeclared input. A script named in `read_by` is taken at the
   author's word to build and tune no model; one that does reads the held-out data unseen.
+  Accepted.
 - **A script is a reader by the plan it first read the input under.** A validator renamed,
   or a describing script added, is accepted by G1 where the plan names it before the new
   script first runs, and `held-out-changed` still asks the Deviations to name the input; named
@@ -16291,7 +16292,7 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   held-out file moved to another path and declared again after the first results is a late
   entry; a script that read it under its old path is found by its digest only where the bytes
   are the same, and its leave to read is looked for under the new path, so the validator's
-  own reads under the old one tell nothing (`held-out-order-unknown`).
+  own reads under the old one tell nothing (`held-out-order-unknown`). Accepted.
 - **The emitters find held-out data by a line, not by the block.** The record starts once a
   line of the plan opens, after any indentation, with `held_out`, bare or quoted, and a
   colon, spaces allowed before it, which both emitters can find without a YAML reader. A
@@ -16299,7 +16300,7 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   a plan that declares no held-out data; the record is then a file nothing reads. A block
   that holds `held_out` in a way no line opens with, inside a flow mapping
   (`{held_out: [...]}`) or as a complex key, starts none, and G12 then says the order is
-  unknown of each entry.
+  unknown of each entry. Accepted.
 - **The record of first reads is the emitters' word on the machine that ran them.** It is
   complete only where it is committed and every run went through an emitter: a record lost,
   or a run on a machine whose record was never merged, leaves `held-out-order-unknown`, and a
@@ -16310,13 +16311,13 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   Each write reads the record and writes it whole, so two scripts run at once can each write
   it from what it held before the other's entry, and one entry is lost: the read of a script
   that has stopped declaring the held-out input is then in no record. Runs one after the
-  other, as a pipeline makes them, lose nothing.
+  other, as a pipeline makes them, lose nothing. Accepted.
 - **The order is held by the model's digest at the first read.** A model changed after the
   held-out data were first read and changed back passes, and so does a choice among models
   each validated by a script of its own. A model whose file holds the time it was written,
   as some serialisers write, reads as written again on every run. Where the validation
   script builds the model itself and the plan names no `model`, the order cannot be told, and
-  G12 says so in a note.
+  G12 says so in a note. Accepted.
 - **The REDCap export writes what a data dictionary can say, and no more.** A missing code
   of a number is written in the field note, not as one of REDCap's missing data codes,
   which a project sets for itself, so a value of -99 is refused by the field's range until

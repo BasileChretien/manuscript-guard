@@ -18,7 +18,8 @@ const context = createContext({
   performance: { setResourceTimingBufferSize() {}, clearResourceTimings() {}, now: () => 0,
     getEntriesByType: () => [] },
   stub: {
-    runPython: (code) => (code.includes("web.run") ? '{"code": 0, "out": "", "err": ""}' : undefined),
+    runPython: (code) => (code.includes("web.view")
+      ? '{"code": 0, "out": "", "err": "", "view": null}' : undefined),
     FS: { writeFile: (path) => written.push(path) },
     globals: { set() {}, delete() {} },
     toPy: (value) => value,

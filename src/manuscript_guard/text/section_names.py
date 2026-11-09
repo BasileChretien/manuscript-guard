@@ -162,8 +162,11 @@ def names_methods(title: str) -> bool:
 def names_abstract(title: str, named: str | None = None) -> bool:
     """Whether a heading names the abstract: "Abstract" or "Structured abstract", numbered
     or not, or the title a journal profile gives it (`structure.abstract_title`, "Summary"
-    in The Lancet), as a whole title and in any case."""
-    title = bare(title)
+    in The Lancet), as a whole title and in any case; in a span or not, as pandoc writes an
+    underlined one, "[Abstract]{.underline}" (`without_spans`)."""
+    from manuscript_guard.text.attributes import without_spans
+
+    title = bare(without_spans(title))
     if _ABSTRACT.match(title):
         return True
     return bool(named) and title.rstrip(" .:").casefold() == str(named).strip().casefold()

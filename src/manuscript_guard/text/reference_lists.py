@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from bisect import bisect_right
 
-from manuscript_guard.text.attributes import strip_attributes
+from manuscript_guard.text.attributes import strip_attributes, without_spans
 from manuscript_guard.text.blocks import find_headings, heading_shaped, scannable
 from manuscript_guard.text.section_names import REFERENCE_WORDS_ELSEWHERE, STATEMENT_NAMES
 
@@ -79,7 +79,16 @@ def is_bibliography_heading(
     An unmarked line starting with `#` is not one at all. `#` opens a comment in R, Python
     and YAML, and `# References` in a code listing cut everything after it; where `#` does
     make a heading, the document has marked it.
+
+    In Markdown a span is read as pandoc prints it, its words alone (`without_spans`).
+    Pandoc writes a Word title that is bold and underlined as
+    `**[References]{.underline}**`, and read with its brackets the line was no title: the
+    audit cut the list from the .docx, whose text holds no brackets, and G14 read the list
+    of the same paper as prose, its authors' initials and the journals in capitals reported
+    as abbreviations. A .docx's text is read as it stands.
     """
+    if markdown:
+        line = without_spans(line)
     text = line.strip()
     if marked:
         text = strip_attributes(line.lstrip().rstrip(" \t"))
@@ -217,13 +226,15 @@ _BACK_MATTER = re.compile(
 )
 
 
-def _ends_a_list(lines: list[str], number: int) -> bool:
+def _ends_a_list(lines: list[str], number: int, *, markdown: bool = True) -> bool:
     """Whether the paragraph that line `number` opens ends a reference list: one that is no
     entry (`_NO_ENTRY`), a table under a rule, a paragraph all in bold or opening with a bold
     label, or a title of back matter alone on its line. An entry that opens with "Table" or
     "Figure" and a number, which no style writes, would end it too, and the entries after it
     are then read as prose: a false alarm, where running on hides the paper. A blank line,
-    one of several between entries, opens nothing."""
+    one of several between entries, opens nothing. In Markdown a title in a span,
+    `[Acknowledgements]{.underline}`, is read as pandoc prints it (`_printed`); a .docx's
+    text is read as it stands."""
     if not lines[number].strip():
         return False
     if _NO_ENTRY.match(lines[number]) or _LABEL.match(lines[number]):
@@ -238,6 +249,8 @@ def _ends_a_list(lines: list[str], number: int) -> bool:
     ):
         return True
     joined = " ".join(line.strip() for line in paragraph)
+    if markdown:
+        joined = _printed(joined)
     if _BOLD.fullmatch(joined):
         return True
     return (
@@ -245,10 +258,15 @@ def _ends_a_list(lines: list[str], number: int) -> bool:
     )
 
 
+def _printed(paragraph: str) -> str:
+    """A Markdown paragraph that may end a list, as pandoc prints it: a span its words."""
+    return without_spans(paragraph)
+
+
 def ends_a_list_alone(paragraph: str) -> bool:
     """Whether a paragraph written on one line, as each of a .docx's is read, ends a
     reference list under a line that is no heading, by the rules `_ends_a_list` holds a
     Markdown paragraph to. The audit ends a .docx's list there, as `check` ends one in
     Markdown. Bold is not in a .docx's text, so a title in bold ends it only where it is a
-    back-matter title or a caption's shape."""
-    return _ends_a_list([paragraph.strip()], 0)
+    back-matter title or a caption's shape; nor is a span, so brackets are text."""
+    return _ends_a_list([paragraph.strip()], 0, markdown=False)

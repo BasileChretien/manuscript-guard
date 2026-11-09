@@ -874,9 +874,12 @@ GLOSSARY_USES = "# Methods\n\nThe ROR, the PRR, the IC, the EBGM and the SDR wer
 
 @pytest.mark.parametrize(
     "heading", ["Abbreviations", "List of abbreviations", "GLOSSARY", "Acronyms",
-                "List of Acronyms", "Abbreviations:"],
+                "List of Acronyms", "Abbreviations:", "[Abbreviations]{.underline}",
+                "[[List of abbreviations]{.smallcaps}]{.mark}"],
 )  # fmt: skip
 def test_a_glossary_defines_its_entries(project: Path, heading: str) -> None:
+    """A glossary's title is read as pandoc prints it, a span's words alone: pandoc writes
+    an underlined Word heading as `# [Abbreviations]{.underline}`."""
     report = written(
         project,
         f"# {heading}\n\nROR = reporting odds ratio\nPRR: proportional reporting ratio\n\n"
@@ -1265,6 +1268,38 @@ def test_initials_after_a_bold_statement_label_are_not_abbreviations(
     assert [f.message.split()[0] for f in after.findings] == ["EMA"], found(after)
     headed = written(project, f"# Methods\n\n{PLAIN}\n\n{label}\n\n# Results\n\n{statement}\n")
     assert sorted(f.message.split()[0] for f in headed.findings) == ["ANR", "CD", "JB", "NIHR"]
+
+
+def test_what_a_bold_label_cannot_tell_apart(project: Path) -> None:
+    """The limits DESIGN.md's Known gaps write down, as written: a label is told from a
+    sentence's first words by what follows it, so a statement that goes on in a small letter
+    is read as prose, a simple table whose first header cell names a statement is read as
+    one, and bold words before a hard line break or a no-break space are a label. A bold word
+    that goes on into its sentence across a line break pandoc prints as a space is that
+    sentence's, as on its line: it was taken for a label, its paragraph's capitals left
+    unreported."""
+
+    def reported(text: str) -> list[str]:
+        report = written(project, f"# Methods\n\n{PLAIN}\n\n{text}\n")
+        return sorted(f.message.split()[0] for f in report.findings)
+
+    assert reported("**Funding** this study was funded by the NIHR.") == ["NIHR"]
+    assert reported("**Funding:** this study was funded by the NIHR.") == []
+    assert reported("**Funding** of the NHS fell.") == ["NHS"]
+    # A line break pandoc prints as a space, with one space or tab before it or none; a hard
+    # one, two spaces or a backslash, leaves the bold words on a line of their own, a label.
+    assert reported("**Funding**\nof the NHS fell.") == ["NHS"]
+    assert reported("**Funding** \nof the NHS fell.") == ["NHS"]
+    assert reported("**Funding**\t\nof the NHS fell.") == ["NHS"]
+    assert reported("**Funding**  \nof the NHS fell.") == []
+    assert reported("**Funding**\\\nof the NHS fell.") == []
+    assert reported("**Funding**\nThe NIHR paid.") == []
+    # Only a space or a tab is read past on the label's line: after a no-break space, the
+    # bold words are a label.
+    assert reported(f"**Funding**{chr(0xA0)}the NIHR paid.") == []
+    table = "{}   Count\n------------------   -----\nNIHR                 3\n"
+    assert reported(table.format("Source            ")) == ["NIHR"]
+    assert reported(table.format("**Funding source**")) == []
 
 
 def test_a_funder_named_once_with_its_acronym_is_not_unused(project: Path) -> None:

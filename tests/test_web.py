@@ -411,3 +411,72 @@ def test_run_returns_the_exit_code_and_what_was_printed() -> None:
     assert web.run(["--version"]) == {"code": 0, "out": f"{__version__}\n", "err": ""}
     refused = web.run(["audit"])
     assert refused["code"] != 0 and "name a paper" in refused["err"]
+
+
+def test_the_page_draws_the_report_its_text_is_printed_from(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The page draws the report (`web.view`) from the very audit whose text it prints, so
+    the two say one thing: what each check found, the findings on the words a fold per kind
+    with every place in it, the other sections with something to show. A run asked for as
+    JSON, or refused before its report was made, draws nothing, and the seam is let go."""
+    import json
+
+    from manuscript_guard import cli
+
+    monkeypatch.chdir(tmp_path)
+    undefined = ("ROR", "PRR", "EBGM", "SDR", "BCPNN", "MGPS", "OMOP", "FAERS", "VAERS", "ICSR")
+    (tmp_path / "paper.md").write_text(
+        "# Methods\n\n" + " ".join(f"The {short} was computed." for short in undefined)
+        + " It was done, highlighting the importance of the method."
+        + "\n\n| Group | n |\n|---|---|\n| A | 3 |\n| B | 4 |\n| Total | 9 |\n",
+        encoding="utf-8")  # fmt: skip
+    result = web.view(["audit", "paper.md"])
+    assert result["out"] == web.run(["audit", "paper.md"])["out"]
+    view = json.loads(json.dumps(result))["view"]
+    assert [name for name, _said in view["checks"]][:2] == ["Membership", "Arithmetic"]
+    (kind,) = [kind for paper in view["words"] for kind in paper["kinds"]
+               if kind["code"] == "abbreviation-undefined"]  # fmt: skip
+    assert kind["count"] == len(kind["places"]) == len(undefined)
+    assert kind["hint"] and all(place["hint"] is None for place in kind["places"])
+    headings = [heading for heading, _text in view["sections"]]
+    assert "Arithmetic" in headings and not any("Language (G14)" in h for h in headings)
+    assert web.view(["audit", "paper.md", "--json"])["view"] is None
+    assert web.view(["audit"])["view"] is None
+    assert cli.AUDITED is None
+    # Round 1 of #601: the box draws every section; a run whose draft could not be written
+    # printed no report and draws none; a view that cannot be drawn leaves the text.
+    full = web.view(["audit", "paper.md", "--details"])["view"]
+    assert {"Membership", "Small cells recoverable by subtraction"} <= {
+        heading for heading, _text in full["sections"]}
+    (tmp_path / "draft.md").write_text("here already\n", encoding="utf-8")
+    assert web.view(["audit", "paper.md", "--report-draft", "draft.md"])["view"] is None
+    from manuscript_guard.auditing import report as report_module
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("no view")
+
+    # Round 2: without the box a fold quotes G6's matched words only, G14's message naming
+    # its word; with it, every context, as the text gives them.
+    def contexts(drawn: dict, code: str) -> list:
+        return [place["context"] for paper in drawn["words"] for kind in paper["kinds"]
+                if kind["code"] == code for place in kind["places"]]  # fmt: skip
+
+    assert contexts(view, "ai-phrasing") and all(contexts(view, "ai-phrasing"))
+    assert contexts(view, "abbreviation-undefined") == [None] * len(undefined)
+    assert all(contexts(full, "abbreviation-undefined"))
+    # Under DEBUG a view that cannot be drawn raises, as `main` does; without it, the text is
+    # kept. A text that cannot be rendered draws no view either.
+    drawn = report_module.view
+    monkeypatch.setattr(report_module, "view", broken)
+    with pytest.raises(RuntimeError, match="no view"):
+        web.view(["audit", "paper.md"])
+    assert cli.AUDITED is None
+    monkeypatch.delenv("MANUSCRIPT_GUARD_DEBUG")
+    kept = web.view(["audit", "paper.md"])
+    assert kept["view"] is None and kept["out"] == result["out"]
+    assert cli.AUDITED is None
+    monkeypatch.setattr(report_module, "view", drawn)
+    monkeypatch.setattr(report_module, "render", broken)
+    unprinted = web.view(["audit", "paper.md"])
+    assert unprinted["code"] != 0 and unprinted["view"] is None

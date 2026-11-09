@@ -8755,6 +8755,251 @@ def test_held_out_data_declared_late_or_dropped_since_the_first_results_are_said
     assert _held_out_said(project) == [("G12", "held-out-changed", "warn")]
 
 
+def _declare_controls(root: Path, block: str, *, frozen: bool = True) -> None:
+    """The control block in the plan, and, with `frozen`, in the plan's frozen copy as well,
+    as though it had been declared before the first results."""
+    _plan_edited(root, "## Planned results", f"## Control analyses\n\n{block}\n## Planned results")
+    if frozen:
+        copy = root / "design" / "plan.frozen.yaml"
+        record = json.loads(copy.read_text(encoding="utf-8"))
+        record["plan"] = (root / "design" / "plan.md").read_text(encoding="utf-8")
+        copy.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _emit_control(root: Path, key: str, point: float, low: float, high: float, *,
+                  fragment: str = "01_disproportionality.json",
+                  script: str = "analysis/02_controls.py") -> None:  # fmt: skip
+    """The control's values and its entry in a results fragment, as `em.control` writes them:
+    the analysis's own fragment, or a second one, by `script`."""
+    own = root / "results" / "01_disproportionality.json"
+    target = root / "results" / fragment
+    document = json.loads((target if target.exists() else own).read_text(encoding="utf-8"))
+    if not target.exists():
+        # A second fragment: its script's provenance, and nothing of the analysis's own.
+        document = {"schema": document["schema"], "values": {},
+                    "provenance": {**document["provenance"], "generated_by": script}}  # fmt: skip
+    for part, value in (("point", point), ("ci_low", low), ("ci_high", high)):
+        entry = {"value": value, "display": f"{value:.2f}", "digits": 2}
+        if part != "point":
+            entry.update(bounds=f"{key}.point", bound=part[3:], level="95%")
+        document["values"][f"{key}.{part}"] = entry
+    document.setdefault("controls", {})[key] = {"inputs": []}
+    target.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(target)
+
+
+def _controls_said(root: Path, stage: str = "drafting") -> list[tuple[str, str]]:
+    from manuscript_guard.gates.controls import check_controls
+
+    loaded, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    return [(f.code, f.severity) for f in check_controls(loaded, results, stage).findings]
+
+
+_NEGATIVE = _CONTROLS.format(rule="holds-null")
+_REPORTED = " The negative control's ratio was {{results.control.headache.point}}."
+
+
+def test_a_control_declared_first_that_passes_and_is_reported_is_said_nothing_of(
+    project: Path,
+) -> None:
+    """Item 5: the plan declares the control before the first results, the script of the
+    ratio emits it, its interval holds the null, and the Results bind it."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project, "submission") == []
+    assert _controls_said(project, "design") == []
+
+
+def test_a_control_whose_rule_does_not_hold_warns_and_fails_at_submission(project: Path) -> None:
+    """D5.3: a failed control warns, and fails at submission unless the paper reports it and
+    the Deviations say why."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.6, 1.2, 2.1)
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project) == [("control-failed", "warn")]
+    assert _controls_said(project, "submission") == [("control-failed", "fail")]
+    _plan_edited(project, "## Deviations from the plan", "## Deviations from the plan\n\n"
+                 "The negative control `control.headache` failed: reports of headache rose "
+                 "with the drug's launch.\n")  # fmt: skip
+    assert _controls_said(project, "submission") == [("control-failed", "warn")]
+
+
+@pytest.mark.parametrize(
+    ("rule", "values", "fails"),
+    [
+        ("holds-null", (0.9, 1.0, 1.2), False),  # a bound at the null passes
+        ("holds-null", (1.3, 1.01, 1.6), True),
+        ("holds-expected", (2.1, 1.5, 2.9), True),  # the plan expects 1
+        ("within\n    distance: 0.5", (1.4, 1.1, 1.8), False),
+        ("within\n    distance: 0.5", (1.6, 1.1, 1.9), True),
+    ],
+)
+def test_each_rule_is_judged_on_the_values_emitted(
+    project: Path, rule: str, values: tuple[float, float, float], fails: bool
+) -> None:
+    """D5.2: the interval holds the expected value or the null, or the estimate is within the
+    distance of it; a value at a bound passes."""
+    _declare_controls(project, _CONTROLS.format(rule=rule))
+    _emit_control(project, "control.headache", *values)
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project) == ([("control-failed", "warn")] if fails else [])
+
+
+def test_a_control_declared_and_never_emitted_is_missing(project: Path) -> None:
+    _declare_controls(project, _NEGATIVE)
+    assert _controls_said(project) == [("control-missing", "warn")]
+    assert _controls_said(project, "submission") == [("control-missing", "fail")]
+    _plan_edited(project, "## Deviations from the plan", "## Deviations from the plan\n\n"
+                 "`control.headache` was not run: the event is not coded.\n")  # fmt: skip
+    assert _controls_said(project, "submission") == []
+
+
+def test_a_control_chosen_after_the_first_results_is_late(project: Path) -> None:
+    """A control the frozen copy does not hold was chosen once the results were known; said
+    under the Deviations, it is a decision. After a dry run on synthetic data, a note."""
+    _declare_controls(project, _NEGATIVE, frozen=False)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project) == [("control-declared-late", "warn")]
+    copy = project / "design" / "plan.frozen.yaml"
+    record = json.loads(copy.read_text(encoding="utf-8"))
+    copy.write_text(json.dumps({**record, "synthetic": True}), encoding="utf-8")
+    assert _controls_said(project, "submission") == [("control-declared-late", "info")]
+    copy.write_text(json.dumps(record), encoding="utf-8")
+    _plan_edited(project, "## Deviations from the plan", "## Deviations from the plan\n\n"
+                 "`control.headache` was added after the first results.\n")  # fmt: skip
+    assert _controls_said(project, "submission") == []
+
+
+def test_a_control_changed_or_dropped_since_the_first_results_is_said(project: Path) -> None:
+    _declare_controls(project, _NEGATIVE)
+    _plan_edited(project, "rule: holds-null", "rule: within\n    distance: 2")
+    _emit_control(project, "control.headache", 1.6, 1.2, 2.1)
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project) == [("control-changed", "warn")]
+    _plan_edited(project, "## Control analyses", "## Elsewhere")
+    _plan_edited(project, "controls:", "dropped:")
+    assert ("control-changed", "warn") in _controls_said(project)
+
+
+def test_a_control_the_plan_does_not_declare_is_undeclared(project: Path) -> None:
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    assert _controls_said(project, "submission") == [("control-undeclared", "fail")]
+
+
+def test_a_control_emitted_by_another_script_than_its_result_is_said(project: Path) -> None:
+    """D5.4: the same script path as the result it stands beside."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33, fragment="02_controls.json")
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project) == [("control-other-script", "warn")]
+
+
+def test_a_control_its_result_s_script_writes_to_a_second_fragment_is_in_the_same_script(
+    project: Path,
+) -> None:
+    """Round 1 of PR 2a: the fragments were compared, not the scripts that wrote them, so a
+    script writing its control to a fragment of its own was said to be another script."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33, fragment="ror_controls.json",
+                  script="analysis/01_disproportionality.py")  # fmt: skip
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project) == []
+
+
+def test_a_control_the_plan_declares_in_a_form_it_does_not_read_is_said_once(
+    project: Path,
+) -> None:
+    """Round 1 of PR 2a: a refused entry, emitted and frozen, was said to be undeclared and
+    gone besides; `plan-declarations-unreadable` says it, and nothing here does."""
+    _declare_controls(project, _NEGATIVE.replace("kind: negative", "kind: negativ"))
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    assert _controls_said(project, "submission") == []
+
+
+def test_a_control_declared_twice_or_mistyped_since_is_said_by_the_reader_alone(
+    project: Path,
+) -> None:
+    """Round 2 of PR 2a: a key declared twice, and a readable frozen entry mistyped now, were
+    still said to be undeclared or gone besides what the reader says."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    _add_to_results(project, _REPORTED)
+    _plan_edited(project, "kind: negative", "kind: negativ")
+    assert _controls_said(project, "submission") == []
+    _plan_edited(project, "kind: negativ", "kind: negative")
+    entry = _NEGATIVE.split("controls:\n", 1)[1].rsplit("```", 1)[0]
+    _plan_edited(project, "controls:\n", "controls:\n" + entry)
+    assert _controls_said(project, "submission") == []
+
+
+def test_a_failed_control_needs_both_its_report_and_its_deviation(project: Path) -> None:
+    """D5.3: named in the Deviations but not reported, or reported but not named, a failed
+    control still fails at submission (round 1 of PR 2a: no case held the first half)."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.6, 1.2, 2.1)
+    _plan_edited(project, "## Deviations from the plan", "## Deviations from the plan\n\n"
+                 "The negative control `control.headache` failed.\n")  # fmt: skip
+    assert ("control-failed", "fail") in _controls_said(project, "submission")
+
+
+def test_a_control_with_no_interval_or_no_result_beside_it_is_said(project: Path) -> None:
+    """The branches no case reached: a control named in the fragment with no values, and one
+    whose `of` names a result no script emits."""
+    _declare_controls(project, _NEGATIVE)
+    fragment = project / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document.setdefault("controls", {})["control.headache"] = {"inputs": []}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _controls_said(project) == [("control-missing", "warn")]
+    _plan_edited(project, "    of: ror.*\n    expected: 1\n    rule: holds-null\n",
+                 "    of: nothing.*\n    expected: 1\n    rule: holds-null\n")  # fmt: skip
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    _add_to_results(project, _REPORTED)
+    said = _controls_said(project)
+    assert ("control-other-script", "warn") in said, said
+
+
+def test_a_control_no_value_of_which_is_bound_is_unreported(project: Path) -> None:
+    """Asked from drafting; a binding in the supplement reports it as one in the Results
+    does (Basile, 2026-11-09)."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    assert _controls_said(project, "analysis") == []
+    assert _controls_said(project) == [("control-unreported", "warn")]
+    supplement = project / "manuscript" / "supplementary" / "S3_controls.md"
+    supplement.write_text("# Controls\n\nThe ratio for headache was "
+                          "{{results.control.headache.point}}.\n", encoding="utf-8")  # fmt: skip
+    assert _controls_said(project, "submission") == []
+
+
+def test_a_manuscript_file_that_does_not_read_stops_the_controls_check(project: Path) -> None:
+    """Read past a file that is not UTF-8, the bindings in it were missed, and every
+    control the paper reports read as unreported: the check stops at such a file instead,
+    and the file is named once."""
+    from manuscript_guard.cli import _run_gates
+
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    _add_to_results(project, _REPORTED)
+    main = main_md(project)
+    main.write_bytes(main.read_bytes() + b"\ncaf\xe9\n")
+    codes = [f.code for f in _run_gates(project, submission=True)[0].findings]
+    assert "manuscript-unreadable" in codes and "control-unreported" not in codes
+
+
+def test_a_control_a_latex_manuscript_binds_is_reported(project: Path) -> None:
+    entry = _twin(project)
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    assert _controls_said(project) == [("control-unreported", "warn")]
+    _into_results(entry, "The negative control's ratio was \\mg{results.control.headache.point}.")
+    assert _controls_said(project) == []
+
+
 def test_results_with_no_kept_plan_are_a_note(project: Path) -> None:
     (project / "design" / "plan.frozen.yaml").unlink()
     assert _plan_said(project) == [("plan-not-frozen", "info")]
@@ -8932,6 +9177,155 @@ def test_a_planned_group_of_tables_or_models_is_looked_for_among_them(project: P
     _plan_edited(project, "- `model.*`: the models", "- `model.crude.*`: the crude models")
     assert _planned_said(project) == [("planned-result-missing",
                                        "- `model.crude.*`: the crude models")]  # fmt: skip
+
+
+# ------------------------------------------------- the plan's Software section
+
+
+def _software_said(root: Path, stage: str = "drafting") -> list[tuple]:
+    """What G12 says of the plan's Software section, by code, severity, file and line."""
+    from manuscript_guard.gates.software import check_software
+
+    project, _ = load_project(root)
+    _namespace, results, _literature, _report = load_namespace(project)
+    return [(f.code, f.severity, f.path.relative_to(root).as_posix(), f.line)
+            for f in check_software(project, results, stage).findings]  # fmt: skip
+
+
+def test_a_package_the_plan_names_and_no_script_loads_is_said(project: Path) -> None:
+    """Basile, 2026-11-05: on a real VigiBase paper the analysis wrote its own code where
+    the CRAN package `vigicaen` held the source's own logic for drugs and reactions, and
+    nothing asked which software suited the data. The plan's Software section is held to
+    what the scripts load: a package it names that none loads is a warning from the analysis
+    stage on, at submission too (2026-11-09), and its name under Deviations stands it down."""
+    assert _software_said(project) == []
+    plan = project / "design" / "plan.md"
+    text = plan.read_bytes().decode("utf-8")
+    item = "- `matplotlib`:"
+    named = text.replace(item, "- `vigicaen` 0.15.6: `tb_custom()` reads the cases\n" + item)
+    plan.write_bytes(named.encode())
+    line = named[: named.index("- `vigicaen`")].count("\n") + 1
+    unloaded = [("planned-package-unloaded", "warn", "design/plan.md", line)]
+    for stage in ("analysis", "drafting", "internal-review", "submission"):
+        assert _software_said(project, stage) == unloaded, stage
+    # Before the analysis is written, nothing has to load it yet.
+    assert _software_said(project, "design") == []
+    # Recorded by the emitter alone, it is loaded: statsmodels is, and Python itself.
+    for kept in ("statsmodels", "Python"):
+        assert f"- `{kept}`" in named
+    # Considered and not used, it is not held to the scripts.
+    considered = "### Considered and not used\n\n- `vigicaen`: no drug table here\n\n"
+    plan.write_bytes(text.replace("## Sample size", considered + "## Sample size").encode())
+    assert _software_said(project) == []
+    # Said under Deviations, by its name in backticks, it is stood down; by the word alone,
+    # it is not.
+    plan.write_bytes((named + "8. vigicaen was not used.\n").encode())
+    assert _software_said(project) == unloaded
+    plan.write_bytes((named + "8. `vigicaen` was not used: the extract had no drug table.\n")
+                     .encode())  # fmt: skip
+    assert _software_said(project) == []
+
+
+def test_a_base_package_r_attaches_is_loaded_and_another_heading_is_not_the_software(
+    project: Path,
+) -> None:
+    """Round 1 of #592. R attaches stats and five others by default, so a script fits
+    `glm()` without loading stats, and a plan that names it was told no script did. And a
+    heading that only mentions software, "Statistical analysis and software", was read as
+    the Software section, its items naming variables taken for packages."""
+    (project / "analysis" / "02_model.R").write_bytes(b"fit <- glm(y ~ x, family = binomial)\n")
+    plan = project / "design" / "plan.md"
+    text = plan.read_bytes().decode("utf-8")
+    plan.write_bytes(text.replace("- `matplotlib`:", "- `stats`: `glm()` fits the model\n"
+                                                     "- `matplotlib`:").encode())  # fmt: skip
+    assert _software_said(project) == []
+    # Named only beside another package, it does not stand that one down.
+    plan.write_bytes(text.replace("- `matplotlib`:", "- `brms` 2.21, under `R` with `stats` "
+                                                     "and `json`\n- `matplotlib`:").encode())
+    line = text[: text.index("- `matplotlib`:")].count("\n") + 1
+    assert _software_said(project) == [("planned-package-unloaded", "warn", "design/plan.md", line)]
+    analysis = "## Statistical analysis and software\n\n- `age_group`: entered as a factor\n\n"
+    plan.write_bytes(text.replace("## Sample size", analysis + "## Sample size").encode())
+    assert _software_said(project) == []
+    # Round 2: a heading that opens with the word and heads something else is not the
+    # section, and the data dictionary is held to the variables it names, as on main.
+    for heading in ("Library preparation", "Library (preparation)", "Package of care",
+                    "Library (n = 96 samples)"):
+        other = f"## {heading}\n\n- `read_depth` per sample\n\n"
+        plan.write_bytes(text.replace("## Sample size", other + "## Sample size").encode())
+        assert _software_said(project) == [], heading
+        assert ("plan-variable-undefined", "warn") in _plan_said(project), heading
+    # And the headings people write for it are read, the dictionary leaving them alone.
+    (project / "analysis" / "02_model.R").write_bytes(b"library(lme4)\n")
+    for heading in ("Statistical analysis software", "IV. Software", "R and Python packages",
+                    "Software packages", "Software environment", "Software: R packages"):
+        own = f"## {heading}\n\n- `lme4`: `glmer()` fits the model\n\n"
+        plan.write_bytes(text.replace("## Sample size", own + "## Sample size").encode())
+        assert _software_said(project) == [], heading
+        assert ("plan-variable-undefined", "warn") not in _plan_said(project), heading
+
+
+def test_a_script_no_parser_can_read_does_not_stop_the_check(project: Path) -> None:
+    """Round 1 of #592: a notebook or a Python file nested deeper than the parser goes made
+    G12 raise, and a gate that raises fails the whole check. A file that does not parse is
+    read line by line, a list of modules on one line whole."""
+    from manuscript_guard.gates.software import python_loads, script_loads
+
+    assert [load.name for load in python_loads("print 'x'\nimport os, numpy as np, pandas\n")] \
+        == ["os", "numpy", "pandas"]  # fmt: skip
+    # Round 2: a line continued with a backslash is read with the line it continues.
+    assert [(load.name, load.line) for load in python_loads("print 'x'\nimport os, \\\n"
+                                                            "    numpy\n")] == [
+        ("os", 2), ("numpy", 2)]  # fmt: skip
+    python_loads("x = " + "not " * 100000 + "y\n")
+    python_loads("x = " + "(" * 100000 + ")" * 100000 + "\n")
+    script_loads("figures/deep.ipynb", "[" * 100000)
+    (project / "figures" / "deep.ipynb").write_bytes(b"[" * 100000)
+    (project / "analysis" / "deep.py").write_bytes(b"x = " + b"(" * 100000 + b")" * 100000)
+    assert _software_said(project) == []
+
+
+def test_a_package_a_script_loads_and_the_plan_does_not_name_is_a_note(project: Path) -> None:
+    """The other way: a package an analysis or figure script loads that no item of the
+    Software section names is a note, at its first load, whatever the stage; base R and the
+    standard library are nobody's choice, and are not said; nor is what an installed library
+    or a hidden folder holds."""
+    for folder in ("renv/library/vigicaen/R", ".ipynb_checkpoints"):
+        (project / "analysis" / folder).mkdir(parents=True)
+        (project / "analysis" / folder / "a.R").write_bytes(b"library(vigicaen)\n")
+    assert _software_said(project) == []
+    script = project / "analysis" / "02_tables.R"
+    script.write_bytes(b"x <- stats::median(1)\n# library(dplyr)\nlibrary(vigicaen)\n"
+                       b"y <- vigicaen::tb_custom()\n")  # fmt: skip
+    note = [("plan-package-unnamed", "info", "analysis/02_tables.R", 3)]
+    for stage in ("design", "drafting", "submission"):
+        assert _software_said(project, stage) == note, stage
+    plan = project / "design" / "plan.md"
+    text = plan.read_bytes().decode("utf-8")
+    plan.write_bytes(text.replace("- `matplotlib`:", "- `vigicaen` 0.15.6: reads the cases\n"
+                                                     "- `matplotlib`:").encode())  # fmt: skip
+    assert _software_said(project) == []
+    # Taken up after the plan was agreed, and said under Deviations, it is recorded there.
+    plan.write_bytes((text + "8. `vigicaen` was taken up for the drug table (2026-11-09).\n")
+                     .encode())  # fmt: skip
+    assert _software_said(project) == []
+    # A plan with no Software section names none of what the scripts load.
+    start, end = text.index("## Software\n"), text.index("## Sample size")
+    plan.write_bytes((text[:start] + text[end:]).encode())
+    said = _software_said(project)
+    assert [(code, path) for code, _severity, path, _line in said] == [
+        ("plan-package-unnamed", "analysis/01_disproportionality.py"),
+        ("plan-package-unnamed", "analysis/01_disproportionality.py"),
+        ("plan-package-unnamed", "analysis/02_tables.R"),
+        ("plan-package-unnamed", "figures/forest.py"),
+    ]
+    project_, _ = load_project(project)
+    from manuscript_guard.gates.software import check_software
+
+    messages = [f.message for f in check_software(project_, None, "drafting").findings]
+    assert all(message.endswith("and the plan has no Software section") for message in messages)
+    assert [message.split(" loads ")[1].split(",")[0] for message in messages] == [
+        "pandas", "statsmodels", "vigicaen", "matplotlib"]  # fmt: skip
 
 
 # ------------------------------------------------- the registered protocol
@@ -10763,6 +11157,8 @@ _NOT_THE_MANUSCRIPT = (
     "check_vault_results",
     "check_datasets", "check_declared_datasets",
     "check_method_passages", "check_methods_review",
+    # G12's of the plan's Software section: it reads the plan and the analysis scripts.
+    "check_software",
     # It finds the figures placed in the Markdown sources, so it reads nothing of a LaTeX
     # manuscript and says nothing of one; it runs, as G3's other check does (round 1 of #387).
     "check_figure_alt",
@@ -10795,6 +11191,8 @@ _READS_LATEX = (
     # It reads the Results and the Discussion in each document's printed view, as
     # `check_reported` does (item 10 of the borrowed checks).
     "check_interpretation",
+    # It reads the bindings of the main text and the supplement, `\mg{}` as `{{}}` (item 5).
+    "check_controls",
 )  # fmt: skip
 
 
@@ -27974,7 +28372,9 @@ _LISTED = (
 
 @pytest.mark.parametrize(
     "line", ["**References**", "**References:**", "References", "__Bibliography__",
-             "6\\. References"]  # fmt: skip
+             "6\\. References", "**[References]{.underline}**", "[References]{.smallcaps}",
+             "**[[References]{.mark}]{.underline}**", "[**References**]{.underline}",
+             "# [References]{.underline}"]  # fmt: skip
 )
 def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
     project: Path, line: str
@@ -27984,7 +28384,11 @@ def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
     "PLoS", "BMC" and the authors' initials taken for abbreviations; the word count and the
     comparison with an earlier paper took it for the Discussion. Under `# References` none
     of it is read, and the audit already took the bold line for the list's start. The text
-    under the next heading is read again: a slip there is still caught."""
+    under the next heading is read again: a slip there is still caught.
+
+    A title that is also underlined, highlighted or in small capitals is one too: pandoc
+    writes it in a span, `**[References]{.underline}**`, a heading's as well, and the list
+    under each was read as prose."""
     from manuscript_guard.gates.recycling import recycled_in
     from manuscript_guard.text.sections import measure
 
@@ -28008,6 +28412,70 @@ def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
             "British English",
         )
     ]
+
+
+@pytest.mark.parametrize(
+    ("title", "printed"),
+    [("[Results]{.underline}", "Results"), ("**[Results]{.underline}**", "Results"),
+     ("[[Results]{.smallcaps}]{.mark}", "Results"), ('[Results]{custom-style="Strong"}', "Results"),
+     ("[Results]{.underline} {#sec-results}", "Results"),
+     ("[Results]{see below}", None), ("\\[Results\\]{.underline}", None)],
+)  # fmt: skip
+def test_a_heading_in_a_span_is_named_as_pandoc_prints_it(
+    title: str, printed: str | None
+) -> None:
+    """Pandoc writes a Word heading that is also underlined, highlighted or in small capitals
+    with a span around its words, `# [Results]{.underline}`, and prints "Results". The
+    heading walk took the span's block for the heading's and titled it "[Results]", which
+    named no section: its Results were not the Results, nor its References the list.
+    Brackets before something that is no attribute block, or escaped, print as text.
+
+    The heading is titled as pandoc prints it, its words alone, so its words are counted as
+    one word each: kept in the title, the block was counted as more words of the main text
+    (round 1 of #594), and a Methods heading in a span is the Methods to G2."""
+    from manuscript_guard.classify import is_methods
+    from manuscript_guard.text.attributes import strip_attributes, without_spans
+    from manuscript_guard.text.section_names import names_results, plain
+    from manuscript_guard.text.sections import measure, split_sections
+
+    body = "\n\nThe ROR was 2.1 in one group.\n"
+    (section,) = split_sections(f"# {title}{body}")
+    assert names_results(section.title) == (printed is not None), section.title
+    if printed is not None:
+        # The same title without its span: "**[Results]{.underline}**" is "**Results**".
+        bare = without_spans(title).split(" {")[0]
+        assert section.title == bare, section.title
+        assert plain(section.title) == printed
+        assert (measure(f"# {title}{body}").main_text_words
+                == measure(f"# {bare}{body}").main_text_words)  # fmt: skip
+        methods = [split_sections(f"# {typed.replace('Results', 'Methods')}{body}")[0].title
+                   for typed in (title, bare)]  # fmt: skip
+        assert is_methods([methods[0]]) == is_methods([methods[1]]), methods
+        assert strip_attributes("# [Results]{.underline}") == "# [Results]{.underline}"
+    assert is_methods([split_sections(f"# [Methods]{{.underline}}{body}")[0].title])
+
+
+@pytest.mark.parametrize("title", ["[Abstract]{.underline}", "[[Abstract]{.smallcaps}]{.mark}"])
+def test_an_abstract_in_a_span_is_counted_as_the_abstract(title: str) -> None:
+    """A Word abstract's heading that is also underlined or in small capitals is the
+    Abstract: its words count against the abstract's limit, not the main text's."""
+    from manuscript_guard.text.sections import measure
+
+    text = "# {}\n\nWe studied five drugs.\n\n# Introduction\n\nDrugs were studied.\n"
+    counts, plainly = measure(text.format(title)), measure(text.format("Abstract"))
+    assert plainly.abstract_words >= 4, plainly
+    assert (counts.abstract_words, counts.main_text_words) == (
+        plainly.abstract_words, plainly.main_text_words)
+
+
+def test_a_docx_paragraph_s_brackets_are_text_where_a_list_ends() -> None:
+    """A .docx's text is Word's, which holds no Markdown: "[Funding]{.underline}" typed in a
+    paragraph is those characters, and ends no list the audit reads there (round 1 of
+    #594), where "Funding" alone does."""
+    from manuscript_guard.text.reference_lists import ends_a_list_alone
+
+    assert ends_a_list_alone("Funding")
+    assert not ends_a_list_alone("[Funding]{.underline}")
 
 
 def _declaring_no_english(root: Path) -> None:

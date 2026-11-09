@@ -182,6 +182,19 @@ def test_a_plan_declaration_that_does_not_read_warns_and_fails_at_submission() -
     assert apply_stage(warned, ANALYSIS)[0].findings[0].severity == WARN
 
 
+@pytest.mark.parametrize(
+    "code",
+    ["control-failed", "control-missing", "control-declared-late", "control-changed",
+     "control-undeclared", "control-other-script", "control-unreported"],
+)
+def test_a_control_finding_warns_and_fails_at_submission(code: str) -> None:
+    """Item 5: G12 raises each control finding to a failure at submission only (D5.3, and
+    Basile's answer of 2026-11-09 for the rest); the policy has it bind there."""
+    assert binds_at(code) == SUBMISSION
+    failed = Report((Finding(gate="G12", code=code, message="m", severity=FAIL),))
+    assert not apply_stage(failed, SUBMISSION)[0].ok
+    report, deferred = apply_stage(failed, INTERNAL_REVIEW)
+    assert report.ok and deferred == {SUBMISSION: 1}
 def test_a_held_out_leak_fails_from_the_analysis_stage_and_the_rest_at_submission() -> None:
     """Item 11, D11.2: a leak changes the result, and fails from the analysis stage; what the
     record cannot tell, and the declarations against the frozen copy, from submission."""

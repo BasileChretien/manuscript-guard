@@ -87,7 +87,7 @@ def grouped(found: list[Finding], at: Callable[[Path | None, int | None], str]) 
 QUOTING = frozenset({"G6"})
 #: How the report names the option that lists every place, on the command line and on the
 #: web page, which shows the same text.
-DETAILS = "--details (the second box on the web page)"
+DETAILS = "--details (on the web page, the box \"List every place of every finding\")"
 
 
 def _n(count: int, one: str, many: str | None = None) -> str:
@@ -176,6 +176,38 @@ def _references(report) -> str:
 
 def checks(report) -> list[str]:
     """What each check found, a line each, in the order of the sections below."""
+    found = rows(report)
+    width = max(len(name) for name, _said in found)
+    return [f"  {name.ljust(width)}  {said}" for name, said in found]
+
+
+def kinds(found: list[Finding], at: Callable[[Path | None, int | None], str], *,
+          details: bool = False) -> list[dict]:  # fmt: skip
+    """G6's and G14's findings by kind, as `grouped` orders them, each with every place: a
+    title, its gate and code, a count, the hint the places share or None, and each place,
+    where it is, what it says, its context and its own hint. What the page draws, a kind to
+    a fold, every place inside it. With `details` every context, as the text gives them."""
+    out = []
+    ordered = sorted(kinds_of(found).items(), key=lambda kind: -len(kind[1]))
+    for (gate, code), unordered in ordered:
+        mine = sorted(unordered, key=lambda one: (str(one.path), one.line or 0))
+        shared = len({finding.hint for finding in mine}) == 1
+        out.append({
+            "title": KINDS.get(code, code), "gate": gate, "code": code, "count": len(mine),
+            "hint": mine[0].hint if shared else None,
+            "places": [{"where": at(finding.path, finding.line) if finding.line else "the paper",
+                        "message": finding.message,
+                        # The words matched, where the message does not say them, as the
+                        # text shows them (`QUOTING`); every context with `details`.
+                        "context": finding.context if details or gate in QUOTING else None,
+                        "failing": finding.severity == FAIL,
+                        "hint": None if shared else finding.hint} for finding in mine],
+        })  # fmt: skip
+    return out
+
+
+def rows(report) -> list[tuple[str, str]]:
+    """What each check found, by check, in the order of the sections."""
     rows = [("Membership", _membership(report)), ("Arithmetic", _arithmetic(report))]
     if report.abstract is not None:
         rows.append(("Abstract against Results", _abstract(report.abstract)))
@@ -190,8 +222,7 @@ def checks(report) -> list[str]:
                           ("Package", report.package)):  # fmt: skip
         if present is not None:
             rows.append((name, "see its section below"))
-    width = max(len(name) for name, _said in rows)
-    return [f"  {name.ljust(width)}  {said}" for name, said in rows]
+    return rows
 
 
-__all__ = ["KINDS", "PLACES", "checks", "grouped", "kinds_of"]
+__all__ = ["KINDS", "PLACES", "checks", "grouped", "kinds", "kinds_of", "rows"]

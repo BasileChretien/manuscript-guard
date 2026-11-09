@@ -495,12 +495,13 @@ def _deviations(page: Page) -> str | None:
 
 def _g12(page: Page) -> list:
     """What G12 says of the plan, the design's review, the registration, the data sources,
-    the datasets and the methods of similar studies, as `check` runs it."""
+    the datasets, the software and the methods of similar studies, as `check` runs it."""
     from manuscript_guard.gates.data_sources import check_data_sources, check_declared_datasets
     from manuscript_guard.gates.design import check_design
     from manuscript_guard.gates.design_review import check_design_rounds
     from manuscript_guard.gates.methods_review import check_methods_review
     from manuscript_guard.gates.registration import check_registration
+    from manuscript_guard.gates.software import check_software
     from manuscript_guard.policy import SUBMISSION, resolve_stage
 
     project, results = page.project, page.results
@@ -511,6 +512,7 @@ def _g12(page: Page) -> list:
         lambda: check_registration(project, results, stage),
         lambda: check_data_sources(project, stage),
         lambda: check_declared_datasets(project, results),
+        lambda: check_software(project, results, stage),
         lambda: check_methods_review(project),
     )  # fmt: skip
     from manuscript_guard.findings import Finding

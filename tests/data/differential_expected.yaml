@@ -75,11 +75,11 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G7 reads claims of novelty or absence ("no study has examined") and counts them,
-      with how many rest on a recorded search, how many on one more than six months old and
-      how many a person said are no claim (`novelty_claims`, `novelty_searched`,
-      `novelty_stale`, `novelty_not_claims`), and a claim with no search is
-      `novelty-unsearched`, a warning, and a failure at the submission stage
+      G12 holds the plan's Software section to the packages the scripts of analysis/ and
+      figures/ load and counts both (`software_planned`, `software_loaded`): a package an
+      item names that no script loads is `planned-package-unloaded`, a warning from the
+      analysis stage on, and one a script loads that no item names is
+      `plan-package-unnamed`, a note (#592)
   - reading: data dates
     why: >-
       the finding says the date was emitted as a string rather than typed, and its hint adds
@@ -189,14 +189,13 @@ expected:
       (Known gaps, 2026-10-27)
   - reading: abbreviations
     why: >-
-      a paragraph that opens with a bold label naming a contributions, acknowledgements,
-      funding or competing-interests statement, "**Authors' contributions** JMD, BC and CD
-      designed the study", is read as that statement, and so is the paragraph under such a
-      label standing alone: their initials and institutions in capitals are no longer
-      reported as undefined; the inputs now hold such statements, and lookalikes whose
-      capitals are still reported (a label that only opens with such a word, inside a
-      paragraph, in a list item, a block quote or an indented table, a bold word going on
-      into its sentence, a heading under a label)
+      a bold word that goes on into its sentence across a line break pandoc prints as a
+      space, "**Funding**" over "of the MRC was cut" in one paragraph, a space before the
+      break or none, is that sentence's first word, as on its line, and no longer a
+      statement's label, so the paragraph's capitals are reported as undefined again; the
+      inputs now hold such paragraphs, and lookalikes still quiet: a label with its statement
+      on the next line, "**Funding**" over "The EPSRC paid ...", and a label before a hard
+      line break, two spaces or a backslash
   - reading: recycled passages
     why: >-
       a citation by author and year in parentheses in the earlier paper, "(Smith et al.,
@@ -214,6 +213,12 @@ expected:
       since an accent's argument is one letter: `pol\^\itica` is searched for as "politica",
       where the longest command, the `\it` of italics, made it "polica"; the lines drawn
       now hold an accent on a dotless i before a t, braced and not
+  - reading: plan variables
+    why: >-
+      the plan's Software section names packages and functions, and G12's data dictionary
+      check no longer reads them as variables (#592), as it does not read the Deviations;
+      the plans drawn now hold such a section, and headings that only mention software or
+      open with one of its words and head something else, which are read as before
   - reading: pdf shown
     why: >-
       a new reading of how a fetched PDF's first page shows it is the cited work: a

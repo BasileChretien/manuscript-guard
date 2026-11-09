@@ -112,6 +112,9 @@ class Declarations:
     unreadable: tuple[Unreadable, ...] = ()
     #: Whether any block holds `controls` or `held_out`, read or not.
     declared: bool = False
+    #: The key of each control entry refused, where it gives one: declared, if not read, so
+    #: that no other finding says the plan declares no such control (round 1 of PR 2a).
+    refused_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -194,6 +197,7 @@ def read_declarations(text: str) -> Declarations:
     controls: list[Control] = []
     held_out: list[HeldOut] = []
     unreadable: list[Unreadable] = []
+    refused: list[str] = []
     seen: dict[str, tuple[int, int]] = {}
     blocks = _blocks(text)
     for number, block in enumerate(blocks):
@@ -223,13 +227,28 @@ def read_declarations(text: str) -> Declarations:
                 read = _control(item, line) if name.value == "controls" else _held_out(item, line)
                 if isinstance(read, Unreadable):
                     unreadable.append(read)
+                    if name.value == "controls" and (given := _key_of(item)) is not None:
+                        refused.append(given)
                 elif isinstance(read, Control):
                     controls.append(read)
                 else:
                     held_out.append(read)
     controls, held_out, twice = _once(controls, held_out)
+    refused += [problem.message.split()[2] for problem in twice
+                if problem.message.startswith("the control ")]  # fmt: skip
     return Declarations(tuple(controls), tuple(held_out), tuple(unreadable + twice),
-                        bool(blocks))  # fmt: skip
+                        bool(blocks), tuple(refused))  # fmt: skip
+
+
+def _key_of(node: yaml.Node) -> str | None:
+    """The `key` a control entry gives as plain text, read or not."""
+    if not isinstance(node, yaml.MappingNode):
+        return None
+    for name, value in node.value:
+        if isinstance(name, yaml.ScalarNode) and name.value == "key" and \
+                isinstance(value, yaml.ScalarNode):  # fmt: skip
+            return value.value
+    return None
 
 
 def _problem(exc: yaml.YAMLError) -> str:

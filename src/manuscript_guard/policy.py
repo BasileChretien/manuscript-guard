@@ -341,6 +341,14 @@ BINDS_AT = {
     # what it declares is then checked by nothing. G12 warns while the paper is written and
     # fails it at submission (items 5 and 11, Basile, 2026-11-09).
     "plan-declarations-unreadable": SUBMISSION,
+    # A control that failed, is missing, was chosen after the first results, changed since,
+    # is undeclared, ran in another script or is not reported: G12 warns while the paper is
+    # written and fails it at submission (D5.3; Basile, 2026-11-09).
+    **dict.fromkeys(
+        ("control-failed", "control-missing", "control-declared-late", "control-changed",
+         "control-undeclared", "control-other-script", "control-unreported"),
+        SUBMISSION,
+    ),  # fmt: skip
     # A held-out input another script read, or a model written again after the validation
     # first read it: a leak changes the result, and fails from the analysis stage (D11.2).
     # What the record cannot tell, a held-out input unread, declared late or changed, and a

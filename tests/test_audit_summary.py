@@ -73,7 +73,7 @@ def test_the_summary_says_each_list_and_each_paper_as_it_is(tmp_path: Path, caps
     written(tmp_path, "Of 412 reports, 77 were serious.\n")
     main(["audit", str(tmp_path / "paper.md")])
     out = capsys.readouterr().out
-    assert "References                no reference list read" in out or "no list read" in out
+    assert "References                1 paper with no list read: see below" in out, out
 
 
 def test_a_finding_strict_counts_is_never_left_to_the_summary(tmp_path: Path, capsys) -> None:
@@ -112,6 +112,15 @@ def test_a_place_in_another_file_of_the_paper_names_its_file(tmp_path: Path, cap
     main(["audit", str(tmp_path / "main.tex")])
     out = capsys.readouterr().out
     assert "    methods.tex:3: ROR is used once" in out, out
+    # By its path within the paper's folder, so two inputs of one name are told apart
+    # (round 2 of #600).
+    (tmp_path / "sections").mkdir()
+    (tmp_path / "methods.tex").replace(tmp_path / "sections" / "methods.tex")
+    main_tex = (tmp_path / "main.tex").read_text(encoding="utf-8")
+    (tmp_path / "main.tex").write_text(main_tex.replace("{methods}", "{sections/methods}"),
+                                       encoding="utf-8")  # fmt: skip
+    main(["audit", str(tmp_path / "main.tex")])
+    assert "    sections/methods.tex:3: ROR is used once" in capsys.readouterr().out
 
 
 def test_a_failing_finding_on_the_words_says_so_and_a_phrase_shows_its_words() -> None:

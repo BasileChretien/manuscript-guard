@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_left, bisect_right
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -161,6 +161,19 @@ _QUIET = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+# A paragraph that opens with a statement's name in bold, as Word papers run a statement on
+# from its label: "**Authors\' contributions** JMD, BC and CD designed ...", "**Funding:**
+# The THERS programme ...". Its capitals are people and institutions as under a heading
+# that names the statement. At the margin, as pandoc writes a Word paragraph: an indented
+# line is a table's or a list's. The label is at most 80 characters with no `*` or `_` in
+# it, so the match is short however the line goes on.
+_RUN_IN = re.compile(r"(\*\*|__)(?=[^\s*_])(?P<label>[^*_\n]{1,80}?)\1")
+# A backslash escape, as pandoc writes an apostrophe in Markdown: `Authors\' contributions`.
+_ESCAPE = re.compile(r"\\(.)")
+# The end of a paragraph: a blank line, a CRLF one too. And the blank lines before one,
+# which open none.
+_PARAGRAPH_END = re.compile(r"\n[ \t\r]*\n")
+_BLANK_LINES = re.compile(r"(?:[ \t\r]*\n)*")
 
 #: How a hyphenated word is read: `SARS-CoV-2` whole when it is a name, `ROR-based` as its
 #: parts when it is not. Past this many parts only the parts are read, so a line of
@@ -529,12 +542,15 @@ def _regions(
     supplementary: bool,
     abstract_title: str | None = None,
     lists: Iterable[tuple[int, int]] = (),
+    statements: Iterable[tuple[int, int]] = (),
 ) -> list[_Region]:
     """Which text each stretch of a file belongs to. `chain` is the headings a reader is
     under, carried from one file of a document into the next: a file that opens without a
     heading continues the section the last one ended in. `lists` are the reference lists
     under a line that is no heading (`unmarked_reference_lists`): each is read as the list
-    under `# References` is, and the text after it as the text before it."""
+    under `# References` is, and the text after it as the text before it. `statements` are
+    the paragraphs a statement's bold label opens (`_run_in_statements`): each is quiet, as
+    under a heading that names the statement, in the part of the paper it stands in."""
 
     def here(start: int) -> _Region:
         return _region(start, chain, supplementary=supplementary, abstract_title=abstract_title)
@@ -545,15 +561,110 @@ def _regions(
             chain.pop()
         chain.append(Section(title=heading.title, level=heading.level, body="", line=0))
         regions.append(here(heading.start))
-    for start, end in lists:
-        before = [region for region in regions if region.start < start]
-        after = [region for region in regions if region.start >= end]
-        resumed = [region for region in regions if region.start <= end][-1]
-        regions = [*before, _Region(start, None, True)]
-        if not after or after[0].start > end:
-            regions.append(_Region(end, resumed.scope, resumed.quiet))
-        regions += after
-    return regions
+    regions = _set_apart(regions, statements, lambda start, at: _Region(start, at.scope, True))
+    return _set_apart(regions, lists, lambda start, _at: _Region(start, None, True))
+
+
+def _set_apart(
+    regions: list[_Region],
+    spans: Iterable[tuple[int, int]],
+    apart: Callable[[int, _Region], _Region],
+) -> list[_Region]:
+    """`regions` with each of `spans`, in order and apart, read as `apart` says from the
+    region it opens in, and what was read before it read again after it: one pass over
+    both, so that a file of many statements costs what its length is (round 1 of #596)."""
+    out: list[_Region] = []
+    at, current = 0, regions[0]
+    for start, end in spans:
+        while at < len(regions) and regions[at].start <= start:
+            current = regions[at]
+            if current.start < start:
+                out.append(current)
+            at += 1
+        out.append(apart(start, current))
+        while at < len(regions) and regions[at].start < end:
+            current = regions[at]
+            at += 1
+        if at == len(regions) or regions[at].start > end:
+            out.append(_Region(end, current.scope, current.quiet))
+    return out + regions[at:]
+
+
+def _run_in_statements(hidden: str, headings: list[Heading]) -> list[tuple[int, int]]:
+    """Where each paragraph runs that opens with a statement's name in bold (`_RUN_IN`), as
+    offsets `[start, end)`: a name `STATEMENT_TITLE` reads whole, as a heading's, and that
+    `_QUIET` finds, "Authors' contributions", "Funding:", "Acknowledgements". A label that
+    is the whole paragraph, "**Funding**" on its own over the statement, takes the paragraph
+    after it too, up to a heading. A paragraph that only opens with such a word in bold,
+    "**Contributions of this study** We ...", is the paper's own, and so is one whose bold
+    word goes on into its sentence, "**Funding** of the NHS fell" (`_a_label`), and a label
+    inside a paragraph. `hidden` is the file masked, a listing and a comment blanked."""
+    starts = sorted(heading.start for heading in headings)
+    found: list[tuple[int, int]] = []
+    position = 0
+    while position < len(hidden):
+        # A paragraph opens past the blank lines before it, however many there are.
+        position = _BLANK_LINES.match(hidden, position).end()
+        if position == len(hidden):
+            break
+        start, (end, position) = position, _paragraph(hidden, position)
+        opening = _RUN_IN.match(hidden, start)
+        if opening is None:
+            continue
+        label, rest = opening.group("label"), hidden[opening.end() : end]
+        if not (_names_a_statement(label) and _a_label(label, rest)):
+            continue
+        if _alone(rest):
+            under = _under_a_label(hidden, position, starts)
+            if under is not None:
+                end, position = under
+        found.append((start, end))
+    return found
+
+
+def _paragraph(text: str, start: int) -> tuple[int, int]:
+    """Where the paragraph opening at `start` ends, and where the text after it opens."""
+    stop = _PARAGRAPH_END.search(text, start)
+    return (stop.start(), stop.end()) if stop else (len(text), len(text))
+
+
+def _alone(rest: str) -> bool:
+    """Whether a label's paragraph holds nothing after it but a colon or a stop."""
+    return not rest.strip(" \t\r\n:.")
+
+
+def _a_label(label: str, rest: str) -> bool:
+    """Whether bold words with `rest` after them in their paragraph are a label, not the
+    first words of a sentence: they end in a colon or a stop, or what follows them opens
+    with one, or with no small letter. "**Funding** of the NHS fell" goes on into its
+    sentence (round 1 of #596); "**Funding** none" is read as that sentence too."""
+    after = rest.lstrip(" \t")
+    return label.rstrip().endswith((":", ".")) or after[:1] in (":", ".") or not (
+        after[:1].islower())  # fmt: skip
+
+
+def _under_a_label(text: str, start: int, headings: list[int]) -> tuple[int, int] | None:
+    """The paragraph under a label that stands alone, opening at `start`: where it ends and
+    where the text after it opens; None where nothing follows, or a heading does. `headings`
+    are where the headings start, in order."""
+    if start >= len(text):
+        return None
+    end, after = _paragraph(text, start)
+    at = bisect_left(headings, start)
+    if at < len(headings) and headings[at] < end:
+        return None
+    return end, after
+
+
+def _names_a_statement(label: str) -> bool:
+    """Whether a bold label is a statement's name whose capitals are people and institutions:
+    its whole text a statement's name (`STATEMENT_TITLE`) that `_QUIET` finds. "Authors'
+    contributions" and "Funding:" are; "Abbreviations" is a glossary's, and "Contributions
+    of this study" the paper's own."""
+    from manuscript_guard.text.section_names import STATEMENT_TITLE
+
+    label = _ESCAPE.sub(r"\1", label).strip()
+    return bool(STATEMENT_TITLE.match(label) and _QUIET.search(label))
 
 
 def _region(
@@ -937,7 +1048,8 @@ def _file(
         NUL, " "
     )
     regions = _regions(headings, chain, supplementary=supplementary, abstract_title=abstract_title,
-                       lists=unmarked_reference_lists(text))  # fmt: skip
+                       lists=unmarked_reference_lists(text),
+                       statements=_run_in_statements(hidden, headings))  # fmt: skip
     titled = [(heading.start, _heading_span(text, heading)[1], heading.level, heading.title)
               for heading in headings]  # fmt: skip
     return _assembled(

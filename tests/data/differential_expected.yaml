@@ -193,18 +193,14 @@ expected:
       (Known gaps, 2026-10-27)
   - reading: abbreviations
     why: >-
-      the brackets this pull request plants: one whose short form is followed by an equals
-      sign or a number defines nothing, as before, and one followed by a colon is read
-      exactly as before; what differs is the shapes of its earlier commits: a long
-      form takes no letter from inside a bracket it opens, and looks for it before that
-      bracket; a time of day, "8:30AM", "10:00 PM", is not read as an abbreviation, and
-      nothing is reported as undefined in a paragraph set in bold with no small letter or a
-      cell of a table's header row with none, a heading typed in capitals; the inputs now
-      hold such brackets, times, headings and tables. Then: a glossary under its heading
-      defines its entries and its lines are no uses, a caption or a legend restates a
-      definition without giving it twice, and a manuscript with no heading is read as one
-      text, with no `abbreviation-redefined` (the reading gives no stage, so no
-      `no-headings` note); the inputs hold a glossary and captions, and many have no heading
+      a paragraph that opens with a bold label naming a contributions, acknowledgements,
+      funding or competing-interests statement, "**Authors' contributions** JMD, BC and CD
+      designed the study", is read as that statement, and so is the paragraph under such a
+      label standing alone: their initials and institutions in capitals are no longer
+      reported as undefined; the inputs now hold such statements, and lookalikes whose
+      capitals are still reported (a label that only opens with such a word, inside a
+      paragraph, in a list item, a block quote or an indented table, a bold word going on
+      into its sentence, a heading under a label)
   - reading: recycled passages
     why: >-
       a citation by author and year in parentheses in the earlier paper, "(Smith et al.,

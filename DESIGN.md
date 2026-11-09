@@ -24966,7 +24966,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
   scope or the audit, where `# **Results**` is the Results (`names_results` reads the title
   as printed, its emphasis taken off). Likewise `is_methods` matches a title as it is typed,
   so `# **Methods**` is not the Methods to G2. A span around the words is taken off for
-  both (see "A title in a span named nothing").
+  both (see "A title in a span named nothing"). Pinned by
+  `tests/test_text.py::test_a_heading_in_bold_is_not_the_abstract_nor_the_methods`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

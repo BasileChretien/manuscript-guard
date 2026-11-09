@@ -4796,6 +4796,13 @@ def test_a_sign_or_unit_set_beside_a_value_in_word_is_refused_and_named(
             id="a-range-in-degrees",
         ),
         pytest.param(
+            "Copies went from 10³ to {{results.hi}} here.",
+            "Copies went from 10³ to ⟦3840⟧ here.",
+            "Copies went from 10³ – 3840 here.",
+            "Copies went from 10³ – {{results.hi}} here.",
+            id="a-range-from-a-power",
+        ),
+        pytest.param(
             "The dose was {{results.x}} mg overall.",
             "The dose was ⟦3.84⟧ mg overall.",
             "The dose was 3.84 mg in all.",
@@ -10465,6 +10472,10 @@ def test_an_autolink_whose_address_changed_is_said_to_have_changed() -> None:
 
     why = _beyond_changed((("autolink", "https://osf.io/abc"),), (("link", "https://osf.io/xyz"),))
     assert why.startswith("a link's address was changed"), why
+    # One autolink gone and two links come: one more than an address changed.
+    two = (("link", "https://b.org"), ("link", "https://c.org"))
+    why = _beyond_changed((("autolink", "https://a.org"),), two)
+    assert why.startswith("a link was added"), why
 
 
 def test_a_split_that_took_the_footnote_is_refused_as_a_split(tmp_path: Path) -> None:
@@ -10569,9 +10580,10 @@ def test_a_link_s_address_is_compared_with_its_escapes_decoded_and_its_bookmark(
         ("www.osf.io/abc", "http://www.osf.io/abc"),
         ("data@example.org", "mailto:data@example.org"),
         ("https://e.org/a%20b", "https://e.org/a%20b"),
+        ("https://e.org/a%2520b", "https://e.org/a%2520b"),
         ("https://OSF.io/abc", "https://osf.io/abc"),
     ],
-    ids=["url", "www", "e-mail", "escaped", "host-cased"],
+    ids=["url", "www", "e-mail", "escaped", "an-escaped-percent", "host-cased"],
 )
 def test_a_link_whose_words_are_its_address_is_the_paragraph_s_text(
     tmp_path: Path, shown: str, target: str

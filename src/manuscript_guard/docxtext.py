@@ -684,9 +684,9 @@ _APART = "\x00"
 
 
 def _bare_address(text: str) -> str:
-    """An address as one would type it: its percent-escapes decoded, no scheme, no `mailto:`,
-    no closing `/`, its host in any case and the rest as written."""
-    bare = unquote(text.strip())
+    """An address as one would type it: no scheme, no `mailto:`, no closing `/`, its host in
+    any case and the rest as written."""
+    bare = text.strip()
     for scheme in ("mailto:", "https://", "http://"):
         if bare[: len(scheme)].lower() == scheme:
             bare = bare[len(scheme) :]
@@ -713,7 +713,8 @@ def _link(held: str, targets: dict[str, str]) -> tuple[str, str]:
     text, and compared there, so it is no link added (`merge._beyond_changed`)."""
     rid, anchor, shown = held.split(_APART)
     address = (targets.get(rid, "") if rid else "") + (f"#{anchor}" if anchor else "")
-    automatic = shown.strip() and _bare_address(shown) == _bare_address(address)
+    # The target's escapes are decoded once already (`_targets`); the words' are now.
+    automatic = shown.strip() and _bare_address(unquote(shown)) == _bare_address(address)
     return ("autolink" if automatic else "link"), address
 
 

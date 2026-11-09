@@ -105,13 +105,17 @@ def units_after(text: str, typed: str | None = None) -> list[Written]:
     return found
 
 
-#: A number ending a text, with the unit written after it if there is one.
-_ENDS_IN_A_NUMBER = re.compile(r"\d(?:" + _UNIT.pattern + r")?\Z")
+#: A number ending a text, its last digit a superscript one or not, with the unit written
+#: after it if there is one.
+_ENDS_IN_A_NUMBER = re.compile(
+    r"[\d\N{SUPERSCRIPT ONE}\N{SUPERSCRIPT TWO}\N{SUPERSCRIPT THREE}⁰⁴-⁹]"
+    r"(?:" + _UNIT.pattern + r")?\Z"
+)
 
 
 def ends_in_a_number(text: str) -> bool:
     """Whether `text` ends in a number, with the unit G2 reads after one if it has one: "12",
-    "12%", "12 mg/L", "36 °C". `import` reads a dash after one as a range."""
+    "12%", "12 mg/L", "36 °C", "10³". `import` reads a dash after one as a range."""
     return _ENDS_IN_A_NUMBER.search(text[-40:]) is not None
 
 

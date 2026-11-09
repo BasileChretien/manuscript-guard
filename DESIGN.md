@@ -20344,11 +20344,14 @@ Open, recorded as each change landed:
     `tests/test_roundtrip.py::test_a_tag_left_open_by_the_paragraph_before_is_not_seen`.
   - *A footnote holding a citation the build's record does not know is not compared.* A
     live build's record names each citation field it made, as the source writes it, and a
-    footnote's citations are read through it, as the paragraph's are. A record an earlier
-    release wrote names none in a footnote, and none names a citation inserted in a footnote
-    in Word, so such a footnote cannot be told from Zotero's words: it is taken to be as it
-    was, and an edit to it is lost as every footnote edit was before. Rebuilt and sent again,
-    the document's record names them. Pinned by
+    footnote's citations are read through it, as the paragraph's are. It knows none in a
+    footnote where an earlier release wrote it; none where the citation was inserted in the
+    footnote in Word, or edited there through Zotero (a work added, a page changed); and none
+    the source writes two ways, which it leaves out. Such a footnote cannot be told from
+    Zotero's words, so it is taken to be as it was, its text, links and equations with it,
+    and an edit to it is lost as every footnote edit was before; a paragraph's own citation
+    is refused in each of these cases. A record that said it reads footnotes would let only
+    an earlier release's be taken so. Pinned by
     `tests/test_roundtrip.py::test_a_footnote_citation_the_record_does_not_know_is_not_compared`.
   - *Code is refused only for the characters pandoc typesets.* A `--` or `...` typed in Word
     outside code, with AutoCorrect off, is typeset like one in the source; and code holding

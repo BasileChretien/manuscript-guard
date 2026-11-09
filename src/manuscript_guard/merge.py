@@ -2390,8 +2390,9 @@ def _beyond_changed(
         was, now = listed(sent, (kind,)), listed(back, (kind,))
         if alike(was, now):
             continue
-        fewer = len(listed(back, ("autolink",))) < len(listed(sent, ("autolink",)))
-        if len(now) > len(was) and not (kind == "link" and fewer):
+        # Links gained no more than autolinks lost: each of those had its address changed.
+        lost = len(listed(sent, ("autolink",))) - len(listed(back, ("autolink",)))
+        if len(now) > len(was) and not (kind == "link" and len(now) - len(was) <= lost):
             said.append(f"{one} was added")
         elif len(now) < len(was):
             said.append(f"{one} was deleted")

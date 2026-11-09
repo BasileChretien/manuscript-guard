@@ -1728,6 +1728,15 @@ def plan_import(
     carried_by = {n: b.text for b in returned if not b.table for n in b.names}
     carried = returned
     returned, untold = _recovered(rendered, reference, returned, printed)
+    # What Word keeps outside each paragraph's text, as sent and as it came back; see
+    # `_beyond_changed`. None for a block that holds more than one paragraph's identifier.
+    beyond_sent = {b.names[0]: b.beyond for b in reference if b.names and not b.table}
+    beyond_back = {
+        name: b.beyond if len(b.names) == 1 else None
+        for b in returned
+        if not b.table
+        for name in b.names
+    }
     # For what is new beside a paragraph, a block that may be its own paragraph, reworded,
     # is read with its identifier on. Its paragraph is refused for it; read as new text, it
     # had a rewording in the paragraph on either side refused as "split in two in Word".
@@ -1916,6 +1925,12 @@ def plan_import(
             refused.append(Refusal(name, carried_by[name], (_BESIDE_CHANGED,)))
         elif now is None or (not now.strip() and was.strip()):
             gone.append(name)
+        elif beyond := _beyond_changed(
+            beyond_sent.get(name, ()), beyond_back.get(name), stale=stale
+        ):
+            # Before the comparison of its text, which an edit in a footnote, an equation or
+            # a link's address leaves as it was: the import said nothing had come back.
+            refused.append(Refusal(name, now, (beyond,)))
         elif _same(was, now) or (
             # Only the part that carries the identifier is compared here. With new text
             # beside it - the part after an equation reworded - skipping it lost that edit.
@@ -2260,6 +2275,14 @@ def why(aligned: Alignment) -> tuple[str, ...]:
             "wording would be read as Markdown, or would change markup beside it. "
             "Make the edit in the .md.",
         )
+    if aligned.tag:
+        shown = " ".join(aligned.tag.split())
+        shown = shown if len(shown) <= 80 else shown[:77] + "..."
+        return (
+            f"merged, pandoc would read '{shown}' as an HTML tag and print none of it: what "
+            "the edit took out had kept the '<' and the '>' from making one. Make the edit in "
+            "the .md, and write that '<' as '\\<' there, so that it prints as typed.",
+        )
     if aligned.touching:
         return (
             "the text between two of its numbers or citations was deleted, so they would "
@@ -2283,6 +2306,8 @@ def why(aligned: Alignment) -> tuple[str, ...]:
             "build would give the paragraph no identifier, and a later edit to it in Word "
             "could not come back. Make the edit in the .md.",
         )
+    if aligned.beside:
+        return tuple(_beside_why(*entry) for entry in aligned.beside)
     if aligned.changed:
         lines = []
         for shown, token in aligned.changed:
@@ -2305,6 +2330,82 @@ def why(aligned: Alignment) -> tuple[str, ...]:
     return (
         "its numbers, citations and markup could not be told apart from its prose, or its "
         "numbers and citations from each other where two touch. Make the edit in the .md.",
+    )
+
+
+#: Each kind of `docxtext.Block.beyond`, as a refusal names one, and its edit.
+_BEYOND = {
+    "footnote": ("a footnote", "a footnote's text"),
+    "endnote": ("an endnote", "an endnote's text"),
+    "equation": ("an equation", "an equation"),
+    "link": ("a link", "a link's address"),
+}
+
+
+def _beyond_changed(
+    sent: tuple[tuple[str, str], ...],
+    back: tuple[tuple[str, str], ...] | None,
+    *,
+    stale: bool = False,
+) -> str:
+    """Why a paragraph is refused for what Word keeps outside its text, or "" where that
+    came back as it was sent, or where it cannot be told (`back` is None: the block holds
+    more than one paragraph, which is refused as a join).
+
+    Each footnote and endnote is compared by its text, each equation by its own, and each
+    link by its address, in order and spaced as Word's text is: Word renumbers notes and
+    links when it saves, so their ids say nothing. None of them can be merged from Word,
+    and the paragraph's words are not merged without them: merged, the change would be
+    lost without a word, as it was when nothing compared them.
+
+    What it is compared with is the fresh build of the source. When the document was built
+    from other inputs (`stale`), a footnote changed in the .md since reads as changed too,
+    and the refusal says it may have been."""
+    if back is None or sent == back:
+        return ""
+    said = []
+    for kind, (one, edited) in _BEYOND.items():
+        was = [held for k, held in sent if k == kind]
+        now = [held for k, held in back if k == kind]
+        if was == now:
+            continue
+        if len(now) > len(was):
+            said.append(f"{one} was added")
+        elif len(now) < len(was):
+            said.append(f"{one} was deleted")
+        else:
+            said.append(f"{edited} was changed")
+    if not said:
+        # The same of each kind, in another order: a link now before the footnote.
+        said.append("a footnote, an equation or a link was moved")
+    listed = said[0] if len(said) == 1 else f"{', '.join(said[:-1])} and {said[-1]}"
+    where = "in Word, or in the .md since the build" if stale else "in Word"
+    return (
+        f"{listed} {where}. Word keeps it outside the paragraph's text, and import merges "
+        f"only that text, so the change cannot come back this way. Make the edit in the .md."
+    )
+
+
+def _beside_why(kind: str, shown: str, token: str, was: str | None, now: str | None) -> str:
+    """Why a sign or a unit set beside a value in Word is not merged (`Alignment.beside`)."""
+    key = token.strip("{} ")
+    if kind == "sign":
+        what = "a sign or comparison typed before the value"
+        fix = "if the sign is punctuation, make the edit in the .md"
+    else:
+        if was is None:
+            what = f"'{now}' typed after the value"
+        elif now is None:
+            what = f"the '{was}' after the value taken out"
+        else:
+            what = f"the '{was}' after the value changed to '{now}'"
+        fix = (
+            "a unit is written in the .md, where `check` holds it to the one the analysis "
+            "emitted"
+        )
+    return (
+        f"'{shown}' in Word: {what}, which comes from {key}, changes what the sentence says "
+        f"of it. If the value is wrong, change the analysis; {fix}."
     )
 
 

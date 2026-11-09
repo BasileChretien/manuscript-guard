@@ -30,6 +30,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import NamedTuple
+from urllib.parse import unquote
 from xml.etree import ElementTree as ET
 
 from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
@@ -151,6 +152,11 @@ class Block:
     #: identifier went missing, and the paragraph before was read as joined with its text.
     #: So it is both: this block, empty, then the figure or equation.
     stranded: str = ""
+    #: What Word keeps of it outside its text, in order, tracked changes accepted: each
+    #: footnote's and endnote's text, each equation in its text, and each link's address, as
+    #: (kind, what it holds); kind is "footnote", "endnote", "equation" or "link". See
+    #: `_beyond`.
+    beyond: tuple[tuple[str, str], ...] = ()
 
     @property
     def table(self) -> bool:
@@ -191,6 +197,9 @@ class _Paragraph:
     style: str = ""
     #: See `Block.at`.
     at: tuple[tuple[str, int], ...] = ()
+    #: See `Block.beyond`: a note's id and a link's relationship id until `paragraphs_of`
+    #: reads what they name.
+    beyond: tuple[tuple[str, str], ...] = ()
 
 
 #: A heading level, which Word writes as an outline level of 0 to 8; 9 is body text.
@@ -630,7 +639,75 @@ def _paragraph(
         unread=unread,
         style=_style(element, styles),
         at=tuple(at.items()),
+        beyond=tuple(_beyond(seen)),
     )
+
+
+#: The note references a paragraph's text holds, by the kind of note each names.
+_NOTE_REFERENCES = {W + "footnoteReference": "footnote", W + "endnoteReference": "endnote"}
+
+
+def _beyond(seen: list[ET.Element]) -> Iterable[tuple[str, str]]:
+    """What a paragraph holds that Word keeps outside its text, in the order it stands, of
+    the nodes `_visible` found: a note's id, an equation's text, and a link's relationship id
+    or, for one to a bookmark in the document, `#` and the bookmark's name.
+
+    `import` compared paragraphs by their text alone, and Word keeps a footnote's text in
+    `footnotes.xml`, an equation in `m:t` runs and a link's address in the relationships. An
+    edit to any of them, or a footnote deleted, left the text as it was: nothing was merged
+    or reported. The ids are Word's to renumber on a save, so `paragraphs_of` reads what each
+    names. An equation is read with its tracked changes accepted, as the paragraph's own
+    text is.
+
+    A link inside a field is the field's: Zotero's plugin, refreshing a live build's
+    citations, can link each to the reference list, and a field is read by its code
+    (`blocks`, `fields`), not by what it shows."""
+    simple = {id(n) for f in seen if f.tag == W + "fldSimple" for n in f.iter() if n is not f}
+    fields = 0  # the complex fields open around the node, from their begin to their end
+    for node in seen:
+        if node.tag == W + "fldChar":
+            kind = node.get(W + "fldCharType")
+            fields += 1 if kind == "begin" else -1 if kind == "end" and fields else 0
+        elif node.tag in _NOTE_REFERENCES:
+            yield _NOTE_REFERENCES[node.tag], node.get(W + "id", "")
+        elif node.tag == _M + "oMath":
+            yield "equation", "".join(n.text or "" for n in _visible(node) if n.tag == _M + "t")
+        elif node.tag == W + "hyperlink" and not fields and id(node) not in simple:
+            rid = node.get(_R + "id")
+            yield "link", rid if rid else "#" + node.get(W + "anchor", "")
+
+
+def _named_beyond(
+    archive: zipfile.ZipFile, part: str, document: Path, fonts: Fonts
+) -> Callable[[tuple[str, str]], tuple[str, str]]:
+    """What each note id and link relationship id of `_beyond` names in this document: a
+    note's text, tracked changes accepted, and a link's target, its percent-escapes decoded,
+    since a program saving the document may write `(` as `%28` and the address is the same.
+    One that names nothing reads as nothing."""
+    notes: dict[tuple[str, str], str] = {}
+    for kind in ("footnote", "endnote"):
+        name = f"word/{kind}s.xml"
+        if name not in archive.namelist():
+            continue
+        root = read_part(archive, name, what=f"{document.name}:{name}")
+        for note in root.iter(W + kind):
+            text = " ".join(_text(p, fonts) for p in note.iter(W + "p"))
+            notes[(kind, note.get(W + "id", ""))] = spaced(text).strip()
+    rels = posixpath.join(posixpath.dirname(part), "_rels", posixpath.basename(part) + ".rels")
+    targets: dict[str, str] = {}
+    if rels in archive.namelist():
+        for rel in read_part(archive, rels, what=f"{document.name}:{rels}").iter(_RELS):
+            targets[rel.get("Id", "")] = unquote(rel.get("Target", ""))
+
+    def named(entry: tuple[str, str]) -> tuple[str, str]:
+        kind, held = entry
+        if kind in ("footnote", "endnote"):
+            return kind, notes.get((kind, held), "")
+        if kind == "link" and not held.startswith("#"):
+            return kind, targets.get(held, "")
+        return entry
+
+    return named
 
 
 def _visible(element: ET.Element):
@@ -778,11 +855,16 @@ def paragraphs_of(
             styles = _styles(archive, document.name)
             # Which font a run is in decides what its text is; see `wordfonts`.
             fonts = Fonts.of(archive, document.name)
+            named = _named_beyond(archive, part, document, fonts)
     except UnsafeDocument as exc:
         raise DocumentUnreadable(str(exc)) from exc
     body = root.find(W + "body")
     body = body if body is not None else root
-    return _settled(_walk_body(body, _move_names(body), styles, fonts=fonts, fields=fields))
+    walked = _walk_body(body, _move_names(body), styles, fonts=fonts, fields=fields)
+    walked = [
+        replace(p, beyond=tuple(map(named, p.beyond))) if p.beyond else p for p in walked
+    ]
+    return _settled(walked)
 
 
 def fields_of(document: Path) -> dict[str, list[str]]:
@@ -975,6 +1057,7 @@ def _fold(run: list[_Paragraph]) -> list[Block]:
             role=role,
             style=kept[0].style,
             at=_places(kept, text),
+            beyond=tuple(entry for p in run for entry in p.beyond),
         )
     ]
 

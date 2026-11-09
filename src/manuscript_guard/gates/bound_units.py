@@ -105,6 +105,14 @@ def units_after(text: str, typed: str | None = None) -> list[Written]:
     return found
 
 
+def unit_at(text: str, at: int) -> str | None:
+    """The unit symbol written at `at`, right after a number, as `units_after` reads one
+    after a binding; None where there is none. `import` reads it in Word's text, before and
+    after a co-author's edit, to see a unit added after a value, changed or taken out."""
+    found = _UNIT.match(text, at)
+    return found["unit"] if found else None
+
+
 #: What the LaTeX reader blanks between a binding and a unit, or inside one, so that what
 #: the view reads there is not what LaTeX prints: a command other than a space's, maths, or
 #: a brace.

@@ -1243,6 +1243,30 @@ def test_initials_and_funders_are_not_abbreviations(project: Path, heading: str)
     assert not report.findings, found(report)
 
 
+@pytest.mark.parametrize(
+    "label", ["**Authors\\' contributions**", "**Author contributions:**", "__Funding__",
+              "**Acknowledgements.**", "**Competing interests**:"],
+)  # fmt: skip
+def test_initials_after_a_bold_statement_label_are_not_abbreviations(
+    project: Path, label: str
+) -> None:
+    """A Word paper runs its statements on from a bold label, under one Declarations
+    heading or none: "**Authors' contributions** JMD, BC and CD designed the study". Its
+    initials and funders were reported as abbreviations, one finding each; they are people
+    and institutions as under a heading that names the statement. The label alone over its
+    paragraph does the same, unless a heading stands under it; and the paragraph after a
+    statement is the paper's again."""
+    statement = "JB and CD analysed the data, funded by the NIHR and the ANR."
+    report = written(project, f"# Methods\n\n{PLAIN}\n\n# Declarations\n\n{label} {statement}\n")
+    assert not report.findings, found(report)
+    alone = written(project, f"# Methods\n\n{PLAIN}\n\n# Declarations\n\n{label}\n\n{statement}\n")
+    assert not alone.findings, found(alone)
+    after = written(project, f"# Methods\n\n{PLAIN}\n\n{label} {statement}\n\nThe EMA agreed.\n")
+    assert [f.message.split()[0] for f in after.findings] == ["EMA"], found(after)
+    headed = written(project, f"# Methods\n\n{PLAIN}\n\n{label}\n\n# Results\n\n{statement}\n")
+    assert sorted(f.message.split()[0] for f in headed.findings) == ["ANR", "CD", "JB", "NIHR"]
+
+
 def test_a_funder_named_once_with_its_acronym_is_not_unused(project: Path) -> None:
     report = written(
         project,
@@ -1507,6 +1531,29 @@ def test_many_findings_are_made_in_linear_time(assert_linear) -> None:
         assert len(report.findings) == len(files[0].definitions)
 
     assert_linear(repeated, judge, 500, "the findings, by repeated definition")
+
+
+def test_many_statements_and_headings_are_read_in_linear_time(assert_linear) -> None:
+    """Each statement run on from a bold label was set apart by scanning every region, and
+    each label alone looked at every heading: a file of many was read in the square of its
+    length (round 1 of #596)."""
+    from manuscript_guard.gates.language import _file
+
+    def labelled(count: int) -> str:
+        return "# Methods\n\n**Funding:** the NIH.\n\n**Funding**\n\nThe NIH.\n\n" * count
+
+    assert_linear(labelled, lambda text: _file(0, Path("main.md"), text, [], False), 300,
+                  "the statements run on from a label, by statement and heading")  # fmt: skip
+
+
+def test_a_statement_in_crlf_text_ends_with_its_paragraph() -> None:
+    """A blank line written CRLF ends a paragraph too: else the first statement ran on to
+    the end of the file and every abbreviation after it went unreported (round 1 of #596)."""
+    from manuscript_guard.gates.language import _run_in_statements, _views
+
+    text = "**Funding:** NIH.\r\n\r\nThe WHO data were used.\r\n"
+    hidden, _code = _views(text)
+    assert _run_in_statements(hidden, []) == [(0, text.index("\n"))]
 
 
 def test_a_long_hyphenated_word_is_read_in_linear_time(assert_linear) -> None:

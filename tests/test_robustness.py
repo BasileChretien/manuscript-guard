@@ -309,6 +309,15 @@ def test_code_spans_are_found_in_linear_time(assert_linear) -> None:
     assert_linear(escaped, code_spans, 2000, "escaped backticks after long runs of backslashes")
 
 
+def test_masked_link_brackets_are_passed_over_in_linear_time(assert_linear) -> None:
+    """A link's target is looked for at each `](` left unmasked: one in a comment costs
+    nothing, where each was a search to the next `)` (round 3 of #589)."""
+    from manuscript_guard.text.masking import mask
+
+    assert_linear(lambda count: "<!-- " + "](" * count + ") -->\n", mask, 4000,
+                  "masked link brackets before a bracket")  # fmt: skip
+
+
 def test_unclosed_attributes_are_read_in_linear_time(assert_linear) -> None:
     """Pandoc reads a fence's `{attributes}` on over lines. Reading them that way too, with a
     backslash before each newline read as an escape, took every opener to the end of the

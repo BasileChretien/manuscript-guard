@@ -5089,7 +5089,13 @@ A reference list is not read at all. In a contributions, acknowledgements, fundi
 section, capitals are people and institutions, so nothing there is reported as undefined,
 and a funder named once with its acronym is not reported as unused. Those sections are
 found by a word anywhere in their title, since each publisher words the heading its own
-way: "CRediT authorship contribution statement", "Role of the funding source".
+way: "CRediT authorship contribution statement", "Role of the funding source". A Word
+paper often runs a statement on from a bold label instead, under one "Declarations"
+heading or none: "**Authors' contributions** JMD, BC and CD designed the study". Such a
+paragraph is the statement too, and so is the paragraph under a label that stands alone,
+unless a heading stands there. The label's whole text has to name a statement, as a
+statement's heading does (`STATEMENT_TITLE`), and be one of these: "**Contributions of
+this study**" is the paper's own, and so is a label inside a paragraph.
 
 **What may stand undefined is data.** `data/abbreviations.yaml` holds a short list of what
 general English reads as a word or a name, `DNA`, `UK`, `DOI`, and a few unit symbols with
@@ -8623,9 +8629,9 @@ script first read it, which the record of first reads keeps.
 
 ### What the plan declares
 
-A fenced block in `design/plan.md` whose info string is `yaml`, anywhere in the plan, whose
-mapping holds `controls`, `held_out` or both. Read with PyYAML's safe loader, as `paper.yaml`
-is; a block with neither key is the author's and is not read. A YAML block cannot be mistaken
+A fenced block in `design/plan.md` whose info string is `yaml` (or `yml`), anywhere in the
+plan, whose mapping holds `controls`, `held_out` or both. Read with PyYAML's safe loader, as
+`paper.yaml` is; a block with neither key is the author's and is not read. A YAML block cannot be mistaken
 for a case-control plan's own "Controls" heading, and a mistake in it is said at its line. It
 is found as pandoc finds a fenced block, past the front matter and outside HTML comments.
 
@@ -8689,8 +8695,10 @@ An entry with a key missing, a key not listed here, a value of another type, a k
 not listed, a `distance` with another rule, a `holds-null` whose expected value is neither 0
 nor 1, a control one of whose values (`<key>.point`, `<key>.ci_low`, `<key>.ci_high`) falls
 under its own `of`, or whose `of` falls under its key, so that it would stand beside its own
-values (`ror.shuffled` of `ror.*`, or `ror` of `results.ror.*`), or a key or an input declared
-twice, is `plan-declarations-unreadable` at its line, and is not checked; the others are. So
+values (`ror.shuffled` of `ror.*`, or `ror` of `results.ror.*`), a value the safe loader
+cannot build (a tag it has no constructor for, a date that is no day), or a key or an input
+declared twice, is `plan-declarations-unreadable` at its line, and is not checked; the others
+are. So
 is a block that is not YAML, and a second block holding a key the first holds. The plan is
 Markdown in every project, a LaTeX one included.
 
@@ -16446,7 +16454,12 @@ been sorted yet.
   Each write reads the record and writes it whole, so two scripts run at once can each write
   it from what it held before the other's entry, and one entry is lost: the read of a script
   that has stopped declaring the held-out input is then in no record. Runs one after the
-  other, as a pipeline makes them, lose nothing. Accepted.
+  other, as a pipeline makes them, lose nothing. Under `vault run` the scripts run in a copy
+  inside the vault, and the record they add to there is moved to the outbox with what they
+  wrote: it reaches the project only where the person releasing the run names it, so a read
+  of `vault:<label>` not released is in no record, and G12 says the order is unknown. And a
+  record edited by hand to an empty list where its versions belong is refused by Python and
+  written over by R, which reads an empty list and an empty mapping alike. Accepted.
 - **The order is held by the model's digest at the first read.** A model changed after the
   held-out data were first read and changed back passes, and so does a choice among models
   each validated by a script of its own. A model whose file holds the time it was written,
@@ -17932,11 +17945,6 @@ Open, recorded as each change landed:
   - A citation group is any bracket pair with an `@` inside it within one paragraph: a
     stray `[` and `]` round an `@`, "aged [18, 65) as @a found. ... (65, 100]", are read
     as one sentence from one to the other.
-  - A link at a sentence's end with a `)` later on its line, "Code is at
-    [GitHub](https://github.com/a/b). Data (n = 1200) are deposited.", runs the next
-    sentence into it: G8's reading blanks the link's target to that `)`, the spaces between
-    included (round 3 of #587). `check` misses the number there too, which is G2's, on
-    `main`, and a task of its own.
   - A quote across three sentences or more stands in the text and is placed nowhere;
     `review` counts it among the findings in no one sentence or two.
     Pinned by `tests/test_review_places.py::test_a_quote_across_three_sentences_is_placed_nowhere`.
@@ -19615,6 +19623,17 @@ Open, recorded as each change landed:
   escaped. Where the old comment rule hid the start of such a match, text read again now
   meets them: `` We strip `<!--` see https://x.org/a`-->`9.99 `` hides a 9.99 that the old
   rule left readable. The patterns are to be fixed separately.
+- **A link's target is read in the shapes pandoc writes most, not in all of them.** A
+  target that is an address is masked after its `(` up to its own `)` when the address holds
+  brackets one deep at most and a title holds no escaped quote. Two deep,
+  `[t](https://x.org/a_((b)))`, or a title with `\"` in it, the bare address takes the
+  link's `)` and stop again, or the title is left: a number in it is read, and the next
+  sentence is read into the link's (round 1 of #589). An attribute block after a link or an
+  image, `![x](https://x.org/f.png){width=50%}`, is read, as it was after an image of a file
+  (`![x](figures/f.png){width=50%}`) before; the bare address used to take it. And a target
+  that is an address leaves its `(` with no `)`, as it did in the common case before: a
+  reader that pairs brackets may pair it with a later `)`, which round 1 found no ordinary
+  manuscript to do. Accepted.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, one directly under a line of prose, or a Word paragraph typed
   as `# References` without a heading style: pandoc or Word prints each as text, so nothing
@@ -22120,8 +22139,13 @@ Open, recorded as each change landed:
     genes *dishevelled* and *colourless*. Emphasis cannot excuse them, since "the
     *color* was recorded" has to be read. Each goes under `accepted_spellings`.
   - The spelling is not read in a contributions, acknowledgements, funding or
-    competing-interests section, nor in its subsections: a word of the author's own
-    that is misspelt there passes. Those sections are found by the words listed above
+    competing-interests section, nor in its subsections, nor in such a statement run on
+    from its bold label: a word of the author's own that is misspelt there passes. A
+    label in a span, `**[Funding]{.underline}**`, or in bold italics, `***Funding***`,
+    opens no statement, a label standing alone takes one paragraph under it and no more,
+    and a label in LaTeX, `\textbf{Funding}`, is not read at all. A bold "**Funding**"
+    used as a subheading of the Methods silences its paragraph, as a heading of that name
+    does. Those sections are found by the words listed above
     for the abbreviations, "disclosure", "financial support" and "author statement"
     among them, anywhere in a title. So a section of the paper proper whose title
     holds one, "Funding of primary care" or "Barriers to disclosure", is not read
@@ -25096,6 +25120,22 @@ What papers converted from Word showed (see "What papers converted from Word sho
 
 Closed since, and why each mattered (an open gap goes above this line):
 
+- **A number after a link was read by no gate (2026-11-09).** The mask took a link's
+  address up to the next space, the link's `)` and stop with it, and the link's target
+  then ran on from its `](` to the next `)` on the line. In "Code is at
+  [GitHub](https://github.com/a/b). Data (n = 1213) are deposited." G2 never saw 1213, which
+  the build prints, and G8 read the two sentences as one, so a panel's quote of the second
+  was placed in both (round 3 of #587). A link's target that is an address is masked now
+  after its `(` up to its own `)`: brackets in the address one deep, a title in quotes or
+  brackets, angle brackets round it, spaces between the brackets and the address. Its `](`
+  is left, as before, so `[ROR](https://...)` still defines ROR and the reference census
+  reads `[11](https://...)` as a link and not as citation 11. Any other link's target is
+  found where it is typed, to its first `)`, so a binding in it is hidden with it,
+  `[the code]({{repo}}/tree/v2.1)`, and it no longer runs on past that `)`; a `](` already
+  masked, in a comment say, starts none.
+  `tests/test_pandoc_agreement.py` holds the mask to what pandoc prints of each form; the
+  shapes it does not read are under Known gaps.
+
 - **A sign or a unit set beside a value in Word merged (2026-11-09).** Only a sign glued to
   a value was a change to it. "– 3.84", with a space, read as punctuation and merged, and so
   did a percent sign or a unit added after a value: each changes what the sentence claims,
@@ -25188,6 +25228,13 @@ Closed since, and why each mattered (an open gap goes above this line):
     typeset apostrophe among them, and a property
     (`tests/test_properties.py`) draws every label and every head in a drawn case and
     spacing; the old rule, and a rule that reads no head, fail it.
+
+- **A statement run on from a bold label was read as prose (2026-11-09).** G14 knew a
+  contributions or funding statement only by its heading, and a Word paper that runs it on
+  from a bold label, "**Authors' contributions** JMD, BC, PMM and CD contributed ...", had
+  each author's initials and each programme in capitals reported as an undefined
+  abbreviation: 13 of the 100 warnings on one paper audited through the web page. Such a
+  paragraph is read as the statement now (`gates.language._run_in_statements`).
 
 - **`audit --strict` counted no sum and no flow (#469 and #472, 2026-10-29).** When the
   audit first read a LaTeX paper and ran in sections (#463), `--strict` counted what it had

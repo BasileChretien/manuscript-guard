@@ -69,9 +69,13 @@ def check_synthetic_inputs(
     refs: set[str] | None = None
     report = Report()
     for fragment in results.fragments:
+        # A simulated control's own data are the control's alone, and synthetic by design: they
+        # do not make the run synthetic, so the results of a run on the real data are not said
+        # to come from synthetic data because a control in it read some (DESIGN.md, item 5).
         synthetic = sorted(
             str(record["path"]) for record in fragment.inputs
             if isinstance(record, dict) and record.get("synthetic") and record.get("path")
+            and not record.get("control")
         )  # fmt: skip
         if not synthetic:
             continue

@@ -337,6 +337,10 @@ BINDS_AT = {
     "registration-outcome-unplanned": SUBMISSION,
     "registration-outcome-unreported": SUBMISSION,
     "registration-primary-unquoted": SUBMISSION,
+    # A control or a held-out input the plan's YAML block declares in a form it does not read:
+    # what it declares is then checked by nothing. G12 warns while the paper is written and
+    # fails it at submission (items 5 and 11, Basile, 2026-11-09).
+    "plan-declarations-unreadable": SUBMISSION,
     # One work cited under two keys is printed twice in the reference list.
     "reference-duplicate": INTERNAL_REVIEW,
     # A sentence a person judged the cited work does not support: a draft may hold one while

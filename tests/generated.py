@@ -627,7 +627,10 @@ NOT_DEFINING = (
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as
 #: `00AM`; a heading typed in capitals as a paragraph set in bold; and a column's label in
 #: capitals in a table's header row, a pipe table's and a grid table's, over two lines; and
-#: a defined abbreviation in such a cell, which is still a use of it.
+#: a defined abbreviation in such a cell, which is still a use of it. And a statement run on
+#: from its bold label, as Word papers write one, its capitals people and institutions: the
+#: label in asterisks or underscores, with a colon or none, its apostrophe escaped as pandoc
+#: writes it, and the label alone over the paragraph that is the statement.
 NOT_ABBREVIATIONS = (
     "visits ran from 8:30AM to 5:45PM", "doses were given at 10:00 PM",
     "the round began at 7:15\nAM", "the last dose was at 12:30:15PM", "**SUMMARY**",
@@ -636,12 +639,21 @@ NOT_ABBREVIATIONS = (
     "+-------+----+\n| MODEL | N  |\n| 1     |    |\n+=======+====+\n| men   | 3  |\n"
     "+-------+----+",
     "the relative risk (RR) was computed\n\n| RR | n |\n|---|---|\n| 1.2 | 3 |",
+    "**Authors\\' contributions** JMD, BC and CD designed the study; JMD wrote\nit.",
+    "**Author contributions:** AKM and TRW collected the data.",
+    "**Funding:** the THERS programme paid for the RESEARDENT fellowship.",
+    "__Acknowledgements__ We thank the CEMU and the NIEHS.",
+    "**Competing interests**\n\nPLM and RDS declare none.",
 )  # fmt: skip
 
 #: Abbreviations beside those, each still reported as undefined: one near a time of day,
 #: one in a cell with small letters in it, one in a sentence; one in a table's body, pipe
 #: and grid, in a list item and in a plain paragraph, all in capitals; and one in a header
-#: cell that runs over two lines and has small letters on the other.
+#: cell that runs over two lines and has small letters on the other. And beside a statement
+#: run on from its label: a paragraph that only opens with such a word in bold, one after a
+#: statement, one with the label inside it, one whose bold word goes on into its sentence, a
+#: label in a list item, in a block quote and in an indented table's header, and a heading
+#: under a label that stands alone.
 STILL_ABBREVIATIONS = (
     ("the PM was high at 10:00", "PM"),
     ("| Group | n |\n|---|---|\n| ICU stay | 12 |", "ICU"),
@@ -652,6 +664,14 @@ STILL_ABBREVIATIONS = (
     ("ECG", "ECG"),
     ("+---------------+----+\n| Patients with | n  |\n| AKI           |    |\n"
      "+===============+====+\n| 3             | 4  |\n+---------------+----+", "AKI"),
+    ("**Contributions of this study** The WHO data were used", "WHO"),
+    ("**Conflicts of interest:** none.\n\nthe EMA approved the protocol", "EMA"),
+    ("the NSF and **Funding** bodies paid", "NSF"),
+    ("**Funding** of the NHS was cut", "NHS"),
+    ("- **Funding:** the AHRQ paid", "AHRQ"),
+    ("> **Funding:** the CDC paid", "CDC"),
+    ("  **Funding source**   Count\n  ---------------- -----\n  NICE              3", "NICE"),
+    ("**Acknowledgements**\n\n# Appendix\nthe FDA approved it", "FDA"),
 )  # fmt: skip
 
 
@@ -811,6 +831,78 @@ def masked_blocks(
         text += f"\n| {head} | x |\n|---|---|\n| {body} | y |\n"
         cells += [(head, line), ("x", line), (body, line + 2), ("y", line + 2)]
     return text, comments, cells
+
+
+#: The targets a link is written with, by kind: `{w}` a word of its address, `{n}` a number in
+#: its address or title, which pandoc does not print. Whether the target is an address, whose
+#: `](` the mask leaves (it is how "reporting odds ratio [ROR](https://...)" defines ROR).
+LINK_TARGETS = {
+    "an address": ("(https://example.org/{w}/{n})", True),
+    "an address with brackets": ("(https://example.org/wiki/{w}_({n}))", True),
+    "an address and a title": ('(https://example.org/{w} "Title {n}")', True),
+    "an address and a title in brackets": ("(https://example.org/{w} (Title {n}))", True),
+    "an address at www": ("(www.example.org/{w}{n})", True),
+    "a DOI": ("(doi:10.1000/{w}{n})", True),
+    "a bare DOI": ("(10.1000/{w}{n})", True),
+    "an address in angle brackets": ("(<https://example.org/{w} {n}>)", True),
+    "an address spaced inside": ("( https://example.org/{w}{n} )", True),
+    "a file": ("({w}{n}.md)", False),
+    "a file after a binding": ("({{{{results.x}}}}/{w}{n}.md)", False),
+    "a file after a comment": ("({w}{n}.md)", False),
+}
+#: What stands before the link of a kind on its line: a comment holding a link's `](`, which
+#: is hidden with the comment and uses up nothing (round 2 of #589).
+_BEFORE_A_LINK = {"a file after a comment": "<!-- see [b]( --> "}
+#: What may stand straight after a link's `)`: a stop, a comma, nothing, or the `)` of a
+#: bracket round the link.
+_AFTER_A_LINK = (".", ",", ";", ":", "", ")", ").")
+
+
+@st.composite
+def linked_lines(
+    draw: st.DrawFn,
+) -> tuple[str, list[tuple[int, int]], list[tuple[int, int]], list[int]]:
+    """A paragraph with a link of each kind of `LINK_TARGETS` in an order drawn, a link or an
+    image, some in a bracket and some sharing a line, each followed on its line by a
+    stop or none and a count in brackets, "(n = 4101)", which pandoc prints.
+
+    Returns the text; the span of each link's text, and of what follows each link up to the
+    end of that count, which the mask leaves; the span of each link's target after its `(`,
+    and of each number in an
+    address or a title, which it hides; and the offset of the `]` of each link to an
+    address, which it leaves with the `(` after it."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+
+    text = "# Results\n\n"
+    after: list[tuple[int, int]] = []
+    targets: list[tuple[int, int]] = []
+    inside: list[tuple[int, int]] = []
+    brackets: list[int] = []
+    for index, kind in enumerate(draw(st.permutations(sorted(LINK_TARGETS)))):
+        template, address = LINK_TARGETS[kind]
+        hidden, shown = str(5101 + index), str(4101 + index)
+        if index:
+            text += draw(st.sampled_from((" ", "\n")))
+        stop = draw(st.sampled_from(_AFTER_A_LINK))
+        text += f"{words().capitalize()} {'(see ' if stop.startswith(')') else ''}"
+        text += _BEFORE_A_LINK.get(kind, "") + draw(st.sampled_from(("[", "![")))
+        opened = len(text)
+        text += words()
+        after.append((opened, len(text)))
+        text += "]"
+        if address:
+            brackets.append(len(text) - 1)
+        written = template.format(w=draw(st.sampled_from(FILLER)), n=hidden)
+        at = len(text) + written.index(hidden)
+        inside.append((at, at + len(hidden)))
+        targets.append((len(text) + 1, len(text) + len(written)))
+        end = len(text) + len(written)
+        text += f"{written}{stop} {words()} (n = {shown}"
+        after.append((end, len(text)))
+        text += f") {words()}."
+    return text + "\n", after, targets + inside, brackets
 
 
 # ------------------------------------------------------------------------------- LaTeX
@@ -5141,6 +5233,102 @@ def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
         f"## Outcome\n\n{draw(texts())}\n"
     )
     return plan, [*listed, (secondary, False)]
+
+
+#: How a fenced `yaml` block opens and closes, each a way pandoc reads one (items 5 and 11).
+_YAML_FENCES = (("```yaml", "```"), ("~~~yaml", "~~~"), ("```` yaml", "````"),
+                ("``` {.yaml}", "```"), ("```YAML", "```"), ("```yml", "```"))  # fmt: skip
+#: The parts of a control's key, and of a held-out input's path: an emitter's key each.
+_CONTROL_LEAVES = ("shuffled", "headache", "bleeding", "simulated", "rash")
+
+
+#: How the `held_out` key is written: as YAML reads it, and as the emitters' line must find it.
+_HELD_OUT_KEYS = ("held_out:", '"held_out":', "'held_out' :", "held_out :")
+#: An entry the form refuses: said at the entry's line, or, where the value of a field is what
+#: the safe loader cannot build, at that field's.
+_REFUSED = (
+    ("    kind: placebo\n    rule: holds-null\n", "    expected: 1\n", None),
+    ("    kind: negative\n    rule: close-enough\n", "    expected: 1\n", None),
+    ("    kind: negative\n    rule: holds-null\n", "    expected: 2\n", None),
+    ("    kind: negative\n    rule: holds-null\n    distance: 1\n", "    expected: 1\n", None),
+    ("    kind: negative\n    rule: holds-null\n", "    expected: .inf\n", None),
+    ("    kind: negative\n    rule: holds-null\n", "    expected: !!int x\n",
+     "expected: !!int x"),
+    ("    kind: negative\n    rule: holds-null\n", "    expected: !!bool maybe\n",
+     "expected: !!bool maybe"),
+)
+
+
+@st.composite
+def declared_plans(draw: st.DrawFn) -> dict[str, Any]:
+    """A plan whose `yaml` blocks declare controls and held-out data, with what a reading of
+    it should find (DESIGN.md, "Controls the plan declares"): the control keys and the
+    held-out inputs it declares, in order, the key of the entry it refuses, and the key in
+    the block that is not YAML.
+
+    Each example holds one of every kind. The controls' block, with one entry the form
+    refuses among the others, and the held-out block, its key written one of the ways YAML
+    reads it, each opened as pandoc reads a `yaml` fence; one of the two under the Deviations
+    heading and the other under a section of its own or in a list item, in an order drawn
+    each time. Under the Deviations too, a block that is not YAML and declares; then a
+    declaration commented out, one in a block of another language, one in the front matter,
+    and a `yaml` block that declares neither, none of them read. And the line ends, LF or
+    CRLF. None of the keys or the inputs is a word of the Deviations."""
+    words = st.lists(st.sampled_from(FILLER), min_size=1, max_size=6).map(" ".join)
+    count = draw(st.integers(1, 3))
+    leaves = draw(st.permutations(_CONTROL_LEAVES))
+    keys = [f"control.{leaf}" for leaf in leaves[:count]]
+    refused, broken, unread = (f"control.{leaves[3]}", f"control.{leaves[4]}y",
+                               f"control.{leaves[4]}x")  # fmt: skip
+    inputs = [f"data/{leaf}_{draw(st.integers(0, 9))}.csv"
+              for leaf in leaves[: draw(st.integers(1, 2))]]  # fmt: skip
+
+    def fence(body: str, indent: str = "") -> str:
+        opening, closing = draw(st.sampled_from(_YAML_FENCES))
+        lines = [opening, *body.rstrip("\n").split("\n"), closing]
+        return "".join(f"{indent}{line}\n" for line in lines)
+
+    def control(key: str) -> str:
+        rule, distance = draw(st.sampled_from((("holds-null", ""), ("holds-expected", ""),
+                                               ("within", "    distance: 0.5\n"))))  # fmt: skip
+        kind = draw(st.sampled_from(("simulated", "positive", "negative")))
+        return (f"  - key: {key}\n    kind: {kind}\n    of: ror.*\n    expected: 1\n"
+                f"    rule: {rule}\n{distance}")  # fmt: skip
+
+    def held(path: str) -> str:
+        return f"  - input: {path}\n    validated_by: analysis/validate.py\n"
+
+    entries = [control(key) for key in keys]
+    form, value, said_at = draw(st.sampled_from(_REFUSED))
+    at = draw(st.integers(0, len(entries)))
+    entries.insert(at, f"  - key: {refused}\n    of: ror.*\n{form}{value}")
+    controls = fence("controls:\n" + "".join(entries))
+    if draw(st.booleans()):
+        held_out = fence(draw(st.sampled_from(_HELD_OUT_KEYS)) + "\n"
+                         + "".join(held(path) for path in inputs))  # fmt: skip
+    else:  # in a list item, indented with it
+        held_out = f"- {draw(words)}:\n\n" + fence(draw(st.sampled_from(_HELD_OUT_KEYS)) + "\n"
+                   + "".join(held(path) for path in inputs), indent="  ")  # fmt: skip
+    first, second = (controls, held_out) if draw(st.booleans()) else (held_out, controls)
+    not_yaml = f"```yaml\ncontrols:\n  - key: {broken}\n  - [\n```\n"
+    kinds = [
+        f"## Deviations from the plan\n\n{draw(words)}.\n\n{first}\n{not_yaml}",
+        f"## Validation and checks\n\n{draw(words)}.\n\n{second}",
+        f"## Notes\n\n<!--\n```yaml\ncontrols:\n{control(unread)}```\n-->\n",
+        # JSON, which is YAML too: read as one, it would declare.
+        f'## Code\n\n```json\n{{"controls": [{{"key": "{unread}", "kind": "negative", '
+        f'"of": "ror.*", "expected": 1, "rule": "holds-null"}}]}}\n```\n',
+        f"## Model\n\n{fence('model: glm' + chr(10) + 'key: ' + unread + chr(10))}",
+    ]
+    order = draw(st.permutations(range(len(kinds))))
+    # A fenced block in a value of the front matter, which pandoc reads apart from the body.
+    front = f"---\ntitle: Plan\nabstract: |\n  {draw(words)}.\n\n" + fence(
+        f"controls:\n{control(unread)}", indent="  ") + "---\n\n"  # fmt: skip
+    plan = front + "# Analysis plan\n\n" + "\n".join(kinds[index] for index in order)
+    ending = draw(st.sampled_from(("\n", "\r\n")))
+    return {"plan": plan.replace("\n", ending), "keys": keys, "inputs": inputs,
+            "refused": refused, "refused_at": said_at or f"- key: {refused}",
+            "broken": broken, "unread": unread}  # fmt: skip
 
 
 #: Each way a manuscript gives a registration: as written, the identifier `paper.yaml` lists
@@ -11843,7 +12031,11 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "finding places": finding_places().flatmap(lambda drawn: st.sampled_from(drawn[0])),
     "plan citations": credited_plans().map(lambda drawn: drawn[0]),
     "citations": texts((), ADDRESS_BLOCKS),
-    "mask": st.one_of(texts(TERMS), masked_blocks().map(lambda drawn: drawn[0])),
+    "mask": st.one_of(
+        texts(TERMS),
+        masked_blocks().map(lambda drawn: drawn[0]),
+        linked_lines().map(lambda drawn: drawn[0]),
+    ),
     "latex mask": st.one_of(latex_texts(), latex_straight_quotes().map(lambda drawn: drawn[0])),
     "latex refusals": latex_texts(),
     "latex sections": latex_texts(),
@@ -11897,7 +12089,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "numbers": st.fixed_dictionaries(
         {
-            "text": texts(POINTED, SUPPLEMENT_HEADINGS + NAMED_BLOCKS),
+            "text": st.one_of(
+                texts(POINTED, SUPPLEMENT_HEADINGS + NAMED_BLOCKS),
+                linked_lines().map(lambda drawn: drawn[0]),
+            ),
             "terms": st.lists(
                 st.sampled_from(("CYP3A4", "COVID-19", "CO2", "HbA1c", "1,3-BDG")), max_size=2
             ),
@@ -11911,6 +12106,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "data dates": texts(DATED),
     "deviations": texts(),
     "planned results": planned_plans().map(lambda drawn: drawn[0]),
+    "plan declarations": declared_plans().map(lambda drawn: drawn["plan"]),
     "registration named": st.fixed_dictionaries(
         {
             "text": texts(tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED),

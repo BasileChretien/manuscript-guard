@@ -34,6 +34,7 @@ import sys
 import tempfile
 from bisect import bisect_left
 from collections import Counter
+from collections.abc import Callable
 from decimal import Decimal
 from functools import cache, partial
 from pathlib import Path
@@ -141,6 +142,7 @@ from generated import (
     latex_words,
     latex_writing,
     lines,
+    linked_lines,
     margin_tables,
     markdown_claims,
     markdown_for_latex,
@@ -612,6 +614,103 @@ def _the_mask_keeps_a_comment_s_line_breaks(patch: pytest.MonkeyPatch) -> None:
             chars[index] = chars[index] if chars[index] in "\r\n" else NUL
 
     patch.setattr(masking, "_blank", blank)
+
+
+@holds(60, linked_lines())
+def test_the_mask_hides_a_link_s_target_and_nothing_after_it(
+    drawn: tuple[str, list[tuple[int, int]], list[tuple[int, int]], list[int]],
+) -> None:
+    """A link's target is hidden, its address and its title, and what follows the link on its
+    line is read, its stop too: the address was taken to the next space, the link's `)` and
+    stop with it, and its target then ran on to the next `)` on the line, so a count after a
+    link was read by no gate (round 3 of #587). The `](` of a link to an address is left,
+    which is how "reporting odds ratio [ROR](https://...)" defines ROR and a reference
+    census reads `[11](https://...)` as no citation."""
+    text, after, hidden, brackets = drawn
+    masked = mask(text)
+    for start, end in after:
+        assert masked[start:end] == text[start:end], (text[start:end], text, masked)
+    for start, end in hidden:
+        assert masked[start:end] == NUL * (end - start), (text[start:end], text, masked)
+    for at in brackets:
+        assert masked[at : at + 2] == "](", (at, text, masked)
+
+
+def _the_mask_without(name: str) -> Callable[[pytest.MonkeyPatch], None]:
+    """Break the Markdown mask by taking the pattern called `name` out of it."""
+
+    def break_it(patch: pytest.MonkeyPatch) -> None:
+        from manuscript_guard.text import masking
+
+        patch.setattr(masking, "_PATTERNS",
+                      tuple(one for one in masking._PATTERNS if one[0] != name))  # fmt: skip
+
+    return break_it
+
+
+def _the_mask_with(name: str, pattern: str) -> Callable[[pytest.MonkeyPatch], None]:
+    """Break the Markdown mask by putting `pattern` in place of the one called `name`."""
+
+    def break_it(patch: pytest.MonkeyPatch) -> None:
+        from manuscript_guard.text import masking
+
+        compiled = re.compile(pattern, re.IGNORECASE)
+        patch.setattr(masking, "_PATTERNS",
+                      tuple((one[0], compiled) if one[0] == name else one
+                            for one in masking._PATTERNS))  # fmt: skip
+
+    return break_it
+
+
+def _a_link_s_target_found_in_what_is_left(
+    pattern: str | None = None,
+) -> Callable[[pytest.MonkeyPatch], None]:
+    """Break the Markdown mask by finding a link's target in what the patterns before it left,
+    as `main` found it, with `pattern` in place of its own if one is given."""
+
+    def break_it(patch: pytest.MonkeyPatch) -> None:
+        from manuscript_guard.text import masking
+
+        patch.setattr(masking, "_IN_THE_SOURCE", frozenset())
+        if pattern is not None:
+            _the_mask_with("link-target", pattern)(patch)
+
+    return break_it
+
+
+def _a_link_s_target_kept_where_its_bracket_is_masked(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "_kept",
+                  lambda pattern, text, working, start, end:
+                  list(pattern.finditer(text, start, end)))  # fmt: skip
+
+
+def _a_dropped_link_s_target_uses_up_its_line(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "_kept",
+                  lambda pattern, text, working, start, end:
+                  [one for one in pattern.finditer(text, start, end)
+                   if masking.NUL not in working[one.start() : one.start() + 2]])  # fmt: skip
+
+
+#: The link's address as it was found before brackets in it, a title, angle brackets and
+#: spaces inside were read, one at a time; and hidden with its `](`.
+_AN_ADDRESS = r"(?:https?://|www\.|doi:\s*|10\.\d{4,9}/)"
+_A_TITLE = r"(?:[ \t]+(?:\"[^\"\n]*\"|'[^'\n]*'|\([^()\n]*\)))?"
+_BRACKETED = r"(?:\([^()\s]*\)[^()\s]*)*"
+_LINK_ADDRESS_WITHOUT = {
+    "brackets": rf"(?<=\]\()[ \t]*(?:<{_AN_ADDRESS}[^<>\n]*>|{_AN_ADDRESS}[^()\s]*)"
+                rf"{_A_TITLE}[ \t]*\)",
+    "a title": rf"(?<=\]\()[ \t]*(?:<{_AN_ADDRESS}[^<>\n]*>|{_AN_ADDRESS}[^()\s]*{_BRACKETED})"
+               r"[ \t]*\)",
+    "angle brackets": rf"(?<=\]\()[ \t]*{_AN_ADDRESS}[^()\s]*{_BRACKETED}{_A_TITLE}[ \t]*\)",
+    "spaces": rf"(?<=\]\()(?:<{_AN_ADDRESS}[^<>\n]*>|{_AN_ADDRESS}[^()\s]*{_BRACKETED})"
+              rf"{_A_TITLE}\)",
+    "its brackets kept": rf"\]\([ \t]*(?:<{_AN_ADDRESS}[^<>\n]*>|{_AN_ADDRESS}[^()\s]*"
+                         rf"{_BRACKETED}){_A_TITLE}[ \t]*\)",
+}
 
 
 @holds(100, escaped_backticks())
@@ -1783,7 +1882,11 @@ def test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations(
     label in capitals in a table's header row are not reported as undefined abbreviations,
     and an abbreviation the manuscript defines is used in such a cell; one beside a time of
     day, in a cell with small letters, in a sentence, in a table's body, a list item or a
-    plain paragraph, or in a header cell over two lines with small letters, still is."""
+    plain paragraph, or in a header cell over two lines with small letters, still is. So are
+    the initials and institutions of a statement run on from its bold label ("**Authors'
+    contributions** JMD, BC ..."), or under the label alone; not so the capitals of a
+    paragraph that only opens with such a word in bold, one after a statement, or one with
+    the label inside it."""
     text, undefined = drawn
     nothing = language_gate._Known(frozenset(), frozenset())
     report = language_gate._judge([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
@@ -1791,6 +1894,42 @@ def test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations(
     found = sorted((f.code, f.message.split()[0]) for f in report.findings
                    if f.code.startswith("abbreviation-"))  # fmt: skip
     assert found == [("abbreviation-undefined", short) for short in undefined], text
+
+
+def _no_statement_runs_on_from_a_label(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_run_in_statements", lambda hidden, headings: [])
+
+
+def _any_bold_label_opens_a_statement(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_names_a_statement", lambda label: True)
+
+
+def _a_bold_label_inside_a_paragraph_opens_a_statement(patch: pytest.MonkeyPatch) -> None:
+    pattern = language_gate._RUN_IN.pattern
+    patch.setattr(language_gate, "_RUN_IN", re.compile(r"[^\n]*?" + pattern))
+
+
+def _a_statement_takes_the_paragraph_after_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_alone", lambda rest: True)
+
+
+def _a_label_alone_takes_nothing_under_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_under_a_label", lambda text, start, headings: None)
+
+
+def _a_label_alone_takes_a_heading_under_it(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._under_a_label
+    patch.setattr(language_gate, "_under_a_label",
+                  lambda text, start, headings: real(text, start, []))  # fmt: skip
+
+
+def _a_bold_word_in_a_sentence_is_a_label(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_a_label", lambda label, rest: True)
+
+
+def _an_indented_bold_label_opens_a_statement(patch: pytest.MonkeyPatch) -> None:
+    pattern = language_gate._RUN_IN.pattern
+    patch.setattr(language_gate, "_RUN_IN", re.compile(r"[ ]{0,3}" + pattern))
 
 
 def _a_short_form_followed_by_a_colon_defines_nothing(patch: pytest.MonkeyPatch) -> None:
@@ -3782,6 +3921,50 @@ def test_a_planned_result_is_read_from_its_own_item_and_nowhere_else(
     read = planned_results(plan)
     assert read is not None, plan
     assert [(found.key, found.group) for found in read] == listed, plan
+
+
+# ---------------------------------------------- the controls and held-out data a plan declares
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import declared_plans  # noqa: E402
+
+
+@holds(100, declared_plans())
+def test_a_declaration_is_read_from_its_yaml_block_and_is_no_word_of_the_deviations(
+    drawn: dict[str, Any],
+) -> None:
+    """Items 5 and 11: each control and each held-out input a `yaml` block declares, in its
+    order and at its line, whichever section holds it and whatever its line ends; the entry
+    the form refuses, and the block that is not YAML, each said once; nothing from a block
+    commented out, of another language, in the front matter or declaring neither; none of
+    them a word of the Deviations, which read the plan without its declarations (rounds 1
+    and 2 of #590); and the emitters' line found wherever the reader finds held-out data."""
+    from manuscript_guard import emit
+    from manuscript_guard.gates.declarations import read_declarations
+    from manuscript_guard.gates.design import deviations_said
+
+    plan = drawn["plan"]
+    lines = plan.replace("\r\n", "\n").split("\n")
+    try:
+        read = read_declarations(plan)
+    except Exception as raised:  # noqa: BLE001 - raised, the reader stops G12 whole
+        raise AssertionError(f"the reader raised {raised!r}") from raised
+    assert [c.key for c in read.controls] == drawn["keys"], plan
+    assert [h.input for h in read.held_out] == drawn["inputs"], plan
+    for found, said in [*((c.line, f"- key: {c.key}") for c in read.controls),
+                        *((h.line, f"- input: {h.input}") for h in read.held_out)]:  # fmt: skip
+        assert lines[found - 1].strip() == said, (found, said, plan)
+    assert len(read.unreadable) == 2, (read.unreadable, plan)
+    refused, broken = sorted(read.unreadable, key=lambda problem: problem.message.startswith(
+        "the block is not YAML"))  # fmt: skip
+    assert lines[refused.line - 1].strip() == drawn["refused_at"], (refused, plan)
+    opened = lines.index(f"  - key: {drawn['broken']}")
+    assert broken.message.startswith("the block is not YAML"), (broken, plan)
+    assert opened - 1 <= broken.line <= opened + 3, (broken, plan)
+    said = deviations_said(plan)
+    named = (*drawn["keys"], *drawn["inputs"], drawn["refused"], drawn["broken"], drawn["unread"])
+    assert not [name for name in named if name in said], (said, plan)
+    assert emit.HELD_OUT_LINE.search(plan), plan
 
 
 # ------------------------------------------------- a registration and its outcomes
@@ -14614,6 +14797,78 @@ def _a_bound_key_needs_a_dot(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(design, "_PLANNED_KEY", dotted)
 
 
+def _a_declaration_commented_out_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "html_comments", lambda text, fences=None: [])
+
+
+def _a_block_of_any_language_declares(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.fences import Fence
+
+    patch.setattr(Fence, "language", property(lambda self: "yaml"))
+
+
+def _the_deviations_are_read_with_their_declarations(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import declarations
+
+    patch.setattr(declarations, "without_declarations", lambda text: text)
+
+
+def _a_block_in_the_front_matter_declares(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "front_matter_end", lambda text: 0)
+
+
+def _an_entry_is_said_a_line_early(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.gates import declarations
+
+    blocks = declarations._blocks
+    patch.setattr(declarations, "_blocks",
+                  lambda text: [replace(b, first=b.first - 1) for b in blocks(text)])  # fmt: skip
+
+
+def _a_block_that_is_not_yaml_never_declares(patch: pytest.MonkeyPatch) -> None:
+    import re
+
+    from manuscript_guard.gates import declarations
+
+    patch.setattr(declarations, "_DECLARING", re.compile(r"(?!)"))
+
+
+def _a_yml_block_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import declarations
+
+    patch.setattr(declarations, "_YAML", frozenset({"yaml"}))
+
+
+def _a_value_only_yaml_refuses_is_said(patch: pytest.MonkeyPatch) -> None:
+    import yaml
+
+    from manuscript_guard.gates import declarations
+
+    patch.setattr(declarations, "_UNBUILT", (yaml.YAMLError,))
+
+
+def _a_value_is_said_as_round_2_had_it(patch: pytest.MonkeyPatch) -> None:
+    import yaml
+
+    from manuscript_guard.gates import declarations
+
+    patch.setattr(declarations, "_UNBUILT", (yaml.YAMLError, ValueError, OverflowError))
+
+
+def _the_emitters_find_only_a_bare_held_out_line(patch: pytest.MonkeyPatch) -> None:
+    import re
+
+    from manuscript_guard import emit
+
+    patch.setattr(emit, "HELD_OUT_LINE", re.compile(r"(?m)^held_out:"))
+
+
 def _the_planned_results_subsections_are_not_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import design
 
@@ -19036,6 +19291,42 @@ BROKEN = {
         _the_mask_keeps_a_comment_s_line_breaks,
         test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s,
     ),
+    "a link's address runs to the next space": (
+        _the_mask_without("link-address"),
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
+    **{
+        f"a link's address is read without {what}": (
+            _the_mask_with("link-address", pattern),
+            test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+        )
+        for what, pattern in _LINK_ADDRESS_WITHOUT.items()
+        if what != "its brackets kept"
+    },
+    "a link's address is hidden with its brackets": (
+        _the_mask_with("link-address", _LINK_ADDRESS_WITHOUT["its brackets kept"]),
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
+    "a link's target is found in what is left and runs on over it": (
+        _a_link_s_target_found_in_what_is_left(),
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
+    "a link's target is found in what is left and stops at what is masked": (
+        _a_link_s_target_found_in_what_is_left(r"\]\([^)\n\x00]*\)"),
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
+    "a link's target is kept where its bracket is masked": (
+        _a_link_s_target_kept_where_its_bracket_is_masked,
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
+    "a dropped link's target uses up its line": (
+        _a_dropped_link_s_target_uses_up_its_line,
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
+    "a link's target to an address is taken with its brackets": (
+        _the_mask_with("link-target", r"\]\([^)\n]*\)"),
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
     "an escaped backtick opens a code span": (
         _an_escaped_backtick_opens_a_code_span,
         test_an_escaped_backtick_opens_no_code_span_and_code_ends_at_its_run,
@@ -19622,6 +19913,38 @@ BROKEN = {
     ),
     "a header cell is read line by line": (
         _a_header_cell_is_read_line_by_line,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "no statement runs on from a bold label": (
+        _no_statement_runs_on_from_a_label,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "any bold label opens a statement": (
+        _any_bold_label_opens_a_statement,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a bold label inside a paragraph opens a statement": (
+        _a_bold_label_inside_a_paragraph_opens_a_statement,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a statement takes the paragraph after it": (
+        _a_statement_takes_the_paragraph_after_it,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a label alone takes nothing under it": (
+        _a_label_alone_takes_nothing_under_it,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a label alone takes a heading under it": (
+        _a_label_alone_takes_a_heading_under_it,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a bold word that goes on into its sentence is a label": (
+        _a_bold_word_in_a_sentence_is_a_label,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "an indented bold label opens a statement": (
+        _an_indented_bold_label_opens_a_statement,
         test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
     ),
     "a statistical abbreviation needs a definition": (
@@ -21804,6 +22127,26 @@ BROKEN = {
         _the_planned_results_subsections_are_not_read,
         test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
     ),
+    **{
+        f"in a plan, {said}": (
+            broken,
+            test_a_declaration_is_read_from_its_yaml_block_and_is_no_word_of_the_deviations,
+        )
+        for said, broken in (
+            ("a declaration commented out is read", _a_declaration_commented_out_is_read),
+            ("a block of any language declares", _a_block_of_any_language_declares),
+            ("the Deviations are read with their declarations",
+             _the_deviations_are_read_with_their_declarations),
+            ("a block in the front matter declares", _a_block_in_the_front_matter_declares),
+            ("an entry is said a line early", _an_entry_is_said_a_line_early),
+            ("a block that is not YAML never declares", _a_block_that_is_not_yaml_never_declares),
+            ("the emitters find only a bare held_out line",
+             _the_emitters_find_only_a_bare_held_out_line),
+            ("a yml block is passed over", _a_yml_block_is_passed_over),
+            ("a value only YAML refuses is said", _a_value_only_yaml_refuses_is_said),
+            ("a value is said as round 2 of #599 had it", _a_value_is_said_as_round_2_had_it),
+        )
+    },
     **{
         f"in a plan, {said}": (
             broken,

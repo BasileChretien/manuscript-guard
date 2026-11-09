@@ -72,6 +72,15 @@ What the emitter holds you to:
   quotes from that run, and fails at submission. Only a worked example or a teaching paper
   sets `demonstration: true` in `paper.yaml`, which the title page then states; never set it
   to get a paper past the check.
+- A control the plan declares under `controls:` (simulated, positive or negative) is
+  published by the script that writes the result it stands beside, as an interval:
+  `em.control("control.headache", est, low, high, digits=2)` (`em$control(...)` in R), which
+  writes `control.headache.point`, `.ci_low` and `.ci_high`. A simulated control that reads
+  a file of its own names it, `em.control("control.shuffled", est, low, high,
+  inputs=["data/simulated_control.csv"])`: that file is synthetic and the control's, and
+  makes no other result of the run synthetic. A positive or a
+  negative control reads the study's data and names none. The plan's side is in the
+  analysis-plan skill.
 - The data are named by what identifies them, with `em.dataset()`: the date they were
   extracted, the period they cover, the source's version where it has one, all ISO dates
   printed in the paper's English. `fingerprint` pins the date to the file; the first run

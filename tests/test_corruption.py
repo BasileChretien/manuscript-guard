@@ -10768,6 +10768,8 @@ _NOT_THE_MANUSCRIPT = (
     "check_figure_alt",
     # The same, for the colours each figure paints.
     "check_figure_colours",
+    # G1's and G12's of held-out data: the plan, the results and design/first_reads.yaml.
+    "check_held_out", "check_held_out_reads",
 )  # fmt: skip
 #: The checks that read LaTeX: they run on a LaTeX manuscript as on any. G12's
 #: registration looks for an identifier and a sentence, which a `.tex` file holds

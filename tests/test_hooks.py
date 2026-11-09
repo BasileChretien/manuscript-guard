@@ -340,6 +340,8 @@ def test_no_standard_input_at_all_is_an_empty_event(monkeypatch) -> None:
         ("checks/recap.md", "a recap nobody made"),
         # Item 26: the plan as it stood when the first results were written.
         ("design/plan.frozen.yaml", "first results were written"),
+        # Item 11: each script's first read of each input, added to and never rewritten.
+        ("design/first_reads.yaml", "a read nobody made"),
         # What a repository answered, which G4 holds package.doi to, and every action.
         ("deposit/receipts/zenodo-release.yaml", "a deposit nobody made"),
         ("deposit/history.yaml", "never rewritten"),

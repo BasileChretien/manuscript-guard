@@ -3923,6 +3923,50 @@ def test_a_planned_result_is_read_from_its_own_item_and_nowhere_else(
     assert [(found.key, found.group) for found in read] == listed, plan
 
 
+# ---------------------------------------------- the controls and held-out data a plan declares
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import declared_plans  # noqa: E402
+
+
+@holds(100, declared_plans())
+def test_a_declaration_is_read_from_its_yaml_block_and_is_no_word_of_the_deviations(
+    drawn: dict[str, Any],
+) -> None:
+    """Items 5 and 11: each control and each held-out input a `yaml` block declares, in its
+    order and at its line, whichever section holds it and whatever its line ends; the entry
+    the form refuses, and the block that is not YAML, each said once; nothing from a block
+    commented out, of another language, in the front matter or declaring neither; none of
+    them a word of the Deviations, which read the plan without its declarations (rounds 1
+    and 2 of #590); and the emitters' line found wherever the reader finds held-out data."""
+    from manuscript_guard import emit
+    from manuscript_guard.gates.declarations import read_declarations
+    from manuscript_guard.gates.design import deviations_said
+
+    plan = drawn["plan"]
+    lines = plan.replace("\r\n", "\n").split("\n")
+    try:
+        read = read_declarations(plan)
+    except Exception as raised:  # noqa: BLE001 - raised, the reader stops G12 whole
+        raise AssertionError(f"the reader raised {raised!r}") from raised
+    assert [c.key for c in read.controls] == drawn["keys"], plan
+    assert [h.input for h in read.held_out] == drawn["inputs"], plan
+    for found, said in [*((c.line, f"- key: {c.key}") for c in read.controls),
+                        *((h.line, f"- input: {h.input}") for h in read.held_out)]:  # fmt: skip
+        assert lines[found - 1].strip() == said, (found, said, plan)
+    assert len(read.unreadable) == 2, (read.unreadable, plan)
+    refused, broken = sorted(read.unreadable, key=lambda problem: problem.message.startswith(
+        "the block is not YAML"))  # fmt: skip
+    assert lines[refused.line - 1].strip() == drawn["refused_at"], (refused, plan)
+    opened = lines.index(f"  - key: {drawn['broken']}")
+    assert broken.message.startswith("the block is not YAML"), (broken, plan)
+    assert opened - 1 <= broken.line <= opened + 3, (broken, plan)
+    said = deviations_said(plan)
+    named = (*drawn["keys"], *drawn["inputs"], drawn["refused"], drawn["broken"], drawn["unread"])
+    assert not [name for name in named if name in said], (said, plan)
+    assert emit.HELD_OUT_LINE.search(plan), plan
+
+
 # ------------------------------------------------- a registration and its outcomes
 
 # Imported here, not at the top, to keep clear of the import block other branches edit.
@@ -14753,6 +14797,78 @@ def _a_bound_key_needs_a_dot(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(design, "_PLANNED_KEY", dotted)
 
 
+def _a_declaration_commented_out_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "html_comments", lambda text, fences=None: [])
+
+
+def _a_block_of_any_language_declares(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.fences import Fence
+
+    patch.setattr(Fence, "language", property(lambda self: "yaml"))
+
+
+def _the_deviations_are_read_with_their_declarations(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import declarations
+
+    patch.setattr(declarations, "without_declarations", lambda text: text)
+
+
+def _a_block_in_the_front_matter_declares(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "front_matter_end", lambda text: 0)
+
+
+def _an_entry_is_said_a_line_early(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.gates import declarations
+
+    blocks = declarations._blocks
+    patch.setattr(declarations, "_blocks",
+                  lambda text: [replace(b, first=b.first - 1) for b in blocks(text)])  # fmt: skip
+
+
+def _a_block_that_is_not_yaml_never_declares(patch: pytest.MonkeyPatch) -> None:
+    import re
+
+    from manuscript_guard.gates import declarations
+
+    patch.setattr(declarations, "_DECLARING", re.compile(r"(?!)"))
+
+
+def _a_yml_block_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import declarations
+
+    patch.setattr(declarations, "_YAML", frozenset({"yaml"}))
+
+
+def _a_value_only_yaml_refuses_is_said(patch: pytest.MonkeyPatch) -> None:
+    import yaml
+
+    from manuscript_guard.gates import declarations
+
+    patch.setattr(declarations, "_UNBUILT", (yaml.YAMLError,))
+
+
+def _a_value_is_said_as_round_2_had_it(patch: pytest.MonkeyPatch) -> None:
+    import yaml
+
+    from manuscript_guard.gates import declarations
+
+    patch.setattr(declarations, "_UNBUILT", (yaml.YAMLError, ValueError, OverflowError))
+
+
+def _the_emitters_find_only_a_bare_held_out_line(patch: pytest.MonkeyPatch) -> None:
+    import re
+
+    from manuscript_guard import emit
+
+    patch.setattr(emit, "HELD_OUT_LINE", re.compile(r"(?m)^held_out:"))
+
+
 def _the_planned_results_subsections_are_not_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import design
 
@@ -21749,6 +21865,26 @@ BROKEN = {
         _the_planned_results_subsections_are_not_read,
         test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
     ),
+    **{
+        f"in a plan, {said}": (
+            broken,
+            test_a_declaration_is_read_from_its_yaml_block_and_is_no_word_of_the_deviations,
+        )
+        for said, broken in (
+            ("a declaration commented out is read", _a_declaration_commented_out_is_read),
+            ("a block of any language declares", _a_block_of_any_language_declares),
+            ("the Deviations are read with their declarations",
+             _the_deviations_are_read_with_their_declarations),
+            ("a block in the front matter declares", _a_block_in_the_front_matter_declares),
+            ("an entry is said a line early", _an_entry_is_said_a_line_early),
+            ("a block that is not YAML never declares", _a_block_that_is_not_yaml_never_declares),
+            ("the emitters find only a bare held_out line",
+             _the_emitters_find_only_a_bare_held_out_line),
+            ("a yml block is passed over", _a_yml_block_is_passed_over),
+            ("a value only YAML refuses is said", _a_value_only_yaml_refuses_is_said),
+            ("a value is said as round 2 of #599 had it", _a_value_is_said_as_round_2_had_it),
+        )
+    },
     **{
         f"in a plan, {said}": (
             broken,

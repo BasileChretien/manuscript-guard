@@ -1233,6 +1233,26 @@ def _planned_results() -> Reading:
     return read
 
 
+@reading("plan declarations")
+def _plan_declarations() -> Reading:
+    from manuscript_guard.gates.declarations import read_declarations
+
+    def read(plan: str) -> Any:
+        """The controls and the held-out inputs the plan's `yaml` blocks declare, each as
+        read, and each entry or block that is not, at its line (items 5 and 11)."""
+        found = read_declarations(plan)
+        return {
+            "controls": [[c.key, c.kind, c.of, c.group, c.expected, c.rule, c.distance, c.line]
+                         for c in found.controls],
+            "held_out": [[h.input, h.validated_by, list(h.model), list(h.read_by), h.line]
+                         for h in found.held_out],
+            "unreadable": [[u.line, u.message] for u in found.unreadable],
+            "declared": found.declared,
+        }  # fmt: skip
+
+    return read
+
+
 @reading("registration named")
 def _registration_named() -> Reading:
     from manuscript_guard.gates.registration import named_in

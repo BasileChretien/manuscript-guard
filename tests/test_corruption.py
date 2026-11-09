@@ -2604,6 +2604,28 @@ def test_a_synthetic_run_nothing_quotes_is_not_said(project: Path) -> None:
     assert _synthetic_said(project) == []
 
 
+def test_a_simulated_control_s_own_data_make_no_other_result_synthetic(project: Path) -> None:
+    """Item 5: a simulated control in the script of the real results reads data of its own,
+    declared synthetic; without its mark, every result of that script read as synthetic."""
+    _not_a_demonstration(project)
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    for record in document["provenance"]["inputs"]:
+        record.pop("synthetic", None)
+    marked = {"path": "data/simulated_control.csv", "sha256": "0" * 64, "synthetic": True,
+              "control": "control.shuffled"}  # fmt: skip
+    document["provenance"]["inputs"].append(marked)
+    (project / "data" / "simulated_control.csv").write_text("a\n", encoding="utf-8")
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _synthetic_said(project) == []
+    del marked["control"]
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    [(severity, message)] = _synthetic_said(project)
+    assert severity == "warn" and "(data/simulated_control.csv)" in message
+
+
 def test_a_demonstration_says_so_on_its_title_page(project: Path) -> None:
     from manuscript_guard.build.submission import title_page
 
@@ -8451,6 +8473,52 @@ def test_the_kept_plan_is_never_written_again(project: Path) -> None:
     run_analysis(project)
     assert frozen.read_bytes() == kept
     assert _plan_said(project) == [("plan-changed-after-results", "warn")]
+
+
+# -------------------------------------- the controls and held-out data the plan declares
+
+_CONTROLS = (
+    "```yaml\ncontrols:\n  - key: control.headache\n    kind: negative\n    of: ror.*\n"
+    "    expected: 1\n    rule: {rule}\n```\n"
+)
+
+
+def _declared_said(root: Path, stage: str) -> list[tuple[str, str, int | None]]:
+    from manuscript_guard.gates import check_design
+
+    project, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(project)
+    return [(f.code, f.severity, f.line) for f in check_design(project, results, stage).findings
+            if f.code == "plan-declarations-unreadable"]  # fmt: skip
+
+
+def test_a_control_the_plan_declares_in_a_form_it_does_not_read_is_said(project: Path) -> None:
+    """Items 5 and 11: a control whose rule is none of the three is checked by nothing, so
+    the plan is told so at the entry's line, a warning, and a failure at submission."""
+    _plan_edited(project, "## Planned results",
+                 "## Control analyses\n\n" + _CONTROLS.format(rule="close-enough")
+                 + "\n## Planned results")  # fmt: skip
+    lines = (project / "design" / "plan.md").read_text(encoding="utf-8").splitlines()
+    entry = lines.index("  - key: control.headache") + 1
+    assert _declared_said(project, "drafting") == [("plan-declarations-unreadable", "warn",
+                                                    entry)]  # fmt: skip
+    assert _declared_said(project, "submission") == [("plan-declarations-unreadable", "fail",
+                                                      entry)]  # fmt: skip
+    _plan_edited(project, "rule: close-enough", "rule: holds-null")
+    assert _declared_said(project, "submission") == []
+
+
+def test_a_declaration_put_under_the_deviations_is_no_deviation(project: Path) -> None:
+    """Round 1 of #590: the Deviations were read with their blocks, so a declaration put
+    under them changed what they said, and a plan changed after the results with nothing
+    said passed; and it named there every key it declared."""
+    from manuscript_guard.gates.design import deviations_said
+
+    block = _CONTROLS.format(rule="holds-null")
+    _plan_edited(project, "## Deviations from the plan", f"## Deviations from the plan\n\n{block}")
+    assert _plan_said(project) == [("plan-changed-after-results", "warn")]
+    plan = (project / "design" / "plan.md").read_text(encoding="utf-8")
+    assert "control.headache" not in deviations_said(plan)
 
 
 def test_results_with_no_kept_plan_are_a_note(project: Path) -> None:

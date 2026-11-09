@@ -8629,9 +8629,9 @@ script first read it, which the record of first reads keeps.
 
 ### What the plan declares
 
-A fenced block in `design/plan.md` whose info string is `yaml`, anywhere in the plan, whose
-mapping holds `controls`, `held_out` or both. Read with PyYAML's safe loader, as `paper.yaml`
-is; a block with neither key is the author's and is not read. A YAML block cannot be mistaken
+A fenced block in `design/plan.md` whose info string is `yaml` (or `yml`), anywhere in the
+plan, whose mapping holds `controls`, `held_out` or both. Read with PyYAML's safe loader, as
+`paper.yaml` is; a block with neither key is the author's and is not read. A YAML block cannot be mistaken
 for a case-control plan's own "Controls" heading, and a mistake in it is said at its line. It
 is found as pandoc finds a fenced block, past the front matter and outside HTML comments.
 
@@ -8695,8 +8695,10 @@ An entry with a key missing, a key not listed here, a value of another type, a k
 not listed, a `distance` with another rule, a `holds-null` whose expected value is neither 0
 nor 1, a control one of whose values (`<key>.point`, `<key>.ci_low`, `<key>.ci_high`) falls
 under its own `of`, or whose `of` falls under its key, so that it would stand beside its own
-values (`ror.shuffled` of `ror.*`, or `ror` of `results.ror.*`), or a key or an input declared
-twice, is `plan-declarations-unreadable` at its line, and is not checked; the others are. So
+values (`ror.shuffled` of `ror.*`, or `ror` of `results.ror.*`), a value the safe loader
+cannot build (a tag it has no constructor for, a date that is no day), or a key or an input
+declared twice, is `plan-declarations-unreadable` at its line, and is not checked; the others
+are. So
 is a block that is not YAML, and a second block holding a key the first holds. The plan is
 Markdown in every project, a LaTeX one included.
 
@@ -16380,7 +16382,12 @@ been sorted yet.
   Each write reads the record and writes it whole, so two scripts run at once can each write
   it from what it held before the other's entry, and one entry is lost: the read of a script
   that has stopped declaring the held-out input is then in no record. Runs one after the
-  other, as a pipeline makes them, lose nothing. Accepted.
+  other, as a pipeline makes them, lose nothing. Under `vault run` the scripts run in a copy
+  inside the vault, and the record they add to there is moved to the outbox with what they
+  wrote: it reaches the project only where the person releasing the run names it, so a read
+  of `vault:<label>` not released is in no record, and G12 says the order is unknown. And a
+  record edited by hand to an empty list where its versions belong is refused by Python and
+  written over by R, which reads an empty list and an empty mapping alike. Accepted.
 - **The order is held by the model's digest at the first read.** A model changed after the
   held-out data were first read and changed back passes, and so does a choice among models
   each validated by a script of its own. A model whose file holds the time it was written,

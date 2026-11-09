@@ -5235,6 +5235,102 @@ def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
     return plan, [*listed, (secondary, False)]
 
 
+#: How a fenced `yaml` block opens and closes, each a way pandoc reads one (items 5 and 11).
+_YAML_FENCES = (("```yaml", "```"), ("~~~yaml", "~~~"), ("```` yaml", "````"),
+                ("``` {.yaml}", "```"), ("```YAML", "```"), ("```yml", "```"))  # fmt: skip
+#: The parts of a control's key, and of a held-out input's path: an emitter's key each.
+_CONTROL_LEAVES = ("shuffled", "headache", "bleeding", "simulated", "rash")
+
+
+#: How the `held_out` key is written: as YAML reads it, and as the emitters' line must find it.
+_HELD_OUT_KEYS = ("held_out:", '"held_out":', "'held_out' :", "held_out :")
+#: An entry the form refuses: said at the entry's line, or, where the value of a field is what
+#: the safe loader cannot build, at that field's.
+_REFUSED = (
+    ("    kind: placebo\n    rule: holds-null\n", "    expected: 1\n", None),
+    ("    kind: negative\n    rule: close-enough\n", "    expected: 1\n", None),
+    ("    kind: negative\n    rule: holds-null\n", "    expected: 2\n", None),
+    ("    kind: negative\n    rule: holds-null\n    distance: 1\n", "    expected: 1\n", None),
+    ("    kind: negative\n    rule: holds-null\n", "    expected: .inf\n", None),
+    ("    kind: negative\n    rule: holds-null\n", "    expected: !!int x\n",
+     "expected: !!int x"),
+    ("    kind: negative\n    rule: holds-null\n", "    expected: !!bool maybe\n",
+     "expected: !!bool maybe"),
+)
+
+
+@st.composite
+def declared_plans(draw: st.DrawFn) -> dict[str, Any]:
+    """A plan whose `yaml` blocks declare controls and held-out data, with what a reading of
+    it should find (DESIGN.md, "Controls the plan declares"): the control keys and the
+    held-out inputs it declares, in order, the key of the entry it refuses, and the key in
+    the block that is not YAML.
+
+    Each example holds one of every kind. The controls' block, with one entry the form
+    refuses among the others, and the held-out block, its key written one of the ways YAML
+    reads it, each opened as pandoc reads a `yaml` fence; one of the two under the Deviations
+    heading and the other under a section of its own or in a list item, in an order drawn
+    each time. Under the Deviations too, a block that is not YAML and declares; then a
+    declaration commented out, one in a block of another language, one in the front matter,
+    and a `yaml` block that declares neither, none of them read. And the line ends, LF or
+    CRLF. None of the keys or the inputs is a word of the Deviations."""
+    words = st.lists(st.sampled_from(FILLER), min_size=1, max_size=6).map(" ".join)
+    count = draw(st.integers(1, 3))
+    leaves = draw(st.permutations(_CONTROL_LEAVES))
+    keys = [f"control.{leaf}" for leaf in leaves[:count]]
+    refused, broken, unread = (f"control.{leaves[3]}", f"control.{leaves[4]}y",
+                               f"control.{leaves[4]}x")  # fmt: skip
+    inputs = [f"data/{leaf}_{draw(st.integers(0, 9))}.csv"
+              for leaf in leaves[: draw(st.integers(1, 2))]]  # fmt: skip
+
+    def fence(body: str, indent: str = "") -> str:
+        opening, closing = draw(st.sampled_from(_YAML_FENCES))
+        lines = [opening, *body.rstrip("\n").split("\n"), closing]
+        return "".join(f"{indent}{line}\n" for line in lines)
+
+    def control(key: str) -> str:
+        rule, distance = draw(st.sampled_from((("holds-null", ""), ("holds-expected", ""),
+                                               ("within", "    distance: 0.5\n"))))  # fmt: skip
+        kind = draw(st.sampled_from(("simulated", "positive", "negative")))
+        return (f"  - key: {key}\n    kind: {kind}\n    of: ror.*\n    expected: 1\n"
+                f"    rule: {rule}\n{distance}")  # fmt: skip
+
+    def held(path: str) -> str:
+        return f"  - input: {path}\n    validated_by: analysis/validate.py\n"
+
+    entries = [control(key) for key in keys]
+    form, value, said_at = draw(st.sampled_from(_REFUSED))
+    at = draw(st.integers(0, len(entries)))
+    entries.insert(at, f"  - key: {refused}\n    of: ror.*\n{form}{value}")
+    controls = fence("controls:\n" + "".join(entries))
+    if draw(st.booleans()):
+        held_out = fence(draw(st.sampled_from(_HELD_OUT_KEYS)) + "\n"
+                         + "".join(held(path) for path in inputs))  # fmt: skip
+    else:  # in a list item, indented with it
+        held_out = f"- {draw(words)}:\n\n" + fence(draw(st.sampled_from(_HELD_OUT_KEYS)) + "\n"
+                   + "".join(held(path) for path in inputs), indent="  ")  # fmt: skip
+    first, second = (controls, held_out) if draw(st.booleans()) else (held_out, controls)
+    not_yaml = f"```yaml\ncontrols:\n  - key: {broken}\n  - [\n```\n"
+    kinds = [
+        f"## Deviations from the plan\n\n{draw(words)}.\n\n{first}\n{not_yaml}",
+        f"## Validation and checks\n\n{draw(words)}.\n\n{second}",
+        f"## Notes\n\n<!--\n```yaml\ncontrols:\n{control(unread)}```\n-->\n",
+        # JSON, which is YAML too: read as one, it would declare.
+        f'## Code\n\n```json\n{{"controls": [{{"key": "{unread}", "kind": "negative", '
+        f'"of": "ror.*", "expected": 1, "rule": "holds-null"}}]}}\n```\n',
+        f"## Model\n\n{fence('model: glm' + chr(10) + 'key: ' + unread + chr(10))}",
+    ]
+    order = draw(st.permutations(range(len(kinds))))
+    # A fenced block in a value of the front matter, which pandoc reads apart from the body.
+    front = f"---\ntitle: Plan\nabstract: |\n  {draw(words)}.\n\n" + fence(
+        f"controls:\n{control(unread)}", indent="  ") + "---\n\n"  # fmt: skip
+    plan = front + "# Analysis plan\n\n" + "\n".join(kinds[index] for index in order)
+    ending = draw(st.sampled_from(("\n", "\r\n")))
+    return {"plan": plan.replace("\n", ending), "keys": keys, "inputs": inputs,
+            "refused": refused, "refused_at": said_at or f"- key: {refused}",
+            "broken": broken, "unread": unread}  # fmt: skip
+
+
 #: Each way a manuscript gives a registration: as written, the identifier `paper.yaml` lists
 #: for it, and what `NAMED_IN_TEXT` finds of it where `paper.yaml` lists none (an OSF link is
 #: not looked for there). What G12 looks for, in each case, spacing and form a registry has.
@@ -11737,6 +11833,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "data dates": texts(DATED),
     "deviations": texts(),
     "planned results": planned_plans().map(lambda drawn: drawn[0]),
+    "plan declarations": declared_plans().map(lambda drawn: drawn["plan"]),
     "registration named": st.fixed_dictionaries(
         {
             "text": texts(tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED),

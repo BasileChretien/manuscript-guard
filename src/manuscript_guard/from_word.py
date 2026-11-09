@@ -481,9 +481,8 @@ def _heading(text: str, level: int = 1, identifier: str | None = None) -> dict:
 
 #: Inlines that change only how their words look, whose words a bold title's can be: what
 #: pandoc writes for underlined words, small capitals and italics, and a span (a highlight,
-#: a character style). And the gaps between words.
+#: a character style). The gaps between words are `_GAPS`, above.
 _LOOKS = {"Underline": None, "SmallCaps": None, "Emph": None, "Span": 1}
-_GAPS = frozenset({"Space", "SoftBreak", "LineBreak"})
 
 
 def _bold_words(inlines: list, bold: bool = False) -> list[bool] | None:

@@ -3757,6 +3757,32 @@ def test_a_planned_result_is_read_from_its_own_item_and_nowhere_else(
     assert [(found.key, found.group) for found in read] == listed, plan
 
 
+# ---------------------------------------------- the controls and held-out data a plan declares
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import declared_plans  # noqa: E402
+
+
+@holds(100, declared_plans())
+def test_a_declaration_is_read_from_its_yaml_block_and_is_no_word_of_the_deviations(
+    drawn: tuple[str, list[str], list[str]],
+) -> None:
+    """Items 5 and 11: each control and each held-out input a `yaml` block declares, in its
+    order, whichever section holds it; none from a block commented out, of another language
+    or declaring neither; and none of them a word of the Deviations, which read the plan
+    without its declarations (round 1 of #590)."""
+    from manuscript_guard.gates.declarations import read_declarations
+    from manuscript_guard.gates.design import deviations_said
+
+    plan, keys, inputs = drawn
+    read = read_declarations(plan)
+    assert not read.unreadable, (read.unreadable, plan)
+    assert [c.key for c in read.controls] == keys, plan
+    assert [h.input for h in read.held_out] == inputs, plan
+    said = deviations_said(plan)
+    assert not [named for named in (*keys, *inputs) if named in said], (said, plan)
+
+
 # ------------------------------------------------- a registration and its outcomes
 
 # Imported here, not at the top, to keep clear of the import block other branches edit.
@@ -14470,6 +14496,24 @@ def _a_bound_key_needs_a_dot(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(design, "_PLANNED_KEY", dotted)
 
 
+def _a_declaration_commented_out_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "html_comments", lambda text, fences=None: [])
+
+
+def _a_block_of_any_language_declares(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.fences import Fence
+
+    patch.setattr(Fence, "language", property(lambda self: "yaml"))
+
+
+def _the_deviations_are_read_with_their_declarations(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import declarations
+
+    patch.setattr(declarations, "without_declarations", lambda text: text)
+
+
 def _the_planned_results_subsections_are_not_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import design
 
@@ -21163,6 +21207,18 @@ BROKEN = {
         _the_planned_results_subsections_are_not_read,
         test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
     ),
+    **{
+        f"in a plan, {said}": (
+            broken,
+            test_a_declaration_is_read_from_its_yaml_block_and_is_no_word_of_the_deviations,
+        )
+        for said, broken in (
+            ("a declaration commented out is read", _a_declaration_commented_out_is_read),
+            ("a block of any language declares", _a_block_of_any_language_declares),
+            ("the Deviations are read with their declarations",
+             _the_deviations_are_read_with_their_declarations),
+        )
+    },
     **{
         f"in a plan, {said}": (
             broken,

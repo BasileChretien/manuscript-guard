@@ -5143,6 +5143,63 @@ def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
     return plan, [*listed, (secondary, False)]
 
 
+#: How a fenced `yaml` block opens and closes, each a way pandoc reads one (items 5 and 11).
+_YAML_FENCES = (("```yaml", "```"), ("~~~yaml", "~~~"), ("```` yaml", "````"),
+                ("``` {.yaml}", "```"), ("```YAML", "```"))  # fmt: skip
+#: The parts of a control's key, and of a held-out input's path: an emitter's key each.
+_CONTROL_LEAVES = ("shuffled", "headache", "bleeding", "simulated", "rash")
+
+
+@st.composite
+def declared_plans(draw: st.DrawFn) -> tuple[str, list[str], list[str]]:
+    """A plan whose `yaml` blocks declare controls and held-out data, with the control keys
+    and the held-out inputs it declares, in order (DESIGN.md, "Controls the plan declares").
+
+    Each example holds one block of every kind, in an order drawn each time: the controls'
+    block and the held-out block, each opened as pandoc reads a `yaml` fence, one of the two
+    under the Deviations heading and the other under a section of its own; a declaration of
+    either commented out; one in a block of another language; and a `yaml` block that
+    declares neither. The keys the last three hold are never read, and none of the keys or
+    the inputs is a word of the Deviations."""
+    words = st.lists(st.sampled_from(FILLER), min_size=1, max_size=6).map(" ".join)
+    count = draw(st.integers(1, 3))
+    leaves = draw(st.permutations(_CONTROL_LEAVES))
+    keys = [f"control.{leaf}" for leaf in leaves[:count]]
+    inputs = [f"data/{leaf}_{draw(st.integers(0, 9))}.csv"
+              for leaf in leaves[: draw(st.integers(1, 2))]]  # fmt: skip
+    unread = f"control.{leaves[-1]}x"
+
+    def fence(body: str) -> str:
+        opening, closing = draw(st.sampled_from(_YAML_FENCES))
+        return f"{opening}\n{body}{closing}\n"
+
+    def control(key: str) -> str:
+        rule, distance = draw(st.sampled_from((("holds-null", ""), ("holds-expected", ""),
+                                               ("within", "    distance: 0.5\n"))))  # fmt: skip
+        kind = draw(st.sampled_from(("simulated", "positive", "negative")))
+        return (f"  - key: {key}\n    kind: {kind}\n    of: ror.*\n    expected: 1\n"
+                f"    rule: {rule}\n{distance}")  # fmt: skip
+
+    def held(path: str) -> str:
+        return f"  - input: {path}\n    validated_by: analysis/validate.py\n"
+
+    controls = fence("controls:\n" + "".join(control(key) for key in keys))
+    held_out = fence("held_out:\n" + "".join(held(path) for path in inputs))
+    first, second = (controls, held_out) if draw(st.booleans()) else (held_out, controls)
+    kinds = [
+        f"## Deviations from the plan\n\n{draw(words)}.\n\n{first}",
+        f"## Control analyses\n\n{draw(words)}.\n\n{second}",
+        f"## Notes\n\n<!--\n```yaml\ncontrols:\n{control(unread)}```\n-->\n",
+        # JSON, which is YAML too: read as one, it would declare.
+        f'## Code\n\n```json\n{{"controls": [{{"key": "{unread}", "kind": "negative", '
+        f'"of": "ror.*", "expected": 1, "rule": "holds-null"}}]}}\n```\n',
+        f"## Model\n\n{fence('model: glm' + chr(10) + 'key: ' + unread + chr(10))}",
+    ]
+    order = draw(st.permutations(range(len(kinds))))
+    plan = "# Analysis plan\n\n" + "\n".join(kinds[index] for index in order)
+    return plan, keys, inputs
+
+
 #: Each way a manuscript gives a registration: as written, the identifier `paper.yaml` lists
 #: for it, and what `NAMED_IN_TEXT` finds of it where `paper.yaml` lists none (an OSF link is
 #: not looked for there). What G12 looks for, in each case, spacing and form a registry has.
@@ -11332,6 +11389,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "data dates": texts(DATED),
     "deviations": texts(),
     "planned results": planned_plans().map(lambda drawn: drawn[0]),
+    "plan declarations": declared_plans().map(lambda drawn: drawn[0]),
     "registration named": st.fixed_dictionaries(
         {
             "text": texts(tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED),

@@ -737,6 +737,109 @@ def test_r_and_python_record_an_input_declared_synthetic_alike(tmp_path: Path) -
     ] == [("data/real.csv", None), ("data/simulated.csv", True), ("data/other.csv", None)]
 
 
+CONTROL_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s", inputs = "data/real.csv")
+em$interval("ror", 3.84, 2.10, 7.02, digits = 2)
+em$control("control.shuffled", 1.04, 0.81, 1.33, inputs = "data/simulated.csv", digits = 2)
+em$control("control.headache", 0.97, 0.70, 1.35, digits = 2)
+refused <- tryCatch({
+  em$control("control.real", 1, 0.5, 2, inputs = "data/real.csv"); "no"
+}, error = function(e) conditionMessage(e))
+cat(refused, "\\n")
+em$write()
+"""
+
+
+def test_r_and_python_emit_a_control_alike(tmp_path: Path) -> None:
+    """Item 5: a control is published as an interval, named in the fragment, and its own
+    data are synthetic and marked as its, by either language; a real input is refused."""
+    from manuscript_guard.emit import Emitter
+
+    root = _parameter_project(tmp_path)
+    (root / "data").mkdir()
+    for name in ("real.csv", "simulated.csv"):
+        (root / "data" / name).write_text(f"{name}\n1\n", encoding="utf-8")
+    script = root / "analysis" / "control.R"
+    script.write_text(CONTROL_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    assert "data/real.csv is an input of the run" in out.stdout
+    from_r = json.loads(next((root / "results").glob("*.json")).read_text(encoding="utf-8"))
+    em = Emitter(script, root=root, inputs=["data/real.csv"])
+    em.interval("ror", 3.84, 2.10, 7.02, digits=2)
+    em.control("control.shuffled", 1.04, 0.81, 1.33, inputs=["data/simulated.csv"], digits=2)
+    em.control("control.headache", 0.97, 0.70, 1.35, digits=2)
+    from_python = json.loads(em.write().read_text(encoding="utf-8"))
+    assert from_r["controls"] == from_python["controls"] == {
+        "control.shuffled": {"inputs": ["data/simulated.csv"]},
+        "control.headache": {"inputs": []},
+    }
+    marks = [[(i["path"], i.get("synthetic"), i.get("control"))
+              for i in fragment["provenance"]["inputs"]]
+             for fragment in (from_r, from_python)]  # fmt: skip
+    assert marks[0] == marks[1] == [("data/real.csv", None, None),
+                                    ("data/simulated.csv", True, "control.shuffled")]  # fmt: skip
+    assert from_r["values"] == from_python["values"]
+
+
+FIRST_READS_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s", inputs = c("data/validation.csv", "models/model.txt"))
+em$add_input("data/simulated.csv", synthetic = TRUE)
+em$value("auc", 0.71, digits = 2)
+em$write()
+em$write()
+"""
+
+
+@pytest.mark.parametrize("line", ["held_out:", "  'held_out' :"])
+def test_r_and_python_record_first_reads_alike(tmp_path: Path, line: str) -> None:
+    """Item 11: the record of first reads, the same from either language: each input's first
+    read once, with the digests of the run and the plan's text under its digest; an input
+    declared synthetic not entered, and nothing written again."""
+    from manuscript_guard.emit import FIRST_READS, Emitter
+
+    root = _parameter_project(tmp_path)
+    for folder in ("data", "models", "design"):
+        (root / folder).mkdir()
+    for name in ("validation.csv", "simulated.csv"):
+        (root / "data" / name).write_text(f"{name}\n1\n", encoding="utf-8")
+    (root / "models" / "model.txt").write_text("beta 1.2\n", encoding="utf-8")
+    plan = "# Plan\r\n\r\n```yaml\r\n" + line + "\r\n  - input: data/validation.csv\r\n```\r\n"
+    (root / "design" / "plan.md").write_bytes(b"\xef\xbb\xbf" + plan.encode("utf-8"))
+    script = root / "analysis" / "validate.R"
+    script.write_text(FIRST_READS_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    record = root / FIRST_READS
+    from_r = json.loads(record.read_text(encoding="utf-8"))
+    record.unlink()
+    em = Emitter(script, root=root, inputs=["data/validation.csv", "models/model.txt"])
+    em.add_input("data/simulated.csv", synthetic=True)
+    em.value("auc", 0.71, digits=2)
+    em.write()
+    from_python = json.loads(record.read_text(encoding="utf-8"))
+
+    def kept(found: dict) -> tuple:
+        reads = [{k: v for k, v in read.items() if k != "read_at"} for read in found["reads"]]
+        return found["schema"], found["plans"], reads
+
+    assert kept(from_r) == kept(from_python)
+    assert [(read["script"], read["input"]) for read in from_python["reads"]] == [
+        ("analysis/validate.R", "data/validation.csv"),
+        ("analysis/validate.R", "models/model.txt")]  # fmt: skip
+    assert list(from_python["plans"].values()) == [plan], "kept without its byte-order mark"
+
+
 LABELS_R = """
 if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
   cat("MISSING_DEPS\\n"); quit(status = 3)

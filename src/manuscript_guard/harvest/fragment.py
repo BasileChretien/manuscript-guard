@@ -20,7 +20,14 @@ import json
 from pathlib import Path
 
 from manuscript_guard.contracts.values import DisplayError
-from manuscript_guard.emit import Emitter, freeze_plan, input_digest, sha256_of, write_digest
+from manuscript_guard.emit import (
+    Emitter,
+    freeze_plan,
+    input_digest,
+    record_first_reads,
+    sha256_of,
+    write_digest,
+)
 from manuscript_guard.harvest.config import Entry, HarvestError
 from manuscript_guard.harvest.read import read_output
 
@@ -83,6 +90,9 @@ def write_fragment(root: Path, entry: Entry, document: dict) -> Path:
     write_digest(path)
     synthetic = bool(entry.inputs) and all(given.synthetic for given in entry.inputs)
     freeze_plan(root, root / entry.script, synthetic=synthetic)
+    # Its inputs are first read now, when the tool learns of them (DESIGN.md, Known gaps).
+    provenance = document["provenance"]
+    record_first_reads(root, provenance["generated_by"], provenance.get("inputs", []))
     return path
 
 

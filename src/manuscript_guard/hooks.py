@@ -94,6 +94,12 @@ FORBIDDEN = (
         "change the plan in design/plan.md and say why under its Deviations",
     ),
     (
+        "design/first_reads.yaml",
+        "",
+        "it is the record of each script's first read of each input, added to by the emitter "
+        "and never rewritten; a read nobody made cannot be written into it by hand",
+    ),
+    (
         # What a repository answered when the author sent it a bundle, which G4 holds
         # `package.doi` to, and the history of every deposit action, appended to only.
         "deposit/receipts/",

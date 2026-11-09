@@ -33,7 +33,7 @@ from manuscript_guard.contracts.dictionary import load_dictionary
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.emit import FROZEN_PLAN, source_digest_matches
-from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
 from manuscript_guard.gates.methods import analysis_digests
 from manuscript_guard.text.blocks import list_items
 from manuscript_guard.text.inline import code_spans
@@ -189,9 +189,13 @@ def _says_nothing(sections: list[Section], index: int) -> bool:
 
 def deviations_said(text: str) -> str:
     """What a plan's Deviations section says, as words: its line breaks and spacing left
-    out, so that a section re-wrapped says what it said."""
+    out, so that a section re-wrapped says what it said. A block that declares controls or
+    held-out data is left out: it declares, and says nothing of a deviation, and under the
+    Deviations heading it would name there every key it declares (round 1 of #590)."""
+    from manuscript_guard.gates.declarations import without_declarations
+
     pattern = dict((name, rule) for name, rule, _purpose in REQUIRED)["deviations"]
-    sections = _plan_sections(text)
+    sections = _plan_sections(without_declarations(text))
     said = [
         part.body
         for index, section in enumerate(sections)
@@ -356,6 +360,35 @@ def _planned(text: str, path: Path, results: Results | None, stage: str | None) 
     return Report(tuple(findings), {"planned_results": len(planned)})
 
 
+def _declared(text: str, path: Path, stage: str | None) -> Report:
+    """Each control or held-out entry of the plan's YAML blocks that does not say what the
+    form asks, at its line: a warning, and a failure at submission, since what it declares
+    is then checked by nothing (DESIGN.md, "Controls the plan declares")."""
+    from manuscript_guard.gates.declarations import read_declarations
+    from manuscript_guard.policy import SUBMISSION
+
+    declarations = read_declarations(text)
+    findings = tuple(
+        Finding(
+            gate=GATE,
+            code="plan-declarations-unreadable",
+            severity=FAIL if stage == SUBMISSION else WARN,
+            message=f"the plan's declaration is not read: {problem.message}",
+            path=path,
+            line=problem.line,
+            hint="write each control with its key, kind, of, expected and rule, and each "
+            "held-out input with its input and validated_by, in a ```yaml block; the "
+            "analysis-plan skill has the form",
+        )
+        for problem in declarations.unreadable
+    )
+    if not declarations.declared:
+        return Report(findings)
+    counts = {"controls_declared": len(declarations.controls),
+              "held_out_declared": len(declarations.held_out)}  # fmt: skip
+    return Report(findings, counts)
+
+
 def _frozen(project: Project, path: Path, text: str) -> Report:
     """The plan against the copy kept when the first results were written."""
     frozen = project.root / FROZEN_PLAN
@@ -488,6 +521,7 @@ def _check_plan(project: Project, results: Results | None, stage: str | None) ->
     report = Report((unreadable,)) if unreadable else Report()
     report = report.merge(_frozen(project, path, text))
     report = report.merge(_planned(text, path, results, stage))
+    report = report.merge(_declared(text, path, stage))
     covered = 0
     said: set[str] = set()
 

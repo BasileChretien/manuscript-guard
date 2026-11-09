@@ -168,6 +168,20 @@ def test_a_claim_of_novelty_with_no_search_warns_in_a_draft_and_fails_at_submiss
     assert apply_stage(noted, SUBMISSION)[0].ok
 
 
+def test_a_plan_declaration_that_does_not_read_warns_and_fails_at_submission() -> None:
+    """G12 raises `plan-declarations-unreadable` to a failure at submission only (items 5
+    and 11); the policy has it bind there, so that a run at submission keeps it a failure."""
+    code = "plan-declarations-unreadable"
+    assert binds_at(code) == SUBMISSION
+    failed = Report((Finding(gate="G12", code=code, message="m", severity=FAIL),))
+    report, deferred = apply_stage(failed, SUBMISSION)
+    assert not report.ok and deferred == {}
+    report, deferred = apply_stage(failed, INTERNAL_REVIEW)
+    assert report.ok and deferred == {SUBMISSION: 1}
+    warned = Report((Finding(gate="G12", code=code, message="m", severity=WARN),))
+    assert apply_stage(warned, ANALYSIS)[0].findings[0].severity == WARN
+
+
 def test_the_summary_says_how_many_and_when() -> None:
     _report, deferred = apply_stage(
         report_with("no-review", "figure-unreviewed", "unclassified-number"), ANALYSIS

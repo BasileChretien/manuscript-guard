@@ -60,6 +60,8 @@ class Fragment:
     # Where a run on the data held in the vault wrote this fragment: the run's id and whether
     # a person has released it (`vault release`). G1 holds it to the release's record.
     vault: dict | None = None
+    # The controls the run emitted (`control()`), each with the files of its own it read.
+    controls: dict[str, dict] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -216,6 +218,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 datasets=dict(document.get("datasets") or {}),
                 harvested=prov.get("harvested"),
                 vault=prov.get("vault"),
+                controls=dict(document.get("controls") or {}),
             )
         )
         corrections.update(document.get("corrections") or {})

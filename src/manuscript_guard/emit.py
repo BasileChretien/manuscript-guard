@@ -464,6 +464,79 @@ def freeze_plan(root: Path, script: Path | str, *, synthetic: bool = False) -> P
     return frozen
 
 
+FIRST_READS = Path("design") / "first_reads.yaml"
+FIRST_READS_SCHEMA = "manuscript-guard/first-reads/1"
+#: A line of the plan that opens, after any indentation, with `held_out`, bare or quoted, and a
+#: colon: the plan declares held-out data, and the record of first reads is kept. Found in
+#: the text, as R finds it, with no YAML read (DESIGN.md, "The record of first reads").
+HELD_OUT_LINE = re.compile(r"(?m)^[ \t]*[\"']?held_out[\"']?[ \t]*:")
+
+
+def record_first_reads(root: Path, script: str, inputs: list[dict]) -> Path | None:
+    """Add to `design/first_reads.yaml` each input this script read that the record does not
+    yet list for it, once the plan declares held-out data, and never change an entry.
+
+    A fragment is written again on every run, so it says what a script read last, never what
+    it read first; G1 and G12 need the first, to hold a held-out input to the scripts the
+    plan let read it then, and the model to the one the validation first read it with. Each
+    entry gives the script, the input, the time, the digest of every input of the run and
+    the digest of the plan as it stood; the plan's text is kept once for each digest, so that
+    the `held_out` block an entry was written under can be read again. An input declared
+    synthetic is not entered: a dry run on a synthetic copy is no read of the held-out data.
+
+    Nothing is written where the plan is not UTF-8 text, holds no `held_out` line, or where
+    the record there does not read as one this writes: an entry is never rewritten, and a
+    record put right by hand is the author's, not a thing to write over (G12 says so).
+    """
+    plan, path = root / PLAN, root / FIRST_READS
+    try:
+        text = plan.read_bytes().decode("utf-8-sig")
+    except (OSError, UnicodeDecodeError):
+        return None
+    if "\x00" in text or not HELD_OUT_LINE.search(text):
+        return None
+    record: dict = {"schema": FIRST_READS_SCHEMA, "plans": {}, "reads": []}
+    if path.exists():
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not _first_reads_shaped(record):
+            return None
+    listed = {(read["script"], read["input"]) for read in record["reads"]}
+    new = [entry for entry in inputs if isinstance(entry, dict) and not entry.get("synthetic")
+           and (script, entry.get("path")) not in listed]  # fmt: skip
+    if not new:
+        return None
+    digest = source_digest(plan)
+    record["plans"].setdefault(digest, text)
+    at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    digests = [{"path": entry["path"], "sha256": entry["sha256"]} for entry in inputs
+               if isinstance(entry, dict) and "path" in entry and "sha256" in entry]  # fmt: skip
+    for entry in new:
+        record["reads"].append({"script": script, "input": entry["path"], "read_at": at,
+                                "plan": digest, "inputs": digests})  # fmt: skip
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
+    )
+    return path
+
+
+def _first_reads_shaped(record: object) -> bool:
+    """Whether a record reads as one `record_first_reads` writes."""
+    if not isinstance(record, dict) or record.get("schema") != FIRST_READS_SCHEMA:
+        return False
+    plans, reads = record.get("plans"), record.get("reads")
+    if not isinstance(plans, dict) or not all(isinstance(t, str) for t in plans.values()):
+        return False
+    return isinstance(reads, list) and all(
+        isinstance(read, dict) and isinstance(read.get("script"), str)
+        and isinstance(read.get("input"), str) and read.get("plan") in plans
+        for read in reads
+    )  # fmt: skip
+
+
 DIGEST_SUFFIX = ".sha256"
 
 
@@ -1358,6 +1431,10 @@ class Emitter:
     _restricted: set[str] = field(default_factory=set, init=False)
     # The inputs declared synthetic: simulated data, a dummy extract, a test fixture.
     _synthetic: set[str] = field(default_factory=set, init=False)
+    # The controls this run emitted, each with the files of its own it read, and the control
+    # each such file belongs to, by the path it is recorded under (`control()`).
+    _controls: dict[str, dict] = field(default_factory=dict, init=False)
+    _control_inputs: dict[str, str] = field(default_factory=dict, init=False)
     # The data the analysis read, by what identifies them, as `dataset()` declared them.
     _datasets: dict[str, dict] = field(default_factory=dict, init=False)
     # The files of the vault read under a run on the real data, by label, each with where it
@@ -2072,6 +2149,53 @@ class Emitter:
                 bounds=point_key, bound=bound, level=level or self.ci_level,
             )
 
+    def control(
+        self,
+        key: str,
+        estimate: float,
+        lower: float,
+        upper: float,
+        *,
+        inputs: list[str | Path] | None = None,
+        digits: int | None = None,
+    ) -> None:
+        """Publish a control: data simulated with a known effect, a positive control or a
+        negative control, put through the analysis that gives the result it stands beside.
+
+            em.control("control.headache", 1.04, 0.81, 1.33, digits=2)
+
+        Written by the script that writes that result, as the plan's `of` names it, and
+        judged by G12 against the rule the plan declares for it. It publishes the estimate
+        and its interval as `interval()` does, `<key>.point`, `<key>.ci_low` and
+        `<key>.ci_high`, quoted, so that the manuscript reports it as any result.
+
+        `inputs` names the files a simulated control reads, if it reads any: each is an
+        input of the run, declared synthetic and marked as this control's, so that G1 does
+        not take the run's other results to come from synthetic data. A positive or a
+        negative control reads the study's data, declared as any input is, and names none.
+        """
+        if not _RESULT_KEY.fullmatch(key):
+            raise ValueError(f"control {key!r}: a key is lower case, digits and underscores, "
+                             "joined by dots")  # fmt: skip
+        if key in self._controls:
+            raise DisplayError(f"control {key}: it is emitted once")
+        named = []
+        for path in inputs or ():
+            recorded = self._input_path(path)
+            owner = self._control_inputs.get(recorded)
+            if owner is not None or recorded in self._recorded:
+                raise DisplayError(
+                    f"control {key}: {recorded} is "
+                    + (f"control {owner}'s data" if owner else "an input of the run")
+                    + "; a control's inputs are its own, read by nothing else in the run"
+                )
+            named.append((path, recorded))
+        self.interval(key, estimate, lower, upper, digits=digits)
+        for path, recorded in named:
+            self._control_inputs[recorded] = key
+            self.add_input(path, synthetic=True)
+        self._controls[key] = {"inputs": [recorded for _path, recorded in named]}
+
     def table(
         self,
         key: str,
@@ -2330,6 +2454,10 @@ class Emitter:
         if recorded not in self._recorded:
             self._recorded.add(recorded)
             self.inputs.append(path)
+        elif recorded in self._control_inputs and not synthetic:
+            raise DisplayError(f"{recorded} is control {self._control_inputs[recorded]}'s data; "
+                               "a control's inputs are its own, read by nothing else in the "
+                               "run")  # fmt: skip
         if restricted:
             self._restricted.add(recorded)
         if synthetic:
@@ -2410,6 +2538,9 @@ class Emitter:
                     "bytes": path.stat().st_size,
                     **({"restricted": True} if recorded in self._restricted else {}),
                     **({"synthetic": True} if recorded in self._synthetic else {}),
+                    # A simulated control's own data: synthetic, and no taint on the rest.
+                    **({"control": self._control_inputs[recorded]}
+                       if recorded in self._control_inputs else {}),  # fmt: skip
                 }
             )
         # Each file of the vault by its label, never by where the folder is. Every one is
@@ -2491,6 +2622,8 @@ class Emitter:
             document["corrections"] = dict(self._corrections)
         if self._datasets:
             document["datasets"] = dict(self._datasets)
+        if self._controls:
+            document["controls"] = {key: dict(spec) for key, spec in self._controls.items()}
         return document
 
     def _composition_of(self, key: str) -> dict:
@@ -2583,9 +2716,12 @@ class Emitter:
         if not path.is_absolute():
             path = root / path
         path.parent.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps(self.document(), indent=2, ensure_ascii=False, sort_keys=False)
+        document = self.document()
+        payload = json.dumps(document, indent=2, ensure_ascii=False, sort_keys=False)
         path.write_text(payload + "\n", encoding="utf-8", newline="\n")
         write_digest(path)
         every = bool(self.inputs) and all(str(i) in self._synthetic for i in self.inputs)
         freeze_plan(root, self.script, synthetic=every)
+        provenance = document["provenance"]
+        record_first_reads(root, provenance["generated_by"], provenance["inputs"])
         return path

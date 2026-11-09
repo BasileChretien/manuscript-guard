@@ -1149,6 +1149,86 @@ mg_freeze_plan <- function(project_root, script, synthetic = FALSE) {
   invisible(frozen)
 }
 
+# The plan's text as the emitters keep it: without a byte-order mark, and NULL where it is
+# not UTF-8 text or holds a NUL, as in `mg_freeze_plan`.
+mg_plan_text <- function(plan) {
+  if (!file.exists(plan)) return(NULL)
+  bytes <- readBin(plan, "raw", file.info(plan)$size)
+  if (any(bytes == as.raw(0))) return(NULL)
+  if (length(bytes) >= 3 && identical(bytes[1:3], as.raw(c(0xef, 0xbb, 0xbf)))) {
+    bytes <- bytes[-(1:3)]
+  }
+  text <- rawToChar(bytes)
+  Encoding(text) <- "UTF-8"
+  if (!validUTF8(text)) return(NULL)
+  text
+}
+
+# Whether a record of first reads reads as one `mg_record_first_reads` writes.
+mg_first_reads_shaped <- function(record) {
+  if (!is.list(record) || !identical(record$schema, "manuscript-guard/first-reads/1")) {
+    return(FALSE)
+  }
+  plans <- record$plans
+  reads <- record$reads
+  if (!is.list(plans) || (length(plans) > 0 && is.null(names(plans)))) return(FALSE)
+  if (!all(vapply(plans, function(t) is.character(t) && length(t) == 1, logical(1)))) {
+    return(FALSE)
+  }
+  if (!is.list(reads)) return(FALSE)
+  all(vapply(reads, function(read) {
+    is.list(read) && is.character(read$script) && length(read$script) == 1 &&
+      is.character(read$input) && length(read$input) == 1 &&
+      is.character(read$plan) && length(read$plan) == 1 && read$plan %in% names(plans)
+  }, logical(1)))
+}
+
+# The record of each script's first read of each input, design/first_reads.yaml, mirroring
+# the Python emitter's `record_first_reads`: kept once the plan has a line opening with
+# `held_out`, bare or quoted, and a colon; each input the record does not yet list for this
+# script is added with the time, the digest of every input of the run and the digest of the
+# plan, whose text is kept once under that digest; an input declared synthetic is not
+# entered; an entry is never changed, and a record that does not read is left as it is.
+mg_record_first_reads <- function(project_root, script, input_records) {
+  plan <- file.path(project_root, "design", "plan.md")
+  path <- file.path(project_root, "design", "first_reads.yaml")
+  text <- mg_plan_text(plan)
+  if (is.null(text)) return(invisible(NULL))
+  if (!grepl("(?m)^[ \\t]*[\"']?held_out[\"']?[ \\t]*:", text, perl = TRUE)) {
+    return(invisible(NULL))
+  }
+  record <- list(schema = "manuscript-guard/first-reads/1", plans = list(), reads = list())
+  if (file.exists(path)) {
+    read <- tryCatch(
+      jsonlite::fromJSON(path, simplifyVector = FALSE),
+      error = function(e) NULL
+    )
+    if (is.null(read) || !mg_first_reads_shaped(read)) return(invisible(NULL))
+    record <- read
+    if (length(record$plans) == 0) record$plans <- structure(list(), names = character())
+  }
+  listed <- vapply(record$reads, function(r) paste(r$script, r$input, sep = "\n"),
+                   character(1))
+  new <- Filter(function(entry) {
+    !isTRUE(entry$synthetic) && !(paste(script, entry$path, sep = "\n") %in% listed)
+  }, input_records)
+  if (length(new) == 0) return(invisible(NULL))
+  digest <- mg_source_digest(plan)
+  if (is.null(record$plans[[digest]])) record$plans[[digest]] <- text
+  stamp <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z", tz = "UTC")
+  stamp <- sub("([+-]\\d{2})(\\d{2})$", "\\1:\\2", stamp)
+  digests <- lapply(input_records, function(entry) list(path = entry$path, sha256 = entry$sha256))
+  for (entry in new) {
+    record$reads[[length(record$reads) + 1L]] <- list(
+      script = script, input = entry$path, read_at = stamp, plan = digest, inputs = digests
+    )
+  }
+  dir.create(dirname(path), showWarnings = FALSE, recursive = TRUE)
+  json <- jsonlite::toJSON(record, auto_unbox = TRUE, pretty = 2, null = "null")
+  mg_write_lf(as.character(json), path)
+  invisible(path)
+}
+
 #' Create a results emitter
 #'
 #' The only supported way for an R analysis to publish a number.
@@ -1187,6 +1267,10 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
   state$recorded <- vapply(state$inputs, input_path, character(1), USE.NAMES = FALSE)
   state$restricted <- character()
   state$synthetic <- character()
+  # The controls the run emitted, each with the files of its own it read, and the control
+  # each such file belongs to, named by the path it is recorded under, as in Python.
+  state$controls <- list()
+  state$control_inputs <- character()
   # The files of the vault read under a run on the real data, by label, each with where it
   # was read, and the run's id that `vault run` gives; as `_vault` in Python.
   state$vault <- character()
@@ -1626,6 +1710,39 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     invisible(NULL)
   }
 
+  # A control, mirroring the Python `control()`: published as `interval()` publishes an
+  # estimate, `<key>.point`, `<key>.ci_low` and `<key>.ci_high`, quoted, and named in the
+  # fragment's `controls`. `inputs` names the files a simulated control reads: each is an
+  # input of the run, declared synthetic and marked as this control's, so that G1 does not
+  # take the run's other results to come from synthetic data.
+  control <- function(key, estimate, lower, upper, inputs = NULL, digits = NULL) {
+    if (!grepl("^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$", key)) {
+      stop("control '", key, "': a key is lower case, digits and underscores, joined by dots",
+           call. = FALSE)
+    }
+    if (!is.null(state$controls[[key]])) {
+      stop("control ", key, ": it is emitted once", call. = FALSE)
+    }
+    given <- as.character(inputs)
+    recorded <- vapply(given, input_path, character(1), USE.NAMES = FALSE)
+    for (path in recorded) {
+      owner <- if (path %in% names(state$control_inputs)) state$control_inputs[[path]] else NULL
+      if (!is.null(owner) || path %in% state$recorded) {
+        stop("control ", key, ": ", path, " is ",
+             if (!is.null(owner)) paste0("control ", owner, "'s data") else "an input of the run",
+             "; a control's inputs are its own, read by nothing else in the run",
+             call. = FALSE)
+      }
+    }
+    interval(key, estimate, lower, upper, digits = digits)
+    for (i in seq_along(given)) {
+      state$control_inputs[[recorded[[i]]]] <- key
+      add_input(given[[i]], synthetic = TRUE)
+    }
+    state$controls[[key]] <- list(inputs = I(recorded))
+    invisible(NULL)
+  }
+
   # Column headers are recorded with no `row`, matching the fragment schema and the Python
   # emitter's internal keying.
   HEADER <- -2L
@@ -1963,6 +2080,12 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     # spelt, is not listed twice, and its marks go by the path it is recorded under.
     path <- as.character(path)
     recorded <- vapply(path, input_path, character(1), USE.NAMES = FALSE)
+    owned <- recorded %in% state$recorded & recorded %in% names(state$control_inputs)
+    if (any(owned) && !isTRUE(synthetic)) {
+      first <- recorded[owned][[1]]
+      stop(first, " is control ", state$control_inputs[[first]], "'s data; a control's ",
+           "inputs are its own, read by nothing else in the run", call. = FALSE)
+    }
     new <- !duplicated(recorded) & !(recorded %in% state$recorded)
     state$inputs <- c(state$inputs, path[new])
     state$recorded <- c(state$recorded, recorded[new])
@@ -1987,6 +2110,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
       )
       if (path %in% state$restricted) record$restricted <- TRUE
       if (path %in% state$synthetic) record$synthetic <- TRUE
+      # A simulated control's own data: synthetic, and no taint on the rest, as in Python.
+      if (path %in% names(state$control_inputs)) record$control <- state$control_inputs[[path]]
       record
     })
     # Each file of the vault by its label, never by where the folder is, after the others,
@@ -2132,6 +2257,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     if (length(state$flows) > 0) document$flows <- state$flows
     if (length(state$corrections) > 0) document$corrections <- state$corrections
     if (length(state$datasets) > 0) document$datasets <- state$datasets
+    if (length(state$controls) > 0) document$controls <- state$controls
     json <- jsonlite::toJSON(document, auto_unbox = TRUE, pretty = 2, digits = NA, null = "null")
     mg_write_lf(as.character(json), path)
 
@@ -2141,6 +2267,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     mg_write_lf(paste0(checksum, "  ", basename(path)), paste0(path, ".sha256"))
     every <- length(state$inputs) > 0 && all(state$inputs %in% state$synthetic)
     mg_freeze_plan(project_root, relative(script_path), every)
+    mg_record_first_reads(project_root, relative(script_path), document$provenance$inputs)
     invisible(path)
   }
 
@@ -2157,6 +2284,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     model = model,
     step = step,
     interval = interval,
+    control = control,
     cell = mg_cell,
     table = table_,
     code_list = code_list,

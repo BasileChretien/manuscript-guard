@@ -56,6 +56,19 @@
         "then": { "required": ["reason"] }
       }
     },
+    "controls": {
+      "type": "object",
+      "description": "The controls this run emitted (`control()`): data simulated with a known effect, a positive or a negative control, each published as `<key>.point`, `<key>.ci_low` and `<key>.ci_high`, with the files of its own it read. G12 holds each to the plan's declaration.",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["inputs"],
+        "additionalProperties": false,
+        "properties": {
+          "inputs": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
     "datasets": {
       "type": "object",
       "description": "The data the analysis read, by what identifies them, declared with `dataset()`: the files, the date the data were extracted or downloaded, the period they cover and the source's version where it has one, each emitted as a value `dataset.<name>.<part>`. `fingerprint` pins the extraction to its files: the start of the one file's digest, or of the digest of several (`datasets.dataset_digest`). G1 holds it to the digests this fragment recorded, and every fragment that read one of the files to the same file. `observed` is what the data's own dates were found to span, where the call gave them.",
@@ -803,6 +816,11 @@
               "vault": {
                 "type": "boolean",
                 "description": "A file of the vault, read under a run on the real data (`em.vault_input`); its path is `vault:<label>`, never where the folder is. G1 holds its digest to design/vault.yaml's."
+              },
+              "control": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$",
+                "description": "The control whose own data this file is, a simulated control's (`em.control(..., inputs=[...])`): synthetic, and read by nothing else in the run, so G1 does not take the run's other results to come from synthetic data."
               }
             }
           }

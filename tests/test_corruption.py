@@ -10804,6 +10804,8 @@ _READS_LATEX = (
     # It reads the Results and the Discussion in each document's printed view, as
     # `check_reported` does (item 10 of the borrowed checks).
     "check_interpretation",
+    # It reads the bindings of the main text and the supplement, `\mg{}` as `{{}}` (item 5).
+    "check_controls",
 )  # fmt: skip
 
 

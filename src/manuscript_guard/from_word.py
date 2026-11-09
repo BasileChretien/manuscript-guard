@@ -517,29 +517,31 @@ def bold_headings(blocks: list) -> tuple[list, tuple[str, ...]]:
     a top-level paragraph, and only by the closed list of names a PDF's line is read by, so
     "**Our cohort**" and a bold sentence stay text. A structured abstract's titles are the
     Abstract's, at level 2, where `section_levels` can place them; else every one is at level
-    1, and the Abstract ends at its first."""
+    1, and the Abstract ends at its first. A heading is titled with the paragraph's words, its
+    number kept and a colon or a stop after it left out, "2. Methods"."""
     from manuscript_guard.text.section_names import section_levels, section_name_alone
 
-    found: list[tuple[int, str]] = []
+    found: list[tuple[int, str, str]] = []
     for at, block in enumerate(blocks):
         if block.get("t") != "Para":
             continue
         words = _bold_words(block["c"])
         if not words or not all(words):
             continue
-        title = section_name_alone(text_of(block["c"]))
-        if title is not None:
-            found.append((at, title))
+        typed = " ".join(text_of(block["c"]).split())
+        name = section_name_alone(typed)
+        if name is not None:
+            found.append((at, name, typed.rstrip(" :.")))
     if not found:
         return blocks, ()
-    ends = [at for at, _title in found[1:]] + [len(blocks)]
+    ends = [at for at, _name, _typed in found[1:]] + [len(blocks)]
     worded = [_words(blocks[at + 1 : end]) > 0
-              for (at, _title), end in zip(found, ends, strict=True)]  # fmt: skip
-    levels = section_levels([title for _at, title in found], worded) or (1,) * len(found)
+              for (at, _name, _typed), end in zip(found, ends, strict=True)]  # fmt: skip
+    levels = section_levels([name for _at, name, _typed in found], worded) or (1,) * len(found)
     out = list(blocks)
-    for (at, title), level in zip(found, levels, strict=True):
-        out[at] = _heading(title, level, identifier="")
-    return out, tuple(title for _at, title in found)
+    for (at, _name, typed), level in zip(found, levels, strict=True):
+        out[at] = _heading(typed, level, identifier="")
+    return out, tuple(typed for _at, _name, typed in found)
 
 
 def _title_page(blocks: list, bold: tuple[str, ...] = ()) -> tuple[list, list, str]:
@@ -551,11 +553,19 @@ def _title_page(blocks: list, bold: tuple[str, ...] = ()) -> tuple[list, list, s
             "no paragraph is in a heading style, and none wholly in bold names a section, so "
             "nothing was set aside as the title page; a section whose heading is only bold "
             "text that is no section's name is not a section to any gate")
-    made = (f"no paragraph is in a heading style, so the {len(bold)} paragraphs wholly in "
-            f"bold that name a section were made its headings ({', '.join(bold)}); "
-            if bold else "")  # fmt: skip
+    made = ""
+    if bold:
+        named = ("the paragraph wholly in bold that names a section was made a heading"
+                 if len(bold) == 1 else f"the {len(bold)} paragraphs wholly in bold that name "
+                 "a section were made its headings")  # fmt: skip
+        made = f"no paragraph is in a heading style, so {named} ({', '.join(bold)}); "
     if first == 0:
         return [], blocks, f"{made}the document opens on a heading, so nothing was set aside"
+    if bold and not _opens_a_paper(bold[0]):
+        # A short paper with no heading but a bold "References" is its own text up to there,
+        # not a title page (round 1 of #598).
+        return [], blocks, (f"{made}the first, {bold[0]}, opens no paper, so nothing was set "
+                            "aside as a title page")  # fmt: skip
     before = blocks[:first]
     words = _words(before)
     if words > TITLE_PAGE_WORDS:
@@ -566,6 +576,14 @@ def _title_page(blocks: list, bold: tuple[str, ...] = ()) -> tuple[list, list, s
     return before, blocks[first:], (
         f"{made}the {words} words before the first heading were set aside in a comment at "
         "the top of main.md, which no gate reads; move into the text what belongs to the paper")
+
+
+def _opens_a_paper(title: str) -> bool:
+    """Whether a heading made from a title in bold is one a paper opens on, its Abstract or
+    its Introduction, above which a title page stands."""
+    from manuscript_guard.text.section_names import names_abstract, names_introduction
+
+    return names_abstract(title) or names_introduction(title)
 
 
 def _tables(blocks: list) -> tuple[int, list[tuple[str, dict]]]:

@@ -761,7 +761,7 @@ def test_the_audit_and_init_take_the_same_titles_in_bold(tmp_path: Path) -> None
     from manuscript_guard.text.docx import bold_heading_levels, read_docx_text
 
     names = ("Abstract", "Background", "Methods", "Results", "Discussion", "Conclusions",
-             "Funding", "References")  # fmt: skip
+             "Funding", "References", "Acknowledgements")  # fmt: skip
     body = "".join(f"{shape.format(name)}<w:p><w:r><w:t>Words {at}.</w:t></w:r></w:p>"
                    for at, ((shape, _bold), name)
                    in enumerate(zip(BOLD_PARAGRAPHS.values(), names, strict=True)))  # fmt: skip
@@ -772,6 +772,22 @@ def test_the_audit_and_init_take_the_same_titles_in_bold(tmp_path: Path) -> None
     document = read_docx_text(paper)
     lines = document.body.split("\n")
     assert tuple(lines[at] for at, _level in bold_heading_levels(document)) == expected
+
+
+@needs_pandoc
+def test_a_short_paper_with_only_a_late_bold_title_keeps_its_text(tmp_path: Path) -> None:
+    """A research letter with no heading but a bold "References" after its text: its text is
+    no title page, and is not set aside where no gate reads it (round 1 of #598). A title's
+    number is kept in its heading."""
+    paper = ("Of 412 patients, 77 had the event.\n\nIt was rare.\n\n**References**\n\n"
+             "1\\. Doe J. A title. BMJ. 2020;1:2.\n")  # fmt: skip
+    converted = from_word.convert(word(tmp_path / "letter", paper))
+    assert "<!--" not in converted.text and "77 had the event" in converted.text
+    assert "the first, References, opens no paper" in converted.title_page
+    numbered = from_word.convert(word(tmp_path / "numbered", "**1. Abstract**\n\nWe read.\n\n"
+                                      "**2. Methods**\n\nRecords.\n"))  # fmt: skip
+    assert [line.replace("\\", "") for line in _headings(numbered.text)] == [
+        "# 1. Abstract", "# 2. Methods"]
 
 
 @needs_pandoc

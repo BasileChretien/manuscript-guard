@@ -19,8 +19,8 @@ and `compare` give in a PDF is that page and line.
 A PDF marks no heading. A line is read as one only where it holds a section's name and
 nothing else, numbered or not ("Methods", "2. Results", "REFERENCES"), from the closed list
 `HEADINGS`, its first letter a capital. A structured abstract's own headings set on lines
-of their own are its, up to an Introduction or to the first that names one of them again
-(`text.section_names.section_levels`). Where one name stands on two such lines otherwise,
+of their own are its, up to an Introduction or to where the order of its parts starts
+again (`text.section_names.section_levels`). Where one name stands on two such lines otherwise,
 which section is the paper's is not read, and the PDF's sections are not used to place its
 lines (`PdfText.placed`); the reference list is still found by its heading.
 
@@ -67,8 +67,8 @@ class UnreadablePdf(ValueError):
 
 #: What is said where a PDF's headings cannot be placed (`PdfText.placed`).
 UNPLACED = ("a section's name stands alone on two lines or more, or a structured abstract's "
-            "headings stand on lines of their own with no Introduction after them and none "
-            "of their names again, so which section is the paper's is not read")
+            "headings stand on lines of their own with no Introduction after them and their "
+            "order never starting again, so which section is the paper's is not read")
 
 
 @dataclass(frozen=True)
@@ -141,12 +141,13 @@ class PdfText:
         """Each heading `(line, title, level)`, where the headings can be placed exactly; else
         None (`UNPLACED`). A structured abstract's headings, on lines of their own, are the
         Abstract's, level 2, where the heading after the Abstract's is one of
-        `ABSTRACT_PARTS` and no words stand between the two: they run to an Introduction, or
-        to the first that names one of them again, an "Abbreviations" among them (DESIGN.md,
-        Known gaps). With neither after them, where they end is not read. A name on two lines
-        among the rest is not placed either (`text.section_names.section_levels`, which reads
-        a Word document's bold titles the same way). An Abstract with words under it is one
-        paragraph or more, and the heading after it the main text's."""
+        `ABSTRACT_PARTS`: they run to an Introduction, or to where the order of its parts
+        starts again, an "Abbreviations" among them (DESIGN.md, Known gaps). With neither
+        after them, where they end is not read, unless words stand under the Abstract's own
+        heading: then it is one paragraph or more, and the heading after it the main text's. A
+        name on two lines among the rest is not placed either
+        (`text.section_names.section_levels`, which reads a Word document's bold titles the
+        same way)."""
         lines = self.text.split("\n")
         starts = [line for line, _title in self.headings]
         ends = [*starts[1:], len(lines) + 1]

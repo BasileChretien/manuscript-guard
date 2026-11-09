@@ -242,6 +242,20 @@ ABSTRACT_PARTS = frozenset({
     "subjects and methods", "participants and methods", "results", "findings",
     "results and discussion", "discussion", "conclusion", "conclusions", "limitations",
 })  # fmt: skip
+#: Where each of `ABSTRACT_PARTS` stands in the order a structured abstract's parts keep, and
+#: a main text's too: what it was for, how, what was found, what it means. A paper's main
+#: text opens where that order starts again, a second "Background" after "Conclusions", or
+#: "Methods" after "Results".
+_PART_ORDER = {
+    "background": 1, "methods": 2, "method": 2, "methodology": 2, "materials and methods": 2,
+    "material and methods": 2, "methods and materials": 2, "patients and methods": 2,
+    "subjects and methods": 2, "participants and methods": 2, "results": 3, "findings": 3,
+    "results and discussion": 3, "discussion": 4, "limitations": 4, "conclusion": 5,
+    "conclusions": 5,
+}  # fmt: skip
+#: Titles a structured abstract may hold among its parts in any place: the Lancet's Summary
+#: ends on its Funding, and some abstracts on their Abbreviations.
+_ANYWHERE_IN_AN_ABSTRACT = frozenset({"abbreviations", "funding"})
 #: The names of an abstract, and of the Lancet's "Summary".
 _ABSTRACTS = frozenset({"abstract", "structured abstract", "summary"})
 #: A section's number in front of its name standing alone: "2 ", "2. ", "2.1 ", "II. ".
@@ -272,10 +286,12 @@ def section_levels(
     """The level of each title of `section_name_alone`'s, in order, where they can be placed
     exactly; else None. A structured abstract's headings standing alone are the Abstract's,
     level 2, where the title after the Abstract's is one of `ABSTRACT_PARTS`: they run to an
-    Introduction, or to the first title that names one of them again, as BMC's journals open
-    the main text with a second "Background" after the abstract's; an "Abbreviations" among
-    them is the Abstract's too. With neither after them, where they end is not read. A name
-    twice among the rest is not placed either.
+    Introduction, or to where the order of parts starts again (`_PART_ORDER`), as BMC's
+    journals open the main text on a second "Background" after the abstract's
+    "Conclusions"; an "Abbreviations" or a "Funding" among them is the Abstract's too. A
+    title no abstract holds, "References" or "Appendix", before either, and none of the two
+    after them: where they end is not read. A name twice among the rest is not placed
+    either.
 
     `worded` says, for each title, whether words stand under it before the next. Where the
     titles after the Abstract's cannot be placed as its parts, and words stand under the
@@ -301,12 +317,22 @@ def section_levels(
 
 def _parts_end(keys: list[str], first: int) -> int | None:
     """Where the parts of the abstract titled at `first` end: at an Introduction, or at the
-    first title that names one of them again; None where neither comes."""
-    parts: set[str] = set()
+    first title whose place in the order of parts is not after the one before it; None where
+    a title no abstract holds comes first, or neither comes (round 1 of #598: ended at the
+    first name again, the main text's "Background" and "Methods" before a second "Results"
+    were the Abstract's)."""
+    before = 0
     for at in range(first + 1, len(keys)):
-        if keys[at] == "introduction" or keys[at] in parts:
+        if keys[at] == "introduction":
             return at
-        parts.add(keys[at])
+        if keys[at] in _ANYWHERE_IN_AN_ABSTRACT:
+            continue
+        place = _PART_ORDER.get(keys[at])
+        if place is None:
+            return None
+        if place <= before:
+            return at
+        before = place
     return None
 
 

@@ -11284,6 +11284,22 @@ PLACED_PAPERS = {
                   ("Results", None), ("Discussion", None)], None),
     "a name twice": ([("Abstract", True), ("Introduction", None), ("Methods", None),
                       ("Results", None), ("Methods", None)], None),
+    # Round 1 of #598: parts that open on Results, over a main text opening on Background,
+    # are the Abstract's up to where the order of parts starts again, not to the next Results.
+    "parts from Results": ([("Abstract", True), ("Results", None), ("Conclusions", None),
+                            ("Background", None), ("Methods", None), ("Results", None),
+                            ("Discussion", None), ("References", None)],
+                           (1, 2, 2, 1, 1, 1, 1, 1)),
+    "words, then parts": ([("Abstract", True), ("Methods", None), ("Results", None),
+                           ("Conclusions", None), ("Background", None),
+                           ("Patients and methods", None), ("Findings", None),
+                           ("Discussion", None)],
+                          (1, 2, 2, 2, 1, 1, 1, 1)),
+    # A one-paragraph abstract over the main text, and an appendix's Methods: the main text
+    # is no abstract's parts, and a name twice places nothing.
+    "an appendix's names": ([("Abstract", True), ("Background", None), ("Methods", None),
+                             ("Results", None), ("Discussion", None), ("References", None),
+                             ("Appendix", None), ("Methods", None), ("Results", None)], None),
     "no abstract": ([("Introduction", None), ("Methods", None), ("Results", None),
                      ("Discussion", None)], (1, 1, 1, 1)),
 }  # fmt: skip
@@ -11308,7 +11324,8 @@ def placed_papers(
 #: A Word paragraph of each kind, as `w:p` XML with `{}` for its words, and whether pandoc
 #: reads every word of it as bold (3.9.0.2): bold by the run's own `w:b`, by its character
 #: style's; not by a style that one is based on, nor by a paragraph style's, nor with `w:b`
-#: off, nor the run's own off over its style's on, nor half of it, nor in a table's cell.
+#: off, nor the run's own off over its style's on, nor half of it, nor in a table's cell, nor
+#: in a link, whose words pandoc reads as a link's.
 BOLD_PARAGRAPHS = {
     "direct": ("<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>{}</w:t></w:r></w:p>", True),
     "character style": ('<w:p><w:r><w:rPr><w:rStyle w:val="Strong"/></w:rPr><w:t>{}</w:t>'
@@ -11324,6 +11341,8 @@ BOLD_PARAGRAPHS = {
              '<w:r><w:t xml:space="preserve"> and more</w:t></w:r></w:p>', False),
     "in a cell": ("<w:tbl><w:tr><w:tc><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>{}</w:t></w:r></w:p>"
                   "</w:tc></w:tr></w:tbl>", False),
+    "in a link": ('<w:p><w:hyperlink w:anchor="m"><w:r><w:rPr><w:b/></w:rPr><w:t>{}</w:t></w:r>'
+                  "</w:hyperlink></w:p>", False),
 }  # fmt: skip
 #: The styles the paragraphs above name.
 BOLD_PARAGRAPH_STYLES = (
@@ -11375,7 +11394,7 @@ BOLD_BLOCKS = {
     "in a span": ({"t": "Para", "c": [{"t": "Span", "c": [["", ["mark"], []], [
         _strong(_str("Abstract"))]]}]}, "Abstract"),
     "numbered": ({"t": "Para", "c": [_strong(_str("2."), _GAP, _str("Discussion"))]},
-                 "Discussion"),
+                 "2. Discussion"),
     "with a colon": ({"t": "Para", "c": [_strong(_str("Funding:"))]}, "Funding"),
     "no section's name": ({"t": "Para", "c": [_strong(_str("Our"), _GAP, _str("cohort"))]},
                           None),

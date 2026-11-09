@@ -23109,11 +23109,16 @@ Open, recorded as each change landed:
   the list a PDF's lines are read by (`text.section_names.SECTION_NAMES`). A bold "Study
   design and setting" or "Statistical analysis" stays a paragraph, its section run on under
   the heading before it; a title numbered by Word's own numbering is a list's item to pandoc
-  and a numbered line to the audit, and no heading to either; and a paper that uses a heading
-  style anywhere is read by its styles alone, its bold titles text. Where the titles cannot
-  be placed, a structured abstract's parts with no Introduction after them and none of their
-  names again, the audit places nothing and says so, and `init --from` makes each a heading of
-  level 1, so the Abstract ends at its first part. Pinned by
+  and a numbered line to the audit, and no heading to either; a title holding a link or a
+  note's mark is none, as pandoc reads the link or the note in it, nor is one in a text box;
+  and a paper that uses a heading style anywhere is read by its styles alone, its bold titles
+  text. Where the titles cannot be placed, a structured abstract's parts with no
+  Introduction after them, the order of its parts never starting again and no title it
+  cannot hold among them, the audit places nothing and says so, and `init --from` makes each
+  a heading of level 1, so the Abstract ends at its first part. The title page is set aside
+  only above a first heading that opens a paper, its Abstract or its Introduction: a short
+  paper whose first title in bold is its "References" keeps its text where every gate reads
+  it. A heading is written with the title's own words, its number kept. Pinned by
   `tests/test_from_word.py::test_a_word_paper_titled_in_bold_has_its_sections_made_headings`.
 - **`init --from` reads no affiliation, ORCID or e-mail address, and splits no name.** Each
   name from an Author paragraph goes into `authors.yaml` in a comment over an empty entry; the
@@ -24726,10 +24731,11 @@ Closed since, and why each mattered (an open gap goes above this line):
   affiliations, initials and journals in capitals. In a paper with no heading style, a
   paragraph wholly in bold whose words are a section's name is made a heading now, a
   structured abstract's parts nested under the Abstract (`text.section_names.section_levels`,
-  which a PDF's lines are placed by too: a structured abstract's parts end at the first title
-  that names one of them again, and an Abstract with words under it is one paragraph), and
-  the report says how the headings were read; see "A Word paper's titles in bold are headings
-  only by a closed list of names".
+  which a PDF's lines are placed by too: a structured abstract's parts end where their order,
+  background, methods, results, conclusions, starts again, as BMC's main text opens on a
+  second "Background", and an Abstract with words under it whose next titles cannot be
+  placed so is one paragraph), and the report says how the headings were read; see "A Word
+  paper's titles in bold are headings only by a closed list of names".
 
 - **An accent on a dotless i was read as italics (2026-11-05).** Better BibTeX writes í as
   `{\'\i}`, and with the braces gone G7 read

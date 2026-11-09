@@ -915,15 +915,19 @@ def _headings_said(path: Path, document, headed: bool) -> str | None:
     if not titles:
         return (f"{path.name}: no paragraph is in a heading style, and none wholly in bold "
                 f"names a section, {_ONE_TEXT}; {styles}")
-    named = f"the {len(titles)} paragraphs wholly in bold that name a section ({', '.join(titles)})"
+    one = len(titles) == 1
+    named = (f"the paragraph wholly in bold that names a section ({titles[0]})" if one else
+             f"the {len(titles)} paragraphs wholly in bold that name a section "
+             f"({', '.join(titles)})")  # fmt: skip
     if bold_heading_levels(document) is None:
         from manuscript_guard.auditing.pdf import UNPLACED
 
         return (f"{path.name}: no paragraph is in a heading style, and {named} could not be "
                 f"placed: {UNPLACED}; its lines were placed in no section; {styles}")
-    return (f"{path.name}: no paragraph is in a heading style, so {named} were read as its "
-            f"headings, as `init --from` makes them; a bold title that names no section is "
-            f"read as text; {styles} for a reading that rests on no list of names")
+    read = "was read as a heading" if one else "were read as its headings"
+    return (f"{path.name}: no paragraph is in a heading style, so {named} {read}, as "
+            f"`init --from` makes them; a bold title that names no section is read as text; "
+            f"{styles} for a reading that rests on no list of names")
 
 
 def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:

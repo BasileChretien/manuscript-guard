@@ -1604,15 +1604,23 @@ def test_a_line_wholly_in_bold_is_known_as_pandoc_knows_bold(tmp_path: Path) -> 
             '<w:r><w:t xml:space="preserve"> plain</w:t></w:r></w:p>')  # fmt: skip
     cell = ("<w:tbl><w:tr><w:tc><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Cell</w:t></w:r></w:p>"
             "</w:tc></w:tr></w:tbl>")  # fmt: skip
+    # Round 1 of #598: a link's words, and a note's mark, are no title's to pandoc, and a
+    # text box's paragraph is no paper's heading.
+    link = ('<w:p><w:hyperlink w:anchor="m"><w:r><w:rPr><w:b/></w:rPr><w:t>Linked</w:t>'
+            "</w:r></w:hyperlink></w:p>")  # fmt: skip
+    noted = ('<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Noted</w:t></w:r>'
+             '<w:r><w:rPr><w:b/></w:rPr><w:footnoteReference w:id="1"/></w:r></w:p>')
+    boxed = f"<w:p>{text_box(bold('Boxed'), fallback=False)}</w:p>"
     body = (bold("Direct") + bold("Character", '<w:rStyle w:val="Strong"/>')
             + bold("Based", '<w:rStyle w:val="StrongToo"/>')
             + '<w:p><w:pPr><w:pStyle w:val="BoldPara"/></w:pPr><w:r><w:t>Styled</w:t></w:r></w:p>'
             + bold("Off", '<w:b w:val="0"/>')
             + bold("Overruled", '<w:rStyle w:val="Strong"/><w:b w:val="false"/>')
-            + half + cell)  # fmt: skip
+            + half + cell + link + noted + boxed)  # fmt: skip
     document = read_docx_text(make_docx(tmp_path / "bold.docx", body, BOLD_STYLES))
     lines = document.body.split("\n")
     assert sorted(lines[at] for at in document.bold) == ["Character", "Direct"]
+    assert "Boxed" in document.body and "Linked" in document.body
 
 
 #: A paper with no heading style: an abstract of one paragraph, and its sections titled in

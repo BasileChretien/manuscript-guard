@@ -17115,10 +17115,11 @@ def test_titles_standing_alone_are_placed_as_their_paper_sets_them(
     drawn: list[tuple[list[str], list[bool], tuple[int, ...] | None]],
 ) -> None:
     """A structured abstract's titles standing alone, a PDF's lines or a Word paper's titles
-    in bold, are the Abstract's up to an Introduction or to the first that names one of them
-    again; an Abstract with words under it whose next titles cannot be placed so is one
-    paragraph, and the title after it the main text's; a structured abstract with neither
-    after it, and a name twice in the main text, are not placed (`section_levels`)."""
+    in bold, are the Abstract's up to an Introduction or to where the order of its parts
+    starts again; an Abstract with words under it whose next titles cannot be placed so is
+    one paragraph, and the title after it the main text's; a structured abstract with
+    neither after it, a title no abstract holds among its parts, and a name twice in the
+    main text, are not placed (`section_levels`)."""
     from manuscript_guard.text.section_names import section_levels
 
     for titles, worded, levels in drawn:
@@ -17132,7 +17133,20 @@ def _a_structured_abstract_ends_only_at_an_introduction(patch: pytest.MonkeyPatc
         (at for at in range(first + 1, len(keys)) if keys[at] == "introduction"), None))
 
 
-def _a_structured_abstract_ends_only_at_a_name_again(patch: pytest.MonkeyPatch) -> None:
+def _a_titles_order_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    """A title no abstract holds is taken for a part, at the end of the order: as though the
+    abstract ran on over "References" and "Appendix"."""
+    from manuscript_guard.text import section_names
+
+    class AtTheEnd(dict):
+        def get(self, key: str, default: int | None = None) -> int:  # type: ignore[override]
+            return super().get(key, 9)
+
+    patch.setattr(section_names, "_PART_ORDER", AtTheEnd(section_names._PART_ORDER))
+
+
+def _a_structured_abstract_ends_at_a_name_again(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #598: the parts ended at the first title that named one of them again."""
     from manuscript_guard.text import section_names
 
     def again(keys: list[str], first: int) -> int | None:
@@ -17249,8 +17263,12 @@ BROKEN = {
         _a_structured_abstract_ends_only_at_an_introduction,
         test_titles_standing_alone_are_placed_as_their_paper_sets_them,
     ),
-    "a structured abstract's parts end only at a name again": (
-        _a_structured_abstract_ends_only_at_a_name_again,
+    "a structured abstract's parts end at the first name again": (
+        _a_structured_abstract_ends_at_a_name_again,
+        test_titles_standing_alone_are_placed_as_their_paper_sets_them,
+    ),
+    "a title no abstract holds is a structured abstract's part": (
+        _a_titles_order_is_not_read,
         test_titles_standing_alone_are_placed_as_their_paper_sets_them,
     ),
     "an Abstract with words under it is never one paragraph": (

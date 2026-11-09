@@ -493,17 +493,24 @@ def _part_text(
                     shown = _RAISED + shown + _RAISED
                 (lines[owner] if owner is not None else pieces).append(shown)
                 if bold is not None and owner is not None and shown.strip():
+                    # A link's words are no title's, as pandoc reads a link in one.
                     key = id(lines[owner])
-                    weights[key] = weights.get(key, True) and _run_bold(parents.get(node), bold)
+                    weights[key] = (weights.get(key, True) and _run_bold(parents.get(node), bold)
+                                    and not _inside(node, parents, W + "hyperlink"))  # fmt: skip
         elif node.tag in _NOTE_REFERENCES:
             owner, seen = _placed(node, parents, hidden)
             if seen and owner is not None and owner in lines and \
                     _inside(owner, parents, W + "tc"):  # fmt: skip
                 lines[owner].append(_NOTE_REFERENCE)
+            if seen and owner is not None and owner in lines:
+                # Nor a line with a note's mark: pandoc's title holds the note (round 1 of #598).
+                weights[id(lines[owner])] = False
 
-    # A plain line, in no heading style, not numbered and in no table, all in bold.
-    for line in {id(line): line for line in lines.values()}.values():
-        if weights.get(id(line)) and line[0] == "\n":
+    # A plain line, in no heading style, not numbered, in no table and no text box, all in
+    # bold.
+    for owner, line in lines.items():
+        if weights.get(id(line)) and line[0] == "\n" and not _inside(
+                owner, parents, W + "txbxContent"):  # fmt: skip
             line[0] = "\n" + _BOLD_MARK
     return "".join(piece if isinstance(piece, str) else "".join(piece) for piece in pieces)
 

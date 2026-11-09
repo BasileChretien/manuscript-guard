@@ -3,15 +3,15 @@
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
     "generated_by_sha256": "cb53ae91e86e00ac4866feb1ed20ad11ce217c15fb543b270c3e58ce513ff555",
-    "generated_at": "2026-11-09T04:00:12+00:00",
+    "generated_at": "2026-11-09T04:15:27+00:00",
     "tool": {
       "name": "manuscript-guard",
       "version": "0.2.484"
     },
     "vcs": {
-      "sha": "0e43be50204eb393c621d36ea2ae4bbf55564682",
-      "dirty": true,
-      "branch": "claude/controls-example-skill"
+      "sha": "cf6efd7728ba333f891372810c4f92c1c10c1951",
+      "dirty": false,
+      "branch": "claude/controls-example-plan"
     },
     "inputs": [
       {

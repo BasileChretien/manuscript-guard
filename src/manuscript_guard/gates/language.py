@@ -637,8 +637,9 @@ def _a_label(label: str, rest: str) -> bool:
     """Whether bold words with `rest` after them in their paragraph are a label, not the
     first words of a sentence: they end in a colon or a stop, or what follows them opens
     with one, or with no small letter. "**Funding** of the NHS fell" goes on into its
-    sentence (round 1 of #596); "**Funding** none" is read as that sentence too."""
-    after = rest.lstrip(" \t")
+    sentence (round 1 of #596), on its line or across a line break, which pandoc prints as
+    a space; "**Funding** none" is read as that sentence too."""
+    after = rest.lstrip()
     return label.rstrip().endswith((":", ".")) or after[:1] in (":", ".") or not (
         after[:1].islower())  # fmt: skip
 

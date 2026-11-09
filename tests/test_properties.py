@@ -1927,6 +1927,18 @@ def _a_bold_word_in_a_sentence_is_a_label(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_a_label", lambda label, rest: True)
 
 
+def _a_label_is_read_up_to_its_line_s_end(patch: pytest.MonkeyPatch) -> None:
+    """The rule before: what follows a label was read past spaces and tabs only, so a line
+    break after it was no small letter, and "**Funding**" over "of the MRC was cut" a label."""
+
+    def on_its_line(label: str, rest: str) -> bool:
+        after = rest.lstrip(" \t")
+        return label.rstrip().endswith((":", ".")) or after[:1] in (":", ".") or not (
+            after[:1].islower())  # fmt: skip
+
+    patch.setattr(language_gate, "_a_label", on_its_line)
+
+
 def _an_indented_bold_label_opens_a_statement(patch: pytest.MonkeyPatch) -> None:
     pattern = language_gate._RUN_IN.pattern
     patch.setattr(language_gate, "_RUN_IN", re.compile(r"[ ]{0,3}" + pattern))
@@ -19984,6 +19996,10 @@ BROKEN = {
     ),
     "a bold word that goes on into its sentence is a label": (
         _a_bold_word_in_a_sentence_is_a_label,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a bold word that goes on across a line break is a label": (
+        _a_label_is_read_up_to_its_line_s_end,
         test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
     ),
     "an indented bold label opens a statement": (

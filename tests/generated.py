@@ -630,7 +630,8 @@ NOT_DEFINING = (
 #: a defined abbreviation in such a cell, which is still a use of it. And a statement run on
 #: from its bold label, as Word papers write one, its capitals people and institutions: the
 #: label in asterisks or underscores, with a colon or none, its apostrophe escaped as pandoc
-#: writes it, and the label alone over the paragraph that is the statement.
+#: writes it, the label alone over the paragraph that is the statement, and the label with
+#: its statement on the next line of the paragraph.
 NOT_ABBREVIATIONS = (
     "visits ran from 8:30AM to 5:45PM", "doses were given at 10:00 PM",
     "the round began at 7:15\nAM", "the last dose was at 12:30:15PM", "**SUMMARY**",
@@ -644,6 +645,7 @@ NOT_ABBREVIATIONS = (
     "**Funding:** the THERS programme paid for the RESEARDENT fellowship.",
     "__Acknowledgements__ We thank the CEMU and the NIEHS.",
     "**Competing interests**\n\nPLM and RDS declare none.",
+    "**Funding**\nThe EPSRC paid for the first year.",
 )  # fmt: skip
 
 #: Abbreviations beside those, each still reported as undefined: one near a time of day,
@@ -651,9 +653,9 @@ NOT_ABBREVIATIONS = (
 #: and grid, in a list item and in a plain paragraph, all in capitals; and one in a header
 #: cell that runs over two lines and has small letters on the other. And beside a statement
 #: run on from its label: a paragraph that only opens with such a word in bold, one after a
-#: statement, one with the label inside it, one whose bold word goes on into its sentence, a
-#: label in a list item, in a block quote and in an indented table's header, and a heading
-#: under a label that stands alone.
+#: statement, one with the label inside it, one whose bold word goes on into its sentence, on
+#: its line or across a line break, a label in a list item, in a block quote and in an
+#: indented table's header, and a heading under a label that stands alone.
 STILL_ABBREVIATIONS = (
     ("the PM was high at 10:00", "PM"),
     ("| Group | n |\n|---|---|\n| ICU stay | 12 |", "ICU"),
@@ -668,6 +670,7 @@ STILL_ABBREVIATIONS = (
     ("**Conflicts of interest:** none.\n\nthe EMA approved the protocol", "EMA"),
     ("the NSF and **Funding** bodies paid", "NSF"),
     ("**Funding** of the NHS was cut", "NHS"),
+    ("**Funding**\nof the MRC was cut", "MRC"),
     ("- **Funding:** the AHRQ paid", "AHRQ"),
     ("> **Funding:** the CDC paid", "CDC"),
     ("  **Funding source**   Count\n  ---------------- -----\n  NICE              3", "NICE"),

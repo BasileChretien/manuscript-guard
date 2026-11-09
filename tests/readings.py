@@ -1483,6 +1483,21 @@ def _code_names() -> Reading:
     return code_names
 
 
+@reading("software")
+def _software() -> Reading:
+    """What G12 says of a plan's Software section against the scripts given, by their paths
+    from the project's folder, the names the emitter recorded software under and the
+    project's own modules, at the stage given (`gates/software.py`)."""
+    from manuscript_guard.gates.software import judge_software
+
+    def software(given: dict[str, Any]) -> dict[str, Any]:
+        return _told(judge_software(Path("."), given["plan"], dict(given["scripts"]),
+                                    list(given["emitted"]), frozenset(given["own"]),
+                                    given["stage"]))  # fmt: skip
+
+    return software
+
+
 @reading("model names")
 def _model_names() -> Reading:
     from manuscript_guard.text.model_names import named

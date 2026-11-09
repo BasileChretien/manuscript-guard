@@ -92,7 +92,8 @@ os.chdir("/work")`);
   performance.clearResourceTimings();
   py.globals.set("ARGS", py.toPy(args));
   const start = now();
-  const result = py.runPython("import json; from manuscript_guard import web; json.dumps(web.run(ARGS))");
+  // The text the command line prints, and the report as the page draws it, from one audit.
+  const result = py.runPython("import json; from manuscript_guard import web; json.dumps(web.view(ARGS))");
   py.globals.delete("ARGS");
   return { ...JSON.parse(result), args, ms: now() - start, sent: requests(), refused: [...refused] };
 }

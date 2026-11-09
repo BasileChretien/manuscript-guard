@@ -29,7 +29,7 @@ import re
 from bisect import bisect_right
 from dataclasses import dataclass, replace
 
-from manuscript_guard.text.attributes import strip_attributes
+from manuscript_guard.text.attributes import strip_attributes, without_spans
 from manuscript_guard.text.fences import fenced_spans
 from manuscript_guard.text.masking import (
     blank,
@@ -120,19 +120,23 @@ def _atx(line: str) -> tuple[int, str] | None:
 
     Titled as pandoc prints them, without an attribute block: pandoc reads the closing `#`s,
     then spaces, then the block, so `## Results ## {#sec-results}` is "Results", and a block
-    before the closing `#`s is text, `# Results {-} ##` "Results {-}"."""
+    before the closing `#`s is text, `# Results {-} ##` "Results {-}". A span is its words,
+    `# [Results]{.underline}` "Results", as pandoc writes an underlined Word heading
+    (`without_spans`): titled "[Results]", it named no section, and kept whole, its block
+    was counted as words of the main text (round 1 of #594)."""
     opening = ATX_LINE.match(line)
     if opening is None:
         return None
-    rest = line[opening.end() :].strip(" \t")
+    rest = without_spans(line[opening.end() :].strip(" \t"))
     printed = strip_attributes(rest)
     title = (rest if printed == rest else printed).rstrip("#").strip()
     return len(opening.group("hashes")), title
 
 
 def _setext_title(line: str) -> str:
-    """A setext title as pandoc prints it: `Methods {#sec-methods}` is "Methods"."""
-    return strip_attributes(line.strip(" \t")).strip()
+    """A setext title as pandoc prints it: `Methods {#sec-methods}` is "Methods", and
+    `[Methods]{.underline}` too (`without_spans`)."""
+    return strip_attributes(without_spans(line.strip(" \t"))).strip()
 
 # Setext: a title underlined with `=` (level 1) or `-` (level 2). One dash is enough for
 # pandoc, and requiring three left a "Results" heading under `--` invisible, so its content

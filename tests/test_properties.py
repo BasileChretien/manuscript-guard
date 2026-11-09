@@ -9081,7 +9081,9 @@ def test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends(
     a list's start is passed over by every gate that passes a list over, to the next heading,
     bold title, caption, table or line shaped like a heading, and no further; a sentence, a
     full stop, small letters, a hard wrap that left the word alone in a paragraph and an item
-    of a list start none (`reference_lists`)."""
+    of a list start none (`reference_lists`). A line or a back-matter title in a span,
+    `**[References]{.underline}**`, is read as pandoc prints it; brackets that are no span
+    are text."""
     listed, passed = drawn
     assert _passed_over(listed) == _passed_over(passed), listed
 
@@ -9101,6 +9103,27 @@ def _a_list_runs_on_to_the_next_heading(patch: pytest.MonkeyPatch) -> None:
 
 def _a_heading_printed_as_text_ends_no_list(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reference_lists_module, "heading_shaped", lambda lines: set())
+
+
+def _a_line_is_read_with_its_spans(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "without_spans", lambda text: text)
+
+
+def _a_list_s_end_is_read_with_its_spans(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_printed", lambda paragraph: paragraph)
+
+
+def _a_title_is_read_with_its_spans(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    patch.setattr(classify, "without_spans", lambda text: text)
+
+
+def _the_heading_walk_keeps_spans(patch: pytest.MonkeyPatch) -> None:
+    """The heading walk titles `# [References]{.underline}` as typed, its span kept."""
+    from manuscript_guard.text import blocks
+
+    patch.setattr(blocks, "without_spans", lambda text: text)
 
 
 def _an_item_of_a_list_opens_one(patch: pytest.MonkeyPatch) -> None:
@@ -9860,7 +9883,9 @@ def test_a_reference_list_is_known_by_its_title_in_each_language(
     """A paper in Turkish titles its reference list "Kaynakça", and the audit, G4's count of
     the main text and the recycling check read the list under it as prose. Each knows the
     list by its title in the languages `text.section_names` names, in any case, and none
-    takes a title that only opens with such a word for one."""
+    takes a title that only opens with such a word for one. A title in the span pandoc
+    writes for an underlined Word heading, `# [References]{.underline}`, is read as pandoc
+    prints it, its words alone."""
     from manuscript_guard.audit import is_bibliography_heading
     from manuscript_guard.gates.recycling import SET_APART, _kind_of
     from manuscript_guard.text.sections import split_sections
@@ -9870,6 +9895,8 @@ def test_a_reference_list_is_known_by_its_title_in_each_language(
     assert len(sections) == len(titled), text
     for section, (title, is_list) in zip(sections, titled, strict=True):
         assert section.is_references == is_list, title
+        # Titled as pandoc prints it: its words, and no span's block to count as words.
+        assert "]{" not in section.title, title
         assert is_bibliography_heading(f"# {title}", marked=True) == is_list, title
         assert (_kind_of(title, False, None) == SET_APART) == is_list, title
 
@@ -14888,6 +14915,19 @@ def _the_deviations_name_variables(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(collection, "_deviations", lambda text: [])
 
 
+def _the_software_names_variables(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "_software_sections", lambda text: [])
+
+
+def _a_heading_that_mentions_software_hides_its_variables(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "SOFTWARE_HEADING",
+                  re.compile(r"\bsoftware\b|\bpackages?\b|\blibraries\b", re.IGNORECASE))
+
+
 def _the_deviations_end_at_their_first_subsection(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import collection
 
@@ -17518,6 +17558,255 @@ def _a_stop_blanked_with_an_address_is_not_kept(patch: pytest.MonkeyPatch) -> No
 
     patch.setattr(quote_places, "_CLOSING", frozenset())
 
+# ------------------------------------------- the plan's Software section and the loads, G12
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import software_plans  # noqa: E402
+
+
+def _software_told(findings: list[dict[str, Any]]) -> list[list[Any]]:
+    """Each finding of the Software section as the generator writes it: code, severity,
+    path, line, the package's name and, for a note, why the plan does not name it."""
+    told = []
+    for finding in findings:
+        message = finding["message"]
+        if finding["code"] == "planned-package-unloaded":
+            name, why = message.split(" names ", 1)[1].split(", and no script", 1)[0], None
+        else:
+            name = message.split(" loads ", 1)[1].split(", and the plan", 1)[0]
+            why = ("none" if "has no Software section" in message
+                   else "not used" if "considered and not used" in message
+                   else "not named")  # fmt: skip
+        told.append([finding["code"], finding["severity"], finding["path"], finding["line"],
+                     name, why])  # fmt: skip
+    return sorted(told, key=json.dumps)
+
+
+@holds(40, software_plans())
+def test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else(
+    planted: tuple[dict[str, Any], dict[str, Any]],
+) -> None:
+    """Each package an item of the plan's Software section names and no script loads warns,
+    from the analysis stage on, on its item's line; each one a script loads that no item
+    names is a note, once, at its first load; and nothing is said of a name written where
+    nothing is loaded, of base R, the standard library, the project's own modules or the
+    emitters, nor of what the Deviations name, the emitter recorded or a script imports by
+    another name the item gives. Without a Software section, every package loaded is a
+    note that says so."""
+    given, found = planted
+    read = READINGS["software"]()
+    for plan, expected, planned in ((given["plan"], found["plan"], found["planned"]),
+                                    (given["bare"], found["bare"], 0)):
+        answered = answer(read, {**given, "plan": plan})
+        assert "raised" not in answered, answered
+        told = answered["answer"]
+        assert _software_told(told["findings"]) == expected, plan
+        assert told["counts"] == {"software_planned": planned,
+                                  "software_loaded": found["loaded"]}  # fmt: skip
+
+
+def _an_r_comment_is_code(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "_R_COMMENT", re.compile(r"(?!)"))
+
+
+def _an_r_string_is_code(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "_R_STRING", re.compile(r"(?!)"))
+
+
+def _a_raw_string_is_two_strings(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "_R_RAW", re.compile(r"(?!)"))
+
+
+def _a_package_s_double_colon_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "_NAMESPACED", frozenset())
+
+
+def _a_variable_given_to_require_namespace_is_its_package(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "_R_LOADERS", dict.fromkeys(software._R_LOADERS, True))
+
+
+def _a_computed_name_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "_computed", lambda named: False)
+
+
+def _an_import_in_a_function_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "_python_nodes", lambda tree: tree.body)
+
+
+def _a_relative_import_is_a_package(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "_from_module",
+                  lambda node: node.module.split(".")[0] if node.module else None)  # fmt: skip
+
+
+def _the_standard_library_is_chosen(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "_stdlib", lambda: frozenset())
+
+
+def _base_r_is_chosen(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "R_BASE", frozenset())
+
+
+def _the_project_s_own_module_is_chosen(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    given = software._given
+    patch.setattr(software, "_given", lambda load, own: given(load, frozenset()))
+
+
+def _an_item_names_only_its_first_package(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    items = software._items
+    patch.setattr(software, "_items", lambda *args: [
+        dataclasses.replace(item, names=item.names[:1]) for item in items(*args)])  # fmt: skip
+
+
+def _what_was_not_used_is_used(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "NOT_USED_HEADING", re.compile(r"(?!)"))
+
+
+def _every_section_is_the_software(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "SOFTWARE_HEADING", re.compile(""))
+
+
+def _the_deviations_are_not_read_for_a_package(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "deviation_names", lambda text: set())
+
+
+def _what_the_emitter_recorded_is_not_loaded(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    loaded = software._name_loaded
+    patch.setattr(software, "_name_loaded", lambda name, found, made, languages, first: loaded(
+        name, found, set(), languages, first))  # fmt: skip
+
+
+def _the_language_is_not_a_package(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "INTERPRETERS", {})
+
+
+def _an_r_markdown_file_is_all_r(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "chunks", lambda text: {software.R: text})
+
+
+def _a_notebook_s_magic_is_python(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "_MAGIC", re.compile(r"(?!)"))
+
+
+def _a_package_r_attaches_is_not_loaded(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "_attached", lambda name, languages: False)
+
+
+def _an_item_s_other_names_match_what_nobody_chooses(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    held = software._item_loaded
+    patch.setattr(software, "_item_loaded", lambda item, loaded, chosen, made, languages: held(
+        item, loaded, loaded, made, languages))  # fmt: skip
+
+
+def _an_item_s_other_names_may_be_the_language(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    named = software._name_loaded
+    patch.setattr(software, "_name_loaded", lambda name, found, made, languages, first: named(
+        name, found, made, languages, True))  # fmt: skip
+
+
+def _a_heading_that_mentions_software_heads_the_section(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "SOFTWARE_HEADING",
+                  re.compile(r"\bsoftware\b|\bpackages?\b|\blibraries\b", re.IGNORECASE))
+
+
+#: The Software section's heading as round 1 of #592 read it: the word at the start of the
+#: title, whatever followed, and no number but digits before it.
+_ROUND_ONE_HEADING = re.compile(
+    r"^[\W\d_]*(?:(?:r|python|statistical|analysis|analytic)\s+)?"
+    r"(?:software|packages?|librar(?:y|ies))\b",
+    re.IGNORECASE,
+)
+
+
+#: As round 2 of #592 read it: the whole title, from a closed list of words after Software.
+_ROUND_TWO_HEADING = re.compile(
+    r"^[\W\d_]*(?:(?:[ivxlc]+|[a-z]|appendix(?:\s+\w+)?)[.):]\s+)?"
+    r"(?:(?:r|python|r\s+and\s+python|statistical|analysis|analytic|data\s+analysis"
+    r"|statistical\s+analysis|computing|computational|tools\s+and)\s+)?"
+    r"(?:software|packages?|librar(?:y|ies))"
+    r"(?:\s+(?:used|versions|and\s+(?:packages|libraries|tools|versions|software)))?"
+    r"(?:\s*\([^)]*\))?(?:\s*\{[^}]*\})?[\W_]*$",
+    re.IGNORECASE,
+)
+
+
+def _only_a_closed_list_of_words_follows_software(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "SOFTWARE_HEADING", _ROUND_TWO_HEADING)
+
+
+def _a_heading_that_opens_with_the_word_heads_the_section(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "SOFTWARE_HEADING", _ROUND_ONE_HEADING)
+
+
+def _a_heading_that_opens_with_the_word_hides_its_variables(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "SOFTWARE_HEADING", _ROUND_ONE_HEADING)
+
+
+def _a_continued_import_line_is_read_alone(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "_PYTHON_IMPORT", re.compile(
+        r"^[ \t]*(?:import[ \t]+([^\n#;\\]+)|from[ \t]+([A-Za-z_]\w*)[\w.]*[ \t]+import\b)",
+        re.MULTILINE))  # fmt: skip
+
+
+def _a_list_of_modules_read_line_by_line_gives_its_first(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    listed = software._import_list
+    patch.setattr(software, "_import_list", lambda written: listed(written)[:1])
+
 
 # ----------------------------------------- titles standing alone placed, and titles in bold
 
@@ -18531,6 +18820,22 @@ BROKEN = {
     "an item of a list opens a reference list": (
         _an_item_of_a_list_opens_one,
         test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a line under no heading is read with its spans": (
+        _a_line_is_read_with_its_spans,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a title that ends a reference list is read with its spans": (
+        _a_list_s_end_is_read_with_its_spans,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a heading's title is read with its spans": (
+        _a_title_is_read_with_its_spans,
+        test_a_reference_list_is_known_by_its_title_in_each_language,
+    ),
+    "the heading walk keeps a title's spans": (
+        _the_heading_walk_keeps_spans,
+        test_a_reference_list_is_known_by_its_title_in_each_language,
     ),
     "an e-mail address in brackets is a citation": (
         _an_address_in_brackets_is_a_citation,
@@ -21900,6 +22205,11 @@ BROKEN = {
         )
         for said, broken in (
             ("the Deviations name variables", _the_deviations_name_variables),
+            ("the Software section names variables", _the_software_names_variables),
+            ("a heading that mentions software hides the variables it names",
+             _a_heading_that_mentions_software_hides_its_variables),
+            ("a heading that opens with a word of software hides its variables",
+             _a_heading_that_opens_with_the_word_hides_its_variables),
             ("the Deviations end at their first subsection",
              _the_deviations_end_at_their_first_subsection),
             ("the plan's title may be its Deviations", _the_plan_s_title_may_be_its_deviations),
@@ -22227,6 +22537,114 @@ BROKEN = {
     "what a comment holds is held to its place": (
         _a_comment_holds_facts,
         test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    "a comment in R is read as code": (
+        _an_r_comment_is_code,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a string in R is read as code": (
+        _an_r_string_is_code,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a raw string with quotes in it is read as two strings": (
+        _a_raw_string_is_two_strings,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a package written before :: is not read": (
+        _a_package_s_double_colon_is_not_read,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a variable given to requireNamespace is taken for its package": (
+        _a_variable_given_to_require_namespace_is_its_package,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a name loaded with character.only is read": (
+        _a_computed_name_is_read,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "an import in a function or a try block is not read": (
+        _an_import_in_a_function_is_not_read,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a relative import is taken for a package": (
+        _a_relative_import_is_a_package,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "the standard library is a package chosen": (
+        _the_standard_library_is_chosen,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "base R is a package chosen": (
+        _base_r_is_chosen,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "the project's own module is a package chosen": (
+        _the_project_s_own_module_is_chosen,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "an item names only the package it opens with": (
+        _an_item_names_only_its_first_package,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a package considered and not used is held to the scripts": (
+        _what_was_not_used_is_used,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "an item of another section names a package": (
+        _every_section_is_the_software,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a package the Deviations name is not stood down": (
+        _the_deviations_are_not_read_for_a_package,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a version the emitter recorded does not count as loaded": (
+        _what_the_emitter_recorded_is_not_loaded,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "an item for the language is a package no script loads": (
+        _the_language_is_not_a_package,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "an R Markdown file's prose and shown blocks are run as R": (
+        _an_r_markdown_file_is_all_r,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a notebook's magic stops its cell being read": (
+        _a_notebook_s_magic_is_python,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a base package R attaches is not loaded by an R script": (
+        _a_package_r_attaches_is_not_loaded,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "an item's other names are matched to the standard library": (
+        _an_item_s_other_names_match_what_nobody_chooses,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "an item's other names may be the language": (
+        _an_item_s_other_names_may_be_the_language,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a heading that mentions software heads the Software section": (
+        _a_heading_that_mentions_software_heads_the_section,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a list of modules read line by line gives its first": (
+        _a_list_of_modules_read_line_by_line_gives_its_first,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a heading that opens with the word heads the Software section": (
+        _a_heading_that_opens_with_the_word_heads_the_section,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "only a closed list of words may follow Software in its heading": (
+        _only_a_closed_list_of_words_follows_software,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "an import line continued with a backslash is read alone": (
+        _a_continued_import_line_is_read_alone,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
     ),
 }
 

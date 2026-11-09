@@ -195,7 +195,7 @@ def test_limitations_are_the_manuscripts_the_plans_deviations_g12_and_what_no_ga
     assert "Only 77 cases were reported, and spontaneous reports are not a sample." in said
     assert "<em>spontaneous</em>" in text
     assert "Limitations of the code lists (supplement) One event term" in said
-    assert "Six. The first two came after the first review round" in said
+    assert "Seven. The first two came after the first review round" in said
     assert "<ol" in text, "the plan's list is a list"
     assert "<strong>info</strong> <code>plan-complete</code> (<code>design/plan.md</code>)" \
         in text  # fmt: skip
@@ -320,7 +320,7 @@ def test_the_plans_comments_are_not_printed(project: Path) -> None:
         "-->\n", 1), encoding="utf-8")  # fmt: skip
     assert main(["package", str(project), "--companion", "--skip-checks"]) == 0
     text = section(page(project), "limitations")
-    assert "a note to self" not in text and "Six. The first two came" in plain(text)
+    assert "a note to self" not in text and "Seven. The first two came" in plain(text)
 
 
 def test_a_crate_with_no_date_to_give_is_refused_with_the_page_too(project: Path) -> None:

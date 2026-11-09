@@ -11617,6 +11617,78 @@ changes is the author's to say. A record with no decision, or one its schema ref
 nothing to it, and G12's other findings say why. Each name is said once, at the first
 fragment that declares it.
 
+## The plan names the software for the data
+
+On a real disproportionality paper of VigiBase, the analysis an agent wrote did its own joins
+where the CRAN package `vigicaen` holds the source's logic: finding a drug in WHODrug, the
+MedDRA levels of a case definition, a suspected drug told from a concomitant one. Nothing in
+the toolkit asked which software suited the data and the question; `em.software()` records a
+version, not a choice. Basile, 2026-11-05: a step of the analysis-plan skill, and a check
+that holds the plan's record to the scripts; no table of the packages for each source, which
+a gate would enforce, since it goes stale and favours the fields its authors know.
+
+The step, before the analysis section is fixed: look for packages written for the source and
+the question (the source's documentation, CRAN, Bioconductor, PyPI, the CRAN Task Views), read
+the help page of each function the analysis calls and the vignettes, with commands that need
+no agent tool, use those functions for the source's own logic, and record each package, its
+version and which function does which step, and what was considered and not taken. In R the
+data handling is written with dplyr and its companions unless the project or the author
+says otherwise (Basile, 2026-11-09: his wish, put as a default the project overrides).
+
+**Basile's answers** (question boxes, 2026-11-09; each the recommended option):
+
+| Question | Answer |
+|---|---|
+| Where the record lives | a section of `design/plan.md` headed Software (which headings count is below), frozen and dated with the plan |
+| Its format | one list item per package, opening with its name in backticks; every bare name in backticks in the item is one of its names, so a package imported by another name gives that one too; the packages considered and not used under a heading of their own below, not held to the scripts; the version and the functions not checked |
+| What counts as loaded | a literal load anywhere in a file of `analysis/` or `figures/`, a function's body included, outside comments and strings: `library()`, `require()`, `requireNamespace()`, `loadNamespace()`, `pkg::`, `pkg:::`; `import`, `from`, `importlib.import_module()`; the R and Python chunks of R Markdown and Quarto files; a notebook's code cells. A name computed is not read |
+| What is nobody's choice | R's fourteen packages of priority "base", written in the code (the recommended ones, survival and MASS, are a choice); `sys.stdlib_module_names`; the project's own modules, a relative import; the toolkit's emitters |
+| Whether it fails at submission | no: a warning at every stage from the analysis on, as G12's other findings of the plan; the package's name in backticks under Deviations stands it down |
+
+What `check` says (`gates/software.py`, G12):
+
+* An item none of whose names a script loads, nor `em.software()` recorded, nor is the
+  language of a script read (`R`, `Python`): `planned-package-unloaded`, a warning on the
+  item's line, from the analysis stage on. At the design stage no script has to exist yet.
+* A package a script loads that no item names: `plan-package-unnamed`, a note at its first
+  load, by the scripts in the order of their paths, whatever the stage. Its message says
+  whether the plan has no Software section or lists the package among those not used.
+* A name in backticks under Deviations stands down either: it is the record of a package
+  dropped, or taken up after the plan was agreed.
+
+Round 1 of #592 settled four readings. An item's first name is its package and is held to
+every load; its other names count only as a package somebody chose, so `R`, `stats` or
+`json` written beside it stands nothing down. A base package R attaches counts as loaded,
+as an item's first name, wherever an R script is read, since `glm()` needs no
+`library(stats)`. And the data dictionary's check (`gates/collection.py`) leaves the
+Software section out, as it leaves out the Deviations: its names are packages and
+functions, not variables.
+
+Which headings head the section took three rounds: read too widely, "Library preparation"
+or "Package of care" lost their variables to the dictionary's check, which main reads;
+read too narrowly, "Software packages" was refused though the skill asks for a heading
+that opens with Software. Basile, 2026-11-09 (question box, the recommended option): a
+title whose first word is Software heads the section whatever follows, "Software-based"
+aside, after a number in digits, a letter, Roman numerals or "Appendix B:"; packages and
+libraries, which have other senses, head it only in the forms a plan uses for software,
+matched whole ("R packages", "Packages used", "Libraries", "Statistical analysis software",
+"Tools and software"), with a version in brackets or an attribute block at the end. A title
+that only mentions software, "Statistical analysis and software", heads the analysis.
+
+Names are compared as `em.software()` writes its keys, case and punctuation aside, so
+`scikit-learn` is `scikit_learn`; a dotted name the plan gives is matched by its first part
+to what Python imports, `statsmodels.api` to `statsmodels`. R is read by a tokenizer that
+skips comments, reads strings, raw strings (`r"-(...)-"`) and backticked names, and passes
+over a member's call (`x$library()`); `library(help = )` loads nothing, and a bare name given
+to `requireNamespace()` is a variable. Python is read through `ast`, with every node walked,
+so an import in a function or a `try` block counts.
+
+The campaign: `software_plans()` in `tests/generated.py` puts every way of loading and every
+place a name is written without loading anything into each example, once for a package the
+plan names and once for one it does not; `tests/test_properties.py` holds what is said, line
+for line, against twenty-seven broken rules, each failing under a dozen seeds. The limits are in
+Known gaps.
+
 ## What a change makes stale
 
 The digests the gates record already form a graph, and each gate reads one edge of it: G1 an
@@ -19232,8 +19304,11 @@ Open, recorded as each change landed:
   named under "Not audited".
 - **A reference list under a line that is no heading ends where its shape does, and only a
   paragraph opens one.** `check` passes over a list under `**References**`,
-  `**References:**` or "References" alone on a line, as the audit does
-  (`text/reference_lists.py`): G14, the word count and the comparison with earlier papers.
+  `**References:**` or "References" alone on a line, in the span pandoc writes for a title
+  that is also underlined, highlighted or in small capitals (`**[References]{.underline}**`)
+  or not, as the audit does (`text/reference_lists.py`): G14, the word count and the
+  comparison with earlier papers. Brackets before braces that hold no attributes,
+  `[References]{see below}`, or escaped, are text, and open no list.
   The list ends at the next heading of any level, at a line shaped like a heading that
   pandoc prints as text, at a paragraph all in bold or opening with a bold label
   ("**Funding:** ..."), at a back-matter title alone on its line (a statement's, as G7's
@@ -25008,6 +25083,53 @@ What papers converted from Word showed (see "What papers converted from Word sho
     the statement, are not read. Accepted.
   - A paper in no project has no records, so `audit --journal` does not run the check and
     says so among what G4 did not check.
+- **The plan's Software section is held to the names a script writes, not to what runs.**
+  (`gates/software.py`, "The plan names the software for the data".) Accepted.
+  - A package loaded by a name the code computes is not read: `library(pkg, character.only
+    = TRUE)`, `requireNamespace(pkg)` with `pkg` a variable, `importlib.import_module(name)`.
+    Nor is one another package loads for it: `pacman::p_load(dplyr)` loads pacman,
+    `box::use()` and `librarian::shelf()` nothing, and `source()` of a file outside
+    `analysis/` and `figures/` is not followed.
+    Pinned by `tests/test_properties.py::test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else`.
+  - An item counts as loaded when any of its names is: "`dplyr`, `tidyr`" is never said
+    where only dplyr is loaded. Every bare name in backticks in an item is one of its names,
+    so a variable written there stands down the note for a package of that name.
+  - Only list items are read. A Software section written as a table, or as sentences,
+    names nothing, and every package loaded is then said not to be named.
+    Pinned by `tests/test_properties.py::test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else`.
+  - A heading that opens with Software heads the section whatever follows, so
+    "Software and statistical analysis" does, and the variables its items name are read as
+    packages and left out of the data dictionary's check. A heading of packages or libraries
+    in a form not listed ("Computing environment and packages", "Supplementary Appendix:
+    Packages", "S1. Packages") heads none, and its packages are then said not to be named.
+    Pinned by `tests/test_properties.py::test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else`
+    and `tests/test_corruption.py::test_a_base_package_r_attaches_is_loaded_and_another_heading_is_not_the_software`.
+  - A base package R does not attach (`splines`, `parallel`) named as an item's first name
+    counts as loaded wherever an R script is read, whether or not one loads it.
+  - A variable named in backticks in the Software section is not held to the data
+    dictionary, since its names are read as packages.
+    Pinned by `tests/test_properties.py::test_a_variable_is_read_from_the_plan_outside_its_deviations_and_nowhere_else`.
+  - The Python standard library is the list of the Python running `check`, so a module
+    taken out of it (`distutils` in 3.12) is noted under a newer Python and not an older.
+  - A Python file this Python cannot parse, or nested deeper than its parser goes, is read
+    line by line, for lines that open with `import` or `from`: an import in a triple-quoted
+    string is then read, and one after a semicolon is not. A notebook nested too deep is not
+    read. A notebook's loads carry no line, since its lines are its JSON's.
+    Pinned by `tests/test_corruption.py::test_a_script_no_parser_can_read_does_not_stop_the_check`.
+  - The version an item gives and the functions it names are not compared with anything.
+  - A heading needs a blank line before it, as pandoc reads one: a "Considered and not used"
+    typed on the line after an item is part of that item, and its packages are held.
+  - Whether the package chosen is the right one for the data is not judged, and no list of
+    the packages written for a source is kept: Basile, 2026-11-05, since such a list goes
+    stale and favours the fields its authors know.
+
+- **A heading in bold is not the Abstract.** `names_abstract` reads a title without its
+  number and nothing else, so `# **Abstract**` is not the abstract to G4's counts, G14's
+  scope or the audit, where `# **Results**` is the Results (`names_results` reads the title
+  as printed, its emphasis taken off). Likewise `is_methods` matches a title as it is typed,
+  so `# **Methods**` is not the Methods to G2. A span around the words is taken off for
+  both (see "A title in a span named nothing"). Pinned by
+  `tests/test_text.py::test_a_heading_in_bold_is_not_the_abstract_nor_the_methods`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 
@@ -25126,6 +25248,20 @@ Closed since, and why each mattered (an open gap goes above this line):
   each author's initials and each programme in capitals reported as an undefined
   abbreviation: 13 of the 100 warnings on one paper audited through the web page. Such a
   paragraph is read as the statement now (`gates.language._run_in_statements`).
+
+- **A title in a span named nothing (2026-11-09).** Pandoc writes a Word title that is also
+  underlined, highlighted or in small capitals with a span around its words,
+  `**[References]{.underline}**` or `# [Results]{.underline}`, and prints the words alone.
+  The heading walk took the span's block for the heading's and titled it "[Results]", and
+  the reference list's rule read the brackets: so the audit cut a .docx's reference list,
+  whose text holds no brackets, while G14 read the list of the same paper as prose, and on
+  one paper with underlined bold titles 41 of its 100 warnings were the authors' initials
+  and journals in capitals. A heading is titled as pandoc prints it now, a span its words
+  (`text.attributes.without_spans`), so it names its section, the Methods to G2 included,
+  and its words alone are counted; a title read elsewhere, the reference list's line under
+  no heading, the title that ends that list and a glossary's, is read the same way. A .docx's
+  text, which holds no Markdown, is read as it stands: brackets typed there are text. See
+  "A heading in bold is not the Abstract" for what is left.
 
 - **`audit --strict` counted no sum and no flow (#469 and #472, 2026-10-29).** When the
   audit first read a LaTeX paper and ran in sections (#463), `--strict` counted what it had

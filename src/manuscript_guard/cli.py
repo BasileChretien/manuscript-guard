@@ -101,6 +101,7 @@ from manuscript_guard.gates.design_review import check_design_rounds
 from manuscript_guard.gates.figure_alt import check_figure_alt
 from manuscript_guard.gates.figure_colours import check_figure_colours
 from manuscript_guard.gates.formats import check_format, not_read_in_latex
+from manuscript_guard.gates.held_out import check_held_out, check_held_out_reads
 from manuscript_guard.gates.methods_review import check_method_passages, check_methods_review
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
 from manuscript_guard.gates.registration import check_registration
@@ -223,6 +224,7 @@ def _gate_run(
         # A check of its own, since it reads the manuscript: one that cannot be read stops
         # it and not the plan's.
         ("G12", lambda: check_registration(project, results, chosen)),
+        ("G12", lambda: check_held_out(project, results, chosen)),
         ("G12", lambda: check_data_sources(project, chosen)),
         ("G12", lambda: check_declared_datasets(project, results)),
         ("G7", lambda: check_method_passages(project)),
@@ -232,6 +234,7 @@ def _gate_run(
         ("G2", lambda: check_recoverable(project, results)),
         ("G1", lambda: check_restricted_inputs(project, results)),
         ("G1", lambda: check_synthetic_inputs(project, results, submission=at_submission)),
+        ("G1", lambda: check_held_out_reads(project, results, chosen)),
         ("G1", lambda: check_vault_results(project, results, chosen)),
         ("G1", lambda: check_datasets(project, results)),
         ("G1", lambda: check_values(project, namespace, results)),

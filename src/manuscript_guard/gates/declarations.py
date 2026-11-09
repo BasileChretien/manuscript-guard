@@ -213,10 +213,11 @@ def read_declarations(text: str) -> Declarations:
                         "one block holds each")  # fmt: skip
                 unreadable.append(Unreadable(at, said))
                 continue
-            seen[name.value] = (at, number)
             if not isinstance(value, yaml.SequenceNode):
                 unreadable.append(Unreadable(at, f"{name.value} is not a list of entries"))
                 continue
+            # Only a section that is read is the first: one refused leaves the next to be read.
+            seen[name.value] = (at, number)
             for item in value.value:
                 line = first + item.start_mark.line
                 read = _control(item, line) if name.value == "controls" else _held_out(item, line)
@@ -257,7 +258,9 @@ def _fields(
         except _UNBUILT as exc:
             # A tag the safe loader has none for, a value its tag refuses, a date that is no
             # day: said, where raised it stopped G12 whole (rounds 1 and 2 of #599).
-            return Unreadable(at, f"{said} is not a value YAML can read: {exc}".splitlines()[0])
+            shown = str(exc).splitlines()[0] if isinstance(exc, yaml.YAMLError) else (
+                f"{value.tag} does not take {getattr(value, 'value', '')!r}")  # fmt: skip
+            return Unreadable(at, f"{said} is not a value YAML can read: {shown}")
     missing = [need for need in needs if need not in fields]
     if missing:
         return Unreadable(line, f"the {what} gives no {' and no '.join(missing)}")

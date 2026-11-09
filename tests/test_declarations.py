@@ -178,6 +178,17 @@ def test_a_section_given_twice_in_one_block_is_said_as_given_twice() -> None:
     assert [h.line for h in read.held_out] == [5], "the first is the one read (round 2)"
 
 
+def test_a_section_refused_leaves_the_next_to_be_read_and_a_value_is_said_by_its_tag() -> None:
+    """Round 3 of #599: a section that was no list made the next one "given twice"."""
+    entry = "  - input: data/v.csv\n    validated_by: a.py\n"
+    read = read_declarations(f"```yaml\nheld_out: x\nheld_out:\n{entry}```\n")
+    assert [h.input for h in read.held_out] == ["data/v.csv"]
+    assert [p.message for p in read.unreadable] == ["held_out is not a list of entries"]
+    body = "  - input: d.csv\n    validated_by: a.py\n    model: !!timestamp soon\n"
+    (problem,) = read_declarations(f"```yaml\nheld_out:\n{body}```\n").unreadable
+    assert problem.message.endswith("timestamp does not take 'soon'"), problem
+
+
 def test_a_block_that_is_not_yaml_is_said_where_it_seems_to_declare() -> None:
     plan = "# Plan\n\n```yaml\nheld_out: [ {input: x\n```\n\n```yaml\nnot: [ yaml\n```\n"
     read = read_declarations(plan)

@@ -14570,6 +14570,14 @@ def _a_value_only_yaml_refuses_is_said(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(declarations, "_UNBUILT", (yaml.YAMLError,))
 
 
+def _a_value_is_said_as_round_2_had_it(patch: pytest.MonkeyPatch) -> None:
+    import yaml
+
+    from manuscript_guard.gates import declarations
+
+    patch.setattr(declarations, "_UNBUILT", (yaml.YAMLError, ValueError, OverflowError))
+
+
 def _the_emitters_find_only_a_bare_held_out_line(patch: pytest.MonkeyPatch) -> None:
     import re
 
@@ -21288,6 +21296,7 @@ BROKEN = {
              _the_emitters_find_only_a_bare_held_out_line),
             ("a yml block is passed over", _a_yml_block_is_passed_over),
             ("a value only YAML refuses is said", _a_value_only_yaml_refuses_is_said),
+            ("a value is said as round 2 of #599 had it", _a_value_is_said_as_round_2_had_it),
         )
     },
     **{

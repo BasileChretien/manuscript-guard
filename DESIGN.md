@@ -22085,11 +22085,15 @@ Open, recorded as each change landed:
     "Funding of primary care", is quiet too. So is a paragraph that opens with a
     statement's name in bold, and the one under such a label standing alone
     (`gates.language._run_in_statements`), where the label is told from a sentence's first
-    words by what follows it, on its line or the next, unless the label ends in a colon or
-    a stop. A small letter there makes it a sentence, so "**Funding** this study was funded
-    by the NIHR" reports `NIHR`, where "**Funding:** this study ..." does not. And a simple
-    table whose first header cell names a statement, "**Funding source**   Count" over its
-    rule, is read as one, so the abbreviations in its cells are not reported.
+    words by what follows it, on its line or on the next where pandoc prints the line break
+    as a space, unless the label ends in a colon or a stop. A small letter there makes it a
+    sentence, so "**Funding** this study was funded by the NIHR" reports `NIHR`, where
+    "**Funding:** this study ..." does not. Before a hard line break, two spaces or a
+    backslash, the bold words stand on a line of their own and are a label whatever
+    follows, and so are bold words followed by any space but a space or a tab, a no-break
+    space among them. And a simple table whose first header cell names a statement,
+    "**Funding source**   Count" over its rule, is read as one, so the abbreviations in its
+    cells are not reported.
     Pinned by `tests/test_language.py::test_what_a_bold_label_cannot_tell_apart`.
   - There is no cap on the number of findings: a manuscript that defines one abbreviation a
     thousand times gets a thousand warnings. Making them is linear in the manuscript.
@@ -25148,9 +25152,10 @@ Closed since, and why each mattered (an open gap goes above this line):
   follows the bold words, a small letter making them a sentence's, and it read what follows
   past spaces and tabs only. So "**Funding**" at a line's end, with "of the NHS fell" on the
   next line of the paragraph, which pandoc prints as one line, was a label, the paragraph a
-  funding statement and its `NHS` not reported. What follows is read past the line break now
-  (`gates.language._a_label`), and a label with its statement on the next line, "The EPSRC
-  paid", is still one.
+  funding statement and its `NHS` not reported. What follows is read past a line break
+  pandoc prints as a space, one with no more than one space or tab before it
+  (`gates.language._SOFT_BREAK`); a hard one leaves the words on a line of their own, a
+  label still, and so does a label with its statement on the next line, "The EPSRC paid".
 
 - **A number after a link was read by no gate (2026-11-09).** The mask took a link's
   address up to the next space, the link's `)` and stop with it, and the link's target

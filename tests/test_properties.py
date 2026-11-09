@@ -1939,6 +1939,19 @@ def _a_label_is_read_up_to_its_line_s_end(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_a_label", on_its_line)
 
 
+def _a_hard_line_break_joins_the_next_line(patch: pytest.MonkeyPatch) -> None:
+    """Round 1: every space read past, a hard line break's too, so "**Funding**" before two
+    spaces and "of the ESRC" on the next line, on a line of its own as pandoc prints it, a
+    sentence's first word."""
+
+    def past_any_space(label: str, rest: str) -> bool:
+        after = rest.lstrip()
+        return label.rstrip().endswith((":", ".")) or after[:1] in (":", ".") or not (
+            after[:1].islower())  # fmt: skip
+
+    patch.setattr(language_gate, "_a_label", past_any_space)
+
+
 def _an_indented_bold_label_opens_a_statement(patch: pytest.MonkeyPatch) -> None:
     pattern = language_gate._RUN_IN.pattern
     patch.setattr(language_gate, "_RUN_IN", re.compile(r"[ ]{0,3}" + pattern))
@@ -20000,6 +20013,10 @@ BROKEN = {
     ),
     "a bold word that goes on across a line break is a label": (
         _a_label_is_read_up_to_its_line_s_end,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a bold word before a hard line break goes on into the next line": (
+        _a_hard_line_break_joins_the_next_line,
         test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
     ),
     "an indented bold label opens a statement": (

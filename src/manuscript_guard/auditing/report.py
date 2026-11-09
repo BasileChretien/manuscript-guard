@@ -46,6 +46,7 @@ sentences and the self-citation counts (Basile, 2026-10-29).
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -595,8 +596,21 @@ def _grouped_gates(report, show: _Show) -> list[str]:
         lines.append(f"  {show(run.paper)}: {len(found)} finding{'s' if len(found) != 1 else ''}"
                      f" in {len(kinds_of(found))} kind{'s' if len(kinds_of(found)) != 1 else ''}"
                      f"{converted}")  # fmt: skip
-        lines += grouped(found, show.at)
+        lines += grouped(found, _placing(run.paper, show))
     return lines
+
+
+def _placing(paper: Path, show: _Show) -> Callable[[Path | None, int | None], str]:
+    """How a place of a finding on `paper`'s words is said: its line, or a PDF's page and
+    line; with its file's name where the finding stands in another file of the paper, one a
+    LaTeX paper inputs (round 1 of #600: "line 12" under the main file's name)."""
+
+    def at(path: Path | None, line: int | None) -> str:
+        if path is None or Path(path) == Path(paper):
+            return show.at(path, line)
+        return show.located(Path(path), line)
+
+    return at
 
 
 def _ranges(numbers: list[int]) -> str:
@@ -660,8 +674,10 @@ def render(report, discrimination, root: Path | None = None, *, details: bool = 
 
         lines += ["", f"=== {PACKAGE} ===", *package(report.package, show)]
     lines.append("")
-    if not details:
-        lines += ["Every place of every finding, with its context and what to do: --details.",
+    if not details and any(run.writing or run.language for run in report.gates):
+        from manuscript_guard.auditing.summary import DETAILS
+
+        lines += [f"Every place of every finding, with its context and what to do: {DETAILS}.",
                   ""]  # fmt: skip
     if report.compared:
         lines.append(

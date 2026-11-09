@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from manuscript_guard.auditing.summary import PLACES, grouped
+from manuscript_guard.auditing.summary import DETAILS, PLACES, grouped
 from manuscript_guard.cli import main
 from manuscript_guard.findings import WARN, Finding
 
@@ -41,9 +41,9 @@ def test_the_report_says_what_each_check_found_before_its_sections(tmp_path: Pat
     assert "=== Small cells" not in out
     assert f"Abbreviations used and not defined (G14, {len(UNDEFINED)})" in out
     assert out.count("is used once in the main text and not defined there") == PLACES
-    assert f"and {len(UNDEFINED) - PLACES} more: --details lists every place" in out
+    assert f"and {len(UNDEFINED) - PLACES} more: {DETAILS} lists every place" in out
     assert out.count("define it at first use") == 1
-    assert "Every place of every finding, with its context and what to do: --details." in out
+    assert f"Every place of every finding, with its context and what to do: {DETAILS}." in out
 
 
 def test_details_print_every_section_and_every_place(tmp_path: Path, capsys) -> None:
@@ -55,7 +55,25 @@ def test_details_print_every_section_and_every_place(tmp_path: Path, capsys) -> 
     assert "=== Membership ===" in out and "=== Arithmetic ===" in out
     assert out.count("is used once in the main text and not defined there") == len(UNDEFINED)
     assert out.count("define it at first use") == len(UNDEFINED)
-    assert "--details." not in out
+    assert "Every place of every finding" not in out
+
+
+def test_the_summary_says_each_list_and_each_paper_as_it_is(tmp_path: Path, capsys) -> None:
+    """Round 1 of #600: a paper with no list and a paper with one are each said, and one
+    paper G14 did not run on is said beside another's findings."""
+    from manuscript_guard.audit import AuditReport
+    from manuscript_guard.auditing.gates import GateRun
+    from manuscript_guard.auditing.summary import checks
+
+    found = Finding("G14", "abbreviation-undefined", "ROR is used once", WARN, line=3)
+    report = AuditReport(gates=[GateRun(Path("a.md"), language=[found]),
+                                GateRun(Path("b.docx"), note="G6 and G14 were not run")])
+    (said,) = [line for line in checks(report) if "Writing and language" in line]
+    assert "1 finding to look at" in said and "not run on b.docx" in said
+    written(tmp_path, "Of 412 reports, 77 were serious.\n")
+    main(["audit", str(tmp_path / "paper.md")])
+    out = capsys.readouterr().out
+    assert "References                no reference list read" in out or "no list read" in out
 
 
 def test_a_finding_strict_counts_is_never_left_to_the_summary(tmp_path: Path, capsys) -> None:
@@ -81,3 +99,30 @@ def test_a_kind_whose_places_differ_in_their_hint_gives_each_its_own() -> None:
     lines = grouped(rates, lambda path, line: f"line {line}")
     assert [line.strip() for line in lines if "Hint:" in line] == ["Hint: bold", "Hint: dashes"]
     assert "    the paper: boldface: 74 in 6313 words" in lines
+
+
+def test_a_place_in_another_file_of_the_paper_names_its_file(tmp_path: Path, capsys) -> None:
+    """A LaTeX paper's findings stand in the files it inputs: a place there names its file,
+    where "line 3" under the main file's name said the wrong place (round 1 of #600)."""
+    (tmp_path / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Methods}\n\\input{methods}\n"
+        "\\end{document}\n", encoding="utf-8")  # fmt: skip
+    (tmp_path / "methods.tex").write_text("Text.\n\nThe ROR was raised in 412 reports.\n",
+                                          encoding="utf-8")  # fmt: skip
+    main(["audit", str(tmp_path / "main.tex")])
+    out = capsys.readouterr().out
+    assert "    methods.tex:3: ROR is used once" in out, out
+
+
+def test_a_failing_finding_on_the_words_says_so_and_a_phrase_shows_its_words() -> None:
+    """A failure looks like one in the grouped form, and a finding whose message does not
+    quote the text, G6's phrasing, shows the words it matched (round 1 of #600)."""
+    from manuscript_guard.findings import FAIL
+
+    found = [Finding("G6", "revision-residue", "a reply to a reviewer", FAIL,
+                     line=4, context="as the reviewer asked"),
+             Finding("G6", "ai-phrasing", "importance-tail: an -ing tail", WARN,
+                     line=9, context="highlighting the value of")]  # fmt: skip
+    lines = grouped(found, lambda path, line: f"line {line}")
+    assert "    line 4: FAIL: a reply to a reviewer" in lines
+    assert "      > highlighting the value of" in lines

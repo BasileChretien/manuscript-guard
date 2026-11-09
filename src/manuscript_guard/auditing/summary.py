@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from manuscript_guard.findings import Finding
+from manuscript_guard.findings import FAIL, Finding
 
 #: How many places of one kind are listed before only a count of the rest.
 PLACES = 8
@@ -68,14 +68,26 @@ def grouped(found: list[Finding], at: Callable[[Path | None, int | None], str]) 
         shared = len({finding.hint for finding in mine}) == 1
         for finding in mine[:PLACES]:
             where = at(finding.path, finding.line) if finding.line else "the paper"
-            lines.append(f"    {where}: {finding.message}")
+            failing = "FAIL: " if finding.severity == FAIL else ""
+            lines.append(f"    {where}: {failing}{finding.message}")
+            if finding.context and gate in QUOTING:
+                lines.append(f"      > {finding.context}")
             if finding.hint and not shared:
                 lines.append(f"      Hint: {finding.hint}")
         if len(mine) > PLACES:
-            lines.append(f"    and {len(mine) - PLACES} more: --details lists every place")
+            lines.append(f"    and {len(mine) - PLACES} more: {DETAILS} lists every place")
         if mine[0].hint and shared:
             lines.append(f"    Hint: {mine[0].hint}")
     return lines
+
+
+#: The gates whose messages name a rule, not the words it matched, so that the words are
+#: shown beside each place: G6's phrasing, "importance-tail: An '-ing' tail ...", says what
+#: kind of phrase it found and not which (round 1 of #600). G14's quote the word.
+QUOTING = frozenset({"G6"})
+#: How the report names the option that lists every place, on the command line and on the
+#: web page, which shows the same text.
+DETAILS = "--details (the second box on the web page)"
 
 
 def _n(count: int, one: str, many: str | None = None) -> str:
@@ -125,23 +137,38 @@ def _small_cells(report) -> str:
 
 
 def _words(report) -> str:
-    notes = [run.note for run in report.gates if run.note]
+    """G6's and G14's findings counted, and each paper they did not run on said: one
+    unread paper beside another's findings is not a paper checked (round 1 of #600)."""
+    unread = [run for run in report.gates if run.note]
     found = [finding for run in report.gates for finding in (*run.writing, *run.language)]
-    if not found:
-        return notes[0] if notes else "nothing reported"
-    return (f"{_n(len(found), 'finding')} to look at, in {_n(len(kinds_of(found)), 'kind')} "
-            "(not counted by --strict)")
+    said = (f"{_n(len(found), 'finding')} to look at, in {_n(len(kinds_of(found)), 'kind')} "
+            "(not counted by --strict)" if found else "")  # fmt: skip
+    if unread:
+        names = ", ".join(run.paper.name for run in unread)
+        said += ("; " if said else "") + f"not run on {names}: see below"
+    return said or "nothing reported"
 
 
 def _references(report) -> str:
+    """The reference lists counted: the entries of those told apart, the identifiers of
+    those whose entries were not, and a paper in which no list was read, each as it is
+    (round 1 of #600: one list not told apart stood for all, and PMIDs went unsaid)."""
     from manuscript_guard.auditing.references import UNTOLD
 
-    entries = sum(len(census.entries) for census in report.references
-                  if census.style != UNTOLD)  # fmt: skip
-    dois = sum(census.dois for census in report.references)
-    said = f"{_n(entries, 'entry', 'entries')} read, {dois} with a DOI"
-    if any(census.style == UNTOLD for census in report.references):
-        said = f"{_n(dois, 'DOI')} read, {UNTOLD}"
+    told = [census for census in report.references if not census.note and census.style != UNTOLD]
+    untold = [census for census in report.references if census.style == UNTOLD]
+    parts = []
+    if told:
+        parts.append(f"{_n(sum(len(c.entries) for c in told), 'entry', 'entries')} read, "
+                     f"{sum(c.dois for c in told)} with a DOI")  # fmt: skip
+    if untold:
+        parts.append(f"{_n(sum(c.dois for c in untold), 'DOI')} and "
+                     f"{_n(sum(c.pmids for c in untold), 'PMID')} read in a list whose "
+                     "entries were not told apart")  # fmt: skip
+    noted = [census for census in report.references if census.note]
+    if noted:
+        parts.append(f"{_n(len(noted), 'paper')} with no list read: see below")
+    said = "; ".join(parts) or "no reference list read"
     if report.lookups is None:
         return said + "; none looked up in the registries (--lookup)"
     return said + f"; {_n(len(report.lookups), 'work')} looked up"

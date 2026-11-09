@@ -85,11 +85,16 @@ _NUMERIC = re.compile(r"[0-9a-fA-FxX.]+")
 #: A link's authority, as `urllib` takes it: what follows `//` up to the path, query or
 #: fragment.
 _AUTHORITY = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:(?://([^/?#]*))?")
-#: What an authority may not hold: a percent escape, a user's name before `@`, a backslash,
-#: a space or a control character. `urllib` reads each otherwise than `urlsplit`, which the
-#: check reads: it decodes `%31%32%37.0.0.1` to 127.0.0.1 and asks that, through a proxy
-#: `no_proxy` leaves it out of, or of the proxy (review of #595).
-_UNREAD = re.compile(r"[%@\\\s\x00-\x1f\x7f]")
+#: What an authority may not hold: a percent escape, a user's name before `@`, a backslash.
+#: `urllib` reads each otherwise than `urlsplit`, which the check reads: it decodes
+#: `%31%32%37.0.0.1` to 127.0.0.1 and asks that, through a proxy `no_proxy` leaves it out
+#: of, or of the proxy (review of #595).
+_UNREAD = re.compile(r"[%@\\]")
+#: What no link may hold anywhere: a space or a control character. `urlsplit` strips them
+#: from its ends and drops a tab or a line break inside, where `urllib` keeps them, so the
+#: two would read another link (round 2 of the review of #595); `http.client` refuses them
+#: in a request in any case.
+_UNSPACED = re.compile(r"[\s\x00-\x1f\x7f]")
 #: 6to4, which carries an IPv4 address and which some Pythons count as global.
 _SIX_TO_FOUR = ipaddress.ip_network("2002::/16")
 #: Where a proxy tool in fake-IP mode (Clash, sing-box) answers every name from.
@@ -113,8 +118,11 @@ class Fetched:
 
 
 def _parts(url: str):
-    """The URL's parts and its host, or None where it cannot be read as a URL, or where its
-    authority holds what `urllib` reads otherwise than `urlsplit` (`_UNREAD`)."""
+    """The URL's parts and its host, or None where it cannot be read as a URL, or where it or
+    its authority holds what `urllib` reads otherwise than `urlsplit` (`_UNSPACED`,
+    `_UNREAD`)."""
+    if _UNSPACED.search(url):
+        return None
     authority = _AUTHORITY.match(url)
     if authority and _UNREAD.search(authority.group(1) or ""):
         return None

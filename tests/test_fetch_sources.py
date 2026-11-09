@@ -1016,6 +1016,8 @@ def test_a_name_is_left_to_the_proxy_the_environment_names(monkeypatch) -> None:
     "https://%31%32%37.0.0.1:23119/x.pdf", "https://journal%2eexample/x.pdf",
     "https://127.0.0.1@journal.example/x.pdf", "https://journal.example\\@127.0.0.1/x.pdf",
     "https://[2002:7f00:1::]/x.pdf", "https://[2002:808:808::]/x.pdf", "https://127.0.0.1./x.pdf",
+    " https://%31%32%37.0.0.1:23119/x.pdf", "https:/\t/%31%32%37.0.0.1/x.pdf",
+    "\x01https://%31%32%37.0.0.1/x.pdf", "https://journal.example/a b.pdf",
 ])  # fmt: skip
 def test_a_host_urllib_reads_otherwise_than_the_check_is_refused(url: str) -> None:
     """`urllib` decodes a percent escape in the host, which the check read as a name, and

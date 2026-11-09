@@ -68,13 +68,13 @@ _A_DOI = re.compile(r"(?i)^(?:doi:\s*|https?://(?:dx\.)?doi\.org/)?(10\.\d{4,9}/
 #: A DOI printed on a page.
 _PAGE_DOI = re.compile(r"10\.\d{4,9}/[^\s\"<>\]\[]+")
 _LATEX = re.compile(r"\\[A-Za-z]+\s*")
+#: An apostrophe, straight or as pdftotext prints a typeset one (review of #595: "Author’s
+#: reply" was filed as the work).
+_APOSTROPHE = "['" + chr(0x2019) + "]"
 #: The heads of a document about a work rather than the work, each with what it is called;
 #: their words as far apart as `pdftotext -layout` sets them. "Supplement Article" is the
 #: label Clin Infect Dis and J Infect Dis set over each article of a supplement issue, the
 #: article itself, which was refused as a supplement (round 2 of #565).
-#: An apostrophe, straight or as pdftotext prints a typeset one (review of #595: "Author’s
-#: reply" was filed as the work).
-_APOSTROPHE = "['" + chr(0x2019) + "]"
 _KINDS = (
     (re.compile(r"(?i)^\W*(?:supplement(?:ary|al)\b|supplement\b(?!\s+articles?\b)"
                 r"|supporting\s+information\b)"), "a supplement"),

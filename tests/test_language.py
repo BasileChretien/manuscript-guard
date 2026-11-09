@@ -1282,6 +1282,7 @@ def test_what_a_bold_label_cannot_tell_apart(project: Path) -> None:
         return sorted(f.message.split()[0] for f in report.findings)
 
     assert reported("**Funding** this study was funded by the NIHR.") == ["NIHR"]
+    assert reported("**Funding:** this study was funded by the NIHR.") == []
     assert reported("**Funding** of the NHS fell.") == ["NHS"]
     assert reported("**Funding**\nof the NHS fell.") == []
     table = "{}   Count\n------------------   -----\nNIHR                 3\n"

@@ -22013,12 +22013,13 @@ Open, recorded as each change landed:
     "Funding of primary care", is quiet too. So is a paragraph that opens with a
     statement's name in bold, and the one under such a label standing alone
     (`gates.language._run_in_statements`), where the label is told from a sentence's first
-    words by what follows it on its line. A small letter there makes it a sentence, so
-    "**Funding** this study was funded by the NIHR" reports `NIHR`; a bold word that goes on
-    into its sentence across a line break, "**Funding**" and "of the NHS fell" on the next
-    line, is still a label, and `NHS` is not reported. And a simple table whose first
-    header cell names a statement, "**Funding source**   Count" over its rule, is read as
-    one, so the abbreviations in its cells are not reported.
+    words by what follows it on its line, unless the label ends in a colon or a stop. A
+    small letter there makes it a sentence, so "**Funding** this study was funded by the
+    NIHR" reports `NIHR`, where "**Funding:** this study ..." does not; a bold word that
+    goes on into its sentence across a line break, "**Funding**" and "of the NHS fell" on
+    the next line, is still a label, and `NHS` is not reported. And a simple table whose
+    first header cell names a statement, "**Funding source**   Count" over its rule, is
+    read as one, so the abbreviations in its cells are not reported.
     Pinned by `tests/test_language.py::test_what_a_bold_label_cannot_tell_apart`.
   - There is no cap on the number of findings: a manuscript that defines one abbreviation a
     thousand times gets a thousand warnings. Making them is linear in the manuscript.

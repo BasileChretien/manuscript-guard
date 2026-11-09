@@ -1,5 +1,6 @@
 """Pandoc attribute blocks at the end of a heading, `# References {-}` or
-`## Results {#sec-results}`, which pandoc reads and does not print.
+`## Results {#sec-results}`, which pandoc reads and does not print; and pandoc's spans,
+`[References]{.underline}`, whose brackets and block it does not print either.
 
 Shared by the heading walk in `text/blocks.py`, which titles every heading without its
 block, and the audit, which reads a heading line the same way.
@@ -74,6 +75,11 @@ def strip_attributes(text: str) -> str:
     Only spaces and tabs may follow the block, and only they are taken off what precedes it.
     `rstrip()` takes every Unicode space, and `# References {-}` with a no-break space after
     it, which pandoc prints braces and all, lost its block.
+
+    A block straight after a closing bracket is a span's, `# [References]{.underline}`,
+    which is how pandoc writes a Word heading that is also underlined: pandoc prints
+    "References", underlined, and the heading keeps its block. Taken off, the title was
+    "[References]", which no reader knew for the reference list (`without_spans`).
     """
     body = text.rstrip(" \t")
     if not body.endswith("}"):
@@ -87,6 +93,8 @@ def strip_attributes(text: str) -> str:
         if not escaped:
             break
         opening = before
+    if opening and body[opening - 1] == "]" and not _escaped(body, opening - 1)[0]:
+        return text
     inner, position = body[opening + 1 : -1], 0
     while True:
         while position < len(inner) and inner[position] in " \t":
@@ -102,4 +110,39 @@ def strip_attributes(text: str) -> str:
         position = item.end()
 
 
-__all__ = ["strip_attributes"]
+#: A pandoc span with no bracket inside it: `[References]{.underline}`. Neither bracket is
+#: escaped; `\[References\]{.underline}` prints as it stands. The block holds no brace and
+#: no line break, and `strip_attributes` says whether it is one.
+_SPAN = re.compile(r"(?<!\\)\[(?P<words>[^\[\]\n]*)(?<!\\)\](?P<block>\{[^{}\n]*\})")
+#: How deep spans are taken off: pandoc writes one for each of underline, small capitals,
+#: highlighting and a Word character style, `**[[References]{.smallcaps}]{.underline}**`.
+_NESTED = 4
+
+
+def without_spans(text: str) -> str:
+    """`text` with each pandoc span in it written as its words, as pandoc prints it.
+
+    Pandoc writes an underlined Word title as `**[References]{.underline}**`, a highlighted
+    one as `[...]{.mark}`, one in small capitals as `[...]{.smallcaps}`. Read with the
+    brackets, none was a title: a paper whose headings were underlined had its reference
+    list read as prose by G14, and its Results, Methods and statements went unread by every
+    gate that knows a section by its name. A bracket followed by something other than an
+    attribute block is text, `[References]{see below}` and a link included. Spans are taken
+    off from the innermost out, `_NESTED` deep, and each pass is one scan of `text`."""
+    for _depth in range(_NESTED):
+        if "]{" not in text:
+            return text
+        written = _SPAN.sub(_words_of, text)
+        if written == text:
+            return text
+        text = written
+    return text
+
+
+def _words_of(span: re.Match[str]) -> str:
+    """A span's words where its block is an attribute block, else the span as it stands."""
+    block = span.group("block")
+    return span.group("words") if strip_attributes(f"x{block}") == "x" else span.group(0)
+
+
+__all__ = ["strip_attributes", "without_spans"]

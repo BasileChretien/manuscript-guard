@@ -27635,7 +27635,9 @@ _LISTED = (
 
 @pytest.mark.parametrize(
     "line", ["**References**", "**References:**", "References", "__Bibliography__",
-             "6\\. References"]  # fmt: skip
+             "6\\. References", "**[References]{.underline}**", "[References]{.smallcaps}",
+             "**[[References]{.mark}]{.underline}**", "[**References**]{.underline}",
+             "# [References]{.underline}"]  # fmt: skip
 )
 def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
     project: Path, line: str
@@ -27645,7 +27647,11 @@ def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
     "PLoS", "BMC" and the authors' initials taken for abbreviations; the word count and the
     comparison with an earlier paper took it for the Discussion. Under `# References` none
     of it is read, and the audit already took the bold line for the list's start. The text
-    under the next heading is read again: a slip there is still caught."""
+    under the next heading is read again: a slip there is still caught.
+
+    A title that is also underlined, highlighted or in small capitals is one too: pandoc
+    writes it in a span, `**[References]{.underline}**`, a heading's as well, and the list
+    under each was read as prose."""
     from manuscript_guard.gates.recycling import recycled_in
     from manuscript_guard.text.sections import measure
 
@@ -27669,6 +27675,32 @@ def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
             "British English",
         )
     ]
+
+
+@pytest.mark.parametrize(
+    ("title", "printed"),
+    [("[Results]{.underline}", "Results"), ("**[Results]{.underline}**", "Results"),
+     ("[[Results]{.smallcaps}]{.mark}", "Results"), ('[Results]{custom-style="Strong"}', "Results"),
+     ("[Results]{.underline} {#sec-results}", "Results"),
+     ("[Results]{see below}", None), ("\\[Results\\]{.underline}", None)],
+)  # fmt: skip
+def test_a_heading_in_a_span_is_named_as_pandoc_prints_it(
+    title: str, printed: str | None
+) -> None:
+    """Pandoc writes a Word heading that is also underlined, highlighted or in small capitals
+    with a span around its words, `# [Results]{.underline}`, and prints "Results". The
+    heading walk took the span's block for the heading's and titled it "[Results]", which
+    named no section: its Results were not the Results, nor its References the list.
+    Brackets before something that is no attribute block, or escaped, print as text."""
+    from manuscript_guard.text.attributes import strip_attributes
+    from manuscript_guard.text.section_names import names_results, plain
+    from manuscript_guard.text.sections import split_sections
+
+    (section,) = split_sections(f"# {title}\n\nThe ROR was 2.1.\n")
+    assert names_results(section.title) == (printed is not None), section.title
+    if printed is not None:
+        assert plain(section.title) == printed
+        assert strip_attributes("# [Results]{.underline}") == "# [Results]{.underline}"
 
 
 def _declaring_no_english(root: Path) -> None:

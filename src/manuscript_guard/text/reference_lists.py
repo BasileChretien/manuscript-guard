@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from bisect import bisect_right
 
-from manuscript_guard.text.attributes import strip_attributes
+from manuscript_guard.text.attributes import strip_attributes, without_spans
 from manuscript_guard.text.blocks import find_headings, heading_shaped, scannable
 from manuscript_guard.text.section_names import REFERENCE_WORDS_ELSEWHERE, STATEMENT_NAMES
 
@@ -79,7 +79,16 @@ def is_bibliography_heading(
     An unmarked line starting with `#` is not one at all. `#` opens a comment in R, Python
     and YAML, and `# References` in a code listing cut everything after it; where `#` does
     make a heading, the document has marked it.
+
+    In Markdown a span is read as pandoc prints it, its words alone (`without_spans`).
+    Pandoc writes a Word title that is bold and underlined as
+    `**[References]{.underline}**`, and read with its brackets the line was no title: the
+    audit cut the list from the .docx, whose text holds no brackets, and G14 read the list
+    of the same paper as prose, its authors' initials and the journals in capitals reported
+    as abbreviations. A .docx's text is read as it stands.
     """
+    if markdown:
+        line = without_spans(line)
     text = line.strip()
     if marked:
         text = strip_attributes(line.lstrip().rstrip(" \t"))
@@ -237,7 +246,8 @@ def _ends_a_list(lines: list[str], number: int) -> bool:
         len(paragraph) > 1 and _TABLE_RULE.fullmatch(paragraph[1])
     ):
         return True
-    joined = " ".join(line.strip() for line in paragraph)
+    # A title in a span, `[Acknowledgements]{.underline}`, is read as pandoc prints it.
+    joined = without_spans(" ".join(line.strip() for line in paragraph))
     if _BOLD.fullmatch(joined):
         return True
     return (

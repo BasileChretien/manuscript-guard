@@ -25,6 +25,7 @@ from pathlib import Path
 
 import yaml
 
+from manuscript_guard.text.attributes import without_spans
 from manuscript_guard.text.blocks import Unprinted, read_blocks
 from manuscript_guard.text.masking import comparison_escapes
 from manuscript_guard.text.tokens import Atom
@@ -422,11 +423,14 @@ _RAW = re.compile(r"<!--.*?(?:-->|$)|</?[A-Za-z][^<>\n]*>|\\[A-Za-z]+\*?(?:\{[^{
 
 def _unmarked(title: str) -> str:
     """A heading's title without the marks it may keep: leading hashes, quote and list
-    marks, emphasis around it (`**Results**`), trailing attributes, and raw HTML or TeX,
-    which a reader of the built document does not see (`# <del>Results</del>`).
+    marks, emphasis around it (`**Results**`), trailing attributes, a span's brackets and
+    block (`[Results]{.underline}`), and raw HTML or TeX, which a reader of the built
+    document does not see (`# <del>Results</del>`).
 
-    The attribute block goes first. Stripped after raw markup, an unclosed `<!--` in
+    The spans go first, and the attribute block next. A span's block taken for the
+    heading's left "[Results]". Stripped after raw markup, an unclosed `<!--` in
     `{title="<!--"}` took the `}` with it, and "Results" was no longer read."""
+    title = without_spans(title)
     return _without_emphasis_end(_MARKS.sub("", _RAW.sub("", _without_attributes(title))))
 
 

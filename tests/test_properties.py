@@ -8870,7 +8870,9 @@ def test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends(
     a list's start is passed over by every gate that passes a list over, to the next heading,
     bold title, caption, table or line shaped like a heading, and no further; a sentence, a
     full stop, small letters, a hard wrap that left the word alone in a paragraph and an item
-    of a list start none (`reference_lists`)."""
+    of a list start none (`reference_lists`). A line or a back-matter title in a span,
+    `**[References]{.underline}**`, is read as pandoc prints it; brackets that are no span
+    are text."""
     listed, passed = drawn
     assert _passed_over(listed) == _passed_over(passed), listed
 
@@ -8890,6 +8892,33 @@ def _a_list_runs_on_to_the_next_heading(patch: pytest.MonkeyPatch) -> None:
 
 def _a_heading_printed_as_text_ends_no_list(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reference_lists_module, "heading_shaped", lambda lines: set())
+
+
+def _a_line_is_read_with_its_spans(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "without_spans", lambda text: text)
+
+
+def _a_title_is_read_with_its_spans(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    patch.setattr(classify, "without_spans", lambda text: text)
+
+
+def _a_span_s_block_is_the_heading_s(patch: pytest.MonkeyPatch) -> None:
+    """The heading walk takes the block after a span's bracket for the heading's own, as it
+    did: "[References]{.underline}" titled "[References]"."""
+    from manuscript_guard.text import blocks
+
+    real = blocks.strip_attributes
+
+    def stripped(text: str) -> str:
+        body = text.rstrip(" \t")
+        at = body.rfind("]{")
+        if at < 0 or not body.endswith("}"):
+            return real(text)
+        return real(body[: at + 1] + " " + body[at + 1 :])
+
+    patch.setattr(blocks, "strip_attributes", stripped)
 
 
 def _an_item_of_a_list_opens_one(patch: pytest.MonkeyPatch) -> None:
@@ -9649,7 +9678,9 @@ def test_a_reference_list_is_known_by_its_title_in_each_language(
     """A paper in Turkish titles its reference list "Kaynakça", and the audit, G4's count of
     the main text and the recycling check read the list under it as prose. Each knows the
     list by its title in the languages `text.section_names` names, in any case, and none
-    takes a title that only opens with such a word for one."""
+    takes a title that only opens with such a word for one. A title in the span pandoc
+    writes for an underlined Word heading, `# [References]{.underline}`, is read as pandoc
+    prints it, its words alone."""
     from manuscript_guard.audit import is_bibliography_heading
     from manuscript_guard.gates.recycling import SET_APART, _kind_of
     from manuscript_guard.text.sections import split_sections
@@ -17914,6 +17945,18 @@ BROKEN = {
     "an item of a list opens a reference list": (
         _an_item_of_a_list_opens_one,
         test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a line under no heading is read with its spans": (
+        _a_line_is_read_with_its_spans,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a heading's title is read with its spans": (
+        _a_title_is_read_with_its_spans,
+        test_a_reference_list_is_known_by_its_title_in_each_language,
+    ),
+    "a span's block is taken for the heading's": (
+        _a_span_s_block_is_the_heading_s,
+        test_a_reference_list_is_known_by_its_title_in_each_language,
     ),
     "an e-mail address in brackets is a citation": (
         _an_address_in_brackets_is_a_citation,

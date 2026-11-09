@@ -874,9 +874,12 @@ GLOSSARY_USES = "# Methods\n\nThe ROR, the PRR, the IC, the EBGM and the SDR wer
 
 @pytest.mark.parametrize(
     "heading", ["Abbreviations", "List of abbreviations", "GLOSSARY", "Acronyms",
-                "List of Acronyms", "Abbreviations:"],
+                "List of Acronyms", "Abbreviations:", "[Abbreviations]{.underline}",
+                "[[List of abbreviations]{.smallcaps}]{.mark}"],
 )  # fmt: skip
 def test_a_glossary_defines_its_entries(project: Path, heading: str) -> None:
+    """A glossary's title is read as pandoc prints it, a span's words alone: pandoc writes
+    an underlined Word heading as `# [Abbreviations]{.underline}`."""
     report = written(
         project,
         f"# {heading}\n\nROR = reporting odds ratio\nPRR: proportional reporting ratio\n\n"

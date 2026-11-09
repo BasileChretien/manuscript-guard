@@ -18763,8 +18763,11 @@ Open, recorded as each change landed:
   named under "Not audited".
 - **A reference list under a line that is no heading ends where its shape does, and only a
   paragraph opens one.** `check` passes over a list under `**References**`,
-  `**References:**` or "References" alone on a line, as the audit does
-  (`text/reference_lists.py`): G14, the word count and the comparison with earlier papers.
+  `**References:**` or "References" alone on a line, in the span pandoc writes for a title
+  that is also underlined, highlighted or in small capitals (`**[References]{.underline}**`)
+  or not, as the audit does (`text/reference_lists.py`): G14, the word count and the
+  comparison with earlier papers. Brackets before braces that hold no attributes,
+  `[References]{see below}`, or escaped, are text, and open no list.
   The list ends at the next heading of any level, at a line shaped like a heading that
   pandoc prints as text, at a paragraph all in bold or opening with a bold label
   ("**Funding:** ..."), at a back-matter title alone on its line (a statement's, as G7's
@@ -24176,6 +24179,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
     says so among what G4 did not check.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A title in a span named nothing (2026-11-09).** Pandoc writes a Word title that is also
+  underlined, highlighted or in small capitals with a span around its words,
+  `**[References]{.underline}**` or `# [Results]{.underline}`, and prints the words alone.
+  The heading walk took the span's block for the heading's and titled it "[Results]", and
+  the reference list's rule read the brackets: so the audit cut a .docx's reference list,
+  whose text holds no brackets, while G14 read the list of the same paper as prose, and on
+  one paper with underlined bold titles 41 of its 100 warnings were the authors' initials
+  and journals in capitals. A span's words are its title now (`text.attributes.without_spans`)
+  wherever a section is known by its name, a glossary's and the reference list's included.
 
 - **The audit did not count text a style hides (2026-11-07).** It counted as hidden only a
   run whose own properties hide it, so text set in a character or paragraph style that

@@ -9,6 +9,7 @@ a claim, so each is compared here with the thing it is a claim about.
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib
 import importlib.util
 import pkgutil
@@ -481,6 +482,135 @@ def test_the_readme_quotes_what_check_says_of_an_edited_results_file(
             continue
         at += 1
         assert printed[at] == line, f"after the line before it, check prints: {printed[at]}"
+
+
+# ---------------------------------------------------------------------------- Known gaps
+
+DESIGN = REPO / "DESIGN.md"
+#: An entry of DESIGN.md's Known gaps below this line is closed.
+CLOSED_SINCE = "Closed since, and why each mattered (an open gap goes above this line):"
+#: The tag of a limit a test holds: the tests' names in backticks, "`a`, `b` and `c`".
+PINNED = re.compile(r"Pinned by ((?:`[^`]+`(?:, | and )?)+)\.")
+CODE_SPAN = re.compile(r"`([^`]+)`")
+
+
+def open_gaps(text: str) -> str:
+    """The lines of the lists of DESIGN.md's Known gaps, down to the "Closed since" line."""
+    start = text.index("\n## Known gaps\n")
+    end = text.index(f"\n{CLOSED_SINCE}\n", start)
+    lines = text[start:end].splitlines()
+    return "\n".join(line for line in lines if line.startswith(("- ", " ")))
+
+
+def pins_of(gaps: str) -> tuple[list[str], list[str]]:
+    """The tests each `Pinned by` names, in order, and each `Pinned by` that names none in
+    backticks. A tag may break across lines, so the lines are read as one."""
+    flat = " ".join(gaps.split())
+    names, garbled = [], []
+    for at in re.finditer(r"\bPinned by\b", flat):
+        pin = PINNED.match(flat, at.start())
+        if pin is None:
+            garbled.append(re.match(r"[^.]*\.?", flat[at.start():]).group(0))
+        else:
+            names.extend(CODE_SPAN.findall(pin.group(1)))
+    return names, garbled
+
+
+def defined_in(path: Path) -> set[str]:
+    """The tests pytest collects from a file, by the name it gives each after `::`: a
+    function whose name starts `test`, and such a method of a class whose name starts `Test`
+    (pytest's defaults, which pyproject.toml keeps). A helper is no test. Not read as pytest
+    reads them: a class inside a class, a `Test` class with an `__init__`, and a
+    `unittest.TestCase` named otherwise. No pin names any of these."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    functions = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+    def tests(body: list[ast.stmt]) -> set[str]:
+        return {f.name for f in body if isinstance(f, functions) and f.name.startswith("test")}
+
+    names = tests(tree.body)
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
+            names |= {f"{node.name}::{name}" for name in tests(node.body)}
+    return names
+
+
+def unfound(names: list[str], repo: Path) -> list[str]:
+    """Each name that is not a test there is: a file under `tests/` that pytest reads
+    (`test_*.py` or `*_test.py`), `::`, and a test of it, less a parametrised case's
+    `[...]`."""
+    known: dict[Path, set[str]] = {}
+    missing = []
+    for name in names:
+        path, _, test = name.partition("::")
+        file = repo / path
+        collected = re.fullmatch(r"test_\w*\.py|\w*_test\.py", Path(path).name)
+        if path.startswith("tests/") and collected and file.is_file():
+            if file not in known:
+                known[file] = defined_in(file)
+            if re.sub(r"\[.*\]$", "", test) in known[file]:
+                continue
+        missing.append(name)
+    return missing
+
+
+def test_the_open_gaps_are_the_lists_above_the_closed_line() -> None:
+    """A paragraph between the lists says what a group is, and is no entry; what stands
+    below the "Closed since" line is closed."""
+    text = (
+        "# D\n\n## Known gaps\n\nRecorded because. Pinned by `tests/x.py::test_x`.\n\n"
+        "- **Open.** Pinned by `tests/a.py::test_a`.\n  more\n\nA group.\n\n"
+        f"- **Also open.**\n\n{CLOSED_SINCE}\n\n- **Closed.** Pinned by `tests/b.py::test_b`.\n"
+    )
+    assert open_gaps(text) == (
+        "- **Open.** Pinned by `tests/a.py::test_a`.\n  more\n- **Also open.**"
+    )
+
+
+def test_a_pin_is_found_only_where_it_names_a_test_there_is(tmp_path: Path) -> None:
+    """A name with a typo, a file that is not there, a name with no path, a function or a
+    class pytest does not collect, and a pin with no backticks are each told apart from a
+    test that is there, a class's or one case of a parametrised test among them, wherever
+    the lines of an entry break."""
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_a.py").write_text(
+        "def test_here():\n    pass\n\n\nclass TestGroup:\n    def test_in_it(self):\n"
+        "        pass\n\n    def helper(self):\n        pass\n\n\ndef helper():\n    pass\n\n\n"
+        "class Group:\n    def test_in_it(self):\n        pass\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "tests" / "helper.py").write_text("def test_here():\n    pass\n", "utf-8")
+    gaps = (
+        "- **One.** Text. Pinned by `tests/test_a.py::test_here`.\n"
+        "  - Two. Pinned by `tests/test_a.py::test_here` and\n"
+        "    `tests/test_a.py::test_hare`.\n"
+        "  - Three. Pinned by `tests/test_a.py::TestGroup::test_in_it`,\n"
+        "    `tests/test_b.py::test_here` and `tests/test_a.py::test_here[a case]`.\n"
+        "- **Four.** Pinned by `test_a.py::test_here`.\n"
+        "- **Five.** Pinned by test_here.\n"
+        "- **Six.** Pinned by `tests/test_a.py::helper`, `tests/test_a.py::TestGroup::helper`\n"
+        "  and `tests/test_a.py::Group::test_in_it`.\n"
+        "- **Seven.** Pinned by `tests/helper.py::test_here`.\n"
+    )
+    names, garbled = pins_of(gaps)
+    assert garbled == ["Pinned by test_here."]
+    assert unfound(names, tmp_path) == [
+        "tests/test_a.py::test_hare", "tests/test_b.py::test_here", "test_a.py::test_here",
+        "tests/test_a.py::helper", "tests/test_a.py::TestGroup::helper",
+        "tests/test_a.py::Group::test_in_it", "tests/helper.py::test_here",
+    ]  # fmt: skip
+
+
+def test_every_test_a_known_gap_is_pinned_by_is_there() -> None:
+    """An open entry of DESIGN.md's Known gaps, or a point under one, that a test holds ends
+    in `Pinned by` and the names of the tests that hold the limit as it is written. A test
+    renamed or deleted would leave the entry trusted on the word of a test that no longer
+    runs. That every entry ends in this or in `Accepted.` is not held yet: the triage of
+    2026-11-09 tags them a group at a time."""
+    names, garbled = pins_of(open_gaps(text_of(DESIGN)))
+    assert garbled == [], "a Pinned by names its tests in backticks, path::name"
+    assert names, "no open entry names a test: has the form of the tag changed?"
+    assert unfound(names, REPO) == []
 
 
 # ------------------------------------------------------------------------------ citation

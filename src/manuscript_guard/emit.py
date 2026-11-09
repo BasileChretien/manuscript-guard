@@ -2182,6 +2182,9 @@ class Emitter:
         named = []
         for path in inputs or ():
             recorded = self._input_path(path)
+            if recorded in {seen for _given, seen in named}:
+                # One file named twice, or spelt two ways, is one input (round 2 of #599).
+                continue
             owner = self._control_inputs.get(recorded)
             if owner is not None or recorded in self._recorded:
                 raise DisplayError(
@@ -2454,7 +2457,9 @@ class Emitter:
         if recorded not in self._recorded:
             self._recorded.add(recorded)
             self.inputs.append(path)
-        elif recorded in self._control_inputs and not synthetic:
+        elif recorded in self._control_inputs:
+            # Declared synthetic again, it kept the control's mark, and G1 read the run's own
+            # data as the control's (round 1 of the PR).
             raise DisplayError(f"{recorded} is control {self._control_inputs[recorded]}'s data; "
                                "a control's inputs are its own, read by nothing else in the "
                                "run")  # fmt: skip

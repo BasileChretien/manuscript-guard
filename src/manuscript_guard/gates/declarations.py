@@ -49,6 +49,14 @@ _CONTROL_NEEDS = ("key", "kind", "of", "expected", "rule")
 _HELD_OUT_KEYS = {"input", "validated_by", "model", "read_by"}
 _HELD_OUT_NEEDS = ("input", "validated_by")
 _SECTIONS = ("controls", "held_out")
+#: The languages a block that declares is fenced as: `yaml`, and `yml`, which is the same
+#: and which a block typed with it would otherwise be passed over in silence (round 1).
+_YAML = frozenset({"yaml", "yml"})
+#: What building a field's value may raise: the safe loader's constructors raise a
+#: ConstructorError, a ValueError, a KeyError (`!!bool maybe`), an AttributeError
+#: (`!!timestamp soon`), an IndexError (`!!int ''`) or an OverflowError, by the tag and the
+#: value, so any of them is a value that does not read (round 2 of #599).
+_UNBUILT: tuple[type[Exception], ...] = (Exception,)
 #: A line that opens with either key: what says a block that is not YAML meant to declare.
 _DECLARING = re.compile(r"(?m)^[ \t]*[\"']?(?:controls|held_out)[\"']?[ \t]*:")
 
@@ -128,7 +136,7 @@ def _blocks(text: str) -> list[_Block]:
     comments = html_comments(text, fenced_blocks(text))
     found = []
     for fence in fenced_spans(text, front_matter_end(text)):
-        if fence.language != "yaml" or any(a <= fence.start < b for a, b in comments):
+        if fence.language not in _YAML or any(a <= fence.start < b for a, b in comments):
             continue
         first = text.count("\n", 0, fence.body_start) + 1
         body = text[fence.body_start : fence.body_end]
@@ -186,9 +194,9 @@ def read_declarations(text: str) -> Declarations:
     controls: list[Control] = []
     held_out: list[HeldOut] = []
     unreadable: list[Unreadable] = []
-    seen: dict[str, int] = {}
+    seen: dict[str, tuple[int, int]] = {}
     blocks = _blocks(text)
-    for block in blocks:
+    for number, block in enumerate(blocks):
         if block.root is None:
             unreadable.append(block.error or Unreadable(block.first, "the block is not YAML"))
             continue
@@ -198,14 +206,18 @@ def read_declarations(text: str) -> Declarations:
         for name, value in sections:
             at = first + name.start_mark.line
             if name.value in seen:
-                unreadable.append(Unreadable(at, f"{name.value} is declared in another block "
-                                             f"too, at line {seen[name.value]}; one block "
-                                             "holds each"))  # fmt: skip
+                before, where = seen[name.value]
+                said = (f"{name.value} is given twice in the block, at line {before} too; the "
+                        "first is read and this one is not" if where == number
+                        else f"{name.value} is declared in another block too, at line {before}; "
+                        "one block holds each")  # fmt: skip
+                unreadable.append(Unreadable(at, said))
                 continue
-            seen[name.value] = at
             if not isinstance(value, yaml.SequenceNode):
                 unreadable.append(Unreadable(at, f"{name.value} is not a list of entries"))
                 continue
+            # Only a section that is read is the first: one refused leaves the next to be read.
+            seen[name.value] = (at, number)
             for item in value.value:
                 line = first + item.start_mark.line
                 read = _control(item, line) if name.value == "controls" else _held_out(item, line)
@@ -241,7 +253,14 @@ def _fields(
         if said in fields:
             return Unreadable(at, f"{said} is given twice; YAML reads the second and drops the "
                                   "first")  # fmt: skip
-        fields[said] = _value(value)
+        try:
+            fields[said] = _value(value)
+        except _UNBUILT as exc:
+            # A tag the safe loader has none for, a value its tag refuses, a date that is no
+            # day: said, where raised it stopped G12 whole (rounds 1 and 2 of #599).
+            shown = str(exc).splitlines()[0] if isinstance(exc, yaml.YAMLError) else (
+                f"{value.tag} does not take {getattr(value, 'value', '')!r}")  # fmt: skip
+            return Unreadable(at, f"{said} is not a value YAML can read: {shown}")
     missing = [need for need in needs if need not in fields]
     if missing:
         return Unreadable(line, f"the {what} gives no {' and no '.join(missing)}")
@@ -258,8 +277,13 @@ def _value(node: yaml.Node) -> object:
 
 
 def _number(value: object) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and \
-        math.isfinite(value)  # fmt: skip
+    """A finite number that is not true or false; an integer too large for a float is none."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except OverflowError:
+        return False
 
 
 def _control(node: yaml.Node, line: int) -> Control | Unreadable:

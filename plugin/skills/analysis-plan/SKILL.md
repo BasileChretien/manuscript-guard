@@ -147,7 +147,9 @@ negative control, an exposure or an outcome for which no effect is expected (Lip
 *Epidemiology* 2010;21:383-8). Choose them now: a control chosen once the results are known
 shows much less, and the plan's frozen copy says which it was.
 
-Declare each in a fenced `yaml` block anywhere in the plan, not under the Deviations:
+Declare each in a fenced `yaml` block anywhere in the plan, not under the Deviations. In a
+case-control plan, keep the word "control" out of the heading above it: G12 would read that
+heading as the plan's section on how the controls are selected.
 
 ```yaml
 controls:

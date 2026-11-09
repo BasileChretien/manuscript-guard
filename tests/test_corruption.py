@@ -25289,8 +25289,8 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     """One record a reviewer, no readers named: nothing about them changed. Rounds three to
-    eleven read revisions with the earlier rounds in front of them, so the eleventh
-    supersedes the ten before it and each says it was not blinded."""
+    twelve read revisions with the earlier rounds in front of them, so the twelfth
+    supersedes the eleven before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
@@ -25298,12 +25298,12 @@ def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
     superseded = [("review-superseded", f"round-{n}")
                   for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1),
-                                  (8, 1), (9, 1), (10, 1))
+                                  (8, 1), (9, 1), (10, 1), (11, 1))
                   for _ in range(many)]  # fmt: skip
     # Sorted as `said` is: "round-10" stands between "round-1" and "round-2".
-    assert said == sorted(superseded + [("round-not-blinded", "review")] * 9), report.render(
+    assert said == sorted(superseded + [("round-not-blinded", "review")] * 10), report.render(
         project)
-    assert report.counts["review_rounds_complete"] == 11
+    assert report.counts["review_rounds_complete"] == 12
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:
@@ -29715,8 +29715,9 @@ def _line_of(root: Path, text: str) -> int:
 def test_the_example_s_methods_point_at_steps_that_ran_and_were_read(project: Path) -> None:
     report = _methods_report(project)
     assert report.ok and not report.findings, report.render(project)
-    # Four steps, three texts: the estimate and its intervals share one paragraph.
-    assert (report.counts["method_steps"], report.counts["method_claims"]) == (4, 3)
+    # Five steps, four texts: the estimate and its intervals share one paragraph, and the
+    # controls have their own (item 5).
+    assert (report.counts["method_steps"], report.counts["method_claims"]) == (5, 4)
     assert report.counts["method_pairs_stale"] == 0
 
 

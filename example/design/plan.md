@@ -49,7 +49,7 @@ p < 0.05 is stated for convention; the interval, not the threshold, carries the 
 
 Seriousness (`serious`) is reported as a proportion of the cases, descriptively.
 
-## Control analyses
+## Known answers
 
 Three controls, each put through the same 2 x 2 table and Wald interval as the ratio, by the
 same script. They were added after the first results (Deviations, item 7).
@@ -133,7 +133,7 @@ deviation nobody wrote down is indistinguishable from having tried several thing
 6. The variables are named in backticks, as a data dictionary names them, so that G12 can
    hold a dictionary to this plan (2026-10-21): a change of wording, not of the analysis.
 7. Three controls were added on 2026-11-09, after the first results were known:
-   control.simulated, control.positive and control.negative (Control analyses). They were
+   control.simulated, control.positive and control.negative (Known answers). They were
    chosen by the generator's order, the first event it lists after hepatic injury and its
    first comparator, not by what their results would be; their rules were written before
    they were run. None of the planned results moved.

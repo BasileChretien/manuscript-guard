@@ -44,7 +44,7 @@ _KEY = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*")
 #: (`results.dose`), or a group (`ror.*`, `results.ror.*`).
 _OF = re.compile(r"(?:results\.)?([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*)(\.\*)?")
 
-_CONTROL_KEYS = {"key", "kind", "of", "expected", "rule", "distance"}
+_CONTROL_KEYS = {"key", "kind", "of", "expected", "rule", "distance", "null"}
 _CONTROL_NEEDS = ("key", "kind", "of", "expected", "rule")
 _HELD_OUT_KEYS = {"input", "validated_by", "model", "read_by"}
 _HELD_OUT_NEEDS = ("input", "validated_by")
@@ -73,10 +73,15 @@ class Control:
     rule: str
     distance: float | None
     line: int
+    #: The null its interval is to leave out where it expects an effect, its expected value
+    #: being another; None for `holds-null`, whose expected value is its null (Basile,
+    #: 2026-11-09, round 1 of PR 3).
+    null: float | None = None
 
     def said(self) -> tuple:
         """What the control is, without where it is written: what a frozen copy is held to."""
-        return (self.kind, self.of, self.group, self.expected, self.rule, self.distance)
+        return (self.kind, self.of, self.group, self.expected, self.rule, self.distance,
+                self.null)  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -191,8 +196,10 @@ def frozen_plan(project: Project) -> tuple[str | None, bool]:
     return record["plan"].removeprefix("﻿"), record.get("synthetic") is True
 
 
-def read_declarations(text: str) -> Declarations:
-    """The controls and the held-out inputs the plan's YAML blocks declare."""
+def read_declarations(text: str, *, null_asked: bool = True) -> Declarations:
+    """The controls and the held-out inputs the plan's YAML blocks declare. Without
+    `null_asked`, a control held to its expected value may give no `null`, as a frozen copy
+    written before one was asked for does (round 1 of PR 2c); one it gives is still read."""
     text = _lf(text)
     controls: list[Control] = []
     held_out: list[HeldOut] = []
@@ -224,7 +231,8 @@ def read_declarations(text: str) -> Declarations:
             seen[name.value] = (at, number)
             for item in value.value:
                 line = first + item.start_mark.line
-                read = _control(item, line) if name.value == "controls" else _held_out(item, line)
+                read = (_control(item, line, null_asked) if name.value == "controls"
+                        else _held_out(item, line))  # fmt: skip
                 if isinstance(read, Unreadable):
                     unreadable.append(read)
                     if name.value == "controls" and (given := _key_of(item)) is not None:
@@ -305,7 +313,7 @@ def _number(value: object) -> bool:
         return False
 
 
-def _control(node: yaml.Node, line: int) -> Control | Unreadable:
+def _control(node: yaml.Node, line: int, null_asked: bool = True) -> Control | Unreadable:
     fields = _fields(node, line, _CONTROL_KEYS, _CONTROL_NEEDS, "control")
     if isinstance(fields, Unreadable):
         return fields
@@ -337,8 +345,27 @@ def _control(node: yaml.Node, line: int) -> Control | Unreadable:
     if rule == HOLDS_NULL and expected not in NULLS:
         return Unreadable(line, f"{key}: a control that holds the null expects the null, 0 "
                                 f"or 1, not {expected!r}")  # fmt: skip
+    null = fields.get("null")
+    if (null_asked or null is not None) and (problem := _null_refused(key, rule, null)):
+        return Unreadable(line, problem)
     return Control(key, kind, written.group(1), bool(written.group(2)), float(expected), rule,
-                   None if distance is None else float(distance), line)  # fmt: skip
+                   None if distance is None else float(distance), line,
+                   None if null is None else float(null))  # fmt: skip
+
+
+def _null_refused(key: str, rule: str, null: object) -> str | None:
+    """Why a control's `null` does not read, or None. A control held to its expected value
+    names the null its interval is to leave out where it expects an effect, 0 or 1; one that
+    holds the null has its expected value for its null, and gives none (Basile, 2026-11-09,
+    round 1 of PR 3)."""
+    if rule == HOLDS_NULL:
+        return None if null is None else (f"{key}: a control that holds the null has its "
+                                          "expected value for its null, and gives no `null`")
+    if _number(null) and null in NULLS:
+        return None
+    return (f"{key}: a control held to its expected value names the null its interval is to "
+            "leave out where it expects an effect: `null: 1` for a ratio, `null: 0` for a "
+            "difference")
 
 
 #: What a control publishes under its key, as `Emitter.interval` names an estimate's parts.

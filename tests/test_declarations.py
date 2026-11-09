@@ -23,6 +23,7 @@ controls:
     of: ror.*
     expected: 1
     rule: holds-expected
+    null: 1
   - key: control.headache
     kind: negative
     of: results.ror.point
@@ -34,6 +35,7 @@ controls:
     expected: 3.2
     rule: within
     distance: 1.0
+    null: 1
 held_out:
   - input: ./data/validation.csv
     validated_by: analysis/03_validate.py
@@ -54,11 +56,11 @@ def _control(**fields: object) -> str:
 def test_each_part_of_the_form_is_read() -> None:
     read = read_declarations(GOOD)
     assert read.declared and not read.unreadable
-    assert [(c.key, c.kind, c.of, c.group, c.expected, c.rule, c.distance)
+    assert [(c.key, c.kind, c.of, c.group, c.expected, c.rule, c.distance, c.null)
             for c in read.controls] == [
-        ("control.shuffled", "simulated", "ror", True, 1.0, "holds-expected", None),
-        ("control.headache", "negative", "ror.point", False, 1.0, "holds-null", None),
-        ("control.bleeding", "positive", "ror.point", False, 3.2, "within", 1.0),
+        ("control.shuffled", "simulated", "ror", True, 1.0, "holds-expected", None, 1.0),
+        ("control.headache", "negative", "ror.point", False, 1.0, "holds-null", None, None),
+        ("control.bleeding", "positive", "ror.point", False, 3.2, "within", 1.0, 1.0),
     ]  # fmt: skip
     (held,) = read.held_out
     assert (held.input, held.validated_by, held.model, held.read_by) == (
@@ -87,9 +89,9 @@ def test_a_plan_with_no_block_declares_nothing() -> None:
         ({"expected": "true"}, "not a number"),
         ({"expected": "1e-3"}, "not a number"),
         ({"rule": "holds-null", "expected": 2}, "expects the null"),
-        ({"rule": "within"}, "distance"),
-        ({"rule": "within", "distance": 0}, "distance"),
-        ({"rule": "within", "distance": ".inf"}, "distance"),
+        ({"rule": "within", "null": 1}, "distance"),
+        ({"rule": "within", "distance": 0, "null": 1}, "distance"),
+        ({"rule": "within", "distance": ".inf", "null": 1}, "distance"),
         ({"distance": 1.0}, "only with the rule within"),
         ({"key": "Control.X"}, "not one the emitter takes"),
         ({"of": "ror point"}, "names no result"),
@@ -99,6 +101,14 @@ def test_a_plan_with_no_block_declares_nothing() -> None:
         ({"key": "ror.shuffled"}, "stand beside itself"),
         ({"key": "ror"}, "stand beside itself"),
         ({"key": "ror", "of": "results.ror.point"}, "stand beside itself"),
+        # Round 1 of wave 3's PR 3 (Basile, 2026-11-09): a control held to its expected
+        # value names its null, 0 or 1, and one that holds the null gives none.
+        ({"rule": "holds-expected", "expected": 2}, "names the null"),
+        ({"rule": "within", "distance": 0.5, "expected": 2}, "names the null"),
+        ({"rule": "holds-expected", "expected": 2, "null": 2}, "names the null"),
+        ({"rule": "holds-expected", "expected": 2, "null": "true"}, "names the null"),
+        ({"rule": "holds-expected", "expected": 2, "null": ".nan"}, "names the null"),
+        ({"null": 1}, "gives no `null`"),
     ],
 )
 def test_an_entry_that_breaks_the_form_is_said_at_its_line_and_left_out(

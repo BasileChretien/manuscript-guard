@@ -8625,7 +8625,13 @@ of one of its values anywhere in the main text or the supplement, the Results in
 held-out entry may name other scripts that read the input without building a model, such as
 one describing the validation sample. And after rounds 2 and 3, as recommended: a script may
 read a held-out input where the plan named it as the input's validator or reader when the
-script first read it, which the record of first reads keeps.
+script first read it, which the record of first reads keeps. After round 1 of wave 3's third
+pull request found the example's positive control passing an analysis that finds nothing,
+Basile chose to change the rule rather than write the weakness down: a control that expects
+an effect, a positive one or a simulated one that plants an effect, fails where its interval
+holds its null. Then four more, each as recommended: the control names that null; the rule
+holds for every control that expects an effect, not the positive ones only; it is its own
+pull request; and it is `control-failed`, with no code of its own.
 
 ### What the plan declares
 
@@ -8642,6 +8648,7 @@ controls:
     of: ror.*                   # the result it stands beside
     expected: 1                 # the value planted, the association known, or the null
     rule: holds-expected
+    null: 1                     # the null of a ratio; the same as expected: no effect
   - key: control.headache
     kind: negative
     of: ror.*
@@ -8653,6 +8660,7 @@ controls:
     expected: 3.2
     rule: within
     distance: 1.0
+    null: 1                     # an effect is expected: the interval is to leave 1 out
 held_out:
   - input: data/validation.csv
     validated_by: analysis/03_validate.py
@@ -8660,7 +8668,8 @@ held_out:
     read_by: analysis/02_describe.py   # optional: others that read it, building no model
 ```
 
-A control has a `key`, a `kind`, an `of`, an `expected` value and a `rule`:
+A control has a `key`, a `kind`, an `of`, an `expected` value and a `rule`, and, held to its
+expected value, a `null`:
 
 - `kind` is `simulated`, `positive` or `negative` (D5.1). A simulated control may plant no
   effect, the exposure shuffled across patients, with the null as the value expected; that is
@@ -8674,6 +8683,11 @@ A control has a `key`, a `kind`, an `of`, an `expected` value and a `rule`:
   then 0 or 1, the null of a difference or of a ratio. `within`: the estimate is within
   `distance` of the expected value, on the scale the analysis emits it, `distance` being a
   finite number above nought; it is given with this rule and with no other.
+- `null` is 0 or 1, the null of a difference or of a ratio, given with `holds-expected` and
+  `within` and with no other rule, since a `holds-null` control's expected value is its
+  null (round 1 of wave 3's third pull request). Where it differs from `expected`, the
+  control expects an effect, and its interval is to leave the null out; where it is the
+  same, the control expects none, and only its rule is held.
 
 A held-out input has an `input`, the path the emitter records it under (from the project's
 root; `vault:<label>` for a file of the vault), a `validated_by`, the script that validates on
@@ -8693,7 +8707,8 @@ script added before the real data were touched, or a validator renamed then, is 
 
 An entry with a key missing, a key not listed here, a value of another type, a kind or a rule
 not listed, a `distance` with another rule, a `holds-null` whose expected value is neither 0
-nor 1, a control one of whose values (`<key>.point`, `<key>.ci_low`, `<key>.ci_high`) falls
+nor 1, a `holds-expected` or `within` control with no `null` or one that is neither 0 nor 1,
+a `holds-null` control that gives one, a control one of whose values (`<key>.point`, `<key>.ci_low`, `<key>.ci_high`) falls
 under its own `of`, or whose `of` falls under its key, so that it would stand beside its own
 values (`ror.shuffled` of `ror.*`, or `ror` of `results.ror.*`), a value the safe loader
 cannot build (a tag it has no constructor for, a date that is no day), or a key or an input
@@ -8756,14 +8771,17 @@ Each control the plan declares is read from the plan as it stands and from its f
 and judged on the values emitted, not on their displays: `holds-expected` and `holds-null`
 pass where the lower bound is at most the expected value and the upper bound at least it,
 and `within` where the estimate is no further from it than the distance. A value equal to a
-bound passes. Nothing is asked at the design stage, before there are results.
+bound passes. A control that expects an effect fails besides where its interval holds its
+null, a bound equal to it included: it would pass an analysis that finds nothing, which is
+the failure a positive control is there to catch. Nothing is asked at the design stage,
+before there are results.
 
 | Finding | When | Level |
 |---|---|---|
-| `control-failed` | the control's rule does not hold on its values | a warning; a failure at submission unless the main text or the supplement binds one of its values and the Deviations name its key (D5.3) |
+| `control-failed` | the control's rule does not hold on its values, or it expects an effect and its interval holds its null | a warning; a failure at submission unless the main text or the supplement binds one of its values and the Deviations name its key (D5.3) |
 | `control-missing` | declared, and not emitted | a warning, a failure at submission, unless the Deviations name its key |
 | `control-declared-late` | declared, and not in the frozen copy: chosen after the first results were written | a warning, a failure at submission, unless the Deviations name its key; a note where the frozen copy marks an all-synthetic first run, which dates no real result |
-| `control-changed` | in the frozen copy, and gone from the plan or declared there with another kind, result, value, rule or distance | a warning, a failure at submission, unless the Deviations name its key |
+| `control-changed` | in the frozen copy, and gone from the plan or declared there with another kind, result, value, rule, distance or null | a warning, a failure at submission, unless the Deviations name its key |
 | `control-undeclared` | emitted, and no control of the plan has its key: nothing says what passes it | a warning, a failure at submission |
 | `control-other-script` | emitted by a script that emitted no result `of` names (for a group, no value, table or model under it), or no script emitted one (D5.4) | a warning, a failure at submission |
 | `control-unreported` | from the drafting stage, neither the main text nor the supplement binds a value of the control, in a Markdown or a LaTeX manuscript (Basile, 2026-11-09: the Results count, not only the Methods) | a warning, a failure at submission |
@@ -16400,6 +16418,16 @@ been sorted yet.
   tests what it claims to is the panel's and the co-authors' to judge. A control the reader
   refuses is said once, by `plan-declarations-unreadable`, but in a section refused whole or
   where an entry gives its key twice (round 2 of PR 2a). Accepted.
+- **A control's null is the plan's word too.** A ratio declared with `null: 0` is held to
+  leave 0 out, which a ratio's interval always does, so its interval may hold 1 and pass. A
+  control whose `null` is its expected value expects no effect, whatever its kind says, and
+  is held to its rule alone. An interval that leaves the null out says the control found an
+  effect, not that it found the one expected, which is the rule's to judge. A plan written
+  before `null` was asked for, with a control held to its expected value and no `null`, has
+  that control refused by `plan-declarations-unreadable` until it names one (round 1 of
+  wave 3's third pull request). Its frozen copy is read as the plan was then, the control
+  there giving no `null`: the one the plan names now is no change, and such a control is
+  held to leave its null out only from the plan as it stands. Accepted.
 - **A control's rule is judged on the scale emitted, as the numbers are stored.** `within`
   compares the estimate and the expected value on the scale the analysis emits them, so a
   ratio emitted as a ratio is held to a distance in its own units, not on the log scale; the

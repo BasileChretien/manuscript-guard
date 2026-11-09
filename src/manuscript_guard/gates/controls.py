@@ -11,7 +11,8 @@ fixed").
 
 What is checked, from the analysis stage on, each a warning that fails at submission:
 
-* `control-failed`: the rule does not hold on the values emitted; at submission it stays a
+* `control-failed`: the rule does not hold on the values emitted, or the control expects an
+  effect and its interval holds the null it names (round 1 of PR 3); at submission it stays a
   warning where the main text or the supplement binds one of the control's values and the
   Deviations name its key (D5.3);
 * `control-missing`: declared, and not emitted, unless the Deviations name its key;
@@ -28,12 +29,14 @@ What is checked, from the analysis stage on, each a warning that fails at submis
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
 from manuscript_guard.gates.declarations import (
+    HOLDS_NULL,
     PARTS,
     WITHIN,
     Control,
@@ -44,7 +47,15 @@ from manuscript_guard.gates.declarations import (
 GATE = "G12"
 
 
-def passes(control: Control, point: float, low: float, high: float) -> bool:
+def holds_its_null(control: Control, low: float, high: float) -> bool:
+    """Whether a control that expects an effect, its null being other than its expected
+    value, has an interval that holds that null, a bound at it included: it then cannot tell
+    the effect it expects from none (Basile, 2026-11-09, round 1 of PR 3)."""
+    null = control.null
+    return null is not None and null != control.expected and low <= null <= high
+
+
+def rule_holds(control: Control, point: float, low: float, high: float) -> bool:
     """Whether the control's rule holds on its values, as stored: the interval holds the
     expected value (or the null, which the expected value then is), or the estimate is within
     the distance of it. A value at a bound passes (D5.2)."""
@@ -52,6 +63,21 @@ def passes(control: Control, point: float, low: float, high: float) -> bool:
         assert control.distance is not None
         return abs(point - control.expected) <= control.distance
     return low <= control.expected <= high
+
+
+def passes(control: Control, point: float, low: float, high: float) -> bool:
+    """Whether the control passes: its rule holds, and, where it expects an effect, its
+    interval leaves its null out (`holds_its_null`)."""
+    return rule_holds(control, point, low, high) and not holds_its_null(control, low, high)
+
+
+def _changed(then: Control, now: Control) -> bool:
+    """Whether the control is declared otherwise than in the frozen copy. A copy written
+    before a `null` was asked for gives none, and the one the plan gives now is no change
+    (round 1 of PR 2c)."""
+    if then.null is None and now.null is not None and then.rule == now.rule != HOLDS_NULL:
+        return replace(now, null=None).said() != then.said()
+    return then.said() != now.said()
 
 
 def _under(name: str, stem: str) -> bool:
@@ -115,7 +141,8 @@ def check_controls(project: Project, results: Results | None, stage: str | None)
     # the plan declares no such control (round 1 of PR 2a).
     refused = set(declared.refused_keys)
     kept, synthetic = frozen_plan(project)
-    frozen = None if kept is None else read_declarations(kept)
+    # Read as the plan was then: a control may give no `null` (round 1 of PR 2c).
+    frozen = None if kept is None else read_declarations(kept, null_asked=False)
     then = None if frozen is None else {c.key: c for c in frozen.controls}
     # Declared then and not read, as mistyped: not chosen late (round 2 of PR 2a).
     refused_then = set() if frozen is None else set(frozen.refused_keys)
@@ -168,7 +195,7 @@ def check_controls(project: Project, results: Results | None, stage: str | None)
                 f"{as_named(key)}; "
                 "a control chosen once the results are known shows much less",
                 line=control.line, level=INFO if synthetic else None))  # fmt: skip
-        elif then is not None and key in then and then[key].said() != control.said() \
+        elif then is not None and key in then and _changed(then[key], control) \
                 and not named(key):  # fmt: skip
             findings.append(said(
                 "control-changed",
@@ -209,9 +236,17 @@ def check_controls(project: Project, results: Results | None, stage: str | None)
             shown = (f"{point:g}, within {control.distance:g} of {control.expected:g}"
                      if control.rule == WITHIN
                      else f"{low:g} to {high:g} around {control.expected:g}")  # fmt: skip
+            # Each reason that applies (round 1 of PR 2c): the rule, and the null held.
+            why = "; and ".join(
+                ([] if rule_holds(control, point, low, high) else [f"{shown} does not hold"])
+                + ([f"its interval, {low:g} to {high:g}, holds its null, {control.null:g}, so "
+                    f"it cannot tell the effect it expects, {control.expected:g}, from none"]
+                   if holds_its_null(control, low, high) else []))  # fmt: skip
             findings.append(said(
                 "control-failed",
-                f"the control {key} fails its rule, {control.rule}: {shown} does not hold"
+                f"the control {key} fails"
+                + ("" if rule_holds(control, point, low, high) else f" its rule, {control.rule}")
+                + f": {why}"
                 + ("; the paper reports it and the Deviations name it" if excused else ""),
                 f"report {key} in the paper and say under Deviations from the plan why it "
                 f"failed, naming {as_named(key)}: a control that failed tells the reader "
@@ -240,5 +275,6 @@ def check_controls(project: Project, results: Results | None, stage: str | None)
                 f"the analysis emits the control {key}, and the plan declares no control by "
                 "that key, so nothing says what passes it",
                 "declare it in the plan's controls: block, with its kind, of, expected and "
-                "rule, and say under Deviations when it was added", at=fragment))  # fmt: skip
+                "rule, and its null with holds-expected or within, and say under Deviations "
+                "when it was added", at=fragment))  # fmt: skip
     return Report(tuple(findings), {"controls_passed": passed})

@@ -227,3 +227,10 @@ expected:
       words are read however far apart pdftotext sets them, and "Author's reply" with a
       typeset apostrophe is a reply's head; the inputs draw every label and every head
       (Known gaps F01)
+  - reading: plan declarations
+    why: >-
+      a control held to its expected value, by `holds-expected` or `within`, names the null
+      its interval is to leave out where it expects an effect, `null: 0` or `null: 1`, and is
+      refused without one or with another value; a `holds-null` control that gives one is
+      refused; the reading reports each control's null, and the inputs draw each of these
+      (Basile, 2026-11-09, round 1 of wave 3's PR 3)

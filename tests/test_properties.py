@@ -9097,7 +9097,7 @@ def _a_list_opens_inside_a_paragraph(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_list_runs_on_to_the_next_heading(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(reference_lists_module, "_ends_a_list", lambda lines, number: False)
+    patch.setattr(reference_lists_module, "_ends_a_list", lambda lines, number, **_: False)
 
 
 def _a_heading_printed_as_text_ends_no_list(patch: pytest.MonkeyPatch) -> None:

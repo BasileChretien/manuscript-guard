@@ -22082,7 +22082,17 @@ Open, recorded as each change landed:
     their titles: contribution, contributor, acknowledgement, funding, financial support or
     disclosure, competing interest, conflict of interest, declaration of interest,
     disclosure, author statement. A section of the paper proper whose title holds one,
-    "Funding of primary care", is quiet too.
+    "Funding of primary care", is quiet too. So is a paragraph that opens with a
+    statement's name in bold, and the one under such a label standing alone
+    (`gates.language._run_in_statements`), where the label is told from a sentence's first
+    words by what follows it on its line, unless the label ends in a colon or a stop. A
+    small letter there makes it a sentence, so "**Funding** this study was funded by the
+    NIHR" reports `NIHR`, where "**Funding:** this study ..." does not; a bold word that
+    goes on into its sentence across a line break, "**Funding**" and "of the NHS fell" on
+    the next line, is still a label, and `NHS` is not reported. And a simple table whose
+    first header cell names a statement, "**Funding source**   Count" over its rule, is
+    read as one, so the abbreviations in its cells are not reported.
+    Pinned by `tests/test_language.py::test_what_a_bold_label_cannot_tell_apart`.
   - There is no cap on the number of findings: a manuscript that defines one abbreviation a
     thousand times gets a thousand warnings. Making them is linear in the manuscript.
     Accepted.
@@ -25128,6 +25138,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   so `# **Methods**` is not the Methods to G2. A span around the words is taken off for
   both (see "A title in a span named nothing"). Pinned by
   `tests/test_text.py::test_a_heading_in_bold_is_not_the_abstract_nor_the_methods`.
+  - A closing `#` or an attribute block inside a span's words is taken off as the
+    heading's own: `# [C#]{.underline}` is titled "C" and `# [Results {-}]{.underline}`
+    "Results", where pandoc prints "C#" and "Results {-}", the span's text. Pinned by
+    `tests/test_text.py::test_a_mark_inside_a_span_is_read_as_the_heading_s_own`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

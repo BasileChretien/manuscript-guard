@@ -115,7 +115,10 @@ def check_controls(project: Project, results: Results | None, stage: str | None)
     # the plan declares no such control (round 1 of PR 2a).
     refused = set(declared.refused_keys)
     kept, synthetic = frozen_plan(project)
-    then = None if kept is None else {c.key: c for c in read_declarations(kept).controls}
+    frozen = None if kept is None else read_declarations(kept)
+    then = None if frozen is None else {c.key: c for c in frozen.controls}
+    # Declared then and not read, as mistyped: not chosen late (round 2 of PR 2a).
+    refused_then = set() if frozen is None else set(frozen.refused_keys)
     emitted = {key: fragment.path for fragment in results.fragments for key in fragment.controls}
     if not now and not then and not emitted:
         return Report()
@@ -154,7 +157,7 @@ def check_controls(project: Project, results: Results | None, stage: str | None)
     findings: list[Finding] = []
     passed = 0
     for key, control in now.items():
-        if then is not None and key not in then and not named(key):
+        if then is not None and key not in then and key not in refused_then and not named(key):
             findings.append(said(
                 "control-declared-late",
                 f"the control {key} is not in the plan as it stood when the first results "
@@ -184,7 +187,7 @@ def check_controls(project: Project, results: Results | None, stage: str | None)
                     + ("emits no interval for it" if fragment else "does not emit it"),
                     f"emit it with em.control(\"{key}\", estimate, lower, upper) in the script "
                     "of the result it stands beside, or say under Deviations why not, naming "
-                    "it", line=control.line))  # fmt: skip
+                    f"{as_named(key)}", line=control.line))  # fmt: skip
             continue
         beside = _beside(results, control, fragment)
         if not beside:

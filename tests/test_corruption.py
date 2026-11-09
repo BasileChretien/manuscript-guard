@@ -8650,6 +8650,22 @@ def test_a_control_the_plan_declares_in_a_form_it_does_not_read_is_said_once(
     assert _controls_said(project, "submission") == []
 
 
+def test_a_control_declared_twice_or_mistyped_since_is_said_by_the_reader_alone(
+    project: Path,
+) -> None:
+    """Round 2 of PR 2a: a key declared twice, and a readable frozen entry mistyped now, were
+    still said to be undeclared or gone besides what the reader says."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    _add_to_results(project, _REPORTED)
+    _plan_edited(project, "kind: negative", "kind: negativ")
+    assert _controls_said(project, "submission") == []
+    _plan_edited(project, "kind: negativ", "kind: negative")
+    entry = _NEGATIVE.split("controls:\n", 1)[1].rsplit("```", 1)[0]
+    _plan_edited(project, "controls:\n", "controls:\n" + entry)
+    assert _controls_said(project, "submission") == []
+
+
 def test_a_failed_control_needs_both_its_report_and_its_deviation(project: Path) -> None:
     """D5.3: named in the Deviations but not reported, or reported but not named, a failed
     control still fails at submission (round 1 of PR 2a: no case held the first half)."""

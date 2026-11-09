@@ -18,10 +18,11 @@ and `compare` give in a PDF is that page and line.
 
 A PDF marks no heading. A line is read as one only where it holds a section's name and
 nothing else, numbered or not ("Methods", "2. Results", "REFERENCES"), from the closed list
-`HEADINGS`, its first letter a capital. Where one name stands on two such lines, a structured
-abstract's own headings set on lines of their own perhaps, which section is the paper's is
-not read, and the PDF's sections are not used to place its lines (`Sections.placed`); the
-reference list is still found by its heading.
+`HEADINGS`, its first letter a capital. A structured abstract's own headings set on lines
+of their own are its, up to an Introduction or to the first that names one of them again
+(`text.section_names.section_levels`). Where one name stands on two such lines otherwise,
+which section is the paper's is not read, and the PDF's sections are not used to place its
+lines (`PdfText.placed`); the reference list is still found by its heading.
 
 A PDF's tables are lines of text, not rows of cells: their numbers are read as the text's,
 and no table is read as one. What a PDF keeps besides its text is not a Word file's: the
@@ -38,28 +39,20 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from manuscript_guard.text.section_names import (
+    ABSTRACT_PARTS,
+    SECTION_NAMES,
+    section_levels,
+    section_name_alone,
+)
+
 SUFFIX = ".pdf"
 #: The longest `pdfinfo` is waited for.
 PDFINFO_SECONDS = 30
 
-#: The names a line of a PDF is read as a heading by, standing alone, in any case.
-HEADINGS = frozenset({
-    "abstract", "summary", "structured abstract", "introduction", "background",
-    "methods", "method", "methodology", "materials and methods", "material and methods",
-    "methods and materials", "patients and methods", "subjects and methods",
-    "participants and methods", "results", "findings", "results and discussion",
-    "discussion", "general discussion", "discussion and conclusions", "conclusion",
-    "conclusions", "limitations", "strengths and limitations", "references", "bibliography",
-    "literature cited", "works cited", "acknowledgements", "acknowledgments",
-    "acknowledgement", "acknowledgment", "funding", "conflicts of interest",
-    "conflict of interest", "competing interests", "declaration of competing interest",
-    "author contributions", "data availability", "data availability statement", "ethics",
-    "ethics statement", "ethical approval", "abbreviations", "appendix",
-    "supplementary material", "supplementary materials", "tables", "figures",
-    "figure legends", "figure captions",
-})  # fmt: skip
-#: A section's number in front of its name: "2 ", "2. ", "2.1 ", "II. ".
-_NUMBER = re.compile(r"(?:\d{1,2}(?:\.\d{1,2})*\.?|[IVX]{1,5}\.)\s+")
+#: The names a line of a PDF is read as a heading by, standing alone, in any case: the same
+#: as a Word paragraph wholly in bold is read by in a document with no heading style.
+HEADINGS = SECTION_NAMES
 
 #: What is said where a PDF cannot be read here.
 NO_PDFTOTEXT = (
@@ -72,20 +65,10 @@ class UnreadablePdf(ValueError):
     """A PDF that cannot be read here, or holds no text. The message says why."""
 
 
-#: The names a structured abstract's own headings have where it sets them on lines of their
-#: own, under its Abstract.
-ABSTRACT_PARTS = frozenset({
-    "background", "methods", "method", "methodology", "materials and methods",
-    "material and methods", "methods and materials", "patients and methods",
-    "subjects and methods", "participants and methods", "results", "findings",
-    "results and discussion", "discussion", "conclusion", "conclusions", "limitations",
-})  # fmt: skip
-#: The names of an abstract, and of the Lancet's "Summary".
-_ABSTRACTS = frozenset({"abstract", "structured abstract", "summary"})
 #: What is said where a PDF's headings cannot be placed (`PdfText.placed`).
 UNPLACED = ("a section's name stands alone on two lines or more, or a structured abstract's "
-            "headings stand on lines of their own with no Introduction after them, so which "
-            "section is the paper's is not read")
+            "headings stand on lines of their own with no Introduction after them and none "
+            "of their names again, so which section is the paper's is not read")
 
 
 @dataclass(frozen=True)
@@ -158,25 +141,22 @@ class PdfText:
         """Each heading `(line, title, level)`, where the headings can be placed exactly; else
         None (`UNPLACED`). A structured abstract's headings, on lines of their own, are the
         Abstract's, level 2, where the heading after the Abstract's is one of
-        `ABSTRACT_PARTS` and an Introduction comes after them: they are those between the two,
-        an "Abbreviations" among them (DESIGN.md, Known gaps). With no Introduction after them,
-        where they end is not read. A name on two lines among the Abstract's own headings, or
-        among the rest, is not placed either."""
-        keys = [_key(title) for _line, title in self.headings]
-        nested: set[int] = set()
-        first = next((at for at, key in enumerate(keys) if key in _ABSTRACTS), None)
-        if first is not None and first + 1 < len(keys) and keys[first + 1] in ABSTRACT_PARTS:
-            opening = next((at for at in range(first + 1, len(keys))
-                            if keys[at] == "introduction"), None)  # fmt: skip
-            if opening is None:
-                return None
-            nested = set(range(first + 1, opening))
-        for group in (nested, set(range(len(keys))) - nested):
-            names = [keys[at] for at in group]
-            if len(names) != len(set(names)):
-                return None
-        return tuple((line, title, 2 if at in nested else 1)
-                     for at, (line, title) in enumerate(self.headings))  # fmt: skip
+        `ABSTRACT_PARTS` and no words stand between the two: they run to an Introduction, or
+        to the first that names one of them again, an "Abbreviations" among them (DESIGN.md,
+        Known gaps). With neither after them, where they end is not read. A name on two lines
+        among the rest is not placed either (`text.section_names.section_levels`, which reads
+        a Word document's bold titles the same way). An Abstract with words under it is one
+        paragraph or more, and the heading after it the main text's."""
+        lines = self.text.split("\n")
+        starts = [line for line, _title in self.headings]
+        ends = [*starts[1:], len(lines) + 1]
+        worded = [any(lines[k].strip() for k in range(start, end - 1))
+                  for start, end in zip(starts, ends, strict=True)]  # fmt: skip
+        levels = section_levels([title for _line, title in self.headings], worded)
+        if levels is None:
+            return None
+        placed = zip(self.headings, levels, strict=True)
+        return tuple((line, title, level) for (line, title), level in placed)
 
     def described(self) -> str:
         """What read it and how its places are given, for the report's notes."""
@@ -200,19 +180,8 @@ def can_read() -> bool:
 def heading_title(line: str) -> str | None:
     """The section's name a line of a PDF holds alone, its number taken off, or None: the
     whole line, less a number in front and a colon or a stop after, is one of `HEADINGS`,
-    and its first letter is a capital."""
-    text = " ".join(line.split())
-    found = _NUMBER.match(text)
-    if found is not None:
-        text = text[found.end() :]
-    text = text.rstrip(":.").strip()
-    if not text[:1].isupper() or _key(text) not in HEADINGS:
-        return None
-    return text
-
-
-def _key(title: str) -> str:
-    return " ".join(title.casefold().split())
+    and its first letter is a capital (`text.section_names.section_name_alone`)."""
+    return section_name_alone(line)
 
 
 _READ: dict[tuple[str, str], PdfText] = {}

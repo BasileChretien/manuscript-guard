@@ -103,6 +103,7 @@ def items(report) -> list[Item]:
         *(Item(INPUTS, "audit", "output-not-read", said, WARN, False) for said in report.skipped),
         *(Item(INPUTS, "audit", "passed-over", said, INFO, False) for said in report.passed_over),
         *(Item(INPUTS, "audit", "not-audited", said, INFO, False) for said in report.not_audited),
+        *(Item(INPUTS, "audit", "headings-read", said, INFO, False) for said in report.headings),
     ]
     if not report.examined:
         found.append(Item(INPUTS, "audit", "nothing-read", "the audit read no number in what "
@@ -581,6 +582,7 @@ def render(report, discrimination, root: Path | None = None) -> str:
         ("Outputs not read as given:", report.skipped),
         ("Passed over in a folder (a note, not counted by --strict):", report.passed_over),
         ("Not audited:", report.not_audited),
+        ("How the headings were read:", report.headings),
     ):
         if said:
             lines += ["", heading, *(f"  {item}" for item in said)]

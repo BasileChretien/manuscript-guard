@@ -1,8 +1,12 @@
 """A paper written in Word, brought into a project: `init --from paper.docx`.
 
-pandoc reads the document into its tree, with tracked changes accepted. Three things are
+pandoc reads the document into its tree, with tracked changes accepted. Four things are
 changed in the tree before pandoc writes it as Markdown, and nothing else:
 
+- In a document with no paragraph in a heading style, each paragraph wholly in bold whose
+  words are a section's name alone, "**Abstract**", "**[References]{.underline}**", is made
+  a heading (`bold_headings`), as many Word papers title their sections; by the closed list
+  a PDF's lines are read by, so a bold title that names no section stays a paragraph.
 - Each table whose cells hold only paragraphs is written as a pipe table, which every reader
   here reads as rows of cells: a cell's paragraphs and line breaks are joined with spaces, a
   merged cell's text stands in its first row and column with the cells it covered left
@@ -25,8 +29,8 @@ title page joins that section too, found by reading the document again with its 
 (`docx+styles`), and only where that reading is the ordinary one block for block. A Title
 paragraph holding a note, a mark,
 a link or a picture, which its plain text loses, is in the comment as well; the marks of
-notes raised at its end are left out of the title, and kept there with it. Nothing is
-guessed from how a line looks: a name in capitals is a line of the title page like any other.
+notes raised at its end are left out of the title, and kept there with it. Nothing else is
+read from how a line looks: a name in capitals is a line of the title page like any other.
 """
 
 from __future__ import annotations
@@ -98,6 +102,9 @@ class Converted:
     title_noted: bool = False
     #: The footnote marks at the Title paragraph's end, left out of `title`.
     title_marks: str = ""
+    #: In a document with no paragraph in a heading style, the titles of the paragraphs
+    #: wholly in bold that name a section, which were made its headings (`bold_headings`).
+    bold_headings: tuple[str, ...] = ()
 
 
 def refused(path: Path) -> str | None:
@@ -139,9 +146,15 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
     abstract = _as_blocks(meta.pop("abstract", None))
     blocks = tree["blocks"]
     headings = sum(1 for block in blocks if block["t"] == "Header")
-    aside, body, title_page = _title_page(blocks)
+    bold: tuple[str, ...] = ()
+    if not headings:
+        blocks, bold = bold_headings(blocks)
+    aside, body, title_page = _title_page(blocks, bold)
     if aside:
-        aside, styled = _abstract_styled(aside, _styled_run(path))
+        # Read with styles, a document with no heading runs on past where its bold title
+        # ended the title page here: the two are compared up to there.
+        run = _styled_run(path)
+        aside, styled = _abstract_styled(aside, run[: len(aside)] if bold else run)
         abstract = [*abstract, *styled]
     if abstract:
         body = [_heading("Abstract"), *abstract, *body]
@@ -153,7 +166,7 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
     return Converted(title=title, authors=names, abstract=bool(abstract), text=text,
                      media=media, tables=converted, tables_left=left, title_page=title_page,
                      headings=headings, title_noted=noted,
-                     title_marks=marks)  # fmt: skip
+                     title_marks=marks, bold_headings=bold)  # fmt: skip
 
 
 def _pandoc(arguments: list[str], given: str | None, path: Path) -> str:
@@ -454,33 +467,105 @@ def _abstract_styled(aside: list, styled: list[tuple[dict, str | None]]) -> tupl
     return kept, lifted
 
 
-def _heading(text: str) -> dict:
+def _heading(text: str, level: int = 1, identifier: str | None = None) -> dict:
+    """A heading of `text`, its identifier `text` in small letters unless one is given; ""
+    leaves it to pandoc, which writes none and makes one when it reads the heading back:
+    "competing interests", with its space, was written `{#competing interests}`."""
     words = text.split()
     inlines: list = []
     for word in words:
         inlines += [_SPACE, {"t": "Str", "c": word}] if inlines else [{"t": "Str", "c": word}]
-    return {"t": "Header", "c": [1, [text.lower(), [], []], inlines]}
+    named = text.lower() if identifier is None else identifier
+    return {"t": "Header", "c": [level, [named, [], []], inlines]}
 
 
-def _title_page(blocks: list) -> tuple[list, list, str]:
-    """The blocks set aside, the blocks of the text, and what was done, in words."""
+#: Inlines that change only how their words look, whose words a bold title's can be: what
+#: pandoc writes for underlined words, small capitals and italics, and a span (a highlight,
+#: a character style). And the gaps between words.
+_LOOKS = {"Underline": None, "SmallCaps": None, "Emph": None, "Span": 1}
+_GAPS = frozenset({"Space", "SoftBreak", "LineBreak"})
+
+
+def _bold_words(inlines: list, bold: bool = False) -> list[bool] | None:
+    """For each word of `inlines`, whether it is in bold (in a Strong); None where they hold
+    anything but words and how they look, a note, a link, a picture, code or maths, which
+    a title does not."""
+    found: list[bool] = []
+    for node in inlines:
+        kind = node.get("t")
+        if kind in _GAPS:
+            continue
+        if kind == "Str":
+            found.append(bold)
+            continue
+        if kind != "Strong" and kind not in _LOOKS:
+            return None
+        content = node["c"][_LOOKS[kind]] if _LOOKS.get(kind) is not None else node["c"]
+        inner = _bold_words(content, bold or kind == "Strong")
+        if inner is None:
+            return None
+        found += inner
+    return found
+
+
+def bold_headings(blocks: list) -> tuple[list, tuple[str, ...]]:
+    """`blocks` with each paragraph wholly in bold whose words are a section's name alone
+    (`section_name_alone`), "**Abstract**", "**[References]{.underline}**", "**2. Methods**",
+    made a heading, and their titles. For a document with no paragraph in a heading style,
+    where such a paragraph is how its sections are titled: read as a paragraph, the title
+    page, a glossary, the statements and the reference list were prose to every gate. Only
+    a top-level paragraph, and only by the closed list of names a PDF's line is read by, so
+    "**Our cohort**" and a bold sentence stay text. A structured abstract's titles are the
+    Abstract's, at level 2, where `section_levels` can place them; else every one is at level
+    1, and the Abstract ends at its first."""
+    from manuscript_guard.text.section_names import section_levels, section_name_alone
+
+    found: list[tuple[int, str]] = []
+    for at, block in enumerate(blocks):
+        if block.get("t") != "Para":
+            continue
+        words = _bold_words(block["c"])
+        if not words or not all(words):
+            continue
+        title = section_name_alone(text_of(block["c"]))
+        if title is not None:
+            found.append((at, title))
+    if not found:
+        return blocks, ()
+    ends = [at for at, _title in found[1:]] + [len(blocks)]
+    worded = [_words(blocks[at + 1 : end]) > 0
+              for (at, _title), end in zip(found, ends, strict=True)]  # fmt: skip
+    levels = section_levels([title for _at, title in found], worded) or (1,) * len(found)
+    out = list(blocks)
+    for (at, title), level in zip(found, levels, strict=True):
+        out[at] = _heading(title, level, identifier="")
+    return out, tuple(title for _at, title in found)
+
+
+def _title_page(blocks: list, bold: tuple[str, ...] = ()) -> tuple[list, list, str]:
+    """The blocks set aside, the blocks of the text, and what was done, in words. `bold` are
+    the titles of the headings made from paragraphs in bold (`bold_headings`)."""
     first = next((at for at, block in enumerate(blocks) if block["t"] == "Header"), None)
     if first is None:
         return [], blocks, (
-            "no paragraph is in a heading style, so nothing was set aside as the title page; "
-            "a section whose heading is only bold text is not a section to any gate")
+            "no paragraph is in a heading style, and none wholly in bold names a section, so "
+            "nothing was set aside as the title page; a section whose heading is only bold "
+            "text that is no section's name is not a section to any gate")
+    made = (f"no paragraph is in a heading style, so the {len(bold)} paragraphs wholly in "
+            f"bold that name a section were made its headings ({', '.join(bold)}); "
+            if bold else "")  # fmt: skip
     if first == 0:
-        return [], blocks, "the document opens on a heading, so nothing was set aside"
+        return [], blocks, f"{made}the document opens on a heading, so nothing was set aside"
     before = blocks[:first]
     words = _words(before)
     if words > TITLE_PAGE_WORDS:
         return [], blocks, (
-            f"the {words} words before the first heading are more than a title page holds "
-            f"({TITLE_PAGE_WORDS}), so they were left in the text; set the title page "
+            f"{made}the {words} words before the first heading are more than a title page "
+            f"holds ({TITLE_PAGE_WORDS}), so they were left in the text; set the title page "
             "aside in a comment by hand")
     return before, blocks[first:], (
-        f"the {words} words before the first heading were set aside in a comment at the top "
-        "of main.md, which no gate reads; move into the text what belongs to the paper")
+        f"{made}the {words} words before the first heading were set aside in a comment at "
+        "the top of main.md, which no gate reads; move into the text what belongs to the paper")
 
 
 def _tables(blocks: list) -> tuple[int, list[tuple[str, dict]]]:

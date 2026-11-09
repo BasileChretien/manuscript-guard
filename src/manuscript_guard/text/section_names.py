@@ -212,7 +212,113 @@ def methods_sections(
     return sorted(found, key=by_name)
 
 
+#: The names a title standing alone is read as a section's heading by, in any case, where
+#: nothing marks a heading: a line of a PDF (`auditing.pdf`), and a Word paragraph wholly in
+#: bold in a document with no paragraph in a heading style (`from_word`, `text.docx`).
+SECTION_NAMES = frozenset({
+    "abstract", "summary", "structured abstract", "introduction", "background",
+    "methods", "method", "methodology", "materials and methods", "material and methods",
+    "methods and materials", "patients and methods", "subjects and methods",
+    "participants and methods", "results", "findings", "results and discussion",
+    "discussion", "general discussion", "discussion and conclusions", "conclusion",
+    "conclusions", "limitations", "strengths and limitations", "references", "bibliography",
+    "literature cited", "works cited", "acknowledgements", "acknowledgments",
+    "acknowledgement", "acknowledgment", "funding", "conflicts of interest",
+    "conflict of interest", "competing interests", "declaration of competing interest",
+    "author contributions", "data availability", "data availability statement", "ethics",
+    "ethics statement", "ethical approval", "abbreviations", "appendix",
+    "supplementary material", "supplementary materials", "tables", "figures",
+    "figure legends", "figure captions",
+    # The back matter as BMC's journals title it: one "Declarations" over its statements.
+    "declarations", "declaration", "list of abbreviations", "authors' contributions",
+    "authors\N{RIGHT SINGLE QUOTATION MARK} contributions", "consent for publication",
+    "availability of data and materials", "ethics approval and consent to participate",
+})  # fmt: skip
+#: The names a structured abstract's own headings have where they stand alone, under its
+#: Abstract.
+ABSTRACT_PARTS = frozenset({
+    "background", "methods", "method", "methodology", "materials and methods",
+    "material and methods", "methods and materials", "patients and methods",
+    "subjects and methods", "participants and methods", "results", "findings",
+    "results and discussion", "discussion", "conclusion", "conclusions", "limitations",
+})  # fmt: skip
+#: The names of an abstract, and of the Lancet's "Summary".
+_ABSTRACTS = frozenset({"abstract", "structured abstract", "summary"})
+#: A section's number in front of its name standing alone: "2 ", "2. ", "2.1 ", "II. ".
+_ALONE_NUMBER = re.compile(r"(?:\d{1,2}(?:\.\d{1,2})*\.?|[IVX]{1,5}\.)\s+")
+
+
+def section_name_alone(text: str) -> str | None:
+    """The section's name `text` holds alone, its number taken off, or None: the whole text,
+    less a number in front and a colon or a stop after, is one of `SECTION_NAMES`, and its
+    first letter is a capital."""
+    text = " ".join(text.split())
+    found = _ALONE_NUMBER.match(text)
+    if found is not None:
+        text = text[found.end() :]
+    text = text.rstrip(":.").strip()
+    if not text[:1].isupper() or _key(text) not in SECTION_NAMES:
+        return None
+    return text
+
+
+def _key(title: str) -> str:
+    return " ".join(title.casefold().split())
+
+
+def section_levels(
+    titles: Sequence[str], worded: Sequence[bool] | None = None
+) -> tuple[int, ...] | None:
+    """The level of each title of `section_name_alone`'s, in order, where they can be placed
+    exactly; else None. A structured abstract's headings standing alone are the Abstract's,
+    level 2, where the title after the Abstract's is one of `ABSTRACT_PARTS`: they run to an
+    Introduction, or to the first title that names one of them again, as BMC's journals open
+    the main text with a second "Background" after the abstract's; an "Abbreviations" among
+    them is the Abstract's too. With neither after them, where they end is not read. A name
+    twice among the rest is not placed either.
+
+    `worded` says, for each title, whether words stand under it before the next. Where the
+    titles after the Abstract's cannot be placed as its parts, and words stand under the
+    Abstract's own title, the abstract is one or more paragraphs and the title after it the
+    main text's, as a paper opens its main text on "Background" after an abstract of one
+    paragraph. Not where they can be: the BMJ's parts "Objectives" and "Design", which name
+    no section, stand under its Abstract as words."""
+    keys = [_key(title) for title in titles]
+    nested: set[int] = set()
+    first = next((at for at, key in enumerate(keys) if key in _ABSTRACTS), None)
+    if first is not None and first + 1 < len(keys) and keys[first + 1] in ABSTRACT_PARTS:
+        opening = _parts_end(keys, first)
+        if opening is not None:
+            nested = set(range(first + 1, opening))
+        elif not _one_paragraph(worded, first):
+            return None
+    for group in (nested, set(range(len(keys))) - nested):
+        names = [keys[at] for at in group]
+        if len(names) != len(set(names)):
+            return None
+    return tuple(2 if at in nested else 1 for at in range(len(keys)))
+
+
+def _parts_end(keys: list[str], first: int) -> int | None:
+    """Where the parts of the abstract titled at `first` end: at an Introduction, or at the
+    first title that names one of them again; None where neither comes."""
+    parts: set[str] = set()
+    for at in range(first + 1, len(keys)):
+        if keys[at] == "introduction" or keys[at] in parts:
+            return at
+        parts.add(keys[at])
+    return None
+
+
+def _one_paragraph(worded: Sequence[bool] | None, first: int) -> bool:
+    """Whether words stand under the Abstract's own title, so that it is no structured
+    abstract's: known only where `worded` is given."""
+    return worded is not None and worded[first]
+
+
 __all__ = [
+    "ABSTRACT_PARTS",
+    "SECTION_NAMES",
     "bare",
     "methods_sections",
     "names_abstract",
@@ -223,4 +329,6 @@ __all__ = [
     "names_results",
     "names_statement",
     "plain",
+    "section_levels",
+    "section_name_alone",
 ]

@@ -6091,6 +6091,57 @@ def deposit_statements(draw: st.DrawFn) -> tuple[str, list[str], list[str]]:
     return text, [put(written) for written in DOI_NAMED], [put(other) for other in DOI_NOT_NAMED]
 
 
+# --------------------------------------------------- the head over a fetched PDF's title
+
+#: The cited work each first page below is judged against, its DOI and its title.
+PDF_WORK = ("10.5555/fictional.2021.001", "Hepatic injury in a fictional national cohort")
+#: What a journal sets above the title of an article itself, to say what kind it is. Clin
+#: Infect Dis and J Infect Dis label each article of a supplement issue "SUPPLEMENT ARTICLE".
+JOURNAL_LABELS = (
+    "Supplement Article", "Major Article", "Original Article", "Brief Report",
+    "Research Letter", "Review Article", "Commentary", "Correspondence",
+)  # fmt: skip
+#: What a document about the work sets above its title: a supplement, a correction, a reply.
+ABOUT_HEADS = (
+    "Supplementary Appendix", "Supplementary Material", "Supplemental Digital Content",
+    "Supplement to: Fictional A. Hepatic injury.", "Supplement 1", "Supporting Information",
+    "Correction to: Hepatic injury", "Erratum", "Corrigendum", "Retraction Note",
+    "Expression of Concern", "In reply", "Reply to the letter by Smith", "Response to Smith",
+    "Author's reply", "Author" + chr(0x2019) + "s reply", "Comment on Fictional et al.",
+)  # fmt: skip
+
+
+@st.composite
+def pdf_first_pages(draw: st.DrawFn) -> list[tuple[str, bool]]:
+    """A first page for each journal label and for each head of a document about the work,
+    in an order drawn, and whether the page is the work. Each sets its label or head in a
+    case drawn, its words as far apart as `pdftotext -layout` sets them, alone on its line or
+    with the journal's name beside it; under it, the work's title over the lines drawn, and
+    the work's DOI below the title or above the head."""
+    doi, title = PDF_WORK
+    words = title.split()
+    pages = []
+    for head, is_work in draw(st.permutations([(one, True) for one in JOURNAL_LABELS]
+                                              + [(one, False) for one in ABOUT_HEADS])):
+        case = draw(st.sampled_from(("upper", "title", "lower", "as written")))
+        written = {"upper": head.upper(), "title": head.title(), "lower": head.lower()}.get(
+            case, head)
+        written = written.replace(" ", draw(st.sampled_from((" ", "  ", "    "))))
+        beside = draw(st.sampled_from(("", "        Clinical Infectious Diseases",
+                                       "   J Infect Dis 2021")))  # fmt: skip
+        cuts = sorted(draw(st.sets(st.integers(1, len(words) - 1), max_size=2)))
+        lines = [" ".join(words[a:b]) for a, b in zip([0, *cuts], [*cuts, len(words)], strict=True)]
+        if draw(st.booleans()):
+            lines = [line.upper() for line in lines]
+        link = draw(st.sampled_from((f"https://doi.org/{doi}", f"doi: {doi}", f"DOI {doi}")))
+        above = draw(st.sampled_from(([], ["Journal of Examples 12 (2021) 101-109"])))
+        first = draw(st.booleans())
+        page = [*above, *([link] if first else []), written + beside, *lines,
+                "A. Fictional and B. Fictional", *([] if first else [link])]
+        pages.append(("\n".join(page) + "\n", is_work))
+    return pages
+
+
 #: Table cells that state one count, as `{n}` is filled with it; and cells that hold a whole
 #: number and state no count: a decimal, a bound, a label, a range, a share, an interval, a
 #: sign. What the reading of a cell for a count must tell apart.
@@ -11388,6 +11439,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "quoted": texts(),
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),
     "deposit named": texts(DOI_NAMED + DOI_NOT_NAMED),
+    "pdf shown": pdf_first_pages().map(lambda drawn: [text for text, _work in drawn]),
     "vault named": vault_commands().flatmap(
         lambda drawn: st.sampled_from([{"command": line} for line in drawn[0]])
     ),

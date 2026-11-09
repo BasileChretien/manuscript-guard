@@ -22,7 +22,8 @@ And it is refused, whatever it shows, where
 * **its head says it is about the work rather than the work:** a supplement ("Supplementary
   Appendix", "Supplement to:", "Supporting Information"), a correction ("Correction to:",
   "Erratum", "Corrigendum", "Retraction"), a reply or a comment ("In reply", "Reply to",
-  "Response to", "Comment on"), unless the cited work's own title says so;
+  "Response to", "Comment on"), unless the cited work's own title says so; a journal's
+  label "Supplement Article", over an article of a supplement issue, is the work's;
 * **it is a preview:** fewer than half the pages `references.bib` gives the work (`preview`).
 
 Only the first two pages are read. A paper's reference list, which names other works' DOIs
@@ -67,14 +68,21 @@ _A_DOI = re.compile(r"(?i)^(?:doi:\s*|https?://(?:dx\.)?doi\.org/)?(10\.\d{4,9}/
 #: A DOI printed on a page.
 _PAGE_DOI = re.compile(r"10\.\d{4,9}/[^\s\"<>\]\[]+")
 _LATEX = re.compile(r"\\[A-Za-z]+\s*")
-#: The heads of a document about a work rather than the work, each with what it is called.
+#: An apostrophe, straight or as pdftotext prints a typeset one (review of #595: "Author’s
+#: reply" was filed as the work).
+_APOSTROPHE = "['" + chr(0x2019) + "]"
+#: The heads of a document about a work rather than the work, each with what it is called;
+#: their words as far apart as `pdftotext -layout` sets them. "Supplement Article" is the
+#: label Clin Infect Dis and J Infect Dis set over each article of a supplement issue, the
+#: article itself, which was refused as a supplement (round 2 of #565).
 _KINDS = (
-    (re.compile(r"(?i)^\W*(?:supplement(?:ary|al)?\b|supporting information\b)"),
-     "a supplement"),
+    (re.compile(r"(?i)^\W*(?:supplement(?:ary|al)\b|supplement\b(?!\s+articles?\b)"
+                r"|supporting\s+information\b)"), "a supplement"),
     (re.compile(r"(?i)^\W*(?:correction\b|erratum\b|corrigendum\b|retraction\b"
-                r"|expression of concern\b)"), "a correction or a retraction"),
-    (re.compile(r"(?i)^\W*(?:in reply\b|reply\b|response to\b|author'?s'? reply\b"
-                r"|comment on\b)"), "a reply or a comment"),
+                r"|expression\s+of\s+concern\b)"), "a correction or a retraction"),
+    (re.compile(r"(?i)^\W*(?:in\s+reply\b|reply\b|response\s+to\b"
+                rf"|author{_APOSTROPHE}?s{_APOSTROPHE}?\s+reply\b|comment\s+on\b)"),
+     "a reply or a comment"),
 )  # fmt: skip
 
 
@@ -256,11 +264,11 @@ def _kind(pages: list[str], at: tuple[int, int] | None, title: str) -> str | Non
     if page >= len(pages):
         return None
     head = _lines(pages[page])[: line + 1]
-    own = title.lower()
+    own = " ".join(title.lower().split())
     for pattern, called in _KINDS:
         for one in head:
             found = pattern.match(one)
-            if found and found.group().strip(" \t:.-").lower() not in own:
+            if found and " ".join(found.group().strip(" \t:.-").lower().split()) not in own:
                 return called
     return None
 

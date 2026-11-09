@@ -197,6 +197,20 @@ def test_a_control_finding_warns_and_fails_at_submission(code: str) -> None:
     assert report.ok and deferred == {SUBMISSION: 1}
 
 
+def test_a_held_out_leak_fails_from_the_analysis_stage_and_the_rest_at_submission() -> None:
+    """Item 11, D11.2: a leak changes the result, and fails from the analysis stage; what the
+    record cannot tell, and the declarations against the frozen copy, from submission."""
+    for code in ("held-out-read-elsewhere", "held-out-read-before-model"):
+        assert binds_at(code) == ANALYSIS
+        failed = Report((Finding(gate="G1", code=code, message="m", severity=FAIL),))
+        assert not apply_stage(failed, ANALYSIS)[0].ok
+        report, deferred = apply_stage(failed, DESIGN)
+        assert report.ok and deferred == {ANALYSIS: 1}
+    for code in ("held-out-order-unknown", "held-out-unread", "held-out-declared-late",
+                 "held-out-changed", "first-reads-unreadable"):  # fmt: skip
+        assert binds_at(code) == SUBMISSION
+
+
 def test_the_summary_says_how_many_and_when() -> None:
     _report, deferred = apply_stage(
         report_with("no-review", "figure-unreviewed", "unclassified-number"), ANALYSIS

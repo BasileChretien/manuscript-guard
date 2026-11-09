@@ -15,6 +15,8 @@ decision 10a). The outbox is read before anything is asked:
   warning: an identifier, or a value per person;
 - the plan the run's first results froze, where it holds the project's plan and nothing
   else, as the results are;
+- the record of first reads the run kept, where it holds what the emitters write and nothing
+  else, merged into the project's (`_reads_added`); one that holds more stays in the vault;
 - each other file, which no check reads (a figure, a profile, a CSV no entry harvests), is
   listed, and released only where the person types its path at the terminal (decision 12a).
 
@@ -37,7 +39,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
-from manuscript_guard.emit import FROZEN_PLAN
+from manuscript_guard.emit import FIRST_READS, FROZEN_PLAN
 from manuscript_guard.findings import FAIL, INFO, Finding
 from manuscript_guard.vault import RELEASE_SCHEMA
 from manuscript_guard.vault.run import OUTBOX, RunRefused, read_manifest
@@ -71,6 +73,13 @@ class Outbox:
     #: The plan as the run's first results froze it, where it holds the project's plan and
     #: nothing else (`_plan_only`).
     plan: list[str] = field(default_factory=list)
+    #: The record of first reads the run kept in the vault's copy, where it reads as the
+    #: emitters write it and adds a read to the project's: merged into the project's at the
+    #: release, entries only added (Basile, 2026-11-09, round 1 of PR 2b).
+    reads: list[str] = field(default_factory=list)
+    #: That record where it holds anything the emitters do not write: kept in the vault, and
+    #: never offered by its path, since a copy would replace the project's (round 2).
+    withheld: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -122,6 +131,7 @@ def open_outbox(project, folder: Path, run: str) -> Outbox:
     # refuses the outbox (round 2 of #490).
     found = sorted(_walk(where))
     named = {relative for relative, _path, _link in found}
+    reads = None
     for relative, path, link in found:
         if link:
             raise Refused(f"{relative} in the outbox is a link or a junction: a release copies "
@@ -136,9 +146,93 @@ def open_outbox(project, folder: Path, run: str) -> Outbox:
             box.harvested.append((relative, entries[relative]))
         elif relative == FROZEN_PLAN.as_posix() and _plan_only(project, path, manifest):
             box.plan.append(relative)
+        elif relative == FIRST_READS.as_posix():
+            reads = path
         else:
             box.unread.append(relative)
+    if reads is not None:
+        added = _reads_added(project, box, reads)
+        if added is None:
+            box.withheld.append(FIRST_READS.as_posix())
+        elif added:  # one that adds no read is left in the vault, with nothing to release
+            box.reads.append(FIRST_READS.as_posix())
     return box
+
+
+#: A digest as the emitters write one, and the keys they write in the record of first reads.
+_DIGEST = re.compile(r"[0-9a-f]{64}")
+_RECORD_KEYS, _READ_KEYS = {"schema", "plans", "reads"}, {"script", "input", "read_at", "plan",
+                                                          "inputs"}  # fmt: skip
+
+
+def _declared(box: Outbox) -> tuple[set[str], set[tuple[str, str]]]:
+    """The scripts the run's results files say wrote them, which a driver the run ran may
+    have sourced (round 3 of PR 2b), and each input, path and digest, they declare; a file
+    that does not read is refused by their checks."""
+    scripts: set[str] = set()
+    found: set[tuple[str, str]] = set()
+    for relative in box.fragments:
+        try:
+            document = json.loads((box.folder / relative).read_text(encoding="utf-8"))
+            scripts.add(document["provenance"]["generated_by"])
+            given = document["provenance"].get("inputs") or ()
+            found |= {(one["path"], one["sha256"]) for one in given if isinstance(one, dict)
+                      and isinstance(one.get("path"), str)
+                      and isinstance(one.get("sha256"), str)}  # fmt: skip
+        except (OSError, UnicodeDecodeError, ValueError, LookupError, TypeError,
+                AttributeError):  # fmt: skip
+            continue
+    return {one for one in scripts if isinstance(one, str)}, found
+
+
+def _reads_added(project, box: Outbox, path: Path) -> int | None:
+    """How many reads the record of first reads the run kept adds to the project's, where it
+    holds what the emitters write and nothing else: their keys, digests and times, each read
+    by a script the run ran or its results name as their writer, of inputs and digests they
+    declare, under a plan whose
+    text the project's plan or record already holds. None otherwise: a script in the vault
+    could carry the data out in anything else (round 2 of PR 2b). Refused where the project's
+    record does not read, which nothing can then be merged into."""
+    from manuscript_guard.emit import FIRST_READS_SCHEMA, PLAN, _first_reads_shaped, source_digest
+
+    root = Path(project.root)
+    ours: object = {"schema": FIRST_READS_SCHEMA, "plans": {}, "reads": []}
+    if (root / FIRST_READS).exists():
+        try:
+            ours = json.loads((root / FIRST_READS).read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError):
+            ours = None
+    if not _first_reads_shaped(ours):
+        raise Refused(f"{FIRST_READS.as_posix()} in the project does not read as the emitters "
+                      "write it, and a release merges the run's first reads into it: put it "
+                      "right and release again")  # fmt: skip
+    try:
+        now = (source_digest(root / PLAN), (root / PLAN).read_bytes().decode("utf-8-sig"))
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+    if not _first_reads_shaped(record) or set(record) != _RECORD_KEYS or any(
+            text != ours["plans"].get(digest) and (digest, text) != now
+            for digest, text in record["plans"].items()):  # fmt: skip
+        return None
+    listed = {(read["script"], read["input"]) for read in ours["reads"]}
+    scripts, declared = _declared(box)
+    ran, seen = set(box.manifest.get("ran") or ()) | scripts, set()
+    for read in record["reads"]:
+        key = (read["script"], read["input"])
+        if set(read) != _READ_KEYS or key in seen:
+            return None
+        seen.add(key)
+        given = [(one.get("path"), one.get("sha256")) for one in read["inputs"]
+                 if set(one) == {"path", "sha256"}]  # fmt: skip
+        if key not in listed and (
+                read["script"] not in ran or not isinstance(read["read_at"], str)
+                or _FROZEN_AT.fullmatch(read["read_at"]) is None
+                or len(given) != len(read["inputs"]) or not set(given) <= declared
+                or not all(_DIGEST.fullmatch(digest) for _path, digest in given)
+                or read["input"] not in {one for one, _digest in given}):  # fmt: skip
+            return None
+    return len(seen - listed)
 
 
 #: When a plan was frozen, as `emit.freeze_plan` writes it.
@@ -403,10 +497,22 @@ def write_release(project, box: Outbox, named: list[str], who: tuple[str, str | 
     from manuscript_guard.vault.records import release_file
 
     root = Path(project.root)
-    going = [*box.fragments, *(one for one, _entry in box.harvested), *box.plan, *named]
+    going = [*box.fragments, *(one for one, _entry in box.harvested), *box.plan, *box.reads,
+             *named]  # fmt: skip
     if blocked := through_links(root, going):
         raise Refused(f"the release would write through a link: {', '.join(blocked)}")
     files = []
+    for relative in box.reads:
+        from manuscript_guard.emit import merge_first_reads
+
+        try:
+            added = merge_first_reads(root, json.loads((box.folder / relative).read_text("utf-8")))
+        except ValueError as exc:
+            raise Refused(f"{relative}: {exc}") from exc
+        target = root / relative
+        if added:  # listed only where the release wrote to it (round 2 of PR 2b)
+            files.append({"path": relative, "sha256": sha256_of(target),
+                          "bytes": target.stat().st_size, "kind": "first reads"})  # fmt: skip
     for relative, kind in ([(one, "results") for one in box.fragments]
                            + [(one, "harvested") for one, _entry in box.harvested]
                            + [(one, "plan") for one in box.plan]

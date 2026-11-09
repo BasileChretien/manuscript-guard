@@ -2751,7 +2751,7 @@ def _audit(args: argparse.Namespace, package) -> int:
 
             print(WORDING, file=sys.stderr)
     else:
-        print(sections.render(report, discrimination, Path.cwd()))
+        print(sections.render(report, discrimination, Path.cwd(), details=args.details))
     if not report.examined:
         # An empty paper, or one whose numbers are all in pictures, printed "0 numeric
         # tokens" and passed --strict: an audit that read nothing.
@@ -6819,6 +6819,14 @@ def build_parser() -> argparse.ArgumentParser:
         "result to its .sha256 and to the script packaged beside it; with a paper, the paper's "
         "numbers are looked for among its results; nothing in it is run "
         "(docs/refereeing.md)",
+    )
+    audit.add_argument(
+        "--details",
+        action="store_true",
+        help="print every section in full and every finding with its place, its context and "
+        "what to do; without it the report says what each check found in a line, shows only "
+        "the sections with something to show, and groups the findings on the words by kind, "
+        "with their first places",
     )
     audit.add_argument(
         "--report-draft",

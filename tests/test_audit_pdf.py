@@ -134,9 +134,11 @@ def test_the_text_report_says_page_and_line(tmp_path: Path, capsys) -> None:
     out = capsys.readouterr().out
     assert "page 1, line 11: t(48) = 2.10 gives" in out
     assert "page 1, line 4: 21.4%" in out
-    # G14 on the PDF's text, at the PDF's page and line.
-    assert "G14 paper.pdf, page 1, line 3" in out or "G14 " in out
+    # G14 on the PDF's text, grouped by kind, each place the PDF's page and line.
+    assert "(G14, " in out and "    page 1, line 3: " in out
     assert " line 11:" not in out.replace("page 1, line 11:", "")
+    assert main(["audit", str(paper), "--details"]) == 0
+    assert "G14 paper.pdf, page 1, line 3" in capsys.readouterr().out
 
 
 @needs_pdftotext

@@ -788,6 +788,10 @@ def test_a_short_paper_with_only_a_late_bold_title_keeps_its_text(tmp_path: Path
                                       "**2. Methods**\n\nRecords.\n"))  # fmt: skip
     assert [line.replace("\\", "") for line in _headings(numbered.text)] == [
         "# 1. Abstract", "# 2. Methods"]
+    # The Lancet's "Summary" opens a paper, and its title page is set aside (round 2).
+    lancet = from_word.convert(word(tmp_path / "lancet", "Jane Doe, Caen.\n\n**Summary**\n\n"
+                                    "We read.\n\n**Introduction**\n\nText.\n"))  # fmt: skip
+    assert "Jane Doe" not in lancet.text[lancet.text.index("-->") :]
 
 
 @needs_pandoc

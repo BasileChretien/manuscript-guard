@@ -579,11 +579,11 @@ def _title_page(blocks: list, bold: tuple[str, ...] = ()) -> tuple[list, list, s
 
 
 def _opens_a_paper(title: str) -> bool:
-    """Whether a heading made from a title in bold is one a paper opens on, its Abstract or
-    its Introduction, above which a title page stands."""
+    """Whether a heading made from a title in bold is one a paper opens on, its Abstract, the
+    Lancet's "Summary" among them, or its Introduction, above which a title page stands."""
     from manuscript_guard.text.section_names import names_abstract, names_introduction
 
-    return names_abstract(title) or names_introduction(title)
+    return names_abstract(title, "Summary") or names_introduction(title)
 
 
 def _tables(blocks: list) -> tuple[int, list[tuple[str, dict]]]:

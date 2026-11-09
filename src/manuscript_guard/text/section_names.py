@@ -250,9 +250,12 @@ _PART_ORDER = {
     "background": 1, "methods": 2, "method": 2, "methodology": 2, "materials and methods": 2,
     "material and methods": 2, "methods and materials": 2, "patients and methods": 2,
     "subjects and methods": 2, "participants and methods": 2, "results": 3, "findings": 3,
-    "results and discussion": 3, "discussion": 4, "limitations": 4, "conclusion": 5,
+    "results and discussion": 3, "discussion": 4, "limitations": 4.5, "conclusion": 5,
     "conclusions": 5,
 }  # fmt: skip
+# "Limitations" after the Discussion goes on in the order: at one place, it started the
+# order again, and a main text's Background to Discussion were the Abstract's (round 2 of
+# #598).
 #: Titles a structured abstract may hold among its parts in any place: the Lancet's Summary
 #: ends on its Funding, and some abstracts on their Abbreviations.
 _ANYWHERE_IN_AN_ABSTRACT = frozenset({"abbreviations", "funding"})

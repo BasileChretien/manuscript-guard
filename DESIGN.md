@@ -23110,7 +23110,10 @@ Open, recorded as each change landed:
   design and setting" or "Statistical analysis" stays a paragraph, its section run on under
   the heading before it; a title numbered by Word's own numbering is a list's item to pandoc
   and a numbered line to the audit, and no heading to either; a title holding a link or a
-  note's mark is none, as pandoc reads the link or the note in it, nor is one in a text box;
+  note's mark is none, as pandoc reads the link or the note in it, nor is one in a text box
+  to the audit (a link written as a field, `w:fldSimple` or a HYPERLINK `w:instrText`, is a
+  title to the audit, and what pandoc makes of it and of a text box's bold paragraph is not
+  held by a test, so there the two readers may differ);
   and a paper that uses a heading style anywhere is read by its styles alone, its bold titles
   text. Where the titles cannot be placed, a structured abstract's parts with no
   Introduction after them, the order of its parts never starting again and no title it

@@ -11300,6 +11300,12 @@ PLACED_PAPERS = {
     "an appendix's names": ([("Abstract", True), ("Background", None), ("Methods", None),
                              ("Results", None), ("Discussion", None), ("References", None),
                              ("Appendix", None), ("Methods", None), ("Results", None)], None),
+    # Round 2 of #598: Limitations after the Discussion goes on in the order.
+    "limitations after the discussion": ([("Abstract", True), ("Background", None),
+                                          ("Methods", None), ("Results", None),
+                                          ("Discussion", None), ("Limitations", None),
+                                          ("Conclusions", None), ("References", None)],
+                                         (1, 1, 1, 1, 1, 1, 1, 1)),
     "no abstract": ([("Introduction", None), ("Methods", None), ("Results", None),
                      ("Discussion", None)], (1, 1, 1, 1)),
 }  # fmt: skip

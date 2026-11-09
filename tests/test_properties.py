@@ -1814,6 +1814,21 @@ def _a_label_alone_takes_nothing_under_it(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_under_a_label", lambda text, start, headings: None)
 
 
+def _a_label_alone_takes_a_heading_under_it(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._under_a_label
+    patch.setattr(language_gate, "_under_a_label",
+                  lambda text, start, headings: real(text, start, []))  # fmt: skip
+
+
+def _a_bold_word_in_a_sentence_is_a_label(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_a_label", lambda label, rest: True)
+
+
+def _an_indented_bold_label_opens_a_statement(patch: pytest.MonkeyPatch) -> None:
+    pattern = language_gate._RUN_IN.pattern
+    patch.setattr(language_gate, "_RUN_IN", re.compile(r"[ ]{0,3}" + pattern))
+
+
 def _a_short_form_followed_by_a_colon_defines_nothing(patch: pytest.MonkeyPatch) -> None:
     pattern = language_gate._OPENS_WITH.pattern
     assert pattern.endswith("(?:$|[;,:])")
@@ -19050,6 +19065,18 @@ BROKEN = {
     ),
     "a label alone takes nothing under it": (
         _a_label_alone_takes_nothing_under_it,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a label alone takes a heading under it": (
+        _a_label_alone_takes_a_heading_under_it,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a bold word that goes on into its sentence is a label": (
+        _a_bold_word_in_a_sentence_is_a_label,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "an indented bold label opens a statement": (
+        _an_indented_bold_label_opens_a_statement,
         test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
     ),
     "a statistical abbreviation needs a definition": (

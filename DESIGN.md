@@ -21461,8 +21461,11 @@ Open, recorded as each change landed:
   - The spelling is not read in a contributions, acknowledgements, funding or
     competing-interests section, nor in its subsections, nor in such a statement run on
     from its bold label: a word of the author's own that is misspelt there passes. A
-    label in a span, `**[Funding]{.underline}**`, opens no statement, and a label in
-    LaTeX, `\textbf{Funding}`, is not read at all. Those sections are found by the words listed above
+    label in a span, `**[Funding]{.underline}**`, or in bold italics, `***Funding***`,
+    opens no statement, a label standing alone takes one paragraph under it and no more,
+    and a label in LaTeX, `\textbf{Funding}`, is not read at all. A bold "**Funding**"
+    used as a subheading of the Methods silences its paragraph, as a heading of that name
+    does. Those sections are found by the words listed above
     for the abbreviations, "disclosure", "financial support" and "author statement"
     among them, anywhere in a title. So a section of the paper proper whose title
     holds one, "Funding of primary care" or "Barriers to disclosure", is not read

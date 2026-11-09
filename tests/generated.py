@@ -651,7 +651,9 @@ NOT_ABBREVIATIONS = (
 #: and grid, in a list item and in a plain paragraph, all in capitals; and one in a header
 #: cell that runs over two lines and has small letters on the other. And beside a statement
 #: run on from its label: a paragraph that only opens with such a word in bold, one after a
-#: statement, and one with the label inside it.
+#: statement, one with the label inside it, one whose bold word goes on into its sentence, a
+#: label in a list item, in a block quote and in an indented table's header, and a heading
+#: under a label that stands alone.
 STILL_ABBREVIATIONS = (
     ("the PM was high at 10:00", "PM"),
     ("| Group | n |\n|---|---|\n| ICU stay | 12 |", "ICU"),
@@ -662,9 +664,14 @@ STILL_ABBREVIATIONS = (
     ("ECG", "ECG"),
     ("+---------------+----+\n| Patients with | n  |\n| AKI           |    |\n"
      "+===============+====+\n| 3             | 4  |\n+---------------+----+", "AKI"),
-    ("**Contributions of this study** the WHO data were used", "WHO"),
+    ("**Contributions of this study** The WHO data were used", "WHO"),
     ("**Conflicts of interest:** none.\n\nthe EMA approved the protocol", "EMA"),
     ("the NSF and **Funding** bodies paid", "NSF"),
+    ("**Funding** of the NHS was cut", "NHS"),
+    ("- **Funding:** the AHRQ paid", "AHRQ"),
+    ("> **Funding:** the CDC paid", "CDC"),
+    ("  **Funding source**   Count\n  ---------------- -----\n  NICE              3", "NICE"),
+    ("**Acknowledgements**\n\n# Appendix\nthe FDA approved it", "FDA"),
 )  # fmt: skip
 
 

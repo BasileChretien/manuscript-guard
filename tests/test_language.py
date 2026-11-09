@@ -1533,6 +1533,29 @@ def test_many_findings_are_made_in_linear_time(assert_linear) -> None:
     assert_linear(repeated, judge, 500, "the findings, by repeated definition")
 
 
+def test_many_statements_and_headings_are_read_in_linear_time(assert_linear) -> None:
+    """Each statement run on from a bold label was set apart by scanning every region, and
+    each label alone looked at every heading: a file of many was read in the square of its
+    length (round 1 of #596)."""
+    from manuscript_guard.gates.language import _file
+
+    def labelled(count: int) -> str:
+        return "# Methods\n\n**Funding:** the NIH.\n\n**Funding**\n\nThe NIH.\n\n" * count
+
+    assert_linear(labelled, lambda text: _file(0, Path("main.md"), text, [], False), 300,
+                  "the statements run on from a label, by statement and heading")  # fmt: skip
+
+
+def test_a_statement_in_crlf_text_ends_with_its_paragraph() -> None:
+    """A blank line written CRLF ends a paragraph too: else the first statement ran on to
+    the end of the file and every abbreviation after it went unreported (round 1 of #596)."""
+    from manuscript_guard.gates.language import _run_in_statements, _views
+
+    text = "**Funding:** NIH.\r\n\r\nThe WHO data were used.\r\n"
+    hidden, _code = _views(text)
+    assert _run_in_statements(hidden, []) == [(0, text.index("\n"))]
+
+
 def test_a_long_hyphenated_word_is_read_in_linear_time(assert_linear) -> None:
     from manuscript_guard.gates.language import _forms, _Known
 

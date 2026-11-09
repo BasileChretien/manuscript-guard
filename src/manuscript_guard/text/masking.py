@@ -480,6 +480,20 @@ def comparison_escapes(text: str) -> list[int]:
 # before any of these, by `text/comments.py`: whether `<!--` opens one depends on whether a
 # code span opened first, which no pattern here can see.
 _URL = re.compile(r"(?:https?://|www\.|doi:\s*|10\.\d{4,9}/)\S+", re.IGNORECASE)
+_ADDRESS_START = r"(?:https?://|www\.|doi:\s*|10\.\d{4,9}/)"
+# A link's target that is an address, after its `(` up to its own `)`: the address, brackets
+# in it one deep (`A_(b)`), angle brackets round it, and a title in quotes or brackets. The
+# bare address runs to the next space, and it took the link's `)` and stop with it; the
+# link's target then ran on from its `](` to the next `)` on the line, and "Data (n = 1213"
+# after a link was read by no gate (round 3 of #587). The `](` is left, as the bare address
+# left it: "reporting odds ratio [ROR](https://...)" defines ROR (`gates/language.py`), and
+# a reference census reads `[11](https://...)` as a link and not as citation 11.
+_LINK_ADDRESS = re.compile(
+    r"(?<=\]\()[ \t]*"
+    rf"(?:<{_ADDRESS_START}[^<>\n]*>|{_ADDRESS_START}[^()\s]*(?:\([^()\s]*\)[^()\s]*)*)"
+    r"(?:[ \t]+(?:\"[^\"\n]*\"|'[^'\n]*'|\([^()\n]*\)))?[ \t]*\)",
+    re.IGNORECASE,
+)
 _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # A fenced block is masked *here* and read by a different reader. Inline code is not
     # masked at all.
@@ -494,9 +508,12 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # figure scripts: a number inside a string literal in the listing is still a claim, a
     # loop bound is not.
     ("placeholder", re.compile(r"\{\{[^}\n]*\}\}")),
+    ("link-address", _LINK_ADDRESS),
     ("autolink", re.compile(r"<(?:https?|doi|mailto):[^>\s]+>")),
     ("url", _URL),
-    ("link-target", re.compile(r"\]\([^)\n]*\)")),
+    # A link's target that is no address. Not across what is masked already: it ran from a
+    # link's `](` over the masked address and on to the next `)` on the line.
+    ("link-target", re.compile(r"\]\([^)\n\x00]*\)")),
     ("footnote", re.compile(r"\[\^[^\]\n]+\]")),
     # Citation KEYS, not whole citation brackets. Better BibTeX keys routinely end in a year,
     # so the key itself must go; everything else in the bracket must stay.

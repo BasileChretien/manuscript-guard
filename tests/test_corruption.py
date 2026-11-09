@@ -107,6 +107,41 @@ def test_a_value_written_hard_after_a_citation_locator_is_still_caught(project: 
     assert not any("'3" in m for m in messages), "the locator is not the unbound number"
 
 
+@pytest.mark.parametrize(
+    "link",
+    [
+        "[the repository](https://example.org/a/b)",
+        "[the archive](https://example.org/wiki/A_(b))",
+        '[the archive](https://example.org/a "The archive")',
+        "[the record](doi:10.1000/xyz123)",
+        "[the code](www.example.org/a)",
+        "![the logo](https://example.org/logo.png)",
+    ],
+)
+def test_a_value_typed_after_a_link_is_still_caught(project: Path, link: str) -> None:
+    """The mask took the link's address to the next space, its `)` and stop with it, and the
+    link's target then ran on to the next `)` on the line: 1213 was printed and no gate read
+    it (round 3 of #587)."""
+    text = main_md(project).read_text(encoding="utf-8")
+    probe = f"Code is at {link}. Data (n = 1213) are deposited."
+    main_md(project).write_text(f"{text}\n\n# Probe\n\n{probe}\n", encoding="utf-8")
+    report = gate_report(project)
+    messages = [f.message for f in report.failures if f.gate == "G2"]
+    assert any("'1213'" in m for m in messages), messages
+
+
+def test_a_value_typed_after_a_link_in_the_supplement_is_still_caught(project: Path) -> None:
+    """The supplement is read by the same mask: 1213 after a link there is G2's too."""
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    text = supplement.read_text(encoding="utf-8")
+    probe = "Lists are at [the archive](https://example.org/lists). Codes (n = 1213) are kept."
+    supplement.write_text(f"{text}\n\n# Probe\n\n{probe}\n", encoding="utf-8")
+    report = gate_report(project)
+    failed = [(f.message, f.path) for f in report.failures if f.gate == "G2"]
+    assert any("'1213'" in message and "S1_code_lists" in str(where)
+               for message, where in failed), failed  # fmt: skip
+
+
 # --------------------------------------------------------------------------------------
 # The headline: every binding, replaced by its own current value, must be caught.
 # --------------------------------------------------------------------------------------

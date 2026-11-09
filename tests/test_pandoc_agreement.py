@@ -1107,6 +1107,64 @@ def test_a_number_is_in_a_comment_for_both_or_for_neither(name: str) -> None:
     )
 
 
+#: A link's target, and what follows it on its line. The mask took an address up to the next
+#: space, the link's `)` and stop with it, and then the link's target ran on from its `](` to
+#: the next `)` on the line: "Data (n = 9.99" after a link was read by no gate (#587).
+LINK_CASES = {
+    "after a link": "Code is at [the code](https://example.org/a/b). Data (n = 9.99) are kept.\n",
+    "after a link, no stop": "See [the code](https://example.org/a) and (n = 9.99) more.\n",
+    "after a link with brackets in its address":
+        "See [A](https://example.org/wiki/A_(b)). Data (n = 9.99) are kept.\n",
+    "after a link with a title": 'See [A](https://example.org/a "The title"). Data (9.99) here.\n',
+    "after a link with a title in brackets":
+        "See [A](https://example.org/a (The title)). Data (9.99) here.\n",
+    "after a link to www": "See [A](www.example.org/a). Data (n = 9.99) are kept.\n",
+    "after a link to a DOI": "See [A](doi:10.1000/xyz). Data (n = 9.99) are kept.\n",
+    "after a link to a bare DOI": "See [A](10.1000/xyz). Data (n = 9.99) are kept.\n",
+    "after a link in angle brackets": "See [A](<https://example.org/a b>). Data (9.99) here.\n",
+    "after a link spaced inside": "See [A]( https://example.org/a ). Data (9.99) here.\n",
+    "after an image": "As ![a figure](https://example.org/f.png) shows (n = 9.99) here.\n",
+    "after a link to a file": "See [the notes](notes.md). Data (n = 9.99) are kept.\n",
+    "after two links": "[A](https://example.org/a) and [B](https://example.org/b) (9.99).\n",
+    "in a link's text": "See [9.99 reports](https://example.org/a) (b).\n",
+    "in a link's address": "See [A](https://example.org/9.99) now (b).\n",
+    "in a link's title": 'See [A](https://example.org/a "Title 9.99") now (b).\n',
+    "in a link's title in brackets": "See [A](https://example.org/a (Title 9.99)) now (b).\n",
+    # Pandoc prints an address that is no link, and the mask hides it all the same: an
+    # address is no claim. What follows it is read.
+    "after a bare address": "Code: https://example.org/a). Data (n = 9.99) are kept.\n",
+}
+
+
+def pandoc_prints(markdown: str) -> str:
+    """The text pandoc prints of `markdown`: a link's text and not its target or title."""
+    finished = subprocess.run(
+        [PANDOC, "-f", "markdown", "-t", "plain", "--wrap=none"],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert finished.returncode == 0, finished.stderr
+    return finished.stdout
+
+
+@pytest.mark.parametrize("name", sorted(LINK_CASES))
+def test_a_number_by_a_link_is_read_exactly_when_pandoc_prints_it(name: str) -> None:
+    """Where pandoc prints 9.99 the mask leaves it to be read, and where pandoc does not, in
+    a link's address or title, the mask hides it."""
+    from manuscript_guard.text.masking import mask
+
+    markdown = LINK_CASES[name]
+    at = markdown.index("9.99")
+    printed = "9.99" in pandoc_prints(markdown)
+    read = mask(markdown)[at : at + 4] == "9.99"
+    assert read == printed, (
+        f"{name}: pandoc {'prints' if printed else 'does not print'} 9.99, and the mask "
+        f"{'leaves' if read else 'hides'} it"
+    )
+
+
 #: Comments in and around the blocks pandoc reads on their own: a list item, a quotation, a
 #: definition, a footnote. Where pandoc prints 9.99 the gates mask, `check` refuses the line
 #: of the `<!--`; where it drops 9.99 as the gates do, nothing is refused.

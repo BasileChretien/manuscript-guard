@@ -17435,11 +17435,6 @@ Open, recorded as each change landed:
   - A citation group is any bracket pair with an `@` inside it within one paragraph: a
     stray `[` and `]` round an `@`, "aged [18, 65) as @a found. ... (65, 100]", are read
     as one sentence from one to the other.
-  - A link at a sentence's end with a `)` later on its line, "Code is at
-    [GitHub](https://github.com/a/b). Data (n = 1200) are deposited.", runs the next
-    sentence into it: G8's reading blanks the link's target to that `)`, the spaces between
-    included (round 3 of #587). `check` misses the number there too, which is G2's, on
-    `main`, and a task of its own.
   - A quote across three sentences or more stands in the text and is placed nowhere;
     `review` counts it among the findings in no one sentence or two.
   - Two sentences in a row are looked at only where no one sentence holds the quote: words
@@ -24176,6 +24171,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
     says so among what G4 did not check.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A number after a link was read by no gate (2026-11-09).** The mask took a link's
+  address up to the next space, the link's `)` and stop with it, and the link's target
+  then ran on from its `](` to the next `)` on the line. In "Code is at
+  [GitHub](https://github.com/a/b). Data (n = 1213) are deposited." G2 never saw 1213, which
+  the build prints, and G8 read the two sentences as one, so a panel's quote of the second
+  was placed in both (round 3 of #587). A link's target that is an address is masked now
+  after its `(` up to its own `)`: brackets in the address one deep, a title in quotes or
+  brackets, angle brackets and spaces inside it. Its `](` is left, as before, so
+  `[ROR](https://...)` still defines ROR and the reference census reads `[11](https://...)`
+  as a link and not as citation 11. The pattern for any other link's target no longer runs
+  across what is masked already. `tests/test_pandoc_agreement.py` holds the mask to what
+  pandoc prints of each form.
 
 - **The audit did not count text a style hides (2026-11-07).** It counted as hidden only a
   run whose own properties hide it, so text set in a character or paragraph style that

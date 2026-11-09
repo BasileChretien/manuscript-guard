@@ -221,3 +221,9 @@ expected:
       since an accent's argument is one letter: `pol\^\itica` is searched for as "politica",
       where the longest command, the `\it` of italics, made it "polica"; the lines drawn
       now hold an accent on a dotless i before a t, braced and not
+  - reading: plan variables
+    why: >-
+      the plan's Software section names packages and functions, and G12's data dictionary
+      check no longer reads them as variables (#592), as it does not read the Deviations;
+      the plans drawn now hold such a section, and headings that only mention software or
+      open with one of its words and head something else, which are read as before

@@ -8665,6 +8665,19 @@ def test_a_base_package_r_attaches_is_loaded_and_another_heading_is_not_the_soft
     analysis = "## Statistical analysis and software\n\n- `age_group`: entered as a factor\n\n"
     plan.write_bytes(text.replace("## Sample size", analysis + "## Sample size").encode())
     assert _software_said(project) == []
+    # Round 2: a heading that opens with the word and heads something else is not the
+    # section, and the data dictionary is held to the variables it names, as on main.
+    other = "## Library preparation\n\n- `read_depth` per sample\n\n"
+    plan.write_bytes(text.replace("## Sample size", other + "## Sample size").encode())
+    assert _software_said(project) == []
+    assert ("plan-variable-undefined", "warn") in _plan_said(project)
+    # And the headings people write for it are read, the dictionary leaving them alone.
+    (project / "analysis" / "02_model.R").write_bytes(b"library(lme4)\n")
+    for heading in ("Statistical analysis software", "IV. Software", "R and Python packages"):
+        own = f"## {heading}\n\n- `lme4`: `glmer()` fits the model\n\n"
+        plan.write_bytes(text.replace("## Sample size", own + "## Sample size").encode())
+        assert _software_said(project) == [], heading
+        assert ("plan-variable-undefined", "warn") not in _plan_said(project), heading
 
 
 def test_a_script_no_parser_can_read_does_not_stop_the_check(project: Path) -> None:
@@ -8675,6 +8688,10 @@ def test_a_script_no_parser_can_read_does_not_stop_the_check(project: Path) -> N
 
     assert [load.name for load in python_loads("print 'x'\nimport os, numpy as np, pandas\n")] \
         == ["os", "numpy", "pandas"]  # fmt: skip
+    # Round 2: a line continued with a backslash is read with the line it continues.
+    assert [(load.name, load.line) for load in python_loads("print 'x'\nimport os, \\\n"
+                                                            "    numpy\n")] == [
+        ("os", 2), ("numpy", 2)]  # fmt: skip
     python_loads("x = " + "not " * 100000 + "y\n")
     python_loads("x = " + "(" * 100000 + ")" * 100000 + "\n")
     script_loads("figures/deep.ipynb", "[" * 100000)

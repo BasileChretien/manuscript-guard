@@ -5314,6 +5314,9 @@ def collection_plans(
          f"### Considered and not used\n\n- `pandas`: {draw(words)}\n", [], []),
         (f"## Statistical analysis and software\n\n{draw(words)} `n_events` {draw(words)}.\n",
          [], ["n_events"]),
+        (f"## Library preparation\n\n- `read_depth` per sample, {draw(words)}\n", [],
+         ["read_depth"]),
+        (f"## IV. Software\n\n- `lane_id` {draw(words)}\n", [], []),
     ]  # fmt: skip
     order = draw(st.permutations(range(len(kinds))))
     # A title that names an amendment encloses the plan, and is not its Deviations.
@@ -11292,8 +11295,21 @@ SOFTWARE_PYTHON_DECOYS = (
     "# import {p}", 's = "import {p}"', '"""\nimport {p}\n"""', "from . import {p}",
     "from .{p} import fit", "x = 1  # from {p} import fit",
 )  # fmt: skip
+#: How a plan heads its Software section: the word, after a number in digits, letters or
+#: Roman numerals, with a word for the language or the analysis before it, or "used", "and
+#: tools" and versions after it (#592).
+SOFTWARE_HEADINGS = (
+    "Software", "R packages", "R and Python packages", "Statistical analysis software",
+    "Data analysis software", "Tools and software", "Software and packages", "IV. Software",
+    "Appendix B: Software", "3.2 Software used (R 4.4.1)", "Libraries", "Packages used",
+)  # fmt: skip
+#: Headings that open with one of those words, or end with one, and head something else.
+SOFTWARE_OTHER_HEADINGS = (
+    "Library preparation", "Package of care", "Software-based intervention",
+    "Software and statistical analysis",
+)  # fmt: skip
 #: Base R and Python's standard library, which nobody chooses.
-_SOFTWARE_BASE = ("stats", "utils", "methods", "grid", "splines", "tools", "graphics")
+_SOFTWARE_BASE =("stats", "utils", "methods", "grid", "splines", "tools", "graphics")
 _SOFTWARE_STDLIB = ("csv", "json", "math", "statistics", "pathlib", "random")
 SOFTWARE_PATHS = {"r": "analysis/01_model.R", "python": "analysis/02_model.py",
                   "rmd": "analysis/03_report.Rmd", "legacy": "analysis/04_legacy.py",
@@ -11396,6 +11412,10 @@ def software_plans(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
     elsewhere, in_prose, twice, variable, fitted = name(), name(), name(), name(), name()
     pieces["r"] += [("library({p})", elsewhere, "not named"), ("{p}::fit()", twice, "not named"),
                     ("library({p})", twice, "not named"), ("library({p})", fitted, "not named")]
+    elsewhere_headed = [(heading, name()) for heading in SOFTWARE_OTHER_HEADINGS]
+    software_headed = [(heading, name()) for heading in SOFTWARE_HEADINGS]
+    pieces["r"] += [("library({p})", other, "not named") for _heading, other in elsewhere_headed]
+    pieces["r"] += [("library({p})", other, "named") for _heading, other in software_headed]
     pieces["python"].append(("from {p} import fit", in_prose, "not named"))
     pieces["r"] += [("library({p})", draw(st.sampled_from(_SOFTWARE_BASE)), None),
                     ("x <- {p}::median(x)", draw(st.sampled_from(_SOFTWARE_BASE)), None),
@@ -11449,26 +11469,36 @@ def software_plans(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
     }, indent=1)  # fmt: skip
     loads.append(("python", in_cell, SOFTWARE_PATHS["notebook"], None, "not named"))
     # A Python file no Python parses is read line by line, a list of modules whole.
-    listed = [name(), name(), name()]
+    listed = [name(), name(), name(), name(), name()]
     scripts[SOFTWARE_PATHS["legacy"]] = (f"print 'x'\nimport os, {listed[0]}, {listed[1]} as b\n"
-                                         f"x = 1\nfrom {listed[2]}.sub import fit\n")  # fmt: skip
+                                         f"x = 1\nfrom {listed[2]}.sub import fit\n"
+                                         f"import {listed[3]}, \\\n    {listed[4]}\n")  # fmt: skip
     loads += [("python", listed[0], SOFTWARE_PATHS["legacy"], 2, "not named"),
               ("python", listed[1], SOFTWARE_PATHS["legacy"], 2, "not named"),
-              ("python", listed[2], SOFTWARE_PATHS["legacy"], 4, "not named")]  # fmt: skip
+              ("python", listed[2], SOFTWARE_PATHS["legacy"], 4, "not named"),
+              ("python", listed[3], SOFTWARE_PATHS["legacy"], 5, "not named"),
+              ("python", listed[4], SOFTWARE_PATHS["legacy"], 5, "not named")]  # fmt: skip
 
     order = draw(st.permutations(used))
-    # A heading that only mentions software heads no Software section: its items are not read.
+    # A heading that only mentions software, or opens with a word of it and goes on to
+    # something else, heads no Software section: its items are not read (#592).
     plan = ["# Analysis plan", "", "## Research question", "", "Whether words were said.", "",
             "## Analysis", "", "The model.", "", f"- `{elsewhere}` fits the model", "",
             "## Statistical analysis and software", "", f"- `{variable}`: entered as a factor",
             f"- `{fitted}` fits the model", ""]  # fmt: skip
-    software = ["## Software", "", f"The software, with `{in_prose}` named in a sentence.", ""]
+    for heading, other in elsewhere_headed:
+        plan += [f"## {heading}", "", f"- `{other}` {draw(st.sampled_from(FILLER))}", ""]
+    software = [f"## {draw(st.sampled_from(SOFTWARE_HEADINGS))}", "",
+                f"The software, with `{in_prose}` named in a sentence.", ""]  # fmt: skip
     warned = []
     for written, names, warns in order:
         if warns:
             warned.append((len(plan) + len(software) + 1, names[0]))
         software.append(written)
     software += ["", "### Considered and not used", ""] + [f"- `{n}`: not taken" for n in unused]
+    # Every way of heading the section, each over a package a script loads.
+    for heading, other in software_headed:
+        software += ["", f"## {heading}", "", f"- `{other}` {draw(st.sampled_from(FILLER))}"]
     tail = ["", "## Deviations from the plan", ""] + [
         f"{number}. {said}" for number, said in enumerate(deviations, 1)]  # fmt: skip
     first: dict[tuple[str, str], tuple[str, int | None, str]] = {}
@@ -11489,7 +11519,7 @@ def software_plans(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
              "own": own, "stage": stage}  # fmt: skip
     found = {"plan": sorted(found_plan, key=json.dumps),
              "bare": sorted(found_bare, key=json.dumps),
-             "planned": len(used), "loaded": len(first)}  # fmt: skip
+             "planned": len(used) + len(software_headed), "loaded": len(first)}  # fmt: skip
     return given, found
 
 

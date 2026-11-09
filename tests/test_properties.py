@@ -17307,6 +17307,35 @@ def _a_heading_that_mentions_software_heads_the_section(patch: pytest.MonkeyPatc
                   re.compile(r"\bsoftware\b|\bpackages?\b|\blibraries\b", re.IGNORECASE))
 
 
+#: The Software section's heading as round 1 of #592 read it: the word at the start of the
+#: title, whatever followed, and no number but digits before it.
+_ROUND_ONE_HEADING = re.compile(
+    r"^[\W\d_]*(?:(?:r|python|statistical|analysis|analytic)\s+)?"
+    r"(?:software|packages?|librar(?:y|ies))\b",
+    re.IGNORECASE,
+)
+
+
+def _a_heading_that_opens_with_the_word_heads_the_section(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "SOFTWARE_HEADING", _ROUND_ONE_HEADING)
+
+
+def _a_heading_that_opens_with_the_word_hides_its_variables(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "SOFTWARE_HEADING", _ROUND_ONE_HEADING)
+
+
+def _a_continued_import_line_is_read_alone(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "_PYTHON_IMPORT", re.compile(
+        r"^[ \t]*(?:import[ \t]+([^\n#;\\]+)|from[ \t]+([A-Za-z_]\w*)[\w.]*[ \t]+import\b)",
+        re.MULTILINE))  # fmt: skip
+
+
 def _a_list_of_modules_read_line_by_line_gives_its_first(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import software
 
@@ -21388,6 +21417,8 @@ BROKEN = {
             ("the Software section names variables", _the_software_names_variables),
             ("a heading that mentions software hides the variables it names",
              _a_heading_that_mentions_software_hides_its_variables),
+            ("a heading that opens with a word of software hides its variables",
+             _a_heading_that_opens_with_the_word_hides_its_variables),
             ("the Deviations end at their first subsection",
              _the_deviations_end_at_their_first_subsection),
             ("the plan's title may be its Deviations", _the_plan_s_title_may_be_its_deviations),
@@ -21810,6 +21841,14 @@ BROKEN = {
     ),
     "a list of modules read line by line gives its first": (
         _a_list_of_modules_read_line_by_line_gives_its_first,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a heading that opens with the word heads the Software section": (
+        _a_heading_that_opens_with_the_word_heads_the_section,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "an import line continued with a backslash is read alone": (
+        _a_continued_import_line_is_read_alone,
         test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
     ),
 }

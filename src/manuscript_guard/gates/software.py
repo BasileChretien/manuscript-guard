@@ -71,13 +71,20 @@ _EMITTER_KEYS = frozenset(re.sub(r"[^a-z0-9]+", "_", name) for name in EMITTERS)
 #: An item that names the language itself is of a script in it.
 INTERPRETERS = {"r": R, "python": PYTHON}
 
-#: The headings of the plan's Software section: a title that opens with the word, after its
-#: number, or with a word for the language or the analysis before it ("Software", "R
-#: packages", "Statistical software", "Libraries used"). One that only mentions software,
-#: "Statistical analysis and software", heads the analysis (round 1 of #592).
+#: The headings of the plan's Software section, matched whole: the word, after a number in
+#: digits, a letter, Roman numerals or "Appendix B:", with a word for the language or the
+#: analysis before it ("R packages", "Statistical analysis software", "Tools and software"),
+#: "used", "and packages" or the like after it, and a version in brackets or an attribute
+#: block at the end. A title that only mentions software ("Statistical analysis and
+#: software", round 1 of #592) or opens with the word and heads something else ("Library
+#: preparation", "Software-based intervention", round 2) heads no Software section.
 SOFTWARE_HEADING = re.compile(
-    r"^[\W\d_]*(?:(?:r|python|statistical|analysis|analytic)\s+)?"
-    r"(?:software|packages?|librar(?:y|ies))\b",
+    r"^[\W\d_]*(?:(?:[ivxlc]+|[a-z]|appendix(?:\s+\w+)?)[.):]\s+)?"
+    r"(?:(?:r|python|r\s+and\s+python|statistical|analysis|analytic|data\s+analysis"
+    r"|statistical\s+analysis|computing|computational|tools\s+and)\s+)?"
+    r"(?:software|packages?|librar(?:y|ies))"
+    r"(?:\s+(?:used|versions|and\s+(?:packages|libraries|tools|versions|software)))?"
+    r"\s*(?:\([^)]*\))?\s*(?:\{[^}]*\})?[\W_]*$",
     re.IGNORECASE,
 )
 #: Under it, the heading of the packages considered and not taken, whose items are not held
@@ -276,7 +283,7 @@ def r_loads(text: str) -> list[Load]:
 
 #: An import, where a file does not parse: a line that opens with one, and what it lists.
 _PYTHON_IMPORT = re.compile(
-    r"^[ \t]*(?:import[ \t]+([^\n#;]+)|from[ \t]+([A-Za-z_]\w*)[\w.]*[ \t]+import\b)",
+    r"^[ \t]*(?:import[ \t]+((?:[^\n#;\\]|\\\n)+)|from[ \t]+([A-Za-z_]\w*)[\w.]*[ \t]+import\b)",
     re.MULTILINE,
 )
 #: What a parser raises on code nested deeper than it goes, besides a syntax error.
@@ -315,9 +322,9 @@ def _imported_by_call(node: ast.Call) -> str | None:
 
 def _import_list(written: str) -> list[str]:
     """The top-level modules an `import` line lists: `os, numpy as np, pandas.api` gives
-    os, numpy and pandas."""
+    os, numpy and pandas, a line continued with a backslash read with it."""
     modules = []
-    for part in written.split(","):
+    for part in written.replace("\\\n", " ").split(","):
         words = part.split()
         top = words[0].split(".")[0] if words else ""
         if re.fullmatch(r"[A-Za-z_]\w*", top):
@@ -656,8 +663,8 @@ def _name_loaded(name: str, found: set[tuple[str, str]], made: set[str], languag
 
 def _attached(name: str, languages: set[str]) -> bool:
     """A package of base R, which an R script may call without loading it: R attaches stats,
-    graphics, grDevices, utils, datasets and methods itself, and a script that names another
-    without loading it fails in R before it is read here."""
+    graphics, grDevices, utils, datasets and methods itself. The others of base R count as
+    loaded too wherever an R script is read, whether one loads them or not (Known gaps)."""
     return name in R_BASE and R in languages
 
 

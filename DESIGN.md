@@ -11419,7 +11419,7 @@ so an import in a function or a `try` block counts.
 The campaign: `software_plans()` in `tests/generated.py` puts every way of loading and every
 place a name is written without loading anything into each example, once for a package the
 plan names and once for one it does not; `tests/test_properties.py` holds what is said, line
-for line, against twenty-four broken rules, each failing under a dozen seeds. The limits are in
+for line, against twenty-six broken rules, each failing under a dozen seeds. The limits are in
 Known gaps.
 
 ## What a change makes stale

@@ -828,7 +828,11 @@ LINK_TARGETS = {
     "an address spaced inside": ("( https://example.org/{w}{n} )", True),
     "a file": ("({w}{n}.md)", False),
     "a file after a binding": ("({{{{results.x}}}}/{w}{n}.md)", False),
+    "a file after a comment": ("({w}{n}.md)", False),
 }
+#: What stands before the link of a kind on its line: a comment holding a link's `](`, which
+#: is hidden with the comment and uses up nothing (round 2 of #589).
+_BEFORE_A_LINK = {"a file after a comment": "<!-- see [b]( --> "}
 #: What may stand straight after a link's `)`: a stop, a comma, nothing, or the `)` of a
 #: bracket round the link.
 _AFTER_A_LINK = (".", ",", ";", ":", "", ")", ").")
@@ -842,8 +846,9 @@ def linked_lines(
     image, some in a bracket and some sharing a line, each followed on its line by a
     stop or none and a count in brackets, "(n = 4101)", which pandoc prints.
 
-    Returns the text; the span of what follows each link up to the end of that count, which
-    the mask leaves; the span of each link's target after its `(`, and of each number in an
+    Returns the text; the span of each link's text, and of what follows each link up to the
+    end of that count, which the mask leaves; the span of each link's target after its `(`,
+    and of each number in an
     address or a title, which it hides; and the offset of the `]` of each link to an
     address, which it leaves with the `(` after it."""
 
@@ -862,8 +867,11 @@ def linked_lines(
             text += draw(st.sampled_from((" ", "\n")))
         stop = draw(st.sampled_from(_AFTER_A_LINK))
         text += f"{words().capitalize()} {'(see ' if stop.startswith(')') else ''}"
-        text += draw(st.sampled_from(("[", "![")))
-        text += f"{words()}]"
+        text += _BEFORE_A_LINK.get(kind, "") + draw(st.sampled_from(("[", "![")))
+        opened = len(text)
+        text += words()
+        after.append((opened, len(text)))
+        text += "]"
         if address:
             brackets.append(len(text) - 1)
         written = template.format(w=draw(st.sampled_from(FILLER)), n=hidden)

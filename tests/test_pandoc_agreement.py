@@ -1134,6 +1134,8 @@ LINK_CASES = {
     # of #589): the target is found where it is typed, and hidden whole, as `main` hid it.
     "in a link's target after a binding": "See [c]({{u}}/tree/v9.99) now (b).\n",
     "after a link whose target is a binding": "See [c]({{u}}). Data (n = 9.99) are kept.\n",
+    # A `](` hidden in a comment uses up nothing: the link after it is found (round 2).
+    "in a link's target after a comment": "See <!-- old [b]( --> and [c](v9.99/code.md) (b).\n",
     # Pandoc prints an address that is no link, and the mask hides it all the same: an
     # address is no claim. What follows it is read.
     "after a bare address": "Code: https://example.org/a). Data (n = 9.99) are kept.\n",

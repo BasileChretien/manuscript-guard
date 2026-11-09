@@ -755,8 +755,23 @@ def _matched(name: str, pattern: re.Pattern[str], text: str, working: str,
     """The matches of the pattern `name` in `text`, of which `working` is what is left."""
     if name not in _IN_THE_SOURCE:
         return _either_side(pattern, working, head)
-    return [found for found in _either_side(pattern, text, head)
-            if NUL not in working[found.start() : found.start() + 2]]  # fmt: skip
+    return [*_kept(pattern, text, working, 0, head),
+            *_kept(pattern, text, working, head, len(text))]  # fmt: skip
+
+
+def _kept(pattern: re.Pattern[str], text: str, working: str, start: int,
+          end: int) -> list[re.Match[str]]:  # fmt: skip
+    """The matches in `text` from `start` to `end` whose first two characters are left in
+    `working`. One that is not uses up nothing: a `](` in a comment ran to the `)` of the link
+    after it, and that link's target was never looked for (round 2 of #589)."""
+    found: list[re.Match[str]] = []
+    while (match := pattern.search(text, start, end)) is not None:
+        if NUL in working[match.start() : match.start() + 2]:
+            start = match.start() + 1
+        else:
+            found.append(match)
+            start = max(match.end(), match.start() + 1)
+    return found
 
 
 def _blank(chars: list[str], start: int, end: int, *, breaks: bool = True) -> None:

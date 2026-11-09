@@ -674,6 +674,23 @@ def _a_link_s_target_found_in_what_is_left(
     return break_it
 
 
+def _a_link_s_target_kept_where_its_bracket_is_masked(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "_kept",
+                  lambda pattern, text, working, start, end:
+                  list(pattern.finditer(text, start, end)))  # fmt: skip
+
+
+def _a_dropped_link_s_target_uses_up_its_line(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "_kept",
+                  lambda pattern, text, working, start, end:
+                  [one for one in pattern.finditer(text, start, end)
+                   if masking.NUL not in working[one.start() : one.start() + 2]])  # fmt: skip
+
+
 #: The link's address as it was found before brackets in it, a title, angle brackets and
 #: spaces inside were read, one at a time; and hidden with its `](`.
 _AN_ADDRESS = r"(?:https?://|www\.|doi:\s*|10\.\d{4,9}/)"
@@ -18523,6 +18540,14 @@ BROKEN = {
     ),
     "a link's target is found in what is left and stops at what is masked": (
         _a_link_s_target_found_in_what_is_left(r"\]\([^)\n\x00]*\)"),
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
+    "a link's target is kept where its bracket is masked": (
+        _a_link_s_target_kept_where_its_bracket_is_masked,
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
+    "a dropped link's target uses up its line": (
+        _a_dropped_link_s_target_uses_up_its_line,
         test_the_mask_hides_a_link_s_target_and_nothing_after_it,
     ),
     "a link's target to an address is taken with its brackets": (

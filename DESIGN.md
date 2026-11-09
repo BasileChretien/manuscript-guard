@@ -19084,7 +19084,7 @@ Open, recorded as each change landed:
   (`![x](figures/f.png){width=50%}`) before; the bare address used to take it. And a target
   that is an address leaves its `(` with no `)`, as it did in the common case before: a
   reader that pairs brackets may pair it with a later `)`, which round 1 found no ordinary
-  manuscript to do.
+  manuscript to do. Accepted.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, one directly under a line of prose, or a Word paragraph typed
   as `# References` without a heading style: pandoc or Word prints each as text, so nothing
@@ -24194,7 +24194,8 @@ Closed since, and why each mattered (an open gap goes above this line):
   is left, as before, so `[ROR](https://...)` still defines ROR and the reference census
   reads `[11](https://...)` as a link and not as citation 11. Any other link's target is
   found where it is typed, to its first `)`, so a binding in it is hidden with it,
-  `[the code]({{repo}}/tree/v2.1)`, and it runs over nothing masked before it.
+  `[the code]({{repo}}/tree/v2.1)`, and it no longer runs on past that `)`; a `](` already
+  masked, in a comment say, starts none.
   `tests/test_pandoc_agreement.py` holds the mask to what pandoc prints of each form; the
   shapes it does not read are under Known gaps.
 

@@ -59,8 +59,11 @@ def _under(name: str, stem: str) -> bool:
 
 
 def _beside(results: Results, control: Control, fragment: Path) -> bool | None:
-    """Whether the fragment that emitted the control emitted the result it stands beside:
-    None where no fragment emitted that result."""
+    """Whether the script that emitted the control emitted the result it stands beside, by
+    the script each fragment names (D5.4: the same script path), so that a script writing
+    its control to a fragment of its own is the same script (round 1 of PR 2a): None where
+    no fragment emitted that result."""
+    script = {f.path: f.generated_by for f in results.fragments}
     of = control.of
     kind, _, name = of.partition(".")
     if control.group:
@@ -77,7 +80,7 @@ def _beside(results: Results, control: Control, fragment: Path) -> bool | None:
             sources.append(results.models[name].source)
     if not sources:
         return None
-    return fragment in sources
+    return script.get(fragment) in {script.get(source) for source in sources}
 
 
 def _values(results: Results, key: str) -> tuple[float, float, float] | None:
@@ -96,6 +99,7 @@ def check_controls(project: Project, results: Results | None, stage: str | None)
         Planned,
         _named,
         _read_plan,
+        _written,
         deviations_said,
         plan_path,
     )
@@ -105,7 +109,11 @@ def check_controls(project: Project, results: Results | None, stage: str | None)
         return Report()
     path = plan_path(project)
     text = _read_plan(path)[0] if path.is_file() else ""
-    now = {c.key: c for c in read_declarations(text).controls}
+    declared = read_declarations(text)
+    now = {c.key: c for c in declared.controls}
+    # Declared and not read: `plan-declarations-unreadable` says so, and nothing here says
+    # the plan declares no such control (round 1 of PR 2a).
+    refused = set(declared.refused_keys)
     kept, synthetic = frozen_plan(project)
     then = None if kept is None else {c.key: c for c in read_declarations(kept).controls}
     emitted = {key: fragment.path for fragment in results.fragments for key in fragment.controls}
@@ -118,6 +126,10 @@ def check_controls(project: Project, results: Results | None, stage: str | None)
 
     def named(key: str) -> bool:
         return _named(deviations, Planned(key, False, 0))
+
+    def as_named(key: str) -> str:
+        """The key as the Deviations name it: one with no dot, bound (round 1 of PR 2a)."""
+        return _written(Planned(key, False, 0))
 
     def reported(key: str) -> bool:
         nonlocal refs
@@ -149,7 +161,8 @@ def check_controls(project: Project, results: Results | None, stage: str | None)
                 "were written: it was chosen after them"
                 + ("; that run read synthetic data only, so no real result dates it"
                    if synthetic else ""),
-                f"say under Deviations from the plan when and why {key} was added, naming it; "
+                f"say under Deviations from the plan when and why {key} was added, naming "
+                f"{as_named(key)}; "
                 "a control chosen once the results are known shows much less",
                 line=control.line, level=INFO if synthetic else None))  # fmt: skip
         elif then is not None and key in then and then[key].said() != control.said() \
@@ -158,7 +171,8 @@ def check_controls(project: Project, results: Results | None, stage: str | None)
                 "control-changed",
                 f"the control {key} is declared otherwise than in the plan as it stood when "
                 "the first results were written",
-                f"say under Deviations from the plan what changed in {key} and why, naming it",
+                f"say under Deviations from the plan what changed in {key} and why, naming "
+                f"{as_named(key)}",
                 line=control.line))  # fmt: skip
         fragment = emitted.get(key)
         values = _values(results, key)
@@ -174,8 +188,7 @@ def check_controls(project: Project, results: Results | None, stage: str | None)
             continue
         beside = _beside(results, control, fragment)
         if not beside:
-            where = fragment.relative_to(project.root).as_posix() \
-                if fragment.is_relative_to(project.root) else fragment.as_posix()  # fmt: skip
+            where = next(f.generated_by for f in results.fragments if f.path == fragment)
             findings.append(said(
                 "control-other-script",
                 f"the control {key} is emitted by {where}, "
@@ -198,8 +211,8 @@ def check_controls(project: Project, results: Results | None, stage: str | None)
                 f"the control {key} fails its rule, {control.rule}: {shown} does not hold"
                 + ("; the paper reports it and the Deviations name it" if excused else ""),
                 f"report {key} in the paper and say under Deviations from the plan why it "
-                "failed, naming it: a control that failed tells the reader something about "
-                "the analysis", line=control.line,
+                f"failed, naming {as_named(key)}: a control that failed tells the reader "
+                "something about the analysis", line=control.line,
                 level=WARN if excused else None))  # fmt: skip
         if drafted and not reported(key):
             findings.append(said(
@@ -210,14 +223,15 @@ def check_controls(project: Project, results: Results | None, stage: str | None)
                 "its interval, in the Methods, the Results or the supplement",
                 line=control.line))  # fmt: skip
     for key in (then or {}):
-        if key not in now and not named(key):
+        if key not in now and key not in refused and not named(key):
             findings.append(said(
                 "control-changed",
                 f"the control {key} was in the plan when the first results were written, and "
                 "is gone from it",
-                f"say under Deviations from the plan why {key} was dropped, naming it"))
+                f"say under Deviations from the plan why {key} was dropped, naming "
+                f"{as_named(key)}"))
     for key, fragment in emitted.items():
-        if key not in now:
+        if key not in now and key not in refused:
             findings.append(said(
                 "control-undeclared",
                 f"the analysis emits the control {key}, and the plan declares no control by "

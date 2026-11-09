@@ -8498,17 +8498,17 @@ def _declare_controls(root: Path, block: str, *, frozen: bool = True) -> None:
 
 
 def _emit_control(root: Path, key: str, point: float, low: float, high: float, *,
-                  fragment: str = "01_disproportionality.json") -> None:  # fmt: skip
+                  fragment: str = "01_disproportionality.json",
+                  script: str = "analysis/02_controls.py") -> None:  # fmt: skip
     """The control's values and its entry in a results fragment, as `em.control` writes them:
-    the analysis's own fragment, or a second one by another script."""
+    the analysis's own fragment, or a second one, by `script`."""
     own = root / "results" / "01_disproportionality.json"
     target = root / "results" / fragment
     document = json.loads((target if target.exists() else own).read_text(encoding="utf-8"))
     if not target.exists():
-        # Another script's fragment: its provenance, and nothing of the analysis's own.
+        # A second fragment: its script's provenance, and nothing of the analysis's own.
         document = {"schema": document["schema"], "values": {},
-                    "provenance": {**document["provenance"],
-                                   "generated_by": "analysis/02_controls.py"}}  # fmt: skip
+                    "provenance": {**document["provenance"], "generated_by": script}}  # fmt: skip
     for part, value in (("point", point), ("ci_low", low), ("ci_high", high)):
         entry = {"value": value, "display": f"{value:.2f}", "digits": 2}
         if part != "point":
@@ -8626,6 +8626,56 @@ def test_a_control_emitted_by_another_script_than_its_result_is_said(project: Pa
     _emit_control(project, "control.headache", 1.04, 0.81, 1.33, fragment="02_controls.json")
     _add_to_results(project, _REPORTED)
     assert _controls_said(project) == [("control-other-script", "warn")]
+
+
+def test_a_control_its_result_s_script_writes_to_a_second_fragment_is_in_the_same_script(
+    project: Path,
+) -> None:
+    """Round 1 of PR 2a: the fragments were compared, not the scripts that wrote them, so a
+    script writing its control to a fragment of its own was said to be another script."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33, fragment="ror_controls.json",
+                  script="analysis/01_disproportionality.py")  # fmt: skip
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project) == []
+
+
+def test_a_control_the_plan_declares_in_a_form_it_does_not_read_is_said_once(
+    project: Path,
+) -> None:
+    """Round 1 of PR 2a: a refused entry, emitted and frozen, was said to be undeclared and
+    gone besides; `plan-declarations-unreadable` says it, and nothing here does."""
+    _declare_controls(project, _NEGATIVE.replace("kind: negative", "kind: negativ"))
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    assert _controls_said(project, "submission") == []
+
+
+def test_a_failed_control_needs_both_its_report_and_its_deviation(project: Path) -> None:
+    """D5.3: named in the Deviations but not reported, or reported but not named, a failed
+    control still fails at submission (round 1 of PR 2a: no case held the first half)."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.6, 1.2, 2.1)
+    _plan_edited(project, "## Deviations from the plan", "## Deviations from the plan\n\n"
+                 "The negative control `control.headache` failed.\n")  # fmt: skip
+    assert ("control-failed", "fail") in _controls_said(project, "submission")
+
+
+def test_a_control_with_no_interval_or_no_result_beside_it_is_said(project: Path) -> None:
+    """The branches no case reached: a control named in the fragment with no values, and one
+    whose `of` names a result no script emits."""
+    _declare_controls(project, _NEGATIVE)
+    fragment = project / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document.setdefault("controls", {})["control.headache"] = {"inputs": []}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _controls_said(project) == [("control-missing", "warn")]
+    _plan_edited(project, "    of: ror.*\n    expected: 1\n    rule: holds-null\n",
+                 "    of: nothing.*\n    expected: 1\n    rule: holds-null\n")  # fmt: skip
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    _add_to_results(project, _REPORTED)
+    said = _controls_said(project)
+    assert ("control-other-script", "warn") in said, said
 
 
 def test_a_control_no_value_of_which_is_bound_is_unreported(project: Path) -> None:

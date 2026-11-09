@@ -2434,17 +2434,36 @@ def test_a_check_that_does_not_finish_in_time_is_said_not_to_have(
     assert len(hooks._LEFT_RUNNING) == 2, "left running, and not waited for"
 
 
-def test_the_process_ends_without_waiting_for_the_gates_it_gave_up_on(project: Path) -> None:
+def test_the_process_ends_without_waiting_for_the_gates_it_gave_up_on(
+    project: Path, tmp_path: Path
+) -> None:
     """Started as the tool starts it, with gates that would take ten minutes: the hook answers
-    and its process ends, and nothing is said on standard error."""
+    and its process ends, and nothing is said on standard error.
+
+    The gates are replaced where the status line calls them, `cli._gate_run`, and the hook's
+    answer waits until the replacement has begun. They were replaced in `cli._run_gates`,
+    which the status line has not called since it began to ask `next` what comes first
+    (#466): the real gates ran, and a macOS runner finished them inside the half second and
+    said where the paper stood, which failed the test on main."""
     hooks._note_the_files(started(project))
     add(project / "manuscript" / "main.md", "\nMore.\n")
+    begun = tmp_path / "the-gates-began"
     source = str(Path(manuscript_guard.__file__).resolve().parent.parent)
     script = (
-        "import sys, time\n"
+        "import sys, threading, time\n"
+        "from pathlib import Path\n"
         "import manuscript_guard.cli\n"
         "from manuscript_guard import hooks\n"
-        "manuscript_guard.cli._run_gates = lambda *a, **k: time.sleep(600)\n"
+        "began = threading.Event()\n"
+        "def gates(*a, **k):\n"
+        f"    Path({str(begun)!r}).touch()\n"
+        "    began.set()\n"
+        "    time.sleep(600)\n"
+        "def emit(payload, emitted=hooks._emit):\n"
+        "    began.wait(30)\n"
+        "    return emitted(payload)\n"
+        "manuscript_guard.cli._gate_run = gates\n"
+        "hooks._emit = emit\n"
         "hooks.CHECK_LIMIT = 0.5\n"
         "sys.exit(hooks.main(['stop']))\n"
     )
@@ -2459,6 +2478,7 @@ def test_the_process_ends_without_waiting_for_the_gates_it_gave_up_on(project: P
     )
     assert finished.returncode == 0
     assert finished.stderr == b""
+    assert begun.exists(), "the gates the status line runs are not the ones replaced"
     said = json.loads(finished.stdout)["systemMessage"]
     assert "did not finish in 0.5 s" in said
 

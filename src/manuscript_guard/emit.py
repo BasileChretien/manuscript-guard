@@ -523,6 +523,33 @@ def record_first_reads(root: Path, script: str, inputs: list[dict]) -> Path | No
     return path
 
 
+def merge_first_reads(root: Path, incoming: dict) -> int:
+    """Add to the project's record of first reads each read the incoming record holds that the
+    project's does not, by script and input, with the plan's text it was written under; no
+    entry is changed. How a run under `vault run`, which wrote its record in the vault's copy,
+    brings its first reads back at its release (Basile, 2026-11-09, round 1 of PR 2b). The
+    number of reads added; nothing is written where the project's record does not read."""
+    if not _first_reads_shaped(incoming):
+        raise ValueError("the record of first reads does not read as the emitters write it")
+    path = root / FIRST_READS
+    record: dict = {"schema": FIRST_READS_SCHEMA, "plans": {}, "reads": []}
+    if path.exists():
+        record = json.loads(path.read_text(encoding="utf-8"))
+        if not _first_reads_shaped(record):
+            raise ValueError(f"{FIRST_READS.as_posix()} in the project does not read as the "
+                             "emitters write it")  # fmt: skip
+    listed = {(read["script"], read["input"]) for read in record["reads"]}
+    added = [read for read in incoming["reads"] if (read["script"], read["input"]) not in listed]
+    for read in added:
+        record["plans"].setdefault(read["plan"], incoming["plans"][read["plan"]])
+        record["reads"].append(read)
+    if added:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n",
+                        encoding="utf-8", newline="\n")  # fmt: skip
+    return len(added)
+
+
 def _first_reads_shaped(record: object) -> bool:
     """Whether a record reads as one `record_first_reads` writes."""
     if not isinstance(record, dict) or record.get("schema") != FIRST_READS_SCHEMA:
@@ -532,7 +559,12 @@ def _first_reads_shaped(record: object) -> bool:
         return False
     return isinstance(reads, list) and all(
         isinstance(read, dict) and isinstance(read.get("script"), str)
-        and isinstance(read.get("input"), str) and read.get("plan") in plans
+        and isinstance(read.get("input"), str) and isinstance(read.get("plan"), str)
+        and read["plan"] in plans and isinstance(read.get("inputs"), list)
+        # Each input as the run recorded it, a path and a digest (round 1 of PR 2b: a read
+        # edited out of this shape raised in both gates that read the record).
+        and all(isinstance(one, dict) and isinstance(one.get("path"), str)
+                and isinstance(one.get("sha256"), str) for one in read["inputs"])
         for read in reads
     )  # fmt: skip
 

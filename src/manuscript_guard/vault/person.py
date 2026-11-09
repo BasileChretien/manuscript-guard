@@ -278,10 +278,15 @@ def cmd_release(args: argparse.Namespace) -> int:
         return 1
     for warning in found.warnings:
         print(f"{_PREFIX} release: warning: {warning}")
+    for relative in box.withheld:
+        print(f"{_PREFIX} release: kept in the vault: {relative} holds a key, a read or a plan "
+              "this run's emitters did not write, or design/plan.md cannot be read to hold it "
+              "to, so none of its first reads is brought into the project")  # fmt: skip
     named = _named(box.unread)
     if named is None:
         return _no_terminal("release")
-    going = [*box.fragments, *(one for one, _entry in box.harvested), *box.plan, *named]
+    going = [*box.fragments, *(one for one, _entry in box.harvested), *box.plan, *box.reads,
+             *named]  # fmt: skip
     if not going:
         print(f"{_PREFIX} release: nothing to release; the outbox is left as it is")
         return 0
@@ -294,7 +299,10 @@ def cmd_release(args: argparse.Namespace) -> int:
     if not _yes(_ask(f"Release these {len(going)} file(s) into the project? [y/N] ")):
         print(f"{_PREFIX} release: nothing released")
         return 0
-    path = releasing.write_release(project, box, named, who, inputs, found.warnings, signed)
+    try:
+        path = releasing.write_release(project, box, named, who, inputs, found.warnings, signed)
+    except releasing.Refused as exc:  # the project's record changed since it was read
+        return _refused("release", str(exc))
     print(f"{_PREFIX} release: {len(going)} file(s) released, recorded in "
           f"{path.relative_to(root).as_posix()}. {releasing.SENT}")  # fmt: skip
     return 0

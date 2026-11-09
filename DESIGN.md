@@ -16427,8 +16427,17 @@ been sorted yet.
   from are not found: a development script that reads the whole dataset before the split
   reads the held-out rows, and G1 says nothing. Nor does it see a read the script does not
   declare, as G1 sees no undeclared input. A script named in `read_by` is taken at the
-  author's word to build and tune no model; one that does reads the held-out data unseen.
-  Accepted.
+  author's word to build and tune no model; one that does reads the held-out data unseen. A
+  script's first read is kept by the path it declared: one that first read a copy when the
+  copy held other bytes, and reads it again once it holds the held-out bytes, has no first
+  read of those, and G12 says only that the order is unknown (round 1 of PR 2b). The
+  record's list of a run's inputs does not say which were synthetic, so the held-out bytes
+  are taken only from a read of the held-out input itself: bytes the held-out file came to
+  hold after that first read, and that another read's list alone carries, are not found under
+  another name once they are gone from the disk and from the results (round 3). The plan's
+  path is read as the emitters record one, `data/./validation.csv` as `data/validation.csv`,
+  and the Deviations are searched for that, so Deviations that name the input as the plan
+  spelt it do not name it (round 2). Accepted.
 - **A script is a reader by the plan it first read the input under.** A validator renamed,
   or a describing script added, is accepted by G1 where the plan names it before the new
   script first runs, and `held-out-changed` still asks the Deviations to name the input; named
@@ -16456,10 +16465,21 @@ been sorted yet.
   Each write reads the record and writes it whole, so two scripts run at once can each write
   it from what it held before the other's entry, and one entry is lost: the read of a script
   that has stopped declaring the held-out input is then in no record. Runs one after the
-  other, as a pipeline makes them, lose nothing. Under `vault run` the scripts run in a copy
-  inside the vault, and the record they add to there is moved to the outbox with what they
-  wrote: it reaches the project only where the person releasing the run names it, so a read
-  of `vault:<label>` not released is in no record, and G12 says the order is unknown. And a
+  other, as a pipeline makes them, lose nothing. Under `vault run` the scripts add to the record
+  in the vault's copy, and `vault release` merges what they added into the project's record,
+  entries only added (Basile, 2026-11-09, round 1 of PR 2b). A run not released adds nothing,
+  and neither does one whose record holds anything the emitters do not write: a key, a read
+  by a script the run neither ran nor names in its results as their writer, an input or a
+  digest its results do not declare, or a plan that is neither the project's now nor one its
+  record holds, so a run under a plan edited since, or released when the plan cannot be
+  read, adds nothing either. That record stays in the vault and is not offered by its path
+  (round 2). G12 then says the order is unknown. A script whose results name another script
+  as their writer has its reads credited to that one, as an emitter given another script's
+  path does anywhere (round 4). One read that fails withholds the whole
+  record, its other reads too, and the release does not say which read failed: a project
+  record reset by hand since the copy was made leaves the copy's older reads unlisted, and
+  they fail (round 3). A project record that does not read refuses the release before it
+  asks. And a
   record edited by hand to an empty list where its versions belong is refused by Python and
   written over by R, which reads an empty list and an empty mapping alike. Accepted.
 - **The order is held by the model's digest at the first read.** A model changed after the

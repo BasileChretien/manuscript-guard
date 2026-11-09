@@ -381,8 +381,11 @@ def _held_out(node: yaml.Node, line: int) -> HeldOut | Unreadable:
 
 
 def _posix(path: str) -> str:
-    """A path as the emitters record one: with forward slashes, from the project's root."""
-    return path.replace("\\", "/").removeprefix("./")
+    """A path as the emitters record one: with forward slashes, from the project's root, `.`
+    and `..` collapsed as text, so `data/./v.csv` is `data/v.csv` (round 1 of PR 2b)."""
+    import posixpath
+
+    return posixpath.normpath(path.replace("\\", "/"))
 
 
 def _once(

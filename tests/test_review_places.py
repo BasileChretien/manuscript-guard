@@ -200,6 +200,19 @@ def test_a_stop_after_a_link_or_a_narrative_citation_ends_its_sentence(ending: s
         ("main.md", "Data availability", "Data are deposited in the archive.", False)]
 
 
+@pytest.mark.parametrize("link", [
+    "[the code](https://example.org/a/b)", "[the code](https://example.org/wiki/A_(b))",
+    '[the code](https://example.org/a "The code")', "[the code](doi:10.1000/xyz)",
+])  # fmt: skip
+def test_a_link_with_a_bracket_later_on_its_line_ends_its_sentence(link: str) -> None:
+    """Round 3 of #587: the mask took the link's address up to the next space, its `)` and
+    stop with it, and the link's target then ran on to the `)` after 1200, so the sentence
+    after the link was read into the one before it."""
+    text = f"# Results\n\nCode is at {link}. Data (n = 1200) are deposited. Then more.\n"
+    assert where(placed("Data (n = 1200) are deposited", {"main.md": text})) == [
+        ("main.md", "Results", "Data (n = 1200) are deposited.", False)]
+
+
 def test_a_stop_inside_inline_code_ends_no_sentence() -> None:
     text = "# Methods\n\nWe ran `fit(x). Then` on every site of the study.\n"
     assert [one["sentence"] for one in placed("on every site of", {"main.md": text})] == [

@@ -17866,11 +17866,6 @@ Open, recorded as each change landed:
   - A citation group is any bracket pair with an `@` inside it within one paragraph: a
     stray `[` and `]` round an `@`, "aged [18, 65) as @a found. ... (65, 100]", are read
     as one sentence from one to the other.
-  - A link at a sentence's end with a `)` later on its line, "Code is at
-    [GitHub](https://github.com/a/b). Data (n = 1200) are deposited.", runs the next
-    sentence into it: G8's reading blanks the link's target to that `)`, the spaces between
-    included (round 3 of #587). `check` misses the number there too, which is G2's, on
-    `main`, and a task of its own.
   - A quote across three sentences or more stands in the text and is placed nowhere;
     `review` counts it among the findings in no one sentence or two.
     Pinned by `tests/test_review_places.py::test_a_quote_across_three_sentences_is_placed_nowhere`.
@@ -19549,6 +19544,17 @@ Open, recorded as each change landed:
   escaped. Where the old comment rule hid the start of such a match, text read again now
   meets them: `` We strip `<!--` see https://x.org/a`-->`9.99 `` hides a 9.99 that the old
   rule left readable. The patterns are to be fixed separately.
+- **A link's target is read in the shapes pandoc writes most, not in all of them.** A
+  target that is an address is masked after its `(` up to its own `)` when the address holds
+  brackets one deep at most and a title holds no escaped quote. Two deep,
+  `[t](https://x.org/a_((b)))`, or a title with `\"` in it, the bare address takes the
+  link's `)` and stop again, or the title is left: a number in it is read, and the next
+  sentence is read into the link's (round 1 of #589). An attribute block after a link or an
+  image, `![x](https://x.org/f.png){width=50%}`, is read, as it was after an image of a file
+  (`![x](figures/f.png){width=50%}`) before; the bare address used to take it. And a target
+  that is an address leaves its `(` with no `)`, as it did in the common case before: a
+  reader that pairs brackets may pair it with a later `)`, which round 1 found no ordinary
+  manuscript to do. Accepted.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, one directly under a line of prose, or a Word paragraph typed
   as `# References` without a heading style: pandoc or Word prints each as text, so nothing
@@ -24995,6 +25001,22 @@ What papers converted from Word showed (see "What papers converted from Word sho
     says so among what G4 did not check.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A number after a link was read by no gate (2026-11-09).** The mask took a link's
+  address up to the next space, the link's `)` and stop with it, and the link's target
+  then ran on from its `](` to the next `)` on the line. In "Code is at
+  [GitHub](https://github.com/a/b). Data (n = 1213) are deposited." G2 never saw 1213, which
+  the build prints, and G8 read the two sentences as one, so a panel's quote of the second
+  was placed in both (round 3 of #587). A link's target that is an address is masked now
+  after its `(` up to its own `)`: brackets in the address one deep, a title in quotes or
+  brackets, angle brackets round it, spaces between the brackets and the address. Its `](`
+  is left, as before, so `[ROR](https://...)` still defines ROR and the reference census
+  reads `[11](https://...)` as a link and not as citation 11. Any other link's target is
+  found where it is typed, to its first `)`, so a binding in it is hidden with it,
+  `[the code]({{repo}}/tree/v2.1)`, and it no longer runs on past that `)`; a `](` already
+  masked, in a comment say, starts none.
+  `tests/test_pandoc_agreement.py` holds the mask to what pandoc prints of each form; the
+  shapes it does not read are under Known gaps.
 
 - **A sign or a unit set beside a value in Word merged (2026-11-09).** Only a sign glued to
   a value was a change to it. "– 3.84", with a space, read as punctuation and merged, and so

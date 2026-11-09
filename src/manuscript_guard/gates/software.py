@@ -87,9 +87,10 @@ SOFTWARE_HEADING = re.compile(
     r"|statistical\s+analysis|computing|computational|tools\s+and)\s+)?"
     r"(?:software|packages?|librar(?:y|ies))"
     r"(?:\s+(?:used|versions|and\s+(?:packages|libraries|tools|versions|software)))?"
-    # One repeat over what may close the title, each bracket after its own spaces: two
-    # repeats over the same spaces made a long one cubic. A bracket holds a version.
-    r"(?:\s*\([^)\d]*\d[^)]*\))?(?:\s*\{[^}]*\})?[\W_]*$)",
+    # One repeat over what may close the title, each bracket after its own spaces: three
+    # repeats over the same spaces made a long one cubic. A bracket holds a version, a
+    # number with a point ("R 4.4.1"), and not a count ("n = 96 samples").
+    r"(?:\s*\([^)\d]*\d+\.\d[^)]*\))?(?:\s*\{[^}]*\})?[\W_]*$)",
     re.IGNORECASE,
 )
 #: Under it, the heading of the packages considered and not taken, whose items are not held

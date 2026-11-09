@@ -8667,7 +8667,8 @@ def test_a_base_package_r_attaches_is_loaded_and_another_heading_is_not_the_soft
     assert _software_said(project) == []
     # Round 2: a heading that opens with the word and heads something else is not the
     # section, and the data dictionary is held to the variables it names, as on main.
-    for heading in ("Library preparation", "Library (preparation)", "Package of care"):
+    for heading in ("Library preparation", "Library (preparation)", "Package of care",
+                    "Library (n = 96 samples)"):
         other = f"## {heading}\n\n- `read_depth` per sample\n\n"
         plan.write_bytes(text.replace("## Sample size", other + "## Sample size").encode())
         assert _software_said(project) == [], heading

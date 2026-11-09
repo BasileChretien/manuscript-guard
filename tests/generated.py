@@ -11310,7 +11310,7 @@ SOFTWARE_HEADINGS = (
 #: Headings that open with one of those words, or end with one, and head something else.
 SOFTWARE_OTHER_HEADINGS = (
     "Library preparation", "Package of care", "Software-based intervention",
-    "Library (preparation)",
+    "Library (preparation)", "Library (n = 96 samples)",
 )  # fmt: skip
 #: Base R and Python's standard library, which nobody chooses.
 _SOFTWARE_BASE = ("stats", "utils", "methods", "grid", "splines", "tools", "graphics")

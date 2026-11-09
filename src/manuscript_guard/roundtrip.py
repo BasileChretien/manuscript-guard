@@ -3194,6 +3194,145 @@ def _untypeset(text: str) -> str:
     return _spaced(text.translate(_TYPESET)).strip()
 
 
+#: Pandoc's whitespace inside a tag, which is ASCII's; see `_TAG_SPACE`.
+_IN_TAG_SPACE = " \t\n\r\f"
+#: What pandoc's reader reads no tag in: code, raw inlines, maths, autolinks and comments,
+#: which `_pandoc_tags` reads apart.
+_NO_TAGS = frozenset({"code", "coded", "raw", "math", "autolink", "comment"})
+
+
+def _tag_name(name: str) -> bool:
+    """Whether pandoc takes `name` for a tag's or an attribute's name: a letter of any
+    script, then letters, digits, `:`, `-` and `_`; a tag's never ends in `:`."""
+    return (
+        name[:1].isalpha()
+        and all(char.isalnum() or char in ":-_" for char in name[1:])
+    )
+
+
+#: What `_tag_end` says of a tag still open where the paragraph ends, in a place where what
+#: follows the paragraph can carry it on and close it.
+_RUNS_ON = -1
+
+
+def _tag_end(text: str, at: int) -> int | None:
+    """Where the tag pandoc reads at the `<` at `at` ends; None where it reads text, and
+    `_RUNS_ON` where the tag is still open at the end of `text` and the paragraph after it
+    can close it.
+
+    Pandoc hands what follows a `<` to TagSoup, which is forgiving, and keeps what it found
+    where the tag's name is a name and, in an opening tag, so is each attribute's
+    (`_tag_name`). A value may hold anything, quoted or not, and a `/` between attributes
+    only separates them: to pandoc 3.9, `<LLOQ in mg/L at Caen and >` is a tag, and with a
+    digit, a comma, a bracket or a full stop where an attribute's name would be it is text.
+    A closing tag, `</x`, and a processing instruction, `<?`, run to the next `>` whatever
+    stands between. Measured against pandoc 3.9, on the shapes
+    `tests/test_pandoc_agreement.py` holds the two to.
+
+    TagSoup reads on past the paragraph's end. The paragraph after it opens with its
+    identifier, `[]{#mg-p-...}`, which is no attribute's name, so a tag open between two
+    attributes ends there as text; one open after an `=`, inside a quoted value, or a
+    closing tag or instruction with no `>` yet, takes in the next paragraph."""
+    if text.startswith("<!--", at):
+        end = text.find("-->", at + 4)
+        return None if end < 0 else end + 3
+    size, index = len(text), at + 1
+    if text.startswith("?", index):
+        end = text.find(">", index)
+        return _RUNS_ON if end < 0 else end + 1
+    closing = text.startswith("/", index)
+    index += closing
+    start = index
+    while index < size and text[index] not in _IN_TAG_SPACE + "/>":
+        index += 1
+    name = text[start:index]
+    if not _tag_name(name) or name.endswith(":"):
+        return None
+    while index < size:
+        char = text[index]
+        if char in _IN_TAG_SPACE or char == "/":
+            index += 1
+            continue
+        if char == ">":
+            return index + 1
+        start = index
+        index += 1  # a name's first character may be anything, `=` included
+        while index < size and text[index] not in _IN_TAG_SPACE + "/>=":
+            index += 1
+        if not closing and not _tag_name(text[start:index]):
+            return None
+        while index < size and text[index] in _IN_TAG_SPACE:
+            index += 1
+        if index >= size or text[index] != "=":
+            continue
+        index += 1
+        while index < size and text[index] in _IN_TAG_SPACE:
+            index += 1
+        if index >= size:
+            return _RUNS_ON
+        if text[index] in "\"'":
+            closer = text.find(text[index], index + 1)
+            if closer < 0:
+                return _RUNS_ON
+            index = closer + 1
+        else:
+            while index < size and text[index] not in _IN_TAG_SPACE + ">":
+                index += 1
+    return _RUNS_ON if closing else None
+
+
+def _pandoc_tags(text: str) -> list[str]:
+    """Every tag pandoc reads in a paragraph of Markdown, as written: from each `<` no
+    backslash escapes, outside code, maths, a raw inline, an autolink or a comment of
+    `_SCAN`'s, which a comment is read as here too. A tag that can run on into the next
+    paragraph (`_RUNS_ON`) is read to the paragraph's end, with "..." after it."""
+    apart = [m.span() for m in _SCAN.finditer(text) if m.lastgroup in _NO_TAGS]
+    found = []
+    upto = 0  # a `<` inside a tag read already is part of it
+    for match in re.finditer("<", text):
+        at = match.start()
+        if at < upto or _backslashed(text, at) or any(a < at < b for a, b in apart):
+            continue
+        if any(a == at for a, b in apart) and not text.startswith("<!--", at):
+            continue
+        end = _tag_end(text, at)
+        if end == _RUNS_ON:
+            found.append(text[at:] + "...")
+            break
+        if end is not None:
+            found.append(text[at:end])
+            upto = end
+    return found
+
+
+def _valued(text: str, renderings: Sequence[str]) -> str:
+    """`text` with each binding written as the value Word shows for it, which is what pandoc
+    reads there once the build has put the value in; a citation stays its key, as pandoc
+    reads it. `renderings` holds one for each of the paragraph's tokens, in order."""
+    out, cursor = [], 0
+    for token, rendering in zip(_tokens(text), renderings, strict=False):
+        if _BINDING.fullmatch(token.text):
+            out += [text[cursor : token.start()], rendering]
+            cursor = token.end()
+    return "".join(out) + text[cursor:]
+
+
+def _tag_made(rebuilt: str, source: str, renderings: Sequence[str] = ()) -> str:
+    """A tag pandoc would read in the rebuilt paragraph that it did not read in the source,
+    or "": each read with its values in, as the build prints them.
+
+    The read-back (`_reads_as`) fills a binding with digits, and reads tags by this module's
+    pattern, which is stricter than pandoc: with values that are words, `Samples <LLOQ in
+    {{results.unit}} (see Table 2) at {{results.site}} and >ULOQ were redone.` printed as
+    typed, because "(see" is not an attribute's name, and with "(see Table 2)" deleted in
+    Word the merge read back as text and pandoc printed "Samples ULOQ were redone." Word's
+    own `<` is escaped, so a tag only the rebuilt paragraph has is one the edit made of the
+    source's `<` and `>`, and of the values beside them."""
+    made = Counter(_pandoc_tags(_valued(rebuilt, renderings)))
+    made.subtract(_pandoc_tags(_valued(source, renderings)))
+    return next((tag for tag, count in made.items() if count > 0), "")
+
+
 @dataclass(frozen=True)
 class Alignment:
     """What `align` made of one reworded paragraph, and why not when it made nothing."""
@@ -3226,6 +3365,12 @@ class Alignment:
     #: that they replaced or ran into: emphasis, code or a straight quote, which they lose.
     #: What `import` lists beside the merge, as Word's text has them.
     flattened: tuple[str, ...] = ()
+    #: A sign set before a value or a unit after it changed in Word, as `_beside_values`
+    #: reads each: (kind, what Word shows, the binding, the unit it had, the unit it has).
+    beside: tuple[tuple[str, str, str, str | None, str | None], ...] = ()
+    #: Rebuilt, pandoc would read this as an HTML tag, with the values in, and print none of
+    #: it, where it read the source as text (`_tag_made`).
+    tag: str = ""
 
 
 def _own_markup(reading: _Reading, index: int) -> bool:
@@ -3294,14 +3439,18 @@ def _between(words: list[str], tokens: list[tuple[int, int]]) -> list[str]:
 
 def _place(
     tokens: list[str], ranges: list[tuple[int, int]], before: list[str], after: list[str]
-) -> tuple[list[tuple[int, int]], list[int]]:
-    """Where each token's words landed in `after`, and which tokens did not come back whole.
+) -> tuple[list[tuple[int, int]], list[int], list[bool]]:
+    """Where each token's words landed in `after`, which tokens did not come back whole, and
+    which words of `after` stand in a stretch the two texts share.
 
     A token must sit inside one stretch the two texts share, so none of its words changed; a
     sign typed directly in front of a value that starts that stretch is a change to it.
     """
     matcher = difflib.SequenceMatcher(a=before, b=after, autojunk=False)
     equal = [op for op in matcher.get_opcodes() if op[0] == "equal"]
+    kept = [False] * len(after)
+    for _op, _a1, _a2, b1, b2 in equal:
+        kept[b1:b2] = [True] * (b2 - b1)
     placed: list[tuple[int, int]] = []
     missing: list[int] = []
     for index, (first, last) in enumerate(ranges):
@@ -3311,12 +3460,81 @@ def _place(
             continue
         at = first + block[3] - block[1]
         glued = after[at - 1] if at > 0 else ""
-        signed = len(glued) == 1 and unicodedata.category(glued) in _SIGNS
-        if first == block[1] and signed and tokens[index][:1].isdigit():
+        if first == block[1] and _signs(glued) and tokens[index][:1].isdigit():
             missing.append(index)
             continue
         placed.append((at, at + last - first))
-    return placed, missing
+    return placed, missing, kept
+
+
+def _signs(word: str) -> bool:
+    """Whether a word of `_WORD`'s is one sign or comparison of `_SIGNS`."""
+    return len(word) == 1 and unicodedata.category(word) in _SIGNS
+
+
+def _beside_values(
+    protected: Sequence[str],
+    tokens: Sequence[str],
+    spans: Sequence[tuple[int, int]],
+    rendered: str,
+    returned: str,
+    placed: Sequence[tuple[int, int]],
+    after: list[str],
+    kept: Sequence[bool],
+) -> tuple[tuple[str, str, str, str | None, str | None], ...]:
+    """Each value whose sign or unit was changed in Word, as (kind, what Word shows, the
+    binding, the unit it had, the unit it has): kind "sign" for a sign or a comparison typed
+    in front of it with a space between, "unit" for a unit or percent sign after it added,
+    changed or taken out.
+
+    Only a sign glued to a value used to be a change to it (`_place`). Set apart by a space,
+    "– 3.84" read as punctuation and merged, and so did "3.84%" and "3.84 mg": each says
+    something else of the value than "3.84" did, and `check` saw the binding intact. A unit
+    is read as G2 reads one after a binding (`bound_units.unit_at`), in Word's text before
+    and after the edit, and two spellings of one unit are one. A dash after a number is a
+    range, "2 – 3.84", not a sign. A value that does not open with a digit has no sign to
+    change, and one that does not end with one has its unit in it; a citation has neither.
+    """
+    from manuscript_guard.gates.bound_units import same_unit, unit_at
+
+    out = []
+    for index, token in enumerate(protected):
+        value = tokens[index]
+        if not _BINDING.fullmatch(token):
+            continue
+        at, to = placed[index]
+        sign = at - 1
+        while sign >= 0 and after[sign].isspace():
+            sign -= 1
+        signed = value[:1].isdigit() and 0 <= sign < at - 1 and not kept[sign]
+        # An equals sign set apart says the value is what it was: "the OR = 3.84".
+        if signed and _signs(after[sign]) and after[sign] != "=" and not _a_range(after, sign):
+            out.append(("sign", "".join(after[sign:to]), token, None, None))
+            continue
+        if not value[-1:].isdigit():
+            continue
+        end = len("".join(after[:to]))
+        was, now = unit_at(rendered, spans[index][1]), unit_at(returned, end)
+        if (was is None) != (now is None) or (was and now and not same_unit(was, now)):
+            stop = returned.index(now, end) + len(now) if now else end
+            shown = returned[len("".join(after[:at])) : stop]
+            out.append(("unit", shown, token, was, now))
+    return tuple(out)
+
+
+def _a_range(after: list[str], sign: int) -> bool:
+    """Whether the sign at `sign` in Word's words is a dash that is no sign of the value: one
+    after a number, with its unit or percent sign if it has one, which makes a range of it and
+    the value, "2 – 3.84" or "12% – 15%", or an em dash, typed or made of three hyphens as
+    pandoc makes one, which is punctuation and never a minus. The unit is read as G2 reads
+    one after a number (`bound_units.ends_in_a_number`): "12 mg/L – 15 mg/L", "36 °C – 38 °C"."""
+    from manuscript_guard.gates.bound_units import ends_in_a_number
+
+    if after[sign] == "—" or after[max(sign - 2, 0) : sign + 1] == ["-", "-", "-"]:
+        return True
+    if unicodedata.category(after[sign]) != "Pd":
+        return False
+    return ends_in_a_number("".join(after[:sign]).rstrip())
 
 
 def align(
@@ -3382,9 +3600,11 @@ def align(
     tokens = [rendered[start:end] for start, end in spans]
     before, ranges = _words(rendered, spans)
     after = _WORD.findall(returned)
-    placed, missing = _place(tokens, ranges, before, after)
+    placed, missing, kept = _place(tokens, ranges, before, after)
     if missing:
         return Alignment(None, changed=tuple((tokens[i], protected[i]) for i in missing))
+    if beside := _beside_values(protected, tokens, spans, rendered, returned, placed, after, kept):
+        return Alignment(None, beside=beside)
 
     new_prose = _between(after, placed)
 
@@ -3517,6 +3737,8 @@ def align(
             return Alignment(None, unpaired=True), worded
         if not _reads_as(rebuilt, protected, tokens, returned):
             return Alignment(None, misread=True), worded
+        if made := _tag_made(rebuilt, source, tokens):
+            return Alignment(None, tag=made), worded
         return Alignment(rebuilt or None, flattened=tuple(flattened)), worded
 
     aligned, worded = rebuild(True)
@@ -3558,13 +3780,21 @@ def _align_plain(
         reading, 0, rendered, returned, ahead="", bare="", last=True, binding_next=False,
         abbreviations=abbreviations,
     )  # fmt: skip
-    if written is not None and _reads_as(written.text.strip(), (), (), returned):
+    # Words written into the source keep its own `<` and `>` bare, and what the edit took out
+    # from between them may have kept them from being a tag; see `_tag_made`.
+    if (
+        written is not None
+        and _reads_as(written.text.strip(), (), (), returned)
+        and not _tag_made(written.text.strip(), source)
+    ):
         return Alignment(written.text.strip() or None, flattened=written.flattened)
     rebuilt = _respaced(
         _escaped(returned.strip(), opening=True), abbreviations, lead=True, binding_next=False
     )
     if not _reads_as(rebuilt, (), (), returned):
         return Alignment(None, misread=True)
+    if made := _tag_made(rebuilt, source):
+        return Alignment(None, tag=made)
     flattened = (" ".join(returned.split()),) if _own_markup(reading, 0) else ()
     return Alignment(rebuilt or None, flattened=flattened)
 

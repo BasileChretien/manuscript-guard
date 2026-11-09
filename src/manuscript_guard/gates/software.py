@@ -71,20 +71,25 @@ _EMITTER_KEYS = frozenset(re.sub(r"[^a-z0-9]+", "_", name) for name in EMITTERS)
 #: An item that names the language itself is of a script in it.
 INTERPRETERS = {"r": R, "python": PYTHON}
 
-#: The headings of the plan's Software section, matched whole: the word, after a number in
-#: digits, a letter, Roman numerals or "Appendix B:", with a word for the language or the
-#: analysis before it ("R packages", "Statistical analysis software", "Tools and software"),
-#: "used", "and packages" or the like after it, and a version in brackets or an attribute
-#: block at the end. A title that only mentions software ("Statistical analysis and
-#: software", round 1 of #592) or opens with the word and heads something else ("Library
-#: preparation", "Software-based intervention", round 2) heads no Software section.
+#: The headings of the plan's Software section (Basile, 2026-11-09): after a number in
+#: digits, a letter, Roman numerals or "Appendix B:", a title whose first word is Software,
+#: whatever follows ("Software packages", "Software: R packages"), "Software-based" aside;
+#: or, matched whole, since packages and libraries have other senses ("Library
+#: preparation", "Package of care"), the word with a word for the language or the analysis
+#: before it ("R packages", "Statistical analysis software", "Tools and software"), "used" or
+#: "and versions" after it, and a version in brackets or an attribute block at the end. A
+#: title that only mentions software, "Statistical analysis and software", heads no
+#: Software section (rounds 1 to 3 of #592).
 SOFTWARE_HEADING = re.compile(
     r"^[\W\d_]*(?:(?:[ivxlc]+|[a-z]|appendix(?:\s+\w+)?)[.):]\s+)?"
-    r"(?:(?:r|python|r\s+and\s+python|statistical|analysis|analytic|data\s+analysis"
+    r"(?:software(?![\w-])"
+    r"|(?:(?:r|python|r\s+and\s+python|statistical|analysis|analytic|data\s+analysis"
     r"|statistical\s+analysis|computing|computational|tools\s+and)\s+)?"
     r"(?:software|packages?|librar(?:y|ies))"
     r"(?:\s+(?:used|versions|and\s+(?:packages|libraries|tools|versions|software)))?"
-    r"\s*(?:\([^)]*\))?\s*(?:\{[^}]*\})?[\W_]*$",
+    # One repeat over what may close the title, each bracket after its own spaces: two
+    # repeats over the same spaces made a long one cubic. A bracket holds a version.
+    r"(?:\s*\([^)\d]*\d[^)]*\))?(?:\s*\{[^}]*\})?[\W_]*$)",
     re.IGNORECASE,
 )
 #: Under it, the heading of the packages considered and not taken, whose items are not held

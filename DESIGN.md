@@ -11381,7 +11381,7 @@ says otherwise (Basile, 2026-11-09: his wish, put as a default the project overr
 
 | Question | Answer |
 |---|---|
-| Where the record lives | a section of `design/plan.md` headed Software (also "Packages", "Libraries"), frozen and dated with the plan |
+| Where the record lives | a section of `design/plan.md` headed Software (which headings count is below), frozen and dated with the plan |
 | Its format | one list item per package, opening with its name in backticks; every bare name in backticks in the item is one of its names, so a package imported by another name gives that one too; the packages considered and not used under a heading of their own below, not held to the scripts; the version and the functions not checked |
 | What counts as loaded | a literal load anywhere in a file of `analysis/` or `figures/`, a function's body included, outside comments and strings: `library()`, `require()`, `requireNamespace()`, `loadNamespace()`, `pkg::`, `pkg:::`; `import`, `from`, `importlib.import_module()`; the R and Python chunks of R Markdown and Quarto files; a notebook's code cells. A name computed is not read |
 | What is nobody's choice | R's fourteen packages of priority "base", written in the code (the recommended ones, survival and MASS, are a choice); `sys.stdlib_module_names`; the project's own modules, a relative import; the toolkit's emitters |
@@ -11402,11 +11402,20 @@ Round 1 of #592 settled four readings. An item's first name is its package and i
 every load; its other names count only as a package somebody chose, so `R`, `stats` or
 `json` written beside it stands nothing down. A base package R attaches counts as loaded,
 as an item's first name, wherever an R script is read, since `glm()` needs no
-`library(stats)`. The section's heading opens with the word ("Software", "R packages",
-"Statistical software", "Libraries"), so "Statistical analysis and software" heads the
-analysis and its variables are read. And the data dictionary's check (`gates/collection.py`)
-leaves the Software section out, as it leaves out the Deviations: its names are packages
-and functions, not variables.
+`library(stats)`. And the data dictionary's check (`gates/collection.py`) leaves the
+Software section out, as it leaves out the Deviations: its names are packages and
+functions, not variables.
+
+Which headings head the section took three rounds: read too widely, "Library preparation"
+or "Package of care" lost their variables to the dictionary's check, which main reads;
+read too narrowly, "Software packages" was refused though the skill asks for a heading
+that opens with Software. Basile, 2026-11-09 (question box, the recommended option): a
+title whose first word is Software heads the section whatever follows, "Software-based"
+aside, after a number in digits, a letter, Roman numerals or "Appendix B:"; packages and
+libraries, which have other senses, head it only in the forms a plan uses for software,
+matched whole ("R packages", "Packages used", "Libraries", "Statistical analysis software",
+"Tools and software"), with a version in brackets or an attribute block at the end. A title
+that only mentions software, "Statistical analysis and software", heads the analysis.
 
 Names are compared as `em.software()` writes its keys, case and punctuation aside, so
 `scikit-learn` is `scikit_learn`; a dotted name the plan gives is matched by its first part
@@ -11419,7 +11428,7 @@ so an import in a function or a `try` block counts.
 The campaign: `software_plans()` in `tests/generated.py` puts every way of loading and every
 place a name is written without loading anything into each example, once for a package the
 plan names and once for one it does not; `tests/test_properties.py` holds what is said, line
-for line, against twenty-six broken rules, each failing under a dozen seeds. The limits are in
+for line, against twenty-seven broken rules, each failing under a dozen seeds. The limits are in
 Known gaps.
 
 ## What a change makes stale
@@ -24249,6 +24258,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     so a variable written there stands down the note for a package of that name.
   - Only list items are read. A Software section written as a table, or as sentences,
     names nothing, and every package loaded is then said not to be named.
+  - A heading that opens with Software heads the section whatever follows, so
+    "Software and statistical analysis" does, and the variables its items name are read as
+    packages and left out of the data dictionary's check. A heading of packages or libraries
+    in a form not listed ("Computing environment and packages", "Supplementary Appendix:
+    Packages", "S1. Packages") heads none, and its packages are then said not to be named.
   - A base package R does not attach (`splines`, `parallel`) named as an item's first name
     counts as loaded wherever an R script is read, whether or not one loads it.
   - A variable named in backticks in the Software section is not held to the data

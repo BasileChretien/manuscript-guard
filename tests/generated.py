@@ -11295,21 +11295,25 @@ SOFTWARE_PYTHON_DECOYS = (
     "# import {p}", 's = "import {p}"', '"""\nimport {p}\n"""', "from . import {p}",
     "from .{p} import fit", "x = 1  # from {p} import fit",
 )  # fmt: skip
-#: How a plan heads its Software section: the word, after a number in digits, letters or
-#: Roman numerals, with a word for the language or the analysis before it, or "used", "and
-#: tools" and versions after it (#592).
+#: How a plan heads its Software section (Basile, 2026-11-09): a title whose first word is
+#: Software, whatever follows, after a number in digits, a letter, Roman numerals or
+#: "Appendix B:"; and, for the words that have other senses, packages and libraries, the
+#: forms a plan uses for software, a word for the language or the analysis before them, or
+#: "used" and a version after them (#592).
 SOFTWARE_HEADINGS = (
     "Software", "R packages", "R and Python packages", "Statistical analysis software",
     "Data analysis software", "Tools and software", "Software and packages", "IV. Software",
     "Appendix B: Software", "3.2 Software used (R 4.4.1)", "Libraries", "Packages used",
+    "Software packages", "Software environment", "Software: R packages",
+    "Software and statistical analysis", "Software for statistical analysis",
 )  # fmt: skip
 #: Headings that open with one of those words, or end with one, and head something else.
 SOFTWARE_OTHER_HEADINGS = (
     "Library preparation", "Package of care", "Software-based intervention",
-    "Software and statistical analysis",
+    "Library (preparation)",
 )  # fmt: skip
 #: Base R and Python's standard library, which nobody chooses.
-_SOFTWARE_BASE =("stats", "utils", "methods", "grid", "splines", "tools", "graphics")
+_SOFTWARE_BASE = ("stats", "utils", "methods", "grid", "splines", "tools", "graphics")
 _SOFTWARE_STDLIB = ("csv", "json", "math", "statistics", "pathlib", "random")
 SOFTWARE_PATHS = {"r": "analysis/01_model.R", "python": "analysis/02_model.py",
                   "rmd": "analysis/03_report.Rmd", "legacy": "analysis/04_legacy.py",

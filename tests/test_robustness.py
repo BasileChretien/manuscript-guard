@@ -188,6 +188,17 @@ def test_the_fence_scanner_is_linear(assert_linear) -> None:
     assert_linear(opener_lines, fenced_spans, 50, "the fence scanner")
 
 
+def test_the_software_heading_is_read_in_linear_time(assert_linear) -> None:
+    """A plan's title after the word was read by three repeats over the same spaces: cubic,
+    0.1s at 200 spaces before a letter and 5.6s at 800 (#592). "Packages", since a title
+    that opens with Software is taken whatever follows."""
+    from manuscript_guard.gates.software import SOFTWARE_HEADING
+
+    for tail in (" ", " ("):
+        assert_linear(lambda count, tail=tail: "Packages" + tail * count + "x",
+                      SOFTWARE_HEADING.search, 200, f"the Software heading, {tail!r}")  # fmt: skip
+
+
 def test_the_linear_check_refuses_work_too_quick_to_time(assert_linear) -> None:
     """A ratio of microseconds is noise, so a size that never reaches the floor is an error
     in the test, not a pass."""

@@ -124,9 +124,10 @@ decides for it.
    data handling with dplyr and its companions (tidyr, readr, stringr, purrr), unless the
    project's code already uses another style (data.table, base R) or the author asks for
    one.
-4. **Record it.** Under a heading that opens with "Software" ("R packages" and "Libraries"
-   do too), one list item per package, opening with its name in backticks, then its version
-   and which of its functions does which step. Put the packages considered and not taken
+4. **Record it.** Under a heading that opens with "Software" ("R packages", "Packages
+   used", "Libraries" and "Statistical analysis software" do too; "Library preparation"
+   does not), one list item per package, opening with its name in backticks, then its
+   version and which of its functions does which step. Put the packages considered and not taken
    under a heading of their own below it, each with why. The names there are not taken for
    variables of the data dictionary:
 

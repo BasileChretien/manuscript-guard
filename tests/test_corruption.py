@@ -8667,13 +8667,15 @@ def test_a_base_package_r_attaches_is_loaded_and_another_heading_is_not_the_soft
     assert _software_said(project) == []
     # Round 2: a heading that opens with the word and heads something else is not the
     # section, and the data dictionary is held to the variables it names, as on main.
-    other = "## Library preparation\n\n- `read_depth` per sample\n\n"
-    plan.write_bytes(text.replace("## Sample size", other + "## Sample size").encode())
-    assert _software_said(project) == []
-    assert ("plan-variable-undefined", "warn") in _plan_said(project)
+    for heading in ("Library preparation", "Library (preparation)", "Package of care"):
+        other = f"## {heading}\n\n- `read_depth` per sample\n\n"
+        plan.write_bytes(text.replace("## Sample size", other + "## Sample size").encode())
+        assert _software_said(project) == [], heading
+        assert ("plan-variable-undefined", "warn") in _plan_said(project), heading
     # And the headings people write for it are read, the dictionary leaving them alone.
     (project / "analysis" / "02_model.R").write_bytes(b"library(lme4)\n")
-    for heading in ("Statistical analysis software", "IV. Software", "R and Python packages"):
+    for heading in ("Statistical analysis software", "IV. Software", "R and Python packages",
+                    "Software packages", "Software environment", "Software: R packages"):
         own = f"## {heading}\n\n- `lme4`: `glmer()` fits the model\n\n"
         plan.write_bytes(text.replace("## Sample size", own + "## Sample size").encode())
         assert _software_said(project) == [], heading

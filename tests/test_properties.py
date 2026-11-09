@@ -17316,6 +17316,24 @@ _ROUND_ONE_HEADING = re.compile(
 )
 
 
+#: As round 2 of #592 read it: the whole title, from a closed list of words after Software.
+_ROUND_TWO_HEADING = re.compile(
+    r"^[\W\d_]*(?:(?:[ivxlc]+|[a-z]|appendix(?:\s+\w+)?)[.):]\s+)?"
+    r"(?:(?:r|python|r\s+and\s+python|statistical|analysis|analytic|data\s+analysis"
+    r"|statistical\s+analysis|computing|computational|tools\s+and)\s+)?"
+    r"(?:software|packages?|librar(?:y|ies))"
+    r"(?:\s+(?:used|versions|and\s+(?:packages|libraries|tools|versions|software)))?"
+    r"(?:\s*\([^)]*\))?(?:\s*\{[^}]*\})?[\W_]*$",
+    re.IGNORECASE,
+)
+
+
+def _only_a_closed_list_of_words_follows_software(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "SOFTWARE_HEADING", _ROUND_TWO_HEADING)
+
+
 def _a_heading_that_opens_with_the_word_heads_the_section(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import software
 
@@ -21845,6 +21863,10 @@ BROKEN = {
     ),
     "a heading that opens with the word heads the Software section": (
         _a_heading_that_opens_with_the_word_heads_the_section,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "only a closed list of words may follow Software in its heading": (
+        _only_a_closed_list_of_words_follows_software,
         test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
     ),
     "an import line continued with a backslash is read alone": (

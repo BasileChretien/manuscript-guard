@@ -33,6 +33,7 @@ from __future__ import annotations
 import ast
 import dataclasses
 import json
+import os
 import re
 import sys
 from collections.abc import Iterable
@@ -426,18 +427,21 @@ def scripts(project: Project) -> dict[str, str]:
         base = project.root / folder
         if not base.is_dir():
             continue
-        for path in sorted(base.rglob("*")):
-            parts = path.relative_to(project.root).parts
-            if any(part.startswith(".") or part in LIBRARIES for part in parts):
-                continue
-            if path.suffix.lower() not in _BY_SUFFIX or not path.is_file():
-                continue
-            try:
-                raw = path.read_bytes()
-            except OSError:
-                continue
-            found["/".join(parts)] = raw.decode("utf-8-sig", errors="replace")
-    return found
+        # Walked, not globbed, so that a library is never entered; links are not followed.
+        for here, folders, files in os.walk(base):
+            folders[:] = sorted(name for name in folders
+                                if not name.startswith(".") and name not in LIBRARIES)
+            for file in files:
+                path = Path(here) / file
+                if file.startswith(".") or path.suffix.lower() not in _BY_SUFFIX:
+                    continue
+                try:
+                    raw = path.read_bytes()
+                except OSError:
+                    continue
+                relative = path.relative_to(project.root).as_posix()
+                found[relative] = raw.decode("utf-8-sig", errors="replace")
+    return dict(sorted(found.items()))
 
 
 def own_modules(root: Path, read: Iterable[str]) -> frozenset[str]:
@@ -481,7 +485,7 @@ def planned_packages(text: str) -> list[Planned] | None:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     sections = _plan_sections(text)
     spans = code_spans(mask(text))
-    items = list_items(text)
+    items = [(start, _line(text, start)) for start in list_items(text)]
     ends = [section.line for section in sections[1:]] + [text.count("\n") + 2]
     found = False
     planned: list[Planned] = []
@@ -498,7 +502,7 @@ def planned_packages(text: str) -> list[Planned] | None:
                 stack.pop()
             unused = bool(NOT_USED_HEADING.search(part.title)) or bool(stack and stack[-1][1])
             stack.append((part.level, unused))
-            inside = [start for start in items if part.line < _line(text, start) < ends[at]]
+            inside = [start for start, line in items if part.line < line < ends[at]]
             planned += _items(text, spans, inside, _offset(text, ends[at]), not unused)
     return planned if found else None
 

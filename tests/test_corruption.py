@@ -8647,7 +8647,12 @@ def test_a_package_the_plan_names_and_no_script_loads_is_said(project: Path) -> 
 def test_a_package_a_script_loads_and_the_plan_does_not_name_is_a_note(project: Path) -> None:
     """The other way: a package an analysis or figure script loads that no item of the
     Software section names is a note, at its first load, whatever the stage; base R and the
-    standard library are nobody's choice, and are not said."""
+    standard library are nobody's choice, and are not said; nor is what an installed library
+    or a hidden folder holds."""
+    for folder in ("renv/library/vigicaen/R", ".ipynb_checkpoints"):
+        (project / "analysis" / folder).mkdir(parents=True)
+        (project / "analysis" / folder / "a.R").write_bytes(b"library(vigicaen)\n")
+    assert _software_said(project) == []
     script = project / "analysis" / "02_tables.R"
     script.write_bytes(b"x <- stats::median(1)\n# library(dplyr)\nlibrary(vigicaen)\n"
                        b"y <- vigicaen::tb_custom()\n")  # fmt: skip

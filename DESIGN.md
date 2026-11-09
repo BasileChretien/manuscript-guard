@@ -11398,6 +11398,16 @@ What `check` says (`gates/software.py`, G12):
 * A name in backticks under Deviations stands down either: it is the record of a package
   dropped, or taken up after the plan was agreed.
 
+Round 1 of #592 settled four readings. An item's first name is its package and is held to
+every load; its other names count only as a package somebody chose, so `R`, `stats` or
+`json` written beside it stands nothing down. A base package R attaches counts as loaded,
+as an item's first name, wherever an R script is read, since `glm()` needs no
+`library(stats)`. The section's heading opens with the word ("Software", "R packages",
+"Statistical software", "Libraries"), so "Statistical analysis and software" heads the
+analysis and its variables are read. And the data dictionary's check (`gates/collection.py`)
+leaves the Software section out, as it leaves out the Deviations: its names are packages
+and functions, not variables.
+
 Names are compared as `em.software()` writes its keys, case and punctuation aside, so
 `scikit-learn` is `scikit_learn`; a dotted name the plan gives is matched by its first part
 to what Python imports, `statsmodels.api` to `statsmodels`. R is read by a tokenizer that
@@ -11409,7 +11419,7 @@ so an import in a function or a `try` block counts.
 The campaign: `software_plans()` in `tests/generated.py` puts every way of loading and every
 place a name is written without loading anything into each example, once for a package the
 plan names and once for one it does not; `tests/test_properties.py` holds what is said, line
-for line, against nineteen broken rules, each failing under a dozen seeds. The limits are in
+for line, against twenty-four broken rules, each failing under a dozen seeds. The limits are in
 Known gaps.
 
 ## What a change makes stale
@@ -24237,11 +24247,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - An item counts as loaded when any of its names is: "`dplyr`, `tidyr`" is never said
     where only dplyr is loaded. Every bare name in backticks in an item is one of its names,
     so a variable written there stands down the note for a package of that name.
+  - Only list items are read. A Software section written as a table, or as sentences,
+    names nothing, and every package loaded is then said not to be named.
+  - A base package R does not attach (`splines`, `parallel`) named as an item's first name
+    counts as loaded wherever an R script is read, whether or not one loads it.
+  - A variable named in backticks in the Software section is not held to the data
+    dictionary, since its names are read as packages.
   - The Python standard library is the list of the Python running `check`, so a module
     taken out of it (`distutils` in 3.12) is noted under a newer Python and not an older.
-  - A Python file this Python cannot parse is read line by line, for lines that open with
-    `import` or `from`: an import in a triple-quoted string is then read, and one after a
-    semicolon is not. A notebook's loads carry no line, since its lines are its JSON's.
+  - A Python file this Python cannot parse, or nested deeper than its parser goes, is read
+    line by line, for lines that open with `import` or `from`: an import in a triple-quoted
+    string is then read, and one after a semicolon is not. A notebook nested too deep is not
+    read. A notebook's loads carry no line, since its lines are its JSON's.
   - The version an item gives and the functions it names are not compared with anything.
   - A heading needs a blank line before it, as pandoc reads one: a "Considered and not used"
     typed on the line after an item is part of that item, and its packages are held.

@@ -8644,6 +8644,45 @@ def test_a_package_the_plan_names_and_no_script_loads_is_said(project: Path) -> 
     assert _software_said(project) == []
 
 
+def test_a_base_package_r_attaches_is_loaded_and_another_heading_is_not_the_software(
+    project: Path,
+) -> None:
+    """Round 1 of #592. R attaches stats and five others by default, so a script fits
+    `glm()` without loading stats, and a plan that names it was told no script did. And a
+    heading that only mentions software, "Statistical analysis and software", was read as
+    the Software section, its items naming variables taken for packages."""
+    (project / "analysis" / "02_model.R").write_bytes(b"fit <- glm(y ~ x, family = binomial)\n")
+    plan = project / "design" / "plan.md"
+    text = plan.read_bytes().decode("utf-8")
+    plan.write_bytes(text.replace("- `matplotlib`:", "- `stats`: `glm()` fits the model\n"
+                                                     "- `matplotlib`:").encode())  # fmt: skip
+    assert _software_said(project) == []
+    # Named only beside another package, it does not stand that one down.
+    plan.write_bytes(text.replace("- `matplotlib`:", "- `brms` 2.21, under `R` with `stats` "
+                                                     "and `json`\n- `matplotlib`:").encode())
+    line = text[: text.index("- `matplotlib`:")].count("\n") + 1
+    assert _software_said(project) == [("planned-package-unloaded", "warn", "design/plan.md", line)]
+    analysis = "## Statistical analysis and software\n\n- `age_group`: entered as a factor\n\n"
+    plan.write_bytes(text.replace("## Sample size", analysis + "## Sample size").encode())
+    assert _software_said(project) == []
+
+
+def test_a_script_no_parser_can_read_does_not_stop_the_check(project: Path) -> None:
+    """Round 1 of #592: a notebook or a Python file nested deeper than the parser goes made
+    G12 raise, and a gate that raises fails the whole check. A file that does not parse is
+    read line by line, a list of modules on one line whole."""
+    from manuscript_guard.gates.software import python_loads, script_loads
+
+    assert [load.name for load in python_loads("print 'x'\nimport os, numpy as np, pandas\n")] \
+        == ["os", "numpy", "pandas"]  # fmt: skip
+    python_loads("x = " + "not " * 100000 + "y\n")
+    python_loads("x = " + "(" * 100000 + ")" * 100000 + "\n")
+    script_loads("figures/deep.ipynb", "[" * 100000)
+    (project / "figures" / "deep.ipynb").write_bytes(b"[" * 100000)
+    (project / "analysis" / "deep.py").write_bytes(b"x = " + b"(" * 100000 + b")" * 100000)
+    assert _software_said(project) == []
+
+
 def test_a_package_a_script_loads_and_the_plan_does_not_name_is_a_note(project: Path) -> None:
     """The other way: a package an analysis or figure script loads that no item of the
     Software section names is a note, at its first load, whatever the stage; base R and the
@@ -10516,6 +10555,8 @@ _NOT_THE_MANUSCRIPT = (
     "check_vault_results",
     "check_datasets", "check_declared_datasets",
     "check_method_passages", "check_methods_review",
+    # G12's of the plan's Software section: it reads the plan and the analysis scripts.
+    "check_software",
     # It finds the figures placed in the Markdown sources, so it reads nothing of a LaTeX
     # manuscript and says nothing of one; it runs, as G3's other check does (round 1 of #387).
     "check_figure_alt",

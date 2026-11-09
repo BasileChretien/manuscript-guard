@@ -71,8 +71,15 @@ _EMITTER_KEYS = frozenset(re.sub(r"[^a-z0-9]+", "_", name) for name in EMITTERS)
 #: An item that names the language itself is of a script in it.
 INTERPRETERS = {"r": R, "python": PYTHON}
 
-#: The headings of the plan's Software section.
-SOFTWARE_HEADING = re.compile(r"\bsoftware\b|\bpackages?\b|\blibraries\b", re.IGNORECASE)
+#: The headings of the plan's Software section: a title that opens with the word, after its
+#: number, or with a word for the language or the analysis before it ("Software", "R
+#: packages", "Statistical software", "Libraries used"). One that only mentions software,
+#: "Statistical analysis and software", heads the analysis (round 1 of #592).
+SOFTWARE_HEADING = re.compile(
+    r"^[\W\d_]*(?:(?:r|python|statistical|analysis|analytic)\s+)?"
+    r"(?:software|packages?|librar(?:y|ies))\b",
+    re.IGNORECASE,
+)
 #: Under it, the heading of the packages considered and not taken, whose items are not held
 #: to the scripts.
 NOT_USED_HEADING = re.compile(
@@ -267,11 +274,13 @@ def r_loads(text: str) -> list[Load]:
 # ------------------------------------------------------------------------------ Python
 
 
-#: An import, where a file does not parse: a line that opens with one.
+#: An import, where a file does not parse: a line that opens with one, and what it lists.
 _PYTHON_IMPORT = re.compile(
-    r"^[ \t]*(?:import[ \t]+([A-Za-z_]\w*)|from[ \t]+([A-Za-z_]\w*)[\w.]*[ \t]+import\b)",
+    r"^[ \t]*(?:import[ \t]+([^\n#;]+)|from[ \t]+([A-Za-z_]\w*)[\w.]*[ \t]+import\b)",
     re.MULTILINE,
 )
+#: What a parser raises on code nested deeper than it goes, besides a syntax error.
+_TOO_DEEP = (RecursionError, MemoryError)
 
 
 def _python_nodes(tree: ast.AST) -> Iterable[ast.AST]:
@@ -304,15 +313,29 @@ def _imported_by_call(node: ast.Call) -> str | None:
     return module.split(".")[0]
 
 
+def _import_list(written: str) -> list[str]:
+    """The top-level modules an `import` line lists: `os, numpy as np, pandas.api` gives
+    os, numpy and pandas."""
+    modules = []
+    for part in written.split(","):
+        words = part.split()
+        top = words[0].split(".")[0] if words else ""
+        if re.fullmatch(r"[A-Za-z_]\w*", top):
+            modules.append(top)
+    return modules
+
+
 def python_loads(text: str) -> list[Load]:
     """The packages Python code loads, by their top-level names, in the order of their
     lines. Code the Python running the check cannot parse is read line by line, for the
     lines that open with an import."""
     try:
         tree = ast.parse(text)
-    except (SyntaxError, ValueError):
-        return [Load(found.group(1) or found.group(2), PYTHON, _line(text, found.start()))
-                for found in _PYTHON_IMPORT.finditer(text)]  # fmt: skip
+    except (SyntaxError, ValueError, *_TOO_DEEP):
+        return [Load(module, PYTHON, _line(text, found.start()))
+                for found in _PYTHON_IMPORT.finditer(text)
+                for module in (_import_list(found.group(1)) if found.group(1)
+                               else [found.group(2)])]  # fmt: skip
     loads = []
     for node in _python_nodes(tree):
         if isinstance(node, ast.Import):
@@ -364,7 +387,7 @@ def _notebook(text: str) -> dict[str, str]:
     it names none), IPython's magics and shell lines left out."""
     try:
         document = json.loads(text)
-    except ValueError:
+    except (ValueError, *_TOO_DEEP):
         return {}
     if not isinstance(document, dict):
         return {}
@@ -581,14 +604,16 @@ def judge_software(root: Path, text: str, read: dict[str, str], emitted: Iterabl
                  if lines.strip()}  # fmt: skip
     loads = [(relative, load) for relative, code in codes.items()
              for load in _loads_in(relative, code)]  # fmt: skip
+    chosen = [(relative, load) for relative, load in loads if not _given(load, own)]
     loaded = {(load.language, _norm(load.name)) for _relative, load in loads}
+    picked = {(load.language, _norm(load.name)) for _relative, load in chosen}
     made = {_norm(name) for name in emitted}
     deviations = deviation_names(text)
     used = [item for item in planned or () if item.used]
     findings = []
     if stage not in (None, DESIGN):
         for item in used:
-            if any(_is_loaded(name, loaded, made, languages) for name in item.names) or \
+            if _item_loaded(item, loaded, picked, made, languages) or \
                     any(_norm(name) in deviations for name in item.names):  # fmt: skip
                 continue
             findings.append(Finding(
@@ -601,25 +626,39 @@ def judge_software(root: Path, text: str, read: dict[str, str], emitted: Iterabl
                 f"naming it in backticks, `{item.names[0]}`. A package scripts import by "
                 "another name takes that name in its item too: `scikit-learn`, `sklearn`",
             ))  # fmt: skip
-    chosen = [(relative, load) for relative, load in loads if not _given(load, own)]
     findings += _unnamed(root, planned, chosen, deviations)
-    counts = {"software_planned": len(used),
-              "software_loaded": len({(load.language, _norm(load.name)) for _r, load in chosen})}
+    counts = {"software_planned": len(used), "software_loaded": len(picked)}
     return Report(tuple(findings), counts)
 
 
-def _is_loaded(name: str, loaded: set[tuple[str, str]], made: set[str],
-               languages: set[str]) -> bool:  # fmt: skip
-    """Whether a name an item gives is of a package loaded or recorded: by its name, by its
-    first part where Python loads that (`statsmodels.api`), or as the language of a script
-    read (`R`, `Python`)."""
+def _item_loaded(item: Planned, loaded: set[tuple[str, str]], picked: set[tuple[str, str]],
+                 made: set[str], languages: set[str]) -> bool:  # fmt: skip
+    """Whether an item's package is loaded or recorded. Its first name is the package's, and
+    is held to every load; the others are names the scripts may import it by, and count only
+    as a package somebody chose, so that `R`, `stats` or `json` written beside it does not
+    stand it down (round 1 of #592)."""
+    return any(_name_loaded(name, loaded if first else picked, made, languages, first)
+               for first, name in ((index == 0, name)
+                                   for index, name in enumerate(item.names)))  # fmt: skip
+
+
+def _name_loaded(name: str, found: set[tuple[str, str]], made: set[str], languages: set[str],
+                 first: bool) -> bool:  # fmt: skip
+    """Whether a name is of a package among `found` or recorded: by its name, or by its first
+    part where Python loads that (`statsmodels.api`); and, as an item's first name, the
+    language of a script read (`R`, `Python`) or a base package R attaches."""
     key = _norm(name)
-    return (
-        any((language, key) in loaded for language in (R, PYTHON))
-        or (PYTHON, _norm(name.split(".")[0])) in loaded
-        or key in made
-        or INTERPRETERS.get(key) in languages
-    )
+    if any((language, key) in found for language in (R, PYTHON)) or \
+            (PYTHON, _norm(name.split(".")[0])) in found or key in made:  # fmt: skip
+        return True
+    return first and (INTERPRETERS.get(key) in languages or _attached(name, languages))
+
+
+def _attached(name: str, languages: set[str]) -> bool:
+    """A package of base R, which an R script may call without loading it: R attaches stats,
+    graphics, grDevices, utils, datasets and methods itself, and a script that names another
+    without loading it fails in R before it is read here."""
+    return name in R_BASE and R in languages
 
 
 def _unnamed(root: Path, planned: list[Planned] | None, chosen: list[tuple[str, Load]],

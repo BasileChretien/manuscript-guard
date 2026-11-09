@@ -5308,6 +5308,12 @@ def collection_plans(
          [defined[0]], [undefined[0]]),
         (f"## Exposure details\n\n{draw(words)}.\n\n### {deviation}\n\n`{undefined[5]}` "
          f"{draw(words)}.\n\n### Timing\n\n`{defined[7]}` {draw(words)}.\n", [defined[7]], []),
+        # The Software section names packages and functions, and is not read (#592); a
+        # heading that only mentions software heads no such section.
+        (f"## Software\n\n- `vigicaen` 2.1.0: `add_drug()` flags `{defined[1]}`\n\n"
+         f"### Considered and not used\n\n- `pandas`: {draw(words)}\n", [], []),
+        (f"## Statistical analysis and software\n\n{draw(words)} `n_events` {draw(words)}.\n",
+         [], ["n_events"]),
     ]  # fmt: skip
     order = draw(st.permutations(range(len(kinds))))
     # A title that names an amendment encloses the plan, and is not its Deviations.
@@ -11290,7 +11296,8 @@ SOFTWARE_PYTHON_DECOYS = (
 _SOFTWARE_BASE = ("stats", "utils", "methods", "grid", "splines", "tools", "graphics")
 _SOFTWARE_STDLIB = ("csv", "json", "math", "statistics", "pathlib", "random")
 SOFTWARE_PATHS = {"r": "analysis/01_model.R", "python": "analysis/02_model.py",
-                  "rmd": "analysis/03_report.Rmd", "notebook": "figures/plot.ipynb"}  # fmt: skip
+                  "rmd": "analysis/03_report.Rmd", "legacy": "analysis/04_legacy.py",
+                  "notebook": "figures/plot.ipynb"}  # fmt: skip
 
 
 def _assembled(pieces: list[tuple[str, str]], filler: str, gaps: list[int]
@@ -11378,12 +11385,17 @@ def software_plans(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
     pieces["python"].append(("import {p}.api", module, "named"))
     item(("R",), written="`R`")
     item(("Python",), written="`Python`")
+    # A base package R attaches is loaded by any R script; named beside another package, it,
+    # the language and a module of the standard library stand nothing down (round 1 of #592).
+    item((draw(st.sampled_from(_SOFTWARE_BASE)),))
+    alone = name()
+    item((alone, "R", "importlib"), warned=True, written=f"`{alone}` under `R`, with `importlib`")
     left, taken = name(), name()
     unused += [left, taken]
     pieces["r"].append(("library({p})", taken, "not used"))
-    elsewhere, in_prose, twice = name(), name(), name()
+    elsewhere, in_prose, twice, variable, fitted = name(), name(), name(), name(), name()
     pieces["r"] += [("library({p})", elsewhere, "not named"), ("{p}::fit()", twice, "not named"),
-                    ("library({p})", twice, "not named")]  # fmt: skip
+                    ("library({p})", twice, "not named"), ("library({p})", fitted, "not named")]
     pieces["python"].append(("from {p} import fit", in_prose, "not named"))
     pieces["r"] += [("library({p})", draw(st.sampled_from(_SOFTWARE_BASE)), None),
                     ("x <- {p}::median(x)", draw(st.sampled_from(_SOFTWARE_BASE)), None),
@@ -11436,10 +11448,20 @@ def software_plans(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
         "metadata": {"kernelspec": {"language": "python"}},
     }, indent=1)  # fmt: skip
     loads.append(("python", in_cell, SOFTWARE_PATHS["notebook"], None, "not named"))
+    # A Python file no Python parses is read line by line, a list of modules whole.
+    listed = [name(), name(), name()]
+    scripts[SOFTWARE_PATHS["legacy"]] = (f"print 'x'\nimport os, {listed[0]}, {listed[1]} as b\n"
+                                         f"x = 1\nfrom {listed[2]}.sub import fit\n")  # fmt: skip
+    loads += [("python", listed[0], SOFTWARE_PATHS["legacy"], 2, "not named"),
+              ("python", listed[1], SOFTWARE_PATHS["legacy"], 2, "not named"),
+              ("python", listed[2], SOFTWARE_PATHS["legacy"], 4, "not named")]  # fmt: skip
 
     order = draw(st.permutations(used))
+    # A heading that only mentions software heads no Software section: its items are not read.
     plan = ["# Analysis plan", "", "## Research question", "", "Whether words were said.", "",
-            "## Analysis", "", "The model.", "", f"- `{elsewhere}` fits the model", ""]
+            "## Analysis", "", "The model.", "", f"- `{elsewhere}` fits the model", "",
+            "## Statistical analysis and software", "", f"- `{variable}`: entered as a factor",
+            f"- `{fitted}` fits the model", ""]  # fmt: skip
     software = ["## Software", "", f"The software, with `{in_prose}` named in a sentence.", ""]
     warned = []
     for written, names, warns in order:

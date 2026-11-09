@@ -14482,6 +14482,19 @@ def _the_deviations_name_variables(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(collection, "_deviations", lambda text: [])
 
 
+def _the_software_names_variables(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "_software_sections", lambda text: [])
+
+
+def _a_heading_that_mentions_software_hides_its_variables(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "SOFTWARE_HEADING",
+                  re.compile(r"\bsoftware\b|\bpackages?\b|\blibraries\b", re.IGNORECASE))
+
+
 def _the_deviations_end_at_their_first_subsection(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import collection
 
@@ -17242,9 +17255,9 @@ def _the_deviations_are_not_read_for_a_package(patch: pytest.MonkeyPatch) -> Non
 def _what_the_emitter_recorded_is_not_loaded(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import software
 
-    loaded = software._is_loaded
-    patch.setattr(software, "_is_loaded",
-                  lambda name, found, made, languages: loaded(name, found, set(), languages))
+    loaded = software._name_loaded
+    patch.setattr(software, "_name_loaded", lambda name, found, made, languages, first: loaded(
+        name, found, set(), languages, first))  # fmt: skip
 
 
 def _the_language_is_not_a_package(patch: pytest.MonkeyPatch) -> None:
@@ -17263,6 +17276,42 @@ def _a_notebook_s_magic_is_python(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import software
 
     patch.setattr(software, "_MAGIC", re.compile(r"(?!)"))
+
+
+def _a_package_r_attaches_is_not_loaded(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "_attached", lambda name, languages: False)
+
+
+def _an_item_s_other_names_match_what_nobody_chooses(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    held = software._item_loaded
+    patch.setattr(software, "_item_loaded", lambda item, loaded, chosen, made, languages: held(
+        item, loaded, loaded, made, languages))  # fmt: skip
+
+
+def _an_item_s_other_names_may_be_the_language(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    named = software._name_loaded
+    patch.setattr(software, "_name_loaded", lambda name, found, made, languages, first: named(
+        name, found, made, languages, True))  # fmt: skip
+
+
+def _a_heading_that_mentions_software_heads_the_section(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    patch.setattr(software, "SOFTWARE_HEADING",
+                  re.compile(r"\bsoftware\b|\bpackages?\b|\blibraries\b", re.IGNORECASE))
+
+
+def _a_list_of_modules_read_line_by_line_gives_its_first(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software
+
+    listed = software._import_list
+    patch.setattr(software, "_import_list", lambda written: listed(written)[:1])
 
 
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
@@ -21336,6 +21385,9 @@ BROKEN = {
         )
         for said, broken in (
             ("the Deviations name variables", _the_deviations_name_variables),
+            ("the Software section names variables", _the_software_names_variables),
+            ("a heading that mentions software hides the variables it names",
+             _a_heading_that_mentions_software_hides_its_variables),
             ("the Deviations end at their first subsection",
              _the_deviations_end_at_their_first_subsection),
             ("the plan's title may be its Deviations", _the_plan_s_title_may_be_its_deviations),
@@ -21738,6 +21790,26 @@ BROKEN = {
     ),
     "a notebook's magic stops its cell being read": (
         _a_notebook_s_magic_is_python,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a base package R attaches is not loaded by an R script": (
+        _a_package_r_attaches_is_not_loaded,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "an item's other names are matched to the standard library": (
+        _an_item_s_other_names_match_what_nobody_chooses,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "an item's other names may be the language": (
+        _an_item_s_other_names_may_be_the_language,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a heading that mentions software heads the Software section": (
+        _a_heading_that_mentions_software_heads_the_section,
+        test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a list of modules read line by line gives its first": (
+        _a_list_of_modules_read_line_by_line_gives_its_first,
         test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
     ),
 }

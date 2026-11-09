@@ -62,11 +62,11 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G7 reads claims of novelty or absence ("no study has examined") and counts them,
-      with how many rest on a recorded search, how many on one more than six months old and
-      how many a person said are no claim (`novelty_claims`, `novelty_searched`,
-      `novelty_stale`, `novelty_not_claims`), and a claim with no search is
-      `novelty-unsearched`, a warning, and a failure at the submission stage
+      G12 holds the plan's Software section to the packages the scripts of analysis/ and
+      figures/ load and counts both (`software_planned`, `software_loaded`): a package an
+      item names that no script loads is `planned-package-unloaded`, a warning from the
+      analysis stage on, and one a script loads that no item names is
+      `plan-package-unnamed`, a note (#592)
   - reading: numbers
     why: >-
       an e-mail address is structural, `email-address`, and an interleukin, "IL-4",

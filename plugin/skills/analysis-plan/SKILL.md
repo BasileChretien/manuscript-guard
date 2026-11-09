@@ -124,9 +124,11 @@ decides for it.
    data handling with dplyr and its companions (tidyr, readr, stringr, purrr), unless the
    project's code already uses another style (data.table, base R) or the author asks for
    one.
-4. **Record it.** Under a heading "Software", one list item per package, opening with its
-   name in backticks, then its version and which of its functions does which step. Put the
-   packages considered and not taken under a heading of their own below it, each with why:
+4. **Record it.** Under a heading that opens with "Software" ("R packages" and "Libraries"
+   do too), one list item per package, opening with its name in backticks, then its version
+   and which of its functions does which step. Put the packages considered and not taken
+   under a heading of their own below it, each with why. The names there are not taken for
+   variables of the data dictionary:
 
    ```markdown
    ## Software
@@ -134,7 +136,7 @@ decides for it.
    - `vigicaen` 2.1.0: `get_drecno()` finds the drug in WHODrug; `get_llt_soc()` the
      MedDRA terms of the case definition; `add_drug()` with `repbasis = "s"` flags the
      reports where the drug is suspected; `compute_dispro()` the reporting odds ratio.
-   - `dplyr` and `tidyr`: the selection steps and the counts.
+   - `dplyr` and `tidyr`, loaded with `tidyverse`: the selection steps and the counts.
    - `R` 4.4.1
 
    ### Considered and not used
@@ -149,12 +151,15 @@ one a script loads that no item names is a note (`plan-package-unnamed`). A load
 `library()`, `require()`, `requireNamespace()`, `loadNamespace()`, `pkg::` or `pkg:::` in R,
 `import`, `from` or `importlib.import_module()` in Python, wherever it stands in the file;
 base R, the standard library and the project's own modules are nobody's choice and are not
-noted. Three things it cannot know, so write them so it can:
+noted, and a base package R attaches, `stats` for `glm()`, counts as loaded wherever an R
+script is read. Three things it cannot know, so write them so it can:
 
-- **The name scripts import.** Where it is not the package's (`sklearn` for
-  `scikit-learn`, `yaml` for `PyYAML`), give it in the same item, in backticks: every bare
-  name in backticks in an item counts as that package's. Write functions with their
-  brackets, `glm()`, so that they are not taken for packages.
+- **The name scripts load.** Where it is not the package's (`sklearn` for
+  `scikit-learn`, `yaml` for `PyYAML`, `tidyverse` for `dplyr` loaded through
+  `library(tidyverse)`), give it in the same item, in backticks: every bare name in
+  backticks in an item counts as that package's, where a script loads it. Write functions
+  with their brackets, `glm()`, so that they are not taken for packages. Only list items
+  are read: a table or a sentence names nothing.
 - **A name the code computes.** `library(pkg, character.only = TRUE)`, or a package loaded
   by another (`pacman::p_load()`), is not read. Load it by its name.
 - **A change.** A package dropped, or taken up after the plan was agreed, is a deviation:

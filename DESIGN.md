@@ -24178,6 +24178,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A paper in no project has no records, so `audit --journal` does not run the check and
     says so among what G4 did not check.
 
+- **A heading in bold is not the Abstract.** `names_abstract` reads a title without its
+  number and nothing else, so `# **Abstract**` is not the abstract to G4's counts, G14's
+  scope or the audit, where `# **Results**` is the Results (`names_results` reads the title
+  as printed, its emphasis taken off). Likewise `is_methods` matches a title as it is typed,
+  so `# **Methods**` is not the Methods to G2. A span around the words is taken off for
+  both (see "A title in a span named nothing").
+
 Closed since, and why each mattered (an open gap goes above this line):
 
 - **A title in a span named nothing (2026-11-09).** Pandoc writes a Word title that is also
@@ -24187,8 +24194,12 @@ Closed since, and why each mattered (an open gap goes above this line):
   the reference list's rule read the brackets: so the audit cut a .docx's reference list,
   whose text holds no brackets, while G14 read the list of the same paper as prose, and on
   one paper with underlined bold titles 41 of its 100 warnings were the authors' initials
-  and journals in capitals. A span's words are its title now (`text.attributes.without_spans`)
-  wherever a section is known by its name, a glossary's and the reference list's included.
+  and journals in capitals. A heading is titled as pandoc prints it now, a span its words
+  (`text.attributes.without_spans`), so it names its section, the Methods to G2 included,
+  and its words alone are counted; a title read elsewhere, the reference list's line under
+  no heading, the title that ends that list and a glossary's, is read the same way. A .docx's
+  text, which holds no Markdown, is read as it stands: brackets typed there are text. See
+  "A heading in bold is not the Abstract" for what is left.
 
 - **The audit did not count text a style hides (2026-11-07).** It counted as hidden only a
   run whose own properties hide it, so text set in a character or paragraph style that

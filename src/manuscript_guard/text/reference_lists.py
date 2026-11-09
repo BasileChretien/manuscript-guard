@@ -226,13 +226,15 @@ _BACK_MATTER = re.compile(
 )
 
 
-def _ends_a_list(lines: list[str], number: int) -> bool:
+def _ends_a_list(lines: list[str], number: int, *, markdown: bool = True) -> bool:
     """Whether the paragraph that line `number` opens ends a reference list: one that is no
     entry (`_NO_ENTRY`), a table under a rule, a paragraph all in bold or opening with a bold
     label, or a title of back matter alone on its line. An entry that opens with "Table" or
     "Figure" and a number, which no style writes, would end it too, and the entries after it
     are then read as prose: a false alarm, where running on hides the paper. A blank line,
-    one of several between entries, opens nothing."""
+    one of several between entries, opens nothing. In Markdown a title in a span,
+    `[Acknowledgements]{.underline}`, is read as pandoc prints it (`_printed`); a .docx's
+    text is read as it stands."""
     if not lines[number].strip():
         return False
     if _NO_ENTRY.match(lines[number]) or _LABEL.match(lines[number]):
@@ -246,8 +248,9 @@ def _ends_a_list(lines: list[str], number: int) -> bool:
         len(paragraph) > 1 and _TABLE_RULE.fullmatch(paragraph[1])
     ):
         return True
-    # A title in a span, `[Acknowledgements]{.underline}`, is read as pandoc prints it.
-    joined = without_spans(" ".join(line.strip() for line in paragraph))
+    joined = " ".join(line.strip() for line in paragraph)
+    if markdown:
+        joined = _printed(joined)
     if _BOLD.fullmatch(joined):
         return True
     return (
@@ -255,10 +258,15 @@ def _ends_a_list(lines: list[str], number: int) -> bool:
     )
 
 
+def _printed(paragraph: str) -> str:
+    """A Markdown paragraph that may end a list, as pandoc prints it: a span its words."""
+    return without_spans(paragraph)
+
+
 def ends_a_list_alone(paragraph: str) -> bool:
     """Whether a paragraph written on one line, as each of a .docx's is read, ends a
     reference list under a line that is no heading, by the rules `_ends_a_list` holds a
     Markdown paragraph to. The audit ends a .docx's list there, as `check` ends one in
     Markdown. Bold is not in a .docx's text, so a title in bold ends it only where it is a
-    back-matter title or a caption's shape."""
-    return _ends_a_list([paragraph.strip()], 0)
+    back-matter title or a caption's shape; nor is a span, so brackets are text."""
+    return _ends_a_list([paragraph.strip()], 0, markdown=False)

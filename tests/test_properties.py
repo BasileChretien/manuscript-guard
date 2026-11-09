@@ -8898,27 +8898,21 @@ def _a_line_is_read_with_its_spans(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reference_lists_module, "without_spans", lambda text: text)
 
 
+def _a_list_s_end_is_read_with_its_spans(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_printed", lambda paragraph: paragraph)
+
+
 def _a_title_is_read_with_its_spans(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import classify
 
     patch.setattr(classify, "without_spans", lambda text: text)
 
 
-def _a_span_s_block_is_the_heading_s(patch: pytest.MonkeyPatch) -> None:
-    """The heading walk takes the block after a span's bracket for the heading's own, as it
-    did: "[References]{.underline}" titled "[References]"."""
+def _the_heading_walk_keeps_spans(patch: pytest.MonkeyPatch) -> None:
+    """The heading walk titles `# [References]{.underline}` as typed, its span kept."""
     from manuscript_guard.text import blocks
 
-    real = blocks.strip_attributes
-
-    def stripped(text: str) -> str:
-        body = text.rstrip(" \t")
-        at = body.rfind("]{")
-        if at < 0 or not body.endswith("}"):
-            return real(text)
-        return real(body[: at + 1] + " " + body[at + 1 :])
-
-    patch.setattr(blocks, "strip_attributes", stripped)
+    patch.setattr(blocks, "without_spans", lambda text: text)
 
 
 def _an_item_of_a_list_opens_one(patch: pytest.MonkeyPatch) -> None:
@@ -9690,6 +9684,8 @@ def test_a_reference_list_is_known_by_its_title_in_each_language(
     assert len(sections) == len(titled), text
     for section, (title, is_list) in zip(sections, titled, strict=True):
         assert section.is_references == is_list, title
+        # Titled as pandoc prints it: its words, and no span's block to count as words.
+        assert "]{" not in section.title, title
         assert is_bibliography_heading(f"# {title}", marked=True) == is_list, title
         assert (_kind_of(title, False, None) == SET_APART) == is_list, title
 
@@ -17950,12 +17946,16 @@ BROKEN = {
         _a_line_is_read_with_its_spans,
         test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
     ),
+    "a title that ends a reference list is read with its spans": (
+        _a_list_s_end_is_read_with_its_spans,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
     "a heading's title is read with its spans": (
         _a_title_is_read_with_its_spans,
         test_a_reference_list_is_known_by_its_title_in_each_language,
     ),
-    "a span's block is taken for the heading's": (
-        _a_span_s_block_is_the_heading_s,
+    "the heading walk keeps a title's spans": (
+        _the_heading_walk_keeps_spans,
         test_a_reference_list_is_known_by_its_title_in_each_language,
     ),
     "an e-mail address in brackets is a citation": (

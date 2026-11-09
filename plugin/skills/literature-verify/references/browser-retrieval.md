@@ -38,7 +38,8 @@ It reads only the PDFs directly in that folder, files each one whose first pages
 cited work's DOI or title under `literature/sources/<key>.pdf`, records it (`from: inbox`),
 and leaves every other file where it is. A PDF that shows two cited works, or a page saved
 under a `.pdf` name, is not filed, and it says so. `--no-fetch` spares the web a second round
-for the works it has already tried.
+for the works it has already tried. It ends, as the first run did, with "Full text still
+wanted" and each work's DOI link.
 
 ## What is left
 

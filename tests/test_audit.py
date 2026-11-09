@@ -1643,6 +1643,13 @@ def test_a_docx_titled_in_bold_is_placed_by_its_titles_and_says_so(tmp_path: Pat
                            "wholly in bold that name a section (Abstract, Background, Results, "
                            "References) were read as its headings")  # fmt: skip
     assert "give its section titles Word's heading styles" in said
+    # Said in the text and on the page, under its own heading (the merge of main into #601
+    # put it by hand where the page reads the notes).
+    from manuscript_guard.auditing.report import render, view
+
+    measured = measure_discrimination(report.backing_values)
+    assert f"How the headings were read:\n  {said}" in render(report, measured, tmp_path)
+    assert ["How the headings were read:", [said]] in view(report, measured, tmp_path)["notes"]
 
 
 def test_a_docx_with_no_heading_is_said_to_be_read_as_one_text(tmp_path: Path) -> None:

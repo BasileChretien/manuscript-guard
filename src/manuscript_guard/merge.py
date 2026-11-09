@@ -2349,8 +2349,8 @@ _BEYOND = {
 
 
 def _beyond_changed(
-    sent: tuple[tuple[str, str], ...],
-    back: tuple[tuple[str, str], ...] | None,
+    sent: tuple[tuple[str, str | None], ...],
+    back: tuple[tuple[str, str | None], ...] | None,
     *,
     stale: bool = False,
 ) -> str:
@@ -2366,16 +2366,32 @@ def _beyond_changed(
 
     What it is compared with is the fresh build of the source. When the document was built
     from other inputs (`stale`), a footnote changed in the .md since reads as changed too,
-    and the refusal says it may have been."""
-    if back is None or sent == back:
+    and the refusal says it may have been.
+
+    A note that cannot be told (None: `docxtext._named_beyond`) is taken to be as it was. A
+    link whose words are its address ("autolink") is the paragraph's text and no link of
+    its own; one that is a link now, its words kept and its address changed in Word, was
+    one of those."""
+
+    def alike(was: list, now: list) -> bool:
+        return len(was) == len(now) and all(
+            a == b or a is None or b is None for a, b in zip(was, now, strict=True)
+        )
+
+    def listed(entries, kinds) -> list:
+        return [held for kind, held in entries if kind in kinds]
+
+    if back is None or alike(listed(sent, _BEYOND), listed(back, _BEYOND)) and all(
+        alike(listed(sent, (kind,)), listed(back, (kind,))) for kind in _BEYOND
+    ):
         return ""
     said = []
     for kind, (one, edited) in _BEYOND.items():
-        was = [held for k, held in sent if k == kind]
-        now = [held for k, held in back if k == kind]
-        if was == now:
+        was, now = listed(sent, (kind,)), listed(back, (kind,))
+        if alike(was, now):
             continue
-        if len(now) > len(was):
+        fewer = len(listed(back, ("autolink",))) < len(listed(sent, ("autolink",)))
+        if len(now) > len(was) and not (kind == "link" and fewer):
             said.append(f"{one} was added")
         elif len(now) < len(was):
             said.append(f"{one} was deleted")

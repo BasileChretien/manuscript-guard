@@ -4729,6 +4729,9 @@ def test_a_number_that_grew_a_digit_is_refused() -> None:
                      "The dose was 3.84 overall.", "'3.84'", id="unit-taken-out"),
         pytest.param("The share was {{results.x}}% overall.", "The share was ⟦3.84⟧% overall.",
                      "The share was 3.84 overall.", "'3.84'", id="percent-taken-out"),
+        # Known gaps: a spaced en dash that opens an aside is read as a sign all the same.
+        pytest.param("The ratio was {{results.x}} high.", "The ratio was ⟦3.84⟧ high.",
+                     "The ratio – 3.84 – was high.", "'– 3.84'", id="an-aside"),
     ],
 )  # fmt: skip
 def test_a_sign_or_unit_set_beside_a_value_in_word_is_refused_and_named(
@@ -4777,6 +4780,20 @@ def test_a_sign_or_unit_set_beside_a_value_in_word_is_refused_and_named(
             "Shares went from 12% – 15% here.",
             "Shares went from {{results.lo}}% – {{results.hi}}% here.",
             id="a-range-in-percent",
+        ),
+        pytest.param(
+            "Levels went from {{results.lo}} mg/L to {{results.hi}} mg/L here.",
+            "Levels went from ⟦12⟧ mg/L to ⟦15⟧ mg/L here.",
+            "Levels went from 12 mg/L – 15 mg/L here.",
+            "Levels went from {{results.lo}} mg/L – {{results.hi}} mg/L here.",
+            id="a-range-in-milligrams-per-litre",
+        ),
+        pytest.param(
+            "Fever ran from {{results.lo}} °C to {{results.hi}} °C here.",
+            "Fever ran from ⟦36⟧ °C to ⟦38⟧ °C here.",
+            "Fever ran from 36 °C – 38 °C here.",
+            "Fever ran from {{results.lo}} °C – {{results.hi}} °C here.",
+            id="a-range-in-degrees",
         ),
         pytest.param(
             "The dose was {{results.x}} mg overall.",
@@ -10411,6 +10428,8 @@ def test_a_new_paragraph_of_only_a_symbol_is_named_by_no_words(tmp_path: Path) -
                      id="link-added"),
         pytest.param((("link", "https://e.org/"),), "a footnote was deleted and a link was added",
                      id="two-kinds"),
+        pytest.param((("footnote", "A note."), ("autolink", "https://e.org/")), "",
+                     id="an-address-typed"),
     ],
 )  # fmt: skip
 @pytest.mark.parametrize("stale", [False, True])
@@ -10436,6 +10455,16 @@ def test_a_paragraph_is_refused_for_what_word_keeps_outside_its_text(
     assert why.startswith(said), why
     assert ("in the .md since the build" in why) is stale, why
     assert why.endswith("Make the edit in the .md."), why
+
+
+def test_an_autolink_whose_address_changed_is_said_to_have_changed() -> None:
+    """A link whose words are its address is the paragraph's text and no link of its own; one
+    whose address alone was changed in Word is a link now, and was said to be one added
+    (round 2 of #597)."""
+    from manuscript_guard.merge import _beyond_changed
+
+    why = _beyond_changed((("autolink", "https://osf.io/abc"),), (("link", "https://osf.io/xyz"),))
+    assert why.startswith("a link's address was changed"), why
 
 
 def test_a_split_that_took_the_footnote_is_refused_as_a_split(tmp_path: Path) -> None:
@@ -10539,24 +10568,73 @@ def test_a_link_s_address_is_compared_with_its_escapes_decoded_and_its_bookmark(
         ("https://osf.io/abc", "https://osf.io/abc"),
         ("www.osf.io/abc", "http://www.osf.io/abc"),
         ("data@example.org", "mailto:data@example.org"),
+        ("https://e.org/a%20b", "https://e.org/a%20b"),
+        ("https://OSF.io/abc", "https://osf.io/abc"),
     ],
-    ids=["url", "www", "e-mail"],
+    ids=["url", "www", "e-mail", "escaped", "host-cased"],
 )
 def test_a_link_whose_words_are_its_address_is_the_paragraph_s_text(
     tmp_path: Path, shown: str, target: str
 ) -> None:
     """Word's AutoFormat makes a link of an address typed in a paragraph, and it is on by
     default: read as a link added, a co-author's "Data are at https://osf.io/abc" was refused
-    where it merged as text (round 1 of #597). A link whose words are its address is the
-    paragraph's text, compared there; an autolink of the source's is one too."""
+    where it merged as text (round 1 of #597). A link whose words are its address, escapes
+    decoded on both and the host in any case (round 2), is the paragraph's text, compared
+    there, and no link added; an autolink of the source's is one too."""
     from manuscript_guard.docxtext import blocks
+    from manuscript_guard.merge import _beyond_changed
 
     runs = (
         '<w:r><w:t xml:space="preserve">Data are at </w:t></w:r>'
         f'<w:hyperlink r:id="rId7"><w:r><w:t>{shown}</w:t></w:r></w:hyperlink>'
     )
     [block] = blocks(_one_paragraph(tmp_path / "a.docx", runs, target))
-    assert block.beyond == ()
+    assert [kind for kind, _held in block.beyond] == ["autolink"]
+    assert _beyond_changed((), block.beyond) == ""
+
+
+def test_a_path_changed_only_in_case_is_a_link_of_its_own(tmp_path: Path) -> None:
+    """The host of an address is in any case, and the rest of it is as written: a link whose
+    words keep a path the address no longer has is a link, not the paragraph's text."""
+    from manuscript_guard.docxtext import blocks
+
+    runs = '<w:hyperlink r:id="rId7"><w:r><w:t>https://osf.io/ABC</w:t></w:r></w:hyperlink>'
+    [block] = blocks(_one_paragraph(tmp_path / "a.docx", runs, "https://osf.io/abc"))
+    assert block.beyond == (("link", "https://osf.io/abc"),)
+
+
+def test_a_link_and_an_equation_in_a_footnote_are_the_footnote_s(tmp_path: Path) -> None:
+    """A footnote was compared by its words alone, so a link's address changed inside one, or
+    an equation edited there, was still lost without a word (round 2 of #597). They are read
+    with the footnote's text, the link by the footnotes' own relationships."""
+    from manuscript_guard.docxtext import blocks
+
+    m = "http://schemas.openxmlformats.org/officeDocument/2006/math"
+    notes = (
+        f'<w:footnote w:id="1" xmlns:r="{_R}" xmlns:m="{m}"><w:p>'
+        '<w:r><w:t xml:space="preserve">See </w:t></w:r>'
+        '<w:hyperlink r:id="rId3"><w:r><w:t>the report</w:t></w:r></w:hyperlink>'
+        "<m:oMath><m:r><m:t>a=b</m:t></m:r></m:oMath></w:p></w:footnote>"
+    )
+    runs = '<w:r><w:t>Text.</w:t></w:r><w:r><w:footnoteReference w:id="1"/></w:r>'
+
+    def noted(path: Path, target: str) -> Path:
+        _one_paragraph(path, runs, notes=notes)
+        rels = "http://schemas.openxmlformats.org/package/2006/relationships"
+        with zipfile.ZipFile(path, "a") as archive:
+            archive.writestr(
+                "word/_rels/footnotes.xml.rels",
+                f'<Relationships xmlns="{rels}"><Relationship Id="rId3" Type="hyperlink" '
+                f'Target="{target}" TargetMode="External"/></Relationships>',
+            )
+        return path
+
+    [was] = blocks(noted(tmp_path / "a.docx", "https://a.org"))
+    [now] = blocks(noted(tmp_path / "b.docx", "https://b.org"))
+    [(kind, held)] = was.beyond
+    assert kind == "footnote" and "See the report" in held, held
+    assert "https://a.org" in held and "a=b" in held, held
+    assert was.beyond != now.beyond
 
 
 def test_a_citation_in_a_footnote_of_a_live_build_is_read_by_its_code(tmp_path: Path) -> None:
@@ -10582,6 +10660,34 @@ def test_a_citation_in_a_footnote_of_a_live_build_is_read_by_its_code(tmp_path: 
     document = _one_paragraph(tmp_path / "a.docx", runs, notes=notes)
     [block] = blocks(document, fields=lambda code: "[@smith2020]" if "ZOTERO" in code else None)
     assert block.beyond == (("footnote", "See [@smith2020]."),)
+
+
+def test_a_footnote_citation_the_record_does_not_know_is_not_compared(tmp_path: Path) -> None:
+    """The build's record names each citation it made, and a record an earlier release wrote
+    names none in a footnote: read by its words, a refreshed footnote of a document built then
+    was a footnote changed in Word, and an untouched paragraph was refused (round 2 of #597).
+    A note holding a citation the record does not know cannot be told, and is not compared,
+    as no note was before."""
+    from manuscript_guard.docxtext import blocks
+    from manuscript_guard.merge import _beyond_changed
+
+    code = (
+        "ADDIN ZOTERO_ITEM CSL_CITATION {&quot;citationItems&quot;:[{&quot;uris&quot;:"
+        "[&quot;http://zotero.org/users/1/items/AAAA1111&quot;]}],&quot;properties&quot;:"
+        "{&quot;formattedCitation&quot;:&quot;(Smith 2020)&quot;}}"
+    )
+    notes = (
+        '<w:footnote w:id="1"><w:p><w:r><w:t xml:space="preserve">See </w:t></w:r>'
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        f"<w:r><w:instrText> {code} </w:instrText></w:r>"
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>(Smith 2020)</w:t></w:r>'
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:footnote>'
+    )
+    runs = '<w:r><w:t>Text.</w:t></w:r><w:r><w:footnoteReference w:id="1"/></w:r>'
+    [block] = blocks(_one_paragraph(tmp_path / "a.docx", runs, notes=notes), fields=lambda c: None)
+    assert block.beyond == (("footnote", None),)
+    assert _beyond_changed((("footnote", "See [@smith2020]."),), block.beyond) == ""
+    assert _beyond_changed((), block.beyond).startswith("a footnote was added")
 
 
 def test_both_refusals_beside_new_text_speak_of_one_text_shown() -> None:

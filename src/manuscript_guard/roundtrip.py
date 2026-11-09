@@ -3526,23 +3526,15 @@ def _a_range(after: list[str], sign: int) -> bool:
     """Whether the sign at `sign` in Word's words is a dash that is no sign of the value: one
     after a number, with its unit or percent sign if it has one, which makes a range of it and
     the value, "2 – 3.84" or "12% – 15%", or an em dash, typed or made of three hyphens as
-    pandoc makes one, which is punctuation and never a minus."""
-    from manuscript_guard.gates.notation import UNITS
+    pandoc makes one, which is punctuation and never a minus. The unit is read as G2 reads
+    one after a number (`bound_units.ends_in_a_number`): "12 mg/L – 15 mg/L", "36 °C – 38 °C"."""
+    from manuscript_guard.gates.bound_units import ends_in_a_number
 
     if after[sign] == "—" or after[max(sign - 2, 0) : sign + 1] == ["-", "-", "-"]:
         return True
     if unicodedata.category(after[sign]) != "Pd":
         return False
-
-    def back(at: int) -> int:
-        while at >= 0 and after[at].isspace():
-            at -= 1
-        return at
-
-    ahead = back(sign - 1)
-    if ahead >= 0 and after[ahead] in ("%", "‰", *UNITS):
-        ahead = back(ahead - 1)
-    return ahead >= 0 and after[ahead][-1:].isdigit()
+    return ends_in_a_number("".join(after[:sign]).rstrip())
 
 
 def align(

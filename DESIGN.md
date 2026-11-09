@@ -20342,6 +20342,14 @@ Open, recorded as each change landed:
     the next one's rewording, and "(see Table 2)" deleted before a `>` there merges: pandoc
     prints the two as the words after that `>`. Pinned by
     `tests/test_roundtrip.py::test_a_tag_left_open_by_the_paragraph_before_is_not_seen`.
+  - *A footnote holding a citation the build's record does not know is not compared.* A
+    live build's record names each citation field it made, as the source writes it, and a
+    footnote's citations are read through it, as the paragraph's are. A record an earlier
+    release wrote names none in a footnote, and none names a citation inserted in a footnote
+    in Word, so such a footnote cannot be told from Zotero's words: it is taken to be as it
+    was, and an edit to it is lost as every footnote edit was before. Rebuilt and sent again,
+    the document's record names them. Pinned by
+    `tests/test_roundtrip.py::test_a_footnote_citation_the_record_does_not_know_is_not_compared`.
   - *Code is refused only for the characters pandoc typesets.* A `--` or `...` typed in Word
     outside code, with AutoCorrect off, is typeset like one in the source; and code holding
     such a character refuses an edit anywhere in its stretch, even one that leaves the code
@@ -21186,12 +21194,16 @@ Open, recorded as each change landed:
 - **A value's unit is what G2 reads as one, and a dash after a number makes a range.** A
   sign or a comparison set before a value in Word, glued or with a space between, and a unit
   or a percent sign added after one, changed or taken out, refuse the rewording
-  (`roundtrip._beside_values`). A word after a value that G2 does not read as a unit,
-  "3.84 years", "3.84-fold" or "3.84×", changes what the sentence claims as "3.84 mg" does,
-  and merges. A dash typed after a number and before a value, "2 – 3.84" or "12% – 15%", is
-  read as a range and merges, where the co-author may have meant a minus. Pinned by
-  `tests/test_roundtrip.py::test_a_word_after_a_value_that_is_no_unit_still_merges` and
-  `tests/test_roundtrip.py::test_a_sign_or_unit_that_changes_no_value_still_merges`.
+  (`roundtrip._beside_values`); a spaced equals sign and an em dash do not. A word after a
+  value that G2 does not read as a unit, "3.84 years", "3.84-fold" or "3.84×", changes what
+  the sentence claims as "3.84 mg" does, and merges. A dash typed after a number and before
+  a value, "2 – 3.84", "12% – 15%" or "12 mg/L – 15 mg/L", is read as a range and
+  merges, where the co-author may have meant a minus. And a spaced en dash or hyphen
+  before a value that opens an aside, "the ratio – 3.84 – was high", is read as a sign and
+  refuses the rewording. Pinned by
+  `tests/test_roundtrip.py::test_a_word_after_a_value_that_is_no_unit_still_merges`,
+  `tests/test_roundtrip.py::test_a_sign_or_unit_that_changes_no_value_still_merges` and
+  `tests/test_roundtrip.py::test_a_sign_or_unit_set_beside_a_value_in_word_is_refused_and_named`.
 - **The annotated copy shows classification, not correctness.** Green means a number came
   from an artefact, not that the analysis behind it was right; the tiers describe provenance
   and nothing else. An SVG figure needs `rsvg-convert` for pandoc to place it in the contact
@@ -24655,9 +24667,12 @@ Closed since, and why each mattered (an open gap goes above this line):
   nothing was merged, and the import said nothing had come back. Each paragraph's notes,
   equations and links are now read, tracked changes accepted (`docxtext.Block.beyond`), and
   compared by what they hold, since Word renumbers them on a save; a paragraph whose list
-  differs is refused, naming what changed. A citation in a footnote is read by its field's
-  code, as the paragraph's own are; a link inside a field is the field's and is not
-  compared, so Zotero linking a refreshed citation to the reference list is no edit; a link
+  differs is refused, naming what changed. A footnote is compared with the links' addresses
+  and the equations in it, and a citation in one is read by its field's code, as the
+  paragraph's own are (one the record does not know is the limit above, "A footnote
+  holding a citation the build's record does not know"); a link inside a field is the
+  field's and is not compared, so Zotero linking a refreshed citation to the reference
+  list is no edit; a link
   whose words are its address, as Word's AutoFormat makes of one typed, is the paragraph's
   text; and an address is compared with its percent-escapes decoded and its bookmark, which
   Word may keep apart, after it. Word 16's own saves of a footnote

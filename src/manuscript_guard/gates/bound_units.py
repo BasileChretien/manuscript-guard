@@ -105,6 +105,16 @@ def units_after(text: str, typed: str | None = None) -> list[Written]:
     return found
 
 
+#: A number ending a text, with the unit written after it if there is one.
+_ENDS_IN_A_NUMBER = re.compile(r"\d(?:" + _UNIT.pattern + r")?\Z")
+
+
+def ends_in_a_number(text: str) -> bool:
+    """Whether `text` ends in a number, with the unit G2 reads after one if it has one: "12",
+    "12%", "12 mg/L", "36 °C". `import` reads a dash after one as a range."""
+    return _ENDS_IN_A_NUMBER.search(text[-40:]) is not None
+
+
 def unit_at(text: str, at: int) -> str | None:
     """The unit symbol written at `at`, right after a number, as `units_after` reads one
     after a binding; None where there is none. `import` reads it in Word's text, before and

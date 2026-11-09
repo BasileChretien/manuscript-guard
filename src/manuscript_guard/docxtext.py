@@ -153,10 +153,11 @@ class Block:
     #: So it is both: this block, empty, then the figure or equation.
     stranded: str = ""
     #: What Word keeps of it outside its text, in order, tracked changes accepted: each
-    #: footnote's and endnote's text, each equation in its text, and each link's address, as
-    #: (kind, what it holds); kind is "footnote", "endnote", "equation" or "link". See
-    #: `_beyond`.
-    beyond: tuple[tuple[str, str], ...] = ()
+    #: footnote's and endnote's text, with the equations and links' addresses in it, each
+    #: equation in its text, and each link's address, as (kind, what it holds); kind is
+    #: "footnote", "endnote", "equation", "link", or "autolink" for a link whose words are its
+    #: address. A note that cannot be told holds None. See `_beyond` and `_named_beyond`.
+    beyond: tuple[tuple[str, str | None], ...] = ()
 
     @property
     def table(self) -> bool:
@@ -199,7 +200,7 @@ class _Paragraph:
     at: tuple[tuple[str, int], ...] = ()
     #: See `Block.beyond`: a note's id and a link's relationship id until `paragraphs_of`
     #: reads what they name.
-    beyond: tuple[tuple[str, str], ...] = ()
+    beyond: tuple[tuple[str, str | None], ...] = ()
 
 
 #: A heading level, which Word writes as an outline level of 0 to 8; 9 is body text.
@@ -683,11 +684,37 @@ _APART = "\x00"
 
 
 def _bare_address(text: str) -> str:
-    """An address as one would type it: no scheme, no `mailto:`, no closing `/`, any case."""
-    bare = text.strip().lower()
+    """An address as one would type it: its percent-escapes decoded, no scheme, no `mailto:`,
+    no closing `/`, its host in any case and the rest as written."""
+    bare = unquote(text.strip())
     for scheme in ("mailto:", "https://", "http://"):
-        bare = bare.removeprefix(scheme)
-    return bare.rstrip("/")
+        if bare[: len(scheme)].lower() == scheme:
+            bare = bare[len(scheme) :]
+            break
+    host, slash, rest = bare.partition("/")
+    return (host.lower() + slash + rest).rstrip("/")
+
+
+def _targets(archive: zipfile.ZipFile, part: str, document: Path) -> dict[str, str]:
+    """Each relationship id of a part, and its target, its percent-escapes decoded: a
+    program saving the document may write `(` as `%28`, and the address is the same."""
+    rels = posixpath.join(posixpath.dirname(part), "_rels", posixpath.basename(part) + ".rels")
+    if rels not in archive.namelist():
+        return {}
+    root = read_part(archive, rels, what=f"{document.name}:{rels}")
+    return {rel.get("Id", ""): unquote(rel.get("Target", "")) for rel in root.iter(_RELS)}
+
+
+def _link(held: str, targets: dict[str, str]) -> tuple[str, str]:
+    """A link of `_beyond` as ("link", its address), or ("autolink", its address) where its
+    words are its address. The address is the target, then the bookmark it names, which Word
+    may keep apart as `w:anchor`. A link whose words are its address is one Word's AutoFormat
+    makes of an address typed, or an autolink of the source's: its words are the paragraph's
+    text, and compared there, so it is no link added (`merge._beyond_changed`)."""
+    rid, anchor, shown = held.split(_APART)
+    address = (targets.get(rid, "") if rid else "") + (f"#{anchor}" if anchor else "")
+    automatic = shown.strip() and _bare_address(shown) == _bare_address(address)
+    return ("autolink" if automatic else "link"), address
 
 
 def _named_beyond(
@@ -696,44 +723,54 @@ def _named_beyond(
     document: Path,
     fonts: Fonts,
     fields: FieldReading | None = None,
-) -> Callable[[tuple[str, str]], tuple[str, str] | None]:
-    """What each note id and link of `_beyond` names in this document: a note's text,
-    tracked changes accepted and each field in it read as the paragraph's own are
-    (`fields`), and a link's address. None for a link whose words are its address.
+) -> Callable[[tuple[str, str]], tuple[str, str | None]]:
+    """What each note id and link of `_beyond` names in this document: a link's address
+    (`_link`), and a note's text, tracked changes accepted and each field in it read as the
+    paragraph's own are (`fields`), with each equation and each link's address in it. None
+    for a note that cannot be told: it holds a citation `fields` does not know.
 
     A citation in a footnote of a live build is a Zotero field, and the paragraph's text reads
-    one by its code; read by its words, every refreshed one was a footnote changed in Word. A
-    link's address is its target, its percent-escapes decoded, since a program saving the
-    document may write `(` as `%28`, then the bookmark it names, which Word may keep apart
-    as `w:anchor`. A link whose words are its address is one Word's AutoFormat makes of an
-    address typed, or an autolink of the source's; its words are the paragraph's text, and
-    compared there."""
-    notes: dict[tuple[str, str], str] = {}
+    one by its code; read by its words, every refreshed one was a footnote changed in Word.
+    The build's record names each citation it made, and a record an earlier release wrote
+    names none in a footnote; nor does any record name one inserted there in Word. Such a
+    note is not compared, as no note was before."""
+    untold = False
+
+    def reading(code: str) -> str | None:
+        nonlocal untold
+        from manuscript_guard.citationfields import citation_of
+
+        text = fields(code) if fields is not None else None
+        untold |= text is None and citation_of(code) is not None
+        return text
+
+    notes: dict[tuple[str, str], str | None] = {}
     for kind in ("footnote", "endnote"):
         name = f"word/{kind}s.xml"
         if name not in archive.namelist():
             continue
         root = read_part(archive, name, what=f"{document.name}:{name}")
+        inside = _targets(archive, name, document)
         for note in root.iter(W + kind):
-            text = " ".join(_read(p, fonts, fields)[0] for p in note.iter(W + "p"))
-            notes[(kind, note.get(W + "id", ""))] = spaced(text).strip()
-    rels = posixpath.join(posixpath.dirname(part), "_rels", posixpath.basename(part) + ".rels")
-    targets: dict[str, str] = {}
-    if rels in archive.namelist():
-        for rel in read_part(archive, rels, what=f"{document.name}:{rels}").iter(_RELS):
-            targets[rel.get("Id", "")] = unquote(rel.get("Target", ""))
+            untold = False
+            text = " ".join(
+                _read(p, fonts, reading if fields is not None else None)[0]
+                for p in note.iter(W + "p")
+            )
+            held = [spaced(text).strip()]
+            for what, value in _beyond(list(_visible(note))):
+                if what == "link":
+                    what, value = _link(value, inside)
+                if what in ("link", "equation"):
+                    held.append(f"{what}: {value}")
+            notes[(kind, note.get(W + "id", ""))] = None if untold else _APART.join(held)
+    targets = _targets(archive, part, document)
 
-    def named(entry: tuple[str, str]) -> tuple[str, str] | None:
+    def named(entry: tuple[str, str]) -> tuple[str, str | None]:
         kind, held = entry
         if kind in ("footnote", "endnote"):
             return kind, notes.get((kind, held), "")
-        if kind != "link":
-            return entry
-        rid, anchor, shown = held.split(_APART)
-        address = (targets.get(rid, "") if rid else "") + (f"#{anchor}" if anchor else "")
-        if shown.strip() and _bare_address(shown) == _bare_address(address):
-            return None
-        return kind, address
+        return _link(held, targets) if kind == "link" else entry
 
     return named
 
@@ -889,10 +926,7 @@ def paragraphs_of(
     body = root.find(W + "body")
     body = body if body is not None else root
     walked = _walk_body(body, _move_names(body), styles, fonts=fonts, fields=fields)
-    walked = [
-        replace(p, beyond=tuple(filter(None, map(named, p.beyond)))) if p.beyond else p
-        for p in walked
-    ]
+    walked = [replace(p, beyond=tuple(map(named, p.beyond))) if p.beyond else p for p in walked]
     return _settled(walked)
 
 

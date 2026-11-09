@@ -12,9 +12,10 @@ with no full text stored:
    other open location, with its PDF link before its landing page; then PubMed Central, by the
    PMCID `references.bib` or OpenAlex gives (through Europe PMC's PDF service, which answers
    a plain client where PMC's own pages ask for a browser); then arXiv, by its identifier. A
-   landing page is read for the one link a publisher's page gives a citation manager,
-   `<meta name="citation_pdf_url">`, and that link is tried once. Nothing else on a page is
-   followed, and nothing on it is run.
+   place OpenAlex gives as `http://`, as it gives Europe PMC's, is asked as `https://`, since
+   nothing is fetched over plain http. A landing page is read for the one link a publisher's
+   page gives a citation manager, `<meta name="citation_pdf_url">`, and that link is tried
+   once. Nothing else on a page is followed, and nothing on it is run.
 2. **The publisher's PDF through this computer's access.** `https://doi.org/<doi>` is asked
    from here, following the publisher's redirects over https, and its `citation_pdf_url` once.
    On a university's network, or through its proxy as the environment names it, that is the
@@ -196,13 +197,7 @@ class Fetcher:
             self.why[key] = said
             return [], said
         said: list[str] = []
-        try:
-            found = self._full_text(work, said)
-        except ValueError:
-            # A link no URL parser reads, from a registry, a redirect or a page: the work is
-            # listed as wanted and the next is tried (round 1 of #565: it stopped the run).
-            said.append("a link given for it cannot be read as a URL")
-            found = None
+        found = self._full_text(work, said)
         if found is not None:
             self.why.pop(key, None)
             return [found], []
@@ -210,11 +205,7 @@ class Fetcher:
             said = [f"not looked for on the web: {self.offline}"]
             self.why[key] = said
             return [], said
-        try:
-            abstract = self._abstract(work, said)
-        except ValueError:
-            said.append("a link given for its abstract cannot be read as a URL")
-            abstract = None
+        abstract = self._abstract(work, said)
         self.why[key] = said
         return ([abstract] if abstract else []), said
 
@@ -229,8 +220,9 @@ class Fetcher:
         record = self._openalex(work, said) if work.doi else None
         if self.offline:
             return None
-        places = self._open_places(work, record)
-        if not places and not self.offline:
+        places, refused = self._open_places(work, record)
+        said.extend(f"an open copy's place is {why}" for why in refused)
+        if not places and not refused and not self.offline:
             said.append("no open copy known to OpenAlex" if record is not None
                         else "no open copy found")  # fmt: skip
         for place in places[:MOST_PLACES]:
@@ -243,8 +235,10 @@ class Fetcher:
             return self._try(work, Place(link, FROM_PUBLISHER), said)
         return None
 
-    def _open_places(self, work: Work, record: dict[str, Any] | None) -> list[Place]:
-        """Where an open copy may be, best first, each once."""
+    def _open_places(self, work: Work, record: dict[str, Any] | None
+                     ) -> tuple[list[Place], list[str]]:  # fmt: skip
+        """Where an open copy may be, best first, each once; and why each place given that is
+        not asked is not, which is said rather than dropped (review of #595)."""
         found: list[Place] = []
         oa = record.get("open_access") if isinstance(record, dict) else None
         best = record.get("best_oa_location") if isinstance(record, dict) else None
@@ -264,10 +258,13 @@ class Fetcher:
         if isinstance(oa, dict) and oa.get("is_oa") is True:
             found.append(_place(oa.get("oa_url"), None))
         kept: dict[str, Place] = {}
+        refused: dict[str, None] = {}  # each reason once, however many places it refused
         for place in found:
             if place is not None and download.allowed(place.url):
                 kept.setdefault(place.url, place)
-        return list(kept.values())
+            elif place is not None:
+                refused.setdefault(download.why_refused(place.url))
+        return list(kept.values()), list(refused)
 
     def _try(self, work: Work, place: Place, said: list[str]) -> Candidate | None:
         """The PDF at a place, or on the page there by its `citation_pdf_url`, where it is the
@@ -324,16 +321,19 @@ class Fetcher:
 
     def _api(self, url: str, secret: dict[str, str], said: list[str], name: str) -> Any:
         """One registry's JSON answer, or None with the reason said."""
-        self.pace(urlsplit(url).hostname or "")
         request = Request(url, secret=secret,
                           headers={"User-Agent": download.AGENT, "Accept": "application/json"})
         try:
+            self.pace(urlsplit(url).hostname or "")
             response: Response = self.transport(request, download.TIMEOUT_SECONDS)
         except download.Offline as exc:
             self.offline = str(exc)
             return None
         except NoAnswer as exc:
             said.append(f"{name} did not answer ({exc})")
+            return None
+        except ValueError:
+            said.append(f"{name}'s link cannot be read as a URL")
             return None
         if response.status == 404:
             said.append(f"{name} does not know the DOI")
@@ -361,6 +361,10 @@ class Fetcher:
         return record
 
     def _get(self, url: str, said: list[str], where: str) -> download.Fetched | None:
+        """The answer at a link, or None with the reason said. Only reading the link and
+        making its request is caught here: a `ValueError` raised over the whole search was
+        said to be a link that cannot be read, a fault in staging or in matching among them,
+        and the work's other places were skipped (round 2 of #565)."""
         try:
             return download.get(url, self._paced, accept=ACCEPT)
         except download.Offline as exc:
@@ -368,6 +372,11 @@ class Fetcher:
             return None
         except NoAnswer as exc:
             said.append(f"{where}: {exc}")
+            return None
+        except ValueError:
+            # A link no URL parser reads, from a registry, a redirect or a page: the work's
+            # next place is tried, then the next work (round 1 of #565: it stopped the run).
+            said.append(f"{where}: a link given for it cannot be read as a URL")
             return None
 
     def _paced(self, request: Request, timeout: float) -> Response:
@@ -427,9 +436,15 @@ def for_project(project: Project) -> Fetcher:
 
 
 def _place(url: object, version: object) -> Place | None:
+    """An open copy's place, an `http://` one as `https://`: OpenAlex gives Europe PMC's and
+    many repositories' so, and they were dropped (round 1 of #565). A host that does not
+    answer over https is then a place that gave nothing, and the reason is said."""
     if not isinstance(url, str) or not url.strip():
         return None
-    return Place(url.strip(), FROM_OPEN, version if isinstance(version, str) else None)
+    url = url.strip()
+    if url[:7].lower() == "http://":
+        url = "https://" + url[7:]
+    return Place(url, FROM_OPEN, version if isinstance(version, str) else None)
 
 
 def _pmcid(value: object) -> str | None:
@@ -446,17 +461,19 @@ def _title(message: dict[str, Any]) -> str | None:
 
 def citation_pdf_url(body: bytes, base: str) -> str | None:
     """The PDF a page names for citation managers, `<meta name="citation_pdf_url"
-    content="...">`, made absolute; None where it names none, or one that is not https."""
+    content="...">`, made absolute; None where it names none. A link it names that is not
+    asked is given too, so that `download.get` refuses it and says why, where the page was
+    said to name no PDF (review of #595)."""
     page = body[: 2 << 20].decode("utf-8", errors="replace")
     for tag in _META.findall(page):
         attributes = {name.lower(): double or single
                       for name, double, single in _ATTRIBUTE.findall(tag)}  # fmt: skip
         if attributes.get("name", "").lower() == "citation_pdf_url" and attributes.get("content"):
+            named = html.unescape(attributes["content"].strip())
             try:
-                link = urljoin(base, html.unescape(attributes["content"].strip()))
+                return urljoin(base, named)
             except ValueError:
-                return None
-            return link if download.allowed(link) else None
+                return named  # as the page gives it, which `download.get` cannot read either
     return None
 
 

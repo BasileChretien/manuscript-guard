@@ -2756,11 +2756,13 @@ def _audit(args: argparse.Namespace, package) -> int:
 
             print(WORDING, file=sys.stderr)
     else:
-        # Told only of a report that is printed (round 1 of #601: a draft that could not be
-        # written printed none, and the page drew one).
+        # Told only of a report whose text is rendered and printed (#601: a draft that could
+        # not be written, or a text that could not be rendered, printed none, and the page
+        # drew one).
+        text = sections.render(report, discrimination, Path.cwd(), details=args.details)
         if AUDITED is not None:
             AUDITED(report, discrimination)
-        print(sections.render(report, discrimination, Path.cwd(), details=args.details))
+        print(text)
     if not report.examined:
         # An empty paper, or one whose numbers are all in pictures, printed "0 numeric
         # tokens" and passed --strict: an audit that read nothing.

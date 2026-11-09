@@ -213,7 +213,8 @@ def view(arguments: list[str]) -> dict:
     taken from the very audit whose text `run` returns (`cli.AUDITED`), every section with
     `--details`: None for any other command, an audit that printed no report, or one asked
     for as JSON. A view that could not be drawn is None too, its failure recorded as a crash
-    is, and the text is still returned: the page shows the text where it cannot draw."""
+    is, and the text is still returned: the page shows the text where it cannot draw. Under
+    MANUSCRIPT_GUARD_DEBUG the failure is raised, as `cli.main` raises it."""
     from manuscript_guard import cli
     from manuscript_guard.auditing.report import view as drawn
     from manuscript_guard.diagnostics import crashes
@@ -225,6 +226,8 @@ def view(arguments: list[str]) -> dict:
         try:
             made.append(drawn(report, discrimination, Path.cwd(), details=details))
         except Exception as exc:  # noqa: BLE001 - the text is printed whatever the view does
+            if crashes.debugging():
+                raise
             crashes.record(exc, kind=crashes.GATE, name="the page's view of the report")
 
     cli.AUDITED = told

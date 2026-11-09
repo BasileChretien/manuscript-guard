@@ -181,11 +181,12 @@ def checks(report) -> list[str]:
     return [f"  {name.ljust(width)}  {said}" for name, said in found]
 
 
-def kinds(found: list[Finding], at: Callable[[Path | None, int | None], str]) -> list[dict]:
+def kinds(found: list[Finding], at: Callable[[Path | None, int | None], str], *,
+          details: bool = False) -> list[dict]:  # fmt: skip
     """G6's and G14's findings by kind, as `grouped` orders them, each with every place: a
     title, its gate and code, a count, the hint the places share or None, and each place,
     where it is, what it says, its context and its own hint. What the page draws, a kind to
-    a fold, every place inside it."""
+    a fold, every place inside it. With `details` every context, as the text gives them."""
     out = []
     ordered = sorted(kinds_of(found).items(), key=lambda kind: -len(kind[1]))
     for (gate, code), unordered in ordered:
@@ -197,8 +198,8 @@ def kinds(found: list[Finding], at: Callable[[Path | None, int | None], str]) ->
             "places": [{"where": at(finding.path, finding.line) if finding.line else "the paper",
                         "message": finding.message,
                         # The words matched, where the message does not say them, as the
-                        # text shows them (`QUOTING`).
-                        "context": finding.context if gate in QUOTING else None,
+                        # text shows them (`QUOTING`); every context with `details`.
+                        "context": finding.context if details or gate in QUOTING else None,
                         "failing": finding.severity == FAIL,
                         "hint": None if shared else finding.hint} for finding in mine],
         })  # fmt: skip

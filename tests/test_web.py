@@ -428,6 +428,7 @@ def test_the_page_draws_the_report_its_text_is_printed_from(
     undefined = ("ROR", "PRR", "EBGM", "SDR", "BCPNN", "MGPS", "OMOP", "FAERS", "VAERS", "ICSR")
     (tmp_path / "paper.md").write_text(
         "# Methods\n\n" + " ".join(f"The {short} was computed." for short in undefined)
+        + " It was done, highlighting the importance of the method."
         + "\n\n| Group | n |\n|---|---|\n| A | 3 |\n| B | 4 |\n| Total | 9 |\n",
         encoding="utf-8")  # fmt: skip
     result = web.view(["audit", "paper.md"])
@@ -455,7 +456,27 @@ def test_the_page_draws_the_report_its_text_is_printed_from(
     def broken(*_args, **_kwargs):
         raise RuntimeError("no view")
 
+    # Round 2: without the box a fold quotes G6's matched words only, G14's message naming
+    # its word; with it, every context, as the text gives them.
+    def contexts(drawn: dict, code: str) -> list:
+        return [place["context"] for paper in drawn["words"] for kind in paper["kinds"]
+                if kind["code"] == code for place in kind["places"]]  # fmt: skip
+
+    assert contexts(view, "ai-phrasing") and all(contexts(view, "ai-phrasing"))
+    assert contexts(view, "abbreviation-undefined") == [None] * len(undefined)
+    assert all(contexts(full, "abbreviation-undefined"))
+    # Under DEBUG a view that cannot be drawn raises, as `main` does; without it, the text is
+    # kept. A text that cannot be rendered draws no view either.
+    drawn = report_module.view
     monkeypatch.setattr(report_module, "view", broken)
+    with pytest.raises(RuntimeError, match="no view"):
+        web.view(["audit", "paper.md"])
+    assert cli.AUDITED is None
+    monkeypatch.delenv("MANUSCRIPT_GUARD_DEBUG")
     kept = web.view(["audit", "paper.md"])
     assert kept["view"] is None and kept["out"] == result["out"]
     assert cli.AUDITED is None
+    monkeypatch.setattr(report_module, "view", drawn)
+    monkeypatch.setattr(report_module, "render", broken)
+    unprinted = web.view(["audit", "paper.md"])
+    assert unprinted["code"] != 0 and unprinted["view"] is None

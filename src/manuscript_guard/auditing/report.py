@@ -730,9 +730,10 @@ def view(report, discrimination, root: Path | None = None, *, details: bool = Fa
     words = []
     for run in report.gates:
         found = [*run.writing, *run.language]
+        at = _placing(run.paper, show)
         words.append({"paper": show(run.paper), "note": run.note or None,
                       "converted": run.converted,
-                      "kinds": kinds(found, _placing(run.paper, show))})  # fmt: skip
+                      "kinds": kinds(found, at, details=details)})  # fmt: skip
     return {
         "header": _header(report),
         "notes": [[heading, said] for heading, said in _notes(report)],

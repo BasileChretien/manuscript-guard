@@ -24,6 +24,29 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: mask
+    why: >-
+      a link's target that is an address is masked after its `(` up to its own `)`, and the
+      stop after it and what follows on its line are left; the address was taken to the next
+      space, the link's `)` and stop with it, and the target then ran on to the next `)` on
+      the line; the inputs now hold a link of each kind of target
+  - reading: numbers
+    why: >-
+      a number after a link on its line, "[the code](https://...). Data (n = 1213)", is read
+      and judged, where the link's target hid it up to the next `)`; the inputs now hold a
+      link of each kind of target
+  - reading: notation
+    why: >-
+      an interval after a link on its line, "[text](https://...) (CI 95% 0.3 to 0.4)", is
+      read, where the link's target hid it up to the next `)`
+  - reading: reply numbers
+    why: >-
+      a number in a reply after a link on its line is read and, unbound, reported, where the
+      link's target hid it up to the next `)`
+  - reading: reworded
+    why: >-
+      a number after a link on its line is counted among a sentence's numbers, where the
+      link's target hid it up to the next `)`
   - reading: placeholders
     why: >-
       a journal template's instruction to its authors, "In this section you can acknowledge
@@ -31,12 +54,6 @@ expected:
       tap here to enter text.", is found as a placeholder, `placeholder-template`; the inputs
       now hold such instructions, and a section the authors describe, a form a paper
       reproduces and PLOS's "Click here for additional data file", which it is not
-  - reading: reworded
-    why: >-
-      each sentence an edit changed is compared with what it was for the words of its
-      claim, and a hedge, a limit or a negation that came or went, or a word moved along
-      the ladder from consistency to causation, is a warning, `claim-stronger`,
-      `claim-weaker`, `claim-moved` or `claim-negation`; the inputs now hold such edits
   - reading: import
     why: >-
       under "would merge into" and "NOT merged into" the import prints each changed
@@ -50,11 +67,6 @@ expected:
       once the values are in, as deleting "(see Table 2)" from `<LLOQ in {{results.unit}}
       (see Table 2) at {{results.site}} and >ULOQ` did, is refused as one (KG410.3); the
       inputs now hold such edits, which the base merged
-  - reading: notation
-    why: >-
-      a level typed after the letters hard against a negative bound, "CI 95%-0.3 to 0.4",
-      is a level again: only a bound in percent after the hyphen makes the number before
-      it a first bound
   - reading: interval order
     why: >-
       the sentences an interval's bounds are compared in are read with each HTML comment
@@ -68,15 +80,6 @@ expected:
       how many a person said are no claim (`novelty_claims`, `novelty_searched`,
       `novelty_stale`, `novelty_not_claims`), and a claim with no search is
       `novelty-unsearched`, a warning, and a failure at the submission stage
-  - reading: numbers
-    why: >-
-      an e-mail address is structural, `email-address`, and an interleukin, "IL-4",
-      "interleukin-31", "IL-4/IL-13", is a shipped term, so neither is a number nothing
-      classifies; a term counts only where it opens a word, after a capital, at a capital
-      after a lower-case letter or directly after another term, and one holding a
-      superscript's digits only where it opens a word, so "April-12" and "PharmD^2^" are
-      numbers and "sIL-2R", "CCR2" and "PaO2FiO2" terms; the inputs now hold such
-      addresses and names
   - reading: data dates
     why: >-
       the finding says the date was emitted as a string rather than typed, and its hint adds
@@ -163,13 +166,6 @@ expected:
       its parameter text blanked and its body read, and a use refused only where it
       prints; a `\let` of a command to one the reader reads the same way and a doubled
       parameter in a nested body are no longer refused either (real templates, part 1)
-  - reading: mask
-    why: >-
-      the Markdown mask keeps the line breaks of the front matter, of a listing and of what
-      its patterns match, where it made them NUL, so that a reader of the masked text's
-      lines finds each where the file has it (a pipe table under a listing was read a line
-      out); a comment's line breaks are NUL still, since pandoc reads a comment, a blank
-      line in it too, inside the paragraph it stands in (corpus round, 2026-10-23)
   - reading: hidden
     why: >-
       G14 read the mask with each line feed put back and each carriage return NUL; the

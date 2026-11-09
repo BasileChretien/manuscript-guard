@@ -34,6 +34,7 @@ import sys
 import tempfile
 from bisect import bisect_left
 from collections import Counter
+from collections.abc import Callable
 from decimal import Decimal
 from functools import cache, partial
 from pathlib import Path
@@ -141,6 +142,7 @@ from generated import (
     latex_words,
     latex_writing,
     lines,
+    linked_lines,
     margin_tables,
     markdown_claims,
     markdown_for_latex,
@@ -612,6 +614,103 @@ def _the_mask_keeps_a_comment_s_line_breaks(patch: pytest.MonkeyPatch) -> None:
             chars[index] = chars[index] if chars[index] in "\r\n" else NUL
 
     patch.setattr(masking, "_blank", blank)
+
+
+@holds(60, linked_lines())
+def test_the_mask_hides_a_link_s_target_and_nothing_after_it(
+    drawn: tuple[str, list[tuple[int, int]], list[tuple[int, int]], list[int]],
+) -> None:
+    """A link's target is hidden, its address and its title, and what follows the link on its
+    line is read, its stop too: the address was taken to the next space, the link's `)` and
+    stop with it, and its target then ran on to the next `)` on the line, so a count after a
+    link was read by no gate (round 3 of #587). The `](` of a link to an address is left,
+    which is how "reporting odds ratio [ROR](https://...)" defines ROR and a reference
+    census reads `[11](https://...)` as no citation."""
+    text, after, hidden, brackets = drawn
+    masked = mask(text)
+    for start, end in after:
+        assert masked[start:end] == text[start:end], (text[start:end], text, masked)
+    for start, end in hidden:
+        assert masked[start:end] == NUL * (end - start), (text[start:end], text, masked)
+    for at in brackets:
+        assert masked[at : at + 2] == "](", (at, text, masked)
+
+
+def _the_mask_without(name: str) -> Callable[[pytest.MonkeyPatch], None]:
+    """Break the Markdown mask by taking the pattern called `name` out of it."""
+
+    def break_it(patch: pytest.MonkeyPatch) -> None:
+        from manuscript_guard.text import masking
+
+        patch.setattr(masking, "_PATTERNS",
+                      tuple(one for one in masking._PATTERNS if one[0] != name))  # fmt: skip
+
+    return break_it
+
+
+def _the_mask_with(name: str, pattern: str) -> Callable[[pytest.MonkeyPatch], None]:
+    """Break the Markdown mask by putting `pattern` in place of the one called `name`."""
+
+    def break_it(patch: pytest.MonkeyPatch) -> None:
+        from manuscript_guard.text import masking
+
+        compiled = re.compile(pattern, re.IGNORECASE)
+        patch.setattr(masking, "_PATTERNS",
+                      tuple((one[0], compiled) if one[0] == name else one
+                            for one in masking._PATTERNS))  # fmt: skip
+
+    return break_it
+
+
+def _a_link_s_target_found_in_what_is_left(
+    pattern: str | None = None,
+) -> Callable[[pytest.MonkeyPatch], None]:
+    """Break the Markdown mask by finding a link's target in what the patterns before it left,
+    as `main` found it, with `pattern` in place of its own if one is given."""
+
+    def break_it(patch: pytest.MonkeyPatch) -> None:
+        from manuscript_guard.text import masking
+
+        patch.setattr(masking, "_IN_THE_SOURCE", frozenset())
+        if pattern is not None:
+            _the_mask_with("link-target", pattern)(patch)
+
+    return break_it
+
+
+def _a_link_s_target_kept_where_its_bracket_is_masked(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "_kept",
+                  lambda pattern, text, working, start, end:
+                  list(pattern.finditer(text, start, end)))  # fmt: skip
+
+
+def _a_dropped_link_s_target_uses_up_its_line(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "_kept",
+                  lambda pattern, text, working, start, end:
+                  [one for one in pattern.finditer(text, start, end)
+                   if masking.NUL not in working[one.start() : one.start() + 2]])  # fmt: skip
+
+
+#: The link's address as it was found before brackets in it, a title, angle brackets and
+#: spaces inside were read, one at a time; and hidden with its `](`.
+_AN_ADDRESS = r"(?:https?://|www\.|doi:\s*|10\.\d{4,9}/)"
+_A_TITLE = r"(?:[ \t]+(?:\"[^\"\n]*\"|'[^'\n]*'|\([^()\n]*\)))?"
+_BRACKETED = r"(?:\([^()\s]*\)[^()\s]*)*"
+_LINK_ADDRESS_WITHOUT = {
+    "brackets": rf"(?<=\]\()[ \t]*(?:<{_AN_ADDRESS}[^<>\n]*>|{_AN_ADDRESS}[^()\s]*)"
+                rf"{_A_TITLE}[ \t]*\)",
+    "a title": rf"(?<=\]\()[ \t]*(?:<{_AN_ADDRESS}[^<>\n]*>|{_AN_ADDRESS}[^()\s]*{_BRACKETED})"
+               r"[ \t]*\)",
+    "angle brackets": rf"(?<=\]\()[ \t]*{_AN_ADDRESS}[^()\s]*{_BRACKETED}{_A_TITLE}[ \t]*\)",
+    "spaces": rf"(?<=\]\()(?:<{_AN_ADDRESS}[^<>\n]*>|{_AN_ADDRESS}[^()\s]*{_BRACKETED})"
+              rf"{_A_TITLE}\)",
+    "its brackets kept": rf"\]\([ \t]*(?:<{_AN_ADDRESS}[^<>\n]*>|{_AN_ADDRESS}[^()\s]*"
+                         rf"{_BRACKETED}){_A_TITLE}[ \t]*\)",
+}
 
 
 @holds(100, escaped_backticks())
@@ -18856,6 +18955,42 @@ BROKEN = {
     "the mask keeps a comment's line breaks": (
         _the_mask_keeps_a_comment_s_line_breaks,
         test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s,
+    ),
+    "a link's address runs to the next space": (
+        _the_mask_without("link-address"),
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
+    **{
+        f"a link's address is read without {what}": (
+            _the_mask_with("link-address", pattern),
+            test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+        )
+        for what, pattern in _LINK_ADDRESS_WITHOUT.items()
+        if what != "its brackets kept"
+    },
+    "a link's address is hidden with its brackets": (
+        _the_mask_with("link-address", _LINK_ADDRESS_WITHOUT["its brackets kept"]),
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
+    "a link's target is found in what is left and runs on over it": (
+        _a_link_s_target_found_in_what_is_left(),
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
+    "a link's target is found in what is left and stops at what is masked": (
+        _a_link_s_target_found_in_what_is_left(r"\]\([^)\n\x00]*\)"),
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
+    "a link's target is kept where its bracket is masked": (
+        _a_link_s_target_kept_where_its_bracket_is_masked,
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
+    "a dropped link's target uses up its line": (
+        _a_dropped_link_s_target_uses_up_its_line,
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
+    ),
+    "a link's target to an address is taken with its brackets": (
+        _the_mask_with("link-target", r"\]\([^)\n]*\)"),
+        test_the_mask_hides_a_link_s_target_and_nothing_after_it,
     ),
     "an escaped backtick opens a code span": (
         _an_escaped_backtick_opens_a_code_span,

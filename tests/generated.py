@@ -833,6 +833,78 @@ def masked_blocks(
     return text, comments, cells
 
 
+#: The targets a link is written with, by kind: `{w}` a word of its address, `{n}` a number in
+#: its address or title, which pandoc does not print. Whether the target is an address, whose
+#: `](` the mask leaves (it is how "reporting odds ratio [ROR](https://...)" defines ROR).
+LINK_TARGETS = {
+    "an address": ("(https://example.org/{w}/{n})", True),
+    "an address with brackets": ("(https://example.org/wiki/{w}_({n}))", True),
+    "an address and a title": ('(https://example.org/{w} "Title {n}")', True),
+    "an address and a title in brackets": ("(https://example.org/{w} (Title {n}))", True),
+    "an address at www": ("(www.example.org/{w}{n})", True),
+    "a DOI": ("(doi:10.1000/{w}{n})", True),
+    "a bare DOI": ("(10.1000/{w}{n})", True),
+    "an address in angle brackets": ("(<https://example.org/{w} {n}>)", True),
+    "an address spaced inside": ("( https://example.org/{w}{n} )", True),
+    "a file": ("({w}{n}.md)", False),
+    "a file after a binding": ("({{{{results.x}}}}/{w}{n}.md)", False),
+    "a file after a comment": ("({w}{n}.md)", False),
+}
+#: What stands before the link of a kind on its line: a comment holding a link's `](`, which
+#: is hidden with the comment and uses up nothing (round 2 of #589).
+_BEFORE_A_LINK = {"a file after a comment": "<!-- see [b]( --> "}
+#: What may stand straight after a link's `)`: a stop, a comma, nothing, or the `)` of a
+#: bracket round the link.
+_AFTER_A_LINK = (".", ",", ";", ":", "", ")", ").")
+
+
+@st.composite
+def linked_lines(
+    draw: st.DrawFn,
+) -> tuple[str, list[tuple[int, int]], list[tuple[int, int]], list[int]]:
+    """A paragraph with a link of each kind of `LINK_TARGETS` in an order drawn, a link or an
+    image, some in a bracket and some sharing a line, each followed on its line by a
+    stop or none and a count in brackets, "(n = 4101)", which pandoc prints.
+
+    Returns the text; the span of each link's text, and of what follows each link up to the
+    end of that count, which the mask leaves; the span of each link's target after its `(`,
+    and of each number in an
+    address or a title, which it hides; and the offset of the `]` of each link to an
+    address, which it leaves with the `(` after it."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+
+    text = "# Results\n\n"
+    after: list[tuple[int, int]] = []
+    targets: list[tuple[int, int]] = []
+    inside: list[tuple[int, int]] = []
+    brackets: list[int] = []
+    for index, kind in enumerate(draw(st.permutations(sorted(LINK_TARGETS)))):
+        template, address = LINK_TARGETS[kind]
+        hidden, shown = str(5101 + index), str(4101 + index)
+        if index:
+            text += draw(st.sampled_from((" ", "\n")))
+        stop = draw(st.sampled_from(_AFTER_A_LINK))
+        text += f"{words().capitalize()} {'(see ' if stop.startswith(')') else ''}"
+        text += _BEFORE_A_LINK.get(kind, "") + draw(st.sampled_from(("[", "![")))
+        opened = len(text)
+        text += words()
+        after.append((opened, len(text)))
+        text += "]"
+        if address:
+            brackets.append(len(text) - 1)
+        written = template.format(w=draw(st.sampled_from(FILLER)), n=hidden)
+        at = len(text) + written.index(hidden)
+        inside.append((at, at + len(hidden)))
+        targets.append((len(text) + 1, len(text) + len(written)))
+        end = len(text) + len(written)
+        text += f"{written}{stop} {words()} (n = {shown}"
+        after.append((end, len(text)))
+        text += f") {words()}."
+    return text + "\n", after, targets + inside, brackets
+
+
 # ------------------------------------------------------------------------------- LaTeX
 
 #: LaTeX as an author writes it, each piece whole: numbers as LaTeX writes them, the commands
@@ -11607,7 +11679,11 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "finding places": finding_places().flatmap(lambda drawn: st.sampled_from(drawn[0])),
     "plan citations": credited_plans().map(lambda drawn: drawn[0]),
     "citations": texts((), ADDRESS_BLOCKS),
-    "mask": st.one_of(texts(TERMS), masked_blocks().map(lambda drawn: drawn[0])),
+    "mask": st.one_of(
+        texts(TERMS),
+        masked_blocks().map(lambda drawn: drawn[0]),
+        linked_lines().map(lambda drawn: drawn[0]),
+    ),
     "latex mask": st.one_of(latex_texts(), latex_straight_quotes().map(lambda drawn: drawn[0])),
     "latex refusals": latex_texts(),
     "latex sections": latex_texts(),
@@ -11661,7 +11737,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "numbers": st.fixed_dictionaries(
         {
-            "text": texts(POINTED, SUPPLEMENT_HEADINGS + NAMED_BLOCKS),
+            "text": st.one_of(
+                texts(POINTED, SUPPLEMENT_HEADINGS + NAMED_BLOCKS),
+                linked_lines().map(lambda drawn: drawn[0]),
+            ),
             "terms": st.lists(
                 st.sampled_from(("CYP3A4", "COVID-19", "CO2", "HbA1c", "1,3-BDG")), max_size=2
             ),

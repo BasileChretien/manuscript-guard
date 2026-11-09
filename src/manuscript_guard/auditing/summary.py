@@ -195,7 +195,10 @@ def kinds(found: list[Finding], at: Callable[[Path | None, int | None], str]) ->
             "title": KINDS.get(code, code), "gate": gate, "code": code, "count": len(mine),
             "hint": mine[0].hint if shared else None,
             "places": [{"where": at(finding.path, finding.line) if finding.line else "the paper",
-                        "message": finding.message, "context": finding.context,
+                        "message": finding.message,
+                        # The words matched, where the message does not say them, as the
+                        # text shows them (`QUOTING`).
+                        "context": finding.context if gate in QUOTING else None,
                         "failing": finding.severity == FAIL,
                         "hint": None if shared else finding.hint} for finding in mine],
         })  # fmt: skip

@@ -443,3 +443,19 @@ def test_the_page_draws_the_report_its_text_is_printed_from(
     assert web.view(["audit", "paper.md", "--json"])["view"] is None
     assert web.view(["audit"])["view"] is None
     assert cli.AUDITED is None
+    # Round 1 of #601: the box draws every section; a run whose draft could not be written
+    # printed no report and draws none; a view that cannot be drawn leaves the text.
+    full = web.view(["audit", "paper.md", "--details"])["view"]
+    assert {"Membership", "Small cells recoverable by subtraction"} <= {
+        heading for heading, _text in full["sections"]}
+    (tmp_path / "draft.md").write_text("here already\n", encoding="utf-8")
+    assert web.view(["audit", "paper.md", "--report-draft", "draft.md"])["view"] is None
+    from manuscript_guard.auditing import report as report_module
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("no view")
+
+    monkeypatch.setattr(report_module, "view", broken)
+    kept = web.view(["audit", "paper.md"])
+    assert kept["view"] is None and kept["out"] == result["out"]
+    assert cli.AUDITED is None

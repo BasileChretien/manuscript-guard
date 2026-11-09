@@ -719,11 +719,11 @@ def _closing(report) -> str:
             "`manuscript-guard init`.")  # fmt: skip
 
 
-def view(report, discrimination, root: Path | None = None) -> dict:
+def view(report, discrimination, root: Path | None = None, *, details: bool = False) -> dict:
     """The report as the web page draws it: its first lines, what was not read, what each
     check found, the findings on the words by kind with every place of each, the other
-    sections with something to show, as their text, and its last line. The same content as
-    `render` without `details`, every place of the words' findings in its fold."""
+    sections with something to show (every one with `details`), as their text, and its last
+    line. The same content as `render`, every place of the words' findings in its fold."""
     from manuscript_guard.auditing.summary import kinds, rows
 
     show = _shown(root, report.pdfs)
@@ -739,7 +739,7 @@ def view(report, discrimination, root: Path | None = None) -> dict:
         "checks": [[name, said] for name, said in rows(report)],
         "words": words,
         "sections": [[heading, "\n".join(said)] for heading, said
-                     in _sections(report, discrimination, root, show, details=False)
+                     in _sections(report, discrimination, root, show, details=details)
                      if heading != WORDS],  # fmt: skip
         "closing": _closing(report),
     }

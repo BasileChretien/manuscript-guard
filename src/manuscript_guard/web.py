@@ -210,15 +210,22 @@ def run(arguments: list[str]) -> dict:
 
 def view(arguments: list[str]) -> dict:
     """`run`, and for an audit the report as the page draws it (`auditing.report.view`),
-    taken from the very audit whose text `run` returns (`cli.AUDITED`): None for any other
-    command, an audit refused before its report was made, or one asked for as JSON."""
+    taken from the very audit whose text `run` returns (`cli.AUDITED`), every section with
+    `--details`: None for any other command, an audit that printed no report, or one asked
+    for as JSON. A view that could not be drawn is None too, its failure recorded as a crash
+    is, and the text is still returned: the page shows the text where it cannot draw."""
     from manuscript_guard import cli
     from manuscript_guard.auditing.report import view as drawn
+    from manuscript_guard.diagnostics import crashes
 
     made: list[dict] = []
+    details = "--details" in arguments
 
     def told(report, discrimination) -> None:
-        made.append(drawn(report, discrimination, Path.cwd()))
+        try:
+            made.append(drawn(report, discrimination, Path.cwd(), details=details))
+        except Exception as exc:  # noqa: BLE001 - the text is printed whatever the view does
+            crashes.record(exc, kind=crashes.GATE, name="the page's view of the report")
 
     cli.AUDITED = told
     try:

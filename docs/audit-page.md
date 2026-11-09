@@ -22,9 +22,11 @@ reader has them (`.json`, `.csv`, `.tsv`, `.txt`, `.yaml`). That is everything
 - the reference list (G7), and with the box ticked, whether a cited work was retracted or is
   in no registry.
 
-The report says first what each check found, a line each, and groups the findings on the
-words by kind with their first places. A second box asks for every place of every finding,
-with its context and what to do (`audit --details`).
+The page draws the report: what each check found, in a table; the findings on the words, a
+fold for each kind with every place inside it and the kind's hint; and the other sections
+with something to show. Below, in a fold, is the text the command line prints, word for
+word, which "Save the report" saves. The box "List every place of every finding" gives the
+text every place with its context and hint, and the page every section (`audit --details`).
 
 It does not read PDFs, which need `pdftotext`, a program a browser cannot start. Nor does it
 read LaTeX projects of several files, figures, or reproducibility packages: the command line

@@ -2742,8 +2742,6 @@ def _audit(args: argparse.Namespace, package) -> int:
     if args.cited is not None and not _write_cited(report, args):
         return 2
     discrimination = measure_discrimination(report.backing_values) if against else None
-    if AUDITED is not None:
-        AUDITED(report, discrimination)
     if args.report_draft is not None:
         from manuscript_guard.auditing.draft import for_audit
 
@@ -2758,6 +2756,10 @@ def _audit(args: argparse.Namespace, package) -> int:
 
             print(WORDING, file=sys.stderr)
     else:
+        # Told only of a report that is printed (round 1 of #601: a draft that could not be
+        # written printed none, and the page drew one).
+        if AUDITED is not None:
+            AUDITED(report, discrimination)
         print(sections.render(report, discrimination, Path.cwd(), details=args.details))
     if not report.examined:
         # An empty paper, or one whose numbers are all in pictures, printed "0 numeric

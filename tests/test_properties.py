@@ -3035,6 +3035,29 @@ def test_a_deposit_is_named_by_its_doi_however_written_and_by_no_other(
         assert names_doi(written, DEPOSIT_DOI) == before, written
 
 
+# ------------------------------------------------- the head over a fetched PDF's title
+
+from generated import PDF_WORK, pdf_first_pages  # noqa: E402
+
+
+@holds(40, pdf_first_pages())
+def test_a_journal_s_label_over_the_title_is_the_work_s_and_a_head_about_it_is_not(
+    drawn: list[tuple[str, bool]],
+) -> None:
+    """A page under a journal's own label, "SUPPLEMENT ARTICLE" among them, is the work it
+    shows the DOI of, in whatever case and spacing; a page under the head of a supplement, a
+    correction or a reply is about the work, and is not filed as it."""
+    from manuscript_guard.literature.matching import judged
+
+    doi, title = PDF_WORK
+    for text, is_work in drawn:
+        shown = judged(b"%PDF-1.4\n", text, doi, title)
+        if is_work:
+            assert shown.by == "doi", (text, shown)
+        else:
+            assert shown.by is None and "not the work itself" in shown.why, (text, shown)
+
+
 # ------------------------------------------------------------- the vault a command names
 
 
@@ -15925,6 +15948,20 @@ def _a_doi_is_named_by_its_letters_anywhere(patch: pytest.MonkeyPatch) -> None:
                   lambda text, doi: doi.lower() in text.lower())  # fmt: skip
 
 
+def _a_supplement_article_is_a_supplement(patch: pytest.MonkeyPatch) -> None:
+    """The head as it stood at dab906ee: every line that begins "Supplement"."""
+    from manuscript_guard.literature import matching
+
+    old = re.compile(r"(?i)^\W*(?:supplement(?:ary|al)?\b|supporting information\b)")
+    patch.setattr(matching, "_KINDS", ((old, "a supplement"), *matching._KINDS[1:]))
+
+
+def _no_head_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature import matching
+
+    patch.setattr(matching, "_kind", lambda pages, at, title: None)
+
+
 def _a_doi_is_named_in_its_own_case_only(patch: pytest.MonkeyPatch) -> None:
     real = data_statement._plain_doi
     patch.setattr(data_statement, "_plain_doi", lambda written: real(written).swapcase()
@@ -19692,6 +19729,14 @@ BROKEN = {
     "a DOI is named only in the case paper.yaml writes it": (
         _a_doi_is_named_in_its_own_case_only,
         test_a_deposit_is_named_by_its_doi_however_written_and_by_no_other,
+    ),
+    "a journal's SUPPLEMENT ARTICLE is a supplement's head": (
+        _a_supplement_article_is_a_supplement,
+        test_a_journal_s_label_over_the_title_is_the_work_s_and_a_head_about_it_is_not,
+    ),
+    "no head over a PDF's title is read": (
+        _no_head_is_read,
+        test_a_journal_s_label_over_the_title_is_the_work_s_and_a_head_about_it_is_not,
     ),
     "a cell counts by the digits it begins with": (
         _a_cell_counts_by_its_first_digits,

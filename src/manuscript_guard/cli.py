@@ -5149,7 +5149,12 @@ def _synced(project, args: argparse.Namespace, offered, web) -> int:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
     asked = None
-    if web is not None:
+    # The inbox without the web, the command the literature-verify skill gives once the PDFs
+    # are saved, lists the works still wanted with their links too: the skill's next step
+    # gives them to the user (round 1 of #565: it ended with Zotero's advice). A dry run has
+    # filed nothing, so its list would hold the works the inbox shows.
+    inbox_only = offered is not None and offered.inbox and not args.dry_run
+    if web is not None or inbox_only:
         wanted = fetching.still_wanted(project, copies.wanted_keys(project), web)
         asked = fetching.asked(wanted, zotero=offered is None)
     for line in copies.report(outcomes, dry_run=args.dry_run, offered=offered, asked=asked):

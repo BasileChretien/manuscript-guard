@@ -227,3 +227,11 @@ expected:
       check no longer reads them as variables (#592), as it does not read the Deviations;
       the plans drawn now hold such a section, and headings that only mention software or
       open with one of its words and head something else, which are read as before
+  - reading: pdf shown
+    why: >-
+      a new reading of how a fetched PDF's first page shows it is the cited work: a
+      journal's label "Supplement Article" over the title, as Clin Infect Dis and J Infect
+      Dis set it, is the work's, where the base refused it as a supplement's head; a head's
+      words are read however far apart pdftotext sets them, and "Author's reply" with a
+      typeset apostrophe is a reply's head; the inputs draw every label and every head
+      (Known gaps F01)

@@ -489,13 +489,18 @@ def sync(
                 chosen, why = [], ["not in Zotero"]
             else:
                 chosen, why = candidates(key, held)
-            if web is not None and not _full_text_in(chosen) and not _full_text_stored(folder, key):
+            away = _away_of(recorded, folder, key)
+            # A full text the author saved, recorded and not on this computer (a fresh clone),
+            # is the work's copy: one from the web would be refused in its name, or filed
+            # beside it under another suffix (round 1 of #565).
+            theirs = any(not _is_abstract(name) for name in away)
+            if (web is not None and not theirs and not _full_text_in(chosen)
+                    and not _full_text_stored(folder, key)):  # fmt: skip
                 fetched, said = web(key)
                 # What Zotero said comes first, and "no attachment" is what it says by giving
                 # nothing; the web's reasons follow.
                 said_before = why or (["no attachment"] if offered is None else [])
                 chosen, why = chosen + fetched, said_before + said
-            away = _away_of(recorded, folder, key)
             if not chosen:
                 outcomes.append(_without_copy(folder, key, why, holder, away, noted))
                 continue

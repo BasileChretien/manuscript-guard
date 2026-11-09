@@ -2501,6 +2501,11 @@ def _flags_given(args: argparse.Namespace, names: tuple[str, ...]) -> list[str]:
     return said
 
 
+#: What is told of each audit's report once it is made, before it is printed: the in-browser
+#: page sets it to draw the report it shows from the very audit the text is printed from
+#: (`web.view`), rather than auditing the paper a second time; None tells nothing.
+AUDITED: Callable[[object, object], None] | None = None
+
 #: The options of `audit` and `compare` the report draft names, in the order they are listed.
 _AUDIT_FLAGS = ("against", "figures", "english", "submission_residue", "lookup", "dry_run",
                 "whole_numbers", "minimum_cell_count", "journal", "authors", "design", "cited",
@@ -2751,7 +2756,13 @@ def _audit(args: argparse.Namespace, package) -> int:
 
             print(WORDING, file=sys.stderr)
     else:
-        print(sections.render(report, discrimination, Path.cwd(), details=args.details))
+        # Told only of a report whose text is rendered and printed (#601: a draft that could
+        # not be written, or a text that could not be rendered, printed none, and the page
+        # drew one).
+        text = sections.render(report, discrimination, Path.cwd(), details=args.details)
+        if AUDITED is not None:
+            AUDITED(report, discrimination)
+        print(text)
     if not report.examined:
         # An empty paper, or one whose numbers are all in pictures, printed "0 numeric
         # tokens" and passed --strict: an audit that read nothing.

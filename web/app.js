@@ -56,6 +56,72 @@ const booted = ask("boot").then((boot) => {
 
 const read = async (file) => ({ name: file.name, data: await file.arrayBuffer() });
 
+// An element under `parent`, its text set as text, never as markup: a paper's words are the
+// reader's, and none of them is HTML to this page.
+function add(parent, tag, text, kind) {
+  const element = document.createElement(tag);
+  if (text !== undefined) element.textContent = text;
+  if (kind) element.className = kind;
+  parent.append(element);
+  return element;
+}
+
+// The report as `web.view` gives it: what each check found in a table, the findings on the
+// words a fold for each kind with every place inside, the other sections as their text. The
+// text the command line prints stays below, folded, and is what "Save the report" saves.
+// With no view (a run that made no report), the text is shown open.
+function draw(view) {
+  const box = $("view");
+  box.replaceChildren();
+  $("astext").open = !view;
+  if (!view) return;
+  for (const line of view.header) add(box, "p", line, "headline");
+  for (const [heading, said] of view.notes) {
+    add(box, "h3", heading);
+    const list = add(box, "ul");
+    for (const item of said) add(list, "li", item);
+  }
+  add(box, "h3", "What was checked");
+  const table = add(box, "table", undefined, "checks");
+  for (const [name, said] of view.checks) {
+    const row = add(table, "tr");
+    add(row, "th", name);
+    add(row, "td", said);
+  }
+  for (const paper of view.words) {
+    if (!paper.note && !paper.kinds.length) continue;
+    add(box, "h3", `Writing and language: ${paper.paper} (not counted by --strict)`);
+    if (paper.note) {
+      add(box, "p", paper.note);
+      continue;
+    }
+    if (paper.converted) {
+      add(box, "p", "Its lines are those of the text pandoc converts it to, as `init --from` "
+        + "writes it.", "small");
+    }
+    for (const kind of paper.kinds) {
+      const fold = add(box, "details", undefined, "kind");
+      add(fold, "summary", `${kind.title} (${kind.gate}, ${kind.count})`);
+      if (kind.hint) add(fold, "p", `Hint: ${kind.hint}`, "hint");
+      const list = add(fold, "ol");
+      for (const place of kind.places) {
+        const item = add(list, "li");
+        add(item, "span", `${place.where}: `, "where");
+        add(item, "span", (place.failing ? "FAIL: " : "") + place.message);
+        if (place.context) add(item, "div", place.context, "context");
+        if (place.hint) add(item, "div", `Hint: ${place.hint}`, "hint");
+      }
+    }
+  }
+  for (const [heading, text] of view.sections) {
+    const fold = add(box, "details", undefined, "section");
+    fold.open = true;
+    add(fold, "summary", heading);
+    add(fold, "pre", text);
+  }
+  add(box, "p", view.closing, "closing");
+}
+
 $("form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const paper = $("paper").files[0];
@@ -65,6 +131,7 @@ $("form").addEventListener("submit", async (event) => {
   // on screen for "Save the report" to save as this one's (round 2 of #527).
   $("result").hidden = true;
   $("report").textContent = "";
+  $("view").replaceChildren();
   $("notes").textContent = "";
   say(`Auditing ${paper.name}…`);
   try {
@@ -76,6 +143,7 @@ $("form").addEventListener("submit", async (event) => {
     });
     $("result").hidden = false;
     $("report").textContent = result.out;
+    draw(result.view);
     $("notes").hidden = !result.err;
     $("notes").textContent = result.err;
     $("netlog").textContent += "\n\n" + listRequests(

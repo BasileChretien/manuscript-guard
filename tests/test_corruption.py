@@ -8597,6 +8597,91 @@ def test_a_planned_group_of_tables_or_models_is_looked_for_among_them(project: P
                                        "- `model.crude.*`: the crude models")]  # fmt: skip
 
 
+# ------------------------------------------------- the plan's Software section
+
+
+def _software_said(root: Path, stage: str = "drafting") -> list[tuple]:
+    """What G12 says of the plan's Software section, by code, severity, file and line."""
+    from manuscript_guard.gates.software import check_software
+
+    project, _ = load_project(root)
+    _namespace, results, _literature, _report = load_namespace(project)
+    return [(f.code, f.severity, f.path.relative_to(root).as_posix(), f.line)
+            for f in check_software(project, results, stage).findings]  # fmt: skip
+
+
+def test_a_package_the_plan_names_and_no_script_loads_is_said(project: Path) -> None:
+    """Basile, 2026-11-05: on a real VigiBase paper the analysis wrote its own code where
+    the CRAN package `vigicaen` held the source's own logic for drugs and reactions, and
+    nothing asked which software suited the data. The plan's Software section is held to
+    what the scripts load: a package it names that none loads is a warning from the analysis
+    stage on, at submission too (2026-11-09), and its name under Deviations stands it down."""
+    assert _software_said(project) == []
+    plan = project / "design" / "plan.md"
+    text = plan.read_bytes().decode("utf-8")
+    item = "- `matplotlib`:"
+    named = text.replace(item, "- `vigicaen` 0.15.6: `tb_custom()` reads the cases\n" + item)
+    plan.write_bytes(named.encode())
+    line = named[: named.index("- `vigicaen`")].count("\n") + 1
+    unloaded = [("planned-package-unloaded", "warn", "design/plan.md", line)]
+    for stage in ("analysis", "drafting", "internal-review", "submission"):
+        assert _software_said(project, stage) == unloaded, stage
+    # Before the analysis is written, nothing has to load it yet.
+    assert _software_said(project, "design") == []
+    # Recorded by the emitter alone, it is loaded: statsmodels is, and Python itself.
+    for kept in ("statsmodels", "Python"):
+        assert f"- `{kept}`" in named
+    # Considered and not used, it is not held to the scripts.
+    considered = "### Considered and not used\n\n- `vigicaen`: no drug table here\n\n"
+    plan.write_bytes(text.replace("## Sample size", considered + "## Sample size").encode())
+    assert _software_said(project) == []
+    # Said under Deviations, by its name in backticks, it is stood down; by the word alone,
+    # it is not.
+    plan.write_bytes((named + "8. vigicaen was not used.\n").encode())
+    assert _software_said(project) == unloaded
+    plan.write_bytes((named + "8. `vigicaen` was not used: the extract had no drug table.\n")
+                     .encode())  # fmt: skip
+    assert _software_said(project) == []
+
+
+def test_a_package_a_script_loads_and_the_plan_does_not_name_is_a_note(project: Path) -> None:
+    """The other way: a package an analysis or figure script loads that no item of the
+    Software section names is a note, at its first load, whatever the stage; base R and the
+    standard library are nobody's choice, and are not said."""
+    script = project / "analysis" / "02_tables.R"
+    script.write_bytes(b"x <- stats::median(1)\n# library(dplyr)\nlibrary(vigicaen)\n"
+                       b"y <- vigicaen::tb_custom()\n")  # fmt: skip
+    note = [("plan-package-unnamed", "info", "analysis/02_tables.R", 3)]
+    for stage in ("design", "drafting", "submission"):
+        assert _software_said(project, stage) == note, stage
+    plan = project / "design" / "plan.md"
+    text = plan.read_bytes().decode("utf-8")
+    plan.write_bytes(text.replace("- `matplotlib`:", "- `vigicaen` 0.15.6: reads the cases\n"
+                                                     "- `matplotlib`:").encode())  # fmt: skip
+    assert _software_said(project) == []
+    # Taken up after the plan was agreed, and said under Deviations, it is recorded there.
+    plan.write_bytes((text + "8. `vigicaen` was taken up for the drug table (2026-11-09).\n")
+                     .encode())  # fmt: skip
+    assert _software_said(project) == []
+    # A plan with no Software section names none of what the scripts load.
+    start, end = text.index("## Software\n"), text.index("## Sample size")
+    plan.write_bytes((text[:start] + text[end:]).encode())
+    said = _software_said(project)
+    assert [(code, path) for code, _severity, path, _line in said] == [
+        ("plan-package-unnamed", "analysis/01_disproportionality.py"),
+        ("plan-package-unnamed", "analysis/01_disproportionality.py"),
+        ("plan-package-unnamed", "analysis/02_tables.R"),
+        ("plan-package-unnamed", "figures/forest.py"),
+    ]
+    project_, _ = load_project(project)
+    from manuscript_guard.gates.software import check_software
+
+    messages = [f.message for f in check_software(project_, None, "drafting").findings]
+    assert all(message.endswith("and the plan has no Software section") for message in messages)
+    assert [message.split(" loads ")[1].split(",")[0] for message in messages] == [
+        "pandas", "statsmodels", "vigicaen", "matplotlib"]  # fmt: skip
+
+
 # ------------------------------------------------- the registered protocol
 
 _NCT = "NCT01234567"

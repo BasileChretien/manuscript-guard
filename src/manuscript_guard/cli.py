@@ -106,6 +106,7 @@ from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_ma
 from manuscript_guard.gates.registration import check_registration
 from manuscript_guard.gates.related import check_related
 from manuscript_guard.gates.shortlist import check_shortlist
+from manuscript_guard.gates.software import check_software
 from manuscript_guard.gates.synthetic import check_synthetic_inputs
 from manuscript_guard.gates.vault import check_vault_results
 from manuscript_guard.paper_edit import KEYS as PAPER_KEYS
@@ -225,6 +226,7 @@ def _gate_run(
         ("G12", lambda: check_registration(project, results, chosen)),
         ("G12", lambda: check_data_sources(project, chosen)),
         ("G12", lambda: check_declared_datasets(project, results)),
+        ("G12", lambda: check_software(project, results, chosen)),
         ("G7", lambda: check_method_passages(project)),
         ("G12", lambda: check_methods_review(project)),
         ("G8", lambda: check_consistency(results)),

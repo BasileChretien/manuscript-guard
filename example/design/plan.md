@@ -57,6 +57,18 @@ The results the paper will report, each by the key the analysis emits it under:
 - `ror.*`: the reporting odds ratio and its 95% interval
 - `case.pct_serious`: the proportion of the cases that were serious
 
+## Software
+
+Python, with the packages below. The database is synthetic, so no package is written for
+it; for a real source, the packages written for it would be looked for first and named
+here, each with the steps it does.
+
+- `Python` 3.10 or later: the run records the version it ran under.
+- `pandas`: `DataFrame()` holds the reports for the adjusted model.
+- `statsmodels`: `glm()` with a binomial family fits the adjusted model. The crude ratio
+  and its Wald interval are computed from the 2 x 2 table with the standard library.
+- `matplotlib`: `subplots()` draws the forest plot.
+
 ## Sample size
 
 Fixed by the database. No power calculation: the analysis is descriptive of what was
@@ -69,7 +81,7 @@ that would not be a different study.
 
 ## Deviations from the plan
 
-Six. The first two came after the first review round, both additive rather than a change
+Seven. The first two came after the first review round, both additive rather than a change
 of approach:
 
 1. The 2 x 2 counts were added to the Results as a table. The plan implied them; the first
@@ -96,3 +108,6 @@ deviation nobody wrote down is indistinguishable from having tried several thing
    and Table S2 prints its model as it was fitted.
 6. The variables are named in backticks, as a data dictionary names them, so that G12 can
    hold a dictionary to this plan (2026-10-21): a change of wording, not of the analysis.
+7. The Software section was added (2026-11-09), naming the packages the analysis had
+   loaded from the start, so that G12 can hold the plan to the scripts: a record, not a
+   change of the analysis.

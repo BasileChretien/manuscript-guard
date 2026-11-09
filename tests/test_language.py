@@ -1270,6 +1270,25 @@ def test_initials_after_a_bold_statement_label_are_not_abbreviations(
     assert sorted(f.message.split()[0] for f in headed.findings) == ["ANR", "CD", "JB", "NIHR"]
 
 
+def test_what_a_bold_label_cannot_tell_apart(project: Path) -> None:
+    """The limits DESIGN.md's Known gaps write down, as written: a label is told from a
+    sentence's first words by what follows it on its line, so a statement that goes on in a
+    small letter is read as prose, a bold word that goes on into its sentence across a line
+    break is still a label, and a simple table whose first header cell names a statement is
+    read as one."""
+
+    def reported(text: str) -> list[str]:
+        report = written(project, f"# Methods\n\n{PLAIN}\n\n{text}\n")
+        return sorted(f.message.split()[0] for f in report.findings)
+
+    assert reported("**Funding** this study was funded by the NIHR.") == ["NIHR"]
+    assert reported("**Funding** of the NHS fell.") == ["NHS"]
+    assert reported("**Funding**\nof the NHS fell.") == []
+    table = "{}   Count\n------------------   -----\nNIHR                 3\n"
+    assert reported(table.format("Source            ")) == ["NIHR"]
+    assert reported(table.format("**Funding source**")) == []
+
+
 def test_a_funder_named_once_with_its_acronym_is_not_unused(project: Path) -> None:
     report = written(
         project,

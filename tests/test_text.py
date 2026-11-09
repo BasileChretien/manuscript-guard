@@ -796,3 +796,16 @@ def test_a_heading_in_bold_is_not_the_abstract_nor_the_methods() -> None:
     assert not names_abstract(titles["Abstract"]) and names_abstract("[Abstract]{.underline}")
     assert names_results(titles["Results"])
     assert not is_methods([titles["Methods"]]) and is_methods(["Methods"])
+
+
+def test_a_mark_inside_a_span_is_read_as_the_heading_s_own() -> None:
+    """The limit DESIGN.md's Known gaps write down, as written: a closing `#` or an
+    attribute block inside a span's words is taken off as the heading's, where pandoc
+    prints both as the span's text."""
+    from manuscript_guard.text.sections import split_sections
+
+    def titled(title: str) -> str:
+        return split_sections(f"# {title}\n\nThe ROR was 2.1.\n")[0].title
+
+    assert titled("[C#]{.underline}") == "C"
+    assert titled("[Results {-}]{.underline}") == "Results"

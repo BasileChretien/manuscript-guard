@@ -6107,7 +6107,7 @@ ABOUT_HEADS = (
     "Supplement to: Fictional A. Hepatic injury.", "Supplement 1", "Supporting Information",
     "Correction to: Hepatic injury", "Erratum", "Corrigendum", "Retraction Note",
     "Expression of Concern", "In reply", "Reply to the letter by Smith", "Response to Smith",
-    "Author's reply", "Comment on Fictional et al.",
+    "Author's reply", "Author" + chr(0x2019) + "s reply", "Comment on Fictional et al.",
 )  # fmt: skip
 
 

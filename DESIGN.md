@@ -3438,7 +3438,9 @@ resolves to, an address Python does not count as global (loopback, private, link
 carrier-grade NAT, unspecified), a multicast or reserved one, or an IPv6 site-local one, is
 refused at every hop, since a publisher's redirect could otherwise set off Zotero's
 connector or a router (round 1 of #565); a host written as an IPv4 number in another form
-(`2130706433`, `127.1`) is judged as the address it spells. The connection is made to the
+(`2130706433`, `127.1`) is judged as the address it spells, and 6to4's 2002::/16 is refused
+whole; a host holding a percent escape, a user's name before `@` or a backslash, which
+`urllib` reads otherwise than the check, is refused. The connection is made to the
 addresses checked, so that a resolver answering it otherwise than the check (DNS rebinding)
 reaches nothing unchecked. Through an https proxy the environment names, the proxy connects
 and resolves the name on its own network, which is not checked, and a name that does not
@@ -21846,7 +21848,8 @@ Open, recorded as each change landed:
     `tests/test_fetch_sources.py::test_a_fake_ip_answer_is_refused_and_says_why`.
   - On a network with IPv6 only, where DNS64 answers an IPv4-only host with an address under
     64:ff9b::/96, every such host is refused: Python counts the block as reserved, and the
-    IPv4 address inside it is not judged instead. Pinned by
+    IPv4 address inside it is not judged instead. A network's own NAT64 prefix cannot be
+    told from any other address, so what it carries is not judged either. Pinned by
     `tests/test_fetch_sources.py::test_an_address_of_nat64_is_refused_whatever_it_holds`.
   - The methods review says "no stored copy of @key" of a work whose only copy is its
     abstract, and its `similar-passage-not-in-source` became a warning there, unsaid here.
@@ -24192,13 +24195,19 @@ Closed since, and why each mattered (an open gap goes above this line):
     advice and no DOI links, which the skill's next step gives the user. It lists them now.
   - The name was resolved for the check and again by `urllib` when it connected, so a
     resolver that answered the two differently (DNS rebinding) reached this computer's
-    network. Where no proxy is used, the connection goes to the addresses checked, the
-    certificate still held to the name; through a proxy, see the open point above.
+    network. A connection made without a proxy goes to the addresses checked, the
+    certificate still held to the name, whatever `urllib` decides of the proxy; through a
+    proxy, see the open point above. The review found that `urllib` reads a host other
+    than `urlsplit` does where it holds a percent escape (`%31%32%37.0.0.1` is 127.0.0.1 to
+    `urllib`, a name to the check), a user's name before `@` or a backslash, and that
+    `no_proxy` was asked of the host without its port: such a link is refused now, and the
+    port is asked as `urllib` asks it.
   - `own_network` let through 100.64.0.0/10 (carrier-grade NAT, Tailscale) and fec0::/10,
     and read a host written as a decimal, hexadecimal, octal or short IPv4 number
-    (`2130706433`, `127.1`) as a name. It refuses any address Python does not count as
-    global, and IPv6's site-local ones, which it does (`not ip.is_global` alone misses
-    them); a number is judged as the address it spells.
+    (`2130706433`, `127.1`, `127.0.0.1.`) as a name. It refuses any address Python does not
+    count as global, IPv6's site-local ones, which it does (`not ip.is_global` alone misses
+    them), and 6to4's 2002::/16, which some Pythons do; a number is judged as the address
+    it spells.
   - `ValueError` was caught over the whole search for a copy, so a fault in staging or in
     matching was said to be a link that cannot be read, and the work's other places were
     skipped. Only reading a link and making its request are caught now.
@@ -24206,7 +24215,8 @@ Closed since, and why each mattered (an open gap goes above this line):
     private address among public ones, the proxy branch, or a public address let through.
   - A journal's own label over the title, "SUPPLEMENT ARTICLE" (Clin Infect Dis, J Infect
     Dis), was read as a supplement's head, and the article refused. The heads are read with
-    their words as far apart as `pdftotext -layout` sets them, and a property
+    their words as far apart as `pdftotext -layout` sets them, "Author’s reply" with a
+    typeset apostrophe among them, and a property
     (`tests/test_properties.py`) draws every label and every head in a drawn case and
     spacing; the old rule, and a rule that reads no head, fail it.
 

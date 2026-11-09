@@ -72,13 +72,17 @@ _LATEX = re.compile(r"\\[A-Za-z]+\s*")
 #: their words as far apart as `pdftotext -layout` sets them. "Supplement Article" is the
 #: label Clin Infect Dis and J Infect Dis set over each article of a supplement issue, the
 #: article itself, which was refused as a supplement (round 2 of #565).
+#: An apostrophe, straight or as pdftotext prints a typeset one (review of #595: "Author’s
+#: reply" was filed as the work).
+_APOSTROPHE = "['" + chr(0x2019) + "]"
 _KINDS = (
     (re.compile(r"(?i)^\W*(?:supplement(?:ary|al)\b|supplement\b(?!\s+articles?\b)"
                 r"|supporting\s+information\b)"), "a supplement"),
     (re.compile(r"(?i)^\W*(?:correction\b|erratum\b|corrigendum\b|retraction\b"
                 r"|expression\s+of\s+concern\b)"), "a correction or a retraction"),
-    (re.compile(r"(?i)^\W*(?:in\s+reply\b|reply\b|response\s+to\b|author'?s'?\s+reply\b"
-                r"|comment\s+on\b)"), "a reply or a comment"),
+    (re.compile(r"(?i)^\W*(?:in\s+reply\b|reply\b|response\s+to\b"
+                rf"|author{_APOSTROPHE}?s{_APOSTROPHE}?\s+reply\b|comment\s+on\b)"),
+     "a reply or a comment"),
 )  # fmt: skip
 
 

@@ -1012,6 +1012,61 @@ def test_a_name_is_left_to_the_proxy_the_environment_names(monkeypatch) -> None:
     assert connected == []
 
 
+@pytest.mark.parametrize("url", [
+    "https://%31%32%37.0.0.1:23119/x.pdf", "https://journal%2eexample/x.pdf",
+    "https://127.0.0.1@journal.example/x.pdf", "https://journal.example\\@127.0.0.1/x.pdf",
+    "https://[2002:7f00:1::]/x.pdf", "https://[2002:808:808::]/x.pdf", "https://127.0.0.1./x.pdf",
+])  # fmt: skip
+def test_a_host_urllib_reads_otherwise_than_the_check_is_refused(url: str) -> None:
+    """`urllib` decodes a percent escape in the host, which the check read as a name, and
+    connects to 127.0.0.1 through a proxy that `no_proxy` leaves it out of; a user's name
+    before `@`, or a backslash, makes the two read another host. A 6to4 address carries an
+    IPv4 one, and some Pythons count the block as global."""
+    assert not download.allowed(url)
+
+
+def test_a_percent_escaped_address_is_not_asked_through_a_proxy(monkeypatch) -> None:
+    _resolved, connected = _resolver(monkeypatch, proxy="http://proxy.test:3128")
+    monkeypatch.setenv("no_proxy", "127.0.0.1")
+    with pytest.raises(NoAnswer, match="cannot be read as a URL"):
+        download.default_transport(Request("https://%31%32%37.0.0.1:23119/x.pdf"), 1.0)
+    assert connected == []
+
+
+def test_a_proxy_urllib_leaves_out_where_the_check_did_not_is_still_pinned(monkeypatch) -> None:
+    """`no_proxy` with a port leaves `journal.example:8443` out for `urllib`, which asks with
+    the port, and not for a check that asks without it: the connection went straight to the
+    name, resolved again, with nothing pinned."""
+    import urllib.request
+
+    _resolved, connected = _resolver(monkeypatch, ("93.184.216.34",), ("127.0.0.1",),
+                                     proxy="http://proxy.test:3128")  # fmt: skip
+    monkeypatch.setattr(urllib.request, "proxy_bypass", lambda host: host.endswith(":8443"))
+    with pytest.raises(NoAnswer, match="no connection to journal.example"):
+        download.default_transport(Request("https://journal.example:8443/a.pdf"), 1.0)
+    assert connected == ["93.184.216.34"]
+
+
+def test_a_connection_urllib_makes_without_the_proxy_is_pinned_whatever_was_decided(
+    monkeypatch,
+) -> None:
+    """Where the check takes the link to go through the proxy and `urllib` leaves the proxy
+    out, the connection is still made to the addresses checked, or, with none, to nothing."""
+    import urllib.request
+
+    _resolved, connected = _resolver(monkeypatch, ("93.184.216.34",), ("127.0.0.1",),
+                                     proxy="http://proxy.test:3128")  # fmt: skip
+    monkeypatch.setattr(urllib.request, "proxy_bypass", lambda host: True)
+    monkeypatch.setattr(download, "_proxied", lambda netloc: True)
+    with pytest.raises(NoAnswer, match="no connection to journal.example"):
+        download.default_transport(Request("https://journal.example/a.pdf"), 1.0)
+    assert connected == ["93.184.216.34"]
+    _resolved, connected = _resolver(monkeypatch, proxy="http://proxy.test:3128")
+    with pytest.raises(NoAnswer, match="no connection to journal.example"):
+        download.default_transport(Request("https://journal.example/a.pdf"), 1.0)
+    assert connected == [], "a name not resolved here is connected to by no address"
+
+
 def test_an_address_of_nat64_is_refused_whatever_it_holds() -> None:
     """DNS64 answers an IPv4-only host with 64:ff9b::<its address>, a block Python counts as
     reserved; the address inside it is not judged instead (Known gaps), so a network with

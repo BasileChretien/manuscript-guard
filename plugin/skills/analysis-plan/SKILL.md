@@ -1,6 +1,6 @@
 ---
 name: analysis-plan
-description: Write the analysis plan in design/plan.md before the analysis exists, record every deviation from it as it happens, and hold the paper to the study's registration. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run, planned-result-missing, planned-result-unquoted, planned-results-unkeyed, plan-changed-after-results, not-in-dictionary, registration-missing, registration-not-looked-up, registration-late, registration-outcomes-undeclared, registration-outcome-not-registered, registration-outcome-role-changed, registration-outcome-dropped or registration-primary-unquoted, or when the analysis is about to do something the plan did not say. Not for finding which dataset could answer the question or how it is reached (use data-sources).
+description: Write the analysis plan in design/plan.md before the analysis exists, record every deviation from it as it happens, and hold the paper to the study's registration. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run, planned-result-missing, planned-result-unquoted, planned-results-unkeyed, plan-changed-after-results, not-in-dictionary, registration-missing, registration-not-looked-up, registration-late, registration-outcomes-undeclared, registration-outcome-not-registered, registration-outcome-role-changed, registration-outcome-dropped, registration-primary-unquoted, planned-package-unloaded or plan-package-unnamed, when choosing the packages the analysis will use, or when the analysis is about to do something the plan did not say. Not for finding which dataset could answer the question or how it is reached (use data-sources).
 ---
 
 # Writing down what you meant to do, before you do it
@@ -83,6 +83,93 @@ Before the design, the comparator, time zero or the case definition is fixed, re
 studies of the same question did it, judged against a methodological standard rather than
 by how many did it, and take what the author decides, with its citation: the
 [methods-review](../methods-review/SKILL.md) skill, and `design/methods_review.yaml`.
+
+## The tools for these data
+
+Before the analysis section is fixed, find the software written for this data source and
+this question, and let it do what is the source's own logic. A package written with the
+source's custodian, or by people who have analysed it for years, knows how the source codes
+its records; code written from the data dictionary alone rewrites that logic and gets wrong
+the parts nobody wrote down. On VigiBase, the CRAN package `vigicaen` finds a drug's record
+numbers in WHODrug (`get_drecno()`), gathers the MedDRA terms under a case definition
+(`get_llt_soc()`), and flags each report for a drug and a reaction (`add_drug()`,
+`add_adr()`); an analysis that wrote its own joins for those missed what the package
+decides for it.
+
+1. **Look.** Search for packages written for this source and this question: the source's
+   own documentation and user guide, CRAN, Bioconductor and PyPI by the source's name and
+   the method's, and the CRAN Task View of the field (Epidemiology, Survival,
+   MetaAnalysis, ClinicalTrials and others). Ask the author which ones they and their
+   colleagues use.
+2. **Read before calling.** Read the help page of each function the analysis will call,
+   and the package's vignettes, before writing the call: what each argument means, the
+   default it takes, and what it drops without saying. `add_drug()` counts a report that
+   names the drug as concomitant unless `repbasis = "s"` asks for the suspected drug only.
+   Each of these runs in a terminal, with nothing else installed:
+
+   ```bash
+   Rscript -e "help('add_drug', package = 'vigicaen')"
+   Rscript -e "vignette(package = 'vigicaen')"
+   Rscript -e "vignette('basic_workflow', package = 'vigicaen')"
+   python -c "import statsmodels.api as sm; help(sm.GLM)"
+   python -m pydoc statsmodels.genmod.generalized_linear_model.GLM
+   ```
+
+   `help()` in R opens the page in the browser when one is set; add
+   `help_type = 'text'` to print it instead.
+3. **Use it.** Call those functions for the source's own logic (identifying a drug, the
+   levels of a dictionary, which drug is suspected, what counts as a duplicate), and write
+   your own code for what is the study's: the selection the plan sets out, the model. Where
+   the analysis rewrites something a package does, say why in the plan. In R, write the
+   data handling with dplyr and its companions (tidyr, readr, stringr, purrr), unless the
+   project's code already uses another style (data.table, base R) or the author asks for
+   one.
+4. **Record it.** Under a heading that opens with "Software" ("R packages", "Packages
+   used", "Libraries" and "Statistical analysis software" do too; "Library preparation"
+   does not), one list item per package, opening with its name in backticks, then its
+   version and which of its functions does which step. Put the packages considered and not taken
+   under a heading of their own below it, each with why. The names there are not taken for
+   variables of the data dictionary:
+
+   ```markdown
+   ## Software
+
+   - `vigicaen` 2.1.0: `get_drecno()` finds the drug in WHODrug; `get_llt_soc()` the
+     MedDRA terms of the case definition; `add_drug()` with `repbasis = "s"` flags the
+     reports where the drug is suspected; `compute_dispro()` the reporting odds ratio.
+   - `dplyr` and `tidyr`, loaded with `tidyverse`: the selection steps and the counts.
+   - `R` 4.4.1
+
+   ### Considered and not used
+
+   - `PhViD`: computes signal statistics from a table of counts and does not read
+     VigiBase's tables, so the counts would have been the analysis's own code.
+   ```
+
+`check` holds the section to the scripts in `analysis/` and `figures/`. A package an item
+names that no script loads warns from the analysis stage on (`planned-package-unloaded`);
+one a script loads that no item names is a note (`plan-package-unnamed`). A load is
+`library()`, `require()`, `requireNamespace()`, `loadNamespace()`, `pkg::` or `pkg:::` in R,
+`import`, `from` or `importlib.import_module()` in Python, wherever it stands in the file;
+base R, the standard library and the project's own modules are nobody's choice and are not
+noted, and a base package R attaches, `stats` for `glm()`, counts as loaded wherever an R
+script is read. Three things it cannot know, so write them so it can:
+
+- **The name scripts load.** Where it is not the package's (`sklearn` for
+  `scikit-learn`, `yaml` for `PyYAML`, `tidyverse` for `dplyr` loaded through
+  `library(tidyverse)`), give it in the same item, in backticks: every bare name in
+  backticks in an item counts as that package's, where a script loads it. Write functions
+  with their brackets, `glm()`, so that they are not taken for packages. Only list items
+  are read: a table or a sentence names nothing.
+- **A name the code computes.** `library(pkg, character.only = TRUE)`, or a package loaded
+  by another (`pacman::p_load()`), is not read. Load it by its name.
+- **A change.** A package dropped, or taken up after the plan was agreed, is a deviation:
+  write it under Deviations, naming the package in backticks, which stands the finding down.
+
+The version and the functions are for the reader and are not checked. The version the
+analysis ran with is what `em.software()` records, and what the Methods quote (the
+[results-binding](../results-binding/SKILL.md) skill); a package it records counts as
+loaded.
 
 ## What the data can answer
 

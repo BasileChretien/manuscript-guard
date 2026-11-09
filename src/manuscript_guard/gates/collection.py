@@ -13,7 +13,8 @@ The plan names a variable by writing it in backticks, exactly as the dictionary 
 `age`, anywhere outside its Deviations section (Basile, 2026-10-21). A name in backticks
 that the dictionary does not have is reported where it reads as a variable's: letters,
 digits and underscores. Code is written otherwise, `glm()` or `stats::glm`, and a result's
-key has a dot. The Deviations are not read, since what they name was dropped or changed.
+key has a dot. The Deviations are not read, since what they name was dropped or changed,
+nor the Software section, whose names are packages and functions.
 
 Everything here warns, at every stage, as the rest of G12 does. A dictionary that does not
 read at all is `dictionary-invalid`, said by the loader, and fails.
@@ -29,6 +30,7 @@ from pathlib import Path
 from manuscript_guard.contracts.dictionary import CODED, DICTIONARY, Dictionary, Variable
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.design import PLANNED, REQUIRED
+from manuscript_guard.gates.software import SOFTWARE_HEADING
 from manuscript_guard.text.blocks import find_headings
 from manuscript_guard.text.inline import code_spans
 from manuscript_guard.text.masking import mask
@@ -65,10 +67,11 @@ def variables_named(text: str, names: Collection[str]) -> tuple[list[Named], lis
     not have. Each once, at its first mention, in the plan's order.
 
     Every code span of the plan is read but those in a Deviations section and the sections
-    under it, and those that masking hides: a fence, a comment, front matter."""
+    under it, those in the Software section, which names packages and functions (#592), and
+    those that masking hides: a fence, a comment, front matter."""
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     known = set(names)
-    left_out = _deviations(text)
+    left_out = _deviations(text) + _software_sections(text)
     found: dict[str, dict[str, Named]] = {"used": {}, "undefined": {}}
     for start, end in code_spans(mask(text)):
         if any(low <= start < high for low, high in left_out):
@@ -113,6 +116,20 @@ def _deviations(text: str) -> list[tuple[int, int]]:
                     if later.level <= heading.level), len(text))  # fmt: skip
         found.append((heading.start, end))
     return found
+
+
+def _software_sections(text: str) -> list[tuple[int, int]]:
+    """Where each Software section is, as G12 reads one (`gates/software.py`), from its
+    heading to the next heading at its level or above; the plan's title is none, as for the
+    Deviations."""
+    headings = find_headings(text)
+    titled = len(headings) > 1 and headings[0].level == 1 and headings[1].level > 1
+    return [
+        (heading.start, next((later.start for later in headings[index + 1 :]
+                              if later.level <= heading.level), len(text)))
+        for index, heading in enumerate(headings)
+        if not (titled and index == 0) and SOFTWARE_HEADING.search(heading.title)
+    ]  # fmt: skip
 
 
 def needed(dictionary: Dictionary, named: Collection[str]) -> set[str]:

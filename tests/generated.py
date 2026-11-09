@@ -5507,6 +5507,15 @@ def collection_plans(
          [defined[0]], [undefined[0]]),
         (f"## Exposure details\n\n{draw(words)}.\n\n### {deviation}\n\n`{undefined[5]}` "
          f"{draw(words)}.\n\n### Timing\n\n`{defined[7]}` {draw(words)}.\n", [defined[7]], []),
+        # The Software section names packages and functions, and is not read (#592); a
+        # heading that only mentions software heads no such section.
+        (f"## Software\n\n- `vigicaen` 2.1.0: `add_drug()` flags `{defined[1]}`\n\n"
+         f"### Considered and not used\n\n- `pandas`: {draw(words)}\n", [], []),
+        (f"## Statistical analysis and software\n\n{draw(words)} `n_events` {draw(words)}.\n",
+         [], ["n_events"]),
+        (f"## Library preparation\n\n- `read_depth` per sample, {draw(words)}\n", [],
+         ["read_depth"]),
+        (f"## IV. Software\n\n- `lane_id` {draw(words)}\n", [], []),
     ]  # fmt: skip
     order = draw(st.permutations(range(len(kinds))))
     # A title that names an amendment encloses the plan, and is not its Deviations.
@@ -11585,6 +11594,270 @@ def novelty_records(draw: st.DrawFn) -> tuple[dict[str, Any], list[list[Any]]]:
     return given, sorted(said, key=lambda one: json.dumps(one))
 
 
+# ----------------------------------------------- the plan's Software section and the loads, G12
+
+#: How R loads a package, `{p}` standing for its name: the line `{p}` stands on is the load's.
+SOFTWARE_R_LOADS = (
+    "library({p})", 'library("{p}")', "library('{p}')", "require({p})",
+    'requireNamespace("{p}", quietly = TRUE)', 'loadNamespace("{p}")', "x <- {p}::fit(x)",
+    "x <- {p}:::fit(x)", "suppressPackageStartupMessages(library({p}))",
+    "load_all <- function() {\n  library({p})\n}", 'library(package = "{p}")',
+    "x <- `{p}`::fit()", "if (!require({p})) stop()",
+)  # fmt: skip
+#: Where R writes a package's name and loads nothing: a comment, a string, a raw string with
+#: quotes inside, the help page, a name computed (`character.only`, a variable given to
+#: `requireNamespace`), a member's method.
+SOFTWARE_R_DECOYS = (
+    "# library({p})", 'x <- "library({p})"', "x <- '{p}::fit'", 'x <- r"-("library({p})")-"',
+    'library(help = "{p}")', "library({p}, character.only = TRUE)", "requireNamespace({p})",
+    "obj$library({p})", "x <- 1  # {p}::fit()",
+)  # fmt: skip
+#: How Python loads a package: a module of it, under another name, from a function's body or
+#: a `try` block, by `importlib`.
+SOFTWARE_PYTHON_LOADS = (
+    "import {p}", "import {p}.sub", "import {p} as alias", "from {p} import fit",
+    "from {p}.sub import fit", "import os, {p}", "def load():\n    import {p}",
+    "try:\n    import {p}\nexcept ImportError:\n    pass", 'importlib.import_module("{p}.sub")',
+    '__import__("{p}")',
+)  # fmt: skip
+#: Where Python writes one and loads nothing: a comment, a string, a docstring, a relative
+#: import of the project's own module.
+SOFTWARE_PYTHON_DECOYS = (
+    "# import {p}", 's = "import {p}"', '"""\nimport {p}\n"""', "from . import {p}",
+    "from .{p} import fit", "x = 1  # from {p} import fit",
+)  # fmt: skip
+#: How a plan heads its Software section (Basile, 2026-11-09): a title whose first word is
+#: Software, whatever follows, after a number in digits, a letter, Roman numerals or
+#: "Appendix B:"; and, for the words that have other senses, packages and libraries, the
+#: forms a plan uses for software, a word for the language or the analysis before them, or
+#: "used" and a version after them (#592).
+SOFTWARE_HEADINGS = (
+    "Software", "R packages", "R and Python packages", "Statistical analysis software",
+    "Data analysis software", "Tools and software", "Software and packages", "IV. Software",
+    "Appendix B: Software", "3.2 Software used (R 4.4.1)", "Libraries", "Packages used",
+    "Software packages", "Software environment", "Software: R packages",
+    "Software and statistical analysis", "Software for statistical analysis",
+)  # fmt: skip
+#: Headings that open with one of those words, or end with one, and head something else.
+SOFTWARE_OTHER_HEADINGS = (
+    "Library preparation", "Package of care", "Software-based intervention",
+    "Library (preparation)", "Library (n = 96 samples)",
+)  # fmt: skip
+#: Base R and Python's standard library, which nobody chooses.
+_SOFTWARE_BASE = ("stats", "utils", "methods", "grid", "splines", "tools", "graphics")
+_SOFTWARE_STDLIB = ("csv", "json", "math", "statistics", "pathlib", "random")
+SOFTWARE_PATHS = {"r": "analysis/01_model.R", "python": "analysis/02_model.py",
+                  "rmd": "analysis/03_report.Rmd", "legacy": "analysis/04_legacy.py",
+                  "notebook": "figures/plot.ipynb"}  # fmt: skip
+
+
+def _assembled(pieces: list[tuple[str, str]], filler: str, gaps: list[int]
+               ) -> tuple[str, list[int | None]]:  # fmt: skip
+    """The pieces in order, each after its gap of filler lines, and the line each piece's
+    `{p}` stands on (None for a piece without one)."""
+    lines: list[str] = []
+    at: list[int | None] = []
+    for (template, name), gap in zip(pieces, gaps, strict=True):
+        lines += [filler] * gap
+        before = template.split("{p}")[0].count("\n") if "{p}" in template else None
+        at.append(None if before is None else len(lines) + before + 1)
+        lines += template.replace("{p}", name).split("\n")
+    return "\n".join(lines) + "\n", at
+
+
+@st.composite
+def software_plans(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
+    """A plan with a Software section, scripts in R, Python, R Markdown and a notebook, the
+    names the emitter recorded software under and the project's own modules; and what G12
+    says of them, for the plan and for the same plan without its Software section, as
+    `[code, severity, path, line, name, why]`, with the counts.
+
+    Every way of loading is in every example twice, once for a package the plan names and
+    once for one it does not, and so is every place a name is written and nothing loaded;
+    and once each: an item stood down under Deviations, one the Deviations name without
+    backticks, a package taken up later and said there, one the emitter recorded and no
+    script loads, one scripts import by another name than the item's first, one named by
+    `pkg::fn()`, one by a module of it, one with a point in its name, the languages, two
+    packages considered and not used (one loaded), one named only in another section, one in
+    the Software section's prose, one loaded twice, the chunks and the prose of an R Markdown
+    file, the code and the text of a notebook, base R, the standard library, the project's own
+    module and the emitters."""
+    prefix = draw(st.sampled_from(("qz", "vk", "pm")))
+    count = iter(range(26 * 26))
+
+    def name() -> str:
+        index = next(count)
+        return prefix + chr(ord("a") + index // 26) + chr(ord("a") + index % 26)
+
+    # Each piece of a script: its template, the name, and what the plan says of it: `named`,
+    # `not named`, `not used`, `deviated`; None where nothing is loaded or it is nobody's
+    # choice.
+    pieces: dict[str, list[tuple[str, str, str | None]]] = {"r": [], "python": []}
+    used: list[tuple[str, tuple[str, ...], bool]] = []  # item text, names, warned
+    unused: list[str] = []
+    deviations: list[str] = []
+    emitted: list[str] = []
+    own: list[str] = []
+
+    def item(names: tuple[str, ...], warned: bool = False, written: str | None = None) -> None:
+        words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+        used.append((f"- {written or f'`{names[0]}`'} 1.{len(used)}.0: {words}", names, warned))
+
+    for language, loads, decoys in (("r", SOFTWARE_R_LOADS, SOFTWARE_R_DECOYS),
+                                    ("python", SOFTWARE_PYTHON_LOADS, SOFTWARE_PYTHON_DECOYS)):
+        for template in loads:
+            planned, unplanned = name(), name()
+            item((planned,))
+            pieces[language] += [(template, planned, "named"), (template, unplanned, "not named")]
+        for template in decoys:
+            planned, unplanned = name(), name()
+            item((planned,), warned=True)
+            pieces[language] += [(template, planned, None), (template, unplanned, None)]
+    stood_down, plainly, later = name(), name(), name()
+    item((stood_down,))
+    item((plainly,), warned=True)
+    deviations += [f"`{stood_down}` was not used.", f"{plainly} was dropped.",
+                   f"`{later}` was taken up later."]  # fmt: skip
+    pieces["r"].append(("library({p})", later, "deviated"))
+    recorded = name()
+    item((recorded,))
+    emitted.append(recorded)
+    aliased = name()
+    item((f"{aliased}-kit", aliased), written=f"`{aliased}-kit`, imported as `{aliased}`")
+    pieces["python"].append(("import {p}", aliased, "named"))
+    spanned = name()
+    item((spanned,), written=f"`{spanned}::fit()`")
+    pieces["r"].append(("library({p})", spanned, "named"))
+    dotted = name() + ".xy"
+    item((dotted,))
+    pieces["r"].append(("x <- {p}::fit()", dotted, "named"))
+    module = name()
+    item((f"{module}.api",))
+    pieces["python"].append(("import {p}.api", module, "named"))
+    item(("R",), written="`R`")
+    item(("Python",), written="`Python`")
+    # A base package R attaches is loaded by any R script; named beside another package, it,
+    # the language and a module of the standard library stand nothing down (round 1 of #592).
+    item((draw(st.sampled_from(_SOFTWARE_BASE)),))
+    alone = name()
+    item((alone, "R", "importlib"), warned=True, written=f"`{alone}` under `R`, with `importlib`")
+    left, taken = name(), name()
+    unused += [left, taken]
+    pieces["r"].append(("library({p})", taken, "not used"))
+    elsewhere, in_prose, twice, variable, fitted = name(), name(), name(), name(), name()
+    pieces["r"] += [("library({p})", elsewhere, "not named"), ("{p}::fit()", twice, "not named"),
+                    ("library({p})", twice, "not named"), ("library({p})", fitted, "not named")]
+    elsewhere_headed = [(heading, name()) for heading in SOFTWARE_OTHER_HEADINGS]
+    software_headed = [(heading, name()) for heading in SOFTWARE_HEADINGS]
+    pieces["r"] += [("library({p})", other, "not named") for _heading, other in elsewhere_headed]
+    pieces["r"] += [("library({p})", other, "named") for _heading, other in software_headed]
+    pieces["python"].append(("from {p} import fit", in_prose, "not named"))
+    pieces["r"] += [("library({p})", draw(st.sampled_from(_SOFTWARE_BASE)), None),
+                    ("x <- {p}::median(x)", draw(st.sampled_from(_SOFTWARE_BASE)), None),
+                    ("em <- manuscriptguard::emitter()", "", None)]  # fmt: skip
+    mine = name()
+    own.append(mine)
+    pieces["python"] += [("import {p}", draw(st.sampled_from(_SOFTWARE_STDLIB)), None),
+                         ("from {p} import x", draw(st.sampled_from(_SOFTWARE_STDLIB)), None),
+                         ("import {p}", mine, None),
+                         ("from manuscript_guard.emit import Emitter", "", None)]  # fmt: skip
+
+    loads: list[tuple[str, str, str, int | None, str]] = []  # language, name, path, line, said
+    scripts: dict[str, str] = {}
+    for language, filler, head in (("r", "x <- 1", 0), ("python", "x = 1", 1)):
+        order = draw(st.permutations(pieces[language]))
+        gaps = draw(st.lists(st.integers(0, 2), min_size=len(order), max_size=len(order)))
+        text, lines = _assembled(
+            [("import importlib", "")] * head
+            + [(template, written) for template, written, _said in order],
+            filler, [0] * head + gaps)  # fmt: skip
+        scripts[SOFTWARE_PATHS[language]] = text
+        for (_template, written, said), line in zip(order, lines[head:], strict=True):
+            if said is not None:
+                loaded = written.split(".")[0] if language == "python" else written
+                loads.append((language, loaded, SOFTWARE_PATHS[language], line, said))
+    # An R Markdown file: its R and Python chunks are read; its prose and a block it only
+    # shows are not.
+    chunk, python_chunk, shown, prose = name(), name(), name(), name()
+    blocks = draw(st.permutations((
+        ("```{r setup, include=FALSE}\nlibrary({p})\n```", chunk, "r"),
+        ("```r\nlibrary({p})\n```", shown, None),
+        ("```{python}\nimport {p}\n```", python_chunk, "python"),
+        ("The report calls library({p}) here.", prose, None),
+    )))  # fmt: skip
+    gaps = draw(st.lists(st.integers(1, 2), min_size=len(blocks), max_size=len(blocks)))
+    text, lines = _assembled(
+        [("---\ntitle: Report\n---", "")]
+        + [(template, written) for template, written, _language in blocks], "", [0] + gaps)
+    scripts[SOFTWARE_PATHS["rmd"]] = text
+    for (_template, written, language), line in zip(blocks, lines[1:], strict=True):
+        if language:
+            loads.append((language, written, SOFTWARE_PATHS["rmd"], line, "not named"))
+    # A notebook: its code cells are read, a magic line aside; its text cells are not, nor a
+    # docstring, which a cell read line by line would take for an import.
+    in_cell, in_text, in_docstring = name(), name(), name()
+    scripts[SOFTWARE_PATHS["notebook"]] = json.dumps({
+        "cells": [{"cell_type": "markdown", "source": [f"import {in_text}\n"]},
+                  {"cell_type": "code", "source": ["%matplotlib inline\n", f"import {in_cell}\n",
+                                                   '"""\n', f"import {in_docstring}\n", '"""\n']}],
+        "metadata": {"kernelspec": {"language": "python"}},
+    }, indent=1)  # fmt: skip
+    loads.append(("python", in_cell, SOFTWARE_PATHS["notebook"], None, "not named"))
+    # A Python file no Python parses is read line by line, a list of modules whole.
+    listed = [name(), name(), name(), name(), name()]
+    scripts[SOFTWARE_PATHS["legacy"]] = (f"print 'x'\nimport os, {listed[0]}, {listed[1]} as b\n"
+                                         f"x = 1\nfrom {listed[2]}.sub import fit\n"
+                                         f"import {listed[3]}, \\\n    {listed[4]}\n")  # fmt: skip
+    loads += [("python", listed[0], SOFTWARE_PATHS["legacy"], 2, "not named"),
+              ("python", listed[1], SOFTWARE_PATHS["legacy"], 2, "not named"),
+              ("python", listed[2], SOFTWARE_PATHS["legacy"], 4, "not named"),
+              ("python", listed[3], SOFTWARE_PATHS["legacy"], 5, "not named"),
+              ("python", listed[4], SOFTWARE_PATHS["legacy"], 5, "not named")]  # fmt: skip
+
+    order = draw(st.permutations(used))
+    # A heading that only mentions software, or opens with a word of it and goes on to
+    # something else, heads no Software section: its items are not read (#592).
+    plan = ["# Analysis plan", "", "## Research question", "", "Whether words were said.", "",
+            "## Analysis", "", "The model.", "", f"- `{elsewhere}` fits the model", "",
+            "## Statistical analysis and software", "", f"- `{variable}`: entered as a factor",
+            f"- `{fitted}` fits the model", ""]  # fmt: skip
+    for heading, other in elsewhere_headed:
+        plan += [f"## {heading}", "", f"- `{other}` {draw(st.sampled_from(FILLER))}", ""]
+    software = [f"## {draw(st.sampled_from(SOFTWARE_HEADINGS))}", "",
+                f"The software, with `{in_prose}` named in a sentence.", ""]  # fmt: skip
+    warned = []
+    for written, names, warns in order:
+        if warns:
+            warned.append((len(plan) + len(software) + 1, names[0]))
+        software.append(written)
+    software += ["", "### Considered and not used", ""] + [f"- `{n}`: not taken" for n in unused]
+    # Every way of heading the section, each over a package a script loads.
+    for heading, other in software_headed:
+        software += ["", f"## {heading}", "", f"- `{other}` {draw(st.sampled_from(FILLER))}"]
+    tail = ["", "## Deviations from the plan", ""] + [
+        f"{number}. {said}" for number, said in enumerate(deviations, 1)]  # fmt: skip
+    first: dict[tuple[str, str], tuple[str, int | None, str]] = {}
+    for language, loaded, path, line, said in sorted(
+            loads, key=lambda one: (one[2], one[3] or 0)):  # fmt: skip
+        first.setdefault((language, loaded), (path, line, said))
+    stage = draw(st.sampled_from(("design", "analysis", "drafting", "submission")))
+    found_plan = [["planned-package-unloaded", "warn", "design/plan.md", line, shown_name, None]
+                  for line, shown_name in warned] if stage != "design" else []  # fmt: skip
+    found_plan += [["plan-package-unnamed", "info", path, line, loaded, said]
+                   for (_language, loaded), (path, line, said) in first.items()
+                   if said in ("not named", "not used")]  # fmt: skip
+    found_bare = [["plan-package-unnamed", "info", path, line, loaded, "none"]
+                  for (_language, loaded), (path, line, said) in first.items()
+                  if said != "deviated"]  # fmt: skip
+    given = {"plan": "\n".join(plan + software + tail) + "\n",
+             "bare": "\n".join(plan + tail) + "\n", "scripts": scripts, "emitted": emitted,
+             "own": own, "stage": stage}  # fmt: skip
+    found = {"plan": sorted(found_plan, key=json.dumps),
+             "bare": sorted(found_bare, key=json.dumps),
+             "planned": len(used) + len(software_headed), "loaded": len(first)}  # fmt: skip
+    return given, found
+
+
 # --------------------------------------- titles standing alone, placed, and titles in bold
 
 #: Papers whose titles stand alone, a PDF's lines or a Word paper's titles in bold, each a
@@ -12009,4 +12282,5 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
             *({**files[0], "text": text} for text, _said in set_hazards(files[0]["text"]).values()),
         ])
     ),  # fmt: skip
+    "software": software_plans().map(lambda drawn: drawn[0]),
 }

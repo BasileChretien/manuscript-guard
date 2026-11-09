@@ -69,6 +69,7 @@ from generated import (
     RESIDUE,
     RESIDUE_LOOKALIKES,
     SHORT_QUOTATION,
+    SIGNS_TYPED,
     SOURCE_GAPS,
     SOURCE_WORDS,
     STRETCHES,
@@ -76,11 +77,13 @@ from generated import (
     TERMS,
     TYPOGRAPHY,
     UNCLAIMED,
+    UNITS_TYPED,
     WORD_EDITS,
     WRITTEN_WORDS,
     abstract_papers,
     abstract_trees,
     alt_texts,
+    beside_edited,
     bindings,
     bold_planted,
     built_briefs,
@@ -175,6 +178,7 @@ from generated import (
     sources,
     suggestion_paragraphs,
     supplements,
+    tag_paragraphs,
     text_languages,
     texts,
     title_pairs,
@@ -10411,6 +10415,123 @@ def _an_edit_where_a_span_closes_is_written_inside_it(patch: pytest.MonkeyPatch)
 
     real = rewording._widened
     patch.setattr(rewording, "_widened", lambda edit, marks, sources: real(edit, (), sources))
+
+
+@holds(40, suggestion_paragraphs())
+def test_a_sign_or_unit_typed_beside_a_value_is_refused_and_beside_a_citation_is_not(
+    paragraph: dict[str, Any],
+) -> None:
+    """`import` refuses a rewording that sets a sign or a comparison before a value, a space
+    between, or a unit or a percent sign after it (`roundtrip._beside_values`): each says
+    something else of the value, and `check` sees the binding intact. Every kind of each
+    (`SIGNS_TYPED`, `UNITS_TYPED`) is typed beside every value and every citation of the
+    paragraph, in every kind of stretch. Beside a value the merge is refused, naming it,
+    unless the sign is a dash after a number, which makes a range; beside a citation it is
+    refused for nothing of the kind."""
+    from manuscript_guard.roundtrip import _tokens, align
+
+    source, printed, _words, tokens, _renderings = laid_out(paragraph)
+    protected = [token.text for token in _tokens(source)]
+    for index, token in enumerate(tokens):
+        value = protected[index].startswith("{{")
+        for before, kinds in ((True, SIGNS_TYPED), (False, UNITS_TYPED)):
+            for put in kinds:
+                returned = beside_edited(printed, token, put, before)
+                aligned = align(source, printed, returned, tokens)
+                named = [entry[2] for entry in aligned.beside]
+                ranged = (
+                    before
+                    and put.strip() in ("–", "-")
+                    and printed[: token[0]].rstrip()[-1:].isdigit()
+                )
+                if not value or ranged:
+                    assert not named, (put, returned, source)
+                    continue
+                assert aligned.rebuilt is None, (put, returned, source)
+                assert named == [protected[index]], (put, returned, source)
+
+
+def _a_sign_or_unit_beside_a_value_is_merged(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import roundtrip
+
+    patch.setattr(roundtrip, "_beside_values", lambda *given, **named: ())
+
+
+def _every_dash_before_a_value_is_a_range(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import roundtrip
+
+    patch.setattr(roundtrip, "_a_range", lambda after, sign: after[sign] in ("–", "-"))
+
+
+def _pandoc_prints(paragraphs: list[str]) -> list[str]:
+    """What pandoc prints of each paragraph, each opened with an identifier as the build
+    opens it, with each run of spaces one space, and raw HTML, which it does not print,
+    left out."""
+    pandoc = shutil.which("pandoc")
+    if pandoc is None:
+        pytest.skip("pandoc is not installed, and what it prints is the question")
+    markdown = "\n\n".join(f"[]{{#mg-p-x-{n}}}{text}" for n, text in enumerate(paragraphs))
+    read = subprocess.run(
+        [pandoc, "-f", "markdown", "-t", "json"],
+        input=markdown.encode("utf-8"), capture_output=True, check=True, timeout=120,
+    )  # fmt: skip
+
+    def said(inline: dict) -> str:
+        kind = inline["t"]
+        return inline["c"] if kind == "Str" else " " if kind in ("Space", "SoftBreak") else ""
+
+    blocks = [b for b in json.loads(read.stdout)["blocks"] if b["t"] == "Para"]
+    return [" ".join("".join(said(inline) for inline in b["c"]).split()) for b in blocks]
+
+
+@holds(15, tag_paragraphs())
+def test_an_edit_between_a_kept_angle_and_its_partner_prints_every_word_or_is_refused(
+    cases: list[dict[str, Any]],
+) -> None:
+    """`import` merges a rewording that takes out what kept a `<` and a `>` of the source
+    from being a tag to pandoc only where pandoc, given the merge and its values, prints
+    what Word showed; otherwise it refuses it as a tag (`roundtrip._tag_made`). Every value
+    of `TAG_VALUES` stands first and second, beside every breaker of `TAG_BREAKERS`, in
+    each example. Each refused one is merged as it was before the refusal, and pandoc then
+    prints otherwise than Word showed: nothing is refused that would have printed."""
+    from unittest import mock
+
+    from manuscript_guard import roundtrip
+    from manuscript_guard.text.placeholders import substitute
+
+    merged, would = [], []
+    for case in cases:
+        tokens = [tuple(token) for token in case["tokens"]]
+        aligned = roundtrip.align(case["source"], case["printed"], case["returned"], tokens)
+        if aligned.rebuilt is not None:
+            merged.append((case, substitute(aligned.rebuilt, case["values"])))
+            continue
+        assert aligned.tag, (case, aligned)
+        with mock.patch.object(roundtrip, "_tag_made", lambda *given, **named: ""):
+            before = roundtrip.align(case["source"], case["printed"], case["returned"], tokens)
+        assert before.rebuilt is not None, (case, before)
+        would.append((case, substitute(before.rebuilt, case["values"])))
+    printed = _pandoc_prints([text for _case, text in merged + would])
+    assert len(printed) == len(merged) + len(would), printed
+    for (case, text), shown in zip(merged, printed, strict=False):
+        assert shown == " ".join(case["returned"].split()), (text, shown)
+    for (case, text), shown in zip(would, printed[len(merged) :], strict=True):
+        assert shown != " ".join(case["returned"].split()), (text, shown)
+
+
+def _a_tag_made_of_the_source_s_angles_is_merged(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import roundtrip
+
+    patch.setattr(roundtrip, "_tag_made", lambda *given, **named: "")
+
+
+def _a_value_is_read_as_digits_for_its_tags(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import roundtrip
+
+    real = roundtrip._valued
+    patch.setattr(
+        roundtrip, "_valued", lambda text, renderings: real(text, ["0" for _ in renderings])
+    )
 
 
 # ------------------------------------------------------- a comment on a sentence, in Word
@@ -20914,6 +21035,22 @@ BROKEN = {
     "an edit where a span closes is written inside it": (
         _an_edit_where_a_span_closes_is_written_inside_it,
         test_a_word_edited_in_word_is_written_where_it_stands_and_nothing_else_changes,
+    ),
+    "a sign or unit set beside a value merges": (
+        _a_sign_or_unit_beside_a_value_is_merged,
+        test_a_sign_or_unit_typed_beside_a_value_is_refused_and_beside_a_citation_is_not,
+    ),
+    "every dash before a value is a range": (
+        _every_dash_before_a_value_is_a_range,
+        test_a_sign_or_unit_typed_beside_a_value_is_refused_and_beside_a_citation_is_not,
+    ),
+    "a tag made of the source's angles merges": (
+        _a_tag_made_of_the_source_s_angles_is_merged,
+        test_an_edit_between_a_kept_angle_and_its_partner_prints_every_word_or_is_refused,
+    ),
+    "a value is read as digits for its tags": (
+        _a_value_is_read_as_digits_for_its_tags,
+        test_an_edit_between_a_kept_angle_and_its_partner_prints_every_word_or_is_refused,
     ),
     "a comment is put on the first of two places its sentence is": (
         _a_comment_is_put_on_the_first_of_two_places,

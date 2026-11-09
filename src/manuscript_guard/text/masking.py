@@ -765,13 +765,19 @@ def _kept(pattern: re.Pattern[str], text: str, working: str, start: int,
     `working`. One that is not uses up nothing: a `](` in a comment ran to the `)` of the link
     after it, and that link's target was never looked for (round 2 of #589)."""
     found: list[re.Match[str]] = []
-    while (match := pattern.search(text, start, end)) is not None:
-        if NUL in working[match.start() : match.start() + 2]:
-            start = match.start() + 1
-        else:
+    # Tried at each `](` left, a masked one costing nothing: a search from each was
+    # quadratic in a run of them (round 3 of #589).
+    for opener in _LINK_OPENER.finditer(text, start, end):
+        at = opener.start()
+        if at < start or NUL in working[at : at + 2]:
+            continue
+        if (match := pattern.match(text, at, end)) is not None:
             found.append(match)
-            start = max(match.end(), match.start() + 1)
+            start = match.end()
     return found
+
+
+_LINK_OPENER = re.compile(r"\]\(")
 
 
 def _blank(chars: list[str], start: int, end: int, *, breaks: bool = True) -> None:

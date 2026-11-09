@@ -49,6 +49,41 @@ p < 0.05 is stated for convention; the interval, not the threshold, carries the 
 
 Seriousness (`serious`) is reported as a proportion of the cases, descriptively.
 
+## Known answers
+
+Three controls, each put through the same 2 x 2 table and Wald interval as the ratio, by the
+same script. They were added after the first results (Deviations, item 8).
+
+- A simulated control: reports drawn as the database's are, with hepatic injury planted for
+  example-drug at twice the odds of the other drugs. Its interval should hold the ratio
+  planted and leave out one, the null.
+- A positive control: the third comparator and hepatic injury. The generator gives that drug
+  the least hepatic injury of the four, and the others more, example-drug most, so its rates
+  give a ratio of about 0.52. Its interval should hold that ratio and leave out the null.
+- A negative control: the first comparator and nausea, for which the generator's rates give
+  a ratio close to one. Its interval should hold the null.
+
+```yaml
+controls:
+  - key: control.simulated
+    kind: simulated
+    of: ror.*
+    expected: 2
+    rule: holds-expected
+    null: 1
+  - key: control.positive
+    kind: positive
+    of: ror.*
+    expected: 0.52
+    rule: holds-expected
+    null: 1
+  - key: control.negative
+    kind: negative
+    of: ror.*
+    expected: 1
+    rule: holds-null
+```
+
 ## Planned results
 
 The results the paper will report, each by the key the analysis emits it under:
@@ -81,7 +116,7 @@ that would not be a different study.
 
 ## Deviations from the plan
 
-Seven. The first two came after the first review round, both additive rather than a change
+Eight. The first two came after the first review round, both additive rather than a change
 of approach:
 
 1. The 2 x 2 counts were added to the Results as a table. The plan implied them; the first
@@ -111,3 +146,12 @@ deviation nobody wrote down is indistinguishable from having tried several thing
 7. The Software section was added (2026-11-09), naming the packages the analysis had
    loaded from the start, so that G12 can hold the plan to the scripts: a record, not a
    change of the analysis.
+8. Three controls were added on 2026-11-09, after the first results were known:
+   control.simulated, control.positive and control.negative (Known answers). The negative
+   control was chosen by the generator's order, the first event it lists after hepatic
+   injury and its first comparator, and its rule written before it was run. The positive
+   control was first example-drug and nausea, within 0.25 of 0.82; review round 12 found
+   that its interval held the null, so it would have passed an analysis that finds nothing,
+   and it was replaced the same day by the third comparator and hepatic injury, the pair
+   whose ratio the generator's rates put furthest from one, the study's own pair aside. Its
+   estimate had been seen by then. None of the planned results moved.

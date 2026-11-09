@@ -914,6 +914,7 @@ NAMED_NOWHERE = {
     "provider/model": "not a path: how a model is named in paper.yaml",
     "checks/items.json": "written by `checker build`",
     "design/vault.yaml": "written by `vault init`",
+    "design/first_reads.yaml": "written by the emitters once the plan holds held-out data",
     ".manuscript-guard/vault/last-run.json": "written by `vault run`",
     "data/synthetic/": "where the synthetic copy of a vault's file is put, by the author or "
     "`vault synthesize`",

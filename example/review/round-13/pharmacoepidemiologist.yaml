@@ -1,0 +1,27 @@
+# Findings go below, each with an id, a severity and the finding itself. An empty
+# list is a reviewer who found nothing, which is a claim in its own right.
+schema: manuscript-guard/review/1
+round: 13
+reviewer: pharmacoepidemiologist
+reviewed_by: Claude Code
+reviewed_on: '2026-11-09'
+manuscript_sha256: ed3a0dc0a46f3e8cd39b1469c921b0b280242fb5e30a552d108d694458d71adc
+file_sha256:
+  main.md: c8def5700f6929d8a672a2c2aed1b94a17b99d5af26cd88e1587698531ef933f
+  supplementary/S1_code_lists.md: 8c462c203bf3c08ac5ced6eaf25d38b56f2239502952f8d8e6b3d23cbb05b9b3
+verdict: pass
+summary: The positive control now takes the third comparator and hepatic injury, whose ratio
+  the generator's rates put well below one, and its interval leaves the null out, as the simulated
+  control's does; an analysis that found nothing would fail both. The Results report each
+  with its interval, and the plan says the positive control was replaced after round 12, its
+  estimate seen by then. Round 12's comment on the positive control is answered; its comment
+  on controls chosen after the first results still stands.
+findings:
+- id: r13-pe-01
+  severity: comment
+  where: Methods, the controls
+  finding: The positive control's pair was chosen after its estimate had been seen, which the
+    plan says. The rule it was chosen by, the ratio the generator's rates put furthest from
+    one but the study's own, reads no estimate, but it too was settled with the estimates in
+    view; in a real study the rule of choice would be written before the data were read.
+reading_sha256: 5640cf50ee26ff42d015aba6f8ad392cb9fa554d55ea24c046075acafa262890

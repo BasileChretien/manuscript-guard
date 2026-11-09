@@ -8460,9 +8460,8 @@ def _declared_said(root: Path, stage: str) -> list[tuple[str, str, int | None]]:
 def test_a_control_the_plan_declares_in_a_form_it_does_not_read_is_said(project: Path) -> None:
     """Items 5 and 11: a control whose rule is none of the three is checked by nothing, so
     the plan is told so at the entry's line, a warning, and a failure at submission."""
-    _plan_edited(project, "## Planned results",
-                 "## Control analyses\n\n" + _CONTROLS.format(rule="close-enough")
-                 + "\n## Planned results")  # fmt: skip
+    # In the example's own block: a second one would be refused whole, at its first line.
+    _declare_controls(project, _CONTROLS.format(rule="close-enough"), frozen=False)
     lines = (project / "design" / "plan.md").read_text(encoding="utf-8").splitlines()
     entry = lines.index("  - key: control.headache") + 1
     assert _declared_said(project, "drafting") == [("plan-declarations-unreadable", "warn",
@@ -8479,17 +8478,22 @@ def test_a_declaration_put_under_the_deviations_is_no_deviation(project: Path) -
     said passed; and it named there every key it declared."""
     from manuscript_guard.gates.design import deviations_said
 
-    block = _CONTROLS.format(rule="holds-null")
+    # Held-out data, which the example does not declare: a second controls block would be
+    # unreadable beside the example's own.
+    block = ("```yaml\nheld_out:\n  - input: data/validation.csv\n"
+             "    validated_by: analysis/03_validate.py\n```\n")  # fmt: skip
     _plan_edited(project, "## Deviations from the plan", f"## Deviations from the plan\n\n{block}")
     assert _plan_said(project) == [("plan-changed-after-results", "warn")]
     plan = (project / "design" / "plan.md").read_text(encoding="utf-8")
-    assert "control.headache" not in deviations_said(plan)
+    assert "data/validation.csv" not in deviations_said(plan)
 
 
 def _declare_controls(root: Path, block: str, *, frozen: bool = True) -> None:
-    """The control block in the plan, and, with `frozen`, in the plan's frozen copy as well,
-    as though it had been declared before the first results."""
-    _plan_edited(root, "## Planned results", f"## Control analyses\n\n{block}\n## Planned results")
+    """The control block's entries in the plan, first in the example's own block, and, with
+    `frozen`, in the plan's frozen copy as well, as though declared before the first
+    results."""
+    entries = block.split("controls:\n", 1)[1].rsplit("```", 1)[0]
+    _plan_edited(root, "\ncontrols:\n", "\ncontrols:\n" + entries)
     if frozen:
         copy = root / "design" / "plan.frozen.yaml"
         record = json.loads(copy.read_text(encoding="utf-8"))
@@ -8519,12 +8523,28 @@ def _emit_control(root: Path, key: str, point: float, low: float, high: float, *
     write_digest(target)
 
 
-def _controls_said(root: Path, stage: str = "drafting") -> list[tuple[str, str]]:
+def _controls_said(root: Path, stage: str = "drafting",
+                   key: str = "control.headache") -> list[tuple[str, str]]:  # fmt: skip
+    """What G12 says of the one control a case adds; the example's own three are another
+    test's (`test_the_example_s_controls_pass_and_are_reported`)."""
     from manuscript_guard.gates.controls import check_controls
 
     loaded, _ = load_project(root)
     _namespace, results, _literature, _ = load_namespace(loaded)
-    return [(f.code, f.severity) for f in check_controls(loaded, results, stage).findings]
+    return [(f.code, f.severity) for f in check_controls(loaded, results, stage).findings
+            if re.search(rf"\b{re.escape(key)}\b", f.message)]  # fmt: skip
+
+
+def test_the_example_s_controls_pass_and_are_reported(project: Path) -> None:
+    """Item 5: the example carries one control of each kind, declared under its Deviations
+    after the first results; each passes its rule, and the Results bind it."""
+    from manuscript_guard.gates.controls import check_controls
+
+    loaded, _ = load_project(project)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    report = check_controls(loaded, results, "submission")
+    assert not report.findings, report.render(project)
+    assert report.counts["controls_passed"] == 3
 
 
 _NEGATIVE = _CONTROLS.format(rule="holds-null")
@@ -8610,7 +8630,6 @@ def test_a_control_changed_or_dropped_since_the_first_results_is_said(project: P
     _emit_control(project, "control.headache", 1.6, 1.2, 2.1)
     _add_to_results(project, _REPORTED)
     assert _controls_said(project) == [("control-changed", "warn")]
-    _plan_edited(project, "## Control analyses", "## Elsewhere")
     _plan_edited(project, "controls:", "dropped:")
     assert ("control-changed", "warn") in _controls_said(project)
 

@@ -37,7 +37,12 @@ given without `--lookup`. With
 `--json` it then prints `{"ok": false, "error": ...}`, with the reason, as well as saying it
 on stderr.
 
-The report comes in sections, after what was read and what was not:
+After what was read and what was not, the report says what each check found, a line each
+("What was checked"), and then gives the sections that have something to show: a check
+that found nothing is that line alone. The findings on the words are grouped by kind, each
+kind with its count, its first eight places and its hint said once. `--details` prints every
+section in full and every finding with its place, its context and its hint, as one list;
+`--json` holds all of it either way. The sections:
 
 | Section | What it holds | Counted by `--strict` |
 |---|---|---|

@@ -1549,9 +1549,13 @@ def measure_discrimination(values: set[str]) -> Discrimination:
 
 
 def render(
-    report: AuditReport, discrimination: Discrimination | None, root: Path | None = None
+    report: AuditReport,
+    discrimination: Discrimination | None,
+    root: Path | None = None,
+    *,
+    details: bool = False,
 ) -> str:
-    """The report in its sections (`auditing.report`)."""
+    """The report in its sections (`auditing.report`), every one in full with `details`."""
     from manuscript_guard.auditing.report import render as sections
 
-    return sections(report, discrimination, root)
+    return sections(report, discrimination, root, details=details)

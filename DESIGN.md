@@ -25069,6 +25069,18 @@ Closed since, and why each mattered (an open gap goes above this line):
   `\i` and `\j` among them; see "G7 reads a .bib's TeX with the braces gone" above for the
   `{\i}` no accent is on.
 
+- **The audit's report was read by no one (2026-11-09).** Basile, after auditing a paper of
+  his through the web page: "no one will read the current output". Its sections that found
+  nothing came first, a section each, and its 103 findings on the words took three lines
+  each, one hint repeated under 90 abbreviations. The report says now what each check found,
+  a line each, before the sections (`auditing.summary.checks`); a check that found nothing is
+  that line alone; and the findings on the words are grouped by kind, each with its count,
+  its first eight places and its hint once, or a hint at each place where they differ, as
+  G6's rates do (`auditing.summary.grouped`). What `--strict` counts is never folded away:
+  a number in no output, a total off its counts, an interval that differs from its
+  counterpart are listed in their sections. `--details`, and a box on the page, give every
+  section and every place in full; `--json` is unchanged.
+
 - **A plugin left releases behind the tool was said nothing of.** A copy of the plugin
   installed once stayed at a release a month old while the tool was upgraded with pip, and
   its skills lacked `next` and the `guide` skill that the tool and the AGENTS.md `init`

@@ -561,6 +561,44 @@ def _rendered(found, root: Path | None, show: _Show) -> str:
     return "\n".join(lines)
 
 
+def _anything_in_arithmetic(report) -> bool:
+    """Whether the Arithmetic section says more than that nothing disagrees."""
+    return bool(report.sums_off or report.over_n or report.disagreements or report.whole_numbers
+                or report.flows_read or report.flow_notes)  # fmt: skip
+
+
+def _anything_in_references(report) -> bool:
+    """Whether the References section says more than the summary's line: an entry's
+    problem, an identifier not sent, a note, entries not told apart, or what the registries
+    said."""
+    from manuscript_guard.auditing.references import UNTOLD
+
+    return report.lookups is not None or any(
+        census.note or census.problems or census.unsent or census.style == UNTOLD
+        for census in report.references)  # fmt: skip
+
+
+def _grouped_gates(report, show: _Show) -> list[str]:
+    """G6 and G14 on each paper, their findings grouped by kind (`auditing.summary`)."""
+    from manuscript_guard.auditing.summary import grouped, kinds_of
+
+    lines: list[str] = []
+    for run in report.gates:
+        if run.note:
+            lines.append(f"  {run.note}")
+            continue
+        found = [*run.writing, *run.language]
+        if not found:
+            continue
+        converted = ("; lines are those of the text pandoc converts it to, as `init --from` "
+                     "writes it" if run.converted else "")  # fmt: skip
+        lines.append(f"  {show(run.paper)}: {len(found)} finding{'s' if len(found) != 1 else ''}"
+                     f" in {len(kinds_of(found))} kind{'s' if len(kinds_of(found)) != 1 else ''}"
+                     f"{converted}")  # fmt: skip
+        lines += grouped(found, show.at)
+    return lines
+
+
 def _ranges(numbers: list[int]) -> str:
     """"3-25, 29": sorted line numbers, with any no more than two apart shown as a range,
     since reference entries are usually separated by blank lines."""
@@ -573,7 +611,12 @@ def _ranges(numbers: list[int]) -> str:
     return ", ".join(f"{r[0]}-{r[-1]}" if len(r) > 1 else str(r[0]) for r in runs)
 
 
-def render(report, discrimination, root: Path | None = None) -> str:
+def render(report, discrimination, root: Path | None = None, *, details: bool = False) -> str:
+    """The report as text: what was read, what each check found in a line, then the
+    sections that have something to show, the findings on the words grouped by kind. With
+    `details`, every section in full, every finding with its place, context and advice."""
+    from manuscript_guard.auditing.summary import checks
+
     show = _shown(root, report.pdfs)
     lines = _header(report)
     for heading, said in (
@@ -584,15 +627,19 @@ def render(report, discrimination, root: Path | None = None) -> str:
     ):
         if said:
             lines += ["", heading, *(f"  {item}" for item in said)]
-    lines += ["", f"=== {MEMBERSHIP} ===", *_membership(report, discrimination, show)]
-    lines += ["", f"=== {ARITHMETIC} ===", *_arithmetic(report, show)]
-    if report.abstract is not None:
+    lines += ["", "What was checked:", *checks(report)]
+    if details or report.compared:
+        lines += ["", f"=== {MEMBERSHIP} ===", *_membership(report, discrimination, show)]
+    if details or _anything_in_arithmetic(report):
+        lines += ["", f"=== {ARITHMETIC} ===", *_arithmetic(report, show)]
+    if report.abstract is not None and (details or report.abstract.compared):
         lines += ["", f"=== {ABSTRACT} ===", *_abstract(report.abstract, show)]
-    lines += ["", f"=== {SMALL_CELLS} ===", *_small_cells(report, show)]
-    if report.gates:
-        lines += ["", f"=== {WRITING} and {LANGUAGE} (not counted by --strict) ===",
-                  *_gates(report, root, show)]  # fmt: skip
-    if report.references:
+    if details or report.recovered or report.recovered_by_n:
+        lines += ["", f"=== {SMALL_CELLS} ===", *_small_cells(report, show)]
+    words = _gates(report, root, show) if details else _grouped_gates(report, show)
+    if report.gates and words:
+        lines += ["", f"=== {WRITING} and {LANGUAGE} (not counted by --strict) ===", *words]
+    if report.references and (details or _anything_in_references(report)):
         lines += ["", f"=== {REFERENCES} (not counted by --strict) ===",
                   *_references(report, show)]  # fmt: skip
     if report.journal is not None:
@@ -613,6 +660,9 @@ def render(report, discrimination, root: Path | None = None) -> str:
 
         lines += ["", f"=== {PACKAGE} ===", *package(report.package, show)]
     lines.append("")
+    if not details:
+        lines += ["Every place of every finding, with its context and what to do: --details.",
+                  ""]  # fmt: skip
     if report.compared:
         lines.append(
             "This audit asks only whether a number appears somewhere in the outputs. It "

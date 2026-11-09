@@ -137,9 +137,12 @@ if they will audit again.
 
 ## 3. Read the report
 
-What was read and what was not comes first, then a section for each check: `Membership`,
-`Arithmetic`, `Abstract against Results`, `Small cells recoverable by subtraction`,
-`Writing (G6) and Language (G14)`, `References (G7)`. Membership lists the
+What was read and what was not comes first, then `What was checked`, a line for each check,
+then a section for each check with something to show: `Membership`, `Arithmetic`,
+`Abstract against Results`, `Small cells recoverable by subtraction`, `Writing (G6) and
+Language (G14)`, `References (G7)`. The findings on the words are grouped by kind, with
+their first places and each kind's hint once; `--details` gives every section and every
+place in full, and `--json` everything for a script. Membership lists the
 unmatched numbers by file, up to 40 per file and then only a count, followed
 by `What a match is worth here`: the
 share of integers 1–100, of integers 1–1000, and of two-decimal values that would match by

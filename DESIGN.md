@@ -8683,10 +8683,11 @@ Markdown in every project, a LaTeX one included.
 The blocks this reads declare; they say nothing of a deviation. So the Deviations are read
 without them, by `_named` and by `deviations_said`: each `yaml` block that holds `controls`
 or `held_out`, and each that is not YAML and has a line opening, after any indentation, with
-either key, bare or quoted, and a colon, is left out. A block put under the Deviations heading
-names none of its own keys there, and does not count as a change to the Deviations for
-`plan-changed-after-results`. Without this, a block under the Deviations would stand down
-every finding below that the Deviations can stand down, for every key it declares.
+either key, bare or quoted, and a colon, spaces allowed before it, is left out. A block put
+under the Deviations heading names none of its own keys there, and does not count as a change
+to the Deviations for `plan-changed-after-results`. Without this, a block under the
+Deviations would stand down every finding below that the Deviations can stand down, for every
+key it declares.
 
 ### The emitters
 
@@ -8709,13 +8710,18 @@ make every result of that script read as synthetic.
 
 **The record of first reads** (Basile, 2026-11-09). A fragment is written again on every run,
 so it says what a script read last, never what it read first. Once the plan holds a line
-that opens, after any indentation, with `held_out`, bare or quoted, and a colon, which both
-emitters find in the text without reading the block, every write adds to
+that opens, after any indentation, with `held_out`, bare or quoted, and a colon, spaces
+allowed before it, which both emitters find in the text without reading the block, every
+write adds to
 `design/first_reads.yaml` each input the script declares that the record does not yet list
 for that script: the script, the input, the time, the digests of every input of that run,
-and the digest of the plan as it then stood. The record keeps the text of each version of
+and the digest of the plan as it then stood. An input declared synthetic in the run is not
+entered, so that a dry run on a synthetic copy at the held-out path is no first read of the
+held-out data, nor its model the one validated. The record keeps the text of each version of
 the plan once, under its digest, the first time an entry names it, so that G1 can read the
-`held_out` block an entry was written under. An entry is never rewritten, the record is JSON
+`held_out` block an entry was written under: its entry for the held-out input, by that
+input's path. A version whose block does not read, or holds no entry for that path, tells
+nothing of the script's leave to read it. An entry is never rewritten, the record is JSON
 as the frozen plan is, which both emitters write without a YAML package, and the write hook
 refuses an agent's edit of it as it refuses one of the frozen plan. It is committed beside
 the plan, as the frozen copy is. `harvest`, which keeps the frozen plan for a fragment it
@@ -8740,16 +8746,17 @@ bound passes. Nothing is asked at the design stage, before there are results.
 | `control-other-script` | emitted by a script that emitted no result `of` names (for a group, no value, table or model under it), or no script emitted one (D5.4) | a warning, a failure at submission |
 | `control-unreported` | from the drafting stage, neither the main text nor the supplement binds a value of the control, in a Markdown or a LaTeX manuscript (Basile, 2026-11-09: the Results count, not only the Methods) | a warning, a failure at submission |
 | `plan-declarations-unreadable` | an entry or a block as above | a warning, a failure at submission |
-| `held-out-read-elsewhere` (G1) | a script declares the held-out input, in its fragment now or in the record of first reads, or a file with its digest under another path, and the plan its first read of it was written under did not name it as the input's validator or in its `read_by` (where the record holds no first read for the script, the plan as it stands) | fails from the analysis stage (D11.2) |
+| `held-out-read-elsewhere` (G1) | a script declares the held-out input, in its fragment now or in the record of first reads, or a file with its digest under another path, and the plan its first read of it was written under did not name it as the input's validator or in its `read_by` | fails from the analysis stage (D11.2) |
 | `held-out-read-before-model` | the validation script's first read of the held-out input recorded the model with one digest, and the model it reads now has another: the model was written again after the held-out data were read | fails from the analysis stage (D11.2) |
-| `held-out-order-unknown` | the order cannot be told: no first read of the input is recorded for the validation script, or the model was not among the inputs of that read, or is not among its inputs now | a warning, a failure at submission; a note where `model` is left out |
+| `held-out-order-unknown` | the order cannot be told: no first read of the input is recorded for the validation script, or the model was not among the inputs of that read, or is not among its inputs now; or a script declares the input with no first read recorded, or one written under a version of the plan that tells nothing of it, so whether the plan let it read cannot be told | a warning, a failure at submission; a note where `model` is left out |
 | `held-out-unread` | no fragment of the validation script declares the input, and no first read is recorded | a warning, a failure at submission, unless the Deviations name the input |
 | `held-out-declared-late` | declared, and not in the frozen copy: reads before then were not recorded | a warning, a failure at submission, unless the Deviations name the input |
 | `held-out-changed` | in the frozen copy, and gone from the plan or declared there with another script, model or reader | a warning, a failure at submission, unless the Deviations name the input |
 | `first-reads-unreadable` | the record does not read as the emitters write it | a warning, a failure at submission |
 
 The Deviations name a key as `_named` reads a planned result's key there, and an input by its
-path as the plan writes it: where no word character, dot, slash or hyphen comes before it,
+path as the plan writes it, a leading `./` left off on both sides: where no word character,
+dot, slash or hyphen comes before it,
 and after it neither a word character, a slash nor a hyphen, nor a dot followed by a word
 character. That is `_named`'s rule with the slash added, so a path at the end of a sentence is
 named, and `data/validation.csv` is named neither by `data/validation.csv.gz` nor by
@@ -8757,8 +8764,8 @@ named, and `data/validation.csv` is named neither by `data/validation.csv.gz` no
 stays a warning at submission: the reader is to weigh it, and the warning says so. A leak has
 no such way out, since the validation's result is not what it would have been (D11.2): the
 author validates on data nobody has read, or takes the declaration out of the plan and says
-why under the Deviations, and the paper then cannot call the validation independent. G1 and
-G12 check the entries the plan holds now, so the second way ends the leak's failure, and
+why under the Deviations, and the paper then cannot call the validation independent. The two
+leak findings check the entries the plan holds now, so the second way ends the failure, and
 `held-out-changed` holds it to the Deviations, so that the declaration is not dropped with
 nothing said.
 
@@ -16277,19 +16284,22 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   declare, as G1 sees no undeclared input. A script named in `read_by` is taken at the
   author's word to build and tune no model; one that does reads the held-out data unseen.
 - **A script is a reader by the plan it first read the input under.** A validator renamed,
-  or a describing script added, is accepted where the plan names it before the new script
-  first runs; named after it has run, it is a leak, as a script that read the data and was
-  named to clear it is. Telling the two apart would need the scripts' code compared, which
-  nothing does. A held-out file moved to another path and declared again after the first
-  results is a late entry, and a script that read it under its old path is found by its
-  digest only where the bytes are the same.
+  or a describing script added, is accepted by G1 where the plan names it before the new
+  script first runs, and `held-out-changed` still asks the Deviations to name the input; named
+  after it has run, it is a leak, as a script that read the data and was named to clear it
+  is. Telling the two apart would need the scripts' code compared, which nothing does. A
+  held-out file moved to another path and declared again after the first results is a late
+  entry; a script that read it under its old path is found by its digest only where the bytes
+  are the same, and its leave to read is looked for under the new path, so the validator's
+  own reads under the old one tell nothing (`held-out-order-unknown`).
 - **The emitters find held-out data by a line, not by the block.** The record starts once a
   line of the plan opens, after any indentation, with `held_out`, bare or quoted, and a
-  colon, which both emitters can find without a YAML reader. A block commented out, a line of
-  prose or of another block that opens so starts a record for a plan that declares no
-  held-out data; the record is then a file nothing reads. A block that holds `held_out` in a
-  way no line opens with, inside a flow mapping (`{held_out: [...]}`) or as a complex key,
-  starts none, and G12 then says the order is unknown of each entry.
+  colon, spaces allowed before it, which both emitters can find without a YAML reader. A
+  block commented out, a line of prose or of another block that opens so starts a record for
+  a plan that declares no held-out data; the record is then a file nothing reads. A block
+  that holds `held_out` in a way no line opens with, inside a flow mapping
+  (`{held_out: [...]}`) or as a complex key, starts none, and G12 then says the order is
+  unknown of each entry.
 - **The record of first reads is the emitters' word on the machine that ran them.** It is
   complete only where it is committed and every run went through an emitter: a record lost,
   or a run on a machine whose record was never merged, leaves `held-out-order-unknown`, and a

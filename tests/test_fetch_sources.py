@@ -777,3 +777,274 @@ def test_a_doi_in_another_papers_references_is_not_the_works(cited: str) -> None
     text = ("Imaginary Drug Safety Reports\nhttps://doi.org/10.5555/fictional.2019.002\n"
             f"A signal\n\fReferences\n[3] Smith. https://doi.org/{cited}\n")
     assert matching.judged(b"%PDF-1.4\n", text, "10.5555/fictional.2020.123", None).by is None
+
+
+# --------------------------------------------------------------- what rounds 1 and 2 left
+
+
+def test_an_http_open_location_is_asked_over_https(paper: Path) -> None:
+    """OpenAlex gives Europe PMC's copies, and many repositories', as `http://`; they were
+    dropped, and the work said to have no open copy OpenAlex knows of."""
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI})
+    table = Table({
+        PLACES.openalex + DOI: openalex(pdf_url="http://europepmc.test/articles/PMC1/pdf"),
+        "https://europepmc.test/articles/PMC1/pdf": pdf_answer(THE_WORK),
+    })  # fmt: skip
+    (outcome,), wanted = sync(paper, table)
+    assert outcome.status == copies.COPIED and wanted == []
+    assert record(paper)["hepatic2021.pdf"]["url"] == "https://europepmc.test/articles/PMC1/pdf"
+    assert not any(url.startswith("http:") for url in table.asked)
+
+
+def test_an_http_open_location_that_fails_is_not_said_to_be_no_open_copy(paper: Path) -> None:
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI})
+    table = Table({PLACES.openalex + DOI: openalex(pdf_url="http://europepmc.test/x.pdf"),
+                   PLACES.crossref + DOI: crossref(None)})  # fmt: skip
+    _, (one,) = sync(paper, table)
+    assert not any("no open copy" in why for why in one.why), one.why
+    assert "europepmc.test answered HTTP 404" in one.why
+
+
+@pytest.mark.parametrize(("name", "asked"), [
+    ("hepatic2021.pdf", False), ("hepatic2021.html", False), ("hepatic2021.abstract.txt", True),
+])  # fmt: skip
+def test_a_full_text_the_author_saved_and_is_not_here_is_not_asked_of_the_web(
+    paper: Path, name: str, asked: bool
+) -> None:
+    """On a fresh clone the author's own copy is recorded and absent: it was fetched in full
+    and then refused, or filed beside theirs under another suffix. Their abstract alone is no
+    full text, and the web is still asked for one."""
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI})
+    project = load_project(paper)[0]
+    copies.write_record(project, {name: {"key": "hepatic2021", "sha256": "0" * 64, "bytes": 9,
+                                         "from": "author", "copied": "2026-11-05"}})  # fmt: skip
+    table = Table({
+        PLACES.openalex + DOI: openalex(pdf_url="https://repository.test/hepatic.pdf"),
+        "https://repository.test/hepatic.pdf": pdf_answer(THE_WORK),
+    })  # fmt: skip
+    outcomes, wanted = sync(paper, table)
+    assert bool(table.sent) is asked
+    assert (sources(paper) / "hepatic2021.pdf").exists() is asked
+    assert any(f"{name} was saved there by hand" in one.said for one in outcomes), outcomes
+    if not asked:
+        assert wanted == []
+
+
+def test_two_saved_pdfs_of_one_work_that_differ_are_both_left(paper, tmp_path) -> None:
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI})
+    downloads = tmp_path / "Downloads"
+    downloads.mkdir()
+    (downloads / "a.pdf").write_bytes(THE_WORK)
+    (downloads / "b.pdf").write_bytes(article("Hepatic injury in a fictional", "national cohort",
+                                              f"https://doi.org/{DOI}", "Accepted manuscript"))
+    outcomes, _ = inbox_sync(paper, downloads)
+    assert not (sources(paper) / "hepatic2021.pdf").exists()
+    assert any("2 PDFs of the folder show it (a.pdf, b.pdf) and differ" in one.said
+               for one in outcomes), outcomes  # fmt: skip
+    (downloads / "b.pdf").write_bytes(THE_WORK)
+    inbox_sync(paper, downloads)
+    assert (sources(paper) / "hepatic2021.pdf").read_bytes() == THE_WORK, "the same, twice"
+
+
+def test_a_saved_pdf_is_left_in_the_folder_and_filed_once(paper, tmp_path) -> None:
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI})
+    downloads = tmp_path / "Downloads"
+    downloads.mkdir()
+    saved = downloads / "jex.12345.pdf"
+    saved.write_bytes(THE_WORK)
+    (first,), _ = inbox_sync(paper, downloads)
+    assert first.status == copies.COPIED
+    assert saved.read_bytes() == THE_WORK and sorted(downloads.iterdir()) == [saved]
+    (again,), _ = inbox_sync(paper, downloads)
+    assert again.status == copies.UNCHANGED
+    assert record(paper)["hepatic2021.pdf"]["from"] == "inbox"
+
+
+def test_a_saved_file_over_the_size_kept_is_not_read(paper, tmp_path, monkeypatch) -> None:
+    """The work's own PDF, under a cap set below its size so that the suite writes no 64 MB."""
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI})
+    downloads = tmp_path / "Downloads"
+    downloads.mkdir()
+    (downloads / "big.pdf").write_bytes(THE_WORK)
+    monkeypatch.setattr(inbox, "MAX_BYTES", len(THE_WORK) - 1)
+    outcomes, offered = inbox_sync(paper, downloads)
+    assert not (sources(paper) / "hepatic2021.pdf").exists()
+    assert any("big.pdf is over" in line and "was not read" in line
+               for line in copies.report(outcomes, offered=offered))  # fmt: skip
+
+
+def test_the_inbox_without_the_web_ends_with_each_works_doi_link(
+    paper, tmp_path, monkeypatch, capsys
+) -> None:
+    """The command the literature-verify skill gives ended with Zotero's advice, and the links
+    its last step tells the user of were not printed."""
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI},
+         signal2019={"title": "A disproportionality signal for a fictional drug class",
+                     "doi": OTHER})  # fmt: skip
+    downloads = tmp_path / "Downloads"
+    downloads.mkdir()
+    (downloads / "x.pdf").write_bytes(THE_WORK)
+    table = Table({})
+    monkeypatch.setattr(download, "session", lambda: table)
+    assert main(["sync-sources", str(paper), "--inbox", str(downloads), "--no-fetch"]) == 0
+    out = capsys.readouterr().out
+    assert table.sent == []
+    assert f"@signal2019: https://doi.org/{OTHER} (nothing is stored)" in out, out
+    assert "Full text still wanted for 1 cited work" in out
+    assert "Zotero" not in out and f"@hepatic2021: https://doi.org/{DOI}" not in out
+
+
+def test_a_fault_in_reading_a_pdf_is_not_said_to_be_a_link_that_cannot_be_read(
+    paper: Path, monkeypatch
+) -> None:
+    """`ValueError` was caught over the whole search, so a fault in staging or in matching
+    was said to be a link that cannot be read, and the work's other places were skipped."""
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI})
+    table = Table({
+        PLACES.openalex + DOI: openalex(pdf_url="https://repository.test/hepatic.pdf"),
+        "https://repository.test/hepatic.pdf": pdf_answer(THE_WORK),
+    })  # fmt: skip
+
+    def fault(*args, **kwargs):
+        raise ValueError("a fault in the matching")
+
+    monkeypatch.setattr(matching, "shows", fault)
+    with pytest.raises(ValueError, match="a fault in the matching"):
+        sync(paper, table)
+
+
+def test_a_link_a_transport_cannot_make_lists_the_work_and_the_run_goes_on(paper: Path) -> None:
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI}, other2019={"title": TITLE, "doi": OTHER})
+
+    class Unmade(Table):
+        def __call__(self, request, timeout):
+            if "repository.test" in request.base:
+                self.sent.append(request)
+                raise ValueError("no request can be made of that link")
+            return super().__call__(request, timeout)
+
+    table = Unmade({PLACES.openalex + DOI: openalex(pdf_url="https://repository.test/a.pdf"),
+                    PLACES.crossref + DOI: crossref(None)})  # fmt: skip
+    _, wanted = sync(paper, table)
+    assert [one.key for one in wanted] == ["hepatic2021", "other2019"]
+    assert any("cannot be read as a URL" in why for why in wanted[0].why), wanted[0].why
+    assert PLACES.resolver + DOI in table.asked, "the work's other places are still tried"
+    assert PLACES.openalex + OTHER in table.asked, "the next work is tried"
+
+
+# --------------------------------------------------------------- the network guard
+
+
+def _resolver(monkeypatch, *answers: tuple[str, ...], proxy: str | None = None):
+    """`getaddrinfo` giving each answer in turn, and a name it has no answer left for not
+    resolving; `create_connection` recording where it was asked to connect and connecting
+    nowhere; and the proxy the environment names, or none."""
+    import socket
+    import urllib.request
+
+    monkeypatch.delenv(download.NO_NETWORK, raising=False)
+    monkeypatch.setattr(urllib.request, "getproxies",
+                        lambda: {"https": proxy} if proxy else {})  # fmt: skip
+    left = list(answers)
+    resolved: list[str] = []
+    connected: list[str] = []
+
+    def resolve(host, port, *args, **kwargs):
+        resolved.append(host)
+        if not left:
+            raise socket.gaierror(socket.EAI_NONAME, "no such name")
+        return [(socket.AF_INET6 if ":" in one else socket.AF_INET, socket.SOCK_STREAM, 6, "",
+                 (one, port)) for one in left.pop(0)]  # fmt: skip
+
+    def connect(address, *args, **kwargs):
+        connected.append(address[0])
+        raise ConnectionRefusedError("nothing is connected to in a test")
+
+    monkeypatch.setattr(socket, "getaddrinfo", resolve)
+    monkeypatch.setattr(socket, "create_connection", connect)
+    return resolved, connected
+
+
+@pytest.mark.parametrize("public", ["93.184.216.34", "2606:4700::1111"])
+def test_the_connection_is_made_to_the_address_that_was_checked(monkeypatch, public) -> None:
+    """A resolver that answers the check with a public address and the connection with this
+    computer's (DNS rebinding) reached this computer: `urllib` resolved the name again."""
+    resolved, connected = _resolver(monkeypatch, (public,), ("127.0.0.1",), ("10.0.0.1",))
+    with pytest.raises(NoAnswer, match="no connection to journal.example"):
+        download.default_transport(Request("https://journal.example/a.pdf"), 1.0)
+    assert connected == [public]
+    assert resolved == ["journal.example"]
+
+
+def test_a_name_with_one_address_of_this_network_among_others_is_not_asked(monkeypatch) -> None:
+    _resolved, connected = _resolver(monkeypatch, ("93.184.216.34", "10.0.0.7"))
+    with pytest.raises(NoAnswer, match="this computer's own network"):
+        download.default_transport(Request("https://journal.example/a.pdf"), 1.0)
+    assert connected == []
+
+
+@pytest.mark.parametrize("address", ["::ffff:127.0.0.1", "0.0.0.0", "100.64.0.9", "fec0::1"])
+def test_a_name_that_resolves_to_this_network_in_any_form_is_refused(monkeypatch, address) -> None:
+    _resolved, connected = _resolver(monkeypatch, (address,))
+    with pytest.raises(NoAnswer, match="this computer's own network"):
+        download.default_transport(Request("https://journal.example/a.pdf"), 1.0)
+    assert connected == []
+
+
+def test_a_name_is_left_to_the_proxy_the_environment_names(monkeypatch) -> None:
+    """The proxy makes the connection and resolves the name on its own network (Known gaps):
+    a name that does not resolve here is not checked, and one that does is checked here and
+    not pinned. With no proxy, a name that does not resolve is the answer."""
+    _resolved, connected = _resolver(monkeypatch, proxy="http://proxy.test:3128")
+    with pytest.raises(NoAnswer, match="no connection to journal.example"):
+        download.default_transport(Request("https://journal.example/a.pdf"), 1.0)
+    assert connected == ["proxy.test"]
+    _resolved, connected = _resolver(monkeypatch, ("93.184.216.34",), proxy="http://proxy.test:3128")
+    with pytest.raises(NoAnswer, match="no connection to journal.example"):
+        download.default_transport(Request("https://journal.example/a.pdf"), 1.0)
+    assert connected == ["proxy.test"]
+    _resolver(monkeypatch, ("10.0.0.7",), proxy="http://proxy.test:3128")
+    with pytest.raises(NoAnswer, match="this computer's own network"):
+        download.default_transport(Request("https://journal.example/a.pdf"), 1.0)
+    _resolved, connected = _resolver(monkeypatch)
+    with pytest.raises(NoAnswer, match="the name does not resolve"):
+        download.default_transport(Request("https://journal.example/a.pdf"), 1.0)
+    assert connected == []
+
+
+def test_an_address_of_nat64_is_refused_whatever_it_holds() -> None:
+    """DNS64 answers an IPv4-only host with 64:ff9b::<its address>, a block Python counts as
+    reserved; the address inside it is not judged instead (Known gaps), so a network with
+    IPv6 only has every such host refused."""
+    assert not download.allowed("https://[64:ff9b::808:808]/x.pdf"), "8.8.8.8 inside"
+    assert not download.allowed("https://[64:ff9b::c0a8:101]/x.pdf"), "192.168.1.1 inside"
+
+
+def test_a_fake_ip_answer_is_refused_and_says_why(monkeypatch) -> None:
+    """A proxy tool in fake-IP mode answers every name from 198.18.0.0/15, which is no
+    address of the internet: every fetch is refused, and the refusal says what to change."""
+    _resolver(monkeypatch, ("198.18.0.42",))
+    with pytest.raises(NoAnswer, match="fake-IP"):
+        download.default_transport(Request("https://journal.example/a.pdf"), 1.0)
+
+
+@pytest.mark.parametrize("url", [
+    "https://[::ffff:127.0.0.1]/x.pdf", "https://[::ffff:10.0.0.1]/x.pdf", "https://0.0.0.0/x.pdf",
+    "https://[::]/x.pdf", "https://2130706433/x.pdf", "https://0x7f000001/x.pdf",
+    "https://0177.0.0.1/x.pdf", "https://127.1/x.pdf", "https://10.1/x.pdf",
+    "https://100.64.0.1/x.pdf", "https://100.127.255.254/x.pdf", "https://[fec0::1]/x.pdf",
+    "https://224.0.0.251/x.pdf", "https://[ff02::1]/x.pdf", "https://198.18.0.1/x.pdf",
+])  # fmt: skip
+def test_no_address_of_this_network_is_asked_however_it_is_written(url: str) -> None:
+    """A decimal, hexadecimal, octal or short IPv4 host is read by the resolver as the address
+    it spells, so it is judged as that address; carrier-grade NAT (Tailscale's) and IPv6's
+    site-local addresses are this computer's network too."""
+    assert not download.allowed(url)
+
+
+@pytest.mark.parametrize("url", [
+    "https://93.184.216.34/x.pdf", "https://[2606:4700::1111]/x.pdf", "https://134744072/x.pdf",
+    "https://journal.example/x.pdf", "https://deadbeef.example/x.pdf",
+])  # fmt: skip
+def test_an_address_of_the_internet_is_asked_however_it_is_written(url: str) -> None:
+    assert download.allowed(url)

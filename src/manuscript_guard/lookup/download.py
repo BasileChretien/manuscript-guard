@@ -11,12 +11,20 @@ them, under its own rules:
 * **Never this computer, nor its own network.** A link a publisher, a repository or OpenAlex
   gives is somebody else's choice, and a GET is enough to set off a service that trusts its
   network: Zotero's connector on 127.0.0.1:23119, a router at 192.168.1.1, a cloud's
-  metadata at 169.254.169.254. So a URL whose host is a loopback, private, link-local,
-  multicast, reserved or unspecified address is refused, and so is a name that resolves to
-  one, resolved again before each hop (round 1 of #565: a 302 to `http://127.0.0.1:9/x` was
-  followed). A name that does not resolve here while an https proxy is set is left to the
-  proxy, which resolves it on its own network: that is not checked. The tests answer from a
-  server on this machine, and say so with `local=True`; nothing else does.
+  metadata at 169.254.169.254. So a URL whose host is any address that is not the
+  internet's (Python's `is_global`: loopback, private, link-local, carrier-grade NAT as
+  Tailscale uses it, unspecified and the rest), a multicast or reserved one, or IPv6's
+  site-local one, is refused, and so is a name that resolves to one, resolved again before
+  each hop (round 1 of #565: a 302 to `http://127.0.0.1:9/x` was followed). A host written
+  as an IPv4 number in another form than four decimal parts, `2130706433` or `127.1`, is
+  judged as the address the resolver reads it as. The connection is then made to the
+  addresses checked, the certificate held to the name, so that a resolver that answers the
+  connection otherwise than the check (DNS rebinding) reaches nothing it was not checked for.
+  Through an https proxy the environment names, the proxy makes the connection and resolves
+  the name on its own network, which is not checked; a name that does not resolve here is
+  then left to it. A proxy tool in fake-IP mode answers every name from 198.18.0.0/15, which
+  is not the internet's, so every fetch is refused and the refusal says why. The tests answer
+  from a server on this machine, and say so with `local=True`; nothing else does.
 * **No key, no address, no cookie of the user's travels.** The request carries a
   User-Agent naming the toolkit and nothing else of the person running it. A cookie a
   publisher sets on the way through its redirects is kept in memory for that run only, as a
@@ -41,7 +49,9 @@ import http.client
 import http.cookiejar
 import ipaddress
 import os
+import re
 import socket
+import ssl
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -65,6 +75,13 @@ AGENT = f"manuscript-guard/{__version__} (+https://github.com/BasileChretien/man
 #: Names that are this computer whatever the resolver says.
 _THIS_COMPUTER = frozenset({"localhost", "localhost.localdomain", "ip6-localhost"})
 _REFUSED = "an address of this computer's own network, which no link is followed to"
+#: A host that may be an IPv4 address written as a number: digits, hexadecimal and points
+#: only, so that the resolver's reading of a number is never asked of a name.
+_NUMERIC = re.compile(r"[0-9a-fA-FxX.]+")
+#: Where a proxy tool in fake-IP mode (Clash, sing-box) answers every name from.
+_FAKE_IP = ipaddress.ip_network("198.18.0.0/15")
+_FAKE_IP_SAID = (" (198.18.0.0/15, which a proxy tool in fake-IP mode gives every name: leave "
+                 "the publishers' hosts out of its fake-IP range, or use it as an https proxy)")
 
 
 class Offline(NoAnswer):
@@ -90,16 +107,38 @@ def _parts(url: str):
         return None
 
 
-def own_network(address: str) -> bool:
-    """Whether an IP address is this computer's or its network's, not the internet's."""
+def _address(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """The IP address a host is, or None for a name. An IPv4 address may be written as one
+    number, in hexadecimal or octal, or in fewer than four parts, and the resolver reads each
+    as the address (round 2 of #565: `2130706433`, which is 127.0.0.1, was taken for a name)."""
+    host = host.split("%", 1)[0]
     try:
-        ip = ipaddress.ip_address(address.split("%", 1)[0])
+        return ipaddress.ip_address(host)
     except ValueError:
+        pass
+    if not _NUMERIC.fullmatch(host):
+        return None
+    try:
+        return ipaddress.IPv4Address(socket.inet_aton(host))
+    except (OSError, ValueError):
+        return None
+
+
+def own_network(address: str) -> bool:
+    """Whether an IP address, or a host written as one, is this computer's or its network's,
+    not the internet's: anything Python does not count as global, a multicast or reserved
+    address, or an IPv6 site-local one, which it counts as global (round 2 of #565: it let
+    through 100.64.0.0/10, carrier-grade NAT and Tailscale's, and fec0::/10)."""
+    ip = _address(address)
+    if ip is None:
         return False
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
-    return (ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_multicast
-            or ip.is_reserved or ip.is_unspecified)  # fmt: skip
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            ip = ip.ipv4_mapped
+        elif ip.is_site_local:
+            return True
+    return any((not ip.is_global, ip.is_private, ip.is_loopback, ip.is_link_local,
+                ip.is_multicast, ip.is_reserved, ip.is_unspecified))  # fmt: skip
 
 
 def allowed(url: str, *, local: bool = False) -> bool:
@@ -174,18 +213,67 @@ def session(*, local: bool = False) -> Transport:
     return send
 
 
-def _resolves_outside(host: str, port: int | None) -> None:
-    """Refuse a name any of whose addresses is this computer's or its network's. Where the
-    name does not resolve here and the environment names a proxy, the proxy is asked it: a
-    university's proxy resolves names this computer cannot, on its own network."""
+def _proxied(host: str) -> bool:
+    """Whether `urllib` asks the https proxy the environment names for `host`, as its own
+    `ProxyHandler` decides: one is named, and `no_proxy` does not leave the host out."""
+    return bool(urllib.request.getproxies().get("https")) and not urllib.request.proxy_bypass(host)
+
+
+def _resolves_outside(host: str, port: int | None, *, proxied: bool) -> tuple[str, ...]:
+    """The addresses a name resolves to here, none of them this computer's or its network's;
+    a name any of whose addresses is one is refused. Where the name does not resolve here and
+    a proxy is to be asked, it is left to the proxy, as a university's resolves names this
+    computer cannot: () then."""
     try:
         found = socket.getaddrinfo(host, port or 443, proto=socket.IPPROTO_TCP)
     except (socket.gaierror, UnicodeError, OSError):
-        if urllib.request.getproxies().get("https"):
-            return
+        if proxied:
+            return ()
         raise NoAnswer(f"no connection to {host}: the name does not resolve") from None
-    if any(own_network(str(entry[4][0])) for entry in found):
-        raise NoAnswer(f"refused to ask {host}, {_REFUSED}")
+    addresses = tuple(dict.fromkeys(str(entry[4][0]) for entry in found))
+    refused = [one for one in addresses if own_network(one)]
+    if refused:
+        fake = all(_address(one) in _FAKE_IP for one in refused)
+        raise NoAnswer(f"refused to ask {host}, {_REFUSED}{_FAKE_IP_SAID if fake else ''}")
+    if not addresses:
+        raise NoAnswer(f"no connection to {host}: the name does not resolve")
+    return addresses
+
+
+def _connect(addresses: tuple[str, ...], address: tuple[str, int], timeout: float,
+             source_address: tuple[str, int] | None = None) -> socket.socket:  # fmt: skip
+    """`socket.create_connection` to each address checked in turn, at the port asked, and
+    never to the name `address` gives, which would be resolved again."""
+    failed: OSError | None = None
+    for one in addresses:
+        try:
+            return socket.create_connection((one, address[1]), timeout, source_address)
+        except OSError as exc:
+            failed = exc
+    raise failed or OSError("no address of the name was checked")
+
+
+class _Pinned(urllib.request.HTTPSHandler):
+    """https to the addresses `_resolves_outside` checked, not to what the name resolves to
+    when the connection is made: a resolver that answered the check with an address of the
+    internet and the connection with this computer's (DNS rebinding) reached this computer
+    (round 1 of #565). The certificate is still held to the name, as `urllib` holds it."""
+
+    def __init__(self, addresses: tuple[str, ...]) -> None:
+        self._ssl = ssl.create_default_context()
+        self._ssl.set_alpn_protocols(["http/1.1"])
+        super().__init__(context=self._ssl)
+        self._addresses = addresses
+
+    def https_open(self, req: urllib.request.Request):
+        return self.do_open(self._connection, req, context=self._ssl)
+
+    def _connection(self, host: str, **kwargs) -> http.client.HTTPSConnection:
+        made = http.client.HTTPSConnection(host, **kwargs)
+        addresses = self._addresses
+        made._create_connection = (  # the hook http.client keeps for this
+            lambda address, timeout, source=None: _connect(addresses, address, timeout, source))
+        return made
 
 
 def default_transport(
@@ -197,7 +285,8 @@ def default_transport(
 ) -> Response:
     """Send one GET with `urllib`, no redirect followed, at most `MAX_BYTES` read. A status
     that is not 2xx is an answer, not an error. The proxy the environment names is used, as a
-    university network's may be the way to its access."""
+    university network's may be the way to its access; with none, the connection is made to
+    the addresses the name was checked at."""
     if os.environ.get(NO_NETWORK, "").strip():
         raise Offline(f"{NO_NETWORK} is set, so no request leaves this machine")
     url = request.url
@@ -208,7 +297,10 @@ def default_transport(
     if local:
         handlers.append(urllib.request.ProxyHandler({}))
     else:
-        _resolves_outside(host, port)
+        proxied = _proxied(host)
+        addresses = _resolves_outside(host, port, proxied=proxied)
+        if not proxied:
+            handlers += [urllib.request.ProxyHandler({}), _Pinned(addresses)]
     opener = urllib.request.build_opener(*handlers)
     outgoing = urllib.request.Request(url, headers=dict(request.headers), method="GET")
     try:

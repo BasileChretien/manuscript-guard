@@ -3432,13 +3432,20 @@ its words), written as `<key>.abstract.txt`. A landing page is read only for its
 `citation_pdf_url`, tried once. Redirects are followed over https only (`lookup/download.py`),
 at most eight, a cookie a publisher sets on the way kept in memory for the run, the size capped
 at 64 MB; the User-Agent names the toolkit, and no e-mail address goes to any of these
-services, `lookup`'s contact address included. No link is followed to this computer or its
-network: a host that is, or resolves to, a loopback, private, link-local, multicast, reserved
-or unspecified address is refused at every hop, since a publisher's redirect could otherwise
-set off Zotero's connector or a router (round 1 of #565), except a name that does not resolve
-here while an https proxy is set, which the proxy resolves on its own network; the tests' server on this machine is
-reached only with `local=True`, which nothing but a test passes. A link no URL parser reads
-lists the work as wanted, and the run goes on. A PDF is kept only where it is the work
+services, `lookup`'s contact address included. An open copy's place given as `http://` is
+asked as `https://`. No link is followed to this computer or its network: a host that is, or
+resolves to, an address Python does not count as global (loopback, private, link-local,
+carrier-grade NAT, unspecified), a multicast or reserved one, or an IPv6 site-local one, is
+refused at every hop, since a publisher's redirect could otherwise set off Zotero's
+connector or a router (round 1 of #565); a host written as an IPv4 number in another form
+(`2130706433`, `127.1`) is judged as the address it spells. The connection is made to the
+addresses checked, so that a resolver answering it otherwise than the check (DNS rebinding)
+reaches nothing unchecked. Through an https proxy the environment names, the proxy connects
+and resolves the name on its own network, which is not checked, and a name that does not
+resolve here is left to it. The tests' server on this machine is reached only with
+`local=True`, which nothing but a test passes. A link no URL parser reads lists the work as
+wanted, and the run goes on; any other fault in the search is not caught as one. A PDF is
+kept only where it is the work
 (`literature/matching.py`), and where the evidence is not exact it is refused rather than
 guessed at: it begins with `%PDF-`; its first two pages give the work's DOI, or its title makes
 up whole lines near the top of one of them, compared on letters and digits (a title running on
@@ -21816,38 +21823,31 @@ Open, recorded as each change landed:
   works are left to the browser. PubMed's abstract is not asked for (`lookup` reaches only its
   summaries, which hold none), nor a cited web page with no DOI. Zotero not running still
   stops the run before the web is asked, as it did. Round 1 of #565 left these, each not done:
-  - An `http://` open location (OpenAlex often gives `http://europepmc.org/...`) is dropped,
-    not tried as https, and the work is then said to have no open copy known to OpenAlex.
   - The preview test needs a page range in `references.bib`: an entry with an article number
     (`pages = {e0245}`) or none keeps a publisher's first-page preview.
   - No bound on a run's whole time: the 60 s timeout is per socket operation, so a host that
     is down costs a minute for each place and work, and publisher hosts are paced at about
     five requests a second, which an institution's licence may count as systematic
     downloading.
-  - A work whose author-saved copy is recorded and absent, on a fresh clone, is still fetched
-    in full, and the copy then refused by `_file`; it should not be asked about at all.
   - `matching.py` reads text with no property in `tests/test_properties.py` and no BROKEN
     twin.
-  - Untested: reading a second-version record (only the first is); the inbox's "two PDFs
-    that differ"; the inbox's file left in place after filing; an inbox file over 64 MB.
-  - `--inbox <folder> --no-fetch`, the command the literature-verify skill gives, ends with
-    the Zotero advice and no DOI links, though the skill's last step expects them.
-  - A name is resolved before each request and again by `urllib` when it connects, so a
-    resolver that answers the two differently (DNS rebinding) can still reach this
-    computer's network; the connection is not pinned to the address checked.
   Round 2 of #565 left these, each not done:
   - Where a name does not resolve here and an https proxy is set, it is not checked: the
     proxy resolves it on its own network, so a GET can reach the proxy's LAN.
-  - `own_network` misses 100.64.0.0/10 (carrier-grade NAT, Tailscale) and fec0::/10, which
-    `not ip.is_global` would catch; and a proxy tool in fake-IP mode, answering 198.18.0.0/15
-    for every name, has every fetch refused.
-  - `Fetcher.__call__` catches `ValueError` over the whole of `_full_text`, staging and
-    matching included, so a fault there is said to be a link that cannot be read, and the
-    work's other places are skipped.
-  - No test of `::ffff:127.0.0.1`, `0.0.0.0`, a decimal host, a name with several addresses
-    one of them private, the proxy branch, or a public address passing `default_transport`.
-  - A journal's own label above the title, "SUPPLEMENT ARTICLE" (Clin Infect Dis, J Infect
-    Dis), is read as a supplement's head, and the article refused.
+  - Through that proxy, a name that does resolve here is checked here, and the proxy, which
+    resolves it again on its own network, may be answered otherwise: the connection is made
+    to the addresses checked only where no proxy is used. Pinned by
+    `tests/test_fetch_sources.py::test_a_name_is_left_to_the_proxy_the_environment_names`.
+  - A proxy tool in fake-IP mode (Clash, sing-box), answering 198.18.0.0/15 for every name,
+    has every fetch refused, since that block is not the internet's: the refusal says so,
+    and to leave the publishers' hosts out of its fake-IP range or use it as a proxy. Taking
+    the block for the internet would let through a resolver that answers with it for a host
+    of its own network. Pinned by
+    `tests/test_fetch_sources.py::test_a_fake_ip_answer_is_refused_and_says_why`.
+  - On a network with IPv6 only, where DNS64 answers an IPv4-only host with an address under
+    64:ff9b::/96, every such host is refused: Python counts the block as reserved, and the
+    IPv4 address inside it is not judged instead. Pinned by
+    `tests/test_fetch_sources.py::test_an_address_of_nat64_is_refused_whatever_it_holds`.
   - The methods review says "no stored copy of @key" of a work whose only copy is its
     abstract, and its `similar-passage-not-in-source` became a warning there, unsaid here.
   - A passage mistyped from an abstract that is the work's only copy, the author's own saved
@@ -24176,6 +24176,39 @@ What papers converted from Word showed (see "What papers converted from Word sho
     says so among what G4 did not check.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **What #565 left of `sync-sources`' fetcher and its network guard (2026-11-09).** Nine
+  points listed under "What `sync-sources` fetches from the web is held to the work's DOI or
+  title" above, each of which lost a copy, said the wrong thing, or let a link reach this
+  computer's network:
+  - An `http://` open location, as OpenAlex gives Europe PMC's, was dropped, and the work
+    said to have no open copy OpenAlex knew of. It is asked as `https://` now.
+  - A full text the author saved, recorded and not on this computer (a fresh clone), was
+    fetched from the web and then refused, or filed beside theirs under another suffix. The
+    web is not asked for that work now; for an abstract of theirs alone it still is.
+  - Four paths had no test: a second-version record, two PDFs of the inbox that show one work
+    and differ, the inbox's file left where it was after filing, a file over the size kept.
+  - `--inbox <folder> --no-fetch`, the literature-verify skill's command, ended with Zotero's
+    advice and no DOI links, which the skill's next step gives the user. It lists them now.
+  - The name was resolved for the check and again by `urllib` when it connected, so a
+    resolver that answered the two differently (DNS rebinding) reached this computer's
+    network. Where no proxy is used, the connection goes to the addresses checked, the
+    certificate still held to the name; through a proxy, see the open point above.
+  - `own_network` let through 100.64.0.0/10 (carrier-grade NAT, Tailscale) and fec0::/10,
+    and read a host written as a decimal, hexadecimal, octal or short IPv4 number
+    (`2130706433`, `127.1`) as a name. It refuses any address Python does not count as
+    global, and IPv6's site-local ones, which it does (`not ip.is_global` alone misses
+    them); a number is judged as the address it spells.
+  - `ValueError` was caught over the whole search for a copy, so a fault in staging or in
+    matching was said to be a link that cannot be read, and the work's other places were
+    skipped. Only reading a link and making its request are caught now.
+  - The guard had no test of `::ffff:127.0.0.1`, `0.0.0.0`, a numeric host, a name with one
+    private address among public ones, the proxy branch, or a public address let through.
+  - A journal's own label over the title, "SUPPLEMENT ARTICLE" (Clin Infect Dis, J Infect
+    Dis), was read as a supplement's head, and the article refused. The heads are read with
+    their words as far apart as `pdftotext -layout` sets them, and a property
+    (`tests/test_properties.py`) draws every label and every head in a drawn case and
+    spacing; the old rule, and a rule that reads no head, fail it.
 
 - **The audit did not count text a style hides (2026-11-07).** It counted as hidden only a
   run whose own properties hide it, so text set in a character or paragraph style that

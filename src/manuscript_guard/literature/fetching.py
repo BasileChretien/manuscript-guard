@@ -12,9 +12,10 @@ with no full text stored:
    other open location, with its PDF link before its landing page; then PubMed Central, by the
    PMCID `references.bib` or OpenAlex gives (through Europe PMC's PDF service, which answers
    a plain client where PMC's own pages ask for a browser); then arXiv, by its identifier. A
-   landing page is read for the one link a publisher's page gives a citation manager,
-   `<meta name="citation_pdf_url">`, and that link is tried once. Nothing else on a page is
-   followed, and nothing on it is run.
+   place OpenAlex gives as `http://`, as it gives Europe PMC's, is asked as `https://`, since
+   nothing is fetched over plain http. A landing page is read for the one link a publisher's
+   page gives a citation manager, `<meta name="citation_pdf_url">`, and that link is tried
+   once. Nothing else on a page is followed, and nothing on it is run.
 2. **The publisher's PDF through this computer's access.** `https://doi.org/<doi>` is asked
    from here, following the publisher's redirects over https, and its `citation_pdf_url` once.
    On a university's network, or through its proxy as the environment names it, that is the
@@ -196,13 +197,7 @@ class Fetcher:
             self.why[key] = said
             return [], said
         said: list[str] = []
-        try:
-            found = self._full_text(work, said)
-        except ValueError:
-            # A link no URL parser reads, from a registry, a redirect or a page: the work is
-            # listed as wanted and the next is tried (round 1 of #565: it stopped the run).
-            said.append("a link given for it cannot be read as a URL")
-            found = None
+        found = self._full_text(work, said)
         if found is not None:
             self.why.pop(key, None)
             return [found], []
@@ -210,11 +205,7 @@ class Fetcher:
             said = [f"not looked for on the web: {self.offline}"]
             self.why[key] = said
             return [], said
-        try:
-            abstract = self._abstract(work, said)
-        except ValueError:
-            said.append("a link given for its abstract cannot be read as a URL")
-            abstract = None
+        abstract = self._abstract(work, said)
         self.why[key] = said
         return ([abstract] if abstract else []), said
 
@@ -324,16 +315,19 @@ class Fetcher:
 
     def _api(self, url: str, secret: dict[str, str], said: list[str], name: str) -> Any:
         """One registry's JSON answer, or None with the reason said."""
-        self.pace(urlsplit(url).hostname or "")
         request = Request(url, secret=secret,
                           headers={"User-Agent": download.AGENT, "Accept": "application/json"})
         try:
+            self.pace(urlsplit(url).hostname or "")
             response: Response = self.transport(request, download.TIMEOUT_SECONDS)
         except download.Offline as exc:
             self.offline = str(exc)
             return None
         except NoAnswer as exc:
             said.append(f"{name} did not answer ({exc})")
+            return None
+        except ValueError:
+            said.append(f"{name}'s link cannot be read as a URL")
             return None
         if response.status == 404:
             said.append(f"{name} does not know the DOI")
@@ -361,6 +355,10 @@ class Fetcher:
         return record
 
     def _get(self, url: str, said: list[str], where: str) -> download.Fetched | None:
+        """The answer at a link, or None with the reason said. Only reading the link and
+        making its request is caught here: a `ValueError` raised over the whole search was
+        said to be a link that cannot be read, a fault in staging or in matching among them,
+        and the work's other places were skipped (round 2 of #565)."""
         try:
             return download.get(url, self._paced, accept=ACCEPT)
         except download.Offline as exc:
@@ -368,6 +366,11 @@ class Fetcher:
             return None
         except NoAnswer as exc:
             said.append(f"{where}: {exc}")
+            return None
+        except ValueError:
+            # A link no URL parser reads, from a registry, a redirect or a page: the work's
+            # next place is tried, then the next work (round 1 of #565: it stopped the run).
+            said.append(f"{where}: a link given for it cannot be read as a URL")
             return None
 
     def _paced(self, request: Request, timeout: float) -> Response:
@@ -427,9 +430,15 @@ def for_project(project: Project) -> Fetcher:
 
 
 def _place(url: object, version: object) -> Place | None:
+    """An open copy's place, an `http://` one as `https://`: OpenAlex gives Europe PMC's and
+    many repositories' so, and they were dropped (round 1 of #565). A host that does not
+    answer over https is then a place that gave nothing, and the reason is said."""
     if not isinstance(url, str) or not url.strip():
         return None
-    return Place(url.strip(), FROM_OPEN, version if isinstance(version, str) else None)
+    url = url.strip()
+    if url[:7].lower() == "http://":
+        url = "https://" + url[7:]
+    return Place(url, FROM_OPEN, version if isinstance(version, str) else None)
 
 
 def _pmcid(value: object) -> str | None:

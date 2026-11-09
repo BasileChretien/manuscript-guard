@@ -877,6 +877,20 @@ def _deposit_named() -> Reading:
     return read
 
 
+@reading("pdf shown")
+def _pdf_shown() -> Reading:
+    from manuscript_guard.literature.matching import judged
+
+    def read(pages: list[str]) -> list[list[str | None]]:
+        """How each PDF's first page shows it is the cited work 10.5555/fictional.2021.001,
+        "Hepatic injury in a fictional national cohort", or why it does not."""
+        doi, title = "10.5555/fictional.2021.001", "Hepatic injury in a fictional national cohort"
+        shown = [judged(b"%PDF-1.4\n", text, doi, title) for text in pages]
+        return [[one.by, one.why] for one in shown]
+
+    return read
+
+
 #: Where "vault named" keeps the folders it renders a command against: made once in a process,
 #: and taken away when it ends.
 _VAULT_PLACE: list[Path] = []

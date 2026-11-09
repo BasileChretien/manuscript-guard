@@ -517,6 +517,31 @@ def test_the_record_is_written_as_the_third_version_and_the_first_is_read(paper,
     assert set(written["files"]) == {"other.txt", "printed2010.txt"}
 
 
+def test_the_authors_files_of_a_second_version_record_stay_theirs(paper, tmp_path, monkeypatch):
+    """The second version is the first to hold the author's own files. One that is here and
+    as recorded is left as it was entered; one that is not here, as on a fresh clone, is said
+    to come from whoever saved it, and Zotero's copy is not put in its name."""
+    zotero = Storage(tmp_path)
+    cite(paper, "printed2010", "smith2020")
+    sources(paper).mkdir(parents=True, exist_ok=True)
+    text = b"Read from the printed report."
+    (sources(paper) / "printed2010.txt").write_bytes(text)
+    files = {
+        "printed2010.txt": {"key": "printed2010", "sha256": hashlib.sha256(text).hexdigest(),
+                            "bytes": len(text), "from": "author", "copied": "2026-10-21"},
+        "smith2020.pdf": {"key": "smith2020", "sha256": "1" * 64, "bytes": 9, "from": "author",
+                          "copied": "2026-10-21"},
+    }  # fmt: skip
+    (paper / "literature" / copies.RECORD).write_text(
+        yaml.safe_dump({"schema": "manuscript-guard/sources/2", "files": files}), "utf-8")
+    fake = FakeBBT({1: {"printed2010": None, "smith2020": [zotero.file("s.pdf", PDF)]}})
+    found = by_key(sync(paper, monkeypatch, fake))
+    assert record(paper) == {"schema": "manuscript-guard/sources/2", "files": files}, (
+        "a record nothing changed is left as it was")
+    assert not (sources(paper) / "smith2020.pdf").exists()
+    assert any("smith2020.pdf was saved there by hand" in one.said for one in found["smith2020"])
+
+
 def test_a_record_of_a_newer_version_is_not_to_be_deleted(paper, capsys, monkeypatch):
     cite(paper, "smith2020")
     (paper / "literature" / copies.RECORD).write_text(

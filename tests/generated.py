@@ -3526,17 +3526,28 @@ NOT_REFERENCE_TITLES = (
 )  # fmt: skip
 
 
+#: The spans pandoc writes around a Word heading's words that are also underlined, in small
+#: capitals or highlighted, or in a character style.
+SPAN_BLOCKS = ("{.underline}", "{.smallcaps}", "{.mark}", '{custom-style="Strong"}')
+
+
 @st.composite
 def reference_titled(draw: st.DrawFn) -> list[tuple[str, bool]]:
-    """Every title above, each written as drawn, upper case, lower case or as it stands,
-    in an order drawn; and whether it titles a reference list."""
+    """Every title above twice, once as typed and once in a span drawn from `SPAN_BLOCKS`
+    (one or two deep), each written as drawn, upper case, lower case or as it stands, in an
+    order drawn; and whether it titles a reference list."""
     planted = [(title, True) for title in REFERENCE_TITLES]
     planted += [(title, False) for title in NOT_REFERENCE_TITLES]
     cased = [
         (draw(st.sampled_from((title, title.upper(), title.lower()))), is_list)
         for title, is_list in planted
     ]
-    return draw(st.permutations(cased))
+    spanned = []
+    for title, is_list in cased:
+        for block in draw(st.lists(st.sampled_from(SPAN_BLOCKS), min_size=1, max_size=2)):
+            title = f"[{title}]{block}"
+        spanned.append((title, is_list))
+    return draw(st.permutations(cased + spanned))
 
 
 #: Titles of the Methods, `{}` standing for words drawn each time: the word alone, with
@@ -10406,17 +10417,22 @@ def sessions(draw: st.DrawFn) -> dict[str, Any]:
 # ---------------------------------------------- a reference list under a line that is no heading
 
 #: The lines a reference list stands under where it has no heading, as a paper converted from
-#: Word has them and as the audit takes them: the word alone on its line, in bold or not.
+#: Word has them and as the audit takes them: the word alone on its line, in bold or not, and
+#: in the span pandoc writes for a title also underlined, highlighted or in small capitals.
 REFERENCE_LINES = (
     "**References**", "**References:**", "References", "__Bibliography__", "*Literature cited*",
-    "6\\. References",
+    "6\\. References", "**[References]{.underline}**", "[Bibliography]{.smallcaps}",
+    "**[[References]{.mark}]{.underline}**",
 )  # fmt: skip
 #: Lines that only look like one: a sentence, the word in small letters, the word with a full
-#: stop; `IN_A_PARAGRAPH`, the word alone on a line a hard wrap made inside a paragraph;
+#: stop, brackets that are no span (escaped, or before braces that hold no attributes);
+#: `IN_A_PARAGRAPH`, the word alone on a line a hard wrap made inside a paragraph;
 #: `IN_A_LIST`, "3. References" in a loose list; `IN_A_LIST_FIRST`, "1. References" opening
 #: a tight one; and `IN_AN_ITEM`, the word as the second paragraph of a list item.
 NOT_REFERENCE_LINES = (
     "**References** were read by two pharmacists.", "**references**", "**References.**",
+    "**[references]{.underline}**", "[References]{.underline} were read by two pharmacists.",
+    "\\[References\\]{.underline}", "[References]{see below}",
 )  # fmt: skip
 IN_A_PARAGRAPH = "in a paragraph"
 IN_A_LIST = "in a list"
@@ -10439,6 +10455,7 @@ LIST_ENDS = {
     "a bold title in italics": "\n\n***Figure legends***\n\n{said}",
     "a bold label running in": "\n\n**Funding:** {said}",
     "a back-matter title": "\n\n{title}\n\n{said}",
+    "a back-matter title underlined": "\n\n[{title}]{.underline}\n\n{said}",
     "a caption": "\n\nFigure {n}. {said}",
     "a caption, Fig": "\n\nFig {n}. {said}",
     "a caption, Fig.": "\n\nFig. {n} {said}",

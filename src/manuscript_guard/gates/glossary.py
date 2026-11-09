@@ -58,7 +58,11 @@ class Entry:
 
 def is_glossary(title: str) -> bool:
     """Whether a heading's title names a glossary: "Abbreviations", "List of acronyms",
-    "GLOSSARY", with a colon or a stop after it or not."""
+    "GLOSSARY", with a colon or a stop after it or not, in a span or not, as pandoc writes
+    an underlined title, "[Abbreviations]{.underline}" (`without_spans`)."""
+    from manuscript_guard.text.attributes import without_spans
+
+    title = without_spans(title)
     words = " ".join(title.replace("*", " ").replace("_", " ").split()).strip(" .:").lower()
     return words in GLOSSARY_TITLES
 

@@ -19230,8 +19230,11 @@ Open, recorded as each change landed:
   named under "Not audited".
 - **A reference list under a line that is no heading ends where its shape does, and only a
   paragraph opens one.** `check` passes over a list under `**References**`,
-  `**References:**` or "References" alone on a line, as the audit does
-  (`text/reference_lists.py`): G14, the word count and the comparison with earlier papers.
+  `**References:**` or "References" alone on a line, in the span pandoc writes for a title
+  that is also underlined, highlighted or in small capitals (`**[References]{.underline}**`)
+  or not, as the audit does (`text/reference_lists.py`): G14, the word count and the
+  comparison with earlier papers. Brackets before braces that hold no attributes,
+  `[References]{see below}`, or escaped, are text, and open no list.
   The list ends at the next heading of any level, at a line shaped like a heading that
   pandoc prints as text, at a paragraph all in bold or opening with a bold label
   ("**Funding:** ..."), at a back-matter title alone on its line (a statement's, as G7's
@@ -25007,6 +25010,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A paper in no project has no records, so `audit --journal` does not run the check and
     says so among what G4 did not check.
 
+- **A heading in bold is not the Abstract.** `names_abstract` reads a title without its
+  number and nothing else, so `# **Abstract**` is not the abstract to G4's counts, G14's
+  scope or the audit, where `# **Results**` is the Results (`names_results` reads the title
+  as printed, its emphasis taken off). Likewise `is_methods` matches a title as it is typed,
+  so `# **Methods**` is not the Methods to G2. A span around the words is taken off for
+  both (see "A title in a span named nothing"). Pinned by
+  `tests/test_text.py::test_a_heading_in_bold_is_not_the_abstract_nor_the_methods`.
+
 Closed since, and why each mattered (an open gap goes above this line):
 
 - **A number after a link was read by no gate (2026-11-09).** The mask took a link's
@@ -25124,6 +25135,20 @@ Closed since, and why each mattered (an open gap goes above this line):
   each author's initials and each programme in capitals reported as an undefined
   abbreviation: 13 of the 100 warnings on one paper audited through the web page. Such a
   paragraph is read as the statement now (`gates.language._run_in_statements`).
+
+- **A title in a span named nothing (2026-11-09).** Pandoc writes a Word title that is also
+  underlined, highlighted or in small capitals with a span around its words,
+  `**[References]{.underline}**` or `# [Results]{.underline}`, and prints the words alone.
+  The heading walk took the span's block for the heading's and titled it "[Results]", and
+  the reference list's rule read the brackets: so the audit cut a .docx's reference list,
+  whose text holds no brackets, while G14 read the list of the same paper as prose, and on
+  one paper with underlined bold titles 41 of its 100 warnings were the authors' initials
+  and journals in capitals. A heading is titled as pandoc prints it now, a span its words
+  (`text.attributes.without_spans`), so it names its section, the Methods to G2 included,
+  and its words alone are counted; a title read elsewhere, the reference list's line under
+  no heading, the title that ends that list and a glossary's, is read the same way. A .docx's
+  text, which holds no Markdown, is read as it stands: brackets typed there are text. See
+  "A heading in bold is not the Abstract" for what is left.
 
 - **`audit --strict` counted no sum and no flow (#469 and #472, 2026-10-29).** When the
   audit first read a LaTeX paper and ran in sections (#463), `--strict` counted what it had

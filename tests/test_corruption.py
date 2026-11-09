@@ -27738,7 +27738,9 @@ _LISTED = (
 
 @pytest.mark.parametrize(
     "line", ["**References**", "**References:**", "References", "__Bibliography__",
-             "6\\. References"]  # fmt: skip
+             "6\\. References", "**[References]{.underline}**", "[References]{.smallcaps}",
+             "**[[References]{.mark}]{.underline}**", "[**References**]{.underline}",
+             "# [References]{.underline}"]  # fmt: skip
 )
 def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
     project: Path, line: str
@@ -27748,7 +27750,11 @@ def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
     "PLoS", "BMC" and the authors' initials taken for abbreviations; the word count and the
     comparison with an earlier paper took it for the Discussion. Under `# References` none
     of it is read, and the audit already took the bold line for the list's start. The text
-    under the next heading is read again: a slip there is still caught."""
+    under the next heading is read again: a slip there is still caught.
+
+    A title that is also underlined, highlighted or in small capitals is one too: pandoc
+    writes it in a span, `**[References]{.underline}**`, a heading's as well, and the list
+    under each was read as prose."""
     from manuscript_guard.gates.recycling import recycled_in
     from manuscript_guard.text.sections import measure
 
@@ -27772,6 +27778,70 @@ def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
             "British English",
         )
     ]
+
+
+@pytest.mark.parametrize(
+    ("title", "printed"),
+    [("[Results]{.underline}", "Results"), ("**[Results]{.underline}**", "Results"),
+     ("[[Results]{.smallcaps}]{.mark}", "Results"), ('[Results]{custom-style="Strong"}', "Results"),
+     ("[Results]{.underline} {#sec-results}", "Results"),
+     ("[Results]{see below}", None), ("\\[Results\\]{.underline}", None)],
+)  # fmt: skip
+def test_a_heading_in_a_span_is_named_as_pandoc_prints_it(
+    title: str, printed: str | None
+) -> None:
+    """Pandoc writes a Word heading that is also underlined, highlighted or in small capitals
+    with a span around its words, `# [Results]{.underline}`, and prints "Results". The
+    heading walk took the span's block for the heading's and titled it "[Results]", which
+    named no section: its Results were not the Results, nor its References the list.
+    Brackets before something that is no attribute block, or escaped, print as text.
+
+    The heading is titled as pandoc prints it, its words alone, so its words are counted as
+    one word each: kept in the title, the block was counted as more words of the main text
+    (round 1 of #594), and a Methods heading in a span is the Methods to G2."""
+    from manuscript_guard.classify import is_methods
+    from manuscript_guard.text.attributes import strip_attributes, without_spans
+    from manuscript_guard.text.section_names import names_results, plain
+    from manuscript_guard.text.sections import measure, split_sections
+
+    body = "\n\nThe ROR was 2.1 in one group.\n"
+    (section,) = split_sections(f"# {title}{body}")
+    assert names_results(section.title) == (printed is not None), section.title
+    if printed is not None:
+        # The same title without its span: "**[Results]{.underline}**" is "**Results**".
+        bare = without_spans(title).split(" {")[0]
+        assert section.title == bare, section.title
+        assert plain(section.title) == printed
+        assert (measure(f"# {title}{body}").main_text_words
+                == measure(f"# {bare}{body}").main_text_words)  # fmt: skip
+        methods = [split_sections(f"# {typed.replace('Results', 'Methods')}{body}")[0].title
+                   for typed in (title, bare)]  # fmt: skip
+        assert is_methods([methods[0]]) == is_methods([methods[1]]), methods
+        assert strip_attributes("# [Results]{.underline}") == "# [Results]{.underline}"
+    assert is_methods([split_sections(f"# [Methods]{{.underline}}{body}")[0].title])
+
+
+@pytest.mark.parametrize("title", ["[Abstract]{.underline}", "[[Abstract]{.smallcaps}]{.mark}"])
+def test_an_abstract_in_a_span_is_counted_as_the_abstract(title: str) -> None:
+    """A Word abstract's heading that is also underlined or in small capitals is the
+    Abstract: its words count against the abstract's limit, not the main text's."""
+    from manuscript_guard.text.sections import measure
+
+    text = "# {}\n\nWe studied five drugs.\n\n# Introduction\n\nDrugs were studied.\n"
+    counts, plainly = measure(text.format(title)), measure(text.format("Abstract"))
+    assert plainly.abstract_words >= 4, plainly
+    assert (counts.abstract_words, counts.main_text_words) == (
+        plainly.abstract_words, plainly.main_text_words)
+
+
+def test_a_docx_paragraph_s_brackets_are_text_where_a_list_ends() -> None:
+    """A .docx's text is Word's, which holds no Markdown: "[Funding]{.underline}" typed in a
+    paragraph is those characters, and ends no list the audit reads there (round 1 of
+    #594), where "Funding" alone does."""
+    from manuscript_guard.text.reference_lists import ends_a_list_alone
+
+    assert ends_a_list_alone("Funding")
+    assert not ends_a_list_alone("[Funding]{.underline}")
 
 
 def _declaring_no_english(root: Path) -> None:

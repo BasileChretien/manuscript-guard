@@ -217,3 +217,11 @@ expected:
       since an accent's argument is one letter: `pol\^\itica` is searched for as "politica",
       where the longest command, the `\it` of italics, made it "polica"; the lines drawn
       now hold an accent on a dotless i before a t, braced and not
+  - reading: pdf shown
+    why: >-
+      a new reading of how a fetched PDF's first page shows it is the cited work: a
+      journal's label "Supplement Article" over the title, as Clin Infect Dis and J Infect
+      Dis set it, is the work's, where the base refused it as a supplement's head; a head's
+      words are read however far apart pdftotext sets them, and "Author's reply" with a
+      typeset apostrophe is a reply's head; the inputs draw every label and every head
+      (Known gaps F01)

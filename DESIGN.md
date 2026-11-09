@@ -15299,12 +15299,13 @@ Known gaps:
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
 
-Each open entry, and each point under one, ends in one of two tags. `Accepted.` marks a
-limit that stays as it is written. ``Pinned by `tests/test_file.py::test_name`.`` names the
-tests that hold the limit as it is written, so a change that closes it or moves it fails one
-of them, and the entry is then rewritten, or moved below the "Closed since" line.
-`tests/test_docs.py` holds that each test a tag names is there. An entry with neither has
-not been sorted yet.
+Once sorted, an open entry ends its own text, before any points under it, in one of two
+tags, and so does each point under one. `Accepted.` marks a limit that stays as it is
+written. ``Pinned by `tests/test_file.py::test_name`.`` names the tests that assert the
+limit as it is written: a change that closes the gap or moves it fails one of them, and the
+entry is then rewritten, or moved below the "Closed since" line. `tests/test_docs.py` holds
+only that each test a tag names is one pytest runs. An entry with neither has not been
+sorted yet.
 
 - **A co-author round records answers, and nothing more.** `checker status` says who answered
   what; it cannot say who read anything. Nothing proves the file was opened, that the evidence was
@@ -24660,8 +24661,8 @@ Closed since, and why each mattered (an open gap goes above this line):
   ran it to stop a paper let that paper through. It counts both now: a total off its
   counts, a count over the header's n and a small count the totals give away
   (`tests/test_audit_sections.py`,
-  `test_a_total_off_categories_over_n_and_a_count_given_away_count_for_strict`), and the
-  faults of a flow under a heading that names one.
+  `test_a_total_off_categories_over_n_and_a_count_given_away_count_for_strict`), and a
+  broken flow where it stands under a name for a flow.
 
 - **G16 read no LaTeX manuscript (#427, 2026-10-23).** It read the Methods as Markdown, and
   of a LaTeX manuscript said only `not-read-in-latex`, a note until submission and a failure

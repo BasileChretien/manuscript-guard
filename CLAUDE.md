@@ -162,7 +162,7 @@ function of the published checklist.
   added at the end of the section reads as closed. A gate whose limits are undocumented gets
   trusted beyond them. A new entry ends in `Accepted.` (a limit that stays) or
   ``Pinned by `tests/test_file.py::test_name`.`` (the tests that hold it as written), and
-  `tests/test_docs.py` holds that each test named is there.
+  `tests/test_docs.py` holds that each test named is one pytest runs.
 - Prose in this repository, including documentation, must pass the project's own
   AI-writing lint once that exists.
 

@@ -517,13 +517,19 @@ def pins_of(gaps: str) -> tuple[list[str], list[str]]:
 
 
 def defined_in(path: Path) -> set[str]:
-    """A test file's functions by the name pytest gives each after `::`, a class's too."""
+    """The tests pytest collects from a file, by the name it gives each after `::`: a
+    function whose name starts `test`, and such a method of a class whose name starts `Test`
+    (pytest's defaults, which pyproject.toml keeps). A helper is no test."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
     functions = (ast.FunctionDef, ast.AsyncFunctionDef)
-    names = {node.name for node in tree.body if isinstance(node, functions)}
+
+    def tests(body: list[ast.stmt]) -> set[str]:
+        return {f.name for f in body if isinstance(f, functions) and f.name.startswith("test")}
+
+    names = tests(tree.body)
     for node in tree.body:
-        if isinstance(node, ast.ClassDef):
-            names |= {f"{node.name}::{f.name}" for f in node.body if isinstance(f, functions)}
+        if isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
+            names |= {f"{node.name}::{name}" for name in tests(node.body)}
     return names
 
 
@@ -558,13 +564,15 @@ def test_the_open_gaps_are_the_lists_above_the_closed_line() -> None:
 
 
 def test_a_pin_is_found_only_where_it_names_a_test_there_is(tmp_path: Path) -> None:
-    """A name with a typo, a file that is not there, a name with no path and a pin with no
-    backticks are each told apart from a test that is there, a class's or one case of a
-    parametrised test among them, wherever the lines of an entry break."""
+    """A name with a typo, a file that is not there, a name with no path, a function or a
+    class pytest does not collect, and a pin with no backticks are each told apart from a
+    test that is there, a class's or one case of a parametrised test among them, wherever
+    the lines of an entry break."""
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_a.py").write_text(
         "def test_here():\n    pass\n\n\nclass TestGroup:\n    def test_in_it(self):\n"
-        "        pass\n",
+        "        pass\n\n    def helper(self):\n        pass\n\n\ndef helper():\n    pass\n\n\n"
+        "class Group:\n    def test_in_it(self):\n        pass\n",
         encoding="utf-8",
     )
     gaps = (
@@ -575,11 +583,15 @@ def test_a_pin_is_found_only_where_it_names_a_test_there_is(tmp_path: Path) -> N
         "    `tests/test_b.py::test_here` and `tests/test_a.py::test_here[a case]`.\n"
         "- **Four.** Pinned by `test_a.py::test_here`.\n"
         "- **Five.** Pinned by test_here.\n"
+        "- **Six.** Pinned by `tests/test_a.py::helper`, `tests/test_a.py::TestGroup::helper`\n"
+        "  and `tests/test_a.py::Group::test_in_it`.\n"
     )
     names, garbled = pins_of(gaps)
     assert garbled == ["Pinned by test_here."]
     assert unfound(names, tmp_path) == [
-        "tests/test_a.py::test_hare", "tests/test_b.py::test_here", "test_a.py::test_here"
+        "tests/test_a.py::test_hare", "tests/test_b.py::test_here", "test_a.py::test_here",
+        "tests/test_a.py::helper", "tests/test_a.py::TestGroup::helper",
+        "tests/test_a.py::Group::test_in_it",
     ]  # fmt: skip
 
 

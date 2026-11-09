@@ -4,25 +4,29 @@
 # is that a person looked.
 
 schema: manuscript-guard/methods-lock/2
-reconciled_on: '2026-10-22'
+reconciled_on: '2026-11-09'
 parameters: {}
 analysis:
-  analysis/00_simulate.py: d659615319950d736c797fbada143b40ca8861ba8df8ef2c00c660a3aae184ca
-  analysis/01_disproportionality.py: 613d9d81dfe29183c3385ce0cdb1517f865c62ce801feb31647fdcf2b9d5bc90
+  analysis/00_simulate.py: e3baabf001857e0ce0eedd7250329ea0a5694e848b23836470c06592ba4ac0c6
+  analysis/01_disproportionality.py: cb53ae91e86e00ac4866feb1ed20ad11ce217c15fb543b270c3e58ce513ff555
 pairs:
 - step: adjusted
   claim: 'Adjusted for age group and sex, the two patient characteristics the database records for every report, the reporting odds ratio was also estimated by {{results.model.adjusted.kind}} of hepatic injury on exposure to example-drug, with both characteristics entered as categories. The reporting year, which every report also carries, was not adjusted for: calendar time is a common adjustment in disproportionality analyses, but the data generator draws the year independently of the drug, so here it cannot confound the estimate. Its interval is the model''s Wald interval for the exposure coefficient, at the same alpha. Table S2 describes the model as it was fitted.'
   code: ffe9e3b0807b5cd1744bf856bd5ad0b90a3081b0f3f2bc256583f4b4c43aa2cf
-  read_on: '2026-10-22'
+  read_on: '2026-11-09'
 - step: ci
   claim: The reporting odds ratio was computed from a 2 x 2 table contrasting reports of hepatic injury with all other reported events, for example-drug against all other drugs in the database. Confidence intervals were derived from the standard error of the log odds ratio and are 95% confidence intervals, two-sided at an alpha of {{results.param.alpha}}; the main estimate is also given with its 90% confidence interval, for comparison with signal-detection practice.
-  code: 341304bd156666d20b98966338e40a99de96809c7d95a808720cc8043ee94978
-  read_on: '2026-10-22'
+  code: 033eedd89290d338f32843149b2b081eee92db0cc0183f35529b35173648039d
+  read_on: '2026-11-09'
+- step: controls
+  claim: Three controls were put through the same 2 x 2 table and interval, by the same script; they were chosen after the first results were known, as the analysis plan records. A simulated control drew reports as the database's are drawn, with hepatic injury planted for example-drug at twice the odds of the other drugs, and its interval was to hold the ratio planted. A positive control took example-drug and nausea, which the data generator makes rarer with the drug than with the others because hepatic injury takes its share; its estimate was to lie within a quarter of the ratio those rates give. A negative control took the first comparator and nausea, for which those rates give a ratio close to one, and its interval was to hold the null.
+  code: e9d687aa6718f8223cc10a8a1e28a65e1a849da887e0c14c5ed63fcc8d82488c
+  read_on: '2026-11-09'
 - step: ror
   claim: The reporting odds ratio was computed from a 2 x 2 table contrasting reports of hepatic injury with all other reported events, for example-drug against all other drugs in the database. Confidence intervals were derived from the standard error of the log odds ratio and are 95% confidence intervals, two-sided at an alpha of {{results.param.alpha}}; the main estimate is also given with its 90% confidence interval, for comparison with signal-detection practice.
-  code: 43994ea0f861fd9c11dd95e974d11a8092dac8245846d047087c06a0e4464051
-  read_on: '2026-10-22'
+  code: e69d6eb9f9dd3caefdeb61cc79d54cc3949734cc7785d86b9232f1c682fdd419
+  read_on: '2026-11-09'
 - step: signal
   claim: 'A signal was defined by the classical criterion: at least {{results.param.signal.min_cases}} cases together with a lower bound of the 95% confidence interval of the reporting odds ratio above 1. No p-value threshold was used as a decision rule, which is not how a disproportionality analysis reaches its conclusion.'
   code: d2537ffaa2c3277dcd94b7608b1cc89116a4e9ad3860b5712e804e73052db159
-  read_on: '2026-10-22'
+  read_on: '2026-11-09'

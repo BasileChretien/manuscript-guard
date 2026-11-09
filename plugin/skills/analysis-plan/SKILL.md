@@ -1,6 +1,6 @@
 ---
 name: analysis-plan
-description: Write the analysis plan in design/plan.md before the analysis exists, record every deviation from it as it happens, and hold the paper to the study's registration. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run, planned-result-missing, planned-result-unquoted, planned-results-unkeyed, plan-changed-after-results, not-in-dictionary, registration-missing, registration-not-looked-up, registration-late, registration-outcomes-undeclared, registration-outcome-not-registered, registration-outcome-role-changed, registration-outcome-dropped or registration-primary-unquoted, or when the analysis is about to do something the plan did not say. Not for finding which dataset could answer the question or how it is reached (use data-sources).
+description: Write the analysis plan in design/plan.md before the analysis exists, record every deviation from it as it happens, and hold the paper to the study's registration. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run, planned-result-missing, planned-result-unquoted, planned-results-unkeyed, plan-changed-after-results, not-in-dictionary, registration-missing, registration-not-looked-up, registration-late, registration-outcomes-undeclared, registration-outcome-not-registered, registration-outcome-role-changed, registration-outcome-dropped or registration-primary-unquoted, a control-… or held-out-… finding, plan-declarations-unreadable or first-reads-unreadable, or when the analysis is about to do something the plan did not say. Not for finding which dataset could answer the question or how it is reached (use data-sources).
 ---
 
 # Writing down what you meant to do, before you do it
@@ -15,7 +15,9 @@ deliberate: exploratory work is real work, and a gate that stopped you writing c
 plan was agreed would be bypassed the first afternoon it cost something. It also means the
 gate's approval is worth very little. All the value is in what gets written. A registration
 is different, because it is a promise made in public: where the paper is not the study
-registered, G12 warns while it is drafted and fails it at submission (below).
+registered, G12 warns while it is drafted and fails it at submission (below). So are the
+controls and the held-out data the plan declares: a control warns and fails at submission,
+and a leak of held-out data fails from the analysis stage.
 
 ## Where it lives
 
@@ -135,6 +137,72 @@ they are its names. Once the analysis is under way, G12 warns where a listed key
 emitted (`planned-result-missing`) or was emitted with `quoted=False`
 (`planned-result-unquoted`). If a planned result will not be reported, say so under
 Deviations, naming its key; that stands the warning down and is the record a reader needs.
+
+## Controls
+
+An analysis that has only been run on the study's data has never shown that it can find an
+answer. A control shows it, put through the same analysis by the same script: data
+simulated with a known effect; a positive control, an association known to exist; or a
+negative control, an exposure or an outcome for which no effect is expected (Lipsitch et al.,
+*Epidemiology* 2010;21:383-8). Choose them now: a control chosen once the results are known
+shows much less, and the plan's frozen copy says which it was.
+
+Declare each in a fenced `yaml` block anywhere in the plan, not under the Deviations:
+
+```yaml
+controls:
+  - key: control.headache        # what em.control() emits it under
+    kind: negative                # simulated, positive or negative
+    of: ror.*                     # the result it stands beside
+    expected: 1                   # the value planted, the association known, or the null
+    rule: holds-null              # holds-expected, holds-null, or within with a distance
+```
+
+`holds-expected` passes when the interval holds the expected value, `holds-null` when it
+holds the null (0 for a difference, 1 for a ratio), and `within` when the estimate is no
+further than `distance` from it, on the scale the analysis emits. A simulated control that
+plants no effect, the exposure shuffled, expects the null. The script that writes the result
+`of` names emits the control, `em.control(key, estimate, lower, upper)` (the
+[results-binding](../results-binding/SKILL.md) skill), and the paper reports each one, in
+the Methods, the Results or the supplement.
+
+G12 holds the plan to what was emitted: a control that fails its rule, one never emitted,
+one chosen after the first results or changed since, one the plan does not declare, one run
+by another script than its result's, and one the paper does not report. Each warns, and
+fails at submission. A failed control is reported, and the Deviations say why, naming its
+key; a missing, late or changed one is said under the Deviations, naming its key. No design
+requires a control. Some to consider:
+
+| Design | Controls to consider |
+|---|---|
+| cohort, case-control | a negative control outcome the exposure could not cause, or a negative control exposure that shares the biases and has no effect |
+| self-controlled | a negative control outcome, with the same risk windows |
+| disproportionality | drug-event pairs with no known association; a known adverse reaction of a drug in the database as a positive control |
+| trial, systematic-review | data simulated with a known effect, through the analysis code |
+| prediction-model | data simulated with a known structure, and the held-out data below |
+
+## Data held out from the model
+
+A prediction model validated on data held out from its development is validated
+independently only where nothing that built or tuned the model read those data first.
+Declare each held-out file in a `yaml` block, with the script that validates on it, the
+model's files that script reads, and any script that only describes the data:
+
+```yaml
+held_out:
+  - input: data/validation.csv
+    validated_by: analysis/03_validate.py
+    model: models/final.pkl
+    read_by: analysis/02_describe.py
+```
+
+From then on the emitters keep `design/first_reads.yaml`, each script's first read of each
+input. Commit it beside the plan, and never edit it. G1 fails a script that read the
+held-out data when the plan did not name it as the validator or a reader, and G12 fails a
+model written again after the validation first read the data: both from the analysis stage,
+since a leak changes the result. Name a describing script in `read_by` before it first runs.
+If the data have been read, the validation is not independent: validate on data nobody has
+read, or take the declaration out and say why under the Deviations.
 
 ## What will be collected
 

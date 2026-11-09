@@ -49,6 +49,42 @@ p < 0.05 is stated for convention; the interval, not the threshold, carries the 
 
 Seriousness (`serious`) is reported as a proportion of the cases, descriptively.
 
+## Control analyses
+
+Three controls, each put through the same 2 x 2 table and Wald interval as the ratio, by the
+same script. They were added after the first results (Deviations, item 7).
+
+- A simulated control: reports drawn as the database's are, with hepatic injury planted for
+  example-drug at twice the odds of the other drugs. Its interval should hold the ratio
+  planted.
+- A positive control: example-drug and nausea, the first event other than hepatic injury
+  that the generator lists. The generator's rates make it rarer with the drug than with the
+  others, since hepatic injury takes its share, at a ratio of about 0.82. With some four
+  hundred reports of the drug, the interval cannot tell so small a difference from none; the
+  rule asks only that the estimate lie within a quarter of it.
+- A negative control: the first comparator and nausea, for which the generator's rates give
+  a ratio close to one. Its interval should hold the null.
+
+```yaml
+controls:
+  - key: control.simulated
+    kind: simulated
+    of: ror.*
+    expected: 2
+    rule: holds-expected
+  - key: control.positive
+    kind: positive
+    of: ror.*
+    expected: 0.82
+    rule: within
+    distance: 0.25
+  - key: control.negative
+    kind: negative
+    of: ror.*
+    expected: 1
+    rule: holds-null
+```
+
 ## Planned results
 
 The results the paper will report, each by the key the analysis emits it under:
@@ -69,7 +105,7 @@ that would not be a different study.
 
 ## Deviations from the plan
 
-Six. The first two came after the first review round, both additive rather than a change
+Seven. The first two came after the first review round, both additive rather than a change
 of approach:
 
 1. The 2 x 2 counts were added to the Results as a table. The plan implied them; the first
@@ -96,3 +132,8 @@ deviation nobody wrote down is indistinguishable from having tried several thing
    and Table S2 prints its model as it was fitted.
 6. The variables are named in backticks, as a data dictionary names them, so that G12 can
    hold a dictionary to this plan (2026-10-21): a change of wording, not of the analysis.
+7. Three controls were added on 2026-11-09, after the first results were known:
+   control.simulated, control.positive and control.negative (Control analyses). They were
+   chosen by the generator's order, the first event it lists after hepatic injury and its
+   first comparator, not by what their results would be; their rules were written before
+   they were run. None of the planned results moved.

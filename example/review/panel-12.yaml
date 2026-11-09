@@ -1,0 +1,18 @@
+schema: manuscript-guard/panel/1
+round: 12
+opened_on: 2026-11-09
+manuscript_sha256: d707b19421848e216840a56740f60ea5249bd8233746bfee01533a682e71bd32
+blinded: false
+rationale: 'A revision round for the controls. The Methods now describe three controls put
+  through the same 2 x 2 table and interval as the ratio, a simulated, a positive and a
+  negative one, chosen after the first results, and the Results report each. The remit that
+  reads whether the design can answer the question asked, and the biases of spontaneous
+  reporting, reads them, with the earlier rounds in front of it.'
+reviewers:
+- id: pharmacoepidemiologist
+  role: Pharmacoepidemiologist
+  remit: Whether the design can answer the question asked. Case and exposure definitions,
+    denominators, the difference between disproportionate reporting and risk, and
+    the biases specific to spontaneous reporting.
+  why: The Methods and Results now carry three controls, whose choice and whose rules bear on
+    what the analysis can show and on the biases of spontaneous reporting.

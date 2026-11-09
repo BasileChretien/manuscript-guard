@@ -19,9 +19,29 @@ from manuscript_guard.emit import Emitter
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data" / "reports.csv"
+#: The simulated control's own data, written by 00_simulate.py beside the reports.
+CONTROL = ROOT / "data" / "control_simulated.csv"
 
 DRUG = "example-drug"
 EVENT = "hepatic injury"
+
+
+def two_by_two(rows: list[dict], drug: str, event: str) -> tuple[int, int, int, int]:
+    """The 2 x 2 table of a drug against an event: the reports with both, with the drug and
+    another event, with another drug and the event, and with neither."""
+    a = sum(1 for r in rows if r["drug"] == drug and r["event"] == event)
+    b = sum(1 for r in rows if r["drug"] == drug and r["event"] != event)
+    c = sum(1 for r in rows if r["drug"] != drug and r["event"] == event)
+    d = sum(1 for r in rows if r["drug"] != drug and r["event"] != event)
+    return a, b, c, d
+
+
+def wald(a: int, b: int, c: int, d: int, z: float) -> tuple[float, float, float, float]:
+    """The reporting odds ratio of a 2 x 2 table, its standard error on the log scale, and
+    the bounds of its Wald interval at the normal quantile z."""
+    ror = (a / b) / (c / d)
+    se = math.sqrt(1 / a + 1 / b + 1 / c + 1 / d)
+    return ror, se, math.exp(math.log(ror) - z * se), math.exp(math.log(ror) + z * se)
 
 
 def _pct(em: Emitter, subset: list[dict], field: str, level: str):
@@ -73,20 +93,30 @@ def main() -> None:
     # {{method.<name>}}. G9 keeps each step and its paragraph as a pair that a person read
     # together, and names the pair when either changes.
     with em.step("ror"):
-        a = sum(1 for r in rows if r["drug"] == DRUG and r["event"] == EVENT)
-        b = sum(1 for r in rows if r["drug"] == DRUG and r["event"] != EVENT)
-        c = sum(1 for r in rows if r["drug"] != DRUG and r["event"] == EVENT)
-        d = sum(1 for r in rows if r["drug"] != DRUG and r["event"] != EVENT)
-        ror = (a / b) / (c / d)
+        a, b, c, d = two_by_two(rows, DRUG, EVENT)
 
     with em.step("ci"):
         # The normal quantile for that alpha, to two places as the textbook writes it: 1.96.
         z = round(NormalDist().inv_cdf(1 - alpha / 2), 2)
-        se = math.sqrt(1 / a + 1 / b + 1 / c + 1 / d)
-        low = math.exp(math.log(ror) - z * se)
-        high = math.exp(math.log(ror) + z * se)
+        ror, se, low, high = wald(a, b, c, d, z)
         low90 = math.exp(math.log(ror) - 1.645 * se)
         high90 = math.exp(math.log(ror) + 1.645 * se)
+
+    # The three controls the plan declares, each through the same table and interval as the
+    # ratio: data simulated with a ratio planted, and two pairs of the reports, the first
+    # event other than hepatic injury that the generator lists. With the drug, that event is
+    # reported less often than with the others, since hepatic injury takes its share; with
+    # the first comparator, no more and no less. G12 holds each to the rule the plan gives.
+    with em.step("controls"):
+        with CONTROL.open(encoding="utf-8") as handle:
+            simulated = list(csv.DictReader(handle))
+        for key, data, drug, event, own in (
+            ("control.simulated", simulated, DRUG, EVENT, [CONTROL]),
+            ("control.positive", rows, DRUG, "nausea", []),
+            ("control.negative", rows, "comparator-a", "nausea", []),
+        ):
+            estimate, _se, lower, upper = wald(*two_by_two(data, drug, event), z)
+            em.control(key, estimate, lower, upper, inputs=own, digits=2)
 
     years = sorted({int(r["year"]) for r in rows})
     serious = sum(

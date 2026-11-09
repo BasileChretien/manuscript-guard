@@ -28,6 +28,15 @@ AGE_GROUPS = ["18-44", "45-64", "65-74", "75+"]
 # the analysis has something to find.
 P_HEPATIC = {"example-drug": 0.19, "comparator-a": 0.05, "comparator-b": 0.06, "comparator-c": 0.04}
 
+#: The simulated control's own data (the plan's Control analyses): reports in which hepatic
+#: injury is planted for example-drug at twice the odds of the other drugs, so that the
+#: analysis is shown to find a ratio it was given. Seeded apart from the reports, which stay
+#: as they were, and written beside them.
+CONTROL = ROOT / "data" / "control_simulated.csv"
+CONTROL_SEED = 20261109
+CONTROL_ODDS_RATIO = 2
+CONTROL_P_OTHERS = 0.05
+
 
 def main() -> None:
     rng = random.Random(20260803)
@@ -58,6 +67,29 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(rows)
     print(f"wrote {len(rows)} rows to {OUT}")
+    control = simulate_control()
+    with CONTROL.open("w", encoding="utf-8", newline="\n") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(control[0]), lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(control)
+    print(f"wrote {len(control)} rows to {CONTROL}")
+
+
+def simulate_control() -> list[dict]:
+    """The simulated control's reports: the drugs drawn as in the reports, hepatic injury
+    planted for example-drug at CONTROL_ODDS_RATIO times the odds of the others."""
+    rng = random.Random(CONTROL_SEED)
+    odds = CONTROL_ODDS_RATIO * CONTROL_P_OTHERS / (1 - CONTROL_P_OTHERS)
+    planted = {drug: CONTROL_P_OTHERS for drug in DRUGS} | {"example-drug": odds / (1 + odds)}
+    rows = []
+    for report_id in range(1, 4001):
+        drug = rng.choices(DRUGS, weights=[1, 3, 3, 3])[0]
+        if rng.random() < planted[drug]:
+            event = "hepatic injury"
+        else:
+            event = rng.choice([e for e in EVENTS if e != "hepatic injury"])
+        rows.append({"report_id": f"C{report_id:05d}", "drug": drug, "event": event})
+    return rows
 
 
 if __name__ == "__main__":

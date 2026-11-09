@@ -5145,20 +5145,25 @@ def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
 
 #: How a fenced `yaml` block opens and closes, each a way pandoc reads one (items 5 and 11).
 _YAML_FENCES = (("```yaml", "```"), ("~~~yaml", "~~~"), ("```` yaml", "````"),
-                ("``` {.yaml}", "```"), ("```YAML", "```"))  # fmt: skip
+                ("``` {.yaml}", "```"), ("```YAML", "```"), ("```yml", "```"))  # fmt: skip
 #: The parts of a control's key, and of a held-out input's path: an emitter's key each.
 _CONTROL_LEAVES = ("shuffled", "headache", "bleeding", "simulated", "rash")
 
 
 #: How the `held_out` key is written: as YAML reads it, and as the emitters' line must find it.
 _HELD_OUT_KEYS = ("held_out:", '"held_out":', "'held_out' :", "held_out :")
-#: An entry the form refuses, each said at the entry's line.
+#: An entry the form refuses: said at the entry's line, or, where the value of a field is what
+#: the safe loader cannot build, at that field's.
 _REFUSED = (
-    ("    kind: placebo\n    rule: holds-null\n", "    expected: 1\n"),
-    ("    kind: negative\n    rule: close-enough\n", "    expected: 1\n"),
-    ("    kind: negative\n    rule: holds-null\n", "    expected: 2\n"),
-    ("    kind: negative\n    rule: holds-null\n    distance: 1\n", "    expected: 1\n"),
-    ("    kind: negative\n    rule: holds-null\n", "    expected: .inf\n"),
+    ("    kind: placebo\n    rule: holds-null\n", "    expected: 1\n", None),
+    ("    kind: negative\n    rule: close-enough\n", "    expected: 1\n", None),
+    ("    kind: negative\n    rule: holds-null\n", "    expected: 2\n", None),
+    ("    kind: negative\n    rule: holds-null\n    distance: 1\n", "    expected: 1\n", None),
+    ("    kind: negative\n    rule: holds-null\n", "    expected: .inf\n", None),
+    ("    kind: negative\n    rule: holds-null\n", "    expected: !!int x\n",
+     "expected: !!int x"),
+    ("    kind: negative\n    rule: holds-null\n", "    expected: !!bool maybe\n",
+     "expected: !!bool maybe"),
 )
 
 
@@ -5202,7 +5207,7 @@ def declared_plans(draw: st.DrawFn) -> dict[str, Any]:
         return f"  - input: {path}\n    validated_by: analysis/validate.py\n"
 
     entries = [control(key) for key in keys]
-    form, value = draw(st.sampled_from(_REFUSED))
+    form, value, said_at = draw(st.sampled_from(_REFUSED))
     at = draw(st.integers(0, len(entries)))
     entries.insert(at, f"  - key: {refused}\n    of: ror.*\n{form}{value}")
     controls = fence("controls:\n" + "".join(entries))
@@ -5230,7 +5235,8 @@ def declared_plans(draw: st.DrawFn) -> dict[str, Any]:
     plan = front + "# Analysis plan\n\n" + "\n".join(kinds[index] for index in order)
     ending = draw(st.sampled_from(("\n", "\r\n")))
     return {"plan": plan.replace("\n", ending), "keys": keys, "inputs": inputs,
-            "refused": refused, "broken": broken, "unread": unread}  # fmt: skip
+            "refused": refused, "refused_at": said_at or f"- key: {refused}",
+            "broken": broken, "unread": unread}  # fmt: skip
 
 
 #: Each way a manuscript gives a registration: as written, the identifier `paper.yaml` lists

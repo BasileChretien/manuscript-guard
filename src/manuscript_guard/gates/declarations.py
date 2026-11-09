@@ -52,6 +52,11 @@ _SECTIONS = ("controls", "held_out")
 #: The languages a block that declares is fenced as: `yaml`, and `yml`, which is the same
 #: and which a block typed with it would otherwise be passed over in silence (round 1).
 _YAML = frozenset({"yaml", "yml"})
+#: What building a field's value may raise: the safe loader's constructors raise a
+#: ConstructorError, a ValueError, a KeyError (`!!bool maybe`), an AttributeError
+#: (`!!timestamp soon`), an IndexError (`!!int ''`) or an OverflowError, by the tag and the
+#: value, so any of them is a value that does not read (round 2 of #599).
+_UNBUILT: tuple[type[Exception], ...] = (Exception,)
 #: A line that opens with either key: what says a block that is not YAML meant to declare.
 _DECLARING = re.compile(r"(?m)^[ \t]*[\"']?(?:controls|held_out)[\"']?[ \t]*:")
 
@@ -202,8 +207,8 @@ def read_declarations(text: str) -> Declarations:
             at = first + name.start_mark.line
             if name.value in seen:
                 before, where = seen[name.value]
-                said = (f"{name.value} is given twice in the block, at line {before} too; YAML "
-                        "reads the second and drops the first" if where == number
+                said = (f"{name.value} is given twice in the block, at line {before} too; the "
+                        "first is read and this one is not" if where == number
                         else f"{name.value} is declared in another block too, at line {before}; "
                         "one block holds each")  # fmt: skip
                 unreadable.append(Unreadable(at, said))
@@ -249,9 +254,9 @@ def _fields(
                                   "first")  # fmt: skip
         try:
             fields[said] = _value(value)
-        except (yaml.YAMLError, ValueError, OverflowError) as exc:
+        except _UNBUILT as exc:
             # A tag the safe loader has none for, a value its tag refuses, a date that is no
-            # day: said, where raised it stopped G12 whole (round 1 of the PR).
+            # day: said, where raised it stopped G12 whole (rounds 1 and 2 of #599).
             return Unreadable(at, f"{said} is not a value YAML can read: {exc}".splitlines()[0])
     missing = [need for need in needs if need not in fields]
     if missing:

@@ -2182,6 +2182,9 @@ class Emitter:
         named = []
         for path in inputs or ():
             recorded = self._input_path(path)
+            if recorded in {seen for _given, seen in named}:
+                # One file named twice, or spelt two ways, is one input (round 2 of #599).
+                continue
             owner = self._control_inputs.get(recorded)
             if owner is not None or recorded in self._recorded:
                 raise DisplayError(

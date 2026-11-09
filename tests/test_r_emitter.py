@@ -744,7 +744,8 @@ if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest",
 source("%(emit)s")
 em <- mg_emitter("%(script)s", inputs = "data/real.csv")
 em$interval("ror", 3.84, 2.10, 7.02, digits = 2)
-em$control("control.shuffled", 1.04, 0.81, 1.33, inputs = "data/simulated.csv", digits = 2)
+em$control("control.shuffled", 1.04, 0.81, 1.33,
+           inputs = c("data/simulated.csv", "./data/simulated.csv"), digits = 2)
 em$control("control.headache", 0.97, 0.70, 1.35, digits = 2)
 refused <- tryCatch({
   em$control("control.real", 1, 0.5, 2, inputs = "data/real.csv"); "no"
@@ -777,7 +778,8 @@ def test_r_and_python_emit_a_control_alike(tmp_path: Path) -> None:
     from_r = json.loads(next((root / "results").glob("*.json")).read_text(encoding="utf-8"))
     em = Emitter(script, root=root, inputs=["data/real.csv"])
     em.interval("ror", 3.84, 2.10, 7.02, digits=2)
-    em.control("control.shuffled", 1.04, 0.81, 1.33, inputs=["data/simulated.csv"], digits=2)
+    em.control("control.shuffled", 1.04, 0.81, 1.33,
+               inputs=["data/simulated.csv", "./data/simulated.csv"], digits=2)  # fmt: skip
     em.control("control.headache", 0.97, 0.70, 1.35, digits=2)
     from_python = json.loads(em.write().read_text(encoding="utf-8"))
     assert from_r["controls"] == from_python["controls"] == {

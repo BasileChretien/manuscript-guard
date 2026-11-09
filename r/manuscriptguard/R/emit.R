@@ -1725,6 +1725,10 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     }
     given <- as.character(inputs)
     recorded <- vapply(given, input_path, character(1), USE.NAMES = FALSE)
+    # One file named twice, or spelt two ways, is one input, as in Python (round 2 of #599).
+    once <- !duplicated(recorded)
+    given <- given[once]
+    recorded <- recorded[once]
     for (path in recorded) {
       owner <- if (path %in% names(state$control_inputs)) state$control_inputs[[path]] else NULL
       if (!is.null(owner) || path %in% state$recorded) {

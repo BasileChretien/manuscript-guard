@@ -3779,7 +3779,10 @@ def test_a_declaration_is_read_from_its_yaml_block_and_is_no_word_of_the_deviati
 
     plan = drawn["plan"]
     lines = plan.replace("\r\n", "\n").split("\n")
-    read = read_declarations(plan)
+    try:
+        read = read_declarations(plan)
+    except Exception as raised:  # noqa: BLE001 - raised, the reader stops G12 whole
+        raise AssertionError(f"the reader raised {raised!r}") from raised
     assert [c.key for c in read.controls] == drawn["keys"], plan
     assert [h.input for h in read.held_out] == drawn["inputs"], plan
     for found, said in [*((c.line, f"- key: {c.key}") for c in read.controls),
@@ -3788,7 +3791,7 @@ def test_a_declaration_is_read_from_its_yaml_block_and_is_no_word_of_the_deviati
     assert len(read.unreadable) == 2, (read.unreadable, plan)
     refused, broken = sorted(read.unreadable, key=lambda problem: problem.message.startswith(
         "the block is not YAML"))  # fmt: skip
-    assert lines[refused.line - 1].strip() == f"- key: {drawn['refused']}", (refused, plan)
+    assert lines[refused.line - 1].strip() == drawn["refused_at"], (refused, plan)
     opened = lines.index(f"  - key: {drawn['broken']}")
     assert broken.message.startswith("the block is not YAML"), (broken, plan)
     assert opened - 1 <= broken.line <= opened + 3, (broken, plan)
@@ -14553,6 +14556,20 @@ def _a_block_that_is_not_yaml_never_declares(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(declarations, "_DECLARING", re.compile(r"(?!)"))
 
 
+def _a_yml_block_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import declarations
+
+    patch.setattr(declarations, "_YAML", frozenset({"yaml"}))
+
+
+def _a_value_only_yaml_refuses_is_said(patch: pytest.MonkeyPatch) -> None:
+    import yaml
+
+    from manuscript_guard.gates import declarations
+
+    patch.setattr(declarations, "_UNBUILT", (yaml.YAMLError,))
+
+
 def _the_emitters_find_only_a_bare_held_out_line(patch: pytest.MonkeyPatch) -> None:
     import re
 
@@ -21269,6 +21286,8 @@ BROKEN = {
             ("a block that is not YAML never declares", _a_block_that_is_not_yaml_never_declares),
             ("the emitters find only a bare held_out line",
              _the_emitters_find_only_a_bare_held_out_line),
+            ("a yml block is passed over", _a_yml_block_is_passed_over),
+            ("a value only YAML refuses is said", _a_value_only_yaml_refuses_is_said),
         )
     },
     **{

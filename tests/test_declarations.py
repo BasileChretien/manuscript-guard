@@ -127,6 +127,12 @@ def test_an_entry_that_breaks_the_form_is_said_at_its_line_and_left_out(
         "held_out:\n  - input: 2026-02-30\n    validated_by: a.py\n",
         "controls:\n  - key: c.x\n    kind: negative\n    of: ror.*\n    expected: "
         + "9" * 400 + "\n    rule: holds-null\n",
+        # Round 2: what other constructors raise, a KeyError, an AttributeError, an IndexError.
+        "controls:\n  - key: c.x\n    kind: negative\n    of: ror.*\n    expected: !!bool maybe\n"
+        "    rule: holds-null\n",
+        "held_out:\n  - input: data/v.csv\n    validated_by: a.py\n    model: !!timestamp soon\n",
+        "controls:\n  - key: c.x\n    kind: negative\n    of: ror.*\n    expected: !!int ''\n"
+        "    rule: holds-null\n",
     ],
 )
 def test_a_value_yaml_cannot_build_is_said_and_raises_nothing(body: str) -> None:
@@ -165,9 +171,11 @@ def test_a_section_given_twice_in_one_block_is_said_as_given_twice() -> None:
     """Round 1: it was said to be declared in another block too."""
     entry = "  - input: data/v.csv\n    validated_by: a.py\n"
     plan = f"# Plan\n\n```yaml\nheld_out:\n{entry}held_out:\n{entry}```\n"
-    (problem,) = read_declarations(plan).unreadable
+    read = read_declarations(plan)
+    (problem,) = read.unreadable
     assert problem.message.startswith("held_out is given twice in the block, at line 4"), problem
-    assert problem.line == 7
+    assert "the first is read" in problem.message and problem.line == 7
+    assert [h.line for h in read.held_out] == [5], "the first is the one read (round 2)"
 
 
 def test_a_block_that_is_not_yaml_is_said_where_it_seems_to_declare() -> None:

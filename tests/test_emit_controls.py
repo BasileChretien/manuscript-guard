@@ -86,6 +86,15 @@ def test_a_control_refuses_what_it_cannot_record(tmp_path: Path, call, refusal: 
         call(em)
 
 
+def test_a_control_given_one_file_twice_reads_it_once(tmp_path: Path) -> None:
+    """Round 2 of #599: the second spelling was refused as the control's own data, after its
+    interval had been published."""
+    root = _project(tmp_path)
+    em = Emitter(root / "analysis" / "analysis.py", root=root)
+    em.control("c.x", 1, 0, 2, inputs=["data/simulated.csv", "./data/simulated.csv"])
+    assert em.document()["controls"] == {"c.x": {"inputs": ["data/simulated.csv"]}}
+
+
 def _reads(root: Path) -> list[tuple[str, str]]:
     record = json.loads((root / FIRST_READS).read_text(encoding="utf-8"))
     return [(read["script"], read["input"]) for read in record["reads"]]

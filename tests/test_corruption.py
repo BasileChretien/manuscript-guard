@@ -8521,6 +8521,240 @@ def test_a_declaration_put_under_the_deviations_is_no_deviation(project: Path) -
     assert "control.headache" not in deviations_said(plan)
 
 
+# ----------------------------------------- held-out data, read only by its validation (item 11)
+
+_HELD_OUT = (
+    "```yaml\nheld_out:\n  - input: data/validation.csv\n"
+    "    validated_by: analysis/03_validate.py\n    model: models/model.txt\n{extra}```\n"
+)
+
+
+def _hold_out(root: Path, *, extra: str = "", frozen: bool = True) -> None:
+    """The held-out block in the plan, and, with `frozen`, in its frozen copy too; the data,
+    the model and the scripts that read them."""
+    block = _HELD_OUT.format(extra=extra)
+    _plan_edited(root, "## Planned results", f"## Validation\n\n{block}\n## Planned results")
+    if frozen:
+        copy = root / "design" / "plan.frozen.yaml"
+        record = json.loads(copy.read_text(encoding="utf-8"))
+        record["plan"] = (root / "design" / "plan.md").read_text(encoding="utf-8")
+        copy.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    (root / "models").mkdir(exist_ok=True)
+    (root / "models" / "model.txt").write_text("beta 1.2\n", encoding="utf-8")
+    (root / "data" / "validation.csv").write_text("id,y\nV1,0\nV2,1\n", encoding="utf-8")
+    for script in ("02_develop", "03_validate", "04_describe"):
+        (root / "analysis" / f"{script}.py").write_text(f"# {script}\n", encoding="utf-8")
+
+
+def _run_held(root: Path, script: str, *inputs: str, synthetic: tuple[str, ...] = ()) -> None:
+    """A run of `analysis/<script>.py` through the emitter, declaring the inputs given."""
+    from manuscript_guard.emit import Emitter
+
+    em = Emitter(root / "analysis" / f"{script}.py", inputs=list(inputs), root=root)
+    for path in synthetic:
+        em.add_input(path, synthetic=True)
+    em.value(f"{script.split('_', 1)[1]}.n", 2)
+    em.write()
+
+
+def _held_out_said(root: Path, stage: str = "analysis") -> list[tuple[str, str, str]]:
+    from manuscript_guard.gates.held_out import check_held_out, check_held_out_reads
+
+    loaded, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    found = check_held_out_reads(loaded, results, stage).merge(
+        check_held_out(loaded, results, stage)).findings  # fmt: skip
+    return sorted((f.gate, f.code, f.severity) for f in found)
+
+
+_LEAK = [("G1", "held-out-read-elsewhere", "fail")]
+
+
+def test_held_out_data_read_by_its_validation_alone_are_said_nothing_of(project: Path) -> None:
+    _hold_out(project)
+    _run_held(project, "03_validate", "data/validation.csv", "models/model.txt")
+    _run_held(project, "02_develop", "data/reports.csv")
+    assert _held_out_said(project) == []
+    assert _held_out_said(project, "design") == []
+
+
+def test_a_script_that_reads_the_held_out_data_besides_its_validation_is_a_leak(
+    project: Path,
+) -> None:
+    """D11.2: a leak fails from the analysis stage; and naming the script as a reader, and the
+    input under the Deviations, after it read the data does not clear it (round 2 of #590)."""
+    _hold_out(project)
+    _run_held(project, "03_validate", "data/validation.csv", "models/model.txt")
+    _run_held(project, "02_develop", "data/reports.csv", "data/validation.csv")
+    assert _held_out_said(project) == _LEAK
+    _run_held(project, "02_develop", "data/reports.csv")
+    assert _held_out_said(project) == _LEAK, "the record keeps the read the fragment dropped"
+    _plan_edited(project, "    model: models/model.txt\n",
+                 "    model: models/model.txt\n    read_by: analysis/02_develop.py\n")  # fmt: skip
+    _plan_edited(project, "## Deviations from the plan", "## Deviations from the plan\n\n"
+                 "The development script read data/validation.csv.\n")  # fmt: skip
+    assert _held_out_said(project, "submission") == _LEAK
+
+
+def test_a_script_that_reads_the_held_out_bytes_under_another_name_is_a_leak(
+    project: Path,
+) -> None:
+    _hold_out(project)
+    _run_held(project, "03_validate", "data/validation.csv", "models/model.txt")
+    shutil.copyfile(project / "data" / "validation.csv", project / "data" / "copy.csv")
+    _run_held(project, "02_develop", "data/copy.csv")
+    assert _held_out_said(project) == _LEAK
+
+
+def test_a_reader_named_before_its_first_run_may_read_and_one_named_after_may_not(
+    project: Path,
+) -> None:
+    """Basile, 2026-11-09: a script is a reader by the plan it first read the input under."""
+    _hold_out(project, extra="    read_by: analysis/04_describe.py\n")
+    _run_held(project, "03_validate", "data/validation.csv", "models/model.txt")
+    _run_held(project, "04_describe", "data/validation.csv")
+    assert _held_out_said(project) == []
+    _run_held(project, "02_develop", "data/validation.csv")
+    _plan_edited(project, "    read_by: analysis/04_describe.py\n",
+                 "    read_by: [analysis/04_describe.py, analysis/02_develop.py]\n")  # fmt: skip
+    assert ("G1", "held-out-read-elsewhere", "fail") in _held_out_said(project)
+
+
+def test_a_dry_run_on_a_synthetic_copy_is_no_read_of_the_held_out_data(project: Path) -> None:
+    """Round 4 of #590: an input declared synthetic is not entered, so a dry run fixes
+    neither the readers nor the model the validation first read the data with."""
+    _hold_out(project)
+    _run_held(project, "03_validate", "models/model.txt", synthetic=("data/validation.csv",))
+    _run_held(project, "04_describe", synthetic=("data/validation.csv",))
+    (project / "models" / "model.txt").write_text("beta 2.4\n", encoding="utf-8")
+    _run_held(project, "03_validate", "models/model.txt", "data/validation.csv")
+    assert _held_out_said(project) == []
+
+
+def test_a_copy_of_the_synthetic_data_a_dry_run_read_is_no_held_out_data(project: Path) -> None:
+    """Round 2 of PR 2b: each entry of the record lists every input of its run, a synthetic
+    copy's bytes among them, so only a read of the held-out input gives its bytes."""
+    _hold_out(project)
+    _run_held(project, "03_validate", "models/model.txt", synthetic=("data/validation.csv",))
+    shutil.copyfile(project / "data" / "validation.csv", project / "data" / "sim.csv")
+    (project / "data" / "validation.csv").write_text("id,y\nV1,1\nV2,1\nV3,0\n", encoding="utf-8")
+    _run_held(project, "03_validate", "models/model.txt", "data/validation.csv")
+    _run_held(project, "02_develop", "data/sim.csv")
+    assert _held_out_said(project) == []
+
+
+def test_a_model_written_again_after_the_validation_read_the_data_fails(project: Path) -> None:
+    """D11.2: the model the validation first read the held-out data with is the one it
+    validates now, by its digest."""
+    _hold_out(project)
+    _run_held(project, "03_validate", "data/validation.csv", "models/model.txt")
+    _run_held(project, "02_develop", "data/reports.csv")
+    assert _held_out_said(project) == []
+    (project / "models" / "model.txt").write_text("beta 2.4\n", encoding="utf-8")
+    _run_held(project, "03_validate", "data/validation.csv", "models/model.txt")
+    assert _held_out_said(project) == [("G12", "held-out-read-before-model", "fail")]
+    (project / "models" / "model.txt").write_text("beta 1.2\n", encoding="utf-8")
+    _run_held(project, "03_validate", "data/validation.csv", "models/model.txt")
+    assert _held_out_said(project) == [], "changed back, as the Known gaps say"
+
+
+def test_held_out_data_their_validation_never_read_are_said_until_the_deviations_say_why(
+    project: Path,
+) -> None:
+    """Round 2 of #590: a path that ends a sentence of the Deviations is named."""
+    _hold_out(project)
+    assert _held_out_said(project) == [("G12", "held-out-unread", "warn")]
+    assert _held_out_said(project, "submission") == [("G12", "held-out-unread", "fail")]
+    _plan_edited(project, "## Deviations from the plan", "## Deviations from the plan\n\n"
+                 "We no longer validate on ./data/validation.csv.\n")  # fmt: skip
+    assert _held_out_said(project, "submission") == []
+
+
+def test_a_model_the_validation_does_not_read_leaves_the_order_unknown(project: Path) -> None:
+    """Round 1 of PR 2b: no case reached the model missing from the validation's inputs."""
+    _hold_out(project)
+    _run_held(project, "03_validate", "data/validation.csv")
+    assert _held_out_said(project) == [("G12", "held-out-order-unknown", "warn")]
+
+
+def test_a_read_under_a_plan_that_held_out_other_data_tells_nothing(project: Path) -> None:
+    """Round 1 of PR 2b: a script's first read written under a version of the plan with no
+    entry for the input says nothing of its leave to read it: unknown, not a leak."""
+    _plan_edited(project, "## Planned results", "## Other\n\n```yaml\nheld_out:\n"
+                 "  - input: data/other.csv\n    validated_by: analysis/09.py\n```\n\n"
+                 "## Planned results")  # fmt: skip
+    (project / "data" / "validation.csv").write_text("id,y\nV1,0\nV2,1\n", encoding="utf-8")
+    (project / "models").mkdir()
+    (project / "models" / "model.txt").write_text("beta 1.2\n", encoding="utf-8")
+    for script in ("03_validate", "04_describe"):
+        (project / "analysis" / f"{script}.py").write_text(f"# {script}\n", encoding="utf-8")
+    _run_held(project, "04_describe", "data/validation.csv")
+    _plan_edited(project, "  - input: data/other.csv\n",
+                 "  - input: data/validation.csv\n    validated_by: analysis/03_validate.py\n"
+                 "    model: models/model.txt\n  - input: data/other.csv\n")  # fmt: skip
+    _run_held(project, "03_validate", "data/validation.csv", "models/model.txt")
+    said = _held_out_said(project)
+    assert ("G12", "held-out-order-unknown", "warn") in said and _LEAK[0] not in said, said
+
+
+@pytest.mark.parametrize(
+    "spoil",
+    [
+        lambda read: read.update(inputs=None),
+        lambda read: read["inputs"][0].update(sha256=["x"]),
+        lambda read: read.update(plan=[]),
+    ],
+)
+def test_a_record_of_first_reads_edited_out_of_shape_is_unreadable(project: Path, spoil) -> None:
+    """Round 1 of PR 2b: a read whose inputs, digests or plan were not of the emitters' shape
+    passed the check of its shape and raised in both gates."""
+    from manuscript_guard.emit import FIRST_READS
+
+    _hold_out(project)
+    _run_held(project, "03_validate", "data/validation.csv", "models/model.txt")
+    path = project / FIRST_READS
+    record = json.loads(path.read_text(encoding="utf-8"))
+    spoil(record["reads"][0])
+    path.write_text(json.dumps(record), encoding="utf-8")
+    assert ("G12", "first-reads-unreadable", "warn") in _held_out_said(project)
+
+
+def test_what_the_record_of_first_reads_cannot_tell_is_said(project: Path) -> None:
+    from manuscript_guard.emit import FIRST_READS
+
+    _hold_out(project)
+    _run_held(project, "03_validate", "data/validation.csv", "models/model.txt")
+    record = project / FIRST_READS
+    kept = record.read_text(encoding="utf-8")
+    record.unlink()
+    assert _held_out_said(project) == [("G12", "held-out-order-unknown", "warn")]
+    record.write_text("{not json", encoding="utf-8")
+    assert ("G12", "first-reads-unreadable", "warn") in _held_out_said(project)
+    record.write_text(kept, encoding="utf-8")
+    _plan_edited(project, "    model: models/model.txt\n", "")
+    assert _held_out_said(project) == [("G12", "held-out-changed", "warn"),
+                                       ("G12", "held-out-order-unknown", "info")]  # fmt: skip
+
+
+def test_held_out_data_declared_late_or_dropped_since_the_first_results_are_said(
+    project: Path,
+) -> None:
+    _hold_out(project, frozen=False)
+    _run_held(project, "03_validate", "data/validation.csv", "models/model.txt")
+    assert _held_out_said(project) == [("G12", "held-out-declared-late", "warn")]
+    _plan_edited(project, "## Deviations from the plan", "## Deviations from the plan\n\n"
+                 "data/validation.csv was held out after the first results.\n")  # fmt: skip
+    assert _held_out_said(project) == []
+    copy = project / "design" / "plan.frozen.yaml"
+    record = json.loads(copy.read_text(encoding="utf-8"))
+    record["plan"] = (project / "design" / "plan.md").read_text(encoding="utf-8")
+    copy.write_text(json.dumps(record), encoding="utf-8")
+    _plan_edited(project, "held_out:", "kept:")
+    assert _held_out_said(project) == [], "dropped, and the Deviations still name it"
+    _plan_edited(project, "data/validation.csv was held out after the first results.", "")
+    assert _held_out_said(project) == [("G12", "held-out-changed", "warn")]
+
+
 def test_results_with_no_kept_plan_are_a_note(project: Path) -> None:
     (project / "design" / "plan.frozen.yaml").unlink()
     assert _plan_said(project) == [("plan-not-frozen", "info")]

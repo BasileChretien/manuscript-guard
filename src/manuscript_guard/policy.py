@@ -341,6 +341,17 @@ BINDS_AT = {
     # what it declares is then checked by nothing. G12 warns while the paper is written and
     # fails it at submission (items 5 and 11, Basile, 2026-11-09).
     "plan-declarations-unreadable": SUBMISSION,
+    # A held-out input another script read, or a model written again after the validation
+    # first read it: a leak changes the result, and fails from the analysis stage (D11.2).
+    # What the record cannot tell, a held-out input unread, declared late or changed, and a
+    # record that does not read warn while the paper is written and fail at submission.
+    "held-out-read-elsewhere": ANALYSIS,
+    "held-out-read-before-model": ANALYSIS,
+    **dict.fromkeys(
+        ("held-out-order-unknown", "held-out-unread", "held-out-declared-late",
+         "held-out-changed", "first-reads-unreadable"),
+        SUBMISSION,
+    ),  # fmt: skip
     # One work cited under two keys is printed twice in the reference list.
     "reference-duplicate": INTERNAL_REVIEW,
     # A sentence a person judged the cited work does not support: a draft may hold one while

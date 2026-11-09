@@ -1179,7 +1179,12 @@ mg_first_reads_shaped <- function(record) {
   all(vapply(reads, function(read) {
     is.list(read) && is.character(read$script) && length(read$script) == 1 &&
       is.character(read$input) && length(read$input) == 1 &&
-      is.character(read$plan) && length(read$plan) == 1 && read$plan %in% names(plans)
+      is.character(read$plan) && length(read$plan) == 1 && read$plan %in% names(plans) &&
+      # Each input a path and a digest, as in Python (round 1 of PR 2b).
+      is.list(read$inputs) && all(vapply(read$inputs, function(one) {
+        is.list(one) && is.character(one$path) && length(one$path) == 1 &&
+          is.character(one$sha256) && length(one$sha256) == 1
+      }, logical(1)))
   }, logical(1)))
 }
 

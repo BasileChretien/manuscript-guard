@@ -3975,20 +3975,25 @@ def test_a_declaration_is_read_from_its_yaml_block_and_is_no_word_of_the_deviati
     except Exception as raised:  # noqa: BLE001 - raised, the reader stops G12 whole
         raise AssertionError(f"the reader raised {raised!r}") from raised
     assert [c.key for c in read.controls] == drawn["keys"], plan
+    assert [c.null for c in read.controls] == drawn["nulls"], plan
     assert [h.input for h in read.held_out] == drawn["inputs"], plan
     for found, said in [*((c.line, f"- key: {c.key}") for c in read.controls),
                         *((h.line, f"- input: {h.input}") for h in read.held_out)]:  # fmt: skip
         assert lines[found - 1].strip() == said, (found, said, plan)
-    assert len(read.unreadable) == 2, (read.unreadable, plan)
-    refused, broken = sorted(read.unreadable, key=lambda problem: problem.message.startswith(
-        "the block is not YAML"))  # fmt: skip
-    assert lines[refused.line - 1].strip() == drawn["refused_at"], (refused, plan)
-    assert read.refused_keys == (drawn["refused"],), (read.refused_keys, plan)
+    not_yaml = [p for p in read.unreadable if p.message.startswith("the block is not YAML")]
+    refused = [p for p in read.unreadable if p not in not_yaml]
+    assert len(not_yaml) == 1 and len(refused) == len(drawn["refused"]), (read.unreadable, plan)
+    assert [lines[p.line - 1].strip() for p in refused] == [at for _key, at in drawn["refused"]], (
+        refused, plan)  # fmt: skip
+    assert read.refused_keys == tuple(key for key, _at in drawn["refused"]), (
+        read.refused_keys, plan)  # fmt: skip
+    (broken,) = not_yaml
     opened = lines.index(f"  - key: {drawn['broken']}")
     assert broken.message.startswith("the block is not YAML"), (broken, plan)
     assert opened - 1 <= broken.line <= opened + 3, (broken, plan)
     said = deviations_said(plan)
-    named = (*drawn["keys"], *drawn["inputs"], drawn["refused"], drawn["broken"], drawn["unread"])
+    named = (*drawn["keys"], *drawn["inputs"], *(key for key, _at in drawn["refused"]),
+             drawn["broken"], drawn["unread"])  # fmt: skip
     assert not [name for name in named if name in said], (said, plan)
     assert emit.HELD_OUT_LINE.search(plan), plan
 
@@ -14920,6 +14925,46 @@ def _a_refused_entry_gives_no_key(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(declarations, "_key_of", lambda node: None)
 
 
+def _a_control_s_null_is_never_refused(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import declarations
+
+    patch.setattr(declarations, "_null_refused", lambda key, rule, null: None)
+
+
+def _a_null_is_asked_for_only_under_holds_expected(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import declarations
+
+    asked = declarations._null_refused
+
+    def lenient(key: str, rule: str, null: object) -> str | None:
+        return None if rule == "within" and null is None else asked(key, rule, null)
+
+    patch.setattr(declarations, "_null_refused", lenient)
+
+
+def _a_control_s_null_read_as(null: Callable[[Any], Any]) -> Callable[[pytest.MonkeyPatch], None]:
+    def broken(patch: pytest.MonkeyPatch) -> None:
+        import dataclasses
+
+        from manuscript_guard.gates import declarations
+
+        read = declarations._control
+
+        def misread(node: Any, line: int, *args: Any) -> Any:
+            found = read(node, line, *args)
+            return dataclasses.replace(found, null=null(found.null)) if isinstance(
+                found, declarations.Control) else found  # fmt: skip
+
+        patch.setattr(declarations, "_control", misread)
+
+    return broken
+
+
+_a_control_s_null_is_not_read = _a_control_s_null_read_as(lambda null: None)
+#: Round 1 of PR 2c: caught only where an example holds a `null: 0`, which each now does.
+_every_null_reads_as_1 = _a_control_s_null_read_as(lambda null: None if null is None else 1.0)
+
+
 def _the_emitters_find_only_a_bare_held_out_line(patch: pytest.MonkeyPatch) -> None:
     import re
 
@@ -22229,6 +22274,11 @@ BROKEN = {
             ("a value only YAML refuses is said", _a_value_only_yaml_refuses_is_said),
             ("a value is said as round 2 of #599 had it", _a_value_is_said_as_round_2_had_it),
             ("a refused entry gives no key", _a_refused_entry_gives_no_key),
+            ("a control's null is never refused", _a_control_s_null_is_never_refused),
+            ("a control's null is not read", _a_control_s_null_is_not_read),
+            ("every null reads as 1", _every_null_reads_as_1),
+            ("a null is asked for only under holds-expected",
+             _a_null_is_asked_for_only_under_holds_expected),
         )
     },
     **{

@@ -195,6 +195,8 @@ def test_a_control_finding_warns_and_fails_at_submission(code: str) -> None:
     assert not apply_stage(failed, SUBMISSION)[0].ok
     report, deferred = apply_stage(failed, INTERNAL_REVIEW)
     assert report.ok and deferred == {SUBMISSION: 1}
+
+
 def test_a_held_out_leak_fails_from_the_analysis_stage_and_the_rest_at_submission() -> None:
     """Item 11, D11.2: a leak changes the result, and fails from the analysis stage; what the
     record cannot tell, and the declarations against the frozen copy, from submission."""

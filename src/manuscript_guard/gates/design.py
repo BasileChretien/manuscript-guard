@@ -376,9 +376,9 @@ def _declared(text: str, path: Path, stage: str | None) -> Report:
             message=f"the plan's declaration is not read: {problem.message}",
             path=path,
             line=problem.line,
-            hint="write each control with its key, kind, of, expected and rule, and each "
-            "held-out input with its input and validated_by, in a ```yaml block; the "
-            "analysis-plan skill has the form",
+            hint="write each control with its key, kind, of, expected and rule, and its null "
+            "with holds-expected or within, and each held-out input with its input and "
+            "validated_by, in a ```yaml block; the analysis-plan skill has the form",
         )
         for problem in declarations.unreadable
     )

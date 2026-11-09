@@ -8831,20 +8831,78 @@ def test_a_control_whose_rule_does_not_hold_warns_and_fails_at_submission(projec
     [
         ("holds-null", (0.9, 1.0, 1.2), False),  # a bound at the null passes
         ("holds-null", (1.3, 1.01, 1.6), True),
-        ("holds-expected", (2.1, 1.5, 2.9), True),  # the plan expects 1
-        ("within\n    distance: 0.5", (1.4, 1.1, 1.8), False),
-        ("within\n    distance: 0.5", (1.6, 1.1, 1.9), True),
+        ("holds-expected\n    null: 1", (2.1, 1.5, 2.9), True),  # the plan expects 1
+        ("within\n    distance: 0.5\n    null: 1", (1.4, 1.1, 1.8), False),
+        ("within\n    distance: 0.5\n    null: 1", (1.6, 1.1, 1.9), True),
     ],
 )
 def test_each_rule_is_judged_on_the_values_emitted(
     project: Path, rule: str, values: tuple[float, float, float], fails: bool
 ) -> None:
     """D5.2: the interval holds the expected value or the null, or the estimate is within the
-    distance of it; a value at a bound passes."""
+    distance of it; a value at a bound passes. A control whose null is its expected value
+    expects no effect, and its interval may hold that null."""
     _declare_controls(project, _CONTROLS.format(rule=rule))
     _emit_control(project, "control.headache", *values)
     _add_to_results(project, _REPORTED)
     assert _controls_said(project) == ([("control-failed", "warn")] if fails else [])
+
+
+_EFFECT = (
+    "```yaml\ncontrols:\n  - key: control.headache\n    kind: positive\n    of: ror.*\n"
+    "    expected: 2\n    rule: {rule}\n    null: 1\n```\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("rule", "values", "fails"),
+    [
+        ("holds-expected", (1.9, 1.2, 3.0), False),
+        ("holds-expected", (1.9, 0.95, 3.0), True),  # it holds 2, and the null too
+        ("holds-expected", (1.9, 1.0, 3.0), True),  # a bound at the null holds it
+        ("within\n    distance: 1.5", (1.4, 1.05, 2.1), False),
+        ("within\n    distance: 1.5", (1.4, 0.9, 2.1), True),  # within 1.5 of 2, and holds 1
+        ("holds-expected", (1.0, 0.6, 1.5), True),  # holds 1, and not 2
+    ],
+)
+def test_a_control_that_expects_an_effect_fails_where_its_interval_holds_its_null(
+    project: Path, rule: str, values: tuple[float, float, float], fails: bool
+) -> None:
+    """Basile, 2026-11-09 (round 1 of wave 3's PR 3): a positive control, or a simulated one
+    that plants an effect, whose interval holds its null cannot tell the effect it expects
+    from none, and fails, as a broken analysis that finds nothing would. The message gives
+    each reason that applies, and says its rule failed only where it did (rounds 1 and 2 of
+    PR 2c)."""
+    from manuscript_guard.gates.controls import check_controls
+
+    _declare_controls(project, _EFFECT.format(rule=rule))
+    _emit_control(project, "control.headache", *values)
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project) == ([("control-failed", "warn")] if fails else [])
+    if fails:
+        loaded, _ = load_project(project)
+        _namespace, results, _literature, _ = load_namespace(loaded)
+        (found,) = check_controls(loaded, results, "drafting").findings
+        assert "holds its null, 1, so it cannot tell the effect it expects, 2" in found.message
+        assert ("0.6 to 1.5 around 2 does not hold" in found.message) == (values[1] == 0.6)
+        # Round 2 of PR 2c: a rule that held is not said to have failed.
+        assert ("fails its rule" in found.message) == (values[1] == 0.6)
+
+
+def test_a_control_frozen_before_a_null_was_asked_for_is_held_to_its_copy(
+    project: Path,
+) -> None:
+    """Round 1 of PR 2c: the frozen copy was read with the reader of now, which refused a
+    control it declared with no `null`, so a control loosened since was never said to have
+    changed. Read as the plan was then, a null given now is no change, and a distance is."""
+    _declare_controls(project, _EFFECT.format(rule="within\n    distance: 1.5").replace(
+        "    null: 1\n", ""))  # fmt: skip
+    _plan_edited(project, "    distance: 1.5\n", "    distance: 1.5\n    null: 1\n")
+    _emit_control(project, "control.headache", 1.9, 1.2, 3.0)
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project) == []
+    _plan_edited(project, "    distance: 1.5\n", "    distance: 3\n")
+    assert _controls_said(project) == [("control-changed", "warn")]
 
 
 def test_a_control_declared_and_never_emitted_is_missing(project: Path) -> None:
@@ -8875,7 +8933,7 @@ def test_a_control_chosen_after_the_first_results_is_late(project: Path) -> None
 
 def test_a_control_changed_or_dropped_since_the_first_results_is_said(project: Path) -> None:
     _declare_controls(project, _NEGATIVE)
-    _plan_edited(project, "rule: holds-null", "rule: within\n    distance: 2")
+    _plan_edited(project, "rule: holds-null", "rule: within\n    distance: 2\n    null: 1")
     _emit_control(project, "control.headache", 1.6, 1.2, 2.1)
     _add_to_results(project, _REPORTED)
     assert _controls_said(project) == [("control-changed", "warn")]

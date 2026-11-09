@@ -5256,8 +5256,10 @@ def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
 #: How a fenced `yaml` block opens and closes, each a way pandoc reads one (items 5 and 11).
 _YAML_FENCES = (("```yaml", "```"), ("~~~yaml", "~~~"), ("```` yaml", "````"),
                 ("``` {.yaml}", "```"), ("```YAML", "```"), ("```yml", "```"))  # fmt: skip
-#: The parts of a control's key, and of a held-out input's path: an emitter's key each.
-_CONTROL_LEAVES = ("shuffled", "headache", "bleeding", "simulated", "rash")
+#: The parts of a control's key, and of a held-out input's path: an emitter's key each. Three
+#: controls read, six refused and one in the block that is not YAML, all apart.
+_CONTROL_LEAVES = ("shuffled", "headache", "bleeding", "simulated", "rash", "nausea", "fever",
+                   "cough", "dizziness", "fatigue")  # fmt: skip
 
 
 #: How the `held_out` key is written: as YAML reads it, and as the emitters' line must find it.
@@ -5275,29 +5277,42 @@ _REFUSED = (
     ("    kind: negative\n    rule: holds-null\n", "    expected: !!bool maybe\n",
      "expected: !!bool maybe"),
 )
+#: The entries a control's `null` has refused, each in every example: a control held to its
+#: expected value names its null, 0 or 1, and one that holds the null gives none (round 1 of
+#: wave 3's PR 3, and of PR 2c).
+_NULL_REFUSED = (
+    ("    kind: positive\n    rule: holds-expected\n", "    expected: 2\n", None),
+    ("    kind: positive\n    rule: within\n    distance: 1\n", "    expected: 2\n", None),
+    ("    kind: positive\n    rule: within\n    distance: 1\n    null: 2\n", "    expected: 2\n",
+     None),
+    ("    kind: positive\n    rule: holds-expected\n    null: true\n", "    expected: 2\n", None),
+    ("    kind: negative\n    rule: holds-null\n    null: 1\n", "    expected: 1\n", None),
+)
 
 
 @st.composite
 def declared_plans(draw: st.DrawFn) -> dict[str, Any]:
     """A plan whose `yaml` blocks declare controls and held-out data, with what a reading of
-    it should find (DESIGN.md, "Controls the plan declares"): the control keys and the
-    held-out inputs it declares, in order, the key of the entry it refuses, and the key in
-    the block that is not YAML.
+    it should find (DESIGN.md, "Controls the plan declares"): the control keys, with the null
+    each names, and the held-out inputs it declares, in order, the key of each entry it
+    refuses with the line it is said at, and the key in the block that is not YAML.
 
-    Each example holds one of every kind. The controls' block, with one entry the form
-    refuses among the others, and the held-out block, its key written one of the ways YAML
-    reads it, each opened as pandoc reads a `yaml` fence; one of the two under the Deviations
-    heading and the other under a section of its own or in a list item, in an order drawn
-    each time. Under the Deviations too, a block that is not YAML and declares; then a
+    Each example holds one of every kind. The controls' block: a control that holds the
+    null, one that expects an effect, its null 0 or 1, and one held to the other null, which
+    it expects, in an order drawn; among them an entry of each form a control's `null`
+    refuses and one of the form's other refusals. And the held-out block, its key written one
+    of the ways YAML reads it, each opened as pandoc reads a `yaml` fence; one of the two
+    under the Deviations heading and the other under a section of its own or in a list item,
+    in an order drawn each time. Under the Deviations too, a block that is not YAML and
+    declares; then a
     declaration commented out, one in a block of another language, one in the front matter,
     and a `yaml` block that declares neither, none of them read. And the line ends, LF or
     CRLF. None of the keys or the inputs is a word of the Deviations."""
     words = st.lists(st.sampled_from(FILLER), min_size=1, max_size=6).map(" ".join)
-    count = draw(st.integers(1, 3))
     leaves = draw(st.permutations(_CONTROL_LEAVES))
-    keys = [f"control.{leaf}" for leaf in leaves[:count]]
-    refused, broken, unread = (f"control.{leaves[3]}", f"control.{leaves[4]}y",
-                               f"control.{leaves[4]}x")  # fmt: skip
+    keys = [f"control.{leaf}" for leaf in leaves[:3]]
+    refusing = [f"control.{leaf}" for leaf in leaves[3:9]]
+    broken, unread = f"control.{leaves[9]}y", f"control.{leaves[9]}x"
     inputs = [f"data/{leaf}_{draw(st.integers(0, 9))}.csv"
               for leaf in leaves[: draw(st.integers(1, 2))]]  # fmt: skip
 
@@ -5306,21 +5321,35 @@ def declared_plans(draw: st.DrawFn) -> dict[str, Any]:
         lines = [opening, *body.rstrip("\n").split("\n"), closing]
         return "".join(f"{indent}{line}\n" for line in lines)
 
-    def control(key: str) -> str:
-        rule, distance = draw(st.sampled_from((("holds-null", ""), ("holds-expected", ""),
-                                               ("within", "    distance: 0.5\n"))))  # fmt: skip
+    def control(key: str, rule: str = "holds-null", expected: int = 1,
+                null: int | None = None) -> str:  # fmt: skip
         kind = draw(st.sampled_from(("simulated", "positive", "negative")))
-        return (f"  - key: {key}\n    kind: {kind}\n    of: ror.*\n    expected: 1\n"
-                f"    rule: {rule}\n{distance}")  # fmt: skip
+        distance = "    distance: 0.5\n" if rule == "within" else ""
+        given = "" if null is None else f"    null: {null}\n"
+        return (f"  - key: {key}\n    kind: {kind}\n    of: ror.*\n    expected: {expected}\n"
+                f"    rule: {rule}\n{distance}{given}")  # fmt: skip
 
     def held(path: str) -> str:
         return f"  - input: {path}\n    validated_by: analysis/validate.py\n"
 
-    entries = [control(key) for key in keys]
-    form, value, said_at = draw(st.sampled_from(_REFUSED))
-    at = draw(st.integers(0, len(entries)))
-    entries.insert(at, f"  - key: {refused}\n    of: ror.*\n{form}{value}")
-    controls = fence("controls:\n" + "".join(entries))
+    def held_to() -> str:
+        return draw(st.sampled_from(("holds-expected", "within")))
+
+    # One of each: the null held, an effect expected against its null, and no effect.
+    effect = draw(st.sampled_from((0, 1)))
+    shapes = [("holds-null", draw(st.sampled_from((0, 1))), None),
+              (held_to(), effect + 1, effect), (held_to(), 1 - effect, 1 - effect)]  # fmt: skip
+    shapes = [shapes[index] for index in draw(st.permutations(range(3)))]
+    nulls = [None if null is None else float(null) for _rule, _expected, null in shapes]
+    entries: list[tuple[str, tuple[str, str] | None]] = [
+        (control(key, *shape), None) for key, shape in zip(keys, shapes, strict=True)]  # fmt: skip
+    refusals = [draw(st.sampled_from(_REFUSED)), *_NULL_REFUSED]
+    for key, (form, value, said_at) in zip(refusing, refusals, strict=True):
+        entries.insert(draw(st.integers(0, len(entries))),
+                       (f"  - key: {key}\n    of: ror.*\n{form}{value}",
+                        (key, said_at or f"- key: {key}")))  # fmt: skip
+    refused = [said for _text, said in entries if said is not None]
+    controls = fence("controls:\n" + "".join(text for text, _said in entries))
     if draw(st.booleans()):
         held_out = fence(draw(st.sampled_from(_HELD_OUT_KEYS)) + "\n"
                          + "".join(held(path) for path in inputs))  # fmt: skip
@@ -5344,9 +5373,8 @@ def declared_plans(draw: st.DrawFn) -> dict[str, Any]:
         f"controls:\n{control(unread)}", indent="  ") + "---\n\n"  # fmt: skip
     plan = front + "# Analysis plan\n\n" + "\n".join(kinds[index] for index in order)
     ending = draw(st.sampled_from(("\n", "\r\n")))
-    return {"plan": plan.replace("\n", ending), "keys": keys, "inputs": inputs,
-            "refused": refused, "refused_at": said_at or f"- key: {refused}",
-            "broken": broken, "unread": unread}  # fmt: skip
+    return {"plan": plan.replace("\n", ending), "keys": keys, "nulls": nulls, "inputs": inputs,
+            "refused": refused, "broken": broken, "unread": unread}  # fmt: skip
 
 
 #: Each way a manuscript gives a registration: as written, the identifier `paper.yaml` lists

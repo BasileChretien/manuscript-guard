@@ -4711,6 +4711,179 @@ def test_a_number_that_grew_a_digit_is_refused() -> None:
 
 
 @pytest.mark.parametrize(
+    ("source", "marked", "returned", "named"),
+    [
+        pytest.param(*(("The ratio was {{results.x}} overall.", "The ratio was ⟦3.84⟧ overall.")),
+                     f"The ratio was {sign} 3.84 overall.", f"'{sign} 3.84'", id=name)
+        for name, sign in (("en-dash", "–"), ("hyphen", "-"), ("minus", "−"),
+                           ("less-than", "<"), ("plus-minus", "±"), ("tilde", "~"))
+    ] + [
+        pytest.param("The ratio was {{results.x}} overall.", "The ratio was ⟦3.84⟧ overall.",
+                     f"The ratio was 3.84{unit} overall.", f"'3.84{unit}'", id=name)
+        for name, unit in (("percent", "%"), ("spaced-percent", " %"), ("per-mille", "‰"),
+                           ("unit", " mg"), ("no-break-unit", " mg/L"))
+    ] + [
+        pytest.param("The dose was {{results.x}} mg overall.", "The dose was ⟦3.84⟧ mg overall.",
+                     "The dose was 3.84 µg overall.", "'3.84 µg'", id="unit-changed"),
+        pytest.param("The dose was {{results.x}} mg overall.", "The dose was ⟦3.84⟧ mg overall.",
+                     "The dose was 3.84 overall.", "'3.84'", id="unit-taken-out"),
+        pytest.param("The share was {{results.x}}% overall.", "The share was ⟦3.84⟧% overall.",
+                     "The share was 3.84 overall.", "'3.84'", id="percent-taken-out"),
+        # Known gaps: a spaced en dash that opens an aside is read as a sign all the same.
+        pytest.param("The ratio was {{results.x}} high.", "The ratio was ⟦3.84⟧ high.",
+                     "The ratio – 3.84 – was high.", "'– 3.84'", id="an-aside"),
+    ],
+)  # fmt: skip
+def test_a_sign_or_unit_set_beside_a_value_in_word_is_refused_and_named(
+    source: str, marked: str, returned: str, named: str
+) -> None:
+    """Only a sign glued to a value was a change to it. "– 3.84", with a space, read as
+    punctuation and merged, and so did a percent sign or a unit added after a value, or one
+    changed or taken out: each changes what the sentence claims, and `check` saw the binding
+    intact. The refusal says what Word shows, where the value comes from, and what to do."""
+    from manuscript_guard.merge import why
+
+    aligned = merged_alignment(source, marked, returned)
+    assert aligned.rebuilt is None, returned
+    said = " ".join(why(aligned))
+    assert named in said and "results.x" in said, said
+    assert "in the .md" in said and "analysis" in said, said
+
+
+@pytest.mark.parametrize(
+    ("source", "marked", "returned", "expected"),
+    [
+        pytest.param(
+            "Ranged from {{results.lo}} to {{results.hi}} here.",
+            "Ranged from ⟦2⟧ to ⟦3.84⟧ here.",
+            "Ranged from 2 – 3.84 here.",
+            "Ranged from {{results.lo}} – {{results.hi}} here.",
+            id="a-range-dash",
+        ),
+        pytest.param(
+            "The ratio was {{results.x}} at last.",
+            "The ratio was ⟦3.84⟧ at last.",
+            "The ratio was — 3.84 — at last.",
+            "The ratio was — {{results.x}} — at last.",
+            id="an-em-dash",
+        ),
+        pytest.param(
+            "The OR was {{results.x}} overall.",
+            "The OR was ⟦3.84⟧ overall.",
+            "The OR = 3.84 overall.",
+            "The OR = {{results.x}} overall.",
+            id="an-equals-sign",
+        ),
+        pytest.param(
+            "Shares went from {{results.lo}}% to {{results.hi}}% here.",
+            "Shares went from ⟦12⟧% to ⟦15⟧% here.",
+            "Shares went from 12% – 15% here.",
+            "Shares went from {{results.lo}}% – {{results.hi}}% here.",
+            id="a-range-in-percent",
+        ),
+        pytest.param(
+            "Levels went from {{results.lo}} mg/L to {{results.hi}} mg/L here.",
+            "Levels went from ⟦12⟧ mg/L to ⟦15⟧ mg/L here.",
+            "Levels went from 12 mg/L – 15 mg/L here.",
+            "Levels went from {{results.lo}} mg/L – {{results.hi}} mg/L here.",
+            id="a-range-in-milligrams-per-litre",
+        ),
+        pytest.param(
+            "Fever ran from {{results.lo}} °C to {{results.hi}} °C here.",
+            "Fever ran from ⟦36⟧ °C to ⟦38⟧ °C here.",
+            "Fever ran from 36 °C – 38 °C here.",
+            "Fever ran from {{results.lo}} °C – {{results.hi}} °C here.",
+            id="a-range-in-degrees",
+        ),
+        pytest.param(
+            "Copies went from 10³ to {{results.hi}} here.",
+            "Copies went from 10³ to ⟦3840⟧ here.",
+            "Copies went from 10³ – 3840 here.",
+            "Copies went from 10³ – {{results.hi}} here.",
+            id="a-range-from-a-power",
+        ),
+        pytest.param(
+            "The dose was {{results.x}} mg overall.",
+            "The dose was ⟦3.84⟧ mg overall.",
+            "The dose was 3.84 mg in all.",
+            "The dose was {{results.x}} mg in all.",
+            id="the-unit-kept",
+        ),
+        pytest.param(
+            "The share was {{results.x}}% here, – it seems.",
+            "The share was ⟦3.84⟧% here, – it seems.",
+            "The share was 3.84% there, – it seems.",
+            "The share was {{results.x}}% there, – it seems.",
+            id="the-percent-and-a-dash-kept",
+        ),
+        pytest.param(
+            "Seen in {{results.drug}} users overall.",
+            "Seen in ⟦aspirin⟧ users overall.",
+            "Seen in – aspirin users % overall.",
+            "Seen in – {{results.drug}} users % overall.",
+            id="beside-a-word-value",
+        ),
+        pytest.param(
+            "As reported [@smith2020] in all.",
+            "As reported ⟦[1]⟧ in all.",
+            "As reported – [1] % in all.",
+            "As reported – [@smith2020] % in all.",
+            id="beside-a-citation",
+        ),
+    ],
+)
+def test_a_sign_or_unit_that_changes_no_value_still_merges(
+    source: str, marked: str, returned: str, expected: str
+) -> None:
+    """The refusal above is of a value's own sign and unit. A dash between two numbers is a
+    range, a percent sign or unit after the first number included, an em dash is punctuation,
+    never a minus, and an equals sign says the value is what it was; a unit or a dash the
+    source already had is kept; a value that is a word, and a citation, have no sign or unit
+    to change."""
+    assert merged(source, marked, returned) == expected
+
+
+@pytest.mark.parametrize(
+    "typed",
+    [" years", "-fold", " patients", "×"],
+    ids=["a-word", "a-hyphened-word", "a-count", "a-times-sign"],
+)
+def test_a_word_after_a_value_that_is_no_unit_still_merges(typed: str) -> None:
+    """Known gaps: only what G2 reads as a unit after a binding (`bound_units.unit_at`), or a
+    percent sign, is a change to a value's unit. "3.84 years", "3.84-fold" or "3.84×",
+    typed in Word, changes what the sentence claims as "3.84 mg" does, and merges."""
+    source = "The ratio was {{results.x}} overall."
+    out = merged(source, "The ratio was ⟦3.84⟧ overall.", f"The ratio was 3.84{typed} overall.")
+    assert out is not None and "{{results.x}}" in out, out
+
+
+@needs_pandoc
+def test_a_tag_left_open_by_the_paragraph_before_is_not_seen(tmp_path: Path) -> None:
+    """Known gaps: the merge reads each paragraph for the tags pandoc would read in it, and
+    not the paragraph before. One that ends after an `=` of a would-be tag carries the tag
+    on into the next, whose identifier is then the value, and "(see Table 2)" there kept it
+    from closing at the next `>`. Deleted in Word, the next paragraph merges, and pandoc
+    prints the two as the words after that `>`."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import _pandoc_tags, paragraph_text
+
+    before = "Values <LOD in mg/L were set to x="
+    assert _pandoc_tags(before)[-1].endswith("...")
+    rebuilt = realign(
+        "Then (see Table 2) all were kept >ULOQ in the end.",
+        "Then (see Table 2) all were kept >ULOQ in the end.",
+        "Then all were kept >ULOQ in the end.",
+    )
+    assert rebuilt == "Then all were kept >ULOQ in the end."
+    path = tmp_path / "a.md"
+    path.write_text(f"[]{{#mg-p-x-0}}{before}\n\n[]{{#mg-p-x-1}}{rebuilt}\n", encoding="utf-8")
+    subprocess.run(["pandoc", str(path), "-o", str(tmp_path / "a.docx")], check=True)
+    printed = paragraph_text(tmp_path / "a.docx")
+    assert "Then" not in " ".join(printed.values()), printed
+
+
+@pytest.mark.parametrize(
     ("source", "named"),
     [
         ("See the [agency report](https://example.org/r) for details.", "a link"),
@@ -6613,6 +6786,104 @@ def test_text_beside_a_token_prints_as_typed(
     for shown, cited in BESIDE_CITED.items():
         typed = typed.replace(shown, cited)
     assert printed == typed
+
+
+#: Paragraphs in which an edit takes out what kept a `<` and a `>` of the source from being a
+#: tag to pandoc, the values beside them in: (source, Word's rendering with each token
+#: ⟦marked⟧, what came back, the values, whether pandoc would read a tag once it merged).
+TAG_MADE = [
+    pytest.param(
+        "Samples <LLOQ in {{results.unit}} (see Table 2) at {{results.site}} and >ULOQ were "
+        "redone.",
+        "Samples <LLOQ in ⟦plasma⟧ (see Table 2) at ⟦Caen⟧ and >ULOQ were redone.",
+        "Samples <LLOQ in plasma at Caen and >ULOQ were redone.",
+        {"results.unit": "plasma", "results.site": "Caen"},
+        True,
+        id="values-that-are-words",
+    ),
+    pytest.param(
+        "Samples <LLOQ in {{results.unit}} (see Table 2) at {{results.site}} and >ULOQ were "
+        "redone.",
+        "Samples <LLOQ in ⟦mg/L⟧ (see Table 2) at ⟦Caen⟧ and >ULOQ were redone.",
+        "Samples <LLOQ in mg/L at Caen and >ULOQ were redone.",
+        {"results.unit": "mg/L", "results.site": "Caen"},
+        True,
+        id="a-value-with-a-slash",
+    ),
+    pytest.param(
+        "Samples <LLOQ in {{results.unit}} (see Table 2) at {{results.site}} and >ULOQ were "
+        "redone.",
+        "Samples <LLOQ in ⟦3.84⟧ (see Table 2) at ⟦5⟧ and >ULOQ were redone.",
+        "Samples <LLOQ in 3.84 at 5 and >ULOQ were redone.",
+        {"results.unit": "3.84", "results.site": "5"},
+        False,
+        id="values-that-are-numbers",
+    ),
+    pytest.param(
+        "Samples <LLOQ in mg/L (see Table 2) and >ULOQ were redone.",
+        "Samples <LLOQ in mg/L (see Table 2) and >ULOQ were redone.",
+        "Samples <LLOQ in mg/L and >ULOQ were redone.",
+        {},
+        False,
+        id="no-value-at-all",
+    ),
+    # A tag still open at the paragraph's end after an `=` runs on into the next paragraph,
+    # whose identifier is then its value, and closes at a `>` there.
+    pytest.param(
+        "Values <LOD in {{results.unit}} were set to low.",
+        "Values <LOD in ⟦mg/L⟧ were set to low.",
+        "Values <LOD in mg/L were set to low x=",
+        {"results.unit": "mg/L"},
+        True,
+        id="an-equals-ending-the-paragraph",
+    ),
+    pytest.param(
+        "Values <LOD in {{results.unit}} were set to {{results.level}}.",
+        "Values <LOD in ⟦mg/L⟧ were set to ⟦'low⟧.",
+        "Values <LOD in mg/L were set to label='low.",
+        {"results.unit": "mg/L", "results.level": "'low"},
+        True,
+        id="a-value-opening-a-quote-after-a-typed-equals",
+    ),
+]
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("source", "marked", "returned", "values", "tagged"), TAG_MADE)
+def test_an_edit_that_makes_a_tag_of_the_source_s_angles_is_refused_or_prints_as_typed(
+    source: str, marked: str, returned: str, values: dict, tagged: bool, tmp_path: Path
+) -> None:
+    """The read-back read a binding as digits. Pandoc read `<LLOQ ... (see Table 2) ... >ULOQ`
+    as text only because "(see" is no attribute's name; with "(see Table 2)" deleted in Word
+    the merge read back as text, and pandoc printed "Samples ULOQ were redone." The source's
+    `<` and `>` are not Word's to escape, so the merge is refused, naming the tag and saying
+    how to write it in the .md. Where the values are numbers no tag is made, and where the
+    paragraph has no value the whole of it is written from Word's text, escaped; both print
+    every word. Each merge is printed by pandoc with its values in.
+
+    So is one that leaves a tag open at the paragraph's end after an `=`, or in a quoted
+    value: the next paragraph opens with its identifier, which is then the value, and the
+    tag closed at a `>` there; both paragraphs printed as the words after it."""
+    import subprocess
+
+    from manuscript_guard.merge import why
+    from manuscript_guard.roundtrip import paragraph_text
+    from manuscript_guard.text.placeholders import substitute
+
+    aligned = merged_alignment(source, marked, returned)
+    if tagged:
+        assert aligned.rebuilt is None, aligned
+        said = " ".join(why(aligned))
+        assert source[source.index("<") :][:4] in said and "HTML tag" in said, said
+        assert "\\<" in said and "in the .md" in said, said
+        return
+    assert aligned.rebuilt is not None, why(aligned)
+    path = tmp_path / "a.md"
+    path.write_text(
+        f"[]{{#mg-p-x-0}}{substitute(aligned.rebuilt, values)}\n", encoding="utf-8"
+    )
+    subprocess.run(["pandoc", str(path), "-o", str(tmp_path / "a.docx")], check=True)
+    assert paragraph_text(tmp_path / "a.docx")["mg-p-x-0"] == returned
 
 
 @needs_pandoc
@@ -9990,6 +10261,149 @@ def test_word_s_own_split_and_the_reworded_paragraph_after_it_are_told_apart(
     assert "own edit in the .md" in after[0], after[0]
 
 
+def _unexplained(printed: str) -> list[str]:
+    """What `import` refused, but for a paragraph refused only for a software version the
+    machine Word's copy was built on printed otherwise (CI's Ubuntu job on #518)."""
+    refused = [block for block in printed.split("\n\n") if "NOT merged into" in block]
+    return [
+        block for block in refused
+        if not (keys := re.findall(r"comes from (\S+?)\. ", block))
+        or not all(key.startswith("results.software.") for key in keys)
+    ]  # fmt: skip
+
+
+#: A live build of the example, its reference list still Zotero's placeholder, with its last
+#: paragraph deleted in Word 16: see the test that reads it.
+LIVE_LAST_DELETED = WORD_SAVED / "live-last-paragraph-deleted.docx"
+
+
+@needs_pandoc
+@pytest.mark.parametrize("inside", [False, True], ids=["as-word-left-it", "on-the-placeholder"])
+def test_a_paragraph_deleted_before_the_live_reference_list_is_not_written_over(
+    project: Path, tmp_path: Path, monkeypatch, capsys: pytest.CaptureFixture[str], inside: bool
+) -> None:
+    """Word 16 saved this document itself (2026-11-09, over COM, Track Changes off), from a
+    live build of the example (`_built_live`): "None declared.", the last paragraph, deleted
+    with `Range.Delete`. The paragraph after it is the reference list as the build leaves it
+    until Zotero refreshes it: one paragraph with no style, holding the `ADDIN ZOTERO_BIBL`
+    field and its placeholder, "{Bibliography: in Word, open the Zotero tab and click
+    Refresh}". Its creator is renamed `Ana Author`.
+
+    Word left the deleted paragraph's bookmark between the two paragraphs, where it names
+    none. DESIGN.md had it on the placeholder, as Word leaves one in front of the next
+    paragraph's text elsewhere, and its text written over "None declared."; that shape is
+    made here by moving the bookmark inside. Either way the paragraph is reported deleted and
+    left in place in the source: an identifier on a block of a kind the build gives none of
+    its own is taken off it (#120), and the comparison build has the placeholder too."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.roundtrip import read_blocks
+
+    built = _built_live(project, tmp_path, monkeypatch, capsys)
+    returned = _restamped(LIVE_LAST_DELETED, built, tmp_path / "back.docx")
+    if inside:
+        mark = '<w:bookmarkStart w:id="25" w:name="mg-p-maincbb16c-60"/><w:bookmarkEnd w:id="25"/>'
+
+        def onto_the_placeholder(xml: str) -> str:
+            assert xml.count(mark) == 1
+            at = xml.index(mark) + len(mark)
+            opened = xml.index(">", xml.index("<w:p ", at)) + 1
+            return xml[: xml.index(mark)] + xml[at:opened] + mark + xml[opened:]
+
+        returned = rewrite(returned, tmp_path / "inside.docx", onto_the_placeholder)
+        assert [b.names for b in read_blocks(returned) if "Bibliography:" in b.text] == [
+            ("mg-p-maincbb16c-60",)
+        ]
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    printed = capsys.readouterr().out
+    assert source.read_text(encoding="utf-8") == before, printed
+    assert "deleted in Word, left in place here: None declared." in printed, printed
+    assert not _unexplained(printed), printed
+
+
+#: What the example's last paragraph says in the build Word saved the documents below from:
+#: a footnote, a link and an equation, each of which Word keeps outside the paragraph's text.
+NOTED = (
+    "None declared.^[Checked against the register by hand.] The form is at "
+    "[the register](https://example.org/register) and the rule is $a + b = c$ for all."
+)
+
+
+def _built_noted(project: Path) -> Path:
+    """The example built with its last paragraph as `NOTED`."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    text = source.read_text(encoding="utf-8")
+    assert "None declared." in text
+    source.write_text(text.replace("None declared.", NOTED, 1), encoding="utf-8", newline="\n")
+    assert main(["build", str(project), "--offline"]) == 0
+    return project / "build" / "manuscript.docx"
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("saved", "named"),
+    [
+        pytest.param("footnote-edited.docx", "a footnote", id="footnote-edited"),
+        pytest.param("footnote-edited-tracked.docx", "a footnote", id="footnote-edited-tracked"),
+        pytest.param("footnote-deleted.docx", "a footnote", id="footnote-deleted"),
+        pytest.param("equation-edited.docx", "an equation", id="equation-edited"),
+        pytest.param("link-address-changed.docx", "a link's address", id="link-address"),
+    ],
+)
+def test_what_word_keeps_outside_a_paragraph_s_text_is_compared_and_refused(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], saved: str, named: str
+) -> None:
+    """Word 16 saved each of these documents itself (2026-11-09, over COM), from a build of
+    the example whose last paragraph is `NOTED`: the footnote's "by hand" typed over with
+    "twice" (`Range.Find.Execute`), with Track Changes off and on, the footnote deleted
+    (`Footnotes(1).Delete`), the equation's last letter typed over with "d", and the link's
+    address set to another (`Hyperlinks(1).Address`). Word renumbered the footnote and the
+    link's relationship. Their creator is renamed `Ana Author`, and so is the reviewer of the
+    tracked change.
+
+    Word keeps a footnote's text in `footnotes.xml`, an equation in `m:t` runs and a link's
+    address in the relationships, and `import` read none of them: each edit left the
+    paragraph's text as it was, nothing was merged, and the import said nothing had come
+    back. Now each is compared with the document as sent, and the paragraph is refused,
+    naming what changed and saying where to make the edit."""
+    from manuscript_guard.cli import main
+
+    built = _built_noted(project)
+    returned = _restamped(WORD_SAVED / saved, built, tmp_path / "back.docx")
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    printed = capsys.readouterr().out
+    assert source.read_text(encoding="utf-8") == before, printed
+    assert "nothing came back" not in printed, printed
+    refused = _unexplained(printed)
+    assert len(refused) == 1, printed
+    said = " ".join(refused[0].split())
+    assert "None declared." in said and named in said and "in the .md" in said, said
+
+
+@needs_pandoc
+def test_a_document_word_saved_with_a_footnote_link_and_equation_reads_as_sent(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The same build, opened and saved in Word 16 with nothing changed: Word renumbers the
+    footnote and the link's relationship and keeps the equation's runs, none of which is an
+    edit, so nothing is refused."""
+    from manuscript_guard.cli import main
+
+    built = _built_noted(project)
+    returned = _restamped(WORD_SAVED / "notes-links-maths-saved.docx", built, tmp_path / "b.docx")
+    capsys.readouterr()
+    code = main(["import", str(returned), str(project)])
+    printed = capsys.readouterr().out
+    assert not _unexplained(printed), printed
+    assert code == (1 if "NOT merged" in printed else 0), printed
+
+
 def test_a_new_paragraph_of_only_a_symbol_is_named_by_no_words(tmp_path: Path) -> None:
     """Known gaps (round 1 of #512): a new paragraph holding only a symbol with no text, a
     check box typed in Wingdings, is new text, and the reworded paragraph after it is refused
@@ -10008,6 +10422,284 @@ def test_a_new_paragraph_of_only_a_symbol_is_named_by_no_words(tmp_path: Path) -
     [why] = refusal.why
     assert why.startswith("it came back after a new paragraph, '': "), why
     assert "Wingdings" not in why, why
+
+
+@pytest.mark.parametrize(
+    ("back", "said"),
+    [
+        pytest.param((("footnote", "A note."),), "", id="as-sent"),
+        pytest.param((("footnote", "A note, edited."),), "a footnote's text was changed",
+                     id="note-edited"),
+        pytest.param((), "a footnote was deleted", id="note-deleted"),
+        pytest.param((("footnote", "A note."), ("link", "https://e.org/")), "a link was added",
+                     id="link-added"),
+        pytest.param((("link", "https://e.org/"),), "a footnote was deleted and a link was added",
+                     id="two-kinds"),
+        pytest.param((("footnote", "A note."), ("autolink", "https://e.org/")), "",
+                     id="an-address-typed"),
+    ],
+)  # fmt: skip
+@pytest.mark.parametrize("stale", [False, True])
+def test_a_paragraph_is_refused_for_what_word_keeps_outside_its_text(
+    tmp_path: Path, back: tuple, said: str, stale: bool
+) -> None:
+    """Its text came back as it was sent, and so the comparison of its text said nothing had:
+    a footnote, an equation or a link's address edited, added or deleted is now compared, by
+    what it holds, and the paragraph is refused for it, rewording and all. A document built
+    from other inputs is compared with the source as it is now, so the refusal says the
+    change may have been made in the .md since."""
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": "The task is done.^[A note.]"})
+    sent = [Block(("a",), "The task is done.", beyond=(("footnote", "A note."),))]
+    returned = [Block(("a",), "The task is done.", beyond=back)]
+    plan = plan_import(known, sent, returned, stale=stale)
+    if not said:
+        assert plan.empty, plan
+        return
+    [refusal] = plan.refused
+    [why] = refusal.why
+    assert why.startswith(said), why
+    assert ("in the .md since the build" in why) is stale, why
+    assert why.endswith("Make the edit in the .md."), why
+
+
+def test_an_autolink_whose_address_changed_is_said_to_have_changed() -> None:
+    """A link whose words are its address is the paragraph's text and no link of its own; one
+    whose address alone was changed in Word is a link now, and was said to be one added
+    (round 2 of #597)."""
+    from manuscript_guard.merge import _beyond_changed
+
+    why = _beyond_changed((("autolink", "https://osf.io/abc"),), (("link", "https://osf.io/xyz"),))
+    assert why.startswith("a link's address was changed"), why
+    # One autolink gone and two links come: one more than an address changed.
+    two = (("link", "https://b.org"), ("link", "https://c.org"))
+    why = _beyond_changed((("autolink", "https://a.org"),), two)
+    assert why.startswith("a link was added"), why
+
+
+def test_a_split_that_took_the_footnote_is_refused_as_a_split(tmp_path: Path) -> None:
+    """A paragraph split in Word with its footnote in the second half was refused as one
+    whose footnote was deleted in Word, which is not what happened (round 1 of #597). What
+    refuses a split or a join by its own reason comes first."""
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": "First half here. Second half.^[A note.]"})
+    note = (("footnote", "A note."),)
+    sent = [Block(("a",), "First half here. Second half.", beyond=note)]
+    returned = [Block(("a",), "First half here."), Block((), "Second half.", beyond=note)]
+    plan = plan_import(known, sent, returned)
+    [refusal] = plan.refused
+    [why] = refusal.why
+    assert "footnote" not in why and "split" in why, why
+
+
+def test_a_link_inside_a_field_is_the_field_s_and_not_compared() -> None:
+    """Zotero's plugin, refreshing a live build, can link each citation it formats to the
+    reference list: a link inside the citation's field, which the build never wrote. Read
+    as the paragraph's, every cited paragraph of a refreshed document would be refused as
+    one a link was added to. A field is read by its code, so a link in its result, or in a
+    simple field, is left out; one outside a field is read."""
+    from xml.etree import ElementTree as ET
+
+    from manuscript_guard.docxtext import _beyond, _visible
+
+    w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    paragraph = ET.fromstring(
+        f'<w:p xmlns:w="{w}" xmlns:r="{r}">'
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        '<w:r><w:instrText> ADDIN ZOTERO_ITEM CSL_CITATION {} </w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        '<w:hyperlink w:anchor="ZOTERO_BREF_1"><w:r><w:t>[1]</w:t></w:r></w:hyperlink>'
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+        '<w:fldSimple w:instr=" REF x "><w:hyperlink w:anchor="x"><w:r><w:t>2</w:t></w:r>'
+        "</w:hyperlink></w:fldSimple>"
+        '<w:hyperlink r:id="rId9"><w:r><w:t>the register</w:t></w:r></w:hyperlink>'
+        "</w:p>"
+    )
+    assert list(_beyond(list(_visible(paragraph)))) == [("link", "rId9\x00\x00the register")]
+
+
+_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+
+
+def _one_paragraph(
+    path: Path, runs: str, target: str = "", notes: str = ""
+) -> Path:
+    """A document of one identified paragraph holding `runs`, a link relationship `rId7` to
+    `target`, and the footnotes `notes`."""
+    rels = "http://schemas.openxmlformats.org/package/2006/relationships"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            f'<w:document xmlns:w="{_W}" xmlns:r="{_R}"><w:body><w:p>'
+            '<w:bookmarkStart w:id="1" w:name="mg-p-x-0"/><w:bookmarkEnd w:id="1"/>'
+            f"{runs}</w:p></w:body></w:document>",
+        )
+        archive.writestr(
+            "word/_rels/document.xml.rels",
+            f'<Relationships xmlns="{rels}"><Relationship Id="rId7" Type="hyperlink" '
+            f'Target="{target}" TargetMode="External"/></Relationships>',
+        )
+        if notes:
+            archive.writestr(
+                "word/footnotes.xml", f'<w:footnotes xmlns:w="{_W}">{notes}</w:footnotes>'
+            )
+    return path
+
+
+def test_a_link_s_address_is_compared_with_its_escapes_decoded_and_its_bookmark(
+    tmp_path: Path,
+) -> None:
+    """A program saving the document may write a link's `(` as `%28`, and may keep the part
+    after `#` apart as the link's bookmark; the address is the same, and read as another
+    the paragraph was refused as one whose link was changed (round 1 of #597)."""
+    from manuscript_guard.docxtext import blocks
+
+    link = '<w:hyperlink r:id="rId7"{anchor}><w:r><w:t>the paper</w:t></w:r></w:hyperlink>'
+    runs = '<w:r><w:t xml:space="preserve">See </w:t></w:r>' + link
+    doi = "https://doi.org/10.1002/(SICI)1097-0258"
+    [plain] = blocks(_one_paragraph(tmp_path / "a.docx", runs.format(anchor=""), doi))
+    [escaped] = blocks(
+        _one_paragraph(tmp_path / "b.docx", runs.format(anchor=""), doi.replace("(", "%28"))
+    )
+    assert plain.beyond == escaped.beyond == (("link", doi),)
+    [whole] = blocks(_one_paragraph(tmp_path / "c.docx", runs.format(anchor=""), doi + "#s2"))
+    [apart] = blocks(
+        _one_paragraph(tmp_path / "d.docx", runs.format(anchor=' w:anchor="s2"'), doi)
+    )
+    assert whole.beyond == apart.beyond == (("link", doi + "#s2"),)
+
+
+@pytest.mark.parametrize(
+    ("shown", "target"),
+    [
+        ("https://osf.io/abc", "https://osf.io/abc"),
+        ("www.osf.io/abc", "http://www.osf.io/abc"),
+        ("data@example.org", "mailto:data@example.org"),
+        ("https://e.org/a%20b", "https://e.org/a%20b"),
+        ("https://e.org/a%2520b", "https://e.org/a%2520b"),
+        ("https://OSF.io/abc", "https://osf.io/abc"),
+    ],
+    ids=["url", "www", "e-mail", "escaped", "an-escaped-percent", "host-cased"],
+)
+def test_a_link_whose_words_are_its_address_is_the_paragraph_s_text(
+    tmp_path: Path, shown: str, target: str
+) -> None:
+    """Word's AutoFormat makes a link of an address typed in a paragraph, and it is on by
+    default: read as a link added, a co-author's "Data are at https://osf.io/abc" was refused
+    where it merged as text (round 1 of #597). A link whose words are its address, escapes
+    decoded on both and the host in any case (round 2), is the paragraph's text, compared
+    there, and no link added; an autolink of the source's is one too."""
+    from manuscript_guard.docxtext import blocks
+    from manuscript_guard.merge import _beyond_changed
+
+    runs = (
+        '<w:r><w:t xml:space="preserve">Data are at </w:t></w:r>'
+        f'<w:hyperlink r:id="rId7"><w:r><w:t>{shown}</w:t></w:r></w:hyperlink>'
+    )
+    [block] = blocks(_one_paragraph(tmp_path / "a.docx", runs, target))
+    assert [kind for kind, _held in block.beyond] == ["autolink"]
+    assert _beyond_changed((), block.beyond) == ""
+
+
+def test_a_path_changed_only_in_case_is_a_link_of_its_own(tmp_path: Path) -> None:
+    """The host of an address is in any case, and the rest of it is as written: a link whose
+    words keep a path the address no longer has is a link, not the paragraph's text."""
+    from manuscript_guard.docxtext import blocks
+
+    runs = '<w:hyperlink r:id="rId7"><w:r><w:t>https://osf.io/ABC</w:t></w:r></w:hyperlink>'
+    [block] = blocks(_one_paragraph(tmp_path / "a.docx", runs, "https://osf.io/abc"))
+    assert block.beyond == (("link", "https://osf.io/abc"),)
+
+
+def test_a_link_and_an_equation_in_a_footnote_are_the_footnote_s(tmp_path: Path) -> None:
+    """A footnote was compared by its words alone, so a link's address changed inside one, or
+    an equation edited there, was still lost without a word (round 2 of #597). They are read
+    with the footnote's text, the link by the footnotes' own relationships."""
+    from manuscript_guard.docxtext import blocks
+
+    m = "http://schemas.openxmlformats.org/officeDocument/2006/math"
+    notes = (
+        f'<w:footnote w:id="1" xmlns:r="{_R}" xmlns:m="{m}"><w:p>'
+        '<w:r><w:t xml:space="preserve">See </w:t></w:r>'
+        '<w:hyperlink r:id="rId3"><w:r><w:t>the report</w:t></w:r></w:hyperlink>'
+        "<m:oMath><m:r><m:t>a=b</m:t></m:r></m:oMath></w:p></w:footnote>"
+    )
+    runs = '<w:r><w:t>Text.</w:t></w:r><w:r><w:footnoteReference w:id="1"/></w:r>'
+
+    def noted(path: Path, target: str) -> Path:
+        _one_paragraph(path, runs, notes=notes)
+        rels = "http://schemas.openxmlformats.org/package/2006/relationships"
+        with zipfile.ZipFile(path, "a") as archive:
+            archive.writestr(
+                "word/_rels/footnotes.xml.rels",
+                f'<Relationships xmlns="{rels}"><Relationship Id="rId3" Type="hyperlink" '
+                f'Target="{target}" TargetMode="External"/></Relationships>',
+            )
+        return path
+
+    [was] = blocks(noted(tmp_path / "a.docx", "https://a.org"))
+    [now] = blocks(noted(tmp_path / "b.docx", "https://b.org"))
+    [(kind, held)] = was.beyond
+    assert kind == "footnote" and "See the report" in held, held
+    assert "https://a.org" in held and "a=b" in held, held
+    assert was.beyond != now.beyond
+
+
+def test_a_citation_in_a_footnote_of_a_live_build_is_read_by_its_code(tmp_path: Path) -> None:
+    """A citation in a footnote of a live build is a Zotero field, and once Zotero refreshes
+    it the footnote shows "(Smith 2020)" where the comparison build prints it as the source
+    writes it. Read by its words, a paragraph nobody touched was refused as one whose
+    footnote was changed in Word (round 1 of #597). The note's fields are read as the
+    paragraph's are."""
+    from manuscript_guard.docxtext import blocks
+
+    field = (
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        "<w:r><w:instrText> ADDIN ZOTERO_ITEM CSL_CITATION {} </w:instrText></w:r>"
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        "<w:r><w:t>(Smith 2020)</w:t></w:r>"
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+    )
+    notes = (
+        f'<w:footnote w:id="1"><w:p><w:r><w:t xml:space="preserve">See </w:t></w:r>{field}'
+        "<w:r><w:t>.</w:t></w:r></w:p></w:footnote>"
+    )
+    runs = '<w:r><w:t>Text.</w:t></w:r><w:r><w:footnoteReference w:id="1"/></w:r>'
+    document = _one_paragraph(tmp_path / "a.docx", runs, notes=notes)
+    [block] = blocks(document, fields=lambda code: "[@smith2020]" if "ZOTERO" in code else None)
+    assert block.beyond == (("footnote", "See [@smith2020]."),)
+
+
+def test_a_footnote_citation_the_record_does_not_know_is_not_compared(tmp_path: Path) -> None:
+    """The build's record names each citation it made, and a record an earlier release wrote
+    names none in a footnote: read by its words, a refreshed footnote of a document built then
+    was a footnote changed in Word, and an untouched paragraph was refused (round 2 of #597).
+    A note holding a citation the record does not know cannot be told, and is not compared,
+    as no note was before."""
+    from manuscript_guard.docxtext import blocks
+    from manuscript_guard.merge import _beyond_changed
+
+    code = (
+        "ADDIN ZOTERO_ITEM CSL_CITATION {&quot;citationItems&quot;:[{&quot;uris&quot;:"
+        "[&quot;http://zotero.org/users/1/items/AAAA1111&quot;]}],&quot;properties&quot;:"
+        "{&quot;formattedCitation&quot;:&quot;(Smith 2020)&quot;}}"
+    )
+    notes = (
+        '<w:footnote w:id="1"><w:p><w:r><w:t xml:space="preserve">See </w:t></w:r>'
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        f"<w:r><w:instrText> {code} </w:instrText></w:r>"
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>(Smith 2020)</w:t></w:r>'
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:footnote>'
+    )
+    runs = '<w:r><w:t>Text.</w:t></w:r><w:r><w:footnoteReference w:id="1"/></w:r>'
+    [block] = blocks(_one_paragraph(tmp_path / "a.docx", runs, notes=notes), fields=lambda c: None)
+    assert block.beyond == (("footnote", None),)
+    assert _beyond_changed((("footnote", "See [@smith2020]."),), block.beyond) == ""
+    assert _beyond_changed((), block.beyond).startswith("a footnote was added")
 
 
 def test_both_refusals_beside_new_text_speak_of_one_text_shown() -> None:

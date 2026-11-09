@@ -20660,42 +20660,25 @@ Open, recorded as each change landed:
     lined up and is refused whatever the edit. Where the reading takes source markup for text
     it keeps - an unnamed construct that renders nothing - the backstop or the alignment
     refuses. Where it misjudges a span around a binding, nothing does.
-  - *The read-back reads a binding as digits.* What a binding's value makes of the text
-    beside it is seen only by the escaper, at the edges it knows: a `<`, `&`, `]` or `{`
-    before a binding, a `(` after one, and a `>` in an edited stretch. That `>` is escaped
-    once Word's paragraph shows, before it, a `<` that can open a tag: one before a letter
-    of any script, `/`, `!` or `?`, whether the source kept it bare or a value brought it.
-    At the end of an unquoted attribute value, after an `=`, pandoc takes a backslash for
-    part of the value, and `=\>` closed the tag; there the `>` is written `&gt;`. The value
-    ends only at ASCII whitespace, so a no-break space does not end it, and each citation
-    ahead of it is read as its key, as pandoc reads it; the rest is Word's text. A straight
-    quote straight after the `=` opens a quoted value that runs past the paragraph's end and
-    closed at a `>` in the next one; once a `<` shown in a stretch kept from the source, or
-    in a value, stands before it, it is written `\'` or `\"`, which prints straight. Word's
-    own `<` is escaped and opens nothing, so a quote after it is left for pandoc to curl. A
-    `<` the source had escaped still counts, since a kept stretch is read as Word shows it:
-    `\<LOD`, which the merge itself writes for a `<` typed in Word, makes a later
-    `family='binomial'` print `'binomial’`. A `’` Word typed after an `=` to close a quote of
-    the source's is written straight and escaped like any other; left curly, it closed
-    nothing, and a value the source's own `='` had opened ran on. An `=` that ends an
-    edited stretch still lets a tag run on into whatever follows it: `…set to low x=` ahead
-    of a paragraph with a `>` of its own merges, and the two print as the words after that
-    `>`; so does a value of `'low` after a typed `label=`, and a source paragraph that ends
-    in `=` itself, which the next paragraph's escaper cannot see. G2 reads
-    `\>` as the `>` it prints, so `ROR \> 2` is still a threshold. A `>` kept from the
-    source is not Word's to escape, after a `<` kept from the source or brought by a value.
-    Pandoc read the two as text only because something between them was not an attribute
-    name, and an edit that deletes or changes it can make a tag: with values that are words,
-    `Samples <LLOQ in {{results.unit}} (see Table 2) at {{results.site}} and >ULOQ were
-    redone.`, with "(see Table 2)" deleted in Word, or turned into `="(see Table 2)"`,
-    merges, and pandoc prints "Samples ULOQ were redone." A `>` in a binding's value is the
-    same case. The read-back does not see it: a digit is not an attribute name, and pandoc's
-    tags are looser than its own reading, which does not take `mg/L` for one.
-  - *What Word holds outside the paragraph's text is never compared.* A footnote's text is
-    in `footnotes.xml`, an equation in `m:t` runs, a link's address in the relationships;
-    `import` reads none of them. An edit inside a footnote or an equation, a changed link
-    address, or a footnote deleted in Word leaves the paragraph's text as it was, and
-    nothing is merged or reported.
+  - *A tag left open by the paragraph before is not seen.* A rewording is read for the tags
+    pandoc would read in it once its values are in (`roundtrip._tag_made`), one paragraph at
+    a time. A paragraph that ends after the `=` of a would-be tag, or inside its quoted
+    value, carries the tag on into the next one, whose identifier is then the value; a
+    source paragraph that ends so, `Values <LOD in mg/L were set to x=`, is not read beside
+    the next one's rewording, and "(see Table 2)" deleted before a `>` there merges: pandoc
+    prints the two as the words after that `>`. Pinned by
+    `tests/test_roundtrip.py::test_a_tag_left_open_by_the_paragraph_before_is_not_seen`.
+  - *A footnote holding a citation the build's record does not know is not compared.* A
+    live build's record names each citation field it made, as the source writes it, and a
+    footnote's citations are read through it, as the paragraph's are. It knows none in a
+    footnote where an earlier release wrote it; none where the citation was inserted in the
+    footnote in Word, or edited there through Zotero (a work added, a page changed); and none
+    the source writes two ways, which it leaves out. Such a footnote cannot be told from
+    Zotero's words, so it is taken to be as it was, its text, links and equations with it,
+    and an edit to it is lost as every footnote edit was before; a paragraph's own citation
+    is refused in each of these cases. A record that said it reads footnotes would let only
+    an earlier release's be taken so. Pinned by
+    `tests/test_roundtrip.py::test_a_footnote_citation_the_record_does_not_know_is_not_compared`.
   - *Code is refused only for the characters pandoc typesets.* A `--` or `...` typed in Word
     outside code, with AutoCorrect off, is typeset like one in the source; and code holding
     such a character refuses an edit anywhere in its stretch, even one that leaves the code
@@ -21099,11 +21082,6 @@ Open, recorded as each change landed:
     identifier, as any text typed at its start does, and the paragraph is reported as moved
     in Word, though it never moved. Nothing is written. Only an empty line is given its
     identifier back.
-  - *The live build's reference list before Zotero refreshes it* is one placeholder paragraph
-    with no style, so it is not recognised as a reference entry. The last paragraph deleted
-    without Track Changes leaves its identifier on the placeholder, and its text is written
-    over that paragraph, on `main` too. After a refresh the entries carry the Bibliography
-    style and are recognised.
 - **A join into a table is neither applied nor reported.** A paragraph whose mark was
   deleted just before a table runs on in Word into the table's first cell. Import folds a
   paragraph into the next only when no table stands between them, so it reads the paragraph
@@ -21542,9 +21520,19 @@ Open, recorded as each change landed:
   Pinned by `tests/test_roundtrip.py::test_links_and_keys_are_read_as_pandoc_reads_them`,
   `tests/test_roundtrip.py::test_a_binding_inside_inline_code_is_left_unmarked`
   and `tests/test_roundtrip.py::test_an_unreadable_marked_build_refuses_rather_than_stopping`.
-- **Only a sign glued to a value is a change to it.** "– 3.84", with a space, reads as
-  punctuation and merges; so does a unit or a percent sign added after a value. Both change
-  what the sentence claims, and neither is caught here; `check` sees the binding intact.
+- **A value's unit is what G2 reads as one, and a dash after a number makes a range.** A
+  sign or a comparison set before a value in Word, glued or with a space between, and a unit
+  or a percent sign added after one, changed or taken out, refuse the rewording
+  (`roundtrip._beside_values`); a spaced equals sign and an em dash do not. A word after a
+  value that G2 does not read as a unit, "3.84 years", "3.84-fold" or "3.84×", changes what
+  the sentence claims as "3.84 mg" does, and merges. A dash typed after a number and before
+  a value, "2 – 3.84", "12% – 15%" or "12 mg/L – 15 mg/L", is read as a range and
+  merges, where the co-author may have meant a minus. And a spaced en dash or hyphen
+  before a value that opens an aside, "the ratio – 3.84 – was high", is read as a sign and
+  refuses the rewording. Pinned by
+  `tests/test_roundtrip.py::test_a_word_after_a_value_that_is_no_unit_still_merges`,
+  `tests/test_roundtrip.py::test_a_sign_or_unit_that_changes_no_value_still_merges` and
+  `tests/test_roundtrip.py::test_a_sign_or_unit_set_beside_a_value_in_word_is_refused_and_named`.
 - **The annotated copy shows classification, not correctness.** Green means a number came
   from an artefact, not that the analysis behind it was right; the tiers describe provenance
   and nothing else. An SVG figure needs `rsvg-convert` for pandoc to place it in the contact
@@ -24982,6 +24970,59 @@ What papers converted from Word showed (see "What papers converted from Word sho
     says so among what G4 did not check.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A sign or a unit set beside a value in Word merged (2026-11-09).** Only a sign glued to
+  a value was a change to it. "– 3.84", with a space, read as punctuation and merged, and so
+  did a percent sign or a unit added after a value: each changes what the sentence claims,
+  and `check` saw the binding intact. A sign or a comparison before a value with a space
+  between, and a unit or percent sign after it added, changed or taken out, read as G2 reads
+  a unit after a binding, now refuse the rewording, naming what Word shows and the value's
+  key, and saying where to make the edit. What stays open is in "A value's unit is what G2
+  reads as one" above.
+
+- **The read-back read a binding as digits (2026-11-09).** A rewording was read back with
+  each binding filled with digits, by a pattern of a tag stricter than pandoc's. With values
+  that are words, `Samples <LLOQ in {{results.unit}} (see Table 2) at {{results.site}} and
+  >ULOQ were redone.` printed as typed only because "(see" is no attribute's name; with
+  "(see Table 2)" deleted in Word the merge read back as text, and pandoc printed "Samples
+  ULOQ were redone.", words deleted with nothing said. The read-back now fills each value
+  with what it prints and reads tags as pandoc 3.9 does (`roundtrip._pandoc_tags`: a name
+  and each attribute's name a name, anything in a value, a closing tag and an instruction
+  to the next `>`), held to pandoc in `tests/test_pandoc_agreement.py`; a rewording that
+  makes a tag of the source's `<` and `>`, or leaves one open after an `=` or in a quote at
+  the paragraph's end, is refused, with how to write the `<` in the .md. The paragraph
+  before is still not read with it; see "A tag left open by the paragraph before" above.
+
+- **What Word keeps outside a paragraph's text was never compared (2026-11-09).** A
+  footnote's text is in `footnotes.xml`, an equation in `m:t` runs, a link's address in the
+  relationships, and `import` read none of them: an edit inside a footnote or an equation, a
+  changed link address, or a footnote deleted in Word left the paragraph's text as it was,
+  nothing was merged, and the import said nothing had come back. Each paragraph's notes,
+  equations and links are now read, tracked changes accepted (`docxtext.Block.beyond`), and
+  compared by what they hold, since Word renumbers them on a save; a paragraph whose list
+  differs is refused, naming what changed. A footnote is compared with the links' addresses
+  and the equations in it, and a citation in one is read by its field's code, as the
+  paragraph's own are (one the record does not know is the limit above, "A footnote
+  holding a citation the build's record does not know"); a link inside a field is the
+  field's and is not compared, so Zotero linking a refreshed citation to the reference
+  list is no edit; a link
+  whose words are its address, as Word's AutoFormat makes of one typed, is the paragraph's
+  text; and an address is compared with its percent-escapes decoded and its bookmark, which
+  Word may keep apart, after it. Word 16's own saves of a footnote
+  edited with Track Changes off and on, a footnote deleted, an equation and a link's
+  address edited, and the same document saved unchanged are the tests' documents. The
+  refusal costs the edit, as "The refusal costs the edit" above says of all such markup.
+
+- **The live build's reference list before a Zotero refresh took a deleted paragraph's
+  identifier (closed by #120, found 2026-11-09).** Until Zotero refreshes it, the live
+  build's reference list is one paragraph with no style holding the `ADDIN ZOTERO_BIBL`
+  field and a placeholder, and DESIGN.md had the last paragraph, deleted without Track
+  Changes, leave its identifier there and the placeholder's text written over it. An
+  identifier on a block of a kind the build gives none of its own has been taken off it
+  since #120, and the comparison build has the placeholder too, so the paragraph is
+  reported deleted. Word 16 itself, deleting that paragraph, leaves the bookmark between the
+  two paragraphs, where it names none; both shapes are held by
+  `tests/test_roundtrip.py::test_a_paragraph_deleted_before_the_live_reference_list_is_not_written_over`.
 
 - **What #565 left of `sync-sources`' fetcher and its network guard (2026-11-09).** Nine
   points listed under "What `sync-sources` fetches from the web is held to the work's DOI or

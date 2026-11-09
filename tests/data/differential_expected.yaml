@@ -189,14 +189,13 @@ expected:
       (Known gaps, 2026-10-27)
   - reading: abbreviations
     why: >-
-      a paragraph that opens with a bold label naming a contributions, acknowledgements,
-      funding or competing-interests statement, "**Authors' contributions** JMD, BC and CD
-      designed the study", is read as that statement, and so is the paragraph under such a
-      label standing alone: their initials and institutions in capitals are no longer
-      reported as undefined; the inputs now hold such statements, and lookalikes whose
-      capitals are still reported (a label that only opens with such a word, inside a
-      paragraph, in a list item, a block quote or an indented table, a bold word going on
-      into its sentence, a heading under a label)
+      a bold word that goes on into its sentence across a line break pandoc prints as a
+      space, "**Funding**" over "of the MRC was cut" in one paragraph, a space before the
+      break or none, is that sentence's first word, as on its line, and no longer a
+      statement's label, so the paragraph's capitals are reported as undefined again; the
+      inputs now hold such paragraphs, and lookalikes still quiet: a label with its statement
+      on the next line, "**Funding**" over "The EPSRC paid ...", and a label before a hard
+      line break, two spaces or a backslash
   - reading: recycled passages
     why: >-
       a citation by author and year in parentheses in the earlier paper, "(Smith et al.,

@@ -174,6 +174,10 @@ _ESCAPE = re.compile(r"\\(.)")
 # which open none.
 _PARAGRAPH_END = re.compile(r"\n[ \t\r]*\n")
 _BLANK_LINES = re.compile(r"(?:[ \t\r]*\n)*")
+# A line break pandoc prints as a space, a SoftBreak: one with no more than one space or tab
+# before it (pandoc 3.9). Two or more, or a backslash, make a LineBreak, which leaves the
+# words before it on a line of their own.
+_SOFT_BREAK = re.compile(r"[ \t]?\r?\n[ \t]*")
 
 #: How a hyphenated word is read: `SARS-CoV-2` whole when it is a name, `ROR-based` as its
 #: parts when it is not. Past this many parts only the parts are read, so a line of
@@ -637,8 +641,11 @@ def _a_label(label: str, rest: str) -> bool:
     """Whether bold words with `rest` after them in their paragraph are a label, not the
     first words of a sentence: they end in a colon or a stop, or what follows them opens
     with one, or with no small letter. "**Funding** of the NHS fell" goes on into its
-    sentence (round 1 of #596); "**Funding** none" is read as that sentence too."""
-    after = rest.lstrip(" \t")
+    sentence (round 1 of #596), on its line or across a line break pandoc prints as a space
+    (`_SOFT_BREAK`); "**Funding** none" is read as that sentence too. A hard line break
+    leaves the words on a line of their own, as a label stands."""
+    soft = _SOFT_BREAK.match(rest)
+    after = rest[soft.end() :] if soft else rest.lstrip(" \t")
     return label.rstrip().endswith((":", ".")) or after[:1] in (":", ".") or not (
         after[:1].islower())  # fmt: skip
 

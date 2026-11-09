@@ -116,6 +116,35 @@ def test_an_entry_that_breaks_the_form_is_said_at_its_line_and_left_out(
     assert lines[problem.line - 1] == at
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        # A tag the safe loader has no constructor for, one whose value its type refuses, a
+        # date that is no day, and a number too large for a float (round 1 of the PR).
+        "held_out:\n  - input: data/v.csv\n    validated_by: a.py\n    model: !include m.yaml\n",
+        "controls:\n  - key: c.x\n    kind: negative\n    of: ror.*\n    expected: !!int x\n"
+        "    rule: holds-null\n",
+        "held_out:\n  - input: 2026-02-30\n    validated_by: a.py\n",
+        "controls:\n  - key: c.x\n    kind: negative\n    of: ror.*\n    expected: "
+        + "9" * 400 + "\n    rule: holds-null\n",
+        # Round 2: what other constructors raise, a KeyError, an AttributeError, an IndexError.
+        "controls:\n  - key: c.x\n    kind: negative\n    of: ror.*\n    expected: !!bool maybe\n"
+        "    rule: holds-null\n",
+        "held_out:\n  - input: data/v.csv\n    validated_by: a.py\n    model: !!timestamp soon\n",
+        "controls:\n  - key: c.x\n    kind: negative\n    of: ror.*\n    expected: !!int ''\n"
+        "    rule: holds-null\n",
+    ],
+)
+def test_a_value_yaml_cannot_build_is_said_and_raises_nothing(body: str) -> None:
+    """Raised out of the reader, it stopped G12 whole as `gate-errored`."""
+    plan = f"# Plan\n\n```yaml\n{body}```\n"
+    read = read_declarations(plan)
+    assert read.declared and not read.controls and not read.held_out
+    (problem,) = read.unreadable
+    # At the entry's line, or at the field's where the field is what does not read.
+    assert plan.splitlines()[problem.line - 1].startswith(("  - ", "    ")), problem
+
+
 def test_a_field_given_twice_is_said_where_yaml_would_drop_the_first() -> None:
     plan = "# Plan\n\n" + _control().replace("    rule:", "    kind: positive\n    rule:")
     (problem,) = read_declarations(plan).unreadable
@@ -138,6 +167,28 @@ def test_a_key_or_an_input_declared_twice_is_read_in_neither_place() -> None:
     assert again.splitlines()[problem.line - 1] == "held_out:"
 
 
+def test_a_section_given_twice_in_one_block_is_said_as_given_twice() -> None:
+    """Round 1: it was said to be declared in another block too."""
+    entry = "  - input: data/v.csv\n    validated_by: a.py\n"
+    plan = f"# Plan\n\n```yaml\nheld_out:\n{entry}held_out:\n{entry}```\n"
+    read = read_declarations(plan)
+    (problem,) = read.unreadable
+    assert problem.message.startswith("held_out is given twice in the block, at line 4"), problem
+    assert "the first is read" in problem.message and problem.line == 7
+    assert [h.line for h in read.held_out] == [5], "the first is the one read (round 2)"
+
+
+def test_a_section_refused_leaves_the_next_to_be_read_and_a_value_is_said_by_its_tag() -> None:
+    """Round 3 of #599: a section that was no list made the next one "given twice"."""
+    entry = "  - input: data/v.csv\n    validated_by: a.py\n"
+    read = read_declarations(f"```yaml\nheld_out: x\nheld_out:\n{entry}```\n")
+    assert [h.input for h in read.held_out] == ["data/v.csv"]
+    assert [p.message for p in read.unreadable] == ["held_out is not a list of entries"]
+    body = "  - input: d.csv\n    validated_by: a.py\n    model: !!timestamp soon\n"
+    (problem,) = read_declarations(f"```yaml\nheld_out:\n{body}```\n").unreadable
+    assert problem.message.endswith("timestamp does not take 'soon'"), problem
+
+
 def test_a_block_that_is_not_yaml_is_said_where_it_seems_to_declare() -> None:
     plan = "# Plan\n\n```yaml\nheld_out: [ {input: x\n```\n\n```yaml\nnot: [ yaml\n```\n"
     read = read_declarations(plan)
@@ -149,7 +200,7 @@ def test_a_block_that_is_not_yaml_is_said_where_it_seems_to_declare() -> None:
 @pytest.mark.parametrize(
     "fence",
     ["```yaml\n{body}```\n", "~~~yaml\n{body}~~~\n", "```` yaml\n{body}````\n",
-     "``` {{.yaml}}\n{body}```\n", "```YAML\n{body}```\n"],  # fmt: skip
+     "``` {{.yaml}}\n{body}```\n", "```YAML\n{body}```\n", "```yml\n{body}```\n"],  # fmt: skip
 )
 def test_a_block_is_found_as_pandoc_finds_a_fenced_yaml_block(fence: str) -> None:
     body = GOOD.split("```yaml\n", 1)[1].rsplit("```", 1)[0]

@@ -8568,6 +8568,244 @@ The `methods-review` skill drives the steps, from the search to the citation; ho
 studies is the author's choice, the most relevant five to ten usually, and nothing counts
 them.
 
+## Controls the plan declares, and data held out until the model is fixed
+
+An analysis that has only been run on the study's data has never shown that it can find an
+answer. Three kinds of control show it, each put through the analysis that gives the paper's
+result: data simulated with a known effect, as a simulation study evaluates a method (Morris
+et al. 2019, doi:10.1002/sim.8086); a positive control, an association known to exist; and a
+negative control, an exposure or an outcome for which no effect is expected (Lipsitch et al.
+2010, doi:10.1097/EDE.0b013e3181d61eeb). Observational health research uses negative
+controls already, and OHDSI calibrates a study's p-values and intervals with many of them
+(Schuemie et al. 2014, doi:10.1002/sim.5925; Schuemie et al. 2018,
+doi:10.1073/pnas.1708282114). Each of the four was checked with `manuscript-guard lookup` on
+2026-11-09. A control chosen once the results are known is worth much less than one chosen
+before, and the plan's frozen copy (`emit.freeze_plan`) shows which it was.
+
+A second check rests on the same records. A prediction model validated on data held out from
+its development is validated independently only where nothing that built or tuned the model
+read those data first; Kapoor and Narayanan (2023, doi:10.1016/j.patter.2023.100804, checked
+the same day) name such leakage among the causes of irreproducible results in science that
+uses machine learning. G1 already knows which inputs each script declares, and the emitters
+record when and with what digests.
+
+Items 5 and 11 of the borrowed checks (plan of 2026-11-06), built together (D11.1). Basile
+settled seven things with the plan, each as recommended: three kinds of control, with
+empirical calibration left for the OMOP adapters (D5.1); pass rules from a fixed menu (D5.2);
+a failed control warns, and fails at submission unless the paper reports it and the
+Deviations say why (D5.3); "the same script" is the same script path as the result, which is
+the check's limit (D5.4); suggestions by design in the skill only (D5.5); and a leak of
+held-out data fails from the analysis stage, because it changes the result (D11.2). And four
+more on 2026-11-09 by question box, each as recommended: the plan declares both in a YAML
+block, not in list items of fixed words; each control names the result it stands beside;
+both emitters keep a record of each script's first read of each input; and the other control
+findings warn and fail at submission, as a failed one does. And two more the same day, after
+round 1 of #590 found false alarms, each as recommended: a control is reported by a binding
+of one of its values anywhere in the main text or the supplement, the Results included; and a
+held-out entry may name other scripts that read the input without building a model, such as
+one describing the validation sample. And after rounds 2 and 3, as recommended: a script may
+read a held-out input where the plan named it as the input's validator or reader when the
+script first read it, which the record of first reads keeps.
+
+### What the plan declares
+
+A fenced block in `design/plan.md` whose info string is `yaml` (or `yml`), anywhere in the
+plan, whose mapping holds `controls`, `held_out` or both. Read with PyYAML's safe loader, as
+`paper.yaml` is; a block with neither key is the author's and is not read. A YAML block cannot be mistaken
+for a case-control plan's own "Controls" heading, and a mistake in it is said at its line. It
+is found as pandoc finds a fenced block, past the front matter and outside HTML comments.
+
+```yaml
+controls:
+  - key: control.shuffled       # what the analysis emits it under
+    kind: simulated             # simulated, positive or negative
+    of: ror.*                   # the result it stands beside
+    expected: 1                 # the value planted, the association known, or the null
+    rule: holds-expected
+  - key: control.headache
+    kind: negative
+    of: ror.*
+    expected: 1
+    rule: holds-null
+  - key: control.bleeding
+    kind: positive
+    of: ror.*
+    expected: 3.2
+    rule: within
+    distance: 1.0
+held_out:
+  - input: data/validation.csv
+    validated_by: analysis/03_validate.py
+    model: models/final.pkl     # or a list of files
+    read_by: analysis/02_describe.py   # optional: others that read it, building no model
+```
+
+A control has a `key`, a `kind`, an `of`, an `expected` value and a `rule`:
+
+- `kind` is `simulated`, `positive` or `negative` (D5.1). A simulated control may plant no
+  effect, the exposure shuffled across patients, with the null as the value expected; that is
+  a simulated control, not a fourth kind.
+- `of` is the result the control stands beside, written as Planned results write a key:
+  `ror.point`, `results.dose`, or a group, `ror.*`.
+- `expected` is a finite number: not `.inf` or `.nan`, and not `true` or `false`, which
+  Python takes for 1 and 0.
+- `rule` is one of three (D5.2), and no expression is read. `holds-expected`: the interval
+  holds the expected value. `holds-null`: the interval holds the null, and `expected` is
+  then 0 or 1, the null of a difference or of a ratio. `within`: the estimate is within
+  `distance` of the expected value, on the scale the analysis emits it, `distance` being a
+  finite number above nought; it is given with this rule and with no other.
+
+A held-out input has an `input`, the path the emitter records it under (from the project's
+root; `vault:<label>` for a file of the vault), a `validated_by`, the script that validates on
+it, and a `model`, the file or files holding the model it validates, which that script
+declares as inputs. `model` is left out where the validation script builds the model itself.
+`read_by`, a path or a list, names the other scripts that read the input and build or tune no
+model, a script that describes the validation sample as TRIPOD+AI asks for one (Basile,
+2026-11-09). That they build nothing is the author's word. A script is a reader by the plan
+as it stood when the script first read the input, as the record of first reads keeps it
+(below): named then as the validator or in `read_by`, it may read the input; named only
+later, it read the data before the plan allowed it, and naming it does not clear the leak
+(Basile, 2026-11-09, after rounds 2 and 3 of #590). Neither the plan as it stands nor the
+frozen copy would do. With the plan as it stands, a leak found after the fact is cleared by
+naming the script that read the data and writing a sentence under the Deviations. With the
+frozen copy, which a dry run on synthetic data writes as well as a real run, a describing
+script added before the real data were touched, or a validator renamed then, is a leak.
+
+An entry with a key missing, a key not listed here, a value of another type, a kind or a rule
+not listed, a `distance` with another rule, a `holds-null` whose expected value is neither 0
+nor 1, a control one of whose values (`<key>.point`, `<key>.ci_low`, `<key>.ci_high`) falls
+under its own `of`, or whose `of` falls under its key, so that it would stand beside its own
+values (`ror.shuffled` of `ror.*`, or `ror` of `results.ror.*`), a value the safe loader
+cannot build (a tag it has no constructor for, a date that is no day), or a key or an input
+declared twice, is `plan-declarations-unreadable` at its line, and is not checked; the others
+are. So
+is a block that is not YAML, and a second block holding a key the first holds. The plan is
+Markdown in every project, a LaTeX one included.
+
+The blocks this reads declare; they say nothing of a deviation. So the Deviations are read
+without them, by `_named` and by `deviations_said`: each `yaml` block that holds `controls`
+or `held_out`, and each that is not YAML and has a line opening, after any indentation, with
+either key, bare or quoted, and a colon, spaces allowed before it, is left out. A block put
+under the Deviations heading names none of its own keys there, and does not count as a change
+to the Deviations for `plan-changed-after-results`. Without this, a block under the
+Deviations would stand down every finding below that the Deviations can stand down, for every
+key it declares.
+
+### The emitters
+
+`em.control(key, estimate, lower, upper, *, inputs=None, digits=None)`, and
+`em$control(...)` in R, written by the script that writes the results the control stands
+beside (D5.4). It publishes the estimate and its interval as `interval()` does with no
+`level`, as `<key>.point`, `<key>.ci_low` and `<key>.ci_high` at the emitter's `ci_level`,
+quoted, so that the manuscript binds them as it binds any result, and names the key in a
+`controls` block of the fragment.
+
+A simulated control's data are made in the script, and there is nothing to declare, or read
+from a file, which `inputs` names. `inputs` is for a simulated control's data alone: a
+positive or a negative control reads the study's data, declared as any input is. Each file
+`inputs` names is an input of the run, declared synthetic, and marked as the control's
+(`control: <key>` in its record). G1's `synthetic-input-quoted` reads
+an input so marked as the control's alone: the run's other results are not taken to come
+from synthetic data because the control read some, and the control's own values are reported
+as a control's. Without the mark, a simulated control in the script of the real results would
+make every result of that script read as synthetic.
+
+**The record of first reads** (Basile, 2026-11-09). A fragment is written again on every run,
+so it says what a script read last, never what it read first. Once the plan holds a line
+that opens, after any indentation, with `held_out`, bare or quoted, and a colon, spaces
+allowed before it, which both emitters find in the text without reading the block, every
+write adds to
+`design/first_reads.yaml` each input the script declares that the record does not yet list
+for that script: the script, the input, the time, the digests of every input of that run,
+and the digest of the plan as it then stood. An input declared synthetic in the run is not
+entered, so that a dry run on a synthetic copy at the held-out path is no first read of the
+held-out data, nor its model the one validated. The record keeps the text of each version of
+the plan once, under its digest, the first time an entry names it, so that G1 can read the
+`held_out` block an entry was written under: its entry for the held-out input, by that
+input's path. A version whose block does not read, or holds no entry for that path, tells
+nothing of the script's leave to read it. An entry is never rewritten, the record is JSON
+as the frozen plan is, which both emitters write without a YAML package, and the write hook
+refuses an agent's edit of it as it refuses one of the frozen plan. It is committed beside
+the plan, as the frozen copy is. `harvest`, which keeps the frozen plan for a fragment it
+writes, adds to the record too. A project whose plan holds no held-out data gets no such
+file.
+
+### What G12 and G1 check
+
+Each control the plan declares is read from the plan as it stands and from its frozen copy,
+and judged on the values emitted, not on their displays: `holds-expected` and `holds-null`
+pass where the lower bound is at most the expected value and the upper bound at least it,
+and `within` where the estimate is no further from it than the distance. A value equal to a
+bound passes. Nothing is asked at the design stage, before there are results.
+
+| Finding | When | Level |
+|---|---|---|
+| `control-failed` | the control's rule does not hold on its values | a warning; a failure at submission unless the main text or the supplement binds one of its values and the Deviations name its key (D5.3) |
+| `control-missing` | declared, and not emitted | a warning, a failure at submission, unless the Deviations name its key |
+| `control-declared-late` | declared, and not in the frozen copy: chosen after the first results were written | a warning, a failure at submission, unless the Deviations name its key; a note where the frozen copy marks an all-synthetic first run, which dates no real result |
+| `control-changed` | in the frozen copy, and gone from the plan or declared there with another kind, result, value, rule or distance | a warning, a failure at submission, unless the Deviations name its key |
+| `control-undeclared` | emitted, and no control of the plan has its key: nothing says what passes it | a warning, a failure at submission |
+| `control-other-script` | emitted by a script that emitted no result `of` names (for a group, no value, table or model under it), or no script emitted one (D5.4) | a warning, a failure at submission |
+| `control-unreported` | from the drafting stage, neither the main text nor the supplement binds a value of the control, in a Markdown or a LaTeX manuscript (Basile, 2026-11-09: the Results count, not only the Methods) | a warning, a failure at submission |
+| `plan-declarations-unreadable` | an entry or a block as above | a warning, a failure at submission |
+| `held-out-read-elsewhere` (G1) | a script declares the held-out input, in its fragment now or in the record of first reads, or a file with its digest under another path, and the plan its first read of it was written under did not name it as the input's validator or in its `read_by` | fails from the analysis stage (D11.2) |
+| `held-out-read-before-model` | the validation script's first read of the held-out input recorded the model with one digest, and the model it reads now has another: the model was written again after the held-out data were read | fails from the analysis stage (D11.2) |
+| `held-out-order-unknown` | the order cannot be told: no first read of the input is recorded for the validation script, or the model was not among the inputs of that read, or is not among its inputs now; or a script declares the input with no first read recorded, or one written under a version of the plan that tells nothing of it, so whether the plan let it read cannot be told | a warning, a failure at submission; a note where `model` is left out |
+| `held-out-unread` | no fragment of the validation script declares the input, and no first read is recorded | a warning, a failure at submission, unless the Deviations name the input |
+| `held-out-declared-late` | declared, and not in the frozen copy: reads before then were not recorded | a warning, a failure at submission, unless the Deviations name the input |
+| `held-out-changed` | in the frozen copy, and gone from the plan or declared there with another script, model or reader | a warning, a failure at submission, unless the Deviations name the input |
+| `first-reads-unreadable` | the record does not read as the emitters write it | a warning, a failure at submission |
+
+The Deviations name a key as `_named` reads a planned result's key there, and an input by its
+path as the plan writes it, a leading `./` left off on both sides: where no word character,
+dot, slash or hyphen comes before it,
+and after it neither a word character, a slash nor a hyphen, nor a dot followed by a word
+character. That is `_named`'s rule with the slash added, so a path at the end of a sentence is
+named, and `data/validation.csv` is named neither by `data/validation.csv.gz` nor by
+`x.data/validation.csv`. A failed control that the paper reports and the Deviations explain
+stays a warning at submission: the reader is to weigh it, and the warning says so. A leak has
+no such way out, since the validation's result is not what it would have been (D11.2): the
+author validates on data nobody has read, or takes the declaration out of the plan and says
+why under the Deviations, and the paper then cannot call the validation independent. The two
+leak findings check the entries the plan holds now, so the second way ends the failure, and
+`held-out-changed` holds it to the Deviations, so that the declaration is not dropped with
+nothing said.
+
+`check` counts `controls_declared`, `controls_passed` and `held_out_declared`. A harvested
+fragment's inputs are read as an emitted one's. The order is held by the model's digest, not
+by its date: a development script run again without changing the model leaves its digest as
+it was, and says nothing. The held-out check matters most to papers of the `prediction-model`
+design, whose TRIPOD+AI items ask how the data were split; no design requires it.
+
+### The skill and the example
+
+The analysis-plan skill gets a section on controls, suggesting those suited to the
+`study_type` declared, from `references/study-designs.md`, and on held-out data for a
+prediction model. No design requires a control, and no gate reads the suggestions (D5.5).
+
+The example carries one control of each kind. `00_simulate.py` writes, beside the reports, a
+dataset of its own with an effect planted, so that the reports, and every number the example
+binds, stay as they are; `01_disproportionality.py` puts it through the function that gives
+the ratio, and draws a positive and a negative control from the reports, their expected
+values from the generator's rates. The Methods bind each. The example's plan was frozen on
+2026-10-19 with no controls in it, so its controls are late: they are declared in a block of
+their own section, and its Deviations say in words, naming each key, that they were added
+after the first results, as a real project adding controls then would say it. G12 reads
+them as declared late and said. The example declares no held-out data; the tests do.
+
+### Pull requests, in order
+
+1. The plan's declarations and their reader, with `plan-declarations-unreadable`, and the
+   Deviations read without the blocks (a change to what `deviations_said` reads); `control()`
+   and its inputs in both emitters, the results schema's `controls` block and the input's
+   `control` mark, and G1's reading of that mark; the record of first reads in both
+   emitters, and the hook's entry for it.
+2. The findings above: G12's for controls, and G1's and G12's for held-out data, each with its
+   row in `docs/gates.md`, its case in `tests/test_corruption.py`, its entry for
+   `tests/test_policy.py` and its stage. The two halves touch different modules and the same
+   lists, and can be two pull requests opened side by side once the first is merged.
+3. The analysis-plan skill, and the example's three controls.
+
 ## Stages: not every gate binds on day one
 
 The first version of `check` ran all twelve gates unconditionally, which meant that someone
@@ -16056,6 +16294,86 @@ been sorted yet.
   needs its reason like any other.
   Pinned by `tests/test_collection.py::test_a_history_at_the_title_s_level_is_read_as_a_title`
   and `tests/test_collection.py::test_a_level_2_title_naming_an_amendment_is_read_as_the_deviations`.
+- **A control is held to its script's path, not to its code** (D5.4). G12 checks that the
+  script that emitted the control is the one that emitted the result it stands beside, not
+  that the control's data went through the code that gave that result: a copy of the
+  function, changed until the control passed, passes. Nor does it check that the control ran
+  on the code as it is now, beyond G1's digest of the script. Accepted.
+- **A control's kind is the plan's word.** Nothing checks that a negative control's exposure
+  or outcome is one with no effect, that a positive control's association is known, or that
+  a simulated control's file holds the effect the plan says was planted. Nothing checks either
+  that a positive or a negative control read the study's data rather than data of its own:
+  `inputs` is a simulated control's, and a positive or negative control that names files
+  there has them declared synthetic, real data or not, with nothing said. Whether a control
+  tests what it claims to is the panel's and the co-authors' to judge. Accepted.
+- **A control's rule is judged on the scale emitted, as the numbers are stored.** `within`
+  compares the estimate and the expected value on the scale the analysis emits them, so a
+  ratio emitted as a ratio is held to a distance in its own units, not on the log scale; the
+  author writes the distance for the scale. A bound is compared as the float the fragment
+  holds, so a value that equals a bound in its display and not in its digits is judged by its
+  digits. One control of each kind says whether the analysis found what it should, not how
+  far its intervals should be widened: empirical calibration is not done (D5.1). Accepted.
+- **A control declared late is dated by the frozen plan.** The frozen copy is the plan at
+  the first write of any results, so a control added after a first run on part of the data
+  is late, and one added after a dry run on synthetic data alone is a note, since that run
+  dates no real result: a control chosen between that dry run and the first run on the real
+  data cannot be told from one chosen first, and is not said to be late. Where there is no
+  frozen copy, because the plan was not UTF-8 text when the first results were written or
+  the copy was deleted, the next write freezes the plan as it then stands, controls and
+  held-out data added late included, and they read as declared on time; G12 says only
+  `plan-not-frozen`, a note, until then. The time is this machine's clock. Accepted.
+- **A control stands beside a result of one script.** Where the group `of` names spans
+  several scripts, a control emitted by any one of them is in the same script, whichever of
+  the group's results it was meant for. A harvested result has no control in the same
+  script, since `harvest` takes in outputs and emits no control: a control of a result
+  harvested is `control-other-script` wherever it is emitted. Accepted.
+- **A held-out input is known by its path and its bytes.** Another script's read is found
+  where it declares the input's path, or a file with its digest under another name. A copy
+  saved again, a subset, a file derived from it, and the data the held-out set was split
+  from are not found: a development script that reads the whole dataset before the split
+  reads the held-out rows, and G1 says nothing. Nor does it see a read the script does not
+  declare, as G1 sees no undeclared input. A script named in `read_by` is taken at the
+  author's word to build and tune no model; one that does reads the held-out data unseen.
+  Accepted.
+- **A script is a reader by the plan it first read the input under.** A validator renamed,
+  or a describing script added, is accepted by G1 where the plan names it before the new
+  script first runs, and `held-out-changed` still asks the Deviations to name the input; named
+  after it has run, it is a leak, as a script that read the data and was named to clear it
+  is. Telling the two apart would need the scripts' code compared, which nothing does. A
+  held-out file moved to another path and declared again after the first results is a late
+  entry; a script that read it under its old path is found by its digest only where the bytes
+  are the same, and its leave to read is looked for under the new path, so the validator's
+  own reads under the old one tell nothing (`held-out-order-unknown`). Accepted.
+- **The emitters find held-out data by a line, not by the block.** The record starts once a
+  line of the plan opens, after any indentation, with `held_out`, bare or quoted, and a
+  colon, spaces allowed before it, which both emitters can find without a YAML reader. A
+  block commented out, a line of prose or of another block that opens so starts a record for
+  a plan that declares no held-out data; the record is then a file nothing reads. A block
+  that holds `held_out` in a way no line opens with, inside a flow mapping
+  (`{held_out: [...]}`) or as a complex key, starts none, and G12 then says the order is
+  unknown of each entry. Accepted.
+- **The record of first reads is the emitters' word on the machine that ran them.** It is
+  complete only where it is committed and every run went through an emitter: a record lost,
+  or a run on a machine whose record was never merged, leaves `held-out-order-unknown`, and a
+  record edited by a person is read as written. The hook refuses an agent's edit, not a
+  person's. A harvested output's inputs are first read when it is harvested, which is when
+  the tool learns of them, not when its script ran. The record starts when the plan first
+  holds a `held_out:` line, so reads before then are not in it (`held-out-declared-late`).
+  Each write reads the record and writes it whole, so two scripts run at once can each write
+  it from what it held before the other's entry, and one entry is lost: the read of a script
+  that has stopped declaring the held-out input is then in no record. Runs one after the
+  other, as a pipeline makes them, lose nothing. Under `vault run` the scripts run in a copy
+  inside the vault, and the record they add to there is moved to the outbox with what they
+  wrote: it reaches the project only where the person releasing the run names it, so a read
+  of `vault:<label>` not released is in no record, and G12 says the order is unknown. And a
+  record edited by hand to an empty list where its versions belong is refused by Python and
+  written over by R, which reads an empty list and an empty mapping alike. Accepted.
+- **The order is held by the model's digest at the first read.** A model changed after the
+  held-out data were first read and changed back passes, and so does a choice among models
+  each validated by a script of its own. A model whose file holds the time it was written,
+  as some serialisers write, reads as written again on every run. Where the validation
+  script builds the model itself and the plan names no `model`, the order cannot be told, and
+  G12 says so in a note. Accepted.
 - **The REDCap export writes what a data dictionary can say, and no more.** A missing code
   of a number is written in the field note, not as one of REDCap's missing data codes,
   which a project sets for itself, so a value of -99 is refused by the field's range until

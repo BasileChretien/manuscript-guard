@@ -71,6 +71,10 @@ def test_a_control_is_published_as_an_interval_and_named(tmp_path: Path) -> None
          "control c.x's data"),  # fmt: skip
         (lambda em: (em.control("c.x", 1, 0, 2, inputs=["data/simulated.csv"]),
                      em.add_input("data/simulated.csv")), "control c.x's data"),  # fmt: skip
+        # Round 1: declared synthetic again, it kept the control's mark.
+        (lambda em: (em.control("c.x", 1, 0, 2, inputs=["data/simulated.csv"]),
+                     em.add_input("data/simulated.csv", synthetic=True)),
+         "control c.x's data"),  # fmt: skip
     ],
 )
 def test_a_control_refuses_what_it_cannot_record(tmp_path: Path, call, refusal: str) -> None:
@@ -80,6 +84,15 @@ def test_a_control_refuses_what_it_cannot_record(tmp_path: Path, call, refusal: 
     em = Emitter(root / "analysis" / "analysis.py", inputs=["data/real.csv"], root=root)
     with pytest.raises((DisplayError, ValueError), match=refusal):
         call(em)
+
+
+def test_a_control_given_one_file_twice_reads_it_once(tmp_path: Path) -> None:
+    """Round 2 of #599: the second spelling was refused as the control's own data, after its
+    interval had been published."""
+    root = _project(tmp_path)
+    em = Emitter(root / "analysis" / "analysis.py", root=root)
+    em.control("c.x", 1, 0, 2, inputs=["data/simulated.csv", "./data/simulated.csv"])
+    assert em.document()["controls"] == {"c.x": {"inputs": ["data/simulated.csv"]}}
 
 
 def _reads(root: Path) -> list[tuple[str, str]]:

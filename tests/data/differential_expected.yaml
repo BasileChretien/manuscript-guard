@@ -61,11 +61,12 @@ expected:
       printed the paragraph's first 150 characters
   - reading: word merged
     why: >-
-      a new reading: a paragraph reworded in Word is merged by writing only the words that
-      changed where the source has them, so the emphasis, code and straight quotes around
-      them are kept, and the merge names the spans an edit wrote plain (`flattened`, which
-      the base's alignment does not have); the base wrote each edited stretch whole from
-      Word's text
+      a sign or comparison set before a value in Word with a space between, "– 3.84", and a
+      unit or percent sign added after one, changed or taken out, is refused, naming the
+      value (KG454); and a rewording that leaves the source's `<` and `>` a tag to pandoc
+      once the values are in, as deleting "(see Table 2)" from `<LLOQ in {{results.unit}}
+      (see Table 2) at {{results.site}} and >ULOQ` did, is refused as one (KG410.3); the
+      inputs now hold such edits, which the base merged
   - reading: interval order
     why: >-
       the sentences an interval's bounds are compared in are read with each HTML comment

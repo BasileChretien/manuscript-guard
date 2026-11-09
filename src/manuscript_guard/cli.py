@@ -2501,6 +2501,11 @@ def _flags_given(args: argparse.Namespace, names: tuple[str, ...]) -> list[str]:
     return said
 
 
+#: What is told of each audit's report once it is made, before it is printed: the in-browser
+#: page sets it to draw the report it shows from the very audit the text is printed from
+#: (`web.view`), rather than auditing the paper a second time; None tells nothing.
+AUDITED: Callable[[object, object], None] | None = None
+
 #: The options of `audit` and `compare` the report draft names, in the order they are listed.
 _AUDIT_FLAGS = ("against", "figures", "english", "submission_residue", "lookup", "dry_run",
                 "whole_numbers", "minimum_cell_count", "journal", "authors", "design", "cited",
@@ -2737,6 +2742,8 @@ def _audit(args: argparse.Namespace, package) -> int:
     if args.cited is not None and not _write_cited(report, args):
         return 2
     discrimination = measure_discrimination(report.backing_values) if against else None
+    if AUDITED is not None:
+        AUDITED(report, discrimination)
     if args.report_draft is not None:
         from manuscript_guard.auditing.draft import for_audit
 

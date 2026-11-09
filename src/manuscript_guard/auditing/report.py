@@ -608,7 +608,13 @@ def _placing(paper: Path, show: _Show) -> Callable[[Path | None, int | None], st
     def at(path: Path | None, line: int | None) -> str:
         if path is None or Path(path) == Path(paper):
             return show.at(path, line)
-        return show.located(Path(path), line)
+        # By its path within the paper's folder: two inputs both named intro.tex in two
+        # folders are told apart (round 2 of #600).
+        try:
+            within = Path(path).relative_to(Path(paper).parent).as_posix()
+        except ValueError:
+            return show.located(Path(path), line)
+        return f"{within}:{line}" if line else within
 
     return at
 
@@ -633,66 +639,110 @@ def render(report, discrimination, root: Path | None = None, *, details: bool = 
 
     show = _shown(root, report.pdfs)
     lines = _header(report)
-    for heading, said in (
-        ("Could not read:", report.unreadable),
-        ("Outputs not read as given:", report.skipped),
-        ("Passed over in a folder (a note, not counted by --strict):", report.passed_over),
-        ("Not audited:", report.not_audited),
-    ):
-        if said:
-            lines += ["", heading, *(f"  {item}" for item in said)]
+    for heading, said in _notes(report):
+        lines += ["", heading, *(f"  {item}" for item in said)]
     lines += ["", "What was checked:", *checks(report)]
-    if details or report.compared:
-        lines += ["", f"=== {MEMBERSHIP} ===", *_membership(report, discrimination, show)]
-    if details or _anything_in_arithmetic(report):
-        lines += ["", f"=== {ARITHMETIC} ===", *_arithmetic(report, show)]
-    if report.abstract is not None and (details or report.abstract.compared):
-        lines += ["", f"=== {ABSTRACT} ===", *_abstract(report.abstract, show)]
-    if details or report.recovered or report.recovered_by_n:
-        lines += ["", f"=== {SMALL_CELLS} ===", *_small_cells(report, show)]
-    words = _gates(report, root, show) if details else _grouped_gates(report, show)
-    if report.gates and words:
-        lines += ["", f"=== {WRITING} and {LANGUAGE} (not counted by --strict) ===", *words]
-    if report.references and (details or _anything_in_references(report)):
-        lines += ["", f"=== {REFERENCES} (not counted by --strict) ===",
-                  *_references(report, show)]  # fmt: skip
-    if report.journal is not None:
-        lines += ["", f"=== {JOURNAL} (not counted by --strict) ===",
-                  *_journal(report.journal, root, show)]  # fmt: skip
-    if report.documents or report.journal is not None:
-        lines += ["", f"=== {DOCUMENT} ===", *_document(report, show)]
-    if report.causal is not None:
-        lines += ["", f"=== {CAUSAL} (--design {report.causal.design}; not counted by "
-                  "--strict) ===", *_causal(report.causal, show)]  # fmt: skip
-    if report.cited is not None:
-        lines += ["", f"=== {CITED} (not counted by --strict) ===", *_cited(report.cited, show)]
-    if report.self_citation is not None:
-        lines += ["", f"=== {SELF_CITATION} (not counted by --strict) ===",
-                  *_self_citation(report.self_citation)]  # fmt: skip
-    if report.package is not None:
-        from manuscript_guard.auditing.package import render as package
-
-        lines += ["", f"=== {PACKAGE} ===", *package(report.package, show)]
+    for heading, said in _sections(report, discrimination, root, show, details=details):
+        lines += ["", f"=== {heading} ===", *said]
     lines.append("")
     if not details and any(run.writing or run.language for run in report.gates):
         from manuscript_guard.auditing.summary import DETAILS
 
         lines += [f"Every place of every finding, with its context and what to do: {DETAILS}.",
                   ""]  # fmt: skip
-    if report.compared:
-        lines.append(
-            "This audit asks only whether a number appears somewhere in the outputs. It "
-            "cannot tell whether it appears in the right place, or whether the sentence "
-            "around it is true. For a paper still being written, bind the numbers instead: "
-            "`manuscript-guard init`."
-        )
-    else:
-        lines.append(
-            "No number was compared with the analysis: give --against the outputs to compare "
-            "them. For a paper still being written, bind the numbers instead: "
-            "`manuscript-guard init`."
-        )
+    lines.append(_closing(report))
     return "\n".join(lines)
+
+
+#: The heading of the section of the findings on the words, which the page draws as folds.
+WORDS = f"{WRITING} and {LANGUAGE} (not counted by --strict)"
+
+
+def _notes(report) -> list[tuple[str, list[str]]]:
+    """What was not read, or not read as given, under its heading, where there is any."""
+    notes = (
+        ("Could not read:", report.unreadable),
+        ("Outputs not read as given:", report.skipped),
+        ("Passed over in a folder (a note, not counted by --strict):", report.passed_over),
+        ("Not audited:", report.not_audited),
+    )
+    return [(heading, list(said)) for heading, said in notes if said]
+
+
+def _sections(
+    report, discrimination, root: Path | None, show: _Show, *, details: bool
+) -> list[tuple[str, list[str]]]:
+    """Each section the report prints, its heading and its lines: every one with `details`,
+    else those with something to show."""
+    out: list[tuple[str, list[str]]] = []
+    if details or report.compared:
+        out.append((MEMBERSHIP, _membership(report, discrimination, show)))
+    if details or _anything_in_arithmetic(report):
+        out.append((ARITHMETIC, _arithmetic(report, show)))
+    if report.abstract is not None and (details or report.abstract.compared):
+        out.append((ABSTRACT, _abstract(report.abstract, show)))
+    if details or report.recovered or report.recovered_by_n:
+        out.append((SMALL_CELLS, _small_cells(report, show)))
+    words = _gates(report, root, show) if details else _grouped_gates(report, show)
+    if report.gates and words:
+        out.append((WORDS, words))
+    if report.references and (details or _anything_in_references(report)):
+        out.append((f"{REFERENCES} (not counted by --strict)", _references(report, show)))
+    if report.journal is not None:
+        out.append((f"{JOURNAL} (not counted by --strict)", _journal(report.journal, root, show)))
+    if report.documents or report.journal is not None:
+        out.append((DOCUMENT, _document(report, show)))
+    if report.causal is not None:
+        out.append((f"{CAUSAL} (--design {report.causal.design}; not counted by --strict)",
+                    _causal(report.causal, show)))  # fmt: skip
+    if report.cited is not None:
+        out.append((f"{CITED} (not counted by --strict)", _cited(report.cited, show)))
+    if report.self_citation is not None:
+        out.append((f"{SELF_CITATION} (not counted by --strict)",
+                    _self_citation(report.self_citation)))  # fmt: skip
+    if report.package is not None:
+        from manuscript_guard.auditing.package import render as package
+
+        out.append((PACKAGE, package(report.package, show)))
+    return out
+
+
+def _closing(report) -> str:
+    """What the audit cannot say, last."""
+    if report.compared:
+        return ("This audit asks only whether a number appears somewhere in the outputs. It "
+                "cannot tell whether it appears in the right place, or whether the sentence "
+                "around it is true. For a paper still being written, bind the numbers instead: "
+                "`manuscript-guard init`.")  # fmt: skip
+    return ("No number was compared with the analysis: give --against the outputs to compare "
+            "them. For a paper still being written, bind the numbers instead: "
+            "`manuscript-guard init`.")  # fmt: skip
+
+
+def view(report, discrimination, root: Path | None = None) -> dict:
+    """The report as the web page draws it: its first lines, what was not read, what each
+    check found, the findings on the words by kind with every place of each, the other
+    sections with something to show, as their text, and its last line. The same content as
+    `render` without `details`, every place of the words' findings in its fold."""
+    from manuscript_guard.auditing.summary import kinds, rows
+
+    show = _shown(root, report.pdfs)
+    words = []
+    for run in report.gates:
+        found = [*run.writing, *run.language]
+        words.append({"paper": show(run.paper), "note": run.note or None,
+                      "converted": run.converted,
+                      "kinds": kinds(found, _placing(run.paper, show))})  # fmt: skip
+    return {
+        "header": _header(report),
+        "notes": [[heading, said] for heading, said in _notes(report)],
+        "checks": [[name, said] for name, said in rows(report)],
+        "words": words,
+        "sections": [[heading, "\n".join(said)] for heading, said
+                     in _sections(report, discrimination, root, show, details=False)
+                     if heading != WORDS],  # fmt: skip
+        "closing": _closing(report),
+    }
 
 
 def _header(report) -> list[str]:

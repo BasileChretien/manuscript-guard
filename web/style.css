@@ -30,3 +30,21 @@ summary { cursor: pointer; }
 .limits, footer { color: var(--muted); }
 footer { margin-top: 2rem; font-size: .9rem; border-top: 1px solid var(--line); }
 code { font-size: .9em; }
+/* The report as the page draws it (web/app.js `draw`). */
+#view h3 { font-size: 1rem; margin: 1.2rem 0 .4rem; }
+#view .headline { margin: 0; }
+table.checks { border-collapse: collapse; width: 100%; font-size: .92rem; }
+table.checks th, table.checks td { text-align: left; vertical-align: top; padding: .3rem .5rem;
+  border-top: 1px solid var(--line); }
+table.checks th { white-space: nowrap; font-weight: 600; }
+details.kind, details.section { border: 1px solid var(--line); border-radius: 6px;
+  padding: .4rem .7rem; margin: .5rem 0; }
+details.kind summary, details.section summary { font-weight: 600; }
+details.kind ol { padding-left: 1.4rem; margin: .4rem 0; }
+details.kind .where { color: var(--muted); }
+details.kind .context { font-family: ui-monospace, monospace; font-size: .85rem; color: var(--muted);
+  overflow-wrap: anywhere; }
+.hint { color: var(--muted); font-size: .92rem; }
+#view .small { color: var(--muted); font-size: .9rem; }
+#view .closing { color: var(--muted); margin-top: 1rem; }
+#astext { margin: 1rem 0; }

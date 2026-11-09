@@ -208,4 +208,26 @@ def run(arguments: list[str]) -> dict:
     return {"code": code, "out": out.getvalue(), "err": err.getvalue()}
 
 
-__all__ = ["PandocCall", "install", "pandoc_options", "run", "runner_for", "xhr_transport"]
+def view(arguments: list[str]) -> dict:
+    """`run`, and for an audit the report as the page draws it (`auditing.report.view`),
+    taken from the very audit whose text `run` returns (`cli.AUDITED`): None for any other
+    command, an audit refused before its report was made, or one asked for as JSON."""
+    from manuscript_guard import cli
+    from manuscript_guard.auditing.report import view as drawn
+
+    made: list[dict] = []
+
+    def told(report, discrimination) -> None:
+        made.append(drawn(report, discrimination, Path.cwd()))
+
+    cli.AUDITED = told
+    try:
+        result = run(arguments)
+    finally:
+        cli.AUDITED = None
+    shown = made[-1] if made and "--json" not in arguments else None
+    return {**result, "view": shown}
+
+
+__all__ = ["PandocCall", "install", "pandoc_options", "run", "runner_for", "view",
+           "xhr_transport"]  # fmt: skip

@@ -15304,8 +15304,8 @@ tags, and so does each point under one. `Accepted.` marks a limit that stays as 
 written. ``Pinned by `tests/test_file.py::test_name`.`` names the tests that assert the
 limit as it is written: a change that closes the gap or moves it fails one of them, and the
 entry is then rewritten, or moved below the "Closed since" line. `tests/test_docs.py` holds
-only that each test a tag names is one pytest runs. An entry with neither has not been
-sorted yet.
+only that each test a tag names is one pytest collects. An entry with neither has not
+been sorted yet.
 
 - **A co-author round records answers, and nothing more.** `checker status` says who answered
   what; it cannot say who read anything. Nothing proves the file was opened, that the evidence was

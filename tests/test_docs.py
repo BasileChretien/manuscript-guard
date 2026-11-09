@@ -519,7 +519,9 @@ def pins_of(gaps: str) -> tuple[list[str], list[str]]:
 def defined_in(path: Path) -> set[str]:
     """The tests pytest collects from a file, by the name it gives each after `::`: a
     function whose name starts `test`, and such a method of a class whose name starts `Test`
-    (pytest's defaults, which pyproject.toml keeps). A helper is no test."""
+    (pytest's defaults, which pyproject.toml keeps). A helper is no test. Not read as pytest
+    reads them: a class inside a class, a `Test` class with an `__init__`, and a
+    `unittest.TestCase` named otherwise. No pin names any of these."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
     functions = (ast.FunctionDef, ast.AsyncFunctionDef)
 
@@ -534,14 +536,16 @@ def defined_in(path: Path) -> set[str]:
 
 
 def unfound(names: list[str], repo: Path) -> list[str]:
-    """Each name that is not a test there is: a file under `tests/`, `::`, and a function
-    of it, less a parametrised case's `[...]`."""
+    """Each name that is not a test there is: a file under `tests/` that pytest reads
+    (`test_*.py` or `*_test.py`), `::`, and a test of it, less a parametrised case's
+    `[...]`."""
     known: dict[Path, set[str]] = {}
     missing = []
     for name in names:
         path, _, test = name.partition("::")
         file = repo / path
-        if path.startswith("tests/") and path.endswith(".py") and file.is_file():
+        collected = re.fullmatch(r"test_\w*\.py|\w*_test\.py", Path(path).name)
+        if path.startswith("tests/") and collected and file.is_file():
             if file not in known:
                 known[file] = defined_in(file)
             if re.sub(r"\[.*\]$", "", test) in known[file]:
@@ -575,6 +579,7 @@ def test_a_pin_is_found_only_where_it_names_a_test_there_is(tmp_path: Path) -> N
         "class Group:\n    def test_in_it(self):\n        pass\n",
         encoding="utf-8",
     )
+    (tmp_path / "tests" / "helper.py").write_text("def test_here():\n    pass\n", "utf-8")
     gaps = (
         "- **One.** Text. Pinned by `tests/test_a.py::test_here`.\n"
         "  - Two. Pinned by `tests/test_a.py::test_here` and\n"
@@ -585,13 +590,14 @@ def test_a_pin_is_found_only_where_it_names_a_test_there_is(tmp_path: Path) -> N
         "- **Five.** Pinned by test_here.\n"
         "- **Six.** Pinned by `tests/test_a.py::helper`, `tests/test_a.py::TestGroup::helper`\n"
         "  and `tests/test_a.py::Group::test_in_it`.\n"
+        "- **Seven.** Pinned by `tests/helper.py::test_here`.\n"
     )
     names, garbled = pins_of(gaps)
     assert garbled == ["Pinned by test_here."]
     assert unfound(names, tmp_path) == [
         "tests/test_a.py::test_hare", "tests/test_b.py::test_here", "test_a.py::test_here",
         "tests/test_a.py::helper", "tests/test_a.py::TestGroup::helper",
-        "tests/test_a.py::Group::test_in_it",
+        "tests/test_a.py::Group::test_in_it", "tests/helper.py::test_here",
     ]  # fmt: skip
 
 

@@ -913,6 +913,23 @@ def test_a_fault_in_reading_a_pdf_is_not_said_to_be_a_link_that_cannot_be_read(
         sync(paper, table)
 
 
+@pytest.mark.parametrize("given", ["open copy", "page"])
+def test_a_link_given_and_refused_is_said_to_be_refused(paper: Path, given: str) -> None:
+    """A link the guard refuses, a space in its path here, was dropped without a word: the
+    work was said to have no open copy OpenAlex knew of, or a page to name no PDF."""
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI})
+    answers = {PLACES.crossref + DOI: crossref(None)}
+    if given == "open copy":
+        answers[PLACES.openalex + DOI] = openalex(pdf_url="https://repo.test/My Thesis.pdf")
+    else:
+        answers[PLACES.openalex + DOI] = openalex(landing="https://repo.test/record/1")
+        answers["https://repo.test/record/1"] = page(
+            '<meta name="citation_pdf_url" content="/a b.pdf">')
+    _, (one,) = sync(paper, Table(answers))
+    assert any("cannot be read as a URL" in why for why in one.why), one.why
+    assert not any("no open copy" in why or "names no PDF" in why for why in one.why), one.why
+
+
 def test_a_link_a_transport_cannot_make_lists_the_work_and_the_run_goes_on(paper: Path) -> None:
     cite(paper, hepatic2021={"title": TITLE, "doi": DOI}, other2019={"title": TITLE, "doi": OTHER})
 
@@ -1023,7 +1040,9 @@ def test_a_host_urllib_reads_otherwise_than_the_check_is_refused(url: str) -> No
     """`urllib` decodes a percent escape in the host, which the check read as a name, and
     connects to 127.0.0.1 through a proxy that `no_proxy` leaves it out of; a user's name
     before `@`, or a backslash, makes the two read another host. A 6to4 address carries an
-    IPv4 one, and some Pythons count the block as global."""
+    IPv4 one, and some Pythons count the block as global. A space or a control character
+    anywhere is refused too: `urlsplit` drops some where `urllib` keeps them, and
+    `http.client` refuses them all."""
     assert not download.allowed(url)
 
 

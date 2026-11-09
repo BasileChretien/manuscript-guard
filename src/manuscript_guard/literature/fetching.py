@@ -220,8 +220,9 @@ class Fetcher:
         record = self._openalex(work, said) if work.doi else None
         if self.offline:
             return None
-        places = self._open_places(work, record)
-        if not places and not self.offline:
+        places, refused = self._open_places(work, record)
+        said.extend(f"an open copy's place is {why}, and is not asked" for why in refused)
+        if not places and not refused and not self.offline:
             said.append("no open copy known to OpenAlex" if record is not None
                         else "no open copy found")  # fmt: skip
         for place in places[:MOST_PLACES]:
@@ -234,8 +235,10 @@ class Fetcher:
             return self._try(work, Place(link, FROM_PUBLISHER), said)
         return None
 
-    def _open_places(self, work: Work, record: dict[str, Any] | None) -> list[Place]:
-        """Where an open copy may be, best first, each once."""
+    def _open_places(self, work: Work, record: dict[str, Any] | None
+                     ) -> tuple[list[Place], list[str]]:  # fmt: skip
+        """Where an open copy may be, best first, each once; and why each place given that is
+        not asked is not, which is said rather than dropped (review of #595)."""
         found: list[Place] = []
         oa = record.get("open_access") if isinstance(record, dict) else None
         best = record.get("best_oa_location") if isinstance(record, dict) else None
@@ -255,10 +258,13 @@ class Fetcher:
         if isinstance(oa, dict) and oa.get("is_oa") is True:
             found.append(_place(oa.get("oa_url"), None))
         kept: dict[str, Place] = {}
+        refused: dict[str, str] = {}
         for place in found:
             if place is not None and download.allowed(place.url):
                 kept.setdefault(place.url, place)
-        return list(kept.values())
+            elif place is not None:
+                refused.setdefault(place.url, download.why_refused(place.url))
+        return list(kept.values()), list(refused.values())
 
     def _try(self, work: Work, place: Place, said: list[str]) -> Candidate | None:
         """The PDF at a place, or on the page there by its `citation_pdf_url`, where it is the
@@ -455,17 +461,19 @@ def _title(message: dict[str, Any]) -> str | None:
 
 def citation_pdf_url(body: bytes, base: str) -> str | None:
     """The PDF a page names for citation managers, `<meta name="citation_pdf_url"
-    content="...">`, made absolute; None where it names none, or one that is not https."""
+    content="...">`, made absolute; None where it names none. A link it names that is not
+    asked is given too, so that `download.get` refuses it and says why, where the page was
+    said to name no PDF (review of #595)."""
     page = body[: 2 << 20].decode("utf-8", errors="replace")
     for tag in _META.findall(page):
         attributes = {name.lower(): double or single
                       for name, double, single in _ATTRIBUTE.findall(tag)}  # fmt: skip
         if attributes.get("name", "").lower() == "citation_pdf_url" and attributes.get("content"):
+            named = html.unescape(attributes["content"].strip())
             try:
-                link = urljoin(base, html.unescape(attributes["content"].strip()))
+                return urljoin(base, named)
             except ValueError:
-                return None
-            return link if download.allowed(link) else None
+                return named  # as the page gives it, which `download.get` cannot read either
     return None
 
 

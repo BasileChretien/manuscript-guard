@@ -91,9 +91,9 @@ _AUTHORITY = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:(?://([^/?#]*))?")
 #: of, or of the proxy (review of #595).
 _UNREAD = re.compile(r"[%@\\]")
 #: What no link may hold anywhere: a space or a control character. `urlsplit` strips them
-#: from its ends and drops a tab or a line break inside, where `urllib` keeps them, so the
-#: two would read another link (round 2 of the review of #595); `http.client` refuses them
-#: in a request in any case.
+#: from its start, where the check of the authority looks for the scheme, and drops a tab or
+#: a line break inside, where `urllib` keeps it, so the two would read another link (round 2
+#: of the review of #595); `http.client` refuses them in a request in any case.
 _UNSPACED = re.compile(r"[\s\x00-\x1f\x7f]")
 #: 6to4, which carries an IPv4 address and which some Pythons count as global.
 _SIX_TO_FOUR = ipaddress.ip_network("2002::/16")

@@ -5145,7 +5145,12 @@ as given twice. Where the main text has no heading at all, G14 does not report
 the drafting stage only (Basile, 2026-10-23: "a note once, at drafting"). The headings are
 added while the paper is drafted; once it is past that, the note would be said at every run
 of a paper that keeps its bold lines. `check` gives G14 its stage, as it gives G3 and G12
-theirs; called with none, G14 says nothing of it. A bold line is not taken for a heading.
+theirs; called with none, G14 says nothing of it. A bold line in Markdown is not taken for a
+heading. A Word paper with no paragraph in a heading style is another matter (Basile,
+2026-11-09, after the web audit of such a paper gave mostly false warnings): there, a
+paragraph wholly in bold whose words are a section's name alone, by the closed list a PDF's
+lines are read by (`text.section_names.SECTION_NAMES`), is made a heading by `init --from`
+and read as one by the audit, and the audit's report says how the headings were read.
 
 **Every finding is a warning, at every stage.** The reading of a definition is good and not
 exact, and a name in capitals is not an abbreviation. The first plan for this gate had an
@@ -23399,12 +23404,32 @@ Open, recorded as each change landed:
   Word's Abstract style there is the section `# Abstract` only where pandoc's reading of the
   document with its styles is, the styles taken off, its ordinary reading block for block;
   where the two differ, it is left in the comment with the rest of the title page, and
-  nothing says so. An abstract in another style, or under a line "Abstract" in bold, stays
-  in the comment, and its numbers are read by no gate until it is moved out.
-- **A Word paper's bold-text headings are no headings.** `init --from` takes as a heading only
-  a paragraph in one of Word's heading styles, as pandoc does; six of fifteen papers had none.
-  Their sections are paragraphs to every gate, so a Methods section's thresholds are not read
-  as chosen in advance, and nothing is set aside as a title page. Accepted.
+  nothing says so. An abstract in another style, or under a line "Abstract" in bold in a
+  paper that uses a heading style elsewhere, stays in the comment, and its numbers are read
+  by no gate until it is moved out.
+- **A Word paper's titles in bold are headings only by a closed list of names.** In a paper
+  with no paragraph in a heading style, `init --from` and the audit take as a heading a
+  top-level paragraph wholly in bold, as pandoc reads bold (a run's own `w:b` or its
+  character style's, not a style that one is based on, nor its paragraph style's: pandoc
+  3.9.0.2 reads neither, `tests/test_from_word.py::test_the_audit_and_init_take_the_same_titles_in_bold`
+  holds the two readings together), whose words are a section's name alone from
+  the list a PDF's lines are read by (`text.section_names.SECTION_NAMES`). A bold "Study
+  design and setting" or "Statistical analysis" stays a paragraph, its section run on under
+  the heading before it; a title numbered by Word's own numbering is a list's item to pandoc
+  and a numbered line to the audit, and no heading to either; a title holding a link or a
+  note's mark is none, as pandoc reads the link or the note in it, nor is one in a text box
+  to the audit (a link written as a field, `w:fldSimple` or a HYPERLINK `w:instrText`, is a
+  title to the audit, and what pandoc makes of it and of a text box's bold paragraph is not
+  held by a test, so there the two readers may differ);
+  and a paper that uses a heading style anywhere is read by its styles alone, its bold titles
+  text. Where the titles cannot be placed, a structured abstract's parts with no
+  Introduction after them, the order of its parts never starting again and no title it
+  cannot hold among them, the audit places nothing and says so, and `init --from` makes each
+  a heading of level 1, so the Abstract ends at its first part. The title page is set aside
+  only above a first heading that opens a paper, its Abstract or its Introduction: a short
+  paper whose first title in bold is its "References" keeps its text where every gate reads
+  it. A heading is written with the title's own words, its number kept. Pinned by
+  `tests/test_from_word.py::test_a_word_paper_titled_in_bold_has_its_sections_made_headings`.
 - **`init --from` reads no affiliation, ORCID or e-mail address, and splits no name.** Each
   name from an Author paragraph goes into `authors.yaml` in a comment over an empty entry; the
   rest of the title page is in the comment in `main.md`. Accepted.
@@ -25100,6 +25125,20 @@ Closed since, and why each mattered (an open gap goes above this line):
   build does now (`hidden.read_hidden`), by Word's rules for the styles, and says too the
   text too faint or too small to read, zero-width characters inside words and words to a
   model; see "Hidden text is read in Word documents only".
+
+- **A Word paper titled in bold was read as one text (2026-11-09).** `init --from` and the
+  audit took as a heading only a paragraph in one of Word's heading styles, and six of fifteen
+  papers had none: their title page, glossary, statements and reference list were prose to
+  G6 and G14, the Abstract was never compared with the Results, and the report said nothing
+  of it. On one such paper audited through the web page, 68 of its 100 warnings were names,
+  affiliations, initials and journals in capitals. In a paper with no heading style, a
+  paragraph wholly in bold whose words are a section's name is made a heading now, a
+  structured abstract's parts nested under the Abstract (`text.section_names.section_levels`,
+  which a PDF's lines are placed by too: a structured abstract's parts end where their order,
+  background, methods, results, conclusions, starts again, as BMC's main text opens on a
+  second "Background", and an Abstract with words under it whose next titles cannot be
+  placed so is one paragraph), and the report says how the headings were read; see "A Word
+  paper's titles in bold are headings only by a closed list of names".
 
 - **An accent on a dotless i was read as italics (2026-11-05).** Better BibTeX writes í as
   `{\'\i}`, and with the braces gone G7 read

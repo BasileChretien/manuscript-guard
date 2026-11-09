@@ -55,7 +55,7 @@ from manuscript_guard.stats.shares import described as described_share
 from manuscript_guard.stats.shares import off, table_shares
 from manuscript_guard.text.blocks import Unprinted, heading_shaped, scannable, section_breaks
 from manuscript_guard.text.comments import unclear_comment_lines
-from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
+from manuscript_guard.text.docx import NotADocx, bold_heading_levels, is_docx, read_docx_text
 from manuscript_guard.text.fences import unclear_fence_lines
 from manuscript_guard.text.masking import NUL, front_matter_end, mask
 from manuscript_guard.text.reference_lists import ends_a_list_alone, is_bibliography_heading
@@ -147,6 +147,9 @@ class AuditReport:
     passed_over: list[str] = field(default_factory=list)
     #: Stretches of a paper that were read and deliberately not audited: the reference list.
     not_audited: list[str] = field(default_factory=list)
+    #: How a .docx's or a Markdown paper's headings were read where no heading style or
+    #: Markdown heading gave them: from its titles in bold, or not at all (`_headings_said`).
+    headings: list[str] = field(default_factory=list)
     #: Numbers found nowhere, on lines taken for reference entries by their shape. Listed
     #: apart from `unmatched`, where volumes and pages would bury the findings, but listed:
     #: four review rounds each found a caption some shape accepted.
@@ -783,7 +786,11 @@ def _read_sources(
         docx = is_docx(path)
         hidden = _masked(text, printed_as_typed=docx)
         source = _Source(path, text, hidden, text, text, tuple(tables), not spans, docx)
-        sources.append(replace(source, **_structure(text, hidden, tables, document)))
+        structure = _structure(text, hidden, tables, document)
+        sources.append(replace(source, **structure))
+        said = _headings_said(path, document, bool(structure["heading_lines"]))
+        if said:
+            report.headings.append(said)
         report.not_audited += [
             f"{path.name}: lines {start + 1}-{end}, read as the reference list"
             for start, end in spans
@@ -881,6 +888,48 @@ def _pdf_structure(report: AuditReport, pdf) -> dict:
             "part": _parts(sections, None), "heading_lines": heading_lines}  # fmt: skip
 
 
+#: What a paper read as one text is not read for, and how to give it headings.
+_ONE_TEXT = ("so it was read as one text: its Abstract is not compared with its Results, and "
+             "G6 and G14 read its title page, a glossary, its statements and its reference "
+             "list as prose where nothing else sets them apart")  # fmt: skip
+
+
+def _headings_said(path: Path, document, headed: bool) -> str | None:
+    """How a .docx's or a Markdown paper's headings were read, where they were not read
+    from Word's heading styles or Markdown's headings: from its titles in bold, by name
+    (`text.docx.bold_heading_levels`), or not at all. Said once, with what to do, since a
+    paper read as one text has every check that reads a section by its name done on the
+    whole of it (Basile, 2026-11-09: the report is to say so)."""
+    from manuscript_guard.text.section_names import section_name_alone
+
+    if document is None:
+        return None if headed else (
+            f"{path.name}: it has no heading, {_ONE_TEXT}; give each section a Markdown "
+            "heading, `# Methods`")
+    if document.heading_levels:
+        return None
+    styles = "give its section titles Word's heading styles"
+    lines = document.body.split("\n")
+    titles = [title for at in sorted(document.bold)
+              if (title := section_name_alone(lines[at])) is not None]  # fmt: skip
+    if not titles:
+        return (f"{path.name}: no paragraph is in a heading style, and none wholly in bold "
+                f"names a section, {_ONE_TEXT}; {styles}")
+    one = len(titles) == 1
+    named = (f"the paragraph wholly in bold that names a section ({titles[0]})" if one else
+             f"the {len(titles)} paragraphs wholly in bold that name a section "
+             f"({', '.join(titles)})")  # fmt: skip
+    if bold_heading_levels(document) is None:
+        from manuscript_guard.auditing.pdf import UNPLACED
+
+        return (f"{path.name}: no paragraph is in a heading style, and {named} could not be "
+                f"placed: {UNPLACED}; its lines were placed in no section; {styles}")
+    read = "was read as a heading" if one else "were read as its headings"
+    return (f"{path.name}: no paragraph is in a heading style, so {named} {read}, as "
+            f"`init --from` makes them; a bold title that names no section is read as text; "
+            f"{styles} for a reading that rests on no list of names")
+
+
 def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
     """What a Markdown or a .docx paper's Abstract against Results and its flows are read
     from: where each line stands under its own headings, a Word document's by their styles;
@@ -898,10 +947,12 @@ def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
         boxed = 0
     else:
         body = document.body.split("\n")
-        sections = [Section(body[at], level, "", at + 1) for at, level in document.heading_levels]
+        # A document with no heading style is placed by its titles in bold, where they name
+        # its sections and can be placed (`text.docx.bold_heading_levels`).
+        levels = document.heading_levels or bold_heading_levels(document) or ()
+        sections = [Section(body[at], level, "", at + 1) for at, level in levels]
         lines = frozenset(at + 1 for at in document.cells)
-        lists = docx_lists(body, dict(document.levels),
-                           {at + 1: level for at, level in document.heading_levels})
+        lists = docx_lists(body, dict(document.levels), {at + 1: level for at, level in levels})
         boxed = boxed_counts(document.boxed)
     place, abstract, results = placed(sections) if sections else (None, False, False)
     return {"place": place, "abstract": abstract, "results": results, "table_lines": lines,

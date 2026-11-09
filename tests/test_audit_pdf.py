@@ -181,14 +181,30 @@ def test_causal_words_and_cited_sentences_read_a_pdf(tmp_path: Path, capsys) -> 
 @needs_pdftotext
 def test_headings_that_cannot_be_placed_place_nothing(tmp_path: Path, capsys) -> None:
     """A structured abstract's own headings on lines of their own, with no Introduction after
-    them: which Results are the paper's is not read, the Abstract is not compared, and that is
-    said."""
+    them and none of their names again: which Results are the paper's is not read, the
+    Abstract is not compared, and that is said."""
     lines = [PAPER[1], "Methods", "We read 412 records.", "Results", PAPER[3],
-             *(line for line in PAPER[4:] if line != "Introduction")]  # fmt: skip
+             *(line for line in PAPER[4:] if line not in ("Introduction", "Methods", "Results"))]
     _code, report, _err = audited(capsys, str(write(tmp_path / "paper.pdf", lines)))
     said = " ".join(f["message"] for f in found(report, "not-audited"))
     assert "its lines were placed in no section" in said and "no Introduction after" in said
     assert found(report, "abstract-not-compared")
+
+
+@needs_pdftotext
+def test_a_structured_abstract_ends_where_the_main_text_names_a_part_again(
+    tmp_path: Path, capsys
+) -> None:
+    """BMC's journals set a structured abstract's Background, Methods and Results on lines of
+    their own and open the main text on a second "Background", with no Introduction: the
+    abstract's parts end where one of their names comes again, and its Abstract is compared
+    with the paper's own Results."""
+    lines = [PAPER[1], "Methods", "We read 412 records.", "Results", PAPER[3],
+             *(line for line in PAPER[4:] if line != "Introduction")]  # fmt: skip
+    pdf = reading.read_pdf(write(tmp_path / "paper.pdf", lines))
+    assert [level for _line, _title, level in pdf.placed] == [1, 2, 2, 1, 1, 1, 1]
+    _code, report, _err = audited(capsys, str(tmp_path / "paper.pdf"))
+    assert not found(report, "abstract-not-compared")
 
 
 @needs_pdftotext
@@ -381,7 +397,8 @@ def test_word_limits_of_a_pdf_whose_abstract_cannot_be_placed_are_not_checked(
     tmp_path: Path, capsys
 ) -> None:
     """A 400-word structured abstract against a limit of 250: a finding where its headings
-    are placed exactly, and "not checked" where they are not, never silence."""
+    are placed exactly, and "not checked" where they are not (no Introduction after its
+    parts and none of their names again), never silence."""
     words = " ".join(["word"] * 8)
     abstract = ["Abstract", "Background", *[f"{words}."] * 25, "Methods", *[f"{words}."] * 25]
     body = ["Introduction", "Drugs cause harm.", "Methods", "We read 412 records.", "Results",
@@ -393,7 +410,7 @@ def test_word_limits_of_a_pdf_whose_abstract_cannot_be_placed_are_not_checked(
     _code, report, _err = audited(capsys, str(placed), "--journal", str(journal))
     over = [f["message"] for f in found(report, "over-journal-limit")]
     assert any(m.startswith("abstract: 4") for m in over), over
-    unplaced = write(tmp_path / "unplaced.pdf", [*abstract, *body[2:]], per_column=70)
+    unplaced = write(tmp_path / "unplaced.pdf", [*abstract, *body[4:]], per_column=70)
     _code, report, _err = audited(capsys, str(unplaced), "--journal", str(journal))
     assert not [f for f in found(report, "over-journal-limit")
                 if f["message"].startswith("abstract: ")]  # fmt: skip

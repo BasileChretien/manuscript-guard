@@ -17257,9 +17257,206 @@ def _a_stop_blanked_with_an_address_is_not_kept(patch: pytest.MonkeyPatch) -> No
     patch.setattr(quote_places, "_CLOSING", frozenset())
 
 
+# ----------------------------------------- titles standing alone placed, and titles in bold
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import (  # noqa: E402
+    BOLD_PARAGRAPH_STYLES,
+    bold_blocks,
+    bold_paragraphs,
+    placed_papers,
+)
+
+
+@holds(60, placed_papers())
+def test_titles_standing_alone_are_placed_as_their_paper_sets_them(
+    drawn: list[tuple[list[str], list[bool], tuple[int, ...] | None]],
+) -> None:
+    """A structured abstract's titles standing alone, a PDF's lines or a Word paper's titles
+    in bold, are the Abstract's up to an Introduction or to where the order of its parts
+    starts again; an Abstract with words under it whose next titles cannot be placed so is
+    one paragraph, and the title after it the main text's; a structured abstract with
+    neither after it, a title no abstract holds among its parts, and a name twice in the
+    main text, are not placed (`section_levels`)."""
+    from manuscript_guard.text.section_names import section_levels
+
+    for titles, worded, levels in drawn:
+        assert section_levels(titles, worded) == levels, (titles, worded)
+
+
+def _a_structured_abstract_ends_only_at_an_introduction(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "_parts_end", lambda keys, first: next(
+        (at for at in range(first + 1, len(keys)) if keys[at] == "introduction"), None))
+
+
+def _a_titles_order_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    """A title no abstract holds is taken for a part, at the end of the order: as though the
+    abstract ran on over "References" and "Appendix"."""
+    from manuscript_guard.text import section_names
+
+    class AtTheEnd(dict):
+        def get(self, key: str, default: int | None = None) -> int:  # type: ignore[override]
+            return super().get(key, 9)
+
+    patch.setattr(section_names, "_PART_ORDER", AtTheEnd(section_names._PART_ORDER))
+
+
+def _a_structured_abstract_ends_at_a_name_again(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #598: the parts ended at the first title that named one of them again."""
+    from manuscript_guard.text import section_names
+
+    def again(keys: list[str], first: int) -> int | None:
+        seen: set[str] = set()
+        for at in range(first + 1, len(keys)):
+            if keys[at] in seen:
+                return at
+            seen.add(keys[at])
+        return None
+
+    patch.setattr(section_names, "_parts_end", again)
+
+
+def _an_abstract_with_words_under_it_is_never_one_paragraph(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "_one_paragraph", lambda worded, first: False)
+
+
+@holds(40, bold_paragraphs())
+def test_a_word_paragraph_is_in_bold_as_pandoc_reads_bold(drawn: tuple[str, list[str]]) -> None:
+    """A paragraph whose every word is bold by its run's own `w:b` or its character style's
+    is in bold, as pandoc reads it; one bold by a style its character style is based on, by
+    its paragraph style, with `w:b` off, overruled by the run, half in bold or in a table's
+    cell is not (`text.docx._run_bold`)."""
+    import tempfile
+    import zipfile
+
+    from manuscript_guard.text.docx import read_docx_text
+
+    body, bold = drawn
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "paper.docx"
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", f"<w:document {_WORD_NAMESPACE}><w:body>"
+                                                  f"{body}</w:body></w:document>")  # fmt: skip
+            archive.writestr("word/styles.xml", f"<w:styles {_WORD_NAMESPACE}>"
+                                                f"{BOLD_PARAGRAPH_STYLES}</w:styles>")  # fmt: skip
+        document = read_docx_text(path)
+    lines = document.body.split("\n")
+    assert sorted(lines[at] for at in document.bold) == bold
+
+
+def _a_paragraph_style_s_bold_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import docx as docx_module
+
+    real = docx_module._run_bold
+    patch.setattr(docx_module, "_run_bold", lambda run, styles: real(run, styles) or (
+        run is not None and run.find(docx_module.W + "rPr") is None))  # fmt: skip
+
+
+def _bold_turned_off_is_on(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import docx as docx_module
+
+    patch.setattr(docx_module, "_on", lambda toggle: True)
+
+
+def _a_style_s_base_is_read(patch: pytest.MonkeyPatch) -> None:
+    """A character style is read as bold where the style it is based on is, which pandoc
+    does not read: the one based on `Strong` in `BOLD_PARAGRAPH_STYLES` taken for bold."""
+    from manuscript_guard.text import docx as docx_module
+
+    real = docx_module._bold_styles
+    patch.setattr(docx_module, "_bold_styles",
+                  lambda archive, names, what: {**real(archive, names, what), "StrongToo": True})
+
+
+@holds(60, bold_blocks())
+def test_a_paragraph_wholly_in_bold_that_names_a_section_is_made_a_heading(
+    drawn: tuple[list[dict], list[str]],
+) -> None:
+    """In a Word paper with no heading style, a paragraph wholly in bold, also underlined,
+    in a span, numbered or with a colon, whose words name a section is made a heading of its
+    name; a bold title that names none, a bold word opening a sentence, a name in italics,
+    in a list's item or in a link stays text (`from_word.bold_headings`)."""
+    from manuscript_guard.from_word import bold_headings
+
+    blocks, titles = drawn
+    made, named = bold_headings(blocks)
+    assert list(named) == titles
+    assert [_text_of_heading(block) for block in made if block["t"] == "Header"] == titles
+
+
+def _text_of_heading(block: dict) -> str:
+    from manuscript_guard.from_word import text_of
+
+    return " ".join(text_of(block["c"][2]).split())
+
+
+def _any_bold_title_is_a_section_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "section_name_alone", lambda text: " ".join(text.split()) or None)
+
+
+def _a_paragraph_partly_in_bold_is_a_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import from_word
+
+    real = from_word._bold_words
+    patch.setattr(from_word, "_bold_words", lambda inlines, bold=False: (
+        None if (found := real(inlines, bold)) is None else [any(found)] * len(found)))
+
+
+def _a_title_also_underlined_is_none(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import from_word
+
+    patch.setattr(from_word, "_LOOKS", {"Emph": None})
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a structured abstract's parts end only at an Introduction": (
+        _a_structured_abstract_ends_only_at_an_introduction,
+        test_titles_standing_alone_are_placed_as_their_paper_sets_them,
+    ),
+    "a structured abstract's parts end at the first name again": (
+        _a_structured_abstract_ends_at_a_name_again,
+        test_titles_standing_alone_are_placed_as_their_paper_sets_them,
+    ),
+    "a title no abstract holds is a structured abstract's part": (
+        _a_titles_order_is_not_read,
+        test_titles_standing_alone_are_placed_as_their_paper_sets_them,
+    ),
+    "an Abstract with words under it is never one paragraph": (
+        _an_abstract_with_words_under_it_is_never_one_paragraph,
+        test_titles_standing_alone_are_placed_as_their_paper_sets_them,
+    ),
+    "a paragraph style's bold is read": (
+        _a_paragraph_style_s_bold_is_read,
+        test_a_word_paragraph_is_in_bold_as_pandoc_reads_bold,
+    ),
+    "bold turned off is on": (
+        _bold_turned_off_is_on,
+        test_a_word_paragraph_is_in_bold_as_pandoc_reads_bold,
+    ),
+    "a style's base is read for bold": (
+        _a_style_s_base_is_read,
+        test_a_word_paragraph_is_in_bold_as_pandoc_reads_bold,
+    ),
+    "any bold title is a section's": (
+        _any_bold_title_is_a_section_s,
+        test_a_paragraph_wholly_in_bold_that_names_a_section_is_made_a_heading,
+    ),
+    "a paragraph partly in bold is a title": (
+        _a_paragraph_partly_in_bold_is_a_title,
+        test_a_paragraph_wholly_in_bold_that_names_a_section_is_made_a_heading,
+    ),
+    "a title also underlined is none": (
+        _a_title_also_underlined_is_none,
+        test_a_paragraph_wholly_in_bold_that_names_a_section_is_made_a_heading,
+    ),
     "a model is named whatever its version": (
         _a_model_s_version_is_dropped,
         test_a_statement_names_a_model_where_its_parts_stand_in_a_row_and_nowhere_else,

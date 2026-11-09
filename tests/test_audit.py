@@ -1573,3 +1573,108 @@ def test_a_double_hyphen_in_markdown_errs_toward_a_false_alarm(tmp_path: Path) -
     paper = tmp_path / "paper.md"
     paper.write_text("Reports from 2010--2019 were read.\n", encoding="utf-8")
     assert [c.text for c in audit([paper], [outputs]).unmatched] == ["2010--2019"]
+
+
+# ---------------------------------------------------------------- titles typed in bold
+
+
+def bold(text: str, props: str = "<w:b/>") -> str:
+    """A paragraph of one run whose properties are `props`, bold by default."""
+    return f"<w:p><w:r><w:rPr>{props}</w:rPr><w:t>{text}</w:t></w:r></w:p>"
+
+
+#: A character style in bold, one based on it, and a paragraph style in bold.
+BOLD_STYLES = (
+    '<w:style w:type="character" w:styleId="Strong"><w:name w:val="Strong"/>'
+    "<w:rPr><w:b/></w:rPr></w:style>"
+    '<w:style w:type="character" w:styleId="StrongToo"><w:name w:val="Strong too"/>'
+    '<w:basedOn w:val="Strong"/></w:style>'
+    '<w:style w:type="paragraph" w:styleId="BoldPara"><w:name w:val="Bold para"/>'
+    "<w:rPr><w:b/></w:rPr></w:style>"
+)
+
+
+def test_a_line_wholly_in_bold_is_known_as_pandoc_knows_bold(tmp_path: Path) -> None:
+    """Bold as pandoc reads it (3.9.0.2): a run's own `w:b`, or its character style's; not
+    the bold of a style that one is based on, nor a paragraph style's, which pandoc prints as
+    plain text, nor `w:b` turned off, a run's own off over its style's on, a paragraph only
+    half in bold, or a cell of a table. Read otherwise, the audit and `init --from` would
+    make headings of different paragraphs."""
+    half = ('<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Half</w:t></w:r>'
+            '<w:r><w:t xml:space="preserve"> plain</w:t></w:r></w:p>')  # fmt: skip
+    cell = ("<w:tbl><w:tr><w:tc><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Cell</w:t></w:r></w:p>"
+            "</w:tc></w:tr></w:tbl>")  # fmt: skip
+    # Round 1 of #598: a link's words, and a note's mark, are no title's to pandoc, and a
+    # text box's paragraph is no paper's heading.
+    link = ('<w:p><w:hyperlink w:anchor="m"><w:r><w:rPr><w:b/></w:rPr><w:t>Linked</w:t>'
+            "</w:r></w:hyperlink></w:p>")  # fmt: skip
+    noted = ('<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Noted</w:t></w:r>'
+             '<w:r><w:rPr><w:b/></w:rPr><w:footnoteReference w:id="1"/></w:r></w:p>')
+    boxed = f"<w:p>{text_box(bold('Boxed'), fallback=False)}</w:p>"
+    body = (bold("Direct") + bold("Character", '<w:rStyle w:val="Strong"/>')
+            + bold("Based", '<w:rStyle w:val="StrongToo"/>')
+            + '<w:p><w:pPr><w:pStyle w:val="BoldPara"/></w:pPr><w:r><w:t>Styled</w:t></w:r></w:p>'
+            + bold("Off", '<w:b w:val="0"/>')
+            + bold("Overruled", '<w:rStyle w:val="Strong"/><w:b w:val="false"/>')
+            + half + cell + link + noted + boxed)  # fmt: skip
+    document = read_docx_text(make_docx(tmp_path / "bold.docx", body, BOLD_STYLES))
+    lines = document.body.split("\n")
+    assert sorted(lines[at] for at in document.bold) == ["Character", "Direct"]
+    assert "Boxed" in document.body and "Linked" in document.body
+
+
+#: A paper with no heading style: an abstract of one paragraph, and its sections titled in
+#: bold, the Results among them, then a reference list.
+TITLED = (para("A study of things") + bold("Abstract")
+          + para("Of 412 patients, 77 (18.7%) had the event (OR 1.52, 95% CI 1.10-2.10).")
+          + bold("Background") + para("Drugs cause harm.") + bold("Results")
+          + para("Of 412 patients, 77 (18.7%) had the event (OR 1.52, 95% CI 1.10-2.10).")
+          + bold("References") + para("1. Doe J. A title. BMJ. 2020;1:2."))  # fmt: skip
+
+
+def test_a_docx_titled_in_bold_is_placed_by_its_titles_and_says_so(tmp_path: Path) -> None:
+    """In a .docx with no heading style, its titles in bold that name a section are its
+    headings, as `init --from` makes them: the Abstract is compared with the Results, which
+    it never was, and the report says how the headings were read and how to do better."""
+    report = audit([make_docx(tmp_path / "paper.docx", TITLED)], [])
+    assert report.abstract is not None and report.abstract.compared
+    (said,) = report.headings
+    assert said.startswith("paper.docx: no paragraph is in a heading style, so the 4 paragraphs "
+                           "wholly in bold that name a section (Abstract, Background, Results, "
+                           "References) were read as its headings")  # fmt: skip
+    assert "give its section titles Word's heading styles" in said
+
+
+def test_a_docx_with_no_heading_is_said_to_be_read_as_one_text(tmp_path: Path) -> None:
+    """A .docx with no heading style and no title in bold that names a section is read as
+    one text, and the report says what that costs, where it said nothing."""
+    plain = TITLED.replace("<w:rPr><w:b/></w:rPr>", "")
+    report = audit([make_docx(tmp_path / "paper.docx", plain)], [])
+    (said,) = report.headings
+    assert "none wholly in bold names a section, so it was read as one text" in said
+    assert "Abstract is not compared with its Results" in said
+    assert not (report.abstract and report.abstract.compared)
+
+
+def test_bold_titles_that_cannot_be_placed_place_nothing(tmp_path: Path) -> None:
+    """A structured abstract's parts in bold straight under its Abstract, with no
+    Introduction after them and none of their names again: which Results are the paper's is
+    not read, and that is said, as for a PDF."""
+    body = (bold("Abstract") + bold("Background") + para("Drugs cause harm.") + bold("Results")
+            + para("Of 412 patients, 77 had it.") + bold("Discussion") + para("It was so."))
+    report = audit([make_docx(tmp_path / "paper.docx", body)], [])
+    (said,) = report.headings
+    assert "could not be placed" in said and "its lines were placed in no section" in said
+
+
+def test_headings_in_a_style_are_read_and_nothing_is_said(tmp_path: Path) -> None:
+    styles = ('<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/>'
+              "</w:style>")  # fmt: skip
+    body = '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Results</w:t></w:r></w:p>'
+    report = audit([make_docx(tmp_path / "paper.docx", body + bold("Methods") + para("x"),
+                              styles)], [])  # fmt: skip
+    assert report.headings == []
+    markdown = tmp_path / "paper.md"
+    markdown.write_text("Of 412 patients, 77 had it.\n", encoding="utf-8")
+    (said,) = audit([markdown], []).headings
+    assert said.startswith("paper.md: it has no heading, so it was read as one text")

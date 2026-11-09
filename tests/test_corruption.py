@@ -8521,6 +8521,251 @@ def test_a_declaration_put_under_the_deviations_is_no_deviation(project: Path) -
     assert "control.headache" not in deviations_said(plan)
 
 
+def _declare_controls(root: Path, block: str, *, frozen: bool = True) -> None:
+    """The control block in the plan, and, with `frozen`, in the plan's frozen copy as well,
+    as though it had been declared before the first results."""
+    _plan_edited(root, "## Planned results", f"## Control analyses\n\n{block}\n## Planned results")
+    if frozen:
+        copy = root / "design" / "plan.frozen.yaml"
+        record = json.loads(copy.read_text(encoding="utf-8"))
+        record["plan"] = (root / "design" / "plan.md").read_text(encoding="utf-8")
+        copy.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _emit_control(root: Path, key: str, point: float, low: float, high: float, *,
+                  fragment: str = "01_disproportionality.json",
+                  script: str = "analysis/02_controls.py") -> None:  # fmt: skip
+    """The control's values and its entry in a results fragment, as `em.control` writes them:
+    the analysis's own fragment, or a second one, by `script`."""
+    own = root / "results" / "01_disproportionality.json"
+    target = root / "results" / fragment
+    document = json.loads((target if target.exists() else own).read_text(encoding="utf-8"))
+    if not target.exists():
+        # A second fragment: its script's provenance, and nothing of the analysis's own.
+        document = {"schema": document["schema"], "values": {},
+                    "provenance": {**document["provenance"], "generated_by": script}}  # fmt: skip
+    for part, value in (("point", point), ("ci_low", low), ("ci_high", high)):
+        entry = {"value": value, "display": f"{value:.2f}", "digits": 2}
+        if part != "point":
+            entry.update(bounds=f"{key}.point", bound=part[3:], level="95%")
+        document["values"][f"{key}.{part}"] = entry
+    document.setdefault("controls", {})[key] = {"inputs": []}
+    target.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(target)
+
+
+def _controls_said(root: Path, stage: str = "drafting") -> list[tuple[str, str]]:
+    from manuscript_guard.gates.controls import check_controls
+
+    loaded, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    return [(f.code, f.severity) for f in check_controls(loaded, results, stage).findings]
+
+
+_NEGATIVE = _CONTROLS.format(rule="holds-null")
+_REPORTED = " The negative control's ratio was {{results.control.headache.point}}."
+
+
+def test_a_control_declared_first_that_passes_and_is_reported_is_said_nothing_of(
+    project: Path,
+) -> None:
+    """Item 5: the plan declares the control before the first results, the script of the
+    ratio emits it, its interval holds the null, and the Results bind it."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project, "submission") == []
+    assert _controls_said(project, "design") == []
+
+
+def test_a_control_whose_rule_does_not_hold_warns_and_fails_at_submission(project: Path) -> None:
+    """D5.3: a failed control warns, and fails at submission unless the paper reports it and
+    the Deviations say why."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.6, 1.2, 2.1)
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project) == [("control-failed", "warn")]
+    assert _controls_said(project, "submission") == [("control-failed", "fail")]
+    _plan_edited(project, "## Deviations from the plan", "## Deviations from the plan\n\n"
+                 "The negative control `control.headache` failed: reports of headache rose "
+                 "with the drug's launch.\n")  # fmt: skip
+    assert _controls_said(project, "submission") == [("control-failed", "warn")]
+
+
+@pytest.mark.parametrize(
+    ("rule", "values", "fails"),
+    [
+        ("holds-null", (0.9, 1.0, 1.2), False),  # a bound at the null passes
+        ("holds-null", (1.3, 1.01, 1.6), True),
+        ("holds-expected", (2.1, 1.5, 2.9), True),  # the plan expects 1
+        ("within\n    distance: 0.5", (1.4, 1.1, 1.8), False),
+        ("within\n    distance: 0.5", (1.6, 1.1, 1.9), True),
+    ],
+)
+def test_each_rule_is_judged_on_the_values_emitted(
+    project: Path, rule: str, values: tuple[float, float, float], fails: bool
+) -> None:
+    """D5.2: the interval holds the expected value or the null, or the estimate is within the
+    distance of it; a value at a bound passes."""
+    _declare_controls(project, _CONTROLS.format(rule=rule))
+    _emit_control(project, "control.headache", *values)
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project) == ([("control-failed", "warn")] if fails else [])
+
+
+def test_a_control_declared_and_never_emitted_is_missing(project: Path) -> None:
+    _declare_controls(project, _NEGATIVE)
+    assert _controls_said(project) == [("control-missing", "warn")]
+    assert _controls_said(project, "submission") == [("control-missing", "fail")]
+    _plan_edited(project, "## Deviations from the plan", "## Deviations from the plan\n\n"
+                 "`control.headache` was not run: the event is not coded.\n")  # fmt: skip
+    assert _controls_said(project, "submission") == []
+
+
+def test_a_control_chosen_after_the_first_results_is_late(project: Path) -> None:
+    """A control the frozen copy does not hold was chosen once the results were known; said
+    under the Deviations, it is a decision. After a dry run on synthetic data, a note."""
+    _declare_controls(project, _NEGATIVE, frozen=False)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project) == [("control-declared-late", "warn")]
+    copy = project / "design" / "plan.frozen.yaml"
+    record = json.loads(copy.read_text(encoding="utf-8"))
+    copy.write_text(json.dumps({**record, "synthetic": True}), encoding="utf-8")
+    assert _controls_said(project, "submission") == [("control-declared-late", "info")]
+    copy.write_text(json.dumps(record), encoding="utf-8")
+    _plan_edited(project, "## Deviations from the plan", "## Deviations from the plan\n\n"
+                 "`control.headache` was added after the first results.\n")  # fmt: skip
+    assert _controls_said(project, "submission") == []
+
+
+def test_a_control_changed_or_dropped_since_the_first_results_is_said(project: Path) -> None:
+    _declare_controls(project, _NEGATIVE)
+    _plan_edited(project, "rule: holds-null", "rule: within\n    distance: 2")
+    _emit_control(project, "control.headache", 1.6, 1.2, 2.1)
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project) == [("control-changed", "warn")]
+    _plan_edited(project, "## Control analyses", "## Elsewhere")
+    _plan_edited(project, "controls:", "dropped:")
+    assert ("control-changed", "warn") in _controls_said(project)
+
+
+def test_a_control_the_plan_does_not_declare_is_undeclared(project: Path) -> None:
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    assert _controls_said(project, "submission") == [("control-undeclared", "fail")]
+
+
+def test_a_control_emitted_by_another_script_than_its_result_is_said(project: Path) -> None:
+    """D5.4: the same script path as the result it stands beside."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33, fragment="02_controls.json")
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project) == [("control-other-script", "warn")]
+
+
+def test_a_control_its_result_s_script_writes_to_a_second_fragment_is_in_the_same_script(
+    project: Path,
+) -> None:
+    """Round 1 of PR 2a: the fragments were compared, not the scripts that wrote them, so a
+    script writing its control to a fragment of its own was said to be another script."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33, fragment="ror_controls.json",
+                  script="analysis/01_disproportionality.py")  # fmt: skip
+    _add_to_results(project, _REPORTED)
+    assert _controls_said(project) == []
+
+
+def test_a_control_the_plan_declares_in_a_form_it_does_not_read_is_said_once(
+    project: Path,
+) -> None:
+    """Round 1 of PR 2a: a refused entry, emitted and frozen, was said to be undeclared and
+    gone besides; `plan-declarations-unreadable` says it, and nothing here does."""
+    _declare_controls(project, _NEGATIVE.replace("kind: negative", "kind: negativ"))
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    assert _controls_said(project, "submission") == []
+
+
+def test_a_control_declared_twice_or_mistyped_since_is_said_by_the_reader_alone(
+    project: Path,
+) -> None:
+    """Round 2 of PR 2a: a key declared twice, and a readable frozen entry mistyped now, were
+    still said to be undeclared or gone besides what the reader says."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    _add_to_results(project, _REPORTED)
+    _plan_edited(project, "kind: negative", "kind: negativ")
+    assert _controls_said(project, "submission") == []
+    _plan_edited(project, "kind: negativ", "kind: negative")
+    entry = _NEGATIVE.split("controls:\n", 1)[1].rsplit("```", 1)[0]
+    _plan_edited(project, "controls:\n", "controls:\n" + entry)
+    assert _controls_said(project, "submission") == []
+
+
+def test_a_failed_control_needs_both_its_report_and_its_deviation(project: Path) -> None:
+    """D5.3: named in the Deviations but not reported, or reported but not named, a failed
+    control still fails at submission (round 1 of PR 2a: no case held the first half)."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.6, 1.2, 2.1)
+    _plan_edited(project, "## Deviations from the plan", "## Deviations from the plan\n\n"
+                 "The negative control `control.headache` failed.\n")  # fmt: skip
+    assert ("control-failed", "fail") in _controls_said(project, "submission")
+
+
+def test_a_control_with_no_interval_or_no_result_beside_it_is_said(project: Path) -> None:
+    """The branches no case reached: a control named in the fragment with no values, and one
+    whose `of` names a result no script emits."""
+    _declare_controls(project, _NEGATIVE)
+    fragment = project / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document.setdefault("controls", {})["control.headache"] = {"inputs": []}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _controls_said(project) == [("control-missing", "warn")]
+    _plan_edited(project, "    of: ror.*\n    expected: 1\n    rule: holds-null\n",
+                 "    of: nothing.*\n    expected: 1\n    rule: holds-null\n")  # fmt: skip
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    _add_to_results(project, _REPORTED)
+    said = _controls_said(project)
+    assert ("control-other-script", "warn") in said, said
+
+
+def test_a_control_no_value_of_which_is_bound_is_unreported(project: Path) -> None:
+    """Asked from drafting; a binding in the supplement reports it as one in the Results
+    does (Basile, 2026-11-09)."""
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    assert _controls_said(project, "analysis") == []
+    assert _controls_said(project) == [("control-unreported", "warn")]
+    supplement = project / "manuscript" / "supplementary" / "S3_controls.md"
+    supplement.write_text("# Controls\n\nThe ratio for headache was "
+                          "{{results.control.headache.point}}.\n", encoding="utf-8")  # fmt: skip
+    assert _controls_said(project, "submission") == []
+
+
+def test_a_manuscript_file_that_does_not_read_stops_the_controls_check(project: Path) -> None:
+    """Read past a file that is not UTF-8, the bindings in it were missed, and every
+    control the paper reports read as unreported: the check stops at such a file instead,
+    and the file is named once."""
+    from manuscript_guard.cli import _run_gates
+
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    _add_to_results(project, _REPORTED)
+    main = main_md(project)
+    main.write_bytes(main.read_bytes() + b"\ncaf\xe9\n")
+    codes = [f.code for f in _run_gates(project, submission=True)[0].findings]
+    assert "manuscript-unreadable" in codes and "control-unreported" not in codes
+
+
+def test_a_control_a_latex_manuscript_binds_is_reported(project: Path) -> None:
+    entry = _twin(project)
+    _declare_controls(project, _NEGATIVE)
+    _emit_control(project, "control.headache", 1.04, 0.81, 1.33)
+    assert _controls_said(project) == [("control-unreported", "warn")]
+    _into_results(entry, "The negative control's ratio was \\mg{results.control.headache.point}.")
+    assert _controls_said(project) == []
+
+
 def test_results_with_no_kept_plan_are_a_note(project: Path) -> None:
     (project / "design" / "plan.frozen.yaml").unlink()
     assert _plan_said(project) == [("plan-not-frozen", "info")]

@@ -84,6 +84,7 @@ from manuscript_guard.gates import (
     source_files,
     sync_bib,
 )
+from manuscript_guard.gates.controls import check_controls
 from manuscript_guard.gates.currency import check_currency
 from manuscript_guard.gates.custodian import (
     check_recoverable,
@@ -223,6 +224,8 @@ def _gate_run(
         # A check of its own, since it reads the manuscript: one that cannot be read stops
         # it and not the plan's.
         ("G12", lambda: check_registration(project, results, chosen)),
+        # Its own too: it reads the manuscript, for the controls the paper reports (item 5).
+        ("G12", lambda: check_controls(project, results, chosen)),
         ("G12", lambda: check_data_sources(project, chosen)),
         ("G12", lambda: check_declared_datasets(project, results)),
         ("G7", lambda: check_method_passages(project)),

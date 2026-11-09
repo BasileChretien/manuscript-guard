@@ -1783,7 +1783,11 @@ def test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations(
     label in capitals in a table's header row are not reported as undefined abbreviations,
     and an abbreviation the manuscript defines is used in such a cell; one beside a time of
     day, in a cell with small letters, in a sentence, in a table's body, a list item or a
-    plain paragraph, or in a header cell over two lines with small letters, still is."""
+    plain paragraph, or in a header cell over two lines with small letters, still is. So are
+    the initials and institutions of a statement run on from its bold label ("**Authors'
+    contributions** JMD, BC ..."), or under the label alone; not so the capitals of a
+    paragraph that only opens with such a word in bold, one after a statement, or one with
+    the label inside it."""
     text, undefined = drawn
     nothing = language_gate._Known(frozenset(), frozenset())
     report = language_gate._judge([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
@@ -1791,6 +1795,42 @@ def test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations(
     found = sorted((f.code, f.message.split()[0]) for f in report.findings
                    if f.code.startswith("abbreviation-"))  # fmt: skip
     assert found == [("abbreviation-undefined", short) for short in undefined], text
+
+
+def _no_statement_runs_on_from_a_label(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_run_in_statements", lambda hidden, headings: [])
+
+
+def _any_bold_label_opens_a_statement(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_names_a_statement", lambda label: True)
+
+
+def _a_bold_label_inside_a_paragraph_opens_a_statement(patch: pytest.MonkeyPatch) -> None:
+    pattern = language_gate._RUN_IN.pattern
+    patch.setattr(language_gate, "_RUN_IN", re.compile(r"[^\n]*?" + pattern))
+
+
+def _a_statement_takes_the_paragraph_after_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_alone", lambda rest: True)
+
+
+def _a_label_alone_takes_nothing_under_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_under_a_label", lambda text, start, headings: None)
+
+
+def _a_label_alone_takes_a_heading_under_it(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._under_a_label
+    patch.setattr(language_gate, "_under_a_label",
+                  lambda text, start, headings: real(text, start, []))  # fmt: skip
+
+
+def _a_bold_word_in_a_sentence_is_a_label(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_a_label", lambda label, rest: True)
+
+
+def _an_indented_bold_label_opens_a_statement(patch: pytest.MonkeyPatch) -> None:
+    pattern = language_gate._RUN_IN.pattern
+    patch.setattr(language_gate, "_RUN_IN", re.compile(r"[ ]{0,3}" + pattern))
 
 
 def _a_short_form_followed_by_a_colon_defines_nothing(patch: pytest.MonkeyPatch) -> None:
@@ -19360,6 +19400,38 @@ BROKEN = {
     ),
     "a header cell is read line by line": (
         _a_header_cell_is_read_line_by_line,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "no statement runs on from a bold label": (
+        _no_statement_runs_on_from_a_label,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "any bold label opens a statement": (
+        _any_bold_label_opens_a_statement,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a bold label inside a paragraph opens a statement": (
+        _a_bold_label_inside_a_paragraph_opens_a_statement,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a statement takes the paragraph after it": (
+        _a_statement_takes_the_paragraph_after_it,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a label alone takes nothing under it": (
+        _a_label_alone_takes_nothing_under_it,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a label alone takes a heading under it": (
+        _a_label_alone_takes_a_heading_under_it,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a bold word that goes on into its sentence is a label": (
+        _a_bold_word_in_a_sentence_is_a_label,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "an indented bold label opens a statement": (
+        _an_indented_bold_label_opens_a_statement,
         test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
     ),
     "a statistical abbreviation needs a definition": (

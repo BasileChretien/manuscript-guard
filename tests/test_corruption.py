@@ -27730,7 +27730,9 @@ _AFTER_A_LIST = {
     "a bold title": f"\n\n**Figure legends**\n\n{_SAID}",
     "a bold title in underscores": f"\n\n__Supplementary material__\n\n{_SAID}",
     "a bold title in italics": f"\n\n***Figure legends***\n\n{_SAID}",
-    "a bold label running in": f"\n\n**Funding:** {_SAID}",
+    # A label that names no statement: under "**Funding:**" the paragraph is the funding
+    # statement, whose spelling and capitals are not read (#596).
+    "a bold label running in": f"\n\n**Legends:** {_SAID}",
     "a heading printed as text": f"\n# Appendix\n{_SAID}",
     **{f"a title, {title}": f"\n\n{title}\n\n{_SAID}"
        for title in ("Acknowledgements", "Acknowledgments", "Figure legends", "Funding",

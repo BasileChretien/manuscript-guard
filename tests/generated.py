@@ -627,7 +627,10 @@ NOT_DEFINING = (
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as
 #: `00AM`; a heading typed in capitals as a paragraph set in bold; and a column's label in
 #: capitals in a table's header row, a pipe table's and a grid table's, over two lines; and
-#: a defined abbreviation in such a cell, which is still a use of it.
+#: a defined abbreviation in such a cell, which is still a use of it. And a statement run on
+#: from its bold label, as Word papers write one, its capitals people and institutions: the
+#: label in asterisks or underscores, with a colon or none, its apostrophe escaped as pandoc
+#: writes it, and the label alone over the paragraph that is the statement.
 NOT_ABBREVIATIONS = (
     "visits ran from 8:30AM to 5:45PM", "doses were given at 10:00 PM",
     "the round began at 7:15\nAM", "the last dose was at 12:30:15PM", "**SUMMARY**",
@@ -636,12 +639,21 @@ NOT_ABBREVIATIONS = (
     "+-------+----+\n| MODEL | N  |\n| 1     |    |\n+=======+====+\n| men   | 3  |\n"
     "+-------+----+",
     "the relative risk (RR) was computed\n\n| RR | n |\n|---|---|\n| 1.2 | 3 |",
+    "**Authors\\' contributions** JMD, BC and CD designed the study; JMD wrote\nit.",
+    "**Author contributions:** AKM and TRW collected the data.",
+    "**Funding:** the THERS programme paid for the RESEARDENT fellowship.",
+    "__Acknowledgements__ We thank the CEMU and the NIEHS.",
+    "**Competing interests**\n\nPLM and RDS declare none.",
 )  # fmt: skip
 
 #: Abbreviations beside those, each still reported as undefined: one near a time of day,
 #: one in a cell with small letters in it, one in a sentence; one in a table's body, pipe
 #: and grid, in a list item and in a plain paragraph, all in capitals; and one in a header
-#: cell that runs over two lines and has small letters on the other.
+#: cell that runs over two lines and has small letters on the other. And beside a statement
+#: run on from its label: a paragraph that only opens with such a word in bold, one after a
+#: statement, one with the label inside it, one whose bold word goes on into its sentence, a
+#: label in a list item, in a block quote and in an indented table's header, and a heading
+#: under a label that stands alone.
 STILL_ABBREVIATIONS = (
     ("the PM was high at 10:00", "PM"),
     ("| Group | n |\n|---|---|\n| ICU stay | 12 |", "ICU"),
@@ -652,6 +664,14 @@ STILL_ABBREVIATIONS = (
     ("ECG", "ECG"),
     ("+---------------+----+\n| Patients with | n  |\n| AKI           |    |\n"
      "+===============+====+\n| 3             | 4  |\n+---------------+----+", "AKI"),
+    ("**Contributions of this study** The WHO data were used", "WHO"),
+    ("**Conflicts of interest:** none.\n\nthe EMA approved the protocol", "EMA"),
+    ("the NSF and **Funding** bodies paid", "NSF"),
+    ("**Funding** of the NHS was cut", "NHS"),
+    ("- **Funding:** the AHRQ paid", "AHRQ"),
+    ("> **Funding:** the CDC paid", "CDC"),
+    ("  **Funding source**   Count\n  ---------------- -----\n  NICE              3", "NICE"),
+    ("**Acknowledgements**\n\n# Appendix\nthe FDA approved it", "FDA"),
 )  # fmt: skip
 
 

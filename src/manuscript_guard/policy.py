@@ -341,6 +341,14 @@ BINDS_AT = {
     # what it declares is then checked by nothing. G12 warns while the paper is written and
     # fails it at submission (items 5 and 11, Basile, 2026-11-09).
     "plan-declarations-unreadable": SUBMISSION,
+    # A control that failed, is missing, was chosen after the first results, changed since,
+    # is undeclared, ran in another script or is not reported: G12 warns while the paper is
+    # written and fails it at submission (D5.3; Basile, 2026-11-09).
+    **dict.fromkeys(
+        ("control-failed", "control-missing", "control-declared-late", "control-changed",
+         "control-undeclared", "control-other-script", "control-unreported"),
+        SUBMISSION,
+    ),  # fmt: skip
     # One work cited under two keys is printed twice in the reference list.
     "reference-duplicate": INTERNAL_REVIEW,
     # A sentence a person judged the cited work does not support: a draft may hold one while

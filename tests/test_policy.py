@@ -182,6 +182,21 @@ def test_a_plan_declaration_that_does_not_read_warns_and_fails_at_submission() -
     assert apply_stage(warned, ANALYSIS)[0].findings[0].severity == WARN
 
 
+@pytest.mark.parametrize(
+    "code",
+    ["control-failed", "control-missing", "control-declared-late", "control-changed",
+     "control-undeclared", "control-other-script", "control-unreported"],
+)
+def test_a_control_finding_warns_and_fails_at_submission(code: str) -> None:
+    """Item 5: G12 raises each control finding to a failure at submission only (D5.3, and
+    Basile's answer of 2026-11-09 for the rest); the policy has it bind there."""
+    assert binds_at(code) == SUBMISSION
+    failed = Report((Finding(gate="G12", code=code, message="m", severity=FAIL),))
+    assert not apply_stage(failed, SUBMISSION)[0].ok
+    report, deferred = apply_stage(failed, INTERNAL_REVIEW)
+    assert report.ok and deferred == {SUBMISSION: 1}
+
+
 def test_the_summary_says_how_many_and_when() -> None:
     _report, deferred = apply_stage(
         report_with("no-review", "figure-unreviewed", "unclassified-number"), ANALYSIS

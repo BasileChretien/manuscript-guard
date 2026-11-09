@@ -67,7 +67,7 @@ ROUTES: dict[str, Route] = {
            "rule-opens-a-block", "unclear-comment", "unclear-fence", "two-titles"),
     # -- the plan, the data and the design ----------------------------------------------
     **_all("analysis-plan", None, "no-analysis-plan", "plan-", "planned-", "feasibility-not-run",
-           "not-in-dictionary", "registration-"),
+           "not-in-dictionary", "registration-", "control-"),
     **_all("data-sources", None, "data-source-", "data-sources-schema",
            "custodian-rule-undeclared", "plan-source-unnamed", "data-statement-source-unnamed",
            "data-statement-route-differs", "dataset-not-chosen", "count-below-minimum",

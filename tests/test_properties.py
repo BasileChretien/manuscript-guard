@@ -3958,6 +3958,7 @@ def test_a_declaration_is_read_from_its_yaml_block_and_is_no_word_of_the_deviati
     refused, broken = sorted(read.unreadable, key=lambda problem: problem.message.startswith(
         "the block is not YAML"))  # fmt: skip
     assert lines[refused.line - 1].strip() == drawn["refused_at"], (refused, plan)
+    assert read.refused_keys == (drawn["refused"],), (read.refused_keys, plan)
     opened = lines.index(f"  - key: {drawn['broken']}")
     assert broken.message.startswith("the block is not YAML"), (broken, plan)
     assert opened - 1 <= broken.line <= opened + 3, (broken, plan)
@@ -14888,6 +14889,12 @@ def _a_value_is_said_as_round_2_had_it(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(declarations, "_UNBUILT", (yaml.YAMLError, ValueError, OverflowError))
 
 
+def _a_refused_entry_gives_no_key(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import declarations
+
+    patch.setattr(declarations, "_key_of", lambda node: None)
+
+
 def _the_emitters_find_only_a_bare_held_out_line(patch: pytest.MonkeyPatch) -> None:
     import re
 
@@ -22188,6 +22195,7 @@ BROKEN = {
             ("a yml block is passed over", _a_yml_block_is_passed_over),
             ("a value only YAML refuses is said", _a_value_only_yaml_refuses_is_said),
             ("a value is said as round 2 of #599 had it", _a_value_is_said_as_round_2_had_it),
+            ("a refused entry gives no key", _a_refused_entry_gives_no_key),
         )
     },
     **{

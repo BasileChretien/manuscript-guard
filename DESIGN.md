@@ -16397,7 +16397,9 @@ been sorted yet.
   that a positive or a negative control read the study's data rather than data of its own:
   `inputs` is a simulated control's, and a positive or negative control that names files
   there has them declared synthetic, real data or not, with nothing said. Whether a control
-  tests what it claims to is the panel's and the co-authors' to judge. Accepted.
+  tests what it claims to is the panel's and the co-authors' to judge. A control the reader
+  refuses is said once, by `plan-declarations-unreadable`, but in a section refused whole or
+  where an entry gives its key twice (round 2 of PR 2a). Accepted.
 - **A control's rule is judged on the scale emitted, as the numbers are stored.** `within`
   compares the estimate and the expected value on the scale the analysis emits them, so a
   ratio emitted as a ratio is held to a distance in its own units, not on the log scale; the

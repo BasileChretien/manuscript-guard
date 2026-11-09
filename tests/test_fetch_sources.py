@@ -930,6 +930,15 @@ def test_a_link_given_and_refused_is_said_to_be_refused(paper: Path, given: str)
     assert not any("no open copy" in why or "names no PDF" in why for why in one.why), one.why
 
 
+def test_two_places_refused_for_one_reason_are_said_once(paper: Path) -> None:
+    cite(paper, hepatic2021={"title": TITLE, "doi": DOI})
+    table = Table({PLACES.openalex + DOI: openalex(pdf_url="https://10.0.0.5/a.pdf",
+                                                   landing="https://10.0.0.5/record"),
+                   PLACES.crossref + DOI: crossref(None)})  # fmt: skip
+    _, (one,) = sync(paper, table)
+    assert len([why for why in one.why if why.startswith("an open copy's place")]) == 1, one.why
+
+
 def test_a_link_a_transport_cannot_make_lists_the_work_and_the_run_goes_on(paper: Path) -> None:
     cite(paper, hepatic2021={"title": TITLE, "doi": DOI}, other2019={"title": TITLE, "doi": OTHER})
 

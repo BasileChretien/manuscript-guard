@@ -221,7 +221,7 @@ class Fetcher:
         if self.offline:
             return None
         places, refused = self._open_places(work, record)
-        said.extend(f"an open copy's place is {why}, and is not asked" for why in refused)
+        said.extend(f"an open copy's place is {why}" for why in refused)
         if not places and not refused and not self.offline:
             said.append("no open copy known to OpenAlex" if record is not None
                         else "no open copy found")  # fmt: skip
@@ -258,13 +258,13 @@ class Fetcher:
         if isinstance(oa, dict) and oa.get("is_oa") is True:
             found.append(_place(oa.get("oa_url"), None))
         kept: dict[str, Place] = {}
-        refused: dict[str, str] = {}
+        refused: dict[str, None] = {}  # each reason once, however many places it refused
         for place in found:
             if place is not None and download.allowed(place.url):
                 kept.setdefault(place.url, place)
             elif place is not None:
-                refused.setdefault(place.url, download.why_refused(place.url))
-        return list(kept.values()), list(refused.values())
+                refused.setdefault(download.why_refused(place.url))
+        return list(kept.values()), list(refused)
 
     def _try(self, work: Work, place: Place, said: list[str]) -> Candidate | None:
         """The PDF at a place, or on the page there by its `citation_pdf_url`, where it is the

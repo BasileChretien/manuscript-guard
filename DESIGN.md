@@ -21851,6 +21851,10 @@ Open, recorded as each change landed:
     IPv4 address inside it is not judged instead. A network's own NAT64 prefix cannot be
     told from any other address, so what it carries is not judged either. Pinned by
     `tests/test_fetch_sources.py::test_an_address_of_nat64_is_refused_whatever_it_holds`.
+  - The review of #595 left: a page's `citation_pdf_url` given as `http://` is refused, not
+    asked as `https://` as an open copy's place is, and the reason says "refused to
+    follow", as of a redirect; the test of a refused page link holds only a link that
+    cannot be read, not one that is not https or is this computer's network's.
   - The methods review says "no stored copy of @key" of a work whose only copy is its
     abstract, and its `similar-passage-not-in-source` became a warning there, unsaid here.
   - A passage mistyped from an abstract that is the work's only copy, the author's own saved

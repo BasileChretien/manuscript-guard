@@ -26779,6 +26779,21 @@ def test_the_mended_example_has_nothing_to_report(project: Path) -> None:
     assert language_findings(project) == []
 
 
+def test_a_short_form_with_a_stop_is_read_whole_and_its_slip_caught(project: Path) -> None:
+    """The Methods define a short form with a stop in it and use it, as a French paper
+    names the "Licence avec Accès Santé (L.AS)": read whole, it is defined and used, where
+    read at its stop it was an undefined `AS`. A second one, used and never defined, is
+    caught under its own name."""
+    mended = with_ror_defined(project)
+    dotted = mended.replace(
+        "The analysis was run in Python",
+        "Students of the *Licence avec Accès Santé* (L.AS) were included; L.AS and N.AS "
+        "students alike.\n\nThe analysis was run in Python",
+    )
+    main_md(project).write_text(dotted, encoding="utf-8")
+    assert language_findings(project) == [("abbreviation-undefined", line_of(dotted, "N.AS"))]
+
+
 def test_abbreviating_throughout_without_a_definition_is_caught(project: Path) -> None:
     """Find-and-replace of the long form, the definition never written: the abstract and
     the main text each use ROR, and neither defines it."""
@@ -27036,6 +27051,28 @@ def test_a_glossary_entry_the_paper_no_longer_uses_is_caught(project: Path) -> N
     assert language_findings(project) == [("abbreviation-unused", line_of(listed, "PRR:"))]
 
 
+def test_a_list_of_abbreviations_typed_with_no_title_is_read_and_its_slip_caught(
+    project: Path,
+) -> None:
+    """The same list typed as Word papers have it, at the end of the Discussion: a sentence
+    and not a heading opens it, letters' labels in bold group its items. Read as text, each
+    item was a use of its short form and PRR was reported undefined; read as the list, only
+    the unused entry is reported, and an abbreviation in the paragraph after the list is
+    still caught."""
+    mended = with_ror_defined(project)
+    listed = mended.replace(
+        "# Data availability",
+        "List of abbreviations used in the text.\n\n**P--R**\n\n- **PRR**: proportional "
+        "reporting ratio\n\n- **ROR**: reporting odds ratio\n\nThe UMC data were used.\n\n"
+        "# Data availability",
+    )
+    main_md(project).write_text(listed, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(listed, "The UMC")),
+        ("abbreviation-unused", line_of(listed, "**PRR**")),
+    ]
+
+
 def test_a_legend_restates_and_a_pasted_definition_is_still_caught(project: Path) -> None:
     """A figure's legend, typed in Word, restates the definition, as a legend that has to
     stand alone does; the definition pasted again in the Discussion is still given twice."""
@@ -27051,6 +27088,22 @@ def test_a_legend_restates_and_a_pasted_definition_is_still_caught(project: Path
     assert language_findings(project) == [
         ("abbreviation-redefined", line_of(again, "ratio (ROR) observed"))
     ]
+
+
+def test_an_author_s_initials_are_no_slip_and_an_institution_s_acronym_is(
+    project: Path,
+) -> None:
+    """The Methods say in brackets who coded the reports, by the initials the contributions
+    statement names the authors by, and name a centre by its acronym that is defined
+    nowhere. The initials are people; the acronym is reported."""
+    mended = with_ror_defined(project)
+    named = mended.replace(
+        "The analysis was run in Python",
+        "The reports were coded by one author (CD) and checked (AB and CD) at the UMC.\n\n"
+        "The analysis was run in Python",
+    ).replace("# Funding", "# Author contributions\n\nAB and CD designed the study.\n\n# Funding")
+    main_md(project).write_text(named, encoding="utf-8")
+    assert language_findings(project) == [("abbreviation-undefined", line_of(named, "the UMC"))]
 
 
 def test_a_paper_with_its_headings_in_bold_is_read_as_one_text(project: Path, capsys) -> None:
@@ -28872,6 +28925,23 @@ def test_a_dose_typed_without_its_space_is_caught(project: Path) -> None:
     ]
 
 
+def test_a_number_typed_against_its_word_is_caught(project: Path) -> None:
+    """The author's Abstract typed "+0.41points for each additional 10hours" (2026-11-10):
+    a space left out, which no house style writes, caught at its first place."""
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    edited = text.replace(old, old + " It rose by 2points for each 10hours of follow-up.")
+    assert edited != text
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert notation_findings(project) == [
+        (
+            "notation-space-missing",
+            line_of(edited, "Several limitations"),
+            "a number and a word run together 2 times: '2points', '10hours'",
+        )
+    ]
+
+
 def test_another_notation_in_a_comment_a_listing_or_a_quotation_is_not_the_manuscript_s(
     project: Path,
 ) -> None:
@@ -30459,6 +30529,27 @@ def test_bold_in_a_table_is_no_cadence_of_the_prose() -> None:
     prose = f"{_PROSE_200}\n\n" + " and ".join(["**bold**"] * 12) + "\n"
     report, _totals = judge_texts([(Path("main.md"), prose)])
     assert [f for f in report.findings if "boldface" in f.message]
+
+
+def test_bold_that_is_structure_is_no_cadence_and_bold_in_sentences_is() -> None:
+    """A paper typed in Word sets its titles, its list of abbreviations, its run-in labels
+    and its legends' labels in bold: on the author's paper 74 bold runs of 7310 words, and a
+    warning (2026-11-10). None is emphasis. The same number of bold words inside sentences
+    is the cadence the rate is for, and so is emphasis a hard wrap puts at a line's start
+    (round 1 of #614)."""
+    from manuscript_guard.gates.writing import judge_texts
+
+    structure = "\n\n".join(
+        ["**Methods**", "**Participants**", "**Data collection:** It was read.",
+         "**Supplementary Figure 2: Interaction.** Panel A.", "**A--C**",
+         "\n".join(f"- **AB{n}**: a term" for n in range(8))]  # fmt: skip
+    )
+    text = f"{_PROSE_200}\n\n{structure}\n"
+    report, _totals = judge_texts([(Path("main.md"), text)])
+    assert not [f for f in report.findings if "boldface" in f.message]
+    for emphasis in (" and ".join(["the **key** word"] * 13), " it was\n**key**." * 13):
+        report, _totals = judge_texts([(Path("main.md"), f"{_PROSE_200}\n\n{emphasis}\n")])
+        assert [f for f in report.findings if "boldface" in f.message], emphasis
 
 
 @pytest.mark.parametrize(

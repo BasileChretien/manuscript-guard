@@ -116,7 +116,8 @@ def test_only_the_relationships_that_hold_are_in_the_graph(project: Path) -> Non
     assert run["instrument"] == {"@id": "analysis/01_disproportionality.py"}
     assert ids(run["result"]) == ["results/01_disproportionality.json"]
     assert set(ids(run["object"])) == {"data/reports.csv", "data/event_terms.txt",
-                                       "design/data_dictionary.yaml"}  # fmt: skip
+                                       "design/data_dictionary.yaml",
+                                       "data/control_simulated.csv"}  # fmt: skip
     assert run["endTime"] == json.loads(
         (project / "results" / "01_disproportionality.json").read_text(encoding="utf-8")
     )["provenance"]["generated_at"]

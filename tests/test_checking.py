@@ -2140,8 +2140,8 @@ def test_code_changed_since_its_run_is_said_on_the_page_and_by_build(
     assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
     said = capsys.readouterr().out
     assert ("methods: analysis/01_disproportionality.py has changed since the run that recorded "
-            "step(s) ror, ci, signal, adjusted, so the code a co-author is shown may not be what "
-            "ran") in said, said
+            "step(s) ror, ci, signal, controls, adjusted, so the code a co-author is shown may "
+            "not be what ran") in said, said
 
 
 def test_an_unanchored_methods_paragraph_is_an_item_and_one_elsewhere_is_not(
@@ -2543,7 +2543,7 @@ def test_a_steps_script_that_is_not_there_is_said_by_build(
     assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
     said = capsys.readouterr().out
     assert ("methods: analysis/01_disproportionality.py, where the run recorded step(s) ror, ci, "
-            "signal, adjusted, is not there, so no code is shown for them") in said, said
+            "signal, controls, adjusted, is not there, so no code is shown for them") in said, said
 
 
 def test_impact_says_when_the_methods_could_not_be_read(

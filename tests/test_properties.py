@@ -18198,9 +18198,11 @@ def test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text(
     """The commented copy of a .docx (`audit --commented`, the author's audit, 2026-11-10)
     puts each finding's comment on its own words: a word, a number, the one of a word's two
     places its quote has, a quote with no words of its own, a quote the report cut at both
-    ends; on the whole paragraph where the words are inside a link; and lists a finding whose
-    words are in no paragraph in a comment over the first. Its text is the document's, and
-    its root declares every namespace the document's did (`auditing.commented`)."""
+    ends, a number quoted bare whose digits an earlier paragraph holds inside a longer one;
+    on the whole paragraph where the words are inside a link; and lists a finding whose
+    words are in no paragraph, or quoted bare in two, in a comment over the first. Its text
+    is the document's, and its root declares every namespace the document's did
+    (`auditing.commented`)."""
     import tempfile
     import zipfile
 
@@ -18222,10 +18224,12 @@ def test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text(
             said = _comment_texts(archive.read("word/comments.xml"))
     placed = {said[identifier]: span for identifier, span in spans.items()}
     listing = next((text for text in placed if "no place in the text" in text), "")
-    assert listing.startswith("1 finding"), listing
+    nowhere = [comment for (_w, _a, comment), where in zip(notes, expected, strict=True)
+               if where is None]
+    assert listing.startswith(f"{len(nowhere)} findings"), listing
+    assert [note.comment for note in written.listed] == nowhere
     for (_words, _around, comment), where in zip(notes, expected, strict=True):
         if where is None:
-            assert [note.comment for note in written.listed] == [comment]
             assert comment in listing
         else:
             assert placed.get(comment) == where, comment
@@ -18265,12 +18269,25 @@ def _the_namespaces_word_declares_are_dropped(patch: pytest.MonkeyPatch) -> None
     patch.setattr(commented, "_declared_again", lambda part, declared: part)
 
 
+def _a_quote_is_found_inside_a_longer_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import commented
+
+    real = commented._quoted
+    patch.setattr(commented, "_quoted", lambda fragment, edged: real(fragment, False))
+
+
+def _the_first_of_two_paragraphs_is_taken(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import commented
+
+    patch.setattr(commented, "_one_of", lambda found: found[0])
+
+
 def _a_quote_with_no_words_is_listed(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import commented
 
     real = commented._span
-    patch.setattr(commented, "_span", lambda text, note: real(text, note) if note.words
-                  else None)  # fmt: skip
+    patch.setattr(commented, "_span", lambda text, note, *rest: real(text, note, *rest)
+                  if note.words else None)  # fmt: skip
 
 
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
@@ -18290,6 +18307,14 @@ BROKEN = {
     ),
     "the namespaces Word declares and does not use are dropped": (
         _the_namespaces_word_declares_are_dropped,
+        test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text,
+    ),
+    "a bare quote is found inside a longer number": (
+        _a_quote_is_found_inside_a_longer_word,
+        test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text,
+    ),
+    "a bare quote two paragraphs hold is put on the first": (
+        _the_first_of_two_paragraphs_is_taken,
         test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text,
     ),
     "a quote with no words of its own is listed": (

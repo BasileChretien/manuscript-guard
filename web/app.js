@@ -145,6 +145,11 @@ $("form").addEventListener("submit", async (event) => {
     draw(result.view);
     $("notes").hidden = !result.err;
     $("notes").textContent = result.err;
+    if (result.commented && result.commented.error) {
+      $("notes").hidden = false;
+      $("notes").textContent += (result.err ? "\n" : "")
+        + `No copy of the paper with comments was made: ${result.commented.error}`;
+    }
     if (result.commented && result.commented.data) {
       commented = result.commented;
       $("savecommented").hidden = false;

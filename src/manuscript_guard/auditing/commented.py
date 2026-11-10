@@ -42,7 +42,6 @@ from manuscript_guard.tracked import (
     _namespaces,
     _one_text_each,
     _pattern,
-    _serialised,
     _write_comment,
 )
 
@@ -60,10 +59,12 @@ _CONTENT = "http://schemas.openxmlformats.org/package/2006/content-types"
 AUTHOR = "manuscript-guard audit"
 #: A finding's own words as its message quotes them: 'behaviours', 'p<0.05'.
 _QUOTED = re.compile(r"'([^'\n]{1,60})'")
-#: Its first word, where the message opens with what it is about: "AS is used 8 times".
-_FIRST = re.compile(r"^([^\s:;,]{2,30})\s")
-#: What the report's quote marks as left out.
-_LEFT_OUT = "..."
+#: Its first word, where the message opens with what it is about, a number or an
+#: abbreviation: "AS is used 8 times", "5 in the Abstract ...", and not "the P value ...".
+_FIRST = re.compile(r"^([^\s:;,]*[\dA-Z][^\s:;,]*)\s")
+#: Where the report's quote is cut, "...", and where a table's cells part in the
+#: document's own text, " | ": no paragraph of the document holds a quote across either.
+_CUT = re.compile(r"\.\.\.|\s*\|\s*")
 
 
 class CommentedError(Exception):
@@ -79,6 +80,9 @@ class Note:
     words: str
     around: str
     comment: str
+    #: Where the report says it is, "Results, paragraph 3", said with it in the list where
+    #: its words are found in no paragraph (round 1 of #617).
+    place: str = ""
 
 
 @dataclass(frozen=True)
@@ -96,33 +100,50 @@ def words_of(message: str, context: str | None) -> str:
     if not context:
         return ""
     for found in (*_QUOTED.findall(message), *_FIRST.findall(message)):
-        if found and _found(" ".join(context.split()), found):
+        if found and len(found) <= 60 and _found(" ".join(context.split()), found):
             return found
     return ""
 
 
-def _fragment(around: str) -> str:
-    """The longest stretch of a quote that the report did not cut: what stands in one
-    paragraph of the document."""
-    pieces = [" ".join(piece.split()) for piece in around.split(_LEFT_OUT)]
-    return max(pieces, key=len, default="")
+def _fragment(around: str, words: str = "") -> str:
+    """The stretch of a quote that stands in one paragraph of the document: of the pieces
+    the report's cuts and a table's cells part it into (`_CUT`), the longest that holds the
+    finding's words, else the longest."""
+    pieces = [" ".join(piece.split()) for piece in _CUT.split(around)]
+    holding = [piece for piece in pieces if words and _found(piece, words)]
+    return max(holding or pieces, key=len, default="")
 
 
-def _span(text: str, note: Note) -> tuple[int, int] | None:
+def _quoted(fragment: str, edged: bool) -> re.Pattern[str]:
+    """A quote's stretch as a paragraph holds it, across runs and layout space: whole at its
+    ends where `edged`, so that "12" is not the 12 of "2012" (round 1 of #617); else from
+    and to anywhere, as a gate's quote is cut at a character count, inside a word."""
+    if edged:
+        return _pattern(fragment)
+    return re.compile(r"\s+".join(map(re.escape, fragment.split(" "))))
+
+
+def _middle(fragment: str, words: str) -> int:
+    """Where the finding's words are in its quote: of their places there, the one nearest
+    the middle, which the report centres a quote on (`audit.around`)."""
+    places = _found(fragment, words) or [max(0, fragment.find(words))]
+    middle = (len(fragment) - len(words)) / 2
+    return min(places, key=lambda at: abs(at - middle))
+
+
+def _span(text: str, note: Note, edged: bool = True) -> tuple[int, int] | None:
     """Where the note's words are in a paragraph's text, nearest to where its quote has
     them; or the quote's stretch itself where the words are not given or not in it."""
-    fragment = _fragment(note.around)
+    fragment = _fragment(note.around, note.words)
     at = None
     if fragment:
-        # A gate's quote is cut at a character count, inside a word: no word's edge here.
-        found = re.compile(r"\s+".join(map(re.escape, fragment.split(" ")))).search(text)
-        if found is None:
+        at = _quoted(fragment, edged).search(text)
+        if at is None:
             return None
-        at = found
     if note.words:
         starts = _found(text, note.words)
         if starts:
-            aim = 0 if at is None else at.start() + max(0, fragment.find(note.words))
+            aim = 0 if at is None else at.start() + _middle(fragment, note.words)
             start = min(starts, key=lambda one: abs(one - aim))
             return start, _pattern(note.words).match(text, start).end()
         if at is None:
@@ -130,16 +151,30 @@ def _span(text: str, note: Note) -> tuple[int, int] | None:
     return (at.start(), at.end()) if at is not None else None
 
 
+def _one_of(found: list[tuple[int, tuple[int, int]]]) -> tuple[int, tuple[int, int]] | None:
+    """The one paragraph that holds a quote, or None where several do."""
+    return found[0] if len(found) == 1 else None
+
+
 def _paragraph(texts: list[tuple[str, list]], note: Note) -> tuple[int, tuple[int, int]] | None:
-    """The first paragraph that holds the note's quote, and where its words are in it. A
-    quote in no paragraph as Word holds it (a gate's, from the text pandoc converts the
-    document to, may carry a link's address or a mark Word does not print): the first
-    paragraph that holds its words, where they are a word and not a number, which would
-    stand in too many."""
-    for index, (text, _where) in enumerate(texts):
-        span = _span(text, note)
-        if span is not None:
-            return index, span
+    """The first paragraph that holds the note's quote, its stretch whole at its ends, else
+    from and to anywhere; and where its words are in it. A quote that is its words alone,
+    a table's cell, "12", held by more than one paragraph tells none of them apart, and is
+    listed with its place rather than put on the first (round 1 of #617). A quote in no
+    paragraph as Word holds it (a gate's, from the text pandoc converts the document to, may
+    carry a link's address or a mark Word does not print): the first paragraph that holds
+    its words, where they are a word and not a number, which would stand in too many."""
+    bare = _fragment(note.around, note.words).split() == note.words.split()
+    for edged in (True, False):
+        found = []
+        for index, (text, _where) in enumerate(texts):
+            span = _span(text, note, edged)
+            if span is not None:
+                found.append((index, span))
+                if not bare:
+                    break
+        if found:
+            return _one_of(found)
     if not re.search(r"[^\W\d_]", note.words):
         return None
     alone = Note(note.words, "", note.comment)
@@ -151,29 +186,32 @@ def _paragraph(texts: list[tuple[str, list]], note: Note) -> tuple[int, tuple[in
 
 
 def notes_of(report, paper: Path) -> list[Note]:
-    """Every finding of the audit `report` on `paper`, as a note: anchored on its own words
-    where its message names them and its quote holds them (`words_of`), else on its quote;
-    one with no quote or no line said with its place, for the list on the first paragraph.
-    Each says its section, its message, its hint, and whether `--strict` counts it."""
+    """Every finding of the audit `report` on `paper`, and those on no file (a paper or an
+    output that could not be read), as a note: anchored on its own words where its message
+    names them and its quote holds them (`words_of`), else on its quote; with the place the
+    report gives it, for the list on the first paragraph where it stands nowhere. Each says
+    its section, its message, its hint, and whether `--strict` counts it. A finding on
+    another file the audit read, a supplement, an output, the journal's profile, is that
+    file's, and not the document's."""
     from manuscript_guard.auditing.report import items
 
     target = paper.resolve()
     placers = report.placers
     notes: list[Note] = []
     for item in items(report):
-        if item.path is None or Path(item.path).resolve() != target:
+        if item.path is not None and Path(item.path).resolve() != target:
             continue
         said = f"{item.section}: {item.message}"
         if item.hint:
             said += f"\nHint: {item.hint}"
         if item.counted:
             said += "\n(counted by --strict)"
-        if item.line is None or not item.context:
-            placer = item.placer if item.placer is not None else placers.get(item.path)
-            where = placer.said(item.line) if placer is not None and item.line else None
-            notes.append(Note("", "", f"{where}: {said}" if where else said))
+        placer = item.placer if item.placer is not None else placers.get(item.path)
+        where = placer.said(item.line) if placer is not None and item.line else ""
+        if item.path is None or item.line is None or not item.context:
+            notes.append(Note("", "", said, where))
             continue
-        notes.append(Note(words_of(item.message, item.context), item.context, said))
+        notes.append(Note(words_of(item.message, item.context), item.context, said, where))
     return notes
 
 
@@ -198,7 +236,8 @@ def _listing(listed: list[Note]) -> str:
     """The comment on the first paragraph: the findings that stand nowhere in the text."""
     head = (f"{len(listed)} finding{'s' if len(listed) != 1 else ''} of the audit "
             f"{'have' if len(listed) != 1 else 'has'} no place in the text:")  # fmt: skip
-    return "\n".join([head, *(note.comment.replace("\n", " ") for note in listed)])
+    return "\n".join([head, *((f"{note.place}: " if note.place else "")
+                              + note.comment.replace("\n", " ") for note in listed)])
 
 
 def _parts_for_comments(parts: dict[str, bytes]) -> None:
@@ -233,9 +272,25 @@ def _before_end(part: bytes, end: bytes, element: str, name: str) -> bytes:
     it as Word wrote it: these parts hold no prefix, and ElementTree writes none back but
     its own."""
     at = part.rfind(end)
-    if at < 0:
+    if at >= 0:
+        return part[:at] + element.encode() + part[at:]
+    # A part with nothing in it may be written as one empty element, "<Relationships/>".
+    empty = re.search(rb"<" + re.escape(end[2:-1]) + rb"\b([^>]*?)\s*/>", part)
+    if empty is None:
         raise CommentedError(f"{name} does not end as a Word document's does")
-    return part[:at] + element.encode() + part[at:]
+    return (part[:empty.start()] + b"<" + end[2:-1] + empty.group(1) + b">" + element.encode()
+            + end + part[empty.end():])  # fmt: skip
+
+
+def _written(root: ET.Element, declared: list[tuple[str, str]]) -> bytes:
+    """A part as `tracked._serialised` writes one, but registering no prefix ElementTree
+    keeps for its own, "ns0", which another tool may have written and which ElementTree
+    refuses to be given (round 1 of #617)."""
+    for prefix, uri in declared:
+        if prefix and not re.fullmatch(r"ns\d+", prefix):
+            ET.register_namespace(prefix, uri)
+    body = ET.tostring(root, encoding="unicode")
+    return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + body).encode()
 
 
 #: The first element's start tag of a part, after its XML declaration.
@@ -271,6 +326,15 @@ def write(source: Path, target: Path, notes: list[Note], *, date: str) -> Commen
         raise CommentedError(f"{source.name} cannot be read: {exc}") from None
     if _DOCUMENT not in parts or _TYPES not in parts:
         raise CommentedError(f"{source.name} has no document part: it is not a Word document")
+    try:
+        return _commented(parts, names, target, notes, date, source.name)
+    except (ET.ParseError, ValueError) as exc:
+        raise CommentedError(f"{source.name} could not be commented: {exc}") from None
+
+
+def _commented(parts: dict[str, bytes], names: list[str], target: Path, notes: list[Note],
+               date: str, name: str) -> Commented:  # fmt: skip
+    """`write`, once the document's parts are read."""
     _parts_for_comments(parts)
     declared = _namespaces(parts[_DOCUMENT])
     document = parse_xml(parts[_DOCUMENT], what=_DOCUMENT)
@@ -300,19 +364,28 @@ def write(source: Path, target: Path, notes: list[Note], *, date: str) -> Commen
         else:
             _write_comment(paragraph, _placement(note, words, date), (start, end), ids,
                            comments)  # fmt: skip
-    if listed and paragraphs:
+    if listed and not paragraphs:
+        raise CommentedError(f"{name} has no paragraph to put a comment on")
+    if listed:
         identifier = ids.take("comment")
         _whole(paragraphs[0], identifier)
         comments.append(_comment(identifier, _placement(Note("", "", _listing(listed)), "",
                                                         date)))  # fmt: skip
-    parts[_DOCUMENT] = _declared_again(_serialised(document, declared), declared)
+    parts[_DOCUMENT] = _declared_again(_written(document, declared), declared)
     kept = _namespaces(parts[_COMMENTS])
-    parts[_COMMENTS] = _declared_again(_serialised(comments, kept), kept)
+    parts[_COMMENTS] = _declared_again(_written(comments, kept), kept)
     names = [*names, *(name for name in parts if name not in names)]
     with tempfile.TemporaryDirectory() as scratch:
         made = Path(scratch) / "commented.docx"
         with zipfile.ZipFile(made, "w", zipfile.ZIP_DEFLATED) as out:
             for name in names:
                 out.writestr(name, parts[name])
-        target.write_bytes(made.read_bytes())
+        try:
+            # Made while the audit ran, it may be a copy the author is working on: never
+            # written over (round 1 of #617).
+            with open(target, "xb") as out:
+                out.write(made.read_bytes())
+        except FileExistsError:
+            raise CommentedError(f"{target.name} is there already, and was not written "
+                                 "over") from None  # fmt: skip
     return Commented(len(located), tuple(listed))

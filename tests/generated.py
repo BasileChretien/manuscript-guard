@@ -12188,8 +12188,11 @@ def _runs(words: str, cuts: list[int]) -> str:
 #: The kinds of finding a commented copy is written for (`auditing.commented`): a word that
 #: stands once in its paragraph, a number, a word twice in one paragraph quoted at the
 #: second, a quote with no words of its own, a quote cut at both ends as the report cuts one,
-#: words inside a link, which the comment then covers whole, and words in no paragraph.
-COMMENTED_KINDS = ("word", "number", "twice", "quote", "cut", "link", "nowhere")
+#: words inside a link, which the comment then covers whole, words in no paragraph; a number
+#: quoted bare, as a table's cell is, whose digits an earlier paragraph holds inside a longer
+#: number, and one quoted bare that two paragraphs hold, which is listed (round 1 of #617).
+COMMENTED_KINDS = ("word", "number", "twice", "quote", "cut", "link", "nowhere", "bare",
+                   "ambiguous")
 
 
 @st.composite
@@ -12207,6 +12210,15 @@ def commented_documents(draw: st.DrawFn) -> tuple[str, list, list]:
         if kind == "nowhere":
             notes.append(("nowhereword", "nowhereword stands in no paragraph", comment))
             expected.append(None)
+            continue
+        if kind in ("bare", "ambiguous"):
+            number = str(draw(st.integers(10, 99) if kind == "bare" else st.integers(5000, 5999)))
+            # The first paragraph holds the number inside a longer one, or standing alone.
+            first = f"{before} 20{number} {after}" if kind == "bare" else f"{before} {number}"
+            body += f"<w:p>{_runs(first, [])}</w:p><w:p>{_runs(number, [])}</w:p>"
+            notes.append((number, number, comment))
+            expected.append((paragraph + 1, 0, len(number)) if kind == "bare" else None)
+            paragraph += 2
             continue
         words = {"word": "marker", "number": f"{draw(st.integers(100, 999))}",
                  "twice": "twin", "quote": "", "cut": "cutword", "link": "linked"}[kind]

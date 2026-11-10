@@ -25267,9 +25267,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
   'centre' in a paragraph that prints "Centre" is listed on the first paragraph, as it was on
   the author's paper. A number whose quote is in no paragraph is listed rather than put on
   the first paragraph that holds the number. Accepted.
-  - A paragraph is any `w:p` of the body, a text box's and a `mc:Fallback`'s among them, so a
-    quote that a text box's copy for older Word holds may be commented there, where Word 16
-    does not show it. Accepted.
+  - A text box's text is read in the paragraph it is anchored in, in the box's run, so a
+    quote from a text box is commented over that paragraph whole (round 1 of #617).
+    Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

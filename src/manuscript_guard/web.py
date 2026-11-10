@@ -265,7 +265,7 @@ def commented(paper: str, target: str) -> dict:
     date = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     try:
         written = write(path, Path(target), notes_of(_AUDITED[-1], path), date=date)
-    except (CommentedError, UnsafeDocument, OSError) as exc:
+    except (CommentedError, UnsafeDocument, OSError, ValueError) as exc:
         return {"error": str(exc)}
     return {"placed": written.placed, "listed": len(written.listed)}
 

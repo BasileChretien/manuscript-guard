@@ -97,8 +97,14 @@ os.chdir("/work")`);
     py.runPython("import json; from manuscript_guard import web; json.dumps(web.view(ARGS))"));
   py.globals.delete("ARGS");
   const ms = now() - start;
-  return { ...result, commented: commentedCopy(result, paperName), args, ms, sent: requests(),
-    refused: [...refused] };
+  // A copy that could not be written never costs the report (round 1 of #617).
+  let commented = null;
+  try {
+    commented = commentedCopy(result, paperName);
+  } catch (error) {
+    commented = { error: String((error && error.message) || error) };
+  }
+  return { ...result, commented, args, ms, sent: requests(), refused: [...refused] };
 }
 
 // The paper with the audit's findings as Word comments at their places, for a .docx the audit

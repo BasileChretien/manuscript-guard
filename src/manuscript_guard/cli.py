@@ -2443,7 +2443,7 @@ def _write_commented(report, args: argparse.Namespace) -> bool:
     date = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     try:
         written = write(paper, args.commented, notes_of(report, paper), date=date)
-    except (CommentedError, UnsafeDocument, OSError) as exc:
+    except (CommentedError, UnsafeDocument, OSError, ValueError) as exc:
         print(f"manuscript-guard audit: --commented {args.commented} could not be written: "
               f"{exc}", file=sys.stderr)  # fmt: skip
         return False

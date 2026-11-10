@@ -20153,7 +20153,12 @@ Open, recorded as each change landed:
   ...", are taken for a heading and a label and pass. The threshold was measured with the
   corpus's run-in labels counted, JATS's `<bold>Participants.</bold>` coming through
   pandoc as "**Participants.**", which the rule now leaves out, so it is a little more
-  lenient than its percentile says; it was not measured again (round 1 of #614). Accepted.
+  lenient than its percentile says; it was not measured again (round 1 of #614). A
+  paragraph's start is read only after a blank line, so a label on the line under a
+  heading, "## Methods" over "**Data collection:** ...", is counted, as on main. A list of
+  abbreviations with its colon inside the bold, "- **AIC:** Akaike ...", or with a space
+  alone after it, is counted, as on main; and a model's lead-in of one word,
+  "- **Scalability**: ...", passes as a list's short form (round 2 of #614). Accepted.
 - **A small count is found where it is bound, by its value.** A count printed in an emitted
   table, a percentage that gives a small count away with its denominator, and a count typed
   rather than bound are not read; G2 fails a typed count for being typed. A whole number

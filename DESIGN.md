@@ -22112,16 +22112,20 @@ Open, recorded as each change landed:
     "Abbreviations: CI = confidence interval; OR = odds ratio", opens none where no entry
     follows it; where one does, OR is read, and CI is lost as the long form of
     "Abbreviations". Round 1 of #610 found four more edges of the glossary with no title.
-    A table straight after its last entry, with no caption between, is taken into it
-    wherever one of its rows reads as an entry, so "| BMI | 24.1 (3.2) |" defines BMI and
-    its cells are no uses. A sentence there that holds an ampersand, "NIH & UMC data were
-    pooled.", reads as a LaTeX table's row, since a Markdown file is its own typed text,
-    and is taken in too. A sentence of the text that opens on the word, "Abbreviations were
-    spelt out at first use.", opens a glossary where the next paragraph is shaped like an
-    entry, "PRR: we computed it", and PRR is then defined by its prose. And a run of
-    thousands of paragraphs that each open on the word and are each an entry,
-    "Glossary: terms used", is read in time that grows as its square.
-    Its entries are read one to a line, and "ROR reporting odds
+    A table straight after its last entry is taken into it where a row's first cell is
+    shaped like an abbreviation, so "| BMI | 24.1 (3.2) |" defines BMI and the table's
+    cells are no uses; a caption typed before it as pandoc's "Table: ..." line does not
+    stop that (it reads as an entry), where a legend "Table 1. ..." does. A paragraph that
+    opens on one word and a space and holds an ampersand, "NIH & UMC data were pooled.",
+    reads as a LaTeX table's row, since a Markdown file is its own typed text: after the
+    last entry it is taken in where the word is shaped like an abbreviation, and between
+    two groups, "Statistical terms & definitions follow.", it does not end the glossary. A
+    sentence of the text that opens on the word, "Abbreviations were spelt out at first
+    use.", opens a glossary where the next paragraph is shaped like an entry, "PRR: we
+    computed it", and PRR is then defined by its prose. And a run of thousands of
+    paragraphs that each open on the word and are each an entry, "Glossary: terms used",
+    is read in time that grows as its square.
+    A glossary's entries are read one to a line, and "ROR reporting odds
     ratio" only in a table or a definition list: a paragraph of "ROR, reporting odds ratio;
     PRR, ..." is not read, and a grid table's long form over several lines keeps its first.
     A glossary whose section runs on into the next file is cut at the end of its own.

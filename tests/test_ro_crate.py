@@ -624,7 +624,10 @@ def test_bound_md_of_a_markdown_manuscript_is_what_it_was(project: Path) -> None
     read by `bound_rows`. `tests/data/package/bound_example.md` was written by main's own
     `deposit.texts.bound` at 40dcb675 (`git archive 40dcb675 src`, that `src` first on the
     path, run on `example/`), with the version each `software.*` row prints put as VERSION,
-    since it is the Python and the statsmodels a run has; the same is done here."""
+    since it is the Python and the statsmodels a run has; the same is done here. The nine rows
+    of the example's controls, which wave 3's third pull request reports in the supplement,
+    and the count under them, were written since by that pull request's code, the rows
+    40dcb675 wrote left byte for byte."""
     import re
 
     package(ready(project))

@@ -46,6 +46,15 @@ Each value, table and figure of the results that the manuscript binds, with what
 | `ror.ci_high` | 5.12 | results/01_disproportionality.json | manuscript/supplementary/S1_code_lists.md, Sensitivity of the estimate to the interval quoted |
 | `ror.ci90_low` | 3.02 | results/01_disproportionality.json | manuscript/supplementary/S1_code_lists.md, Sensitivity of the estimate to the interval quoted |
 | `ror.ci90_high` | 4.89 | results/01_disproportionality.json | manuscript/supplementary/S1_code_lists.md, Sensitivity of the estimate to the interval quoted |
+| `control.simulated.point` | 2.32 | results/01_disproportionality.json | manuscript/supplementary/S2_controls.md, What the controls gave |
+| `control.simulated.ci_low` | 1.62 | results/01_disproportionality.json | manuscript/supplementary/S2_controls.md, What the controls gave |
+| `control.simulated.ci_high` | 3.32 | results/01_disproportionality.json | manuscript/supplementary/S2_controls.md, What the controls gave |
+| `control.positive.point` | 0.40 | results/01_disproportionality.json | manuscript/supplementary/S2_controls.md, What the controls gave |
+| `control.positive.ci_low` | 0.28 | results/01_disproportionality.json | manuscript/supplementary/S2_controls.md, What the controls gave |
+| `control.positive.ci_high` | 0.56 | results/01_disproportionality.json | manuscript/supplementary/S2_controls.md, What the controls gave |
+| `control.negative.point` | 0.97 | results/01_disproportionality.json | manuscript/supplementary/S2_controls.md, What the controls gave |
+| `control.negative.ci_low` | 0.83 | results/01_disproportionality.json | manuscript/supplementary/S2_controls.md, What the controls gave |
+| `control.negative.ci_high` | 1.15 | results/01_disproportionality.json | manuscript/supplementary/S2_controls.md, What the controls gave |
 
 ## Tables
 
@@ -62,4 +71,4 @@ Each value, table and figure of the results that the manuscript binds, with what
 |---|---|---|---|
 | `figure.forest` | | | manuscript/main.md, Results |
 
-Of the 57 values the results hold, the manuscript binds 29.
+Of the 66 values the results hold, the manuscript binds 38.

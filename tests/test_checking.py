@@ -2078,17 +2078,22 @@ def test_each_g9_claim_is_one_methods_item_with_its_text(project: Path) -> None:
     items = _methods(produced(project))
     stepped = [item for item in items if item["facts"][0][1] != f"none: {NO_CODE}"]
     assert [item["facts"][0][1] for item in stepped] == [", ".join(c.steps) for c in claims]
-    assert [item["facts"][0][1] for item in stepped] == ["ror, ci", "signal", "adjusted"]
+    assert [item["facts"][0][1] for item in stepped] == [
+        "ror, ci", "signal", "adjusted", "controls"]  # fmt: skip
     ror = stepped[0]
     assert ror["sentences"][0]["text"].endswith("for comparison with signal-detection practice.")
     assert "alpha of 0.05;" in ror["sentences"][0]["text"]
     assert ror["sentences"][0]["mark"] == ["0.05"]
     assert ["results.param.alpha", "0.05"] in ror["facts"]
+    # The table and the interval are functions the steps call, which the controls share (PR 3
+    # of wave 3), and each is shown beside the step that calls it.
     assert [e["caption"] for e in ror["evidence"]] == [
         "step ror, in analysis/01_disproportionality.py",
+        "function two_by_two, which step ror calls, in analysis/01_disproportionality.py",
         "step ci, in analysis/01_disproportionality.py",
+        "function wald, which step ci calls, in analysis/01_disproportionality.py",
     ]
-    assert ror["evidence"][0]["lines"][0][1].strip().startswith("a = sum(")
+    assert ror["evidence"][0]["lines"][0][1].strip().startswith("a, b, c, d = two_by_two(")
     assert len(items) - len(stepped) == len(open_) > 0
     # How the pair stands in methods.lock is not shown: it would give the answer away.
     shown = json.dumps(items)
@@ -2140,7 +2145,7 @@ def test_code_changed_since_its_run_is_said_on_the_page_and_by_build(
     assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
     said = capsys.readouterr().out
     assert ("methods: analysis/01_disproportionality.py has changed since the run that recorded "
-            "step(s) ror, ci, signal, controls, adjusted, so the code a co-author is shown may "
+            "step(s) ror, ci, signal, adjusted, controls, so the code a co-author is shown may "
             "not be what ran") in said, said
 
 
@@ -2358,7 +2363,9 @@ def test_methods_items_stand_in_the_order_the_documents_print_their_files(projec
         encoding="utf-8")
     sections = list(dict.fromkeys(item["sentences"][0]["section"]
                                   for item in _methods(produced(project))))  # fmt: skip
-    assert sections == ["main.md", "z_methods.md", "supplementary/S3_methods.md"]
+    # The example's own supplement holds the claim of its controls (S2, PR 3 of wave 3).
+    assert sections == ["main.md", "z_methods.md", "supplementary/S2_controls.md",
+                        "supplementary/S3_methods.md"]  # fmt: skip
 
 
 def test_an_answer_about_an_item_gone_is_not_taken_as_code(tmp_path: Path) -> None:
@@ -2543,7 +2550,7 @@ def test_a_steps_script_that_is_not_there_is_said_by_build(
     assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
     said = capsys.readouterr().out
     assert ("methods: analysis/01_disproportionality.py, where the run recorded step(s) ror, ci, "
-            "signal, controls, adjusted, is not there, so no code is shown for them") in said, said
+            "signal, adjusted, controls, is not there, so no code is shown for them") in said, said
 
 
 def test_impact_says_when_the_methods_could_not_be_read(
@@ -2632,7 +2639,7 @@ def test_a_recap_made_twice_of_one_record_is_the_same_bytes(
     assert (project / "checks" / "recap.md").read_bytes() == first
     capsys.readouterr()
     assert main(["checker", "recap", str(project), "--check"]) == 0
-    assert "give it as it is: 18 row(s)" in capsys.readouterr().out
+    assert "give it as it is: 19 row(s)" in capsys.readouterr().out
     assert "- Earlier recap: none" in first.decode("utf-8")
     assert b"\r" not in first
 
@@ -2685,7 +2692,7 @@ def test_check_says_rows_were_added_since_where_the_first_are_the_recaps(
     capsys.readouterr()
     assert main(["checker", "recap", str(project), "--check"]) == 1
     out = capsys.readouterr().out
-    assert "1 row(s) were added to the record since; its first 18 are those" in out, out
+    assert "1 row(s) were added to the record since; its first 19 are those" in out, out
 
 
 def test_a_recap_names_the_earlier_one_and_whether_the_record_still_begins_with_it(
@@ -2701,7 +2708,7 @@ def test_a_recap_names_the_earlier_one_and_whether_the_record_still_begins_with_
     assert main(["checker", "import", str(project), "--answers", str(later)]) == 0
     assert main(["checker", "recap", str(project)]) == 0
     text = _recap(project)
-    assert (f"- Earlier recap: 18 row(s), chain head `{head}`; the first 18 row(s) of the "
+    assert (f"- Earlier recap: 19 row(s), chain head `{head}`; the first 19 row(s) of the "
             "record still give it") in text
     # Made again of the same record, it names the same earlier recap.
     assert main(["checker", "recap", str(project)]) == 0
@@ -2710,7 +2717,7 @@ def test_a_recap_names_the_earlier_one_and_whether_the_record_still_begins_with_
     capsys.readouterr()
     assert main(["checker", "recap", str(project)]) == 0
     assert "the record's first rows no longer give it" in capsys.readouterr().out
-    assert "- Earlier recap: 19 row(s), chain head `" in _recap(project)
+    assert "- Earlier recap: 20 row(s), chain head `" in _recap(project)
     assert "of the record do not give it: a row among them was edited" in _recap(project)
 
 
@@ -2724,7 +2731,7 @@ def test_the_chain_is_the_one_its_definition_gives(project: Path) -> None:
     _round(project)
     rows = record_rows(project)
     fields = {"when", "by", "id", "group", "title", "status", "note", "digest", "bundle"}
-    assert len(rows) == 18 and set(rows[0]) == fields
+    assert len(rows) == 19 and set(rows[0]) == fields
     seed = hashlib.sha256(b"manuscript-guard/decisions-chain/1").hexdigest()
     head = seed
     for row in rows:
@@ -2773,10 +2780,10 @@ def test_the_recap_lists_each_change_asked_for_with_its_sentence_or_its_steps(
     assert ("disagreement on **2.6 — lit.background.class_ror**: Ada Example says ok; Blaise "
             "Sample says wrong") in still, still
     assert "(claim): Blaise Sample, " in still
-    assert "| Ada Example | 5 | 0 | 7 | 0 | 0 | 0 |" in text
+    assert "| Ada Example | 5 | 0 | 8 | 0 | 0 | 0 |" in text
     assert "| Blaise Sample | 0 | 3 | 0 | 3 | 0 | 0 |" in text
     row = next(line for line in text.splitlines() if "| methods | signal:" in line)
-    assert row.endswith("| — | Ada Example: code | — | on 2026-10-22 |"), row
+    assert row.endswith("| — | Ada Example: code | — | on 2026-11-10 |"), row
     assert "References: 2 item(s); 2 verified by at least one person, 0 flagged, 0 not " in text
     assert "Authors: 2 item(s); 0 verified by at least one person" in text
 
@@ -2794,9 +2801,9 @@ def test_an_answer_about_an_earlier_version_reaches_the_recap_with_its_note(
     gone = _section(text, "Said of a version of an item that is gone")
     assert "- [code] **signal: A signal was defined by the classical criterion" in gone, gone
     assert "Ada Example, 2026-10-28T09:00:00+09:00: the source says otherwise" in gone
-    assert "| Ada Example | 5 | 0 | 6 | 0 | 1 | 0 |" in text
+    assert "| Ada Example | 5 | 0 | 7 | 0 | 1 | 0 |" in text
     row = next(line for line in text.splitlines() if "| methods | signal:" in line)
-    assert row.endswith("| — | — | Ada Example | text changed since 2026-10-22 |"), row
+    assert row.endswith("| — | — | Ada Example | text changed since 2026-11-10 |"), row
     assert "**signal**" not in _section(text, "Changes asked for in the code")
 
 
@@ -2873,7 +2880,7 @@ def test_check_says_the_earlier_recaps_line_is_read_from_the_file_and_not_verifi
     assert main(["checker", "recap", str(project)]) == 0
     recap = project / "checks" / "recap.md"
     text = recap.read_text(encoding="utf-8")
-    line = next(one for one in text.splitlines() if one.startswith("- Earlier recap: 18 row"))
+    line = next(one for one in text.splitlines() if one.startswith("- Earlier recap: 19 row"))
     recap.write_text(text.replace(line, "- Earlier recap: none"), encoding="utf-8")
     capsys.readouterr()
     assert main(["checker", "recap", str(project), "--check"]) == 0

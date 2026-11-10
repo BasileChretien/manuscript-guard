@@ -63,7 +63,8 @@ _FOR_AN_AUDIT: tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], str]], ...
      lambda found: f'choose {_ENGLISH_NAME[found[1]]} English (on the page, "English of the '
                    f'paper"; on the command line, --english {_ENGLISH_FLAG[found[1]]})'),
     (re.compile(r"paper\.yaml says english_variant: (en-GB|en-US)"),
-     lambda found: f"the audit was told the paper is in {_ENGLISH_NAME[found[1]]} English"),
+     # The English is the reader's (--english) or, under --journal, the profile's.
+     lambda found: f"the audit holds the paper to {_ENGLISH_NAME[found[1]]} English"),
 )  # fmt: skip
 
 

@@ -5100,14 +5100,15 @@ this study**" is the paper's own, and so is a label inside a paragraph.
 **An author's initials in a bracket are a person.** A paper names who did what in its
 Methods by the initials of its contributions statement: "by a single author (CD)", "coded
 (JB and CD)" (the author's paper, 2026-11-10). Each word of two to four capitals in a
-contributions statement, under a heading or after a bold label that names one, is an
-author's initials, and "J-MD" is taken whole and as "JMD", never as its parts. Where such
+contributions statement, under a heading or, in Markdown, after a bold label that names one,
+is an author's initials, and "J-MD" is taken whole and as "JMD", never as its parts. Where such
 initials stand in a bracket, round or square, that holds nothing but them, joined by
 commas, semicolons, "&" or "and", they are not reported, wherever in the paper. Anywhere
 else they are read as any capitals are: an author whose initials are AE would otherwise
 hide every undefined AE, the adverse events, so "AEs were frequent" is still reported
-(Basile, 2026-11-10, choosing this over every use). The acknowledgements, the funding and
-the interests name no initials, since their capitals are institutions as often as people.
+(Basile, 2026-11-10, choosing this over every use). A statement of acknowledgements, of
+funding or of interests alone names no initials, since their capitals are institutions as
+often as people; Known gaps says where one is read as a contributions statement.
 
 **What may stand undefined is data.** `data/abbreviations.yaml` holds a short list of what
 general English reads as a word or a name, `DNA`, `UK`, `DOI`, and a few unit symbols with
@@ -22068,6 +22069,18 @@ Open, recorded as each change landed:
     holds an author's initials and an abbreviation that is one too, "(AE, CD)" by authors
     AE and CD, is read as theirs.
     Pinned by `tests/test_language.py::test_a_realistic_manuscript_is_reported_as_design_md_says`.
+  - The initials a contributions statement names are every word of two to four capitals
+    in it, so an institution's short acronym there is taken for a person: "CD recruited
+    patients at the CHU" hides an undefined "(CHU)" alone in a bracket elsewhere. A heading
+    or a label that names the contributions with another statement, "Funding and author
+    contributions", is a contributions statement, its funders' capitals initials; and a
+    heading is not held to `STATEMENT_TITLE` as a label is, so "## Contributions of this
+    study" is one too. A statement's span runs to the next heading of its level or above,
+    so a reference list typed straight after it with no heading between, a LaTeX
+    `thebibliography` or an unmarked Markdown list, gives its authors' initials and a
+    journal's capitals ("BMJ") as initials. In LaTeX only a heading opens a contributions
+    statement; a `\textbf{Authors' contributions}` label opens none, and its initials are
+    reported as on main (round 1 of #611).
   - The formula rule has two edges. A formula with no count is still reported, `HCl`,
     `NaOH`, `KOH`, `HCN`, `NO`, as is organic shorthand, `EtOAc`, `MeOH`, a group in
     brackets, `(NH4)2SO4`, which reports `2SO4`, and a charge, `SO42-`. And a name spelt in

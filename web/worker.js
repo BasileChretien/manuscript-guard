@@ -116,6 +116,8 @@ function commentedCopy(result, paperName) {
   const said = JSON.parse(py.runPython(`import json, os
 from manuscript_guard import web
 os.makedirs("/out", exist_ok=True)
+# The last run's copy goes: the copy is never written over (fix round of #617).
+if os.path.exists("/out/commented.docx"): os.remove("/out/commented.docx")
 json.dumps(web.commented(PAPER, "/out/commented.docx"))`));
   py.globals.delete("PAPER");
   if (said.error) return { error: said.error };

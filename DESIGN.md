@@ -25268,8 +25268,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
   the author's paper. A number whose quote is in no paragraph is listed rather than put on
   the first paragraph that holds the number. Accepted.
   - A text box's text is read in the paragraph it is anchored in, in the box's run, so a
-    quote from a text box is commented over that paragraph whole (round 1 of #617).
-    Accepted.
+    quote from a text box is mostly commented over that paragraph whole; where the box's
+    text runs into the paragraph's own words with no space, it goes on the box's own
+    paragraph, and a quote that is its words alone, held by both, is listed (fix round of
+    #617). Accepted.
+  - Where the finding's words stand twice in its quote, the comment goes on the one nearest
+    the quote's middle, where the report centres it; a finding within 60 characters of its
+    line's start or end, "12 patients ... and 12 of them", may be put on the other (fix
+    round of #617). Accepted.
+  - A quote is parted at a table's cell marks, so a row's quote with no words of the
+    finding's own, "Hypertension | 40 (35%)", is looked for as its longest cell and may be
+    put on an earlier paragraph that holds that cell's words; a "|" in prose parts a quote
+    the same way. A quote that is the finding's words alone, a heading "AS", is listed
+    wherever two paragraphs hold it, a word as well as a number. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

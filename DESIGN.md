@@ -22080,7 +22080,7 @@ Open, recorded as each change landed:
     reported as `SARS-CoV-2.B`, where main reported `SARS-CoV-2`. A bracket's long form
     that does not spell a stop's first part, "L.AS (Accès Santé)", defines `AS`, and the
     uses of L.AS are then undefined. A glossary's short form joins a stop before a raised
-    digit, "GDPR.¹", which the text does not (round 2 of #612).
+    digit, "GDPR.¹", which the text does not (round 2 of #612). Accepted.
   - A defined name that holds an ordinary word after its first part, `RNA-seq`, is read
     whole where it opens a hyphenated word, or follows an ordinary word there, or follows
     another name of two parts or more that is itself read whole there, as in

@@ -35,9 +35,9 @@ def test_the_report_says_what_each_check_found_before_its_sections(tmp_path: Pat
     out = capsys.readouterr().out
     glance = out.index("What was checked:")
     assert glance < out.index("=== Writing (G6) and Language (G14)")
-    for name in ("Membership", "Arithmetic", "Small cells", "Writing and language"):
+    for name in ("Numbers in the outputs", "Arithmetic", "Small cells", "Writing and language"):
         assert f"\n  {name} " in out[glance:], name
-    assert "=== Membership ===" not in out and "=== Arithmetic ===" not in out
+    assert "=== Numbers in the outputs ===" not in out and "=== Arithmetic ===" not in out
     assert "=== Small cells" not in out
     assert f"Abbreviations used and not defined (G14, {len(UNDEFINED)})" in out
     assert out.count("is used once in the main text and not defined there") == PLACES
@@ -52,7 +52,7 @@ def test_details_print_every_section_and_every_place(tmp_path: Path, capsys) -> 
     assert main(["audit", str(written(tmp_path)), "--details"]) == 0
     out = capsys.readouterr().out
     assert "What was checked:" in out
-    assert "=== Membership ===" in out and "=== Arithmetic ===" in out
+    assert "=== Numbers in the outputs ===" in out and "=== Arithmetic ===" in out
     assert out.count("is used once in the main text and not defined there") == len(UNDEFINED)
     assert out.count("define it at first use") == len(UNDEFINED)
     assert "Every place of every finding" not in out
@@ -85,8 +85,8 @@ def test_a_finding_strict_counts_is_never_left_to_the_summary(tmp_path: Path, ca
     paper = written(tmp_path, PAPER + table)
     main(["audit", str(paper), "--against", str(outputs)])
     out = capsys.readouterr().out
-    assert "=== Membership ===" in out and "NOT FOUND IN ANY OUTPUT" in out
-    assert "not found (counted by --strict)" in out[: out.index("=== Membership ===")]
+    assert "=== Numbers in the outputs ===" in out and "NOT FOUND IN ANY OUTPUT" in out
+    assert "not found (counted by --strict)" in out[: out.index("=== Numbers in the outputs ===")]
     assert "=== Arithmetic ===" in out and "TOTALS THAT THEIR COUNTS DO NOT ADD UP TO" in out
     assert "total off its counts (counted by --strict)" in out
 

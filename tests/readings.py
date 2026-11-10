@@ -1677,6 +1677,20 @@ def _abstract_against_results() -> Reading:
     return read
 
 
+@reading("word paragraphs")
+def _word_paragraphs() -> Reading:
+    """Where each line of the Markdown a .docx converts to stands, as the audit names a
+    place in a .docx: the title of its heading, its paragraph's number under it, and whether
+    it is a table; None for a blank line (`auditing.paragraphs`)."""
+    from manuscript_guard.auditing.paragraphs import of_markdown
+
+    def read(given: str) -> list:
+        return [None if place is None else [place.section, place.number, place.table]
+                for place in of_markdown(given).places]  # fmt: skip
+
+    return read
+
+
 @reading("causal words")
 def _causal_words() -> Reading:
     """What `audit --design observational` says of a Markdown paper: each sentence it warns

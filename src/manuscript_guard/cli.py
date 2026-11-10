@@ -2435,7 +2435,7 @@ def _write_cited(report, args: argparse.Namespace) -> bool:
         cited.write(args.cited, read, [path.name for path in report.papers],
                     report.lookups if args.lookup and not args.dry_run else None,
                     read.fetched if not args.dry_run else None, said,
-                    _shown(Path.cwd(), report.pdfs))  # fmt: skip
+                    _shown(Path.cwd(), report.placers))  # fmt: skip
     except FileExistsError:
         # Made while the audit ran: written over, it would lose what it holds.
         print(f"manuscript-guard audit: --cited {args.cited}: the file is there already, and "
@@ -2756,7 +2756,7 @@ def _audit(args: argparse.Namespace, package) -> int:
         from manuscript_guard.auditing.draft import for_audit
 
         text = for_audit(report, _flags_given(args, _AUDIT_FLAGS),
-                         sections._shown(Path.cwd(), report.pdfs))  # fmt: skip
+                         sections._shown(Path.cwd(), report.placers))  # fmt: skip
         if not _write_draft(args, text, "audit"):
             return 2
     if args.json:

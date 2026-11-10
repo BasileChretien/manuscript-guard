@@ -12325,7 +12325,77 @@ def bold_blocks(draw: st.DrawFn) -> tuple[list[dict], list[str]]:
     return blocks, titles
 
 
+#: A heading of the Markdown pandoc converts a .docx to, as it is typed and as a place names
+#: it (`auditing.paragraphs`): plain; with its attributes; in bold; with an escape.
+WORD_HEADINGS = {
+    "plain": ("Background", "Background"),
+    "attributes": ("Methods {#methods .unnumbered}", "Methods"),
+    "bold": ("**Results**", "Results"),
+    "escaped": ("Authors\\' contributions", "Authors' contributions"),
+}
+#: A block under a heading, as pandoc writes one, a paragraph to a line: its lines, from the
+#: words drawn; and whether its lines are one paragraph a table ("table"), one paragraph
+#: that is not ("one", a line broken inside it, which pandoc ends with a backslash), or a
+#: paragraph each ("lines", a list's items).
+WORD_BLOCKS = {
+    "paragraph": (lambda words: [f"{words.capitalize()} were counted."], "lines"),
+    "list": (lambda words: [f"- {words} first", f"- {words} second", f"1.  {words}"], "lines"),
+    "table": (lambda words: [f"| {words} | n |", "|---|---|", "| a | 1 |", "| b | 2 |"],
+              "table"),  # fmt: skip
+    "grid table": (lambda words: ["+-----+---+", f"| {words} | n |", "+:====+==:+",
+                                  "| a   | 1 |", "+-----+---+"], "table"),  # fmt: skip
+    # Opens with a sign, not a table's rule: a paragraph of its own.
+    "signed": (lambda words: [f"+0.41 points for {words}."], "lines"),
+    "broken line": (lambda words: [f"Design: {words}\\", "we counted them.\\", "Then twice."],
+                    "one"),  # fmt: skip
+    # Ends with a backslash pandoc escaped, "\\\\": no line break, the next line its own.
+    "escaped backslash": (lambda words: [f"- {words} a\\\\", f"- {words} b"], "lines"),
+}
+#: The notes pandoc writes after the document's last paragraph, each a paragraph under "the
+#: notes" (`auditing.paragraphs.NOTES`).
+WORD_NOTES = ["[^1]: A note of the text.", "[^2]: Another, with a [link](https://x.org)."]
+
+
+@st.composite
+def word_paragraphs(draw: st.DrawFn) -> tuple[str, list[tuple[str | None, int, bool] | None]]:
+    """The Markdown a .docx converts to, with a paragraph or two before any heading, then a
+    heading of every kind of `WORD_HEADINGS` in an order drawn, each over a block of every
+    kind of `WORD_BLOCKS` in an order drawn, blank lines between blocks, then its notes
+    (`WORD_NOTES`); and where each line stands, by line: its heading's title as a place
+    names it (None before the first), its paragraph's number under that heading (0 for the
+    heading), and whether it is a table; None for a blank line."""
+    from manuscript_guard.auditing.paragraphs import NOTES
+
+    lines: list[str] = []
+    places: list[tuple[str | None, int, bool] | None] = []
+
+    def block(written: list[str], title: str | None, number: int, kind: str) -> None:
+        if lines:
+            lines.append("")
+            places.append(None)
+        lines.extend(written)
+        places.extend((title, number + (0 if kind != "lines" else at), kind == "table")
+                      for at in range(len(written)))  # fmt: skip
+
+    for count in range(1, draw(st.integers(1, 2)) + 1):
+        block([f"{draw(st.sampled_from(FILLER)).capitalize()} and others."], None, count,
+              "lines")  # fmt: skip
+    for heading in draw(st.permutations(list(WORD_HEADINGS))):
+        typed, title = WORD_HEADINGS[heading]
+        block([f"# {typed}"], title, 0, "lines")
+        count = 0
+        for kind in draw(st.permutations(list(WORD_BLOCKS))):
+            make, shape = WORD_BLOCKS[kind]
+            written = make(draw(st.sampled_from(FILLER)))
+            block(written, title, count + 1, shape)
+            count += len(written) if shape == "lines" else 1
+    for number, note in enumerate(WORD_NOTES, 1):
+        block([note], NOTES, number, "lines")
+    return "\n".join(lines) + "\n", places
+
+
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
+    "word paragraphs": word_paragraphs().map(lambda drawn: drawn[0]),
     "checker sentences": texts(),
     "checker methods": method_claims().flatmap(lambda drawn: st.sampled_from(drawn[:3])),
     "prose quotations": texts(QUOTED),

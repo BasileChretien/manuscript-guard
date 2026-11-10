@@ -22732,8 +22732,9 @@ def test_audit_reads_past_a_text_box_deleted_or_moved_out_of_the_reference_list(
     )
     report = audit([paper], [outputs])
     assert report.unmatched == [], report.unmatched
-    lines = "3-5" if change == "del" else "5-7"
-    assert report.not_audited == [f"paper.docx: lines {lines}, read as the reference list"]
+    # A place in a .docx is its heading and its paragraph (the author's audit, #616).
+    assert report.not_audited == ["paper.docx: References, paragraphs 1-2, read as the "
+                                  "reference list"]
     document = read_docx_text(paper)
     body = document.body.split("\n")
     # Only "References", and the moved copy before it, are headings: none inside the list.
@@ -22793,7 +22794,8 @@ def test_audit_reads_past_a_table_row_gone_from_the_reference_list(
     )
     report = audit([paper], [outputs])
     assert report.unmatched == [], report.unmatched
-    assert report.not_audited == ["paper.docx: lines 3-5, read as the reference list"]
+    assert report.not_audited == ["paper.docx: References, paragraphs 1-2, read as the "
+                                  "reference list"]
 
 
 @pytest.mark.parametrize("change", ["del", "moveFrom"])

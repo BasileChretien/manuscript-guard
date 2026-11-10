@@ -90,16 +90,13 @@ function draw(view) {
     add(row, "th", name);
     add(row, "td", said);
   }
+  if (view.strict) add(box, "p", view.strict, "small");
   for (const paper of view.words) {
     if (!paper.note && !paper.kinds.length) continue;
     add(box, "h3", `Writing and language: ${paper.paper} (not counted by --strict)`);
     if (paper.note) {
       add(box, "p", paper.note);
       continue;
-    }
-    if (paper.converted) {
-      add(box, "p", "Its lines are those of the text pandoc converts it to, as `init --from` "
-        + "writes it.", "small");
     }
     for (const kind of paper.kinds) {
       const fold = add(box, "details", undefined, "kind");

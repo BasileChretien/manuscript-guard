@@ -215,6 +215,9 @@ class AuditReport:
     self_citation: object = None
     #: Each PDF read, by its path (`auditing.pdf.PdfText`): what its places are said by.
     pdfs: dict = field(default_factory=dict)
+    #: Each .docx read, by its path: where each line of its text stands, its section and its
+    #: paragraph (`auditing.paragraphs.Paragraphs`), what its places are said by.
+    places: dict = field(default_factory=dict)
     #: The package `--package` names, held to its own manifest (`auditing.package.PackageRead`).
     package: object = None
     #: How much of each kind the audit read, for the report draft's checks that found
@@ -222,11 +225,36 @@ class AuditReport:
     read: dict = field(default_factory=dict)
 
     @property
+    def placers(self) -> dict:
+        """What says each place of a paper whose lines are not the reader's: a PDF's page
+        and line, a .docx's section and paragraph, by the paper's path."""
+        return {**self.places, **self.pdfs}
+
+    @property
     def examined(self) -> int:
         return (
             len(self.matched) + len(self.unmatched) + len(self.reference_like)
             + self.classified + self.uncompared
         )
+
+
+#: How many characters of its line a number's quote holds on each side of it, at most.
+AROUND = 60
+
+
+def around(atom: Atom, width: int = AROUND) -> str:
+    """The words around a number on its line, as the report quotes them: up to `width`
+    characters each side, cut at a space, "..." where the line goes on. The line's first
+    140 characters were quoted, and a number past them was not in its own quote (the
+    author's audit, 2026-11-10: the Abstract, a paragraph to a line in a .docx)."""
+    line = atom.line_text
+    start, end = atom.start - atom.line_start, atom.end - atom.line_start
+    left, right = line[max(0, start - width) : start], line[end : end + width]
+    if start > width:
+        left = "..." + (left.split(None, 1)[1] if len(left.split(None, 1)) > 1 else left)
+    if end + width < len(line):
+        right = (right.rsplit(None, 1)[0] if len(right.rsplit(None, 1)) > 1 else right) + "..."
+    return " ".join(f"{left}{line[start:end]}{right}".split())
 
 
 def normalise_number(text: str) -> str:
@@ -791,8 +819,17 @@ def _read_sources(
         said = _headings_said(path, document, bool(structure["heading_lines"]))
         if said:
             report.headings.append(said)
+        if document is not None:
+            from manuscript_guard.auditing.paragraphs import of_docx
+
+            # Its own text, not the one blanked: the reference list's lines are placed too.
+            notes = f"\n{document.notes}" if document.notes else ""
+            report.places[path] = of_docx(document, f"{document.body}{notes}")
+        place = report.places.get(path)
         report.not_audited += [
-            f"{path.name}: lines {start + 1}-{end}, read as the reference list"
+            f"{path.name}: "
+            f"{place.stretch(start + 1, end) if place else f'lines {start + 1}-{end}'}, "
+            "read as the reference list"
             for start, end in spans
         ]
         if not docx:
@@ -1455,7 +1492,7 @@ def _read_numbers(
             normalised=normalise_number(atom.text),
             source=path,
             line=atom.line,
-            context=atom.line_text.strip()[:140],
+            context=around(atom),
         )
         # Every number the atom carries has to be in the outputs, not just one of them:
         # an interval is accounted for when both its bounds are, and "0.72-0.99" with

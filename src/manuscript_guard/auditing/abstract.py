@@ -309,7 +309,12 @@ def _parts(piece: Piece) -> tuple[str, str, set[int]]:
 
 def against_results(pieces: list[Piece]) -> AbstractRead:
     """The section, over every file the audit read."""
-    from manuscript_guard.audit import Candidate, measure_discrimination, normalise_number
+    from manuscript_guard.audit import (
+        Candidate,
+        around,
+        measure_discrimination,
+        normalise_number,
+    )
 
     read = AbstractRead()
     if not any(piece.abstract for piece in pieces):
@@ -340,7 +345,7 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
             read.numbers += 1
             states = [_state(part, exact, rounded) for part in parts]
             candidate = Candidate(atom.text, normalise_number(atom.text), piece.path,
-                                  atom.line, atom.line_text.strip()[:140])  # fmt: skip
+                                  atom.line, around(atom))  # fmt: skip
             if "" in states:
                 read.not_found.append(candidate)
             elif "rounded" in states:

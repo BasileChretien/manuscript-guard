@@ -354,7 +354,7 @@ def _apart(family: _Family) -> list[tuple[str, list[_Use], str, list[_Use], bool
 
 _KEEP = (
     "The journal's instructions say which form it prints; where they say nothing, keep "
-    "the one the manuscript uses most. This is the first place the other form stands"
+    "the one the manuscript uses most. The place given is the first use of the other form"
 )
 
 

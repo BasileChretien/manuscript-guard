@@ -9,8 +9,9 @@ would be once the paper is brought into a project. Without pandoc a .docx is not
 and the two gates are passed over for it with a note. A PDF's text (`auditing.pdf`) is
 staged as Markdown, each line that holds a section's name alone made a heading
 (`_staged_pdf`). Each finding's path is put back to the paper's; in a converted .docx its line
-is a line of the converted text, and in a PDF the line of its text, which the report says as
-a page and a line. A place a finding's message names, as G14 names where an abbreviation was
+is a line of the converted text, which the report says as the document's heading and
+paragraph (`auditing.paragraphs`), and in a PDF the line of its text, which the report says
+as a page and a line. A place a finding's message names, as G14 names where an abbreviation was
 first defined, is put back the same way (`_relocated`): it named the staged copy,
 "manuscript/main.md:476", of a paper called anything else.
 
@@ -86,6 +87,9 @@ class GateRun:
     note: str = ""
     #: Whether the lines are lines of a converted text, not of the paper itself.
     converted: bool = False
+    #: For a converted .docx, where each line of the converted text stands in the document,
+    #: "Methods, paragraph 3" (`auditing.paragraphs`).
+    places: object = None
 
 
 @dataclass(frozen=True)
@@ -99,8 +103,11 @@ class _Staged:
     #: For a PDF whose headings cannot be placed exactly (`auditing.pdf.PdfText.placed`):
     #: where its Abstract ends is not read, so G4's limits on its words are not checked.
     unplaced: bool = False
-    #: For a PDF, a line of its text in words, "page 3, line 12" (`PdfText.said`).
+    #: For a PDF, a line of its text in words, "page 3, line 12" (`PdfText.said`); for a
+    #: .docx, a line of its converted text, "Methods, paragraph 3" (`places`).
     said: Callable[[int | None], str] | None = None
+    #: For a .docx, where each line of the converted text stands (`auditing.paragraphs`).
+    places: object = None
 
 
 def _staged_pdf(paper: Path) -> _Staged:
@@ -153,7 +160,11 @@ def _stage(paper: Path, tree=None) -> _Staged:
             converted = from_word.convert(paper)
         except ContractError as exc:
             raise ValueError(str(exc)) from None
-        return _Staged({"main.md": converted.text}, {"main.md": paper}, converted=True)
+        from manuscript_guard.auditing.paragraphs import of_markdown
+
+        places = of_markdown(converted.text)
+        return _Staged({"main.md": converted.text}, {"main.md": paper}, converted=True,
+                       said=places.said, places=places)  # fmt: skip
     if suffix != ".tex":
         return _Staged({"main.md": read_text(paper)}, {"main.md": paper})
     if tree is None:
@@ -214,7 +225,8 @@ def run_gates(
     with tempfile.TemporaryDirectory(prefix="mg-audit-") as folder:
         root = Path(folder).resolve()
         project = audit_project(root, staged, english, known)
-        put_back = _putting_back(root / "manuscript", staged.back, staged.lines, staged.said)
+        put_back = _putting_back(root / "manuscript", staged.back, staged.lines, staged.said,
+                                 word=staged.converted)  # fmt: skip
         try:
             writing = check_writing(project, submission=residue)
             language = check_language(project)
@@ -229,20 +241,49 @@ def run_gates(
             writing=[put_back(f) for f in writing.sorted().findings],
             language=[put_back(f) for f in language.sorted().findings],
             converted=staged.converted,
+            places=staged.places,
         )
 
 
+#: A mark of ASCII punctuation pandoc writes with a backslash in front, "p\<0.05", so that
+#: Markdown does not read it as its own: the Word document has none.
+_ESCAPED = re.compile(r"\\([!-/:-@\[-`{-~])")
+#: A word quoted in Markdown's emphasis, "'*p*'", which the Word document prints in italics
+#: or in bold.
+_QUOTED_BOLD = re.compile(r"'\*\*([^*'\n]+)\*\*'")
+_QUOTED_ITALIC = re.compile(r"'\*([^*'\n]+)\*'")
+#: The name of the G6 rule a phrasing finding opens with, "importance-tail: ", which means
+#: nothing to a reader of the report (the author's audit, 2026-11-10).
+_RULE_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*: ")
+
+
+def as_in_word(text: str) -> str:
+    """Text a gate quotes from a .docx's converted Markdown, as the document prints it: its
+    escapes taken off, a word quoted in emphasis said to be in italics or in bold."""
+    text = _QUOTED_BOLD.sub(r"'\1' in bold", text)
+    text = _QUOTED_ITALIC.sub(r"'\1' in italics", text)
+    return _ESCAPED.sub(r"\1", text)
+
+
 def _putting_back(manuscript: Path, back: dict[str, Path], lines: tuple[int, ...] = (),
-                  said: Callable[[int | None], str] | None = None,
+                  said: Callable[[int | None], str] | None = None, *, word: bool = False,
                   ) -> Callable[[Finding], Finding]:  # fmt: skip
     """Each finding at the paper's path; in a PDF at the line of its text, with no column,
     which is the staged Markdown's (`_staged_pdf`). The places its message and its hint
-    name, the paper's too (`_relocated`)."""
+    name, the paper's too (`_relocated`). A phrasing finding's message without the rule's
+    name; and in a .docx converted (`word`), what it quotes as the document prints it
+    (`as_in_word`)."""
     relocated = _relocated(back, lines, said)
+    shown = as_in_word if word else (lambda text: text)
 
     def put_back(finding: Finding) -> Finding:
-        finding = replace(finding, message=for_an_audit(relocated(finding.message)),
-                          hint=finding.hint and for_an_audit(relocated(finding.hint)))  # fmt: skip
+        message = finding.message
+        if finding.code == "ai-phrasing":
+            message = _RULE_NAME.sub("", message, count=1)
+        # Said in the audit's own settings (`for_an_audit`), then as Word prints it.
+        finding = replace(finding, message=shown(for_an_audit(relocated(message))),
+                          hint=finding.hint and shown(for_an_audit(relocated(finding.hint))),
+                          context=finding.context and shown(finding.context))  # fmt: skip
         if finding.path is None:
             return finding
         try:
@@ -266,8 +307,10 @@ def _relocated(
     """What puts a place in the staged project back in the paper. A gate names a manuscript
     file by its path from the project's root, "manuscript/main.md:476", and the staged
     `main.md` or `main.tex` is the paper under another name: it is named by the paper's
-    name, a file of its LaTeX tree by its path in the tree, and a line of a PDF's staged
-    Markdown as the page and the line of its text, "paper.pdf, page 3, line 12"."""
+    name, a file of its LaTeX tree by its path in the tree, a line of a PDF's staged
+    Markdown as the page and the line of its text, "paper.pdf, page 3, line 12", and a line
+    of a .docx's converted text as its section and paragraph, "paper.docx, Methods,
+    paragraph 3" (`said` with no `lines`)."""
     if not back:
         return lambda text: text
     names = "|".join(re.escape(name) for name in sorted(back, key=len, reverse=True))
@@ -279,8 +322,10 @@ def _relocated(
         file = back[name].name if name in ("main.md", "main.tex") else name
         if line is None:
             return file
-        if lines and said is not None and name == "main.md":
+        if said is not None and name == "main.md":
             at = int(line)
+            if not lines:
+                return f"{file}, {said(at)}"
             return f"{file}, {said(lines[at - 1] if 0 < at <= len(lines) else None)}"
         return f"{file}:{line}"
 

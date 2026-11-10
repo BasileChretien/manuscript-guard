@@ -64,6 +64,9 @@ class JournalRun:
     looked: str | None = None
     #: Whether the lines are lines of the text pandoc converted a .docx to.
     converted: bool = False
+    #: For a converted .docx, where each line of that text stands in the document
+    #: (`auditing.paragraphs`).
+    places: object = None
     #: Whether a limit the profile sets went under what was not checked: the report then
     #: never says the paper is within every limit (round 2 of #478).
     limits_unchecked: bool = False
@@ -144,6 +147,7 @@ def run_journal(
         run.note = f"G4 was not run on {paper.name}: {exc}"
         return run
     run.converted = staged.converted
+    run.places = staged.places
     unread = _tables_unread(staged, profile)
     words = _words_unread(staged, profile)
     run.skipped += unread + words
@@ -156,7 +160,8 @@ def run_journal(
         staged_profile.parent.mkdir(parents=True)
         staged_profile.write_bytes(profile_path.read_bytes())
         project = replace(project, paper={**project.paper, "target_journal": slug})
-        put_back = _putting_back(root / "manuscript", staged.back, staged.lines)
+        put_back = _putting_back(root / "manuscript", staged.back, staged.lines, staged.said,
+                                 word=staged.converted)  # fmt: skip
         try:
             found = [*check_journal(project, records=False, cited=cited).sorted().findings,
                      *check_boxes(project, {}, SUBMISSION).sorted().findings]  # fmt: skip

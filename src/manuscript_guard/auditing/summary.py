@@ -119,8 +119,9 @@ def _arithmetic(report) -> str:
 def _abstract(read) -> str:
     if not read.compared:
         return f"not compared: {read.why_not}"
-    said = (f"{_n(read.numbers, 'number')}: {read.matched} found where the paper reports, "
-            f"{len(read.rounded)} as a rounding, {len(read.not_found)} not found")  # fmt: skip
+    said = (f"{_n(read.numbers, 'number')}: {read.matched} found where the paper reports its "
+            f"results, {len(read.rounded)} only as a rounding, {len(read.not_found)} not "
+            "found")  # fmt: skip
     if read.conflicts:
         said += f"; {_n(len(read.conflicts), 'interval or test', 'intervals or tests')} that " \
                 "differ (counted by --strict)"  # fmt: skip
@@ -175,11 +176,19 @@ def _references(report) -> str:
     return said + f"; {_n(len(report.lookups), 'work')} looked up"
 
 
+#: What `--strict` fails on, said once under the checks, so that "not counted by --strict"
+#: means something to a reader who will never pass it (the author's audit, 2026-11-10).
+STRICT = ("--strict, for a script, fails on what the audit counts, among it a number in no "
+          "output, arithmetic that does not hold and a paper that could not be read. What is "
+          "marked \"not counted by --strict\" is for a reader to look at.")
+
+
 def checks(report) -> list[str]:
-    """What each check found, a line each, in the order of the sections below."""
+    """What each check found, a line each, in the order of the sections below, then what
+    `--strict` counts (`STRICT`)."""
     found = rows(report)
     width = max(len(name) for name, _said in found)
-    return [f"  {name.ljust(width)}  {said}" for name, said in found]
+    return [*(f"  {name.ljust(width)}  {said}" for name, said in found), "", STRICT]
 
 
 def kinds(found: list[Finding], at: Callable[[Path | None, int | None], str], *,
@@ -209,7 +218,9 @@ def kinds(found: list[Finding], at: Callable[[Path | None, int | None], str], *,
 
 def rows(report) -> list[tuple[str, str]]:
     """What each check found, by check, in the order of the sections."""
-    rows = [("Membership", _membership(report)), ("Arithmetic", _arithmetic(report))]
+    from manuscript_guard.auditing.report import MEMBERSHIP
+
+    rows = [(MEMBERSHIP, _membership(report)), ("Arithmetic", _arithmetic(report))]
     if report.abstract is not None:
         rows.append(("Abstract against Results", _abstract(report.abstract)))
     rows.append(("Small cells", _small_cells(report)))

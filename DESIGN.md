@@ -5471,7 +5471,7 @@ left to it; its plural, "5mins", which `notation-unit` does not read, is a space
 read there too. A number that stands inside a name, "p53mutant", "COVID19cases", is known
 by the letter before it; a number in hexadecimal, "0xff", is left alone. The audit's
 Abstract against Results reads the numbers of such words, and of pieces closed up by a
-bracket or a colon, "CI):+0.05", "45%(95%CI:40-50%)" (below).
+round bracket, a colon or a semicolon, "CI):+0.05", "45%(95%CI:40-50%)" (below).
 
 **A unit is known by name, and the short names are few.** The symbols read are listed in
 `gates/notation.py`. Of those of one letter only `g` and `h` are among them: "5m" is as
@@ -9903,9 +9903,12 @@ has no Abstract, a supplement. Each number of the Abstract the classifier leaves
 is looked for in what the paper reports: found as printed, found as a rounding of a number
 printed to more places ("53%" for "53.3%", the author, 2026-10-28), or not found. A number
 a space was left out of is read, as no other number with letters in it is: one typed
-against a word, "+0.41points", against a signed number, "to+0.77", and each piece of an
-atom closed up by a bracket, a colon or a semicolon, every piece's number kept, a label's
-skipped: "CI):+0.05", "students(66%", "45%(95%CI:40-50%)" gives 45%, 95%, 40 and 50 (the
+against a word, "+0.41points", against a signed number, "to+0.77", and an atom closed up
+by round brackets, colons or semicolons whose every piece is a number, a range, a level
+named "95%CI", one of those shapes or a label of letters alone: each piece's number is
+kept and a label skipped, "CI):+0.05", "students(66%", "45%(95%CI:40-50%)" giving 45%,
+95%, 40 and 50; a piece of any other shape, a label with a digit in it, "CD4:350", leaves
+the atom read whole (round 2 of #613) (the
 author's Abstract, 2026-11-10, whose numbers were all reported not found for want of a
 space). An ordinal with its own suffix against a word a rank takes, "2ndyear",
 "21stcentury", "11thgrade", is not looked for; any other word after a suffix's letters is a
@@ -22359,8 +22362,12 @@ Open, recorded as each change landed:
     stays one atom and is reported not found; G14's exclusions are not applied there, so
     "30min" gives 30 and "0xff" gives 0; and a lone small number closed up against a label,
     "Appendix:1", "Table(2", "version:4", is read and most likely found (round 1 of #613).
-    A rank against a word not in its short list, "3rdparty", is read as a number.
-    Accepted.
+    A rank against a word not in its short list, "3rdparty", "4thventricle", is read as a
+    number. A label with a digit in it closed up against its number, "CD4:350",
+    "HbA1c:7.5%", "I2:45%", leaves the atom read whole and reported not found; a name of
+    digits and capitals in a bracket, "lamivudine(3TC)", "mercaptopurine(6MP)", is taken for
+    a level and gives its digit, most likely found; and a square bracket closes nothing up,
+    so "students[66%" is read whole (round 2 of #613). Accepted.
   - A space where the SI has none, "30 °" for an angle, is not reported.
   - How a bound value is printed is not read: ".05" beside "0.05", "4,100" beside "4100",
     a decimal comma. Accepted.

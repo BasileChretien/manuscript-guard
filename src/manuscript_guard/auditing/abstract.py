@@ -183,8 +183,10 @@ def coarser(printed: str) -> set[tuple[str, int]]:
 #: The shapes of an atom in which a space was left out around a number, which the section
 #: reads the numbers of (G14's `notation-space-missing` reports the space): a number typed
 #: against a word, "+0.41points", "10hours"; a word against a signed number, "to+0.77"; and
-#: pieces closed up by a bracket, a colon or a semicolon, a label among them, each piece's
-#: numbers kept, "CI):+0.05", "45%(95%CI:40-50%". Only these: an atom with letters in it is
+#: pieces closed up by round brackets, colons or semicolons, each a number, a range, a
+#: level named "95%CI", one of these shapes or a label of letters alone, each piece's
+#: numbers kept, "CI):+0.05", "45%(95%CI:40-50%"; one piece of any other shape, "CD4:350",
+#: and the atom is read whole (round 2 of #613). Only these: an atom with letters in it is
 #: otherwise read whole, so that no name or address matches on a digit it holds
 #: (`audit._COMPOUND`). Found on the author's Abstract, whose numbers were all "not found"
 #: for want of a space (2026-11-10).
@@ -201,6 +203,7 @@ _RANKED = frozenset((
     "year", "line", "grade", "generation", "trimester", "semester", "quartile", "tertile",
     "quintile", "decile", "dose", "wave", "round", "visit", "week", "day", "month", "cycle",
     "edition", "author", "place", "time", "phase", "century", "decade", "order", "degree",
+    "percentile", "centile",
 ))  # fmt: skip
 
 

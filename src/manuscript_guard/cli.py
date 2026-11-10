@@ -2492,7 +2492,7 @@ def _read_as_reader(report, reader: _Reader, main: Path, papers: list[Path],
 
 #: The options that read a paper, refused with `--package` and no paper.
 _READ_A_PAPER = ("against", "figures", "journal", "authors", "design", "cited", "lookup",
-                 "whole_numbers", "minimum_cell_count", "english", "submission_residue")
+                 "whole_numbers", "minimum_cell_count", "english", "known", "submission_residue")
 
 
 def _flags_given(args: argparse.Namespace, names: tuple[str, ...]) -> list[str]:
@@ -6750,9 +6750,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--known",
         nargs="+",
         metavar="WORD",
-        help="words the paper's readers know, which G14 neither asks to be defined nor "
-        "reports the spelling of: names, an author's initials, an institution's acronym, the "
-        "field's terms (--known CHU QR licence)",
+        help="words the paper's readers know, which G14 neither asks to be defined, reports "
+        "the spelling of, nor reads as names from code: names, an author's initials, an "
+        "institution's acronym, the field's terms (--known CHU QR licence)",
     )
     audit.add_argument(
         "--submission-residue",

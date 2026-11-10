@@ -16,11 +16,11 @@ first defined, is put back the same way (`_relocated`): it named the staged copy
 
 The project's `paper.yaml` is empty but for what the audit is told: `--english` declares the
 paper's English, `--known` lists the words its readers know, names, initials and the field's
-terms, which G14 then neither asks defined nor reports the spelling of, and
+terms, which G14 then neither asks defined, reports the spelling of nor reads as code, and
 `--submission-residue` makes the residue that answers a reviewer a failure, as `check` does
 at the submission stage. Neither gate's finding is counted by `--strict`.
 
-A gate's message and hint say what to set in `paper.yaml`, which a paper audited alone has
+G14's messages and hints say what to set in `paper.yaml`, which a paper audited alone has
 none of, so the audit says it in its own words (`_FOR_AN_AUDIT`): the page's setting and the
 command line's flag that do the same (the author's audit, 2026-11-10).
 """
@@ -40,25 +40,30 @@ from manuscript_guard.findings import Finding
 ENGLISH = {"british": "en-GB", "american": "en-US"}
 #: The words of `--english` for an English as paper.yaml spells it.
 _ENGLISH_FLAG = {spelt: word for word, spelt in ENGLISH.items()}
+#: An English as paper.yaml spells it, in words.
+_ENGLISH_NAME = {"en-GB": "British", "en-US": "American"}
 #: What a word the readers know is given as, on the page and on the command line.
 KNOWN = 'a known word (on the page, "Words to leave alone"; on the command line, --known)'
 
 #: What G14 tells a project to set in `paper.yaml`, said as an audit sets it: each pattern
 #: with what replaces it. `tests/test_audit.py` holds that each one still matches what the
-#: gate writes, so that a gate reworded is noticed rather than left saying paper.yaml.
+#: gate writes, so that a gate reworded is noticed rather than left saying paper.yaml. (G4
+#: under `--journal` reads no English from paper.yaml in an audit, `FROM_RECORDS`.)
 _FOR_AN_AUDIT: tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], str]], ...] = (
     (re.compile(r"list it in quotes under `language: known_abbreviations:` in paper\.yaml "
                 r"if this journal's readers"),
      lambda found: f"give it to the audit as {KNOWN} if the paper's readers"),
     (re.compile(r"list that one word under `language: accepted_spellings:` in paper\.yaml"),
      lambda found: f"give it to the audit as {KNOWN}"),
+    (re.compile(r"list it under `language: code_names_kept:` in paper\.yaml"),
+     lambda found: f"give it to the audit as {KNOWN}"),
     (re.compile(r"paper\.yaml declares no English"),
      lambda found: "no English was chosen for this audit"),
     (re.compile(r"[Ss]et english_variant: (en-GB|en-US)(?: in paper\.yaml)?"),
-     lambda found: f'choose it (on the page, "English of the paper"; on the command line, '
-                   f"--english {_ENGLISH_FLAG[found[1]]})"),
+     lambda found: f'choose {_ENGLISH_NAME[found[1]]} English (on the page, "English of the '
+                   f'paper"; on the command line, --english {_ENGLISH_FLAG[found[1]]})'),
     (re.compile(r"paper\.yaml says english_variant: (en-GB|en-US)"),
-     lambda found: f"the audit was told the paper is in {_ENGLISH_FLAG[found[1]]} English"),
+     lambda found: f"the audit was told the paper is in {_ENGLISH_NAME[found[1]]} English"),
 )  # fmt: skip
 
 
@@ -184,7 +189,8 @@ def audit_project(
     paper: dict = {"english_variant": ENGLISH[english]} if english else {}
     if known:
         paper["language"] = {"known_abbreviations": list(known),
-                             "accepted_spellings": list(known)}  # fmt: skip
+                             "accepted_spellings": list(known),
+                             "code_names_kept": list(known)}  # fmt: skip
     return Project(root=root, paper=paper, authors=None)
 
 

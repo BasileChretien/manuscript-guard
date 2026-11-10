@@ -78,11 +78,11 @@ def printable(text: str) -> str:
             char.encode("cp1252")
             out.append(char if char >= " " or char == "\n" else " ")
         except UnicodeEncodeError:
-            if unicodedata.combining(char):
-                continue  # a mark no letter took
-            bare = "".join(SUBSTITUTES.get(part, part)
-                           for part in unicodedata.normalize("NFKD", char)
-                           if not unicodedata.combining(part))  # fmt: skip
+            parts = unicodedata.normalize("NFKD", char)
+            # A stroke through a sign negates it, as in U+2270: said, never dropped.
+            negated = "not " if {chr(0x338), chr(0x20D2)} & set(parts) else ""
+            bare = negated + "".join(SUBSTITUTES.get(part, part) for part in parts
+                                     if not unicodedata.combining(part))  # fmt: skip
             try:
                 bare.encode("cp1252")
                 out.append(bare or "?")
@@ -188,8 +188,8 @@ class Pdf:
         size = {1: 16.0, 2: 13.0}.get(level, 11.0)
         self.gap(size * 0.6)
         lines = wrapped(printable(text), "F2", size, WIDTH - 2 * MARGIN)
-        # Kept with what follows it: a heading of the next level and a line under that.
-        self._room(size * 1.3 * len(lines) + 60)
+        # Kept with what follows it: a heading of the next level, its own room, and a line.
+        self._room(size * 1.3 * len(lines) + {1: 96.0, 2: 66.0}.get(level, 40.0))
         top = self.y
         self.outline.append((level, text, len(self.pages) - 1, top))
         if key is not None and key not in self.places:

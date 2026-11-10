@@ -59,7 +59,7 @@ def test_the_audit_writes_its_report_as_a_pdf(tmp_path: Path, capsys) -> None:
 
 
 def test_a_bookmark_counts_every_level_under_it() -> None:
-    from manuscript_guard.pdfwriter import Pdf
+    from manuscript_guard.pdfwriter import MARGIN, Pdf
 
     pdf = Pdf(title="Audit")
     for level, title in ((1, "One"), (2, "Two"), (3, "Three"), (2, "Four"), (1, "Five")):
@@ -67,6 +67,15 @@ def test_a_bookmark_counts_every_level_under_it() -> None:
     reader = pypdf.PdfReader(io.BytesIO(pdf.bytes()), strict=True)
     first = reader.trailer["/Root"]["/Outlines"]["/First"].get_object()
     assert first["/Title"] == "One" and first["/Count"] == 3
+    # A heading at a page's foot goes over with the next level's under it.
+    for gap in (0, 20, 40, 60, 80, 100):
+        low = Pdf(title="Audit")
+        low.text("First")
+        low.y = MARGIN + 60 + gap
+        low.heading("A", 1)
+        low.heading("B", 2)
+        low.heading("C", 3)
+        assert low.outline[0][2] == low.outline[1][2] == low.outline[2][2], gap
 
 
 @pytest.mark.parametrize(("target", "said"), [
@@ -97,6 +106,11 @@ def test_a_pdf_is_refused_where_it_cannot_be_written(
     ("10" + chr(0x207B) + "³", "10-³"),
     # Word's optional hyphen, which would print as a hyphen in mid-line.
     ("hy" + chr(0xAD) + "phen", "hyphen"),
+    # A stroke negates its sign, and is said, not dropped (fix round of #618).
+    ("p " + chr(0x2270) + " 0.05", "p not <= 0.05"),
+    ("<" + chr(0x338), "not <"),
+    # A mark no letter takes, x-bar: "?", never the letter alone.
+    ("x" + chr(0x304), "x?"),
 ])  # fmt: skip
 def test_what_the_fonts_lack_is_written_as_a_reader_would_type_it(text: str, printed: str) -> None:
     from manuscript_guard.pdfwriter import printable

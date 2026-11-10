@@ -2478,7 +2478,7 @@ def _write_pdf(report, discrimination, args: argparse.Namespace) -> bool:
     try:
         data = report_pdf(report, discrimination, Path.cwd(),
                           [path.name for path in report.papers])  # fmt: skip
-    except Exception as exc:  # noqa: BLE001 - the text report is printed whatever the PDF does
+    except Exception as exc:  # noqa: BLE001 - said, and exit 2, as a --cited that fails
         from manuscript_guard.diagnostics import crashes
 
         if crashes.debugging():

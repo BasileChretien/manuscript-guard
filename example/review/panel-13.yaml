@@ -1,7 +1,7 @@
 schema: manuscript-guard/panel/1
 round: 13
 opened_on: 2026-11-09
-manuscript_sha256: f9dee96944e2e46b560e0c749183cfba272b0fb0761665e1a0d3f78b60535f30
+manuscript_sha256: 37455fd92f030fa395c59ad561c2a92db39b6613ae1e536b1c5a38c5e43d7bda
 blinded: false
 rationale: 'A revision round for the positive control. Round 12 found that its interval held
   the null, so it would have passed an analysis that finds nothing. The controls now take

@@ -1,6 +1,6 @@
 # The controls of the analysis
 
-## Methods
+## How the controls were run
 
 Three controls were put through the same 2 x 2 table and interval, by the same script; they
 were chosen after the first results were known, as the analysis plan records. A simulated
@@ -13,7 +13,7 @@ out one, the null, so that an analysis finding nothing would fail them. A negati
 took the first comparator and nausea, for which those rates give a ratio close to one, and
 its interval was to hold the null. {{method.controls}}
 
-## Results
+## What the controls gave
 
 The ratio of the simulated control was {{results.control.simulated.point}} (95% CI
 {{results.control.simulated.ci_low}} to {{results.control.simulated.ci_high}}), around the

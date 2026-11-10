@@ -5,11 +5,11 @@ round: 13
 reviewer: pharmacoepidemiologist
 reviewed_by: Claude Code
 reviewed_on: '2026-11-10'
-manuscript_sha256: f9dee96944e2e46b560e0c749183cfba272b0fb0761665e1a0d3f78b60535f30
+manuscript_sha256: 37455fd92f030fa395c59ad561c2a92db39b6613ae1e536b1c5a38c5e43d7bda
 file_sha256:
   main.md: e4930aa2a68ea9cad8492d6b7b79250e03ba80dc38165760f29ad6f814ea6a70
   supplementary/S1_code_lists.md: 8c462c203bf3c08ac5ced6eaf25d38b56f2239502952f8d8e6b3d23cbb05b9b3
-  supplementary/S2_controls.md: 407d3c07329dd3a9a811a991a7b45829ee0d9e40fa345eef7a5a1d95cb7ee675
+  supplementary/S2_controls.md: 6103b32ccfd9a853c3ce3a9e7006a050fb85cef4ec2d433c2a1fcfee6aa20468
 verdict: pass
 summary: The positive control now takes the third comparator and hepatic injury, whose ratio
   the generator's rates put well below one, and its interval leaves the null out, as the simulated
@@ -21,9 +21,9 @@ summary: The positive control now takes the third comparator and hepatic injury,
 findings:
 - id: r13-pe-01
   severity: comment
-  where: Supplementary file S2, Methods
+  where: Supplementary file S2, how the controls were run
   finding: The positive control's pair was chosen after its estimate had been seen, which the
     plan says. The rule it was chosen by, the ratio the generator's rates put furthest from
     one but the study's own, reads no estimate, but it too was settled with the estimates in
     view; in a real study the rule of choice would be written before the data were read.
-reading_sha256: 9eea151f8dc8ad7ad25586b4874220ae6f2eaceba1bcb8ad28df68fd073849d1
+reading_sha256: 180451e16032c1e57a9222a61d02f2cfcc358ebefb5a6ae807735fce893d997b

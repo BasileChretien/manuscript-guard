@@ -37,8 +37,16 @@ expected:
       link of each kind of target
   - reading: notation
     why: >-
-      an interval after a link on its line, "[text](https://...) (CI 95% 0.3 to 0.4)", is
-      read, where the link's target hid it up to the next `)`
+      a new finding, `notation-space-missing`, with its count in every report: a number
+      typed against a word, "0.41points", "2ndyear", or a word against a signed number,
+      "to+0.77", is a space left out; the inputs now hold these and lookalikes, "p53mutant",
+      "30min" (the author's Abstract, 2026-11-10)
+  - reading: abstract against results
+    why: >-
+      the Abstract's number a space was left out of is read, "512.3points", "to+1012.3",
+      "score:1112.3", and found where the paper reports it; an ordinal against its word,
+      "2ndyear", is not looked for; the inputs now hold each (the author's Abstract,
+      2026-11-10)
   - reading: reply numbers
     why: >-
       a number in a reply after a link on its line is read and, unbound, reported, where the
@@ -75,11 +83,9 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G12 holds the plan's Software section to the packages the scripts of analysis/ and
-      figures/ load and counts both (`software_planned`, `software_loaded`): a package an
-      item names that no script loads is `planned-package-unloaded`, a warning from the
-      analysis stage on, and one a script loads that no item names is
-      `plan-package-unnamed`, a note (#592)
+      G14's counts, which `check` reports, hold a new one, `notation_spaces_missing`: the
+      numbers typed against a word, "0.41points", "2ndyear", or a word against a signed
+      number, "to+0.77" (the author's Abstract, 2026-11-10)
   - reading: data dates
     why: >-
       the finding says the date was emitted as a string rather than typed, and its hint adds
@@ -187,15 +193,6 @@ expected:
       are no longer loose, and the preamble's `\input name` without braces is followed; the
       inputs now hold placed parts and pictures, inside a figure and under headings
       (Known gaps, 2026-10-27)
-  - reading: abbreviations
-    why: >-
-      a bold word that goes on into its sentence across a line break pandoc prints as a
-      space, "**Funding**" over "of the MRC was cut" in one paragraph, a space before the
-      break or none, is that sentence's first word, as on its line, and no longer a
-      statement's label, so the paragraph's capitals are reported as undefined again; the
-      inputs now hold such paragraphs, and lookalikes still quiet: a label with its statement
-      on the next line, "**Funding**" over "The EPSRC paid ...", and a label before a hard
-      line break, two spaces or a backslash
   - reading: recycled passages
     why: >-
       a citation by author and year in parentheses in the earlier paper, "(Smith et al.,
@@ -234,3 +231,10 @@ expected:
       refused without one or with another value; a `holds-null` control that gives one is
       refused; the reading reports each control's null, and the inputs draw each of these
       (Basile, 2026-11-09, round 1 of wave 3's PR 3)
+  - reading: abbreviations
+    why: >-
+      the initials a contributions statement names, two to four capitals, are people wherever
+      the paper uses them, "by a single author (CD)" in the Methods, and no longer reported
+      as undefined; an initial with a hyphen is taken whole and as its letters, never as its
+      parts; the inputs now hold such a use beside the statements (the author's paper,
+      2026-11-10)

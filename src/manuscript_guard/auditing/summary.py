@@ -33,6 +33,7 @@ KINDS = {
     "notation-p-symbol": "P values written two ways",
     "notation-percent": "Percentages written two ways",
     "notation-unit": "Numbers run into their units",
+    "notation-space-missing": "Numbers and words run together",
     "term-avoided": "Terms the field avoids",
     "vocabulary-conflict": "One thing named two ways",
     "code-name-in-prose": "Names from the code in the text",

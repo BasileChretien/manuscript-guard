@@ -648,6 +648,10 @@ NOT_ABBREVIATIONS = (
     "**Competing interests**\n\nPLM and RDS declare none.",
     "**Funding**\nThe EPSRC paid for the first year.",
     "**Funding**  \nof the ESRC, grant 2019/4.", "**Funding**\\\nof the AHRC, grant 2020/7.",
+    # Initials in brackets in a sentence of the paper, which the contributions statement
+    # under it names.
+    "interviews were run by one author (EF) and checked (GH and EF)\n\n**Author "
+    "contributions:** EF and GH designed it.",
 )  # fmt: skip
 
 #: Abbreviations beside those, each still reported as undefined: one near a time of day,
@@ -716,6 +720,73 @@ def capitalised(draw: st.DrawFn) -> tuple[str, list[str]]:
     planted = draw(st.permutations([*NOT_ABBREVIATIONS, *still]))
     text, _starts = _paragraphs(draw, planted)
     return text, sorted(short for _written, short in STILL_ABBREVIATIONS)
+
+
+#: A contributions statement as each is typed, `{}` the initials it names: under a heading
+#: that names it, and run on from a bold label that does.
+CONTRIBUTED_HEADED = (
+    "# Authors' contributions\n\n{} designed the study.",
+    "# CRediT authorship contribution statement\n\n{}: conceptualization.",
+    "## Contributors\n\n{} wrote the first draft.",
+)
+CONTRIBUTED_RUN_IN = (
+    "**Authors\\' contributions** {} analysed the data.",
+    "**Author contributions:** {} collected the data.",
+    "__Contributors__ {} revised the paper.",
+)
+#: The initials each names, the second's with a hyphen, which the text writes without; and
+#: those the text uses only otherwise than in a bracket of initials: in a sentence, as an
+#: author named AE beside the adverse events, and in a bracket with an institution.
+INITIALS_HEADED = (("CD", "CD"), ("JMD", "JMD"))
+INITIALS_RUN_IN = (("BC", "BC"), ("P-MM", "PMM"))
+INITIAL_IN_A_SENTENCE = ("AE", "AEs were frequent")
+INITIAL_BESIDE_ANOTHER = ("RDS", "UNICAEN")
+#: The capitals of the other statements and of a long word in a contributions statement,
+#: each used in the text and so reported undefined there; and the part of an initial with a
+#: hyphen, `MM` of `P-MM`, used alone.
+NOT_INITIALS = (
+    ("**Acknowledgements** We thank the CEMU.", "CEMU"),
+    ("# Funding\n\nThe ANR paid for it.", "ANR"),
+)
+INSTITUTION_IN_CONTRIBUTIONS = "UNICAEN"
+INITIAL_PART = "MM"
+
+
+@st.composite
+def initials_named(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A manuscript whose Methods use, each in a paragraph of its own and in an order drawn,
+    the initials two contributions statements name, one under a heading and one run on
+    from a bold label, each drawn among its forms, with an institution in capitals in the
+    first: each alone in a bracket, the second's two in one bracket, joined as drawn; an
+    initial in a sentence and one in a bracket beside the institution; the capitals of the
+    acknowledgements and of the funding; and the part of an initial with a hyphen. Then a
+    Declarations heading, the two statements and the other statements, in an order drawn.
+    And the abbreviations it leaves undefined, in order: those but the initials in a
+    bracket of initials."""
+
+    def named(initials: tuple[tuple[str, str], ...]) -> str:
+        return " and ".join(written for written, _used in initials)
+
+    headed = draw(st.sampled_from(CONTRIBUTED_HEADED)).format(
+        f"{named((*INITIALS_HEADED, INITIAL_IN_A_SENTENCE))} at {INSTITUTION_IN_CONTRIBUTIONS}")
+    run_in = draw(st.sampled_from(CONTRIBUTED_RUN_IN)).format(
+        named((*INITIALS_RUN_IN, INITIAL_BESIDE_ANOTHER)))
+    alone = [used for _written, used in INITIALS_HEADED]
+    together = draw(st.sampled_from((" and ", ", ", "; ", " & "))).join(
+        used for _written, used in INITIALS_RUN_IN)
+    shorts = [*alone, together, *(short for _statement, short in NOT_INITIALS),
+              ", ".join(INITIAL_BESIDE_ANOTHER), INITIAL_PART]  # fmt: skip
+    # Words in which no short form's letters stand in order, so that none is a definition.
+    uses = [f"interviews were run by one author ({short})" for short in shorts]
+    uses.append(INITIAL_IN_A_SENTENCE[1])
+    methods, _starts = _paragraphs(draw, draw(st.permutations(uses)))
+    statements = draw(st.permutations([run_in, *(statement for statement, _ in NOT_INITIALS)]))
+    # The heading's statement comes last, or the statement after it would be under it.
+    declarations = "\n\n".join([*statements, headed])
+    text = f"# Methods\n\n{methods}# Declarations\n\n{declarations}\n"
+    undefined = [short for _statement, short in NOT_INITIALS]
+    return text, sorted([*undefined, *INITIAL_BESIDE_ANOTHER, INITIAL_IN_A_SENTENCE[0],
+                         INITIAL_PART])  # fmt: skip
 
 
 #: Statistical abbreviations: those G14's list lets stand undefined, and some it does not.
@@ -787,6 +858,93 @@ def defined_elsewhere(draw: st.DrawFn) -> dict[str, Any]:
     }  # fmt: skip
 
 
+#: The paragraphs that open a glossary with no heading over it, as a paper typed in Word has
+#: one: a sentence, a line in bold or in italics, a line with a colon, one in capitals.
+GLOSSARY_OPENERS = (
+    "List of abbreviations and acronyms used in the text, tables, and figures.",
+    "**List of abbreviations**",
+    "Abbreviations used in this paper:",
+    "_Glossary of terms_",
+    "ACRONYMS",
+)
+#: The labels such a glossary groups its entries under, a letter or a range; and an entry
+#: whose short form has no capital, an item of its own as Word's list writes each.
+GLOSSARY_LETTERS = ("**A--C**", "D\N{EN DASH}I", "__M__", "R\N{EM DASH}V")
+GLOSSARY_LOWER = "- **df**: degrees of freedom"
+#: A letter's label as a heading of its own, which does not end the glossary, and as a bold
+#: line where the paper has no heading.
+LETTER_HEADING = ("### L", "**L**")
+#: The second glossary's entry, used after it.
+GLOSSARY_LATER = ("- **VAERS**: vaccine adverse event reporting system", "VAERS")
+#: What follows a glossary with no title and is text, each holding an abbreviation it leaves
+#: undefined: a paragraph that opens like an entry with a word for its short form, right
+#: after the last entry, then a sentence.
+AFTER_GLOSSARY = (("Note: the NIH paid for the database", "NIH"),
+                  ("the UMC was consulted for each signal", "UMC"))  # fmt: skip
+#: A section's first paragraph, shaped like an entry, which the heading over it keeps out of
+#: the glossary that ends above the heading.
+UNDER_A_HEADING = ("EMA: the agency approved the protocol", "EMA")
+#: A paragraph that names abbreviations without opening on the word, and an entry after it,
+#: which is then text.
+NOT_AN_OPENER = ("We list the abbreviations below.", "NCI: the institute's own terms", "NCI")
+
+
+@st.composite
+def glossaries_untitled(draw: st.DrawFn) -> dict[str, Any]:
+    """A manuscript with two glossaries that a paragraph opens, each opener drawn from
+    `GLOSSARY_OPENERS`, as a paper typed in Word has them.
+
+    The first, at the end of the Methods, holds every form of `GLOSSARY_FORMS`, an unused
+    entry and an entry with no capital, in an order drawn, under a letter's label and with
+    the other labels and a letter's heading drawn among them; neither the entry with no
+    capital nor the heading is last. The Discussion's heading ends it, and the Discussion
+    opens with a paragraph shaped like an entry. The Discussion then uses each entry, holds
+    the second glossary, the paragraphs `AFTER_GLOSSARY` right after it, a paragraph that
+    names abbreviations without opening on the word with an entry after it, and the use of
+    the second glossary's entry. And the same manuscript with its headings typed as bold
+    lines, with no heading."""
+
+    def placed(blocks: list[str], block: str, last: bool) -> list[str]:
+        at = draw(st.integers(0, len(blocks) if last else len(blocks) - 1))
+        return [*blocks[:at], block, *blocks[at:]]
+
+    def untitled(letter: str) -> str:
+        blocks = list(draw(st.permutations([*GLOSSARY_FORMS, GLOSSARY_UNUSED[0]])))
+        blocks = placed(blocks, GLOSSARY_LOWER, last=False)
+        blocks = placed(blocks, letter, last=False)
+        for label in GLOSSARY_LETTERS[1:]:
+            blocks = placed(blocks, label, last=True)
+        return "\n\n".join([draw(st.sampled_from(GLOSSARY_OPENERS)), GLOSSARY_LETTERS[0],
+                            *blocks])  # fmt: skip
+
+    def later() -> str:
+        blocks = [draw(st.sampled_from(GLOSSARY_LETTERS)), GLOSSARY_LATER[0]]
+        return "\n\n".join([draw(st.sampled_from(GLOSSARY_OPENERS)), *blocks,
+                            *(written for written, _short in AFTER_GLOSSARY)])  # fmt: skip
+
+    uses = [f"the {short} was computed" for short in GLOSSARY_USED]
+    discussion, _starts = _paragraphs(draw, draw(st.permutations(uses)))
+    tail, _starts = _paragraphs(draw, [later(), "\n\n".join(NOT_AN_OPENER[:2]),
+                                       f"the {GLOSSARY_LATER[1]} was searched"])  # fmt: skip
+    methods, _starts = _paragraphs(draw, ["the reports were read in turn"])
+    shared = {"methods": methods, "discussion": discussion, "tail": tail}
+
+    def manuscript(headed: bool) -> str:
+        title = (lambda name: f"# {name}") if headed else (lambda name: f"**{name}**")
+        first = untitled(LETTER_HEADING[0] if headed else LETTER_HEADING[1])
+        return (f"{title('Methods')}\n\n{shared['methods']}{first}\n\n{title('Discussion')}"
+                f"\n\n{UNDER_A_HEADING[0]}\n\n{shared['discussion']}{shared['tail']}")  # fmt: skip
+
+    undefined = [short for _written, short in (*AFTER_GLOSSARY, UNDER_A_HEADING)]
+    return {
+        "headed": manuscript(True),
+        "headless": manuscript(False),
+        "found": sorted([*(("abbreviation-undefined", short)
+                           for short in (*undefined, NOT_AN_OPENER[2])),
+                         ("abbreviation-unused", GLOSSARY_UNUSED[1])]),
+    }  # fmt: skip
+
+
 #: The same pieces, as blocks a manuscript of the pool is drawn with.
 ABBREVIATION_BLOCKS = tuple(
     f"\n\n{written}\n\n"
@@ -795,6 +953,9 @@ ABBREVIATION_BLOCKS = tuple(
         *NOT_ABBREVIATIONS,
         *RESTATED,
         "# Abbreviations\n\n" + "\n\n".join(GLOSSARY_FORMS),
+        # A glossary a sentence opens, with no heading, as Word papers type one.
+        "\n\n".join((GLOSSARY_OPENERS[0], GLOSSARY_LETTERS[0], *GLOSSARY_FORMS[:3],
+                     GLOSSARY_LOWER, GLOSSARY_LETTERS[1], GLOSSARY_LATER[0])),
     )
 )
 
@@ -3359,10 +3520,29 @@ BOLD_COUNTED = (
     "\n\n----------\n**under** a rule.\n\n",
     "\n\nA heading\n---------\n**under** a heading.\n\n",
     "\n\n- - -\n**after** spaced dashes.\n\n",
+    # Bold that only looks like structure: a paragraph that opens in bold and goes on, a
+    # colon inside bold in a sentence, and bold inside a list item after its first word;
+    # emphasis that a hard wrap puts at a line's start in the middle of its paragraph, with
+    # its stop after it or inside it; and a list's lead-in of words, as a model writes one
+    # (round 1 of #614).
+    "\n\n**Most** of them passed. ",
+    "\n\nIt was **plain: here** then. ",
+    "\n\n- the **AIC** was lowest\n\n",
+    " it was\n**not significant**. Then ",
+    " it was\n**clearly lower.** Next ",
+    "\n\n- **Improved efficiency**: the dose rose\n\n",
 )
 #: Bold it does not count: in a table of each kind pandoc reads, `**` paired across cells
-#: among them, and a structured abstract's label.
+#: among them, and a structured abstract's label. And bold that is structure, as a paper
+#: typed in Word sets it: a heading typed as a bold paragraph, a letters' label, a list
+#: of abbreviations' terms, a run-in label, a legend's label with its stop inside its bold
+#: or after it.
 BOLD_NOT_COUNTED = (
+    "\n\n**Participants**\n\n",
+    "\n\n**A--C**\n\n- **AIC**: Akaike information criterion\n- **BMI**: body mass index\n\n",
+    "\n\n**Data collection:** ",
+    "\n\n**Supplementary Figure 2: student interaction with online resources.** Panel A ",
+    "\n\n**Table 1**. ",
     "\n\n  --------------------\n  **A**     **B\n            c**\n  --------- ----------\n"
     "  1         **2**\n\n  3         4\n  --------------------\n\n",
     "\n\n---------- ----------\n**a**      **b\n           c**\n\n1          2\n"
@@ -6625,7 +6805,27 @@ NOTATED = (
     "95% CI 1.2 to 3.4", "95% CI 1.2-3.4", "(95% CI {{results.low}} to {{results.high}})",
     "P = {{results.p}}", "5%", "5 %", "5mg", "5 mg", "{{results.dose}}mL",
     "(95% CI 80%-93%; 12 studies)", "2500g", "16,000g", "(CI 95%-0.3 to 0.4)",
+    # A space left out around a number, and lookalikes (`RUN_ON`, `NOT_RUN_ON`).
+    "0.41points", "to+0.77", "2ndyear", "p53mutant", "30min",
 )  # fmt: skip
+
+#: A space left out around a number, each counted once by `notation-space-missing`; and what
+#: is no such thing: a unit closed up, which `notation-unit` counts (two of them here), a name
+#: a number stands inside, an ordinal alone, a decade, a number in hexadecimal and one in
+#: scientific notation, a letter and a sign.
+RUN_ON = ("0.41points", "10hours", "2ndyear", "to+0.77", "12years", "{{results.n}}patients",
+          "5mins", "rose to+0.5.", "to+{{results.high}}")  # fmt: skip
+NOT_RUN_ON = ("30min", "p53mutant", "COVID19cases", "3rd", "2020s", "0xff", "1.2e+10",
+              "5mg", "x+1")  # fmt: skip
+
+
+@st.composite
+def run_on_numbers(draw: st.DrawFn) -> str:
+    """A manuscript with every piece of `RUN_ON` and `NOT_RUN_ON`, each in a sentence of its
+    own, in an order drawn."""
+    planted = draw(st.permutations([*RUN_ON, *NOT_RUN_ON]))
+    text, _starts = _paragraphs(draw, (f"it was {piece} then" for piece in planted))
+    return "# Results\n\n" + text
 
 #: A coding dictionary's release typed beside its name and elsewhere, and its name inside a
 #: longer word: what G2 finds typed where it should be bound.
@@ -7648,11 +7848,22 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: there; one that agrees as rounded; one with two counterparts, each differing in one
 #: number; one whose counterpart is at another level; a test whose P differs, and one whose
 #: P could be the same; a number reported to one place more; one in the Methods; one only
-#: in the Discussion; one in a table under the Discussion; and one in the supplement.
+#: in the Discussion; one in a table under the Discussion; and one in the supplement. And
+#: a space left out, each number in the Methods: a number typed against a word, a word
+#: against a signed number, a label closed up against its number, a whole number against a
+#: word that opens like its ordinal's suffix ("1201students"); an ordinal against its word,
+#: which gives no number to look for; and an estimate closed up against its interval,
+#: whose bounds are reported and the estimate not (round 1 of #613).
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
+    "against a word", "after a word", "after a label", "against a suffix's word", "ordinal",
+    "estimate closed up",
 )  # fmt: skip
+#: How each kind of space left out is typed, `{}` its number, and what it starts at.
+RUN_ON_NUMBERS = {"against a word": ("The value was {}points here.", 900),
+                  "after a word": ("The value rose to+{} here.", 1000),
+                  "after a label": ("The value was score:{} here.", 1100)}  # fmt: skip
 #: An estimate's abbreviation and its words.
 ESTIMATE_NAMES = (("OR", "odds ratio"), ("HR", "hazard ratio"), ("RR", "risk ratio"),
                   ("MD", "mean difference"))  # fmt: skip
@@ -7734,6 +7945,34 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                 printed = _test_printed(test, df, statistic, sign, given)
                 abstract.append((kind, f"We found {printed}."))
                 results.append(f"We found {_test_printed(test, df, statistic, '=', p)}.")
+        elif kind == "ordinal":
+            place = draw(st.integers(2, 9))
+            rank = f"{place}{ {2: 'nd', 3: 'rd'}.get(place, 'th') }" + draw(
+                st.sampled_from(("year", "line", "grade", "trimester")))  # fmt: skip
+            abstract.append((kind, f"They were in {rank} here."))
+            looked.append((kind, rank, "absent"))
+        elif kind == "against a suffix's word":
+            count = 1201 + 20 * draw(st.integers(0, 40))
+            said = f"The count was {count}students here."
+            methods.append(f"It was {count} then.")
+            looked.append((kind, f"{count}students", "exact"))
+            abstract.append((kind, said))
+        elif kind == "estimate closed up":
+            estimate = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
+            low, high = estimate + 1300, estimate + 1400
+            # No percent sign, which LaTeX escapes: tests/test_audit.py reads "45%(95%CI:...".
+            written = f"{estimate + 1200}(CI:{low}-{high})"
+            results.append(f"It ranged from {low} to {high}.")
+            looked.append((kind, written[:-1], "not found"))
+            abstract.append((kind, f"The share was {written} here."))
+        elif kind in RUN_ON_NUMBERS:
+            written, base = RUN_ON_NUMBERS[kind]
+            value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
+            shown = str(value + base)
+            said = written.format(shown)
+            methods.append(f"It was {shown} then.")
+            looked.append((kind, said.split()[-2], "exact"))
+            abstract.append((kind, said))
         else:
             # Never a whole number of tenths, which would print as the number rounded.
             value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10

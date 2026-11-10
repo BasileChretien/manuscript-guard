@@ -928,10 +928,6 @@ def test_the_example_demonstrates_every_public_emitter_api() -> None:
     # The methods-writer skill's references/code-steps.md shows it, and
     # tests/test_emit_code_step.py runs it in a repository and without one.
     public -= {"code_step"}
-    # `control` publishes a control of the analysis (items 5 and 11). The example carries one
-    # of each kind from wave 3's third pull request, which takes this line out; until then
-    # tests/test_emit_controls.py and tests/test_r_emitter.py run it.
-    public -= {"control"}
 
     # Parsed, not searched. `.code_list(` inside a comment or a docstring satisfies a text
     # search, so an example could stop demonstrating an API while this still passed - the

@@ -858,6 +858,93 @@ def defined_elsewhere(draw: st.DrawFn) -> dict[str, Any]:
     }  # fmt: skip
 
 
+#: The paragraphs that open a glossary with no heading over it, as a paper typed in Word has
+#: one: a sentence, a line in bold or in italics, a line with a colon, one in capitals.
+GLOSSARY_OPENERS = (
+    "List of abbreviations and acronyms used in the text, tables, and figures.",
+    "**List of abbreviations**",
+    "Abbreviations used in this paper:",
+    "_Glossary of terms_",
+    "ACRONYMS",
+)
+#: The labels such a glossary groups its entries under, a letter or a range; and an entry
+#: whose short form has no capital, an item of its own as Word's list writes each.
+GLOSSARY_LETTERS = ("**A--C**", "D\N{EN DASH}I", "__M__", "R\N{EM DASH}V")
+GLOSSARY_LOWER = "- **df**: degrees of freedom"
+#: A letter's label as a heading of its own, which does not end the glossary, and as a bold
+#: line where the paper has no heading.
+LETTER_HEADING = ("### L", "**L**")
+#: The second glossary's entry, used after it.
+GLOSSARY_LATER = ("- **VAERS**: vaccine adverse event reporting system", "VAERS")
+#: What follows a glossary with no title and is text, each holding an abbreviation it leaves
+#: undefined: a paragraph that opens like an entry with a word for its short form, right
+#: after the last entry, then a sentence.
+AFTER_GLOSSARY = (("Note: the NIH paid for the database", "NIH"),
+                  ("the UMC was consulted for each signal", "UMC"))  # fmt: skip
+#: A section's first paragraph, shaped like an entry, which the heading over it keeps out of
+#: the glossary that ends above the heading.
+UNDER_A_HEADING = ("EMA: the agency approved the protocol", "EMA")
+#: A paragraph that names abbreviations without opening on the word, and an entry after it,
+#: which is then text.
+NOT_AN_OPENER = ("We list the abbreviations below.", "NCI: the institute's own terms", "NCI")
+
+
+@st.composite
+def glossaries_untitled(draw: st.DrawFn) -> dict[str, Any]:
+    """A manuscript with two glossaries that a paragraph opens, each opener drawn from
+    `GLOSSARY_OPENERS`, as a paper typed in Word has them.
+
+    The first, at the end of the Methods, holds every form of `GLOSSARY_FORMS`, an unused
+    entry and an entry with no capital, in an order drawn, under a letter's label and with
+    the other labels and a letter's heading drawn among them; neither the entry with no
+    capital nor the heading is last. The Discussion's heading ends it, and the Discussion
+    opens with a paragraph shaped like an entry. The Discussion then uses each entry, holds
+    the second glossary, the paragraphs `AFTER_GLOSSARY` right after it, a paragraph that
+    names abbreviations without opening on the word with an entry after it, and the use of
+    the second glossary's entry. And the same manuscript with its headings typed as bold
+    lines, with no heading."""
+
+    def placed(blocks: list[str], block: str, last: bool) -> list[str]:
+        at = draw(st.integers(0, len(blocks) if last else len(blocks) - 1))
+        return [*blocks[:at], block, *blocks[at:]]
+
+    def untitled(letter: str) -> str:
+        blocks = list(draw(st.permutations([*GLOSSARY_FORMS, GLOSSARY_UNUSED[0]])))
+        blocks = placed(blocks, GLOSSARY_LOWER, last=False)
+        blocks = placed(blocks, letter, last=False)
+        for label in GLOSSARY_LETTERS[1:]:
+            blocks = placed(blocks, label, last=True)
+        return "\n\n".join([draw(st.sampled_from(GLOSSARY_OPENERS)), GLOSSARY_LETTERS[0],
+                            *blocks])  # fmt: skip
+
+    def later() -> str:
+        blocks = [draw(st.sampled_from(GLOSSARY_LETTERS)), GLOSSARY_LATER[0]]
+        return "\n\n".join([draw(st.sampled_from(GLOSSARY_OPENERS)), *blocks,
+                            *(written for written, _short in AFTER_GLOSSARY)])  # fmt: skip
+
+    uses = [f"the {short} was computed" for short in GLOSSARY_USED]
+    discussion, _starts = _paragraphs(draw, draw(st.permutations(uses)))
+    tail, _starts = _paragraphs(draw, [later(), "\n\n".join(NOT_AN_OPENER[:2]),
+                                       f"the {GLOSSARY_LATER[1]} was searched"])  # fmt: skip
+    methods, _starts = _paragraphs(draw, ["the reports were read in turn"])
+    shared = {"methods": methods, "discussion": discussion, "tail": tail}
+
+    def manuscript(headed: bool) -> str:
+        title = (lambda name: f"# {name}") if headed else (lambda name: f"**{name}**")
+        first = untitled(LETTER_HEADING[0] if headed else LETTER_HEADING[1])
+        return (f"{title('Methods')}\n\n{shared['methods']}{first}\n\n{title('Discussion')}"
+                f"\n\n{UNDER_A_HEADING[0]}\n\n{shared['discussion']}{shared['tail']}")  # fmt: skip
+
+    undefined = [short for _written, short in (*AFTER_GLOSSARY, UNDER_A_HEADING)]
+    return {
+        "headed": manuscript(True),
+        "headless": manuscript(False),
+        "found": sorted([*(("abbreviation-undefined", short)
+                           for short in (*undefined, NOT_AN_OPENER[2])),
+                         ("abbreviation-unused", GLOSSARY_UNUSED[1])]),
+    }  # fmt: skip
+
+
 #: The same pieces, as blocks a manuscript of the pool is drawn with.
 ABBREVIATION_BLOCKS = tuple(
     f"\n\n{written}\n\n"
@@ -866,6 +953,9 @@ ABBREVIATION_BLOCKS = tuple(
         *NOT_ABBREVIATIONS,
         *RESTATED,
         "# Abbreviations\n\n" + "\n\n".join(GLOSSARY_FORMS),
+        # A glossary a sentence opens, with no heading, as Word papers type one.
+        "\n\n".join((GLOSSARY_OPENERS[0], GLOSSARY_LETTERS[0], *GLOSSARY_FORMS[:3],
+                     GLOSSARY_LOWER, GLOSSARY_LETTERS[1], GLOSSARY_LATER[0])),
     )
 )
 

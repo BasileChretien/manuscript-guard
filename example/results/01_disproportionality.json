@@ -2,16 +2,16 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "613d9d81dfe29183c3385ce0cdb1517f865c62ce801feb31647fdcf2b9d5bc90",
-    "generated_at": "2026-10-22T02:23:13+00:00",
+    "generated_by_sha256": "0adaae255304adc05235c319f0fcd9a31d02642458cb4f565289fbdf04090982",
+    "generated_at": "2026-11-09T19:13:07+00:00",
     "tool": {
       "name": "manuscript-guard",
-      "version": "0.2.457"
+      "version": "0.2.485"
     },
     "vcs": {
-      "sha": "ea38a7c8eb46f784e30b7831df55dd55a111a65c",
+      "sha": "9c4b79cce187b33a19f3db63a4ce96bfbd81f97d",
       "dirty": false,
-      "branch": "claude/goofy-swanson-8680f2"
+      "branch": "claude/w3-example-controls"
     },
     "inputs": [
       {
@@ -26,6 +26,14 @@
         "sha256": "e1524095cdb2be0e37bcef224d837f1ed2f1a525b8272b7d9a4251ba53c55fe1",
         "raw_sha256": "e1524095cdb2be0e37bcef224d837f1ed2f1a525b8272b7d9a4251ba53c55fe1",
         "bytes": 2489
+      },
+      {
+        "path": "data/control_simulated.csv",
+        "sha256": "bf5c80c63da1c106cf451cdecec7e6b51111491387bcbd8642fd3ba2f4e0de15",
+        "raw_sha256": "bf5c80c63da1c106cf451cdecec7e6b51111491387bcbd8642fd3ba2f4e0de15",
+        "bytes": 114679,
+        "synthetic": true,
+        "control": "control.simulated"
       },
       {
         "path": "data/event_terms.txt",
@@ -166,6 +174,69 @@
       "display": "3",
       "role": "parameter",
       "read": true
+    },
+    "control.simulated.point": {
+      "value": 2.318616753399362,
+      "display": "2.32",
+      "digits": 2
+    },
+    "control.simulated.ci_low": {
+      "value": 1.6170863390769152,
+      "display": "1.62",
+      "digits": 2,
+      "bounds": "control.simulated.point",
+      "bound": "low",
+      "level": "95%"
+    },
+    "control.simulated.ci_high": {
+      "value": 3.3244877031197864,
+      "display": "3.32",
+      "digits": 2,
+      "bounds": "control.simulated.point",
+      "bound": "high",
+      "level": "95%"
+    },
+    "control.positive.point": {
+      "value": 0.39876585144927534,
+      "display": "0.40",
+      "digits": 2
+    },
+    "control.positive.ci_low": {
+      "value": 0.2839861345840917,
+      "display": "0.28",
+      "digits": 2,
+      "bounds": "control.positive.point",
+      "bound": "low",
+      "level": "95%"
+    },
+    "control.positive.ci_high": {
+      "value": 0.5599365071641534,
+      "display": "0.56",
+      "digits": 2,
+      "bounds": "control.positive.point",
+      "bound": "high",
+      "level": "95%"
+    },
+    "control.negative.point": {
+      "value": 0.9744052155923346,
+      "display": "0.97",
+      "digits": 2
+    },
+    "control.negative.ci_low": {
+      "value": 0.8278599052993753,
+      "display": "0.83",
+      "digits": 2,
+      "bounds": "control.negative.point",
+      "bound": "low",
+      "level": "95%"
+    },
+    "control.negative.ci_high": {
+      "value": 1.1468915429962672,
+      "display": "1.15",
+      "digits": 2,
+      "bounds": "control.negative.point",
+      "bound": "high",
+      "level": "95%"
     },
     "signal.met": {
       "value": true,
@@ -801,29 +872,46 @@
   "steps": {
     "ror": {
       "lines": [
-        76,
-        80
+        96,
+        96
       ],
-      "digest": "43994ea0f861fd9c11dd95e974d11a8092dac8245846d047087c06a0e4464051"
+      "digest": "e69d6eb9f9dd3caefdeb61cc79d54cc3949734cc7785d86b9232f1c682fdd419",
+      "follows": [
+        "two_by_two"
+      ]
     },
     "ci": {
       "lines": [
-        84,
-        89
+        100,
+        103
       ],
-      "digest": "341304bd156666d20b98966338e40a99de96809c7d95a808720cc8043ee94978"
+      "digest": "033eedd89290d338f32843149b2b081eee92db0cc0183f35529b35173648039d",
+      "follows": [
+        "wald"
+      ]
+    },
+    "controls": {
+      "lines": [
+        112,
+        120
+      ],
+      "digest": "7f91171915da8a839ee7b7d334f70e347218685d54893354ec229b6e60abde97",
+      "follows": [
+        "two_by_two",
+        "wald"
+      ]
     },
     "signal": {
       "lines": [
-        101,
-        103
+        132,
+        134
       ],
       "digest": "d2537ffaa2c3277dcd94b7608b1cc89116a4e9ad3860b5712e804e73052db159"
     },
     "adjusted": {
       "lines": [
-        112,
-        140
+        143,
+        171
       ],
       "digest": "ffe9e3b0807b5cd1744bf856bd5ad0b90a3081b0f3f2bc256583f4b4c43aa2cf"
     }
@@ -897,6 +985,19 @@
         "latest": "2024",
         "count": 4000
       }
+    }
+  },
+  "controls": {
+    "control.simulated": {
+      "inputs": [
+        "data/control_simulated.csv"
+      ]
+    },
+    "control.positive": {
+      "inputs": []
+    },
+    "control.negative": {
+      "inputs": []
     }
   }
 }

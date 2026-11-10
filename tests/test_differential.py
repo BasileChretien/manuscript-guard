@@ -203,6 +203,13 @@ def test_under_another_hash_seed_a_reading_answers_the_same(
 #: is a mutant that the review of #181 found alive: the offset of a quotation's lines losing
 #: one character at each line break.
 CHANGED = {
+    "a glossary a sentence opens is not read": (
+        "gates/glossary.py",
+        '    r"[ \\t]*[*_]{0,3}(?:list[ \\t\\n]+of[ \\t\\n]+)?(?:abbreviations|acronyms|glossary)'
+        '\\b",\n',
+        '    r"(?!)",\n',
+        "abbreviations",
+    ),
     "the offset of a quotation": (
         "gates/vocabulary.py",
         "        offset += len(line) + 1\n",

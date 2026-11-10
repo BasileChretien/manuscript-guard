@@ -5150,6 +5150,21 @@ ask for the list and for the expansion at first use as well, so a definition in 
 gives the glossary's meaning again is not reported as given twice; a second one in the text
 is, and one that gives another meaning is reported as two meanings.
 
+**A glossary may have no title.** A paper typed in Word often opens its list with a sentence
+and no heading: "List of abbreviations and acronyms used in the text, tables, and figures.",
+then letters' labels in bold, "**A--C**", and an item for each entry (the author's paper,
+2026-11-10). Read as text, every item was a use of its short form, so each entry the text
+did not define again was reported undefined. A paragraph that opens with "List of
+abbreviations", "List of acronyms", "Abbreviations", "Acronyms" or "Glossary", in any case
+and past the marks of bold or italics, opens a glossary where an entry follows it. The
+glossary runs over the paragraphs that open with an entry and the labels of letters between
+them, alone in their paragraph or as a heading, "### L". It ends with the last of them that
+has an entry shaped like an abbreviation: "- **df**: degrees of freedom" is read where it
+stands among the others, and "Note: the scores were ..." after the last entry is text. Any
+other paragraph, and any other heading, ends it before it, so the text after a list is read
+as text. A paragraph that names abbreviations without opening on the word, "We list the
+abbreviations below.", opens none, and nor does one with no entry after it.
+
 **A caption may restate a definition.** A legend has to be read alone. A definition in a
 Markdown table's caption (`Table: ...`, or `: ...` beside a table), in a paragraph that opens
 with the display it captions and a stop, a colon or a dash ("Figure 1. ...", "**Table 2.**
@@ -8839,7 +8854,8 @@ The example carries one control of each kind. `00_simulate.py` writes, beside th
 dataset of its own with an effect planted, so that the reports, and every number the example
 binds, stay as they are; `01_disproportionality.py` puts it through the function that gives
 the ratio, and draws a positive and a negative control from the reports, their expected
-values from the generator's rates. The Methods bind each. The example's plan was frozen on
+values from the generator's rates. A supplementary file of their own describes them and binds
+each, the main text left as it was (Basile, 2026-11-10). The example's plan was frozen on
 2026-10-19 with no controls in it, so its controls are late: they are declared in a block of
 their own section, and its Deviations say in words, naming each key, that they were added
 after the first results, as a real project adding controls then would say it. G12 reads
@@ -22116,15 +22132,38 @@ Open, recorded as each change landed:
     as `abbreviation-redefined`. A legend is a caption only where it opens with the display
     and a stop, a colon or a dash: "Figure 1 The odds by year" is text, and a definition it
     repeats is reported.
-  - A glossary is found only under a heading. One under a bold line, in a manuscript with
-    no heading, is read as text. Its entries are read one to a line, and "ROR reporting odds
+  - A glossary is found under a heading, or after a paragraph that opens with its name
+    and has an entry after it: a bold line, "**Abbreviations**", in a manuscript with no
+    heading, is read as such a paragraph. In a LaTeX file only a heading opens one. A
+    glossary with no title ends at the first paragraph that is neither an entry nor a
+    letter's label, so a sentence between two groups of its entries, "Statistical terms
+    follow.", leaves the second group read as text; and a line of the text right after its
+    last entry that opens like an entry with an abbreviation, "CI: we computed it ...", is
+    taken into it. A paragraph that opens with its name and holds its entries itself,
+    "Abbreviations: CI = confidence interval; OR = odds ratio", opens none where no entry
+    follows it; where one does, OR is read, and CI is lost as the long form of
+    "Abbreviations". Round 1 of #610 found four more edges of the glossary with no title.
+    A table straight after its last entry is taken into it where a row's first cell is
+    shaped like an abbreviation, so "| BMI | 24.1 (3.2) |" defines BMI and the table's
+    cells are no uses; a caption typed before it as pandoc's "Table: ..." line does not
+    stop that (it reads as an entry), where a legend "Table 1. ..." does. A paragraph that
+    opens on one word and a space and holds an ampersand, "NIH & UMC data were pooled.",
+    reads as a LaTeX table's row, since a Markdown file is its own typed text: after the
+    last entry it is taken in where the word is shaped like an abbreviation, and between
+    two groups, "Statistical terms & definitions follow.", it does not end the glossary. A
+    sentence of the text that opens on the word, "Abbreviations were spelt out at first
+    use.", opens a glossary where the next paragraph is shaped like an entry, "PRR: we
+    computed it", and PRR is then defined by its prose. And a run of thousands of
+    paragraphs that each open on the word and are each an entry, "Glossary: terms used",
+    is read in time that grows as its square.
+    A glossary's entries are read one to a line, and "ROR reporting odds
     ratio" only in a table or a definition list: a paragraph of "ROR, reporting odds ratio;
     PRR, ..." is not read, and a grid table's long form over several lines keeps its first.
     A glossary whose section runs on into the next file is cut at the end of its own.
     A run-on glossary paragraph wrapped so that one word stands alone above a line that
     opens with a colon and a space is cut before that word, which is read as a
     definition-list term: "PRR: proportional reporting" / "ratio" / ":   used in ..."
-    gives PRR "proportional reporting".
+    gives PRR "proportional reporting". Accepted.
   - A glossary's or a caption's long form is compared with the text's as written: "CI =
     95% confidence interval" beside "confidence interval (CI)" is reported as two meanings.
   - SD on the statistical list hides an undefined SD that means stable disease. Accepted.

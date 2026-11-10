@@ -1061,10 +1061,14 @@ def _file(
                        lists=unmarked_reference_lists(text), statements=statements)  # fmt: skip
     titled = [(heading.start, _heading_span(text, heading)[1], heading.level, heading.title)
               for heading in headings]  # fmt: skip
+    # A glossary under a heading that names it, and one a paragraph of its own opens, as a
+    # paper typed in Word has it with no title: "List of abbreviations and acronyms used".
+    glossaries = glossary.united([*glossary.sections(titled, len(text)),
+                                  *glossary.opened(prose, text, titled, _may_be_defined)])
     return _assembled(
         order, path, text, hidden, prose, regions,
         captions=tuple(glossary.markdown_captions(prose)),
-        glossaries=tuple(glossary.sections(titled, len(text))),
+        glossaries=glossaries,
         headed=bool(headings), supplementary=supplementary, code=code,
         initials=_initials(prose, _contributions(hidden, titled, statements)),
     )  # fmt: skip

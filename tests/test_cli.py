@@ -293,15 +293,15 @@ def test_review_holds_to_the_rounds_asked_for_beside_a_key_the_schema_refuses(
     project: Path, capsys
 ) -> None:
     """`review` does not print the schema's findings, so what it reads of `review:` is its
-    whole answer. Twelve rounds asked for, eleven complete, and one mistyped key beside it."""
+    whole answer. Fourteen rounds asked for, thirteen complete, and one mistyped key beside it."""
     paper = project / "paper.yaml"
     paper.write_text(
-        paper.read_text(encoding="utf-8") + "\nreview:\n  rounds_required: 12\n  typo: 1\n",
+        paper.read_text(encoding="utf-8") + "\nreview:\n  rounds_required: 14\n  typo: 1\n",
         encoding="utf-8",
     )
 
     assert run("review", str(project), "--submission") == 1
-    assert "11 of 12 review round(s) complete" in capsys.readouterr().out
+    assert "13 of 14 review round(s) complete" in capsys.readouterr().out
 
 
 def test_check_submission_is_stricter_than_a_draft(project: Path) -> None:
@@ -1298,7 +1298,8 @@ def test_review_files_prints_a_paste_ready_block(project: Path, capsys) -> None:
     # The supplement too: a reviewer's finding list describes what they read, and they read
     # the supplement. Its absence here is what lets it change under a review that still says
     # it covers the manuscript.
-    assert set(block["file_sha256"]) == {"main.md", "supplementary/S1_code_lists.md"}
+    assert set(block["file_sha256"]) == {"main.md", "supplementary/S1_code_lists.md",
+                                         "supplementary/S2_controls.md"}  # fmt: skip
     assert all(len(v) == 64 for v in block["file_sha256"].values())
 
 

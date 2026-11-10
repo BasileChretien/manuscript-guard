@@ -987,6 +987,62 @@ def test_a_glossary_is_a_definition_where_it_stands(project: Path) -> None:
     ]
 
 
+#: A list of abbreviations as a paper typed in Word has it after its Conclusions, with no
+#: title: a sentence, then letters' labels in bold and an item for each entry, an entry with
+#: no capital among them (the author's paper, 2026-11-10).
+WORD_GLOSSARY = (
+    "List of abbreviations and acronyms used in the text, tables, and figures.\n\n"
+    "**A--C**\n\n- **AIC**: Akaike Information Criterion\n\n- **CV**: Coefficient of "
+    "Variation\n\n**D--I**\n\n- **df**: degrees of freedom\n\n- **EBM**: Evidence-based "
+    "medicine\n\n"
+)
+
+
+def test_a_glossary_a_sentence_opens_defines_its_entries(project: Path) -> None:
+    """The sentence opens a glossary: its entries are definitions where they stand, its
+    lines are not uses, and an entry after the label of letters and the entry with no
+    capital is one of them. A use above it is used before its definition, as above any."""
+    uses = "# Methods\n\nThe AIC, the CV and the EBM were computed.\n\n"
+    after = "# Conclusions\n\nIt worked.\n\n" + WORD_GLOSSARY
+    assert not written(project, after + uses.replace("# Methods", "# Appendix")).findings
+    report = written(project, uses + after)
+    assert sorted((f.code, f.message.split()[0]) for f in report.findings) == [
+        ("abbreviation-used-before-defined", "AIC"),
+        ("abbreviation-used-before-defined", "CV"),
+        ("abbreviation-used-before-defined", "EBM"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "after",
+    ["The UMC was consulted.", "Note: the UMC was consulted.", "# Declarations\n\nUMC: the "
+     "centre was consulted."],
+    ids=["a sentence", "a line shaped like an entry", "a heading"],
+)  # fmt: skip
+def test_a_glossary_a_sentence_opens_ends_with_its_last_entry(project: Path, after: str) -> None:
+    """What follows the last entry is text: a sentence, a line that opens like an entry
+    with a word for its short form, and a section's first line after a heading, however
+    it is shaped."""
+    report = written(project, "# Conclusions\n\nIt worked.\n\n" + WORD_GLOSSARY + after
+                     + "\n\nThe AIC, the CV and the EBM fell.\n")  # fmt: skip
+    assert found(report) == ["UMC is used once in the main text and not defined there"]
+
+
+@pytest.mark.parametrize(
+    "opening",
+    ["Abbreviations were spelt out at first use.", "We list the abbreviations below."],
+    ids=["no entry after it", "the word not opening it"],
+)  # fmt: skip
+def test_a_paragraph_that_names_abbreviations_opens_no_glossary(
+    project: Path, opening: str
+) -> None:
+    """A paragraph opens a glossary only where it opens with the word and an entry follows:
+    the line after these is text, and its abbreviation undefined."""
+    follows = "UMC: the centre was consulted." if "below" in opening else "The UMC was used."
+    report = written(project, f"# Methods\n\n{opening}\n\n{follows}\n")
+    assert found(report) == ["UMC is used once in the main text and not defined there"]
+
+
 def test_a_glossary_and_a_first_use_define_one_thing_once(project: Path) -> None:
     """A journal that asks for both gets both: the expansion at first use repeats the
     glossary, and is not defined again. A second definition in the text still is, and a

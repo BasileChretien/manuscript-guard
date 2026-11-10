@@ -37,8 +37,16 @@ expected:
       link of each kind of target
   - reading: notation
     why: >-
-      an interval after a link on its line, "[text](https://...) (CI 95% 0.3 to 0.4)", is
-      read, where the link's target hid it up to the next `)`
+      a new finding, `notation-space-missing`, with its count in every report: a number
+      typed against a word, "0.41points", "2ndyear", or a word against a signed number,
+      "to+0.77", is a space left out; the inputs now hold these and lookalikes, "p53mutant",
+      "30min" (the author's Abstract, 2026-11-10)
+  - reading: abstract against results
+    why: >-
+      the Abstract's number a space was left out of is read, "512.3points", "to+1012.3",
+      "score:1112.3", and found where the paper reports it; an ordinal against its word,
+      "2ndyear", is not looked for; the inputs now hold each (the author's Abstract,
+      2026-11-10)
   - reading: reply numbers
     why: >-
       a number in a reply after a link on its line is read and, unbound, reported, where the
@@ -75,11 +83,9 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G12 holds the plan's Software section to the packages the scripts of analysis/ and
-      figures/ load and counts both (`software_planned`, `software_loaded`): a package an
-      item names that no script loads is `planned-package-unloaded`, a warning from the
-      analysis stage on, and one a script loads that no item names is
-      `plan-package-unnamed`, a note (#592)
+      G14's counts, which `check` reports, hold a new one, `notation_spaces_missing`: the
+      numbers typed against a word, "0.41points", "2ndyear", or a word against a signed
+      number, "to+0.77" (the author's Abstract, 2026-11-10)
   - reading: data dates
     why: >-
       the finding says the date was emitted as a string rather than typed, and its hint adds

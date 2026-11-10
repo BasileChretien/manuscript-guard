@@ -321,6 +321,52 @@ def test_every_unit_listed_is_read() -> None:
         assert codes(report) == ["notation-unit"], unit
 
 
+def test_a_space_left_out_around_a_number_is_reported_where_it_first_stands() -> None:
+    """The author's Abstract wrote "+0.41points for each additional 10hours", "95%CI:+0.05
+    to+0.77" and "2ndyear" (2026-11-10): a space left out, which no house style writes. One
+    finding, at the first, with the count and the first examples."""
+    report = read(
+        "# Abstract\n\nIt rose (+0.41points for each additional 10hours, CI 0.05 to+0.77) in "
+        "2ndyear students.\n\n# Results\n\nIt rose by 0.41 points, and by {{results.n}}"
+        "patients later.\n"
+    )
+    (finding,) = report.findings
+    assert finding.code == "notation-space-missing"
+    assert finding.message == (
+        "a number and a word run together 5 times: '0.41points', '10hours', 'to+0.77', "
+        "'2ndyear'"
+    )
+    assert finding.line == 3
+    assert "'0.41 points'" in finding.hint and "'to +0.77'" in finding.hint
+    assert report.ok
+    assert report.counts["notation_spaces_missing"] == 5
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["It was 5mins throughout.", "It rose from 0.09 to+0.77.", f"It rose to+{X} then."],
+    ids=["a unit's plural", "at a sentence's end", "a bound value"],
+)  # fmt: skip
+def test_a_space_left_out_is_reported_in_each_of_its_places(written: str) -> None:
+    """A unit's plural is no unit `notation-unit` reads, so it is a space left out; a stop
+    at a sentence's end does not hide one; and a bound value after a word is one (round 1
+    of #613)."""
+    assert codes(read(f"# Results\n\n{written}\n")) == ["notation-space-missing"], written
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["30min", "p53mutant", "COVID19cases", "3rd", "4th", "2020s", "0xff", "1.2e+10",
+     "x+1", "a 3D model", "MiR-21a"],
+)  # fmt: skip
+def test_what_is_no_space_left_out_is_not_reported(written: str) -> None:
+    """A unit closed up is `notation-unit`'s; a name a number stands inside, an ordinal or a
+    decade alone, a number in hexadecimal or in scientific notation and a letter with a sign
+    are none."""
+    report = read(f"# Methods\n\nIt was {written} throughout.\n")
+    assert "notation-space-missing" not in codes(report), written
+
+
 def test_forms_used_as_often_show_the_later_one_and_say_so() -> None:
     report = read(f"# Results\n\nFirst P = {X}.\n\nThen p = {X}.\n")
     (finding,) = report.findings
@@ -402,6 +448,7 @@ def test_a_manuscript_that_writes_each_thing_one_way_hears_nothing() -> None:
         "notation_intervals": 2,
         "notation_percents": 4,
         "notation_units_closed": 0,
+        "notation_spaces_missing": 0,
     }
 
 

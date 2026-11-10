@@ -28892,6 +28892,23 @@ def test_a_dose_typed_without_its_space_is_caught(project: Path) -> None:
     ]
 
 
+def test_a_number_typed_against_its_word_is_caught(project: Path) -> None:
+    """The author's Abstract typed "+0.41points for each additional 10hours" (2026-11-10):
+    a space left out, which no house style writes, caught at its first place."""
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    edited = text.replace(old, old + " It rose by 2points for each 10hours of follow-up.")
+    assert edited != text
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert notation_findings(project) == [
+        (
+            "notation-space-missing",
+            line_of(edited, "Several limitations"),
+            "a number and a word run together 2 times: '2points', '10hours'",
+        )
+    ]
+
+
 def test_another_notation_in_a_comment_a_listing_or_a_quotation_is_not_the_manuscript_s(
     project: Path,
 ) -> None:

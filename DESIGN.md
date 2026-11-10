@@ -5475,6 +5475,19 @@ The Brochure asks for the same space before "%" (section 5.4.7), and there most 
 journals do otherwise, so "%" is held to consistency alone. Basile chose both on
 2026-10-08.
 
+**A space left out around a number is not a matter of counting either.**
+`notation-space-missing` reports a number typed against the word after it, "0.41points",
+"10hours", an ordinal's included, "2ndyear", and a word typed against a signed number,
+"to+0.77": no house style writes these, and the author's Abstract had eight of them
+(2026-11-10). The word is three lower-case letters or more, so a unit closed up stays
+`notation-unit`'s, and one of the lower-case units of three letters or more, "30min", is
+left to it; its plural, "5mins", which `notation-unit` does not read, is a space left out
+(round 1 of #613). A stop ends the number after a word, "to+0.77.", and a bound value is
+read there too. A number that stands inside a name, "p53mutant", "COVID19cases", is known
+by the letter before it; a number in hexadecimal, "0xff", is left alone. The audit's
+Abstract against Results reads the numbers of such words, and of pieces closed up by a
+round bracket, a colon or a semicolon, "CI):+0.05", "45%(95%CI:40-50%)" (below).
+
 **A unit is known by name, and the short names are few.** The symbols read are listed in
 `gates/notation.py`. Of those of one letter only `g` and `h` are among them: "5m" is as
 often five months, "1L" a first line of treatment, "30s" an age and "3A" a grade. And
@@ -9903,7 +9916,19 @@ the next, as G8 does, and took a file for a supplement by its name, which guesse
 the Methods, the Results, every table of every file, and the whole of a file whose document
 has no Abstract, a supplement. Each number of the Abstract the classifier leaves unexplained
 is looked for in what the paper reports: found as printed, found as a rounding of a number
-printed to more places ("53%" for "53.3%", the author, 2026-10-28), or not found. The section
+printed to more places ("53%" for "53.3%", the author, 2026-10-28), or not found. A number
+a space was left out of is read, as no other number with letters in it is: one typed
+against a word, "+0.41points", against a signed number, "to+0.77", and an atom closed up
+by round brackets, colons or semicolons whose every piece is a number, a range, a level
+named "95%CI", one of those shapes or a label of letters alone: each piece's number is
+kept and a label skipped, "CI):+0.05", "students(66%", "45%(95%CI:40-50%)" giving 45%,
+95%, 40 and 50; a piece of any other shape, a label with a digit in it, "CD4:350", leaves
+the atom read whole (round 2 of #613) (the
+author's Abstract, 2026-11-10, whose numbers were all reported not found for want of a
+space). An ordinal with its own suffix against a word a rank takes, "2ndyear",
+"21stcentury", "11thgrade", is not looked for; any other word after a suffix's letters is a
+word, so "312students" is read (round 1 of #613, where any word opening with "st", "nd",
+"rd" or "th" passed its number unread). The section
 says how many of each, lists the roundings and the numbers not found, and ends with what a
 match is worth against what the paper reports, the roundings counted in
 (`measure_discrimination`). A conflict is an exact pairing only: an interval of the Abstract
@@ -22365,6 +22390,22 @@ Open, recorded as each change landed:
   - "37°C" is reported, as the SI Brochure has it, in a manuscript for a journal that
     prints it closed. There is no setting to say so; the journal profile's style block is
     where one will go. Accepted.
+  - `notation-space-missing` reads a word of three lower-case letters or more after a
+    number, so "5am" and "3pm" pass, and a capital after it too, "10Hours". A word typed
+    against a hyphen-minus, "to-0.77", is read as a range and passes, and a word typed
+    against a bracket, "students(66%)", is not this finding's. A word of the field that
+    stands against its number by habit is reported: "5aza", "3prime", "21mer", "17beta",
+    "5bis", "24hrs", "65yrs", "5sec", and an ordinal of another language, "2nde", "1ere".
+    In the Abstract against Results only the shapes it names are read, so "students66%"
+    stays one atom and is reported not found; G14's exclusions are not applied there, so
+    "30min" gives 30 and "0xff" gives 0; and a lone small number closed up against a label,
+    "Appendix:1", "Table(2", "version:4", is read and most likely found (round 1 of #613).
+    A rank against a word not in its short list, "3rdparty", "4thventricle", is read as a
+    number. A label with a digit in it closed up against its number, "CD4:350",
+    "HbA1c:7.5%", "I2:45%", leaves the atom read whole and reported not found; a name of
+    digits and capitals in a bracket, "lamivudine(3TC)", "mercaptopurine(6MP)", is taken for
+    a level and gives its digit, most likely found; and a square bracket closes nothing up,
+    so "students[66%" is read whole (round 2 of #613). Accepted.
   - A space where the SI has none, "30 °" for an angle, is not reported.
   - How a bound value is printed is not read: ".05" beside "0.05", "4,100" beside "4100",
     a decimal comma. Accepted.

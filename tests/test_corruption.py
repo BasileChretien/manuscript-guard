@@ -25695,7 +25695,9 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     """One record a reviewer, no readers named: nothing about them changed. Rounds three to
     thirteen read revisions with the earlier rounds in front of them, so the thirteenth
-    supersedes the twelve before it and each says it was not blinded."""
+    supersedes the twelve before it and each says it was not blinded. Round 11 read main.md
+    and S1 as they stand, so its record is not superseded; the controls' S2, which rounds three
+    to twelve did not read (PR 3 of wave 3), each is told of as a round, superseded too."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
@@ -25703,11 +25705,12 @@ def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
     superseded = [("review-superseded", f"round-{n}")
                   for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1),
-                                  (8, 1), (9, 1), (10, 1), (11, 1), (12, 1))
+                                  (8, 1), (9, 1), (10, 1), (12, 1))
                   for _ in range(many)]  # fmt: skip
+    uncovered = [("review-superseded", "review")] * 10  # rounds three to twelve, each once
     # Sorted as `said` is: "round-10" stands between "round-1" and "round-2".
-    assert said == sorted(superseded + [("round-not-blinded", "review")] * 11), report.render(
-        project)
+    assert said == sorted(superseded + uncovered + [("round-not-blinded", "review")] * 11), (
+        report.render(project))  # fmt: skip
     assert report.counts["review_rounds_complete"] == 13
 
 

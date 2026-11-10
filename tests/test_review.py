@@ -85,8 +85,22 @@ def test_the_example_s_latest_round_reads_the_manuscript_and_supersedes_the_rest
         for number in range(1, latest)
         for path in (review / f"round-{number}").glob("*.yaml")
     }
+    # A record whose every file is as it read it is not stale, so nothing supersedes it: round
+    # 11 read main.md and S1 as they stand. What the earlier rounds did not read, the controls'
+    # S2 (PR 3 of wave 3), each round is told of as a whole, superseded too.
+    from manuscript_guard.gates.review import file_digests
+
+    now = file_digests(load_project(built_example)[0])
+
+    def current(path: Path) -> bool:
+        files = yaml.safe_load(path.read_text(encoding="utf-8")).get("file_sha256") or {}
+        return bool(files) and all(now.get(name) == digest for name, digest in files.items())
+
     superseded = {f.path for f in report.findings if f.code == "review-superseded"}
-    assert superseded == earlier and not failures(report), report.render(built_example)
+    records = {path for path in superseded if path.suffix == ".yaml"}
+    assert records == {path for path in earlier if not current(path)}, report.render(built_example)
+    assert all(path.parent == review for path in superseded - records), superseded
+    assert not failures(report), report.render(built_example)
 
 
 # ---------------------------------------------------------------- the complete case
@@ -388,7 +402,8 @@ def test_two_files_with_the_same_name_are_both_covered(project: Path) -> None:
     # The supplement is in scope for review too: a finding list describes what the reviewer
     # read, and leaving the supplement out is what lets it change under a review that still
     # claims to cover the manuscript.
-    assert keys == {"main.md", "parts/main.md", "supplementary/S1_code_lists.md"}, keys
+    assert keys == {"main.md", "parts/main.md", "supplementary/S1_code_lists.md",
+                    "supplementary/S2_controls.md"}, keys  # fmt: skip
 
     scope_reviews(project, files={"main.md": file_digests(load_project(project)[0])["main.md"]})
     report = report_for(project, submission=True)

@@ -773,6 +773,7 @@ def test_the_files_are_sent_in_the_order_the_build_prints_them(mixed: Path) -> N
         "manuscript/1_methods.md",
         "manuscript/zz_discussion.md",
         "manuscript/supplementary/S1_code_lists.md",
+        "manuscript/supplementary/S2_controls.md",
     ]
     user = made.material.user
     places = [user.index(f"BEGIN manuscript/{name}") for name in ("main.md", "1_methods.md")]

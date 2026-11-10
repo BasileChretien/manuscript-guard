@@ -1298,7 +1298,8 @@ def test_review_files_prints_a_paste_ready_block(project: Path, capsys) -> None:
     # The supplement too: a reviewer's finding list describes what they read, and they read
     # the supplement. Its absence here is what lets it change under a review that still says
     # it covers the manuscript.
-    assert set(block["file_sha256"]) == {"main.md", "supplementary/S1_code_lists.md"}
+    assert set(block["file_sha256"]) == {"main.md", "supplementary/S1_code_lists.md",
+                                         "supplementary/S2_controls.md"}  # fmt: skip
     assert all(len(v) == 64 for v in block["file_sha256"].values())
 
 

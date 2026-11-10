@@ -466,8 +466,10 @@ def test_a_latex_reading_keeps_the_sentence_and_section_of_each_quote(
         places = document["quotes"]["places"]
         assert [(p["file"], p["section"]) for p in places["r1-01"]] == [("main.tex", "Results")]
         assert places["r1-01"][0]["sentence"].startswith("The database contained")
+        # The twin's supplement has two sections of its first level, Supplementary methods
+        # and the controls' (PR 3 of wave 3), so a sentence's section is read at that level.
         assert [(p["file"], p["section"]) for p in places["r1-02"]] == [
-            ("supplementary/main.tex", "Table S1. Code lists used to identify the outcome")]
+            ("supplementary/main.tex", "Supplementary methods")]
         assert places["r1-03"] == [{"file": "main.tex", "section": "Discussion",
                                     "sentence": "Discussion", "heading": True}]  # fmt: skip
     capsys.readouterr()

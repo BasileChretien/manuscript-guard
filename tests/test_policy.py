@@ -376,7 +376,10 @@ def test_a_manuscript_file_that_is_not_utf8_is_one_finding_that_names_it(
     # G11 reads the bytes, not the text, so it ran: the file changed after the panel read
     # it, which is a finding of its own once the review binds.
     others = {f.code for f in report.failures} - {"manuscript-unreadable"}
-    assert others == ({"review-stale", "rounds-outstanding"} if stage == SUBMISSION else set())
+    # The rounds before the latest read no S2, the example's controls: with the latest stale,
+    # none covers it (PR 3 of wave 3).
+    assert others == ({"review-stale", "rounds-outstanding", "review-uncovered"}
+                      if stage == SUBMISSION else set())  # fmt: skip
     assert (failure.gate, failure.path, failure.line) == ("G0", source, line)
     assert failure.message == (
         f"manuscript/main.md: cannot read as UTF-8: the byte 0xe9 on line {line} is not UTF-8. "

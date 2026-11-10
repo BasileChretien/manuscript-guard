@@ -22081,7 +22081,7 @@ Open, recorded as each change landed:
     `thebibliography` or an unmarked Markdown list, gives its authors' initials and a
     journal's capitals ("BMJ") as initials. In LaTeX only a heading opens a contributions
     statement; a `\textbf{Authors' contributions}` label opens none, and its initials are
-    reported as on main (round 1 of #611).
+    reported as on main (round 1 of #611). Accepted.
   - The formula rule has two edges. A formula with no count is still reported, `HCl`,
     `NaOH`, `KOH`, `HCN`, `NO`, as is organic shorthand, `EtOAc`, `MeOH`, a group in
     brackets, `(NH4)2SO4`, which reports `2SO4`, and a charge, `SO42-`. And a name spelt in

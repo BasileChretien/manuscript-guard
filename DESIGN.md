@@ -5071,11 +5071,14 @@ capital lowered as well, because it takes one at the start of a sentence: `Non-H
 **A stop inside a word joins its parts as a hyphen does.** A French paper names the
 "Licence avec Accès Santé (L.AS)" and uses L.AS throughout; read at its stop it was `AS`,
 used eight times and never defined (the author's paper, 2026-11-10). A word now runs over a
-stop between two letters or digits, in the text, in a bracket's short form and in a
-glossary's entry, and its parts are read as a hyphenated word's are: `L.AS` defined is used
-whole, and undefined is reported whole. A sentence typed on with no space after its stop
-leaves its abbreviation alone, since the word after it is an ordinary one: `KAP.The` is
-`KAP`. "U.S." holds no abbreviation, one letter to a part, as before. A stop at a word's end
+stop that a letter follows, in the text, in a bracket's short form and in a glossary's
+entry, and its parts are read as a hyphenated word's are: `L.AS` defined is used whole, and
+undefined is reported whole. A sentence typed on with no space after its stop leaves its
+abbreviation alone, since the word after it is an ordinary one: `KAP.The` is `KAP`; and a
+definition after one, "rose.ROR (reporting odds ratio)", is read from the last stop. A stop
+before a digit, a raised or lowered one too, joins nothing, so a reference number typed on,
+"GDPR.12", leaves GDPR, and "BA.1", "1.5" and "SARS-CoV-2.B.1.1.7" read as before (round 1 of
+#612). "U.S." holds no abbreviation, one letter to a part, as before. A stop at a word's end
 is never part of it.
 
 **Three texts are read apart, because each is read apart.** The abstract is indexed and read

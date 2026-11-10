@@ -1965,8 +1965,22 @@ def _a_short_form_followed_by_a_colon_defines_nothing(patch: pytest.MonkeyPatch)
 
 def _hyphens_only(pattern: str) -> re.Pattern[str]:
     """`pattern` with a stop no longer joining the parts of a word."""
-    assert "(?:[-.][^\\W_]+)*" in pattern, pattern
-    return re.compile(pattern.replace("(?:[-.][^\\W_]+)*", "(?:-[^\\W_]+)*"))
+    joined = re.search(r"\(\?:-\[\^\\W_\]\+\|.*\)\*", pattern)
+    assert joined is not None, pattern
+    return re.compile(pattern.replace(joined.group(0), "(?:-[^\\W_]+)*"))
+
+
+def _a_stop_before_a_digit_joins_a_word(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_WORD", re.compile("[^\\W_]+(?:[-.][^\\W_]+)*"))
+
+
+def _a_short_form_before_a_bracket_is_not_tried_from_its_last_stop(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    real = language_gate._long_after
+    patch.setattr(language_gate, "_long_after",
+                  lambda prose, bracket, head, short: None if "." in prose[head - 1 : head]
+                  else real(prose, bracket, head, short))  # fmt: skip
 
 
 def _a_stop_joins_no_word(patch: pytest.MonkeyPatch) -> None:
@@ -20055,6 +20069,14 @@ BROKEN = {
     "a glossary's short form has no stop": (
         _a_glossary_s_short_form_has_no_stop,
         test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
+    ),
+    "a stop before a digit joins a word's parts": (
+        _a_stop_before_a_digit_joins_a_word,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a short form before a bracket is not tried from its last stop": (
+        _a_short_form_before_a_bracket_is_not_tried_from_its_last_stop,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "a number or an equals sign after a short form opens a definition": (
         _a_number_or_an_equals_sign_opens_a_definition,

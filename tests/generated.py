@@ -606,6 +606,8 @@ DEFINING = (
     # A short form whose parts a stop joins, in both orders.
     ("the *Licence avec Acces Sante* (L.AS)", "(L.AS", "L.AS"),
     ("the L.AS (licence with access to health studies)", "L.AS (", "L.AS"),
+    # After a sentence typed on with no space (round 1 of #612).
+    ("the score rose.ROR (reporting odds ratio)", "ROR (", "ROR"),
 )  # fmt: skip
 
 #: Brackets that are no definition, though the words before each hold its letters in order:
@@ -686,6 +688,8 @@ STILL_ABBREVIATIONS = (
     # on with no space, reported alone.
     ("students of L.AS were eligible", "L.AS"),
     ("the score rose in the KAP.The rest fell", "KAP"),
+    # A reference number typed on after the stop, which joins nothing (round 1 of #612).
+    ("the rule follows the GDPR.12 here", "GDPR"),
 )  # fmt: skip
 
 

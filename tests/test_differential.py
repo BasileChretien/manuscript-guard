@@ -229,7 +229,7 @@ CHANGED = {
     ),
     "a stop no longer joins a word's parts": (
         "gates/language.py",
-        '_WORD = re.compile(r"[^\\W_]+(?:[-.][^\\W_]+)*")\n',
+        "_WORD = re.compile(_PARTS)\n",
         '_WORD = re.compile(r"[^\\W_]+(?:-[^\\W_]+)*")\n',
         "abbreviations",
     ),

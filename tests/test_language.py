@@ -385,18 +385,42 @@ def test_a_short_form_a_stop_joins_is_defined_and_used_whole(project: Path, text
     ("sentence", "named"),
     [("Students of L.AS were eligible.", "L.AS"),
      ("The score rose in the KAP.The rest fell.", "KAP"),
-     ("The U.S. and the U.K. data, i.e. the KAP cohort.", "KAP")],
-    ids=["undefined, whole", "a sentence typed on", "initials of a country"],
+     ("The U.S. and the U.K. data, i.e. the KAP cohort.", "KAP"),
+     ("The rule follows the GDPR.12 here.", "GDPR"),
+     ("The rule follows the GDPR.\N{SUPERSCRIPT ONE}\N{SUPERSCRIPT TWO} here.", "GDPR")],
+    ids=["undefined, whole", "a sentence typed on", "initials of a country",
+         "a reference number after the stop", "a superscript number after the stop"],
 )  # fmt: skip
 def test_a_word_with_a_stop_is_read_by_its_parts(
     project: Path, sentence: str, named: str
 ) -> None:
     """An undefined short form a stop joins is reported whole, as a hyphenated one is; a
     sentence typed on with no space after an abbreviation leaves the abbreviation alone;
-    and "U.S." is no abbreviation, its letters one to a part."""
+    and "U.S." is no abbreviation, its letters one to a part. A stop before a number joins
+    nothing: "GDPR.12" is GDPR with a reference number typed on (round 1 of #612)."""
     report = written(project, f"# Methods\n\n{sentence}\n")
     (message,) = found(report, "abbreviation-undefined")
     assert message.split()[0] == named
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["The score rose.ROR (reporting odds ratio) was high. The ROR fell.",
+     "Severe acute respiratory syndrome coronavirus 2 (SARS-CoV-2) and SARS-CoV-2.B.1.1.7 "
+     "spread.",
+     "BA.1 and BA.2 spread."],
+    ids=["a definition after a sentence typed on", "a lineage after a defined name",
+         "a lineage's number after its stop"],
+)  # fmt: skip
+def test_a_stop_before_a_number_or_a_definition_reads_as_on_main(
+    project: Path, text: str
+) -> None:
+    """A stop joins two parts only where a letter follows it, and a short form before a
+    bracket that defines nothing with a stop in it is tried again from its last stop
+    (round 1 of #612): ROR is defined, SARS-CoV-2 is used, and BA is one abbreviation."""
+    report = written(project, f"# Methods\n\n{text}\n")
+    said = [f.message.split()[0] for f in report.findings]
+    assert said == (["BA"] if text.startswith("BA") else []), found(report)
 
 
 @pytest.mark.parametrize(

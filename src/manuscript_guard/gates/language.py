@@ -85,10 +85,18 @@ SUPPLEMENT = "supplement"
 #: names (`READUS-PV`, `SARS-CoV-2`) run a little longer.
 LONGEST = 15
 
-# A word, with the hyphens that join its parts, and the stops: `L.AS`, a short form with a
-# stop inside it, and `ROR.The`, two sentences typed on with no space, which `_forms`
-# splits again. Unicode letters and digits, no underscore. A stop at its end is not in it.
-_WORD = re.compile(r"[^\W_]+(?:[-.][^\W_]+)*")
+# A word, with the hyphens that join its parts, and the stops a letter follows: `L.AS`, a
+# short form with a stop inside it, and `ROR.The`, two sentences typed on with no space,
+# which `_forms` splits again. A stop before a digit joins nothing, a superscript or a
+# subscript one among them, so "GDPR.12" and "GDPR.¹²", a reference number typed on, are
+# GDPR, and "BA.1" and "1.5" read as before (round 1 of #612). Unicode letters and digits,
+# no underscore. A stop at its end is not in it.
+_RAISED_OR_LOWERED = (
+    r"[\N{SUPERSCRIPT ONE}\N{SUPERSCRIPT TWO}\N{SUPERSCRIPT THREE}"
+    r"\N{SUPERSCRIPT ZERO}-\N{LATIN SUBSCRIPT SMALL LETTER T}]"
+)
+_PARTS = rf"[^\W_]+(?:-[^\W_]+|\.(?=[^\W\d_])(?!{_RAISED_OR_LOWERED})[^\W_]+)*"
+_WORD = re.compile(_PARTS)
 #: What joins two parts of a word.
 _JOINS = re.compile(r"[-.]")
 # One level of brackets, not running on for ever: an unclosed "(" must not pair with a ")"
@@ -115,7 +123,7 @@ _EDGES = _QUOTES + ".,;:()[]"
 # gives a statistic and defines nothing: "a higher risk (HR 1.32, 95% CI ...)" is no
 # definition of HR, though "higher risk" begins with its letters.
 _OPENS_WITH = re.compile(
-    rf"[\s{re.escape(_QUOTES)}]*(?P<short>[^\W_]+(?:[-.][^\W_]+)*)[\s{re.escape(_QUOTES)}]*"
+    rf"[\s{re.escape(_QUOTES)}]*(?P<short>{_PARTS})[\s{re.escape(_QUOTES)}]*"
     r"(?:$|[;,:])"
 )
 #: The brackets a long form opens and closes, round and square: a letter of its short form
@@ -132,7 +140,7 @@ _HEADER_RULE = re.compile(
     r"\+[:+]*=[=:+]*|(?=.*\|)\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?"
 )
 # The word standing against an opening bracket: "ROR (reporting odds ratio)".
-_BEFORE_PAREN = re.compile(r"(?P<short>[^\W_]+(?:[-.][^\W_]+)*)[ \t]?$")
+_BEFORE_PAREN = re.compile(rf"(?P<short>{_PARTS})[ \t]?$")
 # An image with its caption: `![caption](target)` or `![caption][label]`, a bracket inside
 # the caption allowed one deep, for a citation. Bounded throughout, so a line of `![` with
 # no closing bracket is read once and not once per `![`.
@@ -852,13 +860,27 @@ def _short_inside(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | 
 def _long_inside(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | None:
     """A definition with its long form in the bracket: "ROR (reporting odds ratio)"."""
     standing = _BEFORE_PAREN.search(prose, max(0, bracket.start() - LONGEST - 1), bracket.start())
-    if standing is None or not _may_be_defined(standing.group("short")):
+    if standing is None:
+        return None
+    head, short = standing.start("short"), standing.group("short")
+    found = _long_after(prose, bracket, head, short)
+    # A sentence typed on with no space puts the word before its stop in the short form,
+    # "rose.ROR (reporting odds ratio)": tried again from the last stop (round 1 of #612).
+    if found is None and "." in short:
+        cut = short.rindex(".") + 1
+        found = _long_after(prose, bracket, head + cut, short[cut:])
+    return found
+
+
+def _long_after(
+    prose: str, bracket: re.Match[str], head: int, short: str
+) -> tuple[int, str, str] | None:
+    """`_long_inside` for the short form `short` standing at `head` before the bracket."""
+    if not _may_be_defined(short):
         return None
     # The search starts a short form's length back, so it can start inside a word.
-    head = standing.start("short")
     if head > 0 and (prose[head - 1].isalnum() or prose[head - 1] == "-"):
         return None
-    short = standing.group("short")
     words = bracket.group(1).split()
     if not 2 <= len(words) <= _window(short):
         return None

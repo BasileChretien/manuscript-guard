@@ -480,3 +480,34 @@ def test_the_page_draws_the_report_its_text_is_printed_from(
     monkeypatch.setattr(report_module, "render", broken)
     unprinted = web.view(["audit", "paper.md"])
     assert unprinted["code"] != 0 and unprinted["view"] is None
+
+
+def test_the_page_writes_the_commented_copy_from_the_audit_it_drew(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The page saves the paper with its findings as Word comments (`web.commented`), from
+    the audit `view` ran, as `audit --commented` writes it; nothing for a paper that is no
+    .docx, or before any audit."""
+    from generated import word_package
+
+    from manuscript_guard.docxtext import comment_ranges
+
+    monkeypatch.chdir(tmp_path)
+    web._AUDITED.clear()
+    assert web.commented("paper.docx", "out.docx") == {"error": "no audit was run"}
+    body = ("<w:p><w:pPr><w:pStyle w:val='Heading1'/></w:pPr><w:r><w:t>Abstract</w:t></w:r>"
+            "</w:p><w:p><w:r><w:t>Of the patients, 412 improved.</w:t></w:r></w:p><w:p><w:pPr>"
+            "<w:pStyle w:val='Heading1'/></w:pPr><w:r><w:t>Results</w:t></w:r></w:p><w:p><w:r>"
+            "<w:t>Of the patients, 40 improved.</w:t></w:r></w:p>")  # fmt: skip
+    styles = ("<w:styles xmlns:w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'>"
+              "<w:style w:type='paragraph' w:styleId='Heading1'><w:name w:val='heading 1'/>"
+              "</w:style></w:styles>")  # fmt: skip
+    with zipfile.ZipFile(tmp_path / "paper.docx", "w") as archive:
+        for name, part in {**word_package(body), "word/styles.xml": styles}.items():
+            archive.writestr(name, part)
+    assert web.view(["audit", "paper.docx"])["view"] is not None
+    said = web.commented("paper.docx", str(tmp_path / "out.docx"))
+    assert said["placed"] >= 1, said
+    assert "412" in comment_ranges(tmp_path / "out.docx").values()
+    (tmp_path / "paper.md").write_text("# Results\n\nOf 40, 12.\n", encoding="utf-8")
+    assert web.commented("paper.md", "out2.docx") == {"error": "paper.md is not a .docx"}

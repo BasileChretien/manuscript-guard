@@ -12142,6 +12142,106 @@ def word_paragraphs(draw: st.DrawFn) -> tuple[str, list[tuple[str | None, int, b
     return "\n".join(lines) + "\n", places
 
 
+_WORD_NAMESPACE_URI = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+
+def word_package(body: str, *, ignorable: bool = True) -> dict[str, str]:
+    """The parts of a .docx whose body is `body`, as Word writes them: content types,
+    relationships, and a root that declares a namespace it names in `mc:Ignorable` and uses
+    nowhere, as every document Word saves does."""
+    root = (f'<w:document xmlns:w="{_WORD_NAMESPACE_URI}" '
+            'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+            + (' xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" '
+               'mc:Ignorable="w15"' if ignorable else "") + ">")  # fmt: skip
+    return {
+        "[Content_Types].xml": (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://'
+            'schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" '
+            'ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/><Override '
+            'PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-'
+            'officedocument.wordprocessingml.document.main+xml"/></Types>'),
+        "_rels/.rels": (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns='
+            '"http://schemas.openxmlformats.org/package/2006/relationships"><Relationship '
+            'Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+            'relationships/officeDocument" Target="word/document.xml"/></Relationships>'),
+        "word/_rels/document.xml.rels": (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns='
+            '"http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>'),
+        "word/document.xml": (f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+                              f"{root}<w:body>{body}</w:body></w:document>"),
+    }  # fmt: skip
+
+
+def _runs(words: str, cuts: list[int]) -> str:
+    """`words` as runs of plain text, split at each of `cuts`, inside a word or not."""
+    pieces, at = [], 0
+    for cut in [*sorted(set(cuts)), len(words)]:
+        if at < cut <= len(words):
+            pieces.append(words[at:cut])
+            at = cut
+    return "".join(f'<w:r><w:t xml:space="preserve">{piece}</w:t></w:r>' for piece in pieces)
+
+
+#: The kinds of finding a commented copy is written for (`auditing.commented`): a word that
+#: stands once in its paragraph, a number, a word twice in one paragraph quoted at the
+#: second, a quote with no words of its own, a quote cut at both ends as the report cuts one,
+#: words inside a link, which the comment then covers whole, and words in no paragraph.
+COMMENTED_KINDS = ("word", "number", "twice", "quote", "cut", "link", "nowhere")
+
+
+@st.composite
+def commented_documents(draw: st.DrawFn) -> tuple[str, list, list]:
+    """A document's body of a paragraph for each kind of `COMMENTED_KINDS` but "nowhere", in
+    an order drawn, its runs split where drawn; a note for each kind, `(words, around,
+    comment)`; and where each note's comment is to stand, `(paragraph, start, end)` of the
+    paragraph's text, or None for the list on the first paragraph."""
+    kinds = draw(st.permutations(COMMENTED_KINDS))
+    body, notes, expected, paragraph = "", [], [], 0
+    for kind in kinds:
+        before = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=5)))
+        after = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=5)))
+        comment = f"note on the {kind}"
+        if kind == "nowhere":
+            notes.append(("nowhereword", "nowhereword stands in no paragraph", comment))
+            expected.append(None)
+            continue
+        words = {"word": "marker", "number": f"{draw(st.integers(100, 999))}",
+                 "twice": "twin", "quote": "", "cut": "cutword", "link": "linked"}[kind]
+        if kind == "twice":
+            text = f"{before} twin {after} twin end"
+            start = text.rindex("twin")
+            notes.append(("twin", f"{after} twin end", comment))
+            expected.append((paragraph, start, start + 4))
+        elif kind == "quote":
+            # A word of its own in the quote, so that no other paragraph holds it.
+            text = f"{before} quoteword {after}"
+            notes.append(("", f"quoteword {after}", comment))
+            expected.append((paragraph, text.index("quoteword"), len(text)))
+        elif kind == "cut":
+            text = f"{before} the cutword {after}"
+            start = text.index("cutword")
+            notes.append(("cutword", f"...the cutword {after}...", comment))
+            expected.append((paragraph, start, start + len(words)))
+        else:
+            text = f"{before} {words} {after}"
+            start = text.index(f" {words} ") + 1
+            notes.append((words, f"{before} {words}", comment))
+            expected.append((paragraph, 0, len(text)) if kind == "link"
+                            else (paragraph, start, start + len(words)))  # fmt: skip
+        if kind == "link":
+            head, tail = text[:start], text[start + len(words):]
+            body += (f"<w:p>{_runs(head, [])}<w:hyperlink><w:r><w:t>{words}</w:t></w:r>"
+                     f"</w:hyperlink>{_runs(tail, [])}</w:p>")  # fmt: skip
+        else:
+            cuts = draw(st.lists(st.integers(1, len(text) - 1), max_size=3))
+            body += f"<w:p>{_runs(text, cuts)}</w:p>"
+        paragraph += 1
+    return body, notes, expected
+
+
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "word paragraphs": word_paragraphs().map(lambda drawn: drawn[0]),
     "checker sentences": texts(),

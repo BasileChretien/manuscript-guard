@@ -93,9 +93,28 @@ os.chdir("/work")`);
   py.globals.set("ARGS", py.toPy(args));
   const start = now();
   // The text the command line prints, and the report as the page draws it, from one audit.
-  const result = py.runPython("import json; from manuscript_guard import web; json.dumps(web.view(ARGS))");
+  const result = JSON.parse(
+    py.runPython("import json; from manuscript_guard import web; json.dumps(web.view(ARGS))"));
   py.globals.delete("ARGS");
-  return { ...JSON.parse(result), args, ms: now() - start, sent: requests(), refused: [...refused] };
+  const ms = now() - start;
+  return { ...result, commented: commentedCopy(result, paperName), args, ms, sent: requests(),
+    refused: [...refused] };
+}
+
+// The paper with the audit's findings as Word comments at their places, for a .docx the audit
+// drew a report of, written from that very audit (`web.commented`, as `audit --commented`
+// writes it): its name, its bytes and how many comments stand at their places; or null.
+function commentedCopy(result, paperName) {
+  if (!result.view || !/\.docx$/i.test(paperName)) return null;
+  py.globals.set("PAPER", paperName);
+  const said = JSON.parse(py.runPython(`import json, os
+from manuscript_guard import web
+os.makedirs("/out", exist_ok=True)
+json.dumps(web.commented(PAPER, "/out/commented.docx"))`));
+  py.globals.delete("PAPER");
+  if (said.error) return { error: said.error };
+  return { ...said, name: paperName.replace(/\.docx$/i, "") + " (commented).docx",
+    data: py.FS.readFile("/out/commented.docx") };
 }
 
 // Requests the page's policy must refuse, made from this worker. None carries anything. One

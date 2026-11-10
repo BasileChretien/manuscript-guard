@@ -10295,6 +10295,30 @@ said as "'p' in italics". A G6 phrasing finding no longer opens with its rule's 
 each side (`audit.around`): the line's first 140 characters were quoted, and in a .docx,
 whose Abstract is a paragraph to a line, the number was often past them.
 
+**A commented copy.** The author asked for a report he could work in rather than read beside
+the paper (2026-11-10, "an interactive" one). `audit --commented FILE.docx`, and the page's
+"Save the paper with the findings as Word comments" from the same audit (`web.commented`),
+write a copy of the .docx with each finding of the report on it as a Word comment by
+"manuscript-guard audit" (`auditing.commented`): its section, message and hint, and whether
+`--strict` counts it. The paragraph is found by the finding's quote, not by its place,
+since the two readers count paragraphs apart where one drops one: the first paragraph that
+holds the quote's longest stretch the report did not cut, its words matched across runs and
+layout space, no word's edge asked of either end (a gate's quote is cut at a character
+count); a quote in no paragraph as Word holds it, a gate's from the converted text with a
+link's address or a mark Word does not print, falls back to the finding's own words where
+they hold a letter. The comment stands on those words, the word the message quotes or opens
+with where the quote holds it (`words_of`), the one of its places nearest where the quote
+has it; on the quote's stretch where there are none; on the whole paragraph where they begin
+or end in a field or a link. A finding with no line, no quote, or words in no paragraph is
+listed in one comment over the first paragraph, so none is lost. The comment's range is put
+between runs (`tracked._write_comment`) and no text moves; the comments part, its
+relationship and its content type are added where missing, and every namespace the
+document's root declared is declared again (`_declared_again`): ElementTree writes only
+those its elements use, and without the ones Word names in `mc:Ignorable` Word 16 said the
+author's copy was damaged (2026-11-10). Held by
+`tests/test_properties.py::test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text`
+with five broken rules; on the author's paper Word opens the copy with 49 comments.
+
 **Headings, exact.** A PDF marks no heading, and guessing one from a line's shape is a rule
 that reads text. So a line is a heading only where it holds a section's name and nothing else
 from a closed list (`auditing.pdf.HEADINGS`: the parts of a paper, the reference list's
@@ -25236,6 +25260,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
   heading before. Accepted.
   - A paragraph whose only text is bars, "|", just above a table is counted as the table's,
     one paragraph too few after it (fix round of #616). Accepted.
+
+- **A commented copy places a finding by its quote.** `audit --commented` comments the first
+  paragraph that holds a finding's quote, so a quote that two paragraphs hold word for word
+  is put on the first. Its words are matched as they are cased: G14's spelling finding on
+  'centre' in a paragraph that prints "Centre" is listed on the first paragraph, as it was on
+  the author's paper. A number whose quote is in no paragraph is listed rather than put on
+  the first paragraph that holds the number. Accepted.
+  - A paragraph is any `w:p` of the body, a text box's and a `mc:Fallback`'s among them, so a
+    quote that a text box's copy for older Word holds may be commented there, where Word 16
+    does not show it. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

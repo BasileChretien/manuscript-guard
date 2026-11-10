@@ -2411,6 +2411,50 @@ def _cited_refused(target: Path, given: list[Path]) -> str:
     return ""
 
 
+def _commented_refused(target: Path, given: list[Path], paper: Path) -> str:
+    """Why `--commented` cannot write to `target`, or "": a paper named first that is no
+    .docx, a target that is not one, a file already there, which may be the author's own
+    copy, a folder that is not there, or a file the audit reads."""
+    if paper.is_dir() or paper.suffix.lower() != ".docx":
+        return (f"--commented copies the .docx named first with its findings as comments, and "
+                f"{paper.name} is not one")  # fmt: skip
+    if target.suffix.lower() != ".docx":
+        return f"--commented writes a Word document (.docx): {target.name} is not one"
+    if target.exists():
+        return (f"--commented {target}: the file is there already, and may be a copy you have "
+                "worked on; name another, or move it away")  # fmt: skip
+    if not target.parent.is_dir():
+        return f"--commented {target}: its folder does not exist"
+    if any(target.resolve() == path.resolve() for path in given):
+        return f"--commented {target}: that is a file the audit reads"
+    return ""
+
+
+def _write_commented(report, args: argparse.Namespace) -> bool:
+    """The copy of the .docx named first with each finding as a Word comment at its place,
+    written to the file `--commented` names (`auditing.commented`); False, said on stderr,
+    where it could not be written."""
+    from datetime import datetime, timezone
+
+    from manuscript_guard.auditing.commented import CommentedError, notes_of, write
+    from manuscript_guard.safexml import UnsafeDocument
+
+    paper = args.paper[0]
+    date = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    try:
+        written = write(paper, args.commented, notes_of(report, paper), date=date)
+    except (CommentedError, UnsafeDocument, OSError) as exc:
+        print(f"manuscript-guard audit: --commented {args.commented} could not be written: "
+              f"{exc}", file=sys.stderr)  # fmt: skip
+        return False
+    listed = len(written.listed)
+    print(f"manuscript-guard audit: wrote {args.commented}, a copy of {paper.name} with "
+          f"{written.placed} finding{'s' if written.placed != 1 else ''} as comments at their "
+          f"places" + (f" and {listed} with no place listed in a comment on its first "
+                       "paragraph" if listed else ""), file=sys.stderr)  # fmt: skip
+    return True
+
+
 def _write_cited(report, args: argparse.Namespace) -> bool:
     """The cited sentences, with their abstracts where --lookup asks for them, written to
     the file `--cited` names; False, said on stderr, where it could not be written."""
@@ -2491,8 +2535,9 @@ def _read_as_reader(report, reader: _Reader, main: Path, papers: list[Path],
 
 
 #: The options that read a paper, refused with `--package` and no paper.
-_READ_A_PAPER = ("against", "figures", "journal", "authors", "design", "cited", "lookup",
-                 "whole_numbers", "minimum_cell_count", "english", "submission_residue")
+_READ_A_PAPER = ("against", "figures", "journal", "authors", "design", "cited", "commented",
+                 "lookup", "whole_numbers", "minimum_cell_count", "english",
+                 "submission_residue")
 
 
 def _flags_given(args: argparse.Namespace, names: tuple[str, ...]) -> list[str]:
@@ -2517,7 +2562,7 @@ AUDITED: Callable[[object, object], None] | None = None
 #: The options of `audit` and `compare` the report draft names, in the order they are listed.
 _AUDIT_FLAGS = ("against", "figures", "english", "submission_residue", "lookup", "dry_run",
                 "whole_numbers", "minimum_cell_count", "journal", "authors", "design", "cited",
-                "package", "strict")  # fmt: skip
+                "commented", "package", "strict")  # fmt: skip
 _COMPARE_FLAGS = ("response", "comments")
 
 
@@ -2562,7 +2607,8 @@ def cmd_audit(args: argparse.Namespace) -> int:
             return _audit_refused(args, f"manuscript-guard audit: {named[0].split()[0]} reads "
                                   "a paper: name one before --package")  # fmt: skip
     given = [*args.paper, *(args.against or []), *(args.figures or []),
-             *(path for path in (args.journal, args.authors, args.package, args.cited) if path)]
+             *(path for path in (args.journal, args.authors, args.package, args.cited,
+                                 args.commented) if path)]  # fmt: skip
     refused = _draft_refused(args, given, "audit")
     if refused is not None:
         return refused
@@ -2677,6 +2723,10 @@ def _audit(args: argparse.Namespace, package) -> int:
         refused = _cited_refused(args.cited, given)
         if refused:
             return _audit_refused(args, f"manuscript-guard audit: {refused}")
+    if args.commented is not None:
+        refused = _commented_refused(args.commented, given, args.paper[0])
+        if refused:
+            return _audit_refused(args, f"manuscript-guard audit: {refused}")
     reader = _reader(args)
     if isinstance(reader, int):
         return reader
@@ -2748,6 +2798,8 @@ def _audit(args: argparse.Namespace, package) -> int:
                 str(reader.profile.get("name") or "") or None, args.dry_run,
             )  # fmt: skip
     if args.cited is not None and not _write_cited(report, args):
+        return 2
+    if args.commented is not None and not _write_commented(report, args):
         return 2
     discrimination = measure_discrimination(report.backing_values) if against else None
     if args.report_draft is not None:
@@ -6828,6 +6880,15 @@ def build_parser() -> argparse.ArgumentParser:
         "reference list's entry, and with --lookup the registries' title, year and standing "
         "and Europe PMC's abstract, and an empty column for your judgement; FILE quotes the "
         "manuscript, and the report gives counts only",
+    )
+    audit.add_argument(
+        "--commented",
+        type=Path,
+        metavar="FILE",
+        help="also write a copy of the .docx named first to FILE (.docx, which must not exist "
+        "yet) with each finding as a Word comment at its place, anchored on the number or the "
+        "words it is about; those with no place are listed in a comment on its first "
+        "paragraph, and nothing of its text changes",
     )
     audit.add_argument(
         "--package",

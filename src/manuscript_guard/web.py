@@ -11,6 +11,8 @@ program to start and no sockets, so:
 * `xhr_transport` is `lookup.http.default_transport` in a page: one synchronous
   XMLHttpRequest, which a worker may make. `default_transport` hands over to it under Pyodide.
 * `run` runs one command and returns what it printed, for the page to show.
+* `commented` writes the copy of the paper with the last audit's findings as Word comments,
+  as `audit --commented` does, for the page to save.
 
 Nothing here starts a process or opens a socket, and only `install` and the transport's
 default touch `js`, which exists only in Pyodide.
@@ -221,8 +223,10 @@ def view(arguments: list[str]) -> dict:
 
     made: list[dict] = []
     details = "--details" in arguments
+    _AUDITED.clear()
 
     def told(report, discrimination) -> None:
+        _AUDITED.append(report)
         try:
             made.append(drawn(report, discrimination, Path.cwd(), details=details))
         except Exception as exc:  # noqa: BLE001 - the text is printed whatever the view does
@@ -239,5 +243,32 @@ def view(arguments: list[str]) -> dict:
     return {**result, "view": shown}
 
 
-__all__ = ["PandocCall", "install", "pandoc_options", "run", "runner_for", "view",
+#: The report of the audit `view` ran last, which `commented` writes its copy from.
+_AUDITED: list = []
+
+
+def commented(paper: str, target: str) -> dict:
+    """The copy of the .docx `paper` with the findings of the audit `view` ran last as Word
+    comments at their places, written to `target` as `audit --commented` writes it
+    (`auditing.commented`), from the same audit rather than a second one: how many comments
+    stand at their places and how many are listed, or why none was written."""
+    from datetime import datetime, timezone
+
+    from manuscript_guard.auditing.commented import CommentedError, notes_of, write
+    from manuscript_guard.safexml import UnsafeDocument
+
+    if not _AUDITED:
+        return {"error": "no audit was run"}
+    path = Path(paper)
+    if path.suffix.lower() != ".docx":
+        return {"error": f"{path.name} is not a .docx"}
+    date = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    try:
+        written = write(path, Path(target), notes_of(_AUDITED[-1], path), date=date)
+    except (CommentedError, UnsafeDocument, OSError) as exc:
+        return {"error": str(exc)}
+    return {"placed": written.placed, "listed": len(written.listed)}
+
+
+__all__ = ["PandocCall", "commented", "install", "pandoc_options", "run", "runner_for", "view",
            "xhr_transport"]  # fmt: skip

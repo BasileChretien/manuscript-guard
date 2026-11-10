@@ -1,0 +1,318 @@
+"""A copy of the audited .docx with each finding as a Word comment at its place.
+
+The report names a place, "Methods, paragraph 3"; the copy puts the finding there, in the
+document the author works in (the author's audit, 2026-11-10, "an interactive" report). Each
+comment is anchored on the finding's own words where they can be found: the number for a
+number, the abbreviation or the quoted word for a finding on the words; else on the stretch
+of its quote that stands in one paragraph. A finding with no place in the text, or whose
+words are in no paragraph as Word holds them, is listed in one comment on the document's
+first paragraph, so that none is lost.
+
+**Nothing else changes.** A comment's range is put between runs, a run split where the
+words begin and end (`tracked._write_comment`); no text is added, removed or moved, and the
+document read with its comments taken away is the document given. Words that begin or end
+inside a field, a link or anything but a plain run are anchored on their whole paragraph
+instead. The comments part, its relationship and its content type are added where the
+document has none.
+
+The paragraph is found by its words, not counted, since the audit's two readers of a .docx
+count its paragraphs apart where one drops one (DESIGN.md, "Known gaps"): among the
+paragraphs that hold the finding's quote, the first; within it, the finding's words nearest
+to where the quote has them.
+"""
+
+from __future__ import annotations
+
+import re
+import tempfile
+import zipfile
+from dataclasses import dataclass
+from pathlib import Path
+from xml.etree import ElementTree as ET
+
+from manuscript_guard.safexml import open_archive, parse_xml, read_member
+from manuscript_guard.tracked import (
+    W_NS,
+    Placement,
+    W,
+    _chars,
+    _comment,
+    _found,
+    _Ids,
+    _namespaces,
+    _one_text_each,
+    _pattern,
+    _serialised,
+    _write_comment,
+)
+
+_DOCUMENT = "word/document.xml"
+_COMMENTS = "word/comments.xml"
+_RELATIONSHIPS = "word/_rels/document.xml.rels"
+_TYPES = "[Content_Types].xml"
+_COMMENTS_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"
+_COMMENTS_RELATIONSHIP = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
+)
+_PACKAGE = "http://schemas.openxmlformats.org/package/2006/relationships"
+_CONTENT = "http://schemas.openxmlformats.org/package/2006/content-types"
+#: Who the comments are by, as Word shows it beside each.
+AUTHOR = "manuscript-guard audit"
+#: A finding's own words as its message quotes them: 'behaviours', 'p<0.05'.
+_QUOTED = re.compile(r"'([^'\n]{1,60})'")
+#: Its first word, where the message opens with what it is about: "AS is used 8 times".
+_FIRST = re.compile(r"^([^\s:;,]{2,30})\s")
+#: What the report's quote marks as left out.
+_LEFT_OUT = "..."
+
+
+class CommentedError(Exception):
+    """The copy could not be written, and the reason is in the message."""
+
+
+@dataclass(frozen=True)
+class Note:
+    """One finding to comment: its own words, the quote around them, and what the comment
+    says, a paragraph to a line. `words` and `around` may be empty: the note then goes in
+    the list on the first paragraph."""
+
+    words: str
+    around: str
+    comment: str
+
+
+@dataclass(frozen=True)
+class Commented:
+    """What was written: how many comments stand at their place, and the notes that stood
+    nowhere and are listed on the first paragraph."""
+
+    placed: int
+    listed: tuple[Note, ...]
+
+
+def words_of(message: str, context: str | None) -> str:
+    """A finding's own words, where its message names them and its quote holds them: the
+    word it quotes, or the word it opens with; empty where neither is in the quote."""
+    if not context:
+        return ""
+    for found in (*_QUOTED.findall(message), *_FIRST.findall(message)):
+        if found and _found(" ".join(context.split()), found):
+            return found
+    return ""
+
+
+def _fragment(around: str) -> str:
+    """The longest stretch of a quote that the report did not cut: what stands in one
+    paragraph of the document."""
+    pieces = [" ".join(piece.split()) for piece in around.split(_LEFT_OUT)]
+    return max(pieces, key=len, default="")
+
+
+def _span(text: str, note: Note) -> tuple[int, int] | None:
+    """Where the note's words are in a paragraph's text, nearest to where its quote has
+    them; or the quote's stretch itself where the words are not given or not in it."""
+    fragment = _fragment(note.around)
+    at = None
+    if fragment:
+        # A gate's quote is cut at a character count, inside a word: no word's edge here.
+        found = re.compile(r"\s+".join(map(re.escape, fragment.split(" ")))).search(text)
+        if found is None:
+            return None
+        at = found
+    if note.words:
+        starts = _found(text, note.words)
+        if starts:
+            aim = 0 if at is None else at.start() + max(0, fragment.find(note.words))
+            start = min(starts, key=lambda one: abs(one - aim))
+            return start, _pattern(note.words).match(text, start).end()
+        if at is None:
+            return None
+    return (at.start(), at.end()) if at is not None else None
+
+
+def _paragraph(texts: list[tuple[str, list]], note: Note) -> tuple[int, tuple[int, int]] | None:
+    """The first paragraph that holds the note's quote, and where its words are in it. A
+    quote in no paragraph as Word holds it (a gate's, from the text pandoc converts the
+    document to, may carry a link's address or a mark Word does not print): the first
+    paragraph that holds its words, where they are a word and not a number, which would
+    stand in too many."""
+    for index, (text, _where) in enumerate(texts):
+        span = _span(text, note)
+        if span is not None:
+            return index, span
+    if not re.search(r"[^\W\d_]", note.words):
+        return None
+    alone = Note(note.words, "", note.comment)
+    for index, (text, _where) in enumerate(texts):
+        span = _span(text, alone)
+        if span is not None:
+            return index, span
+    return None
+
+
+def notes_of(report, paper: Path) -> list[Note]:
+    """Every finding of the audit `report` on `paper`, as a note: anchored on its own words
+    where its message names them and its quote holds them (`words_of`), else on its quote;
+    one with no quote or no line said with its place, for the list on the first paragraph.
+    Each says its section, its message, its hint, and whether `--strict` counts it."""
+    from manuscript_guard.auditing.report import items
+
+    target = paper.resolve()
+    placers = report.placers
+    notes: list[Note] = []
+    for item in items(report):
+        if item.path is None or Path(item.path).resolve() != target:
+            continue
+        said = f"{item.section}: {item.message}"
+        if item.hint:
+            said += f"\nHint: {item.hint}"
+        if item.counted:
+            said += "\n(counted by --strict)"
+        if item.line is None or not item.context:
+            placer = item.placer if item.placer is not None else placers.get(item.path)
+            where = placer.said(item.line) if placer is not None and item.line else None
+            notes.append(Note("", "", f"{where}: {said}" if where else said))
+            continue
+        notes.append(Note(words_of(item.message, item.context), item.context, said))
+    return notes
+
+
+def _whole(paragraph: ET.Element, identifier: str) -> None:
+    """A comment over the whole paragraph: its range from after the paragraph's properties
+    to its end."""
+    children = list(paragraph)
+    start = 1 if children and children[0].tag == W + "pPr" else 0
+    paragraph.insert(start, ET.Element(W + "commentRangeStart", {W + "id": identifier}))
+    paragraph.append(ET.Element(W + "commentRangeEnd", {W + "id": identifier}))
+    reference = ET.SubElement(paragraph, W + "r")
+    ET.SubElement(ET.SubElement(reference, W + "rPr"), W + "rStyle").set(
+        W + "val", "CommentReference")  # fmt: skip
+    ET.SubElement(reference, W + "commentReference", {W + "id": identifier})
+
+
+def _placement(note: Note, words: str, date: str) -> Placement:
+    return Placement(0, "", words, "", AUTHOR, date, note.comment, comment_only=True)
+
+
+def _listing(listed: list[Note]) -> str:
+    """The comment on the first paragraph: the findings that stand nowhere in the text."""
+    head = (f"{len(listed)} finding{'s' if len(listed) != 1 else ''} of the audit "
+            f"{'have' if len(listed) != 1 else 'has'} no place in the text:")  # fmt: skip
+    return "\n".join([head, *(note.comment.replace("\n", " ") for note in listed)])
+
+
+def _parts_for_comments(parts: dict[str, bytes]) -> None:
+    """The comments part, its relationship and its content type, where the document has
+    none of them."""
+    if _COMMENTS not in parts:
+        parts[_COMMENTS] = (f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+                            f'<w:comments xmlns:w="{W_NS}"/>').encode()  # fmt: skip
+    if _RELATIONSHIPS not in parts:
+        parts[_RELATIONSHIPS] = (f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+                                 f'<Relationships xmlns="{_PACKAGE}"></Relationships>'
+                                 ).encode()  # fmt: skip
+    relationships = parse_xml(parts[_RELATIONSHIPS], what=_RELATIONSHIPS)
+    if not any(node.get("Type") == _COMMENTS_RELATIONSHIP for node in relationships):
+        taken = {node.get("Id") for node in relationships}
+        number = next(n for n in range(1, len(taken) + 2) if f"rIdMgComments{n}" not in taken)
+        parts[_RELATIONSHIPS] = _before_end(
+            parts[_RELATIONSHIPS], b"</Relationships>",
+            f'<Relationship Id="rIdMgComments{number}" Type="{_COMMENTS_RELATIONSHIP}" '
+            'Target="comments.xml"/>', _RELATIONSHIPS)  # fmt: skip
+    types = parse_xml(parts[_TYPES], what=_TYPES)
+    if not any(node.get("PartName") == "/" + _COMMENTS for node in types):
+        parts[_TYPES] = _before_end(
+            parts[_TYPES], b"</Types>",
+            f'<Override PartName="/{_COMMENTS}" ContentType="{_COMMENTS_TYPE}"/>', _TYPES)
+    for name in (_RELATIONSHIPS, _TYPES):
+        parse_xml(parts[name], what=name)
+
+
+def _before_end(part: bytes, end: bytes, element: str, name: str) -> bytes:
+    """The package part with `element` put in front of its closing tag, `end`, the rest of
+    it as Word wrote it: these parts hold no prefix, and ElementTree writes none back but
+    its own."""
+    at = part.rfind(end)
+    if at < 0:
+        raise CommentedError(f"{name} does not end as a Word document's does")
+    return part[:at] + element.encode() + part[at:]
+
+
+#: The first element's start tag of a part, after its XML declaration.
+_ROOT = re.compile(rb"<(?![?!])[^>]*?(/?)>")
+
+
+def _declared_again(part: bytes, declared: list[tuple[str, str]]) -> bytes:
+    """The part with every namespace its original declared declared again on its root.
+    ElementTree writes only those its elements use, and a Word document names others in
+    `mc:Ignorable`, "w15 w16se ...": without their declarations Word says the file is
+    damaged (Word 16, 2026-11-10, on the author's paper)."""
+    root = _ROOT.search(part)
+    if root is None:
+        return part
+    tag = root.group(0)
+    present = set(re.findall(rb"xmlns:([\w.-]+)=", tag))
+    missing = "".join(f' xmlns:{prefix}="{uri}"' for prefix, uri in dict(declared).items()
+                      if prefix and prefix.encode() not in present)  # fmt: skip
+    if not missing:
+        return part
+    end = root.end() - len(root.group(1)) - 1
+    return part[:end] + missing.encode() + part[end:]
+
+
+def write(source: Path, target: Path, notes: list[Note], *, date: str) -> Commented:
+    """Copy the .docx `source` to `target` with each note as a Word comment by `AUTHOR` on
+    `date`, at its words where they stand, and the rest listed on the first paragraph."""
+    try:
+        with open_archive(source) as archive:
+            names = archive.namelist()
+            parts = {name: read_member(archive, name) for name in names}
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise CommentedError(f"{source.name} cannot be read: {exc}") from None
+    if _DOCUMENT not in parts or _TYPES not in parts:
+        raise CommentedError(f"{source.name} has no document part: it is not a Word document")
+    _parts_for_comments(parts)
+    declared = _namespaces(parts[_DOCUMENT])
+    document = parse_xml(parts[_DOCUMENT], what=_DOCUMENT)
+    comments = parse_xml(parts[_COMMENTS], what=_COMMENTS)
+    paragraphs = list(document.iter(W + "p"))
+    for paragraph in paragraphs:
+        _one_text_each(paragraph)
+    texts = [_chars(paragraph) for paragraph in paragraphs]
+    located: list[tuple[int, tuple[int, int], Note]] = []
+    listed: list[Note] = []
+    for note in notes:
+        place = _paragraph(texts, note) if note.words or note.around else None
+        if place is None:
+            listed.append(note)
+        else:
+            located.append((place[0], place[1], note))
+    ids = _Ids(document, comments)
+    for index, (start, end), note in sorted(located, key=lambda one: (one[0], one[1]),
+                                            reverse=True):  # fmt: skip
+        paragraph = paragraphs[index]
+        _text, where = _chars(paragraph)
+        words = _text[start:end]
+        if where[start].run is None or where[end - 1].run is None:
+            identifier = ids.take("comment")
+            _whole(paragraph, identifier)
+            comments.append(_comment(identifier, _placement(note, words, date)))
+        else:
+            _write_comment(paragraph, _placement(note, words, date), (start, end), ids,
+                           comments)  # fmt: skip
+    if listed and paragraphs:
+        identifier = ids.take("comment")
+        _whole(paragraphs[0], identifier)
+        comments.append(_comment(identifier, _placement(Note("", "", _listing(listed)), "",
+                                                        date)))  # fmt: skip
+    parts[_DOCUMENT] = _declared_again(_serialised(document, declared), declared)
+    kept = _namespaces(parts[_COMMENTS])
+    parts[_COMMENTS] = _declared_again(_serialised(comments, kept), kept)
+    names = [*names, *(name for name in parts if name not in names)]
+    with tempfile.TemporaryDirectory() as scratch:
+        made = Path(scratch) / "commented.docx"
+        with zipfile.ZipFile(made, "w", zipfile.ZIP_DEFLATED) as out:
+            for name in names:
+                out.writestr(name, parts[name])
+        target.write_bytes(made.read_bytes())
+    return Commented(len(located), tuple(listed))

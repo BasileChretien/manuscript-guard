@@ -180,11 +180,33 @@ def coarser(printed: str) -> set[tuple[str, int]]:
     return found
 
 
+#: The shapes of an atom in which a space was left out around a number, which the section
+#: reads the number of (G14's `notation-space-missing` reports the space): a number typed
+#: against a word, "+0.41points", "10hours"; an ordinal against its word, "2ndyear", which
+#: is a rank and gives none; a word against a signed number, "to+0.77"; and a label closed
+#: up against its number by a colon or a bracket, "CI):+0.05", "95%CI:0.03-0.88",
+#: "students(66%". Only these: an atom with letters in it is otherwise read whole, so that
+#: no name or address matches on a digit it holds (`audit._COMPOUND`). Found on the
+#: author's Abstract, whose numbers were all "not found" for want of a space (2026-11-10).
+_AGAINST_A_WORD = re.compile(r"(?P<number>[-+\N{MINUS SIGN}]?\d[\d.,]*%?)"
+                             r"(?:(?P<ordinal>st|nd|rd|th)[a-z]*|[a-z]{3,})")  # fmt: skip
+_AFTER_A_WORD = re.compile(r"[a-z]{2,}(?P<number>[+\N{MINUS SIGN}]\d[\d.,]*%?)")
+_AFTER_A_LABEL = re.compile(r".*?[A-Za-z%][):(]+(?P<number>[-+\N{MINUS SIGN}]?\d.*)")
+
+
 def printed_parts(text: str) -> list[str]:
-    """The numbers an atom carries, as printed: `audit.parts_of` without normalising them."""
+    """The numbers an atom carries, as printed: `audit.parts_of` without normalising them,
+    and the number of an atom a space was left out of (`_AGAINST_A_WORD`); none for an
+    ordinal against its word."""
     from manuscript_guard.audit import _COMPOUND, _LABELLED, _NUMBER
 
     stripped = _LABELLED.sub("", text.strip().strip("()[]"), count=1)
+    against = _AGAINST_A_WORD.fullmatch(stripped)
+    if against is not None:
+        return [] if against["ordinal"] else [against["number"]]
+    after = _AFTER_A_WORD.fullmatch(stripped) or _AFTER_A_LABEL.fullmatch(stripped)
+    if after is not None:
+        return printed_parts(after["number"])
     if not _COMPOUND.match(stripped):
         return [stripped]
     return [found.group(0) for found in _NUMBER.finditer(stripped)] or [stripped]
@@ -257,8 +279,11 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
         for atom in piece.atoms:
             if atom.line not in lines or any(start <= atom.start < end for start, end in spans):
                 continue
+            parts = printed_parts(atom.text)
+            if not parts:
+                continue  # "2ndyear": a rank typed against its word, no number to look for
             read.numbers += 1
-            states = [_state(part, exact, rounded) for part in printed_parts(atom.text)]
+            states = [_state(part, exact, rounded) for part in parts]
             candidate = Candidate(atom.text, normalise_number(atom.text), piece.path,
                                   atom.line, atom.line_text.strip()[:140])  # fmt: skip
             if "" in states:

@@ -18,12 +18,15 @@ For each, the form the manuscript uses most is taken for its convention, and eac
 form is reported once, where it first stands, with both counts. Where two forms are level
 the later one is shown, and the finding says so.
 
-One finding is not about consistency:
+Two findings are not about consistency:
 
 * `notation-unit`: a number that runs into its unit, "5mg". The SI Brochure sets a space
   between the two, so this is reported wherever it stands, in a manuscript that always
   writes it so too. "%" is left to consistency above, because journals differ on it more
   than on any unit; where one prints "37°C", the warning is that journal's to overrule.
+* `notation-space-missing`: a number typed against the word after it, "0.41points",
+  "10hours", "2ndyear", or a word typed against a signed number, "to+0.77". No house style
+  writes these: a space was left out (the author's Abstract, 2026-11-10, eight times).
 
 **A value is a value, typed or bound.** In a manuscript of this toolkit the numbers are
 bindings, `{{results.ror.point}}`, so the notation is read with each binding that stands in
@@ -166,6 +169,21 @@ _UNIT = re.compile(
     r"(?:[\u00b2\u00b3]|\^?[-\u2212]?[123]\^?)?"
     r"(?![\w\u00b0])"
 )
+#: The units in lower case of three letters or more, which `_UNIT` reads and a space left
+#: out does not: "30min", "5mins".
+_LOWER_UNITS = frozenset(unit for unit in UNITS if len(unit) >= 3 and unit.islower())
+#: A space left out: a number typed against a word of three lower-case letters or more,
+#: "0.41points", "10hours", with an ordinal's suffix between them or not, "2ndyear"
+#: (`_NUMBER_THEN_WORD`); and a word typed against a signed number, "to+0.77"
+#: (`_WORD_THEN_NUMBER`). Not a name a number stands inside, "p53mutant", "COVID19cases",
+#: which the letter before the number tells; not a unit, which `_UNIT` reads
+#: (`_LOWER_UNITS`); and not a number in hexadecimal (`_HEXADECIMAL`).
+_NUMBER_THEN_WORD = re.compile(
+    r"(?<![\w.,\N{MIDDLE DOT}/" + VALUE + r"])(?:" + _TYPED + "|" + VALUE + r"+)"
+    r"(?:st|nd|rd|th)?(?P<word>[a-z]{3,})\b"
+)
+_WORD_THEN_NUMBER = re.compile(r"\b[a-z]{2,}[+\N{MINUS SIGN}]" + _TYPED + r"(?![\w.])")
+_HEXADECIMAL = re.compile(r"0x[0-9a-f]+")
 # What may stand between such a word and the number: the rest of its sentence. A full stop
 # ends it only before a capital, so that "Fig. 2f vs. 2g" is one, and a line may be
 # wrapped in it.
@@ -345,6 +363,7 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
     for the space before a unit."""
     symbols, signs, joins, percents = _Family(), _Family(), _Family(), _Family()
     closed: list[tuple[_Use, str]] = []
+    run_on: list[_Use] = []
 
     for place, passage in enumerate(passages):
         text = _counted(passage)
@@ -404,6 +423,16 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
                 continue  # "centrifuged at 12,000g" is a force, not twelve kilograms
             use = _Use(place, found.start(), passage, found.end() - found.start())
             closed.append((use, unit))
+
+        for found in _NUMBER_THEN_WORD.finditer(text):
+            word = found["word"]
+            if word in _LOWER_UNITS or word[:-1] in _LOWER_UNITS:
+                continue  # "30min", "5mins": a unit, which `notation-unit` reports
+            if _HEXADECIMAL.fullmatch(found.group(0)):
+                continue  # "0xff", a number written in hexadecimal
+            run_on.append(_Use(place, found.start(), passage, found.end() - found.start()))
+        for found in _WORD_THEN_NUMBER.finditer(text):
+            run_on.append(_Use(place, found.start(), passage, found.end() - found.start()))
 
     findings: list[Finding] = []
 
@@ -492,6 +521,22 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
             )
         )
 
+    if run_on:
+        run_on.sort(key=lambda use: use.key)
+        first = run_on[0]
+        shown = list(dict.fromkeys(use.words for use in run_on))[:EXAMPLES]
+        findings.append(
+            _finding(
+                "notation-space-missing",
+                first,
+                f"a number and a word run together {_times(len(run_on))}: "
+                + ", ".join(map(_quoted, shown)),
+                "type a space between them: '0.41 points', '10 hours', '2nd year', "
+                "'to +0.77'. This is the first place one stands so; the count is of the "
+                "whole manuscript",
+            )
+        )
+
     return Report(
         tuple(findings),
         {
@@ -500,5 +545,6 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
             "notation_intervals": joins.uses,
             "notation_percents": percents.uses,
             "notation_units_closed": len(closed),
+            "notation_spaces_missing": len(run_on),
         },
     )

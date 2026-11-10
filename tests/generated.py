@@ -6625,7 +6625,26 @@ NOTATED = (
     "95% CI 1.2 to 3.4", "95% CI 1.2-3.4", "(95% CI {{results.low}} to {{results.high}})",
     "P = {{results.p}}", "5%", "5 %", "5mg", "5 mg", "{{results.dose}}mL",
     "(95% CI 80%-93%; 12 studies)", "2500g", "16,000g", "(CI 95%-0.3 to 0.4)",
+    # A space left out around a number, and lookalikes (`RUN_ON`, `NOT_RUN_ON`).
+    "0.41points", "to+0.77", "2ndyear", "p53mutant", "30min",
 )  # fmt: skip
+
+#: A space left out around a number, each counted once by `notation-space-missing`; and what
+#: is no such thing: a unit closed up, which `notation-unit` counts (two of them here), a name
+#: a number stands inside, an ordinal alone, a decade, a number in hexadecimal and one in
+#: scientific notation, a letter and a sign.
+RUN_ON = ("0.41points", "10hours", "2ndyear", "to+0.77", "12years", "{{results.n}}patients")
+NOT_RUN_ON = ("30min", "5mins", "p53mutant", "COVID19cases", "3rd", "2020s", "0xff", "1.2e+10",
+              "5mg", "x+1")  # fmt: skip
+
+
+@st.composite
+def run_on_numbers(draw: st.DrawFn) -> str:
+    """A manuscript with every piece of `RUN_ON` and `NOT_RUN_ON`, each in a sentence of its
+    own, in an order drawn."""
+    planted = draw(st.permutations([*RUN_ON, *NOT_RUN_ON]))
+    text, _starts = _paragraphs(draw, (f"it was {piece} then" for piece in planted))
+    return "# Results\n\n" + text
 
 #: A coding dictionary's release typed beside its name and elsewhere, and its name inside a
 #: longer word: what G2 finds typed where it should be bound.
@@ -7648,11 +7667,19 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: there; one that agrees as rounded; one with two counterparts, each differing in one
 #: number; one whose counterpart is at another level; a test whose P differs, and one whose
 #: P could be the same; a number reported to one place more; one in the Methods; one only
-#: in the Discussion; one in a table under the Discussion; and one in the supplement.
+#: in the Discussion; one in a table under the Discussion; and one in the supplement. And
+#: a space left out, each number in the Methods: a number typed against a word, a word
+#: against a signed number, a label closed up against its number; and an ordinal against
+#: its word, which gives no number to look for.
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
+    "against a word", "after a word", "after a label", "ordinal",
 )  # fmt: skip
+#: How each kind of space left out is typed, `{}` its number, and what it starts at.
+RUN_ON_NUMBERS = {"against a word": ("The value was {}points here.", 900),
+                  "after a word": ("The value rose to+{} here.", 1000),
+                  "after a label": ("The value was score:{} here.", 1100)}  # fmt: skip
 #: An estimate's abbreviation and its words.
 ESTIMATE_NAMES = (("OR", "odds ratio"), ("HR", "hazard ratio"), ("RR", "risk ratio"),
                   ("MD", "mean difference"))  # fmt: skip
@@ -7734,6 +7761,18 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                 printed = _test_printed(test, df, statistic, sign, given)
                 abstract.append((kind, f"We found {printed}."))
                 results.append(f"We found {_test_printed(test, df, statistic, '=', p)}.")
+        elif kind == "ordinal":
+            rank = f"{draw(st.integers(2, 9))}{draw(st.sampled_from(('nd', 'rd', 'th')))}year"
+            abstract.append((kind, f"They were in {rank} here."))
+            looked.append((kind, rank, "absent"))
+        elif kind in RUN_ON_NUMBERS:
+            written, base = RUN_ON_NUMBERS[kind]
+            value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
+            shown = str(value + base)
+            said = written.format(shown)
+            methods.append(f"It was {shown} then.")
+            looked.append((kind, said.split()[-2], "exact"))
+            abstract.append((kind, said))
         else:
             # Never a whole number of tenths, which would print as the number rounded.
             value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10

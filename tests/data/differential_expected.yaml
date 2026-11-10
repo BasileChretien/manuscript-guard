@@ -37,8 +37,16 @@ expected:
       link of each kind of target
   - reading: notation
     why: >-
-      an interval after a link on its line, "[text](https://...) (CI 95% 0.3 to 0.4)", is
-      read, where the link's target hid it up to the next `)`
+      a new finding, `notation-space-missing`, with its count in every report: a number
+      typed against a word, "0.41points", "2ndyear", or a word against a signed number,
+      "to+0.77", is a space left out; the inputs now hold these and lookalikes, "p53mutant",
+      "30min" (the author's Abstract, 2026-11-10)
+  - reading: abstract against results
+    why: >-
+      the Abstract's number a space was left out of is read, "512.3points", "to+1012.3",
+      "score:1112.3", and found where the paper reports it; an ordinal against its word,
+      "2ndyear", is not looked for; the inputs now hold each (the author's Abstract,
+      2026-11-10)
   - reading: reply numbers
     why: >-
       a number in a reply after a link on its line is read and, unbound, reported, where the

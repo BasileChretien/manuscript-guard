@@ -335,6 +335,20 @@ CHANGED = {
         "                path=paper,\n",
         "vocabulary",
     ),
+    "a word against a signed number is no space left out": (
+        "gates/notation.py",
+        '_WORD_THEN_NUMBER = re.compile(r"\\b[a-z]{2,}[+\\N{MINUS SIGN}]" + _TYPED + '
+        'r"(?![\\w.])")\n',
+        '_WORD_THEN_NUMBER = re.compile("(?!)")\n',
+        "notation",
+    ),
+    "a label closed up against its number is read whole in the Abstract": (
+        "auditing/abstract.py",
+        '_AFTER_A_LABEL = re.compile(r".*?[A-Za-z%][):(]+(?P<number>[-+\\N{MINUS SIGN}]?'
+        '\\d.*)")\n',
+        '_AFTER_A_LABEL = re.compile("(?!)")\n',
+        "abstract against results",
+    ),
 }
 
 

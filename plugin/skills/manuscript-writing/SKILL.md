@@ -1,6 +1,6 @@
 ---
 name: manuscript-writing
-description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, revision-residue, summary-claim-stronger (read references/summaries.md), an abbreviation finding (used before defined, redefined, unused, undefined, no-headings), term-avoided, vocabulary-conflict, a spelling finding (spelling-variant, spelling-mixed, spelling-not-as-declared) or a notation finding (notation-p-symbol, notation-sign-spacing, notation-interval, notation-percent, notation-unit), code-name-in-prose, a passage repeated from an earlier paper (recycled-text, recycled-methods-cited, recycled-statement, recycled-quotation, recycled-earlier-version, earlier-output-not-compared; read references/recycling.md), when a claim needs a citation it does not have, or when revising text that was drafted quickly. Not for the Methods against the code (use methods-writer), nor for putting a result into the text (use results-binding).
+description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, revision-residue, summary-claim-stronger (read references/summaries.md), an abbreviation finding (used before defined, redefined, unused, undefined, no-headings), term-avoided, vocabulary-conflict, a spelling finding (spelling-variant, spelling-mixed, spelling-not-as-declared) or a notation finding (notation-p-symbol, notation-sign-spacing, notation-interval, notation-percent, notation-unit, notation-space-missing), code-name-in-prose, a passage repeated from an earlier paper (recycled-text, recycled-methods-cited, recycled-statement, recycled-quotation, recycled-earlier-version, earlier-output-not-compared; read references/recycling.md), when a claim lacks a citation, or when revising text drafted quickly. Not for the Methods against the code (use methods-writer), nor for putting a result into the text (use results-binding).
 ---
 
 # Writing prose that reads as written
@@ -288,7 +288,7 @@ majority. Then search for every use and change them together; the finding names 
 "37°C", is reported wherever it stands: the SI Brochure sets a space there (9th edition,
 2019, section 5.4.3), and only the degree, minute and second of a plane angle go without
 one. Write "5 mg" and "37 °C". A unit joined by a hyphen to make an adjective, "a 5-mg
-dose", is left alone.
+dose", is left alone. Put back a `notation-space-missing`.
 
 Say what a "±" stands for, a standard deviation or a standard error, or give the interval
 instead: a bare "±" is read as an interval of high confidence (JCGM 100:2008, the Guide to

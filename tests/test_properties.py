@@ -1896,6 +1896,82 @@ def test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations(
     assert found == [("abbreviation-undefined", short) for short in undefined], text
 
 
+from generated import initials_named  # noqa: E402
+
+
+@holds(60, initials_named())
+def test_the_initials_a_contributions_statement_names_are_no_abbreviations(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """The initials two contributions statements name, one under a heading and one run on
+    from a bold label, are people in the Methods too where a bracket holds only initials,
+    alone or two joined, an initial with a hyphen as its letters. An initial in a sentence
+    or in a bracket beside another word is read as an abbreviation; so are the capitals of
+    the acknowledgements and the funding, a longer word of capitals in a contributions
+    statement, and the part of an initial with a hyphen."""
+    text, undefined = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+    report = language_gate._judge([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+    found = sorted((f.code, f.message.split()[0]) for f in report.findings)
+    assert found == [("abbreviation-undefined", short) for short in undefined], text
+
+
+def _no_initials_are_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_initials", lambda prose, spans: frozenset())
+
+
+def _every_statement_names_initials(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_CONTRIBUTED", re.compile(""))
+
+
+def _a_long_word_of_capitals_is_initials(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_INITIALS_SPAN", range(2, 9))
+
+
+def _no_heading_names_a_contributions_statement(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._contributions
+    patch.setattr(language_gate, "_contributions",
+                  lambda hidden, titled, statements: real(hidden, [], statements))  # fmt: skip
+
+
+def _no_label_opens_a_contributions_statement(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._contributions
+    patch.setattr(language_gate, "_contributions",
+                  lambda hidden, titled, statements: real(hidden, titled, []))  # fmt: skip
+
+
+def _an_initial_with_a_hyphen_is_its_parts(patch: pytest.MonkeyPatch) -> None:
+    def parts(prose: str, spans: Any) -> frozenset[str]:
+        found = set()
+        for start, end in spans:
+            for word in language_gate._WORD.finditer(prose, start, end):
+                found.update(p for p in word.group(0).split("-") if 2 <= len(p) <= 4
+                             and p.isalpha() and p.isupper())  # fmt: skip
+        return frozenset(found)
+
+    patch.setattr(language_gate, "_initials", parts)
+
+
+def _an_initial_anywhere_is_a_person(patch: pytest.MonkeyPatch) -> None:
+    def anywhere(prose: str, initials: frozenset[str]) -> frozenset[int]:
+        return frozenset(word.start() for word in language_gate._WORD.finditer(prose)
+                         if word.group(0) in initials)  # fmt: skip
+
+    patch.setattr(language_gate, "_people", anywhere)
+
+
+def _a_bracket_with_an_initial_is_of_initials(patch: pytest.MonkeyPatch) -> None:
+    def any_one(prose: str, initials: frozenset[str]) -> frozenset[int]:
+        found = set()
+        for bracket in language_gate._BRACKETED.finditer(prose):
+            words = list(language_gate._WORD.finditer(bracket.group("inside")))
+            if any(word.group(0) in initials for word in words):
+                found.update(bracket.start("inside") + word.start() for word in words)
+        return frozenset(found)
+
+    patch.setattr(language_gate, "_people", any_one)
+
+
 def _no_statement_runs_on_from_a_label(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_run_in_statements", lambda hidden, headings: [])
 
@@ -1963,6 +2039,53 @@ def _a_short_form_followed_by_a_colon_defines_nothing(patch: pytest.MonkeyPatch)
     patch.setattr(language_gate, "_OPENS_WITH", re.compile(pattern[:-3] + "])"))
 
 
+def _hyphens_only(pattern: str) -> re.Pattern[str]:
+    """`pattern` with a stop no longer joining the parts of a word."""
+    joined = re.search(r"\(\?:-\[\^\\W_\]\+\|.*\)\*", pattern)
+    assert joined is not None, pattern
+    return re.compile(pattern.replace(joined.group(0), "(?:-[^\\W_]+)*"))
+
+
+def _a_stop_before_a_digit_joins_a_word(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_WORD", re.compile("[^\\W_]+(?:[-.][^\\W_]+)*"))
+
+
+def _a_short_form_before_a_bracket_is_not_tried_from_its_last_stop(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    real = language_gate._long_after
+    patch.setattr(language_gate, "_long_after",
+                  lambda prose, bracket, head, short: None if "." in prose[head - 1 : head]
+                  else real(prose, bracket, head, short))  # fmt: skip
+
+
+def _a_stop_joins_no_word(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_WORD", _hyphens_only(language_gate._WORD.pattern))
+
+
+def _a_stop_in_a_bracket_s_short_form_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_OPENS_WITH", _hyphens_only(language_gate._OPENS_WITH.pattern))
+
+
+def _a_stop_in_a_short_form_before_a_bracket_defines_nothing(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(language_gate, "_BEFORE_PAREN",
+                  _hyphens_only(language_gate._BEFORE_PAREN.pattern))  # fmt: skip
+
+
+def _a_stop_is_never_between_two_parts(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_JOINS", re.compile("-"))
+
+
+def _a_glossary_s_short_form_has_no_stop(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    short = "[^\\W_]+(?:-[^\\W_]+)*"
+    patch.setattr(glossary, "_SEPARATED", re.compile(
+        glossary._SEPARATED.pattern.replace(glossary._SHORT, short)))  # fmt: skip
+
+
 def _a_number_or_an_equals_sign_opens_a_definition(patch: pytest.MonkeyPatch) -> None:
     pattern = language_gate._OPENS_WITH.pattern
     assert pattern.endswith("(?:$|[;,:])")
@@ -2021,6 +2144,7 @@ from generated import (  # noqa: E402
     STATISTICS_EXEMPT,
     STATISTICS_NOT,
     defined_elsewhere,
+    glossaries_untitled,
     statistics_used,
 )
 
@@ -2085,6 +2209,89 @@ def test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text
         assert ("abbreviation-undefined", "UMC") in {
             (f.code, f.message.split()[0]) for f in plain
         }, drawn["headless"]
+
+
+@holds(60, glossaries_untitled())
+def test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them(
+    drawn: dict[str, Any],
+) -> None:
+    """A glossary with no heading over it, opened by a paragraph that opens with its name
+    ("List of abbreviations and acronyms used in the text."), defines its entries in every
+    form, under letters' labels and a letter's heading, an entry with no capital among
+    them; its lines are not uses. It ends with its last entry: a heading after it ends it,
+    and so does a sentence, a paragraph shaped like an entry with a word for its short form
+    staying out of it, so the abbreviations there are undefined. A paragraph that names
+    abbreviations without opening on the word opens none. The same with no heading."""
+    nothing = language_gate._Known(frozenset(), frozenset())
+
+    def findings(text: str) -> list:
+        read = [_file(0, Path("main.md"), text, [], False)]
+        report = language_gate._judge(read, nothing, Path("."))
+        return sorted((f.code, f.message.split()[0]) for f in report.findings
+                      if f.code != "no-headings")  # fmt: skip
+
+    assert findings(drawn["headed"]) == drawn["found"], drawn["headed"]
+    assert findings(drawn["headless"]) == drawn["found"], drawn["headless"]
+
+
+def _a_glossary_with_no_title_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "opened", lambda prose, raw, headings, shaped: [])
+
+
+def _a_glossary_with_no_title_runs_past_a_heading(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "_stops", lambda headings: [])
+
+
+def _a_letter_s_heading_ends_a_glossary(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "_stops", lambda headings: sorted(each[0] for each in headings))
+
+
+def _a_letter_s_label_ends_a_glossary(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "is_letters", lambda title: False)
+
+
+def _an_entry_with_no_capital_ends_a_glossary(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    real = glossary._opening_entries
+
+    def shaped_only(prose: str, raw: str, span: tuple[int, int]) -> list:
+        found = real(prose, raw, span)
+        return found if all(language_gate._may_be_defined(e.short) for e in found) else []
+
+    patch.setattr(glossary, "_opening_entries", shaped_only)
+
+
+def _a_glossary_takes_what_opens_like_an_entry_after_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "_ends_here", lambda found, shaped: True)
+
+
+def _a_sentence_does_not_end_a_glossary(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    real = glossary._opening_entries
+
+    def always(prose: str, raw: str, span: tuple[int, int]) -> list:
+        return real(prose, raw, span) or [glossary.Entry(span[0], "x", "xx")]
+
+    patch.setattr(glossary, "_opening_entries", always)
+
+
+def _a_glossary_s_name_anywhere_opens_one(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    pattern = glossary._OPENS.pattern
+    patch.setattr(glossary, "_OPENS", re.compile(r"[^\n]*?" + pattern, glossary._OPENS.flags))
 
 
 def _a_glossary_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -5638,6 +5845,109 @@ def _numbers_agree_only_as_printed(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import abstract
 
     patch.setattr(abstract, "agree", lambda one, other: one == other)
+
+
+def _a_number_against_a_word_is_read_whole(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_AGAINST_A_WORD", re.compile("(?!)"))
+
+
+def _a_word_against_a_signed_number_is_read_whole(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_AFTER_A_WORD", re.compile("(?!)"))
+
+
+def _a_label_closed_up_is_read_whole(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_CLOSED_UP", re.compile("(?!)"))
+
+
+def _an_ordinal_against_its_word_is_looked_for(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_ordinal", lambda number, word: False)
+
+
+def _any_word_opening_like_a_suffix_is_a_rank(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_ordinal", lambda number, word: word[:2] in ("st", "nd", "rd", "th"))
+
+
+from generated import RUN_ON, run_on_numbers  # noqa: E402
+
+
+@holds(60, run_on_numbers())
+def test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is(
+    drawn: str,
+) -> None:
+    """G14's `notation-space-missing` counts each number typed against a word, a bound one
+    among them, an ordinal's included, and each word typed against a signed number, once;
+    not a unit closed up, which `notation-unit` counts, nor a name a number stands inside,
+    an ordinal or a decade alone, a number in hexadecimal or in scientific notation, or a
+    letter and a sign."""
+    from manuscript_guard.gates.notation import judge_notation
+    from manuscript_guard.gates.vocabulary import Passage
+
+    read = _file(0, Path("main.md"), drawn, [], False)
+    report = judge_notation([Passage(read.path, read.text, read.printed, read.line_of)])
+    assert report.counts["notation_spaces_missing"] == len(RUN_ON), drawn
+    assert report.counts["notation_units_closed"] == 2, drawn
+
+
+def _a_unit_is_a_space_left_out(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    patch.setattr(notation, "_LOWER_UNITS", frozenset())
+
+
+def _a_number_inside_a_name_is_a_space_left_out(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    pattern = notation._NUMBER_THEN_WORD.pattern
+    stripped = re.sub(r"^\(\?<!\[[^\]]*\]\)", "", pattern)
+    assert stripped != pattern
+    patch.setattr(notation, "_NUMBER_THEN_WORD", re.compile(stripped))
+
+
+def _a_word_against_a_signed_number_is_no_space_left_out(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    patch.setattr(notation, "_WORD_THEN_NUMBER", re.compile("(?!)"))
+
+
+def _hexadecimal_is_a_space_left_out(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    patch.setattr(notation, "_HEXADECIMAL", re.compile("(?!)"))
+
+
+def _a_stop_hides_a_word_against_a_signed_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    pattern = notation._WORD_THEN_NUMBER.pattern
+    assert pattern.endswith(r"(?!\w|\.\d)")
+    patch.setattr(notation, "_WORD_THEN_NUMBER", re.compile(pattern[: -len(r"(?!\w|\.\d)")]
+                                                            + r"(?![\w.])"))  # fmt: skip
+
+
+def _a_unit_s_plural_is_left_to_the_units(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    units = notation._LOWER_UNITS
+    patch.setattr(notation, "_LOWER_UNITS", units | {unit + "s" for unit in units})
+
+
+def _a_bound_value_after_a_word_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    pattern = notation._WORD_THEN_NUMBER.pattern
+    without = pattern.replace("|" + notation.VALUE + "+)", ")")
+    assert without != pattern
+    patch.setattr(notation, "_WORD_THEN_NUMBER", re.compile(without))
 
 
 def _a_rounding_is_no_match(patch: pytest.MonkeyPatch) -> None:
@@ -9888,6 +10198,69 @@ def _bold_in_a_table_is_counted(patch: pytest.MonkeyPatch) -> None:
     rules = writing.load_rules()
     density = tuple({**rule, "in_tables": True} if rule["id"] == "boldface" else rule
                     for rule in rules.density)  # fmt: skip
+    patch.setattr(writing, "load_rules", lambda: replace(rules, density=density))
+
+
+def _bold_without_exemption(patch: pytest.MonkeyPatch, kept: Callable[[str], bool]) -> None:
+    """The boldface rule with only the exemptions `kept` keeps, by their pattern."""
+    from dataclasses import replace
+
+    from manuscript_guard.gates import writing
+
+    rules = writing.load_rules()
+    density = tuple({**rule, "exempt": [e for e in rule["exempt"] if kept(e)]}
+                    if rule["id"] == "boldface" else rule for rule in rules.density)  # fmt: skip
+    patch.setattr(writing, "load_rules", lambda: replace(rules, density=density))
+
+
+def _a_bold_paragraph_is_counted(patch: pytest.MonkeyPatch) -> None:
+    _bold_without_exemption(patch, lambda pattern: not pattern.endswith(r"\n?\Z)"))
+
+
+def _a_bold_label_at_a_line_s_start_is_one(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.gates import writing
+
+    rules = writing.load_rules()
+    density = tuple({**rule, "exempt": [e.replace(r"(?:\A|\n[ \t]*\n)", "(?m)^")
+                                        for e in rule["exempt"]]}
+                    if rule["id"] == "boldface" else rule for rule in rules.density)  # fmt: skip
+    patch.setattr(writing, "load_rules", lambda: replace(rules, density=density))
+
+
+def _a_lead_in_of_words_is_a_list_s_term(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.gates import writing
+
+    rules = writing.load_rules()
+    density = tuple({**rule, "exempt": [e.replace(r"[^*\s]{1,15}", r"[^*\n]+")
+                                        for e in rule["exempt"]]}
+                    if rule["id"] == "boldface" else rule for rule in rules.density)  # fmt: skip
+    patch.setattr(writing, "load_rules", lambda: replace(rules, density=density))
+
+
+def _a_bold_label_ending_in_a_stop_is_counted(patch: pytest.MonkeyPatch) -> None:
+    _bold_without_exemption(patch, lambda pattern: "{1,150}?[.:]" not in pattern)
+
+
+def _a_bold_label_with_its_stop_after_is_counted(patch: pytest.MonkeyPatch) -> None:
+    _bold_without_exemption(patch, lambda pattern: not pattern.endswith(r"\*\*[ \t]*[.:]"))
+
+
+def _a_list_item_s_bold_term_is_counted(patch: pytest.MonkeyPatch) -> None:
+    _bold_without_exemption(patch, lambda pattern: "(?:[-+*]|" not in pattern)
+
+
+def _bold_anywhere_in_a_paragraph_is_structure(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.gates import writing
+
+    rules = writing.load_rules()
+    density = tuple({**rule, "exempt": [*rule["exempt"], r"\*\*[^*\n]+\*\*"]}
+                    if rule["id"] == "boldface" else rule for rule in rules.density)  # fmt: skip
     patch.setattr(writing, "load_rules", lambda: replace(rules, density=density))
 
 
@@ -20338,6 +20711,34 @@ BROKEN = {
         _a_short_form_followed_by_a_colon_defines_nothing,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
+    "a stop joins no word's parts": (
+        _a_stop_joins_no_word,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a stop in a bracket's short form defines nothing": (
+        _a_stop_in_a_bracket_s_short_form_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a stop in a short form before a bracket defines nothing": (
+        _a_stop_in_a_short_form_before_a_bracket_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a word a stop joins is never split at it": (
+        _a_stop_is_never_between_two_parts,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a glossary's short form has no stop": (
+        _a_glossary_s_short_form_has_no_stop,
+        test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
+    ),
+    "a stop before a digit joins a word's parts": (
+        _a_stop_before_a_digit_joins_a_word,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a short form before a bracket is not tried from its last stop": (
+        _a_short_form_before_a_bracket_is_not_tried_from_its_last_stop,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
     "a number or an equals sign after a short form opens a definition": (
         _a_number_or_an_equals_sign_opens_a_definition,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
@@ -20409,6 +20810,38 @@ BROKEN = {
     "an indented bold label opens a statement": (
         _an_indented_bold_label_opens_a_statement,
         test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "no initials are read from a contributions statement": (
+        _no_initials_are_read,
+        test_the_initials_a_contributions_statement_names_are_no_abbreviations,
+    ),
+    "every statement's capitals are initials": (
+        _every_statement_names_initials,
+        test_the_initials_a_contributions_statement_names_are_no_abbreviations,
+    ),
+    "a long word of capitals in a contributions statement is initials": (
+        _a_long_word_of_capitals_is_initials,
+        test_the_initials_a_contributions_statement_names_are_no_abbreviations,
+    ),
+    "no heading names a contributions statement": (
+        _no_heading_names_a_contributions_statement,
+        test_the_initials_a_contributions_statement_names_are_no_abbreviations,
+    ),
+    "no bold label opens a contributions statement": (
+        _no_label_opens_a_contributions_statement,
+        test_the_initials_a_contributions_statement_names_are_no_abbreviations,
+    ),
+    "an initial with a hyphen is read as its parts": (
+        _an_initial_with_a_hyphen_is_its_parts,
+        test_the_initials_a_contributions_statement_names_are_no_abbreviations,
+    ),
+    "an author's initials anywhere are a person": (
+        _an_initial_anywhere_is_a_person,
+        test_the_initials_a_contributions_statement_names_are_no_abbreviations,
+    ),
+    "a bracket with an initial in it is one of initials": (
+        _a_bracket_with_an_initial_is_of_initials,
+        test_the_initials_a_contributions_statement_names_are_no_abbreviations,
     ),
     "a statistical abbreviation needs a definition": (
         _the_statistical_list_is_empty,
@@ -20597,6 +21030,38 @@ BROKEN = {
     "no-headings is said at every stage": (
         _no_headings_is_said_at_every_stage,
         test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
+    ),
+    "a glossary a paragraph opens is not read": (
+        _a_glossary_with_no_title_is_not_read,
+        test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them,
+    ),
+    "a glossary a paragraph opens runs past a heading": (
+        _a_glossary_with_no_title_runs_past_a_heading,
+        test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them,
+    ),
+    "a letter's heading ends a glossary": (
+        _a_letter_s_heading_ends_a_glossary,
+        test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them,
+    ),
+    "a letter's label ends a glossary": (
+        _a_letter_s_label_ends_a_glossary,
+        test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them,
+    ),
+    "an entry with no capital ends a glossary": (
+        _an_entry_with_no_capital_ends_a_glossary,
+        test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them,
+    ),
+    "a glossary takes what opens like an entry after its last": (
+        _a_glossary_takes_what_opens_like_an_entry_after_it,
+        test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them,
+    ),
+    "a sentence does not end a glossary a paragraph opens": (
+        _a_sentence_does_not_end_a_glossary,
+        test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them,
+    ),
+    "a glossary's name anywhere in a paragraph opens one": (
+        _a_glossary_s_name_anywhere_opens_one,
+        test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them,
     ),
     "a statistic is read at its printed value, not over what its last digit allows": (
         _a_statistic_is_read_at_its_printed_value,
@@ -21305,6 +21770,54 @@ BROKEN = {
     "an Abstract's interval has a counterpart where it has two": (
         _a_counterpart_need_not_be_the_only_one,
         test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a number against a word is read whole in the Abstract": (
+        _a_number_against_a_word_is_read_whole,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a word against a signed number is read whole in the Abstract": (
+        _a_word_against_a_signed_number_is_read_whole,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a label closed up against its number is read whole in the Abstract": (
+        _a_label_closed_up_is_read_whole,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an ordinal against its word is looked for in the Abstract": (
+        _an_ordinal_against_its_word_is_looked_for,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "any word opening like an ordinal's suffix is a rank in the Abstract": (
+        _any_word_opening_like_a_suffix_is_a_rank,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a unit closed up is a space left out": (
+        _a_unit_is_a_space_left_out,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "a number inside a name is a space left out": (
+        _a_number_inside_a_name_is_a_space_left_out,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "a word against a signed number is no space left out": (
+        _a_word_against_a_signed_number_is_no_space_left_out,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "a stop hides a word against a signed number": (
+        _a_stop_hides_a_word_against_a_signed_number,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "a unit's plural is left to the units": (
+        _a_unit_s_plural_is_left_to_the_units,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "a bound value after a word is not read": (
+        _a_bound_value_after_a_word_is_not_read,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "a number in hexadecimal is a space left out": (
+        _hexadecimal_is_a_space_left_out,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
     ),
     "numbers agree only as printed": (
         _numbers_agree_only_as_printed,
@@ -22296,6 +22809,34 @@ BROKEN = {
     ),
     "bold in a table is counted": (
         _bold_in_a_table_is_counted,
+        test_bold_is_counted_in_the_prose_and_not_in_a_table,
+    ),
+    "a heading typed as a bold paragraph is counted": (
+        _a_bold_paragraph_is_counted,
+        test_bold_is_counted_in_the_prose_and_not_in_a_table,
+    ),
+    "a bold label ending in a colon or a stop is counted": (
+        _a_bold_label_ending_in_a_stop_is_counted,
+        test_bold_is_counted_in_the_prose_and_not_in_a_table,
+    ),
+    "a bold label with its stop after it is counted": (
+        _a_bold_label_with_its_stop_after_is_counted,
+        test_bold_is_counted_in_the_prose_and_not_in_a_table,
+    ),
+    "a list item's bold term is counted": (
+        _a_list_item_s_bold_term_is_counted,
+        test_bold_is_counted_in_the_prose_and_not_in_a_table,
+    ),
+    "bold anywhere is structure": (
+        _bold_anywhere_in_a_paragraph_is_structure,
+        test_bold_is_counted_in_the_prose_and_not_in_a_table,
+    ),
+    "bold at a line's start is a label": (
+        _a_bold_label_at_a_line_s_start_is_one,
+        test_bold_is_counted_in_the_prose_and_not_in_a_table,
+    ),
+    "a lead-in of words is a list's term": (
+        _a_lead_in_of_words_is_a_list_s_term,
         test_bold_is_counted_in_the_prose_and_not_in_a_table,
     ),
     "any line of dashes is a table's": (

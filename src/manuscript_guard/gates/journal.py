@@ -162,7 +162,8 @@ FROM_RECORDS = (
     "the citation style kept for the offline build",
     "the figure files' artwork",
     "the LaTeX class rules",
-    "the English paper.yaml declares (the profile's English is the one G14 holds the paper to)",
+    "whether the English chosen for the paper is the journal's (G14 holds its spelling to the "
+    "profile's English, or to the one --english chooses)",
     "the AI-use statement held to the records of a model's work",
 )
 

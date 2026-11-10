@@ -50,7 +50,9 @@ const booted = ask("boot").then((boot) => {
     `Loaded ${boot.loaded.length} files from ${location.host}, ${megabytes(sent)} over the network ` +
     `(nothing if they were already in this browser's cache).\n` +
     listRequests("Requests to any other host while loading:", boot.loaded);
-  for (const id of ["paper", "against", "lookup", "details", "run"]) $(id).disabled = false;
+  for (const id of ["paper", "against", "english", "known", "lookup", "details", "run"]) {
+    $(id).disabled = false;
+  }
   window.mgReady = true;
 }).catch((error) => say(`The checker could not start: ${error.message}`));
 
@@ -139,6 +141,9 @@ $("form").addEventListener("submit", async (event) => {
       against: await Promise.all([...$("against").files].map(read)),
       lookup: $("lookup").checked,
       details: $("details").checked,
+      english: $("english").value,
+      // The words to leave alone, as typed: split at spaces, commas and semicolons.
+      known: $("known").value.split(/[\s,;]+/).filter(Boolean),
     });
     $("result").hidden = false;
     $("report").textContent = result.out;

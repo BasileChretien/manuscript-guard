@@ -145,6 +145,21 @@ def test_the_profiles_english_is_the_one_g14_holds_the_paper_to(tmp_path: Path, 
     assert not [f for f in report["findings"] if f["code"] in spelt]
 
 
+@pytest.mark.parametrize("english", [(), ("--english", "american")], ids=["none", "other"])
+def test_a_journal_audit_names_no_paper_yaml(
+    tmp_path: Path, capsys, english: tuple[str, ...]
+) -> None:
+    """The profile asks for British English, and the reader chose none or the other. No
+    finding of the audit, G4's under `--journal` among them, tells the reader to set
+    something in paper.yaml, which a paper audited alone has none of (review of #615). G4's
+    English check reads paper.yaml and is not run in an audit (`FROM_RECORDS`)."""
+    _code, report, _err = audited(capsys, str(paper_md(tmp_path)), "--journal",
+                                  str(profile(tmp_path)), *english)  # fmt: skip
+    assert [f for f in report["findings"] if f["gate"] == "G4"], report["findings"]
+    said = [f"{f['message']} {f.get('hint') or ''}" for f in report["findings"]]
+    assert not [text for text in said if "paper.yaml" in text], said
+
+
 def test_a_dataset_the_reference_list_cites_is_not_said_to_be_uncited(
     tmp_path: Path, capsys
 ) -> None:

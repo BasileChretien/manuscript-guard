@@ -180,11 +180,88 @@ def coarser(printed: str) -> set[tuple[str, int]]:
     return found
 
 
+#: The shapes of an atom in which a space was left out around a number, which the section
+#: reads the numbers of (G14's `notation-space-missing` reports the space): a number typed
+#: against a word, "+0.41points", "10hours"; a word against a signed number, "to+0.77"; and
+#: pieces closed up by round brackets, colons or semicolons, each a number, a range, a
+#: level named "95%CI", one of these shapes or a label of letters alone, each piece's
+#: numbers kept, "CI):+0.05", "45%(95%CI:40-50%"; one piece of any other shape, "CD4:350",
+#: and the atom is read whole (round 2 of #613). Only these: an atom with letters in it is
+#: otherwise read whole, so that no name or address matches on a digit it holds
+#: (`audit._COMPOUND`). Found on the author's Abstract, whose numbers were all "not found"
+#: for want of a space (2026-11-10).
+_AGAINST_A_WORD = re.compile(r"(?P<number>[-+\N{MINUS SIGN}]?\d[\d.,]*%?)(?P<word>[a-z]{3,})")
+_AFTER_A_WORD = re.compile(r"[a-z]{2,}(?P<number>[+\N{MINUS SIGN}]\d[\d.,]*%?)")
+_CLOSED_UP = re.compile(r"[():;]+")
+#: A number alone, and a level typed against its estimate's name, "95%CI".
+_PLAIN = re.compile(r"[-+\N{MINUS SIGN}]?\d[\d.,]*%?")
+_LEVEL_NAMED = re.compile(r"(?P<number>\d[\d.,]*%?)[A-Z]{1,3}")
+#: The words a rank is typed against, "2ndyear", "21stcentury": an ordinal with its own
+#: suffix before one of them is a rank and gives no number. Any other word after the
+#: suffix's letters is a word: "312students", "10therapists" (round 1 of #613).
+_RANKED = frozenset((
+    "year", "line", "grade", "generation", "trimester", "semester", "quartile", "tertile",
+    "quintile", "decile", "dose", "wave", "round", "visit", "week", "day", "month", "cycle",
+    "edition", "author", "place", "time", "phase", "century", "decade", "order", "degree",
+    "percentile", "centile",
+))  # fmt: skip
+
+
+def _ordinal(number: str, word: str) -> bool:
+    """Whether a whole number and the word typed against it are a rank and its word: the
+    number's own suffix, "st" after a 1, "nd" after a 2, "rd" after a 3, "th" after the rest
+    and after 11, 12 and 13, then a word of `_RANKED`."""
+    if not number.isdigit():
+        return False
+    value = int(number)
+    suffix = "th" if value % 100 in (11, 12, 13) else {1: "st", 2: "nd", 3: "rd"}.get(
+        value % 10, "th")  # fmt: skip
+    rest = word[len(suffix) :]
+    return word.startswith(suffix) and (rest in _RANKED or rest[:-1] in _RANKED)
+
+
+def _run_on(stripped: str) -> list[str] | None:
+    """The numbers of an atom a space was left out of, as printed; None for an atom of any
+    other shape, which is read whole."""
+    from manuscript_guard.audit import _COMPOUND, _NUMBER
+
+    against = _AGAINST_A_WORD.fullmatch(stripped)
+    if against is not None:
+        return [] if _ordinal(against["number"], against["word"]) else [against["number"]]
+    after = _AFTER_A_WORD.fullmatch(stripped)
+    if after is not None:
+        return [after["number"]]
+    if _CLOSED_UP.search(stripped) is None:
+        return None
+    parts: list[str] = []
+    for piece in filter(None, _CLOSED_UP.split(stripped)):
+        level = _LEVEL_NAMED.fullmatch(piece)
+        inner = None if piece.isalpha() or level else _run_on(piece)
+        if piece.isalpha():
+            continue  # a label: "CI", "students"
+        if level is not None:
+            parts.append(level["number"])
+        elif inner is not None:
+            parts += inner
+        elif _PLAIN.fullmatch(piece):
+            parts.append(piece)
+        elif _COMPOUND.match(piece.lstrip("+")):
+            parts += [found.group(0) for found in _NUMBER.finditer(piece)]
+        else:
+            return None  # a piece of any other shape: the atom is read whole
+    return parts or None
+
+
 def printed_parts(text: str) -> list[str]:
-    """The numbers an atom carries, as printed: `audit.parts_of` without normalising them."""
+    """The numbers an atom carries, as printed: `audit.parts_of` without normalising them,
+    and the numbers of an atom a space was left out of (`_run_on`); none for a rank typed
+    against its word."""
     from manuscript_guard.audit import _COMPOUND, _LABELLED, _NUMBER
 
     stripped = _LABELLED.sub("", text.strip().strip("()[]"), count=1)
+    run_on = _run_on(stripped)
+    if run_on is not None:
+        return run_on
     if not _COMPOUND.match(stripped):
         return [stripped]
     return [found.group(0) for found in _NUMBER.finditer(stripped)] or [stripped]
@@ -262,8 +339,11 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
         for atom in piece.atoms:
             if atom.line not in lines or any(start <= atom.start < end for start, end in spans):
                 continue
+            parts = printed_parts(atom.text)
+            if not parts:
+                continue  # "2ndyear": a rank typed against its word, no number to look for
             read.numbers += 1
-            states = [_state(part, exact, rounded) for part in printed_parts(atom.text)]
+            states = [_state(part, exact, rounded) for part in parts]
             candidate = Candidate(atom.text, normalise_number(atom.text), piece.path,
                                   atom.line, around(atom))  # fmt: skip
             if "" in states:

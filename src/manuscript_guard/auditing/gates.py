@@ -16,9 +16,14 @@ first defined, is put back the same way (`_relocated`): it named the staged copy
 "manuscript/main.md:476", of a paper called anything else.
 
 The project's `paper.yaml` is empty but for what the audit is told: `--english` declares the
-paper's English, and `--submission-residue` makes the residue that answers a reviewer a
-failure, as `check` does at the submission stage. Neither gate's finding is counted by
-`--strict`.
+paper's English, `--known` lists the words its readers know, names, initials and the field's
+terms, which G14 then neither asks defined, reports the spelling of nor reads as code, and
+`--submission-residue` makes the residue that answers a reviewer a failure, as `check` does
+at the submission stage. Neither gate's finding is counted by `--strict`.
+
+G14's messages and hints say what to set in `paper.yaml`, which a paper audited alone has
+none of, so the audit says it in its own words (`_FOR_AN_AUDIT`): the page's setting and the
+command line's flag that do the same (the author's audit, 2026-11-10).
 """
 
 from __future__ import annotations
@@ -34,6 +39,42 @@ from manuscript_guard.findings import Finding
 
 #: What `--english` says, as paper.yaml spells it.
 ENGLISH = {"british": "en-GB", "american": "en-US"}
+#: The words of `--english` for an English as paper.yaml spells it.
+_ENGLISH_FLAG = {spelt: word for word, spelt in ENGLISH.items()}
+#: An English as paper.yaml spells it, in words.
+_ENGLISH_NAME = {"en-GB": "British", "en-US": "American"}
+#: What a word the readers know is given as, on the page and on the command line.
+KNOWN = 'a known word (on the page, "Words to leave alone"; on the command line, --known)'
+
+#: What G14 tells a project to set in `paper.yaml`, said as an audit sets it: each pattern
+#: with what replaces it. `tests/test_audit.py` holds that each one still matches what the
+#: gate writes, so that a gate reworded is noticed rather than left saying paper.yaml. (G4
+#: under `--journal` reads no English from paper.yaml in an audit, `FROM_RECORDS`.)
+_FOR_AN_AUDIT: tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], str]], ...] = (
+    (re.compile(r"list it in quotes under `language: known_abbreviations:` in paper\.yaml "
+                r"if this journal's readers"),
+     lambda found: f"give it to the audit as {KNOWN} if the paper's readers"),
+    (re.compile(r"list that one word under `language: accepted_spellings:` in paper\.yaml"),
+     lambda found: f"give it to the audit as {KNOWN}"),
+    (re.compile(r"list it under `language: code_names_kept:` in paper\.yaml"),
+     lambda found: f"give it to the audit as {KNOWN}"),
+    (re.compile(r"paper\.yaml declares no English"),
+     lambda found: "no English was chosen for this audit"),
+    (re.compile(r"[Ss]et english_variant: (en-GB|en-US)(?: in paper\.yaml)?"),
+     lambda found: f'choose {_ENGLISH_NAME[found[1]]} English (on the page, "English of the '
+                   f'paper"; on the command line, --english {_ENGLISH_FLAG[found[1]]})'),
+    (re.compile(r"paper\.yaml says english_variant: (en-GB|en-US)"),
+     # The English is the reader's (--english) or, under --journal, the profile's.
+     lambda found: f"the audit holds the paper to {_ENGLISH_NAME[found[1]]} English"),
+)  # fmt: skip
+
+
+def for_an_audit(text: str) -> str:
+    """A gate's message or hint with what it tells a project to set in paper.yaml said as an
+    audit sets it (`_FOR_AN_AUDIT`)."""
+    for pattern, said in _FOR_AN_AUDIT:
+        text = pattern.sub(said, text)
+    return text
 
 
 @dataclass
@@ -147,19 +188,31 @@ def _stage(paper: Path, tree=None) -> _Staged:
     return _Staged(files, back)
 
 
-def audit_project(root: Path, staged: _Staged, english: str | None) -> Project:
-    """A project at `root` whose manuscript is what `staged` holds."""
+def audit_project(
+    root: Path, staged: _Staged, english: str | None, known: tuple[str, ...] = ()
+) -> Project:
+    """A project at `root` whose manuscript is what `staged` holds, its English and the
+    words its readers know (`--known`) declared as paper.yaml would declare them."""
     manuscript = root / "manuscript"
     for name, text in staged.files.items():
         target = manuscript / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding="utf-8", newline="\n")
-    paper = {"english_variant": ENGLISH[english]} if english else {}
+    paper: dict = {"english_variant": ENGLISH[english]} if english else {}
+    if known:
+        paper["language"] = {"known_abbreviations": list(known),
+                             "accepted_spellings": list(known),
+                             "code_names_kept": list(known)}  # fmt: skip
     return Project(root=root, paper=paper, authors=None)
 
 
 def run_gates(
-    paper: Path, tree=None, *, english: str | None = None, residue: bool = False
+    paper: Path,
+    tree=None,
+    *,
+    english: str | None = None,
+    residue: bool = False,
+    known: tuple[str, ...] = (),
 ) -> GateRun:
     """G6 and G14 on `paper`, its LaTeX tree given where it is one."""
     from manuscript_guard.gates.language import check_language
@@ -171,7 +224,7 @@ def run_gates(
         return GateRun(paper, note=f"G6 and G14 were not run on {paper.name}: {exc}")
     with tempfile.TemporaryDirectory(prefix="mg-audit-") as folder:
         root = Path(folder).resolve()
-        project = audit_project(root, staged, english)
+        project = audit_project(root, staged, english, known)
         put_back = _putting_back(root / "manuscript", staged.back, staged.lines, staged.said,
                                  word=staged.converted)  # fmt: skip
         try:
@@ -227,8 +280,9 @@ def _putting_back(manuscript: Path, back: dict[str, Path], lines: tuple[int, ...
         message = finding.message
         if finding.code == "ai-phrasing":
             message = _RULE_NAME.sub("", message, count=1)
-        finding = replace(finding, message=shown(relocated(message)),
-                          hint=finding.hint and shown(relocated(finding.hint)),
+        # Said in the audit's own settings (`for_an_audit`), then as Word prints it.
+        finding = replace(finding, message=shown(for_an_audit(relocated(message))),
+                          hint=finding.hint and shown(for_an_audit(relocated(finding.hint))),
                           context=finding.context and shown(finding.context))  # fmt: skip
         if finding.path is None:
             return finding

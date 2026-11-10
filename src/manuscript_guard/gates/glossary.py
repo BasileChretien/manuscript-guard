@@ -22,7 +22,8 @@ GLOSSARY_TITLES = frozenset(
     {"abbreviations", "list of abbreviations", "glossary", "acronyms", "list of acronyms"}
 )
 
-_SHORT = r"[^\W_]+(?:-[^\W_]+)*"
+#: A short form, its parts joined by a hyphen or a stop: `WHO-ART`, `L.AS`.
+_SHORT = r"[^\W_]+(?:[-.][^\W_]+)*"
 #: The marks a short form may wear in a glossary: `**ROR**`, `*ROR*`, `_ROR_`.
 _MARKS = "*_"
 #: A list item's marker, which a glossary may be written as.

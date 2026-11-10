@@ -366,6 +366,41 @@ def test_a_hyphenated_abbreviation_defined_whole_is_used_whole(project: Path) ->
 
 @pytest.mark.parametrize(
     "text",
+    ["The *Licence avec Accès Santé* (L.AS) admits students, and L.AS students were "
+     "eligible.",
+     "The L.AS (Licence avec Accès Santé) admits students; L.AS students were eligible.",
+     "# Abbreviations\n\n- **L.AS**: Licence avec Accès Santé\n\n# Methods\n\nL.AS students "
+     "were eligible."],
+    ids=["short form in the bracket", "long form in the bracket", "a glossary's entry"],
+)  # fmt: skip
+def test_a_short_form_a_stop_joins_is_defined_and_used_whole(project: Path, text: str) -> None:
+    """The author's paper defines "Licence avec Accès Santé (L.AS)" and uses L.AS eight
+    times: read at its stop, it was `AS`, used and never defined. A stop between two parts of
+    a word joins them as a hyphen does."""
+    report = written(project, f"# Methods\n\n{text}\n")
+    assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    ("sentence", "named"),
+    [("Students of L.AS were eligible.", "L.AS"),
+     ("The score rose in the KAP.The rest fell.", "KAP"),
+     ("The U.S. and the U.K. data, i.e. the KAP cohort.", "KAP")],
+    ids=["undefined, whole", "a sentence typed on", "initials of a country"],
+)  # fmt: skip
+def test_a_word_with_a_stop_is_read_by_its_parts(
+    project: Path, sentence: str, named: str
+) -> None:
+    """An undefined short form a stop joins is reported whole, as a hyphenated one is; a
+    sentence typed on with no space after an abbreviation leaves the abbreviation alone;
+    and "U.S." is no abbreviation, its letters one to a part."""
+    report = written(project, f"# Methods\n\n{sentence}\n")
+    (message,) = found(report, "abbreviation-undefined")
+    assert message.split()[0] == named
+
+
+@pytest.mark.parametrize(
+    "text",
     [
         "RNA sequencing (RNA-seq) libraries were prepared; RNA-seq reads were aligned.",
         "Non-high-density lipoprotein cholesterol (non-HDL-C) was the outcome. Mean "

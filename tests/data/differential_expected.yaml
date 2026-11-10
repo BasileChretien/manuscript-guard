@@ -189,13 +189,11 @@ expected:
       (Known gaps, 2026-10-27)
   - reading: abbreviations
     why: >-
-      a bold word that goes on into its sentence across a line break pandoc prints as a
-      space, "**Funding**" over "of the MRC was cut" in one paragraph, a space before the
-      break or none, is that sentence's first word, as on its line, and no longer a
-      statement's label, so the paragraph's capitals are reported as undefined again; the
-      inputs now hold such paragraphs, and lookalikes still quiet: a label with its statement
-      on the next line, "**Funding**" over "The EPSRC paid ...", and a label before a hard
-      line break, two spaces or a backslash
+      a stop between two parts of a word joins them as a hyphen does, in the text, in a
+      bracket's short form and in a glossary's entry, so "Licence avec Accès Santé (L.AS)"
+      defines L.AS and "students of L.AS" uses it, where it was an undefined AS; a sentence
+      typed on with no space, "the KAP.The rest", leaves KAP alone; the inputs now hold
+      such words (the author's paper, 2026-11-10)
   - reading: recycled passages
     why: >-
       a citation by author and year in parentheses in the earlier paper, "(Smith et al.,

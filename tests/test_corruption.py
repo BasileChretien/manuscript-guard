@@ -30459,6 +30459,26 @@ def test_bold_in_a_table_is_no_cadence_of_the_prose() -> None:
     assert [f for f in report.findings if "boldface" in f.message]
 
 
+def test_bold_that_is_structure_is_no_cadence_and_bold_in_sentences_is() -> None:
+    """A paper typed in Word sets its titles, its list of abbreviations, its run-in labels
+    and its legends' labels in bold: on the author's paper 77 bold runs of 7310 words, and a
+    warning (2026-11-10). None is emphasis. The same number of bold words inside sentences
+    is the cadence the rate is for."""
+    from manuscript_guard.gates.writing import judge_texts
+
+    structure = "\n\n".join(
+        ["**Methods**", "**Participants**", "**Data collection:** It was read.",
+         "**Supplementary Figure 2: Interaction.** Panel A.", "**A--C**",
+         "\n".join(f"- **AB{n}**: a term" for n in range(8))]  # fmt: skip
+    )
+    text = f"{_PROSE_200}\n\n{structure}\n"
+    report, _totals = judge_texts([(Path("main.md"), text)])
+    assert not [f for f in report.findings if "boldface" in f.message]
+    emphasis = f"{_PROSE_200}\n\n" + " and ".join(["the **key** word"] * 13) + "\n"
+    report, _totals = judge_texts([(Path("main.md"), emphasis)])
+    assert [f for f in report.findings if "boldface" in f.message]
+
+
 @pytest.mark.parametrize(
     "title",
     ["Kaynakça", "Kaynaklar", "Referencias", "Bibliografía", "Referências", "Références",

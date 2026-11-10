@@ -4772,6 +4772,16 @@ labels are bold by journal requirement, so counting them flagged the journal's h
 they are exempt. And technical senses are exempt by pattern, so "robust standard errors"
 does not count towards the vocabulary rate.
 
+A third came from the author's own paper, typed in Word with no heading style (2026-11-10):
+77 bold runs in 7310 words, a boldface warning, and nearly all of them structure, its
+section titles, its letters' labels and list of abbreviations, its run-in labels and its
+legends' labels. The papers the threshold was measured on were read as Markdown, whose
+headings and lists hold no bold, so that bold is exempt too: a paragraph wholly in bold, a
+label that opens a paragraph and ends on a colon or a stop inside its bold or right after
+it, and a list item's opening term. Bold that opens a paragraph and goes on into a sentence,
+bold inside a sentence and bold after a list item's first word still count. On the author's
+paper 5 runs are left, 0.7 per 1000.
+
 A finding's line is counted in the file as read. The phrase and attribution rules match in a
 copy with the comments, the listings and the front matter's machinery blanked, line ends
 included, and an offset is the same in both. Counted in the copy, the line fell short by
@@ -20133,7 +20143,10 @@ Open, recorded as each change landed:
   and the em-dash rates leave out a table of each of pandoc's four kinds
   (`text.tables.table_lines`), but read as prose a table with one column, and a headless
   multiline table opened by a line of dashes in one run, which pandoc reads as a table:
-  their bold and their dashes are counted. Accepted.
+  their bold and their dashes are counted. Bold that is a manuscript's structure is not
+  counted, by its shape alone (2026-11-10): a sentence of emphasis set as a paragraph of its
+  own, "**This matters.**", and a run-in emphasis with a colon, "**Importantly:** the dose
+  ...", are taken for a heading and a label and pass. Accepted.
 - **A small count is found where it is bound, by its value.** A count printed in an emitted
   table, a percentage that gives a small count away with its denominator, and a count typed
   rather than bound are not read; G2 fails a typed count for being typed. A whole number

@@ -3359,10 +3359,23 @@ BOLD_COUNTED = (
     "\n\n----------\n**under** a rule.\n\n",
     "\n\nA heading\n---------\n**under** a heading.\n\n",
     "\n\n- - -\n**after** spaced dashes.\n\n",
+    # Bold that only looks like structure: a paragraph that opens in bold and goes on, a
+    # colon inside bold in a sentence, and bold inside a list item after its first word.
+    "\n\n**Most** of them passed. ",
+    "\n\nIt was **plain: here** then. ",
+    "\n\n- the **AIC** was lowest\n\n",
 )
 #: Bold it does not count: in a table of each kind pandoc reads, `**` paired across cells
-#: among them, and a structured abstract's label.
+#: among them, and a structured abstract's label. And bold that is structure, as a paper
+#: typed in Word sets it: a heading typed as a bold paragraph, a letters' label, a list
+#: of abbreviations' terms, a run-in label, a legend's label with its stop inside its bold
+#: or after it.
 BOLD_NOT_COUNTED = (
+    "\n\n**Participants**\n\n",
+    "\n\n**A--C**\n\n- **AIC**: Akaike information criterion\n- **BMI**: body mass index\n\n",
+    "\n\n**Data collection:** ",
+    "\n\n**Supplementary Figure 2: student interaction with online resources.** Panel A ",
+    "\n\n**Table 1**. ",
     "\n\n  --------------------\n  **A**     **B\n            c**\n  --------- ----------\n"
     "  1         **2**\n\n  3         4\n  --------------------\n\n",
     "\n\n---------- ----------\n**a**      **b\n           c**\n\n1          2\n"

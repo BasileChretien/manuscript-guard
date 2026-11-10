@@ -9891,6 +9891,45 @@ def _bold_in_a_table_is_counted(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(writing, "load_rules", lambda: replace(rules, density=density))
 
 
+def _bold_without_exemption(patch: pytest.MonkeyPatch, kept: Callable[[str], bool]) -> None:
+    """The boldface rule with only the exemptions `kept` keeps, by their pattern."""
+    from dataclasses import replace
+
+    from manuscript_guard.gates import writing
+
+    rules = writing.load_rules()
+    density = tuple({**rule, "exempt": [e for e in rule["exempt"] if kept(e)]}
+                    if rule["id"] == "boldface" else rule for rule in rules.density)  # fmt: skip
+    patch.setattr(writing, "load_rules", lambda: replace(rules, density=density))
+
+
+def _a_bold_paragraph_is_counted(patch: pytest.MonkeyPatch) -> None:
+    _bold_without_exemption(patch, lambda pattern: not pattern.endswith(r"\*\*[ \t]*$"))
+
+
+def _a_bold_label_ending_in_a_stop_is_counted(patch: pytest.MonkeyPatch) -> None:
+    _bold_without_exemption(patch, lambda pattern: "{1,150}?[.:]" not in pattern)
+
+
+def _a_bold_label_with_its_stop_after_is_counted(patch: pytest.MonkeyPatch) -> None:
+    _bold_without_exemption(patch, lambda pattern: not pattern.endswith(r"\*\*[ \t]*[.:]"))
+
+
+def _a_list_item_s_bold_term_is_counted(patch: pytest.MonkeyPatch) -> None:
+    _bold_without_exemption(patch, lambda pattern: "(?:[-+*]|" not in pattern)
+
+
+def _bold_anywhere_in_a_paragraph_is_structure(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.gates import writing
+
+    rules = writing.load_rules()
+    density = tuple({**rule, "exempt": [*rule["exempt"], r"\*\*[^*\n]+\*\*"]}
+                    if rule["id"] == "boldface" else rule for rule in rules.density)  # fmt: skip
+    patch.setattr(writing, "load_rules", lambda: replace(rules, density=density))
+
+
 def _any_line_of_dashes_is_a_table_s(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import tables
 
@@ -21961,6 +22000,26 @@ BROKEN = {
     ),
     "bold in a table is counted": (
         _bold_in_a_table_is_counted,
+        test_bold_is_counted_in_the_prose_and_not_in_a_table,
+    ),
+    "a heading typed as a bold paragraph is counted": (
+        _a_bold_paragraph_is_counted,
+        test_bold_is_counted_in_the_prose_and_not_in_a_table,
+    ),
+    "a bold label ending in a colon or a stop is counted": (
+        _a_bold_label_ending_in_a_stop_is_counted,
+        test_bold_is_counted_in_the_prose_and_not_in_a_table,
+    ),
+    "a bold label with its stop after it is counted": (
+        _a_bold_label_with_its_stop_after_is_counted,
+        test_bold_is_counted_in_the_prose_and_not_in_a_table,
+    ),
+    "a list item's bold term is counted": (
+        _a_list_item_s_bold_term_is_counted,
+        test_bold_is_counted_in_the_prose_and_not_in_a_table,
+    ),
+    "bold anywhere is structure": (
+        _bold_anywhere_in_a_paragraph_is_structure,
         test_bold_is_counted_in_the_prose_and_not_in_a_table,
     ),
     "any line of dashes is a table's": (

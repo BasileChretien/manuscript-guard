@@ -42,7 +42,9 @@ WIDTHS = {"F1": dict(zip(_ASCII, _REGULAR, strict=True)),
           "F2": dict(zip(_ASCII, _BOLD, strict=True))}  # fmt: skip
 WIDTHS["F3"] = WIDTHS["F1"]
 #: Windows-1252's other characters a report prints, with their widths in Helvetica.
-_WIDER = {"–": 556, "—": 1000, "‘": 222, "’": 222, "“": 333, "”": 333, "•": 350,
+_WIDER = {"œ": 944, "Œ": 1000, "™": 1000, "‚": 222, "„": 333, "†": 556, "‡": 556,
+          "‹": 333, "›": 333, "ƒ": 556, "ˆ": 333, "˜": 333, "–": 556, "—": 1000, "‘": 222,
+          "’": 222, "“": 333, "”": 333, "•": 350,
           "…": 1000, "€": 556, "±": 584, "×": 584, "÷": 584, "°": 400, "µ": 556, "²": 333,
           "³": 333, "¹": 333, "§": 556, "©": 737, "®": 737, "·": 278, "«": 556, "»": 556,
           "‰": 1000, " ": 278}  # fmt: skip
@@ -55,6 +57,8 @@ SUBSTITUTES = {"−": "-", "≥": ">=", "≤": "<=", "≠": "!=", "≈": "~", "�
 _GREEK = ("alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota",
           "kappa", "lambda", "mu", "nu", "xi", "omicron", "pi", "rho", "final sigma", "sigma",
           "tau", "upsilon", "phi", "chi", "psi", "omega")  # fmt: skip
+# Word's optional hyphen, which Windows-1252 would print as a hyphen in mid-line.
+SUBSTITUTES[chr(0xAD)] = ""
 SUBSTITUTES.update({chr(0x3B1 + at): name.split()[-1] for at, name in enumerate(_GREEK)})
 SUBSTITUTES.update({chr(0x391 + at): name.split()[-1].capitalize()
                     for at, name in enumerate(_GREEK) if at != 17})  # fmt: skip
@@ -65,7 +69,8 @@ def printable(text: str) -> str:
     as its substitute (`SUBSTITUTES`), its letters without their marks where it has none
     (an "ő" as "o"), and "?" where nothing stands in for it."""
     out = []
-    for char in text:
+    # Composed first, so that a letter and its mark typed apart, "E" and U+0301, are one.
+    for char in unicodedata.normalize("NFC", text):
         if char in SUBSTITUTES:
             out.append(SUBSTITUTES[char])
             continue
@@ -73,7 +78,10 @@ def printable(text: str) -> str:
             char.encode("cp1252")
             out.append(char if char >= " " or char == "\n" else " ")
         except UnicodeEncodeError:
-            bare = "".join(part for part in unicodedata.normalize("NFKD", char)
+            if unicodedata.combining(char):
+                continue  # a mark no letter took
+            bare = "".join(SUBSTITUTES.get(part, part)
+                           for part in unicodedata.normalize("NFKD", char)
                            if not unicodedata.combining(part))  # fmt: skip
             try:
                 bare.encode("cp1252")
@@ -140,7 +148,7 @@ def _string(text: str) -> bytes:
 def _unicode(text: str) -> bytes:
     """A PDF text string in UTF-16, as a bookmark's title and the document's title are, so
     that they keep every character."""
-    return b"<FEFF" + text.encode("utf-16-be").hex().upper().encode() + b">"
+    return b"<FEFF" + text.encode("utf-16-be", "replace").hex().upper().encode() + b">"
 
 
 @dataclass
@@ -180,10 +188,12 @@ class Pdf:
         size = {1: 16.0, 2: 13.0}.get(level, 11.0)
         self.gap(size * 0.6)
         lines = wrapped(printable(text), "F2", size, WIDTH - 2 * MARGIN)
-        self._room(size * 1.3 * len(lines) + 30)
+        # Kept with what follows it: a heading of the next level and a line under that.
+        self._room(size * 1.3 * len(lines) + 60)
         top = self.y
         self.outline.append((level, text, len(self.pages) - 1, top))
-        if key is not None:
+        if key is not None and key not in self.places:
+            # The first heading of a key is its place: two papers' words, the first's.
             self.places[key] = (len(self.pages) - 1, top)
         self._lines(lines, "F2", size, 0.0, 0.0)
         self.gap(size * 0.3)
@@ -234,6 +244,12 @@ class Pdf:
         if not self.pages:
             self._room(0)
         return _Writer(self).written()
+
+
+def _below(item: int, children: dict[int, list[int]]) -> int:
+    """How many bookmarks stand under `item` at every level, all open: an open item's
+    `/Count` (PDF 32000, table 153)."""
+    return sum(1 + _below(child, children) for child in children[item])
 
 
 class _Writer:
@@ -311,14 +327,14 @@ class _Writer:
                 body += b" /Next %d 0 R" % siblings[place + 1]
             if children[number]:
                 body += b" /First %d 0 R /Last %d 0 R /Count %d" % (
-                    children[number][0], children[number][-1], len(children[number]))
+                    children[number][0], children[number][-1], _below(number, children))
             self.objects[number - 1] = body + b" >>"
         top_level = children[root]
         self.objects[root - 1] = (b"<< /Type /Outlines /First %d 0 R /Last %d 0 R /Count %d >>"
                                   % (top_level[0], top_level[-1], len(items)))  # fmt: skip
         return root
 
-    def _file(self, catalog: int, info: int) -> bytes:
+    def _file(self, catalog: int, info: int) -> bytes:  # noqa: D102 - the file as written
         out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
         offsets = []
         for number, body in enumerate(self.objects, 1):

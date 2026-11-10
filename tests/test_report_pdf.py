@@ -51,6 +51,22 @@ def test_the_audit_writes_its_report_as_a_pdf(tmp_path: Path, capsys) -> None:
     text = "".join(page.extract_text() for page in reader.pages)
     # The Abstract's 412, found nowhere the paper reports, with its quote.
     assert "Of the patients, 412 improved." in text
+    # The report's last line, as the text and the page end with it (round 1 of #618).
+    assert "bind the numbers instead" in " ".join(text.split())
+    # The title's bookmark holds the checks' table's, and no other.
+    top = reader.trailer["/Root"]["/Outlines"]["/First"].get_object()
+    assert top["/Count"] == 1
+
+
+def test_a_bookmark_counts_every_level_under_it() -> None:
+    from manuscript_guard.pdfwriter import Pdf
+
+    pdf = Pdf(title="Audit")
+    for level, title in ((1, "One"), (2, "Two"), (3, "Three"), (2, "Four"), (1, "Five")):
+        pdf.heading(title, level)
+    reader = pypdf.PdfReader(io.BytesIO(pdf.bytes()), strict=True)
+    first = reader.trailer["/Root"]["/Outlines"]["/First"].get_object()
+    assert first["/Title"] == "One" and first["/Count"] == 3
 
 
 @pytest.mark.parametrize(("target", "said"), [
@@ -75,6 +91,12 @@ def test_a_pdf_is_refused_where_it_cannot_be_written(
     ("Évaluée – “done” ±2", "Évaluée – “done” ±2"),
     ("ő, 結", "o, ?"),
     ("tab\there", "tab here"),
+    # A letter and its mark typed apart, as pdftotext and a Mac's file names give them.
+    ("E" + chr(0x301) + "tude", "Étude"),
+    # A superscript minus, whose plain form Windows-1252 lacks too.
+    ("10" + chr(0x207B) + "³", "10-³"),
+    # Word's optional hyphen, which would print as a hyphen in mid-line.
+    ("hy" + chr(0xAD) + "phen", "hyphen"),
 ])  # fmt: skip
 def test_what_the_fonts_lack_is_written_as_a_reader_would_type_it(text: str, printed: str) -> None:
     from manuscript_guard.pdfwriter import printable

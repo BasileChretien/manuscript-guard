@@ -163,7 +163,8 @@ $("form").addEventListener("submit", async (event) => {
       $("savepdf").hidden = false;
     } else if (result.pdf && result.pdf.error) {
       $("notes").hidden = false;
-      $("notes").textContent += `\nNo PDF of the report was made: ${result.pdf.error}`;
+      $("notes").textContent += ($("notes").textContent ? "\n" : "")
+        + `No PDF of the report was made: ${result.pdf.error}`;
     }
     $("netlog").textContent += "\n\n" + listRequests(
       `This audit of ${paper.name} sent requests to:`, result.sent);

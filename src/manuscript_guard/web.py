@@ -275,7 +275,7 @@ def commented(paper: str, target: str) -> dict:
 def report_pdf(target: str) -> dict:
     """The report of the audit `view` ran last as a PDF, with every place and every section,
     written to `target` as `audit --pdf` writes it (`auditing.report_pdf`), from the same
-    audit rather than a second one: how many pages, or why none was written."""
+    audit rather than a second one: how many bytes it holds, or why none was written."""
     from manuscript_guard.auditing.report_pdf import report_pdf as pdf_of
 
     if not _AUDITED:

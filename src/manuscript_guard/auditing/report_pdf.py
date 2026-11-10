@@ -64,6 +64,9 @@ def written(view: dict, title: str, version: str) -> bytes:
                 pdf.gap(4)
                 continue
             pdf.text(stripped, indent=INDENT * (len(line) - len(stripped)), size=9.5)
+    if view.get("closing"):
+        pdf.gap(10)
+        pdf.text(view["closing"], size=10)
     return pdf.bytes()
 
 

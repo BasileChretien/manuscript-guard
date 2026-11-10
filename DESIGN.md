@@ -25282,6 +25282,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   reader reads it as running text, with no headings or table, and its reading order is the
   order it is set in. A quote a gate takes from the text pandoc converts a .docx to keeps
   Markdown's marks of emphasis, "**CEMU**", and its cuts inside a word. Accepted.
+  - Lines are measured by the metrics the writer holds, the regular font's for the bold's
+    quotation marks, and the property holds them to the margins by the same metrics; a
+    word wider than the column is cut by measuring each of its beginnings, slow past some
+    thousands of characters (round 1 of #618). Accepted.
 
 - **A commented copy places a finding by its quote.** `audit --commented` comments the first
   paragraph that holds a finding's quote, so a quote that two paragraphs hold word for word

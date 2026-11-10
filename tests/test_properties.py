@@ -18392,7 +18392,11 @@ def _the_offsets_are_one_off(patch: pytest.MonkeyPatch) -> None:
 
     def file(self, catalog, info):
         made = real(self, catalog, info)
-        return made.replace(b" 00000 n \n", b" 00000 n \n").replace(b"xref\n0 ", b"xref\n1 ", 1)
+        head, table = made.split(b"xref\n", 1)
+        lines = table.split(b"\n")
+        lines[2:] = [b"%010d" % (int(line[:10]) + 1) + line[10:]
+                     if line.endswith(b" n ") else line for line in lines[2:]]  # fmt: skip
+        return head + b"xref\n" + b"\n".join(lines)
 
     patch.setattr(pdfwriter._Writer, "_file", file)
 

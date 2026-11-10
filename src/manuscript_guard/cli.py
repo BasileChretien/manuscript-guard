@@ -2475,7 +2475,18 @@ def _write_pdf(report, discrimination, args: argparse.Namespace) -> bool:
     where it could not be written."""
     from manuscript_guard.auditing.report_pdf import report_pdf
 
-    data = report_pdf(report, discrimination, Path.cwd(), [path.name for path in report.papers])
+    try:
+        data = report_pdf(report, discrimination, Path.cwd(),
+                          [path.name for path in report.papers])  # fmt: skip
+    except Exception as exc:  # noqa: BLE001 - the text report is printed whatever the PDF does
+        from manuscript_guard.diagnostics import crashes
+
+        if crashes.debugging():
+            raise
+        crashes.record(exc, kind=crashes.GATE, name="the report as a PDF")
+        print(f"manuscript-guard audit: --pdf {args.pdf} could not be made: "
+              f"{type(exc).__name__}: {exc}", file=sys.stderr)  # fmt: skip
+        return False
     try:
         with open(args.pdf, "xb") as out:
             out.write(data)

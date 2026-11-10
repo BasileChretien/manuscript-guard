@@ -22132,7 +22132,7 @@ Open, recorded as each change landed:
     A run-on glossary paragraph wrapped so that one word stands alone above a line that
     opens with a colon and a space is cut before that word, which is read as a
     definition-list term: "PRR: proportional reporting" / "ratio" / ":   used in ..."
-    gives PRR "proportional reporting".
+    gives PRR "proportional reporting". Accepted.
   - A glossary's or a caption's long form is compared with the text's as written: "CI =
     95% confidence interval" beside "confidence interval (CI)" is reported as two meanings.
   - SD on the statistical list hides an undefined SD that means stable disease. Accepted.

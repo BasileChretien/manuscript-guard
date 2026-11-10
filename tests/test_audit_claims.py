@@ -160,8 +160,11 @@ def test_a_word_document_is_read_a_paragraph_a_sentence_by_its_heading_styles(
     assert [(f["line"], f["context"]) for f in found] == [
         (3, "Smoking causes lung cancer in 40 patients"), (7, "Statins caused fewer deaths")]
     written = table.read_text(encoding="utf-8")
-    assert "| 1 | paper.docx:8 | Discussion | Exercise causes health [1]. | [1] |" in written
-    assert "| 2 | paper.docx:9 | Discussion | [2] Coffee may cause alertness. | [2] |" in written
+    # A place in a .docx is its heading and its paragraph under it (the author's audit).
+    assert ("| 1 | paper.docx, Discussion, paragraph 2 | Discussion | Exercise causes health "
+            "[1]. | [1] |") in written
+    assert ("| 2 | paper.docx, Discussion, paragraph 3 | Discussion | [2] Coffee may cause "
+            "alertness. | [2] |") in written
 
 
 def _causal(capsys, paper: Path) -> list[tuple[int, str]]:

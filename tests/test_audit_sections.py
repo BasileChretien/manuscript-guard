@@ -279,7 +279,7 @@ def test_the_json_report_counts_what_strict_counts(tmp_path: Path, capsys) -> No
     assert said["ok"] is False and said["compared"] is True
     counted = [f for f in said["findings"] if f["counted"]]
     assert [(f["section"], f["code"], f["line"]) for f in counted] == [
-        ("Membership", "not-found", 3)
+        ("Numbers in the outputs", "not-found", 3)
     ]
     assert said["what_a_match_is_worth"]["integers_1_100"] == 0.0
     assert main(["audit", str(paper), "--against", str(outputs), "--strict", "--json"]) == 1

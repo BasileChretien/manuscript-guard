@@ -434,7 +434,7 @@ def test_the_page_draws_the_report_its_text_is_printed_from(
     result = web.view(["audit", "paper.md"])
     assert result["out"] == web.run(["audit", "paper.md"])["out"]
     view = json.loads(json.dumps(result))["view"]
-    assert [name for name, _said in view["checks"]][:2] == ["Membership", "Arithmetic"]
+    assert [name for name, _said in view["checks"]][:2] == ["Numbers in the outputs", "Arithmetic"]
     (kind,) = [kind for paper in view["words"] for kind in paper["kinds"]
                if kind["code"] == "abbreviation-undefined"]  # fmt: skip
     assert kind["count"] == len(kind["places"]) == len(undefined)
@@ -447,7 +447,7 @@ def test_the_page_draws_the_report_its_text_is_printed_from(
     # Round 1 of #601: the box draws every section; a run whose draft could not be written
     # printed no report and draws none; a view that cannot be drawn leaves the text.
     full = web.view(["audit", "paper.md", "--details"])["view"]
-    assert {"Membership", "Small cells recoverable by subtraction"} <= {
+    assert {"Numbers in the outputs", "Small cells recoverable by subtraction"} <= {
         heading for heading, _text in full["sections"]}
     (tmp_path / "draft.md").write_text("here already\n", encoding="utf-8")
     assert web.view(["audit", "paper.md", "--report-draft", "draft.md"])["view"] is None

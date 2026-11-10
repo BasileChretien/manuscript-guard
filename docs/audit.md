@@ -24,6 +24,11 @@ numbers left out, and each place in it is a page and a line; without `pdftotext`
 refused, exit 2. Its tables are lines of text there, so their numbers are compared and read
 as the text's but no table's arithmetic is checked, and a line is a heading only where it
 holds a section's name alone. A PDF in a folder is not read: name it.
+
+A place in a .docx is its heading and its paragraph under it, "Methods, paragraph 3", as a
+reader finds it in Word: a list's item is a paragraph, a table is one, and what stands before
+the first heading is "before the first heading". `--json` gives it beside the line, as
+`heading` and `paragraph`, as it gives a PDF's `page` and `line`.
 [For editors and reviewers](refereeing.md#a-referee) has what is read in a PDF and what is
 not.
 
@@ -48,7 +53,7 @@ section in full and every finding with its place, its context and its hint, as o
 
 | Section | What it holds | Counted by `--strict` |
 |---|---|---|
-| Membership | each number against the outputs, and what a match is worth there | a number in no output |
+| Numbers in the outputs | each number against the outputs, and what a match is worth there | a number in no output |
 | Arithmetic | a table's totals and the counts they total, a characteristic's categories and their column's n, a flow printed as a nested list; a P and its statistic, an estimate and its interval, an n (%) and its denominator, a mean of whole numbers and its n | a total off, categories over their n, a flow that does not add up under a heading or caption naming a flow |
 | Abstract against Results | each number of the Abstract looked for where the paper reports, and each of its intervals and tests held to its one counterpart there, ending with what a match is worth | an interval or a test that differs from its counterpart |
 | Small cells recoverable by subtraction | each count held back ("<5") that a total beside it gives away, with the count it can only be | one a printed total gives away |
@@ -71,8 +76,9 @@ would say.
 
 **The words.** G6 and G14 read a project's manuscript, so the paper is put into one made for
 it in a temporary folder and the two gates run as `check` runs them. A .docx goes through
-the conversion `init --from` makes, so its lines are lines of that converted text; without
-pandoc a .docx is not converted, and the report says G6 and G14 were not run on it.
+the conversion `init --from` makes, and each place is said as the document's heading and
+paragraph, which the converted text's lines are counted into; without pandoc a .docx is not
+converted, and the report says G6 and G14 were not run on it.
 `--english british` or `american` declares the paper's English, which G14 holds its spelling
 to; without it G14 holds the paper to the English most of its words are in.
 `--submission-residue` makes a residue of the revision that answers a reviewer a failure, as
@@ -125,8 +131,8 @@ fail `--strict`.
 backing set you supplied:
 
 ```
-What a match is worth here:
-  integers 1-100      100% of all possible values already match
+What a match is worth here: the share of all possible values a number would match by chance, being in the outputs
+  integers 1-100      100%
   integers 1-1000     100%
   two-decimal           2%
   A match on a small integer means almost nothing here. Check those by hand.

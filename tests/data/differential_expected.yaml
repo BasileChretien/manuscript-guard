@@ -37,8 +37,9 @@ expected:
       link of each kind of target
   - reading: notation
     why: >-
-      an interval after a link on its line, "[text](https://...) (CI 95% 0.3 to 0.4)", is
-      read, where the link's target hid it up to the next `)`
+      the hint of a form written two ways ends "The place given is the first use of the
+      other form", where it said "This is the first place the other form stands", which the
+      author did not understand (the author's audit, 2026-11-10)
   - reading: reply numbers
     why: >-
       a number in a reply after a link on its line is read and, unbound, reported, where the
@@ -73,13 +74,6 @@ expected:
       blanked, as the bindings are: a stop inside a comment ends no sentence, so a reversal
       with such a comment between its bounds is reported, and a stop with a comment typed
       against it ends one, so the bounds on either side of it are no longer compared
-  - reading: check
-    why: >-
-      G12 holds the plan's Software section to the packages the scripts of analysis/ and
-      figures/ load and counts both (`software_planned`, `software_loaded`): a package an
-      item names that no script loads is `planned-package-unloaded`, a warning from the
-      analysis stage on, and one a script loads that no item names is
-      `plan-package-unnamed`, a note (#592)
   - reading: data dates
     why: >-
       the finding says the date was emitted as a string rather than typed, and its hint adds

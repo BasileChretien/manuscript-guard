@@ -1237,7 +1237,8 @@ def test_a_reference_list_in_a_docx_with_no_heading_styles_ends_where_check_ends
 
     report = audit([paper], [outputs])
     assert "9.99" in [c.text for c in report.unmatched], report.not_audited
-    assert report.not_audited == ["paper.docx: lines 3-5, read as the reference list"]
+    assert report.not_audited == ["paper.docx: before the first heading, paragraphs 2-4, read "
+                                  "as the reference list"]
 
 
 def test_a_styled_reference_heading_in_a_docx_still_runs_to_the_next_heading(

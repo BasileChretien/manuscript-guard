@@ -12073,7 +12073,62 @@ def bold_blocks(draw: st.DrawFn) -> tuple[list[dict], list[str]]:
     return blocks, titles
 
 
+#: A heading of the Markdown pandoc converts a .docx to, as it is typed and as a place names
+#: it (`auditing.paragraphs`): plain; with its attributes; in bold; with an escape.
+WORD_HEADINGS = {
+    "plain": ("Background", "Background"),
+    "attributes": ("Methods {#methods .unnumbered}", "Methods"),
+    "bold": ("**Results**", "Results"),
+    "escaped": ("Authors\\' contributions", "Authors' contributions"),
+}
+#: A block under a heading, as pandoc writes one, a paragraph to a line: its lines, from the
+#: words drawn; and whether it is one paragraph (a table), or one a line (a list's items).
+WORD_BLOCKS = {
+    "paragraph": (lambda words: [f"{words.capitalize()} were counted."], False),
+    "list": (lambda words: [f"- {words} first", f"- {words} second", f"1.  {words}"], False),
+    "table": (lambda words: [f"| {words} | n |", "|---|---|", "| a | 1 |", "| b | 2 |"], True),
+    "grid table": (lambda words: ["+-----+---+", f"| {words} | n |", "+=====+===+",
+                                  "| a   | 1 |", "+-----+---+"], True),  # fmt: skip
+    # Opens with a sign, not a table's rule: a paragraph of its own.
+    "signed": (lambda words: [f"+0.41 points for {words}."], False),
+}
+
+
+@st.composite
+def word_paragraphs(draw: st.DrawFn) -> tuple[str, list[tuple[str | None, int, bool] | None]]:
+    """The Markdown a .docx converts to, with a paragraph or two before any heading, then a
+    heading of every kind of `WORD_HEADINGS` in an order drawn, each over a block of every
+    kind of `WORD_BLOCKS` in an order drawn, blank lines between blocks; and where each line
+    stands, by line: its heading's title as a place names it (None before the first), its
+    paragraph's number under that heading (0 for the heading), and whether it is a table;
+    None for a blank line."""
+    lines: list[str] = []
+    places: list[tuple[str | None, int, bool] | None] = []
+
+    def block(written: list[str], title: str | None, number: int, table: bool) -> None:
+        if lines:
+            lines.append("")
+            places.append(None)
+        lines.extend(written)
+        places.extend((title, number + (0 if table else at), table)
+                      for at in range(len(written)))  # fmt: skip
+
+    for count in range(1, draw(st.integers(1, 2)) + 1):
+        block([f"{draw(st.sampled_from(FILLER)).capitalize()} and others."], None, count, False)
+    for heading in draw(st.permutations(list(WORD_HEADINGS))):
+        typed, title = WORD_HEADINGS[heading]
+        block([f"# {typed}"], title, 0, False)
+        count = 0
+        for kind in draw(st.permutations(list(WORD_BLOCKS))):
+            make, table = WORD_BLOCKS[kind]
+            written = make(draw(st.sampled_from(FILLER)))
+            block(written, title, count + 1, table)
+            count += 1 if table else len(written)
+    return "\n".join(lines) + "\n", places
+
+
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
+    "word paragraphs": word_paragraphs().map(lambda drawn: drawn[0]),
     "checker sentences": texts(),
     "checker methods": method_claims().flatmap(lambda drawn: st.sampled_from(drawn[:3])),
     "prose quotations": texts(QUOTED),

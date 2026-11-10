@@ -138,12 +138,13 @@ if they will audit again.
 ## 3. Read the report
 
 What was read and what was not comes first, then `What was checked`, a line for each check,
-then a section for each check with something to show: `Membership`, `Arithmetic`,
+then a section for each check with something to show: `Numbers in the outputs`, `Arithmetic`,
 `Abstract against Results`, `Small cells recoverable by subtraction`, `Writing (G6) and
 Language (G14)`, `References (G7)`. The findings on the words are grouped by kind, with
 their first places, each kind's hint once where its places share it (at each place where
 they do not); `--details` gives every section and every
-place in full, and `--json` everything for a script. Membership lists the
+place in full, and `--json` everything for a script. A place in a .docx is its heading and
+its paragraph under it, "Methods, paragraph 3". Numbers in the outputs lists the
 unmatched numbers by file, up to 40 per file and then only a count, followed
 by `What a match is worth here`: the
 share of integers 1–100, of integers 1–1000, and of two-decimal values that would match by
@@ -185,7 +186,7 @@ classifier accepts as conventions or references are never compared at all, and t
 includes `p < 0.05` anywhere in the text and the lines the report lists under
 `Not audited`. Nor are numbers inside fenced code blocks in a Markdown paper. Conventions, and
 numbers on lines taken for reference entries that happened to
-match, are counted as "conventions or references"; the numbers on a cut reference list and
+match, are counted as "set aside as conventions and references"; the numbers on a cut reference list and
 in fenced code are not counted at all. Describe all of them as not checked, never as
 matched.
 

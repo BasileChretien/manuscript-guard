@@ -10264,6 +10264,30 @@ readings that hold a line keep the line of the text, and the report says it as t
 (`auditing.report._Show`); G4's, G6's and G14's findings, read on Markdown staged from the
 text, are put back at the text's line (`auditing.gates._staged_pdf`, `_Staged.lines`).
 
+**Places in a .docx.** The audit reads a .docx a paragraph to a line twice: its own reader's
+text for the numbers (`text.docx`), and the Markdown pandoc converts it to for G4, G6 and
+G14, a paragraph to a line with blank lines between. Neither line is one a reader can find in
+Word: the author's audit of 2026-11-10 sent him to "line 34" and to "defined later at
+paper.docx:517". So a place in a .docx is its heading and its paragraph under it, "Methods,
+paragraph 3" (`auditing.paragraphs`): a line that is not blank and not a heading is a
+paragraph, counted from 1 under each heading; a list's item is one, as Word counts it; a
+table is one, every line of it, said "(a table)"; what stands before the first heading is
+"before the first heading", and a document's notes, read after its body, "the notes". The
+headings are those the audit reads for its Abstract (a heading style, or a title in bold
+where the document has none, `text.docx.bold_heading_levels`) and, in the converted text,
+those `split_sections` reads, their bold, attributes and escapes taken off. The report keeps
+both placers apart, the document's by its path (`AuditReport.places`) and the converted
+text's on each run of the gates (`GateRun.places`, `JournalRun.places`), and a place a
+message names, "it was defined at paper.docx, Methods, paragraph 1", is said by the converted
+text's (`_relocated`). In JSON a finding gives `heading` and `paragraph` beside its `line`.
+
+What a gate quotes from the converted text is said as Word prints it (`gates.as_in_word`):
+Markdown's escapes taken off ("p\<0.05" was printed), and a word quoted in emphasis, "'*p*'",
+said as "'p' in italics". A G6 phrasing finding no longer opens with its rule's name,
+"importance-tail:", in any audit. A number's quote is its line around it, up to 60 characters
+each side (`audit.around`): the line's first 140 characters were quoted, and in a .docx,
+whose Abstract is a paragraph to a line, the number was often past them.
+
 **Headings, exact.** A PDF marks no heading, and guessing one from a line's shape is a rule
 that reads text. So a line is a heading only where it holds a section's name and nothing else
 from a closed list (`auditing.pdf.HEADINGS`: the parts of a paper, the reference list's
@@ -23798,8 +23822,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - G6 and G14 run on a project made for each paper, so an abbreviation defined in the main
     text and used in a supplement given beside it is undefined in the supplement. Nothing of
     a `paper.yaml` is read but the English: no journal profile, no `language:` settings, no
-    accepted spellings. A .docx's lines are those of the text pandoc converts it to.
-    Accepted.
+    accepted spellings. Accepted.
   - A place a finding's message or hint names in the project made for the paper is put back
     in the paper by its shape, `manuscript/<file>` with or without `:<line>`, standing
     alone: G14 said "it was defined at manuscript/main.md:476" of a paper called paper.md
@@ -25195,6 +25218,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
     heading's own: `# [C#]{.underline}` is titled "C" and `# [Results {-}]{.underline}`
     "Results", where pandoc prints "C#" and "Results {-}", the span's text. Pinned by
     `tests/test_text.py::test_a_mark_inside_a_span_is_read_as_the_heading_s_own`.
+
+- **A .docx's two readers count its paragraphs apart where one drops a paragraph.** The
+  numbers' places are counted in the audit's own reading of the document and the words' in
+  the text pandoc converts it to (`auditing.paragraphs`). Where one keeps a paragraph the
+  other leaves out, an empty one, a front page's lines pandoc writes as a list, a caption, the
+  count after it under the same heading parts by one: on the author's paper, the affiliations
+  before the first heading were paragraphs 3 and 5 of the two. A heading pandoc's conversion
+  does not make, or one the audit does not read, puts the paragraphs after it under the
+  heading before. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

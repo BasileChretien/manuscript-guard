@@ -53,7 +53,7 @@ from pathlib import Path
 from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
 
 INPUTS = "Inputs"
-MEMBERSHIP = "Membership"
+MEMBERSHIP = "Numbers in the outputs"
 ARITHMETIC = "Arithmetic"
 SMALL_CELLS = "Small cells recoverable by subtraction"
 ABSTRACT = "Abstract against Results"
@@ -66,6 +66,8 @@ CAUSAL = "Causal words"
 CITED = "Cited sentences"
 SELF_CITATION = "Self-citation"
 PACKAGE = "Package"
+#: What the numbers set aside as conventions and references are, as the report's top says.
+SET_ASIDE = "(years, citation and figure numbers, the 95 of a 95% CI and the like)"
 #: What the report says at its top where no outputs were given.
 NO_OUTPUTS = "No outputs given: no number was compared with the analysis"
 #: How many items of one kind are listed for one file before only a count.
@@ -87,6 +89,9 @@ class Item:
     line: int | None = None
     context: str | None = None
     hint: str | None = None
+    #: What says where its line stands, where that is not its path's: a converted .docx's
+    #: text, which G6, G14 and G4 read (`auditing.paragraphs`).
+    placer: object = None
 
     def as_dict(self) -> dict:
         return {
@@ -160,7 +165,7 @@ def items(report) -> list[Item]:
         if run.note:
             found.append(Item(WRITING, "G6", "gates-not-run", run.note, INFO, False, run.paper))
         for section, findings in ((WRITING, run.writing), (LANGUAGE, run.language)):
-            found += [_from_finding(section, finding) for finding in findings]
+            found += [_from_finding(section, finding, run.places) for finding in findings]
     for census in report.references:
         found += [
             Item(REFERENCES, "G7", p.code, p.message, WARN, False, p.path or census.path, p.line)
@@ -312,7 +317,7 @@ def _journal_items(run) -> list[Item]:
     if run.note:
         found = [Item(JOURNAL, "G4", "journal-not-run", run.note, INFO, False, run.paper)]
     else:
-        found = [_from_finding(JOURNAL, finding) for finding in run.findings]
+        found = [_from_finding(JOURNAL, finding, run.places) for finding in run.findings]
     found += [Item(JOURNAL, "G4", "journal-not-checked", f"not checked here: {what}", INFO,
                    False, run.profile) for what in run.skipped]  # fmt: skip
     found += [Item(JOURNAL, "G4", "journal-manual-rule", f"to check by hand: {rule}", INFO,
@@ -377,9 +382,10 @@ def _abstract_items(read) -> list[Item]:
     ]  # fmt: skip
 
 
-def _from_finding(section: str, finding: Finding) -> Item:
+def _from_finding(section: str, finding: Finding, placer: object = None) -> Item:
     return Item(section, finding.gate, finding.code, finding.message, finding.severity, False,
-                finding.path, finding.line, finding.context, finding.hint)  # fmt: skip
+                finding.path, finding.line, finding.context, finding.hint,
+                placer)  # fmt: skip
 
 
 def failed(report) -> bool:
@@ -432,8 +438,10 @@ def as_json(report, discrimination) -> str:
                 "two_decimals": abstract.two_decimals,
                 "verdict": abstract.verdict()},
             **({} if report.package is None else {"package_said": _package_said()}),
-            "findings": [placed(item.as_dict(), item.path, item.line, report.pdfs)
-                         for item in listed],
+            "findings": [placed(item.as_dict(), item.path, item.line,
+                                {item.path: item.placer} if item.placer is not None
+                                else report.placers)
+                         for item in listed],  # fmt: skip
         },
         indent=2,
         # As `check --json`: a pipe on Windows is cp1252.
@@ -501,11 +509,13 @@ def _abstract_counts(read) -> dict[str, int]:
 
 class _Show:
     """How the report names a file and a place in it: a file relative to `root`, a line as
-    "line 12", and a line of a PDF's text as its page and its line (`auditing.pdf`)."""
+    "line 12", a line of a PDF's text as its page and its line (`auditing.pdf`), and a line
+    of a .docx's as its section and its paragraph (`auditing.paragraphs`): `placers`, by
+    the paper's path (`AuditReport.placers`)."""
 
-    def __init__(self, root: Path | None, pdfs: dict | None = None) -> None:
+    def __init__(self, root: Path | None, placers: dict | None = None) -> None:
         self.root = root
-        self.pdfs = pdfs or {}
+        self.placers = placers or {}
 
     def __call__(self, path: Path) -> str:
         if self.root is None:
@@ -515,42 +525,49 @@ class _Show:
         except ValueError:
             return path.name
 
-    def pdf(self, path: Path | None):
-        return self.pdfs.get(path) if path is not None else None
+    def placer(self, path: Path | None):
+        return self.placers.get(path) if path is not None else None
+
+    def within(self, paper: Path, places) -> _Show:
+        """The same, with the lines of `paper` placed by `places`, a converted .docx's text
+        that G6, G14 and G4 read, where it is not None."""
+        return self if places is None else _Show(self.root, {**self.placers, paper: places})
 
     def at(self, path: Path | None, line: int | None) -> str:
-        """"line 12", or "page 3, line 12" in a PDF."""
-        pdf = self.pdf(path)
-        return pdf.said(line) if pdf is not None else f"line {line}"
+        """"line 12", "page 3, line 12" in a PDF, "Methods, paragraph 3" in a .docx."""
+        placer = self.placer(path)
+        return placer.said(line) if placer is not None else f"line {line}"
 
     def located(self, path: Path, line: int | None) -> str:
-        """"paper.md:12", or "paper.pdf, page 3, line 12"."""
-        pdf = self.pdf(path)
-        if pdf is None:
+        """"paper.md:12", "paper.pdf, page 3, line 12", "paper.docx, Methods, paragraph 3"."""
+        placer = self.placer(path)
+        if placer is None:
             return f"{self(path)}:{line}" if line else self(path)
-        return f"{self(path)}, {pdf.said(line)}" if line else self(path)
+        return f"{self(path)}, {placer.said(line)}" if line else self(path)
 
 
-def _shown(root: Path | None, pdfs: dict | None = None) -> _Show:
-    return _Show(root, pdfs)
+def _shown(root: Path | None, placers: dict | None = None) -> _Show:
+    return _Show(root, placers)
 
 
-def placed(item_dict: dict, path: Path | None, line: int | None, pdfs: dict) -> dict:
+def placed(item_dict: dict, path: Path | None, line: int | None, placers: dict) -> dict:
     """A finding as JSON, its line given as a page and a line where it is a PDF's
-    (`auditing.pdf.Place`)."""
-    pdf = pdfs.get(path) if path is not None else None
-    place = pdf.place(line) if pdf is not None else None
+    (`auditing.pdf.Place`), as a section and a paragraph where it is a .docx's
+    (`auditing.paragraphs.Paragraph`)."""
+    placer = placers.get(path) if path is not None else None
+    place = placer.place(line) if placer is not None else None
     return item_dict if place is None else {**item_dict, **place.as_dict()}
 
 
 def _rendered(found, root: Path | None, show: _Show) -> str:
-    """Findings as `Report.render` gives them, a PDF's at its page and line."""
-    if not any(show.pdf(finding.path) is not None for finding in found):
+    """Findings as `Report.render` gives them, a PDF's at its page and line, a .docx's at
+    its section and paragraph."""
+    if not any(show.placer(finding.path) is not None for finding in found):
         return Report(tuple(found)).render(root)
     lines: list[str] = []
     for finding in Report(tuple(found)).sorted().findings:
         where = finding.located()
-        if show.pdf(finding.path) is not None:
+        if show.placer(finding.path) is not None:
             where = show.located(finding.path, finding.line)
         elif root is not None and finding.path is not None and finding.path.is_relative_to(root):
             where = where.replace(str(finding.path), str(finding.path.relative_to(root)), 1)
@@ -593,11 +610,11 @@ def _grouped_gates(report, show: _Show) -> list[str]:
         if not found:
             continue
         converted = ("; lines are those of the text pandoc converts it to, as `init --from` "
-                     "writes it" if run.converted else "")  # fmt: skip
+                     "writes it" if run.converted and run.places is None else "")  # fmt: skip
         lines.append(f"  {show(run.paper)}: {len(found)} finding{'s' if len(found) != 1 else ''}"
                      f" in {len(kinds_of(found))} kind{'s' if len(kinds_of(found)) != 1 else ''}"
                      f"{converted}")  # fmt: skip
-        lines += grouped(found, _placing(run.paper, show))
+        lines += grouped(found, _placing(run.paper, show.within(run.paper, run.places)))
     return lines
 
 
@@ -638,7 +655,7 @@ def render(report, discrimination, root: Path | None = None, *, details: bool = 
     `details`, every section in full, every finding with its place, context and advice."""
     from manuscript_guard.auditing.summary import checks
 
-    show = _shown(root, report.pdfs)
+    show = _shown(root, report.placers)
     lines = _header(report)
     for heading, said in _notes(report):
         lines += ["", heading, *(f"  {item}" for item in said)]
@@ -726,13 +743,13 @@ def view(report, discrimination, root: Path | None = None, *, details: bool = Fa
     check found, the findings on the words by kind with every place of each, the other
     sections with something to show (every one with `details`), as their text, and its last
     line. The same content as `render`, every place of the words' findings in its fold."""
-    from manuscript_guard.auditing.summary import kinds, rows
+    from manuscript_guard.auditing.summary import STRICT, kinds, rows
 
-    show = _shown(root, report.pdfs)
+    show = _shown(root, report.placers)
     words = []
     for run in report.gates:
         found = [*run.writing, *run.language]
-        at = _placing(run.paper, show)
+        at = _placing(run.paper, show.within(run.paper, run.places))
         words.append({"paper": show(run.paper), "note": run.note or None,
                       "converted": run.converted,
                       "kinds": kinds(found, at, details=details)})  # fmt: skip
@@ -740,6 +757,7 @@ def view(report, discrimination, root: Path | None = None, *, details: bool = Fa
         "header": _header(report),
         "notes": [[heading, said] for heading, said in _notes(report)],
         "checks": [[name, said] for name, said in rows(report)],
+        "strict": STRICT,
         "words": words,
         "sections": [[heading, "\n".join(said)] for heading, said
                      in _sections(report, discrimination, root, show, details=details)
@@ -757,14 +775,14 @@ def _header(report) -> list[str]:
             if report.reference_like
             else ""
         )
-        second = (f"{report.examined} numeric tokens: {report.classified} conventions or "
-                  f"references, {len(report.matched)} found in the outputs, "
-                  f"{len(report.unmatched)} not found{apart}.")  # fmt: skip
+        second = (f"{report.examined} numbers read: {report.classified} set aside as "
+                  f"conventions and references {SET_ASIDE}, {len(report.matched)} found in the "
+                  f"outputs, {len(report.unmatched)} not found{apart}.")  # fmt: skip
         return [first, second]
     return [
         f"Audited {len(report.papers)} file(s). {NO_OUTPUTS}.",
-        f"{report.examined} numeric tokens: {report.classified} conventions or references, "
-        f"{report.uncompared} not compared.",
+        f"{report.examined} numbers read: {report.classified} set aside as conventions and "
+        f"references {SET_ASIDE}, {report.uncompared} not compared.",
     ]
 
 
@@ -801,7 +819,7 @@ def _membership(report, discrimination, show) -> list[str]:
             for number in ordered[:LISTED]:
                 lines.append(f"    {show.at(source, number)}: {', '.join(numbers[number])}")
             if len(ordered) > LISTED:
-                ranges = "" if show.pdf(source) else f": {_ranges(ordered[LISTED:])}"
+                ranges = "" if show.placer(source) else f": {_ranges(ordered[LISTED:])}"
                 lines.append(f"    (+{len(ordered) - LISTED} more lines{ranges})")
     if not lines:
         lines.append("  Every number compared is in the outputs.")
@@ -811,9 +829,9 @@ def _membership(report, discrimination, show) -> list[str]:
 
 def _worth(discrimination) -> list[str]:
     lines = [
-        "What a match is worth here:",
-        f"  integers 1-100    {discrimination.small_integers:6.0%} of all possible values "
-        f"already match",
+        "What a match is worth here: the share of all possible values a number would match "
+        "by chance, being in the outputs",
+        f"  integers 1-100    {discrimination.small_integers:6.0%}",
         f"  integers 1-1000   {discrimination.medium_integers:6.0%}",
         f"  two-decimal       {discrimination.two_decimals:6.0%}",
         f"  {discrimination.verdict()}",
@@ -923,23 +941,25 @@ def _abstract(read, show) -> list[str]:
     """The Abstract against Results, ending with what a match is worth there."""
     if not read.compared:
         return [f"  Not compared: {read.why_not}."]
-    lines = [f"{read.numbers} number(s) in the Abstract the conventions do not explain: "
-             f"{read.matched} found where the paper reports (the Methods, the Results, its "
-             f"tables, a file with no Abstract), {len(read.rounded)} matched as a rounding, "
-             f"{len(read.not_found)} not found."]
+    lines = [f"{read.numbers} number(s) in the Abstract, conventions and references set "
+             f"aside, looked for where the paper reports its results (the Methods, the "
+             f"Results, its tables, a file with no Abstract): {read.matched} found, "
+             f"{len(read.rounded)} found only as a rounding, {len(read.not_found)} not found."]
     for heading, found in (
         ("AN INTERVAL OR A TEST THAT DIFFERS FROM ITS COUNTERPART IN ONE NUMBER (counted by "
          "--strict):", read.conflicts),
-        ("NOT FOUND WHERE THE PAPER REPORTS (not counted by --strict):", read.not_found),
-        ("MATCHED AS A ROUNDING (not counted by --strict):", read.rounded),
+        ("NOT FOUND IN THE METHODS, THE RESULTS OR THE TABLES (not counted by --strict):",
+         read.not_found),
+        ("FOUND ONLY AS A ROUNDING (not counted by --strict):", read.rounded),
     ):
         listed = [_Said(c.source, c.line, c.message if hasattr(c, "message") else c.text, c.context)
                   for c in found]  # fmt: skip
         listing = _listed(heading, listed, show)
         lines += ([""] if listing else []) + listing
     worth = _worth(read.discrimination)
-    worth[0] = ("What a match is worth here, against the numbers the paper reports, "
-                "roundings counted in:")
+    worth[0] = ("What a match is worth here: the share of all possible values a number "
+                "would match by chance, being among those the paper reports, roundings "
+                "counted in")
     return [*lines, "", *worth[:5]]
 
 
@@ -976,10 +996,11 @@ def _gates(report, root: Path | None, show: _Show) -> list[str]:
         lines.append(f"  {show(run.paper)}: {len(run.writing)} from G6, "
                      f"{len(run.language)} from G14"
                      + ("; lines are those of the text pandoc converts it to, as `init "
-                        "--from` writes it" if run.converted else ""))  # fmt: skip
+                        "--from` writes it" if run.converted and run.places is None
+                        else ""))  # fmt: skip
         found = (*run.writing, *run.language)
         if found:
-            lines.append(_rendered(found, root, show))
+            lines.append(_rendered(found, root, show.within(run.paper, run.places)))
     return lines
 
 
@@ -1028,8 +1049,9 @@ def _journal(run, root: Path | None, show) -> list[str]:
     """G4 held to the profile: what it found, what it did not check, and the editor's
     checklist."""
     lines = [f"  {show(run.paper)} held to {show(run.profile)}"
-             + ("; lines are those of the text pandoc converts it to" if run.converted
-                else "")]  # fmt: skip
+             + ("; lines are those of the text pandoc converts it to"
+                if run.converted and run.places is None else "")]  # fmt: skip
+    show = show.within(run.paper, run.places)
     if run.note:
         lines.append(f"  {run.note}")
     elif run.findings:

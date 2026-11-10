@@ -27,7 +27,8 @@ fold for each kind with every place inside it and the kind's hint; and the other
 with something to show. Below, in a fold, is the text the command line prints, word for
 word, which "Save the report" saves. The box "List every place of every finding" gives the
 text every place with its context and hint, and the page every section and every place's
-context (`audit --details`). For a .docx, "Save the paper with the findings as Word
+context (`audit --details`). "Save the report as a PDF, with every place" saves it as
+`audit --pdf` writes it, from the same audit. For a .docx, "Save the paper with the findings as Word
 comments" saves a copy of it with each finding as a comment at its place, written from the
 same audit, as `audit --commented` writes it; it is made in the browser like the rest.
 

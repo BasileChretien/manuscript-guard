@@ -18290,9 +18290,136 @@ def _a_quote_with_no_words_is_listed(patch: pytest.MonkeyPatch) -> None:
                   if note.words else None)  # fmt: skip
 
 
+from generated import PDF_WORDS, pdf_documents  # noqa: E402
+
+_PDF_FONTS = {"/Helvetica": "F1", "/Helvetica-Bold": "F2", "/Helvetica-Oblique": "F3",
+              "/Courier": "F4"}  # fmt: skip
+
+
+@holds(30, pdf_documents())
+def test_a_pdf_report_prints_every_word_within_its_page_and_marks_every_heading(
+    drawn: list[tuple[str, int, str, int]],
+) -> None:
+    """The audit's PDF (`audit --pdf`, `pdfwriter`, Basile's choice of 2026-11-10) reads,
+    strictly, as a PDF; its text is every word it was given, in order, a sign or letter the
+    standard fonts lack written as a reader would type it, its own string marks escaped;
+    every line stands inside its page's margins, a word wider than the column broken at its
+    edge; and each heading is a bookmark under the one before it of a level above."""
+    import io
+
+    import pypdf
+
+    from manuscript_guard import pdfwriter
+
+    pdf = pdfwriter.Pdf(title="Audit")
+    for kind, level, text, indent in drawn:
+        if kind == "heading":
+            pdf.heading(text, level)
+        else:
+            pdf.text(text, indent=indent)
+    data = pdf.bytes()
+    # Its cross-reference table, which a reader repairs where it is wrong, read as written:
+    # each object at the offset the table gives it.
+    start = int(data.rsplit(b"startxref\n", 1)[1].split(b"\n", 1)[0])
+    table = data[start:].split(b"\n")
+    assert table[0] == b"xref" and table[1].split()[0] == b"0", table[:2]
+    for number in range(1, int(table[1].split()[1])):
+        assert data[int(table[2 + number][:10]):].startswith(b"%d 0 obj" % number), number
+    try:
+        reader = pypdf.PdfReader(io.BytesIO(data), strict=True)
+        placed: list[tuple[float, float, float]] = []
+
+        def seen(text, _cm, tm, font, size) -> None:
+            if text.strip() and font is not None:
+                name = _PDF_FONTS[font["/BaseFont"]]
+                placed.append((tm[4], tm[5], pdfwriter.width(text.strip("\n"), name, size)))
+
+        read = "".join(page.extract_text(visitor_text=seen) for page in reader.pages)
+        outline = reader.outline
+    except Exception as exc:  # noqa: BLE001 - a PDF that does not read is the failure
+        raise AssertionError(f"the PDF does not read: {exc!r}") from exc
+    printed = []
+    for _kind, _level, text, _indent in drawn:
+        for raw, said in PDF_WORDS.values():
+            text = text.replace(raw, said)
+        printed.append(text)
+    assert "".join(read.split()) == "".join("".join(printed).split())
+    for x, y, wide in placed:
+        assert x >= pdfwriter.MARGIN - 0.01 and x + wide <= pdfwriter.WIDTH - pdfwriter.MARGIN + 0.5
+        assert pdfwriter.MARGIN - 20 <= y <= pdfwriter.HEIGHT - pdfwriter.MARGIN
+
+    def flat(items, depth=0):
+        for item in items:
+            if isinstance(item, list):
+                yield from flat(item, depth + 1)
+            else:
+                yield depth, item.title
+
+    assert list(flat(outline)) == [(level - 1, text) for kind, level, text, _i in drawn
+                                   if kind == "heading"]  # fmt: skip
+
+
+def _pdf_marks_unescaped(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import pdfwriter
+
+    patch.setattr(pdfwriter, "_string", lambda text: b"(" + text.encode("cp1252") + b")")
+
+
+def _nothing_stands_in_for_what_the_fonts_lack(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import pdfwriter
+
+    patch.setattr(pdfwriter, "SUBSTITUTES", {})
+
+
+def _no_line_is_broken(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import pdfwriter
+
+    patch.setattr(pdfwriter, "wrapped", lambda text, font, size, room: text.split("\n"))
+
+
+def _every_bookmark_is_at_the_top(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import pdfwriter
+
+    real = pdfwriter.Pdf.heading
+    patch.setattr(pdfwriter.Pdf, "heading", lambda self, text, level=1, key=None: real(
+        self, text, 1, key))  # fmt: skip
+
+
+def _the_offsets_are_one_off(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import pdfwriter
+
+    real = pdfwriter._Writer._file
+
+    def file(self, catalog, info):
+        made = real(self, catalog, info)
+        return made.replace(b" 00000 n \n", b" 00000 n \n").replace(b"xref\n0 ", b"xref\n1 ", 1)
+
+    patch.setattr(pdfwriter._Writer, "_file", file)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a PDF string's parentheses are not escaped": (
+        _pdf_marks_unescaped,
+        test_a_pdf_report_prints_every_word_within_its_page_and_marks_every_heading,
+    ),
+    "nothing stands in for what the PDF's fonts lack": (
+        _nothing_stands_in_for_what_the_fonts_lack,
+        test_a_pdf_report_prints_every_word_within_its_page_and_marks_every_heading,
+    ),
+    "a PDF's lines are not broken": (
+        _no_line_is_broken,
+        test_a_pdf_report_prints_every_word_within_its_page_and_marks_every_heading,
+    ),
+    "every bookmark of a PDF is at the top": (
+        _every_bookmark_is_at_the_top,
+        test_a_pdf_report_prints_every_word_within_its_page_and_marks_every_heading,
+    ),
+    "a PDF's offsets are one off": (
+        _the_offsets_are_one_off,
+        test_a_pdf_report_prints_every_word_within_its_page_and_marks_every_heading,
+    ),
     "the first of a word's places is commented, not the one quoted": (
         _the_first_place_of_a_word_is_commented,
         test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text,

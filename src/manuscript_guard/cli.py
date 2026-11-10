@@ -2455,6 +2455,43 @@ def _write_commented(report, args: argparse.Namespace) -> bool:
     return True
 
 
+def _pdf_refused(target: Path, given: list[Path]) -> str:
+    """Why `--pdf` cannot write to `target`, or "": a target that is no .pdf, a file there
+    already, a folder that is not there, or a file the audit reads."""
+    if target.suffix.lower() != ".pdf":
+        return f"--pdf writes a PDF (.pdf): {target.name} is not one"
+    if target.exists():
+        return f"--pdf {target}: the file is there already; name another, or move it away"
+    if not target.parent.is_dir():
+        return f"--pdf {target}: its folder does not exist"
+    if any(target.resolve() == path.resolve() for path in given):
+        return f"--pdf {target}: that is a file the audit reads"
+    return ""
+
+
+def _write_pdf(report, discrimination, args: argparse.Namespace) -> bool:
+    """The report as a PDF (`auditing.report_pdf`), with every place and every section,
+    written to the file `--pdf` names and to no file there already; False, said on stderr,
+    where it could not be written."""
+    from manuscript_guard.auditing.report_pdf import report_pdf
+
+    data = report_pdf(report, discrimination, Path.cwd(), [path.name for path in report.papers])
+    try:
+        with open(args.pdf, "xb") as out:
+            out.write(data)
+    except FileExistsError:
+        print(f"manuscript-guard audit: --pdf {args.pdf}: the file was made while the audit "
+              "ran, and was not written over", file=sys.stderr)  # fmt: skip
+        return False
+    except OSError as exc:
+        print(f"manuscript-guard audit: --pdf {args.pdf} could not be written: {exc}",
+              file=sys.stderr)  # fmt: skip
+        return False
+    print(f"manuscript-guard audit: wrote {args.pdf}, the report as a PDF with every place and "
+          "every section", file=sys.stderr)  # fmt: skip
+    return True
+
+
 def _write_cited(report, args: argparse.Namespace) -> bool:
     """The cited sentences, with their abstracts where --lookup asks for them, written to
     the file `--cited` names; False, said on stderr, where it could not be written."""
@@ -2536,7 +2573,7 @@ def _read_as_reader(report, reader: _Reader, main: Path, papers: list[Path],
 
 #: The options that read a paper, refused with `--package` and no paper.
 _READ_A_PAPER = ("against", "figures", "journal", "authors", "design", "cited", "commented",
-                 "lookup", "whole_numbers", "minimum_cell_count", "english",
+                 "pdf", "lookup", "whole_numbers", "minimum_cell_count", "english",
                  "submission_residue")
 
 
@@ -2562,7 +2599,7 @@ AUDITED: Callable[[object, object], None] | None = None
 #: The options of `audit` and `compare` the report draft names, in the order they are listed.
 _AUDIT_FLAGS = ("against", "figures", "english", "submission_residue", "lookup", "dry_run",
                 "whole_numbers", "minimum_cell_count", "journal", "authors", "design", "cited",
-                "commented", "package", "strict")  # fmt: skip
+                "commented", "pdf", "package", "strict")  # fmt: skip
 _COMPARE_FLAGS = ("response", "comments")
 
 
@@ -2608,7 +2645,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
                                   "a paper: name one before --package")  # fmt: skip
     given = [*args.paper, *(args.against or []), *(args.figures or []),
              *(path for path in (args.journal, args.authors, args.package, args.cited,
-                                 args.commented) if path)]  # fmt: skip
+                                 args.commented, args.pdf) if path)]  # fmt: skip
     refused = _draft_refused(args, given, "audit")
     if refused is not None:
         return refused
@@ -2727,6 +2764,10 @@ def _audit(args: argparse.Namespace, package) -> int:
         refused = _commented_refused(args.commented, given, args.paper[0])
         if refused:
             return _audit_refused(args, f"manuscript-guard audit: {refused}")
+    if args.pdf is not None:
+        refused = _pdf_refused(args.pdf, given)
+        if refused:
+            return _audit_refused(args, f"manuscript-guard audit: {refused}")
     reader = _reader(args)
     if isinstance(reader, int):
         return reader
@@ -2802,6 +2843,8 @@ def _audit(args: argparse.Namespace, package) -> int:
     if args.commented is not None and not _write_commented(report, args):
         return 2
     discrimination = measure_discrimination(report.backing_values) if against else None
+    if args.pdf is not None and not _write_pdf(report, discrimination, args):
+        return 2
     if args.report_draft is not None:
         from manuscript_guard.auditing.draft import for_audit
 
@@ -6880,6 +6923,14 @@ def build_parser() -> argparse.ArgumentParser:
         "reference list's entry, and with --lookup the registries' title, year and standing "
         "and Europe PMC's abstract, and an empty column for your judgement; FILE quotes the "
         "manuscript, and the report gives counts only",
+    )
+    audit.add_argument(
+        "--pdf",
+        type=Path,
+        metavar="FILE",
+        help="also write the report to FILE (.pdf, which must not exist yet) as a PDF with "
+        "every place and every section, its contents as bookmarks and each check in its "
+        "table a link to its section",
     )
     audit.add_argument(
         "--commented",

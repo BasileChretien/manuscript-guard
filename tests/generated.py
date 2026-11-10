@@ -12254,6 +12254,38 @@ def commented_documents(draw: st.DrawFn) -> tuple[str, list, list]:
     return body, notes, expected
 
 
+#: The words a PDF report sets that the standard fonts hold no glyph for, or that a PDF
+#: string must escape, each with what it prints as (`pdfwriter.printable`): a sign and a
+#: letter Windows-1252 lacks, its accented letters and quotes, the PDF string's own marks,
+#: and a word wider than the column.
+PDF_WORDS = {
+    "lacking": ("≥0.05 with −2 and α", ">=0.05 with -2 and alpha"),
+    "accented": ("Évaluée «café» – “done”", "Évaluée «café» – “done”"),
+    # A parenthesis left open or closed alone ends a PDF string unescaped; a pair does not.
+    "marks": ("(p\\value) and a) b (c", "(p\\value) and a) b (c"),
+    "long": ("x" * 140, "x" * 140),
+    "marks lacking": ("ő and 結果", "o and ??"),
+}
+
+
+@st.composite
+def pdf_documents(draw: st.DrawFn) -> list[tuple[str, int, str, int]]:
+    """A report's parts in an order drawn: headings of levels 1 to 3, each under one of a
+    level above it or of its own, and under each a paragraph of filler with one of every
+    kind of `PDF_WORDS` among them, set in at an indent drawn; each part `(kind, level,
+    text, indent)`, kind "heading" or "text"."""
+    parts: list[tuple[str, int, str, int]] = []
+    level = 0
+    kinds = draw(st.permutations(list(PDF_WORDS)))
+    for at, kind in enumerate(kinds):
+        level = draw(st.integers(1, min(3, level + 1))) if at else 1
+        parts.append(("heading", level, f"Part {at + 1} {draw(st.sampled_from(FILLER))}", 0))
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=20, max_size=80))
+        words.insert(draw(st.integers(0, len(words))), PDF_WORDS[kind][0])
+        parts.append(("text", level, " ".join(words), draw(st.sampled_from((0, 18, 60)))))
+    return parts
+
+
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "word paragraphs": word_paragraphs().map(lambda drawn: drawn[0]),
     "checker sentences": texts(),

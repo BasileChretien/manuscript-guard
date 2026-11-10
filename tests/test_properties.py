@@ -18045,40 +18045,41 @@ def test_a_place_in_a_word_document_is_its_heading_and_its_paragraph_under_it(
     """Each line of the Markdown a .docx converts to is placed under the heading above it,
     named as Word prints it (its bold, attributes and escapes taken off), and counted from 1
     under that heading: a list's item one, a table one whatever its lines, a line that opens
-    with a sign a paragraph, a blank line nothing; the lines before the first heading under
-    none (`auditing.paragraphs.of_markdown`), as the audit names a place in a .docx (the
-    author's audit, 2026-11-10: "line 517")."""
+    with a sign a paragraph, the lines of a paragraph a line break parts one, a blank line
+    nothing; the lines before the first heading under none, and the notes pandoc writes at
+    the end under "the notes" (`auditing.paragraphs.of_markdown`), as the audit names a
+    place in a .docx (the author's audit, 2026-11-10: "line 517"). With its lines ended as
+    pandoc ends them on Windows, "\\r\\n", the same."""
     from manuscript_guard.auditing.paragraphs import of_markdown
 
     text, expected = drawn
-    places = [None if place is None else (place.section, place.number, place.table)
-              for place in of_markdown(text).places]  # fmt: skip
-    assert places == [*expected, None]
+    for written in (text, text.replace("\n", "\r\n")):
+        places = [None if place is None else (place.section, place.number, place.table)
+                  for place in of_markdown(written).places]  # fmt: skip
+        assert places == [*expected, None]
 
 
 def _no_heading_is_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import paragraphs
 
     real = paragraphs.counted
-    patch.setattr(paragraphs, "counted", lambda lines, headings, tables=frozenset(),
-                  notes_from=None: real(lines, {}, tables, notes_from))  # fmt: skip
+    patch.setattr(paragraphs, "counted", lambda lines, headings, *rest: real(lines, {}, *rest))
 
 
 def _a_table_s_lines_are_paragraphs(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import paragraphs
 
     real = paragraphs.counted
-    patch.setattr(paragraphs, "counted", lambda lines, headings, tables=frozenset(),
-                  notes_from=None: real(lines, headings, frozenset(), notes_from))  # fmt: skip
+    patch.setattr(paragraphs, "counted", lambda lines, headings, tables=frozenset(), *rest:
+                  real(lines, headings, frozenset(), *rest))  # fmt: skip
 
 
 def _a_blank_line_is_a_paragraph(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import paragraphs
 
     real = paragraphs.counted
-    patch.setattr(paragraphs, "counted", lambda lines, headings, tables=frozenset(),
-                  notes_from=None: real([line or "." for line in lines], headings, tables,
-                                        notes_from))  # fmt: skip
+    patch.setattr(paragraphs, "counted", lambda lines, *rest: real(
+        [line if line.strip() else "." for line in lines], *rest))  # fmt: skip
 
 
 def _the_count_runs_on_past_a_heading(patch: pytest.MonkeyPatch) -> None:
@@ -18086,9 +18087,9 @@ def _the_count_runs_on_past_a_heading(patch: pytest.MonkeyPatch) -> None:
 
     real = paragraphs.counted
 
-    def counted(lines, headings, tables=frozenset(), notes_from=None):
+    def counted(lines, *rest):
         running, last, places = 0, None, []
-        for place in real(lines, headings, tables, notes_from).places:
+        for place in real(lines, *rest).places:
             if place is None or place.number == 0:
                 places.append(place)
                 continue
@@ -18117,6 +18118,36 @@ def _a_title_s_escapes_are_kept(patch: pytest.MonkeyPatch) -> None:
 
     # Never matching, with the group the substitution names.
     patch.setattr(paragraphs, "_ESCAPED", re.compile(r"(?!)(.)"))
+
+
+def _a_broken_line_ends_its_paragraph(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import paragraphs
+
+    patch.setattr(paragraphs, "_BROKEN_LINE", re.compile(r"(?!)"))
+
+
+def _any_backslash_breaks_a_line(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import paragraphs
+
+    patch.setattr(paragraphs, "_BROKEN_LINE", re.compile(r"\\\r?$"))
+
+
+def _a_line_ended_on_windows_is_not_broken(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import paragraphs
+
+    patch.setattr(paragraphs, "_BROKEN_LINE", re.compile(r"(?<!\\)(?:\\\\)*\\$"))
+
+
+def _a_grid_table_s_alignment_is_a_paragraph(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import paragraphs
+
+    patch.setattr(paragraphs, "_TABLE_LINE", re.compile(r"[ \t]*(?:\||\+[-=])"))
+
+
+def _the_notes_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import paragraphs
+
+    patch.setattr(paragraphs, "_NOTE", re.compile(r"(?!)"))
 
 
 def _a_title_s_bold_is_kept(patch: pytest.MonkeyPatch) -> None:
@@ -18159,6 +18190,26 @@ BROKEN = {
     ),
     "a heading's bold is kept in its place": (
         _a_title_s_bold_is_kept,
+        test_a_place_in_a_word_document_is_its_heading_and_its_paragraph_under_it,
+    ),
+    "a line broken inside a paragraph ends it": (
+        _a_broken_line_ends_its_paragraph,
+        test_a_place_in_a_word_document_is_its_heading_and_its_paragraph_under_it,
+    ),
+    "a backslash pandoc escaped breaks a line": (
+        _any_backslash_breaks_a_line,
+        test_a_place_in_a_word_document_is_its_heading_and_its_paragraph_under_it,
+    ),
+    "a line broken on Windows ends its paragraph": (
+        _a_line_ended_on_windows_is_not_broken,
+        test_a_place_in_a_word_document_is_its_heading_and_its_paragraph_under_it,
+    ),
+    "a grid table's alignment rule is a paragraph": (
+        _a_grid_table_s_alignment_is_a_paragraph,
+        test_a_place_in_a_word_document_is_its_heading_and_its_paragraph_under_it,
+    ),
+    "the notes pandoc writes are under the last heading": (
+        _the_notes_are_not_read,
         test_a_place_in_a_word_document_is_its_heading_and_its_paragraph_under_it,
     ),
     "a structured abstract's parts end only at an Introduction": (

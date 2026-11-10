@@ -104,10 +104,13 @@ def _title(title: str) -> str:
 
 
 def counted(lines: list[str], headings: dict[int, str], tables: frozenset[int] = frozenset(),
-            notes_from: int | None = None) -> Paragraphs:  # fmt: skip
-    """The places of `lines`, under `headings` (each title by its line, from 1): every line
-    in `tables` (from 1) one paragraph with the lines of the table next to it, and every
-    line from `notes_from` on under `NOTES`."""
+            notes_from: int | None = None,
+            continued: frozenset[int] = frozenset()) -> Paragraphs:  # fmt: skip
+    """The places of `lines`, under `headings` (each title by its line, from 1; one with no
+    words is no heading): every line in `tables` (from 1) one paragraph with the lines of the
+    table next to it, a blank one among them, as an empty cell is, keeping the table open
+    (review of #616); every line in `continued` the paragraph of the line before it; and
+    every line from `notes_from` on under `NOTES`."""
     places: list[Paragraph | None] = []
     section: str | None = None
     number = 0
@@ -115,13 +118,16 @@ def counted(lines: list[str], headings: dict[int, str], tables: frozenset[int] =
     for at, text in enumerate(lines, 1):
         if notes_from is not None and at == notes_from:
             section, number, in_table = NOTES, 0, False
-        if at in headings:
+        if at in headings and headings[at].strip():
             section, number, in_table = _title(headings[at]), 0, False
             places.append(Paragraph(section, 0))
             continue
+        if at in continued and places and places[-1] is not None and text.strip():
+            places.append(places[-1])
+            continue
         if not text.strip():
             places.append(None)
-            in_table = False
+            in_table = in_table and at in tables
             continue
         table = at in tables
         if not (table and in_table):
@@ -131,18 +137,31 @@ def counted(lines: list[str], headings: dict[int, str], tables: frozenset[int] =
     return Paragraphs(tuple(places))
 
 
+#: A line pandoc ends with a backslash where Word breaks the line inside a paragraph
+#: (Shift+Enter): the next line is the same paragraph (review of #616). On Windows the text
+#: comes back from pandoc with its lines ended "\r\n".
+_BROKEN_LINE = re.compile(r"(?<!\\)(?:\\\\)*\\\r?$")
+#: A footnote's or an endnote's text, which pandoc writes after the document's last
+#: paragraph: "[^1]: ...".
+_NOTE = re.compile(r"\[\^[^\]\s]+\]:")
+
+
 def of_markdown(text: str) -> Paragraphs:
     """The places of the Markdown pandoc converts a .docx to, a paragraph to a line
-    (`from_word.WRITER`, `--wrap=none`): its headings as `split_sections` reads them, and
-    its tables by their lines, which open with `|`, or with `+-`, `+=` or `+:` in a grid
-    table (`_TABLE_LINE`)."""
+    (`from_word.WRITER`, `--wrap=none`) but where a line break in a paragraph ends a line
+    with a backslash (`_BROKEN_LINE`): its headings as `split_sections` reads them; its
+    tables by their lines, which open with `|`, or with `+-`, `+=` or `+:` in a grid table
+    (`_TABLE_LINE`); and its notes, from the first note pandoc writes at its end (`_NOTE`)."""
     from manuscript_guard.text.sections import scannable, split_sections
 
     lines = text.split("\n")
     headings = {section.line: section.title for section in split_sections(scannable(text))
                 if section.level}  # fmt: skip
     tables = frozenset(at for at, line in enumerate(lines, 1) if _TABLE_LINE.match(line))
-    return counted(lines, headings, tables)
+    continued = frozenset(at + 1 for at, line in enumerate(lines, 1)
+                          if _BROKEN_LINE.search(line))  # fmt: skip
+    notes = next((at for at, line in enumerate(lines, 1) if _NOTE.match(line)), None)
+    return counted(lines, headings, tables, notes, continued)
 
 
 def of_docx(document, text: str) -> Paragraphs:
@@ -155,6 +174,26 @@ def of_docx(document, text: str) -> Paragraphs:
     body = document.body.split("\n")
     levels = document.heading_levels or bold_heading_levels(document) or ()
     headings = {at + 1: body[at] for at, _level in levels if at < len(body)}
-    tables = frozenset(at + 1 for at in document.cells)
     notes = len(body) + 1 if document.notes else None
-    return counted(text.split("\n"), headings, tables, notes)
+    return counted(text.split("\n"), headings, _tables(body, document.cells), notes)
+
+
+#: A line of a table in the document's own text that holds no cell's words: where a row
+#: starts, a cell's mark alone, or an empty cell (`text.docx`, " | ").
+_BETWEEN_CELLS = re.compile(r"[\s|]*")
+
+
+def _tables(body: list[str], cells: frozenset[int]) -> frozenset[int]:
+    """The lines of the tables of a .docx's own text, from 1: its cells' lines, and the
+    lines between and before them that hold no words, a row's start or an empty cell, which
+    the cells' lines alone left out, so that a table of two rows was three paragraphs (review
+    of #616)."""
+    found = {at + 1 for at in cells}
+    for at in sorted(cells):
+        before = at - 1
+        while before >= 0 and before not in cells and _BETWEEN_CELLS.fullmatch(body[before]):
+            if before + 1 in found:
+                break
+            found.add(before + 1)
+            before -= 1
+    return frozenset(found)

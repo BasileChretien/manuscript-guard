@@ -82,7 +82,12 @@ def _code(text: str) -> str:
 def _place(item: Item, show: Show) -> str:
     if item.path is None:
         return ""
-    # The report's own `_Show` gives a PDF's line as its page and line.
+    # The report's own `_Show` gives a PDF's line as its page and line, and a .docx's as its
+    # heading and paragraph: by the item's own placer where its line is of the text pandoc
+    # converts the .docx to, G4's, G6's and G14's (review of #616).
+    within = getattr(show, "within", None)
+    if within is not None and item.placer is not None:
+        show = within(item.path, item.placer)
     at = getattr(show, "at", None)
     where = (at(item.path, item.line) if at else f"line {item.line}") if item.line else ""
     return f"{show(item.path)}" + (f" {where}" if where else "")

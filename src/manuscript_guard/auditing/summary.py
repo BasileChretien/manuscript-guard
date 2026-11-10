@@ -177,10 +177,9 @@ def _references(report) -> str:
 
 #: What `--strict` fails on, said once under the checks, so that "not counted by --strict"
 #: means something to a reader who will never pass it (the author's audit, 2026-11-10).
-STRICT = ("--strict, for a script, fails only on what is counted by it: a number in no "
-          "output, arithmetic that does not hold, a count held back that a total gives away, "
-          "a number of the Abstract that differs from its counterpart, a paper that could not "
-          "be read. What is marked \"not counted by --strict\" is for a reader to look at.")
+STRICT = ("--strict, for a script, fails on what the audit counts, among it a number in no "
+          "output, arithmetic that does not hold and a paper that could not be read. What is "
+          "marked \"not counted by --strict\" is for a reader to look at.")
 
 
 def checks(report) -> list[str]:

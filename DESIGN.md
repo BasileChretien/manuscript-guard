@@ -10271,15 +10271,22 @@ Word: the author's audit of 2026-11-10 sent him to "line 34" and to "defined lat
 paper.docx:517". So a place in a .docx is its heading and its paragraph under it, "Methods,
 paragraph 3" (`auditing.paragraphs`): a line that is not blank and not a heading is a
 paragraph, counted from 1 under each heading; a list's item is one, as Word counts it; a
-table is one, every line of it, said "(a table)"; what stands before the first heading is
-"before the first heading", and a document's notes, read after its body, "the notes". The
-headings are those the audit reads for its Abstract (a heading style, or a title in bold
-where the document has none, `text.docx.bold_heading_levels`) and, in the converted text,
-those `split_sections` reads, their bold, attributes and escapes taken off. The report keeps
-both placers apart, the document's by its path (`AuditReport.places`) and the converted
-text's on each run of the gates (`GateRun.places`, `JournalRun.places`), and a place a
-message names, "it was defined at paper.docx, Methods, paragraph 1", is said by the converted
-text's (`_relocated`). In JSON a finding gives `heading` and `paragraph` beside its `line`.
+table is one, every line of it, said "(a table)", the lines of its rows' starts and of its
+empty cells among them, which the document's reader writes as " | " and as nothing; the
+lines of a paragraph Word breaks inside (Shift+Enter), which pandoc ends with a backslash,
+"\r\n" after it on Windows, are one; what stands before the first heading is "before the
+first heading", and a document's notes, read after its body or written by pandoc after its
+last paragraph ("[^1]: ..."), "the notes". The headings are those the audit reads for its
+Abstract (a heading style, or a title in bold where the document has none,
+`text.docx.bold_heading_levels`) and, in the converted text, those `split_sections` reads,
+their bold, attributes and escapes taken off; a heading with no words is none. The report
+keeps both placers apart, the document's by its path (`AuditReport.places`) and the
+converted text's on each run of the gates (`GateRun.places`, `JournalRun.places`), carried on
+each of their items (`Item.placer`) for the JSON and the report draft; a place a message
+names, "it was defined at paper.docx, Methods, paragraph 1", is said by the converted text's
+(`_relocated`). In JSON a finding gives `heading` and `paragraph` beside its `line` (review
+of #616, which found the draft reading the converted text's lines by the document's placer,
+a table of two rows counted as three paragraphs, and a line break as two).
 
 What a gate quotes from the converted text is said as Word prints it (`gates.as_in_word`):
 Markdown's escapes taken off ("p\<0.05" was printed), and a word quoted in emphasis, "'*p*'",

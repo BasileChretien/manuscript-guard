@@ -98,6 +98,60 @@ def test_a_docx_s_notes_are_placed_under_the_notes() -> None:
         "Methods, paragraph 1", f"{NOTES}, paragraph 1", f"{NOTES}, paragraph 2"]
 
 
+def test_an_empty_cell_keeps_its_table_one_paragraph(tmp_path: Path) -> None:
+    """An empty cell is a blank line of the document's own text, and closed the table: the
+    cells after it were a paragraph of their own, and every place after the table one too
+    many (review of #616)."""
+    from manuscript_guard.auditing.paragraphs import of_docx
+    from manuscript_guard.text.docx import read_docx_text
+
+    def cell(text: str) -> str:
+        return f"<w:tc><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:tc>" if text else (
+            "<w:tc><w:p/></w:tc>")  # fmt: skip
+
+    table = "<w:tbl>" + "".join(f"<w:tr>{cell(a)}{cell(b)}</w:tr>"
+                                for a, b in (("n", ""), ("12", "40"))) + "</w:tbl>"  # fmt: skip
+    path = word_document(tmp_path / "paper.docx", [("Results", True), ("Before it.", False)])
+    with zipfile.ZipFile(path) as archive:
+        parts = {name: archive.read(name) for name in archive.namelist()}
+    after = "<w:p><w:r><w:t>After it.</w:t></w:r></w:p>"
+    parts["word/document.xml"] = parts["word/document.xml"].replace(
+        b"</w:body>", (table + after).encode() + b"</w:body>")  # fmt: skip
+    with zipfile.ZipFile(path, "w") as archive:
+        for name, data in parts.items():
+            archive.writestr(name, data)
+    document = read_docx_text(path)
+    places = of_docx(document, document.body)
+    lines = document.body.split("\n")
+    assert places.said(lines.index("After it.") + 1) == "Results, paragraph 3"
+
+
+def test_a_heading_with_no_words_is_no_heading() -> None:
+    """An empty paragraph in a heading style is marked a heading by the document's reader:
+    the paragraphs after it were "before the first heading" (review of #616)."""
+    from manuscript_guard.auditing.paragraphs import counted
+
+    places = counted(["Methods", "We did.", "", "We did again."], {1: "Methods", 3: ""})
+    assert places.said(4) == "Methods, paragraph 2"
+
+
+@pytest.mark.parametrize(("markdown", "line", "said"), [
+    # A line broken in a paragraph (Shift+Enter): pandoc ends it with a backslash.
+    ("# M\n\nDesign:\\\nWe used it.\n\nThen this.\n", 6, "M, paragraph 2"),
+    ("# M\n\nDesign:\\\nWe used it.\n\nThen this.\n", 4, "M, paragraph 1"),
+    # A backslash pandoc escaped, "\\\\", ends the line and breaks nothing.
+    ("# M\n\n- a\\\\\n- b\n", 4, "M, paragraph 2"),
+    # The notes pandoc writes after the last paragraph.
+    ("# R\n\nWords.[^1]\n\n[^1]: A note.\n", 5, "the notes, paragraph 1"),
+])  # fmt: skip
+def test_the_converted_text_s_line_breaks_and_notes_are_placed(
+    markdown: str, line: int, said: str
+) -> None:
+    from manuscript_guard.auditing.paragraphs import of_markdown
+
+    assert of_markdown(markdown).said(line) == said
+
+
 # ------------------------------------------------------------------------- the quotes
 
 
@@ -177,14 +231,25 @@ def test_a_docx_s_words_are_placed_by_heading_and_paragraph(tmp_path: Path, caps
     """G14 reads the text pandoc converts a .docx to, whose lines are nobody's: its findings
     and the places their messages name are the document's headings and paragraphs, and the
     report no longer says which converted text its lines were of."""
-    markdown = "\n\n".join(f"# {said}" if heading else said for said, heading in PAPER)
+    # A paragraph with a line broken inside it, which pandoc writes on two lines, before the
+    # one with XYZ (review of #616).
+    paper = [*PAPER[:5], ("Design: a cohort\\\nseen at two sites.", False), *PAPER[5:]]
+    markdown = "\n\n".join(f"# {said}" if heading else said for said, heading in paper)
     (tmp_path / "paper.md").write_text(markdown + "\n", encoding="utf-8")
     subprocess.run(["pandoc", "paper.md", "-o", "paper.docx"], cwd=tmp_path, check=True,
                    timeout=120)  # fmt: skip
     report, text = _audited(capsys, str(tmp_path / "paper.docx"))
-    assert "Methods, paragraph 2: XYZ" in text, text
+    assert "Methods, paragraph 3: XYZ" in text, text
     assert "it was defined at paper.docx, Methods, paragraph 1" in text, text
     assert "pandoc converts it to" not in text
     xyz = [f for f in report["findings"] if f["code"] == "abbreviation-undefined"
            and f["message"].startswith("XYZ")]  # fmt: skip
-    assert [(f["heading"], f["paragraph"]) for f in xyz] == [("Methods", 2)]
+    assert [(f["heading"], f["paragraph"]) for f in xyz] == [("Methods", 3)]
+    # The draft of a referee's report places them the same way (review of #616).
+    draft = tmp_path / "draft.md"
+    main(["audit", str(tmp_path / "paper.docx"), "--report-draft", str(draft)])
+    capsys.readouterr()
+    said = [line for line in draft.read_text(encoding="utf-8").splitlines()
+            if line.startswith("- `abbreviation-undefined`")]  # fmt: skip
+    assert said == ["- `abbreviation-undefined` (G14, warn): 1, at paper.docx Methods, "
+                    "paragraph 3"], said

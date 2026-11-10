@@ -1685,3 +1685,89 @@ def test_headings_in_a_style_are_read_and_nothing_is_said(tmp_path: Path) -> Non
     markdown.write_text("Of 412 patients, 77 had it.\n", encoding="utf-8")
     (said,) = audit([markdown], []).headings
     assert said.startswith("paper.md: it has no heading, so it was read as one text")
+
+
+@pytest.mark.parametrize(
+    ("atom", "parts"),
+    [
+        ("0.41points", ["0.41"]), ("10hours", ["10"]), ("to+0.77", ["+0.77"]),
+        ("CI):+0.05", ["+0.05"]), ("students(66%", ["66%"]),
+        ("95%CI:0.03-0.88", ["95%", "0.03", "0.88"]),
+        ("45%(95%CI:40-50%", ["45%", "95%", "40", "50"]),
+        ("+0.41points(95%CI:+0.09-0.77", ["+0.41", "95%", "0.09", "0.77"]),
+        ("2ndyear", []), ("21stcentury", []), ("11thgrade", []),
+        ("312students", ["312"]), ("20studies", ["20"]), ("4stages", ["4"]),
+        ("10therapists", ["10"]), ("21students", ["21"]), ("2ndly", ["2"]),
+        ("CYP3A4", ["CYP3A4"]), ("user@x.org", ["user@x.org"]), ("v2.1", ["v2.1"]),
+        ("0.72-0.82", ["0.72", "0.82"]),
+    ],
+)  # fmt: skip
+def test_the_abstract_reads_the_number_a_space_was_left_out_of(atom: str, parts: list) -> None:
+    """The author's Abstract typed its numbers against their words (2026-11-10). Each
+    number of such an atom is read, a label's and the estimate's before it alike; an
+    ordinal with its own suffix before a word a rank takes gives none; any other atom with
+    letters is read whole (round 1 of #613: "312students" was taken for an ordinal and
+    passed unread, and "45%(95%CI:40-50%)" lost its 45%)."""
+    from manuscript_guard.auditing.abstract import printed_parts
+
+    assert printed_parts(atom) == parts
+
+
+#: A paper whose words G14 asks a project to set paper.yaml for: abbreviations used and not
+#: defined, one word in British spelling and six in American, enough for a paper declared
+#: British to be told it is not (`spelling.MANY`), and a name written as code writes it.
+_PROJECT_ASKS = (
+    "# Methods\n\nThe QR codes were scanned by the CHU staff. Their behaviour was recorded, "
+    "and the color, the center and the program were noted, as the analyzed data show. The "
+    "gray files were labeled, with the favor, the honor and the flavor of each. The "
+    "hr_adj_main model was fitted.\n"
+)
+
+
+def _said(run) -> list[str]:
+    return [text for finding in run.language for text in (finding.message, finding.hint or "")]
+
+
+def test_an_audit_says_its_own_settings_where_a_gate_says_paper_yaml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A paper audited alone has no paper.yaml, so a hint that says to list a word under
+    `language:` there, or to set `english_variant:`, is said as the page's setting and the
+    command line's flag (the author's audit, 2026-11-10). Each pattern of `_FOR_AN_AUDIT`
+    matches what G14 writes, undeclared and declared, so a gate reworded under it is caught."""
+    from manuscript_guard.auditing import gates
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(_PROJECT_ASKS, encoding="utf-8")
+    said = [*_said(gates.run_gates(paper)), *_said(gates.run_gates(paper, english="british"))]
+    assert said and not [text for text in said if "paper.yaml" in text], said
+    assert any("--known" in text for text in said) and any("--english" in text for text in said)
+    monkeypatch.setattr(gates, "for_an_audit", lambda text: text)
+    raw = [*_said(gates.run_gates(paper)), *_said(gates.run_gates(paper, english="british"))]
+    for pattern, _say in gates._FOR_AN_AUDIT:
+        assert any(pattern.search(text) for text in raw), pattern.pattern
+    # The summary's name for each kind is the audit's own too.
+    from manuscript_guard.auditing.summary import KINDS
+
+    assert not [name for name in KINDS.values() if "paper.yaml" in name]
+
+
+def test_known_words_are_neither_undefined_nor_misspelt(tmp_path: Path) -> None:
+    """`--known` lists the words the paper's readers know: an institution's acronym, a
+    field's spelling and a name written as code writes it, which the code-name hint tells
+    the reader to give it, are then not reported; the rest still is."""
+    from manuscript_guard.auditing.gates import run_gates
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(_PROJECT_ASKS, encoding="utf-8")
+    found = run_gates(paper).language
+    before = {(f.code, f.message.split()[0]) for f in found}
+    known = ("CHU", "behaviour", "hr_adj_main")
+    after = {(f.code, f.message.split()[0]) for f in run_gates(paper, known=known).language}
+    assert ("abbreviation-undefined", "CHU") in before
+    assert ("abbreviation-undefined", "CHU") not in after
+    assert ("abbreviation-undefined", "QR") in after
+    assert any(word == "'behaviour'" for _code, word in before)
+    assert not any(word == "'behaviour'" for _code, word in after)
+    assert [f for f in found if f.code == "code-name-in-prose" and "hr_adj_main" in f.message]
+    assert not [code for code, _word in after if code == "code-name-in-prose"]

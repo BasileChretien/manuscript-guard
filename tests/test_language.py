@@ -366,6 +366,67 @@ def test_a_hyphenated_abbreviation_defined_whole_is_used_whole(project: Path) ->
 
 @pytest.mark.parametrize(
     "text",
+    ["The *Licence avec Accès Santé* (L.AS) admits students, and L.AS students were "
+     "eligible.",
+     "The L.AS (Licence avec Accès Santé) admits students; L.AS students were eligible.",
+     "# Abbreviations\n\n- **L.AS**: Licence avec Accès Santé\n\n# Methods\n\nL.AS students "
+     "were eligible."],
+    ids=["short form in the bracket", "long form in the bracket", "a glossary's entry"],
+)  # fmt: skip
+def test_a_short_form_a_stop_joins_is_defined_and_used_whole(project: Path, text: str) -> None:
+    """The author's paper defines "Licence avec Accès Santé (L.AS)" and uses L.AS eight
+    times: read at its stop, it was `AS`, used and never defined. A stop between two parts of
+    a word joins them as a hyphen does."""
+    report = written(project, f"# Methods\n\n{text}\n")
+    assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    ("sentence", "named"),
+    [("Students of L.AS were eligible.", "L.AS"),
+     ("The score rose in the KAP.The rest fell.", "KAP"),
+     ("The U.S. and the U.K. data, i.e. the KAP cohort.", "KAP"),
+     ("The rule follows the GDPR.12 here.", "GDPR"),
+     ("The rule follows the GDPR.\N{SUPERSCRIPT ONE}\N{SUPERSCRIPT TWO} here.", "GDPR"),
+     ("They were sent to the ICU.A total of 40 came back.", "ICU")],
+    ids=["undefined, whole", "a sentence typed on", "initials of a country",
+         "a reference number after the stop", "a superscript number after the stop",
+         "a sentence typed on that opens with A"],
+)  # fmt: skip
+def test_a_word_with_a_stop_is_read_by_its_parts(
+    project: Path, sentence: str, named: str
+) -> None:
+    """An undefined short form a stop joins is reported whole, as a hyphenated one is; a
+    sentence typed on with no space after an abbreviation leaves the abbreviation alone;
+    and "U.S." is no abbreviation, its letters one to a part. A stop before a number joins
+    nothing: "GDPR.12" is GDPR with a reference number typed on (round 1 of #612)."""
+    report = written(project, f"# Methods\n\n{sentence}\n")
+    (message,) = found(report, "abbreviation-undefined")
+    assert message.split()[0] == named
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["The score rose.ROR (reporting odds ratio) was high. The ROR fell.",
+     "Severe acute respiratory syndrome coronavirus 2 (SARS-CoV-2) and SARS-CoV-2.B.1.1.7 "
+     "spread.",
+     "BA.1 and BA.2 spread."],
+    ids=["a definition after a sentence typed on", "a lineage after a defined name",
+         "a lineage's number after its stop"],
+)  # fmt: skip
+def test_a_stop_before_a_number_or_a_definition_reads_as_on_main(
+    project: Path, text: str
+) -> None:
+    """A stop joins two parts only where a letter follows it, and a short form before a
+    bracket that defines nothing with a stop in it is tried again from its last stop
+    (round 1 of #612): ROR is defined, SARS-CoV-2 is used, and BA is one abbreviation."""
+    report = written(project, f"# Methods\n\n{text}\n")
+    said = [f.message.split()[0] for f in report.findings]
+    assert said == (["BA"] if text.startswith("BA") else []), found(report)
+
+
+@pytest.mark.parametrize(
+    "text",
     [
         "RNA sequencing (RNA-seq) libraries were prepared; RNA-seq reads were aligned.",
         "Non-high-density lipoprotein cholesterol (non-HDL-C) was the outcome. Mean "
@@ -987,6 +1048,62 @@ def test_a_glossary_is_a_definition_where_it_stands(project: Path) -> None:
     ]
 
 
+#: A list of abbreviations as a paper typed in Word has it after its Conclusions, with no
+#: title: a sentence, then letters' labels in bold and an item for each entry, an entry with
+#: no capital among them (the author's paper, 2026-11-10).
+WORD_GLOSSARY = (
+    "List of abbreviations and acronyms used in the text, tables, and figures.\n\n"
+    "**A--C**\n\n- **AIC**: Akaike Information Criterion\n\n- **CV**: Coefficient of "
+    "Variation\n\n**D--I**\n\n- **df**: degrees of freedom\n\n- **EBM**: Evidence-based "
+    "medicine\n\n"
+)
+
+
+def test_a_glossary_a_sentence_opens_defines_its_entries(project: Path) -> None:
+    """The sentence opens a glossary: its entries are definitions where they stand, its
+    lines are not uses, and an entry after the label of letters and the entry with no
+    capital is one of them. A use above it is used before its definition, as above any."""
+    uses = "# Methods\n\nThe AIC, the CV and the EBM were computed.\n\n"
+    after = "# Conclusions\n\nIt worked.\n\n" + WORD_GLOSSARY
+    assert not written(project, after + uses.replace("# Methods", "# Appendix")).findings
+    report = written(project, uses + after)
+    assert sorted((f.code, f.message.split()[0]) for f in report.findings) == [
+        ("abbreviation-used-before-defined", "AIC"),
+        ("abbreviation-used-before-defined", "CV"),
+        ("abbreviation-used-before-defined", "EBM"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "after",
+    ["The UMC was consulted.", "Note: the UMC was consulted.", "# Declarations\n\nUMC: the "
+     "centre was consulted."],
+    ids=["a sentence", "a line shaped like an entry", "a heading"],
+)  # fmt: skip
+def test_a_glossary_a_sentence_opens_ends_with_its_last_entry(project: Path, after: str) -> None:
+    """What follows the last entry is text: a sentence, a line that opens like an entry
+    with a word for its short form, and a section's first line after a heading, however
+    it is shaped."""
+    report = written(project, "# Conclusions\n\nIt worked.\n\n" + WORD_GLOSSARY + after
+                     + "\n\nThe AIC, the CV and the EBM fell.\n")  # fmt: skip
+    assert found(report) == ["UMC is used once in the main text and not defined there"]
+
+
+@pytest.mark.parametrize(
+    "opening",
+    ["Abbreviations were spelt out at first use.", "We list the abbreviations below."],
+    ids=["no entry after it", "the word not opening it"],
+)  # fmt: skip
+def test_a_paragraph_that_names_abbreviations_opens_no_glossary(
+    project: Path, opening: str
+) -> None:
+    """A paragraph opens a glossary only where it opens with the word and an entry follows:
+    the line after these is text, and its abbreviation undefined."""
+    follows = "UMC: the centre was consulted." if "below" in opening else "The UMC was used."
+    report = written(project, f"# Methods\n\n{opening}\n\n{follows}\n")
+    assert found(report) == ["UMC is used once in the main text and not defined there"]
+
+
 def test_a_glossary_and_a_first_use_define_one_thing_once(project: Path) -> None:
     """A journal that asks for both gets both: the expansion at first use repeats the
     glossary, and is not defined again. A second definition in the text still is, and a
@@ -1268,6 +1385,43 @@ def test_initials_after_a_bold_statement_label_are_not_abbreviations(
     assert [f.message.split()[0] for f in after.findings] == ["EMA"], found(after)
     headed = written(project, f"# Methods\n\n{PLAIN}\n\n{label}\n\n# Results\n\n{statement}\n")
     assert sorted(f.message.split()[0] for f in headed.findings) == ["ANR", "CD", "JB", "NIHR"]
+
+
+@pytest.mark.parametrize(
+    "statement",
+    ["# Authors' contributions\n\nJMD, BC and CD designed the study at UNICAEN.",
+     "**Authors\\' contributions** JMD, BC and CD designed the study at UNICAEN.",
+     "# CRediT authorship contribution statement\n\nJ-MD: methodology. BC and CD: analysis, "
+     "at UNICAEN."],
+    ids=["under a heading", "after a bold label", "CRediT, an initial with a hyphen"],
+)  # fmt: skip
+def test_the_initials_a_contributions_statement_names_are_people_everywhere(
+    project: Path, statement: str
+) -> None:
+    """The author's paper says "by a single author (CD)" in its Methods, and its
+    contributions statement names CD with the others: CD was reported undefined there. The
+    initials a contributions statement names, two to four capitals, are people in a
+    bracket that holds only such initials; "J-MD" is taken whole and as "JMD", and not as
+    an `MD`, which is still reported. Anywhere else they are read as abbreviations (Basile,
+    2026-11-10): BC in a sentence, and in a bracket with an institution or a mark. A
+    longer word of capitals in the statement, an institution, is still reported where the
+    text uses it, and so are the capitals of the acknowledgements and the funding."""
+    hyphened = "J-MD; " if "J-MD" in statement else ""
+    methods = (f"# Methods\n\nInterviews were run by a single author (CD), checked ({hyphened}"
+               "JMD and CD) and coded [CD & JMD], with the CEMU and the ANR (MD). BC ran "
+               "the site (UNICAEN, BC) and (BC?).\n\n")  # fmt: skip
+    rest = "\n\n# Acknowledgements\n\nWe thank the CEMU.\n\n# Funding\n\nThe ANR paid.\n"
+    report = written(project, methods + statement + rest)
+    said = sorted(f.message.split()[0] for f in report.findings)
+    assert said == ["ANR", "BC", "CEMU", "MD", "UNICAEN"], found(report)
+
+
+def test_jama_s_additional_contributions_name_no_initials(project: Path) -> None:
+    """JAMA's acknowledgements are titled "Additional contributions", and their capitals are
+    institutions: an undefined "(NIH)" elsewhere is still reported (round 2 of #611)."""
+    report = written(project, "# Methods\n\nThe data came from one centre (NIH).\n\n"
+                     "## Additional contributions\n\nWe thank the staff of the NIH.\n")  # fmt: skip
+    assert found(report) == ["NIH is used once in the main text and not defined there"]
 
 
 def test_what_a_bold_label_cannot_tell_apart(project: Path) -> None:

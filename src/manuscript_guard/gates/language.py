@@ -85,8 +85,22 @@ SUPPLEMENT = "supplement"
 #: names (`READUS-PV`, `SARS-CoV-2`) run a little longer.
 LONGEST = 15
 
-# A word, with the hyphens that join its parts. Unicode letters and digits, no underscore.
-_WORD = re.compile(r"[^\W_]+(?:-[^\W_]+)*")
+# A word, with the hyphens that join its parts, and the stops a letter follows: `L.AS`, a
+# short form with a stop inside it, and `ROR.The`, two sentences typed on with no space,
+# which `_forms` splits again. A stop before a digit joins nothing, a superscript or a
+# subscript one among them, so "GDPR.12" and "GDPR.¹²", a reference number typed on, are
+# GDPR, and "BA.1" and "1.5" read as before (round 1 of #612); and so does one before "A"
+# or "I" alone, the word a sentence typed on opens with, "the ICU.A total" (round 2).
+# Unicode letters and digits, no underscore. A stop at its end is not in it.
+_RAISED_OR_LOWERED = (
+    r"[\N{SUPERSCRIPT ONE}\N{SUPERSCRIPT TWO}\N{SUPERSCRIPT THREE}"
+    r"\N{SUPERSCRIPT ZERO}-\N{LATIN SUBSCRIPT SMALL LETTER T}]"
+)
+_PARTS = (rf"[^\W_]+(?:-[^\W_]+|\.(?=[^\W\d_])(?!{_RAISED_OR_LOWERED}|[AI](?![^\W_]))"
+          r"[^\W_]+)*")  # fmt: skip
+_WORD = re.compile(_PARTS)
+#: What joins two parts of a word.
+_JOINS = re.compile(r"[-.]")
 # One level of brackets, not running on for ever: an unclosed "(" must not pair with a ")"
 # three paragraphs later.
 _PAREN = re.compile(r"\(([^()]{1,300})\)")
@@ -111,7 +125,7 @@ _EDGES = _QUOTES + ".,;:()[]"
 # gives a statistic and defines nothing: "a higher risk (HR 1.32, 95% CI ...)" is no
 # definition of HR, though "higher risk" begins with its letters.
 _OPENS_WITH = re.compile(
-    rf"[\s{re.escape(_QUOTES)}]*(?P<short>[^\W_]+(?:-[^\W_]+)*)[\s{re.escape(_QUOTES)}]*"
+    rf"[\s{re.escape(_QUOTES)}]*(?P<short>{_PARTS})[\s{re.escape(_QUOTES)}]*"
     r"(?:$|[;,:])"
 )
 #: The brackets a long form opens and closes, round and square: a letter of its short form
@@ -128,7 +142,7 @@ _HEADER_RULE = re.compile(
     r"\+[:+]*=[=:+]*|(?=.*\|)\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?"
 )
 # The word standing against an opening bracket: "ROR (reporting odds ratio)".
-_BEFORE_PAREN = re.compile(r"(?P<short>[^\W_]+(?:-[^\W_]+)*)[ \t]?$")
+_BEFORE_PAREN = re.compile(rf"(?P<short>{_PARTS})[ \t]?$")
 # An image with its caption: `![caption](target)` or `![caption][label]`, a bracket inside
 # the caption allowed one deep, for a citation. Bounded throughout, so a line of `![` with
 # no closing bracket is read once and not once per `![`.
@@ -848,13 +862,27 @@ def _short_inside(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | 
 def _long_inside(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | None:
     """A definition with its long form in the bracket: "ROR (reporting odds ratio)"."""
     standing = _BEFORE_PAREN.search(prose, max(0, bracket.start() - LONGEST - 1), bracket.start())
-    if standing is None or not _may_be_defined(standing.group("short")):
+    if standing is None:
+        return None
+    head, short = standing.start("short"), standing.group("short")
+    found = _long_after(prose, bracket, head, short)
+    # A sentence typed on with no space puts the word before its stop in the short form,
+    # "rose.ROR (reporting odds ratio)": tried again from the last stop (round 1 of #612).
+    if found is None and "." in short:
+        cut = short.rindex(".") + 1
+        found = _long_after(prose, bracket, head + cut, short[cut:])
+    return found
+
+
+def _long_after(
+    prose: str, bracket: re.Match[str], head: int, short: str
+) -> tuple[int, str, str] | None:
+    """`_long_inside` for the short form `short` standing at `head` before the bracket."""
+    if not _may_be_defined(short):
         return None
     # The search starts a short form's length back, so it can start inside a word.
-    head = standing.start("short")
     if head > 0 and (prose[head - 1].isalnum() or prose[head - 1] == "-"):
         return None
-    short = standing.group("short")
     words = bracket.group(1).split()
     if not 2 <= len(words) <= _window(short):
         return None
@@ -896,8 +924,19 @@ def _listed_as(form: str, known: _Known) -> bool:
     return form in known or (form.endswith("s") and form[:-1] in known)
 
 
+def _joined(token: str, parts: list[str], starts: list[int], begin: int, end: int) -> str:
+    """The parts of `token` from `begin` to `end` as the word writes them, with the hyphen
+    or the stop between each two: `L.AS`, `SARS-CoV-2`."""
+    return token[starts[begin] : starts[end - 1] + len(parts[end - 1])]
+
+
 def _named(
-    parts: list[str], starts: list[int], index: int, defined: set[str], known: _Known
+    token: str,
+    parts: list[str],
+    starts: list[int],
+    index: int,
+    defined: set[str],
+    known: _Known,
 ) -> tuple[int, list[tuple[int, str, bool]]] | None:
     """A defined or listed name of two parts or more that starts here, and where it stops.
 
@@ -911,8 +950,8 @@ def _named(
     opening = parts[index]
     lowered = opening[0].lower() + opening[1:] if _is_word(opening) else opening
     for stop in range(len(parts), index + 1, -1):
-        rest = "-".join(parts[index + 1 : stop])
-        for form in dict.fromkeys((f"{opening}-{rest}", f"{lowered}-{rest}")):
+        whole = _joined(token, parts, starts, index, stop)
+        for form in dict.fromkeys((whole, lowered + whole[len(opening) :])):
             base = _defined_as(form, defined)
             if base is not None:
                 return stop, [(starts[index], base, True)]
@@ -927,19 +966,26 @@ def _is_word(part: str) -> bool:
 
 
 def _run(
-    parts: list[str], starts: list[int], begin: int, end: int, defined: set[str], known: _Known
+    token: str,
+    parts: list[str],
+    starts: list[int],
+    begin: int,
+    end: int,
+    defined: set[str],
+    known: _Known,
 ) -> list[tuple[int, str, bool]]:
     """The abbreviations in one stretch of a hyphenated word that holds no ordinary word.
 
     Read whole where the whole is defined or known, `SARS-CoV-2`. Where nothing in it is,
     it is reported whole, so `LC-MS` is one abbreviation and not `LC` and `MS`, and a
-    trial is named `KEYNOTE-189`, as its definition would name it."""
+    trial is named `KEYNOTE-189`, as its definition would name it; and `L.AS` is one,
+    whose parts a stop joins."""
     found: list[tuple[int, str, bool]] = []
     loose: list[int] = []
     index = begin
     while index < end:
         for stop in range(end, index, -1):
-            form = "-".join(parts[index:stop])
+            form = _joined(token, parts, starts, index, stop)
             base = _defined_as(form, defined)
             if base is not None:
                 found.append((starts[index], base, True))
@@ -953,7 +999,7 @@ def _run(
             loose.append(index)
             index += 1
     shaped = [index for index in loose if _reads_as_abbreviation(_singular(parts[index]))]
-    whole = _singular("-".join(parts[begin:end]))
+    whole = _singular(_joined(token, parts, starts, begin, end))
     if not found and shaped and len(whole) <= LONGEST:
         return [(starts[begin], whole, False)]
     found = [entry for entry in found if entry[1]]
@@ -962,8 +1008,10 @@ def _run(
 
 def _forms(token: str, defined: set[str], known: _Known) -> list[tuple[int, str, bool]]:
     """The abbreviations in one word: where each starts in it, its short form, and whether
-    it is one the manuscript defines."""
-    parts = token.split("-")
+    it is one the manuscript defines. Its parts are what a hyphen or a stop joins (`_WORD`):
+    `ROR-based` is ROR and a word, `L.AS` one abbreviation, and `ROR.The`, a sentence typed
+    on with no space, ROR and a word."""
+    parts = _JOINS.split(token)
     starts = [0]
     for part in parts[:-1]:
         starts.append(starts[-1] + len(part) + 1)
@@ -971,7 +1019,7 @@ def _forms(token: str, defined: set[str], known: _Known) -> list[tuple[int, str,
     joined = len(parts) <= _JOINED_PARTS
     index = 0
     while index < len(parts):
-        named = _named(parts, starts, index, defined, known) if joined else None
+        named = _named(token, parts, starts, index, defined, known) if joined else None
         if named is not None:
             index, uses = named
             found += uses
@@ -983,7 +1031,7 @@ def _forms(token: str, defined: set[str], known: _Known) -> list[tuple[int, str,
         if joined:
             while stop < len(parts) and not _is_word(parts[stop]):
                 stop += 1
-        found += _run(parts, starts, index, stop, defined, known)
+        found += _run(token, parts, starts, index, stop, defined, known)
         index = stop
     return found
 
@@ -1024,6 +1072,8 @@ class _File:
     #: its commands.
     headed: bool | None = None
     supplementary: bool = False
+    #: The authors' initials its contributions statement names (`_initials`).
+    initials: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         self.starts = [region.start for region in self.regions]
@@ -1054,17 +1104,94 @@ def _file(
     prose = _hide(hidden, (_heading_span(text, heading) for heading in headings)).replace(
         NUL, " "
     )
+    statements = _run_in_statements(hidden, headings)
     regions = _regions(headings, chain, supplementary=supplementary, abstract_title=abstract_title,
-                       lists=unmarked_reference_lists(text),
-                       statements=_run_in_statements(hidden, headings))  # fmt: skip
+                       lists=unmarked_reference_lists(text), statements=statements)  # fmt: skip
     titled = [(heading.start, _heading_span(text, heading)[1], heading.level, heading.title)
               for heading in headings]  # fmt: skip
+    # A glossary under a heading that names it, and one a paragraph of its own opens, as a
+    # paper typed in Word has it with no title: "List of abbreviations and acronyms used".
+    glossaries = glossary.united([*glossary.sections(titled, len(text)),
+                                  *glossary.opened(prose, text, titled, _may_be_defined)])
     return _assembled(
         order, path, text, hidden, prose, regions,
         captions=tuple(glossary.markdown_captions(prose)),
-        glossaries=tuple(glossary.sections(titled, len(text))),
+        glossaries=glossaries,
         headed=bool(headings), supplementary=supplementary, code=code,
+        initials=_initials(prose, _contributions(hidden, titled, statements)),
     )  # fmt: skip
+
+
+#: The statements whose capitals are the authors' initials, by a word of the heading or the
+#: label: "Authors' contributions", "CRediT authorship contribution statement", "Author
+#: statement". Not the acknowledgements, the funding or the interests, whose capitals are
+#: institutions as often as people, JAMA's "Additional contributions" among them, which are
+#: its acknowledgements (round 2 of #611).
+_CONTRIBUTED = re.compile(
+    r"\b(?<!additional )(?:contributions?|contributors?(?:hip)?|author\s+statement)\b",
+    re.IGNORECASE,
+)
+#: A bracket, round or square, on one line; and what may stand between the initials in one
+#: that holds only initials: "(CD)", "(JB, CD)", "[JB and CD]", "(JB; CD)", "(JB & CD)".
+_BRACKETED = re.compile(r"[(\[](?P<inside>[^()\[\]\n]{1,80})[)\]]")
+_BETWEEN_INITIALS = " \t,;&"
+#: An author's initials as a contributions statement writes them: two to four capitals,
+#: "CD", "JMD", and "J-MD", which is taken whole and as "JMD", never as its parts: an `MD`
+#: elsewhere is as often a mean difference.
+_INITIALS_SPAN = range(2, 5)
+
+
+def _people(prose: str, initials: frozenset[str]) -> frozenset[int]:
+    """Where each word stands that is a person: an author's initials (`_initials`) in a
+    bracket that holds nothing but such initials, "by a single author (CD)", "(JB and CD)".
+    Anywhere else the letters are read as an abbreviation, since an author whose initials
+    are AE would otherwise hide every undefined AE (DESIGN.md, Known gaps)."""
+    if not initials:
+        return frozenset()
+    found: set[int] = set()
+    for bracket in _BRACKETED.finditer(prose):
+        inside = bracket.group("inside")
+        named = [word for word in _WORD.finditer(inside) if word.group(0) != "and"]
+        if not named or any(word.group(0) not in initials for word in named):
+            continue
+        # Nothing but the initials, "and" and the marks between them.
+        if _WORD.sub("", inside).strip(_BETWEEN_INITIALS):
+            continue
+        found.update(bracket.start("inside") + word.start() for word in named)
+    return frozenset(found)
+
+
+def _contributions(
+    hidden: str, titled: list[tuple[int, int, int, str]], statements: list[tuple[int, int]]
+) -> list[tuple[int, int]]:
+    """Where a contributions statement runs: the body of a heading that names one, to the
+    next heading of its level or above, and a paragraph a bold label that names one opens
+    (`_run_in_statements`)."""
+    ordered = sorted(titled)
+    spans = []
+    for index, (_start, end, level, title) in enumerate(ordered):
+        if _QUIET.search(title) and _CONTRIBUTED.search(title):
+            stop = next((later[0] for later in ordered[index + 1 :] if later[2] <= level),
+                        len(hidden))  # fmt: skip
+            spans.append((end, stop))
+    for start, end in statements:
+        opening = _RUN_IN.match(hidden, start)
+        if opening is not None and _CONTRIBUTED.search(_ESCAPE.sub(r"\1", opening["label"])):
+            spans.append((start, end))
+    return spans
+
+
+def _initials(prose: str, spans: Iterable[tuple[int, int]]) -> frozenset[str]:
+    """The authors' initials a contributions statement names, "JMD, BC and CD designed the
+    study": each word of two to four capitals in it. In a bracket of initials anywhere in
+    the paper, "by a single author (CD)", such a word is a person (`_people`)."""
+    found = set()
+    for start, end in spans:
+        for word in _WORD.finditer(prose, start, end):
+            letters = word.group(0).replace("-", "")
+            if len(letters) in _INITIALS_SPAN and letters.isalpha() and letters.isupper():
+                found.update((word.group(0), letters))
+    return frozenset(found)
 
 
 def _assembled(
@@ -1123,6 +1250,7 @@ def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
                 unread=tuple(span for span in whole.unread if start <= span[0] < end),
                 captions=whole.captions, glossaries=whole.glossaries,
                 supplementary=supplementary, code=_hide(whole.code, outside),
+                initials=whole.initials,
             ))  # fmt: skip
     return files
 
@@ -1145,6 +1273,8 @@ class _LatexFile:
     glossaries: tuple[tuple[int, int], ...] = ()
     #: The text of its code, `\\verb` and `\\texttt`, as the reader masks it, NUL elsewhere.
     code: str = ""
+    #: The authors' initials its contributions statement names (`_initials`).
+    initials: frozenset[str] = frozenset()
 
 
 def _latex_file(source: Source, supplementary: bool, abstract_title: str | None) -> _LatexFile:
@@ -1153,6 +1283,8 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
 
     seen = words(source)
     titles = [(heading.start, max(heading.end, heading.start))
+              for heading in source.reading.headings]  # fmt: skip
+    titled = [(heading.start, max(heading.end, heading.start), heading.level, heading.title)
               for heading in source.reading.headings]  # fmt: skip
     regions = _latex_regions(source, supplementary=supplementary, abstract_title=abstract_title)
     # A word in a reference list is none G14 skips: it reads no word there, and a typed
@@ -1168,9 +1300,8 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
         breaks=[index for index, char in enumerate(source.text) if char == "\n"],
         unread=unread,
         captions=tuple(glossary.latex_captions(source)),
-        glossaries=tuple(glossary.sections(
-            [(heading.start, max(heading.end, heading.start), heading.level, heading.title)
-             for heading in source.reading.headings], len(source.text))),
+        glossaries=tuple(glossary.sections(titled, len(source.text))),
+        initials=_initials(seen.text, _contributions(seen.text, titled, [])),
         code=_set_aside(_only(source.reading.masked, source.reading.code),
                         [*_preamble(source.reading), *source.reading.figures]),
     )  # fmt: skip
@@ -1258,9 +1389,13 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
                 _Definition(file.order, offset, region.quiet, long, offset in file.restating)
             )
 
+    # The authors' initials a contributions statement names, which are people in a bracket
+    # of initials anywhere in the paper: "by a single author (CD)".
+    initials = frozenset().union(*(file.initials for file in files))
     for file in files:
         capitals = _in_capitals(file.prose)
         starts = [start for start, _end in capitals]
+        people = _people(file.prose, initials)
         for word in _WORD.finditer(_CLOCK.sub(lambda time: " " * len(time[0]), file.prose)):
             token = word.group(0)
             if token.islower() or token.isdigit():
@@ -1274,6 +1409,8 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
             for within, short, is_defined in _forms(token, defined, known):
                 offset = word.start() + within
                 if (file.order, offset) in defining:
+                    continue
+                if not is_defined and offset in people:
                     continue
                 # A word of a heading typed in capitals, or of a table's label, is a use of
                 # what the manuscript defines and is not reported as undefined.

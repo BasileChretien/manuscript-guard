@@ -1685,3 +1685,29 @@ def test_headings_in_a_style_are_read_and_nothing_is_said(tmp_path: Path) -> Non
     markdown.write_text("Of 412 patients, 77 had it.\n", encoding="utf-8")
     (said,) = audit([markdown], []).headings
     assert said.startswith("paper.md: it has no heading, so it was read as one text")
+
+
+@pytest.mark.parametrize(
+    ("atom", "parts"),
+    [
+        ("0.41points", ["0.41"]), ("10hours", ["10"]), ("to+0.77", ["+0.77"]),
+        ("CI):+0.05", ["+0.05"]), ("students(66%", ["66%"]),
+        ("95%CI:0.03-0.88", ["95%", "0.03", "0.88"]),
+        ("45%(95%CI:40-50%", ["45%", "95%", "40", "50"]),
+        ("+0.41points(95%CI:+0.09-0.77", ["+0.41", "95%", "0.09", "0.77"]),
+        ("2ndyear", []), ("21stcentury", []), ("11thgrade", []),
+        ("312students", ["312"]), ("20studies", ["20"]), ("4stages", ["4"]),
+        ("10therapists", ["10"]), ("21students", ["21"]), ("2ndly", ["2"]),
+        ("CYP3A4", ["CYP3A4"]), ("user@x.org", ["user@x.org"]), ("v2.1", ["v2.1"]),
+        ("0.72-0.82", ["0.72", "0.82"]),
+    ],
+)  # fmt: skip
+def test_the_abstract_reads_the_number_a_space_was_left_out_of(atom: str, parts: list) -> None:
+    """The author's Abstract typed its numbers against their words (2026-11-10). Each
+    number of such an atom is read, a label's and the estimate's before it alike; an
+    ordinal with its own suffix before a word a rank takes gives none; any other atom with
+    letters is read whole (round 1 of #613: "312students" was taken for an ordinal and
+    passed unread, and "45%(95%CI:40-50%)" lost its 45%)."""
+    from manuscript_guard.auditing.abstract import printed_parts
+
+    assert printed_parts(atom) == parts

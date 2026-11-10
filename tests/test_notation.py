@@ -344,7 +344,19 @@ def test_a_space_left_out_around_a_number_is_reported_where_it_first_stands() ->
 
 @pytest.mark.parametrize(
     "written",
-    ["30min", "5mins", "p53mutant", "COVID19cases", "3rd", "4th", "2020s", "0xff", "1.2e+10",
+    ["It was 5mins throughout.", "It rose from 0.09 to+0.77.", f"It rose to+{X} then."],
+    ids=["a unit's plural", "at a sentence's end", "a bound value"],
+)  # fmt: skip
+def test_a_space_left_out_is_reported_in_each_of_its_places(written: str) -> None:
+    """A unit's plural is no unit `notation-unit` reads, so it is a space left out; a stop
+    at a sentence's end does not hide one; and a bound value after a word is one (round 1
+    of #613)."""
+    assert codes(read(f"# Results\n\n{written}\n")) == ["notation-space-missing"], written
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["30min", "p53mutant", "COVID19cases", "3rd", "4th", "2020s", "0xff", "1.2e+10",
      "x+1", "a 3D model", "MiR-21a"],
 )  # fmt: skip
 def test_what_is_no_space_left_out_is_not_reported(written: str) -> None:

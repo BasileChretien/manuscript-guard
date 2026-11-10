@@ -5655,14 +5655,19 @@ def _a_word_against_a_signed_number_is_read_whole(patch: pytest.MonkeyPatch) -> 
 def _a_label_closed_up_is_read_whole(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import abstract
 
-    patch.setattr(abstract, "_AFTER_A_LABEL", re.compile("(?!)"))
+    patch.setattr(abstract, "_CLOSED_UP", re.compile("(?!)"))
 
 
 def _an_ordinal_against_its_word_is_looked_for(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import abstract
 
-    patch.setattr(abstract, "_AGAINST_A_WORD",
-                  re.compile(r"(?P<number>\d[\d.,]*%?)(?P<ordinal>(?!))?[a-z]{3,}"))  # fmt: skip
+    patch.setattr(abstract, "_ordinal", lambda number, word: False)
+
+
+def _any_word_opening_like_a_suffix_is_a_rank(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_ordinal", lambda number, word: word[:2] in ("st", "nd", "rd", "th"))
 
 
 from generated import RUN_ON, run_on_numbers  # noqa: E402
@@ -5711,6 +5716,31 @@ def _hexadecimal_is_a_space_left_out(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import notation
 
     patch.setattr(notation, "_HEXADECIMAL", re.compile("(?!)"))
+
+
+def _a_stop_hides_a_word_against_a_signed_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    pattern = notation._WORD_THEN_NUMBER.pattern
+    assert pattern.endswith(r"(?!\w|\.\d)")
+    patch.setattr(notation, "_WORD_THEN_NUMBER", re.compile(pattern[: -len(r"(?!\w|\.\d)")]
+                                                            + r"(?![\w.])"))  # fmt: skip
+
+
+def _a_unit_s_plural_is_left_to_the_units(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    units = notation._LOWER_UNITS
+    patch.setattr(notation, "_LOWER_UNITS", units | {unit + "s" for unit in units})
+
+
+def _a_bound_value_after_a_word_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    pattern = notation._WORD_THEN_NUMBER.pattern
+    without = pattern.replace("|" + notation.VALUE + "+)", ")")
+    assert without != pattern
+    patch.setattr(notation, "_WORD_THEN_NUMBER", re.compile(without))
 
 
 def _a_rounding_is_no_match(patch: pytest.MonkeyPatch) -> None:
@@ -21060,6 +21090,10 @@ BROKEN = {
         _an_ordinal_against_its_word_is_looked_for,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
+    "any word opening like an ordinal's suffix is a rank in the Abstract": (
+        _any_word_opening_like_a_suffix_is_a_rank,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
     "a unit closed up is a space left out": (
         _a_unit_is_a_space_left_out,
         test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
@@ -21070,6 +21104,18 @@ BROKEN = {
     ),
     "a word against a signed number is no space left out": (
         _a_word_against_a_signed_number_is_no_space_left_out,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "a stop hides a word against a signed number": (
+        _a_stop_hides_a_word_against_a_signed_number,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "a unit's plural is left to the units": (
+        _a_unit_s_plural_is_left_to_the_units,
+        test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "a bound value after a word is not read": (
+        _a_bound_value_after_a_word_is_not_read,
         test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
     ),
     "a number in hexadecimal is a space left out": (

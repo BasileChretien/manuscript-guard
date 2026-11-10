@@ -288,7 +288,7 @@ majority. Then search for every use and change them together; the finding names 
 "37°C", is reported wherever it stands: the SI Brochure sets a space there (9th edition,
 2019, section 5.4.3), and only the degree, minute and second of a plane angle go without
 one. Write "5 mg" and "37 °C". A unit joined by a hyphen to make an adjective, "a 5-mg
-dose", is left alone. Put back a `notation-space-missing`.
+dose", is left alone. For `notation-space-missing`, add the space.
 
 Say what a "±" stands for, a standard deviation or a standard error, or give the interval
 instead: a bare "±" is read as an interval of high confidence (JCGM 100:2008, the Guide to

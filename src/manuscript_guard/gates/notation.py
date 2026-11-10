@@ -170,7 +170,8 @@ _UNIT = re.compile(
     r"(?![\w\u00b0])"
 )
 #: The units in lower case of three letters or more, which `_UNIT` reads and a space left
-#: out does not: "30min", "5mins".
+#: out does not: "30min". Not their plurals, which `_UNIT` does not read: "5mins" is a
+#: space left out (round 1 of #613).
 _LOWER_UNITS = frozenset(unit for unit in UNITS if len(unit) >= 3 and unit.islower())
 #: A space left out: a number typed against a word of three lower-case letters or more,
 #: "0.41points", "10hours", with an ordinal's suffix between them or not, "2ndyear"
@@ -182,7 +183,11 @@ _NUMBER_THEN_WORD = re.compile(
     r"(?<![\w.,\N{MIDDLE DOT}/" + VALUE + r"])(?:" + _TYPED + "|" + VALUE + r"+)"
     r"(?:st|nd|rd|th)?(?P<word>[a-z]{3,})\b"
 )
-_WORD_THEN_NUMBER = re.compile(r"\b[a-z]{2,}[+\N{MINUS SIGN}]" + _TYPED + r"(?![\w.])")
+#: A bound value is read after the word too, and a sentence's stop ends the number, "to+0.77."
+#: (round 1 of #613); a stop before a digit does not.
+_WORD_THEN_NUMBER = re.compile(
+    r"\b[a-z]{2,}[+\N{MINUS SIGN}](?:" + _TYPED + "|" + VALUE + r"+)(?!\w|\.\d)"
+)
 _HEXADECIMAL = re.compile(r"0x[0-9a-f]+")
 # What may stand between such a word and the number: the rest of its sentence. A full stop
 # ends it only before a capital, so that "Fig. 2f vs. 2g" is one, and a line may be
@@ -426,8 +431,8 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
 
         for found in _NUMBER_THEN_WORD.finditer(text):
             word = found["word"]
-            if word in _LOWER_UNITS or word[:-1] in _LOWER_UNITS:
-                continue  # "30min", "5mins": a unit, which `notation-unit` reports
+            if word in _LOWER_UNITS:
+                continue  # "30min": a unit, which `notation-unit` reports
             if _HEXADECIMAL.fullmatch(found.group(0)):
                 continue  # "0xff", a number written in hexadecimal
             run_on.append(_Use(place, found.start(), passage, found.end() - found.start()))

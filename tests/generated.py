@@ -6633,8 +6633,9 @@ NOTATED = (
 #: is no such thing: a unit closed up, which `notation-unit` counts (two of them here), a name
 #: a number stands inside, an ordinal alone, a decade, a number in hexadecimal and one in
 #: scientific notation, a letter and a sign.
-RUN_ON = ("0.41points", "10hours", "2ndyear", "to+0.77", "12years", "{{results.n}}patients")
-NOT_RUN_ON = ("30min", "5mins", "p53mutant", "COVID19cases", "3rd", "2020s", "0xff", "1.2e+10",
+RUN_ON = ("0.41points", "10hours", "2ndyear", "to+0.77", "12years", "{{results.n}}patients",
+          "5mins", "rose to+0.5.", "to+{{results.high}}")  # fmt: skip
+NOT_RUN_ON = ("30min", "p53mutant", "COVID19cases", "3rd", "2020s", "0xff", "1.2e+10",
               "5mg", "x+1")  # fmt: skip
 
 
@@ -7669,12 +7670,15 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: P could be the same; a number reported to one place more; one in the Methods; one only
 #: in the Discussion; one in a table under the Discussion; and one in the supplement. And
 #: a space left out, each number in the Methods: a number typed against a word, a word
-#: against a signed number, a label closed up against its number; and an ordinal against
-#: its word, which gives no number to look for.
+#: against a signed number, a label closed up against its number, a whole number against a
+#: word that opens like its ordinal's suffix ("1201students"); an ordinal against its word,
+#: which gives no number to look for; and an estimate closed up against its interval,
+#: whose bounds are reported and the estimate not (round 1 of #613).
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
-    "against a word", "after a word", "after a label", "ordinal",
+    "against a word", "after a word", "after a label", "against a suffix's word", "ordinal",
+    "estimate closed up",
 )  # fmt: skip
 #: How each kind of space left out is typed, `{}` its number, and what it starts at.
 RUN_ON_NUMBERS = {"against a word": ("The value was {}points here.", 900),
@@ -7762,9 +7766,25 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                 abstract.append((kind, f"We found {printed}."))
                 results.append(f"We found {_test_printed(test, df, statistic, '=', p)}.")
         elif kind == "ordinal":
-            rank = f"{draw(st.integers(2, 9))}{draw(st.sampled_from(('nd', 'rd', 'th')))}year"
+            place = draw(st.integers(2, 9))
+            rank = f"{place}{ {2: 'nd', 3: 'rd'}.get(place, 'th') }" + draw(
+                st.sampled_from(("year", "line", "grade", "trimester")))  # fmt: skip
             abstract.append((kind, f"They were in {rank} here."))
             looked.append((kind, rank, "absent"))
+        elif kind == "against a suffix's word":
+            count = 1201 + 20 * draw(st.integers(0, 40))
+            said = f"The count was {count}students here."
+            methods.append(f"It was {count} then.")
+            looked.append((kind, f"{count}students", "exact"))
+            abstract.append((kind, said))
+        elif kind == "estimate closed up":
+            estimate = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
+            low, high = estimate + 1300, estimate + 1400
+            # No percent sign, which LaTeX escapes: tests/test_audit.py reads "45%(95%CI:...".
+            written = f"{estimate + 1200}(CI:{low}-{high})"
+            results.append(f"It ranged from {low} to {high}.")
+            looked.append((kind, written[:-1], "not found"))
+            abstract.append((kind, f"The share was {written} here."))
         elif kind in RUN_ON_NUMBERS:
             written, base = RUN_ON_NUMBERS[kind]
             value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10

@@ -25413,8 +25413,6 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - An abbreviation is known in the case it is typed in, as `known_abbreviations` is: "qr"
     leaves QR reported, though a spelling is matched whatever its case. A word typed with
     its full stop, "QR.", is not QR. Accepted.
-  - A known word with a dot inside, "L.AS", is never matched, since G14 reads "L" and "AS"
-    as two words. Accepted.
   - The page drops a word in "Words to leave alone" that opens with "-", which the command
     line would read as an option, and does not say so. Accepted.
 
@@ -25452,6 +25450,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     wherever two paragraphs hold it, a word as well as a number. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A known word with a dot inside was never matched (2026-11-10).** #615 wrote that
+  `--known L.AS` could not hold "L.AS", which G14 read as "L" and "AS". #612, merged beside
+  it, reads a short form with a stop inside it whole, so the known word now matches it, and
+  "L.AS" is neither reported undefined nor asked for (checked on main after both merged).
 
 - **A bold word that went on into its sentence across a line break was a label
   (2026-11-09).** G14 tells a statement's bold label from a sentence's first words by what

@@ -1,13 +1,13 @@
 schema: manuscript-guard/panel/1
 round: 13
-opened_on: 2026-11-09
-manuscript_sha256: 37455fd92f030fa395c59ad561c2a92db39b6613ae1e536b1c5a38c5e43d7bda
+opened_on: 2026-11-10
+manuscript_sha256: 51cbe3d5b8ed84412e674ce403e72e8d9455eab505782bc77412e119d53cca6f
 blinded: false
 rationale: 'A revision round for the positive control. Round 12 found that its interval held
   the null, so it would have passed an analysis that finds nothing. The controls now take
   the third comparator and hepatic injury, ask the interval of each control that expects an
-  effect to leave the null out, and stand in a supplementary file of their own, S2, where
-  the main text had them. The same remit reads the change.'
+  effect to leave the null out, and stand in a section of the supplement of their own, The
+  controls of the analysis, rather than in the main text. The same remit reads the change.'
 reviewers:
 - id: pharmacoepidemiologist
   role: Pharmacoepidemiologist

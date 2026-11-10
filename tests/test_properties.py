@@ -18159,7 +18159,7 @@ def _a_title_s_bold_is_kept(patch: pytest.MonkeyPatch) -> None:
 
 from generated import commented_documents, word_package  # noqa: E402
 
-_WORD = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_W_MAIN = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
 
 def _comment_spans(document: bytes) -> dict[str, tuple[int, int, int]]:
@@ -18168,15 +18168,15 @@ def _comment_spans(document: bytes) -> dict[str, tuple[int, int, int]]:
     import xml.etree.ElementTree as ET
 
     spans, opened = {}, {}
-    for index, paragraph in enumerate(ET.fromstring(document).iter(_WORD + "p")):
+    for index, paragraph in enumerate(ET.fromstring(document).iter(_W_MAIN + "p")):
         at = 0
         for node in paragraph.iter():
-            if node.tag == _WORD + "commentRangeStart":
-                opened[node.get(_WORD + "id")] = (index, at)
-            elif node.tag == _WORD + "commentRangeEnd":
-                where, start = opened.pop(node.get(_WORD + "id"))
-                spans[node.get(_WORD + "id")] = (where, start, at)
-            elif node.tag == _WORD + "t":
+            if node.tag == _W_MAIN + "commentRangeStart":
+                opened[node.get(_W_MAIN + "id")] = (index, at)
+            elif node.tag == _W_MAIN + "commentRangeEnd":
+                where, start = opened.pop(node.get(_W_MAIN + "id"))
+                spans[node.get(_W_MAIN + "id")] = (where, start, at)
+            elif node.tag == _W_MAIN + "t":
                 at += len(node.text or "")
     return spans
 
@@ -18185,10 +18185,10 @@ def _comment_texts(comments: bytes) -> dict[str, str]:
     """Each comment's words by its id, a paragraph to a line."""
     import xml.etree.ElementTree as ET
 
-    return {comment.get(_WORD + "id"): "\n".join(
-                "".join(t.text or "" for t in paragraph.iter(_WORD + "t"))
-                for paragraph in comment.iter(_WORD + "p"))
-            for comment in ET.fromstring(comments).iter(_WORD + "comment")}  # fmt: skip
+    return {comment.get(_W_MAIN + "id"): "\n".join(
+                "".join(t.text or "" for t in paragraph.iter(_W_MAIN + "t"))
+                for paragraph in comment.iter(_W_MAIN + "p"))
+            for comment in ET.fromstring(comments).iter(_W_MAIN + "comment")}  # fmt: skip
 
 
 @holds(40, commented_documents())
@@ -18233,7 +18233,7 @@ def test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text(
             assert comment in listing
         else:
             assert placed.get(comment) == where, comment
-    first = next(iter(_comment_texts(f"<w:comments xmlns:w='{_WORD[1:-1]}'><w:comment w:id='0'>"
+    first = next(iter(_comment_texts(f"<w:comments xmlns:w='{_W_MAIN[1:-1]}'><w:comment w:id='0'>"
                                 f"{body}</w:comment></w:comments>".encode()).values()))  # fmt: skip
     assert placed[listing] == (0, 0, len(first.split("\n")[0]))
     assert b"xmlns:w15=" in document.split(b">", 2)[1]

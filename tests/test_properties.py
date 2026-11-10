@@ -9904,7 +9904,31 @@ def _bold_without_exemption(patch: pytest.MonkeyPatch, kept: Callable[[str], boo
 
 
 def _a_bold_paragraph_is_counted(patch: pytest.MonkeyPatch) -> None:
-    _bold_without_exemption(patch, lambda pattern: not pattern.endswith(r"\*\*[ \t]*$"))
+    _bold_without_exemption(patch, lambda pattern: not pattern.endswith(r"\n?\Z)"))
+
+
+def _a_bold_label_at_a_line_s_start_is_one(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.gates import writing
+
+    rules = writing.load_rules()
+    density = tuple({**rule, "exempt": [e.replace(r"(?:\A|\n[ \t]*\n)", "(?m)^")
+                                        for e in rule["exempt"]]}
+                    if rule["id"] == "boldface" else rule for rule in rules.density)  # fmt: skip
+    patch.setattr(writing, "load_rules", lambda: replace(rules, density=density))
+
+
+def _a_lead_in_of_words_is_a_list_s_term(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.gates import writing
+
+    rules = writing.load_rules()
+    density = tuple({**rule, "exempt": [e.replace(r"[^*\s]{1,15}", r"[^*\n]+")
+                                        for e in rule["exempt"]]}
+                    if rule["id"] == "boldface" else rule for rule in rules.density)  # fmt: skip
+    patch.setattr(writing, "load_rules", lambda: replace(rules, density=density))
 
 
 def _a_bold_label_ending_in_a_stop_is_counted(patch: pytest.MonkeyPatch) -> None:
@@ -22020,6 +22044,14 @@ BROKEN = {
     ),
     "bold anywhere is structure": (
         _bold_anywhere_in_a_paragraph_is_structure,
+        test_bold_is_counted_in_the_prose_and_not_in_a_table,
+    ),
+    "bold at a line's start is a label": (
+        _a_bold_label_at_a_line_s_start_is_one,
+        test_bold_is_counted_in_the_prose_and_not_in_a_table,
+    ),
+    "a lead-in of words is a list's term": (
+        _a_lead_in_of_words_is_a_list_s_term,
         test_bold_is_counted_in_the_prose_and_not_in_a_table,
     ),
     "any line of dashes is a table's": (

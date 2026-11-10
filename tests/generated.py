@@ -3360,10 +3360,16 @@ BOLD_COUNTED = (
     "\n\nA heading\n---------\n**under** a heading.\n\n",
     "\n\n- - -\n**after** spaced dashes.\n\n",
     # Bold that only looks like structure: a paragraph that opens in bold and goes on, a
-    # colon inside bold in a sentence, and bold inside a list item after its first word.
+    # colon inside bold in a sentence, and bold inside a list item after its first word;
+    # emphasis that a hard wrap puts at a line's start in the middle of its paragraph, with
+    # its stop after it or inside it; and a list's lead-in of words, as a model writes one
+    # (round 1 of #614).
     "\n\n**Most** of them passed. ",
     "\n\nIt was **plain: here** then. ",
     "\n\n- the **AIC** was lowest\n\n",
+    " it was\n**not significant**. Then ",
+    " it was\n**clearly lower.** Next ",
+    "\n\n- **Improved efficiency**: the dose rose\n\n",
 )
 #: Bold it does not count: in a table of each kind pandoc reads, `**` paired across cells
 #: among them, and a structured abstract's label. And bold that is structure, as a paper

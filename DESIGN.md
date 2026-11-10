@@ -5077,8 +5077,9 @@ undefined is reported whole. A sentence typed on with no space after its stop le
 abbreviation alone, since the word after it is an ordinary one: `KAP.The` is `KAP`; and a
 definition after one, "rose.ROR (reporting odds ratio)", is read from the last stop. A stop
 before a digit, a raised or lowered one too, joins nothing, so a reference number typed on,
-"GDPR.12", leaves GDPR, and "BA.1", "1.5" and "SARS-CoV-2.B.1.1.7" read as before (round 1 of
-#612). "U.S." holds no abbreviation, one letter to a part, as before. A stop at a word's end
+"GDPR.12", leaves GDPR, and "BA.1" and "1.5" read as before (round 1 of #612); so does a
+stop before "A" or "I" alone, "the ICU.A total" (round 2). "U.S." holds no abbreviation,
+one letter to a part, as before. A stop at a word's end
 is never part of it.
 
 **Three texts are read apart, because each is read apart.** The abstract is indexed and read
@@ -22075,7 +22076,11 @@ Open, recorded as each change landed:
   - So are two joined by a stop, as when a sentence ending in one runs on into one with
     no space: "the ROR.HR fell" reports `ROR.HR`, where an ordinary word after the stop,
     `ROR.The`, leaves `ROR`. A version or an address typed in the prose with capitals in
-    it, "WHO.int", is read as words joined by stops.
+    it, "WHO.int", is read as words joined by stops. An undefined "SARS-CoV-2.B.1.1.7" is
+    reported as `SARS-CoV-2.B`, where main reported `SARS-CoV-2`. A bracket's long form
+    that does not spell a stop's first part, "L.AS (Accès Santé)", defines `AS`, and the
+    uses of L.AS are then undefined. A glossary's short form joins a stop before a raised
+    digit, "GDPR.¹", which the text does not (round 2 of #612).
   - A defined name that holds an ordinary word after its first part, `RNA-seq`, is read
     whole where it opens a hyphenated word, or follows an ordinary word there, or follows
     another name of two parts or more that is itself read whole there, as in

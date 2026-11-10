@@ -89,13 +89,15 @@ LONGEST = 15
 # short form with a stop inside it, and `ROR.The`, two sentences typed on with no space,
 # which `_forms` splits again. A stop before a digit joins nothing, a superscript or a
 # subscript one among them, so "GDPR.12" and "GDPR.¹²", a reference number typed on, are
-# GDPR, and "BA.1" and "1.5" read as before (round 1 of #612). Unicode letters and digits,
-# no underscore. A stop at its end is not in it.
+# GDPR, and "BA.1" and "1.5" read as before (round 1 of #612); and so does one before "A"
+# or "I" alone, the word a sentence typed on opens with, "the ICU.A total" (round 2).
+# Unicode letters and digits, no underscore. A stop at its end is not in it.
 _RAISED_OR_LOWERED = (
     r"[\N{SUPERSCRIPT ONE}\N{SUPERSCRIPT TWO}\N{SUPERSCRIPT THREE}"
     r"\N{SUPERSCRIPT ZERO}-\N{LATIN SUBSCRIPT SMALL LETTER T}]"
 )
-_PARTS = rf"[^\W_]+(?:-[^\W_]+|\.(?=[^\W\d_])(?!{_RAISED_OR_LOWERED})[^\W_]+)*"
+_PARTS = (rf"[^\W_]+(?:-[^\W_]+|\.(?=[^\W\d_])(?!{_RAISED_OR_LOWERED}|[AI](?![^\W_]))"
+          r"[^\W_]+)*")  # fmt: skip
 _WORD = re.compile(_PARTS)
 #: What joins two parts of a word.
 _JOINS = re.compile(r"[-.]")

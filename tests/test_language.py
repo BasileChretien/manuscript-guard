@@ -387,9 +387,11 @@ def test_a_short_form_a_stop_joins_is_defined_and_used_whole(project: Path, text
      ("The score rose in the KAP.The rest fell.", "KAP"),
      ("The U.S. and the U.K. data, i.e. the KAP cohort.", "KAP"),
      ("The rule follows the GDPR.12 here.", "GDPR"),
-     ("The rule follows the GDPR.\N{SUPERSCRIPT ONE}\N{SUPERSCRIPT TWO} here.", "GDPR")],
+     ("The rule follows the GDPR.\N{SUPERSCRIPT ONE}\N{SUPERSCRIPT TWO} here.", "GDPR"),
+     ("They were sent to the ICU.A total of 40 came back.", "ICU")],
     ids=["undefined, whole", "a sentence typed on", "initials of a country",
-         "a reference number after the stop", "a superscript number after the stop"],
+         "a reference number after the stop", "a superscript number after the stop",
+         "a sentence typed on that opens with A"],
 )  # fmt: skip
 def test_a_word_with_a_stop_is_read_by_its_parts(
     project: Path, sentence: str, named: str

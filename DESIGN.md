@@ -5108,7 +5108,8 @@ else they are read as any capitals are: an author whose initials are AE would ot
 hide every undefined AE, the adverse events, so "AEs were frequent" is still reported
 (Basile, 2026-11-10, choosing this over every use). A statement of acknowledgements, of
 funding or of interests alone names no initials, since their capitals are institutions as
-often as people; Known gaps says where one is read as a contributions statement.
+often as people, and JAMA's "Additional contributions", its acknowledgements, is one of
+those; Known gaps says where one is read as a contributions statement.
 
 **What may stand undefined is data.** `data/abbreviations.yaml` holds a short list of what
 general English reads as a word or a name, `DNA`, `UK`, `DOI`, and a few unit symbols with
@@ -22075,8 +22076,8 @@ Open, recorded as each change landed:
     or a label that names the contributions with another statement, "Funding and author
     contributions", is a contributions statement, its funders' capitals initials; and a
     heading is not held to `STATEMENT_TITLE` as a label is, so "## Contributions of this
-    study" is one too. A statement's span runs to the next heading of its level or above,
-    so a reference list typed straight after it with no heading between, a LaTeX
+    study" is one too. A heading's statement runs to the next heading of its level or
+    above, so a reference list typed straight after it with no heading between, a LaTeX
     `thebibliography` or an unmarked Markdown list, gives its authors' initials and a
     journal's capitals ("BMJ") as initials. In LaTeX only a heading opens a contributions
     statement; a `\textbf{Authors' contributions}` label opens none, and its initials are

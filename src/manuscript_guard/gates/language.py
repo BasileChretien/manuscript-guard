@@ -1073,9 +1073,11 @@ def _file(
 #: The statements whose capitals are the authors' initials, by a word of the heading or the
 #: label: "Authors' contributions", "CRediT authorship contribution statement", "Author
 #: statement". Not the acknowledgements, the funding or the interests, whose capitals are
-#: institutions as often as people.
+#: institutions as often as people, JAMA's "Additional contributions" among them, which are
+#: its acknowledgements (round 2 of #611).
 _CONTRIBUTED = re.compile(
-    r"\b(?:contributions?|contributors?(?:hip)?|author\s+statement)\b", re.IGNORECASE
+    r"\b(?<!additional )(?:contributions?|contributors?(?:hip)?|author\s+statement)\b",
+    re.IGNORECASE,
 )
 #: A bracket, round or square, on one line; and what may stand between the initials in one
 #: that holds only initials: "(CD)", "(JB, CD)", "[JB and CD]", "(JB; CD)", "(JB & CD)".

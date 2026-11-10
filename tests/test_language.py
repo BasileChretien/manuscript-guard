@@ -1299,6 +1299,14 @@ def test_the_initials_a_contributions_statement_names_are_people_everywhere(
     assert said == ["ANR", "BC", "CEMU", "MD", "UNICAEN"], found(report)
 
 
+def test_jama_s_additional_contributions_name_no_initials(project: Path) -> None:
+    """JAMA's acknowledgements are titled "Additional contributions", and their capitals are
+    institutions: an undefined "(NIH)" elsewhere is still reported (round 2 of #611)."""
+    report = written(project, "# Methods\n\nThe data came from one centre (NIH).\n\n"
+                     "## Additional contributions\n\nWe thank the staff of the NIH.\n")  # fmt: skip
+    assert found(report) == ["NIH is used once in the main text and not defined there"]
+
+
 def test_what_a_bold_label_cannot_tell_apart(project: Path) -> None:
     """The limits DESIGN.md's Known gaps write down, as written: a label is told from a
     sentence's first words by what follows it, so a statement that goes on in a small letter

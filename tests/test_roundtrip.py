@@ -14809,6 +14809,13 @@ def test_a_supplement_of_headings_and_tables_only_is_not_compared_with_the_paper
         encoding="utf-8",
         newline="\n",
     )
+    # And the controls' file (PR 3 of wave 3) is headings only, its values quoted in them.
+    (project / SUPPLEMENT).with_name("S2_controls.md").write_text(
+        "# The controls of the analysis\n\n" + "".join(
+            f"## The {kind} control, {{{{results.control.{kind}.point}}}} "
+            f"({{{{results.control.{kind}.ci_low}}}} to {{{{results.control.{kind}.ci_high}}}})"
+            "\n\n" for kind in ("simulated", "positive", "negative")),
+        encoding="utf-8", newline="\n")  # fmt: skip
     assert main(["build", str(project), "--offline"]) == 0
     returned = shutil.copy(project / "build" / "supplementary.docx", tmp_path / "back.docx")
     sources = {p: p.read_text(encoding="utf-8") for p in (project / "manuscript").rglob("*.md")}

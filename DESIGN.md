@@ -8825,7 +8825,8 @@ The example carries one control of each kind. `00_simulate.py` writes, beside th
 dataset of its own with an effect planted, so that the reports, and every number the example
 binds, stay as they are; `01_disproportionality.py` puts it through the function that gives
 the ratio, and draws a positive and a negative control from the reports, their expected
-values from the generator's rates. The Methods bind each. The example's plan was frozen on
+values from the generator's rates. A supplementary file of their own describes them and binds
+each, the main text left as it was (Basile, 2026-11-10). The example's plan was frozen on
 2026-10-19 with no controls in it, so its controls are late: they are declared in a block of
 their own section, and its Deviations say in words, naming each key, that they were added
 after the first results, as a real project adding controls then would say it. G12 reads

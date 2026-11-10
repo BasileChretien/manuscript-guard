@@ -1,6 +1,6 @@
 ---
 name: analysis-plan
-description: Write the analysis plan in design/plan.md before the analysis exists, record every deviation from it as it happens, and hold the paper to the study's registration. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run, planned-result-missing, planned-result-unquoted, planned-results-unkeyed, plan-changed-after-results, not-in-dictionary, registration-missing, registration-not-looked-up, registration-late, registration-outcomes-undeclared, registration-outcome-not-registered, registration-outcome-role-changed, registration-outcome-dropped, registration-primary-unquoted, planned-package-unloaded or plan-package-unnamed, when choosing the packages the analysis will use, or when the analysis is about to do something the plan did not say. Not for finding which dataset could answer the question or how it is reached (use data-sources).
+description: Write the analysis plan in design/plan.md before the analysis exists, record every deviation from it as it happens, and hold the paper to the study's registration. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run, planned-result-missing, planned-result-unquoted, planned-results-unkeyed, plan-changed-after-results, not-in-dictionary, registration-missing, registration-not-looked-up, registration-late, registration-outcomes-undeclared, registration-outcome-not-registered, registration-outcome-role-changed, registration-outcome-dropped, registration-primary-unquoted, planned-package-unloaded, plan-package-unnamed, plan-declarations-unreadable or a control-…, held-out-… or first-reads-… finding, when choosing the packages the analysis will use, or when the analysis is about to do something the plan did not say. Not for finding which dataset could answer the question or how it is reached (use data-sources).
 ---
 
 # Writing down what you meant to do, before you do it
@@ -15,7 +15,9 @@ deliberate: exploratory work is real work, and a gate that stopped you writing c
 plan was agreed would be bypassed the first afternoon it cost something. It also means the
 gate's approval is worth very little. All the value is in what gets written. A registration
 is different, because it is a promise made in public: where the paper is not the study
-registered, G12 warns while it is drafted and fails it at submission (below).
+registered, G12 warns while it is drafted and fails it at submission (below). So are the
+controls and the held-out data the plan declares: a control warns and fails at submission,
+and a leak of held-out data fails from the analysis stage.
 
 ## Where it lives
 
@@ -222,6 +224,20 @@ they are its names. Once the analysis is under way, G12 warns where a listed key
 emitted (`planned-result-missing`) or was emitted with `quoted=False`
 (`planned-result-unquoted`). If a planned result will not be reported, say so under
 Deviations, naming its key; that stands the warning down and is the record a reader needs.
+
+## Controls, and data held out from the model
+
+A control shows that the analysis can find an answer: data simulated with a known effect,
+a positive control, an association known to exist, or a negative control, for which no
+effect is expected. A prediction model validated on data held out from its development is
+validated independently only where nothing that built or tuned it read those data first.
+The plan declares both in a `yaml` block, chosen before the results, and G12 and G1 hold
+them to what the analysis ran. Before declaring a control, or answering a `control-…`
+finding, read [references/controls.md](references/controls.md); before declaring held-out
+data, or answering a `held-out-…` or `first-reads-unreadable` finding, read
+[references/held-out.md](references/held-out.md). A `plan-declarations-unreadable`
+finding is an entry of either form that does not read: the reference for its kind has the
+form.
 
 ## What will be collected
 

@@ -33,7 +33,7 @@ def _markdown_bindings(root: Path) -> list[tuple[str, str, tuple[str, ...]]]:
     """Each binding of the example, in order, with its file's document and its headings."""
     found = []
     folder = root / "manuscript"
-    for path in (folder / "main.md", folder / "supplementary" / "S1_code_lists.md"):
+    for path in (folder / "main.md", *sorted((folder / "supplementary").glob("*.md"))):
         text = path.read_text(encoding="utf-8")
         index = heading_index(text)
         where = "supplement" if "supplementary" in path.parts else "main"

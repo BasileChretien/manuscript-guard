@@ -146,9 +146,9 @@ def test_identifiers_are_unique_across_the_whole_manuscript(project: Path) -> No
     projekt, _ = load_project(project)
     known = tagged_paragraphs(projekt)
     assert len(known) == len(set(known)), "an identifier names one paragraph or it names none"
-    # main.md, parts/main.md, and the example's supplement — the round trip covers the
-    # supplement too, or a co-author's edit to it comes back with nowhere to land.
-    assert len({entry[0] for entry in known.values()}) == 3
+    # main.md, parts/main.md, and the example's two supplementary files — the round trip
+    # covers the supplement too, or a co-author's edit to it comes back with nowhere to land.
+    assert len({entry[0] for entry in known.values()}) == 4
 
 
 # ---------------------------------------------------------------- 4: the anchored check

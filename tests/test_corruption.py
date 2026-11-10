@@ -26777,6 +26777,21 @@ def test_the_mended_example_has_nothing_to_report(project: Path) -> None:
     assert language_findings(project) == []
 
 
+def test_a_short_form_with_a_stop_is_read_whole_and_its_slip_caught(project: Path) -> None:
+    """The Methods define a short form with a stop in it and use it, as a French paper
+    names the "Licence avec Accès Santé (L.AS)": read whole, it is defined and used, where
+    read at its stop it was an undefined `AS`. A second one, used and never defined, is
+    caught under its own name."""
+    mended = with_ror_defined(project)
+    dotted = mended.replace(
+        "The analysis was run in Python",
+        "Students of the *Licence avec Accès Santé* (L.AS) were included; L.AS and N.AS "
+        "students alike.\n\nThe analysis was run in Python",
+    )
+    main_md(project).write_text(dotted, encoding="utf-8")
+    assert language_findings(project) == [("abbreviation-undefined", line_of(dotted, "N.AS"))]
+
+
 def test_abbreviating_throughout_without_a_definition_is_caught(project: Path) -> None:
     """Find-and-replace of the long form, the definition never written: the abstract and
     the main text each use ROR, and neither defines it."""

@@ -2039,6 +2039,53 @@ def _a_short_form_followed_by_a_colon_defines_nothing(patch: pytest.MonkeyPatch)
     patch.setattr(language_gate, "_OPENS_WITH", re.compile(pattern[:-3] + "])"))
 
 
+def _hyphens_only(pattern: str) -> re.Pattern[str]:
+    """`pattern` with a stop no longer joining the parts of a word."""
+    joined = re.search(r"\(\?:-\[\^\\W_\]\+\|.*\)\*", pattern)
+    assert joined is not None, pattern
+    return re.compile(pattern.replace(joined.group(0), "(?:-[^\\W_]+)*"))
+
+
+def _a_stop_before_a_digit_joins_a_word(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_WORD", re.compile("[^\\W_]+(?:[-.][^\\W_]+)*"))
+
+
+def _a_short_form_before_a_bracket_is_not_tried_from_its_last_stop(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    real = language_gate._long_after
+    patch.setattr(language_gate, "_long_after",
+                  lambda prose, bracket, head, short: None if "." in prose[head - 1 : head]
+                  else real(prose, bracket, head, short))  # fmt: skip
+
+
+def _a_stop_joins_no_word(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_WORD", _hyphens_only(language_gate._WORD.pattern))
+
+
+def _a_stop_in_a_bracket_s_short_form_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_OPENS_WITH", _hyphens_only(language_gate._OPENS_WITH.pattern))
+
+
+def _a_stop_in_a_short_form_before_a_bracket_defines_nothing(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(language_gate, "_BEFORE_PAREN",
+                  _hyphens_only(language_gate._BEFORE_PAREN.pattern))  # fmt: skip
+
+
+def _a_stop_is_never_between_two_parts(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_JOINS", re.compile("-"))
+
+
+def _a_glossary_s_short_form_has_no_stop(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    short = "[^\\W_]+(?:-[^\\W_]+)*"
+    patch.setattr(glossary, "_SEPARATED", re.compile(
+        glossary._SEPARATED.pattern.replace(glossary._SHORT, short)))  # fmt: skip
+
+
 def _a_number_or_an_equals_sign_opens_a_definition(patch: pytest.MonkeyPatch) -> None:
     pattern = language_gate._OPENS_WITH.pattern
     assert pattern.endswith("(?:$|[;,:])")
@@ -20327,6 +20374,34 @@ BROKEN = {
     ),
     "a short form followed by a colon defines nothing": (
         _a_short_form_followed_by_a_colon_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a stop joins no word's parts": (
+        _a_stop_joins_no_word,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a stop in a bracket's short form defines nothing": (
+        _a_stop_in_a_bracket_s_short_form_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a stop in a short form before a bracket defines nothing": (
+        _a_stop_in_a_short_form_before_a_bracket_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a word a stop joins is never split at it": (
+        _a_stop_is_never_between_two_parts,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a glossary's short form has no stop": (
+        _a_glossary_s_short_form_has_no_stop,
+        test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
+    ),
+    "a stop before a digit joins a word's parts": (
+        _a_stop_before_a_digit_joins_a_word,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a short form before a bracket is not tried from its last stop": (
+        _a_short_form_before_a_bracket_is_not_tried_from_its_last_stop,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "a number or an equals sign after a short form opens a definition": (

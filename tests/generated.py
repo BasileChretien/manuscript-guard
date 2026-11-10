@@ -603,6 +603,11 @@ DEFINING = (
     # The nearest letter inside a bracket the long form would open, another before it.
     ("the brief pain scale (Spanish version) (BPS)", "(BPS", "BPS"),
     ("the lean mass index (in kg/m2) (LMI)", "(LMI", "LMI"),
+    # A short form whose parts a stop joins, in both orders.
+    ("the *Licence avec Acces Sante* (L.AS)", "(L.AS", "L.AS"),
+    ("the L.AS (licence with access to health studies)", "L.AS (", "L.AS"),
+    # After a sentence typed on with no space (round 1 of #612).
+    ("the score rose.ROR (reporting odds ratio)", "ROR (", "ROR"),
 )  # fmt: skip
 
 #: Brackets that are no definition, though the words before each hold its letters in order:
@@ -683,6 +688,12 @@ STILL_ABBREVIATIONS = (
     ("> **Funding:** the CDC paid", "CDC"),
     ("  **Funding source**   Count\n  ---------------- -----\n  NICE              3", "NICE"),
     ("**Acknowledgements**\n\n# Appendix\nthe FDA approved it", "FDA"),
+    # A short form whose parts a stop joins, reported whole; and one before a sentence typed
+    # on with no space, reported alone.
+    ("students of L.AS were eligible", "L.AS"),
+    ("the score rose in the KAP.The rest fell", "KAP"),
+    # A reference number typed on after the stop, which joins nothing (round 1 of #612).
+    ("the rule follows the GDPR.12 here", "GDPR"),
 )  # fmt: skip
 
 
@@ -817,8 +828,10 @@ GLOSSARY_FORMS = (
     "| MGPS | multi-item gamma Poisson shrinker |",
     # Run on in one paragraph and hard-wrapped inside a long form (round 2 of #446).
     "ROR: reporting odds ratio; PRR: proportional\nreporting ratio; IC: information component",
+    # A short form whose parts a stop joins.
+    "- **L.AS**: licence with access to health studies",
 )
-GLOSSARY_USED = ("ROR", "PRR", "IC", "EBGM", "SDR", "BCPNN", "GPS", "MGPS")
+GLOSSARY_USED = ("ROR", "PRR", "IC", "EBGM", "SDR", "BCPNN", "GPS", "MGPS", "L.AS")
 #: An entry nothing else uses, and an abbreviation the glossary does not list.
 GLOSSARY_UNUSED = ("WHO-ART: WHO adverse reaction terminology", "WHO-ART")
 GLOSSARY_MISSING = "UMC"

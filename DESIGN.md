@@ -5082,6 +5082,20 @@ capital lowered as well, because it takes one at the start of a sentence: `Non-H
 `non-HDL-C`. The capitals of the name itself are never folded, so `Rna-seq` is not
 `RNA-seq`.
 
+**A stop inside a word joins its parts as a hyphen does.** A French paper names the
+"Licence avec Accès Santé (L.AS)" and uses L.AS throughout; read at its stop it was `AS`,
+used eight times and never defined (the author's paper, 2026-11-10). A word now runs over a
+stop that a letter follows, in the text, in a bracket's short form and in a glossary's
+entry, and its parts are read as a hyphenated word's are: `L.AS` defined is used whole, and
+undefined is reported whole. A sentence typed on with no space after its stop leaves its
+abbreviation alone, since the word after it is an ordinary one: `KAP.The` is `KAP`; and a
+definition after one, "rose.ROR (reporting odds ratio)", is read from the last stop. A stop
+before a digit, a raised or lowered one too, joins nothing, so a reference number typed on,
+"GDPR.12", leaves GDPR, and "BA.1" and "1.5" read as before (round 1 of #612); so does a
+stop before "A" or "I" alone, "the ICU.A total" (round 2). "U.S." holds no abbreviation,
+one letter to a part, as before. A stop at a word's end
+is never part of it.
+
 **Three texts are read apart, because each is read apart.** The abstract is indexed and read
 without the paper, so it defines what it uses. The main text does not inherit from the
 abstract, and says so when that is the reason for a finding. The supplement is read after
@@ -22155,6 +22169,14 @@ Open, recorded as each change landed:
     reported: `PI3K`, `VO2`, `CD3`, `CIN2`, `CKD3`, `PIP2`, `ICD10`.
   - Two abbreviations joined by a hyphen, neither defined, are reported as one: `ROR-PRR`.
     Pinned by `tests/test_language.py::test_a_hyphenated_abbreviation_is_reported_whole`.
+  - So are two joined by a stop, as when a sentence ending in one runs on into one with
+    no space: "the ROR.HR fell" reports `ROR.HR`, where an ordinary word after the stop,
+    `ROR.The`, leaves `ROR`. A version or an address typed in the prose with capitals in
+    it, "WHO.int", is read as words joined by stops. An undefined "SARS-CoV-2.B.1.1.7" is
+    reported as `SARS-CoV-2.B`, where main reported `SARS-CoV-2`. A bracket's long form
+    that does not spell a stop's first part, "L.AS (Accès Santé)", defines `AS`, and the
+    uses of L.AS are then undefined. A glossary's short form joins a stop before a raised
+    digit, "GDPR.¹", which the text does not (round 2 of #612). Accepted.
   - A defined name that holds an ordinary word after its first part, `RNA-seq`, is read
     whole where it opens a hyphenated word, or follows an ordinary word there, or follows
     another name of two parts or more that is itself read whole there, as in

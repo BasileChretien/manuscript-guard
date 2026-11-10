@@ -193,6 +193,13 @@ expected:
       are no longer loose, and the preamble's `\input name` without braces is followed; the
       inputs now hold placed parts and pictures, inside a figure and under headings
       (Known gaps, 2026-10-27)
+  - reading: abbreviations
+    why: >-
+      a stop between two parts of a word joins them as a hyphen does, in the text, in a
+      bracket's short form and in a glossary's entry, so "Licence avec Accès Santé (L.AS)"
+      defines L.AS and "students of L.AS" uses it, where it was an undefined AS; a sentence
+      typed on with no space, "the KAP.The rest", leaves KAP alone; the inputs now hold
+      such words (the author's paper, 2026-11-10)
   - reading: recycled passages
     why: >-
       a citation by author and year in parentheses in the earlier paper, "(Smith et al.,
@@ -231,10 +238,3 @@ expected:
       refused without one or with another value; a `holds-null` control that gives one is
       refused; the reading reports each control's null, and the inputs draw each of these
       (Basile, 2026-11-09, round 1 of wave 3's PR 3)
-  - reading: abbreviations
-    why: >-
-      the initials a contributions statement names, two to four capitals, are people wherever
-      the paper uses them, "by a single author (CD)" in the Methods, and no longer reported
-      as undefined; an initial with a hyphen is taken whole and as its letters, never as its
-      parts; the inputs now hold such a use beside the statements (the author's paper,
-      2026-11-10)

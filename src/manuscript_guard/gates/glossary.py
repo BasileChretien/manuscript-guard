@@ -26,7 +26,9 @@ GLOSSARY_TITLES = frozenset(
     {"abbreviations", "list of abbreviations", "glossary", "acronyms", "list of acronyms"}
 )
 
-_SHORT = r"[^\W_]+(?:-[^\W_]+)*"
+#: A short form, its parts joined by a hyphen or by a stop a letter follows: `WHO-ART`,
+#: `L.AS`, as G14 reads a word (`language._PARTS`, which holds no digit after a stop).
+_SHORT = r"[^\W_]+(?:-[^\W_]+|\.(?=[^\W\d_])[^\W_]+)*"
 #: The marks a short form may wear in a glossary: `**ROR**`, `*ROR*`, `_ROR_`.
 _MARKS = "*_"
 #: A list item's marker, which a glossary may be written as.

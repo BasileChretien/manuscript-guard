@@ -56,17 +56,6 @@ interval of the reporting odds ratio above 1. No p-value threshold was used as a
 rule, which is not how a disproportionality analysis reaches its conclusion.
 {{method.signal}}
 
-Three controls were put through the same 2 x 2 table and interval, by the same script; they
-were chosen after the first results were known, as the analysis plan records. A simulated
-control drew reports as the database's are drawn, with hepatic injury planted for
-example-drug at twice the odds of the other drugs, and its interval was to hold the ratio
-planted. A positive control took the third comparator and hepatic injury, which the data
-generator makes rarer with that drug than with the others, so that its rates give a ratio
-well below one; its interval was to hold that ratio. The interval of each was also to leave
-out one, the null, so that an analysis finding nothing would fail them. A negative control
-took the first comparator and nausea, for which those rates give a ratio close to one, and
-its interval was to hold the null. {{method.controls}}
-
 Adjusted for age group and sex, the two patient characteristics the database records for
 every report, the reporting odds ratio was also estimated by {{results.model.adjusted.kind}}
 of hepatic injury on exposure to example-drug, with both characteristics entered as
@@ -114,13 +103,6 @@ can reconstruct it. Adjusted for age group and sex, the reporting odds ratio was
 {{results.ror_adjusted.point}} (95% CI {{results.ror_adjusted.ci_low}} to
 {{results.ror_adjusted.ci_high}}), given to three decimal places because to two it is the
 crude estimate: the data generator draws both characteristics independently of the drug.
-
-The ratio of the simulated control was {{results.control.simulated.point}} (95% CI
-{{results.control.simulated.ci_low}} to {{results.control.simulated.ci_high}}), around the
-ratio planted; that of the positive control {{results.control.positive.point}} (95% CI
-{{results.control.positive.ci_low}} to {{results.control.positive.ci_high}}); and that of
-the negative control {{results.control.negative.point}} (95% CI
-{{results.control.negative.ci_low}} to {{results.control.negative.ci_high}}).
 
 {{table.two_by_two}}
 

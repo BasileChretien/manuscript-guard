@@ -4,24 +4,26 @@ schema: manuscript-guard/review/1
 round: 13
 reviewer: pharmacoepidemiologist
 reviewed_by: Claude Code
-reviewed_on: '2026-11-09'
-manuscript_sha256: ed3a0dc0a46f3e8cd39b1469c921b0b280242fb5e30a552d108d694458d71adc
+reviewed_on: '2026-11-10'
+manuscript_sha256: f9dee96944e2e46b560e0c749183cfba272b0fb0761665e1a0d3f78b60535f30
 file_sha256:
-  main.md: c8def5700f6929d8a672a2c2aed1b94a17b99d5af26cd88e1587698531ef933f
+  main.md: e4930aa2a68ea9cad8492d6b7b79250e03ba80dc38165760f29ad6f814ea6a70
   supplementary/S1_code_lists.md: 8c462c203bf3c08ac5ced6eaf25d38b56f2239502952f8d8e6b3d23cbb05b9b3
+  supplementary/S2_controls.md: 407d3c07329dd3a9a811a991a7b45829ee0d9e40fa345eef7a5a1d95cb7ee675
 verdict: pass
 summary: The positive control now takes the third comparator and hepatic injury, whose ratio
   the generator's rates put well below one, and its interval leaves the null out, as the simulated
-  control's does; an analysis that found nothing would fail both. The Results report each
-  with its interval, and the plan says the positive control was replaced after round 12, its
-  estimate seen by then. Round 12's comment on the positive control is answered; its comment
-  on controls chosen after the first results still stands.
+  control's does; an analysis that found nothing would fail both. The controls now stand in
+  a supplementary file of their own, S2, which describes them and reports each with its interval,
+  and the plan says the positive control was replaced after round 12, its estimate seen by
+  then. Round 12's comment on the positive control is answered; its comment on controls chosen
+  after the first results still stands.
 findings:
 - id: r13-pe-01
   severity: comment
-  where: Methods, the controls
+  where: Supplementary file S2, Methods
   finding: The positive control's pair was chosen after its estimate had been seen, which the
     plan says. The rule it was chosen by, the ratio the generator's rates put furthest from
     one but the study's own, reads no estimate, but it too was settled with the estimates in
     view; in a real study the rule of choice would be written before the data were read.
-reading_sha256: 5640cf50ee26ff42d015aba6f8ad392cb9fa554d55ea24c046075acafa262890
+reading_sha256: 9eea151f8dc8ad7ad25586b4874220ae6f2eaceba1bcb8ad28df68fd073849d1

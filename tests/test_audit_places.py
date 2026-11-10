@@ -98,7 +98,16 @@ def test_a_docx_s_notes_are_placed_under_the_notes() -> None:
         "Methods, paragraph 1", f"{NOTES}, paragraph 1", f"{NOTES}, paragraph 2"]
 
 
-def test_an_empty_cell_keeps_its_table_one_paragraph(tmp_path: Path) -> None:
+@pytest.mark.parametrize(("between", "after"), [
+    # One table, its first row with an empty cell.
+    ("", "Results, paragraph 3"),
+    # Two tables with an empty paragraph between, which Word needs: two paragraphs, the
+    # empty one none (fix round of #616, where the empty one joined them).
+    ("<w:p/>", "Results, paragraph 4"),
+])  # fmt: skip
+def test_an_empty_cell_keeps_its_table_one_paragraph(
+    tmp_path: Path, between: str, after: str
+) -> None:
     """An empty cell is a blank line of the document's own text, and closed the table: the
     cells after it were a paragraph of their own, and every place after the table one too
     many (review of #616)."""
@@ -111,19 +120,20 @@ def test_an_empty_cell_keeps_its_table_one_paragraph(tmp_path: Path) -> None:
 
     table = "<w:tbl>" + "".join(f"<w:tr>{cell(a)}{cell(b)}</w:tr>"
                                 for a, b in (("n", ""), ("12", "40"))) + "</w:tbl>"  # fmt: skip
+    tables = table + (between + table if between else "")
     path = word_document(tmp_path / "paper.docx", [("Results", True), ("Before it.", False)])
     with zipfile.ZipFile(path) as archive:
         parts = {name: archive.read(name) for name in archive.namelist()}
-    after = "<w:p><w:r><w:t>After it.</w:t></w:r></w:p>"
+    last = "<w:p><w:r><w:t>After it.</w:t></w:r></w:p>"
     parts["word/document.xml"] = parts["word/document.xml"].replace(
-        b"</w:body>", (table + after).encode() + b"</w:body>")  # fmt: skip
+        b"</w:body>", (tables + last).encode() + b"</w:body>")  # fmt: skip
     with zipfile.ZipFile(path, "w") as archive:
         for name, data in parts.items():
             archive.writestr(name, data)
     document = read_docx_text(path)
     places = of_docx(document, document.body)
     lines = document.body.split("\n")
-    assert places.said(lines.index("After it.") + 1) == "Results, paragraph 3"
+    assert places.said(lines.index("After it.") + 1) == after
 
 
 def test_a_heading_with_no_words_is_no_heading() -> None:

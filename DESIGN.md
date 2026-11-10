@@ -25234,6 +25234,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
   before the first heading were paragraphs 3 and 5 of the two. A heading pandoc's conversion
   does not make, or one the audit does not read, puts the paragraphs after it under the
   heading before. Accepted.
+  - A paragraph whose only text is bars, "|", just above a table is counted as the table's,
+    one paragraph too few after it (fix round of #616). Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

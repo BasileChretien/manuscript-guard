@@ -179,8 +179,10 @@ def of_docx(document, text: str) -> Paragraphs:
 
 
 #: A line of a table in the document's own text that holds no cell's words: where a row
-#: starts, a cell's mark alone, or an empty cell (`text.docx`, " | ").
-_BETWEEN_CELLS = re.compile(r"[\s|]*")
+#: starts, a cell's mark alone (`text.docx`, " | "). Not an empty line: an empty cell's is
+#: among the cells already, and an empty paragraph between two tables is no table's (fix
+#: round of #616).
+_BETWEEN_CELLS = re.compile(r"\s*\|[\s|]*")
 
 
 def _tables(body: list[str], cells: frozenset[int]) -> frozenset[int]:

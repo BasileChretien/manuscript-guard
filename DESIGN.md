@@ -22111,7 +22111,16 @@ Open, recorded as each change landed:
     taken into it. A paragraph that opens with its name and holds its entries itself,
     "Abbreviations: CI = confidence interval; OR = odds ratio", opens none where no entry
     follows it; where one does, OR is read, and CI is lost as the long form of
-    "Abbreviations".
+    "Abbreviations". Round 1 of #610 found four more edges of the glossary with no title.
+    A table straight after its last entry, with no caption between, is taken into it
+    wherever one of its rows reads as an entry, so "| BMI | 24.1 (3.2) |" defines BMI and
+    its cells are no uses. A sentence there that holds an ampersand, "NIH & UMC data were
+    pooled.", reads as a LaTeX table's row, since a Markdown file is its own typed text,
+    and is taken in too. A sentence of the text that opens on the word, "Abbreviations were
+    spelt out at first use.", opens a glossary where the next paragraph is shaped like an
+    entry, "PRR: we computed it", and PRR is then defined by its prose. And a run of
+    thousands of paragraphs that each open on the word and are each an entry,
+    "Glossary: terms used", is read in time that grows as its square.
     Its entries are read one to a line, and "ROR reporting odds
     ratio" only in a table or a definition list: a paragraph of "ROR, reporting odds ratio;
     PRR, ..." is not read, and a grid table's long form over several lines keeps its first.

@@ -5,7 +5,8 @@
 //
 //   node web/test/names.mjs < cases.json
 //
-// Each case is {"paper": name, "against": [names]}; each answer {"args", "written"}, or
+// Each case is {"paper": name, "against": [names]}, with "english" and "known" where the
+// reader set them; each answer {"args", "written"}, or
 // {"error", "written"} where the worker refuses the names.
 import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
@@ -30,9 +31,10 @@ runInContext("py = stub;", context);
 
 const file = (name) => ({ name, data: new ArrayBuffer(0) });
 const cases = JSON.parse(readFileSync(0, "utf-8"));
-const answers = cases.map(({ paper, against }) => {
+const answers = cases.map(({ paper, against, english = "", known = [] }) => {
   written.length = 0;
-  context.payload = { paper: file(paper), against: against.map(file), lookup: false };
+  context.payload = { paper: file(paper), against: against.map(file), lookup: false,
+    english, known };
   try {
     const { args } = runInContext("run(payload)", context);
     return { args: [...args], written: [...written] };

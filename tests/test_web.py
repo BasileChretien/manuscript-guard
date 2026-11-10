@@ -385,12 +385,14 @@ def test_the_worker_gives_the_command_line_each_name_as_the_reader_chose_it() ->
         {"paper": "paper.docx", "against": ["results.json", "results.json"]},
         {"paper": "paper.docx", "against": ["a/b.json"]},
         {"paper": "..", "against": []},
+        {"paper": "paper.docx", "against": [], "english": "british",
+         "known": ["CD", "-x", "licence"]},
     ]
     done = subprocess.run([NODE, str(WEB / "test" / "names.mjs")], input=json.dumps(cases),
                           capture_output=True, text=True, encoding="utf-8", timeout=60,
                           check=False)  # fmt: skip
     assert done.returncode == 0, done.stderr
-    kept, dashed, apart, twice, slash, dots = json.loads(done.stdout)
+    kept, dashed, apart, twice, slash, dots, settings = json.loads(done.stdout)
     assert kept == {"args": ["audit", "Mon article (v3).docx", "--against", "résultats 結果.json"],
                     "written": ["/work/Mon article (v3).docx", "/work/résultats 結果.json"]}
     assert dashed == {"args": ["audit", "./-paper.docx", "--against", "./-results.json"],
@@ -400,6 +402,10 @@ def test_the_worker_gives_the_command_line_each_name_as_the_reader_chose_it() ->
     assert 'cannot use a file named "a/b.json"' in slash["error"]
     assert 'cannot use a file named ".."' in dots["error"]
     assert twice["written"] == slash["written"] == dots["written"] == []
+    # The English and the words to leave alone, a word that would be read as an option left
+    # out (the author's audit, 2026-11-10).
+    assert settings["args"] == ["audit", "paper.docx", "--english", "british", "--known", "CD",
+                                "licence"]
 
 
 # --------------------------------------------------------------------- a command, printed

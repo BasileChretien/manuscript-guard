@@ -47,6 +47,16 @@
       the words and the reference list.
       <input id="against" type="file" multiple accept=".json,.csv,.tsv,.txt,.yaml,.yml,.md"
         disabled></label>
+    <label>English of the paper, which its spelling is held to
+      <select id="english" disabled>
+        <option value="">The one most of its words are in</option>
+        <option value="american">American</option>
+        <option value="british">British</option>
+      </select></label>
+    <label>Words to leave alone: names, an author's initials, an institution's acronym, your
+      field's terms, separated by spaces or commas (CD, CHU, QR, licence). They are not
+      reported as abbreviations to define, nor for their spelling.
+      <input id="known" type="text" autocomplete="off" spellcheck="false" disabled></label>
     <label class="tick"><input id="lookup" type="checkbox" disabled>
       <span>Also check the reference list for retracted and unregistered works. This sends
         the DOIs and PubMed IDs the paper cites, and nothing else, to Crossref, OpenAlex,

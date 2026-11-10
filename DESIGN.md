@@ -5136,6 +5136,21 @@ ask for the list and for the expansion at first use as well, so a definition in 
 gives the glossary's meaning again is not reported as given twice; a second one in the text
 is, and one that gives another meaning is reported as two meanings.
 
+**A glossary may have no title.** A paper typed in Word often opens its list with a sentence
+and no heading: "List of abbreviations and acronyms used in the text, tables, and figures.",
+then letters' labels in bold, "**A--C**", and an item for each entry (the author's paper,
+2026-11-10). Read as text, every item was a use of its short form, so each entry the text
+did not define again was reported undefined. A paragraph that opens with "List of
+abbreviations", "List of acronyms", "Abbreviations", "Acronyms" or "Glossary", in any case
+and past the marks of bold or italics, opens a glossary where an entry follows it. The
+glossary runs over the paragraphs that open with an entry and the labels of letters between
+them, alone in their paragraph or as a heading, "### L". It ends with the last of them that
+has an entry shaped like an abbreviation: "- **df**: degrees of freedom" is read where it
+stands among the others, and "Note: the scores were ..." after the last entry is text. Any
+other paragraph, and any other heading, ends it before it, so the text after a list is read
+as text. A paragraph that names abbreviations without opening on the word, "We list the
+abbreviations below.", opens none, and nor does one with no entry after it.
+
 **A caption may restate a definition.** A legend has to be read alone. A definition in a
 Markdown table's caption (`Table: ...`, or `: ...` beside a table), in a paragraph that opens
 with the display it captions and a stop, a colon or a dash ("Figure 1. ...", "**Table 2.**
@@ -22086,8 +22101,18 @@ Open, recorded as each change landed:
     as `abbreviation-redefined`. A legend is a caption only where it opens with the display
     and a stop, a colon or a dash: "Figure 1 The odds by year" is text, and a definition it
     repeats is reported.
-  - A glossary is found only under a heading. One under a bold line, in a manuscript with
-    no heading, is read as text. Its entries are read one to a line, and "ROR reporting odds
+  - A glossary is found under a heading, or after a paragraph that opens with its name
+    and has an entry after it: a bold line, "**Abbreviations**", in a manuscript with no
+    heading, is read as such a paragraph. In a LaTeX file only a heading opens one. A
+    glossary with no title ends at the first paragraph that is neither an entry nor a
+    letter's label, so a sentence between two groups of its entries, "Statistical terms
+    follow.", leaves the second group read as text; and a line of the text right after its
+    last entry that opens like an entry with an abbreviation, "CI: we computed it ...", is
+    taken into it. A paragraph that opens with its name and holds its entries itself,
+    "Abbreviations: CI = confidence interval; OR = odds ratio", opens none where no entry
+    follows it; where one does, OR is read, and CI is lost as the long form of
+    "Abbreviations".
+    Its entries are read one to a line, and "ROR reporting odds
     ratio" only in a table or a definition list: a paragraph of "ROR, reporting odds ratio;
     PRR, ..." is not read, and a grid table's long form over several lines keeps its first.
     A glossary whose section runs on into the next file is cut at the end of its own.

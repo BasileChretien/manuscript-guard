@@ -2021,6 +2021,7 @@ from generated import (  # noqa: E402
     STATISTICS_EXEMPT,
     STATISTICS_NOT,
     defined_elsewhere,
+    glossaries_untitled,
     statistics_used,
 )
 
@@ -2085,6 +2086,89 @@ def test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text
         assert ("abbreviation-undefined", "UMC") in {
             (f.code, f.message.split()[0]) for f in plain
         }, drawn["headless"]
+
+
+@holds(60, glossaries_untitled())
+def test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them(
+    drawn: dict[str, Any],
+) -> None:
+    """A glossary with no heading over it, opened by a paragraph that opens with its name
+    ("List of abbreviations and acronyms used in the text."), defines its entries in every
+    form, under letters' labels and a letter's heading, an entry with no capital among
+    them; its lines are not uses. It ends with its last entry: a heading after it ends it,
+    and so does a sentence, a paragraph shaped like an entry with a word for its short form
+    staying out of it, so the abbreviations there are undefined. A paragraph that names
+    abbreviations without opening on the word opens none. The same with no heading."""
+    nothing = language_gate._Known(frozenset(), frozenset())
+
+    def findings(text: str) -> list:
+        read = [_file(0, Path("main.md"), text, [], False)]
+        report = language_gate._judge(read, nothing, Path("."))
+        return sorted((f.code, f.message.split()[0]) for f in report.findings
+                      if f.code != "no-headings")  # fmt: skip
+
+    assert findings(drawn["headed"]) == drawn["found"], drawn["headed"]
+    assert findings(drawn["headless"]) == drawn["found"], drawn["headless"]
+
+
+def _a_glossary_with_no_title_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "opened", lambda prose, raw, headings, shaped: [])
+
+
+def _a_glossary_with_no_title_runs_past_a_heading(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "_stops", lambda headings: [])
+
+
+def _a_letter_s_heading_ends_a_glossary(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "_stops", lambda headings: sorted(each[0] for each in headings))
+
+
+def _a_letter_s_label_ends_a_glossary(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "is_letters", lambda title: False)
+
+
+def _an_entry_with_no_capital_ends_a_glossary(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    real = glossary._opening_entries
+
+    def shaped_only(prose: str, raw: str, span: tuple[int, int]) -> list:
+        found = real(prose, raw, span)
+        return found if all(language_gate._may_be_defined(e.short) for e in found) else []
+
+    patch.setattr(glossary, "_opening_entries", shaped_only)
+
+
+def _a_glossary_takes_what_opens_like_an_entry_after_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "_ends_here", lambda found, shaped: True)
+
+
+def _a_sentence_does_not_end_a_glossary(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    real = glossary._opening_entries
+
+    def always(prose: str, raw: str, span: tuple[int, int]) -> list:
+        return real(prose, raw, span) or [glossary.Entry(span[0], "x", "xx")]
+
+    patch.setattr(glossary, "_opening_entries", always)
+
+
+def _a_glossary_s_name_anywhere_opens_one(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    pattern = glossary._OPENS.pattern
+    patch.setattr(glossary, "_OPENS", re.compile(r"[^\n]*?" + pattern, glossary._OPENS.flags))
 
 
 def _a_glossary_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -20262,6 +20346,38 @@ BROKEN = {
     "no-headings is said at every stage": (
         _no_headings_is_said_at_every_stage,
         test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
+    ),
+    "a glossary a paragraph opens is not read": (
+        _a_glossary_with_no_title_is_not_read,
+        test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them,
+    ),
+    "a glossary a paragraph opens runs past a heading": (
+        _a_glossary_with_no_title_runs_past_a_heading,
+        test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them,
+    ),
+    "a letter's heading ends a glossary": (
+        _a_letter_s_heading_ends_a_glossary,
+        test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them,
+    ),
+    "a letter's label ends a glossary": (
+        _a_letter_s_label_ends_a_glossary,
+        test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them,
+    ),
+    "an entry with no capital ends a glossary": (
+        _an_entry_with_no_capital_ends_a_glossary,
+        test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them,
+    ),
+    "a glossary takes what opens like an entry after its last": (
+        _a_glossary_takes_what_opens_like_an_entry_after_it,
+        test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them,
+    ),
+    "a sentence does not end a glossary a paragraph opens": (
+        _a_sentence_does_not_end_a_glossary,
+        test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them,
+    ),
+    "a glossary's name anywhere in a paragraph opens one": (
+        _a_glossary_s_name_anywhere_opens_one,
+        test_a_glossary_a_paragraph_opens_defines_its_entries_and_ends_with_them,
     ),
     "a statistic is read at its printed value, not over what its last digit allows": (
         _a_statistic_is_read_at_its_printed_value,

@@ -1685,3 +1685,54 @@ def test_headings_in_a_style_are_read_and_nothing_is_said(tmp_path: Path) -> Non
     markdown.write_text("Of 412 patients, 77 had it.\n", encoding="utf-8")
     (said,) = audit([markdown], []).headings
     assert said.startswith("paper.md: it has no heading, so it was read as one text")
+
+
+#: A paper whose words G14 asks a project to set paper.yaml for: abbreviations used and not
+#: defined, one word in British spelling and six in American, enough for a paper declared
+#: British to be told it is not (`spelling.MANY`).
+_PROJECT_ASKS = (
+    "# Methods\n\nThe QR codes were scanned by the CHU staff. Their behaviour was recorded, "
+    "and the color, the center and the program were noted, as the analyzed data show. The "
+    "gray files were labeled, with the favor, the honor and the flavor of each.\n"
+)
+
+
+def _said(run) -> list[str]:
+    return [text for finding in run.language for text in (finding.message, finding.hint or "")]
+
+
+def test_an_audit_says_its_own_settings_where_a_gate_says_paper_yaml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A paper audited alone has no paper.yaml, so a hint that says to list a word under
+    `language:` there, or to set `english_variant:`, is said as the page's setting and the
+    command line's flag (the author's audit, 2026-11-10). Each pattern of `_FOR_AN_AUDIT`
+    matches what G14 writes, undeclared and declared, so a gate reworded under it is caught."""
+    from manuscript_guard.auditing import gates
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(_PROJECT_ASKS, encoding="utf-8")
+    said = [*_said(gates.run_gates(paper)), *_said(gates.run_gates(paper, english="british"))]
+    assert said and not [text for text in said if "paper.yaml" in text], said
+    assert any("--known" in text for text in said) and any("--english" in text for text in said)
+    monkeypatch.setattr(gates, "for_an_audit", lambda text: text)
+    raw = [*_said(gates.run_gates(paper)), *_said(gates.run_gates(paper, english="british"))]
+    for pattern, _say in gates._FOR_AN_AUDIT:
+        assert any(pattern.search(text) for text in raw), pattern.pattern
+
+
+def test_known_words_are_neither_undefined_nor_misspelt(tmp_path: Path) -> None:
+    """`--known` lists the words the paper's readers know: an institution's acronym and a
+    field's spelling are then not reported; the rest still is."""
+    from manuscript_guard.auditing.gates import run_gates
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(_PROJECT_ASKS, encoding="utf-8")
+    before = {(f.code, f.message.split()[0]) for f in run_gates(paper).language}
+    after = {(f.code, f.message.split()[0])
+             for f in run_gates(paper, known=("CHU", "behaviour")).language}  # fmt: skip
+    assert ("abbreviation-undefined", "CHU") in before
+    assert ("abbreviation-undefined", "CHU") not in after
+    assert ("abbreviation-undefined", "QR") in after
+    assert any(word == "'behaviour'" for _code, word in before)
+    assert not any(word == "'behaviour'" for _code, word in after)

@@ -74,7 +74,11 @@ it in a temporary folder and the two gates run as `check` runs them. A .docx goe
 the conversion `init --from` makes, so its lines are lines of that converted text; without
 pandoc a .docx is not converted, and the report says G6 and G14 were not run on it.
 `--english british` or `american` declares the paper's English, which G14 holds its spelling
-to; without it G14 holds the paper to the English most of its words are in.
+to; without it G14 holds the paper to the English most of its words are in. `--known` lists
+the words the paper's readers know, names, an author's initials, an institution's acronym
+and the field's terms (`--known CHU QR licence`): G14 neither asks for them to be defined nor
+reports their spelling. A hint that tells a project to set something in `paper.yaml` names
+these instead, which a paper audited alone sets them with.
 `--submission-residue` makes a residue of the revision that answers a reviewer a failure, as
 `check` does at the submission stage. Neither gate is counted by `--strict`.
 

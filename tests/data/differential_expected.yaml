@@ -233,8 +233,8 @@ expected:
       (Basile, 2026-11-09, round 1 of wave 3's PR 3)
   - reading: abbreviations
     why: >-
-      a glossary with no heading over it, opened by a paragraph that opens with "List of
-      abbreviations", "Abbreviations", "Acronyms" or "Glossary", as a paper typed in Word has
-      one, defines its entries and its lines are not uses; it runs over its entries and the
-      labels of letters between them, and ends with its last entry; the inputs now hold one
-      (the author's paper, 2026-11-10)
+      the initials a contributions statement names, two to four capitals, are people wherever
+      the paper uses them, "by a single author (CD)" in the Methods, and no longer reported
+      as undefined; an initial with a hyphen is taken whole and as its letters, never as its
+      parts; the inputs now hold such a use beside the statements (the author's paper,
+      2026-11-10)

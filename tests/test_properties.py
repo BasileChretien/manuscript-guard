@@ -1896,6 +1896,82 @@ def test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations(
     assert found == [("abbreviation-undefined", short) for short in undefined], text
 
 
+from generated import initials_named  # noqa: E402
+
+
+@holds(60, initials_named())
+def test_the_initials_a_contributions_statement_names_are_no_abbreviations(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """The initials two contributions statements name, one under a heading and one run on
+    from a bold label, are people in the Methods too where a bracket holds only initials,
+    alone or two joined, an initial with a hyphen as its letters. An initial in a sentence
+    or in a bracket beside another word is read as an abbreviation; so are the capitals of
+    the acknowledgements and the funding, a longer word of capitals in a contributions
+    statement, and the part of an initial with a hyphen."""
+    text, undefined = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+    report = language_gate._judge([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+    found = sorted((f.code, f.message.split()[0]) for f in report.findings)
+    assert found == [("abbreviation-undefined", short) for short in undefined], text
+
+
+def _no_initials_are_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_initials", lambda prose, spans: frozenset())
+
+
+def _every_statement_names_initials(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_CONTRIBUTED", re.compile(""))
+
+
+def _a_long_word_of_capitals_is_initials(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_INITIALS_SPAN", range(2, 9))
+
+
+def _no_heading_names_a_contributions_statement(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._contributions
+    patch.setattr(language_gate, "_contributions",
+                  lambda hidden, titled, statements: real(hidden, [], statements))  # fmt: skip
+
+
+def _no_label_opens_a_contributions_statement(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._contributions
+    patch.setattr(language_gate, "_contributions",
+                  lambda hidden, titled, statements: real(hidden, titled, []))  # fmt: skip
+
+
+def _an_initial_with_a_hyphen_is_its_parts(patch: pytest.MonkeyPatch) -> None:
+    def parts(prose: str, spans: Any) -> frozenset[str]:
+        found = set()
+        for start, end in spans:
+            for word in language_gate._WORD.finditer(prose, start, end):
+                found.update(p for p in word.group(0).split("-") if 2 <= len(p) <= 4
+                             and p.isalpha() and p.isupper())  # fmt: skip
+        return frozenset(found)
+
+    patch.setattr(language_gate, "_initials", parts)
+
+
+def _an_initial_anywhere_is_a_person(patch: pytest.MonkeyPatch) -> None:
+    def anywhere(prose: str, initials: frozenset[str]) -> frozenset[int]:
+        return frozenset(word.start() for word in language_gate._WORD.finditer(prose)
+                         if word.group(0) in initials)  # fmt: skip
+
+    patch.setattr(language_gate, "_people", anywhere)
+
+
+def _a_bracket_with_an_initial_is_of_initials(patch: pytest.MonkeyPatch) -> None:
+    def any_one(prose: str, initials: frozenset[str]) -> frozenset[int]:
+        found = set()
+        for bracket in language_gate._BRACKETED.finditer(prose):
+            words = list(language_gate._WORD.finditer(bracket.group("inside")))
+            if any(word.group(0) in initials for word in words):
+                found.update(bracket.start("inside") + word.start() for word in words)
+        return frozenset(found)
+
+    patch.setattr(language_gate, "_people", any_one)
+
+
 def _no_statement_runs_on_from_a_label(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_run_in_statements", lambda hidden, headings: [])
 
@@ -20324,6 +20400,38 @@ BROKEN = {
     "an indented bold label opens a statement": (
         _an_indented_bold_label_opens_a_statement,
         test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "no initials are read from a contributions statement": (
+        _no_initials_are_read,
+        test_the_initials_a_contributions_statement_names_are_no_abbreviations,
+    ),
+    "every statement's capitals are initials": (
+        _every_statement_names_initials,
+        test_the_initials_a_contributions_statement_names_are_no_abbreviations,
+    ),
+    "a long word of capitals in a contributions statement is initials": (
+        _a_long_word_of_capitals_is_initials,
+        test_the_initials_a_contributions_statement_names_are_no_abbreviations,
+    ),
+    "no heading names a contributions statement": (
+        _no_heading_names_a_contributions_statement,
+        test_the_initials_a_contributions_statement_names_are_no_abbreviations,
+    ),
+    "no bold label opens a contributions statement": (
+        _no_label_opens_a_contributions_statement,
+        test_the_initials_a_contributions_statement_names_are_no_abbreviations,
+    ),
+    "an initial with a hyphen is read as its parts": (
+        _an_initial_with_a_hyphen_is_its_parts,
+        test_the_initials_a_contributions_statement_names_are_no_abbreviations,
+    ),
+    "an author's initials anywhere are a person": (
+        _an_initial_anywhere_is_a_person,
+        test_the_initials_a_contributions_statement_names_are_no_abbreviations,
+    ),
+    "a bracket with an initial in it is one of initials": (
+        _a_bracket_with_an_initial_is_of_initials,
+        test_the_initials_a_contributions_statement_names_are_no_abbreviations,
     ),
     "a statistical abbreviation needs a definition": (
         _the_statistical_list_is_empty,

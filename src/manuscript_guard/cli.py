@@ -2492,7 +2492,7 @@ def _read_as_reader(report, reader: _Reader, main: Path, papers: list[Path],
 
 #: The options that read a paper, refused with `--package` and no paper.
 _READ_A_PAPER = ("against", "figures", "journal", "authors", "design", "cited", "lookup",
-                 "whole_numbers", "minimum_cell_count", "english", "submission_residue")
+                 "whole_numbers", "minimum_cell_count", "english", "known", "submission_residue")
 
 
 def _flags_given(args: argparse.Namespace, names: tuple[str, ...]) -> list[str]:
@@ -2515,9 +2515,9 @@ def _flags_given(args: argparse.Namespace, names: tuple[str, ...]) -> list[str]:
 AUDITED: Callable[[object, object], None] | None = None
 
 #: The options of `audit` and `compare` the report draft names, in the order they are listed.
-_AUDIT_FLAGS = ("against", "figures", "english", "submission_residue", "lookup", "dry_run",
-                "whole_numbers", "minimum_cell_count", "journal", "authors", "design", "cited",
-                "package", "strict")  # fmt: skip
+_AUDIT_FLAGS = ("against", "figures", "english", "known", "submission_residue", "lookup",
+                "dry_run", "whole_numbers", "minimum_cell_count", "journal", "authors",
+                "design", "cited", "package", "strict")  # fmt: skip
 _COMPARE_FLAGS = ("response", "comments")
 
 
@@ -2681,6 +2681,7 @@ def _audit(args: argparse.Namespace, package) -> int:
     if isinstance(reader, int):
         return reader
     english = args.english or (reader.english if reader else None)
+    known = tuple(args.known or ())
 
     papers = expand(args.paper, FOLDER_SUFFIXES)
     figures = expand(args.figures or [], FIGURE_SUFFIXES)
@@ -2729,9 +2730,10 @@ def _audit(args: argparse.Namespace, package) -> int:
                                                          *report.passed_over)))  # fmt: skip
     read = set(report.papers)
     report.gates = [
-        *(run_gates(path, english=english, residue=args.submission_residue)
+        *(run_gates(path, english=english, residue=args.submission_residue, known=known)
           for path in papers if path.suffix.lower() != ".tex" and path in read),
-        *(run_gates(tree.entry, tree, english=english, residue=args.submission_residue)
+        *(run_gates(tree.entry, tree, english=english, residue=args.submission_residue,
+                    known=known)
           for tree in report.trees),
     ]  # fmt: skip
     if args.lookup:
@@ -6743,6 +6745,14 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("american", "british"),
         help="the paper's English, which G14 holds its spelling to; without it, the English "
         "most of its words are in",
+    )
+    audit.add_argument(
+        "--known",
+        nargs="+",
+        metavar="WORD",
+        help="words the paper's readers know, which G14 neither asks to be defined, reports "
+        "the spelling of, nor reads as names from code: names, an author's initials, an "
+        "institution's acronym, the field's terms (--known CHU QR licence)",
     )
     audit.add_argument(
         "--submission-residue",

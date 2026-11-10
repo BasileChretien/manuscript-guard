@@ -27,7 +27,7 @@ KINDS = {
     "abbreviation-unused": "Abbreviations defined and not used again",
     "spelling-variant": "Words in the other English",
     "spelling-mixed": "British and American spelling mixed",
-    "spelling-not-as-declared": "Words not in the English paper.yaml declares",
+    "spelling-not-as-declared": "Words not in the English chosen for the paper",
     "notation-interval": "Intervals written two ways",
     "notation-sign-spacing": "Signs spaced two ways",
     "notation-p-symbol": "P values written two ways",

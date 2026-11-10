@@ -25352,6 +25352,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
     "Results", where pandoc prints "C#" and "Results {-}", the span's text. Pinned by
     `tests/test_text.py::test_a_mark_inside_a_span_is_read_as_the_heading_s_own`.
 
+- **A known word is matched as it is typed.** `audit --known` takes every word after it up
+  to the next option, as `--against` does, so `audit main.docx --known CHU supplement.docx`
+  reads the supplement as a known word and does not audit it, and `audit --known CHU
+  main.docx` has nothing to audit and says so. Accepted.
+  - An abbreviation is known in the case it is typed in, as `known_abbreviations` is: "qr"
+    leaves QR reported, though a spelling is matched whatever its case. A word typed with
+    its full stop, "QR.", is not QR. Accepted.
+  - A known word with a dot inside, "L.AS", is never matched, since G14 reads "L" and "AS"
+    as two words. Accepted.
+  - The page drops a word in "Words to leave alone" that opens with "-", which the command
+    line would read as an option, and does not say so. Accepted.
+
 Closed since, and why each mattered (an open gap goes above this line):
 
 - **A bold word that went on into its sentence across a line break was a label

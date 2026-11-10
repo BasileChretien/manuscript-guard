@@ -109,6 +109,8 @@ def test_a_pdf_is_refused_where_it_cannot_be_written(
     # A stroke negates its sign, and is said, not dropped (fix round of #618).
     ("p " + chr(0x2270) + " 0.05", "p not <= 0.05"),
     ("<" + chr(0x338), "not <"),
+    ("p <" + chr(0x20D2) + " 0.05", "p not < 0.05"),
+    ("so" + chr(0x338) + "ster", "so?ster"),
     # A mark no letter takes, x-bar: "?", never the letter alone.
     ("x" + chr(0x304), "x?"),
 ])  # fmt: skip

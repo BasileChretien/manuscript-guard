@@ -78,9 +78,13 @@ def printable(text: str) -> str:
             char.encode("cp1252")
             out.append(char if char >= " " or char == "\n" else " ")
         except UnicodeEncodeError:
+            if char in (chr(0x338), chr(0x20D2)) and out and out[-1][-1:] in tuple("<>=~"):
+                out[-1] = "not " + out[-1]  # a stroke typed after a sign no form composes
+                continue
             parts = unicodedata.normalize("NFKD", char)
             # A stroke through a sign negates it, as in U+2270: said, never dropped.
-            negated = "not " if {chr(0x338), chr(0x20D2)} & set(parts) else ""
+            negated = ("not " if {chr(0x338), chr(0x20D2)} & set(parts)
+                       and not unicodedata.combining(char) else "")
             bare = negated + "".join(SUBSTITUTES.get(part, part) for part in parts
                                      if not unicodedata.combining(part))  # fmt: skip
             try:

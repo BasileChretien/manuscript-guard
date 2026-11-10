@@ -25286,6 +25286,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     quotation marks, and the property holds them to the margins by the same metrics; a
     word wider than the column is cut by measuring each of its beginnings, slow past some
     thousands of characters (round 1 of #618). Accepted.
+  - A mark no letter takes prints "?", so Python's lower case of "İ", "i" and U+0307,
+    prints "i?"; a sign printed as "not" and itself is glued to a word typed against it,
+    "pnot <=0.05"; and a heading is kept with the next level's only where that one takes a
+    line, so a kind's title of two lines can leave "Writing and language" at a page's foot
+    (fix rounds of #618). Accepted.
 
 - **A commented copy places a finding by its quote.** `audit --commented` comments the first
   paragraph that holds a finding's quote, so a quote that two paragraphs hold word for word

@@ -27034,6 +27034,28 @@ def test_a_glossary_entry_the_paper_no_longer_uses_is_caught(project: Path) -> N
     assert language_findings(project) == [("abbreviation-unused", line_of(listed, "PRR:"))]
 
 
+def test_a_list_of_abbreviations_typed_with_no_title_is_read_and_its_slip_caught(
+    project: Path,
+) -> None:
+    """The same list typed as Word papers have it, at the end of the Discussion: a sentence
+    and not a heading opens it, letters' labels in bold group its items. Read as text, each
+    item was a use of its short form and PRR was reported undefined; read as the list, only
+    the unused entry is reported, and an abbreviation in the paragraph after the list is
+    still caught."""
+    mended = with_ror_defined(project)
+    listed = mended.replace(
+        "# Data availability",
+        "List of abbreviations used in the text.\n\n**P--R**\n\n- **PRR**: proportional "
+        "reporting ratio\n\n- **ROR**: reporting odds ratio\n\nThe UMC data were used.\n\n"
+        "# Data availability",
+    )
+    main_md(project).write_text(listed, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(listed, "The UMC")),
+        ("abbreviation-unused", line_of(listed, "**PRR**")),
+    ]
+
+
 def test_a_legend_restates_and_a_pasted_definition_is_still_caught(project: Path) -> None:
     """A figure's legend, typed in Word, restates the definition, as a legend that has to
     stand alone does; the definition pasted again in the Discussion is still given twice."""

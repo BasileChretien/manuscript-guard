@@ -71,8 +71,9 @@ def project(project: Path) -> Path:
 def test_the_example_s_latest_round_reads_the_manuscript_and_supersedes_the_rest(
     built_example: Path,
 ) -> None:
-    """The example as committed: its latest round reads the manuscript as it stands, and
-    each record of every round before it is superseded rather than left stale."""
+    """The example as committed: its latest round reads the manuscript as it stands; each
+    earlier record that read a file as it no longer stands is superseded rather than left
+    stale, and so is each earlier round that read none of a file the manuscript has now."""
     report = report_for(built_example, submission=True)
     assert report.ok, report.render(built_example)
     review = built_example / "review"
@@ -92,14 +93,28 @@ def test_the_example_s_latest_round_reads_the_manuscript_and_supersedes_the_rest
 
     now = file_digests(load_project(built_example)[0])
 
+    def read(path: Path) -> dict:
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+
     def current(path: Path) -> bool:
-        files = yaml.safe_load(path.read_text(encoding="utf-8")).get("file_sha256") or {}
-        return bool(files) and all(now.get(name) == digest for name, digest in files.items())
+        """As the gate reads a record: by its files where it lists them, else by the
+        manuscript's digest."""
+        files = read(path).get("file_sha256") or {}
+        if not files:
+            return read(path).get("manuscript_sha256") == digest
+        return all(now.get(name) == kept for name, kept in files.items())
+
+    def missed(number: int) -> bool:
+        """Whether a round that lists its files read none of a file the manuscript has now."""
+        listed = [set(read(path).get("file_sha256") or {})
+                  for path in (review / f"round-{number}").glob("*.yaml")]  # fmt: skip
+        return any(listed) and bool(set(now) - set().union(*listed))
 
     superseded = {f.path for f in report.findings if f.code == "review-superseded"}
     records = {path for path in superseded if path.suffix == ".yaml"}
     assert records == {path for path in earlier if not current(path)}, report.render(built_example)
-    assert all(path.parent == review for path in superseded - records), superseded
+    rounds = {review / f"round-{number}" for number in range(1, latest) if missed(number)}
+    assert rounds and superseded - records == rounds, superseded
     assert not failures(report), report.render(built_example)
 
 

@@ -1,0 +1,17 @@
+schema: manuscript-guard/panel/1
+round: 13
+opened_on: 2026-11-10
+manuscript_sha256: 51cbe3d5b8ed84412e674ce403e72e8d9455eab505782bc77412e119d53cca6f
+blinded: false
+rationale: 'A revision round for the positive control. Round 12 found that its interval held
+  the null, so it would have passed an analysis that finds nothing. The controls now take
+  the third comparator and hepatic injury, ask the interval of each control that expects an
+  effect to leave the null out, and stand in a section of the supplement of their own, The
+  controls of the analysis, rather than in the main text. The same remit reads the change.'
+reviewers:
+- id: pharmacoepidemiologist
+  role: Pharmacoepidemiologist
+  remit: Whether the design can answer the question asked. Case and exposure definitions,
+    denominators, the difference between disproportionate reporting and risk, and
+    the biases specific to spontaneous reporting.
+  why: Its round-12 comment on the positive control is what the change answers.

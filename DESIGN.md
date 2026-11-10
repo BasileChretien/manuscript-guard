@@ -4772,6 +4772,20 @@ labels are bold by journal requirement, so counting them flagged the journal's h
 they are exempt. And technical senses are exempt by pattern, so "robust standard errors"
 does not count towards the vocabulary rate.
 
+A third came from the author's own paper, typed in Word with no heading style (2026-11-10):
+74 bold runs in 7310 words, a boldface warning, and nearly all of them structure, its
+section titles, its letters' labels and list of abbreviations, its run-in labels and its
+legends' labels. The papers the threshold was measured on were read as Markdown, whose
+headings and lists hold no bold, so that bold is exempt too: a paragraph wholly in bold, and
+a label that opens a paragraph and ends on a colon or a stop inside its bold or right after
+it, each at a paragraph's start and not at a line's, since a manuscript is hard-wrapped and
+emphasis can open a line in the middle of its paragraph (round 1 of #614); and a list
+item's term, a short form with no space followed by its colon, equals sign, tab or spaced
+dash, "- **AIC**: ...". Bold that opens a paragraph and goes on into a sentence, bold inside
+a sentence, bold after a list item's first word and a list's lead-in of words, "-
+**Improved efficiency**: ...", as a model writes one, still count. On the author's paper the
+warning is gone, a handful of bold runs being left.
+
 A finding's line is counted in the file as read. The phrase and attribution rules match in a
 copy with the comments, the listings and the front matter's machinery blanked, line ends
 included, and an offset is the same in both. Counted in the copy, the line fell short by
@@ -5111,6 +5125,20 @@ unless a heading stands there. The label's whole text has to name a statement, a
 statement's heading does (`STATEMENT_TITLE`), and be one of these: "**Contributions of
 this study**" is the paper's own, and so is a label inside a paragraph.
 
+**An author's initials in a bracket are a person.** A paper names who did what in its
+Methods by the initials of its contributions statement: "by a single author (CD)", "coded
+(JB and CD)" (the author's paper, 2026-11-10). Each word of two to four capitals in a
+contributions statement, under a heading or, in Markdown, after a bold label that names one,
+is an author's initials, and "J-MD" is taken whole and as "JMD", never as its parts. Where such
+initials stand in a bracket, round or square, that holds nothing but them, joined by
+commas, semicolons, "&" or "and", they are not reported, wherever in the paper. Anywhere
+else they are read as any capitals are: an author whose initials are AE would otherwise
+hide every undefined AE, the adverse events, so "AEs were frequent" is still reported
+(Basile, 2026-11-10, choosing this over every use). A statement of acknowledgements, of
+funding or of interests alone names no initials, since their capitals are institutions as
+often as people, and JAMA's "Additional contributions", its acknowledgements, is one of
+those; Known gaps says where one is read as a contributions statement.
+
 **What may stand undefined is data.** `data/abbreviations.yaml` holds a short list of what
 general English reads as a word or a name, `DNA`, `UK`, `DOI`, and a few unit symbols with
 two capitals together, `MHz`, `GPa`. It is short on purpose. A long list would decide for
@@ -5149,6 +5177,21 @@ The glossary's lines are not uses, so an entry nothing else uses is unused. Jour
 ask for the list and for the expansion at first use as well, so a definition in the text that
 gives the glossary's meaning again is not reported as given twice; a second one in the text
 is, and one that gives another meaning is reported as two meanings.
+
+**A glossary may have no title.** A paper typed in Word often opens its list with a sentence
+and no heading: "List of abbreviations and acronyms used in the text, tables, and figures.",
+then letters' labels in bold, "**A--C**", and an item for each entry (the author's paper,
+2026-11-10). Read as text, every item was a use of its short form, so each entry the text
+did not define again was reported undefined. A paragraph that opens with "List of
+abbreviations", "List of acronyms", "Abbreviations", "Acronyms" or "Glossary", in any case
+and past the marks of bold or italics, opens a glossary where an entry follows it. The
+glossary runs over the paragraphs that open with an entry and the labels of letters between
+them, alone in their paragraph or as a heading, "### L". It ends with the last of them that
+has an entry shaped like an abbreviation: "- **df**: degrees of freedom" is read where it
+stands among the others, and "Note: the scores were ..." after the last entry is text. Any
+other paragraph, and any other heading, ends it before it, so the text after a list is read
+as text. A paragraph that names abbreviations without opening on the word, "We list the
+abbreviations below.", opens none, and nor does one with no entry after it.
 
 **A caption may restate a definition.** A legend has to be read alone. A definition in a
 Markdown table's caption (`Table: ...`, or `: ...` beside a table), in a paragraph that opens
@@ -5473,6 +5516,19 @@ count and the first few examples, since the remedy is one habit and not a list o
 The Brochure asks for the same space before "%" (section 5.4.7), and there most medical
 journals do otherwise, so "%" is held to consistency alone. Basile chose both on
 2026-10-08.
+
+**A space left out around a number is not a matter of counting either.**
+`notation-space-missing` reports a number typed against the word after it, "0.41points",
+"10hours", an ordinal's included, "2ndyear", and a word typed against a signed number,
+"to+0.77": no house style writes these, and the author's Abstract had eight of them
+(2026-11-10). The word is three lower-case letters or more, so a unit closed up stays
+`notation-unit`'s, and one of the lower-case units of three letters or more, "30min", is
+left to it; its plural, "5mins", which `notation-unit` does not read, is a space left out
+(round 1 of #613). A stop ends the number after a word, "to+0.77.", and a bound value is
+read there too. A number that stands inside a name, "p53mutant", "COVID19cases", is known
+by the letter before it; a number in hexadecimal, "0xff", is left alone. The audit's
+Abstract against Results reads the numbers of such words, and of pieces closed up by a
+round bracket, a colon or a semicolon, "CI):+0.05", "45%(95%CI:40-50%)" (below).
 
 **A unit is known by name, and the short names are few.** The symbols read are listed in
 `gates/notation.py`. Of those of one letter only `g` and `h` are among them: "5m" is as
@@ -8839,7 +8895,8 @@ The example carries one control of each kind. `00_simulate.py` writes, beside th
 dataset of its own with an effect planted, so that the reports, and every number the example
 binds, stay as they are; `01_disproportionality.py` puts it through the function that gives
 the ratio, and draws a positive and a negative control from the reports, their expected
-values from the generator's rates. The Methods bind each. The example's plan was frozen on
+values from the generator's rates. A supplementary file of their own describes them and binds
+each, the main text left as it was (Basile, 2026-11-10). The example's plan was frozen on
 2026-10-19 with no controls in it, so its controls are late: they are declared in a block of
 their own section, and its Deviations say in words, naming each key, that they were added
 after the first results, as a real project adding controls then would say it. G12 reads
@@ -9901,7 +9958,19 @@ the next, as G8 does, and took a file for a supplement by its name, which guesse
 the Methods, the Results, every table of every file, and the whole of a file whose document
 has no Abstract, a supplement. Each number of the Abstract the classifier leaves unexplained
 is looked for in what the paper reports: found as printed, found as a rounding of a number
-printed to more places ("53%" for "53.3%", the author, 2026-10-28), or not found. The section
+printed to more places ("53%" for "53.3%", the author, 2026-10-28), or not found. A number
+a space was left out of is read, as no other number with letters in it is: one typed
+against a word, "+0.41points", against a signed number, "to+0.77", and an atom closed up
+by round brackets, colons or semicolons whose every piece is a number, a range, a level
+named "95%CI", one of those shapes or a label of letters alone: each piece's number is
+kept and a label skipped, "CI):+0.05", "students(66%", "45%(95%CI:40-50%)" giving 45%,
+95%, 40 and 50; a piece of any other shape, a label with a digit in it, "CD4:350", leaves
+the atom read whole (round 2 of #613) (the
+author's Abstract, 2026-11-10, whose numbers were all reported not found for want of a
+space). An ordinal with its own suffix against a word a rank takes, "2ndyear",
+"21stcentury", "11thgrade", is not looked for; any other word after a suffix's letters is a
+word, so "312students" is read (round 1 of #613, where any word opening with "st", "nd",
+"rd" or "th" passed its number unread). The section
 says how many of each, lists the roundings and the numbers not found, and ends with what a
 match is worth against what the paper reports, the roundings counted in
 (`measure_discrimination`). A conflict is an exact pairing only: an interval of the Abstract
@@ -20146,7 +20215,18 @@ Open, recorded as each change landed:
   and the em-dash rates leave out a table of each of pandoc's four kinds
   (`text.tables.table_lines`), but read as prose a table with one column, and a headless
   multiline table opened by a line of dashes in one run, which pandoc reads as a table:
-  their bold and their dashes are counted. Accepted.
+  their bold and their dashes are counted. Bold that is a manuscript's structure is not
+  counted, by its shape alone (2026-11-10): a sentence of emphasis set as a paragraph of its
+  own, "**This matters.**", and a run-in emphasis with a colon, "**Importantly:** the dose
+  ...", are taken for a heading and a label and pass. The threshold was measured with the
+  corpus's run-in labels counted, JATS's `<bold>Participants.</bold>` coming through
+  pandoc as "**Participants.**", which the rule now leaves out, so it is a little more
+  lenient than its percentile says; it was not measured again (round 1 of #614). A
+  paragraph's start is read only after a blank line, so a label on the line under a
+  heading, "## Methods" over "**Data collection:** ...", is counted, as on main. A list of
+  abbreviations with its colon inside the bold, "- **AIC:** Akaike ...", or with a space
+  alone after it, is counted, as on main; and a model's lead-in of one word,
+  "- **Scalability**: ...", passes as a list's short form (round 2 of #614). Accepted.
 - **A small count is found where it is bound, by its value.** A count printed in an emitted
   table, a percentage that gives a small count away with its denominator, and a count typed
   rather than bound are not read; G2 fails a typed count for being typed. A whole number
@@ -22061,11 +22141,27 @@ Open, recorded as each change landed:
     and `tests/test_language.py::test_what_is_not_an_abbreviation_is_not_reported`.
   - A name in capitals is reported like an abbreviation: a trial (`KEYNOTE-189`), a package
     (`SAS`), an agency. The project lists those it means to leave. So are the initials of
-    a reviewer named in the Methods, "(JB, CD)", and a US state after a manufacturer's
-    town, "Cary, NC". An author's initials are not exempted from `authors.yaml`, because
-    initials are two or three capitals and collide with abbreviations: an author named Ada
-    Example would hide every `AE`.
+    a reviewer named in the Methods, "(JB, CD)", that no contributions statement names,
+    an author's initials outside a bracket of initials, "CD interviewed them", and a US
+    state after a manufacturer's town, "Cary, NC". An author's initials are not read from
+    `authors.yaml`, because initials are two or three capitals and collide with
+    abbreviations: an author named Ada Example would hide every `AE`; those the
+    contributions statement names stand only in a bracket of initials. A bracket that
+    holds an author's initials and an abbreviation that is one too, "(AE, CD)" by authors
+    AE and CD, is read as theirs.
     Pinned by `tests/test_language.py::test_a_realistic_manuscript_is_reported_as_design_md_says`.
+  - The initials a contributions statement names are every word of two to four capitals
+    in it, so an institution's short acronym there is taken for a person: "CD recruited
+    patients at the CHU" hides an undefined "(CHU)" alone in a bracket elsewhere. A heading
+    or a label that names the contributions with another statement, "Funding and author
+    contributions", is a contributions statement, its funders' capitals initials; and a
+    heading is not held to `STATEMENT_TITLE` as a label is, so "## Contributions of this
+    study" is one too. A heading's statement runs to the next heading of its level or
+    above, so a reference list typed straight after it with no heading between, a LaTeX
+    `thebibliography` or an unmarked Markdown list, gives its authors' initials and a
+    journal's capitals ("BMJ") as initials. In LaTeX only a heading opens a contributions
+    statement; a `\textbf{Authors' contributions}` label opens none, and its initials are
+    reported as on main (round 1 of #611). Accepted.
   - The formula rule has two edges. A formula with no count is still reported, `HCl`,
     `NaOH`, `KOH`, `HCN`, `NO`, as is organic shorthand, `EtOAc`, `MeOH`, a group in
     brackets, `(NH4)2SO4`, which reports `2SO4`, and a charge, `SO42-`. And a name spelt in
@@ -22108,15 +22204,38 @@ Open, recorded as each change landed:
     as `abbreviation-redefined`. A legend is a caption only where it opens with the display
     and a stop, a colon or a dash: "Figure 1 The odds by year" is text, and a definition it
     repeats is reported.
-  - A glossary is found only under a heading. One under a bold line, in a manuscript with
-    no heading, is read as text. Its entries are read one to a line, and "ROR reporting odds
+  - A glossary is found under a heading, or after a paragraph that opens with its name
+    and has an entry after it: a bold line, "**Abbreviations**", in a manuscript with no
+    heading, is read as such a paragraph. In a LaTeX file only a heading opens one. A
+    glossary with no title ends at the first paragraph that is neither an entry nor a
+    letter's label, so a sentence between two groups of its entries, "Statistical terms
+    follow.", leaves the second group read as text; and a line of the text right after its
+    last entry that opens like an entry with an abbreviation, "CI: we computed it ...", is
+    taken into it. A paragraph that opens with its name and holds its entries itself,
+    "Abbreviations: CI = confidence interval; OR = odds ratio", opens none where no entry
+    follows it; where one does, OR is read, and CI is lost as the long form of
+    "Abbreviations". Round 1 of #610 found four more edges of the glossary with no title.
+    A table straight after its last entry is taken into it where a row's first cell is
+    shaped like an abbreviation, so "| BMI | 24.1 (3.2) |" defines BMI and the table's
+    cells are no uses; a caption typed before it as pandoc's "Table: ..." line does not
+    stop that (it reads as an entry), where a legend "Table 1. ..." does. A paragraph that
+    opens on one word and a space and holds an ampersand, "NIH & UMC data were pooled.",
+    reads as a LaTeX table's row, since a Markdown file is its own typed text: after the
+    last entry it is taken in where the word is shaped like an abbreviation, and between
+    two groups, "Statistical terms & definitions follow.", it does not end the glossary. A
+    sentence of the text that opens on the word, "Abbreviations were spelt out at first
+    use.", opens a glossary where the next paragraph is shaped like an entry, "PRR: we
+    computed it", and PRR is then defined by its prose. And a run of thousands of
+    paragraphs that each open on the word and are each an entry, "Glossary: terms used",
+    is read in time that grows as its square.
+    A glossary's entries are read one to a line, and "ROR reporting odds
     ratio" only in a table or a definition list: a paragraph of "ROR, reporting odds ratio;
     PRR, ..." is not read, and a grid table's long form over several lines keeps its first.
     A glossary whose section runs on into the next file is cut at the end of its own.
     A run-on glossary paragraph wrapped so that one word stands alone above a line that
     opens with a colon and a space is cut before that word, which is read as a
     definition-list term: "PRR: proportional reporting" / "ratio" / ":   used in ..."
-    gives PRR "proportional reporting".
+    gives PRR "proportional reporting". Accepted.
   - A glossary's or a caption's long form is compared with the text's as written: "CI =
     95% confidence interval" beside "confidence interval (CI)" is reported as two meanings.
   - SD on the statistical list hides an undefined SD that means stable disease. Accepted.
@@ -22348,6 +22467,22 @@ Open, recorded as each change landed:
   - "37°C" is reported, as the SI Brochure has it, in a manuscript for a journal that
     prints it closed. There is no setting to say so; the journal profile's style block is
     where one will go. Accepted.
+  - `notation-space-missing` reads a word of three lower-case letters or more after a
+    number, so "5am" and "3pm" pass, and a capital after it too, "10Hours". A word typed
+    against a hyphen-minus, "to-0.77", is read as a range and passes, and a word typed
+    against a bracket, "students(66%)", is not this finding's. A word of the field that
+    stands against its number by habit is reported: "5aza", "3prime", "21mer", "17beta",
+    "5bis", "24hrs", "65yrs", "5sec", and an ordinal of another language, "2nde", "1ere".
+    In the Abstract against Results only the shapes it names are read, so "students66%"
+    stays one atom and is reported not found; G14's exclusions are not applied there, so
+    "30min" gives 30 and "0xff" gives 0; and a lone small number closed up against a label,
+    "Appendix:1", "Table(2", "version:4", is read and most likely found (round 1 of #613).
+    A rank against a word not in its short list, "3rdparty", "4thventricle", is read as a
+    number. A label with a digit in it closed up against its number, "CD4:350",
+    "HbA1c:7.5%", "I2:45%", leaves the atom read whole and reported not found; a name of
+    digits and capitals in a bracket, "lamivudine(3TC)", "mercaptopurine(6MP)", is taken for
+    a level and gives its digit, most likely found; and a square bracket closes nothing up,
+    so "students[66%" is read whole (round 2 of #613). Accepted.
   - A space where the SI has none, "30 °" for an angle, is not reported.
   - How a bound value is printed is not read: ".05" beside "0.05", "4,100" beside "4100",
     a decimal comma. Accepted.

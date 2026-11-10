@@ -203,6 +203,13 @@ def test_under_another_hash_seed_a_reading_answers_the_same(
 #: is a mutant that the review of #181 found alive: the offset of a quotation's lines losing
 #: one character at each line break.
 CHANGED = {
+    "a glossary a sentence opens is not read": (
+        "gates/glossary.py",
+        '    r"[ \\t]*[*_]{0,3}(?:list[ \\t\\n]+of[ \\t\\n]+)?(?:abbreviations|acronyms|glossary)'
+        '\\b",\n',
+        '    r"(?!)",\n',
+        "abbreviations",
+    ),
     "the offset of a quotation": (
         "gates/vocabulary.py",
         "        offset += len(line) + 1\n",
@@ -238,6 +245,12 @@ CHANGED = {
         '_HOLDS_A_DOLLAR = "`<[@"\n',
         '_HOLDS_A_DOLLAR = "`<@"\n',
         "tex outside maths",
+    ),
+    "the initials of a contributions statement not read": (
+        "gates/language.py",
+        "_INITIALS_SPAN = range(2, 5)\n",
+        "_INITIALS_SPAN = range(2, 2)\n",
+        "abbreviations",
     ),
     "fewer words before one finding": (
         "gates/spelling.py",
@@ -340,6 +353,18 @@ CHANGED = {
         "                path=passage.path,\n",
         "                path=paper,\n",
         "vocabulary",
+    ),
+    "a word against a signed number is no space left out": (
+        "gates/notation.py",
+        '    r"\\b[a-z]{2,}[+\\N{MINUS SIGN}](?:" + _TYPED + "|" + VALUE + r"+)(?!\\w|\\.\\d)"\n',
+        '    r"(?!)"\n',
+        "notation",
+    ),
+    "a number closed up against a label is read whole in the Abstract": (
+        "auditing/abstract.py",
+        '_CLOSED_UP = re.compile(r"[():;]+")\n',
+        '_CLOSED_UP = re.compile("(?!)")\n',
+        "abstract against results",
     ),
 }
 

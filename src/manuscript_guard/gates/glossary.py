@@ -4,6 +4,10 @@ Two places. A glossary, the list of abbreviations a journal asks for, defines ea
 entries where it stands. A caption or a legend has to be read alone, so it may restate a
 definition the text has given, and a definition there is not given twice.
 
+A glossary stands under a heading that names it (`sections`), or opens with a paragraph of
+its own that does, "List of abbreviations and acronyms used in the text.", as a paper typed
+in Word often has it, with no title (`opened`).
+
 Both are read in the text G14 reads its abbreviations in, offsets kept: a Markdown file
 with what is not a sentence made spaces, or a LaTeX file's words. Where a form depends on
 what was typed, a table's row or a definition list's item, the file as typed (`raw`, at
@@ -13,7 +17,7 @@ the same offsets) is looked at too.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 #: The headings a glossary stands under, as words of a title, case aside. Their own words:
@@ -83,6 +87,128 @@ def sections(
         stop = next((later[0] for later in ordered[index + 1 :] if later[2] <= level), length)
         spans.append((end, stop))
     return spans
+
+
+#: The words a paragraph opens with when it opens a glossary that has no title: "List of
+#: abbreviations and acronyms used in the text, tables, and figures.", "Abbreviations used
+#: in this paper", "Glossary of terms". Case aside, past the marks of bold or italics, at
+#: the paragraph's start only: "We list the abbreviations below" opens none.
+_OPENS = re.compile(
+    r"[ \t]*[*_]{0,3}(?:list[ \t\n]+of[ \t\n]+)?(?:abbreviations|acronyms|glossary)\b",
+    re.IGNORECASE,
+)
+#: A label a glossary groups its entries under: a capital letter, or two with a dash between,
+#: alone in its paragraph, in bold or not: "**A--C**", "D–I", "L".
+_LETTERS = re.compile(
+    r"[ \t]*[*_]{0,3}[A-Z](?:[ \t]*(?:-{1,3}|\N{EN DASH}|\N{EM DASH})[ \t]*[A-Z])?"
+    r"[*_]{0,3}[ \t]*"
+)
+
+
+def is_letters(title: str) -> bool:
+    """Whether a paragraph's or a heading's text is a label a glossary groups its entries
+    under, a letter or a range of letters: "A--C", "D–I", "L"."""
+    return _LETTERS.fullmatch(title.strip()) is not None
+
+
+def opened(
+    prose: str,
+    raw: str,
+    headings: Iterable[tuple[int, int, int, str]],
+    shaped: Callable[[str], bool],
+) -> list[tuple[int, int]]:
+    """The glossaries of `prose` that a paragraph of their own opens, with no heading over
+    them, each from where that paragraph starts to where its last entry ends.
+
+    The paragraph opens with "List of abbreviations", "List of acronyms", "Abbreviations",
+    "Acronyms" or "Glossary" (`_OPENS`). The glossary runs over the paragraphs after it that
+    open with an entry (`entries`), and over the labels between them, a letter or a range
+    alone in its paragraph ("**A--C**"), and it ends with the last of those paragraphs that
+    has an entry whose short form is `shaped` like an abbreviation. So "- **df**: degrees of
+    freedom", an item of its own as Word's list writes it, is read where it stands among
+    them, and "Note: the scores were ..." after the last entry is text. It ends before the
+    first paragraph that is neither, and at a heading whose title is no such label, so the
+    text after it is read as text. A paragraph that opens with those words and has no such
+    entry after it opens none. `headings` are given as `sections` takes them."""
+    stops = _stops(headings)
+    paragraphs = _paragraph_spans(prose)
+    spans: list[tuple[int, int]] = []
+    index = 0
+    while index < len(paragraphs):
+        start, end = paragraphs[index]
+        if _OPENS.match(prose, start) is None:
+            index += 1
+            continue
+        last, ended, following = None, end, index + 1
+        while following < len(paragraphs):
+            begin, finish = paragraphs[following]
+            if any(ended <= stop < begin for stop in stops):
+                break
+            if not is_letters(prose[begin:finish]):
+                found = _opening_entries(prose, raw, (begin, finish))
+                if not found:
+                    break
+                if _ends_here(found, shaped):
+                    last = (following, finish)
+            ended, following = finish, following + 1
+        if last is None:
+            index += 1
+            continue
+        spans.append((start, last[1]))
+        index = last[0] + 1
+    return spans
+
+
+def _stops(headings: Iterable[tuple[int, int, int, str]]) -> list[int]:
+    """Where the headings stand that end a glossary with no title: all but a letter's, "###
+    A--C", which groups its entries."""
+    return sorted(start for start, _end, _level, title in headings if not is_letters(title))
+
+
+def _ends_here(found: list[Entry], shaped: Callable[[str], bool]) -> bool:
+    """Whether a paragraph of entries may be a glossary's last: where one of them is `shaped`
+    like an abbreviation. "- **df**: degrees of freedom" is read among others, and "Note:
+    the scores were ..." after the last is not taken into it."""
+    return any(shaped(entry.short) for entry in found)
+
+
+def _opening_entries(prose: str, raw: str, span: tuple[int, int]) -> list[Entry]:
+    """The entries of the paragraph over `span`, where its first line opens one or is a
+    table's line: "- **AIC**: Akaike Information Criterion" has one, and so has a table
+    whose header row is "| Abbreviation | Meaning |"; "We used the AIC: it ..." none."""
+    begin, finish = span
+    first_line_end = prose.find("\n", begin, finish)
+    first_line_end = finish if first_line_end < 0 else first_line_end
+    found = entries(prose, raw, span)
+    if not found:
+        return []
+    tabled = _TABLE_LINE.match(prose, begin) is not None
+    return found if tabled or found[0].at < first_line_end else []
+
+
+def _paragraph_spans(prose: str) -> list[tuple[int, int]]:
+    """Where each paragraph of `prose` runs, a blank line between two, leaving out the ones
+    that hold only spaces, which a heading hidden from the prose leaves."""
+    spans, start = [], 0
+    for gap in (*_BLANK.finditer(prose), None):
+        end = len(prose) if gap is None else gap.start()
+        if prose[start:end].strip():
+            spans.append((start, end))
+        if gap is not None:
+            start = gap.end()
+    return spans
+
+
+def united(spans: Iterable[tuple[int, int]]) -> tuple[tuple[int, int], ...]:
+    """`spans` in order, those that overlap or touch made one, as halving them needs: a
+    glossary a paragraph opens under a heading that names one is the heading's."""
+    out: list[list[int]] = []
+    for start, end in sorted(spans):
+        if out and start <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], end)
+        else:
+            out.append([start, end])
+    return tuple((start, end) for start, end in out)
 
 
 def entries(prose: str, raw: str, span: tuple[int, int]) -> list[Entry]:

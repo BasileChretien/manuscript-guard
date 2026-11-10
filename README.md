@@ -35,7 +35,7 @@ On the worked example: one binding of the abstract replaced by the number it sto
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/demo-dark.svg">
   <img src="docs/img/demo-light.svg" width="860"
-       alt="manuscript-guard check prints [FAIL] G2 manuscript/main.md:11:17, '4,000' is not bound to any source. The author replaces 4,000 with {{results.cohort.n_reports}} on line 11, and check runs again: stage: drafting (writing the manuscript against results that exist); numerical provenance, checked: G2, G3, G7, G8: 0 failing, 1 warning; and its last line, 0 failing, 14 warnings.">
+       alt="manuscript-guard check prints [FAIL] G2 manuscript/main.md:11:17, '4,000' is not bound to any source. The author replaces 4,000 with {{results.cohort.n_reports}} on line 11, and check runs again: stage: drafting (writing the manuscript against results that exist); numerical provenance, checked: G2, G3, G7, G8: 0 failing, 1 warning; and its last line, 0 failing, 16 warnings.">
 </picture>
 
 ## What it does

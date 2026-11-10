@@ -71,8 +71,9 @@ def project(project: Path) -> Path:
 def test_the_example_s_latest_round_reads_the_manuscript_and_supersedes_the_rest(
     built_example: Path,
 ) -> None:
-    """The example as committed: its latest round reads the manuscript as it stands, and
-    each record of every round before it is superseded rather than left stale."""
+    """The example as committed: its latest round reads the manuscript as it stands; each
+    earlier record that read a file as it no longer stands is superseded rather than left
+    stale, and so is each earlier round that read none of a file the manuscript has now."""
     report = report_for(built_example, submission=True)
     assert report.ok, report.render(built_example)
     review = built_example / "review"
@@ -85,8 +86,36 @@ def test_the_example_s_latest_round_reads_the_manuscript_and_supersedes_the_rest
         for number in range(1, latest)
         for path in (review / f"round-{number}").glob("*.yaml")
     }
+    # A record whose every file is as it read it is not stale, so nothing supersedes it: round
+    # 11 read main.md and S1 as they stand. What the earlier rounds did not read, the controls'
+    # S2 (PR 3 of wave 3), each round is told of as a whole, superseded too.
+    from manuscript_guard.gates.review import file_digests
+
+    now = file_digests(load_project(built_example)[0])
+
+    def read(path: Path) -> dict:
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+    def current(path: Path) -> bool:
+        """As the gate reads a record: by its files where it lists them, else by the
+        manuscript's digest."""
+        files = read(path).get("file_sha256") or {}
+        if not files:
+            return read(path).get("manuscript_sha256") == digest
+        return all(now.get(name) == kept for name, kept in files.items())
+
+    def missed(number: int) -> bool:
+        """Whether a round that lists its files read none of a file the manuscript has now."""
+        listed = [set(read(path).get("file_sha256") or {})
+                  for path in (review / f"round-{number}").glob("*.yaml")]  # fmt: skip
+        return any(listed) and bool(set(now) - set().union(*listed))
+
     superseded = {f.path for f in report.findings if f.code == "review-superseded"}
-    assert superseded == earlier and not failures(report), report.render(built_example)
+    records = {path for path in superseded if path.suffix == ".yaml"}
+    assert records == {path for path in earlier if not current(path)}, report.render(built_example)
+    rounds = {review / f"round-{number}" for number in range(1, latest) if missed(number)}
+    assert rounds and superseded - records == rounds, superseded
+    assert not failures(report), report.render(built_example)
 
 
 # ---------------------------------------------------------------- the complete case
@@ -388,7 +417,8 @@ def test_two_files_with_the_same_name_are_both_covered(project: Path) -> None:
     # The supplement is in scope for review too: a finding list describes what the reviewer
     # read, and leaving the supplement out is what lets it change under a review that still
     # claims to cover the manuscript.
-    assert keys == {"main.md", "parts/main.md", "supplementary/S1_code_lists.md"}, keys
+    assert keys == {"main.md", "parts/main.md", "supplementary/S1_code_lists.md",
+                    "supplementary/S2_controls.md"}, keys  # fmt: skip
 
     scope_reviews(project, files={"main.md": file_digests(load_project(project)[0])["main.md"]})
     report = report_for(project, submission=True)

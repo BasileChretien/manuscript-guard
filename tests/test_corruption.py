@@ -4302,7 +4302,8 @@ def test_a_sentence_citing_a_work_with_a_later_version_is_in_scope(project: Path
     found = check_currency(load_project(project)[0], "internal-review").findings
     # The work is cited in the Introduction and in the Discussion: each sentence is a claim.
     assert [(f.code, f.severity, f.line) for f in found] == [
-        ("currency-record-missing", "warn", 19), ("currency-record-missing", "warn", 118)]
+        ("currency-record-missing", "warn", 19), ("currency-record-missing", "warn",
+                                                   _line_of(project, "these data supports a rate"))]
     for finding in found:
         assert f"@{_LOOKED_KEY}, which has a later version" in finding.message
         assert "no entry in literature/currency.yaml" in finding.message
@@ -8495,9 +8496,8 @@ def _declared_said(root: Path, stage: str) -> list[tuple[str, str, int | None]]:
 def test_a_control_the_plan_declares_in_a_form_it_does_not_read_is_said(project: Path) -> None:
     """Items 5 and 11: a control whose rule is none of the three is checked by nothing, so
     the plan is told so at the entry's line, a warning, and a failure at submission."""
-    _plan_edited(project, "## Planned results",
-                 "## Control analyses\n\n" + _CONTROLS.format(rule="close-enough")
-                 + "\n## Planned results")  # fmt: skip
+    # In the example's own block: a second one would be refused whole, at its first line.
+    _declare_controls(project, _CONTROLS.format(rule="close-enough"), frozen=False)
     lines = (project / "design" / "plan.md").read_text(encoding="utf-8").splitlines()
     entry = lines.index("  - key: control.headache") + 1
     assert _declared_said(project, "drafting") == [("plan-declarations-unreadable", "warn",
@@ -8514,11 +8514,14 @@ def test_a_declaration_put_under_the_deviations_is_no_deviation(project: Path) -
     said passed; and it named there every key it declared."""
     from manuscript_guard.gates.design import deviations_said
 
-    block = _CONTROLS.format(rule="holds-null")
+    # Held-out data, which the example does not declare: a second controls block would be
+    # unreadable beside the example's own.
+    block = ("```yaml\nheld_out:\n  - input: data/validation.csv\n"
+             "    validated_by: analysis/03_validate.py\n```\n")  # fmt: skip
     _plan_edited(project, "## Deviations from the plan", f"## Deviations from the plan\n\n{block}")
     assert _plan_said(project) == [("plan-changed-after-results", "warn")]
     plan = (project / "design" / "plan.md").read_text(encoding="utf-8")
-    assert "control.headache" not in deviations_said(plan)
+    assert "data/validation.csv" not in deviations_said(plan)
 
 
 # ----------------------------------------- held-out data, read only by its validation (item 11)
@@ -8756,9 +8759,11 @@ def test_held_out_data_declared_late_or_dropped_since_the_first_results_are_said
 
 
 def _declare_controls(root: Path, block: str, *, frozen: bool = True) -> None:
-    """The control block in the plan, and, with `frozen`, in the plan's frozen copy as well,
-    as though it had been declared before the first results."""
-    _plan_edited(root, "## Planned results", f"## Control analyses\n\n{block}\n## Planned results")
+    """The control block's entries in the plan, first in the example's own block, and, with
+    `frozen`, in the plan's frozen copy as well, as though declared before the first
+    results."""
+    entries = block.split("controls:\n", 1)[1].rsplit("```", 1)[0]
+    _plan_edited(root, "\ncontrols:\n", "\ncontrols:\n" + entries)
     if frozen:
         copy = root / "design" / "plan.frozen.yaml"
         record = json.loads(copy.read_text(encoding="utf-8"))
@@ -8788,12 +8793,29 @@ def _emit_control(root: Path, key: str, point: float, low: float, high: float, *
     write_digest(target)
 
 
-def _controls_said(root: Path, stage: str = "drafting") -> list[tuple[str, str]]:
+def _controls_said(root: Path, stage: str = "drafting",
+                   key: str = "control.headache") -> list[tuple[str, str]]:  # fmt: skip
+    """What G12 says of the one control a case adds; the example's own three are another
+    test's (`test_the_example_s_controls_pass_and_are_reported`)."""
     from manuscript_guard.gates.controls import check_controls
 
     loaded, _ = load_project(root)
     _namespace, results, _literature, _ = load_namespace(loaded)
-    return [(f.code, f.severity) for f in check_controls(loaded, results, stage).findings]
+    return [(f.code, f.severity) for f in check_controls(loaded, results, stage).findings
+            if re.search(rf"\b{re.escape(key)}\b", f.message)]  # fmt: skip
+
+
+def test_the_example_s_controls_pass_and_are_reported(project: Path) -> None:
+    """Item 5: the example carries one control of each kind, declared under Known answers
+    after the first results and named under its Deviations; each passes its rule, and the
+    Results bind it."""
+    from manuscript_guard.gates.controls import check_controls
+
+    loaded, _ = load_project(project)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    report = check_controls(loaded, results, "submission")
+    assert not report.findings, report.render(project)
+    assert report.counts["controls_passed"] == 3
 
 
 _NEGATIVE = _CONTROLS.format(rule="holds-null")
@@ -8937,7 +8959,6 @@ def test_a_control_changed_or_dropped_since_the_first_results_is_said(project: P
     _emit_control(project, "control.headache", 1.6, 1.2, 2.1)
     _add_to_results(project, _REPORTED)
     assert _controls_said(project) == [("control-changed", "warn")]
-    _plan_edited(project, "## Control analyses", "## Elsewhere")
     _plan_edited(project, "controls:", "dropped:")
     assert ("control-changed", "warn") in _controls_said(project)
 
@@ -16564,6 +16585,12 @@ def test_a_finding_of_the_statement_is_placed_in_the_file_that_holds_it(project:
     assert found.path == back
 
 
+def _line_in(path: Path, text: str) -> int:
+    """The line of `path` that holds `text`, so that a case does not pin the twin's layout."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return next(n for n, line in enumerate(lines, 1) if text in line)
+
+
 def test_a_latex_pointer_to_a_table_its_floats_do_not_number_fails(project: Path) -> None:
     """Step 13: G2 holds a LaTeX manuscript's typed pointer to what its floats' captions
     number, as it holds a Markdown one's to what its bindings place."""
@@ -16578,7 +16605,7 @@ def test_a_latex_pointer_to_a_table_its_floats_do_not_number_fails(project: Path
                     encoding="utf-8")  # fmt: skip
     failing = check_pointers_latex(load_project(project)[0]).failures
     assert [(f.gate, f.code, f.path, f.line) for f in failing] == [
-        ("G2", "pointer-to-nothing", main, 93)
+        ("G2", "pointer-to-nothing", main, _line_in(main, "and Table~3, so"))
     ]
 
 
@@ -16601,7 +16628,8 @@ def test_a_latex_pointer_that_counts_a_group_s_parts_as_figures_fails(project: P
     main.write_text(text.replace("is the left.", "is the left, Figure~3 the right."),
                     encoding="utf-8")  # fmt: skip
     failing = check_pointers_latex(load_project(project)[0]).failures
-    assert [(f.code, f.line) for f in failing] == [("pointer-to-nothing", 108)], failing
+    at = _line_in(main, "Figure~3 the right")
+    assert [(f.code, f.line) for f in failing] == [("pointer-to-nothing", at)], failing
 
 
 def test_a_latex_group_whose_floats_are_files_of_their_own_is_one_figure(project: Path) -> None:
@@ -16626,7 +16654,8 @@ def test_a_latex_group_whose_floats_are_files_of_their_own_is_one_figure(project
     main.write_text(text.replace("is the right.", "is the right, Figure~3 the left."),
                     encoding="utf-8")  # fmt: skip
     failing = check_pointers_latex(load_project(project)[0]).failures
-    assert [(f.code, f.line) for f in failing] == [("pointer-to-nothing", 108)], failing
+    at = _line_in(main, "Figure~3 the left")
+    assert [(f.code, f.line) for f in failing] == [("pointer-to-nothing", at)], failing
 
 
 @pytest.mark.parametrize("joined", ["--", " to~"])
@@ -16651,7 +16680,8 @@ def test_a_latex_figure_cited_before_a_range_that_holds_it_fails(
     main.write_text(text.replace("\nFigures~", "\nFigure~\\ref{fig:d} first. Figures~"),
                     encoding="utf-8")  # fmt: skip
     failing = check_pointers_latex(load_project(project)[0]).failures
-    assert [(f.code, f.line) for f in failing] == [("cited-out-of-order", 107)], failing
+    at = _line_in(main, "Figure~\\ref{fig:d} first.")
+    assert [(f.code, f.line) for f in failing] == [("cited-out-of-order", at)], failing
 
 
 def test_a_latex_appendix_s_table_is_not_held_to_the_main_text_s_order(project: Path) -> None:
@@ -25664,8 +25694,10 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     """One record a reviewer, no readers named: nothing about them changed. Rounds three to
-    eleven read revisions with the earlier rounds in front of them, so the eleventh
-    supersedes the ten before it and each says it was not blinded."""
+    thirteen read revisions with the earlier rounds in front of them, so the thirteenth
+    supersedes the twelve before it and each says it was not blinded. Round 11 read main.md
+    and S1 as they stand, so its record is not superseded; the controls' S2, which rounds three
+    to twelve did not read (PR 3 of wave 3), each is told of as a round, superseded too."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
@@ -25673,12 +25705,13 @@ def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
     superseded = [("review-superseded", f"round-{n}")
                   for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1),
-                                  (8, 1), (9, 1), (10, 1))
+                                  (8, 1), (9, 1), (10, 1), (12, 1))
                   for _ in range(many)]  # fmt: skip
+    uncovered = [("review-superseded", "review")] * 10  # rounds three to twelve, each once
     # Sorted as `said` is: "round-10" stands between "round-1" and "round-2".
-    assert said == sorted(superseded + [("round-not-blinded", "review")] * 9), report.render(
-        project)
-    assert report.counts["review_rounds_complete"] == 11
+    assert said == sorted(superseded + uncovered + [("round-not-blinded", "review")] * 11), (
+        report.render(project))  # fmt: skip
+    assert report.counts["review_rounds_complete"] == 13
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:
@@ -27016,6 +27049,28 @@ def test_a_glossary_entry_the_paper_no_longer_uses_is_caught(project: Path) -> N
     assert language_findings(project) == [("abbreviation-unused", line_of(listed, "PRR:"))]
 
 
+def test_a_list_of_abbreviations_typed_with_no_title_is_read_and_its_slip_caught(
+    project: Path,
+) -> None:
+    """The same list typed as Word papers have it, at the end of the Discussion: a sentence
+    and not a heading opens it, letters' labels in bold group its items. Read as text, each
+    item was a use of its short form and PRR was reported undefined; read as the list, only
+    the unused entry is reported, and an abbreviation in the paragraph after the list is
+    still caught."""
+    mended = with_ror_defined(project)
+    listed = mended.replace(
+        "# Data availability",
+        "List of abbreviations used in the text.\n\n**P--R**\n\n- **PRR**: proportional "
+        "reporting ratio\n\n- **ROR**: reporting odds ratio\n\nThe UMC data were used.\n\n"
+        "# Data availability",
+    )
+    main_md(project).write_text(listed, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(listed, "The UMC")),
+        ("abbreviation-unused", line_of(listed, "**PRR**")),
+    ]
+
+
 def test_a_legend_restates_and_a_pasted_definition_is_still_caught(project: Path) -> None:
     """A figure's legend, typed in Word, restates the definition, as a legend that has to
     stand alone does; the definition pasted again in the Discussion is still given twice."""
@@ -27031,6 +27086,22 @@ def test_a_legend_restates_and_a_pasted_definition_is_still_caught(project: Path
     assert language_findings(project) == [
         ("abbreviation-redefined", line_of(again, "ratio (ROR) observed"))
     ]
+
+
+def test_an_author_s_initials_are_no_slip_and_an_institution_s_acronym_is(
+    project: Path,
+) -> None:
+    """The Methods say in brackets who coded the reports, by the initials the contributions
+    statement names the authors by, and name a centre by its acronym that is defined
+    nowhere. The initials are people; the acronym is reported."""
+    mended = with_ror_defined(project)
+    named = mended.replace(
+        "The analysis was run in Python",
+        "The reports were coded by one author (CD) and checked (AB and CD) at the UMC.\n\n"
+        "The analysis was run in Python",
+    ).replace("# Funding", "# Author contributions\n\nAB and CD designed the study.\n\n# Funding")
+    main_md(project).write_text(named, encoding="utf-8")
+    assert language_findings(project) == [("abbreviation-undefined", line_of(named, "the UMC"))]
 
 
 def test_a_paper_with_its_headings_in_bold_is_read_as_one_text(project: Path, capsys) -> None:
@@ -28852,6 +28923,23 @@ def test_a_dose_typed_without_its_space_is_caught(project: Path) -> None:
     ]
 
 
+def test_a_number_typed_against_its_word_is_caught(project: Path) -> None:
+    """The author's Abstract typed "+0.41points for each additional 10hours" (2026-11-10):
+    a space left out, which no house style writes, caught at its first place."""
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    edited = text.replace(old, old + " It rose by 2points for each 10hours of follow-up.")
+    assert edited != text
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert notation_findings(project) == [
+        (
+            "notation-space-missing",
+            line_of(edited, "Several limitations"),
+            "a number and a word run together 2 times: '2points', '10hours'",
+        )
+    ]
+
+
 def test_another_notation_in_a_comment_a_listing_or_a_quotation_is_not_the_manuscript_s(
     project: Path,
 ) -> None:
@@ -30177,8 +30265,9 @@ def _line_of(root: Path, text: str) -> int:
 def test_the_example_s_methods_point_at_steps_that_ran_and_were_read(project: Path) -> None:
     report = _methods_report(project)
     assert report.ok and not report.findings, report.render(project)
-    # Four steps, three texts: the estimate and its intervals share one paragraph.
-    assert (report.counts["method_steps"], report.counts["method_claims"]) == (4, 3)
+    # Five steps, four texts: the estimate and its intervals share one paragraph, and the
+    # controls have their own (item 5).
+    assert (report.counts["method_steps"], report.counts["method_claims"]) == (5, 4)
     assert report.counts["method_pairs_stale"] == 0
 
 
@@ -30214,7 +30303,7 @@ def test_a_step_read_before_any_file_was_is_still_held_to_its_code(project: Path
         "step 'ci' changed after the text pointing at it was last read against it"
     ], report.render(project)
     unread = [f.message.split("'")[1] for f in report.failures if f.code == "method-pair-unread"]
-    assert sorted(unread) == ["adjusted", "ror", "signal"]
+    assert sorted(unread) == ["adjusted", "controls", "ror", "signal"]
     assert [f.code for f in report.warnings] == ["methods-never-reconciled"]
 
 
@@ -30229,8 +30318,9 @@ def test_an_anchor_moved_to_a_line_of_its_own_inside_a_paragraph_is_warned(proje
 
 
 def test_a_comment_added_inside_a_step_leaves_its_pair_read(project: Path) -> None:
-    _replace_once(_analysis(project), "        ror = (a / b) / (c / d)\n",
-                  "        # the ratio of the two odds\n        ror = (a / b) / (c / d)\n")
+    _replace_once(_analysis(project), "        a, b, c, d = two_by_two(rows, DRUG, EVENT)\n",
+                  "        # the table of the drug against the event\n"
+                  "        a, b, c, d = two_by_two(rows, DRUG, EVENT)\n")  # fmt: skip
     _rerun_disproportionality(project)
     report = _methods_report(project)
     assert not [f for f in report.findings if f.code.startswith("method-")], report.render(
@@ -30437,6 +30527,27 @@ def test_bold_in_a_table_is_no_cadence_of_the_prose() -> None:
     prose = f"{_PROSE_200}\n\n" + " and ".join(["**bold**"] * 12) + "\n"
     report, _totals = judge_texts([(Path("main.md"), prose)])
     assert [f for f in report.findings if "boldface" in f.message]
+
+
+def test_bold_that_is_structure_is_no_cadence_and_bold_in_sentences_is() -> None:
+    """A paper typed in Word sets its titles, its list of abbreviations, its run-in labels
+    and its legends' labels in bold: on the author's paper 74 bold runs of 7310 words, and a
+    warning (2026-11-10). None is emphasis. The same number of bold words inside sentences
+    is the cadence the rate is for, and so is emphasis a hard wrap puts at a line's start
+    (round 1 of #614)."""
+    from manuscript_guard.gates.writing import judge_texts
+
+    structure = "\n\n".join(
+        ["**Methods**", "**Participants**", "**Data collection:** It was read.",
+         "**Supplementary Figure 2: Interaction.** Panel A.", "**A--C**",
+         "\n".join(f"- **AB{n}**: a term" for n in range(8))]  # fmt: skip
+    )
+    text = f"{_PROSE_200}\n\n{structure}\n"
+    report, _totals = judge_texts([(Path("main.md"), text)])
+    assert not [f for f in report.findings if "boldface" in f.message]
+    for emphasis in (" and ".join(["the **key** word"] * 13), " it was\n**key**." * 13):
+        report, _totals = judge_texts([(Path("main.md"), f"{_PROSE_200}\n\n{emphasis}\n")])
+        assert [f for f in report.findings if "boldface" in f.message], emphasis
 
 
 @pytest.mark.parametrize(

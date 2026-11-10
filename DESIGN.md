@@ -5097,6 +5097,18 @@ unless a heading stands there. The label's whole text has to name a statement, a
 statement's heading does (`STATEMENT_TITLE`), and be one of these: "**Contributions of
 this study**" is the paper's own, and so is a label inside a paragraph.
 
+**An author's initials in a bracket are a person.** A paper names who did what in its
+Methods by the initials of its contributions statement: "by a single author (CD)", "coded
+(JB and CD)" (the author's paper, 2026-11-10). Each word of two to four capitals in a
+contributions statement, under a heading or after a bold label that names one, is an
+author's initials, and "J-MD" is taken whole and as "JMD", never as its parts. Where such
+initials stand in a bracket, round or square, that holds nothing but them, joined by
+commas, semicolons, "&" or "and", they are not reported, wherever in the paper. Anywhere
+else they are read as any capitals are: an author whose initials are AE would otherwise
+hide every undefined AE, the adverse events, so "AEs were frequent" is still reported
+(Basile, 2026-11-10, choosing this over every use). The acknowledgements, the funding and
+the interests name no initials, since their capitals are institutions as often as people.
+
 **What may stand undefined is data.** `data/abbreviations.yaml` holds a short list of what
 general English reads as a word or a name, `DNA`, `UK`, `DOI`, and a few unit symbols with
 two capitals together, `MHz`, `GPa`. It is short on purpose. A long list would decide for
@@ -22047,10 +22059,14 @@ Open, recorded as each change landed:
     and `tests/test_language.py::test_what_is_not_an_abbreviation_is_not_reported`.
   - A name in capitals is reported like an abbreviation: a trial (`KEYNOTE-189`), a package
     (`SAS`), an agency. The project lists those it means to leave. So are the initials of
-    a reviewer named in the Methods, "(JB, CD)", and a US state after a manufacturer's
-    town, "Cary, NC". An author's initials are not exempted from `authors.yaml`, because
-    initials are two or three capitals and collide with abbreviations: an author named Ada
-    Example would hide every `AE`.
+    a reviewer named in the Methods, "(JB, CD)", that no contributions statement names,
+    an author's initials outside a bracket of initials, "CD interviewed them", and a US
+    state after a manufacturer's town, "Cary, NC". An author's initials are not read from
+    `authors.yaml`, because initials are two or three capitals and collide with
+    abbreviations: an author named Ada Example would hide every `AE`; those the
+    contributions statement names stand only in a bracket of initials. A bracket that
+    holds an author's initials and an abbreviation that is one too, "(AE, CD)" by authors
+    AE and CD, is read as theirs.
     Pinned by `tests/test_language.py::test_a_realistic_manuscript_is_reported_as_design_md_says`.
   - The formula rule has two edges. A formula with no count is still reported, `HCl`,
     `NaOH`, `KOH`, `HCN`, `NO`, as is organic shorthand, `EtOAc`, `MeOH`, a group in

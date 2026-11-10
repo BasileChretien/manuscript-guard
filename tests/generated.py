@@ -648,6 +648,10 @@ NOT_ABBREVIATIONS = (
     "**Competing interests**\n\nPLM and RDS declare none.",
     "**Funding**\nThe EPSRC paid for the first year.",
     "**Funding**  \nof the ESRC, grant 2019/4.", "**Funding**\\\nof the AHRC, grant 2020/7.",
+    # Initials in brackets in a sentence of the paper, which the contributions statement
+    # under it names.
+    "interviews were run by one author (EF) and checked (GH and EF)\n\n**Author "
+    "contributions:** EF and GH designed it.",
 )  # fmt: skip
 
 #: Abbreviations beside those, each still reported as undefined: one near a time of day,
@@ -716,6 +720,73 @@ def capitalised(draw: st.DrawFn) -> tuple[str, list[str]]:
     planted = draw(st.permutations([*NOT_ABBREVIATIONS, *still]))
     text, _starts = _paragraphs(draw, planted)
     return text, sorted(short for _written, short in STILL_ABBREVIATIONS)
+
+
+#: A contributions statement as each is typed, `{}` the initials it names: under a heading
+#: that names it, and run on from a bold label that does.
+CONTRIBUTED_HEADED = (
+    "# Authors' contributions\n\n{} designed the study.",
+    "# CRediT authorship contribution statement\n\n{}: conceptualization.",
+    "## Contributors\n\n{} wrote the first draft.",
+)
+CONTRIBUTED_RUN_IN = (
+    "**Authors\\' contributions** {} analysed the data.",
+    "**Author contributions:** {} collected the data.",
+    "__Contributors__ {} revised the paper.",
+)
+#: The initials each names, the second's with a hyphen, which the text writes without; and
+#: those the text uses only otherwise than in a bracket of initials: in a sentence, as an
+#: author named AE beside the adverse events, and in a bracket with an institution.
+INITIALS_HEADED = (("CD", "CD"), ("JMD", "JMD"))
+INITIALS_RUN_IN = (("BC", "BC"), ("P-MM", "PMM"))
+INITIAL_IN_A_SENTENCE = ("AE", "AEs were frequent")
+INITIAL_BESIDE_ANOTHER = ("RDS", "UNICAEN")
+#: The capitals of the other statements and of a long word in a contributions statement,
+#: each used in the text and so reported undefined there; and the part of an initial with a
+#: hyphen, `MM` of `P-MM`, used alone.
+NOT_INITIALS = (
+    ("**Acknowledgements** We thank the CEMU.", "CEMU"),
+    ("# Funding\n\nThe ANR paid for it.", "ANR"),
+)
+INSTITUTION_IN_CONTRIBUTIONS = "UNICAEN"
+INITIAL_PART = "MM"
+
+
+@st.composite
+def initials_named(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A manuscript whose Methods use, each in a paragraph of its own and in an order drawn,
+    the initials two contributions statements name, one under a heading and one run on
+    from a bold label, each drawn among its forms, with an institution in capitals in the
+    first: each alone in a bracket, the second's two in one bracket, joined as drawn; an
+    initial in a sentence and one in a bracket beside the institution; the capitals of the
+    acknowledgements and of the funding; and the part of an initial with a hyphen. Then a
+    Declarations heading, the two statements and the other statements, in an order drawn.
+    And the abbreviations it leaves undefined, in order: those but the initials in a
+    bracket of initials."""
+
+    def named(initials: tuple[tuple[str, str], ...]) -> str:
+        return " and ".join(written for written, _used in initials)
+
+    headed = draw(st.sampled_from(CONTRIBUTED_HEADED)).format(
+        f"{named((*INITIALS_HEADED, INITIAL_IN_A_SENTENCE))} at {INSTITUTION_IN_CONTRIBUTIONS}")
+    run_in = draw(st.sampled_from(CONTRIBUTED_RUN_IN)).format(
+        named((*INITIALS_RUN_IN, INITIAL_BESIDE_ANOTHER)))
+    alone = [used for _written, used in INITIALS_HEADED]
+    together = draw(st.sampled_from((" and ", ", ", "; ", " & "))).join(
+        used for _written, used in INITIALS_RUN_IN)
+    shorts = [*alone, together, *(short for _statement, short in NOT_INITIALS),
+              ", ".join(INITIAL_BESIDE_ANOTHER), INITIAL_PART]  # fmt: skip
+    # Words in which no short form's letters stand in order, so that none is a definition.
+    uses = [f"interviews were run by one author ({short})" for short in shorts]
+    uses.append(INITIAL_IN_A_SENTENCE[1])
+    methods, _starts = _paragraphs(draw, draw(st.permutations(uses)))
+    statements = draw(st.permutations([run_in, *(statement for statement, _ in NOT_INITIALS)]))
+    # The heading's statement comes last, or the statement after it would be under it.
+    declarations = "\n\n".join([*statements, headed])
+    text = f"# Methods\n\n{methods}# Declarations\n\n{declarations}\n"
+    undefined = [short for _statement, short in NOT_INITIALS]
+    return text, sorted([*undefined, *INITIAL_BESIDE_ANOTHER, INITIAL_IN_A_SENTENCE[0],
+                         INITIAL_PART])  # fmt: skip
 
 
 #: Statistical abbreviations: those G14's list lets stand undefined, and some it does not.

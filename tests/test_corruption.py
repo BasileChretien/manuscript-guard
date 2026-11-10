@@ -27018,6 +27018,22 @@ def test_a_legend_restates_and_a_pasted_definition_is_still_caught(project: Path
     ]
 
 
+def test_an_author_s_initials_are_no_slip_and_an_institution_s_acronym_is(
+    project: Path,
+) -> None:
+    """The Methods say in brackets who coded the reports, by the initials the contributions
+    statement names the authors by, and name a centre by its acronym that is defined
+    nowhere. The initials are people; the acronym is reported."""
+    mended = with_ror_defined(project)
+    named = mended.replace(
+        "The analysis was run in Python",
+        "The reports were coded by one author (CD) and checked (AB and CD) at the UMC.\n\n"
+        "The analysis was run in Python",
+    ).replace("# Funding", "# Author contributions\n\nAB and CD designed the study.\n\n# Funding")
+    main_md(project).write_text(named, encoding="utf-8")
+    assert language_findings(project) == [("abbreviation-undefined", line_of(named, "the UMC"))]
+
+
 def test_a_paper_with_its_headings_in_bold_is_read_as_one_text(project: Path, capsys) -> None:
     """Pasted from Word, the headings are bold lines and the definition is pasted again.
     Nothing tells the abstract from the main text, so the second definition is not

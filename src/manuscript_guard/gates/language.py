@@ -1024,6 +1024,8 @@ class _File:
     #: its commands.
     headed: bool | None = None
     supplementary: bool = False
+    #: The authors' initials its contributions statement names (`_initials`).
+    initials: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         self.starts = [region.start for region in self.regions]
@@ -1054,9 +1056,9 @@ def _file(
     prose = _hide(hidden, (_heading_span(text, heading) for heading in headings)).replace(
         NUL, " "
     )
+    statements = _run_in_statements(hidden, headings)
     regions = _regions(headings, chain, supplementary=supplementary, abstract_title=abstract_title,
-                       lists=unmarked_reference_lists(text),
-                       statements=_run_in_statements(hidden, headings))  # fmt: skip
+                       lists=unmarked_reference_lists(text), statements=statements)  # fmt: skip
     titled = [(heading.start, _heading_span(text, heading)[1], heading.level, heading.title)
               for heading in headings]  # fmt: skip
     return _assembled(
@@ -1064,7 +1066,78 @@ def _file(
         captions=tuple(glossary.markdown_captions(prose)),
         glossaries=tuple(glossary.sections(titled, len(text))),
         headed=bool(headings), supplementary=supplementary, code=code,
+        initials=_initials(prose, _contributions(hidden, titled, statements)),
     )  # fmt: skip
+
+
+#: The statements whose capitals are the authors' initials, by a word of the heading or the
+#: label: "Authors' contributions", "CRediT authorship contribution statement", "Author
+#: statement". Not the acknowledgements, the funding or the interests, whose capitals are
+#: institutions as often as people.
+_CONTRIBUTED = re.compile(
+    r"\b(?:contributions?|contributors?(?:hip)?|author\s+statement)\b", re.IGNORECASE
+)
+#: A bracket, round or square, on one line; and what may stand between the initials in one
+#: that holds only initials: "(CD)", "(JB, CD)", "[JB and CD]", "(JB; CD)", "(JB & CD)".
+_BRACKETED = re.compile(r"[(\[](?P<inside>[^()\[\]\n]{1,80})[)\]]")
+_BETWEEN_INITIALS = " \t,;&"
+#: An author's initials as a contributions statement writes them: two to four capitals,
+#: "CD", "JMD", and "J-MD", which is taken whole and as "JMD", never as its parts: an `MD`
+#: elsewhere is as often a mean difference.
+_INITIALS_SPAN = range(2, 5)
+
+
+def _people(prose: str, initials: frozenset[str]) -> frozenset[int]:
+    """Where each word stands that is a person: an author's initials (`_initials`) in a
+    bracket that holds nothing but such initials, "by a single author (CD)", "(JB and CD)".
+    Anywhere else the letters are read as an abbreviation, since an author whose initials
+    are AE would otherwise hide every undefined AE (DESIGN.md, Known gaps)."""
+    if not initials:
+        return frozenset()
+    found: set[int] = set()
+    for bracket in _BRACKETED.finditer(prose):
+        inside = bracket.group("inside")
+        named = [word for word in _WORD.finditer(inside) if word.group(0) != "and"]
+        if not named or any(word.group(0) not in initials for word in named):
+            continue
+        # Nothing but the initials, "and" and the marks between them.
+        if _WORD.sub("", inside).strip(_BETWEEN_INITIALS):
+            continue
+        found.update(bracket.start("inside") + word.start() for word in named)
+    return frozenset(found)
+
+
+def _contributions(
+    hidden: str, titled: list[tuple[int, int, int, str]], statements: list[tuple[int, int]]
+) -> list[tuple[int, int]]:
+    """Where a contributions statement runs: the body of a heading that names one, to the
+    next heading of its level or above, and a paragraph a bold label that names one opens
+    (`_run_in_statements`)."""
+    ordered = sorted(titled)
+    spans = []
+    for index, (_start, end, level, title) in enumerate(ordered):
+        if _QUIET.search(title) and _CONTRIBUTED.search(title):
+            stop = next((later[0] for later in ordered[index + 1 :] if later[2] <= level),
+                        len(hidden))  # fmt: skip
+            spans.append((end, stop))
+    for start, end in statements:
+        opening = _RUN_IN.match(hidden, start)
+        if opening is not None and _CONTRIBUTED.search(_ESCAPE.sub(r"\1", opening["label"])):
+            spans.append((start, end))
+    return spans
+
+
+def _initials(prose: str, spans: Iterable[tuple[int, int]]) -> frozenset[str]:
+    """The authors' initials a contributions statement names, "JMD, BC and CD designed the
+    study": each word of two to four capitals in it. In a bracket of initials anywhere in
+    the paper, "by a single author (CD)", such a word is a person (`_people`)."""
+    found = set()
+    for start, end in spans:
+        for word in _WORD.finditer(prose, start, end):
+            letters = word.group(0).replace("-", "")
+            if len(letters) in _INITIALS_SPAN and letters.isalpha() and letters.isupper():
+                found.update((word.group(0), letters))
+    return frozenset(found)
 
 
 def _assembled(
@@ -1123,6 +1196,7 @@ def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
                 unread=tuple(span for span in whole.unread if start <= span[0] < end),
                 captions=whole.captions, glossaries=whole.glossaries,
                 supplementary=supplementary, code=_hide(whole.code, outside),
+                initials=whole.initials,
             ))  # fmt: skip
     return files
 
@@ -1145,6 +1219,8 @@ class _LatexFile:
     glossaries: tuple[tuple[int, int], ...] = ()
     #: The text of its code, `\\verb` and `\\texttt`, as the reader masks it, NUL elsewhere.
     code: str = ""
+    #: The authors' initials its contributions statement names (`_initials`).
+    initials: frozenset[str] = frozenset()
 
 
 def _latex_file(source: Source, supplementary: bool, abstract_title: str | None) -> _LatexFile:
@@ -1153,6 +1229,8 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
 
     seen = words(source)
     titles = [(heading.start, max(heading.end, heading.start))
+              for heading in source.reading.headings]  # fmt: skip
+    titled = [(heading.start, max(heading.end, heading.start), heading.level, heading.title)
               for heading in source.reading.headings]  # fmt: skip
     regions = _latex_regions(source, supplementary=supplementary, abstract_title=abstract_title)
     # A word in a reference list is none G14 skips: it reads no word there, and a typed
@@ -1168,9 +1246,8 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
         breaks=[index for index, char in enumerate(source.text) if char == "\n"],
         unread=unread,
         captions=tuple(glossary.latex_captions(source)),
-        glossaries=tuple(glossary.sections(
-            [(heading.start, max(heading.end, heading.start), heading.level, heading.title)
-             for heading in source.reading.headings], len(source.text))),
+        glossaries=tuple(glossary.sections(titled, len(source.text))),
+        initials=_initials(seen.text, _contributions(seen.text, titled, [])),
         code=_set_aside(_only(source.reading.masked, source.reading.code),
                         [*_preamble(source.reading), *source.reading.figures]),
     )  # fmt: skip
@@ -1258,9 +1335,13 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
                 _Definition(file.order, offset, region.quiet, long, offset in file.restating)
             )
 
+    # The authors' initials a contributions statement names, which are people in a bracket
+    # of initials anywhere in the paper: "by a single author (CD)".
+    initials = frozenset().union(*(file.initials for file in files))
     for file in files:
         capitals = _in_capitals(file.prose)
         starts = [start for start, _end in capitals]
+        people = _people(file.prose, initials)
         for word in _WORD.finditer(_CLOCK.sub(lambda time: " " * len(time[0]), file.prose)):
             token = word.group(0)
             if token.islower() or token.isdigit():
@@ -1274,6 +1355,8 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
             for within, short, is_defined in _forms(token, defined, known):
                 offset = word.start() + within
                 if (file.order, offset) in defining:
+                    continue
+                if not is_defined and offset in people:
                     continue
                 # A word of a heading typed in capitals, or of a table's label, is a use of
                 # what the manuscript defines and is not reported as undefined.

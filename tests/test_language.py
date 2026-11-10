@@ -1270,6 +1270,35 @@ def test_initials_after_a_bold_statement_label_are_not_abbreviations(
     assert sorted(f.message.split()[0] for f in headed.findings) == ["ANR", "CD", "JB", "NIHR"]
 
 
+@pytest.mark.parametrize(
+    "statement",
+    ["# Authors' contributions\n\nJMD, BC and CD designed the study at UNICAEN.",
+     "**Authors\\' contributions** JMD, BC and CD designed the study at UNICAEN.",
+     "# CRediT authorship contribution statement\n\nJ-MD: methodology. BC and CD: analysis, "
+     "at UNICAEN."],
+    ids=["under a heading", "after a bold label", "CRediT, an initial with a hyphen"],
+)  # fmt: skip
+def test_the_initials_a_contributions_statement_names_are_people_everywhere(
+    project: Path, statement: str
+) -> None:
+    """The author's paper says "by a single author (CD)" in its Methods, and its
+    contributions statement names CD with the others: CD was reported undefined there. The
+    initials a contributions statement names, two to four capitals, are people in a
+    bracket that holds only such initials; "J-MD" is taken whole and as "JMD", and not as
+    an `MD`, which is still reported. Anywhere else they are read as abbreviations (Basile,
+    2026-11-10): BC in a sentence, and in a bracket with an institution or a mark. A
+    longer word of capitals in the statement, an institution, is still reported where the
+    text uses it, and so are the capitals of the acknowledgements and the funding."""
+    hyphened = "J-MD; " if "J-MD" in statement else ""
+    methods = (f"# Methods\n\nInterviews were run by a single author (CD), checked ({hyphened}"
+               "JMD and CD) and coded [CD & JMD], with the CEMU and the ANR (MD). BC ran "
+               "the site (UNICAEN, BC) and (BC?).\n\n")  # fmt: skip
+    rest = "\n\n# Acknowledgements\n\nWe thank the CEMU.\n\n# Funding\n\nThe ANR paid.\n"
+    report = written(project, methods + statement + rest)
+    said = sorted(f.message.split()[0] for f in report.findings)
+    assert said == ["ANR", "BC", "CEMU", "MD", "UNICAEN"], found(report)
+
+
 def test_what_a_bold_label_cannot_tell_apart(project: Path) -> None:
     """The limits DESIGN.md's Known gaps write down, as written: a label is told from a
     sentence's first words by what follows it, so a statement that goes on in a small letter

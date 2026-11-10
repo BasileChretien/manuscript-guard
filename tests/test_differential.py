@@ -233,6 +233,12 @@ CHANGED = {
         '_HOLDS_A_DOLLAR = "`<@"\n',
         "tex outside maths",
     ),
+    "the initials of a contributions statement not read": (
+        "gates/language.py",
+        "_INITIALS_SPAN = range(2, 5)\n",
+        "_INITIALS_SPAN = range(2, 2)\n",
+        "abbreviations",
+    ),
     "fewer words before one finding": (
         "gates/spelling.py",
         "MANY = 5\n",

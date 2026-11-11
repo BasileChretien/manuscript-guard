@@ -5,6 +5,7 @@ written by the package's own `pdfwriter`, as he chose)."""
 from __future__ import annotations
 
 import io
+import re
 from pathlib import Path
 
 import pypdf
@@ -93,7 +94,9 @@ def test_the_pdf_is_framed_says_where_each_check_stands_and_how_to_use_the_tool(
     first = pages[0]
     assert STANDING["not run"][1] in first and STANDING["look"][1] in first
     assert "Back to the summary" in " ".join(pages)
-    assert f"three of manuscript-guard's {len(GATES)} gates" in " ".join(pages)
+    # The gates the audit ran, by name: G7 looked for a reference list and found none
+    # (round 1 of #635).
+    assert f"4 of manuscript-guard's {len(GATES)} gates (G2, G6, G7 and G14)" in " ".join(pages)
     out = [annot.get_object()["/A"]["/URI"] for page in reader.pages
            for annot in page.get("/Annots") or [] if "/A" in annot.get_object()]  # fmt: skip
     assert len(out) >= len(pages) + 1 and set(out) == {HOME}
@@ -105,7 +108,9 @@ def test_the_pdf_is_framed_says_where_each_check_stands_and_how_to_use_the_tool(
 def test_where_each_check_stands_is_read_from_what_it_found() -> None:
     """A check's tile is coloured by what it found, not by its line's words: not run without
     outputs, counted where --strict counts what it found, to look at where a reader has
-    something to read, and clear where it found nothing."""
+    something to read, and clear where it found nothing. A paper that gave no number leaves
+    its numbers' checks not run, and one that could not be read leaves none clear; a check
+    that ran on no paper is not run (round 1 of #635)."""
     from types import SimpleNamespace
 
     from manuscript_guard.auditing.summary import CLEAR, COUNTED, LOOK, NOT_RUN, standings
@@ -114,7 +119,8 @@ def test_where_each_check_stands_is_read_from_what_it_found() -> None:
                               flows_broken=[], over_n_rounding=[], disagreements=[],
                               recovered=[], recovered_by_n=[], abstract=None, gates=[],
                               references=[], lookups=None, journal=None, causal=None,
-                              cited=None, self_citation=None, package=None)  # fmt: skip
+                              cited=None, self_citation=None, package=None, examined=12,
+                              unreadable=[], reference_like=[])  # fmt: skip
     said = standings(nothing)
     assert said == {"Numbers in the outputs": NOT_RUN, "Arithmetic": CLEAR,
                     "Small cells": CLEAR}  # fmt: skip
@@ -122,6 +128,70 @@ def test_where_each_check_stands_is_read_from_what_it_found() -> None:
                                "over_n_rounding": [1], "recovered_by_n": [1]})
     assert standings(worse) == {"Numbers in the outputs": COUNTED, "Arithmetic": LOOK,
                                 "Small cells": LOOK}  # fmt: skip
+    beside = SimpleNamespace(**{**vars(nothing), "compared": True, "reference_like": [1]})
+    assert standings(beside)["Numbers in the outputs"] == LOOK
+    none_read = SimpleNamespace(**{**vars(nothing), "compared": True, "examined": 0})
+    assert set(standings(none_read).values()) == {NOT_RUN}
+    unread = SimpleNamespace(**{**vars(nothing), "unreadable": ["scan.pdf"]})
+    assert standings(unread)["Arithmetic"] == standings(unread)["Small cells"] == LOOK
+    noted = SimpleNamespace(writing=[], language=[], note="G6 and G14 could not run")
+    listless = SimpleNamespace(note="no reference list was found", problems=[], unsent=[])
+    alone = SimpleNamespace(**{**vars(nothing), "gates": [noted], "references": [listless]})
+    assert standings(alone)["Writing and language"] == standings(alone)["References"] == NOT_RUN
+
+
+def test_the_closing_names_the_gates_the_audit_ran() -> None:
+    """--journal runs G4 as well: the closing names every gate that ran, and counts them
+    (round 1 of #635)."""
+    from manuscript_guard.auditing.report_pdf import written
+    from manuscript_guard.gates import GATES
+
+    view = {"header": [], "notes": [], "checks": [], "standing": {}, "words": [],
+            "sections": [], "closing": ""}  # fmt: skip
+    data = written(view, "Audit of p.md", "0", ran=("G2", "G4", "G6", "G7", "G14"))
+    text = " ".join("".join(page.extract_text() for page in
+                            pypdf.PdfReader(io.BytesIO(data), strict=True).pages).split())
+    assert f"5 of manuscript-guard's {len(GATES)} gates (G2, G4, G6, G7 and G14)" in text
+
+
+def test_every_line_stands_within_the_page(tmp_path: Path,
+                                           monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """Every line the report sets, the frame's among them, stands within the margins: a
+    running title that names many papers is cut, a long place wraps (round 1 of #635)."""
+    from manuscript_guard import pdfwriter, web
+    from manuscript_guard.auditing.report_pdf import written
+
+    fonts = {"/Helvetica": "F1", "/Helvetica-Bold": "F2", "/Helvetica-Oblique": "F3",
+             "/Courier": "F4"}  # fmt: skip
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "paper.md").write_text(PAPER + "".join(f"\nThe XYZ was seen again in case {n}.\n"
+                                                       for n in range(80)), encoding="utf-8")
+    view = web.view(["audit", "paper.md", "--details"])["view"]
+    for kind in view["words"][0]["kinds"]:
+        for place in kind["places"]:
+            place["where"] = "a/very/deep/folder/of/a/latex/tree/" * 4 + place["where"]
+    # Each line as the writer set it, read back from its pages' commands: pypdf places a
+    # line set on another's baseline, a heading's back link, at (0, 0).
+    kept: list = []
+    real = pdfwriter.Pdf.bytes
+    monkeypatch.setattr(pdfwriter.Pdf, "bytes", lambda self: kept.append(self) or real(self))
+    written(view, "Audit of " + ", ".join(f"paper-number-{n}.docx" for n in range(12)),
+            "0.0.0", ran=("G2", "G6", "G14"))  # fmt: skip
+    line = re.compile(rb"BT /(F\d) ([\d.]+) Tf (-?[\d.]+) (-?[\d.]+) Td \(((?:[^()\\]|\\.)*)\) Tj")
+
+    def said(raw: bytes) -> str:
+        unescaped = re.sub(rb"\\([0-7]{3})", lambda m: bytes([int(m[1], 8)]), raw)
+        return re.sub(rb"\\([()\\])", rb"\1", unescaped).decode("cp1252")
+
+    placed = [(float(x), float(y), pdfwriter.width(said(text), font.decode(), float(size)))
+              for page in kept[0].pages for command in page.commands
+              for font, size, x, y, text in line.findall(command)]  # fmt: skip
+    assert len(kept[0].pages) > 1 and len(placed) > 50
+    right = pdfwriter.WIDTH - pdfwriter.MARGIN + 0.5
+    for x, y, wide in placed:
+        assert x >= pdfwriter.MARGIN - 0.01 and x + wide <= right, (x, y, wide)
+        assert 0 < y < pdfwriter.HEIGHT
+    assert set(fonts.values()) >= {"F1", "F2"}
 
 
 def test_a_bookmark_counts_every_level_under_it() -> None:

@@ -29,7 +29,7 @@ import re
 from pathlib import Path
 
 from manuscript_guard.auditing.summary import CLEAR, COUNTED, LOOK, NOT_RUN
-from manuscript_guard.pdfwriter import HEIGHT, MARGIN, WIDTH, Margins, Pdf, rgb
+from manuscript_guard.pdfwriter import HEIGHT, MARGIN, WIDTH, Margins, Pdf, fitted, rgb
 
 #: How far a line of a section's text is set in for each space it opens with.
 INDENT = 4.5
@@ -69,10 +69,13 @@ def _key(heading: str) -> str:
     return f"section:{found.group(0).lower() if found else heading}"
 
 
-def written(view: dict, title: str, version: str, *, gates: int = 17,
+def written(view: dict, title: str, version: str, *, ran: tuple[str, ...] = (),
             on: datetime.date | None = None) -> bytes:  # fmt: skip
-    """The PDF of the report whose view is `view`, titled `title`; `gates` is how many the
-    tool has, which the closing says an audit runs few of; `on` is the day it is dated."""
+    """The PDF of the report whose view is `view`, titled `title`; `ran` names the gates the
+    audit ran, which the closing says are few of the tool's; `on` is the day it is dated."""
+    from manuscript_guard.gates import GATES
+
+    gates = len(GATES)
     pdf = Pdf(title=title, producer=f"manuscript-guard {version}", author="manuscript-guard",
               subject="What manuscript-guard's audit found in a paper",
               frame=Margins(running=title, foot=f"Made with manuscript-guard {version}  ·  "
@@ -84,7 +87,7 @@ def written(view: dict, title: str, version: str, *, gates: int = 17,
     _words(pdf, view)
     for heading, text in view["sections"]:
         _section(pdf, heading, text)
-    _closing(pdf, view, gates)
+    _closing(pdf, view, gates, ran)
     return pdf.bytes()
 
 
@@ -95,8 +98,16 @@ def _cover(pdf: Pdf, view: dict, title: str, version: str, on: datetime.date) ->
     """The band at the top of the first page: what it is, the title, the day and the
     version; then the report's first lines."""
     pdf.ensure(0)
-    lines = pdf.wrap(title, "bold", 21, COLUMN)
-    band = 74 + 26 * len(lines)
+    # A title naming many papers is set smaller, in four lines at most, the last cut.
+    size = 21.0
+    lines = pdf.wrap(title, "bold", size, COLUMN)
+    if len(lines) > 2:
+        size = 15.0
+        lines = pdf.wrap(title, "bold", size, COLUMN)
+    if len(lines) > 4:
+        lines = [*lines[:3], fitted(lines[3] + " " + " ".join(lines[4:]), "F2", size, COLUMN)]
+    step = size * 1.24
+    band = 74 + step * len(lines)
     # Past the page's edges, so that no reader leaves a hairline of paper beside it.
     pdf.rect(-2, HEIGHT + 2, WIDTH + 4, band + 2, DEEP)
     pdf.rect(-2, HEIGHT - band, WIDTH + 4, 3.5, ACCENT)
@@ -105,7 +116,8 @@ def _cover(pdf: Pdf, view: dict, title: str, version: str, on: datetime.date) ->
     pdf.y = HEIGHT - 44
     pdf.bookmark(title, 1, key="top")
     for at, line in enumerate(lines):
-        pdf.put(line, x=MARGIN, top=HEIGHT - 44 - 26 * at, kind="bold", size=21, color=WHITE)
+        pdf.put(line, x=MARGIN, top=HEIGHT - 44 - step * at, kind="bold", size=size,
+                color=WHITE)  # fmt: skip
     dated = f"{on.day} {MONTHS[on.month - 1]} {on.year}  ·  manuscript-guard {version}"
     pdf.put(dated, x=MARGIN, top=HEIGHT - band + 26, size=9, color=SOFT)
     pdf.y = HEIGHT - band - 22
@@ -255,9 +267,9 @@ def _place(pdf: Pdf, place: dict) -> None:
     """One place of a finding: where it is, what it says, its quote under a rule, and its
     own hint."""
     pdf.gap(4)
-    top = pdf.ensure(40)
-    pdf.put(place["where"], x=MARGIN + 6, top=top, kind="bold", size=8.3, color=ACCENT)
-    pdf.y = top - 12
+    pdf.ensure(40)
+    # Wrapped, as a place may be long: a file of a LaTeX tree by its path (round 1 of #635).
+    _flow(pdf, place["where"], size=8.3, kind="bold", color=ACCENT, indent=6)
     _flow(pdf, place["message"], size=9.3, indent=6)
     if place.get("context"):
         step = 8.3 * 1.35
@@ -285,22 +297,29 @@ def _section(pdf: Pdf, heading: str, text: str) -> None:
               indent=INDENT * (len(line) - len(stripped)))  # fmt: skip
 
 
-def _closing(pdf: Pdf, view: dict, gates: int) -> None:
+def _named(gates: tuple[str, ...]) -> str:
+    """"G2, G6 and G14"."""
+    return gates[0] if len(gates) == 1 else ", ".join(gates[:-1]) + " and " + gates[-1]
+
+
+def _closing(pdf: Pdf, view: dict, gates: int, ran: tuple[str, ...]) -> None:
     """The report's last line, then what an audit leaves to a paper written with the tool,
     with the link to how (the author, 2026-11-11: "only a few gates were checked, see this
-    link to see how use fully this programme")."""
+    link to see how use fully this programme"). The gates named are those the audit ran,
+    `--journal`'s G4 among them where it was given (round 1 of #635)."""
     if view.get("closing"):
         pdf.gap(10)
         _flow(pdf, view["closing"], size=9.5, color=MUTED)
     pdf.gap(14)
+    through = (f", through {len(ran)} of manuscript-guard's {gates} gates ({_named(ran)}), in "
+               "part" if ran else f", through a few of manuscript-guard's {gates} gates, in part")
     body = pdf.wrap(
         "An audit reads a paper that is already written: its numbers, against each other and "
-        "against the outputs given, and its words and its reference list, through three of "
-        f"manuscript-guard's {gates} gates (G6, G7 and G14), in part. Written with "
-        f"manuscript-guard, a paper is held to all {gates} as it is written: every number "
-        "traced to the analysis that produced it, every quote found in its source, the "
-        "figures reviewed, the analysis plan and the journal's rules kept, and the reporting "
-        "checklist addressed.",
+        f"against the outputs given, and its words and its reference list{through}. Written "
+        f"with manuscript-guard, a paper is held to all {gates} as it is written: every "
+        "number traced to the analysis that produced it, every quote found in its source, "
+        "the figures reviewed, the analysis plan and the journal's rules kept, and the "
+        "reporting checklist addressed.",
         "regular", 9.3, COLUMN - 36)  # fmt: skip
     step = 9.3 * 1.4
     high = 34 + step * len(body) + 30
@@ -324,8 +343,12 @@ def report_pdf(report, discrimination, root: Path | None, paper_names: list[str]
     """The PDF of the audit `report`: its view with every place and every section."""
     from manuscript_guard import __version__
     from manuscript_guard.auditing.report import view
-    from manuscript_guard.gates import GATES
 
     drawn = view(report, discrimination, root, details=True)
     names = ", ".join(paper_names) or "the paper"
-    return written(drawn, f"Audit of {names}", __version__, gates=len(GATES))
+    # The gates the audit ran: G2's rule on the counts held back, always; G6 and G14 on the
+    # words, G7 on the reference list and G4 under --journal, where each ran.
+    ran = {"G2"} | ({"G6", "G14"} if report.gates else set()) | (
+        {"G7"} if report.references else set()) | ({"G4"} if report.journal is not None else set())
+    return written(drawn, f"Audit of {names}", __version__,
+                   ran=tuple(sorted(ran, key=lambda gate: int(gate[1:]))))  # fmt: skip

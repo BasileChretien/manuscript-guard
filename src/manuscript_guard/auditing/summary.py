@@ -250,28 +250,44 @@ def standings(report) -> dict[str, str]:
     it found, not from its line's words: the PDF's summary draws each check in its colour."""
     from manuscript_guard.auditing.report import MEMBERSHIP
 
-    def of(counted: bool, looked: bool) -> str:
-        return COUNTED if counted else LOOK if looked else CLEAR
+    # A paper that could not be read, or one that gave no number, leaves the checks of its
+    # numbers nothing to say "nothing found" of: not run where no number was read, and never
+    # clear where a file was not (round 1 of #635).
+    unread = bool(report.unreadable)
+    read_none = not report.examined
 
-    out = {MEMBERSHIP: NOT_RUN if not report.compared else of(bool(report.unmatched), False),
+    def of(counted: bool, looked: bool, *, numbers: bool = False) -> str:
+        if numbers and read_none:
+            return NOT_RUN
+        said = COUNTED if counted else LOOK if looked else CLEAR
+        return LOOK if numbers and unread and said == CLEAR else said
+
+    out = {MEMBERSHIP: NOT_RUN if not report.compared else of(
+               bool(report.unmatched), bool(report.reference_like), numbers=True),
            "Arithmetic": of(bool(report.sums_off or report.over_n or report.flows_broken),
-                            bool(report.over_n_rounding or report.disagreements)),
-           "Small cells": of(bool(report.recovered), bool(report.recovered_by_n))}  # fmt: skip
+                            bool(report.over_n_rounding or report.disagreements), numbers=True),
+           "Small cells": of(bool(report.recovered), bool(report.recovered_by_n),
+                             numbers=True)}  # fmt: skip
     read = report.abstract
     if read is not None:
         out["Abstract against Results"] = (NOT_RUN if not read.compared else of(
-            bool(read.conflicts), bool(read.not_found or read.rounded)))
+            bool(read.conflicts), bool(read.not_found or read.rounded), numbers=True))
     if report.gates:
-        found = any(run.writing or run.language or run.note for run in report.gates)
-        out["Writing and language"] = of(False, found)
+        ran = [run for run in report.gates if not (run.note and not run.writing
+                                                   and not run.language)]  # fmt: skip
+        found = any(run.writing or run.language for run in ran) or len(ran) < len(report.gates)
+        out["Writing and language"] = NOT_RUN if not ran else of(False, found)
     if report.references:
-        problems = any(census.problems or census.note or census.unsent
-                       for census in report.references)  # fmt: skip
+        counted = [census for census in report.references if not census.note]
+        problems = any(census.problems or census.unsent for census in counted)
         looked = any(one.problems for one in report.lookups or [])
-        out["References"] = of(False, problems or looked)
-    # The sections a flag adds, by what the report says in them: counted, or to look at.
+        out["References"] = NOT_RUN if not counted else of(
+            False, problems or looked or len(counted) < len(report.references))
+    # The sections a flag adds, by what the report says in them: counted, or to look at; a
+    # note of what was read is neither (round 1 of #635).
     from manuscript_guard.auditing import report as sections
     from manuscript_guard.auditing.report import items
+    from manuscript_guard.findings import INFO
 
     said = None
     for name, section, present in (
@@ -281,9 +297,12 @@ def standings(report) -> dict[str, str]:
             ("Package", sections.PACKAGE, report.package)):  # fmt: skip
         if present is not None:
             said = items(report) if said is None else said
-            mine = [item for item in said if item.section in (section, sections.DOCUMENT)
-                    and (item.section == section or name == "Journal")]  # fmt: skip
-            out[name] = of(any(item.counted for item in mine), bool(mine))
+            mine = [item for item in said if item.section == section]
+            if name == "Journal" and getattr(present, "note", None) and not mine:
+                out[name] = NOT_RUN
+                continue
+            out[name] = of(any(item.counted for item in mine),
+                           any(item.severity != INFO for item in mine))  # fmt: skip
     return out
 
 

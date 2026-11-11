@@ -135,6 +135,16 @@ def wrapped(text: str, font: str, size: float, room: float) -> list[str]:
     return lines
 
 
+def fitted(text: str, font: str, size: float, room: float) -> str:
+    """`text`, printable already, on one line no wider than `room`: cut, with "…", where it
+    is wider (a running title that names many papers, round 1 of #635)."""
+    if width(text, font, size) <= room:
+        return text
+    while text and width(text.rstrip() + "…", font, size) > room:
+        text = text[:-1]
+    return text.rstrip() + "…"
+
+
 def _string(text: str) -> bytes:
     """A PDF string of `text`, printable already: Windows-1252 bytes, its parentheses and
     backslashes escaped, every byte past ASCII as an octal escape."""
@@ -372,15 +382,19 @@ class Pdf:
             foot = MARGIN * 0.55
             mine.rule(MARGIN, foot + frame.size + 5, WIDTH - MARGIN, foot + frame.size + 5,
                       frame.rule, 0.5)  # fmt: skip
-            if frame.foot:
-                mine.put(frame.foot, x=MARGIN, top=foot + frame.size, size=frame.size,
-                         color=frame.color, uri=frame.uri or None)  # fmt: skip
             number = f"Page {at + 1} of {count}"
-            mine.put(number, x=WIDTH - MARGIN - mine.measure(number, "regular", frame.size),
-                     top=foot + frame.size, size=frame.size, color=frame.color)  # fmt: skip
+            numbered = mine.measure(number, "regular", frame.size)
+            if frame.foot:
+                said = fitted(printable(frame.foot), "F1", frame.size,
+                              WIDTH - 2 * MARGIN - numbered - 12)  # fmt: skip
+                mine.put(said, x=MARGIN, top=foot + frame.size, size=frame.size,
+                         color=frame.color, uri=frame.uri or None)  # fmt: skip
+            mine.put(number, x=WIDTH - MARGIN - numbered, top=foot + frame.size, size=frame.size,
+                     color=frame.color)  # fmt: skip
             if at and frame.running:
                 top = HEIGHT - MARGIN * 0.45
-                mine.put(frame.running, x=MARGIN, top=top, size=frame.size, color=frame.color)
+                running = fitted(printable(frame.running), "F1", frame.size, WIDTH - 2 * MARGIN)
+                mine.put(running, x=MARGIN, top=top, size=frame.size, color=frame.color)
                 mine.rule(MARGIN, top - frame.size - 5, WIDTH - MARGIN, top - frame.size - 5,
                           frame.rule, 0.5)  # fmt: skip
 

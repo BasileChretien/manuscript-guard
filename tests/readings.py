@@ -2471,6 +2471,20 @@ def _residue() -> Reading:
     return residue
 
 
+@reading("vague attribution")
+def _vague_attribution() -> Reading:
+    """What G6 says of the appeals to authority in a Markdown text read on its own, as a
+    paper `audit` converts is: each finding's line and words, judged against the pandoc
+    citations and those typed as text (`gates/writing.py`, corpus round 2026-11-10)."""
+    from manuscript_guard.gates.writing import judge_texts
+
+    def vague(text: str) -> list[list[Any]]:
+        report, _totals = judge_texts([(Path("main.md"), text)])
+        return [[f.line, f.message] for f in report.findings if f.code == "vague-attribution"]
+
+    return vague
+
+
 @reading("vector figure")
 def _vector_figure() -> Reading:
     """The texts and lines of an SVG figure as G4 reads them: each text's height and each

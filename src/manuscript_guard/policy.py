@@ -159,7 +159,6 @@ BINDS_AT = {
     "typed-dictionary-release": DRAFTING,
     "typed-model-kind": DRAFTING,
     "unplaced-table": DRAFTING,
-    "divergent-display": DRAFTING,
     # Figures are still being redrawn while the text is drafted; their numbers must
     # nevertheless be real from the moment they are rendered.
     "figure-number-unbound": DRAFTING,

@@ -369,6 +369,21 @@ CHANGED = {
 }
 
 
+def test_every_abbreviations_input_holds_initials_a_contributions_statement_names() -> None:
+    """Drawn as one block among many, the statement whose initials the change "the initials
+    of a contributions statement not read" stops reading was in none of 120 inputs once #623
+    added blocks to the pool, and the change went unnoticed. Every input holds it now."""
+    asked: list[str] = []
+
+    @generated(30)
+    @given(INPUTS["abbreviations"])
+    def held(given: Any) -> None:
+        asked.append(given["text"])
+
+    held()
+    assert asked and all("**Author contributions:** EF and GH" in text for text in asked)
+
+
 def _changed_copy(case: str, folder: Path) -> Reader:
     """A reader for a copy of this source with the one line of `case` changed."""
     file, old, new, _reading = CHANGED[case]

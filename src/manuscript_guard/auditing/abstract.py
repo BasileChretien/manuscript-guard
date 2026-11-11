@@ -12,11 +12,15 @@ paper split into files has a Discussion in a file of its own reported whole, as 
 supplement (round 2 of #472, DESIGN.md, "Known gaps"). Where no file has an Abstract
 heading, or none a Results heading, nothing is compared, and the report says so.
 
-* **Not found.** A number of the Abstract the classifier leaves unexplained, found nowhere
-  the paper reports, is said. A rounding of one is a match, "53%" for "53.3%" (the author,
-  2026-10-28), and counted apart: the Abstract's number is one the reported number rounds
-  to at its places. A match here is as weak as the audit's against the outputs, and the
-  section ends with what one is worth, the roundings counted in.
+* **Not found.** A number of the Abstract the classifier leaves unexplained, not found in
+  the Methods, the Results or the tables, is said. A rounding of one is a match, "53%" for
+  "53.3%" (the author, 2026-10-28), and counted apart: the Abstract's number is one the
+  reported number rounds to at its places. A part with letters in it and no number read in
+  it, "v8", "rs75015950", "chr15", is found only as printed, a whole word where the paper
+  reports: an identifier was otherwise never found, even beside its copy in the Methods (a
+  preprint of the real-paper corpus, pharm-epi, 2026-11-11). A match here is as weak as the
+  audit's against the outputs, and the section ends with what one is worth, the roundings
+  counted in.
 * **Conflict.** An exact pairing only. An interval of the Abstract (`reported_intervals`) of
   the same estimate and level as one interval where the paper reports, two of whose three
   numbers agree with it, estimate, lower bound and upper bound, and whose third does not; or
@@ -72,8 +76,8 @@ class AbstractRead:
     why_not: str = ""
     numbers: int = 0
     matched: int = 0
-    #: Each number matched only as a rounding, and each found nowhere the paper reports, as
-    #: the audit's `Candidate`; each conflict as its `Disagreement`.
+    #: Each number matched only as a rounding, and each not found in the Methods, the Results
+    #: or the tables, as the audit's `Candidate`; each conflict as its `Disagreement`.
     rounded: list = field(default_factory=list)
     not_found: list = field(default_factory=list)
     #: Each number found as printed, as its `Candidate`: `matched` of them.
@@ -273,6 +277,30 @@ def _numbers(text: str) -> list[str]:
     return [found.group(0) for found in _NUMBER.finditer(_OPAQUE.sub(" ", text.replace(NUL, " ")))]
 
 
+#: What a word of the reported text is stripped of at its ends before an Abstract's part is
+#: looked for among them: the stops and brackets typed against a word, "chr15." or "(v8)";
+#: a Markdown paper's emphasis, which the masked text keeps, "*rs75015950*"; and quotes,
+#: straight and curly (round 1 of #624).
+_WORD_EDGES = ".,;:()[]*_\"'\N{LEFT DOUBLE QUOTATION MARK}\N{RIGHT DOUBLE QUOTATION MARK}" \
+    "\N{LEFT SINGLE QUOTATION MARK}\N{RIGHT SINGLE QUOTATION MARK}"
+#: A possessive after a word, "v8's" or "v8\N{RIGHT SINGLE QUOTATION MARK}s".
+_POSSESSIVE = re.compile("['\N{RIGHT SINGLE QUOTATION MARK}]s$")
+
+
+def _words(text: str) -> set[str]:
+    """Each word of the reported text, as split at spaces and again at its colons, stripped
+    of `_WORD_EDGES` and of a possessive: where an Abstract's part that holds letters, which
+    `printed_parts` keeps whole ("v8", "rs75015950", "ieu-a-1185", "chr15:1234"), is looked
+    for, since `_numbers` holds the bare numbers alone. A chromosome before its position,
+    "chr15:1234", gives "chr15" as well as the whole."""
+    found = set()
+    for token in text.replace(NUL, " ").split():
+        for word in (token, *token.split(":")):
+            word = word.strip(_WORD_EDGES)
+            found.add(_POSSESSIVE.sub("", word).strip(_WORD_EDGES))
+    return found - {""}
+
+
 # ------------------------------------------------------------------------------- reading
 
 
@@ -329,6 +357,7 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
                for number in _numbers(reported)]  # fmt: skip
     exact = {normalise_number(number) for number in printed}
     rounded = {found for number in printed for found in coarser(number)}
+    words = {word for _piece, _abstract, reported, _lines in split for word in _words(reported)}
     read.discrimination = measure_discrimination(exact | {value for value, _at in rounded})
     intervals = [(piece.path, reported, found) for piece, _a, reported, _l in split
                  for found in reported_intervals(reported)]  # fmt: skip
@@ -343,7 +372,7 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
             if not parts:
                 continue  # "2ndyear": a rank typed against its word, no number to look for
             read.numbers += 1
-            states = [_state(part, exact, rounded) for part in parts]
+            states = [_state(part, exact, rounded, words) for part in parts]
             candidate = Candidate(atom.text, normalise_number(atom.text), piece.path,
                                   atom.line, around(atom))  # fmt: skip
             if "" in states:
@@ -356,14 +385,21 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
     return read
 
 
-def _state(part: str, exact: set[str], rounded: set[tuple[str, int]]) -> str:
+def _state(part: str, exact: set[str], rounded: set[tuple[str, int]], words: set[str]) -> str:
+    """Whether one part of an Abstract's atom is found where the paper reports: "exact",
+    "rounded" or "". A number is compared as a number, with the numbers there and their
+    roundings. A part no number is read in, that holds a letter ("v8", "chr15", "PI3K"), is
+    found only as printed, a whole word there (`_words`): never by a digit it holds, and
+    never as a rounding."""
     from manuscript_guard.audit import normalise_number
 
     value = normalise_number(part)
     if value in exact:
         return "exact"
     places = _decimal(part)
-    return "rounded" if places is not None and (value, places[1]) in rounded else ""
+    if places is None:
+        return "exact" if any(c.isalpha() for c in part) and part in words else ""
+    return "rounded" if (value, places[1]) in rounded else ""
 
 
 # ----------------------------------------------------------------------------- conflicts

@@ -91,6 +91,26 @@ try {
   console.log(`${await browser.version()}: ${status} (${((Date.now() - started) / 1000).toFixed(1)} s)`);
   if (!status.startsWith("Ready")) fail(`the page did not start: ${status}`);
 
+  // At the top, the release the page was built from, which manifest.json names; the loading
+  // bar gone once the page is ready; and the browser's own controls following a dark setting.
+  const { manuscript_guard: version } = JSON.parse(readFileSync(join(site, "audit", "manifest.json"), "utf-8"));
+  const named = await page.waitForFunction(
+    (version) => document.getElementById("version").textContent.includes(`manuscript-guard ${version},`),
+    { timeout: 10000 }, version).then(() => true, () => false);
+  const top = await page.evaluate(() => ({
+    version: document.getElementById("version").textContent,
+    link: document.querySelector("#version a")?.href,
+    loading: !document.getElementById("progress").hidden,
+    scheme: getComputedStyle(document.documentElement).colorScheme,
+  }));
+  if (!named) fail(`the page does not say it is ${version}: "${top.version}"`);
+  if (top.link !== `https://github.com/BasileChretien/manuscript-guard/releases/tag/v${version}`) {
+    fail(`the page's link to what changed is ${top.link}`);
+  }
+  if (top.loading) fail("the loading bar is still shown once the page is ready");
+  if (!/\bdark\b/.test(top.scheme)) fail(`the page's controls follow no dark setting: "${top.scheme}"`);
+  console.log(`top of the page: "${top.version}", controls: ${top.scheme}`);
+
   // The files of the cases folder named, chosen as a reader chooses them, and the audit run.
   const choose = (paper, against) => page.evaluate(async (paper, against) => {
     const put = async (id, names) => {

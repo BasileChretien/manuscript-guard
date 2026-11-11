@@ -20,67 +20,80 @@
   <p class="lead">This page runs manuscript-guard's <code>audit</code> inside your browser.
     The paper you choose is read here and is not uploaded: there is no server behind this
     page to receive it.</p>
+  <!-- Filled from manifest.json by app.js: the page is built again from each release. -->
+  <p id="version" class="version">manuscript-guard, rebuilt with each new release</p>
+  <p class="caution">Reviewing for a journal? Read its policy first: some forbid putting a
+    manuscript under review into any tool, even one that runs on your own computer.</p>
 
-  <h2>To see that for yourself</h2>
+  <div id="loading">
+    <p id="status" role="status">Loading the checker: about 26 MB the first time, nothing
+      after that.</p>
+    <progress id="progress" max="4" value="0">Loading</progress>
+  </div>
+
+  <form id="form">
+    <label><span class="field">The paper</span>
+      <span class="help">A .docx or .md file.</span>
+      <input id="paper" type="file" accept=".docx,.md" required disabled></label>
+    <label><span class="field">The analysis outputs, if you have them</span>
+      <span class="help">.json, .csv, .tsv, .txt or .yaml, to compare the paper's numbers
+        with. Without them the audit still reads the numbers against each other, the words
+        and the reference list.</span>
+      <input id="against" type="file" multiple accept=".json,.csv,.tsv,.txt,.yaml,.yml,.md"
+        disabled></label>
+    <label><span class="field">English of the paper</span>
+      <span class="help">Its spelling is held to it.</span>
+      <select id="english" disabled>
+        <option value="">The one most of its words are in</option>
+        <option value="american">American</option>
+        <option value="british">British</option>
+      </select></label>
+    <label><span class="field">Words to leave alone</span>
+      <span class="help">Names, an author's initials, an institution's acronym, your field's
+        terms, separated by spaces or commas (CD, CHU, QR, licence). They are not reported as
+        abbreviations to define, nor for their spelling.</span>
+      <input id="known" type="text" autocomplete="off" spellcheck="false" disabled></label>
+    <label class="tick"><input id="lookup" type="checkbox" disabled>
+      <span><span class="field">Check the reference list for retracted and unregistered
+        works</span>
+        <span class="help">This sends the DOIs and PubMed IDs the paper cites, and nothing
+          else, to Crossref, OpenAlex, DataCite, doi.org and PubMed.</span></span></label>
+    <label class="tick"><input id="details" type="checkbox" disabled>
+      <span><span class="field">List every place of every finding</span>
+        <span class="help">With its context and what to do. Without it the report says what
+          each check found in a line, and groups the findings on the words by kind with their
+          first places. The PDF always has every place.</span></span></label>
+    <button id="run" type="submit" disabled>Audit</button>
+  </form>
+
+  <section id="result" hidden>
+    <h2>Report</h2>
+    <div class="actions">
+      <button id="savepdf" type="button" hidden>Save the report as a PDF, with every place</button>
+      <button id="savecommented" type="button" hidden>Save the paper with the findings as Word
+        comments</button>
+      <button id="save" type="button">Save the report as text</button>
+    </div>
+    <pre id="notes" hidden></pre>
+    <div id="view"></div>
+    <details id="astext">
+      <summary>The report as text, as the command line prints it</summary>
+      <pre id="report"></pre>
+    </details>
+  </section>
+
+  <h2>To see that nothing is uploaded</h2>
   <ul>
     <li>Once the page says <em>Ready</em>, turn off your network. Then choose your paper:
       the audit still runs.</li>
     <li>The page's own rules let it send requests only to the address it came from, and to
-      the five reference registries below when you tick the box. Your browser enforces them.
+      the five reference registries above when you tick the box. Your browser enforces them.
       <button id="probe" type="button">Test the rules</button></li>
     <li>Every file the page loads is listed with its SHA-256 in
       <a href="files.sha256">files.sha256</a>, and its source is
       <a id="source" href="https://github.com/BasileChretien/manuscript-guard">on GitHub</a>.</li>
   </ul>
   <pre id="probelog" hidden></pre>
-  <p class="caution">Reviewing for a journal? Read its policy first: some forbid putting a
-    manuscript under review into any tool, even one that runs on your own computer.</p>
-
-  <p id="status" role="status">Loading the checker: about 26 MB the first time, nothing
-    after that.</p>
-
-  <form id="form">
-    <label>The paper (.docx or .md)
-      <input id="paper" type="file" accept=".docx,.md" required disabled></label>
-    <label>The analysis outputs to compare its numbers with, if you have them (.json, .csv,
-      .tsv, .txt, .yaml). Without them the audit still reads the numbers against each other,
-      the words and the reference list.
-      <input id="against" type="file" multiple accept=".json,.csv,.tsv,.txt,.yaml,.yml,.md"
-        disabled></label>
-    <label>English of the paper, which its spelling is held to
-      <select id="english" disabled>
-        <option value="">The one most of its words are in</option>
-        <option value="american">American</option>
-        <option value="british">British</option>
-      </select></label>
-    <label>Words to leave alone: names, an author's initials, an institution's acronym, your
-      field's terms, separated by spaces or commas (CD, CHU, QR, licence). They are not
-      reported as abbreviations to define, nor for their spelling.
-      <input id="known" type="text" autocomplete="off" spellcheck="false" disabled></label>
-    <label class="tick"><input id="lookup" type="checkbox" disabled>
-      <span>Also check the reference list for retracted and unregistered works. This sends
-        the DOIs and PubMed IDs the paper cites, and nothing else, to Crossref, OpenAlex,
-        DataCite, doi.org and PubMed.</span></label>
-    <label class="tick"><input id="details" type="checkbox" disabled>
-      <span>List every place of every finding, with its context and what to do. Without it
-        the report says what each check found in a line, and groups the findings on the
-        words by kind with their first places.</span></label>
-    <button id="run" type="submit" disabled>Audit</button>
-  </form>
-
-  <section id="result" hidden>
-    <h2>Report</h2>
-    <div id="view"></div>
-    <details id="astext">
-      <summary>The report as text, as the command line prints it</summary>
-      <pre id="report"></pre>
-    </details>
-    <pre id="notes" hidden></pre>
-    <button id="save" type="button">Save the report</button>
-    <button id="savepdf" type="button" hidden>Save the report as a PDF, with every place</button>
-    <button id="savecommented" type="button" hidden>Save the paper with the findings as Word
-      comments</button>
-  </section>
 
   <details>
     <summary>What this page loaded and sent</summary>

@@ -269,7 +269,7 @@ def test_a_place_a_finding_names_in_a_pdf_is_its_page_and_line(tmp_path: Path, c
     assert main(["audit", str(paper), "--json"]) == 0
     found = json.loads(capsys.readouterr().out)["findings"]
     again = [f["message"] for f in found if f["gate"] == "G14" and "defined again" in f["message"]]
-    assert again == ["SD is defined again; it was defined at paper.pdf, page 1, line 2"], found
+    assert again == ["SD is defined again; it was defined at page 1, line 2"], found
     assert not any("main.md" in json.dumps(f) for f in found), found
 
 
@@ -731,6 +731,17 @@ def test_a_structured_abstract_is_placed_under_it(titles: tuple[str, ...]) -> No
     opening = [title for title, _level in levels].index("Introduction")
     assert {level for _title, level in levels[1:opening]} == {2}, levels
     assert {level for _title, level in levels[opening:]} == {1}, levels
+
+
+def test_a_pdf_with_no_heading_read_places_none() -> None:
+    """Corpus run of 2026-11-11: a PDF whose headings the reader does not find, 2509.01351's
+    small capitals, stopped `audit` on `zip()`'s length check; it has no heading to place."""
+    from manuscript_guard.auditing.pdf import PdfText, Place
+
+    lines = ["Gains from monetary policy", "We estimate the response of output.", "It falls."]
+    pdf = PdfText(Path("p.pdf"), "test", 1, "\n".join(lines),
+                  tuple(Place(1, at) for at in range(1, len(lines) + 1)), ())
+    assert pdf.placed == ()
 
 
 @needs_pdftotext

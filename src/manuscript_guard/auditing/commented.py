@@ -190,9 +190,11 @@ def notes_of(report, paper: Path) -> list[Note]:
     output that could not be read), as a note: anchored on its own words where its message
     names them and its quote holds them (`words_of`), else on its quote; with the place the
     report gives it, for the list on the first paragraph where it stands nowhere. Each says
-    its section, its message, its hint, and whether `--strict` counts it. A finding on
+    its section, its message, its hint, and whether `--strict` counts it, all as a reader is
+    told them, who runs no script and types no flag (`reader.for_a_reader`). A finding on
     another file the audit read, a supplement, an output, the journal's profile, is that
     file's, and not the document's."""
+    from manuscript_guard.auditing.reader import FAILS, for_a_reader
     from manuscript_guard.auditing.report import items
 
     target = paper.resolve()
@@ -204,8 +206,9 @@ def notes_of(report, paper: Path) -> list[Note]:
         said = f"{item.section}: {item.message}"
         if item.hint:
             said += f"\nHint: {item.hint}"
+        said = for_a_reader(said)
         if item.counted:
-            said += "\n(counted by --strict)"
+            said += f"\n{FAILS}"
         placer = item.placer if item.placer is not None else placers.get(item.path)
         where = placer.said(item.line) if placer is not None and item.line else ""
         if item.path is None or item.line is None or not item.context:

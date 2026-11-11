@@ -13,25 +13,35 @@ self.addEventListener("securitypolicyviolation", (event) =>
 performance.setResourceTimingBufferSize(10000);
 let py;
 
+// Where the start has got to, for the page to show while it waits: a message with no id,
+// which answers no question (app.js).
+const BOOT_STEPS = ["Python", "the Python packages and manuscript-guard",
+  "pandoc, which reads a .docx (16 MB)", "the checker itself"];
+const step = (at) => self.postMessage({ progress: { at: at + 1, of: BOOT_STEPS.length, what: BOOT_STEPS[at] } });
+
 async function boot() {
   const timings = {};
   let start = now();
+  step(0);
   const manifest = await (await fetch(BASE + "manifest.json")).json();
   const { loadPyodide } = await import(BASE + "pyodide/pyodide.mjs");
   py = await loadPyodide({ indexURL: BASE + "pyodide/" });
   timings.python = now() - start;
 
   start = now();
+  step(1);
   await py.loadPackage(manifest.load, { messageCallback: () => {} });
   py.unpackArchive(await (await fetch(BASE + manifest.wheel)).arrayBuffer(), "wheel");
   timings.packages = now() - start;
 
   start = now();
+  step(2);
   const { createPandoc } = await import(BASE + "pandoc/pandoc.mjs");
   const pandoc = await createPandoc(await WebAssembly.compileStreaming(fetch(BASE + "pandoc/pandoc.wasm")));
   timings.pandoc = now() - start;
 
   start = now();
+  step(3);
   py.globals.set("PANDOC_JS", pandoc);
   const pandocVersion = py.runPython(`
 from manuscript_guard import web

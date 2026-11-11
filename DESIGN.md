@@ -20113,6 +20113,18 @@ Open, recorded as each change landed:
   produced. Accepted.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it. Accepted.
+- **G6 knows a citation typed as text by its shape.** In a file with no citation commands,
+  Markdown and a .docx `audit` converts, a vague attribution is judged against its pandoc
+  citations and those typed: a bracketed run of numbers, not an interval after its value,
+  and one by author and year in brackets whose names have capitals, an organisation's
+  among them, three words or more (corpus round, 2026-11-10). A place of three words and a
+  year in brackets, "(New South Wales, 2019)", has that shape and is taken for a citation,
+  as is a note's number typed "[12]" and a range in brackets with no value before it, "a
+  scale of [0-10]", "aged [18-65]", and a claim beside any of them is not reported. A
+  LaTeX file is judged against its citation commands only, so a citation it types as text
+  leaves the claim beside it vague. Pinned by
+  `tests/test_writing.py::test_a_place_and_a_year_in_brackets_are_taken_for_a_citation`
+  and `tests/test_writing.py::test_a_range_in_brackets_is_taken_for_a_numbered_citation`.
 - **A label is read only beside its binding, and only what is written.** A level or a
   spread's label written in another sentence, or before another binding of the sentence,
   is not read: "the 90% intervals are below" over a list of bounds says nothing of them. A

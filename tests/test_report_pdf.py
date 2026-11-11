@@ -49,7 +49,7 @@ def test_the_audit_writes_its_report_as_a_pdf(tmp_path: Path, capsys) -> None:
     links = [annot.get_object() for page in reader.pages for annot in page.get("/Annots") or []]
     assert links and all(link["/Subtype"] == "/Link" and "/Dest" in link for link in links)
     text = "".join(page.extract_text() for page in reader.pages)
-    # The Abstract's 412, found nowhere the paper reports, with its quote.
+    # The Abstract's 412, not found in the Methods, the Results or the tables, with its quote.
     assert "Of the patients, 412 improved." in text
     # The report's last line, as the text and the page end with it (round 1 of #618).
     assert "bind the numbers instead" in " ".join(text.split())

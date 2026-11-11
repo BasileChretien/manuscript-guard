@@ -7938,13 +7938,26 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: against a signed number, a label closed up against its number, a whole number against a
 #: word that opens like its ordinal's suffix ("1201students"); an ordinal against its word,
 #: which gives no number to look for; and an estimate closed up against its interval,
-#: whose bounds are reported and the estimate not (round 1 of #613).
+#: whose bounds are reported and the estimate not (round 1 of #613). And an identifier, a
+#: word with a number in it, printed again in the Methods with a stop or brackets round it,
+#: and one whose number alone the Methods give, which is not found (pharm-epi of the
+#: real-paper corpus, 2026-11-11). And a number reported under a subsection of the Results
+#: whose title holds the word "method" and is no Methods, "Performance of the proposed
+#: method", under a Results titled "Results and discussion", which no Methods may stand
+#: under (round 1 of #624).
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
     "against a word", "after a word", "after a label", "against a suffix's word", "ordinal",
-    "estimate closed up",
+    "estimate closed up", "identifier", "identifier by its number", "under a method",
 )  # fmt: skip
+#: Titles of a subsection of the Results that hold the word "method" and name no Methods.
+METHOD_SUBSECTIONS = ("Performance of the proposed method", "Our method at scale",
+                      "A method for the second cohort")  # fmt: skip
+#: The shapes of an identifier, `{}` its number: a variant, a release, a chromosome, a
+#: GWAS of the OpenGWAS catalogue, a strain, an assembly.
+IDENTIFIER_SHAPES = ("rs{}", "v{}", "chr{}", "ieu-a-{}", "ukb-b-{}", "MPL-{}", "K-{}",
+                     "GRCh{}")  # fmt: skip
 #: How each kind of space left out is typed, `{}` its number, and what it starts at.
 RUN_ON_NUMBERS = {"against a word": ("The value was {}points here.", 900),
                   "after a word": ("The value rose to+{} here.", 1000),
@@ -8042,6 +8055,23 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
             methods.append(f"It was {count} then.")
             looked.append((kind, f"{count}students", "exact"))
             abstract.append((kind, said))
+        elif kind == "identifier":
+            named = draw(st.sampled_from(IDENTIFIER_SHAPES)).format(draw(st.integers(10, 99)))
+            methods.append(draw(st.sampled_from((f"It was {named}.", f"It was ({named}) then.",
+                                                 f"It was {named}, then."))))  # fmt: skip
+            looked.append((kind, named, "exact"))
+            abstract.append((kind, f"The source was {named} here."))
+        elif kind == "identifier by its number":
+            number = 7000000 + draw(st.integers(0, 99999))
+            methods.append(f"It was {number} then.")
+            looked.append((kind, f"rs{number}", "not found"))
+            abstract.append((kind, f"The variant was rs{number} here."))
+        elif kind == "under a method":
+            value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
+            shown = str(value + 1600)
+            subsection = (draw(st.sampled_from(METHOD_SUBSECTIONS)), f"It was {shown} then.")
+            looked.append((kind, shown, "exact"))
+            abstract.append((kind, f"The value was {shown} here."))
         elif kind == "estimate closed up":
             estimate = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
             low, high = estimate + 1300, estimate + 1400
@@ -8092,8 +8122,12 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
         for planted, shown, state in looked:
             if planted == kind:
                 expected["looked"].append([line, shown, state])
-    for heading, part in (("Methods", methods), ("Results", results),
+    # The subsection closes the Results, so that what they report stands over it.
+    results.append(subsection)
+    for heading, part in (("Methods", methods), ("Results and discussion", results),
                           ("Discussion", discussion)):  # fmt: skip
+        part = [f"### {said[0]}\n\n{said[1]}" if isinstance(said, tuple) else said
+                for said in part]  # fmt: skip
         lines += [f"## {heading}", "", *(one for said in part for one in (said, "")), ""]
     expected["conflicts"].sort()
     expected["looked"].sort()
@@ -8122,11 +8156,13 @@ def _abstract_latex(abstract: list, looked: list, methods: list, results: list,
             expected["conflicts"].append([line, kind.split()[0]])
         expected["looked"] += [[line, shown, state] for planted, shown, state in looked
                                if planted == kind]  # fmt: skip
-    for heading, part in (("Methods", methods), ("Results", results),
+    for heading, part in (("Methods", methods), ("Results and discussion", results),
                           ("Discussion", discussion)):  # fmt: skip
         lines += ["", f"{BACKSLASH}section{{{heading}}}", ""]
         for said in part:
-            if said.startswith("|"):
+            if isinstance(said, tuple):
+                lines += [f"{BACKSLASH}subsection{{{said[0]}}}", "", said[1], ""]
+            elif said.startswith("|"):
                 value = said.split("\n")[-1].strip(" |").split("|")[-1].strip()
                 lines += [BACKSLASH + "begin{tabular}{ll}", "Group & Value " + BACKSLASH * 2,
                           f"A & {value} " + BACKSLASH * 2, BACKSLASH + "end{tabular}", ""]

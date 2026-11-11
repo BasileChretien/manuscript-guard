@@ -5390,7 +5390,11 @@ def cmd_lookup(args: argparse.Namespace) -> int:
         return _lookup_journals(project, args)
     if args.registrations:
         return _lookup_registrations(project, args)
-    empty = why_no_manuscript(project)
+    from manuscript_guard.gates.numbers import _is_latex
+
+    # A LaTeX manuscript's citations are read as G7 reads them (`text/reader.citation_uses`);
+    # `why_no_manuscript` looks for Markdown only, and said a paper's `.tex` was not read.
+    empty = None if _is_latex(project) else why_no_manuscript(project)
     bib = project.path("literature") / lookup.BIB_FILE
     if empty or not bib.is_file():
         reason = empty or f"there is no {bib.relative_to(project.root).as_posix()}"

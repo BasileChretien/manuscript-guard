@@ -691,6 +691,66 @@ def test_a_dry_run_says_what_it_would_look_up_and_sends_nothing(project, capsys,
     assert not (project / "literature" / "lookups").exists()
 
 
+def _by_host(path_answers: dict[str, Response]) -> Table:
+    """A transport that answers each registry at its real address, by host and path."""
+
+    def answer(path: str, request: Request) -> Response:
+        parts = urlsplit(request.base)
+        for prefix, response in path_answers.items():
+            if f"{parts.hostname}{parts.path}".startswith(prefix):
+                return response
+        raise AssertionError(f"not a registry the lookup asks: {request.base}")
+
+    return Table(answer)
+
+
+def test_a_latex_project_s_citations_are_looked_up(tmp_path, capsys, monkeypatch) -> None:
+    """A paper's `.tex` brought into `init --latex`'s manuscript/, its `.bib` the library
+    (docs/latex.md, "Starting"): `lookup` refused it, saying its `.tex` files were "not read",
+    while G7 sent the author to it (a rebuild of arXiv 2409.10841). Each key cited, in the
+    entry file and in a file it inputs, is looked up by its DOI or its PMID."""
+    root = tmp_path / "tex"
+    assert main(["init", str(root), "--latex", "--title", "A paper"]) == 0
+    folder = root / "manuscript"
+    (folder / "sections").mkdir()
+    (folder / "sections" / "intro.tex").write_text(
+        "Earlier work \\citep{byPmid2019}.\n", encoding="utf-8"
+    )
+    entry = folder / "main.tex"
+    entry.write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Introduction}\n"
+        "\\input{sections/intro}\nAs \\citet{byDoi2021} found.\n"
+        "\\bibliography{references}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    (root / "literature" / "references.bib").write_text(
+        f"@article{{byDoi2021,\n  title = {{Hepatic injury}},\n  doi = {{{DOI}}},\n"
+        "  year = {2021},\n}\n"
+        f"@article{{byPmid2019,\n  title = {{Earlier work}},\n  pmid = {{{PMID}}},\n"
+        "  year = {2019},\n}\n",
+        encoding="utf-8",
+    )
+    table = _by_host({
+        "api.crossref.org/works/": _json(200, _crossref_work()),
+        "api.openalex.org/works/": _json(200, _OPENALEX),
+        "eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary": _json(200, _PUBMED),
+        "eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch": _esearch(),
+    })  # fmt: skip
+    monkeypatch.setattr(lookup, "default_transport", table)
+    pacer = lookup.Pacer
+    monkeypatch.setattr(lookup, "Pacer", lambda: pacer(sleep=lambda seconds: None))
+    capsys.readouterr()
+    assert main(["lookup", str(root)]) == 0, capsys.readouterr().err
+    out = capsys.readouterr().out
+    assert "2 looked up, 0 up to date" in out
+    sent = [unquote(r.url) for r in table.sent]
+    assert any(url.startswith(f"https://api.crossref.org/works/{DOI}") for url in sent), sent
+    assert any("esummary" in url and PMID in url for url in sent), sent
+    project = _loaded(root)
+    assert read_record(project, "byDoi2021")["identifiers"] == {"doi": DOI}
+    assert read_record(project, "byPmid2019")["identifiers"] == {"pmid": PMID}
+
+
 # ------------------------------------------------------- a reference with no identifier
 
 #: The example's first reference, as the registries would hold it: answers in the shapes

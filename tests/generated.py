@@ -6942,6 +6942,70 @@ BOUND_UNITS = (
     "{{results.temp}} \N{DEGREE SIGN}C",
 )  # fmt: skip
 
+#: What may stand before a binding and after it, and the comparator G2 reads there with the
+#: side of the number printed it holds the value to (True: below) and whether its statistic
+#: is a plural, or None where it reads none: each sign and its spellings and the two phrases
+#: after each statistic's symbol, singular and plural, in italics or not, a p value written
+#: out, a sign after the binding before a statistic, which holds the value to the other
+#: side, with a line break on either side of the sign; and a subject that is no statistic,
+#: before the binding or after it, a symbol inside a word or a tag, a comparison of two
+#: numbers, a comment, a blockquote's marker and arrows, which compare nothing (PsyArXiv
+#: fyxeq_v2's "all Fs < {{results.f}}", rounds 1 and 2 of #629).
+BESIDE_A_BINDING = (
+    ("Fs < ", "", ("<", True, True)),
+    ("all ps > ", "", (">", False, True)),
+    ("all *p*s > ", "", (">", False, True)),
+    ("all p-values > ", "", (">", False, True)),
+    ("P values < ", "", ("<", True, True)),
+    ("R2s < ", "", ("<", True, True)),
+    ("", " < ts", ("<", False, True)),
+    ("", " > all ts", (">", True, True)),
+    ("", " > t", (">", True, False)),
+    ("F \N{LESS-THAN OR EQUAL TO} ", "", ("\N{LESS-THAN OR EQUAL TO}", True, False)),
+    ("r \N{GREATER-THAN OR EQUAL TO} ", "", ("\N{GREATER-THAN OR EQUAL TO}", False, False)),
+    ("t <= ", "", ("<=", True, False)),
+    ("", " >= ts", (">=", True, True)),
+    ("", " &LT; ts", ("&LT;", False, True)),
+    ("z &lt; ", "", ("&lt;", True, False)),
+    ("d \\> ", "", ("\\>", False, False)),
+    ("p less than ", "", ("less than", True, False)),
+    ("*P* Greater than or equal to ", "", ("Greater than or equal to", False, False)),
+    ("R2 < ", "", ("<", True, False)),
+    ("I\N{SUPERSCRIPT TWO} > ", "", (">", False, False)),
+    ("\N{GREEK SMALL LETTER CHI}^2^ > ", "", (">", False, False)),
+    ("ds <\n", "", ("<", True, True)),
+    ("", " <\nts", ("<", False, True)),
+    ("", " <\n\nts", None),
+    ("", " < the incidence in the exposed", None),
+    ("", " < p-value", None),
+    ("the p-value < ", "", None),
+    ("<p>", "</p>", None),
+    ("<P>", "</P>", None),
+    ("incidence was greater than ", "", None),
+    ("the model's t was greater than ", "", None),
+    ("F wasn't less than ", "", None),
+    ("F wasn\N{RIGHT SINGLE QUOTATION MARK}t less than ", "", None),
+    ("was no\nless than ", "", None),
+    ("a threshold of 2.6\n< ", "", None),
+    ("groups > ", "", None),
+    ("2.6 < ", "", None),
+    ("", " < 2.6", None),
+    ("{{results.other}} > ", "", None),
+    ("<!-- c -->", "", None),
+    ("<sup>", "</sup>", None),
+    ("\n> ", "", None),
+    ("\n- > ", "", None),
+    ("F -> ", "", None),
+    ("F >> ", "", None),
+    ("", " <- x", None),
+    ("F = ", "", None),
+)  # fmt: skip
+
+#: Comparators beside bindings, as `texts` writes them into a file: one of each kind above.
+BOUND_COMPARISONS = tuple(
+    before + "{{results.k}}" + after for before, after, _read in BESIDE_A_BINDING
+)
+
 #: A journal's limit as its page may write it, and numbers and words it is not.
 QUOTED_LIMITS = (
     "3500", "3,500", "3 500", "3500-word", "13500", "3500.5", "3,5000", "35000", "four",
@@ -13070,6 +13134,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "plan sections": plan_pairs().map(lambda drawn: drawn[0]),
     "data dictionaries": dictionary_pairs().map(lambda drawn: drawn[0]),
     "units after": texts(BOUND_UNITS),
+    "comparisons beside": texts(BOUND_COMPARISONS),
     "limit stated": st.fixed_dictionaries(
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}
     ),

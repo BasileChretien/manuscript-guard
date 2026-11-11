@@ -1529,7 +1529,9 @@ def _given_again(
         if again is not first and not _same_meaning(first.long, again.long):
             found.append((
                 again,
-                f"{short} is defined as {again.long!r} here and as {first.long!r} "
+                # The long forms quoted as typed: `repr` doubled a backslash an escape had,
+                # "d\'Intérêt" (the author's audit, 2026-11-11).
+                f"{short} is defined as '{again.long}' here and as '{first.long}' "
                 f"{said(first, again)}",
                 "one short form, one meaning: a reader keeps the first",
             ))  # fmt: skip
@@ -1591,6 +1593,12 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
         same = one.path == other.path and one.line_of(mark.offset) == other.line_of(here.offset)
         return beside if same else f"{at} {where(mark)}"
 
+    def listed(mark: _Mark) -> bool:
+        """Whether `mark` stands in a list of abbreviations, whose entries are said as such
+        (the author's audit, 2026-11-11: "defined later at ... Conclusions, paragraph 26" of
+        the list at the end, and "write '...' out and drop the short form" of its entries)."""
+        return _in_a_glossary(files[mark.order], mark.offset)
+
     def finding(code: str, mark: _Mark, short: str, message: str, hint: str) -> Finding:
         file = files[mark.order]
         return Finding(
@@ -1620,7 +1628,24 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
             first = definitions[0]
             uses = sorted(scope.used.get(short, ()), key=lambda mark: mark.key)
 
-            if uses and uses[0].key < first.key:
+            if uses and uses[0].key < first.key and all(listed(mark) for mark in definitions):
+                # Defined only in the list of abbreviations, after this use: the text owes
+                # the long form at first use as well, as most journals ask. Where the text
+                # spells it out too, after the list, it is defined later there, as before
+                # (review of #634).
+                findings.append(
+                    finding(
+                        "abbreviation-used-before-defined",
+                        uses[0],
+                        short,
+                        f"{short} is used here and not spelt out; only the list of "
+                        "abbreviations defines it, "
+                        + placed(first, uses[0], "at", "on the same line"),
+                        "spell it out where it first appears, the long form then the short "
+                        "form in brackets: most journals ask for that besides the list",
+                    )
+                )
+            elif uses and uses[0].key < first.key:
                 findings.append(
                     finding(
                         "abbreviation-used-before-defined",
@@ -1646,7 +1671,24 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
 
             # A funder or a society named in full with its acronym, once, is how those
             # statements are written; nothing later is expected to use it.
-            if not uses and not first.quiet:
+            if not uses and not first.quiet and all(listed(mark) for mark in definitions):
+                # An entry of the list of abbreviations nothing else uses: the list's to drop,
+                # not the text's to write out.
+                findings.append(
+                    finding(
+                        "abbreviation-unused",
+                        first,
+                        short,
+                        # Not "nowhere else": another entry of the list may use it, and the
+                        # list's lines are no uses (review of #634).
+                        f"{short} is in the list of abbreviations and not used in the "
+                        f"{scope.name} as G14 reads it",
+                        "take it out of the list, unless the title page, a table, a figure, "
+                        "another entry of the list or the supplementary material uses it: "
+                        "the title page, tables and figures are not read here",
+                    )
+                )
+            elif not uses and not first.quiet:
                 findings.append(
                     finding(
                         "abbreviation-unused",
@@ -1654,7 +1696,7 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
                         short,
                         f"{short} is defined and not used again in the {scope.name} as G14 "
                         "reads it",
-                        f"write {first.long!r} out and drop the short form, unless a table "
+                        f"write '{first.long}' out and drop the short form, unless a table "
                         "or a figure uses it: those are not read here",
                     )
                 )

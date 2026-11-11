@@ -6,6 +6,7 @@ git hook and a CI job without any of the three disagreeing about the verdict.
 """
 
 from manuscript_guard.gates.ai_use import check_ai_use
+from manuscript_guard.gates.bound_comparisons import check_bound_comparisons
 from manuscript_guard.gates.bound_units import check_bound_units
 from manuscript_guard.gates.citations import check_citations, sync_bib
 from manuscript_guard.gates.consistency import check_consistency
@@ -74,6 +75,7 @@ __all__ = [
     "rounds",
     "GATES",
     "check_ai_use",
+    "check_bound_comparisons",
     "check_bound_units",
     "check_citations",
     "check_passages",

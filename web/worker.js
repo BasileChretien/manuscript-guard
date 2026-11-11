@@ -19,11 +19,64 @@ const BOOT_STEPS = ["Python", "the Python packages and manuscript-guard",
   "pandoc, which reads a .docx (16 MB)", "the checker itself"];
 const step = (at) => self.postMessage({ progress: { at: at + 1, of: BOOT_STEPS.length, what: BOOT_STEPS[at] } });
 
+// The bytes the start has received, against those the manifest says it fetches (web/build.py,
+// `bytes`), for the page's percentage: each answer's body counted as it arrives, while the
+// start runs and no longer. A message with no id, as a step's, at most every 100 ms.
+const loading = { received: 0, expected: 0, said: 0 };
+// The browser's own fetch, taken when the start begins.
+let ownFetch = null;
+function tell(last = false) {
+  if (!last && now() - loading.said < 100) return;
+  loading.said = now();
+  self.postMessage({ bytes: { received: loading.received, expected: loading.expected } });
+}
+// The answer itself goes on, as fetched, so that the browser keeps what it keeps of it by its
+// address (Chrome's compiled WebAssembly, round 1 of #633); a copy of its body is read to count
+// it. Each copy still being read is awaited before the last count is told.
+const reading = new Set();
+const readers = new Set();
+async function counted(input, init) {
+  const answer = await ownFetch(input, init);
+  if (!answer.body) return answer;
+  const reader = answer.clone().body.getReader();
+  readers.add(reader);
+  const read = (async () => {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      loading.received += value.byteLength;
+      tell();
+    }
+  })().catch(() => { /* a copy that fails to read counts no further */ });
+  reading.add(read);
+  read.finally(() => reading.delete(read));
+  return answer;
+}
+
 async function boot() {
+  ownFetch = self.fetch.bind(self);
+  self.fetch = counted;
+  try {
+    const value = await started();
+    await Promise.allSettled([...reading]);
+    return value;
+  } catch (error) {
+    // A start that failed says so at once: the copies still being counted are let go, not
+    // waited for to the end of their files (round 2 of #633).
+    for (const reader of readers) reader.cancel().catch(() => { /* gone already */ });
+    throw error;
+  } finally {
+    self.fetch = ownFetch;
+    tell(true);
+  }
+}
+
+async function started() {
   const timings = {};
   let start = now();
   step(0);
   const manifest = await (await fetch(BASE + "manifest.json")).json();
+  loading.expected = manifest.bytes || 0;
   const { loadPyodide } = await import(BASE + "pyodide/pyodide.mjs");
   py = await loadPyodide({ indexURL: BASE + "pyodide/" });
   timings.python = now() - start;

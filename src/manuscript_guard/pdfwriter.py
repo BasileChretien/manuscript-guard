@@ -135,6 +135,16 @@ def wrapped(text: str, font: str, size: float, room: float) -> list[str]:
     return lines
 
 
+def fitted(text: str, font: str, size: float, room: float) -> str:
+    """`text`, printable already, on one line no wider than `room`: cut, with "…", where it
+    is wider (a running title that names many papers, round 1 of #635)."""
+    if width(text, font, size) <= room:
+        return text
+    while text and width(text.rstrip() + "…", font, size) > room:
+        text = text[:-1]
+    return text.rstrip() + "…"
+
+
 def _string(text: str) -> bytes:
     """A PDF string of `text`, printable already: Windows-1252 bytes, its parentheses and
     backslashes escaped, every byte past ASCII as an octal escape."""
@@ -155,11 +165,61 @@ def _unicode(text: str) -> bytes:
     return b"<FEFF" + text.encode("utf-16-be", "replace").hex().upper().encode() + b">"
 
 
+#: A colour, as red, green and blue from 0 to 1.
+Rgb = tuple[float, float, float]
+
+
+def rgb(hexed: str) -> Rgb:
+    """A colour from its web form, "#1d4f91"."""
+    value = hexed.lstrip("#")
+    return tuple(int(value[at:at + 2], 16) / 255 for at in (0, 2, 4))  # type: ignore[return-value]
+
+
+def _fill(color: Rgb) -> bytes:
+    return b"%.3f %.3f %.3f rg" % color
+
+
+def _stroke(color: Rgb) -> bytes:
+    return b"%.3f %.3f %.3f RG" % color
+
+
+def _rounded(x: float, y: float, w: float, h: float, r: float) -> bytes:
+    """The path of a rectangle whose bottom-left corner is (x, y), its corners rounded by `r`
+    (Bezier quarter circles, k = 0.5523)."""
+    r = max(0.0, min(r, w / 2, h / 2))
+    if not r:
+        return b"%.2f %.2f %.2f %.2f re" % (x, y, w, h)
+    k = r * 0.5523
+    return (b"%.2f %.2f m %.2f %.2f l %.2f %.2f %.2f %.2f %.2f %.2f c %.2f %.2f l "
+            b"%.2f %.2f %.2f %.2f %.2f %.2f c %.2f %.2f l %.2f %.2f %.2f %.2f %.2f %.2f c "
+            b"%.2f %.2f l %.2f %.2f %.2f %.2f %.2f %.2f c h"
+            % (x + r, y, x + w - r, y, x + w - r + k, y, x + w, y + r - k, x + w, y + r,
+               x + w, y + h - r, x + w, y + h - r + k, x + w - r + k, y + h, x + w - r, y + h,
+               x + r, y + h, x + r - k, y + h, x, y + h - r + k, x, y + h - r,
+               x, y + r, x, y + r - k, x + r - k, y, x + r, y))  # fmt: skip
+
+
 @dataclass
 class _Page:
     commands: list[bytes] = field(default_factory=list)
     #: Each link on the page: its rectangle and the key of the place it goes to.
     links: list[tuple[tuple[float, float, float, float], str]] = field(default_factory=list)
+    #: Each link out of the document: its rectangle and its address.
+    uris: list[tuple[tuple[float, float, float, float], str]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class Margins:
+    """What every page carries besides its flow (`Pdf.frame`): a running title at the top
+    of every page but the first, and at the foot a line of text, a link where `uri` is
+    given, and the page's number of all; in `color`, at `size`."""
+
+    running: str = ""
+    foot: str = ""
+    uri: str = ""
+    color: Rgb = (0.4, 0.4, 0.4)
+    rule: Rgb = (0.85, 0.85, 0.85)
+    size: float = 7.5
 
 
 @dataclass
@@ -175,6 +235,11 @@ class Pdf:
     #: Each place a link can go to, by key: its page and its height there.
     places: dict[str, tuple[int, float]] = field(default_factory=dict)
     y: float = 0.0
+    #: What every page carries besides its flow; none where None.
+    frame: Margins | None = None
+    author: str = ""
+    subject: str = ""
+    _done: bool = field(default=False, repr=False)
 
     def _room(self, height: float) -> None:
         """A new page where `height` more does not fit above the bottom margin."""
@@ -234,19 +299,110 @@ class Pdf:
             self.y -= step
 
     def _line(self, line: str, font: str, size: float, x: float, top: float, gray: float,
-              link: str | None = None) -> None:  # fmt: skip
+              link: str | None = None, color: Rgb | None = None) -> None:  # fmt: skip
         page = self.pages[-1]
         base = top - size
-        color = f"{gray:.2f} g ".encode() if gray else b""
-        page.commands.append(color + b"BT /%s %.1f Tf %.2f %.2f Td " % (font.encode(), size, x,
-                             base) + _string(line) + b" Tj ET" + (b" 0 g" if gray else b""))
+        if color is not None:
+            paint, after = _fill(color) + b" ", b" 0 g"
+        else:
+            paint, after = (f"{gray:.2f} g ".encode(), b" 0 g") if gray else (b"", b"")
+        page.commands.append(paint + b"BT /%s %.1f Tf %.2f %.2f Td " % (font.encode(), size, x,
+                             base) + _string(line) + b" Tj ET" + after)
         if link is not None and line:
             page.links.append(((x, base - 2, x + width(line, font, size), top), link))
+
+    # What a designed page is drawn with, besides the flowing text: shapes under the text
+    # that follows them, a line set where it is told to stand, a bookmark and a place with
+    # nothing printed, and an area that links. Each on the current page, at heights in
+    # points from the page's foot, as the flow's `y` is.
+
+    def ensure(self, height: float) -> float:
+        """The top of `height` points of room on this page, or on a new one where it does not
+        fit; the flow then stands there."""
+        self._room(height)
+        return self.y
+
+    def wrap(self, text: str, kind: str, size: float, room: float) -> list[str]:
+        """`text` as the fonts print it, in lines no wider than `room`."""
+        return wrapped(printable(text), _KIND[kind], size, room)
+
+    def measure(self, text: str, kind: str, size: float) -> float:
+        """How wide one line of `text` is, as the fonts print it."""
+        return width(printable(text), _KIND[kind], size)
+
+    def rect(self, x: float, top: float, w: float, h: float, color: Rgb,
+             radius: float = 0.0) -> None:  # fmt: skip
+        """A rectangle filled in `color`, its top-left corner at (x, top), its corners rounded
+        by `radius`; under whatever is drawn after it."""
+        self.pages[-1].commands.append(b"q " + _fill(color) + b" " + _rounded(
+            x, top - h, w, h, radius) + b" f Q")
+
+    def rule(self, x1: float, y1: float, x2: float, y2: float, color: Rgb,
+             thickness: float = 0.6) -> None:  # fmt: skip
+        """A straight line from (x1, y1) to (x2, y2)."""
+        self.pages[-1].commands.append(b"q " + _stroke(color) + b" %.2f w %.2f %.2f m %.2f %.2f "
+                                       b"l S Q" % (thickness, x1, y1, x2, y2))
+
+    def put(self, text: str, *, x: float, top: float, kind: str = "regular",
+            size: float = 10.0, color: Rgb | None = None, link: str | None = None,
+            uri: str | None = None) -> float:  # fmt: skip
+        """One line of `text`, its top at `top`, from `x`; a link to the place `link` or out
+        to `uri`. Its width."""
+        font = _KIND[kind]
+        line = printable(text)
+        self._line(line, font, size, x, top, 0.0, link, color)
+        wide = width(line, font, size)
+        if uri:
+            self.pages[-1].uris.append(((x, top - size - 2, x + wide, top), uri))
+        return wide
+
+    def link_area(self, x: float, top: float, w: float, h: float, key: str) -> None:
+        """An area of the page that links to the place `key`, a tile or a card."""
+        self.pages[-1].links.append(((x, top - h, x + w, top), key))
+
+    def bookmark(self, text: str, level: int = 1, key: str | None = None) -> None:
+        """A bookmark at the flow's place, and the place `key`, with nothing printed: what a
+        heading drawn by other means is found by."""
+        if not self.pages:
+            self._room(0)
+        self.outline.append((level, text, len(self.pages) - 1, self.y))
+        if key is not None and key not in self.places:
+            self.places[key] = (len(self.pages) - 1, self.y)
+
+    def _framed(self) -> None:
+        """Each page's margins as `frame` says: the running title over every page but the
+        first, and the foot's line, its link and the page's number, on every page."""
+        frame = self.frame
+        if frame is None or self._done:
+            return
+        self._done = True
+        count = len(self.pages)
+        for at, page in enumerate(self.pages):
+            mine = Pdf(self.title, pages=[page])
+            foot = MARGIN * 0.55
+            mine.rule(MARGIN, foot + frame.size + 5, WIDTH - MARGIN, foot + frame.size + 5,
+                      frame.rule, 0.5)  # fmt: skip
+            number = f"Page {at + 1} of {count}"
+            numbered = mine.measure(number, "regular", frame.size)
+            if frame.foot:
+                said = fitted(printable(frame.foot), "F1", frame.size,
+                              WIDTH - 2 * MARGIN - numbered - 12)  # fmt: skip
+                mine.put(said, x=MARGIN, top=foot + frame.size, size=frame.size,
+                         color=frame.color, uri=frame.uri or None)  # fmt: skip
+            mine.put(number, x=WIDTH - MARGIN - numbered, top=foot + frame.size, size=frame.size,
+                     color=frame.color)  # fmt: skip
+            if at and frame.running:
+                top = HEIGHT - MARGIN * 0.45
+                running = fitted(printable(frame.running), "F1", frame.size, WIDTH - 2 * MARGIN)
+                mine.put(running, x=MARGIN, top=top, size=frame.size, color=frame.color)
+                mine.rule(MARGIN, top - frame.size - 5, WIDTH - MARGIN, top - frame.size - 5,
+                          frame.rule, 0.5)  # fmt: skip
 
     def bytes(self) -> bytes:
         """The document, every link resolved to its place, a link to none dropped."""
         if not self.pages:
             self._room(0)
+        self._framed()
         return _Writer(self).written()
 
 
@@ -286,6 +442,11 @@ class _Writer:
                               b"/Border [0 0 0] /Dest [%d 0 R /XYZ 0 %.2f 0] >>"
                               % (*rect, numbers[pdf.places[key][0]], pdf.places[key][1]))
                      for rect, key in page.links if key in pdf.places]  # fmt: skip
+            # A link out: its address as ASCII, as a URI action takes it (PDF 32000, 12.6.4.7).
+            links += [self.add(b"<< /Type /Annot /Subtype /Link /Rect [%.2f %.2f %.2f %.2f] "
+                               b"/Border [0 0 0] /A << /S /URI /URI " % rect
+                               + _string(address.encode("ascii", "ignore").decode()) + b" >> >>")
+                      for rect, address in page.uris]  # fmt: skip
             annots = (b" /Annots [" + b" ".join(b"%d 0 R" % one for one in links) + b"]"
                       if links else b"")  # fmt: skip
             self.objects[number - 1] = (
@@ -298,7 +459,10 @@ class _Writer:
                                      + (b" /Outlines %d 0 R /PageMode /UseOutlines" % outlines
                                         if outlines else b"") + b" >>")  # fmt: skip
         info = self.add(b"<< /Title " + _unicode(pdf.title) + b" /Producer "
-                        + _unicode(pdf.producer) + b" >>")  # fmt: skip
+                        + _unicode(pdf.producer)
+                        + (b" /Author " + _unicode(pdf.author) if pdf.author else b"")
+                        + (b" /Subject " + _unicode(pdf.subject) if pdf.subject else b"")
+                        + b" >>")  # fmt: skip
         return self._file(catalog, info)
 
     def _outline(self, numbers: list[int]) -> int:

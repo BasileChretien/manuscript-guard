@@ -23,15 +23,18 @@ const waiting = new Map();
 const SLOW_AFTER_MS = 90000;
 let slow = null;
 let stepped = false;
+// The error the worker met while loading, if any: the slow note keeps it (round 2 of #627).
+let met = "";
 function loadingStep({ at, of, what }) {
   stepped = true;
   say(`Loading the checker, step ${at} of ${of}: ${what}. About 26 MB the first time, nothing after that.`);
   $("progress").max = of;
   $("progress").value = at - 1;
   clearTimeout(slow);
-  slow = setTimeout(() => say(`Still on step ${at} of ${of} (${what}) after ${SLOW_AFTER_MS / 1000} s. `
-    + "On a slow network this can take a few minutes. If nothing changes, reload the page; the "
-    + "command line runs the same audit: uvx manuscript-guard audit paper.docx"), SLOW_AFTER_MS);
+  slow = setTimeout(() => say(`Still on step ${at} of ${of} (${what}) after ${SLOW_AFTER_MS / 1000} s`
+    + (met ? `, after an error (${met})` : "") + ". On a slow network this can take a few "
+    + "minutes. If nothing changes, reload the page; the command line runs the same audit: "
+    + "uvx manuscript-guard audit paper.docx"), SLOW_AFTER_MS);
 }
 const loaded = () => {
   clearTimeout(slow);
@@ -73,6 +76,7 @@ worker.onerror = (event) => {
     say(`The checker could not start: ${what}`);
     return;
   }
+  met = what;
   say(`The checker met an error while loading (${what}). It may still start; if nothing `
     + "changes, reload the page.");
 };

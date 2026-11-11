@@ -7,8 +7,10 @@ no server behind the page, only static files on GitHub Pages, so there is nothin
 it to.
 
 The page is built from each release, so it runs the same version as `pip install
-manuscript-guard`, with the same checks. CI holds its reports to the command line's, word for
-word (below).
+manuscript-guard`, with the same checks, and says which at its top, with a link to what the
+release changed. CI holds its reports to the command line's, word for word (below). While
+it loads, it says which of its four steps it is on; a step still under way after 90 seconds
+is said to be slow, with what to do, and the page keeps waiting.
 
 ## What it checks
 
@@ -24,8 +26,9 @@ reader has them (`.json`, `.csv`, `.tsv`, `.txt`, `.yaml`). That is everything
 
 The page draws the report: what each check found, in a table; the findings on the words, a
 fold for each kind with every place inside it and the kind's hint; and the other sections
-with something to show. Below, in a fold, is the text the command line prints, word for
-word, which "Save the report" saves. The box "List every place of every finding" gives the
+with something to show. It names a check's code (G14) only on pointing at its kind. The buttons
+that save the report stand above it. Below it, in a fold, is the text the command line
+prints, word for word, which "Save the report as text" saves. The box "List every place of every finding" gives the
 text every place with its context and hint, and the page every section and every place's
 context (`audit --details`). "Save the report as a PDF, with every place" saves it as
 `audit --pdf` writes it, from the same audit. For a .docx, "Save the paper with the findings as Word

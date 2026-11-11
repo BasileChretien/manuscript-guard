@@ -214,9 +214,11 @@ _INTRODUCTION = INTRODUCTION_TITLE
 _DISCUSSION = re.compile(r"(?:discussion|interpretation|comment)\b", re.IGNORECASE)
 _STATEMENT_NAMES = STATEMENT_NAMES
 _STATEMENTS = STATEMENT_TITLE
-#: The reference list, which a similarity check is asked to leave out, and this check does.
+#: The reference list, which a similarity check is asked to leave out, and this check does:
+#: "Reference list" too, as the audit and the sections know it.
 _REFERENCES = re.compile(
-    rf"(?:references|bibliography|(?:literature|works)\s+cited|{REFERENCE_WORDS_ELSEWHERE})\W*$",
+    r"(?:references|bibliography|(?:literature|works)\s+cited|reference\s+list"
+    rf"|{REFERENCE_WORDS_ELSEWHERE})\W*$",
     re.IGNORECASE,
 )
 #: A footnote's mark in a heading, which is no part of its title.

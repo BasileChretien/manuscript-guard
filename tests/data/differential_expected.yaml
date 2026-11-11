@@ -212,12 +212,21 @@ expected:
       are no longer loose, and the preamble's `\input name` without braces is followed; the
       inputs now hold placed parts and pictures, inside a figure and under headings
       (Known gaps, 2026-10-27)
+  - reading: spelling
+    why: >-
+      a reference list under the headings "Literature cited" and "Reference list", or under
+      a title in a block quote, `> **11. REFERENCES**:`, a link,
+      `[**References**](#_Ref89712232)`, or a bold title a hard line break opens, is passed
+      over, so the spelling of its entries is not read; the inputs now hold these titles
+      (the real-paper corpus, 2026-11-11)
   - reading: recycled passages
     why: >-
-      a citation by author and year in parentheses in the earlier paper, "(Smith et al.,
-      2019)", is blanked before its words are compared, so it no longer cuts a passage the
-      manuscript repeats where the manuscript cites by key; the earlier papers drawn now
-      set such citations between words, as they set a reference's number
+      a reference list under a title in a block quote, `> **11. REFERENCES**:`, a link,
+      `[**References**](#_Ref89712232)`, a bold title a hard line break opens, or the
+      heading "Reference list", is set apart, so a passage of the earlier paper repeated in
+      its entries is not reported; the inputs now hold these titles (the real-paper corpus
+      and round 1 of #623, 2026-11-11). The entry it replaces, for the author-year
+      citations of an earlier paper, is spent
   - reading: communicate language
     why: >-
       new with this pull request: `checking.in_english` decides whether a communication

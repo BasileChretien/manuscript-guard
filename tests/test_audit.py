@@ -377,6 +377,19 @@ def test_a_reference_heading_truncates_the_paper() -> None:
     assert "77" in strip_bibliography(text)
 
 
+def test_a_link_to_the_references_alone_on_a_wrapped_line_cuts_the_paper() -> None:
+    """A known gap (DESIGN.md, Known gaps): the audit takes a bibliography's title on any
+    line, and a link is read by its words, so a hard wrap that leaves `[References](#refs)`
+    alone on a line inside a paragraph cuts the paper there. `check` asks for a paragraph's
+    first line and opens no list."""
+    from manuscript_guard.audit import bibliography_spans
+    from manuscript_guard.text.reference_lists import unmarked_reference_lists
+
+    text = "The entries are listed in the\n[References](#refs)\nwith 77 cases.\n"
+    assert bibliography_spans(text) == [(1, 3)]
+    assert unmarked_reference_lists(text) == []
+
+
 def test_a_reference_entry_is_recognised_without_a_heading() -> None:
     """citeproc appends the bibliography with no heading, so there is nothing to cut at."""
     assert looks_like_reference(
@@ -1650,7 +1663,10 @@ def test_a_docx_titled_in_bold_is_placed_by_its_titles_and_says_so(tmp_path: Pat
 
     measured = measure_discrimination(report.backing_values)
     assert f"How the headings were read:\n  {said}" in render(report, measured, tmp_path)
-    assert ["How the headings were read:", [said]] in view(report, measured, tmp_path)["notes"]
+    # The page and the PDF say it without the command `init --from` (`reader.for_a_reader`).
+    plain = said.replace(", as `init --from` makes them;", ";")
+    assert plain != said
+    assert ["How the headings were read:", [plain]] in view(report, measured, tmp_path)["notes"]
 
 
 def test_a_docx_with_no_heading_is_said_to_be_read_as_one_text(tmp_path: Path) -> None:

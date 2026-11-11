@@ -50,6 +50,11 @@ _BIBLIOGRAPHY = re.compile(
     r"(?P<tail>[\s*_:.|]*)$",
     re.IGNORECASE,
 )
+#: The marks a line in a block quote opens with, one quote in another included: `> `, `>> `.
+_QUOTED = re.compile(r"^[ ]{0,3}>(?:[ ]?>)*[ ]?")
+#: An inline link, `[words](target)`, which pandoc prints as its words; a target may hold
+#: one pair of brackets and a title.
+_LINK = re.compile(r"\[(?P<words>[^\[\]\n]*)\]\((?:[^()\n]|\([^()\n]*\))*\)")
 
 
 def is_bibliography_heading(
@@ -86,9 +91,14 @@ def is_bibliography_heading(
     audit cut the list from the .docx, whose text holds no brackets, and G14 read the list
     of the same paper as prose, its authors' initials and the journals in capitals reported
     as abbreviations. A .docx's text is read as it stands.
+
+    So, in Markdown, is a link, by its words, and a line in a block quote, without the
+    quote's marks: Word's conversion writes a title it has a bookmark on as
+    `[**References**](#_Ref89712232)`, and an indented one as `> **11. REFERENCES**:`, and
+    G14 read the list under either as prose (the real-paper corpus).
     """
     if markdown:
-        line = without_spans(line)
+        line = _LINK.sub(r"\g<words>", _QUOTED.sub("", without_spans(line), count=1))
     text = line.strip()
     if marked:
         text = strip_attributes(line.lstrip().rstrip(" \t"))
@@ -144,7 +154,7 @@ def unmarked_reference_lists(text: str) -> list[tuple[int, int]]:
             number in heading_lines
             or not _opens_a_paragraph(lines, number, under)
             or _in_a_list(lines, number)
-            or not is_bibliography_heading(lines[number])
+            or not is_bibliography_heading(_first_printed(lines, number))
         ):
             number += 1
             continue
@@ -155,6 +165,22 @@ def unmarked_reference_lists(text: str) -> list[tuple[int, int]]:
             number += 1
         spans.append((offsets[start], offsets[number] if number < len(lines) else len(text)))
     return spans
+
+
+#: A paragraph's first line that is only its opening marks and a hard line break: `**\`.
+_BREAK_FIRST = re.compile(r"[ ]{0,3}(?P<marks>[*_]{0,3})\\[ \t]*")
+
+
+def _first_printed(lines: list[str], number: int) -> str:
+    """The first line pandoc prints of the paragraph line `number` opens: the line itself, or,
+    where it holds nothing but the paragraph's opening marks and a hard line break, the marks
+    and the line after it. Word's conversion writes a title with a break before it as
+    `**\\` over `References**` (the real-paper corpus), whose printed line is
+    "References" in bold."""
+    opening = _BREAK_FIRST.fullmatch(lines[number])
+    if opening is None or number + 1 >= len(lines) or not lines[number + 1].strip():
+        return lines[number]
+    return opening.group("marks") + lines[number + 1]
 
 
 def _opens_a_paragraph(lines: list[str], number: int, under: set[int]) -> bool:

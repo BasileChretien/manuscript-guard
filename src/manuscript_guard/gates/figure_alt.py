@@ -10,6 +10,9 @@ its print width and kind. It may quote values by binding, `{{results.ror.point}}
 does, and the build writes it as the picture's description in Word. A number typed into it
 is held as prose's is: one that is a result, typed, is stale in waiting.
 
+A figure the manuscript places the ordinary way (`placed_figures.py`) is held the same,
+its text in the `<name>.guard.yaml` beside its file.
+
 * `figure-alt-missing`: a figure the manuscript places has no alternative text. A note while
   drafting, a warning from internal review, and a failure at submission where the journal's
   profile says it requires one (`figures.alt_text: required`); a note at every stage where
@@ -67,22 +70,44 @@ def sidecar_of(project: Project, name: str) -> Path:
 def raw_alt(project: Project, name: str) -> str | None:
     """The alternative text a figure's sidecar gives, as written; None where it gives none,
     or something that is not text."""
+    return alt_in(sidecar_of(project, name))
+
+
+def alt_in(sidecar: Path) -> str | None:
+    """The alternative text the sidecar at `sidecar` gives, as written; None where it gives
+    none, or something that is not text."""
     from manuscript_guard.gates.figure_files import _sidecar
 
-    said = _sidecar(sidecar_of(project, name)).get(KEY)
+    said = _sidecar(sidecar).get(KEY)
     return said if isinstance(said, str) and said.strip() else None
+
+
+def figures_placed(project: Project) -> list[tuple[str, bool, Path]]:
+    """Each figure the manuscript places, with its name, whether only the supplement places
+    it, and its sidecar: each it binds, by its key, with its sidecar in `figures/`, then each
+    file it places by `\\includegraphics` or as an image (`placed_figures.py`), by its path
+    from the project's root, with its sidecar beside it. One sidecar is one figure."""
+    from manuscript_guard.gates.figure_files import _placed
+    from manuscript_guard.gates.placed_figures import placed_files
+
+    found = [(name, supplementary, sidecar_of(project, name))
+             for name, supplementary in _placed(project)]  # fmt: skip
+    seen = {sidecar.resolve() for _name, _supplementary, sidecar in found}
+    for placed in placed_files(project):
+        if placed.sidecar.resolve() not in seen:
+            seen.add(placed.sidecar.resolve())
+            found.append((placed.name, placed.supplementary, placed.sidecar))
+    return found
 
 
 def alt_texts(project: Project) -> list[tuple[str, Path, str]]:
     """Each figure the manuscript places that has alternative text: its name, its sidecar
     and the text as written. For the checks that read what the build prints from it."""
-    from manuscript_guard.gates.figure_files import _placed
-
     found = []
-    for name, _supplementary in _placed(project):
-        raw = raw_alt(project, name)
+    for name, _supplementary, sidecar in figures_placed(project):
+        raw = alt_in(sidecar)
         if raw is not None:
-            found.append((name, sidecar_of(project, name), raw))
+            found.append((name, sidecar, raw))
     return found
 
 
@@ -128,7 +153,6 @@ def alt_markdown(project: Project, name: str, namespace: dict[str, Value]) -> st
 
 def check_figure_alt(project: Project, namespace: dict[str, Value], stage: str) -> Report:
     """Each figure the manuscript places, for its alternative text."""
-    from manuscript_guard.gates.figure_files import _placed
     from manuscript_guard.gates.journal import figure_rules
     from manuscript_guard.policy import INTERNAL_REVIEW, SUBMISSION, stage_index
 
@@ -138,12 +162,11 @@ def check_figure_alt(project: Project, namespace: dict[str, Value], stage: str) 
              or rules.get("applies_from") == "acceptance")  # fmt: skip
     classifier = Classifier.load(project.extra_conventions, project.extra_terms)
     findings: list[Finding] = []
-    placed = _placed(project)
-    for name, supplementary in placed:
+    placed = figures_placed(project)
+    for name, supplementary, sidecar in placed:
         own = rules.get("supplementary") if supplementary else None
         held = {**rules, **own} if isinstance(own, dict) else rules
-        sidecar = sidecar_of(project, name)
-        raw = raw_alt(project, name)
+        raw = alt_in(sidecar)
         if raw is None:
             required = held.get("alt_text") == "required"
             severity = INFO if early else FAIL if required and stage == SUBMISSION else WARN
@@ -171,7 +194,8 @@ def check_figure_alt(project: Project, namespace: dict[str, Value], stage: str) 
     if not placed:
         return report
     return report.with_counts(
-        figures_with_alt=sum(1 for name, _ in placed if raw_alt(project, name) is not None)
+        figures_with_alt=sum(1 for _name, _supplementary, sidecar in placed
+                             if alt_in(sidecar) is not None)  # fmt: skip
     )
 
 

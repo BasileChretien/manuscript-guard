@@ -2,9 +2,10 @@
 
 Two series told apart by colour alone can be one series to a reader with protanopia,
 deuteranopia or tritanopia, and to anyone reading a page printed in grey. So each colour a
-figure the manuscript places paints its marks in is read from the figure itself, its SVG or
-its PDF (`gates/figure_svg.py`, `gates/figure_pdf.py`), and taken through what each
-deficiency makes of it and through grey (`colour.py`: Machado et al. 2009, CIEDE2000):
+figure the manuscript places, by its binding or the ordinary way (`placed_figures.py`),
+paints its marks in is read from the figure itself, its SVG or its PDF
+(`gates/figure_svg.py`, `gates/figure_pdf.py`), and taken through what each deficiency
+makes of it and through grey (`colour.py`: Machado et al. 2009, CIEDE2000):
 
 * `figure-colours-confused`: two colours at least `colour.THRESHOLD` apart to normal vision
   are less than it apart to a reader with one of the deficiencies. A warning, never a
@@ -81,24 +82,26 @@ def painted(path: Path) -> list[str] | None:
 
 def check_figure_colours(project: Project) -> Report:
     """Each figure the manuscript places, for the colours it paints."""
-    from manuscript_guard.gates.figure_files import _files_of, _placed, _sidecar
+    from manuscript_guard.gates.figure_alt import figures_placed
+    from manuscript_guard.gates.figure_files import _files_of, _sidecar
     from manuscript_guard.gates.figures import _declared
     from manuscript_guard.gates.journal import figure_rules
 
-    placed = _placed(project)
+    placed = figures_placed(project)
     if not placed:
         return Report()
     rules = figure_rules(project)
     findings: list[Finding] = []
     checked = 0
-    for name, supplementary in placed:
-        files = _files_of(project.path("figures"), name)
+    for name, supplementary, sidecar in placed:
+        # A figure's files are those beside its sidecar with its name, one per format: a
+        # placed file's, the file and its exports in other formats beside it.
+        files = _files_of(sidecar.parent, sidecar.name.removesuffix(".guard.yaml"))
         # The SVG where there is one, as G3 reads the figure's text from it, else the PDF;
         # the PDF where the SVG cannot be read (round 1 of #398).
         vectors = [p for suffix in (".svg", ".pdf") for p in files if p.suffix.lower() == suffix]
         vector, colours = next(((p, c) for p in vectors if (c := painted(p)) is not None),
                                (vectors[0] if vectors else None, None))  # fmt: skip
-        sidecar = project.path("figures") / f"{name}.guard.yaml"
         if colours is None:
             if files:
                 findings.append(_unread(name, files[0], vector))

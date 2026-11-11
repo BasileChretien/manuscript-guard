@@ -74,6 +74,17 @@ cited, and a pointer typed to it is still held to its place among the document's
 that only uses the word, "Supplementary analyses", holds the main text's tables. A figure's legend is its caption, and G4 holds it to the journal's limit on a
 legend's words.
 
+A figure placed with `\includegraphics` is reviewed, described and read for its colours as
+one bound with `\mg` is. `check` finds its file as graphicx does: from the entry file's
+folder, then from each folder `\graphicspath` names, and a name written with no extension
+with each extension pdfTeX tries, `.pdf` before `.png`. A figure is known by its path from
+the project's root, `manuscript/figs/chart.pdf`: its review is `chart.review.yaml` beside
+it (`manuscript-guard review --record-figure manuscript/figs/chart.pdf --verdict pass --by
+"A. Reader"`), and its alternative text goes under `alt:` in `chart.guard.yaml` beside it. A
+figure the analysis does not emit is not traced to the results: one note names each such
+figure (`figure-untraced`). Rendered from a script into `figures/` and placed with
+`\mg{figure.key}`, G3 reads the numbers it draws.
+
 `manuscript-guard values` writes `mgvalues.sty` from the results. The entry file loads it
 with `\usepackage{mgvalues}`, so the `.tex` compiles in any editor with the numbers in.
 Commit it, and run `values` again after the analysis. `check` compares it with what `values`

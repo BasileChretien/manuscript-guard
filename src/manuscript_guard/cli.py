@@ -105,6 +105,7 @@ from manuscript_guard.gates.formats import check_format, not_read_in_latex
 from manuscript_guard.gates.held_out import check_held_out, check_held_out_reads
 from manuscript_guard.gates.methods_review import check_method_passages, check_methods_review
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
+from manuscript_guard.gates.placed_figures import check_untraced
 from manuscript_guard.gates.registration import check_registration
 from manuscript_guard.gates.related import check_related
 from manuscript_guard.gates.shortlist import check_shortlist
@@ -200,6 +201,7 @@ def _gate_run(
         ("G3", lambda: check_figures(project, results)),
         ("G3", lambda: check_figure_alt(project, namespace, chosen)),
         ("G3", lambda: check_figure_colours(project)),
+        ("G3", lambda: check_untraced(project)),
         ("G10", lambda: check_figure_reviews(project, content_digest)),
         ("G7", lambda: check_citations(project, literature)),
         ("G7", lambda: check_literature_chain(project, literature)),
@@ -7451,7 +7453,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--record-figure",
         metavar="FIGURE",
         help="write <figure>.review.yaml, with the content digest G10 asks for and never "
-        "printed",
+        "printed; a figure the manuscript places outside figures/ by its path from the "
+        "project's root",
     )
     review.add_argument(
         "--verdict",

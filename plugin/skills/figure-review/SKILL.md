@@ -21,6 +21,16 @@ Run `manuscript-guard check` and note which figures are unreviewed or stale. The
 one, gather three things: the rendered figure, the results values it should be showing, and
 the manuscript passage that refers to it.
 
+Every figure the paper places is reviewed: one the analysis renders into `figures/` and the
+manuscript binds, and one placed the ordinary way, with LaTeX's `\includegraphics` (found
+through `\graphicspath`, a name with no extension as graphicx finds it), as a Markdown image,
+or as a picture `init --from` brought from Word into `manuscript/media/`. A placed figure is
+known by its path from the project's root, `manuscript/figs/chart.pdf`, and its records stand
+beside it as an emitted figure's stand beside it in `figures/`: `chart.review.yaml` and
+`chart.guard.yaml`. The numbers a placed figure draws are not traced to the results, so read
+them against `results/` under `values-match-results` with particular care; `check` names
+each such figure in one note (`figure-untraced`).
+
 ```bash
 manuscript-guard check --json          # which figures need a review
 ```
@@ -52,8 +62,9 @@ promising "against the comparators" beside a single-row plot is the archetype.
 ## The alternative text
 
 A reader who cannot see the figure hears its alternative text and nothing else of it. It is
-written once, in `figures/<name>.guard.yaml`, and the build writes it into the picture in
-Word; `submit` lists every figure's in `alt-text.md` for a portal that asks for it apart.
+written once, in the figure's guard file, `figures/<name>.guard.yaml` or, for a placed figure,
+the `<name>.guard.yaml` beside its file. The build writes an emitted figure's into the picture
+in Word; `submit` lists every figure's in `alt-text.md` for a portal that asks for it apart.
 
 ```yaml
 alt: >-
@@ -90,7 +101,9 @@ Once you have looked at the figure, have the toolkit start the record:
 manuscript-guard review --record-figure forest --by "<who looked at it>" --verdict pass
 ```
 
-That writes `figures/<name>.review.yaml` with the figure's content digest, which has to be
+For a placed figure, give its path from the project's root, `--record-figure
+manuscript/figs/chart.pdf`, or its name where no other figure has it. That writes
+`<name>.review.yaml` beside the figure's file with the figure's content digest, which has to be
 the toolkit's and not a plain file hash, because it deliberately ignores render metadata and
 generated element ids. It also lists all seven checks as `ok: false`, each with the question
 it asks, so the file is a to-do list. `--by` is required, because the record's whole content

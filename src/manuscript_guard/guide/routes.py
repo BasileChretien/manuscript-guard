@@ -164,6 +164,8 @@ ROUTES: dict[str, Route] = {
     **_all("related-outputs", ("related",), "related-"),
     # -- figures --------------------------------------------------------------------------
     **_all("figure-review", None, "figure-unreviewed", "figure-review-", "figure-alt-"),
+    # A placed figure whose numbers are not traced: rendered from the analysis and bound.
+    **_all("results-binding", None, "figure-untraced"),
     **_all("figure-design", ("palettes",), "figure-colours-", "figure-greyscale-confused",
            "figure-file-size", "figure-font-", "figure-format", "figure-height",
            "figure-resolution", "figure-shrinks", "figure-text-clipped", "figure-text-small",

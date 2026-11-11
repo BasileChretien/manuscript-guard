@@ -650,11 +650,7 @@ def write_figure_review(
     was no way to obtain it: G10 blocked the build asking for a number the toolkit computed
     and never printed.
     """
-    from manuscript_guard.gates.figure_review import (
-        REQUIRED_CHECKS,
-        _representatives,
-        review_path,
-    )
+    from manuscript_guard.gates.figure_review import REQUIRED_CHECKS, review_path
     from manuscript_guard.gates.figures import content_digest
 
     if verdict not in FIGURE_VERDICTS:
@@ -667,12 +663,7 @@ def write_figure_review(
 
     # The same choice the gate makes. A review recorded against the PNG when the gate reads
     # the SVG is a review the gate cannot find, and the figure still reports as unreviewed.
-    figures_dir = project.path("figures")
-    wanted = Path(figure).stem
-    candidates = [p for p in _representatives(figures_dir) if p.stem == wanted]
-    if not candidates:
-        known = ", ".join(sorted(p.name for p in _representatives(figures_dir))) or "none"
-        raise RecordError(f"no reviewable figure called {figure!r}; figures here: {known}")
+    candidates = _figure_named(project, figure)
 
     path = review_path(candidates[0])
     if path.exists():
@@ -706,6 +697,37 @@ def write_figure_review(
         newline="\n",
     )
     return Written(path=path, panel=None)
+
+
+def _figure_named(project, figure: str) -> list[Path]:
+    """The file G10 reads for `figure`: a figure in `figures/` by its name, `forest` or
+    `forest.svg`, and one the manuscript places elsewhere by its name too, or by its path
+    from the project's root, `manuscript/figs/fig1.pdf`, where two figures share a name."""
+    from manuscript_guard.gates.figure_review import reviewable
+
+    figures = reviewable(project)
+    given = Path(figure.replace("\\", "/"))
+    if len(given.parts) > 1:
+        folder = _resolved(project.root / given.parent)
+        found = [path for path, _name in figures
+                 if path.stem == given.stem and _resolved(path.parent) == folder]  # fmt: skip
+    else:
+        found = [path for path, _name in figures if path.stem == given.stem]
+    if not found:
+        known = ", ".join(sorted(name for _path, name in figures)) or "none"
+        raise RecordError(f"no reviewable figure called {figure!r}; figures here: {known}")
+    if len(found) > 1:
+        named = ", ".join(sorted(name for path, name in figures if path in found))
+        raise RecordError(f"{len(found)} figures are called {figure!r}: {named}; name the "
+                          "one you read by its path from the project's root")  # fmt: skip
+    return found
+
+
+def _resolved(path: Path) -> Path:
+    try:
+        return path.resolve()
+    except (OSError, RuntimeError, ValueError):
+        return path
 
 
 def answer_finding(path: Path, finding: str, answer: dict[str, object]) -> None:

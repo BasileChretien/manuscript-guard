@@ -25480,6 +25480,28 @@ What papers converted from Word showed (see "What papers converted from Word sho
     the same way. A quote that is the finding's words alone, a heading "AS", is listed
     wherever two paragraphs hold it, a word as well as a number. Accepted.
 
+- **A figure placed the ordinary way is reviewed, described and read for its colours, and
+  its numbers are not traced.** Basile decided on 2026-11-11, after arXiv 2409.10841, that
+  G10, G3's alternative text and the colour-vision check read every figure file the paper
+  places, by `\includegraphics`, as a Markdown image or as a picture `init --from` brought
+  from Word, known by its path from the project's root, its records beside it
+  (`gates/placed_figures.py`). G3's number checks still read what the analysis renders in
+  `figures/`, and one note names each placed figure outside it (`figure-untraced`). A
+  raster's colours are not read, as an emitted raster's are not: a note, unless an SVG or a
+  PDF of the same name stands beside it. G4's artwork rules still hold only the figures the
+  manuscript binds. Pinned by
+  `tests/test_corruption.py::test_a_placed_figure_is_told_what_an_emitted_one_is_at_each_stage`.
+  - A placed figure's alternative text is its guard file's, which `submit` writes into
+    `alt-text.md`; the build does not write it into the picture, where pandoc writes a
+    Markdown image's own description, and the description, a `fig-alt` attribute and
+    `\includegraphics`'s `alt` key are not read as its alternative text. Accepted.
+  - An image in an indented code block is read as placed, and one written by reference,
+    `![a][b]`, is not read. Accepted.
+  - A picture placed by `\includesvg`, `\includestandalone` or a command of the author's
+    whose path is a parameter is not read; a `\graphicspath` counts for every picture of its
+    document wherever it stands, and an imported file's folder is tried before it.
+    Accepted.
+
 Closed since, and why each mattered (an open gap goes above this line):
 
 - **A known word with a dot inside was never matched (2026-11-10).** #615 wrote that

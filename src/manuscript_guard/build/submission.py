@@ -615,10 +615,10 @@ def alt_texts(project: Project) -> str | None:
     its own: as the build writes it into the picture, each binding its display. None where
     the manuscript places no figure."""
     from manuscript_guard.contracts import load_namespace
-    from manuscript_guard.gates.figure_alt import printed_alt, raw_alt
-    from manuscript_guard.gates.figure_files import _files_of, _placed
+    from manuscript_guard.gates.figure_alt import alt_in, figures_placed, printed_alt
+    from manuscript_guard.gates.figure_files import _files_of
 
-    placed = _placed(project)
+    placed = figures_placed(project)
     if not placed:
         return None
     namespace = load_namespace(project)[0]
@@ -628,9 +628,14 @@ def alt_texts(project: Project) -> str | None:
         "Each figure's alternative text, for a submission system that asks for it apart. The "
         "document carries the same text in each picture.",
     ]
-    for name, supplementary in placed:
-        files = ", ".join(path.name for path in _files_of(project.path("figures"), name))
-        raw = raw_alt(project, name)
+    for name, supplementary, sidecar in placed:
+        stem = sidecar.name.removesuffix(".guard.yaml")
+        files = ", ".join(path.name for path in _files_of(sidecar.parent, stem))
+        raw = alt_in(sidecar)
+        try:
+            where = sidecar.resolve().relative_to(project.root.resolve()).as_posix()
+        except ValueError:
+            where = sidecar.as_posix()
         lines += [
             "",
             f"## {name}{' (supplementary)' if supplementary else ''}",
@@ -638,7 +643,7 @@ def alt_texts(project: Project) -> str | None:
             f"Files: {files or 'none rendered'}",
             "",
             printed_alt(raw, namespace) if raw is not None
-            else f"None: write it in figures/{name}.guard.yaml under `alt:`.",
+            else f"None: write it in {where} under `alt:`.",
         ]
     return "\n".join(lines) + "\n"
 

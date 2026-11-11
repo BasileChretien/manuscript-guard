@@ -9,9 +9,16 @@ short forms in the order the paper first uses them, at the first use of the firs
 `--known` as the remedy. Each form keeps the warning G14 gave it, its place, its count and
 its quote, which `--json` gives under the finding and `--details` lists.
 
+The order is G14's own: it gives its warnings part by part, the Abstract, the main text,
+then the supplement, and within each in the order of each form's first use as it reads the
+files, the paper's order and then the place in each (`_Mark.key`). So the warnings are taken
+in the order G14 gave them, not sorted by path: a LaTeX paper's Discussion, input after its
+Methods, sorts first by its file's name (round 1 of #640).
+
 A form that journals' own style guides say needs no definition
 (`data/journal_abbreviations.yaml`) is not listed, and the finding says how many it passed
-over and by which list. `check` reads neither: its warnings are G14's, one for each form.
+over and by which list; where every form is on it, a note says so (`PASSED`). `check` reads
+neither: its warnings are G14's, one for each form.
 """
 
 from __future__ import annotations
@@ -23,10 +30,13 @@ from pathlib import Path
 
 import yaml
 
-from manuscript_guard.findings import WARN, Finding
+from manuscript_guard.findings import INFO, WARN, Finding
 
 #: The code of G14's warning for one short form used and not defined.
 CODE = "abbreviation-undefined"
+#: The code of the note said where every such form is on the list: nothing to define, and
+#: the reader told what was passed over (round 1 of #640).
+PASSED = "abbreviations-passed-over"
 LIST = Path(__file__).resolve().parent.parent / "data" / "journal_abbreviations.yaml"
 #: The scopes G14 reads apart, as its messages name them (`gates.language`).
 _SCOPES = ("abstract", "main text", "supplement")
@@ -52,8 +62,9 @@ class Undefined(Finding):
 
     @property
     def counted(self) -> int:
-        """How many short forms it lists: each once, though G14 reads the abstract apart."""
-        return len({form for form, _warning in self.forms})
+        """How many short forms it lists: each once, though G14 reads the abstract apart;
+        for the note on forms passed over (`PASSED`), how many it passed over."""
+        return len({form for form, _warning in self.forms}) or len(self.passed_over)
 
     def as_dict(self) -> dict:
         out = {key: value for key, value in super().as_dict().items()
@@ -128,10 +139,11 @@ def _message(forms: list[tuple[str, Finding]], passed: list[str]) -> str:
 
 
 def one_finding(found: list[Finding]) -> list[Finding]:
-    """`found`, G14's findings on one paper audited, with its warnings on the short forms
-    used and not defined made one (`Undefined`) where the first of them stood, the forms
-    on the list (`exempt`) passed over. A warning whose message is not G14's for one form is
-    left as it is. No finding is made where every form is on the list."""
+    """`found`, G14's findings on one paper audited in the order G14 gave them, with its
+    warnings on the short forms used and not defined made one (`Undefined`) where the first
+    of them stood, the forms on the list (`exempt`) passed over. A warning whose message is
+    not G14's for one form is left as it is. Where every form is on the list, a note says
+    which were passed over (`PASSED`) in their place."""
     mine = []
     for finding in found:
         said = _SAID.match(finding.message) if finding.code == CODE else None
@@ -139,24 +151,26 @@ def one_finding(found: list[Finding]) -> list[Finding]:
             mine.append((said["form"], finding))
     if not mine:
         return list(found)
-    mine.sort(key=lambda pair: _at(pair[1]))
+    mine = _ordered(mine)
     on_list = exempt()
     kept = [(form, finding) for form, finding in mine if form not in on_list]
     passed = list(dict.fromkeys(form for form, _finding in mine if form in on_list))
     taken = {id(finding) for _form, finding in mine}
     first = id(mine[0][1])
+    made = _made(kept, passed) if kept else _noted(mine, passed)
     out: list[Finding] = []
     for finding in found:
         if id(finding) not in taken:
             out.append(finding)
-        elif id(finding) == first and kept:
-            out.append(_made(kept, passed))
+        elif id(finding) == first:
+            out.append(made)
     return out
 
 
-def _at(finding: Finding) -> tuple[str, int, int]:
-    """Where a warning stands, to order them: its file, its line, its column."""
-    return (str(finding.path or ""), finding.line or 0, finding.col or 0)
+def _ordered(mine: list[tuple[str, Finding]]) -> list[tuple[str, Finding]]:
+    """G14's warnings in its own reading order, which is the order it gave them: part by
+    part, and within each by each form's first use as it reads the files (`_Mark.key`)."""
+    return list(mine)
 
 
 def _made(kept: list[tuple[str, Finding]], passed: list[str]) -> Undefined:
@@ -166,4 +180,19 @@ def _made(kept: list[tuple[str, Finding]], passed: list[str]) -> Undefined:
                      hint=HINT, forms=tuple(kept), passed_over=tuple(passed))  # fmt: skip
 
 
-__all__ = ["CODE", "LIST", "Undefined", "exempt", "listed", "one_finding"]
+def _noted(mine: list[tuple[str, Finding]], passed: list[str]) -> Undefined:
+    """The note where every form left undefined is on the list: how many were passed over,
+    which, and by which list, at the first use of the first, the first quoted for the copy
+    with comments to stand on."""
+    first = mine[0][1]
+    rest = f", then {_phrase(passed[1:])}" if passed[1:] else ""
+    count = len(passed)
+    message = (f"{count} short form{'s' if count != 1 else ''} used and not defined "
+               f"{'were' if count != 1 else 'was'} passed over: '{passed[0]}' here{rest}, "
+               f"being on the list of short forms that {_sources()} say need no definition")
+    return Undefined(gate="G14", code=PASSED, message=message, severity=INFO,
+                     path=first.path, line=first.line, col=first.col, context=first.context,
+                     hint=None, forms=(), passed_over=tuple(passed))  # fmt: skip
+
+
+__all__ = ["CODE", "LIST", "PASSED", "Undefined", "exempt", "listed", "one_finding"]

@@ -92,7 +92,7 @@ def test_the_summary_counts_the_forms_and_details_list_each(tmp_path: Path, caps
 
 def test_known_words_are_taken_off_the_list_of_the_finding(tmp_path: Path, capsys) -> None:
     """`--known`, the finding's remedy, takes a form off it; with every form known or on
-    the list, there is no finding."""
+    the list, there is no finding of forms left undefined."""
     paper = written(tmp_path)
     report = _json(paper, capsys, "--known", "SIGNA", "CHUV")
     (found,) = [f for f in report["findings"] if f["code"] == "abbreviation-undefined"]
@@ -101,13 +101,82 @@ def test_known_words_are_taken_off_the_list_of_the_finding(tmp_path: Path, capsy
     assert not [f for f in report["findings"] if f["code"] == "abbreviation-undefined"]
 
 
-def test_a_paper_whose_forms_are_all_on_the_list_has_no_finding(tmp_path: Path, capsys) -> None:
-    """Every form left undefined is on the list: nothing is said of them (DESIGN.md, Known
-    gaps), and the other findings on the words stand."""
+def test_a_paper_whose_forms_are_all_on_the_list_has_a_note_of_them(
+    tmp_path: Path, capsys
+) -> None:
+    """Every form left undefined is on the list: a note, which `--strict` does not count,
+    says how many were passed over, which, and by which list, at the first use of the first
+    (round 1 of #640, finding 4: nothing said they were passed over)."""
     paper = written(tmp_path, "# Methods\n\nPeople with HIV had an MRI and an EEG.\n")
     report = _json(paper, capsys)
-    assert not [f for f in report["findings"] if f["gate"] == "G14"
-                and f["code"].startswith("abbreviation-")]  # fmt: skip
+    assert not [f for f in report["findings"] if f["code"] == undefined.CODE]
+    (note,) = [f for f in report["findings"] if f["code"] == undefined.PASSED]
+    assert note["severity"] == "info" and note["line"] == 3 and not note["counted"]
+    assert note["message"] == (
+        "3 short forms used and not defined were passed over: 'HIV' here, then MRI and EEG, "
+        "being on the list of short forms that the Cochrane Style Manual, Brain's "
+        "instructions to authors and Medical Writing's instructions for authors (EMWA) say "
+        "need no definition"), note["message"]  # fmt: skip
+    assert note["passed_over"] == ["HIV", "MRI", "EEG"] and note["forms"] == []
+    main(["audit", str(paper)])
+    assert "Short forms passed over, being on the list (G14, 3)" in capsys.readouterr().out
+
+
+#: A LaTeX paper whose main file inputs its Methods and then its Discussion, from files
+#: whose paths sort the other way (round 1 of #640, finding 1).
+LATEX = {
+    "main.tex": "\\documentclass{article}\n\\begin{document}\n\\section{Methods}\n"
+                "\\input{sections/methods}\n\\section{Discussion}\n"
+                "\\input{sections/discussion}\n\\end{document}\n",
+    "sections/methods.tex": "The ABC score was used.\n",
+    "sections/discussion.tex": "The XYZ index was used.\n",
+}  # fmt: skip
+
+
+def test_the_forms_are_in_the_order_the_paper_reads_them_across_its_files(
+    tmp_path: Path, capsys
+) -> None:
+    """In a paper of several files, the forms are listed as G14 reads them, file after file
+    in the paper's order, and the finding stands in the file of the first: ABC in the
+    Methods, then XYZ in the Discussion, though discussion.tex sorts first by its path."""
+    for name, text in LATEX.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    report = _json(tmp_path / "main.tex", capsys)
+    (found,) = [f for f in report["findings"] if f["code"] == undefined.CODE]
+    assert [form["form"] for form in found["forms"]] == ["ABC", "XYZ"], found
+    assert Path(found["path"]).name == "methods.tex"
+    assert "'ABC' here, then XYZ" in found["message"]
+
+
+def test_the_kinds_rank_and_the_papers_count_by_the_forms(tmp_path: Path, capsys) -> None:
+    """The kind of the short forms ranks by the forms it counts, above a kind of two
+    findings, and the summary's line and the paper's line count the forms as the kind's
+    line does (round 1 of #640, findings 2 and 3)."""
+    from manuscript_guard.auditing.summary import grouped, kinds
+    from manuscript_guard.findings import WARN, Finding
+
+    forms = ("ROR", "PRR", "EBGM", "SDR", "BCPNN", "MGPS", "OMOP", "FAERS", "VAERS", "ICSR")
+    warnings = [Finding("G14", undefined.CODE, f"{form} is used once in the main text as G14 "
+                        "reads it, and not defined there", WARN, line=at)
+                for at, form in enumerate(forms, 3)]  # fmt: skip
+    phrasing = [Finding("G6", "ai-phrasing", "a phrase", WARN, line=at) for at in (1, 2)]
+    found = [*phrasing, *undefined.one_finding(warnings)]
+    lines = grouped(found, lambda path, line: f"line {line}")
+    titles = [line.strip() for line in lines if line.startswith("  ") and "(G" in line]
+    assert titles[0] == "Abbreviations used and not defined (G14, 10)", titles
+    assert [kind["code"] for kind in kinds(found, lambda p, n: "")][0] == undefined.CODE
+    main(["audit", str(written(tmp_path))])
+    out = capsys.readouterr().out
+    assert "5 findings to look at, in 1 kind" in out and "paper.md: 5 findings in 1 kind" in out
+
+
+def test_covid_19_is_read_whole_and_never_reported(tmp_path: Path, capsys) -> None:
+    """The list keeps "COVID-19" as the Cochrane Style Manual writes it. G14 reads the word
+    whole, with its number, and asks no definition of it, so the entry passes nothing over
+    today (round 1 of #640, finding 6, checked)."""
+    report = _json(written(tmp_path, "# Methods\n\nCOVID-19 spread.\n"), capsys)
+    assert not [f for f in report["findings"] if f["gate"] == "G14"]
 
 
 def test_check_in_a_project_still_warns_of_each_form_and_reads_no_list(tmp_path: Path) -> None:

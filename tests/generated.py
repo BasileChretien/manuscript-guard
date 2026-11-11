@@ -859,20 +859,36 @@ JOURNALS_EXEMPT = ("HIV", "MRI", "EEG", "GABA")
 JOURNALS_NOT = ("SIGNA", "CHUV", "UMCG", "NTNU")
 
 
+#: A form only the supplement uses, and so only the supplement leaves undefined.
+JOURNALS_SUPPLEMENT = "ZPX"
+
+
 @st.composite
-def undefined_forms(draw: st.DrawFn) -> tuple[str, list[str], list[str]]:
-    """A paper using every form of `JOURNALS_EXEMPT` and `JOURNALS_NOT` undefined, each once
-    or more, in an order drawn, after an Abstract whose one form, HR, only the main text
-    defines; with the forms the audit lists, in the order of their first use, HR first, and
-    those it passes over, in theirs."""
+def undefined_forms(draw: st.DrawFn) -> tuple[list[tuple[str, str, bool]], list[str], list[str]]:
+    """A paper of three files using every form of `JOURNALS_EXEMPT` and `JOURNALS_NOT`
+    undefined, each once or more, in an order drawn: its main file, an Abstract whose HR
+    only the main text defines and whose HIV is undefined there too, then the Methods with
+    the first of the forms; a second file, read after it though its path sorts first, with
+    the rest; and a supplement with `JOURNALS_SUPPLEMENT`. Each file is its path, its text
+    and whether it is the supplement's. With the forms the audit lists, in the order G14
+    reads them, HR first, and those it passes over, HIV first, in theirs."""
     planted = draw(st.permutations([*JOURNALS_EXEMPT, *JOURNALS_NOT]))
-    again = draw(st.permutations([short for short in planted
-                                  for _time in range(draw(st.integers(0, 2)))]))  # fmt: skip
-    text, _starts = _paragraphs(draw, (f"the {short} was given" for short in [*planted, *again]))
-    paper = ("# Abstract\n\nThe HR rose.\n\n# Methods\n\n" + text
-             + "The hazard ratio (HR) was given, and the HR held.\n")  # fmt: skip
-    return (paper, ["HR", *(short for short in planted if short in JOURNALS_NOT)],
-            [short for short in planted if short in JOURNALS_EXEMPT])  # fmt: skip
+    cut = draw(st.integers(1, len(planted) - 1))
+
+    def used(forms: list[str]) -> str:
+        again = draw(st.permutations([short for short in forms
+                                      for _time in range(draw(st.integers(0, 2)))]))
+        text, _starts = _paragraphs(draw, (f"the {short} was given" for short in [*forms, *again]))
+        return text  # fmt: skip
+
+    main = ("# Abstract\n\nThe HR rose in HIV.\n\n# Methods\n\n" + used(list(planted[:cut]))
+            + "The hazard ratio (HR) was given, and the HR held.\n")  # fmt: skip
+    files = [("main.md", main, False),
+             ("a_results.md", "# Results\n\n" + used(list(planted[cut:])), False),
+             ("s1.md", "# Methods\n\n" + used([JOURNALS_SUPPLEMENT]), True)]  # fmt: skip
+    passed = ["HIV", *(short for short in planted if short in JOURNALS_EXEMPT and short != "HIV")]
+    return (files, ["HR", *(short for short in planted if short in JOURNALS_NOT),
+                    JOURNALS_SUPPLEMENT], passed)  # fmt: skip
 
 
 #: A glossary's entries in each form it is written in, each its own short form: a line with
@@ -13090,7 +13106,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "audit abbreviations": st.one_of(
-        undefined_forms().map(lambda drawn: drawn[0]),
+        undefined_forms().map(lambda drawn: drawn[0][0][1]),
         texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)),
     ),
     "tex outside maths": lines(),

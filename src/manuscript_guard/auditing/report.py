@@ -623,7 +623,7 @@ def _anything_in_references(report) -> bool:
 
 def _grouped_gates(report, show: _Show) -> list[str]:
     """G6 and G14 on each paper, their findings grouped by kind (`auditing.summary`)."""
-    from manuscript_guard.auditing.summary import grouped, kinds_of
+    from manuscript_guard.auditing.summary import counted, grouped, kinds_of
 
     lines: list[str] = []
     for run in report.gates:
@@ -635,7 +635,9 @@ def _grouped_gates(report, show: _Show) -> list[str]:
             continue
         converted = ("; lines are those of the text pandoc converts it to, as `init --from` "
                      "writes it" if run.converted and run.places is None else "")  # fmt: skip
-        lines.append(f"  {show(run.paper)}: {len(found)} finding{'s' if len(found) != 1 else ''}"
+        # The short forms left undefined counted as their kind's line counts them.
+        many = counted(found)
+        lines.append(f"  {show(run.paper)}: {many} finding{'s' if many != 1 else ''}"
                      f" in {len(kinds_of(found))} kind{'s' if len(kinds_of(found)) != 1 else ''}"
                      f"{converted}")  # fmt: skip
         lines += grouped(found, _placing(run.paper, show.within(run.paper, run.places)))
@@ -1045,7 +1047,7 @@ def _each_form(run, show: _Show) -> list[str]:
     lines: list[str] = []
     at = _placing(run.paper, show)
     for finding in run.language:
-        if isinstance(finding, Undefined):
+        if isinstance(finding, Undefined) and finding.forms:
             lines.append("  Each short form used and not defined, where it is first used:")
             lines += [f"    {at(warning.path, warning.line)}: {warning.message}"
                       for _form, warning in finding.forms]  # fmt: skip

@@ -102,8 +102,9 @@ reports their spelling, nor reads them as names from code. A G14 hint that tells
 to set something in `paper.yaml` names these instead, which a paper audited alone sets them
 with.
 The short forms the paper uses and does not define are one finding, not a warning each: it
-lists them in the order the paper first uses them, stands at the first use of the first,
-and has `--known` as its remedy, and the summary counts the forms. `--json` keeps, under the
+lists them in the order G14 reads them (the Abstract, the main text file after file in the
+paper's order, then the supplement), stands at the first use of the first, and has
+`--known` as its remedy, and the summary counts the forms, ranking the kind by them. `--json` keeps, under the
 finding, each form with G14's warning on it and where it is first used (`forms`), and
 `--details` lists them; the copy with comments puts the finding on the first form. A form
 that journals' own style guides say needs no definition is not listed, and the finding says
@@ -111,7 +112,8 @@ how many it passed over and names them: the list,
 `src/manuscript_guard/data/journal_abbreviations.yaml`, cites for each entry the guide that
 lists it (the Cochrane Style Manual, Brain's instructions to authors and Medical Writing's),
 and leaves out a form with a common second meaning in another field. Where every form left
-undefined is on the list, there is no finding. `check` reads no such list and still gives
+undefined is on the list, a note (`abbreviations-passed-over`) says how many were passed
+over, which, and by which list. `check` reads no such list and still gives
 one warning for each form, which a project's author answers one at a time (the corpus run
 of 2026-11-11: 354 of 427 of these warnings that judges read on 52 preprints were false,
 the field's own terms, and the true ones were lost among them).

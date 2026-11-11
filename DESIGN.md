@@ -25675,9 +25675,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
     second meaning in another field is common are left out, and the file says which; one
     not known for a second meaning is passed over in any paper. It is the list of three
     sources read on 2026-11-12, and stays as they were then. Accepted.
-  - Where every form the paper leaves undefined is on the list, there is no finding, so
-    nothing says that forms were passed over. Pinned by
-    `tests/test_audit_undefined.py::test_a_paper_whose_forms_are_all_on_the_list_has_no_finding`.
+  - Where every form the paper leaves undefined is on the list, there is no finding of
+    forms left undefined: a note, which nothing counts, says how many were passed over,
+    which, and by which list (round 1 of #640). Pinned by
+    `tests/test_audit_undefined.py::test_a_paper_whose_forms_are_all_on_the_list_has_a_note_of_them`.
+  - The forms are in G14's reading order, the order its warnings come in: the Abstract's,
+    then the main text's, then the supplement's, each part in the order of each form's
+    first use as G14 reads the files. A form used first in the Abstract, or first in an
+    acknowledgement and later in the text, is ranked by that first use, though its warning
+    stands at its first use in the main text. Pinned by
+    `tests/test_audit_undefined.py::test_the_forms_are_in_the_order_the_paper_reads_them_across_its_files`.
   - The page, the PDF and the copy with comments show the one finding, its message naming
     every form; each form's place is in `--json` and `--details` only, and the copy's
     comment stands on the first use of the first form alone. Accepted.

@@ -2278,32 +2278,37 @@ def _a_journal_s_ask_is_not_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_asked", ignored)
 
 
-from generated import JOURNALS_EXEMPT, undefined_forms  # noqa: E402
+from generated import JOURNALS_EXEMPT, JOURNALS_SUPPLEMENT, undefined_forms  # noqa: E402
 
 
 @holds(60, undefined_forms())
 def test_the_audit_says_the_short_forms_left_undefined_in_one_finding(
-    drawn: tuple[str, list[str], list[str]],
+    drawn: tuple[list[tuple[str, str, bool]], list[str], list[str]],
 ) -> None:
     """The audit makes G14's warnings on the short forms used and not defined one finding,
     at the first use of the first form it lists: each form once, the one only the Abstract
-    leaves undefined among them, in the order the paper first uses them, with the warning on
+    leaves undefined and the one only the supplement does among them, in the order G14 reads
+    them, file after file in the paper's order, whatever their paths, with the warning on
     each; the forms on the list of journals' style guides passed over, counted and named in
-    the order of theirs. The other findings are G14's as they were."""
+    the order of theirs, a form undefined in the Abstract and the main text once. The other
+    findings are G14's as they were."""
     from manuscript_guard.auditing import undefined
 
-    text, listed, passed = drawn
+    files, listed, passed = drawn
     nothing = language_gate._Known(frozenset(), frozenset())
-    file = _file(0, Path("main.md"), text, [], False)
-    found = list(language_gate._judge([file], nothing, Path(".")).findings)
+    read = [_file(order, Path(name), text, [], supplementary)
+            for order, (name, text, supplementary) in enumerate(files)]  # fmt: skip
+    found = list(language_gate._judge(read, nothing, Path(".")).findings)
     audited = undefined.one_finding(found)
     (one,) = [f for f in audited if f.code == undefined.CODE]
-    assert [form for form, _warning in one.forms] == listed, text
-    assert list(one.passed_over) == passed, text
+    assert [form for form, _warning in one.forms] == listed, files
+    assert list(one.passed_over) == passed, files
     assert one.counted == len(listed) and set(passed) <= set(JOURNALS_EXEMPT)
-    assert (one.line, one.context) == (one.forms[0][1].line, one.forms[0][1].context)
-    assert f"'{listed[0]}'" in one.message and f"({', '.join(passed[:-1])} and {passed[-1]})" \
-        in one.message, one.message  # fmt: skip
+    first = one.forms[0][1]
+    assert (one.path, one.line, one.context) == (first.path, first.line, first.context)
+    assert f"'{listed[0]}'" in one.message, one.message
+    assert f"({', '.join(passed[:-1])} and {passed[-1]})" in one.message, one.message
+    assert f"{JOURNALS_SUPPLEMENT} (in the supplement)" in one.message, one.message
     assert [f for f in audited if f is not one] == [f for f in found if f.code != undefined.CODE]
 
 
@@ -2316,7 +2321,14 @@ def _the_journals_list_is_not_read(patch: pytest.MonkeyPatch) -> None:
 def _the_short_forms_are_listed_last_first(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import undefined
 
-    patch.setattr(undefined, "_at", lambda f: (str(f.path or ""), -(f.line or 0), 0))
+    patch.setattr(undefined, "_ordered", lambda mine: list(reversed(mine)))
+
+
+def _the_short_forms_are_ordered_by_path(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import undefined
+
+    patch.setattr(undefined, "_ordered", lambda mine: sorted(
+        mine, key=lambda pair: (str(pair[1].path or ""), pair[1].line or 0)))
 
 
 @holds(60, defined_elsewhere())
@@ -21656,6 +21668,10 @@ BROKEN = {
     ),
     "the audit lists the short forms left undefined last first": (
         _the_short_forms_are_listed_last_first,
+        test_the_audit_says_the_short_forms_left_undefined_in_one_finding,
+    ),
+    "the audit orders the short forms left undefined by their files' paths": (
+        _the_short_forms_are_ordered_by_path,
         test_the_audit_says_the_short_forms_left_undefined_in_one_finding,
     ),
     "a word with underscores in code is read as a sentence's": (

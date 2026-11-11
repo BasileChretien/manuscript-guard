@@ -7229,6 +7229,10 @@ def test_none_is_a_correction_with_its_reason(project: Path) -> None:
         "[Insert reference]",
         "[INSERT DATA]",
         "[Insert Table 1 data here]",
+        # Round 1 of #625: an X is how a template writes a number still to fill, so a marker
+        # with X or XX for its number is a slot, though X is ten in Roman numerals.
+        "[Insert Table X here]",
+        "[INSERT FIGURE XX]",
     ],
 )
 def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None:
@@ -7287,6 +7291,16 @@ def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None
         "[Table 3 about here]",
         "Results follow.\n\nInsert Table 1 about here\n\nThe rest follows.",
         "Results follow.\n\nINSERT FIGURE 3 ABOUT HERE\n\nThe rest follows.",
+        # Round 1 of #625: a Roman numeral as IEEE numbers its tables, no space after
+        # "Fig.", and a number with a dot in it.
+        "[Insert Table I here]",
+        "[Insert Table XIV about here]",
+        "[Insert Fig.1 here]",
+        "[Insert Table 1.1 here]",
+        "[INSERT FIGURE S1.2]",
+        # All in capitals with a Roman numeral, which the capitals rule read as a slot.
+        "[INSERT TABLE XIV]",
+        "[INSERT FIGURE IV ABOUT HERE]",
     ],
 )
 def test_what_looks_like_a_placeholder_and_is_prose_passes(project: Path, prose: str) -> None:

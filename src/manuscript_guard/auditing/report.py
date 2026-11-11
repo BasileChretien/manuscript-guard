@@ -878,8 +878,8 @@ def _arithmetic(report, show) -> list[str]:
                    "(counted by --strict):", report.over_n, show)  # fmt: skip
     lines += ([""] if lines and over else []) + over
     rounded = _listed("CATEGORIES THAT ADD UP TO MORE THAN THEIR COLUMN'S N BY NO MORE THAN "
-                      "ROUNDING WEIGHTED COUNTS CAN MAKE, half a count for each category (not "
-                      "counted by --strict):", report.over_n_rounding, show)  # fmt: skip
+                      "ROUNDING WEIGHTED COUNTS CAN MAKE, half a count for each category and for "
+                      "the n (not counted by --strict):", report.over_n_rounding, show)  # fmt: skip
     lines += ([""] if lines and rounded else []) + rounded
     if lines and report.disagreements:
         lines.append("")

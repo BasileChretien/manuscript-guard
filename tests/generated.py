@@ -6737,6 +6737,9 @@ PLACEHOLDERS = (
     # other words, are slots still.
     ("[Insert table here]", "[Insert table here]"),
     ("[Insert Figure 2 legend]", "[Insert Figure 2 legend]"),
+    # Round 1 of #625: X for a number still to fill, though X is ten in Roman numerals.
+    ("[Insert Table X here]", "[Insert Table X here]"),
+    ("[INSERT FIGURE XX]", "[INSERT FIGURE XX]"),
 )  # fmt: skip
 LOWERED = (("tbd", "tbd"), ("fixme", "fixme"), ("Todo", "Todo"))
 LOOKALIKES = (
@@ -6750,6 +6753,9 @@ LOOKALIKES = (
     "[Insert Table 1 here]", "[INSERT FIGURE 2]", "[Insert Figure S1 about here]",
     "\\[Insert Table 3 here\\]", "[insert fig. 4 here.]", "[Figure 1 about here]",
     "[Table 3 about here]", "Insert Table 1 about here",
+    # Round 1 of #625: a Roman numeral, no space after "Fig.", a number with a dot in it.
+    "[Insert Table IV here]", "[INSERT TABLE XIX]", "[Insert Fig.1 here]",
+    "[Insert Table 1.1 here]", "[Insert Figure S1.2 about here]",
 )  # fmt: skip
 
 #: Words to the reviewers or to a model left in a paper, each a sentence, with the rule of
@@ -7385,9 +7391,10 @@ def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
     away; one of up to nine that a total gives away, which a minimum of five allows, and one
     it gives away as nought; categories adding up to more than their column's n, their
     shares to 100, beside categories adding up to fewer and categories adding up to more by
-    no more than half a count each; a count held back that only the column's n gives away;
-    lines with a dash or an empty cell in them, which are read nowhere; and rows whose label
-    starts as a total's does and that are none."""
+    no more than half a count each and half for the n, once as only the n's half count
+    allows; a count held back that only the column's n gives away; lines with a dash or an
+    empty cell in them, which are read nowhere; and rows whose label starts as a total's
+    does and that are none."""
     places = draw(st.integers(0, 2))
     grouped = draw(st.booleans())
     first, second = draw(st.sampled_from(ARMS))
@@ -7514,10 +7521,12 @@ def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
                     row(name, count(x), count(y), count(x + y))
         elif kind == "over n":
             # Over by more than rounding weighted counts can make, which fails; fewer, which
-            # is missing data; over by no more than half a count a category, a note (Basile,
-            # 2026-11-11: a survey's weighted, rounded age groups, "N = 12,765^1^" and 12,766
-            # in them); and over by one more than that, which fails. The last two columns'
-            # n may have a footnote mark after it.
+            # is missing data; over by no more than half a count a category and half for
+            # the n, a note (Basile, 2026-11-11: a survey's weighted, rounded age groups,
+            # "N = 12,765^1^" and 12,766 in them); and over by one more than that, which
+            # fails. The last two columns' n may have a footnote mark after it. Then three
+            # categories two over in the weighted column, which only the n's own half count
+            # allows (round 1 of #625), and at their n in the others.
             n, m = draw(st.integers(40, 2000)), draw(st.integers(40, 2000))
             w, v = draw(st.integers(40, 20000)), draw(st.integers(40, 20000))
             mark = draw(st.sampled_from(("", "^1^", "^a^")))
@@ -7525,7 +7534,7 @@ def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
                   f"Weighted (N = {count(w)}{mark})", f"Pooled (N = {count(v)}{mark})")
             group(4)
             many = draw(st.integers(2, 4))
-            allowed = max(1, many // 2)
+            allowed = max(1, (many + 1) // 2)
             more = n + draw(st.integers(allowed + 1, n // 2))
             fewer = draw(st.integers(1, m - 1))
             rounded, beyond = w + draw(st.integers(1, allowed)), v + allowed + 1
@@ -7535,6 +7544,13 @@ def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
                                                   strict=True)))
                   for name, *cells in zip(CATEGORIES, *columns, strict=False)]  # fmt: skip
             expected["over"] += [at[0], at[0]]
+            expected["rounding"].append(at[0])
+            group(4)
+            sums = (n, m, w + 2, v)
+            columns = [_split(draw, total, 3) for total in sums]
+            at = [row(name, *(f"{count(x)} ({_printed(x, total, places)})"
+                              for x, total in zip(cells, sums, strict=True)))
+                  for name, *cells in zip(CATEGORIES, *columns, strict=False)]  # fmt: skip
             expected["rounding"].append(at[0])
         elif kind == "by n":
             n = draw(st.integers(40, 2000))

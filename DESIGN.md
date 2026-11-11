@@ -4848,7 +4848,13 @@ such a marker (Basile, 2026-11-11). The instruction rule leaves out "insert", th
 "figure" or "fig.", a number with a letter before or after it, and "here" or "about here"
 or nothing, up to the closing bracket; "[Figure 1 about here]" and a marker on a line of
 its own match no rule. With no number, "[Insert table here]", or with other words,
-"[Insert Figure 2 legend]", it is a slot still.
+"[Insert Figure 2 legend]", it is a slot still. Round 1 of #625 took in the numbers papers
+print besides "1" and "S1": one with a dot, "Table 1.1", "Figure S1.2"; a Roman numeral
+from I to XIX, as IEEE numbers its tables, "[Insert Table IV here]"; and "Fig." run into
+it, "[Insert Fig.1 here]". The capitals rule leaves out a marker all in capitals with a
+Roman numeral, "[INSERT TABLE XIV]", which is capitals in brackets that say INSERT. X and
+XX are left out, since a template writes a number still to fill as X: "[Insert Table X
+here]" is a slot.
 
 **A journal template's instructions are found by the template's own words.** Papers are
 printed with "In this section you can acknowledge any support given which is not covered by
@@ -9883,10 +9889,11 @@ range at all is a total the printed counts cannot make, `sum-off`. A range of on
 a count held back that the line gives away. Categories whose shares add up to 100
 (`shares._summed`) and whose counts add up to more than their column's header n are the one
 contradiction read of a header n (`over-header-n`); fewer is missing data. Over by no more
-than half the number of categories, rounded down and at least one (`within_rounding`), is
-no contradiction: rounding each of k weighted counts to a whole number moves it by half a
-count at most, so the printed counts can add up to k/2 over the n, which was rounded once.
-The audit says it as a note, which `--strict` does not count, and `--json` counts it apart
+than (k + 1) / 2 for k categories, rounded down (`within_rounding`), is no contradiction:
+rounding each of k weighted counts to a whole number moves it by half a count at most, and
+rounding the weighted n once moves it by half a count too, so the printed counts can add up
+to (k + 1) / 2 over the printed n, and both are whole. Three counts of 11.5 print 36
+against an n of 34.5 printed 34 (round 1 of #625; k / 2 alone allowed one). The audit says it as a note, which `--strict` does not count, and `--json` counts it apart
 (`over_header_n_rounding`). Basile, 2026-11-11, after a 22-country survey in the corpus of
 52 real preprints whose weighted, rounded tables gave 24 failures, each one to three over.
 
@@ -25500,11 +25507,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
   in any table.** Basile's rule of 2026-11-11, after the corpus of 52 real preprints, in
   which both failures were always wrong. A marker, "[Insert Table 1 here]", left in a paper
   whose tables stand in the text is not said. Categories over their column's n by no more
-  than half a count each, rounded down and at least one, are a note whether or not the
-  table's counts are weighted, so a count of unweighted data mistyped by one is said and
-  not counted by `--strict`: the tool cannot tell weighted counts from others. Pinned by
+  than (k + 1) / 2 for k categories, rounded down, are a note whether or not the table's
+  counts are weighted: the tool cannot tell weighted counts from others. So in a table of
+  unweighted counts, an error that puts the sum that far over is said and not counted by
+  `--strict`, and the bound grows with the categories: two or three over for four or five,
+  ten over for twenty countries. Pinned by
   `tests/test_corruption.py::test_what_looks_like_a_placeholder_and_is_prose_passes`,
-  `tests/test_audit_sections.py::test_categories_over_their_n_by_no_more_than_rounding_are_a_note`.
+  `tests/test_audit_sections.py::test_categories_over_their_n_by_no_more_than_rounding_are_a_note`,
+  `tests/test_margins.py::test_twenty_categories_over_their_n_by_ten_are_rounding`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

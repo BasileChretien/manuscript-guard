@@ -147,8 +147,9 @@ def test_categories_over_their_columns_n_are_said_and_fewer_are_not() -> None:
 def test_categories_over_their_n_by_no_more_than_rounding_are_said_as_rounding() -> None:
     """Basile, 2026-11-11, after the corpus of 52 real preprints (slug psych): a survey of 22
     countries prints weighted counts, each rounded, under "N = 12,765^1^", and the age groups
-    add up to 12,766. Over by no more than half a count a category, rounded down and at
-    least one, is what rounding can make; one more than that is a contradiction still."""
+    add up to 12,766. Over by no more than half a count for each category and half for the
+    n, rounded down, is what rounding can make; one more than that is a contradiction
+    still."""
     text = """
 | Characteristic | N = 12,765^1^ | Panel (n = 120) | Pooled (n = 300) |
 |---|---|---|---|
@@ -164,13 +165,15 @@ def test_categories_over_their_n_by_no_more_than_rounding_are_said_as_rounding()
     assert found[0].message == (
         "the categories of 'Age group' in column 'N = 12,765^1^' add up to 12766, 1 more than "
         "its n = 12765, and their shares to 100: the gap may be rounding of weighted counts, "
-        "as 4 counts each rounded to a whole number can add up to 2 more")  # fmt: skip
+        "as 4 counts and the n, each rounded to a whole number, can differ by up "
+        "to 2")  # fmt: skip
     assert found[2].message.endswith("add up to 303, more than its n = 300, and their shares "
                                      "to 100")  # fmt: skip
 
 
-@pytest.mark.parametrize(("categories", "allowed"), [(2, 1), (3, 1), (4, 2), (5, 2), (6, 3)])
-def test_rounding_allows_half_a_count_a_category_and_at_least_one(
+@pytest.mark.parametrize(("categories", "allowed"),
+                         [(1, 1), (2, 1), (3, 2), (4, 2), (5, 3), (6, 3), (20, 10)])
+def test_rounding_allows_half_a_count_a_category_and_half_for_the_n(
     categories: int, allowed: int
 ) -> None:
     from manuscript_guard.stats.margins import rounding_allowance, within_rounding
@@ -511,3 +514,29 @@ def test_g2_says_a_count_a_flows_step_gives_away_unless_its_reasons_overlap(
     _edit(project, lambda document: document["values"]["flow.f.excluded.1.2"].update(
         display="1"))  # fmt: skip
     assert _given_away(project) == []
+
+
+def test_three_counts_rounded_up_against_an_n_rounded_down_are_rounding() -> None:
+    """Round 1 of #625: three categories weighted 11.5 each print 12, 12 and 12, 36 in all,
+    and their weighted total of 34.5 prints 34: two over, from three counts, which half a
+    count a category alone (one) did not allow."""
+    from manuscript_guard.stats.margins import within_rounding
+
+    assert within_rounding(36, 34, 3)
+    assert not within_rounding(37, 34, 3)
+
+
+def test_twenty_categories_over_their_n_by_ten_are_rounding() -> None:
+    """Round 1 of #625: the allowance grows with the categories, so twenty countries over
+    their n by ten are a note, and by eleven a contradiction (DESIGN.md, Known gaps)."""
+    names = [f"Country {i}" for i in range(1, 21)]
+
+    def text(gap: int) -> str:
+        counts = [50] * 19 + [50 + gap]
+        rows = "".join(f"| {name} | {c} (5.0) |\n" for name, c in zip(names, counts, strict=True))
+        return "| | All (n = 1000) |\n|---|---|\n| Country | |\n" + rows
+
+    [noted] = over_n(table(text(10)))
+    assert noted.rounding and "add up to 1010, 10 more than its n = 1000" in noted.message
+    [failed] = over_n(table(text(11)))
+    assert not failed.rounding and "add up to 1011, more than its n = 1000" in failed.message

@@ -5452,8 +5452,8 @@ def test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them(
     the total's line, and a line with a dash or an empty cell in it is not read; a row
     whose label starts as a total's does and is none ("Total cholesterol") totals nothing;
     a characteristic's categories whose shares add up to 100 and whose counts add up to more
-    than their column's n are said, and fewer is not; more by no more than half a count a
-    category, rounded down and at least one, is said as rounding (Basile, 2026-11-11). A
+    than their column's n are said, and fewer is not; more by no more than half a count for
+    each category and for the n, rounded down, is said as rounding (Basile, 2026-11-11). A
     count held back that a printed total
     gives away is said with its count, from one to below the minimum, or from one with none;
     one only its column's n gives away is said as not explicit; two held back in one line
@@ -5531,6 +5531,12 @@ def _rounding_allows_a_whole_count_a_category(patch: pytest.MonkeyPatch) -> None
     from manuscript_guard.stats import margins
 
     patch.setattr(margins, "rounding_allowance", lambda categories: categories)
+
+
+def _rounding_leaves_out_the_ns_half_count(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import margins
+
+    patch.setattr(margins, "rounding_allowance", lambda categories: max(1, categories // 2))
 
 
 def _categories_fewer_than_their_n_are_said(patch: pytest.MonkeyPatch) -> None:
@@ -15036,24 +15042,50 @@ def _an_instruction_marked_or_linked_is_a_link_s_text(patch: pytest.MonkeyPatch)
     _placeholder_rule(patch, "placeholder", lambda p: p + r"(?![(\[{])")
 
 
-#: The lookahead that keeps a placement marker out of the instruction rule.
-_MARKER = r"(?!insert\s+(?:table|fig(?:ure|\.)?)\s+[a-z]?\d+[a-z]?"
+#: The lookahead that keeps a placement marker out of the instruction rule: how it opens,
+#: the words before the number, and the number, Arabic with dots or Roman from I to XIX.
+_PLACEMENT = r"(?!insert\s+"
+_PLACEMENT_NAME = r"(?:(?:table|figure|fig\.?)\s+|fig\.)"
+_PLACEMENT_NUMBER = r"(?:[a-z]?\d+(?:\.\d+)*[a-z]?|XVI{0,3}|XIV|XIX|XI{1,3}|VI{0,3}|IV|IX|I{1,3})"
+
+
+def _in_the_placement_marker(patch: pytest.MonkeyPatch, written: str, broken: str) -> None:
+    def change(pattern: str) -> str:
+        whole = _PLACEMENT + _PLACEMENT_NAME + _PLACEMENT_NUMBER
+        assert whole in pattern, "the instruction rule no longer leaves markers out this way"
+        assert written in whole
+        return pattern.replace(whole, whole.replace(written, broken, 1))
+
+    _placeholder_rule(patch, "placeholder", change)
 
 
 def _a_placement_marker_is_a_slot(patch: pytest.MonkeyPatch) -> None:
-    def change(pattern: str) -> str:
-        assert _MARKER in pattern, "the instruction rule no longer leaves markers out this way"
-        return pattern.replace(_MARKER, "(?!(?!)")
-
-    _placeholder_rule(patch, "placeholder", change)
+    _in_the_placement_marker(patch, _PLACEMENT, "(?!(?!)")
 
 
 def _a_marker_needs_no_number(patch: pytest.MonkeyPatch) -> None:
-    def change(pattern: str) -> str:
-        assert _MARKER in pattern, "the instruction rule no longer leaves markers out this way"
-        return pattern.replace(_MARKER, _MARKER.replace(r"\s+[a-z]?\d+[a-z]?", r"(?:\s+\w+)?"))
+    _in_the_placement_marker(patch, _PLACEMENT_NUMBER, r"\w*")
 
-    _placeholder_rule(patch, "placeholder", change)
+
+def _a_roman_x_is_a_markers_number(patch: pytest.MonkeyPatch) -> None:
+    _in_the_placement_marker(patch, "|XVI{0,3}", "|X{1,2}|XVI{0,3}")
+
+
+def _fig_needs_a_space_before_its_number(patch: pytest.MonkeyPatch) -> None:
+    _in_the_placement_marker(patch, r"\s+|fig\.)", r"\s+)")
+
+
+def _a_markers_number_has_no_dot(patch: pytest.MonkeyPatch) -> None:
+    _in_the_placement_marker(patch, r"\d+(?:\.\d+)*", r"\d+")
+
+
+def _a_marker_in_capitals_with_a_roman_numeral_is_a_slot(patch: pytest.MonkeyPatch) -> None:
+    def change(pattern: str) -> str:
+        opens = r"\[(?!INSERT[ \t]+"
+        assert opens in pattern, "the capitals rule no longer leaves markers out this way"
+        return pattern.replace(opens, r"\[(?!(?!)INSERT[ \t]+")
+
+    _placeholder_rule(patch, "placeholder-capitals", change)
 
 
 def _in_the_template_rule(patch: pytest.MonkeyPatch, written: str, broken: str) -> None:
@@ -21833,6 +21865,10 @@ BROKEN = {
         _rounding_allows_a_whole_count_a_category,
         test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
     ),
+    "rounding leaves out the n's half count": (
+        _rounding_leaves_out_the_ns_half_count,
+        test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
+    ),
     "categories fewer than their column's n are said": (
         _categories_fewer_than_their_n_are_said,
         test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
@@ -23199,6 +23235,22 @@ BROKEN = {
     ),
     "a placement marker needs no number": (
         _a_marker_needs_no_number,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "a Roman X is a placement marker's number": (
+        _a_roman_x_is_a_markers_number,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "'Fig.' needs a space before its number": (
+        _fig_needs_a_space_before_its_number,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "a placement marker's number has no dot": (
+        _a_markers_number_has_no_dot,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "a placement marker in capitals with a Roman numeral is a slot": (
+        _a_marker_in_capitals_with_a_roman_numeral_is_a_slot,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
     ),
     "Word's prompt is read without what it asks for": (

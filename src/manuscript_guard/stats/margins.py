@@ -40,7 +40,7 @@ another, or, where counts are held back, every sum they allow is.
 `over_n`: the categories of a characteristic, the rows under a label of their own, whose
 shares in a column add up to 100 (`shares._summed`) and whose counts add up to more than
 the n its header names. Fewer is what missing data look like, and is not said. More by no
-more than half the number of categories, rounded down and at least one, is what rounding
+more than half a count for each category and half for the n, rounded down, is what rounding
 weighted counts to whole numbers can make, and is said as such (`within_rounding`): the
 audit gives it as a note, which `--strict` does not count (Basile, 2026-11-11).
 
@@ -563,9 +563,9 @@ def over_n(table: Table) -> list[OverN]:
         rounding = within_rounding(total, n, len(members))
         if rounding:
             message += (f", {total - n} more than its n = {n}, and their shares to 100: the gap "
-                        f"may be rounding of weighted counts, as {len(members)} counts each "
-                        f"rounded to a whole number can add up to "
-                        f"{rounding_allowance(len(members))} more")  # fmt: skip
+                        f"may be rounding of weighted counts, as {len(members)} counts and the "
+                        f"n, each rounded to a whole number, can differ by up to "
+                        f"{rounding_allowance(len(members))}")  # fmt: skip
         else:
             message += f", more than its n = {n}, and their shares to 100"
         found.append(OverN(first.cells[0][1].line, message, first.context, rounding))
@@ -580,11 +580,13 @@ def _exceeds(total: int, n: int) -> bool:
 
 def rounding_allowance(categories: int) -> int:
     """How far the counts of `categories` categories may add up beyond their column's n by
-    rounding alone: half a count each, rounded down, and at least one. A table of weighted
-    counts prints each rounded to a whole number, and the n is the weighted total rounded
-    once, so the printed counts can sum to a little more than it (Basile, 2026-11-11, after
-    a 22-country survey whose age groups summed to one to three over each column's n)."""
-    return max(1, categories // 2)
+    rounding alone. A table of weighted counts prints each rounded to a whole number, half a
+    count off at most, and the n is the weighted total rounded once, half a count off too:
+    the printed counts can sum to (k + 1) / 2 over the printed n for k categories, rounded
+    down since both are whole (Basile, 2026-11-11, after a 22-country survey whose age
+    groups summed to one to three over each column's n; round 1 of #625 added the n's half
+    count: three counts of 11.5 print 36 against an n of 34.5 printed 34)."""
+    return max(1, (categories + 1) // 2)
 
 
 def within_rounding(total: int, n: int, categories: int) -> bool:

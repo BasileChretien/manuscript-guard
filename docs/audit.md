@@ -205,10 +205,11 @@ P, a ratio ("HR" or "Hazard ratio", not the subgroup "HR+"), a mean, or a "%" wi
 "%" or "% (n)". A total its counts do not add up to is listed, `sum-off`, with what they add up to.
 Where a characteristic's categories have shares that add up to 100 and counts that add up to
 more than the n of their column's header, that is listed too, `over-header-n`; fewer is what
-missing data look like, and is not said. Over by no more than half the number of categories,
-rounded down and at least one, is a note, which `--strict` does not count: a table of
-weighted counts prints each rounded to a whole number, and they can add up to that much
-more than the n (four categories, two over). A larger gap fails as before.
+missing data look like, and is not said. Over by no more than (k + 1) / 2 for k
+categories, rounded down, is a note, which `--strict` does not count: a table of weighted
+counts prints each, and the n, rounded to a whole number, half a count off at most, so
+they can add up to that much more than the n (three or four categories, two over; twenty,
+ten). A larger gap fails as before.
 
 **Small cells recoverable by subtraction.** A count printed "<5" because the data custodian
 forbids printing it is printed all the same where a total and the other counts beside it

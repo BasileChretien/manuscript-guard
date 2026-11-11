@@ -704,11 +704,9 @@ def _by_host(path_answers: dict[str, Response]) -> Table:
     return Table(answer)
 
 
-def test_a_latex_project_s_citations_are_looked_up(tmp_path, capsys, monkeypatch) -> None:
-    """A paper's `.tex` brought into `init --latex`'s manuscript/, its `.bib` the library
-    (docs/latex.md, "Starting"): `lookup` refused it, saying its `.tex` files were "not read",
-    while G7 sent the author to it (a rebuild of arXiv 2409.10841). Each key cited, in the
-    entry file and in a file it inputs, is looked up by its DOI or its PMID."""
+def _latex_paper(tmp_path: Path, between: str = "") -> Path:
+    """`init --latex` with a paper in it: one key cited in a file `main.tex` inputs (by its
+    PMID), `between` on a line of its own, then one in `main.tex` (by its DOI)."""
     root = tmp_path / "tex"
     assert main(["init", str(root), "--latex", "--title", "A paper"]) == 0
     folder = root / "manuscript"
@@ -719,7 +717,7 @@ def test_a_latex_project_s_citations_are_looked_up(tmp_path, capsys, monkeypatch
     entry = folder / "main.tex"
     entry.write_text(
         "\\documentclass{article}\n\\begin{document}\n\\section{Introduction}\n"
-        "\\input{sections/intro}\nAs \\citet{byDoi2021} found.\n"
+        f"\\input{{sections/intro}}\n{between}\nAs \\citet{{byDoi2021}} found.\n"
         "\\bibliography{references}\n\\end{document}\n",
         encoding="utf-8",
     )
@@ -730,6 +728,15 @@ def test_a_latex_project_s_citations_are_looked_up(tmp_path, capsys, monkeypatch
         "  year = {2019},\n}\n",
         encoding="utf-8",
     )
+    return root
+
+
+def test_a_latex_project_s_citations_are_looked_up(tmp_path, capsys, monkeypatch) -> None:
+    """A paper's `.tex` brought into `init --latex`'s manuscript/, its `.bib` the library
+    (docs/latex.md, "Starting"): `lookup` refused it, saying its `.tex` files were "not read",
+    while G7 sent the author to it (a rebuild of arXiv 2409.10841). Each key cited, in the
+    entry file and in a file it inputs, is looked up by its DOI or its PMID."""
+    root = _latex_paper(tmp_path)
     table = _by_host({
         "api.crossref.org/works/": _json(200, _crossref_work()),
         "api.openalex.org/works/": _json(200, _OPENALEX),
@@ -749,6 +756,22 @@ def test_a_latex_project_s_citations_are_looked_up(tmp_path, capsys, monkeypatch
     project = _loaded(root)
     assert read_record(project, "byDoi2021")["identifiers"] == {"doi": DOI}
     assert read_record(project, "byPmid2019")["identifiers"] == {"pmid": PMID}
+
+
+def test_a_latex_paper_read_only_up_to_a_refusal_is_not_looked_up(tmp_path, capsys,
+                                                                   monkeypatch) -> None:
+    """A citation command the reader does not know between the two cites: the keys after it
+    are not read, so "1 looked up" would be said of a paper that cites two. It refuses, as
+    `sync-bib` does, and sends nothing (round 1 of #626)."""
+    root = _latex_paper(tmp_path, between="As \\mycitep{other2018} said.")
+    monkeypatch.setattr(lookup, "default_transport", _refused)
+    capsys.readouterr()
+    assert main(["lookup", str(root)]) == 2
+    said = capsys.readouterr()
+    assert "manuscript/main.tex:5 is refused" in said.err, said
+    assert "\\mycitep" in said.err and "the citations after it are not read" in said.err
+    assert "looked up" not in said.out
+    assert not (root / "literature" / "lookups").exists()
 
 
 # ------------------------------------------------------- a reference with no identifier

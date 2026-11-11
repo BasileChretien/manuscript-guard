@@ -154,7 +154,9 @@ function draw(view) {
   if (view.strict) add(box, "p", view.strict, "small");
   const papers = view.words.filter((paper) => paper.note || paper.kinds.length);
   for (const paper of papers) {
-    add(box, "h3", papers.length > 1 ? `Writing and language: ${paper.paper}` : "Writing and language");
+    // The paper's name wherever several were audited, though only one has findings: no place
+    // under the heading names the paper again (review of #631).
+    add(box, "h3", view.words.length > 1 ? `Writing and language: ${paper.paper}` : "Writing and language");
     if (paper.note) {
       add(box, "p", paper.note);
       continue;

@@ -782,11 +782,20 @@ def test_an_r_figure_that_estimates_while_it_draws_is_warned(
     assert found == said
 
 
-def test_same_quantity_under_two_keys_is_caught(project: Path) -> None:
+def _divergent(project: Path) -> list[tuple[str, str]]:
+    """The divergent-display findings of the project, as (severity, message)."""
+    return [(f.severity, f.message) for f in gate_report(project).findings
+            if f.code == "divergent-display"]
+
+
+def test_same_quantity_under_two_keys_is_said_and_fails_nothing(project: Path) -> None:
     """One quantity, two keys, two roundings — 3.84 in one place and 3.8 in another.
 
-    Both displays are honest renderings of the value, which is what makes this the case G8
-    exists for: nothing is false, and the paper still contradicts itself.
+    Both displays are honest renderings of the value. The pair is said, as a note: the
+    results file records nothing that tells it from two quantities that agree, or from one
+    printed two ways on purpose, so it fails nothing (2026-11-11; Known gaps, "G8 fails no
+    pair of keys for holding one value"). A pair declared one quantity still fails when it
+    parts (`test_one_estimate_under_two_names_declared_one_fails_when_it_parts`).
     """
     fragment = next((project / "results").glob("*.json"))
     document = json.loads(fragment.read_text(encoding="utf-8"))
@@ -795,7 +804,72 @@ def test_same_quantity_under_two_keys_is_caught(project: Path) -> None:
     document["values"]["ror.duplicate"]["digits"] = 1
     fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
     write_digest(fragment)  # the edit is legitimate here; we are testing G8, not G1
-    assert "divergent-display" in codes(gate_report(project))
+    assert "divergent-display" not in codes(gate_report(project))
+    assert [severity for severity, _ in _divergent(project)] == ["info"]
+
+
+def _add_keys(project: Path, keys: dict[str, dict]) -> None:
+    """Add keys to the example's fragment, each a copy of `ror.point` with no unit and the
+    fields given, and sign the fragment again: these tests are of G8, not G1."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    point = document["values"]["ror.point"]
+    for key, fields in keys.items():
+        document["values"][key] = {**{k: v for k, v in point.items() if k != "unit"}, **fields}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def test_two_quantities_that_happen_to_be_equal_fail_nothing(project: Path) -> None:
+    """arXiv 2409.10841, rebuilt with the R emitter: a count of two conditions written "2"
+    and a median ratio of 2.00, and a share written "0.0" beside a difference at "0.00", none of
+    them with a unit, failed at drafting as one quantity written two ways, and the hint said
+    to emit each pair once, which would have made the paper wrong. Equal values are all the
+    record shows, so the pairs are said as notes and nothing fails."""
+    _add_keys(project, {
+        "design.n_conditions": {"value": 2, "display": "2", "digits": 0},
+        "ratio.median_max": {"value": 2, "display": "2.00", "digits": 2},
+        "time.share_equal": {"value": 0, "display": "0.0", "digits": 1},
+        "accuracy.diff_min": {"value": 0, "display": "0.00", "digits": 2},
+    })
+    assert "divergent-display" not in codes(gate_report(project))
+    said = _divergent(project)
+    assert [severity for severity, _ in said] == ["info", "info"], said
+    hint = next(f.hint for f in gate_report(project).findings if f.code == "divergent-display")
+    assert "`unit`" in hint and "pick one display" not in hint
+
+
+def test_one_correlation_in_apa_form_beside_its_interval_fails_nothing(project: Path) -> None:
+    """PsyArXiv d8hkq_v1, an APA paper rebuilt with the R emitter: a correlation printed
+    ".47" in the text and "0.47" beside its interval "[0.21, 0.72]", emitted under two keys
+    as the results-binding skill says to emit a second display, failed `divergent-display`.
+    One quantity printed two ways on purpose is what the skill asks for: a note, no failure.
+    """
+    _add_keys(project, {
+        "cor.r": {"value": 0.4712, "display": ".47", "digits": 2},
+        "cor.point": {"value": 0.4712, "display": "0.47", "digits": 2},
+        "cor.ci_low": {"value": 0.2093, "display": "0.21", "digits": 2,
+                       "bounds": "cor.point", "bound": "low"},
+        "cor.ci_high": {"value": 0.7168, "display": "0.72", "digits": 2,
+                        "bounds": "cor.point", "bound": "high"},
+    })
+    report = gate_report(project)
+    assert not {"divergent-display", "declared-same-but-displayed-differently"} & codes(report)
+    assert [severity for severity, _ in _divergent(project)] == ["info"]
+
+
+def test_one_estimate_under_two_names_declared_one_fails_when_it_parts(project: Path) -> None:
+    """The duplicate G8 is for: one estimate emitted under a second name, which a later run
+    updates and the other does not. Declared one quantity with `same_as`, the pair fails the
+    moment the two hold other numbers, or are printed two ways."""
+    _add_keys(project, {
+        "est.main": {"value": 3.8439, "display": "3.84", "digits": 2},
+        "est.abstract": {"value": 3.9012, "display": "3.90", "digits": 2,
+                         "same_as": "est.main"},
+        "est.summary": {"value": 3.8439, "display": "3.8", "digits": 1, "same_as": "est.main"},
+    })
+    found = codes(gate_report(project))
+    assert {"declared-same-but-differs", "declared-same-but-displayed-differently"} <= found
 
 
 def test_a_count_and_a_percentage_that_coincide_are_not_one_quantity(project: Path) -> None:

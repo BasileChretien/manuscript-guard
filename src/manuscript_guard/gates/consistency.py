@@ -10,6 +10,13 @@ hold the same quantity. That happens when two scripts compute the same thing, or
 key is emitted twice under different names during a refactor, and it reintroduces exactly
 the divergence the design was meant to remove — one of the pair gets updated and the other
 does not.
+
+Two keys holding the same value are not shown by that to be one quantity. The results file
+records no more of a key than its value, display, unit and the script that wrote it, and none
+of these tells one quantity under two names from two that agree: a count of 2 beside a
+median ratio of 2.00, or one line of a loop writing 0.00 for two subgroups. So a value held
+by two keys is a warning where they are written alike and a note where they are written two
+ways; only a pair the author declared one quantity (`same_as`) fails when it disagrees.
 """
 
 from __future__ import annotations
@@ -17,7 +24,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 from manuscript_guard.contracts.results import Results
-from manuscript_guard.findings import FAIL, WARN, Finding, Report
+from manuscript_guard.findings import INFO, WARN, Finding, Report
 
 GATE = "G8"
 
@@ -43,6 +50,17 @@ def check_consistency(results: Results) -> Report:
     # cost, at those three values only: one quantity written "1" in one place and "1.0" in
     # another is no longer said, and `same_as` holds such a pair. Elsewhere the two kinds stay
     # together, so that a count emitted again with decimals is still said.
+    #
+    # Written two ways, the pair is a note and fails nothing. It failed at drafting, and two
+    # rebuilds of real papers showed what that cost (2026-11-11). In one (arXiv 2409.10841)
+    # a count of two conditions, "2", and a median ratio of 2.00, and a share at "0.0" and a
+    # smallest difference at "0.00", were taken for one quantity, and the hint said to emit
+    # them once, which would have made the paper wrong. In the other (PsyArXiv d8hkq_v1,
+    # APA style) one correlation was printed ".47" in the text and "0.47" beside its
+    # interval, under two keys as the results-binding skill says to emit a second display,
+    # and that failed. Nothing the file
+    # records tells these from one quantity emitted twice by mistake: not the script, which
+    # writes both, nor the line, since one line of a loop writes 0.00 for two subgroups.
     by_value: dict[tuple[str, str | None, str | None], list[str]] = defaultdict(list)
 
     for key, value in results.values.items():
@@ -65,7 +83,7 @@ def check_consistency(results: Results) -> Report:
             Finding(
                 gate=GATE,
                 code="duplicate-quantity" if same_display else "divergent-display",
-                severity=WARN if same_display else FAIL,
+                severity=WARN if same_display else INFO,
                 message=(
                     f"{len(keys)} quoted keys hold the value {literal}"
                     + (f", written {kind}" if kind else "") + ": " + ", ".join(sorted(keys))
@@ -77,8 +95,11 @@ def check_consistency(results: Results) -> Report:
                     "if they are genuinely different quantities that happen to coincide, "
                     "nothing needs to change"
                     if same_display
-                    else "the same value is written two different ways; pick one display and "
-                    "emit the quantity once"
+                    else "a note: two keys holding one value are not shown by that to be one "
+                    "quantity. Two quantities that happen to agree need nothing, and a `unit` "
+                    "on each key keeps them apart. One quantity printed two ways on purpose, a "
+                    "coarser rounding or a form without the leading zero, needs nothing either. "
+                    "One quantity emitted twice by mistake: emit it once and quote the one key"
                 ),
             )
         )

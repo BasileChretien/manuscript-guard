@@ -16234,6 +16234,19 @@ been sorted yet.
   display, no `unit` field and a value at nought or one). Closed by reading the kind from
   the number the display grammar matched.
   Pinned by `tests/test_corruption.py::test_one_quantity_written_whole_and_with_decimals_at_nought_or_one_is_not_said`.
+- **G8 fails no pair of keys for holding one value.** Two quoted keys with the same value,
+  unit and kind are a warning written alike (`duplicate-quantity`) and a note written two
+  ways (`divergent-display`), which until 2026-11-11 failed at drafting. Two rebuilds of
+  real papers showed why it cannot fail: two unrelated results equal by chance, a count of
+  2 beside a median ratio of 2.00 (arXiv 2409.10841), and one correlation printed ".47" in
+  an APA text and "0.47" beside its interval under a second key, as the results-binding
+  skill says to emit a second display (PsyArXiv d8hkq_v1). The results file records of a
+  key its value, display, unit and the script that wrote it, and none of these tells one
+  quantity under two names from two that agree: one script writes both, and one line of a
+  loop writes 0.00 for two subgroups. The cost: one estimate emitted twice by mistake and
+  rounded two ways, 3.84 and 3.8, fails nothing; `same_as` declares such a pair, which then
+  fails when the two hold other numbers or are printed two ways.
+  Pinned by `tests/test_corruption.py::test_same_quantity_under_two_keys_is_said_and_fails_nothing`.
 - **G8 holds only the arithmetic an analysis declares.** `em.relation` and `em.flow` say
   which results are a sum, a difference, a ratio or an order of which, and G8 checks those.
   A subgroup total nobody declared is not checked, and nothing searches the prose for numbers

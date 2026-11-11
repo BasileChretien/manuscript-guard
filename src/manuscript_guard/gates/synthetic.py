@@ -46,7 +46,8 @@ def quoted_refs(project: Project) -> set[str]:
         except (OSError, UnicodeDecodeError):
             continue  # G2 says why
         refs |= {placeholder.ref for placeholder in parse(text)[0]}
-    # And each figure's alternative text, which the build prints into its picture.
+    # And each figure's alternative text, which the build prints into a bound figure's
+    # picture and `submit` into `alt-text.md`.
     from manuscript_guard.contracts import ContractError
     from manuscript_guard.gates.figure_alt import alt_texts, literal
 

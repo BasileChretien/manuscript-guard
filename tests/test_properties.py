@@ -10641,6 +10641,76 @@ def test_a_latex_display_counts_as_latex_numbers_it(planted: tuple[str, int]) ->
         assert sum(latex_displays(Path(folder))) == count, document
 
 
+from generated import GRAPHICS_FILES, latex_graphics, markdown_images  # noqa: E402
+
+
+@holds(25, markdown_images())
+def test_each_image_a_markdown_text_places_is_found_as_pandoc_prints_it(
+    planted: tuple[str, list[str]],
+) -> None:
+    """arXiv 2409.10841 (the real-paper corpus): figure review, alternative text and the
+    colour-vision check read only a figure placed by its binding. They read every figure
+    file the paper places, and in Markdown each image pandoc prints: its path as pandoc reads
+    it, its escapes undone, and none in a comment, a fence, a code span, a link or the web."""
+    text, expected = planted
+    assert READINGS["placed images"]()(text) == expected, text
+
+
+@holds(25, latex_graphics())
+def test_each_picture_a_latex_document_places_is_found_as_graphicx_finds_it(
+    planted: tuple[str, list[str]],
+) -> None:
+    """arXiv 2409.10841: four results figures placed by `\\includegraphics` of names with no
+    extension, found through `\\graphicspath`. graphicx tries each extension in turn and, for
+    each, the entry file's folder then each folder of `\\graphicspath`; what TeX does not print
+    and a parameter in a definition's body place nothing."""
+    document, expected = planted
+    found = READINGS["placed graphics"]()({"document": document, "files": list(GRAPHICS_FILES)})
+    assert found == expected, document
+
+
+def _a_markdown_comment_is_read_for_images(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "html_comments", lambda text, fences=None: [])
+
+
+def _graphicx_tries_the_folders_outermost(patch: pytest.MonkeyPatch) -> None:
+    import posixpath
+
+    from manuscript_guard.gates import placed_figures
+
+    def folders_first(manuscript, entry, imported, folders, written):
+        base = posixpath.dirname(entry)
+        for place in [base, *(posixpath.join(base, folder) for folder in folders)]:
+            for name in [written, *(written + e for e in placed_figures.EXTENSIONS)]:
+                candidate = manuscript / posixpath.normpath(posixpath.join(place, name))
+                if candidate.is_file():
+                    return candidate
+        return None
+
+    patch.setattr(placed_figures, "resolve_graphic", folders_first)
+
+
+def _a_definitions_body_places_its_picture(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.gates import placed_figures
+
+    included = placed_figures.included
+
+    def with_bodies(source):
+        return included(replace(source, reading=replace(source.reading, bodies=())))
+
+    patch.setattr(placed_figures, "included", with_bodies)
+
+
+def _graphicspath_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import placed_figures
+
+    patch.setattr(placed_figures, "graphics_folders", lambda texts: [])
+
+
 def _a_latex_display_counts_by_its_bindings(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import journal
     from manuscript_guard.text.latex.printed import printed_document
@@ -23640,6 +23710,22 @@ BROKEN = {
     "a LaTeX display counts by its bindings": (
         _a_latex_display_counts_by_its_bindings,
         test_a_latex_display_counts_as_latex_numbers_it,
+    ),
+    "an image in a Markdown comment is placed": (
+        _a_markdown_comment_is_read_for_images,
+        test_each_image_a_markdown_text_places_is_found_as_pandoc_prints_it,
+    ),
+    "graphicx tries every folder with each extension before the next": (
+        _graphicx_tries_the_folders_outermost,
+        test_each_picture_a_latex_document_places_is_found_as_graphicx_finds_it,
+    ),
+    "graphicspath is not read": (
+        _graphicspath_is_not_read,
+        test_each_picture_a_latex_document_places_is_found_as_graphicx_finds_it,
+    ),
+    "a definition's body places its picture": (
+        _a_definitions_body_places_its_picture,
+        test_each_picture_a_latex_document_places_is_found_as_graphicx_finds_it,
     ),
     "bold in a table is counted": (
         _bold_in_a_table_is_counted,

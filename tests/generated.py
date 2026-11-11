@@ -1513,7 +1513,10 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
       file, whose uses in the entry file and in a file it inputs are followed by that text,
       each passed over, and a use it does not follow, refused; a space after a control word
       in that text is none of it, `\\def\\x\\relax /{a}` then `\\x\\relax/`;
-    - a comment between a command and its argument, passed over and recorded."""
+    - a comment between a command and its argument, passed over and recorded;
+    - a typed table inside maths, whose cells are text and open maths of their own, read,
+      and `$` inside maths outside one, refused where it stands (corpus run of 2026-11-11:
+      2103.00772 sets its cases as a `tabular` inside an equation)."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
@@ -1610,6 +1613,19 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
             f"{note}{{\\end{{list}}}}\n" + begin + words() + "\n" + end)  # fmt: skip
     comments = [("main.tex", at) for at in range(len(main)) if main[at] == "%"]
     cases.append(({"main.tex": main}, {}, [], [], comments))
+
+    table = draw(st.sampled_from(("tabular", "tabular*", "tabularx", "tabulary")))
+    columns = {"tabular": "{ll}", "tabular*": "{\\linewidth}{ll}",
+               "tabularx": "{\\linewidth}{lX}", "tabulary": "{\\linewidth}{lL}"}[table]  # fmt: skip
+    opens, closes = draw(st.sampled_from((("\\begin{equation}", "\\end{equation}"),
+                                          ("\\[", "\\]"), ("$$", "$$"))))  # fmt: skip
+    cells = f"$x$ & {words()} \\\\ $\\sum y$ & {words()}"
+    main = (head + begin + words() + "\n" + opens + " a = \\left\\{ \\begin{" + table + "}"
+            + columns + " " + cells + " \\end{" + table + "} \\right. " + closes + "\n"
+            + words() + ".\n" + end)  # fmt: skip
+    cases.append(({"main.tex": main}, {}, [], [], []))
+    main = head + begin + words() + "\n" + opens + " a = $x$ " + closes + "\n" + end
+    cases.append(({"main.tex": main}, {}, [("main.tex", main.index("$x$"))], [], []))
     return cases
 
 

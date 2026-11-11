@@ -1065,6 +1065,10 @@ def _the_spaces_after_a_control_word_delimit(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_SKIPPED", re.compile(r""))
 
 
+def _a_table_inside_maths_is_maths(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_sets_text", lambda name: False)
+
+
 @holds(40, latex_refusal_trees())
 def test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else(
     drawn: list[tuple[dict[str, str], dict[str, str], list[tuple[str, int]],
@@ -18824,6 +18828,10 @@ def _one_emphasis_is_taken_off_and_not_one_inside_it(patch: pytest.MonkeyPatch) 
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a typed table's cells inside maths are maths": (
+        _a_table_inside_maths_is_maths,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
     "underscores mark no emphasis in an excerpt": (
         _underscores_mark_nothing,
         test_an_excerpt_quotes_a_context_as_the_document_prints_it,

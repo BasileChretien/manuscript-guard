@@ -124,13 +124,6 @@ expected:
       G2 holds a caption beside a table or a figure to that display, so a typed caption or a
       ref opening one that names another display is caption-names-another; the inputs now
       place captions, and two tables one after the other with a caption between them
-  - reading: latex printed
-    why: >-
-      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
-      refused and the rest of the file read as typed; it is read now, as TeX reads it,
-      its parameter text blanked and its body read, and a use refused only where it
-      prints; a `\let` of a command to one the reader reads the same way and a doubled
-      parameter in a nested body are no longer refused either (real templates, part 1)
   - reading: prose quotations
     why: >-
       a sentence that opens with a typographic quotation mark is a sentence of its own, as
@@ -142,48 +135,6 @@ expected:
       in a row, one of Thai, Lao, Khmer or Myanmar for every four, rounded down, and a Latin
       word glued to such a run is a word of its own, where the whole run between spaces was
       one word; the inputs now hold Japanese, Chinese and Thai pieces (G7, quote-too-short)
-  - reading: latex bindings
-    why: >-
-      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
-      refused and the rest of the file read as typed; it is read now, as TeX reads it,
-      its parameter text blanked and its body read, and a use refused only where it
-      prints; a `\let` of a command to one the reader reads the same way and a doubled
-      parameter in a nested body are no longer refused either (real templates, part 1)
-  - reading: latex places
-    why: >-
-      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
-      refused and the rest of the file read as typed; it is read now, as TeX reads it,
-      its parameter text blanked and its body read, and a use refused only where it
-      prints; a `\let` of a command to one the reader reads the same way and a doubled
-      parameter in a nested body are no longer refused either (real templates, part 1)
-  - reading: latex refusals
-    why: >-
-      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
-      refused and the rest of the file read as typed; it is read now, as TeX reads it,
-      its parameter text blanked and its body read, and a use refused only where it
-      prints; a `\let` of a command to one the reader reads the same way and a doubled
-      parameter in a nested body are no longer refused either (real templates, part 1)
-  - reading: latex sections
-    why: >-
-      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
-      refused and the rest of the file read as typed; it is read now, as TeX reads it,
-      its parameter text blanked and its body read, and a use refused only where it
-      prints; a `\let` of a command to one the reader reads the same way and a doubled
-      parameter in a nested body are no longer refused either (real templates, part 1)
-  - reading: latex words
-    why: >-
-      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
-      refused and the rest of the file read as typed; it is read now, as TeX reads it,
-      its parameter text blanked and its body read, and a use refused only where it
-      prints; a `\let` of a command to one the reader reads the same way and a doubled
-      parameter in a nested body are no longer refused either (real templates, part 1)
-  - reading: latex writing
-    why: >-
-      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
-      refused and the rest of the file read as typed; it is read now, as TeX reads it,
-      its parameter text blanked and its body read, and a use refused only where it
-      prints; a `\let` of a command to one the reader reads the same way and a doubled
-      parameter in a nested body are no longer refused either (real templates, part 1)
   - reading: hidden
     why: >-
       G14 read the mask with each line feed put back and each carriage return NUL; the
@@ -193,11 +144,6 @@ expected:
     why: >-
       read from the `hidden` text, which keeps a carriage return in the front matter and a
       listing of a file with CRLF line ends where it was NUL
-  - reading: latex mask
-    why: >-
-      a `\par` TeX reads ends a quotation left open as a blank line does, so a straight `"`
-      after it closes nothing and stays as typed; one in a comment, and the letters after
-      `\\`, end none; the inputs now hold such quotations (Known gaps, 2026-10-27)
   - reading: latex documents
     why: >-
       a `subfiles` part the paper places by `\subfile` and a `standalone` picture it places
@@ -278,3 +224,83 @@ expected:
       a word with underscores is said to be "written with underscores, the way a name in
       code is written", where the message read "is written as a name in code is, with
       underscores" (corpus round, 2026-11-10)
+  - reading: latex mask
+    why: >-
+      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
+      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
+      refused and the rest of the file read as typed; each is read now, and a use of the
+      command refused where it prints; past any refusal the rest of the file is blanked, not
+      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
+      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
+  - reading: latex refusals
+    why: >-
+      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
+      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
+      refused and the rest of the file read as typed; each is read now, and a use of the
+      command refused where it prints; past any refusal the rest of the file is blanked, not
+      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
+      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
+  - reading: latex sections
+    why: >-
+      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
+      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
+      refused and the rest of the file read as typed; each is read now, and a use of the
+      command refused where it prints; past any refusal the rest of the file is blanked, not
+      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
+      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
+  - reading: latex bindings
+    why: >-
+      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
+      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
+      refused and the rest of the file read as typed; each is read now, and a use of the
+      command refused where it prints; past any refusal the rest of the file is blanked, not
+      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
+      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
+  - reading: latex citations
+    why: >-
+      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
+      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
+      refused and the rest of the file read as typed; each is read now, and a use of the
+      command refused where it prints; past any refusal the rest of the file is blanked, not
+      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
+      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
+  - reading: latex printed
+    why: >-
+      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
+      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
+      refused and the rest of the file read as typed; each is read now, and a use of the
+      command refused where it prints; past any refusal the rest of the file is blanked, not
+      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
+      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
+  - reading: latex places
+    why: >-
+      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
+      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
+      refused and the rest of the file read as typed; each is read now, and a use of the
+      command refused where it prints; past any refusal the rest of the file is blanked, not
+      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
+      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
+  - reading: latex displays cited
+    why: >-
+      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
+      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
+      refused and the rest of the file read as typed; each is read now, and a use of the
+      command refused where it prints; past any refusal the rest of the file is blanked, not
+      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
+      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
+  - reading: latex writing
+    why: >-
+      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
+      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
+      refused and the rest of the file read as typed; each is read now, and a use of the
+      command refused where it prints; past any refusal the rest of the file is blanked, not
+      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
+      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
+  - reading: latex words
+    why: >-
+      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
+      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
+      refused and the rest of the file read as typed; each is read now, and a use of the
+      command refused where it prints; past any refusal the rest of the file is blanked, not
+      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
+      and be honest", after 3 of 20 LaTeX preprints of the corpus run)

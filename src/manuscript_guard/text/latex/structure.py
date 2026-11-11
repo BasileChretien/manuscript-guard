@@ -286,7 +286,8 @@ def read_tree(
     """The document `entry` begins, its files given by path; `packages` the `.sty` files and
     `classes` the `.cls` files the manuscript holds; `unreadable` files that could not be
     read, reported elsewhere and passed over. A command one file defines with delimited
-    parameters is refused where another uses it, and a command of a class's front matter one
+    parameters, or one the reader knows that a file's preamble or the author's package
+    defines again, is refused where another uses it, and a command of a class's front matter one
     file defines is the author's in another, so a tree that defines either is read twice, the
     second time with every file told of them. A file nothing inputs defines nothing the
     document uses (round 2)."""
@@ -305,7 +306,16 @@ def read_tree(
     own = frozenset(name for name in own
                     if not set(PACKAGE_COMMANDS.get(name, ())) & loaded)  # fmt: skip
     told = _Told(delimited, own, literal, loaded)
-    return _encoded(_read_tree(files, entry, styles, unreadable, told))
+    document = _read_tree(files, entry, styles, unreadable, told)
+    # A package's command a file defined as the author's is the reader's where another file
+    # loads the package, and so defined again there: its uses are refused in every file, so
+    # the tree is read once more, each file told of it (2026-11-11).
+    again = frozenset(name for source in document.sources if not source.loose
+                      for name in source.reading.delimited) - delimited  # fmt: skip
+    if again:
+        told = _Told(delimited | again, own, literal, loaded)
+        document = _read_tree(files, entry, styles, unreadable, told)
+    return _encoded(document)
 
 
 @dataclass(frozen=True)

@@ -12,7 +12,9 @@ is used; maths keeps what it holds but its commands, braces and delimiters,
 as Markdown's `mask` keeps `$...$`; a comment, a listing, a label, a key and a binding are
 blanked; a command not in `commands.py` has its name blanked and its arguments read. What the
 reader cannot read exactly is refused (`Refusal`), and past the first refusal the rest of the
-file is read as prose, so that nothing the reader did not understand is hidden.
+file is blanked: no gate reads source it did not understand as prose, and what reports on the
+file says it was not read past there (Basile, 2026-11-11, "Read more, and be honest": read as
+typed, its comments and commands were G6's and G14's findings).
 """
 
 from __future__ import annotations
@@ -103,6 +105,15 @@ _INPUTENC = re.compile(
     r"\\(?:usepackage|RequirePackage)\s*\[([^\]]{0,300})\]\s*\{inputenc\}"
     r"|\\inputencoding\s*\{([^}]{0,40})\}"
 )
+#: What follows a preamble's `\\expandafter` that only redefines a command, as Scientific
+#: WorkPlace writes `\\expandafter\\def\\expandafter\\normalsize\\expandafter{...}`: TeX's
+#: `\\def` and its kin, then a command's name, past more `\\expandafter`s; not one built by
+#: `\\csname`, which stays refused.
+_EXPANDED_DEFINITION = re.compile(
+    r"\s*\\[gex]?def(?![A-Za-z@])(?:\s*\\expandafter(?![A-Za-z@]))*\s*\\(?!csname(?![A-Za-z@]))"
+)
+#: The `\\expandafter`s such a definition holds before its name and before its body.
+_EXPANDAFTERS = re.compile(r"(?:\s*\\expandafter(?![A-Za-z@]))*\s*")
 _CONDITIONALS = re.compile(r"\\(?:if[A-Za-z]*|fi|else)(?![A-Za-z])")
 _DOCUMENT = re.compile(r"\\begin\s*\{document\}")
 
@@ -230,8 +241,9 @@ class Reading:
     #: Each `\\includegraphics`, from the command to past its path's closing brace, and where
     #: its path's braces open (step 10).
     graphics: tuple[tuple[int, int, int], ...] = ()
-    #: Each command the file defines with delimited parameters, `\\def\\x#1.{...}`, whose
-    #: uses are refused where they would print, in this file and in the others of its tree.
+    #: Each command the file defines with delimited parameters, `\\def\\x#1.{...}`, and each
+    #: the reader knows that its preamble defines again, `\\def\\eqref#1{...}`, whose uses
+    #: are refused where they would print, in this file and in the others of its tree.
     delimited: tuple[str, ...] = ()
     #: Each command of a class's front matter the file defines, which is then the author's.
     own: tuple[str, ...] = ()
@@ -431,6 +443,24 @@ def _key_list(keys: str) -> str:
     return re.sub(r"(?<!\\)%[^\n]*", lambda found: " " * len(found.group(0)), keys)
 
 
+def _redefined_said(name: str) -> str:
+    """Why a use of a command whose uses are refused where they print is not read: the
+    preamble defines again one the reader knows (2026-11-11), or it takes delimited
+    parameters (2026-10-23)."""
+    if name in COMMANDS:
+        return ("the preamble defines it again, and what it prints here is the author's "
+                "definition, not what the reader reads it as")
+    return ("it is defined with delimited parameters, and what it prints is not read; define "
+            "it with \\newcommand")
+
+
+def _unread(text: str) -> str:
+    """`text` as the reader gives what it did not read past a refusal: NUL, its line breaks
+    kept, so that a finding past it names no line and no gate reads source as prose (round
+    of 2026-11-11: read as typed, a template's comments were G6's findings)."""
+    return re.sub(r"[^\r\n]", NUL, text)
+
+
 def _comment_end(text: str, at: int) -> int:
     """Where a comment opened at `at` ends: before its line's break."""
     end = text.find("\n", at)
@@ -572,6 +602,8 @@ class _Reader:
         self.siunitx = 0
         #: The command a definition being read defines, until its body opens.
         self.defining = ""
+        #: Whether the `\\def` read next follows a preamble's `\\expandafter` passed over.
+        self.expanding = False
         #: The commands defined with delimited parameters, here and in the files `delimited`
         #: names, each use of which is refused where it would print; and those defined here.
         self.delimited = set(delimited)
@@ -644,8 +676,9 @@ class _Reader:
                  tuple(self.encodings))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
+        # Past the refusal nothing is read, its line breaks kept (`_unread`).
         at = self.refused.offset
-        return Reading(masked[:at] + self.text[at:], (self.refused,), *found)
+        return Reading(masked[:at] + _unread(self.text[at:]), (self.refused,), *found)
 
     def _refuse(self, code: str, at: int, message: str) -> None:
         if self.refused is None:
@@ -1057,8 +1090,14 @@ class _Reader:
 
     def _word(self, name: str, at: int, end: int) -> None:
         if name in REFUSED:
-            if not self._machinery(name):
+            if self._expands_a_definition(name, end):
+                self.expanding = True
+            elif not self._machinery(name):
                 self._refuse("tex-refused", at, f"\\{name} is not read: {REFUSED[name]}")
+        elif name in self.delimited and self._prints():
+            # Before any command the reader reads by its name: one the preamble defined again
+            # prints what the author wrote, not what the reader takes it to print.
+            self._refuse("tex-refused", at, f"\\{name} is not read: {_redefined_said(name)}")
         elif name in ("makeatletter", "makeatother"):
             header = self._list_header()
             if name == "makeatletter" and self.body and not self.loose and not header:
@@ -1119,10 +1158,6 @@ class _Reader:
             if name in ("documentclass", "bibliographystyle"):
                 self._declares(name, end)
             self.command, self.pending = name, COMMANDS[name]
-        elif name in self.delimited and self._prints():
-            said = ("it is defined with delimited parameters, and what it prints is not read; "
-                    "define it with \\newcommand")
-            self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
         elif name in self.literal:
             self._past_delimiter(name, at, end)
         elif self._unknown_citation(name):
@@ -1142,6 +1177,16 @@ class _Reader:
         if not self._list_header():
             return False
         return name in REFERENCE_MACHINERY or (name in CATEGORY and self.definitions > 0)
+
+    def _expands_a_definition(self, name: str, end: int) -> bool:
+        """Whether an `\\expandafter` only redefines a command in the preamble, outside any
+        definition's body, and is passed over: Scientific WorkPlace's
+        `\\expandafter\\def\\expandafter\\normalsize\\expandafter{...}`, which adds to what a
+        command does (2026-11-11: it was refused, and the rest of the file read as typed).
+        The `\\def` is then read as any, the command it names defined again, whose uses are
+        refused where they print if the reader knows it (`_defines`)."""
+        return (name == "expandafter" and not self.body and not self.definitions
+                and _EXPANDED_DEFINITION.match(self.text, end) is not None)  # fmt: skip
 
     def _past_delimiter(self, name: str, at: int, end: int) -> None:
         """Pass over what follows a use of a command defined with a parameter text and no
@@ -1362,7 +1407,12 @@ class _Reader:
     def _definition(self, name: str, at: int, end: int) -> None:
         # The definer is this one, not the command read last, a `\providecommand` (`_defines`).
         self.command = name
+        expanded, self.expanding = self.expanding, False
         start = self._after_space(end)
+        if expanded:
+            # The `\expandafter`s of `_expands_a_definition`, before the name and after it.
+            start = _EXPANDAFTERS.match(self.text, start).end()
+            self._blank(end, start)
         if self.text[start : start + 1] != "\\":
             return
         name_end = self._name_end(start)
@@ -1372,6 +1422,11 @@ class _Reader:
             return
         self._defines(defined, start)
         self._blank(start, name_end)
+        if expanded:
+            past = _EXPANDAFTERS.match(self.text, name_end).end()
+            if self.text[past : past + 1] == "{":
+                self._blank(name_end, past)
+                name_end = past
         self.pos = name_end
         word = bool(self.letters.match(defined))
         parameters, delimited = self._parameter_text(name_end, word)
@@ -1390,7 +1445,8 @@ class _Reader:
             # Delimited parameters, `\def\x#1.{...}`: the definition is read, and each use
             # where it would print is refused, since what it takes there is not known.
             self.delimited.add(defined)
-            self.defined_delimited.append(defined)
+            if defined not in self.defined_delimited:
+                self.defined_delimited.append(defined)
         self._blank(name_end, parameters)
         self.command = name
         self._open("arg", "d", parameters, "}")
@@ -1468,6 +1524,16 @@ class _Reader:
         if self.command in PROVIDERS and name in COMMANDS:
             # `\providecommand` of a command that is defined defines nothing (2026-10-23:
             # `\providecommand{\url}` in a reference list BibTeX wrote was refused).
+            return
+        if name in COMMANDS and not self.body:
+            # In the preamble, a file input from it or the author's package the definition is
+            # read, and each use refused where it prints, as a use of delimited parameters is
+            # (Basile, 2026-11-11: ICLR's `\def\eqref#1{...}` and arxiv.sty's
+            # `\renewcommand\section` were refused at the definition, the rest of each file
+            # read as typed). The tree tells the other files of it, as of those.
+            self.delimited.add(name)
+            if name not in self.defined_delimited:
+                self.defined_delimited.append(name)
             return
         if name in COMMANDS or name in ("begin", "end", "verb", "def"):
             self._refuse("tex-refused", at, f"\\{name} is defined again, and the reader reads "

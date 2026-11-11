@@ -3,8 +3,8 @@
 Each refusal of the LaTeX reader is a finding at its file and line: a group, an environment,
 maths, a `\\verb` or an `\\iffalse` left open (`tex-unbalanced`), and what the reader does not
 read exactly, an `\\input` it cannot follow among them (`tex-refused`). Both fail at every
-stage: past a refusal the rest of the file is read as prose, so the gates read it, but not as
-LaTeX prints it. A `.tex` file that no `\\input` the reader follows names is a warning
+stage: past a refusal nothing more of the file is read, so no gate checks what it prints
+there. A `.tex` file that no `\\input` the reader follows names is a warning
 (`tex-not-input`): it is read as loose body under no heading. That is a file nothing inputs,
 and also one input past a refusal or from inside a definition, which LaTeX may still print.
 A `.tex` file that holds a document of its own, its own `\\begin{document}`, beside a
@@ -24,7 +24,7 @@ GATE = "BUILD"
 _HINTS = {
     "tex-unbalanced": "close it where it should close, or take out what closes nothing",
     "tex-refused": "write it so that it can be read, or take it out; the rest of the file is "
-    "read as prose until then",
+    "not read until then",
     SECOND_DOCUMENT: f"if it is the supplement, make it manuscript/{SUPPLEMENT_ENTRY}; if it is "
     "not, move it out of manuscript/ or into a folder whose name starts with '_'",
 }

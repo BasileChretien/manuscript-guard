@@ -125,12 +125,15 @@ def test_a_file_with_no_document_is_body_and_one_whose_document_is_commented_too
         ("\\let\\texttt\\textrm", "tex-refused", 4),
     ],
 )
-def test_what_is_not_read_exactly_is_refused_and_the_rest_left_as_typed(
+def test_what_is_not_read_exactly_is_refused_and_the_rest_not_read(
     text: str, code: str, at: int
 ) -> None:
+    """Past a refusal nothing is read: the rest is blanked, its line breaks kept (Basile,
+    2026-11-11: read as typed, a template's comments and commands were G6's findings)."""
     reading = read(text, body=True)
     assert [(r.code, r.offset) for r in reading.refusals] == [(code, at)]
-    assert reading.masked[at:] == text[at:]
+    assert set(reading.masked[at:]) <= {NUL, "\n"}
+    assert reading.masked[at:].count("\n") == text[at:].count("\n")
 
 
 def test_a_delimited_definition_is_read_and_each_use_where_it_prints_refused() -> None:
@@ -661,7 +664,8 @@ def test_providecommand_of_a_known_command_defines_nothing_and_renewcommand_is_r
 def test_a_package_s_command_is_the_author_s_where_no_package_gives_it(name: str) -> None:
     """`\\newcommand{\\unit}` with no siunitx defines the author's command, read as an unknown
     one is, its argument read (2026-10-23: it was refused as defined again). Where siunitx is
-    loaded, or units for `\\unit`, the definition is refused, as before."""
+    loaded, or units for `\\unit`, the preamble defines the package's command again, and its
+    use is refused where it prints (Basile, 2026-11-11)."""
     define = f"\\newcommand{{\\{name}}}[1]{{\\mbox{{#1}}}}\n"
     text = ("\\documentclass{article}\n" + define
             + f"\\begin{{document}}\nThe vector $\\{name}{{k}}$ of 12.\n\\end{{document}}\n")
@@ -672,12 +676,13 @@ def test_a_package_s_command_is_the_author_s_where_no_package_gives_it(name: str
     for package in givers:
         loaded = text.replace(define, f"\\usepackage{{{package}}}\n" + define)
         (refusal,) = read(loaded).refusals
-        assert refusal.offset == loaded.index(f"{{\\{name}}}") and "again" in refusal.message
+        assert refusal.offset == loaded.index(f"$\\{name}") + 1 and "again" in refusal.message
 
 
 def test_a_package_s_command_defined_where_another_file_loads_the_package_is_refused() -> None:
     """The tree tells each file what the others load: siunitx in the author's package makes
-    `\\unit` the reader's in the entry file, and its definition there defined again."""
+    `\\unit` the reader's in the entry file, and its definition there defined again, so its
+    use in the file the entry inputs is refused where it prints (Basile, 2026-11-11)."""
     from manuscript_guard.text.latex.structure import read_tree
 
     main = ("\\documentclass{article}\n\\usepackage{macros}\n\\newcommand{\\unit}[1]{#1}\n"
@@ -685,7 +690,8 @@ def test_a_package_s_command_defined_where_another_file_loads_the_package_is_ref
     files = {"main.tex": main, "a.tex": "The vector $\\unit{k}$.\n"}
     ((path, refusal),) = read_tree(files, packages={"macros.sty": "\\RequirePackage{siunitx}\n"}
                                    ).refusals  # fmt: skip
-    assert path == "main.tex" and refusal.offset == main.index("{\\unit}")
+    assert path == "a.tex" and refusal.offset == files["a.tex"].index("\\unit")
+    assert "defines it again" in refusal.message
     document = read_tree(files, packages={"macros.sty": "\\RequirePackage{xcolor}\n"})
     assert document.refusals == ()
     assert "k" in document.sources[-1].reading.masked
@@ -733,3 +739,99 @@ def test_a_parameter_text_with_no_parameter_prints_its_body_and_is_passed_over()
     relaxed = "\\def\\x\\relax /{a}\nUse \\x\\relax/ here, \\x\\relax\n  / there.\n"
     reading = read(relaxed, body=True)
     assert reading.refusals == () and "/" not in reading.masked
+
+
+# The corpus run of 2026-11-11: in 3 of 20 LaTeX preprints one construct of the template
+# was refused, the rest of its file read as typed, and G6 and G14 reported LaTeX source and
+# commented-out template text, or read almost nothing.
+_HEAD = "\\documentclass{article}\n"
+_BODY = "\\begin{document}\nOf 4100 reports, 12 were fatal. % TODO: the 2019 data\n"
+
+
+@pytest.mark.parametrize(
+    ("defined", "name", "file"),
+    [
+        # ICLR's own math_commands.tex, input from the preamble.
+        ("\\def\\eqref#1{equation~\\ref{#1}}\n", "eqref", "math_commands.tex"),
+        # iclr2021_conference.sty.
+        ("\\def\\addcontentsline#1#2#3{}\n", "addcontentsline", "iclr.sty"),
+        # style.sty and the arXiv template's arxiv.sty.
+        ("\\renewcommand\\section{\\@startsection{section}{1}{\\z@}{-1ex}{1ex}{\\bfseries}}\n",
+         "section", "arxiv.sty"),
+        ("\\renewcommand{\\section}[1]{\\textbf{#1}}\n", "section", "main.tex"),
+    ],
+    ids=["iclr-math-commands", "iclr-sty", "arxiv-sty", "preamble"],
+)
+def test_a_known_command_the_preamble_defines_again_is_read_and_refused_where_used(
+    defined: str, name: str, file: str
+) -> None:
+    """Basile, 2026-11-11 ("Read more, and be honest"): a known command defined again in the
+    preamble, a file input from it or the author's package is read there, and refused only
+    where it prints, since what it prints is the author's; past that use nothing of the
+    file is read, its comments no more than the rest. In the body, the definition is still
+    refused where it stands."""
+    from manuscript_guard.text.latex.structure import read_tree
+
+    preamble = {"main.tex": defined, "math_commands.tex": "\\input{math_commands}\n",
+                "iclr.sty": "\\usepackage{iclr}\n", "arxiv.sty": "\\usepackage{arxiv}\n"}[file]
+    files = {"main.tex": _HEAD + preamble + _BODY + "\\end{document}\n"}
+    packages = {}
+    if file == "math_commands.tex":
+        files[file] = defined
+    elif file.endswith(".sty"):
+        packages[file] = defined
+    document = read_tree(files, packages=packages)
+    assert document.refusals == ()
+    assert "Of 4100 reports, 12 were fatal." in document.sources[0].reading.masked
+    used = f"See \\{name}{{a}}{'{b}{c}' if name == 'addcontentsline' else ''}. % TODO: 2019\n"
+    files["main.tex"] = _HEAD + preamble + _BODY + used + "Then 77 died.\n\\end{document}\n"
+    ((path, refusal),) = read_tree(files, packages=packages).refusals
+    assert (path, refusal.offset) == ("main.tex", files["main.tex"].index("\\" + name + "{a"))
+    assert "defines it again" in refusal.message
+    masked = read_tree(files, packages=packages).sources[0].reading.masked
+    assert "Then 77" not in masked and "TODO: 2019" not in masked and "fatal." in masked
+    # Written in the body, the definition is refused where it stands.
+    inside = _HEAD + "\\begin{document}\n" + defined.replace("\\@", "\\") + "x\n\\end{document}"
+    assert [r.code for r in read(inside).refusals] == ["tex-refused"]
+
+
+def test_scientific_workplace_s_preamble_expandafter_is_passed_over() -> None:
+    """A Scientific WorkPlace preamble adds spacing to `\\normalsize` with
+    `\\expandafter\\def\\expandafter\\normalsize\\expandafter{...}`, and `\\expandafter` was
+    refused there (corpus run of 2026-11-11). In the preamble such an `\\expandafter` is
+    passed over and the `\\def` read; one that builds a name by `\\csname`, and one in the
+    body, are refused as before."""
+    swp = ("\\expandafter\\def\\expandafter\\normalsize\\expandafter{\\normalsize"
+           "\\setlength\\abovedisplayskip{6pt}}\n")  # fmt: skip
+    text = _HEAD + swp + _BODY + "\\end{document}\n"
+    reading = read(text)
+    assert reading.refusals == () and "fatal." in reading.masked
+    assert "expandafter" not in reading.masked and "normalsize" not in reading.masked
+    built = _HEAD + "\\expandafter\\def\\csname x\\endcsname{1}\n" + _BODY + "\\end{document}"
+    assert [r.offset for r in read(built).refusals] == [len(_HEAD)]
+    inside = _HEAD + _BODY + swp + "\\end{document}"
+    assert [r.offset for r in read(inside).refusals] == [inside.index(swp)]
+
+
+def test_a_declared_encoding_the_audit_reads_in_is_written_as_utf8_at_its_length() -> None:
+    """`audit` reads a folder that declares latin1, latin9, cp1252 or ansinew in that
+    encoding, and writes each declaration as UTF-8's at the same length, so that the reader
+    reads the file's characters and every offset stays (Basile, 2026-11-11). A project's
+    files are UTF-8, and a declaration in one that is not ASCII is refused as before."""
+    from manuscript_guard.text.latex.encodings import as_utf8, declared
+
+    accented = (_HEAD + "\\usepackage[T1]{fontenc}\n\\usepackage[latin1]{inputenc}\n"
+                "% \\usepackage[latin9]{inputenc}\n" + _BODY
+                + "Caf\N{LATIN SMALL LETTER E WITH ACUTE}.\n\\end{document}\n")  # fmt: skip
+    assert declared([accented]) == "latin1"
+    written = as_utf8(accented)
+    assert len(written) == len(accented) and "[utf8  ]{inputenc}" in written
+    assert "% \\usepackage[latin9]" in written  # a comment declares nothing
+    assert read(written).refusals == () and [r.code for r in read(accented).refusals] == [
+        "tex-refused"]
+    for name in ("latin9", "cp1252", "ansinew"):
+        assert declared([accented.replace("[latin1]", f"[{name}]")]) == name
+    assert declared(["\\inputencoding{cp1252}", "\\usepackage[ansinew]{inputenc}"]) == "cp1252"
+    assert declared(["\\usepackage[latin1]{inputenc}", "\\inputencoding{latin9}"]) is None
+    assert declared(["\\usepackage[latin2]{inputenc}"]) is None
+    assert as_utf8("\\inputencoding{ansinew} x") == "\\inputencoding{utf8   } x"

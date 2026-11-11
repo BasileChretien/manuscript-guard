@@ -114,7 +114,10 @@ def _latex_unbound(project: Project, classifier: Classifier, by_display: dict[st
         refused = file.source.reading.refusals
         stop = refused[0].offset if refused else None
         scan = read.scan(classifier)
-        for atom in find_atoms(read.text, read.masked):
+        # Past a refusal the reader reads nothing, and a number there is still one the
+        # paper prints: each typed is named, and none offered (Basile, 2026-11-11).
+        masked = read.masked if stop is None else read.masked[:stop] + read.text[stop:]
+        for atom in find_atoms(read.text, masked):
             if classifier.classify_under(atom, read.chains(atom.start), scan).kind != UNCLASSIFIED:
                 continue
             item = _found(read.path, atom, by_display, read.spell(_hint_for(atom)), latex=True,
@@ -123,8 +126,8 @@ def _latex_unbound(project: Project, classifier: Classifier, by_display: dict[st
                 found.append(item)
                 continue
             if stop is not None and atom.start >= stop:
-                why = ("it stands past the file's first refusal, where the reader reads the "
-                       "file as typed")  # fmt: skip
+                why = ("it stands past the file's first refusal, past which the reader reads "
+                       "nothing of the file")  # fmt: skip
             elif offers and not _reads(item, read.text):
                 why = "the reader would refuse it there, as it refuses one in siunitx"
             else:

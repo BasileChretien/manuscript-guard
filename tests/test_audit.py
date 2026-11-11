@@ -1763,7 +1763,62 @@ def test_an_identifier_is_not_found_by_its_digits_nor_outside_what_the_paper_rep
     assert read.found == [] and read.rounded == []
 
 
-@pytest.mark.parametrize("title", ["Method", "3. Method", "Methodology", "Proposed method"])
+@pytest.mark.parametrize("written", [
+    "*rs75015950*", "_rs75015950_", "**rs75015950**", "\N{LEFT DOUBLE QUOTATION MARK}"
+    "rs75015950\N{RIGHT DOUBLE QUOTATION MARK}", '"rs75015950"', "'rs75015950'",
+    "rs75015950\N{RIGHT SINGLE QUOTATION MARK}s", "rs75015950's", "rs75015950:1234",
+    "(*rs75015950*).",
+])  # fmt: skip
+def test_an_identifier_is_found_in_emphasis_quotes_a_possessive_or_before_a_colon(
+    tmp_path: Path, written: str
+) -> None:
+    """The text the Abstract is held to keeps a Markdown paper's emphasis marks, and a word
+    may be quoted, possessive, or a chromosome's before its position, "chr15:1234": the
+    identifier is the word without them (round 1 of #624)."""
+    text = (f"# A study\n\n## Abstract\n\nThe variant rs75015950 led here.\n\n## Methods\n\n"
+            f"Variant {written} lies there.\n\n## Results\n\nIt was so.\n")  # fmt: skip
+    read = _abstract_of(tmp_path, text)
+    assert [c.text for c in read.found] == ["rs75015950"], [c.text for c in read.not_found]
+
+
+def test_an_abstract_s_identifier_with_a_colon_is_found_whole(tmp_path: Path) -> None:
+    """"chr15:1234" in the Abstract is read whole, and found where the Methods print it."""
+    text = ("# A study\n\n## Abstract\n\nIt lies at chr15:1234 here.\n\n## Methods\n\nIt lies "
+            "at chr15:1234.\n\n## Results\n\nIt was so.\n")  # fmt: skip
+    assert [c.text for c in _abstract_of(tmp_path, text).found] == ["chr15:1234"]
+
+
+def test_a_method_subsection_of_the_results_and_discussion_is_no_methods(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #624: with "method" read anywhere in a title, "Performance of the proposed
+    method" under "Results and discussion" was a Methods, the Results over it no longer the
+    Results, and the Abstract was not compared, where main compared it."""
+    text = ("# Abstract\n\nIt was 41.7.\n\n# Materials and methods\n\n# Results and "
+            "discussion\n\nIt was 41.7.\n\n## Performance of the proposed method\n\nFine.\n")
+    read = _abstract_of(tmp_path, text)
+    assert read.matched == 1 and read.not_found == []
+
+
+@pytest.mark.parametrize(("title", "methods"), [
+    ("Method", True), ("2. Method", True), ("**3. Method**", True), ("METHOD", True),
+    ("Methodology", True), ("Materials and Method", True), ("Material and method", True),
+    ("Method and materials", True), ("Method:", True),
+    # As main read them: the plural anywhere.
+    ("Statistical methods", True), ("eMethods 1", True), ("Limitations of existing methods",
+                                                          True),
+    ("Performance of the proposed method", False), ("A method for signal detection", False),
+    ("Proposed method", False), ("Methodological notes", False), ("Our methodology", False),
+])  # fmt: skip
+def test_the_singular_method_names_the_methods_only_as_the_whole_title(
+    title: str, methods: bool
+) -> None:
+    from manuscript_guard.text.section_names import names_methods
+
+    assert names_methods(title) is methods
+
+
+@pytest.mark.parametrize("title", ["Method", "3. Method", "Methodology", "Materials and method"])
 @pytest.mark.parametrize("suffix", [".md", ".tex"])
 def test_a_number_of_the_abstract_is_found_under_a_method_heading(
     tmp_path: Path, title: str, suffix: str

@@ -5810,7 +5810,9 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
     in the Methods, a table or the supplement is found, one reported to a place more is
     found as a rounding, and one only in the Discussion is not found. An identifier, "v12"
     or "rs7012345", is found where the Methods print it, and not where they give its
-    number alone (pharm-epi of the real-paper corpus). Without an Abstract
+    number alone (pharm-epi of the real-paper corpus). A number under a subsection of the
+    Results and discussion whose title holds "method", "Performance of the proposed method",
+    is found, and the Results over it are still the Results (round 1 of #624). Without an Abstract
     heading, or a Results heading, nothing is compared. The same paper in LaTeX reads
     alike, its last sentence of the Abstract on the line of `!end{abstract}` (round 1 of
     #472)."""
@@ -7033,12 +7035,15 @@ _NAMED_METHODS = (
     "**2. Methods**", "Patients and methods", "Materials and methods", "Materials & methods",
     "Methods and analysis", "Statistical methods", "Methodology",
 )  # fmt: skip
-#: The word "method" whole, as APA and a machine-learning paper title the Methods (cs-lg of
-#: the real-paper corpus, 2026-11-11), and a title it is in where the Methods stand: no name
-#: of `METHODS_SECTIONS`, so read after one (DESIGN.md, "Known gaps").
-_THE_METHODS = (*_NAMED_METHODS, "Method", "3. Method", "Proposed method",
-                "A method for signal detection")  # fmt: skip
-_NO_METHODS = ("Approach", "Study population", "Analyses", "Methodological notes")
+#: The singular as the whole title, as APA and a machine-learning paper title the Methods
+#: (cs-lg of the real-paper corpus, 2026-11-11): no name of `METHODS_SECTIONS`, so read
+#: after one (DESIGN.md, "Known gaps"). A title the singular is only in names no Methods,
+#: "Performance of the proposed method" (round 1 of #624).
+_THE_METHODS = (*_NAMED_METHODS, "Method", "3. Method", "**2. Method**", "Materials and method",
+                "Method and materials")  # fmt: skip
+_NO_METHODS = ("Approach", "Study population", "Analyses", "Methodological notes",
+               "Proposed method", "A method for signal detection",
+               "Performance of the proposed method")  # fmt: skip
 #: What a paper calls its abstract, and what a journal's profile may call it.
 _THE_ABSTRACT = ("Abstract", "1. Abstract", "Structured abstract", "Summary", "Overview")
 _ABSTRACT_TITLES = (None, "Summary", "Overview")
@@ -15646,6 +15651,13 @@ def _the_methods_must_hold_methods(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(section_names, "names_methods", lambda title: "methods" in title.lower())
 
 
+def _the_word_method_anywhere_is_the_methods(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    word = re.compile(r"\bmethod(?:s|ology)?\b", re.IGNORECASE)
+    patch.setattr(section_names, "names_methods", lambda title: word.search(title) is not None)
+
+
 def _methods_found_without_the_paper_s_structure(patch: pytest.MonkeyPatch, keep: str) -> None:
     """`methods_sections` with one of its two tests of place left out: `keep` says which
     stays, "above" (nothing over it names another part) or "below" (nothing under it does)."""
@@ -23426,6 +23438,14 @@ BROKEN = {
     "a Methods titled Method or Methodology is no Methods": (
         _the_methods_must_hold_methods,
         test_a_section_g4_counts_present_is_a_section_the_gates_read,
+    ),
+    "a title the word method is in is a Methods": (
+        _the_word_method_anywhere_is_the_methods,
+        test_a_section_g4_counts_present_is_a_section_the_gates_read,
+    ),
+    "a subsection of the Results the word method is in is a Methods": (
+        _the_word_method_anywhere_is_the_methods,
+        test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "the abstract a profile names is not counted as one": (
         _a_profile_s_abstract_title_is_not_counted,

@@ -12,14 +12,15 @@ paper split into files has a Discussion in a file of its own reported whole, as 
 supplement (round 2 of #472, DESIGN.md, "Known gaps"). Where no file has an Abstract
 heading, or none a Results heading, nothing is compared, and the report says so.
 
-* **Not found.** A number of the Abstract the classifier leaves unexplained, found nowhere
-  the paper reports, is said. A rounding of one is a match, "53%" for "53.3%" (the author,
-  2026-10-28), and counted apart: the Abstract's number is one the reported number rounds
-  to at its places. A part with letters in it and no number read in it, "v8", "rs75015950",
-  "chr15", is found only as printed, a whole word where the paper reports: an identifier
-  was otherwise never found, even beside its copy in the Methods (a preprint of the
-  real-paper corpus, pharm-epi, 2026-11-11). A match here is as weak as the audit's against
-  the outputs, and the section ends with what one is worth, the roundings counted in.
+* **Not found.** A number of the Abstract the classifier leaves unexplained, not found in
+  the Methods, the Results or the tables, is said. A rounding of one is a match, "53%" for
+  "53.3%" (the author, 2026-10-28), and counted apart: the Abstract's number is one the
+  reported number rounds to at its places. A part with letters in it and no number read in
+  it, "v8", "rs75015950", "chr15", is found only as printed, a whole word where the paper
+  reports: an identifier was otherwise never found, even beside its copy in the Methods (a
+  preprint of the real-paper corpus, pharm-epi, 2026-11-11). A match here is as weak as the
+  audit's against the outputs, and the section ends with what one is worth, the roundings
+  counted in.
 * **Conflict.** An exact pairing only. An interval of the Abstract (`reported_intervals`) of
   the same estimate and level as one interval where the paper reports, two of whose three
   numbers agree with it, estimate, lower bound and upper bound, and whose third does not; or
@@ -75,8 +76,8 @@ class AbstractRead:
     why_not: str = ""
     numbers: int = 0
     matched: int = 0
-    #: Each number matched only as a rounding, and each found nowhere the paper reports, as
-    #: the audit's `Candidate`; each conflict as its `Disagreement`.
+    #: Each number matched only as a rounding, and each not found in the Methods, the Results
+    #: or the tables, as the audit's `Candidate`; each conflict as its `Disagreement`.
     rounded: list = field(default_factory=list)
     not_found: list = field(default_factory=list)
     #: Each number found as printed, as its `Candidate`: `matched` of them.
@@ -277,16 +278,27 @@ def _numbers(text: str) -> list[str]:
 
 
 #: What a word of the reported text is stripped of at its ends before an Abstract's part is
-#: looked for among them: the stops and brackets typed against a word, "chr15." or "(v8)".
-_WORD_EDGES = ".,;:()[]"
+#: looked for among them: the stops and brackets typed against a word, "chr15." or "(v8)";
+#: a Markdown paper's emphasis, which the masked text keeps, "*rs75015950*"; and quotes,
+#: straight and curly (round 1 of #624).
+_WORD_EDGES = ".,;:()[]*_\"'\N{LEFT DOUBLE QUOTATION MARK}\N{RIGHT DOUBLE QUOTATION MARK}" \
+    "\N{LEFT SINGLE QUOTATION MARK}\N{RIGHT SINGLE QUOTATION MARK}"
+#: A possessive after a word, "v8's" or "v8\N{RIGHT SINGLE QUOTATION MARK}s".
+_POSSESSIVE = re.compile("['\N{RIGHT SINGLE QUOTATION MARK}]s$")
 
 
 def _words(text: str) -> set[str]:
-    """Each word of the reported text, as split at spaces, stripped of `_WORD_EDGES`: where
-    an Abstract's part that holds letters, which `printed_parts` keeps whole ("v8",
-    "rs75015950", "ieu-a-1185"), is looked for, since `_numbers` holds the bare numbers
-    alone."""
-    return {word.strip(_WORD_EDGES) for word in text.replace(NUL, " ").split()} - {""}
+    """Each word of the reported text, as split at spaces and again at its colons, stripped
+    of `_WORD_EDGES` and of a possessive: where an Abstract's part that holds letters, which
+    `printed_parts` keeps whole ("v8", "rs75015950", "ieu-a-1185", "chr15:1234"), is looked
+    for, since `_numbers` holds the bare numbers alone. A chromosome before its position,
+    "chr15:1234", gives "chr15" as well as the whole."""
+    found = set()
+    for token in text.replace(NUL, " ").split():
+        for word in (token, *token.split(":")):
+            word = word.strip(_WORD_EDGES)
+            found.add(_POSSESSIVE.sub("", word).strip(_WORD_EDGES))
+    return found - {""}
 
 
 # ------------------------------------------------------------------------------- reading

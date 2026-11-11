@@ -270,9 +270,10 @@ rounding, "53%" in the Abstract for "53.3%" in the Results, and is listed apart.
 identifier, a word with a number in it ("v8", "rs75015950", "chr15", "ieu-a-1185"), is
 matched only as printed, the same word there, and never by the number it holds. A number
 not found in the Methods, the Results or the tables is listed, its finding saying so, and
-not counted by `--strict`. The Methods are a heading that holds "methods", or the word
-"method" or "methodology" whole: "Method", as APA titles it, and "Methodology" are the
-Methods, "Methodological notes" is not. The section ends with what a match
+not counted by `--strict`. The Methods are a heading that holds "methods", or whose whole
+title is "Method", as APA titles it, or "Methodology", numbered or not, alone or with
+"materials" ("Materials and method"); "Performance of the proposed method" and
+"Methodological notes" are not. The section ends with what a match
 is worth against the numbers the paper reports, the roundings counted in. A conflict is an
 exact pairing: an interval of the Abstract with one interval in what the paper reports of
 the same estimate ("OR" and "odds ratio" are one) and level, two of whose three numbers

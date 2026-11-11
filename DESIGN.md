@@ -17794,8 +17794,9 @@ Open, recorded as each change landed:
   the paper's structure allows it. In a paper with no heading G2 reads as the Methods, the
   first such heading is read as them, "Overview of methods" or "Limitations of existing
   methods" at the top level among them, as G4 has always counted either present. A title
-  that holds the word "method" or "methodology" whole is a Methods to both, so "A method for
-  signal detection" where the Methods stand is read as them; "Methodological notes" is not.
+  that is "Method" or "Methodology" alone, numbered or not, or with "materials" ("Materials
+  and method"), is a Methods to both; one the singular is only in, "A method for signal
+  detection" or "Performance of the proposed method", is not, nor "Methodological notes".
   "Method" is no name of the Methods to G2 and G15, which read "Methodology", so G9, which
   reads a named Methods first, reads "Method" after a heading at its level that only holds
   the word ("Limitations of existing methods" before it).
@@ -25491,13 +25492,17 @@ Closed since, and why each mattered (an open gap goes above this line):
   letters whole, "v8", "rs75015950", "chr15", and looked for it among the bare numbers of
   the Methods, the Results and the tables alone, so each was not found beside the same
   word in the Methods (pharm-epi); it is looked for now among the words there as well, as
-  printed, stops and brackets aside, and never by the number it holds. And a heading was
-  the Methods only where it held "methods", so a paper whose Methods are titled "Method",
-  as APA titles them, or "Methodology" had none, and the Abstract's numbers reported there
-  were not found (cs-lg). `names_methods` takes the word "method" or "methodology" whole
-  too, for every reader of `methods_sections` (G4, G7, G8, G9, the audit) and G8's
-  supplement. The finding also said "found nowhere the paper reports"; it says now where
-  it was looked for, the Methods, the Results or the tables.
+  printed, stops, brackets, emphasis marks, quotes and a possessive aside, and at a colon
+  too ("chr15:1234"), and never by the number it holds. And a heading was the Methods
+  only where it held "methods", so a paper whose Methods are titled "Method", as APA
+  titles them, or "Methodology" had none, and the Abstract's numbers reported there were
+  not found (cs-lg). `names_methods` takes a title that is "Method" or "Methodology"
+  alone too, numbered or with "materials", and nothing more: read anywhere in a title, the
+  word made "Performance of the proposed method" under "Results and discussion" a Methods,
+  and the Results no longer the Results (round 1 of #624). That holds for every reader
+  of `methods_sections` (G4, G7, G8, G9, the audit) and G8's supplement. The finding
+  also said "found nowhere the paper reports"; it says now where it was looked for, the
+  Methods, the Results or the tables.
 
 - **A known word with a dot inside was never matched (2026-11-10).** #615 wrote that
   `--known L.AS` could not hold "L.AS", which G14 read as "L" and "AS". #612, merged beside

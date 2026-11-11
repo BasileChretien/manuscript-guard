@@ -43,7 +43,8 @@ expected:
   - reading: abstract against results
     why: >-
       an identifier of the Abstract, a word with a number in it ("rs10", "v12", "chr15"),
-      is found where the Methods print it as a word, stops and brackets aside, where it was
+      is found where the Methods print it as a word, stops, brackets, emphasis, quotes and a
+      possessive aside, where it was
       looked for among the bare numbers alone and never found; one whose number alone the
       Methods give is still not found; the inputs now hold each (pharm-epi of the
       real-paper corpus, 2026-11-11)

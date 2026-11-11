@@ -16252,11 +16252,15 @@ been sorted yet.
     `declared-same-but-differs`, compared exactly as before, so ".47" for 0.4688 beside
     "0.47" for 0.4712 fails though the two displays round alike. It fails
     `declared-same-but-displayed-differently` where the displays differ by more than form
-    (a leading zero, trailing zeros, one a rounding of the other): by unit text one of them
-    has, or a comparator, so "<0.001" declared the same as "0.0004" fails.
+    (a leading zero, trailing zeros, one a rounding of the other, or one bound behind the
+    same comparator, "<0.001" and "<.001"): by unit text one of them has, another comparator
+    or bound, or a comparator on one side only, so "<0.001" declared the same as "0.0004",
+    "≤0.001" or "<0.01" fails.
     Pinned by `tests/test_corruption.py::test_a_second_display_declared_same_as_passes`,
-    `tests/test_corruption.py::test_a_second_display_declared_same_as_fails_when_the_values_part`
-    and `tests/test_corruption.py::test_one_estimate_under_two_names_declared_one_fails_when_it_parts`.
+    `tests/test_corruption.py::test_a_second_display_declared_same_as_fails_when_the_values_part`,
+    `tests/test_corruption.py::test_one_estimate_under_two_names_declared_one_fails_when_it_parts`,
+    `tests/test_corruption.py::test_a_p_value_under_one_comparator_in_two_forms_passes` and
+    `tests/test_corruption.py::test_a_p_value_under_another_comparator_or_bound_fails`.
 - **G8 holds only the arithmetic an analysis declares.** `em.relation` and `em.flow` say
   which results are a sum, a difference, a ratio or an order of which, and G8 checks those.
   A subgroup total nobody declared is not checked, and nothing searches the prose for numbers

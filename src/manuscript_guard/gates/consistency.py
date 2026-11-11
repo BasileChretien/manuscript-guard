@@ -167,8 +167,9 @@ def _check_declared_pairs(results: Results) -> Report:
     the text beside "0.47" with its interval, or a coarser rounding in the abstract. The two
     still hold one value, exactly, as before: two displays of one value, not two values. The
     displays may differ only in form: a leading zero, trailing zeros, one a rounding of the
-    other. A pair whose displays differ otherwise, by a unit one of them lacks or a
-    comparator, still fails.
+    other, or one bound behind the same comparator ("<0.001", "<.001"). A pair whose
+    displays differ otherwise, by a unit one of them lacks, another comparator or bound, or
+    a comparator on one side only, still fails.
     """
     report = Report()
     declared = 0
@@ -211,8 +212,8 @@ def _check_declared_pairs(results: Results) -> Report:
                     f"{value.display!r} and {other.display!r}",
                     path=value.source,
                     hint="two displays of one quantity may differ by a leading zero, trailing "
-                    "zeros or a rounding, and by nothing else: pick one display, or print the "
-                    "unit in both or in neither",
+                    "zeros or a rounding, and by nothing else, a comparator and its bound "
+                    "included: pick one display, or print the unit in both or in neither",
                 )
             )
     return report.with_counts(declared_pairs=declared)
@@ -236,26 +237,28 @@ def _declared_together(results: Results) -> Callable[[str], str]:
     return root
 
 
-def _numbers(value: Value, other: Value) -> tuple[Shown, Shown] | None:
-    """What the two displays state, where both values are numbers and both displays state a
-    number without a comparator; None otherwise."""
-    if not all(isinstance(v.value, (int, float)) and not isinstance(v.value, bool)
-               for v in (value, other)):
-        return None
-    shown = (shown_in(value.display), shown_in(other.display))
-    if shown[0] is None or shown[1] is None or shown[0].compare or shown[1].compare:
-        return None
-    return shown[0], shown[1]
+#: A comparator as either of its spellings, so that "<=" and "≤" are one.
+_COMPARATOR = {"<=": "≤", ">=": "≥"}
 
 
 def _same_form(value: Value, other: Value) -> bool:
-    """Whether two displays of one value differ only in form: by a leading zero, trailing
-    zeros, or as one a rounding of the other ("0.47", ".47", "0.470", "0.5"), with the same
-    unit text."""
-    shown = _numbers(value, other)
-    if shown is None or shown[0].unit != shown[1].unit:
+    """Whether two displays of one value differ only in form, with the same unit text: by a
+    leading zero, trailing zeros, or as one a rounding of the other ("0.47", ".47", "0.470",
+    "0.5"); or, behind the same comparator, as one bound written two ways ("<0.001",
+    "<.001"). A bound is a statement rather than a rounding, so "<0.01" beside "<0.001" is
+    another bound, and a comparator on one side only another statement."""
+    if not all(isinstance(v.value, (int, float)) and not isinstance(v.value, bool)
+               for v in (value, other)):
         return False
-    finer, coarser = sorted(shown, key=lambda s: s.half_unit)
+    first, second = shown_in(value.display), shown_in(other.display)
+    if first is None or second is None or first.unit != second.unit:
+        return False
+    compare = {_COMPARATOR.get(s.compare, s.compare) for s in (first, second)}
+    if len(compare) > 1:
+        return False
+    if compare != {None}:
+        return first.number == second.number
+    finer, coarser = sorted((first, second), key=lambda s: s.half_unit)
     return abs(finer.number - coarser.number) <= _within(coarser, finer.number)
 
 

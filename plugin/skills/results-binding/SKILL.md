@@ -58,10 +58,9 @@ em$write()
 
 What the emitter holds you to:
 
-- **Rounding is decided here, once.** `display` is fixed at emit time, so one quantity cannot
-  be rounded two ways in two sections. There is no formatting option in the manuscript. If a
-  coarser rounding or APA's ".47" is needed somewhere, emit a second key `same_as` the
-  first: `em$value("r.apa", r, display = ".47", same_as = "r.point")`.
+- **Rounding is decided here.** Each key's `display` is fixed at emit time, and the
+  manuscript has no formatting option. A second rounding, or APA's ".47", is a second key
+  declared `same_as` the first: `em$value("r.apa", r, display = ".47", same_as = "r.point")`.
 - Keys are lower case, dotted: `cohort.n_reports`. Table keys take no dots. A bad key is
   not caught when emitting; the whole fragment then fails the schema at `check`, and none of
   its values load.

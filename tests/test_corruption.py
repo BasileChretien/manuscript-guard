@@ -912,6 +912,66 @@ def test_a_second_display_declared_same_as_fails_when_the_values_part(
     assert "declared-same-but-differs" in codes(gate_report(project))
 
 
+def _declared_p(project: Path, display: str) -> set[str]:
+    """The failures of a p value of 0.0004 shown "<0.001", beside one declared the same
+    quantity and shown `display`."""
+    _add_keys(project, {
+        "p.main": {"value": 0.0004, "display": "<0.001"},
+        "p.apa": {"value": 0.0004, "display": display, "same_as": "p.main"},
+    })
+    return codes(gate_report(project))
+
+
+@pytest.mark.parametrize("display", ["<.001", "<0.0010", "< 0.001"])
+def test_a_p_value_under_one_comparator_in_two_forms_passes(project: Path, display: str) -> None:
+    """Round 1 of #628: a declared pair shown "<0.001" and APA's "<.001" failed, a display
+    with a comparator being read as no number at all. The same comparator before one number
+    written two ways is a difference of form."""
+    found = _declared_p(project, display)
+    assert not {code for code in found if code.startswith("declared-same")}, found
+
+
+@pytest.mark.parametrize("display", ["≤0.001", "0.0004", "<0.01"])
+def test_a_p_value_under_another_comparator_or_bound_fails(project: Path, display: str) -> None:
+    """Another comparator, a comparator on one side only, or another bound is more than
+    form: "<0.001" and "0.0004" say different things of one value."""
+    assert "declared-same-but-displayed-differently" in _declared_p(project, display)
+
+
+def test_a_group_tied_only_in_part_is_still_noted(project: Path) -> None:
+    """Round 1 of #628: the note is left out only where `same_as` ties every key of the
+    group. Two keys tied, ".47" and "0.47", and a third holding 0.4712 that nothing declares,
+    shown "0.4712", are still said, the third among them."""
+    _add_keys(project, {
+        "cor.point": {"value": 0.4712, "display": "0.47"},
+        "cor.r": {"value": 0.4712, "display": ".47", "same_as": "cor.point"},
+        "cor.other": {"value": 0.4712, "display": "0.4712"},
+    })
+    said = _divergent(project)
+    assert [severity for severity, _ in said] == ["info"], said
+    assert "cor.other" in said[0][1] and "cor.r" in said[0][1]
+
+
+@pytest.mark.parametrize("chain", [
+    {"a.one": "a.two", "a.two": "a.three"},  # a chain
+    {"a.one": "a.two", "a.two": "a.one"},  # a cycle
+])
+def test_keys_tied_through_a_chain_or_a_cycle_are_not_noted(
+    project: Path, chain: dict[str, str]
+) -> None:
+    """Keys tied through a chain of `same_as`, or round a cycle, are one group: no note, and
+    each declared pair is held, so nothing fails."""
+    displays = {"a.one": ".47", "a.two": "0.47", "a.three": "0.5"}
+    _add_keys(project, {
+        key: {"value": 0.4712, "display": displays[key],
+              **({"same_as": chain[key]} if key in chain else {})}
+        for key in sorted({*chain, *chain.values()})
+    })
+    report = gate_report(project)
+    assert _divergent(project) == []
+    assert not {code for code in codes(report) if code.startswith(("declared-same", "same-as"))}
+
+
 def test_a_count_and_a_percentage_that_coincide_are_not_one_quantity(project: Path) -> None:
     """56 sources and 56.0 per cent are two quantities that happen to share a number.
 

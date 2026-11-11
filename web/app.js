@@ -17,7 +17,60 @@ const blob = new Blob([`const BASE = ${JSON.stringify(base)};\n${source}`], { ty
 const worker = new Worker(URL.createObjectURL(blob), { type: "module" });
 let nextId = 0;
 const waiting = new Map();
+
+// Where the start has got to: the step it is on (worker.js `step`) and the bytes it has
+// received of those it fetches (worker.js `counted`). The bar and its percentage come from the
+// bytes, held under 97% until the last step, which fetches nothing, and under 99% until the
+// checker answers; with no count of bytes (a manifest from before it), from the steps. The
+// status, which a screen reader says, changes with the step only. A step still under way
+// after this long is said to be slow, with what to do; the page keeps waiting, as a slow
+// network is no failure.
+const SLOW_AFTER_MS = 90000;
+const loading = { at: 0, of: 4, what: "", received: 0, expected: 0, shown: 0 };
+window.mgLoading = loading;
+let slow = null;
+let stepped = false;
+// The error the worker met while loading, if any: the slow note keeps it (round 2 of #627).
+let met = "";
+function showBar() {
+  const { at, of, received, expected } = loading;
+  const share = expected ? Math.min(received / expected, at < of ? 0.97 : 0.99)
+    : Math.max(0, at - 1) / of;
+  loading.shown = Math.max(loading.shown, Math.round(share * 100));
+  $("progress").max = 100;
+  $("progress").value = loading.shown;
+  // A share, not megabytes: the bytes counted are the files' own, several times what the
+  // network carries of them compressed, which is what "about 26 MB" says.
+  $("amount").textContent = `${loading.shown}%`;
+}
+function loadingStep({ at, of, what }) {
+  stepped = true;
+  Object.assign(loading, { at, of, what });
+  say(`Loading the checker, step ${at} of ${of}: ${what}. The first time only: after that it `
+    + "is in this browser's cache.");
+  showBar();
+  clearTimeout(slow);
+  slow = setTimeout(() => say(`Still on step ${at} of ${of} (${what}) after ${SLOW_AFTER_MS / 1000} s`
+    + (met ? `, after an error (${met})` : "") + ". On a slow network this can take a few "
+    + "minutes. If nothing changes, reload the page; the command line runs the same audit: "
+    + "uvx manuscript-guard audit paper.docx"), SLOW_AFTER_MS);
+}
+const loaded = () => {
+  clearTimeout(slow);
+  $("progress").hidden = true;
+  $("amount").textContent = "";
+};
+
 worker.onmessage = ({ data }) => {
+  if (data.progress) {
+    loadingStep(data.progress);
+    return;
+  }
+  if (data.bytes) {
+    Object.assign(loading, data.bytes);
+    if (stepped) showBar();
+    return;
+  }
   const { resolve, reject } = waiting.get(data.id);
   waiting.delete(data.id);
   if (data.error) reject(new Error(data.error)); else resolve(data.value);
@@ -36,8 +89,35 @@ function listRequests(title, requests) {
   return `${title}\n${lines.join("\n")}`;
 }
 
+// A worker whose script did not load or failed at its top answers nothing, and says no step:
+// said, rather than "Loading" for ever. An error once a step is under way may come from
+// something the start does not wait on, and the start may still answer: it is said, and the
+// page keeps waiting (round 1 of #627).
+worker.onerror = (event) => {
+  if (window.mgReady) return;
+  const what = event.message || "its script did not load";
+  if (!stepped) {
+    loaded();
+    say(`The checker could not start: ${what}`);
+    return;
+  }
+  met = what;
+  say(`The checker met an error while loading (${what}). It may still start; if nothing `
+    + "changes, reload the page.");
+};
+
+// Which release this page is, at the top, where a reader sees that it moved on.
+fetch("manifest.json").then((answer) => answer.json()).then((manifest) => {
+  const version = $("version");
+  version.textContent = `manuscript-guard ${manifest.manuscript_guard}, rebuilt with each new release (`;
+  const link = add(version, "a", "what changed");
+  link.href = manifest.sources["manuscript-guard"].replace("/tree/", "/releases/tag/");
+  version.append(")");
+}).catch((error) => { $("version").textContent += ` (its version could not be read: ${error.message})`; });
+
 const started = performance.now();
 const booted = ask("boot").then((boot) => {
+  loaded();
   const seconds = ((performance.now() - started) / 1000).toFixed(1);
   const sent = boot.loaded.reduce((sum, r) => sum + (r.sent || 0), 0);
   const m = boot.manifest;
@@ -54,7 +134,10 @@ const booted = ask("boot").then((boot) => {
     $(id).disabled = false;
   }
   window.mgReady = true;
-}).catch((error) => say(`The checker could not start: ${error.message}`));
+}).catch((error) => {
+  loaded();
+  say(`The checker could not start: ${error.message}`);
+});
 
 const read = async (file) => ({ name: file.name, data: await file.arrayBuffer() });
 
@@ -90,17 +173,24 @@ function draw(view) {
     add(row, "th", name);
     add(row, "td", said);
   }
+  // What --strict counts, where the view still says it: the table's rows and the sections'
+  // headings name it (round 1 of #627). Each heading below gives the paper's name only where
+  // there are several, and a check's code (G14) only on pointing at its kind.
   if (view.strict) add(box, "p", view.strict, "small");
-  for (const paper of view.words) {
-    if (!paper.note && !paper.kinds.length) continue;
-    add(box, "h3", `Writing and language: ${paper.paper} (not counted by --strict)`);
+  const papers = view.words.filter((paper) => paper.note || paper.kinds.length);
+  for (const paper of papers) {
+    // The paper's name wherever several were audited, though only one has findings: no place
+    // under the heading names the paper again (review of #631).
+    add(box, "h3", view.words.length > 1 ? `Writing and language: ${paper.paper}` : "Writing and language");
     if (paper.note) {
       add(box, "p", paper.note);
       continue;
     }
+    add(box, "p", "For you to look at, kind by kind: open one to see its places.", "small");
     for (const kind of paper.kinds) {
       const fold = add(box, "details", undefined, "kind");
-      add(fold, "summary", `${kind.title} (${kind.gate}, ${kind.count})`);
+      fold.title = `Checked by ${kind.gate}`;
+      add(fold, "summary", `${kind.title} (${kind.count})`);
       if (kind.hint) add(fold, "p", `Hint: ${kind.hint}`, "hint");
       const list = add(fold, "ol");
       for (const place of kind.places) {
@@ -121,6 +211,75 @@ function draw(view) {
   add(box, "p", view.closing, "closing");
 }
 
+// The paper dropped on its box, as if chosen, once the checker is ready, and refused before.
+// A file dropped where nothing takes it is not opened by the browser in place of the page,
+// which would lose what the reader set; the outputs' box and the words' box take a drop as
+// the browser has them do (round 1 of #633).
+const dropBox = $("paper").closest("label");
+const carriesFiles = (event) => [...(event.dataTransfer?.types || [])].includes("Files");
+// Only a box that can take a drop takes it; a disabled one, while the checker loads, does not
+// (round 2 of #633).
+const takesItsOwn = (target) => target instanceof Element
+  && target.closest("#against:not(:disabled), #known:not(:disabled)");
+for (const name of ["dragenter", "dragover"]) {
+  dropBox.addEventListener(name, (event) => {
+    if (!carriesFiles(event)) return;
+    event.preventDefault();
+    // While the checker loads the drop still fires, so that the page can say why it was not
+    // taken (round 2 of #633).
+    if (!$("paper").disabled) dropBox.classList.add("dropping");
+  });
+}
+dropBox.addEventListener("dragleave", (event) => {
+  if (!dropBox.contains(event.relatedTarget)) dropBox.classList.remove("dropping");
+});
+dropBox.addEventListener("drop", (event) => {
+  dropBox.classList.remove("dropping");
+  if (!carriesFiles(event)) return;
+  event.preventDefault();
+  if ($("paper").disabled) {
+    say("The checker is still loading: drop the paper again once the page says Ready.");
+    return;
+  }
+  const [file] = event.dataTransfer.files;
+  if (!file) return;
+  if (!/\.(docx|md)$/i.test(file.name)) {
+    say(`${file.name} is not a .docx or a .md file: drop or choose the paper itself.`);
+    return;
+  }
+  const chosen = new DataTransfer();
+  chosen.items.add(file);
+  $("paper").files = chosen.files;
+  $("paper").dispatchEvent(new Event("change", { bubbles: true }));
+});
+for (const name of ["dragover", "drop"]) {
+  window.addEventListener(name, (event) => {
+    if (!dropBox.contains(event.target) && !takesItsOwn(event.target)) event.preventDefault();
+  });
+}
+
+// What an audit under way says, beside the button that started it: the paper, and the
+// seconds it has taken, with a bar that moves without a measure, since the audit runs in one
+// call the page cannot look inside. The text a screen reader says is set at the start and at
+// the end, not at each second.
+const running = { timer: null, started: 0 };
+function runStarted(name) {
+  $("running").hidden = false;
+  $("runbar").hidden = false;
+  $("runtext").textContent = `Auditing ${name}…`;
+  running.started = performance.now();
+  $("elapsed").textContent = "";
+  running.timer = setInterval(() => {
+    $("elapsed").textContent = `${Math.round((performance.now() - running.started) / 1000)} s`;
+  }, 1000);
+}
+function runEnded(said) {
+  clearInterval(running.timer);
+  $("runbar").hidden = true;
+  $("elapsed").textContent = "";
+  $("runtext").textContent = said;
+}
+
 $("form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const paper = $("paper").files[0];
@@ -131,12 +290,15 @@ $("form").addEventListener("submit", async (event) => {
   $("result").hidden = true;
   $("savecommented").hidden = true;
   $("savepdf").hidden = true;
+  $("openpdf").hidden = true;
   commented = null;
   pdf = null;
+  if (pdfAddress) URL.revokeObjectURL(pdfAddress);
+  pdfAddress = null;
   $("report").textContent = "";
   $("view").replaceChildren();
   $("notes").textContent = "";
-  say(`Auditing ${paper.name}…`);
+  runStarted(paper.name);
   try {
     const result = await ask("run", {
       paper: await read(paper),
@@ -160,12 +322,15 @@ $("form").addEventListener("submit", async (event) => {
     if (result.commented && result.commented.data) {
       commented = result.commented;
       $("savecommented").hidden = false;
-      $("savecommented").textContent = `Save ${commented.name}: the paper with ${commented.placed} `
-        + "finding" + (commented.placed === 1 ? "" : "s") + " as Word comments at their places";
+      // The file's name is the download's; the button says what is in it.
+      $("savecommented").textContent = `Save the paper with its ${commented.placed} `
+        + "finding" + (commented.placed === 1 ? "" : "s") + " as Word comments";
+      $("savecommented").title = commented.name;
     }
     if (result.pdf && result.pdf.data) {
       pdf = result.pdf;
       $("savepdf").hidden = false;
+      $("openpdf").hidden = false;
     } else if (result.pdf && result.pdf.error) {
       $("notes").hidden = false;
       $("notes").textContent += ($("notes").textContent ? "\n" : "")
@@ -173,18 +338,31 @@ $("form").addEventListener("submit", async (event) => {
     }
     $("netlog").textContent += "\n\n" + listRequests(
       `This audit of ${paper.name} sent requests to:`, result.sent);
-    say(`Audited ${paper.name} in ${(result.ms / 1000).toFixed(1)} s.`);
+    runEnded(`Audited ${paper.name} in ${(result.ms / 1000).toFixed(1)} s: the report is below.`);
+    // The report, where the reader's eyes and a keyboard's focus go next.
+    $("reporthead").scrollIntoView({ block: "start" });
+    $("reporthead").focus({ preventScroll: true });
     window.mgLast = result;
   } catch (error) {
-    say(`The audit could not run: ${error.message}`);
+    // What the checker said, which says why, and where to read more; no guess at the cause,
+    // which may be any file chosen (round 1 of #633).
+    runEnded(`The audit could not run: ${error.message.replace(/[\s.]+$/, "")}. The command `
+      + "line says more: uvx manuscript-guard audit paper.docx");
     window.mgLast = { error: error.message };
   } finally {
     $("run").disabled = false;
   }
 });
 
-// The report as a PDF (`web.report_pdf`), from the last audit.
+// The report as a PDF (`web.report_pdf`), from the last audit: shown in a tab of its own,
+// by the browser's PDF viewer, or saved. Its address lasts until the next audit.
 let pdf = null;
+let pdfAddress = null;
+$("openpdf").addEventListener("click", () => {
+  if (!pdf) return;
+  pdfAddress = pdfAddress || URL.createObjectURL(new Blob([pdf.data], { type: "application/pdf" }));
+  window.open(pdfAddress, "_blank");
+});
 $("savepdf").addEventListener("click", () => {
   if (!pdf) return;
   const link = document.createElement("a");

@@ -110,6 +110,9 @@ def _arithmetic(report) -> str:
                if report.flows_broken else ""]  # fmt: skip
     counted = [part for part in counted if part]
     said = "; ".join(counted) + (" (counted by --strict)" if counted else "")
+    if report.over_n_rounding:
+        said += ("; " if said else "") + (
+            _n(len(report.over_n_rounding), "column") + " over its n by no more than rounding")
     if report.disagreements:
         said += ("; " if said else "") + (
             f"{_n(len(report.disagreements), 'number')} that may not fit the ones beside it")
@@ -173,7 +176,26 @@ def _references(report) -> str:
     said = "; ".join(parts) or "no reference list read"
     if report.lookups is None:
         return said + "; none looked up in the registries (--lookup)"
-    return said + f"; {_n(len(report.lookups), 'work')} looked up"
+    # The entries nothing could be looked up by, said rather than left out of the count (the
+    # author's audit, 2026-11-11: "we need to check all references, or say which ones were
+    # not checked and why"); the section names each.
+    from manuscript_guard.auditing.references import without_identifier
+
+    entries = [entry for census in told for entry in census.entries]
+    unlooked = sum(1 for entry in entries if without_identifier(entry))
+    # And those whose identifier was held back, the section's "not looked up: it may
+    # continue on the next line" (round 2 of #632).
+    held = sum(1 for entry in entries if entry.held_back and not entry.dois and not entry.pmids)
+    looked = f"; {_n(len(report.lookups), 'work')} looked up"
+    reasons = ([f"{_n(unlooked, 'entry', 'entries')} not looked up, having no DOI or PMID"]
+               if unlooked else [])  # fmt: skip
+    if held:
+        reasons.append(f"{_n(held, 'entry', 'entries')} not looked up, "
+                       f"{'its' if held == 1 else 'their'} DOI or PMID perhaps running on to the "
+                       "next line")  # fmt: skip
+    if reasons:
+        looked += ", " + " and ".join(reasons) + ": see below"
+    return said + looked
 
 
 #: What `--strict` fails on, said once under the checks, so that "not counted by --strict"
@@ -237,4 +259,101 @@ def rows(report) -> list[tuple[str, str]]:
     return rows
 
 
-__all__ = ["KINDS", "PLACES", "checks", "grouped", "kinds", "kinds_of", "rows"]
+#: Where each check stands, as the PDF's summary colours it: nothing found, something for a
+#: reader to look at, something `--strict` counts, or not run.
+CLEAR, LOOK, COUNTED, NOT_RUN = "clear", "look", "counted", "not run"
+
+
+def standings(report) -> dict[str, str]:
+    """Where each check of `rows` stands (`CLEAR`, `LOOK`, `COUNTED` or `NOT_RUN`), from what
+    it found, not from its line's words: the PDF's summary draws each check in its colour."""
+    from manuscript_guard.auditing.report import MEMBERSHIP
+
+    # A paper that could not be read, or one that gave no number, leaves the checks of its
+    # numbers nothing to say "nothing found" of: not run where no number was read, and never
+    # clear where a file was not (round 1 of #635).
+    unread = bool(report.unreadable)
+    read_none = not report.examined
+
+    def of(counted: bool, looked: bool, *, numbers: bool = False) -> str:
+        if numbers and read_none:
+            return NOT_RUN
+        said = COUNTED if counted else LOOK if looked else CLEAR
+        return LOOK if numbers and unread and said == CLEAR else said
+
+    out = {MEMBERSHIP: NOT_RUN if not report.compared else of(
+               bool(report.unmatched), bool(report.reference_like), numbers=True),
+           "Arithmetic": of(bool(report.sums_off or report.over_n or report.flows_broken),
+                            bool(report.over_n_rounding or report.disagreements), numbers=True),
+           "Small cells": of(bool(report.recovered), bool(report.recovered_by_n),
+                             numbers=True)}  # fmt: skip
+    read = report.abstract
+    if read is not None:
+        out["Abstract against Results"] = (NOT_RUN if not read.compared else of(
+            bool(read.conflicts), bool(read.not_found or read.rounded), numbers=True))
+    if report.gates:
+        ran = [run for run in report.gates if not (run.note and not run.writing
+                                                   and not run.language)]  # fmt: skip
+        found = any(run.writing or run.language for run in ran) or len(ran) < len(report.gates)
+        out["Writing and language"] = NOT_RUN if not ran else of(False, found)
+    if report.references:
+        counted = [census for census in report.references if not census.note]
+        problems = any(census.problems or census.unsent for census in counted)
+        looked = any(one.problems for one in report.lookups or [])
+        out["References"] = NOT_RUN if not counted else of(
+            False, problems or looked or len(counted) < len(report.references))
+    # The sections a flag adds, by what the report says in them (round 1 of #635).
+    from manuscript_guard.auditing import report as sections
+    from manuscript_guard.auditing.report import items
+
+    said = None
+    for name, section, present in (
+            ("Journal", sections.JOURNAL, report.journal), ("Causal words", sections.CAUSAL,
+            report.causal), ("Cited sentences", sections.CITED, report.cited),
+            ("Self-citation", sections.SELF_CITATION, report.self_citation),
+            ("Package", sections.PACKAGE, report.package)):  # fmt: skip
+        if present is not None:
+            said = items(report) if said is None else said
+            out[name] = _flagged(name, present, [item for item in said
+                                                 if item.section == section])  # fmt: skip
+    return out
+
+
+#: The notes of a flag's section that leave a reader something to look at: what G4 did not
+#: check, a rule to check by hand, a file or part not read, and what a dry run would ask.
+_TO_LOOK_AT = frozenset({"journal-not-checked", "journal-manual-rule", "causal-words-not-read",
+                         "cited-not-listed", "would-ask"})  # fmt: skip
+
+
+def _flagged(name: str, present, mine: list) -> str:
+    """Where a flag's section stands: counted where it counts something, not run where it
+    did not run or read nothing, to look at where it lists something for a reader, and clear
+    only where it found nothing (round 2 of #635)."""
+    from manuscript_guard.findings import INFO
+
+    # An author named where the journal reviews blind is filed under the documents, and
+    # counted: the Journal tile shows it.
+    if any(item.counted for item in mine) or getattr(present, "named", None):
+        return COUNTED
+    # G4 could not run, or no self-citation was counted; or no sentence of an Abstract, a
+    # Discussion or a Conclusion was read for causal words.
+    if getattr(present, "note", None) or (name == "Causal words" and not present.read):
+        return NOT_RUN
+    looked = any(item.severity != INFO or item.code in _TO_LOOK_AT for item in mine)
+    if name == "Journal":
+        # A blind review, and a document nobody searched for the authors' names (round 3).
+        looked = looked or present.unsearched
+    elif name == "Cited sentences":
+        # Its file of rows, one for each work cited, is for a reader to go through; and the
+        # citations by author and year, or by pandoc key, are listed nowhere (round 3).
+        looked = looked or bool(present.rows or present.author_year or present.pandoc)
+    elif name == "Self-citation":
+        # Entries no registry gave an author list or a journal for count for nobody (round 3).
+        looked = bool(present.authors_note or present.unlooked or present.in_journal
+                      or present.no_people or (present.journal and present.no_journal)
+                      or any(listed for _author, listed in present.authors))  # fmt: skip
+    return LOOK if looked else CLEAR
+
+
+__all__ = ["CLEAR", "COUNTED", "KINDS", "LOOK", "NOT_RUN", "PLACES", "checks", "grouped",
+           "kinds", "kinds_of", "rows", "standings"]  # fmt: skip

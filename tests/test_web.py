@@ -366,6 +366,74 @@ def test_the_pages_workflow_deploys_the_newest_tag_a_limit_known_gaps_names() ->
     assert "*The release a page is built from.*" in gaps
 
 
+def _fields() -> set[str]:
+    """The name of each box on the page, as it shows it in bold."""
+    page = (WEB / "index.html").read_text(encoding="utf-8")
+    found = re.findall(r'<span class="field">([^<]+)</span>', page)
+    return {" ".join(name.split()) for name in found}
+
+
+def test_each_box_the_report_names_is_a_box_on_the_page() -> None:
+    """The report sends a reader of the page to a box by its name: "Words to leave alone",
+    "English of the paper", "List every place of every finding". A box renamed on the page
+    and not in the report would send the reader to nothing (the author's audit, 2026-11-11)."""
+    from manuscript_guard.auditing import gates, summary
+
+    said = [gates.KNOWN, summary.DETAILS, gates.for_an_audit("Set english_variant: en-GB")]
+    box = re.compile(r'on the (?:web )?page, (?:the box )?"([^"]+)"')
+    named = {name for text in said for name in box.findall(text)}
+    assert named == {"Words to leave alone", "English of the paper",
+                     "List every place of every finding"}  # fmt: skip
+    assert named <= _fields()
+
+
+def test_the_page_says_its_release_from_the_manifest_the_build_writes() -> None:
+    """The page says at its top which release it is (app.js, from manifest.json), where a
+    reader sees that it was built again for a new one, and links to what that release changed:
+    the keys it reads are the ones web/build.py writes, and the link is the tag's release."""
+    app = (WEB / "app.js").read_text(encoding="utf-8")
+    build = (WEB / "build.py").read_text(encoding="utf-8")
+    assert 'fetch("manifest.json")' in app and "manifest.manuscript_guard" in app
+    assert 'manifest.sources["manuscript-guard"].replace("/tree/", "/releases/tag/")' in app
+    assert '"manuscript_guard": version,' in build
+    assert 'f"https://github.com/BasileChretien/manuscript-guard/tree/v{version}"' in build
+
+
+def test_the_loading_bar_counts_each_step_the_worker_says() -> None:
+    """The worker says each step of its start (worker.js `step`), in order, and the page
+    counts as many before the first is said: a step added in one file and not the other
+    would leave the steps miscounted. The bar is a percentage."""
+    worker = (WEB / "worker.js").read_text(encoding="utf-8")
+    app = (WEB / "app.js").read_text(encoding="utf-8")
+    page = (WEB / "index.html").read_text(encoding="utf-8")
+    steps = re.search(r"const BOOT_STEPS = \[(.*?)\];", worker, re.S).group(1)
+    count = len(re.findall(r'"[^"]+"', steps))
+    assert re.findall(r"\bstep\((\d)\)", worker) == [str(at) for at in range(count)]
+    assert f"const loading = {{ at: 0, of: {count}," in app
+    assert '<progress id="progress" max="100" value="0"' in page
+
+
+def test_the_bar_counts_the_bytes_the_build_says_the_worker_fetches() -> None:
+    """The percentage is of the bytes the worker fetches while it starts, which web/build.py
+    writes to the manifest as `bytes`: every file of Pyodide's but the two the worker imports
+    as modules, the wheel and pandoc.wasm. CI's browser check holds the count to what the
+    browser received; here, that each side names the other's."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("web_build", WEB / "build.py")
+    build = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(build)
+    worker = (WEB / "worker.js").read_text(encoding="utf-8")
+    imported = set(re.findall(r'import\(BASE \+ "pyodide/([^"]+)"\)', worker))
+    # pyodide.mjs imports pyodide.asm.mjs itself.
+    assert imported == {"pyodide.mjs"} and set(build.IMPORTED) == {"pyodide.mjs", "pyodide.asm.mjs"}
+    assert set(build.IMPORTED) <= set(build.PYODIDE_CORE)
+    written = (WEB / "build.py").read_text(encoding="utf-8")
+    assert '"bytes": sum(path.stat().st_size for path in fetching),' in written
+    assert "loading.expected = manifest.bytes || 0;" in worker
+    assert "self.fetch = counted;" in worker and "self.fetch = ownFetch;" in worker
+
+
 # ------------------------------------------------------- the names the page gives a command
 
 NODE = shutil.which("node")

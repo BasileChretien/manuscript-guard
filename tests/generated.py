@@ -574,9 +574,10 @@ def signs() -> st.SearchStrategy[str]:
 #: the WSE taken after two hours and a risk adjusted for something said in brackets; a
 #: short form after a colon whose letters are found before the bracket, one per word or not,
 #: in the last word or not, and words that hold the letters of a statistic's short form in
-#: order, "and older adults (AOR: 0.41)", read by them as main reads them (a Known gap); and
-#: two whose nearest letter is inside a bracket the long form would open, found again before
-#: it.
+#: order, "and older adults (AOR: 0.41)", read by them as main reads them (a Known gap); two
+#: whose nearest letter is inside a bracket the long form would open, found again before
+#: it; a short form closing a bracket after a semicolon or a comma, its long form before
+#: that; and a short form after a spaced dash of each kind, no bracket at all.
 DEFINING = (
     ("the reporting odds ratio (ROR)", "(ROR", "ROR"),
     ("the PRR (proportional reporting ratio)", "PRR (", "PRR"),
@@ -608,6 +609,21 @@ DEFINING = (
     ("the L.AS (licence with access to health studies)", "L.AS (", "L.AS"),
     # After a sentence typed on with no space (round 1 of #612).
     ("the score rose.ROR (reporting odds ratio)", "ROR (", "ROR"),
+    # A short form closing the bracket after a separator, its long form before that, in
+    # round brackets and in square ones (the real-paper corpus).
+    ("endurance (i.e. time to task failure; TTF)", "; TTF", "TTF"),
+    ("the peak (that is, time to peak, TTP)", ", TTP", "TTP"),
+    ("the signal [i.e. the empirical Bayes mean; EBM]", "; EBM", "EBM"),
+    # A short form after a dash with a space either side: a hyphen, an en dash, an em dash.
+    ("the Basic Income Support for Sustainability - BISS", "- BISS", "BISS"),
+    ("the Basic Payment Scheme \N{EN DASH} BPS", "\N{EN DASH} BPS", "BPS"),
+    ("the Common Agricultural Policy \N{EM DASH} CAP", "\N{EM DASH} CAP", "CAP"),
+    # Pandoc's smart dashes as typed, and a no-break space before the dash (round 1 of #623).
+    ("the Single Area Payment -- SAP", "-- SAP", "SAP"),
+    ("the Rural Development Programme --- RDP", "--- RDP", "RDP"),
+    ("the Young Farmer Scheme\N{NO-BREAK SPACE}\N{EN DASH} YFS", "\N{EN DASH} YFS", "YFS"),
+    # A comma before words, which gives no statistic (round 2 of #623).
+    ("the Area Payment Scheme \N{EN DASH} APS, which pays farmers", "\N{EN DASH} APS", "APS"),
 )  # fmt: skip
 
 #: Brackets that are no definition, though the words before each hold its letters in order:
@@ -627,6 +643,21 @@ NOT_DEFINING = (
      "WSE2"),
     ("a warning score at entry (WSE1) and 40 [12.5%] had a second WSE (WSE2)", "(WSE2",
      "WSE2"),
+    # A short form closing a bracket whose letters are before the bracket and not before
+    # its separator; and a statistic after a dash, and a dash with no space, a hyphen.
+    ("the proportional reporting ratio (see the appendix; PRR)", "; PRR", "PRR"),
+    ("the information component fell \N{EN DASH} IC 0.75", "IC 0.75", "IC"),
+    ("the information component fell \N{EN DASH} IC = 0.75", "IC =", "IC"),
+    # A comma and a number after the short form: the value, not a definition (round 1 of
+    # #623).
+    ("the risk was higher in older people \N{EN DASH} OR, 1.52", "OR, 1.52", "OR"),
+    # After a colon, an interval in brackets or a no-break space (round 2 of #623).
+    ("the risk was higher among older people \N{EN DASH} AOR: 1.52", "AOR: 1.52", "AOR"),
+    ("the risk was higher in older women \N{EN DASH} OR (95% CI 1.1 to 2.0) 1.52",
+     "OR (95%", "OR"),
+    ("the odds were higher in older people \N{EN DASH} OR\N{NO-BREAK SPACE}1.52",
+     "OR\N{NO-BREAK SPACE}1.52", "OR"),
+    ("the Basic Payment Scheme-BPS", "-BPS", "BPS"),
 )  # fmt: skip
 
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as
@@ -653,6 +684,9 @@ NOT_ABBREVIATIONS = (
     "**Competing interests**\n\nPLM and RDS declare none.",
     "**Funding**\nThe EPSRC paid for the first year.",
     "**Funding**  \nof the ESRC, grant 2019/4.", "**Funding**\\\nof the AHRC, grant 2020/7.",
+    # A section's name on a plain line in capitals, numbered or not, a stop escaped as
+    # pandoc writes a numbered Word paragraph (the real-paper corpus).
+    "2. DISCUSSION", "ABSTRACT", "1\\. INTRODUCTION", "IV. RESULTS:",
     # Initials in brackets in a sentence of the paper, which the contributions statement
     # under it names.
     "interviews were run by one author (EF) and checked (GH and EF)\n\n**Author "
@@ -694,6 +728,8 @@ STILL_ABBREVIATIONS = (
     ("the score rose in the KAP.The rest fell", "KAP"),
     # A reference number typed on after the stop, which joins nothing (round 1 of #612).
     ("the rule follows the GDPR.12 here", "GDPR"),
+    # A plain line in capitals that is a number and no section's name.
+    ("3. MRSA", "MRSA"),
 )  # fmt: skip
 
 
@@ -957,6 +993,15 @@ def glossaries_untitled(draw: st.DrawFn) -> dict[str, Any]:
                          ("abbreviation-unused", GLOSSARY_UNUSED[1])]),
     }  # fmt: skip
 
+
+#: A contributions statement and the initials it names in brackets in the paper, which
+#: every input of the `abbreviations` reading ends with, under a heading of its own so that
+#: no section before it hides it: drawn as one block among the pool's, it was in none of
+#: 120 inputs once #623 added blocks, and a rule that stopped reading the initials went
+#: unnoticed (round 3 of #623).
+INITIALS_NAMED = next(
+    block for block in NOT_ABBREVIATIONS if "**Author contributions:** EF" in block
+)
 
 #: The same pieces, as blocks a manuscript of the pool is drawn with.
 ABBREVIATION_BLOCKS = tuple(
@@ -1513,7 +1558,10 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
       file, whose uses in the entry file and in a file it inputs are followed by that text,
       each passed over, and a use it does not follow, refused; a space after a control word
       in that text is none of it, `\\def\\x\\relax /{a}` then `\\x\\relax/`;
-    - a comment between a command and its argument, passed over and recorded."""
+    - a comment between a command and its argument, passed over and recorded;
+    - a typed table inside maths, whose cells are text and open maths of their own, read,
+      and `$` inside maths outside one, refused where it stands (corpus run of 2026-11-11:
+      2103.00772 sets its cases as a `tabular` inside an equation)."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
@@ -1610,6 +1658,19 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
             f"{note}{{\\end{{list}}}}\n" + begin + words() + "\n" + end)  # fmt: skip
     comments = [("main.tex", at) for at in range(len(main)) if main[at] == "%"]
     cases.append(({"main.tex": main}, {}, [], [], comments))
+
+    table = draw(st.sampled_from(("tabular", "tabular*", "tabularx", "tabulary")))
+    columns = {"tabular": "{ll}", "tabular*": "{\\linewidth}{ll}",
+               "tabularx": "{\\linewidth}{lX}", "tabulary": "{\\linewidth}{lL}"}[table]  # fmt: skip
+    opens, closes = draw(st.sampled_from((("\\begin{equation}", "\\end{equation}"),
+                                          ("\\[", "\\]"), ("$$", "$$"))))  # fmt: skip
+    cells = f"$x$ & {words()} \\\\ $\\sum y$ & {words()}"
+    main = (head + begin + words() + "\n" + opens + " a = \\left\\{ \\begin{" + table + "}"
+            + columns + " " + cells + " \\end{" + table + "} \\right. " + closes + "\n"
+            + words() + ".\n" + end)  # fmt: skip
+    cases.append(({"main.tex": main}, {}, [], [], []))
+    main = head + begin + words() + "\n" + opens + " a = $x$ " + closes + "\n" + end
+    cases.append(({"main.tex": main}, {}, [("main.tex", main.index("$x$"))], [], []))
     return cases
 
 
@@ -2570,6 +2631,62 @@ def latex_writing(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
         planted.append((key, kind))
         text += _FAR + template.replace("{{", "{").replace("}}", "}").replace("{}", key)
     return text + _FAR + "\\end{document}\n% TODO cut\nXXX patients\n", planted
+
+
+#: What a Markdown paper writes after a claim, as G6 judges it (`gates/writing.py`,
+#: `typed_citations`), `{author}`, `{year}` and `{number}` drawn: a pandoc citation and a
+#: citation typed as text are its support, as a paper not written with manuscript-guard
+#: types them, a .docx `audit` converts among them (corpus round, 2026-11-10); brackets that
+#: cite nothing, an interval after its value among them, are none, and the claim is vague.
+MARKDOWN_CITED_AFTER = (
+    ("[@a{number}]", "cited"),
+    ("({author} et al., {year})", "cited"),
+    ("({author} & Jones, {year}; Lee, {year}a)", "cited"),
+    ("(e.g., {author}, {year})", "cited"),
+    ("(World Health Organization, {year})", "cited"),
+    ("(Centers for Disease Control and Prevention, {year}, {year})", "cited"),
+    ("(National Institutes of Health, {year})", "cited"),
+    # Two capitalised words are no organisation's name, so that no work is read both as
+    # people's and as an organisation's, and a month cut short is no author (round 1 of
+    # #621).
+    ("(Fall Semester, {year})", "vague"),
+    ("(Jan {year})", "vague"),
+    ("(Sept {year})", "vague"),
+    ("[{number}]", "cited"),
+    ("[{number}, {number}-{number}]", "cited"),
+    ("\\[{number}\\]", "cited"),
+    ("({year})", "vague"),
+    ("(in {year})", "vague"),
+    ("(n = {year})", "vague"),
+    ("(p < 0.05)", "vague"),
+    ("(January {year})", "vague"),
+    ("(since {year})", "vague"),
+    ("by 64 [55-72]", "vague"),
+    ("", "vague"),
+)  # fmt: skip
+_CITED_AUTHORS = ("Smith", "García", "O'Brien", "van der Berg", "Nguyen", "WHO")
+
+
+@st.composite
+def markdown_cited_claims(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A Markdown paper with a claim before each of `MARKDOWN_CITED_AFTER`, in an order
+    drawn, each apart from the next by more than G6's citation window; and each claim's word
+    with what G6 makes of it. Every kind is in every paper, so that a rule broken for one
+    is seen in each."""
+    order = draw(st.permutations(range(len(MARKDOWN_CITED_AFTER))))
+    planted: list[tuple[str, str]] = []
+    text = "# Introduction\n\n"
+    for index in order:
+        template, kind = MARKDOWN_CITED_AFTER[index]
+        cited = template.format(
+            author=draw(st.sampled_from(_CITED_AUTHORS)),
+            year=draw(st.integers(1950, 2029)),
+            number=draw(st.integers(1, 120)),
+        )
+        key = f"k{4101 + len(planted)}"
+        planted.append((key, kind))
+        text += f"{_FAR}\nStudies have shown that {key} lowers blood pressure {cited}.\n\n"
+    return text + _FAR, planted
 
 
 #: What a LaTeX document sets out that its text may point at by line, "the stride is set
@@ -3714,7 +3831,8 @@ def figure_captions(draw: st.DrawFn) -> tuple[str, list[str]]:
 #: A reference list's titles, in English and in the languages `text.section_names` knows,
 #: and titles that open with such a word and name something else.
 REFERENCE_TITLES = (
-    "References", "Bibliography", "Works cited", "Kaynakça", "Kaynaklar", "Referencias",
+    "References", "Bibliography", "Works cited", "Literature cited", "Reference list",
+    "Kaynakça", "Kaynaklar", "Referencias",
     "Bibliografía", "Referências", "Bibliografia", "Références", "Bibliographie", "Literatur",
     "Literaturverzeichnis", "Riferimenti bibliografici", "Daftar pustaka", "Daftar  Pustaka",
     "Pustaka", "Bibliografi",
@@ -3722,7 +3840,9 @@ REFERENCE_TITLES = (
 NOT_REFERENCE_TITLES = (
     "Literature review", "Literaturübersicht", "Pustakawan", "Bibliographic search",
     "Referenced cohorts", "Kaynak", "Riferimenti", "Daftar", "Literatur und Forschungsstand",
-    "Referencias teóricas", "Bibliografia e metodi",
+    "Referencias teóricas", "Bibliografia e metodi", "Reference listing",
+    # Read whole, as the audit and the recycling check read them (round 1 of #623).
+    "Reference list screening", "Literature cited by the trials",
 )  # fmt: skip
 
 
@@ -6733,6 +6853,13 @@ PLACEHOLDERS = (
     ("This is a short text to acknowledge the contributions",
      "This is a short text to acknowledge"),
     ("Sample body text.", "Sample body text"),
+    # Beside the placement markers (Basile, 2026-11-11): one with no number, and one with
+    # other words, are slots still.
+    ("[Insert table here]", "[Insert table here]"),
+    ("[Insert Figure 2 legend]", "[Insert Figure 2 legend]"),
+    # Round 1 of #625: X for a number still to fill, though X is ten in Roman numerals.
+    ("[Insert Table X here]", "[Insert Table X here]"),
+    ("[INSERT FIGURE XX]", "[INSERT FIGURE XX]"),
 )  # fmt: skip
 LOWERED = (("tbd", "tbd"), ("fixme", "fixme"), ("Todo", "Todo"))
 LOOKALIKES = (
@@ -6741,6 +6868,14 @@ LOOKALIKES = (
     "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]", "In this section, you can see the code.",
     "In this section, please indicate how often", 'Please state "yes" or "no".',
     'If none, please state "not applicable".', "Click here for additional data file.",
+    # A placement marker, in each form (Basile, 2026-11-11, on 52 real preprints): a table
+    # or a figure and its number, where it is to go, and after pandoc's escaping.
+    "[Insert Table 1 here]", "[INSERT FIGURE 2]", "[Insert Figure S1 about here]",
+    "\\[Insert Table 3 here\\]", "[insert fig. 4 here.]", "[Figure 1 about here]",
+    "[Table 3 about here]", "Insert Table 1 about here",
+    # Round 1 of #625: a Roman numeral, no space after "Fig.", a number with a dot in it.
+    "[Insert Table IV here]", "[INSERT TABLE XIX]", "[Insert Fig.1 here]",
+    "[Insert Table 1.1 here]", "[Insert Figure S1.2 about here]",
 )  # fmt: skip
 
 #: Words to the reviewers or to a model left in a paper, each a sentence, with the rule of
@@ -6806,6 +6941,70 @@ BOUND_UNITS = (
     "{{results.area}} cm\N{SUPERSCRIPT TWO}",
     "{{results.temp}} \N{DEGREE SIGN}C",
 )  # fmt: skip
+
+#: What may stand before a binding and after it, and the comparator G2 reads there with the
+#: side of the number printed it holds the value to (True: below) and whether its statistic
+#: is a plural, or None where it reads none: each sign and its spellings and the two phrases
+#: after each statistic's symbol, singular and plural, in italics or not, a p value written
+#: out, a sign after the binding before a statistic, which holds the value to the other
+#: side, with a line break on either side of the sign; and a subject that is no statistic,
+#: before the binding or after it, a symbol inside a word or a tag, a comparison of two
+#: numbers, a comment, a blockquote's marker and arrows, which compare nothing (PsyArXiv
+#: fyxeq_v2's "all Fs < {{results.f}}", rounds 1 and 2 of #629).
+BESIDE_A_BINDING = (
+    ("Fs < ", "", ("<", True, True)),
+    ("all ps > ", "", (">", False, True)),
+    ("all *p*s > ", "", (">", False, True)),
+    ("all p-values > ", "", (">", False, True)),
+    ("P values < ", "", ("<", True, True)),
+    ("R2s < ", "", ("<", True, True)),
+    ("", " < ts", ("<", False, True)),
+    ("", " > all ts", (">", True, True)),
+    ("", " > t", (">", True, False)),
+    ("F \N{LESS-THAN OR EQUAL TO} ", "", ("\N{LESS-THAN OR EQUAL TO}", True, False)),
+    ("r \N{GREATER-THAN OR EQUAL TO} ", "", ("\N{GREATER-THAN OR EQUAL TO}", False, False)),
+    ("t <= ", "", ("<=", True, False)),
+    ("", " >= ts", (">=", True, True)),
+    ("", " &LT; ts", ("&LT;", False, True)),
+    ("z &lt; ", "", ("&lt;", True, False)),
+    ("d \\> ", "", ("\\>", False, False)),
+    ("p less than ", "", ("less than", True, False)),
+    ("*P* Greater than or equal to ", "", ("Greater than or equal to", False, False)),
+    ("R2 < ", "", ("<", True, False)),
+    ("I\N{SUPERSCRIPT TWO} > ", "", (">", False, False)),
+    ("\N{GREEK SMALL LETTER CHI}^2^ > ", "", (">", False, False)),
+    ("ds <\n", "", ("<", True, True)),
+    ("", " <\nts", ("<", False, True)),
+    ("", " <\n\nts", None),
+    ("", " < the incidence in the exposed", None),
+    ("", " < p-value", None),
+    ("the p-value < ", "", None),
+    ("<p>", "</p>", None),
+    ("<P>", "</P>", None),
+    ("incidence was greater than ", "", None),
+    ("the model's t was greater than ", "", None),
+    ("F wasn't less than ", "", None),
+    ("F wasn\N{RIGHT SINGLE QUOTATION MARK}t less than ", "", None),
+    ("was no\nless than ", "", None),
+    ("a threshold of 2.6\n< ", "", None),
+    ("groups > ", "", None),
+    ("2.6 < ", "", None),
+    ("", " < 2.6", None),
+    ("{{results.other}} > ", "", None),
+    ("<!-- c -->", "", None),
+    ("<sup>", "</sup>", None),
+    ("\n> ", "", None),
+    ("\n- > ", "", None),
+    ("F -> ", "", None),
+    ("F >> ", "", None),
+    ("", " <- x", None),
+    ("F = ", "", None),
+)  # fmt: skip
+
+#: Comparators beside bindings, as `texts` writes them into a file: one of each kind above.
+BOUND_COMPARISONS = tuple(
+    before + "{{results.k}}" + after for before, after, _read in BESIDE_A_BINDING
+)
 
 #: A journal's limit as its page may write it, and numbers and words it is not.
 QUOTED_LIMITS = (
@@ -7365,24 +7564,28 @@ def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
     """A paper with a table of each kind of `MARGIN_KINDS`, in an order drawn, and what the
     reading of a table's totals finds in it: the line of each total its counts do not add
     up to (`off`), of the first category of each characteristic whose categories add up to
-    more than their column's n (`over`), and each count held back that a total gives away,
-    by its line, its count and whether a printed total gives it, at a minimum of five
-    (`five`) and with none (`none`).
+    more than their column's n by more than rounding weighted counts can make (`over`), and
+    by no more (`rounding`), and each count held back that a total gives away, by its line,
+    its count and whether a printed total gives it, at a minimum of five (`five`) and with
+    none (`none`).
 
     The kinds: a total row, one column of it off, under a characteristic's label and a row
     of counts above that; a total column, one row of it off; a count held back that a total
     row gives away, beside two in another column that it does not; one a total column gives
     away; one of up to nine that a total gives away, which a minimum of five allows, and one
     it gives away as nought; categories adding up to more than their column's n, their
-    shares to 100, beside categories adding up to fewer; a count held back that only the
-    column's n gives away; lines with a dash or an empty cell in them, which are read
-    nowhere; and rows whose label starts as a total's does and that are none."""
+    shares to 100, beside categories adding up to fewer and categories adding up to more by
+    no more than half a count each and half for the n, once as only the n's half count
+    allows; a count held back that only the column's n gives away; lines with a dash or an
+    empty cell in them, which are read nowhere; and rows whose label starts as a total's
+    does and that are none."""
     places = draw(st.integers(0, 2))
     grouped = draw(st.booleans())
     first, second = draw(st.sampled_from(ARMS))
     sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
     lines: list[str] = [draw(sentence).capitalize() + "."]
-    expected: dict[str, list] = {"off": [], "over": [], "five": [], "none": []}
+    expected: dict[str, list] = {"off": [], "over": [], "rounding": [], "five": [],
+                                 "none": []}  # fmt: skip
 
     def count(number: int) -> str:
         return f"{number:,}" if grouped else str(number)
@@ -7501,16 +7704,38 @@ def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
                 else:
                     row(name, count(x), count(y), count(x + y))
         elif kind == "over n":
+            # Over by more than rounding weighted counts can make, which fails; fewer, which
+            # is missing data; over by no more than half a count a category and half for
+            # the n, a note (Basile, 2026-11-11: a survey's weighted, rounded age groups,
+            # "N = 12,765^1^" and 12,766 in them); and over by one more than that, which
+            # fails. The last two columns' n may have a footnote mark after it. Then three
+            # categories two over in the weighted column, which only the n's own half count
+            # allows (round 1 of #625), and at their n in the others.
             n, m = draw(st.integers(40, 2000)), draw(st.integers(40, 2000))
-            table("Characteristic", f"{first} (n = {count(n)})", f"{second} (n = {count(m)})")
-            group(2)
+            w, v = draw(st.integers(40, 20000)), draw(st.integers(40, 20000))
+            mark = draw(st.sampled_from(("", "^1^", "^a^")))
+            table("Characteristic", f"{first} (n = {count(n)})", f"{second} (n = {count(m)})",
+                  f"Weighted (N = {count(w)}{mark})", f"Pooled (N = {count(v)}{mark})")
+            group(4)
             many = draw(st.integers(2, 4))
-            more, fewer = n + draw(st.integers(1, n // 2)), draw(st.integers(1, m - 1))
-            a, b = _split(draw, more, many), _split(draw, fewer, many)
-            at = [row(name, f"{count(x)} ({_printed(x, more, places)})",
-                      f"{count(y)} ({_printed(y, fewer, places)})")
-                  for name, x, y in zip(CATEGORIES, a, b, strict=False)]  # fmt: skip
-            expected["over"].append(at[0])
+            allowed = max(1, (many + 1) // 2)
+            more = n + draw(st.integers(allowed + 1, n // 2))
+            fewer = draw(st.integers(1, m - 1))
+            rounded, beyond = w + draw(st.integers(1, allowed)), v + allowed + 1
+            columns = [_split(draw, total, many) for total in (more, fewer, rounded, beyond)]
+            at = [row(name, *(f"{count(x)} ({_printed(x, total, places)})"
+                              for x, total in zip(cells, (more, fewer, rounded, beyond),
+                                                  strict=True)))
+                  for name, *cells in zip(CATEGORIES, *columns, strict=False)]  # fmt: skip
+            expected["over"] += [at[0], at[0]]
+            expected["rounding"].append(at[0])
+            group(4)
+            sums = (n, m, w + 2, v)
+            columns = [_split(draw, total, 3) for total in sums]
+            at = [row(name, *(f"{count(x)} ({_printed(x, total, places)})"
+                              for x, total in zip(cells, sums, strict=True)))
+                  for name, *cells in zip(CATEGORIES, *columns, strict=False)]  # fmt: skip
+            expected["rounding"].append(at[0])
         elif kind == "by n":
             n = draw(st.integers(40, 2000))
             table("Characteristic", f"{first} (n = {count(n)})", second)
@@ -7866,13 +8091,26 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: against a signed number, a label closed up against its number, a whole number against a
 #: word that opens like its ordinal's suffix ("1201students"); an ordinal against its word,
 #: which gives no number to look for; and an estimate closed up against its interval,
-#: whose bounds are reported and the estimate not (round 1 of #613).
+#: whose bounds are reported and the estimate not (round 1 of #613). And an identifier, a
+#: word with a number in it, printed again in the Methods with a stop or brackets round it,
+#: and one whose number alone the Methods give, which is not found (pharm-epi of the
+#: real-paper corpus, 2026-11-11). And a number reported under a subsection of the Results
+#: whose title holds the word "method" and is no Methods, "Performance of the proposed
+#: method", under a Results titled "Results and discussion", which no Methods may stand
+#: under (round 1 of #624).
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
     "against a word", "after a word", "after a label", "against a suffix's word", "ordinal",
-    "estimate closed up",
+    "estimate closed up", "identifier", "identifier by its number", "under a method",
 )  # fmt: skip
+#: Titles of a subsection of the Results that hold the word "method" and name no Methods.
+METHOD_SUBSECTIONS = ("Performance of the proposed method", "Our method at scale",
+                      "A method for the second cohort")  # fmt: skip
+#: The shapes of an identifier, `{}` its number: a variant, a release, a chromosome, a
+#: GWAS of the OpenGWAS catalogue, a strain, an assembly.
+IDENTIFIER_SHAPES = ("rs{}", "v{}", "chr{}", "ieu-a-{}", "ukb-b-{}", "MPL-{}", "K-{}",
+                     "GRCh{}")  # fmt: skip
 #: How each kind of space left out is typed, `{}` its number, and what it starts at.
 RUN_ON_NUMBERS = {"against a word": ("The value was {}points here.", 900),
                   "after a word": ("The value rose to+{} here.", 1000),
@@ -7970,6 +8208,23 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
             methods.append(f"It was {count} then.")
             looked.append((kind, f"{count}students", "exact"))
             abstract.append((kind, said))
+        elif kind == "identifier":
+            named = draw(st.sampled_from(IDENTIFIER_SHAPES)).format(draw(st.integers(10, 99)))
+            methods.append(draw(st.sampled_from((f"It was {named}.", f"It was ({named}) then.",
+                                                 f"It was {named}, then."))))  # fmt: skip
+            looked.append((kind, named, "exact"))
+            abstract.append((kind, f"The source was {named} here."))
+        elif kind == "identifier by its number":
+            number = 7000000 + draw(st.integers(0, 99999))
+            methods.append(f"It was {number} then.")
+            looked.append((kind, f"rs{number}", "not found"))
+            abstract.append((kind, f"The variant was rs{number} here."))
+        elif kind == "under a method":
+            value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
+            shown = str(value + 1600)
+            subsection = (draw(st.sampled_from(METHOD_SUBSECTIONS)), f"It was {shown} then.")
+            looked.append((kind, shown, "exact"))
+            abstract.append((kind, f"The value was {shown} here."))
         elif kind == "estimate closed up":
             estimate = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
             low, high = estimate + 1300, estimate + 1400
@@ -8020,8 +8275,12 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
         for planted, shown, state in looked:
             if planted == kind:
                 expected["looked"].append([line, shown, state])
-    for heading, part in (("Methods", methods), ("Results", results),
+    # The subsection closes the Results, so that what they report stands over it.
+    results.append(subsection)
+    for heading, part in (("Methods", methods), ("Results and discussion", results),
                           ("Discussion", discussion)):  # fmt: skip
+        part = [f"### {said[0]}\n\n{said[1]}" if isinstance(said, tuple) else said
+                for said in part]  # fmt: skip
         lines += [f"## {heading}", "", *(one for said in part for one in (said, "")), ""]
     expected["conflicts"].sort()
     expected["looked"].sort()
@@ -8050,11 +8309,13 @@ def _abstract_latex(abstract: list, looked: list, methods: list, results: list,
             expected["conflicts"].append([line, kind.split()[0]])
         expected["looked"] += [[line, shown, state] for planted, shown, state in looked
                                if planted == kind]  # fmt: skip
-    for heading, part in (("Methods", methods), ("Results", results),
+    for heading, part in (("Methods", methods), ("Results and discussion", results),
                           ("Discussion", discussion)):  # fmt: skip
         lines += ["", f"{BACKSLASH}section{{{heading}}}", ""]
         for said in part:
-            if said.startswith("|"):
+            if isinstance(said, tuple):
+                lines += [f"{BACKSLASH}subsection{{{said[0]}}}", "", said[1], ""]
+            elif said.startswith("|"):
                 value = said.split("\n")[-1].strip(" |").split("|")[-1].strip()
                 lines += [BACKSLASH + "begin{tabular}{ll}", "Group & Value " + BACKSLASH * 2,
                           f"A & {value} " + BACKSLASH * 2, BACKSLASH + "end{tabular}", ""]
@@ -10719,6 +10980,9 @@ REFERENCE_LINES = (
     "**References**", "**References:**", "References", "__Bibliography__", "*Literature cited*",
     "6\\. References", "**[References]{.underline}**", "[Bibliography]{.smallcaps}",
     "**[[References]{.mark}]{.underline}**",
+    # As Word's conversion writes a title in a block quote, numbered and in capitals, one
+    # with a bookmark on it, a link, and one a hard line break opens (the real-paper corpus).
+    "> **11. REFERENCES**:", "[**References**](#_Ref89712232)", "**\\\nReferences**",
 )  # fmt: skip
 #: Lines that only look like one: a sentence, the word in small letters, the word with a full
 #: stop, brackets that are no span (escaped, or before braces that hold no attributes);
@@ -10729,6 +10993,8 @@ NOT_REFERENCE_LINES = (
     "**References** were read by two pharmacists.", "**references**", "**References.**",
     "**[references]{.underline}**", "[References]{.underline} were read by two pharmacists.",
     "\\[References\\]{.underline}", "[References]{see below}",
+    "[**References**](#_Ref1) were read by two pharmacists.",
+    "> References were read by two pharmacists.",
 )  # fmt: skip
 IN_A_PARAGRAPH = "in a paragraph"
 IN_A_LIST = "in a list"
@@ -10772,7 +11038,12 @@ LIST_ENDS = {
     "a binding": "\n\n{{table.baseline}}\n\n{said}",
 }  # fmt: skip
 #: Whole blocks for the readings that pass a reference list over (`INPUTS`).
-REFERENCE_BLOCKS = ("\n\n**References**\n\n", "\n\n**References:**\n\n", "\n\nReferences\n\n")
+REFERENCE_BLOCKS = ("\n\n**References**\n\n", "\n\n**References:**\n\n", "\n\nReferences\n\n",
+                    "\n\n> **11. REFERENCES**:\n\n", "\n\n[**References**](#_Ref89712232)\n\n",
+                    "\n\n**\\\nReferences**\n\n", "\n\n# Literature cited\n\n",
+                    "\n\n# Reference list\n\n",
+                    # A subsection that only opens with a list's title, which is read.
+                    "\n\n## Reference list screening\n\n")  # fmt: skip
 #: Spellings of the other English, and journals whose names are in capitals.
 _OTHER_ENGLISH = ("color", "tumor", "behavior", "center", "fiber")
 _JOURNALS = ("PLoS ONE", "BMC Med", "JAMA Netw Open")
@@ -11536,7 +11807,7 @@ NAMED_BLOCKS = tuple(
 CONVERTED_BLOCKS = (
     *BOLD_COUNTED,
     *BOLD_NOT_COUNTED,
-    *(f"\n\n# {title}\n\n" for title in REFERENCE_TITLES[3:]),
+    *(f"\n\n# {title}\n\n" for title in REFERENCE_TITLES[5:]),
 )
 
 #: What each reading of `tests/readings.py` is given, by the reading's name.
@@ -12597,6 +12868,48 @@ def commented_documents(draw: st.DrawFn) -> tuple[str, list, list]:
     return body, notes, expected
 
 
+#: A word as a .docx's converted text may type it in a finding's context, and as the
+#: document prints it (`auditing.reader.excerpt`): in bold and in italics by stars, in
+#: italics and in bold by underscores, a name from code with underscores inside it, a star
+#: standing between a number and a word, a star inside a word, a code span whose underscores
+#: would read as bold outside it, in bold around a code span, and a bold inside italics
+#: (round 1 of #631).
+EMPHASES = {
+    "bold": ("**{}**", "{}"),
+    "italics": ("*{}*", "{}"),
+    "underscored": ("_{}_", "{}"),
+    "underscored bold": ("__{}__", "{}"),
+    "code name": ("{}_kept_name", "{}_kept_name"),
+    "star alone": ("2 * {}", "2 * {}"),
+    "star inside": ("{}*5", "{}*5"),
+    "code span": ("`__{}__`", "`__{}__`"),
+    "bold code span": ("**`{}_x`**", "`{}_x`"),
+    "nested": ("*{} **in** it*", "{} in it"),
+}
+
+
+@st.composite
+def emphasised_contexts(draw: st.DrawFn) -> tuple[str, str]:
+    """A finding's context with a word of every kind of `EMPHASES`, in an order drawn,
+    among plain words and between marks a context has, and the context as the document
+    prints it."""
+    word = st.text(alphabet="abcdefghijklmnopqrstuvwxyzéü", min_size=1, max_size=8)
+    between = st.sampled_from((" ", ", ", " - ", ": ", "; "))
+    typed: list[str] = []
+    printed: list[str] = []
+    for typing, printing in draw(st.permutations(list(EMPHASES.values()))):
+        for _plain in range(draw(st.integers(0, 2))):
+            plain = draw(word)
+            typed.append(plain)
+            printed.append(plain)
+        drawn = draw(word)
+        typed.append(typing.format(drawn))
+        printed.append(printing.format(drawn))
+    marks = [draw(between) for _mark in typed[1:]]
+    return ("".join(part + mark for part, mark in zip(typed, [*marks, ""], strict=True)),
+            "".join(part + mark for part, mark in zip(printed, [*marks, ""], strict=True)))
+
+
 #: The words a PDF report sets that the standard fonts hold no glyph for, or that a PDF
 #: string must escape, each with what it prints as (`pdfwriter.printable`): a sign and a
 #: letter Windows-1252 lacks, its accented letters and quotes, the PDF string's own marks,
@@ -12809,6 +13122,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES
     ),
     "residue": texts(tuple(written for written, _rule, _found in RESIDUE) + RESIDUE_LOOKALIKES),
+    "vague attribution": st.one_of(markdown_cited_claims().map(lambda drawn: drawn[0]),
+                                   texts()),  # fmt: skip
     "typed releases": texts(RELEASED),
     "reported tests": texts(REPORTED),
     "reported intervals": texts(ESTIMATES),
@@ -12834,12 +13149,15 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "plan sections": plan_pairs().map(lambda drawn: drawn[0]),
     "data dictionaries": dictionary_pairs().map(lambda drawn: drawn[0]),
     "units after": texts(BOUND_UNITS),
+    "comparisons beside": texts(BOUND_COMPARISONS),
     "limit stated": st.fixed_dictionaries(
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}
     ),
     "abbreviations": st.fixed_dictionaries(
         {
-            "text": texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)),
+            "text": texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)).map(
+                lambda text: f"{text}\n\n# Methods\n\n{INITIALS_NAMED}\n"
+            ),
             "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
         }
     ),

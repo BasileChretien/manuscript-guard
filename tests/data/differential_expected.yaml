@@ -24,6 +24,13 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: abbreviations
+    why: >-
+      an entry of a list of abbreviations that the text neither uses nor defines is said as
+      the list's, "in the list of abbreviations and not used in the main text", with the hint
+      to take it out of the list, and a use above an entry the text never spells out is told
+      to spell it out where it first appears; a long form is quoted as typed, not by repr
+      (the author's audit, 2026-11-11)
   - reading: mask
     why: >-
       a link's target that is an address is masked after its `(` up to its own `)`, and the
@@ -42,10 +49,12 @@ expected:
       author did not understand (the author's audit, 2026-11-10)
   - reading: abstract against results
     why: >-
-      the Abstract's number a space was left out of is read, "512.3points", "to+1012.3",
-      "score:1112.3", and found where the paper reports it; an ordinal against its word,
-      "2ndyear", is not looked for; the inputs now hold each (the author's Abstract,
-      2026-11-10)
+      an identifier of the Abstract, a word with a number in it ("rs10", "v12", "chr15"),
+      is found where the Methods print it as a word, stops, brackets, emphasis, quotes and a
+      possessive aside, where it was
+      looked for among the bare numbers alone and never found; one whose number alone the
+      Methods give is still not found; the inputs now hold each (pharm-epi of the
+      real-paper corpus, 2026-11-11)
   - reading: reply numbers
     why: >-
       a number in a reply after a link on its line is read and, unbound, reported, where the
@@ -56,11 +65,21 @@ expected:
       link's target hid it up to the next `)`
   - reading: placeholders
     why: >-
-      a journal template's instruction to its authors, "In this section you can acknowledge
-      any support given ...", "This section may be divided by subheadings", Word's "Click or
-      tap here to enter text.", is found as a placeholder, `placeholder-template`; the inputs
-      now hold such instructions, and a section the authors describe, a form a paper
-      reproduces and PLOS's "Click here for additional data file", which it is not
+      a placement marker, a table or a figure named with its number where it is to go,
+      "[Insert Table 1 here]", "[INSERT FIGURE 2]", also after pandoc's escaping, with a
+      number that has a dot in it, "Table 1.1", a Roman numeral from I to XIX, "[INSERT TABLE
+      XIV]", or "Fig." run into it, "[Insert Fig.1 here]", is no placeholder (Basile,
+      2026-11-11, after 52 real preprints; round 1 of #625); the inputs now hold a marker of
+      each form, and an instruction with no number, with other words, or with X or XX for
+      its number, which is one still
+  - reading: table margins
+    why: >-
+      categories over their column's n by no more than (k + 1) / 2 for k categories,
+      rounded down, are said as a gap rounding weighted counts and the n may make (Basile,
+      2026-11-11, a survey's age groups at 12,766 under "N = 12,765"; round 1 of #625 added
+      the n's half count); the inputs now hold such a column beside one over by one more,
+      which is said as before, and three categories two over, which only the n's half count
+      allows
   - reading: import
     why: >-
       under "would merge into" and "NOT merged into" the import prints each changed
@@ -82,9 +101,10 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G14's counts, which `check` reports, hold a new one, `notation_spaces_missing`: the
-      numbers typed against a word, "0.41points", "2ndyear", or a word against a signed
-      number, "to+0.77" (the author's Abstract, 2026-11-10)
+      G14 says an abbreviation is used, or not used again, in a part of the paper "as G14
+      reads it", and says a word with underscores is "written with underscores, the way a
+      name in code is written"; G6 takes a citation typed as text beside a claim for its
+      support (corpus round, 2026-11-10)
   - reading: data dates
     why: >-
       the finding says the date was emitted as a string rather than typed, and its hint adds
@@ -192,19 +212,21 @@ expected:
       are no longer loose, and the preamble's `\input name` without braces is followed; the
       inputs now hold placed parts and pictures, inside a figure and under headings
       (Known gaps, 2026-10-27)
-  - reading: abbreviations
+  - reading: spelling
     why: >-
-      a stop between two parts of a word joins them as a hyphen does, in the text, in a
-      bracket's short form and in a glossary's entry, so "Licence avec Accès Santé (L.AS)"
-      defines L.AS and "students of L.AS" uses it, where it was an undefined AS; a sentence
-      typed on with no space, "the KAP.The rest", leaves KAP alone; the inputs now hold
-      such words (the author's paper, 2026-11-10)
+      a reference list under the headings "Literature cited" and "Reference list", or under
+      a title in a block quote, `> **11. REFERENCES**:`, a link,
+      `[**References**](#_Ref89712232)`, or a bold title a hard line break opens, is passed
+      over, so the spelling of its entries is not read; the inputs now hold these titles
+      (the real-paper corpus, 2026-11-11)
   - reading: recycled passages
     why: >-
-      a citation by author and year in parentheses in the earlier paper, "(Smith et al.,
-      2019)", is blanked before its words are compared, so it no longer cuts a passage the
-      manuscript repeats where the manuscript cites by key; the earlier papers drawn now
-      set such citations between words, as they set a reference's number
+      a reference list under a title in a block quote, `> **11. REFERENCES**:`, a link,
+      `[**References**](#_Ref89712232)`, a bold title a hard line break opens, or the
+      heading "Reference list", is set apart, so a passage of the earlier paper repeated in
+      its entries is not reported; the inputs now hold these titles (the real-paper corpus
+      and round 1 of #623, 2026-11-11). The entry it replaces, for the author-year
+      citations of an earlier paper, is spent
   - reading: communicate language
     why: >-
       new with this pull request: `checking.in_english` decides whether a communication
@@ -237,3 +259,16 @@ expected:
       refused without one or with another value; a `holds-null` control that gives one is
       refused; the reading reports each control's null, and the inputs draw each of these
       (Basile, 2026-11-09, round 1 of wave 3's PR 3)
+  - reading: vague attribution
+    why: >-
+      a claim in a Markdown text, as a paper `audit` converts is read, is supported by a
+      citation typed as text, a bracketed run of numbers or one by author and year in
+      brackets, an organisation's among them, where only pandoc's were taken; brackets that
+      cite nothing, a year, a date, a count, a P value or an interval after its value, are
+      none (corpus round, 2026-11-10: 14 of 16 vague attributions judged on 52 preprints
+      were false); a new reading, whose inputs hold each kind
+  - reading: code names
+    why: >-
+      a word with underscores is said to be "written with underscores, the way a name in
+      code is written", where the message read "is written as a name in code is, with
+      underscores" (corpus round, 2026-11-10)

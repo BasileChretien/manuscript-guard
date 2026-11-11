@@ -67,6 +67,17 @@ reads:
       0.2 to 230 ms against 2 s across the seven, measured idle and beside a full suite. The
       slowest, 8,000 definitions, has about 9x; the rest 17x or more.
 
+  - where: tests/test_writing.py::test_an_unclosed_bracket_of_citations_is_judged_in_time
+    kind: budget
+    budget: 1.0
+    why: >-
+      Four fixed paragraphs, each a bracket of thirty works by two authors that is not
+      closed, or closes on words that cite nothing. The regression read each work both as
+      two people and as an organisation's name, and tried every way of choosing between
+      them: exponential, 7.5 s at eighteen works and doubling with each, no slide from
+      linear that a ratio measures (round 1 of #621).
+    headroom: 12 to 32 ms against 1 s, about 30x, 2026-11-11 idle.
+
   - where: tests/test_robustness.py::test_table_alignment_row_does_not_stall_on_whitespace
     kind: budget
     budget: 2.0

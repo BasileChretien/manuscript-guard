@@ -227,6 +227,95 @@ def test_a_definition_in_square_brackets_is_read(project: Path) -> None:
     assert not report.findings, found(report)
 
 
+@pytest.mark.parametrize(
+    "definition",
+    [
+        # An exercise physiology preprint of the real-paper corpus.
+        "We measured endurance (i.e. time to task failure; TTF) in all.",
+        "We measured endurance (that is, time to task failure, TTF) in all.",
+        "We measured endurance [i.e. time to task failure; TTF] in all.",
+        "We measured endurance (i.e. time to task failure; *TTF*) in all.",
+    ],
+)
+def test_a_short_form_closing_a_bracket_after_a_separator_is_defined(
+    project: Path, definition: str
+) -> None:
+    report = written(project, f"# Methods\n\n{definition} The TTF was long.\n")
+    assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    "dash",
+    [" - ", " \N{EN DASH} ", " \N{EM DASH} ",
+     # Pandoc's smart dashes as typed, and a no-break space before the dash, as Word keeps
+     # a dash on the line of the word before it.
+     " -- ", " --- ", "\N{NO-BREAK SPACE}\N{EN DASH} ", "\N{NO-BREAK SPACE}- "],
+)  # fmt: skip
+def test_a_short_form_after_a_spaced_dash_is_defined(project: Path, dash: str) -> None:
+    """An agricultural-policy preprint of the real-paper corpus: "the Basic Income Support
+    for Sustainability - BISS", with no bracket."""
+    report = written(
+        project,
+        f"# Methods\n\nFarmers received the Basic Income Support for Sustainability{dash}"
+        "BISS from the state. The BISS was paid.\n",
+    )
+    assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [", 1.52 (95% CI 1.1-2.0)", ": 1.52 (95% CI 1.1-2.0)",
+     " (95% CI 1.1\N{EN DASH}2.0) 1.52", "\N{NO-BREAK SPACE}1.52 (95% CI 1.1-2.0)"],
+)  # fmt: skip
+def test_a_short_form_after_a_dash_with_a_comma_and_a_number_is_a_statistic(
+    project: Path, value: str
+) -> None:
+    """Rounds 1 and 2 of #623: "older people - OR, 1.52" was read as a second definition of
+    OR, as "older people", where it gives the odds ratio's value; so were the value after a
+    colon, after an interval in brackets and after a no-break space."""
+    configured(project, language={"known_abbreviations": ["CI"]})
+    report = written(
+        project,
+        "# Results\n\nThe odds ratio (OR) was computed. The risk was higher in older people "
+        "\N{EN DASH} OR" + value + ".\n",
+    )
+    assert not report.findings, found(report)
+
+
+def test_a_short_form_after_a_dash_and_a_comma_before_words_is_defined(project: Path) -> None:
+    report = written(
+        project,
+        "# Methods\n\nFarmers joined the Basic Payment Scheme \N{EN DASH} BPS, which pays "
+        "farmers. The BPS was paid.\n",
+    )
+    assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        # The letters of the short form are not before the separator.
+        "Signals were sought (see the appendix; PRR) in all. The PRR was raised.",
+        # A dash with no space, a hyphenated word; and a statistic after a dash.
+        "Signals were sought by proportional reporting-PRR in all. The PRR was raised.",
+        "The proportional reporting ratio fell \N{EN DASH} PRR 0.75 in all. The PRR was "
+        "raised.",
+        # Limits written down in DESIGN.md's Known gaps: the short form before the dash, and
+        # a short form in the middle of a bracket.
+        "The PRR \N{EN DASH} proportional reporting ratio \N{EN DASH} was sought. The PRR "
+        "was raised.",
+        "Signals were sought (as before, PRR, i.e. proportional reporting ratio). The PRR "
+        "was raised.",
+    ],
+)
+def test_a_bracket_s_end_or_a_dash_defines_only_by_the_letter_rule(
+    project: Path, sentence: str
+) -> None:
+    report = written(project, f"# Methods\n\n{sentence}\n")
+    assert codes(report) == {"abbreviation-undefined"}, found(report)
+    assert all(f.message.startswith("PRR") for f in report.findings), found(report)
+
+
 def test_markup_and_punctuation_are_no_part_of_a_long_form(project: Path) -> None:
     """An emphasised first definition and a plain second one are one meaning, and the hint
     quotes the words without their asterisks."""
@@ -1074,6 +1163,34 @@ def test_a_glossary_a_sentence_opens_defines_its_entries(project: Path) -> None:
     ]
 
 
+def test_an_entry_of_the_list_is_said_as_one(project: Path) -> None:
+    """The list's entries are said as such (the author's audit, 2026-11-11): a use above an
+    entry the text never spells out is to be spelt out where it first appears, not "defined
+    later at" the list; an entry nothing else uses is to come out of the list, not to be
+    written out in the text. A definition in the text is said as before, its long form as
+    typed, an apostrophe and all."""
+    report = written(project, "# Methods\n\nThe AIC was computed.\n\n# Conclusions\n\nIt "
+                     "worked.\n\n" + WORD_GLOSSARY)  # fmt: skip
+    said = {f.message.split()[0]: f for f in report.findings}
+    assert said["AIC"].message.startswith(
+        "AIC is used here and not spelt out; only the list of abbreviations defines it, at ")
+    assert said["AIC"].hint.startswith("spell it out where it first appears")
+    assert said["CV"].message == ("CV is in the list of abbreviations and not used in the "
+                                  "main text as G14 reads it")
+    assert said["CV"].hint.startswith("take it out of the list")
+    # Spelt out in the text after the list too: defined later there, as before (review of
+    # #634).
+    both = written(project, "# Introduction\n\nThe ROR was raised.\n\n# Abbreviations\n\nROR: "
+                   "reporting odds ratio\n\n# Methods\n\nThe reporting odds ratio (ROR) was "
+                   "computed.\n")  # fmt: skip
+    ror = [f.message for f in both.findings if f.code == "abbreviation-used-before-defined"]
+    assert ror == ["ROR is used here, and defined later at manuscript/main.md:7"], ror
+    text = written(project, "# Methods\n\nThe Centre d'Enseignement Universitaire (CEU) "
+                   "met.\n")  # fmt: skip
+    assert text.findings[0].hint.startswith(
+        "write 'Centre d'Enseignement Universitaire' out and drop the short form")
+
+
 @pytest.mark.parametrize(
     "after",
     ["The UMC was consulted.", "Note: the UMC was consulted.", "# Declarations\n\nUMC: the "
@@ -1086,7 +1203,9 @@ def test_a_glossary_a_sentence_opens_ends_with_its_last_entry(project: Path, aft
     it is shaped."""
     report = written(project, "# Conclusions\n\nIt worked.\n\n" + WORD_GLOSSARY + after
                      + "\n\nThe AIC, the CV and the EBM fell.\n")  # fmt: skip
-    assert found(report) == ["UMC is used once in the main text and not defined there"]
+    assert found(report) == [
+        "UMC is used once in the main text as G14 reads it, and not defined there"
+    ]
 
 
 @pytest.mark.parametrize(
@@ -1101,7 +1220,9 @@ def test_a_paragraph_that_names_abbreviations_opens_no_glossary(
     the line after these is text, and its abbreviation undefined."""
     follows = "UMC: the centre was consulted." if "below" in opening else "The UMC was used."
     report = written(project, f"# Methods\n\n{opening}\n\n{follows}\n")
-    assert found(report) == ["UMC is used once in the main text and not defined there"]
+    assert found(report) == [
+        "UMC is used once in the main text as G14 reads it, and not defined there"
+    ]
 
 
 def test_a_glossary_and_a_first_use_define_one_thing_once(project: Path) -> None:
@@ -1335,6 +1456,32 @@ def test_a_heading_in_capitals_is_not_an_abbreviation(project: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    "line", ["2. DISCUSSION", "ABSTRACT", "1. INTRODUCTION", "1\\. INTRODUCTION",
+             "MATERIALS AND METHODS:", "IV. RESULTS"],
+)  # fmt: skip
+def test_a_section_s_name_on_a_plain_line_in_capitals_is_not_an_abbreviation(
+    project: Path, line: str
+) -> None:
+    """A paper typed in Word has its headings as plain paragraphs in capitals, "2.
+    DISCUSSION", and the name was reported as an undefined abbreviation (the real-paper
+    corpus). A line that is only a section's name, numbered or not, is a heading."""
+    report = written(project, f"# Methods\n\n{PLAIN}\n\n{line}\n\n{PLAIN}\n")
+    assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    ("line", "reported"),
+    [("2. ICU", ["ICU"]), ("DISCUSSION ICU", ["DISCUSSION", "ICU"]),
+     ("The DISCUSSION was short.", ["DISCUSSION"])],
+)  # fmt: skip
+def test_a_line_that_is_more_than_a_section_s_name_is_still_read(
+    project: Path, line: str, reported: list[str]
+) -> None:
+    report = written(project, f"# Methods\n\n{PLAIN}\n\n{line}\n")
+    assert sorted(f.message.split()[0] for f in report.findings) == reported, found(report)
+
+
+@pytest.mark.parametrize(
     "heading",
     [
         "Author contributions",
@@ -1421,7 +1568,9 @@ def test_jama_s_additional_contributions_name_no_initials(project: Path) -> None
     institutions: an undefined "(NIH)" elsewhere is still reported (round 2 of #611)."""
     report = written(project, "# Methods\n\nThe data came from one centre (NIH).\n\n"
                      "## Additional contributions\n\nWe thank the staff of the NIH.\n")  # fmt: skip
-    assert found(report) == ["NIH is used once in the main text and not defined there"]
+    assert found(report) == [
+        "NIH is used once in the main text as G14 reads it, and not defined there"
+    ]
 
 
 def test_what_a_bold_label_cannot_tell_apart(project: Path) -> None:
@@ -1482,6 +1631,58 @@ def test_a_reference_list_is_not_read(project: Path) -> None:
         f"# Methods\n\n{PLAIN}\n\n# References\n\n1. Smith J. The ROR in practice. JAMA.\n",
     )
     assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        # Headings the audit knew and the sections did not.
+        "# Literature cited",
+        "# Reference list",
+        # Word's conversion: a title in a block quote, numbered, a colon after it; and one
+        # with a bookmark on it, a link (corpus papers converted from Word).
+        "> **11. REFERENCES**:",
+        "[**References**](#_Ref89712232)",
+        # Read already, kept read.
+        "References",
+        "**References**",
+        "**\\\nReferences**",
+    ],
+)
+def test_a_reference_list_under_each_title_word_writes_is_not_read(
+    project: Path, title: str
+) -> None:
+    """The journals' names and the capitals in the titles of a list under one of these were
+    reported as undefined abbreviations on real papers (`NHANES`, `BMJ`)."""
+    report = written(
+        project,
+        f"# Methods\n\n{PLAIN}\n\n{title}\n\nSmith J. The NHANES data. BMJ. 2020;1:1-2.\n",
+    )
+    assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    "heading", ["## Reference list screening", "## Literature cited by the trials"],
+)  # fmt: skip
+def test_a_heading_that_only_opens_with_a_list_s_title_is_read(
+    project: Path, heading: str
+) -> None:
+    """Round 1 of #623: "Reference list screening", a systematic review's subsection, was
+    taken for the reference list by its opening words, and its prose was not read."""
+    report = written(project, f"# Methods\n\n{heading}\n\nThe NHANES data were read.\n")
+    assert sorted(f.message.split()[0] for f in report.findings) == ["NHANES"], found(report)
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["[**References**](#_Ref89712232) were read by two pharmacists.",
+     "> References were read by two pharmacists."],
+)  # fmt: skip
+def test_a_link_or_a_quote_in_a_sentence_opens_no_reference_list(
+    project: Path, line: str
+) -> None:
+    report = written(project, f"# Methods\n\n{line}\n\nThe NHANES data were used.\n")
+    assert sorted(f.message.split()[0] for f in report.findings) == ["NHANES"], found(report)
 
 
 def test_a_project_lists_what_it_leaves_undefined(project: Path) -> None:

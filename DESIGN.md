@@ -4839,6 +4839,23 @@ words count in capitals only, since "Todo" opens many a Spanish title; in the ma
 they count in any case, as they always did. Each is a failure from drafting, as the other
 artefacts are.
 
+A placement marker is no slot: a table or a figure named with its number where it is to go,
+in brackets, "[Insert Table 1 here]", "[INSERT FIGURE 2]", "[Insert Figure S1 about here]",
+"\[Insert Table 1 here\]" as pandoc escapes it, or on a line of its own, "Insert Table 1
+about here". APA and many journals ask authors for one where the tables and figures follow
+the text, and in the corpus of 52 real preprints every one G6 failed as a placeholder was
+such a marker (Basile, 2026-11-11). The instruction rule leaves out "insert", then "table",
+"figure" or "fig.", a number with a letter before or after it, and "here" or "about here"
+or nothing, up to the closing bracket; "[Figure 1 about here]" and a marker on a line of
+its own match no rule. With no number, "[Insert table here]", or with other words,
+"[Insert Figure 2 legend]", it is a slot still. Round 1 of #625 took in the numbers papers
+print besides "1" and "S1": one with a dot, "Table 1.1", "Figure S1.2"; a Roman numeral
+from I to XIX, as IEEE numbers its tables, "[Insert Table IV here]"; and "Fig." run into
+it, "[Insert Fig.1 here]". The capitals rule leaves out a marker all in capitals with a
+Roman numeral, "[INSERT TABLE XIV]", which is capitals in brackets that say INSERT. X and
+XX are left out, since a template writes a number still to fill as X: "[Insert Table X
+here]" is a slot.
+
 **A journal template's instructions are found by the template's own words.** Papers are
 printed with "In this section you can acknowledge any support given which is not covered by
 the author contribution or funding sections", MDPI's text for the acknowledgements, two of
@@ -5028,7 +5045,18 @@ can be found in order in the long one and the first of them begins a word. That 
 and Hearst's rule (Pac Symp Biocomput 2003;8:451-62), written out here in thirty lines
 because a gate that runs in CI should not take a dependency for them. The short form may
 also stand in square brackets, "hazard ratio [HR]", which is how a journal writes a
-definition inside a parenthesis. The short form in a definition may be anything with two
+definition inside a parenthesis. Two more shapes come from real papers, read by the same
+letters: the short form closing a bracket after a semicolon or a comma, its long form
+before the separator inside the bracket, "(i.e. time to task failure; TTF)"; and the short
+form after a dash with a space on either side, a hyphen, an en dash or an em dash, or "--"
+and "---" as pandoc's smart dashes are typed, a no-break space counting as a space, its long
+form before the dash, "Basic Payment Scheme – BPS". A dash gives a statistic and no
+definition where an equals sign or a number follows the short form, or a colon, a comma
+or an opening bracket and a number, past spaces and no-break spaces: "higher in older
+people – OR, 1.52", "– OR: 1.52" and "– OR (95% CI 1.1–2.0) 1.52" give the odds ratio's
+value, and "Basic Payment Scheme – BPS, which pays farmers" defines. A bracket is read
+otherwise there, as before: "the signal detection ratio (SDR, 2.4)" defines. A hyphen with
+no space joins a word. The short form in a definition may be anything with two
 capitals, or one that is not the capital of a word (`mL`), or a capital and a digit. A
 plural defines its singular: `RORs` defines `ROR`, and `mAbs` after "monoclonal antibodies"
 defines `mAb`.
@@ -5111,8 +5139,12 @@ style was used, and "**ABSTRACT**" or "**TITLE PAGE**" is a paragraph. So in a p
 set entirely in bold whose letters are all capitals, and in a cell of a table's header row
 whose letters are ("MODEL 1"), nothing is reported as undefined; what the manuscript
 defines is still used there. A cell of a grid table's header that runs over several lines
-is read whole. A table's body is not a heading, since its rows name what they count,
-`COPD` and `CKD` in a baseline table, nor is a plain paragraph or a list item in capitals.
+is read whole. A plain paragraph in capitals that is only a section's name, numbered or
+not, "2. DISCUSSION" or "ABSTRACT", is a heading too, as a paper typed in Word has its
+headings in plain capitals; the names are the closed list a title standing alone is read by
+(`text/section_names.py`, `SECTION_NAMES`). A table's body is not a heading, since its rows
+name what they count, `COPD` and `CKD` in a baseline table, nor is any other plain
+paragraph or a list item in capitals.
 A reference list is not read at all. In a contributions, acknowledgements, funding or competing-interests
 section, capitals are people and institutions, so nothing there is reported as undefined,
 and a funder named once with its acronym is not reported as unused. Those sections are
@@ -5177,6 +5209,17 @@ The glossary's lines are not uses, so an entry nothing else uses is unused. Jour
 ask for the list and for the expansion at first use as well, so a definition in the text that
 gives the glossary's meaning again is not reported as given twice; a second one in the text
 is, and one that gives another meaning is reported as two meanings.
+
+The glossary's entries are said as such (the author's audit, 2026-11-11, of a list at the
+end of a paper typed in Word: "MMOPK is used here, and defined later at ... Conclusions,
+paragraph 26", and of an entry nothing used, "write 'Centre ... (Appears in author
+affiliations)' out and drop the short form"). A use above an entry the text never spells out
+is "used here and not spelt out; only the list of abbreviations defines it", with the hint to
+spell it out where it first appears (where the text spells it out after the list, it is
+defined later there, as any); an entry the text does not use, and does not define, is "in the
+list of abbreviations and not used in the main text", with the hint to take it out of the
+list unless the title page, a table, a figure, another entry or the supplement uses it. A long form is quoted as typed, where `repr` had doubled the backslash of an
+escape, "d\\'Intérêt".
 
 **A glossary may have no title.** A paper typed in Word often opens its list with a sentence
 and no heading: "List of abbreviations and acronyms used in the text, tables, and figures.",
@@ -9823,7 +9866,11 @@ empty list under a final heading had raised. A Markdown list is numbered as pand
 from its first number up, and a number pandoc escaped, `1\.`, as typed. A DOI ends before
 `](` and before a stop or a closing bracket it did not open; one no registry has, and a PMID
 PubMed does not, is reported, and "no registry said a work was retracted" says how many
-entries were asked and how many a registry knew. A table's rules and colours, `\midrule[1pt]`
+entries were asked and how many a registry knew. An entry with no DOI and no PMID cannot be
+asked, and is not passed over: the summary's line counts those not looked up, and the
+section names each at its place, by its number and its first 90 characters (the author's
+audit, 2026-11-11: "we need to check all references, or say which ones were not checked and
+why"; he chose that over a search by title, whose match no rule could vouch for). A table's rules and colours, `\midrule[1pt]`
 and `\rowcolor{gray!20}`, print nothing (`text/latex/commands.py`), where their arguments had
 been read as the cell's text and as the paper's numbers. Under `--json` an audit that did not
 happen, exit 2, prints `{"ok": false, "error": ...}`: `check --json` prints nothing to stdout
@@ -9871,7 +9918,14 @@ the total less the others' highs up to the total less their lows, within its own
 range at all is a total the printed counts cannot make, `sum-off`. A range of one value is
 a count held back that the line gives away. Categories whose shares add up to 100
 (`shares._summed`) and whose counts add up to more than their column's header n are the one
-contradiction read of a header n (`over-header-n`); fewer is missing data.
+contradiction read of a header n (`over-header-n`); fewer is missing data. Over by no more
+than (k + 1) / 2 for k categories, rounded down (`within_rounding`), is no contradiction:
+rounding each of k weighted counts to a whole number moves it by half a count at most, and
+rounding the weighted n once moves it by half a count too, so the printed counts can add up
+to (k + 1) / 2 over the printed n, and both are whole. Three counts of 11.5 print 36
+against an n of 34.5 printed 34 (round 1 of #625; k / 2 alone allowed one). The audit says it as a note, which `--strict` does not count, and `--json` counts it apart
+(`over_header_n_rounding`). Basile, 2026-11-11, after a 22-country survey in the corpus of
+52 real preprints whose weighted, rounded tables gave 24 failures, each one to three over.
 
 In `check`, G2's `count-recoverable` (from internal review, as `count-below-minimum`) reads
 each emitted table the manuscript or the supplement binds, each declared sum, and each step
@@ -10392,6 +10446,27 @@ encoding lacks is written as a reader would type it, its letters without their m
 `tests/test_properties.py::test_a_pdf_report_prints_every_word_within_its_page_and_marks_every_heading`,
 which reads the PDF strictly with pypdf, with five broken rules.
 
+The author then asked for it "interactive and visually appealing ... professional, modern"
+(2026-11-11), with a line saying it was made with manuscript-guard and one saying how few of
+its checks an audit runs, with a link to using it fully. So `pdfwriter` draws shapes as well
+as text, filled and rounded rectangles and lines in colour under the text that follows them,
+links out to an address beside links to a place, and a frame on every page (`Margins`): the
+title at the top of every page but the first, and at the foot "Made with manuscript-guard",
+a link to the project's page, and the page's number of all. The report has a cover band;
+a tile for each check, coloured by where it stands (`summary.standings`: nothing found, to
+look at, counted as an error, not run), read from what the check found and not from its
+line's words, each tile a link to its section; each section under an accent bar with a link
+back to the summary; each kind with its count in a pill and its hint in a box; each place
+with its quote under a rule; and a closing panel saying that an audit reads a finished paper
+through a few of the gates, in part, against all of them for a paper written with the tool,
+with the link. The panel names the gates this audit ran (`report_pdf.gates_run`): G2 always,
+and G4, G6 and G14, or G7, only where they read something, not where they left only a note
+of why not. A tile is clear only where its check found nothing: a check that did not run or
+read nothing is not run, whatever note its section prints, and a section that lists
+something for a reader, a rule to check by hand or the references by an author, is to look
+at. Everything is still the four standard fonts; a heading still is a bookmark. Held by
+`tests/test_report_pdf.py`.
+
 **A commented copy.** The author asked for a report he could work in rather than read beside
 the paper (2026-11-10, "an interactive" one). `audit --commented FILE.docx`, and the page's
 "Save the paper with the findings as Word comments" from the same audit (`web.commented`),
@@ -10415,6 +10490,28 @@ those its elements use, and without the ones Word names in `mc:Ignorable` Word 1
 author's copy was damaged (2026-11-10). Held by
 `tests/test_properties.py::test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text`
 with five broken rules; on the author's paper Word opens the copy with 49 comments.
+
+**Said for a reader.** The text the command line prints is for a script as much as for a
+person: it says which flag would have run a check, "(--against)", "(--lookup)", and what
+`--strict` counts, "(not counted by --strict)". The page, the PDF and the comments of the
+commented copy are read by someone who runs no script and may never have seen the command
+line, and the author found them "still hard to read and not user friendly" (2026-11-11). So
+the view they are drawn from (`report.view`) and each comment's text go through
+`auditing.reader`: each of the text's phrases for a script is said for a reader or left out,
+"(counted by --strict)" is "(counted as an error)", not that the audit failed, which without
+`--strict` it does not, and a finding's context is quoted without Markdown's marks of
+emphasis, outside its code spans, as the document prints it. Its ends are not marked as cut:
+a gate's context is cut at a character count, or not at all near a paragraph's edge, or is
+no quote (a list of samples), and only the gate can say which. The text keeps every flag:
+the page shows it in a fold, and CI holds it to the command line's word for word. The line
+on what `--strict` counts goes with the phrases that name it, from the page and from the PDF;
+neither heads the findings with the paper's name where one paper was audited, nor a kind with
+its check's code (the page since #627, whose drawing of the view says so and draws the line
+on `--strict` only where the view gives it). A place a
+.docx's or a PDF's finding names in its own paper is said without the paper's name, "defined
+later at Conclusions, paragraph 26", in the text too: the report names the paper above it
+(`gates._relocated`). Held by `tests/test_audit_reader.py`, which audits papers whose text
+names the flags, with a flow and a design given, and finds none in the view or in the PDF.
 
 **Headings, exact.** A PDF marks no heading, and guessing one from a line's shape is a rule
 that reads text. So a line is a heading only where it holds a section's name and nothing else
@@ -16234,6 +16331,33 @@ been sorted yet.
   display, no `unit` field and a value at nought or one). Closed by reading the kind from
   the number the display grammar matched.
   Pinned by `tests/test_corruption.py::test_one_quantity_written_whole_and_with_decimals_at_nought_or_one_is_not_said`.
+- **G8 fails no pair of keys for holding one value.** Two quoted keys with the same value,
+  unit and kind are a warning written alike (`duplicate-quantity`) and a note written two
+  ways (`divergent-display`), which until 2026-11-11 failed at drafting. Two rebuilds of
+  real papers showed why it cannot fail: two unrelated results equal by chance, a count of
+  2 beside a median ratio of 2.00 (arXiv 2409.10841), and one correlation printed ".47" in
+  an APA text and "0.47" beside its interval under a second key, as the results-binding
+  skill says to emit a second display (PsyArXiv d8hkq_v1). The results file records of a
+  key its value, display, unit and the script that wrote it, and none of these tells one
+  quantity under two names from two that agree: one script writes both, and one line of a
+  loop writes 0.00 for two subgroups. The cost: one estimate emitted twice by mistake and
+  rounded two ways, 3.84 and 3.8, fails nothing unless declared.
+  Pinned by `tests/test_corruption.py::test_same_quantity_under_two_keys_is_said_and_fails_nothing`.
+  - `same_as` ties two displays of one value (the author's decision on #628), in R as in
+    Python: ".47" declared the same as "0.47" passes, and G8 notes nothing of the pair. A
+    declared pair still holds one value: any difference of value fails
+    `declared-same-but-differs`, compared exactly as before, so ".47" for 0.4688 beside
+    "0.47" for 0.4712 fails though the two displays round alike. It fails
+    `declared-same-but-displayed-differently` where the displays differ by more than form
+    (a leading zero, trailing zeros, one a rounding of the other, or one bound behind the
+    same comparator, "<0.001" and "<.001"): by unit text one of them has, another comparator
+    or bound, or a comparator on one side only, so "<0.001" declared the same as "0.0004",
+    "≤0.001" or "<0.01" fails.
+    Pinned by `tests/test_corruption.py::test_a_second_display_declared_same_as_passes`,
+    `tests/test_corruption.py::test_a_second_display_declared_same_as_fails_when_the_values_part`,
+    `tests/test_corruption.py::test_one_estimate_under_two_names_declared_one_fails_when_it_parts`,
+    `tests/test_corruption.py::test_a_p_value_under_one_comparator_in_two_forms_passes` and
+    `tests/test_corruption.py::test_a_p_value_under_another_comparator_or_bound_fails`.
 - **G8 holds only the arithmetic an analysis declares.** `em.relation` and `em.flow` say
   which results are a sum, a difference, a ratio or an order of which, and G8 checks those.
   A subgroup total nobody declared is not checked, and nothing searches the prose for numbers
@@ -17794,7 +17918,12 @@ Open, recorded as each change landed:
   the paper's structure allows it. In a paper with no heading G2 reads as the Methods, the
   first such heading is read as them, "Overview of methods" or "Limitations of existing
   methods" at the top level among them, as G4 has always counted either present. A title
-  with only "method" or "methodology" is no Methods to either gate, as it was none to G4.
+  that is "Method" or "Methodology" alone, numbered or not, or with "materials" ("Materials
+  and method"), is a Methods to both; one the singular is only in, "A method for signal
+  detection" or "Performance of the proposed method", is not, nor "Methodological notes".
+  "Method" is no name of the Methods to G2 and G15, which read "Methodology", so G9, which
+  reads a named Methods first, reads "Method" after a heading at its level that only holds
+  the word ("Limitations of existing methods" before it).
   A Methods with a subsection titled only "Results", "Limitations" or "Background" is taken
   for a heading over another part of the paper and is not read. G2 and G15 read
   "Methods", numbered or not, "<anything> and methods", "Methods and <anything>",
@@ -19509,7 +19638,12 @@ Open, recorded as each change landed:
   that is also underlined, highlighted or in small capitals (`**[References]{.underline}**`)
   or not, as the audit does (`text/reference_lists.py`): G14, the word count and the
   comparison with earlier papers. Brackets before braces that hold no attributes,
-  `[References]{see below}`, or escaped, are text, and open no list.
+  `[References]{see below}`, or escaped, are text, and open no list. Three more shapes
+  Word's conversion writes, found on real papers, open one: a title in a block quote,
+  `> **11. REFERENCES**:`, a title with a bookmark on it, a link,
+  `[**References**](#_Ref89712232)`, each read as pandoc prints it, and a bold title a hard
+  line break opens, `**\` over `References**`, read by the line pandoc prints. A link or a
+  quote in a sentence, "[References](#x) were read", opens none.
   The list ends at the next heading of any level, at a line shaped like a heading that
   pandoc prints as text, at a paragraph all in bold or opening with a bold label
   ("**Funding:** ..."), at a back-matter title alone on its line (a statement's, as G7's
@@ -19524,11 +19658,18 @@ Open, recorded as each change landed:
   own, an appendix of plain paragraphs, is passed over with it. The line has to open a
   paragraph, which the audit does not ask: the word alone on a line inside a paragraph is a
   hard wrap, and an item of a list, beside another item ("3. References" after "2.
-  Registries", "1. References" over "2. Registries"), an indented line, a line in a block
-  quote and one ending in a full stop ("**References.**") open none. So "6. References"
+  Registries", "1. References" over "2. Registries"), an indented line and one ending in a
+  full stop ("**References.**") open none. So "6. References"
   written by hand over entries numbered "1." opens none either, as pandoc prints it as the
   list's sixth item; `6\. References`, as pandoc writes a numbered title from Word, opens
   one. A list carried on into the next file of the manuscript is read there as prose.
+- **The audit cuts a Markdown paper at a link to the references a hard wrap left alone on
+  a line.** The audit takes a bibliography's title on any line, not only on a paragraph's
+  first, and in Markdown a link is read by its words, as pandoc prints it. So "listed in
+  the" over `[References](#refs)` over "with 77 cases." cuts the paper at the second line,
+  and the numbers after it are not audited, where `check` opens no list there. The audit
+  names the cut under "Not audited". Pinned by
+  `tests/test_audit.py::test_a_link_to_the_references_alone_on_a_wrapped_line_cuts_the_paper`.
 - **A header pandoc cannot read is read as prose until it is fixed.** A `---` block at the
   top that is not YAML at all, such as one opening on an HTML comment or one never closed
   before a later rule, stops G2 and the build, which name the YAML's error. Meanwhile the
@@ -20113,6 +20254,18 @@ Open, recorded as each change landed:
   produced. Accepted.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it. Accepted.
+- **G6 knows a citation typed as text by its shape.** In a file with no citation commands,
+  Markdown and a .docx `audit` converts, a vague attribution is judged against its pandoc
+  citations and those typed: a bracketed run of numbers, not an interval after its value,
+  and one by author and year in brackets whose names have capitals, an organisation's
+  among them, three words or more (corpus round, 2026-11-10). A place of three words and a
+  year in brackets, "(New South Wales, 2019)", has that shape and is taken for a citation,
+  as is a note's number typed "[12]" and a range in brackets with no value before it, "a
+  scale of [0-10]", "aged [18-65]", and a claim beside any of them is not reported. A
+  LaTeX file is judged against its citation commands only, so a citation it types as text
+  leaves the claim beside it vague. Pinned by
+  `tests/test_writing.py::test_a_place_and_a_year_in_brackets_are_taken_for_a_citation`
+  and `tests/test_writing.py::test_a_range_in_brackets_is_taken_for_a_numbered_citation`.
 - **A label is read only beside its binding, and only what is written.** A level or a
   spread's label written in another sentence, or before another binding of the sentence,
   is not read: "the 90% intervals are below" over a list of bounds says nothing of them. A
@@ -22318,6 +22471,18 @@ Open, recorded as each change landed:
   - A heading typed in capitals in a plain paragraph, "APPENDIX 1", and a row label in a
     table's body, "TOTAL", are reported as undefined abbreviations.
     Pinned by `tests/test_language.py::test_what_is_not_a_heading_in_capitals_is_still_read`.
+  - A plain paragraph in capitals is read as a heading only where it is a section's name
+    alone, of the closed list a title standing alone is read by (`SECTION_NAMES`), a number
+    before it or none: "2. DISCUSSION" and "ABSTRACT" are headings; "2. STUDY DESIGN",
+    "DISCUSSION ICU" and "3. MRSA" are read as words, and their capitals reported.
+    Pinned by `tests/test_language.py::test_a_line_that_is_more_than_a_section_s_name_is_still_read`.
+  - A definition with a dash is read with the long form first and a space either side of
+    the dash, "Basic Payment Scheme – BPS"; the short form first, "BPS –
+    Basic Payment Scheme", is not, outside a glossary, nor a dash with no space, which is
+    a hyphen joining a word. A short form inside a bracket is read at its start or at its end
+    after a semicolon or a comma, "(i.e. time to task failure; TTF)"; one in its middle,
+    "(as before, TTF, i.e. time to task failure)", defines nothing.
+    Pinned by `tests/test_language.py::test_a_bracket_s_end_or_a_dash_defines_only_by_the_letter_rule`.
   - In a paragraph set entirely in bold with no small letter, and in a cell of a table's
     header row with none, read as headings typed in capitals, nothing is reported as
     undefined. An abbreviation nobody defined that stands only in such places is missed:
@@ -25479,6 +25644,72 @@ What papers converted from Word showed (see "What papers converted from Word sho
     put on an earlier paragraph that holds that cell's words; a "|" in prose parts a quote
     the same way. A quote that is the finding's words alone, a heading "AS", is listed
     wherever two paragraphs hold it, a word as well as a number. Accepted.
+- **A quote on the page and in the PDF is the gate's context, cut where the gate cut it.**
+  Markdown's marks are taken off it, outside its code spans, and its ends are not marked as
+  cut, so a context cut inside a word reads as starting or ending there. A context the gate
+  cut inside a code span has one backtick left, which pairs with the next: what stands
+  between them is taken for code, and its marks stay, "x_y` and **b** and `z`" (round 2 of
+  #631). Pinned by `tests/test_audit_reader.py::test_a_quote_cut_inside_a_code_span_keeps_the_marks_after_it`.
+- **A placement marker passes G6 wherever it stands, and a gap rounding could make is a note
+  in any table.** Basile's rule of 2026-11-11, after the corpus of 52 real preprints, in
+  which both failures were always wrong. A marker, "[Insert Table 1 here]", left in a paper
+  whose tables stand in the text is not said. Categories over their column's n by no more
+  than (k + 1) / 2 for k categories, rounded down, are a note whether or not the table's
+  counts are weighted: the tool cannot tell weighted counts from others. So in a table of
+  unweighted counts, an error that puts the sum that far over is said and not counted by
+  `--strict`, and the bound grows with the categories: two or three over for four or five,
+  ten over for twenty countries. Pinned by
+  `tests/test_corruption.py::test_what_looks_like_a_placeholder_and_is_prose_passes`,
+  `tests/test_audit_sections.py::test_categories_over_their_n_by_no_more_than_rounding_are_a_note`,
+  `tests/test_margins.py::test_twenty_categories_over_their_n_by_ten_are_rounding`.
+
+- **A comparison beside a binding is read beside a statistic's symbol, and fails only for a
+  plural.** G2 reads a comparator typed beside a binding (`comparison-contradicted`) in two
+  shapes: a statistic's symbol from a closed list (p, P, F, t, r, z, d, χ², R² and I², with
+  an "s" for the plural, "p-values" and "P values", italics allowed) right before "<", ">",
+  "≤", "≥", their spellings ("<=", "&lt;", `\<`), "less than" or "greater than" (with "or
+  equal to") and the binding; and a sign right after the binding with such a symbol after
+  it, "all" allowed. It holds the value as the emitter holds a comparator display, "<2.53":
+  at the number printed or on the side the sign names, so not strictly, and a sign after
+  the binding holds it to the other side ("{{results.t_min}} < ts" says the ts are above
+  it). The real case was a psychology preprint, PsyArXiv fyxeq_v2, whose "all Fs <", "all
+  ps >" and "< ts" printed 2.53, .260 and 4.27 of 2.532, .2596 and 4.268. Pinned by
+  `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
+  - A plural states a bound on a set, every F below the binding, and the binding is the
+    set's extreme: a contradiction fails. A single statistic may be compared with a
+    threshold rather than bounded by its own value: "(z > {{results.z_crit}})" is true of a
+    z above 1.96 when the critical value 1.959964 prints "1.96", and "p <
+    {{results.alpha_bonf}}" of a p below a corrected alpha of 0.008333 printed "0.0083".
+    The rule cannot tell a threshold from a bound, so beside a singular a contradiction is a
+    warning with the same message, and a false bound typed beside one symbol, "F <" the
+    largest F rounded down, only warns (round 2 of #629). Pinned by
+    `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
+  - A comparison with any other subject is not read, before the binding or after it,
+    because there the binding may be the other side of what is compared rather than its
+    bound: "Incidence in exposed patients was greater than {{results.inc_unexposed}}" and
+    "{{results.inc_unexposed}} < the incidence in exposed patients" are true of the two
+    incidences when the binding prints 2.53 of 2.528, and read as a bound they would fail
+    (rounds 1 and 2 of #629). So "the model's t was greater than", "ps were all >", "the
+    p-value <", "t(27) <", a symbol in maths with its plural outside, `$F$s`, and a
+    statistic the list leaves out are not read either. Accepted.
+  - Other words for a comparison are not read: "below", "above", "under", "over", "more
+    than", "fewer than", "at least", "at most", "exceeding". Choosing them is a list of words
+    the rule does not settle. Accepted.
+  - A comparison of two numbers is not read: "2.6 < {{results.f}}", "{{results.a}} <
+    {{results.b}}". Nothing holds two bound values to the comparison typed between them.
+    Pinned by
+    `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
+  - Only a space, an entity of one, a comment or one line break may stand between the sign
+    and the binding: a binding in italics, "ps > *{{results.p}}*", or a unit between,
+    "{{results.t}} s < times", is not read. Accepted.
+  - In LaTeX the view is read: `$<$` and `$>$` are signs there, and `$\leq$`, `$\geq$` and
+    `\textless` are blanked by the reader and not read. `\not` is blanked too, so
+    `all Fs $\not<$ \mg{results.f}` is read as "<", and its value held below the number
+    printed. Pinned by
+    `tests/test_latex_bindings.py::test_a_comparator_beside_a_latex_binding_is_read_where_its_view_prints_a_sign`.
+  - A value whose display carries a comparator of its own, "<0.001", is held to it by the
+    emitter, and a sign typed beside it is not compared; nor is a `{{lit.…}}` value, which is
+    typed from its source rather than emitted. Accepted.
 
 - **A figure placed the ordinary way is reviewed, described and read for its colours, and
   its numbers are not traced.** Basile decided on 2026-11-11, after arXiv 2409.10841, that
@@ -25511,6 +25742,23 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `tests/test_placed_figures.py::test_a_figure_through_a_link_out_of_the_project_is_checked_and_named`.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **An Abstract's identifier was never found, nor a number under a "Method" heading
+  (2026-11-11).** Two preprints of the real-paper corpus. The audit reads an atom with
+  letters whole, "v8", "rs75015950", "chr15", and looked for it among the bare numbers of
+  the Methods, the Results and the tables alone, so each was not found beside the same
+  word in the Methods (pharm-epi); it is looked for now among the words there as well, as
+  printed, stops, brackets, emphasis marks, quotes and a possessive aside, and at a colon
+  too ("chr15:1234"), and never by the number it holds. And a heading was the Methods
+  only where it held "methods", so a paper whose Methods are titled "Method", as APA
+  titles them, or "Methodology" had none, and the Abstract's numbers reported there were
+  not found (cs-lg). `names_methods` takes a title that is "Method" or "Methodology"
+  alone too, numbered or with "materials", and nothing more: read anywhere in a title, the
+  word made "Performance of the proposed method" under "Results and discussion" a Methods,
+  and the Results no longer the Results (round 1 of #624). That holds for every reader
+  of `methods_sections` (G4, G7, G8, G9, the audit) and G8's supplement. The finding
+  also said "found nowhere the paper reports"; it says now where it was looked for, the
+  Methods, the Results or the tables.
 
 - **A known word with a dot inside was never matched (2026-11-10).** #615 wrote that
   `--known L.AS` could not hold "L.AS", which G14 read as "L" and "AS". #612, merged beside

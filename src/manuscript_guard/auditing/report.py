@@ -30,7 +30,8 @@ What was read and what was not comes first, then a section for each kind of chec
 `--strict` counts the numbers not found in the outputs, a paper or a stretch of one that
 could not be read, an audit that read no number, and what is exact arithmetic: a total that
 its counts do not add up to (`sum-off`), categories that add up to more than their column's
-n (`over-header-n`), and a count held back that a printed total gives away
+n (`over-header-n`; a note where by no more than rounding weighted counts can make, Basile,
+2026-11-11), and a count held back that a printed total gives away
 (`count-recoverable`), a flow whose arithmetic does not hold under a heading, a caption or a
 paragraph that names a flow (`flow-broken`; under none it is a note, Basile, 2026-10-29), and an
 interval or a test of the Abstract that differs from its counterpart where the paper reports
@@ -38,14 +39,15 @@ interval or a test of the Abstract that differs from its counterpart where the p
 (`blind-document-names-author`, Basile, 2026-10-29). Nothing else is counted: the P worked
 out from a statistic, G6 and G14 (the author, 2026-10-28), G7's findings, a count held back
 that only a column's n gives away, which holds only where none of the column lacks the
-characteristic, a number of the Abstract found nowhere the paper reports (the author,
-2026-10-28), G4's findings and the Document section's counts, the causal words, the cited
-sentences and the self-citation counts (Basile, 2026-10-29).
+characteristic, a number of the Abstract not found in the Methods, the Results or the
+tables (the author, 2026-10-28), G4's findings and the Document section's counts, the
+causal words, the cited sentences and the self-citation counts (Basile, 2026-10-29).
 """
 
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,6 +59,10 @@ MEMBERSHIP = "Numbers in the outputs"
 ARITHMETIC = "Arithmetic"
 SMALL_CELLS = "Small cells recoverable by subtraction"
 ABSTRACT = "Abstract against Results"
+#: Where the Abstract against Results looks for an Abstract's number, as each number not
+#: found says and the heading over them: "found nowhere the paper reports" said more than
+#: was searched, as the main text's Introduction and Discussion are not.
+ABSTRACT_SEARCHED = "the Methods, the Results or the tables"
 WRITING = "Writing (G6)"
 LANGUAGE = "Language (G14)"
 REFERENCES = "References (G7)"
@@ -138,6 +144,11 @@ def items(report) -> list[Item]:
         Item(ARITHMETIC, "audit", "over-header-n", d.message, FAIL, True, d.source, d.line,
              d.context)
         for d in report.over_n
+    ]  # fmt: skip
+    found += [
+        Item(ARITHMETIC, "audit", "over-header-n", d.message, INFO, False, d.source, d.line,
+             d.context)
+        for d in report.over_n_rounding
     ]  # fmt: skip
     found += [
         Item(ARITHMETIC, "audit", "mean-not-assessable", d.message, INFO, False, d.source,
@@ -373,8 +384,8 @@ def _abstract_items(read) -> list[Item]:
     return [
         *(Item(ABSTRACT, "audit", "abstract-conflict", d.message, FAIL, True, d.source,
                d.line, d.context) for d in read.conflicts),
-        *(Item(ABSTRACT, "audit", "abstract-not-found", f"{c.text} in the Abstract is "
-               "found nowhere the paper reports", WARN, False, c.source, c.line, c.context)
+        *(Item(ABSTRACT, "audit", "abstract-not-found", f"{c.text} in the Abstract is not "
+               f"found in {ABSTRACT_SEARCHED}", WARN, False, c.source, c.line, c.context)
           for c in read.not_found),
         *(Item(ABSTRACT, "audit", "abstract-rounded", f"{c.text} in the Abstract is found "
                "only as a rounding of a number the paper reports", INFO, False, c.source,
@@ -407,6 +418,8 @@ def as_json(report, discrimination) -> str:
         "not_compared": report.uncompared,
         "totals_off": len(report.sums_off),
         "over_header_n": len(report.over_n),
+        # Over by no more than rounding weighted counts can make: a note, not counted.
+        "over_header_n_rounding": len(report.over_n_rounding),
         # Apart, as the text says them: --strict counts the first and not the second.
         "recoverable": len(report.recovered),
         "recoverable_by_n": len(report.recovered_by_n),
@@ -582,8 +595,9 @@ def _rendered(found, root: Path | None, show: _Show) -> str:
 
 def _anything_in_arithmetic(report) -> bool:
     """Whether the Arithmetic section says more than that nothing disagrees."""
-    return bool(report.sums_off or report.over_n or report.disagreements or report.whole_numbers
-                or report.flows_read or report.flow_notes)  # fmt: skip
+    return bool(report.sums_off or report.over_n or report.over_n_rounding
+                or report.disagreements or report.whole_numbers or report.flows_read
+                or report.flow_notes)  # fmt: skip
 
 
 def _anything_in_references(report) -> bool:
@@ -742,8 +756,10 @@ def view(report, discrimination, root: Path | None = None, *, details: bool = Fa
     """The report as the web page draws it: its first lines, what was not read, what each
     check found, the findings on the words by kind with every place of each, the other
     sections with something to show (every one with `details`), as their text, and its last
-    line. The same content as `render`, every place of the words' findings in its fold."""
-    from manuscript_guard.auditing.summary import STRICT, kinds, rows
+    line. The same content as `render`, every place of the words' findings in its fold, said
+    for a reader, who runs no script and types no flag (`reader.readable`)."""
+    from manuscript_guard.auditing.reader import readable
+    from manuscript_guard.auditing.summary import STRICT, kinds, rows, standings
 
     show = _shown(root, report.placers)
     words = []
@@ -753,17 +769,19 @@ def view(report, discrimination, root: Path | None = None, *, details: bool = Fa
         words.append({"paper": show(run.paper), "note": run.note or None,
                       "converted": run.converted,
                       "kinds": kinds(found, at, details=details)})  # fmt: skip
-    return {
+    return readable({
         "header": _header(report),
         "notes": [[heading, said] for heading, said in _notes(report)],
         "checks": [[name, said] for name, said in rows(report)],
+        # Where each check stands, by its name: what the PDF colours its tile by.
+        "standing": standings(report),
         "strict": STRICT,
         "words": words,
         "sections": [[heading, "\n".join(said)] for heading, said
                      in _sections(report, discrimination, root, show, details=details)
                      if heading != WORDS],  # fmt: skip
         "closing": _closing(report),
-    }
+    })
 
 
 def _header(report) -> list[str]:
@@ -868,6 +886,10 @@ def _arithmetic(report, show) -> list[str]:
     over = _listed("CATEGORIES THAT ADD UP TO MORE THAN THEIR COLUMN'S N, their shares to 100 "
                    "(counted by --strict):", report.over_n, show)  # fmt: skip
     lines += ([""] if lines and over else []) + over
+    rounded = _listed("CATEGORIES THAT ADD UP TO MORE THAN THEIR COLUMN'S N BY NO MORE THAN "
+                      "ROUNDING WEIGHTED COUNTS CAN MAKE, half a count for each category and for "
+                      "the n (not counted by --strict):", report.over_n_rounding, show)  # fmt: skip
+    lines += ([""] if lines and rounded else []) + rounded
     if lines and report.disagreements:
         lines.append("")
     if report.disagreements:
@@ -948,7 +970,7 @@ def _abstract(read, show) -> list[str]:
     for heading, found in (
         ("AN INTERVAL OR A TEST THAT DIFFERS FROM ITS COUNTERPART IN ONE NUMBER (counted by "
          "--strict):", read.conflicts),
-        ("NOT FOUND IN THE METHODS, THE RESULTS OR THE TABLES (not counted by --strict):",
+        (f"NOT FOUND IN {ABSTRACT_SEARCHED.upper()} (not counted by --strict):",
          read.not_found),
         ("FOUND ONLY AS A ROUNDING (not counted by --strict):", read.rounded),
     ):
@@ -1035,6 +1057,8 @@ def _references(report, show) -> list[str]:
         if len(census.problems) > LISTED:
             lines.append(f"    (+{len(census.problems) - LISTED} more)")
         lines += _looked(looked.get(census.path, []), census.path, show)
+        if report.lookups is not None and style != UNTOLD:
+            lines += _unlooked(census, show)
     if report.lookups is None:
         lines.append(
             "  Nothing was looked up: --lookup asks Crossref and OpenAlex of each DOI, and "
@@ -1159,6 +1183,38 @@ def _at(path: Path | None, line: int | None, paper: Path, show) -> str:
         return ""
     return (f"{show(path)} {show.at(path, line)}: " if path is not None and path != paper
             else f"{show.at(paper, line)}: ")  # fmt: skip
+
+
+#: How much of an entry is quoted where the report names one it could not look up.
+ENTRY_QUOTED = 90
+#: The number an entry is typed with, which the report says as its label.
+_LIST_NUMBER = re.compile(r"^\\?[\[(]?\d{1,4}\\?[\].)]\s+")
+
+
+def _unlooked(census, show) -> list[str]:
+    """Each entry of `census`'s list that was not looked up for having no DOI and no PMID,
+    at its place, by its number and its first words: an entry left out of the look-up is
+    said, not passed over (the author's audit, 2026-11-11: "we need to check all references,
+    or say which ones were not checked and why"). Every one, as the reader asked for each."""
+    from manuscript_guard.auditing.references import BY_PLACE, without_identifier
+
+    missing = [entry for entry in census.entries if without_identifier(entry)]
+    if not missing:
+        return []
+    lines = [f"    not looked up, having no DOI or PMID to look up: "
+             f"{len(missing)} entr{'y' if len(missing) == 1 else 'ies'}"]  # fmt: skip
+    for entry in missing:
+        # "3. Brown L. ..." under "entry 3": the number once, typed as it may be ("1." on
+        # every item of a Markdown list, "3\.").
+        typed = " ".join(entry.text.split())
+        if entry.number is not None and census.style != BY_PLACE:
+            # Only a list whose numbers are typed has its entry's taken off (round 2 of #632:
+            # an unnumbered entry, or one Word numbers, may open on its year).
+            typed = _LIST_NUMBER.sub("", typed, count=1)
+        quoted = typed if len(typed) <= ENTRY_QUOTED else typed[:ENTRY_QUOTED].rstrip() + "…"
+        lines.append(f"      {_at(entry.path, entry.line, census.path, show)}{entry.label}"
+                     + (f": {quoted}" if quoted else ""))  # fmt: skip
+    return lines
 
 
 def _looked(looked: list, paper: Path, show) -> list[str]:

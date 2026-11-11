@@ -178,8 +178,8 @@ def test_an_abstract_input_inside_its_environment_is_read_apart(project: Path) -
     })  # fmt: skip
     (found,) = [f for f in report.findings if f.code.startswith("abbreviation-")]
     assert found.message == (
-        "ROR is used 2 times in the main text and not defined there; the abstract defines it, "
-        "and is read apart from the paper"
+        "ROR is used 2 times in the main text as G14 reads it, and not defined there; the "
+        "abstract defines it, and is read apart from the paper"
     )
     assert found.line == 6
 

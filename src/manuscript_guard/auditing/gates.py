@@ -308,9 +308,12 @@ def _relocated(
     file by its path from the project's root, "manuscript/main.md:476", and the staged
     `main.md` or `main.tex` is the paper under another name: it is named by the paper's
     name, a file of its LaTeX tree by its path in the tree, a line of a PDF's staged
-    Markdown as the page and the line of its text, "paper.pdf, page 3, line 12", and a line
-    of a .docx's converted text as its section and paragraph, "paper.docx, Methods,
-    paragraph 3" (`said` with no `lines`)."""
+    Markdown as the page and the line of its text, "page 3, line 12", and a line of a
+    .docx's converted text as its section and paragraph, "Methods, paragraph 3" (`said` with
+    no `lines`). Those two are places in the very paper whose finding names them, which the
+    report names over it, so its name is not said again at each (the author's audit,
+    2026-11-11: "defined later at Pharmaquest_manuscript_untracked.docx, Conclusions,
+    paragraph 26")."""
     if not back:
         return lambda text: text
     names = "|".join(re.escape(name) for name in sorted(back, key=len, reverse=True))
@@ -325,8 +328,8 @@ def _relocated(
         if said is not None and name == "main.md":
             at = int(line)
             if not lines:
-                return f"{file}, {said(at)}"
-            return f"{file}, {said(lines[at - 1] if 0 < at <= len(lines) else None)}"
+                return said(at)
+            return said(lines[at - 1] if 0 < at <= len(lines) else None)
         return f"{file}:{line}"
 
     return lambda text: place.sub(shown, text)

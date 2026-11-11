@@ -377,6 +377,19 @@ def test_a_reference_heading_truncates_the_paper() -> None:
     assert "77" in strip_bibliography(text)
 
 
+def test_a_link_to_the_references_alone_on_a_wrapped_line_cuts_the_paper() -> None:
+    """A known gap (DESIGN.md, Known gaps): the audit takes a bibliography's title on any
+    line, and a link is read by its words, so a hard wrap that leaves `[References](#refs)`
+    alone on a line inside a paragraph cuts the paper there. `check` asks for a paragraph's
+    first line and opens no list."""
+    from manuscript_guard.audit import bibliography_spans
+    from manuscript_guard.text.reference_lists import unmarked_reference_lists
+
+    text = "The entries are listed in the\n[References](#refs)\nwith 77 cases.\n"
+    assert bibliography_spans(text) == [(1, 3)]
+    assert unmarked_reference_lists(text) == []
+
+
 def test_a_reference_entry_is_recognised_without_a_heading() -> None:
     """citeproc appends the bibliography with no heading, so there is nothing to cut at."""
     assert looks_like_reference(
@@ -1650,7 +1663,10 @@ def test_a_docx_titled_in_bold_is_placed_by_its_titles_and_says_so(tmp_path: Pat
 
     measured = measure_discrimination(report.backing_values)
     assert f"How the headings were read:\n  {said}" in render(report, measured, tmp_path)
-    assert ["How the headings were read:", [said]] in view(report, measured, tmp_path)["notes"]
+    # The page and the PDF say it without the command `init --from` (`reader.for_a_reader`).
+    plain = said.replace(", as `init --from` makes them;", ";")
+    assert plain != said
+    assert ["How the headings were read:", [plain]] in view(report, measured, tmp_path)["notes"]
 
 
 def test_a_docx_with_no_heading_is_said_to_be_read_as_one_text(tmp_path: Path) -> None:
@@ -1712,6 +1728,151 @@ def test_the_abstract_reads_the_number_a_space_was_left_out_of(atom: str, parts:
     from manuscript_guard.auditing.abstract import printed_parts
 
     assert printed_parts(atom) == parts
+
+
+#: The shape of a genetics preprint of the real-paper corpus (pharm-epi, 2026-11-11): its
+#: Abstract names its data release, its GWAS, a variant and its chromosome by identifiers
+#: the Methods print again, one with a stop after it and one in brackets.
+_IDENTIFIED = (
+    "# A study\n\n## Abstract\n\nWe used GTEx v8 and the GWAS ieu-a-1185, and rs75015950 on "
+    "chr15 led, beside MPL-9 and K-12 here.\n\n## Methods\n\nWe used GTEx v8. Variant "
+    "rs75015950 lies on chr15. The GWAS (ieu-a-1185) was read, with MPL-9 and [K-12].\n\n"
+    "## Results\n\nIt was so.\n"
+)
+
+
+def _abstract_of(tmp_path: Path, text: str, suffix: str = ".md"):
+    paper = tmp_path / f"paper{suffix}"
+    paper.write_text(text, encoding="utf-8")
+    read = audit([paper], None).abstract
+    assert read is not None and read.compared, text
+    return read
+
+
+def test_an_identifier_of_the_abstract_is_found_where_the_methods_print_it(
+    tmp_path: Path,
+) -> None:
+    """An atom with letters is read whole, and was looked for among the bare numbers only:
+    "v8", "rs75015950" and "chr15" beside the same words in the Methods were each not
+    found (pharm-epi of the real-paper corpus). Each is found now as printed, a whole word
+    there, its stop and brackets aside."""
+    read = _abstract_of(tmp_path, _IDENTIFIED)
+    assert [c.text for c in read.not_found] == [], [c.text for c in read.not_found]
+    assert {"v8", "rs75015950", "chr15", "ieu-a-1185", "MPL-9", "K-12"} <= {
+        c.text for c in read.found}, [c.text for c in read.found]  # fmt: skip
+
+
+def test_an_identifier_is_not_found_by_its_digits_nor_outside_what_the_paper_reports(
+    tmp_path: Path,
+) -> None:
+    """An identifier is found only as printed: "rs4242" is not found where the Methods give
+    4242 alone, nor "rs1101" where only the Discussion gives it; nor is a number found as a
+    rounding of an identifier's, or as a word: 7.25 is not found beside "v7.3"."""
+    text = (
+        "# A study\n\n## Abstract\n\nVariant rs4242 and rs1101 gave 7.25 here.\n\n"
+        "## Methods\n\nIt was 4242 then, with v7.3.\n\n## Results\n\nIt was so.\n\n"
+        "## Discussion\n\nWe saw rs1101.\n"
+    )
+    read = _abstract_of(tmp_path, text)
+    assert sorted(c.text for c in read.not_found) == ["7.25", "rs1101", "rs4242"], [
+        c.text for c in read.not_found]  # fmt: skip
+    assert read.found == [] and read.rounded == []
+
+
+@pytest.mark.parametrize("written", [
+    "*rs75015950*", "_rs75015950_", "**rs75015950**", "\N{LEFT DOUBLE QUOTATION MARK}"
+    "rs75015950\N{RIGHT DOUBLE QUOTATION MARK}", '"rs75015950"', "'rs75015950'",
+    "rs75015950\N{RIGHT SINGLE QUOTATION MARK}s", "rs75015950's", "rs75015950:1234",
+    "(*rs75015950*).",
+])  # fmt: skip
+def test_an_identifier_is_found_in_emphasis_quotes_a_possessive_or_before_a_colon(
+    tmp_path: Path, written: str
+) -> None:
+    """The text the Abstract is held to keeps a Markdown paper's emphasis marks, and a word
+    may be quoted, possessive, or a chromosome's before its position, "chr15:1234": the
+    identifier is the word without them (round 1 of #624)."""
+    text = (f"# A study\n\n## Abstract\n\nThe variant rs75015950 led here.\n\n## Methods\n\n"
+            f"Variant {written} lies there.\n\n## Results\n\nIt was so.\n")  # fmt: skip
+    read = _abstract_of(tmp_path, text)
+    assert [c.text for c in read.found] == ["rs75015950"], [c.text for c in read.not_found]
+
+
+def test_an_abstract_s_identifier_with_a_colon_is_found_whole(tmp_path: Path) -> None:
+    """"chr15:1234" in the Abstract is read whole, and found where the Methods print it."""
+    text = ("# A study\n\n## Abstract\n\nIt lies at chr15:1234 here.\n\n## Methods\n\nIt lies "
+            "at chr15:1234.\n\n## Results\n\nIt was so.\n")  # fmt: skip
+    assert [c.text for c in _abstract_of(tmp_path, text).found] == ["chr15:1234"]
+
+
+def test_a_method_subsection_of_the_results_and_discussion_is_no_methods(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #624: with "method" read anywhere in a title, "Performance of the proposed
+    method" under "Results and discussion" was a Methods, the Results over it no longer the
+    Results, and the Abstract was not compared, where main compared it."""
+    text = ("# Abstract\n\nIt was 41.7.\n\n# Materials and methods\n\n# Results and "
+            "discussion\n\nIt was 41.7.\n\n## Performance of the proposed method\n\nFine.\n")
+    read = _abstract_of(tmp_path, text)
+    assert read.matched == 1 and read.not_found == []
+
+
+@pytest.mark.parametrize(("title", "methods"), [
+    ("Method", True), ("2. Method", True), ("**3. Method**", True), ("METHOD", True),
+    ("Methodology", True), ("Materials and Method", True), ("Material and method", True),
+    ("Method and materials", True), ("Method:", True),
+    # As main read them: the plural anywhere.
+    ("Statistical methods", True), ("eMethods 1", True), ("Limitations of existing methods",
+                                                          True),
+    ("Performance of the proposed method", False), ("A method for signal detection", False),
+    ("Proposed method", False), ("Methodological notes", False), ("Our methodology", False),
+])  # fmt: skip
+def test_the_singular_method_names_the_methods_only_as_the_whole_title(
+    title: str, methods: bool
+) -> None:
+    from manuscript_guard.text.section_names import names_methods
+
+    assert names_methods(title) is methods
+
+
+@pytest.mark.parametrize("title", ["Method", "3. Method", "Methodology", "Materials and method"])
+@pytest.mark.parametrize("suffix", [".md", ".tex"])
+def test_a_number_of_the_abstract_is_found_under_a_method_heading(
+    tmp_path: Path, title: str, suffix: str
+) -> None:
+    """A machine-learning paper of the real-paper corpus (cs-lg, 2026-11-11) titles its
+    Methods "Method", as APA does: a heading without "methods" was no Methods, and the
+    Abstract's numbers reported there were each not found."""
+    if suffix == ".md":
+        text = (f"# A study\n\n## Abstract\n\nIt has 9.2 million weights and ran 5.9 hours."
+                f"\n\n## {title}\n\nIt has 9.2 million weights and ran 5.9 hours.\n\n"
+                "## Results\n\nIt was so.\n")  # fmt: skip
+    else:
+        text = ("\\documentclass{article}\n\\begin{document}\n\\begin{abstract}\nIt has 9.2 "
+                "million weights and ran 5.9 hours.\n\\end{abstract}\n\\section{"
+                f"{title}}}\nIt has 9.2 million weights and ran 5.9 hours.\n\n"
+                "\\section{Results}\nIt was so.\n\\end{document}\n")  # fmt: skip
+    read = _abstract_of(tmp_path, text, suffix)
+    assert read.not_found == [] and read.matched == 2, [c.text for c in read.not_found]
+
+
+def test_a_number_not_found_says_where_it_was_looked_for(tmp_path: Path, capsys) -> None:
+    """The finding said "found nowhere the paper reports", and only the Methods, the Results
+    and the tables are read for it: the Introduction and the Discussion are not. It says
+    what was searched, in the words of the heading over the list."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("# A study\n\n## Abstract\n\nIt was 41.7 here.\n\n## Results\n\nIt was "
+                     "so.\n\n## Discussion\n\nIt was 41.7 here.\n", encoding="utf-8")  # fmt: skip
+    main(["audit", str(paper), "--json"])
+    import json
+
+    report = json.loads(capsys.readouterr().out)
+    (found,) = [f for f in report["findings"] if f["code"] == "abstract-not-found"]
+    assert found["message"] == ("41.7 in the Abstract is not found in the Methods, the "
+                                "Results or the tables")  # fmt: skip
+    main(["audit", str(paper)])
+    assert "NOT FOUND IN THE METHODS, THE RESULTS OR THE TABLES" in capsys.readouterr().out
 
 
 #: A paper whose words G14 asks a project to set paper.yaml for: abbreviations used and not

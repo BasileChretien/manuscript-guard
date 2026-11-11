@@ -69,6 +69,7 @@ from manuscript_guard.text.blocks import Heading, find_headings
 from manuscript_guard.text.inline import code_spans, equation_spans
 from manuscript_guard.text.masking import NUL, front_matter_end, mask
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
+from manuscript_guard.text.section_names import section_name_alone
 from manuscript_guard.text.sections import Section
 
 if TYPE_CHECKING:
@@ -127,6 +128,28 @@ _EDGES = _QUOTES + ".,;:()[]"
 _OPENS_WITH = re.compile(
     rf"[\s{re.escape(_QUOTES)}]*(?P<short>{_PARTS})[\s{re.escape(_QUOTES)}]*"
     r"(?:$|[;,:])"
+)
+# The short form closing a bracket after a semicolon or a comma, its long form before the
+# separator: "(i.e. time to task failure; TTF)" (an exercise physiology preprint of the
+# real-paper corpus), "[that is, the hazard ratio, HR]". The last separator is the one.
+_CLOSES_WITH = re.compile(
+    rf"(?P<before>.*)[;,][\s{re.escape(_QUOTES)}]*(?P<short>{_PARTS})[\s{re.escape(_QUOTES)}]*$",
+    re.DOTALL,
+)
+# A short form after a dash with a space on either side, its long form before the dash:
+# "Basic Income Support for Sustainability - BISS", "Basic Payment Scheme \N{EN DASH} BPS"
+# (an agricultural-policy preprint of the real-paper corpus), a hyphen, an en dash or an em
+# dash, or "--" and "---", which pandoc prints as those; a no-break space is a space. The
+# whole word, not a part of `BPS-based`. And one followed by an equals sign or a number, or
+# by a colon, a comma or an opening bracket and a number, past spaces of either kind, gives
+# a statistic and defines nothing: "higher in older people - OR, 1.52", "- OR: 1.52" and
+# "- OR (95% CI 1.1-2.0) 1.52" are the odds ratio's value (rounds 1 and 2 of #623), where
+# "Basic Payment Scheme - BPS, which pays farmers" defines.
+_DASH_SPACE = r"[ \t\N{NO-BREAK SPACE}]"
+_DASHED = re.compile(
+    rf"(?<=\S){_DASH_SPACE}+(?:---?|[-\N{{EN DASH}}\N{{EM DASH}}]){_DASH_SPACE}+"
+    rf"(?P<short>{_PARTS})(?![^\W_]|-[^\W_])"
+    rf"(?!{_DASH_SPACE}*(?:=|(?:[:,(]{_DASH_SPACE}*)?\d))"
 )
 #: The brackets a long form opens and closes, round and square: a letter of its short form
 #: is not found inside one it opens (`_inside_a_bracket`).
@@ -759,22 +782,32 @@ def _inside(spans: tuple[tuple[int, int], ...], offset: int) -> bool:
 def _in_capitals(prose: str) -> list[tuple[int, int]]:
     """Where `prose` holds a heading typed in capitals: a paragraph set entirely in bold
     whose letters are all capitals, "**ABSTRACT**", which is how a manuscript converted from
-    Word writes a heading, pandoc making one only of a heading style; and a cell of a
-    table's header row whose letters are, "MODEL 1". Not a table's body, whose cells name
-    what the rows count, `COPD` among them, nor a plain paragraph or a list item. In order,
-    and none inside another."""
+    Word writes a heading, pandoc making one only of a heading style; a paragraph that is
+    only a section's name in capitals, numbered or not, "2. DISCUSSION", "ABSTRACT", as a
+    paper typed in Word has its headings in plain capitals (`_names_a_section`); and a cell
+    of a table's header row whose letters are, "MODEL 1". Not a table's body, whose cells
+    name what the rows count, `COPD` among them, nor any other plain paragraph or a list
+    item. In order, and none inside another."""
     spans: list[tuple[int, int]] = []
     start = 0
     for gap in (*_BLANK_LINE.finditer(prose), None):
         end = len(prose) if gap is None else gap.start()
         paragraph = prose[start:end]
-        if _BOLD.fullmatch(paragraph) and paragraph.isupper():
+        if paragraph.isupper() and (_BOLD.fullmatch(paragraph) or _names_a_section(paragraph)):
             spans.append((start, end))
         else:
             spans += _header_cells(prose, start, end)
         if gap is not None:
             start = gap.end()
     return sorted(spans)
+
+
+def _names_a_section(paragraph: str) -> bool:
+    """Whether a paragraph is only a section's name, of the closed list a title standing
+    alone is read as a heading by (`section_name_alone`), a number before it or none, its
+    stop escaped as pandoc writes a numbered Word paragraph or not: "2. DISCUSSION",
+    "1\\. INTRODUCTION", "ABSTRACT" (corpus papers converted from Word)."""
+    return section_name_alone(_ESCAPE.sub(r"\1", paragraph)) is not None
 
 
 def _header_cells(prose: str, start: int, end: int) -> list[tuple[int, int]]:
@@ -848,15 +881,52 @@ def _short_inside(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | 
     if opening is None or not _may_be_defined(opening.group("short")):
         return None
     short = opening.group("short")
-    before = prose[max(0, bracket.start() - 400) : bracket.start()]
-    before = _BLANK_LINE.split(before)[-1]
+    long = _read_back(short, _paragraph_before(prose, bracket.start()))
+    if long is None:
+        return None
+    return bracket.start(1) + opening.start("short"), _stem(short, long), long
+
+
+def _short_closing(bracket: re.Match[str]) -> tuple[int, str, str] | None:
+    """A definition with its short form closing the bracket after a semicolon or a comma,
+    and its long form before the separator: "(i.e. time to task failure; TTF)"."""
+    closing = _CLOSES_WITH.match(bracket.group(1))
+    if closing is None or not _may_be_defined(closing.group("short")):
+        return None
+    short = closing.group("short")
+    long = _read_back(short, closing.group("before"))
+    if long is None:
+        return None
+    return bracket.start(1) + closing.start("short"), _stem(short, long), long
+
+
+def _dashed(prose: str) -> list[tuple[int, str, str]]:
+    """The definitions with a dash: "Basic Payment Scheme - BPS", the long form before the
+    dash in its paragraph."""
+    found = []
+    for dash in _DASHED.finditer(prose):
+        short = dash.group("short")
+        if not _may_be_defined(short):
+            continue
+        long = _read_back(short, _paragraph_before(prose, dash.start()))
+        if long is not None:
+            found.append((dash.start("short"), _stem(short, long), long))
+    return found
+
+
+def _paragraph_before(prose: str, end: int) -> str:
+    """The text of the paragraph before `end`, at most 400 characters of it."""
+    return _BLANK_LINE.split(prose[max(0, end - 400) : end])[-1]
+
+
+def _read_back(short: str, before: str) -> str | None:
+    """The long form `short` abbreviates at the end of `before`, within Schwartz and
+    Hearst's bound, of its singular where the plural's letters are not there."""
     words = " ".join(before.split()[-_window(short) :])
     long = _long_form(short, words)
     if long is None and short != _singular(short):
         long = _long_form(_singular(short), words)
-    if long is None:
-        return None
-    return bracket.start(1) + opening.start("short"), _stem(short, long), long
+    return long
 
 
 def _long_inside(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | None:
@@ -901,21 +971,27 @@ def _long_after(
 def _definitions(prose: str) -> list[tuple[int, str, str]]:
     """Every definition in `prose`: where its short form stands, the form it defines, and
     the long form. Both orders in round brackets, "reporting odds ratio (ROR)" and "ROR
-    (reporting odds ratio)", and the short form in square ones, "hazard ratio [HR]"."""
+    (reporting odds ratio)", and the short form in square ones, "hazard ratio [HR]"; in
+    either, the short form closing the bracket after a separator with its long form before
+    that, "(i.e. time to task failure; TTF)"; and the short form after a dash, "Basic
+    Payment Scheme - BPS"."""
     found: list[tuple[int, str, str]] = []
     for bracket in _PAREN.finditer(prose):
         if _BLANK_LINE.search(bracket.group(1)):
             continue
-        definition = _short_inside(prose, bracket) or _long_inside(prose, bracket)
+        definition = (_short_inside(prose, bracket) or _long_inside(prose, bracket)
+                      or _short_closing(bracket))  # fmt: skip
         if definition is not None:
             found.append(definition)
     for bracket in _SQUARE.finditer(prose):
         if _BLANK_LINE.search(bracket.group(1)):
             continue
-        definition = _short_inside(prose, bracket)
+        definition = _short_inside(prose, bracket) or _short_closing(bracket)
         if definition is not None:
             found.append(definition)
-    return found
+    # A short form a bracket already defines where it stands is not defined there again.
+    bracketed = {at for at, _short, _long in found}
+    return found + [each for each in _dashed(prose) if each[0] not in bracketed]
 
 
 def _listed_as(form: str, known: _Known) -> bool:
@@ -1453,7 +1529,9 @@ def _given_again(
         if again is not first and not _same_meaning(first.long, again.long):
             found.append((
                 again,
-                f"{short} is defined as {again.long!r} here and as {first.long!r} "
+                # The long forms quoted as typed: `repr` doubled a backslash an escape had,
+                # "d\'Intérêt" (the author's audit, 2026-11-11).
+                f"{short} is defined as '{again.long}' here and as '{first.long}' "
                 f"{said(first, again)}",
                 "one short form, one meaning: a reader keeps the first",
             ))  # fmt: skip
@@ -1515,6 +1593,12 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
         same = one.path == other.path and one.line_of(mark.offset) == other.line_of(here.offset)
         return beside if same else f"{at} {where(mark)}"
 
+    def listed(mark: _Mark) -> bool:
+        """Whether `mark` stands in a list of abbreviations, whose entries are said as such
+        (the author's audit, 2026-11-11: "defined later at ... Conclusions, paragraph 26" of
+        the list at the end, and "write '...' out and drop the short form" of its entries)."""
+        return _in_a_glossary(files[mark.order], mark.offset)
+
     def finding(code: str, mark: _Mark, short: str, message: str, hint: str) -> Finding:
         file = files[mark.order]
         return Finding(
@@ -1544,7 +1628,24 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
             first = definitions[0]
             uses = sorted(scope.used.get(short, ()), key=lambda mark: mark.key)
 
-            if uses and uses[0].key < first.key:
+            if uses and uses[0].key < first.key and all(listed(mark) for mark in definitions):
+                # Defined only in the list of abbreviations, after this use: the text owes
+                # the long form at first use as well, as most journals ask. Where the text
+                # spells it out too, after the list, it is defined later there, as before
+                # (review of #634).
+                findings.append(
+                    finding(
+                        "abbreviation-used-before-defined",
+                        uses[0],
+                        short,
+                        f"{short} is used here and not spelt out; only the list of "
+                        "abbreviations defines it, "
+                        + placed(first, uses[0], "at", "on the same line"),
+                        "spell it out where it first appears, the long form then the short "
+                        "form in brackets: most journals ask for that besides the list",
+                    )
+                )
+            elif uses and uses[0].key < first.key:
                 findings.append(
                     finding(
                         "abbreviation-used-before-defined",
@@ -1570,14 +1671,32 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
 
             # A funder or a society named in full with its acronym, once, is how those
             # statements are written; nothing later is expected to use it.
-            if not uses and not first.quiet:
+            if not uses and not first.quiet and all(listed(mark) for mark in definitions):
+                # An entry of the list of abbreviations nothing else uses: the list's to drop,
+                # not the text's to write out.
                 findings.append(
                     finding(
                         "abbreviation-unused",
                         first,
                         short,
-                        f"{short} is defined and not used again in the {scope.name}",
-                        f"write {first.long!r} out and drop the short form, unless a table "
+                        # Not "nowhere else": another entry of the list may use it, and the
+                        # list's lines are no uses (review of #634).
+                        f"{short} is in the list of abbreviations and not used in the "
+                        f"{scope.name} as G14 reads it",
+                        "take it out of the list, unless the title page, a table, a figure, "
+                        "another entry of the list or the supplementary material uses it: "
+                        "the title page, tables and figures are not read here",
+                    )
+                )
+            elif not uses and not first.quiet:
+                findings.append(
+                    finding(
+                        "abbreviation-unused",
+                        first,
+                        short,
+                        f"{short} is defined and not used again in the {scope.name} as G14 "
+                        "reads it",
+                        f"write '{first.long}' out and drop the short form, unless a table "
                         "or a figure uses it: those are not read here",
                     )
                 )
@@ -1593,7 +1712,10 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
             if not uses:
                 continue
             times = "once" if len(uses) == 1 else f"{len(uses)} times"
-            message = f"{short} is used {times} in the {scope.name} and not defined there"
+            # As G14 reads it: not a figure's caption or a LaTeX `comment` (DESIGN.md, Known
+            # gaps), so a use or a definition there is not counted (corpus round, 2026-11-10).
+            message = (f"{short} is used {times} in the {scope.name} as G14 reads it, and not "
+                       "defined there")  # fmt: skip
             if scope.name == BODY and short in scopes[ABSTRACT].defined:
                 message += "; the abstract defines it, and is read apart from the paper"
             findings.append(

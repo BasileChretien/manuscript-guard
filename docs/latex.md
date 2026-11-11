@@ -26,7 +26,10 @@ are checked against the library, `literature/references.bib`, which `build` puts
 entry file as `references.bib` and compiles with. Bring the paper's `.bib` into it, through
 Zotero and `sync-bib` or by copying the file there, and have the document name it,
 `\bibliography{references}`. Then run `check`: a refusal names a line the reader cannot
-read exactly ("What the reader reads" below).
+read exactly ("What the reader reads" below). `lookup` asks the registries about each
+reference the `.tex` files cite, the keys G7 reads, by the DOI or PMID of its entry in the
+library; an entry with neither is searched for by its title. A part the reader refuses
+hides the citations after it, so `lookup` refuses the paper until it is put right.
 
 A `.tex` file that the class or a package you load inputs, such as a list of journals a
 journal's class keeps in its own folder, is the class's: `check` does not read it. One that
@@ -202,6 +205,7 @@ with `not-read-in-latex`, a note before `submission` and a failure from it, so t
 manuscript only part of the checks read is never passed for submission.
 
 These commands read Markdown only, and refuse a LaTeX manuscript with a sentence: `render`,
-`reworded`, `checker`, `import` (the Word round trip), `proof`, `impact`, `audit` of a `.tex`
-file, `respond --open --from` a returned Word document, `review --suggestions`,
+`reworded`, `checker`, `import` (the Word round trip), `proof`, `impact`,
+`respond --open --from` a returned Word document, `review --suggestions`,
 `references --comments`, and `build --annotated` and `--marked-up`, which make Word copies.
+`audit` reads a `.tex` paper with the files it inputs ([audit.md](audit.md)).

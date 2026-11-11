@@ -49,6 +49,7 @@ from manuscript_guard.contracts import (
 from manuscript_guard.findings import WARN, Finding, Report, merge_all
 from manuscript_guard.gates import (
     check_ai_use,
+    check_bound_comparisons,
     check_bound_units,
     check_boxes,
     check_citations,
@@ -198,6 +199,7 @@ def _gate_run(
         ("G1", lambda: check_freshness(project, results)),
         ("G2", lambda: check_numbers(project, namespace, results, literature)),
         ("G2", lambda: check_bound_units(project, results)),
+        ("G2", lambda: check_bound_comparisons(project, results)),
         ("G3", lambda: check_figures(project, results)),
         ("G3", lambda: check_figure_alt(project, namespace, chosen)),
         ("G3", lambda: check_figure_colours(project)),
@@ -5392,13 +5394,24 @@ def cmd_lookup(args: argparse.Namespace) -> int:
         return _lookup_journals(project, args)
     if args.registrations:
         return _lookup_registrations(project, args)
-    empty = why_no_manuscript(project)
+    from manuscript_guard.gates.numbers import _is_latex
+    from manuscript_guard.text.reader import CitationsUnknown
+
+    # A LaTeX manuscript's citations are read as G7 reads them (`text/reader.citation_uses`);
+    # `why_no_manuscript` looks for Markdown only, and said a paper's `.tex` was not read.
+    empty = None if _is_latex(project) else why_no_manuscript(project)
     bib = project.path("literature") / lookup.BIB_FILE
     if empty or not bib.is_file():
         reason = empty or f"there is no {bib.relative_to(project.root).as_posix()}"
         print(f"manuscript-guard: nothing to look up: {reason}", file=sys.stderr)
         return 2
-    planned = lookup.plan(project, again=args.again)
+    try:
+        # A part the LaTeX reader refuses hides the keys after it: "1 looked up", or "cites
+        # nothing", would be said of a paper that cites more. Refused as `sync-bib` refuses.
+        planned = lookup.plan(project, again=args.again, whole=True)
+    except CitationsUnknown as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
     due = [p for p in planned if not p.skipped]
     for one in planned:
         if one.skipped and one.skipped != "up to date":

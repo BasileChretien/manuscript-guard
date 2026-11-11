@@ -782,11 +782,20 @@ def test_an_r_figure_that_estimates_while_it_draws_is_warned(
     assert found == said
 
 
-def test_same_quantity_under_two_keys_is_caught(project: Path) -> None:
+def _divergent(project: Path) -> list[tuple[str, str]]:
+    """The divergent-display findings of the project, as (severity, message)."""
+    return [(f.severity, f.message) for f in gate_report(project).findings
+            if f.code == "divergent-display"]
+
+
+def test_same_quantity_under_two_keys_is_said_and_fails_nothing(project: Path) -> None:
     """One quantity, two keys, two roundings — 3.84 in one place and 3.8 in another.
 
-    Both displays are honest renderings of the value, which is what makes this the case G8
-    exists for: nothing is false, and the paper still contradicts itself.
+    Both displays are honest renderings of the value. The pair is said, as a note: the
+    results file records nothing that tells it from two quantities that agree, or from one
+    printed two ways on purpose, so it fails nothing (2026-11-11; Known gaps, "G8 fails no
+    pair of keys for holding one value"). A pair declared one quantity still fails when it
+    parts (`test_one_estimate_under_two_names_declared_one_fails_when_it_parts`).
     """
     fragment = next((project / "results").glob("*.json"))
     document = json.loads(fragment.read_text(encoding="utf-8"))
@@ -795,7 +804,172 @@ def test_same_quantity_under_two_keys_is_caught(project: Path) -> None:
     document["values"]["ror.duplicate"]["digits"] = 1
     fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
     write_digest(fragment)  # the edit is legitimate here; we are testing G8, not G1
-    assert "divergent-display" in codes(gate_report(project))
+    assert "divergent-display" not in codes(gate_report(project))
+    assert [severity for severity, _ in _divergent(project)] == ["info"]
+
+
+def _add_keys(project: Path, keys: dict[str, dict]) -> None:
+    """Add keys to the example's fragment, each a copy of `ror.point` with no unit and the
+    fields given, and sign the fragment again: these tests are of G8, not G1."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    point = document["values"]["ror.point"]
+    for key, fields in keys.items():
+        document["values"][key] = {**{k: v for k, v in point.items() if k != "unit"}, **fields}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def test_two_quantities_that_happen_to_be_equal_fail_nothing(project: Path) -> None:
+    """arXiv 2409.10841, rebuilt with the R emitter: a count of two conditions written "2"
+    and a median ratio of 2.00, and a share written "0.0" beside a difference at "0.00", none of
+    them with a unit, failed at drafting as one quantity written two ways, and the hint said
+    to emit each pair once, which would have made the paper wrong. Equal values are all the
+    record shows, so the pairs are said as notes and nothing fails."""
+    _add_keys(project, {
+        "design.n_conditions": {"value": 2, "display": "2", "digits": 0},
+        "ratio.median_max": {"value": 2, "display": "2.00", "digits": 2},
+        "time.share_equal": {"value": 0, "display": "0.0", "digits": 1},
+        "accuracy.diff_min": {"value": 0, "display": "0.00", "digits": 2},
+    })
+    assert "divergent-display" not in codes(gate_report(project))
+    said = _divergent(project)
+    assert [severity for severity, _ in said] == ["info", "info"], said
+    hint = next(f.hint for f in gate_report(project).findings if f.code == "divergent-display")
+    assert "`unit`" in hint and "pick one display" not in hint
+
+
+def test_one_correlation_in_apa_form_beside_its_interval_fails_nothing(project: Path) -> None:
+    """PsyArXiv d8hkq_v1, an APA paper rebuilt with the R emitter: a correlation printed
+    ".47" in the text and "0.47" beside its interval "[0.21, 0.72]", emitted under two keys
+    as the results-binding skill says to emit a second display, failed `divergent-display`.
+    One quantity printed two ways on purpose is what the skill asks for: a note, no failure.
+    """
+    _add_keys(project, {
+        "cor.r": {"value": 0.4712, "display": ".47", "digits": 2},
+        "cor.point": {"value": 0.4712, "display": "0.47", "digits": 2},
+        "cor.ci_low": {"value": 0.2093, "display": "0.21", "digits": 2,
+                       "bounds": "cor.point", "bound": "low"},
+        "cor.ci_high": {"value": 0.7168, "display": "0.72", "digits": 2,
+                        "bounds": "cor.point", "bound": "high"},
+    })
+    report = gate_report(project)
+    assert not {"divergent-display", "declared-same-but-displayed-differently"} & codes(report)
+    assert [severity for severity, _ in _divergent(project)] == ["info"]
+
+
+def test_one_estimate_under_two_names_declared_one_fails_when_it_parts(project: Path) -> None:
+    """The duplicate G8 is for: one estimate emitted under a second name, which a later run
+    updates and the other does not. Declared one quantity with `same_as`, the pair fails the
+    moment the two hold numbers the coarser display does not round both to, or are printed
+    otherwise than as one rounding of the other: here with a unit one of them lacks."""
+    _add_keys(project, {
+        "est.main": {"value": 3.8439, "display": "3.84", "digits": 2},
+        "est.abstract": {"value": 3.9012, "display": "3.90", "digits": 2,
+                         "same_as": "est.main"},
+        "est.summary": {"value": 3.8439, "display": "3.84 a.u.", "same_as": "est.main"},
+    })
+    found = codes(gate_report(project))
+    assert {"declared-same-but-differs", "declared-same-but-displayed-differently"} <= found
+
+
+@pytest.mark.parametrize(("second", "value", "display"), [
+    ("APA's form, no leading zero", 0.4712, ".47"),
+    ("a coarser rounding", 0.4712, "0.5"),
+    ("a finer rounding", 0.4712, "0.4712"),
+    ("trailing zeros", 0.4712, "0.47120"),
+])
+def test_a_second_display_declared_same_as_passes(
+    project: Path, second: str, value: float, display: str
+) -> None:
+    """The author's decision on #628 (PsyArXiv d8hkq_v1, an APA paper: a correlation ".47"
+    in the text and "0.47" beside its interval): `same_as` ties two displays of one value.
+    The pair passes where the two hold one value and their displays differ only in form,
+    and G8 notes nothing, the pair being declared."""
+    _add_keys(project, {
+        "cor.point": {"value": 0.4712, "display": "0.47", "digits": 2},
+        "cor.r": {"value": value, "display": display, "same_as": "cor.point"},
+    })
+    report = gate_report(project)
+    assert not {code for code in codes(report) if code.startswith("declared-same")}, second
+    assert _divergent(project) == [], second
+
+
+@pytest.mark.parametrize(("value", "display"), [
+    (0.5188, ".52"), (0.5588, "0.6"), (0.4688, ".47"),
+])
+def test_a_second_display_declared_same_as_fails_when_the_values_part(
+    project: Path, value: float, display: str
+) -> None:
+    """".47" declared the same as "0.52" holds another number, and the pair fails. So does
+    one holding another value that the two displays round alike, ".47" for 0.4688 beside
+    "0.47" for 0.4712: `same_as` ties two displays of one value, not two values, and the
+    values are compared exactly, as before #628."""
+    _add_keys(project, {
+        "cor.point": {"value": 0.4712, "display": "0.47", "digits": 2},
+        "cor.r": {"value": value, "display": display, "same_as": "cor.point"},
+    })
+    assert "declared-same-but-differs" in codes(gate_report(project))
+
+
+def _declared_p(project: Path, display: str) -> set[str]:
+    """The failures of a p value of 0.0004 shown "<0.001", beside one declared the same
+    quantity and shown `display`."""
+    _add_keys(project, {
+        "p.main": {"value": 0.0004, "display": "<0.001"},
+        "p.apa": {"value": 0.0004, "display": display, "same_as": "p.main"},
+    })
+    return codes(gate_report(project))
+
+
+@pytest.mark.parametrize("display", ["<.001", "<0.0010", "< 0.001"])
+def test_a_p_value_under_one_comparator_in_two_forms_passes(project: Path, display: str) -> None:
+    """Round 1 of #628: a declared pair shown "<0.001" and APA's "<.001" failed, a display
+    with a comparator being read as no number at all. The same comparator before one number
+    written two ways is a difference of form."""
+    found = _declared_p(project, display)
+    assert not {code for code in found if code.startswith("declared-same")}, found
+
+
+@pytest.mark.parametrize("display", ["≤0.001", "0.0004", "<0.01"])
+def test_a_p_value_under_another_comparator_or_bound_fails(project: Path, display: str) -> None:
+    """Another comparator, a comparator on one side only, or another bound is more than
+    form: "<0.001" and "0.0004" say different things of one value."""
+    assert "declared-same-but-displayed-differently" in _declared_p(project, display)
+
+
+def test_a_group_tied_only_in_part_is_still_noted(project: Path) -> None:
+    """Round 1 of #628: the note is left out only where `same_as` ties every key of the
+    group. Two keys tied, ".47" and "0.47", and a third holding 0.4712 that nothing declares,
+    shown "0.4712", are still said, the third among them."""
+    _add_keys(project, {
+        "cor.point": {"value": 0.4712, "display": "0.47"},
+        "cor.r": {"value": 0.4712, "display": ".47", "same_as": "cor.point"},
+        "cor.other": {"value": 0.4712, "display": "0.4712"},
+    })
+    said = _divergent(project)
+    assert [severity for severity, _ in said] == ["info"], said
+    assert "cor.other" in said[0][1] and "cor.r" in said[0][1]
+
+
+@pytest.mark.parametrize("chain", [
+    {"a.one": "a.two", "a.two": "a.three"},  # a chain
+    {"a.one": "a.two", "a.two": "a.one"},  # a cycle
+])
+def test_keys_tied_through_a_chain_or_a_cycle_are_not_noted(
+    project: Path, chain: dict[str, str]
+) -> None:
+    """Keys tied through a chain of `same_as`, or round a cycle, are one group: no note, and
+    each declared pair is held, so nothing fails."""
+    displays = {"a.one": ".47", "a.two": "0.47", "a.three": "0.5"}
+    _add_keys(project, {
+        key: {"value": 0.4712, "display": displays[key],
+              **({"same_as": chain[key]} if key in chain else {})}
+        for key in sorted({*chain, *chain.values()})
+    })
+    report = gate_report(project)
+    assert _divergent(project) == []
+    assert not {code for code in codes(report) if code.startswith(("declared-same", "same-as"))}
 
 
 def test_a_count_and_a_percentage_that_coincide_are_not_one_quantity(project: Path) -> None:
@@ -2221,8 +2395,9 @@ def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
     tmp_path: Path,
 ) -> None:
     """Task 3: the Abstract's interval held to its one counterpart in the Results, two of its
-    numbers agreeing and the third not, is a conflict --strict counts; an Abstract number
-    found nowhere the paper reports is said and not counted (the author, 2026-10-28)."""
+    numbers agreeing and the third not, is a conflict --strict counts; an Abstract number not
+    found in the Methods, the Results or the tables is said and not counted (the author,
+    2026-10-28)."""
     from manuscript_guard.cli import main
 
     paper = tmp_path / "paper.md"
@@ -2233,6 +2408,23 @@ def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
     assert main(["audit", str(paper), "--strict"]) == 0
     paper.write_text(text.replace("1.2-1.9)", "1.2-1.97)"), encoding="utf-8")
     assert main(["audit", str(paper), "--strict"]) == 1
+
+
+def test_an_abstract_identifier_other_than_the_methods_is_not_found(tmp_path: Path) -> None:
+    """An Abstract that names a data release or a variant the Methods do not, "v7" for the
+    Methods' "v8", is told apart from one that names the Methods' own: each identifier was
+    not found before, the right one with the wrong (pharm-epi of the real-paper corpus,
+    2026-11-11)."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    text = ("# Paper\n\n## Abstract\n\nWe used GTEx v8 and rs75015950.\n\n## Methods\n\nWe "
+            "used GTEx v8. Variant rs75015950 lies on chr15.\n\n## Results\n\nIt was so.\n")
+    paper.write_text(text, encoding="utf-8")
+    assert [c.text for c in audit([paper], None).abstract.not_found] == []
+    paper.write_text(text.replace("GTEx v8 and rs75015950", "GTEx v7 and rs75015951", 1),
+                     encoding="utf-8")  # fmt: skip
+    assert [c.text for c in audit([paper], None).abstract.not_found] == ["v7", "rs75015951"]
 
 
 def _signed_package(root: Path) -> Path:
@@ -5251,6 +5443,156 @@ def test_every_spelling_of_one_unit_is_one_unit(written: str, emitted: str) -> N
     assert same_unit(written, "kg") is False
 
 
+# ------------------------------------------- a comparison typed beside a binding
+
+#: Three values as a psychology preprint's analysis emitted them, rounded for print, and a
+#: fourth printed whole (PsyArXiv fyxeq_v2, rebuilt with the R emitter); an incidence, an R²
+#: and an I² each on the wrong side of its print for a sign before it; and two thresholds,
+#: a critical z and a corrected alpha, which a single statistic is compared with.
+_COMPARED = {
+    "omnibus.f_max": (2.532, "2.53"),
+    "omnibus.p_min": (0.2596, ".260"),
+    "contrasts.t_min": (4.268, "4.27"),
+    "contrasts.t_max": (4.27, "4.27"),
+    "incidence.unexposed": (2.528, "2.53"),
+    "fit.r2": (0.4204, "0.42"),
+    "fit.i2": (37.96, "38"),
+    "tests.z_crit": (1.959964, "1.96"),
+    "tests.alpha_bonf": (0.008333, "0.0083"),
+}
+
+
+def _compared_emitted(root: Path, values: dict[str, tuple[float, str]]) -> None:
+    fragment = next((root / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    for key, (value, display) in values.items():
+        document["values"][key] = {"value": value, "display": display}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def _comparisons_said(root: Path, capsys) -> list[tuple[str, int, str]]:
+    from manuscript_guard.cli import main
+
+    capsys.readouterr()
+    main(["check", str(root), "--json"])
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    return [(f["message"].split()[0], f["line"], f["severity"]) for f in findings
+            if f["code"] == "comparison-contradicted"]  # fmt: skip
+
+
+def _append_paragraph(path: Path, paragraph: str) -> int:
+    """`paragraph` at the end of the file, and the line it is on."""
+    text = path.read_text(encoding="utf-8").rstrip("\n") + "\n\n"
+    path.write_text(text + paragraph + "\n", encoding="utf-8")
+    return text.count("\n") + 1
+
+
+@pytest.mark.parametrize(
+    ("typed", "said"),
+    [
+        # The preprint's three: the value at full precision is on the wrong side of a bound
+        # on a set of statistics.
+        ("all Fs < {{results.omnibus.f_max}}", "fail"),
+        ("all *p*s > {{results.omnibus.p_min}}", "fail"),
+        ("{{results.contrasts.t_min}} < ts", "fail"),
+        # Each comparator as it is spelt, before the binding and after it, beside a plural.
+        ("all p-values > {{results.omnibus.p_min}}", "fail"),
+        ("P values > {{results.omnibus.p_min}}", "fail"),
+        ("Fs \N{LESS-THAN OR EQUAL TO} {{results.omnibus.f_max}}", "fail"),
+        ("Fs &lt; {{results.omnibus.f_max}}", "fail"),
+        ("Fs \\< {{results.omnibus.f_max}}", "fail"),
+        ("Fs less than {{results.omnibus.f_max}}", "fail"),
+        ("{{results.contrasts.t_min}} \N{LESS-THAN OR EQUAL TO} ts", "fail"),
+        ("{{results.omnibus.f_max}} > all Fs", "fail"),
+        ("{{results.contrasts.t_min}} <\nts", "fail"),
+        ("{{results.contrasts.t_min}} &LT; ts", "fail"),
+        ("R2s < {{results.fit.r2}}", "fail"),
+        # Round 2 of #629: beside a single statistic the binding may be a threshold, and a
+        # contradiction is a warning. Both of these are true sentences.
+        ("the difference was significant (z > {{results.tests.z_crit}})", "warn"),
+        ("p < {{results.tests.alpha_bonf}}", "warn"),
+        ("F less than {{results.omnibus.f_max}}", "warn"),
+        ("p greater than or equal to {{results.omnibus.p_min}}", "warn"),
+        ("{{results.contrasts.t_min}} < t", "warn"),
+        # A statistic with its index, which is no typed number (round 1 of #629).
+        ("R2 < {{results.fit.r2}}", "warn"),
+        ("I2 > {{results.fit.i2}}", "warn"),
+        ("*R*^2^ < {{results.fit.r2}}", "warn"),
+        # The value on the side the comparison says, or at the number printed: the bound
+        # is not strict, as a display's is not.
+        ("all Fs > {{results.omnibus.f_max}}", None),
+        ("all ps < {{results.omnibus.p_min}}", None),
+        ("{{results.contrasts.t_min}} > ts", None),
+        ("ts \N{GREATER-THAN OR EQUAL TO} {{results.contrasts.t_max}}", None),
+        ("ts < {{results.contrasts.t_max}}", None),
+        # Round 1 of #629: where the subject is no statistic's symbol, the binding may be
+        # the other side of what is compared, and nothing is read. Each value below would
+        # be contradicted if the comparison were read.
+        ("Incidence in exposed patients was greater than {{results.incidence.unexposed}}",
+         None),
+        ("the new model's t was greater than {{results.contrasts.t_min}}", None),
+        ("F wasn't less than {{results.omnibus.f_max}}", None),
+        ("F wasn\N{RIGHT SINGLE QUOTATION MARK}t less than {{results.omnibus.f_max}}", None),
+        ("F no less than {{results.omnibus.f_max}}", None),
+        ("was no\nless than {{results.omnibus.f_max}}", None),
+        ("a threshold of 2.6\n< {{results.omnibus.f_max}}", None),
+        # Round 2 of #629: so too after the binding.
+        ("{{results.incidence.unexposed}} < the incidence in exposed patients", None),
+        # Two numbers compared, and no bound on a quantity: not read.
+        ("2.6 < {{results.omnibus.f_max}}", None),
+        ("{{results.omnibus.p_min}} < 0.3", None),
+        ("{{results.contrasts.t_min}} < {{results.omnibus.f_max}}", None),
+        # What only looks like a comparator: an HTML tag is no statistic (round 2 of #629).
+        ("<p>{{results.omnibus.p_min}}</p>", None),
+        ("<P>{{results.omnibus.p_min}}</P>", None),
+        ("the smallest</p>{{results.omnibus.p_min}}", None),
+        ("<!-- the smallest -->{{results.omnibus.p_min}} was the smallest p", None),
+        ("\n\n> {{results.omnibus.p_min}} was the smallest p", None),
+        ("\n\n- > {{results.omnibus.p_min}} was the smallest p", None),
+        ("the smallest p, <sup>{{results.omnibus.p_min}}</sup>", None),
+        ("F -> {{results.omnibus.p_min}}", None),
+        ("{{results.contrasts.t_min}} <\n\nts", None),
+    ],
+)
+def test_a_comparison_typed_beside_a_binding_holds_of_the_value(
+    project: Path, capsys, typed: str, said: str | None
+) -> None:
+    """A real preprint's "all Fs < {{results...}}" printed "all Fs < 2.53" of an F of 2.532,
+    its "all ps > ..." ".260" of .2596, and "... < ts" "4.27" of 4.268, and `check` passed:
+    the emitter refuses the same claim written as a display ("<2.53" of 2.532), and nothing
+    read it in the sentence. The value is held to the comparison as the emitter holds it,
+    failing beside a plural and warning beside a single statistic."""
+    _compared_emitted(project, _COMPARED)
+    line = _append_paragraph(main_md(project), f"In the extra analysis, {typed}.")
+    key = re.search(r"results\.([a-z0-9_.]+)", typed)[1]
+    assert _comparisons_said(project, capsys) == ([(f"results.{key}", line, said)]
+                                                  if said else [])  # fmt: skip
+
+
+def test_a_comparison_beside_a_binding_in_the_supplement_is_held_too(
+    project: Path, capsys
+) -> None:
+    """The supplement is checked like the rest of the manuscript."""
+    _compared_emitted(project, _COMPARED)
+    supplement = project / "manuscript" / "supplementary" / "appendix.md"
+    supplement.parent.mkdir(parents=True, exist_ok=True)
+    supplement.write_text("# Appendix\n\nAll Fs < {{results.omnibus.f_max}}.\n", "utf-8")
+    assert _comparisons_said(project, capsys) == [("results.omnibus.f_max", 3, "fail")]
+
+
+def test_the_message_names_the_value_its_print_and_the_comparison(project: Path) -> None:
+    from manuscript_guard.gates import check_bound_comparisons
+
+    _compared_emitted(project, _COMPARED)
+    _append_paragraph(main_md(project), "All Fs < {{results.omnibus.f_max}}.")
+    loaded, _ = load_project(project)
+    _, results, _, _ = load_namespace(loaded)
+    [found] = check_bound_comparisons(loaded, results).findings
+    assert found.message == ("results.omnibus.f_max prints '2.53' beside '<', which says the "
+                             "value is below 2.53, or at it, but the value is 2.532")  # fmt: skip
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 
@@ -7222,6 +7564,17 @@ def test_none_is_a_correction_with_its_reason(project: Path) -> None:
         "replace this later.",
         "Delete this section.",
         "Add your affiliation here.",
+        # Beside the placement markers that pass (Basile, 2026-11-11): an instruction with no
+        # number, one with other words, and the slots that failed before, fail still.
+        "[Insert table here]",
+        "[Insert Figure 2 legend]",
+        "[Insert reference]",
+        "[INSERT DATA]",
+        "[Insert Table 1 data here]",
+        # Round 1 of #625: an X is how a template writes a number still to fill, so a marker
+        # with X or XX for its number is a slot, though X is ten in Roman numerals.
+        "[Insert Table X here]",
+        "[INSERT FIGURE XX]",
     ],
 )
 def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None:
@@ -7267,6 +7620,29 @@ def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None
         'Respondents could answer yes or no, or state "not applicable".',
         "AB wrote the\ntext for this section and CD the rest.",
         "We screened each title and\nabstract text. Two reviewers read each.",
+        # A placement marker, which APA and many journals ask for where the displays follow
+        # the text (Basile, 2026-11-11, after the corpus of 52 real preprints, in which G6
+        # failed it each time: slugs educ, an education paper's "[Insert Table 1 here]" after
+        # pandoc's escaping, and socio, a sociology PDF's "[INSERT FIGURE 1]").
+        "Results follow.\n\n\\[Insert Table 2 here\\]\n\nThe rest follows.",
+        "[INSERT FIGURE 3]",
+        "[Insert Figure 2 here]",
+        "[Insert Table 1 about here]",
+        "[Insert Fig. S2 here.]",
+        "[Figure 1 about here]",
+        "[Table 3 about here]",
+        "Results follow.\n\nInsert Table 1 about here\n\nThe rest follows.",
+        "Results follow.\n\nINSERT FIGURE 3 ABOUT HERE\n\nThe rest follows.",
+        # Round 1 of #625: a Roman numeral as IEEE numbers its tables, no space after
+        # "Fig.", and a number with a dot in it.
+        "[Insert Table I here]",
+        "[Insert Table XIV about here]",
+        "[Insert Fig.1 here]",
+        "[Insert Table 1.1 here]",
+        "[INSERT FIGURE S1.2]",
+        # All in capitals with a Roman numeral, which the capitals rule read as a slot.
+        "[INSERT TABLE XIV]",
+        "[INSERT FIGURE IV ABOUT HERE]",
     ],
 )
 def test_what_looks_like_a_placeholder_and_is_prose_passes(project: Path, prose: str) -> None:
@@ -11272,6 +11648,12 @@ _READS_LATEX = (
     "check_interpretation",
     # It reads the bindings of the main text and the supplement, `\mg{}` as `{{}}` (item 5).
     "check_controls",
+    # It reads a comparator beside a binding in each document's printed view, `\mg{}` as
+    # `{{}}` (#629).
+    "check_bound_comparisons",
+    # It reads each figure a document places, `\includegraphics` through `\graphicspath`
+    # as a Markdown image is (#630).
+    "check_placed",
 )  # fmt: skip
 
 
@@ -12648,6 +13030,24 @@ def test_g6_takes_a_latex_citation_beside_a_claim_for_its_support(project: Path)
     claim = "Studies have shown that reporting is low \\citep{fictionalHepaticCohort2021}."
     _into_results(entry, claim + "\n% Studies have shown it is high.")
     assert not [f for f in _g6_findings(project) if f.code == "vague-attribution"]
+
+
+def test_g6_takes_a_typed_citation_for_a_claims_support_and_brackets_that_cite_nothing_not(
+    project: Path,
+) -> None:
+    """A Markdown paper not written with manuscript-guard, a .docx `audit` converts among
+    them, types its citations: a claim beside "(Smith et al., 2020)" or "[12]" is cited,
+    and one beside "(2020)" or "(p < 0.05)" is still vague (corpus round, 2026-11-10: 14 of
+    16 vague attributions on 52 preprints stood beside a typed citation)."""
+    main = main_md(project)
+    far = "\n\n" + "Words of the paper. " * 20 + "\n\n"
+    claims = [f"Prior research has shown that {what} lowers blood pressure {cited}."
+              for what, cited in (("exercise", "(Smith et al., 2020)"), ("rest", "[12]"),
+                                  ("salt", "(2020)"), ("sleep", "(p < 0.05)"))]  # fmt: skip
+    text = main.read_text(encoding="utf-8") + far + far.join(claims) + "\n"
+    main.write_text(text, encoding="utf-8")
+    found = sorted(f.line for f in _g6_findings(project) if f.code == "vague-attribution")
+    assert found == [text.count("\n", 0, text.index(claim)) + 1 for claim in claims[2:]], found
 
 
 def test_g6_names_the_line_of_a_typed_reference_lists_entry(project: Path) -> None:
@@ -17176,6 +17576,11 @@ def _wrong_alpha_in_the_lock(root: Path) -> None:
         "Section 2: Methods",
         "Laboratory methods",
         "Study design, setting, participants and methods",
+        # the word alone, as APA and a machine-learning paper title it, which neither G4
+        # nor G9 took for the Methods (cs-lg of the real-paper corpus, 2026-11-11)
+        "Method",
+        "3. Method",
+        "Methodology",
     ],
 )
 def test_a_wrong_parameter_is_found_under_any_heading_g4_counts_as_the_methods(
@@ -27113,6 +27518,70 @@ def test_a_heading_in_capitals_and_a_time_of_day_hide_no_undefined_abbreviation(
     main_md(project).write_text(pasted, encoding="utf-8")
     assert language_findings(project) == [
         ("abbreviation-undefined", line_of(pasted, ABBREVIATED))
+    ]
+
+
+def test_a_section_s_name_on_a_plain_line_hides_no_undefined_abbreviation(
+    project: Path,
+) -> None:
+    """A manuscript typed in Word, its headings plain lines in capitals ("2. DISCUSSION"),
+    and the definition tidied away. The line is a heading, and only the undefined ROR is
+    reported; a plain line that is more than a section's name, "3. PRR", is still read."""
+    mended = with_ror_defined(project)
+    pasted = mended.replace("ratio (ROR) of", "ratio of").replace(
+        "The analysis was run in Python",
+        "2. DISCUSSION\n\nThe analysis was run in Python",
+    )
+    main_md(project).write_text(pasted, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(pasted, ABBREVIATED))
+    ]
+    more = pasted.replace("2. DISCUSSION", "3. PRR")
+    main_md(project).write_text(more, encoding="utf-8")
+    assert language_findings(project) == sorted([
+        ("abbreviation-undefined", line_of(more, ABBREVIATED)),
+        ("abbreviation-undefined", line_of(more, "3. PRR")),
+    ])  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "aside",
+    [
+        # A bracket's last word whose letters are not before its separator.
+        "Signals were sought in each stratum (see the appendix; PRR).",
+        # A statistic after a dash, and one after a dash and a comma (round 1 of #623).
+        "The proportional reporting ratio fell \N{EN DASH} PRR 2 in each stratum.",
+        "The proportional reporting ratio fell \N{EN DASH} PRR, 2.1 in each stratum.",
+    ],
+)
+def test_a_bracket_s_end_or_a_dash_that_defines_nothing_leaves_it_undefined(
+    project: Path, aside: str
+) -> None:
+    """A revision adds a sentence whose bracket ends with a short form, or a dash stands
+    before one, and nothing before it spells it out: PRR is undefined."""
+    mended = with_ror_defined(project)
+    pasted = mended.replace("The analysis was run in Python",
+                            f"{aside}\n\nThe analysis was run in Python")  # fmt: skip
+    main_md(project).write_text(pasted, encoding="utf-8")
+    assert language_findings(project) == [("abbreviation-undefined", line_of(pasted, aside))]
+
+
+def test_a_reference_list_under_a_quoted_title_ends_where_its_entries_do(
+    project: Path,
+) -> None:
+    """A reference list pasted from Word under a title in a block quote, `> **11.
+    REFERENCES**:`, and the figure legends after it. The list is passed over, its journal's
+    name in capitals with it, and the legends after it are read: their undefined PRR is
+    reported."""
+    mended = with_ror_defined(project)
+    pasted = mended.replace(
+        "The analysis was run in Python",
+        "> **11. REFERENCES**:\n\nSmith J. The NHANES data. BMJ. 2020;1:1-2.\n\n"
+        "**Figure legends**\n\nThe PRR by year.\n\nThe analysis was run in Python",
+    )
+    main_md(project).write_text(pasted, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(pasted, "The PRR by year"))
     ]
 
 

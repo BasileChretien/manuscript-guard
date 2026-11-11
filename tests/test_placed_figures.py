@@ -312,7 +312,7 @@ def test_a_picture_added_after_a_check_is_found_by_the_next(tmp_path: Path) -> N
     sources, and the files it names are found again on each call, so a PDF saved beside the
     PNG after one check is the picture the next one finds."""
     root = tmp_path / "p"
-    manuscript = _latex_project(root, "\includegraphics{chart}\n")
+    manuscript = _latex_project(root, "\\includegraphics{chart}\n")
     _touch(manuscript / "figs" / "chart.png", b"\x89PNG\r\n\x1a\n")
     project = load_project(root)[0]
     assert [placed.name for placed in placed_files(project)] == ["manuscript/figs/chart.png"]

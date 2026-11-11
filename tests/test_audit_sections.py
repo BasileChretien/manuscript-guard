@@ -9,6 +9,7 @@ registries asked only with `--lookup`, here on a loopback port and nowhere else.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import threading
@@ -330,6 +331,44 @@ def test_a_total_off_categories_over_n_and_a_count_given_away_count_for_strict(
     assert "count-recoverable" not in {f["code"] for f in said["findings"]}
 
 
+WEIGHTED = """# Results
+
+| Characteristic | N = 12,765^1^ | Panel (n = 120) |
+|---|---|---|
+| Age group | | |
+| 18-29 | 2,553 (20.0) | 30 (25.0) |
+| 30-44 | 3,830 (30.0) | 30 (25.0) |
+| 45-59 | 3,829 (30.0) | 30 (25.0) |
+| 60 or over | 2,554 (20.0) | 30 (25.0) |
+"""
+
+
+def test_categories_over_their_n_by_no_more_than_rounding_are_a_note(
+    tmp_path: Path, capsys
+) -> None:
+    """Basile, 2026-11-11, after the corpus of 52 real preprints (slug psych): a survey's
+    weighted, rounded counts put its age groups at 12,766 under "N = 12,765^1^", and the
+    audit failed it, and 23 others like it. One over the n of four categories is a note,
+    which --strict does not count; three over is a failure, as before."""
+    paper = tmp_path / "paper.md"
+    paper.write_text(WEIGHTED, encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    out = capsys.readouterr().out
+    assert "BY NO MORE THAN ROUNDING WEIGHTED COUNTS CAN MAKE" in out
+    assert "the gap may be rounding of weighted counts" in out
+    assert "1 column over its n by no more than rounding" in out
+    assert main(["audit", str(paper), "--json"]) == 0
+    said = json.loads(capsys.readouterr().out)
+    [note] = [f for f in said["findings"] if f["code"] == "over-header-n"]
+    assert (note["severity"], note["counted"], note["line"]) == ("info", False, 6)
+    assert (said["counts"]["over_header_n"], said["counts"]["over_header_n_rounding"]) == (0, 1)
+    # Three over four categories is beyond what rounding can make.
+    paper.write_text(WEIGHTED.replace("2,554 (20.0)", "2,556 (20.0)"), encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+    out = capsys.readouterr().out
+    assert "add up to 12768, more than its n = 12765" in out
+
+
 def test_a_count_only_the_header_n_gives_away_is_listed_and_not_counted(
     tmp_path: Path, capsys
 ) -> None:
@@ -424,7 +463,8 @@ def test_a_place_in_a_latex_tree_or_a_pdf_is_the_papers_own() -> None:
         "not manuscript/main.texts:3 nor my-manuscript/main.tex:3")
     pdf = _relocated({"main.md": Path("/x/paper.pdf")}, (1, 1, 1, 2, 7),
                      lambda line: f"page 1, line {line}")  # fmt: skip
-    assert pdf("defined at manuscript/main.md:5") == "defined at paper.pdf, page 1, line 7"
+    # The paper's own place, without its name again: the report names the paper above it.
+    assert pdf("defined at manuscript/main.md:5") == "defined at page 1, line 7"
 
 
 def test_a_place_in_a_latex_tree_is_named_by_its_path_in_the_tree(tmp_path: Path,
@@ -663,6 +703,21 @@ def test_a_bibitem_is_reported_in_the_file_that_holds_it(tmp_path: Path, capsys)
     assert "refs.tex line 3: \\bibitem{x} is cited nowhere" in capsys.readouterr().out
 
 
+def test_an_entry_not_looked_up_is_placed_in_the_file_that_holds_it(tmp_path: Path, registries,
+                                                                   capsys) -> None:  # fmt: skip
+    """The review of #632: an entry of a `thebibliography` in an input file, not looked up,
+    is placed in that file, as its problems are."""
+    (tmp_path / "main.tex").write_text(_document("See !cite{a}.\n!input{refs}"),
+                                       encoding="utf-8")  # fmt: skip
+    (tmp_path / "refs.tex").write_text(tex("!begin{thebibliography}{9}\n!bibitem{a} A.\n"
+                                           "!bibitem{x} X.\n!end{thebibliography}\n"),
+                                       encoding="utf-8")  # fmt: skip
+    assert main(["audit", str(tmp_path / "main.tex"), "--lookup"]) == 0
+    out = capsys.readouterr().out
+    assert "      refs.tex line 2: " in out and "      refs.tex line 3: " in out, out
+    assert registries.seen == []
+
+
 def test_an_interval_after_its_value_is_no_citation() -> None:
     assert markers_in("a median of 64 [55-72] and [3]", [(15, 22)]) == [(1, "[3]", [3])]
 
@@ -802,6 +857,34 @@ def test_no_retraction_says_how_many_were_asked_and_known(tmp_path: Path, regist
     assert main(["audit", str(paper), "--lookup"]) == 0
     assert ("no registry said a work was retracted, withdrawn or under concern: 2 asked, 2 "
             "known to a registry that answered") in capsys.readouterr().out
+
+
+def test_each_entry_not_looked_up_is_named_with_why(tmp_path: Path, registries, capsys) -> None:
+    """An entry with no DOI and no PMID is not looked up, and the report says which and why,
+    in its line and its section, rather than leaving it out of the count (the author's
+    audit, 2026-11-11: "we need to check all references, or say which ones were not checked
+    and why"). With nothing looked up, nothing is listed: no entry was."""
+    found = {"status": "ok", "message-type": "work",
+             "message": {"DOI": DOI, "type": "journal-article", "title": ["A cohort"]}}
+    registries.answers["crossref"] = (200, found)
+    registries.answers["openalex"] = (200, {"id": "W1", "is_retracted": False,
+                                            "title": "A cohort"})  # fmt: skip
+    paper = tmp_path / "paper.md"
+    paper.write_text(NUMBERED, encoding="utf-8")
+    assert main(["audit", str(paper), "--lookup"]) == 0
+    out = capsys.readouterr().out
+    assert ("4 entries read, 1 with a DOI; 2 works looked up, 2 entries not looked up, having "
+            "no DOI or PMID: see below") in out  # fmt: skip
+    assert ("    not looked up, having no DOI or PMID to look up: 2 entries\n"
+            "      line 9: entry 3: Brown L. A note. Drug Saf. 2021;44:1-2.\n"
+            "      line 10: entry 4: Green M. A review. Pharmacoepidemiol Drug Saf. "
+            "2018;27:3-4.\n") in out  # fmt: skip
+    assert main(["audit", str(paper)]) == 0
+    assert "not looked up, having no DOI" not in capsys.readouterr().out
+    # Every item typed "1.", as Markdown allows: entry 3's text opens "1.", said once.
+    paper.write_text(re.sub(r"(?m)^\d\. ", "1. ", NUMBERED), encoding="utf-8")
+    assert main(["audit", str(paper), "--lookup"]) == 0
+    assert "line 9: entry 3: Brown L. A note." in capsys.readouterr().out
 
 
 def test_a_retracted_work_is_said_and_kept_only_where_asked(tmp_path: Path, registries,

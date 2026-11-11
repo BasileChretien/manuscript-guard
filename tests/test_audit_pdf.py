@@ -269,7 +269,7 @@ def test_a_place_a_finding_names_in_a_pdf_is_its_page_and_line(tmp_path: Path, c
     assert main(["audit", str(paper), "--json"]) == 0
     found = json.loads(capsys.readouterr().out)["findings"]
     again = [f["message"] for f in found if f["gate"] == "G14" and "defined again" in f["message"]]
-    assert again == ["SD is defined again; it was defined at paper.pdf, page 1, line 2"], found
+    assert again == ["SD is defined again; it was defined at page 1, line 2"], found
     assert not any("main.md" in json.dumps(f) for f in found), found
 
 
@@ -597,6 +597,43 @@ def test_an_entry_number_is_not_read_as_a_pmid(tmp_path: Path) -> None:
     assert census.unsent == [(2, "PMID:")]
 
 
+def test_an_entry_whose_identifier_was_held_back_is_not_said_to_have_none(tmp_path: Path) -> None:
+    """The review of #632: a DOI that ends a line its entry runs on past, and a "PMID:" cut
+    short, are listed as not sent; their entries are not named again as having no DOI or
+    PMID, nor counted so. An entry with neither is."""
+    from manuscript_guard.auditing.references import census_of_printed, without_identifier
+    from manuscript_guard.auditing.report import _shown, _unlooked
+
+    text = ("References\n1. Brown L. A note. Drug Saf. 2021;44:1-2. doi:10.1016/j.ds.2021\n"
+            "more of it. Epub.\n2. Green M. A review. PMID:\n3. Clark C. A letter. J X. "
+            "2019;1:2.\n")  # fmt: skip
+    census = census_of_printed(tmp_path / "p.pdf", text, [(0, 5)], "As [1-3] show.\n", [])
+    assert sorted(census.unsent) == [(2, "10.1016/j.ds.2021"), (4, "PMID:")]
+    assert [without_identifier(entry) for entry in census.entries] == [False, False, True]
+    assert _unlooked(census, _shown(None)) == [
+        "    not looked up, having no DOI or PMID to look up: 1 entry",
+        "      line 5: entry 3: Clark C. A letter. J X. 2019;1:2."]
+    # The summary counts both kinds (round 2 of #632), and an unnumbered entry keeps its year.
+    from types import SimpleNamespace
+
+    from manuscript_guard.auditing.summary import _references
+
+    said = _references(SimpleNamespace(references=[census], lookups=[]))
+    assert said.endswith("1 entry not looked up, having no DOI or PMID and 2 entries not "
+                         "looked up, their DOI or PMID perhaps running on to the next line: "
+                         "see below"), said  # fmt: skip
+    from manuscript_guard.auditing.references import BY_PLACE, Entry
+
+    unnumbered = SimpleNamespace(path=tmp_path / "p.md", style="not numbered", entries=(
+        Entry("entry 2 of the list", 3, text="2019. Another guideline. Geneva."),))
+    assert _unlooked(unnumbered, _shown(None))[1] == (
+        "      line 3: entry 2 of the list: 2019. Another guideline. Geneva.")
+    # Nor one Word numbers, whose text holds no number (round 3 of #632).
+    by_word = SimpleNamespace(path=tmp_path / "p.md", style=BY_PLACE, entries=(
+        Entry("entry 4", 3, number=4, text="2019. WHO guideline on X."),))
+    assert _unlooked(by_word, _shown(None))[1] == "      line 3: entry 4: 2019. WHO guideline on X."
+
+
 def test_a_number_that_skips_tells_no_entry_apart(tmp_path: Path) -> None:
     """Round 2: "1. 2. 4. 5." cited [1] [2] [4] [5] was "cites entries 4, 5 ... it has 2
     entries". The list is not told apart, says why, and nothing is held to its count."""
@@ -731,6 +768,17 @@ def test_a_structured_abstract_is_placed_under_it(titles: tuple[str, ...]) -> No
     opening = [title for title, _level in levels].index("Introduction")
     assert {level for _title, level in levels[1:opening]} == {2}, levels
     assert {level for _title, level in levels[opening:]} == {1}, levels
+
+
+def test_a_pdf_with_no_heading_read_places_none() -> None:
+    """Corpus run of 2026-11-11: a PDF whose headings the reader does not find, 2509.01351's
+    small capitals, stopped `audit` on `zip()`'s length check; it has no heading to place."""
+    from manuscript_guard.auditing.pdf import PdfText, Place
+
+    lines = ["Gains from monetary policy", "We estimate the response of output.", "It falls."]
+    pdf = PdfText(Path("p.pdf"), "test", 1, "\n".join(lines),
+                  tuple(Place(1, at) for at in range(1, len(lines) + 1)), ())
+    assert pdf.placed == ()
 
 
 @needs_pdftotext

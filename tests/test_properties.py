@@ -44,6 +44,7 @@ import pytest
 from generated import (
     ABSTRACT_BACKGROUND,
     AGREED,
+    BESIDE_A_BINDING,
     CAUSAL_PARTS,
     CLAIMED,
     CREDITING,
@@ -144,6 +145,7 @@ from generated import (
     lines,
     linked_lines,
     margin_tables,
+    markdown_cited_claims,
     markdown_claims,
     markdown_for_latex,
     masked_blocks,
@@ -206,6 +208,7 @@ from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED
 from manuscript_guard.contracts.project import outside_maths
 from manuscript_guard.contracts.values import RESULTS, Value, number_in
 from manuscript_guard.deposit import counts as deposit_counts
+from manuscript_guard.gates import bound_comparisons as bound_comparisons_gate
 from manuscript_guard.gates import bound_units as bound_units_gate
 from manuscript_guard.gates import data_statement
 from manuscript_guard.gates import interpretation as interpretation_gate
@@ -1063,6 +1066,10 @@ def _a_hook_s_body_is_a_definition_s(patch: pytest.MonkeyPatch) -> None:
 
 def _the_spaces_after_a_control_word_delimit(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_SKIPPED", re.compile(r""))
+
+
+def _a_table_inside_maths_is_maths(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_sets_text", lambda name: False)
 
 
 @holds(40, latex_refusal_trees())
@@ -2109,12 +2116,102 @@ def _a_long_form_crosses_no_bracket(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_passed_over", lambda before, opened: "")
 
 
+def _a_bracket_s_last_word_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_short_closing", lambda bracket: None)
+
+
+def _a_bracket_s_last_word_is_spelt_from_before_the_bracket(patch: pytest.MonkeyPatch) -> None:
+    """The long form of "(see the appendix; PRR)" looked for before the bracket too, where
+    "the proportional reporting ratio" has its letters."""
+    real = language_gate._short_inside
+
+    def wider(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | None:
+        closing = language_gate._CLOSES_WITH.match(bracket.group(1))
+        if closing is None or not language_gate._may_be_defined(closing.group("short")):
+            return real(prose, bracket)
+        short = closing.group("short")
+        long = language_gate._read_back(short, f"{prose[: bracket.start()]} {closing['before']}")
+        if long is None:
+            return real(prose, bracket)
+        return bracket.start(1) + closing.start("short"), short, long
+
+    patch.setattr(language_gate, "_short_inside", wider)
+
+
+def _a_dash_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_dashed", lambda prose: [])
+
+
+#: What `_DASHED` ends with: no statistic after the short form.
+_DASH_STATISTIC = (
+    r"(?![ \t\N{NO-BREAK SPACE}]*(?:=|(?:[:,(][ \t\N{NO-BREAK SPACE}]*)?\d))"
+)
+
+
+def _dashed_with(patch: pytest.MonkeyPatch, old: str, new: str, count: int = 1) -> None:
+    """`_DASHED` with `old` written `new`, `count` times, as it must stand there."""
+    pattern = language_gate._DASHED.pattern
+    assert pattern.count(old) == count, (old, pattern)
+    patch.setattr(language_gate, "_DASHED", re.compile(pattern.replace(old, new)))
+
+
+def _a_number_after_a_dash_s_short_form_defines_too(patch: pytest.MonkeyPatch) -> None:
+    _dashed_with(patch, _DASH_STATISTIC, "")
+
+
+def _a_comma_and_a_number_after_a_dash_s_short_form_define(patch: pytest.MonkeyPatch) -> None:
+    """The rule before round 1 of #623: "older people - OR, 1.52" defined OR."""
+    _dashed_with(patch, _DASH_STATISTIC, r"(?![ \t]*(?:=|\d))")
+
+
+def _a_colon_a_bracket_or_a_no_break_space_before_a_value_defines(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    """The rule of round 1 of #623: "- OR: 1.52", "- OR (95% CI ...) 1.52" and a no-break
+    space before the value defined OR."""
+    _dashed_with(patch, _DASH_STATISTIC, r"(?![ \t]*(?:=|\d|,[ \t]*\d))")
+
+
+def _a_comma_after_a_dash_s_short_form_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    """Too wide: "Area Payment Scheme - APS, which pays farmers" is a definition."""
+    _dashed_with(patch, _DASH_STATISTIC, r"(?![ \t\N{NO-BREAK SPACE}]*(?:=|[:,(]|\d))")
+
+
+def _a_dash_needs_no_space(patch: pytest.MonkeyPatch) -> None:
+    space = language_gate._DASH_SPACE
+    _dashed_with(patch, f"(?<=\\S){space}+", f"{space}*")
+    _dashed_with(patch, f"]){space}+", f"]){space}*")
+
+
+def _pandoc_s_smart_dashes_are_no_dashes(patch: pytest.MonkeyPatch) -> None:
+    _dashed_with(patch, "(?:---?|", "(?:")
+
+
+def _a_no_break_space_is_no_space_before_a_dash(patch: pytest.MonkeyPatch) -> None:
+    _dashed_with(patch, "\\N{NO-BREAK SPACE}", "", count=4)
+
+
 def _a_time_of_day_is_words(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_CLOCK", re.compile("(?!)"))
 
 
 def _a_heading_in_capitals_is_words(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_in_capitals", lambda prose: [])
+
+
+def _a_section_s_name_on_a_plain_line_is_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_names_a_section", lambda paragraph: False)
+
+
+def _a_plain_line_in_capitals_is_a_section_s_name(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_names_a_section", lambda paragraph: True)
+
+
+def _a_section_s_name_is_read_with_its_escape(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.section_names import section_name_alone
+
+    patch.setattr(language_gate, "_names_a_section",
+                  lambda paragraph: section_name_alone(paragraph) is not None)  # fmt: skip
 
 
 def _a_table_s_body_and_a_plain_line_in_capitals_are_headings(
@@ -2354,6 +2451,21 @@ def test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations(
                        ("model-artefact", "artefact")):  # fmt: skip
         found = sorted(finding.line for finding in report.findings if finding.code == code)
         assert found == sorted(lines[key] for key, was in planted if was == kind), (code, text)
+
+
+@holds(40, markdown_cited_claims())
+def test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """A claim beside a pandoc citation, a numbered marker or a citation by author and year
+    typed in brackets, by people or by an organisation, is supported, and each other is
+    vague, on its line: one beside a year, a date, a count or a P value in brackets, an
+    interval after its value, or nothing (corpus round, 2026-11-10)."""
+    text, planted = drawn
+    report, _totals = writing_gate.judge_texts([(Path("main.md"), text)])
+    lines = {key: text.count("\n", 0, text.index(key)) + 1 for key, _kind in planted}
+    found = sorted(f.line for f in report.findings if f.code == "vague-attribution")
+    assert found == sorted(lines[key] for key, kind in planted if kind == "vague"), text
 
 
 @holds(20, latex_listed())
@@ -2854,6 +2966,40 @@ def _g6_reads_past_the_documents_end(patch: pytest.MonkeyPatch) -> None:
         self.body_end = -1
 
     patch.setattr(latex_mask._Reader, "_end", broken)
+
+
+def _g6_reads_no_typed_marker(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "marker_spans", lambda hidden, intervals: [])
+
+
+def _g6_reads_no_typed_author_year(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_TYPED_AUTHOR_YEAR", re.compile("(?!)"))
+
+
+def _g6_reads_no_organisation_as_an_author(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_TYPED_AUTHOR_YEAR", recycling_gate._AUTHOR_YEAR)
+
+
+def _g6_takes_two_words_for_an_organisation(patch: pytest.MonkeyPatch) -> None:
+    pattern = writing_gate._TYPED_AUTHOR_YEAR.pattern
+    assert "{2,}" in pattern
+    patch.setattr(writing_gate, "_TYPED_AUTHOR_YEAR", re.compile(pattern.replace("{2,}", "+")))
+
+
+def _g6_takes_a_short_month_for_an_author(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_SHORT_MONTHS", frozenset())
+
+
+def _g6_takes_any_bracketed_year_for_a_citation(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_names_its_authors", lambda cited: True)
+
+
+def _g6_takes_an_interval_for_a_citation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import audit
+
+    patch.setattr(audit, "_intervals", lambda text: [])
 
 
 def _a_floats_words_are_printed(patch: pytest.MonkeyPatch) -> None:
@@ -5452,7 +5598,9 @@ def test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them(
     the total's line, and a line with a dash or an empty cell in it is not read; a row
     whose label starts as a total's does and is none ("Total cholesterol") totals nothing;
     a characteristic's categories whose shares add up to 100 and whose counts add up to more
-    than their column's n are said, and fewer is not. A count held back that a printed total
+    than their column's n are said, and fewer is not; more by no more than half a count for
+    each category and for the n, rounded down, is said as rounding (Basile, 2026-11-11). A
+    count held back that a printed total
     gives away is said with its count, from one to below the minimum, or from one with none;
     one only its column's n gives away is said as not explicit; two held back in one line
     with room between them are not."""
@@ -5469,7 +5617,8 @@ def test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them(
 
     found = {
         "off": [line.total.count.line for table in tables for line, _wrong in sums_off(table)],
-        "over": [one.line for table in tables for one in over_n(table)],
+        "over": [one.line for table in tables for one in over_n(table) if not one.rounding],
+        "rounding": [one.line for table in tables for one in over_n(table) if one.rounding],
         "five": held(5),
         "none": held(None),
     }
@@ -5516,6 +5665,24 @@ def _the_header_n_is_a_printed_total(patch: pytest.MonkeyPatch) -> None:
     real = margins._header_lines
     patch.setattr(margins, "_header_lines", lambda rows: [
         replace(line, explicit=True) for line in real(rows)])  # fmt: skip
+
+
+def _no_gap_over_a_columns_n_is_rounding(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import margins
+
+    patch.setattr(margins, "within_rounding", lambda total, n, categories: False)
+
+
+def _rounding_allows_a_whole_count_a_category(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import margins
+
+    patch.setattr(margins, "rounding_allowance", lambda categories: categories)
+
+
+def _rounding_leaves_out_the_ns_half_count(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import margins
+
+    patch.setattr(margins, "rounding_allowance", lambda categories: max(1, categories // 2))
 
 
 def _categories_fewer_than_their_n_are_said(patch: pytest.MonkeyPatch) -> None:
@@ -5808,7 +5975,11 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
     counterpart's, are conflicts; one that agrees as rounded, one with two counterparts, one
     at another level and a test whose P could be the same are not. A number of the Abstract
     in the Methods, a table or the supplement is found, one reported to a place more is
-    found as a rounding, and one only in the Discussion is not found. Without an Abstract
+    found as a rounding, and one only in the Discussion is not found. An identifier, "v12"
+    or "rs7012345", is found where the Methods print it, and not where they give its
+    number alone (pharm-epi of the real-paper corpus). A number under a subsection of the
+    Results and discussion whose title holds "method", "Performance of the proposed method",
+    is found, and the Results over it are still the Results (round 1 of #624). Without an Abstract
     heading, or a Results heading, nothing is compared. The same paper in LaTeX reads
     alike, its last sentence of the Abstract on the line of `!end{abstract}` (round 1 of
     #472)."""
@@ -5954,6 +6125,20 @@ def _a_rounding_is_no_match(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import abstract
 
     patch.setattr(abstract, "coarser", lambda printed: set())
+
+
+def _an_identifier_is_looked_for_among_the_numbers_alone(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_words", lambda text: set())
+
+
+def _an_identifier_is_found_by_its_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._state
+    patch.setattr(abstract, "_state", lambda part, exact, rounded, words: real(
+        part.lstrip("abcdefghijklmnopqrstuvwxyz"), exact, rounded, words))  # fmt: skip
 
 
 def _every_line_outside_the_abstract_reports(patch: pytest.MonkeyPatch) -> None:
@@ -7010,14 +7195,22 @@ def _a_named_row_is_never_read_for_its_n(patch: pytest.MonkeyPatch) -> None:
 # ------------------------------------------------------------ a section found by its heading
 
 #: What a paper calls its Methods, as G4 has always read a heading for them: with "methods"
-#: in it, numbered, marked or not. And headings that are no Methods.
-_THE_METHODS = (
+#: in it, numbered, marked or not, the names of `classify.METHODS_SECTIONS` first. And
+#: headings that are no Methods.
+_NAMED_METHODS = (
     "Methods", "2. Methods", "2.1 Methods", "II. Methods", "(3) Methods", "2.Methods",
     "**2. Methods**", "Patients and methods", "Materials and methods", "Materials & methods",
-    "Methods and analysis", "Statistical methods",
+    "Methods and analysis", "Statistical methods", "Methodology",
 )  # fmt: skip
-_NO_METHODS = ("Approach", "Study population", "Analyses", "A method for signal detection",
-               "Methodology")  # fmt: skip
+#: The singular as the whole title, as APA and a machine-learning paper title the Methods
+#: (cs-lg of the real-paper corpus, 2026-11-11): no name of `METHODS_SECTIONS`, so read
+#: after one (DESIGN.md, "Known gaps"). A title the singular is only in names no Methods,
+#: "Performance of the proposed method" (round 1 of #624).
+_THE_METHODS = (*_NAMED_METHODS, "Method", "3. Method", "**2. Method**", "Materials and method",
+                "Method and materials")  # fmt: skip
+_NO_METHODS = ("Approach", "Study population", "Analyses", "Methodological notes",
+               "Proposed method", "A method for signal detection",
+               "Performance of the proposed method")  # fmt: skip
 #: What a paper calls its abstract, and what a journal's profile may call it.
 _THE_ABSTRACT = ("Abstract", "1. Abstract", "Structured abstract", "Summary", "Overview")
 _ABSTRACT_TITLES = (None, "Summary", "Overview")
@@ -7108,7 +7301,7 @@ def _papers_with_other_methods(draw) -> list[tuple[str, str]]:
     return [
         (f"# Introduction\n\n{filler}.\n\n# {other}\n\nBasil {filler}.\n\n# {methods}\n\n"
          f"Coriander {filler}.\n\n# Results\n\n{filler}.\n", methods)  # fmt: skip
-        for methods in _THE_METHODS
+        for methods in _NAMED_METHODS
         for other in _OTHER_METHODS
     ]
 
@@ -9449,6 +9642,31 @@ def _a_line_is_read_with_its_spans(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reference_lists_module, "without_spans", lambda text: text)
 
 
+def _a_line_is_read_with_its_quote_s_marks(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_QUOTED", re.compile("(?!)"))
+
+
+def _a_line_is_read_with_its_link(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_LINK", re.compile("(?P<words>(?!))"))
+
+
+def _a_paragraph_s_first_line_is_read_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_first_printed", lambda lines, number: lines[number])
+
+
+def _a_quote_s_or_a_link_s_line_anywhere_opens_a_list(patch: pytest.MonkeyPatch) -> None:
+    """The marks and the link taken off wherever they stand, so that a sentence that only
+    holds a link to "References", or a quote of one, is the title."""
+    real = reference_lists_module.is_bibliography_heading
+
+    def anywhere(line: str, *, marked: bool = False, markdown: bool = True) -> bool:
+        words = re.sub(r"\[([^\]]*)\]\([^)]*\).*|^>\s*(\w+).*", r"\1\2", line)
+        return real(line, marked=marked, markdown=markdown) or real(words, marked=marked,
+                                                                    markdown=markdown)
+
+    patch.setattr(reference_lists_module, "is_bibliography_heading", anywhere)
+
+
 def _a_list_s_end_is_read_with_its_spans(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reference_lists_module, "_printed", lambda paragraph: paragraph)
 
@@ -10533,6 +10751,38 @@ def _the_recycling_check_knows_english_titles_only(patch: pytest.MonkeyPatch) ->
     from manuscript_guard.gates import recycling
 
     _english_only(patch, recycling)
+
+
+def _the_sections_know_neither_literature_cited_nor_a_reference_list(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.text import sections
+
+    pattern = sections._REFERENCES.pattern
+    words = r"|(?:literature\s+cited|reference\s+list)\W*$"
+    assert words in pattern
+    patch.setattr(sections, "_REFERENCES", re.compile(pattern.replace(words, ""), re.IGNORECASE))
+
+
+def _the_sections_read_literature_cited_by_its_opening(patch: pytest.MonkeyPatch) -> None:
+    """The rule before round 1 of #623: "Reference list screening" was the list."""
+    from manuscript_guard.text import sections
+
+    pattern = sections._REFERENCES.pattern
+    words = r"|(?:literature\s+cited|reference\s+list)\W*$"
+    assert words in pattern
+    patch.setattr(sections, "_REFERENCES", re.compile(
+        pattern.replace(words, r"|(?:literature\s+cited|reference\s+list)\b"),
+        re.IGNORECASE))  # fmt: skip
+
+
+def _the_recycling_check_knows_no_reference_list(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import recycling
+
+    pattern = recycling._REFERENCES.pattern
+    assert r"|reference\s+list" in pattern
+    patch.setattr(recycling, "_REFERENCES",
+                  re.compile(pattern.replace(r"|reference\s+list", ""), re.IGNORECASE))  # fmt: skip
 
 
 def _a_section_takes_a_title_elsewhere_by_its_opening(patch: pytest.MonkeyPatch) -> None:
@@ -13633,6 +13883,65 @@ def test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is(
     assert found == expected, text
 
 
+@st.composite
+def _comparisons_planted(
+    draw: st.DrawFn,
+) -> tuple[str, list[tuple[str, int, str, bool, bool]]]:
+    """A binding beside each way of writing a comparator, and what only looks like one, in
+    an order and among words drawn each time, with the comparator that should be read."""
+    parts: list[str] = []
+    found: list[tuple[str, int, str, bool, bool]] = []
+    for index, (before, after, read) in enumerate(draw(st.permutations(BESIDE_A_BINDING))):
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4))
+        parts.append(" ".join(words) + draw(st.sampled_from((" ", "\n", "; "))) + before)
+        key = f"k{index}"
+        if read is not None:
+            found.append((key, len("".join(parts)), *read))
+        parts.append(f"{{{{results.{key}}}}}" + after + draw(st.sampled_from((". ", ", ", "; "))))
+    return "".join(parts), found
+
+
+@holds(150, _comparisons_planted())
+def test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is(
+    planted: tuple[str, list[tuple[str, int, str, bool, bool]]],
+) -> None:
+    """Each sign and its spellings and the two phrases after a statistic before a binding,
+    a sign after one before a statistic, which holds the value to the other side, each with
+    whether the statistic is a plural; not a subject that is no statistic, a symbol inside a
+    word or a tag, a comparison of two numbers, a comment, a blockquote's marker or an
+    arrow."""
+    text, expected = planted
+    found = [(c.key, c.start, c.op, c.below, c.plural)
+             for c in bound_comparisons_gate.comparisons_at(text)]  # fmt: skip
+    assert found == expected, text
+
+
+@st.composite
+def _values_printed(draw: st.DrawFn) -> tuple[float, str, bool]:
+    """A value, its print to some number of places, at it or rounded, and a side."""
+    places = draw(st.integers(0, 4))
+    value = draw(st.integers(-99999, 99999)) / 10 ** draw(st.integers(0, 5))
+    return value, f"{value:.{places}f}", draw(st.booleans())
+
+
+@holds(200, _values_printed())
+def test_a_comparison_beside_a_binding_is_held_as_the_emitter_holds_a_display(
+    printed: tuple[float, str, bool],
+) -> None:
+    """The prose rule is the display rule: a value printed beside "<" is contradicted
+    exactly where the emitter refuses the display "<" and that print, and so beside ">".
+    Not strict, and the number compared with is the one printed."""
+    from manuscript_guard.contracts.values import DisplayError, _check_display_matches
+
+    value, display, below = printed
+    try:
+        _check_display_matches("k", value, ("<" if below else ">") + display)
+        refused = False
+    except DisplayError:
+        refused = True
+    assert bound_comparisons_gate.contradicted(value, display, below) is refused, printed
+
+
 # ---------------------------------------------- a technical sense, counted towards no rate
 
 #: Technical senses of words the vocabulary rate counts, in the singular and the plural.
@@ -15091,6 +15400,52 @@ def _an_instruction_marked_or_linked_is_a_link_s_text(patch: pytest.MonkeyPatch)
     _placeholder_rule(patch, "placeholder", lambda p: p + r"(?![(\[{])")
 
 
+#: The lookahead that keeps a placement marker out of the instruction rule: how it opens,
+#: the words before the number, and the number, Arabic with dots or Roman from I to XIX.
+_PLACEMENT = r"(?!insert\s+"
+_PLACEMENT_NAME = r"(?:(?:table|figure|fig\.?)\s+|fig\.)"
+_PLACEMENT_NUMBER = r"(?:[a-z]?\d+(?:\.\d+)*[a-z]?|XVI{0,3}|XIV|XIX|XI{1,3}|VI{0,3}|IV|IX|I{1,3})"
+
+
+def _in_the_placement_marker(patch: pytest.MonkeyPatch, written: str, broken: str) -> None:
+    def change(pattern: str) -> str:
+        whole = _PLACEMENT + _PLACEMENT_NAME + _PLACEMENT_NUMBER
+        assert whole in pattern, "the instruction rule no longer leaves markers out this way"
+        assert written in whole
+        return pattern.replace(whole, whole.replace(written, broken, 1))
+
+    _placeholder_rule(patch, "placeholder", change)
+
+
+def _a_placement_marker_is_a_slot(patch: pytest.MonkeyPatch) -> None:
+    _in_the_placement_marker(patch, _PLACEMENT, "(?!(?!)")
+
+
+def _a_marker_needs_no_number(patch: pytest.MonkeyPatch) -> None:
+    _in_the_placement_marker(patch, _PLACEMENT_NUMBER, r"\w*")
+
+
+def _a_roman_x_is_a_markers_number(patch: pytest.MonkeyPatch) -> None:
+    _in_the_placement_marker(patch, "|XVI{0,3}", "|X{1,2}|XVI{0,3}")
+
+
+def _fig_needs_a_space_before_its_number(patch: pytest.MonkeyPatch) -> None:
+    _in_the_placement_marker(patch, r"\s+|fig\.)", r"\s+)")
+
+
+def _a_markers_number_has_no_dot(patch: pytest.MonkeyPatch) -> None:
+    _in_the_placement_marker(patch, r"\d+(?:\.\d+)*", r"\d+")
+
+
+def _a_marker_in_capitals_with_a_roman_numeral_is_a_slot(patch: pytest.MonkeyPatch) -> None:
+    def change(pattern: str) -> str:
+        opens = r"\[(?!INSERT[ \t]+"
+        assert opens in pattern, "the capitals rule no longer leaves markers out this way"
+        return pattern.replace(opens, r"\[(?!(?!)INSERT[ \t]+")
+
+    _placeholder_rule(patch, "placeholder-capitals", change)
+
+
 def _in_the_template_rule(patch: pytest.MonkeyPatch, written: str, broken: str) -> None:
     def change(pattern: str) -> str:
         assert written in pattern, "the template rule no longer reads this way"
@@ -15687,6 +16042,19 @@ def _the_methods_are_read_by_their_old_name(patch: pytest.MonkeyPatch) -> None:
 
     old = re.compile(r"^\s*(?:materials and )?methods\b", re.IGNORECASE)
     patch.setattr(section_names, "names_methods", lambda title: bool(old.match(title)))
+
+
+def _the_methods_must_hold_methods(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "names_methods", lambda title: "methods" in title.lower())
+
+
+def _the_word_method_anywhere_is_the_methods(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    word = re.compile(r"\bmethod(?:s|ology)?\b", re.IGNORECASE)
+    patch.setattr(section_names, "names_methods", lambda title: word.search(title) is not None)
 
 
 def _methods_found_without_the_paper_s_structure(patch: pytest.MonkeyPatch, keep: str) -> None:
@@ -16520,6 +16888,98 @@ def _a_citation_key_stops_at_a_colon(patch: pytest.MonkeyPatch) -> None:
 
 def _a_heading_is_part_of_the_paragraph_under_it(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_HEADING", re.compile(r"(?!)"))
+
+
+def _a_comparator_after_a_binding_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(bound_comparisons_gate, "_after", lambda text, end: None)
+
+
+def _a_comparator_after_a_binding_holds_the_side_it_names(patch: pytest.MonkeyPatch) -> None:
+    real = bound_comparisons_gate._after
+
+    def after(text: str, end: int) -> tuple[str, bool, bool] | None:
+        read = real(text, end)
+        return None if read is None else (read[0], not read[1], read[2])
+
+    patch.setattr(bound_comparisons_gate, "_after", after)
+
+
+def _anything_after_a_sign_after_a_binding_is_its_subject(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #629: "{{results.inc}} < the incidence in exposed patients" was read."""
+    gate = bound_comparisons_gate
+    patch.setattr(gate, "_AFTER", re.compile(rf"{gate._GAP}(?P<op>(?i:{gate._SIGN}))(?P<plural>)"))
+
+
+def _a_comparator_is_read_whatever_its_subject(patch: pytest.MonkeyPatch) -> None:
+    """The rule before round 1 of #629, which failed "incidence was greater than" an
+    incidence it was compared with."""
+    gate = bound_comparisons_gate
+    assert gate._BEFORE.pattern.startswith(gate._STATISTIC)
+    pattern = "(?P<plural>)" + gate._BEFORE.pattern[len(gate._STATISTIC):]
+    patch.setattr(gate, "_BEFORE", re.compile(pattern))
+
+
+def _a_statistics_symbol_may_end_a_word(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #629: "wasn't less than" read as the t's comparison."""
+    gate = bound_comparisons_gate
+    assert gate._NOT_IN_A_WORD in gate._BEFORE.pattern
+    patch.setattr(gate, "_BEFORE",
+                  re.compile(gate._BEFORE.pattern.replace(gate._NOT_IN_A_WORD, "")))  # fmt: skip
+
+
+def _a_symbol_inside_a_tag_is_a_statistic(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #629: "<p>{{results.x}}</p>" read as "p >"."""
+    gate = bound_comparisons_gate
+    for name in ("_BEFORE", "_AFTER"):
+        pattern = getattr(gate, name).pattern
+        assert gate._NOT_IN_A_TAG in pattern
+        patch.setattr(gate, name, re.compile(pattern.replace(gate._NOT_IN_A_TAG, "")))
+
+
+def _a_statistics_index_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    gate = bound_comparisons_gate
+    indexed = f"|(?:{'|'.join(gate._INDEXED)})"
+    assert indexed in gate._BEFORE.pattern
+    patch.setattr(gate, "_BEFORE", re.compile(gate._BEFORE.pattern.replace(indexed, "|(?!)")))
+
+
+def _a_p_value_written_out_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    gate = bound_comparisons_gate
+    written = rf"|[pP]{gate._ITALIC}(?:-|{gate._SPACE})values"
+    assert written in gate._BEFORE.pattern
+    patch.setattr(gate, "_BEFORE", re.compile(gate._BEFORE.pattern.replace(written, "")))
+
+
+def _a_singular_statistic_states_a_set(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #629: "(z > {{results.z_crit}})" failed of a critical value printed 1.96."""
+    patch.setattr(bound_comparisons_gate, "_states_a_set", lambda found: True)
+
+
+def _a_plural_statistic_is_one(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(bound_comparisons_gate, "_states_a_set", lambda found: False)
+
+
+def _a_line_break_after_a_sign_after_a_binding_ends_it(patch: pytest.MonkeyPatch) -> None:
+    gate = bound_comparisons_gate
+    patch.setattr(gate, "_AFTER", gate._after_pattern(gap="[ \t\N{NO-BREAK SPACE}]*"))
+
+
+def _a_sign_after_a_binding_is_read_as_cased(patch: pytest.MonkeyPatch) -> None:
+    gate = bound_comparisons_gate
+    patch.setattr(gate, "_AFTER", gate._after_pattern(sign=gate._SIGN))
+
+
+def _a_comparison_beside_a_binding_is_strict(patch: pytest.MonkeyPatch) -> None:
+    def contradicted(value: object, display: str, below: bool) -> bool:
+        shown = number_in(display)
+        return shown is not None and not (value < shown if below else value > shown)
+
+    patch.setattr(bound_comparisons_gate, "contradicted", contradicted)
+
+
+def _a_comparison_beside_a_binding_is_held_of_the_print(patch: pytest.MonkeyPatch) -> None:
+    """The false pass of PsyArXiv fyxeq_v2: the digits printed compared with themselves."""
+    patch.setattr(bound_comparisons_gate, "contradicted", lambda value, display, below: False)
 
 
 def _a_divisor_after_a_space_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -18844,9 +19304,80 @@ def _the_offsets_are_one_off(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(pdfwriter._Writer, "_file", file)
 
 
+from generated import emphasised_contexts  # noqa: E402
+
+
+@holds(200, emphasised_contexts())
+def test_an_excerpt_quotes_a_context_as_the_document_prints_it(drawn: tuple[str, str]) -> None:
+    """The page and the PDF quote a finding's context as the .docx prints it (the author's
+    audit, 2026-11-11: "**CBL**" was shown): bold and italics typed by stars or by
+    underscores without their marks, around a code span and inside one another too; a name
+    from code with its underscores, a star between a number and a word, one inside a word,
+    and a code span, as they are (`auditing.reader.excerpt`)."""
+    from manuscript_guard.auditing.reader import excerpt
+
+    typed, printed = drawn
+    assert excerpt(typed) == printed
+
+
+def _underscores_mark_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import reader
+
+    # Two groups, as `excerpt` puts back the second, and no match.
+    patch.setattr(reader, "_UNDERSCORED", re.compile(r"(?!)(_)(_)"))
+
+
+def _an_underscore_inside_a_word_marks_emphasis(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import reader
+
+    patch.setattr(reader, "_UNDERSCORED", re.compile(r"(__|_)(?=[^\s_])(.+?)(?<=[^\s_])\1"))
+
+
+def _a_star_with_a_space_after_it_marks_emphasis(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import reader
+
+    patch.setattr(reader, "_STARRED", re.compile(r"(?<![\w*])(\*\*|\*)(.+?)\1(?![\w*])"))
+
+
+def _a_code_span_is_not_set_aside(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import reader
+
+    patch.setattr(reader, "_CODE", re.compile(r"(?!)(`)"))
+
+
+def _one_emphasis_is_taken_off_and_not_one_inside_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import reader
+
+    patch.setattr(reader, "_NESTED", 1)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a typed table's cells inside maths are maths": (
+        _a_table_inside_maths_is_maths,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "underscores mark no emphasis in an excerpt": (
+        _underscores_mark_nothing,
+        test_an_excerpt_quotes_a_context_as_the_document_prints_it,
+    ),
+    "an underscore inside a word marks emphasis in an excerpt": (
+        _an_underscore_inside_a_word_marks_emphasis,
+        test_an_excerpt_quotes_a_context_as_the_document_prints_it,
+    ),
+    "a star with a space after it marks emphasis in an excerpt": (
+        _a_star_with_a_space_after_it_marks_emphasis,
+        test_an_excerpt_quotes_a_context_as_the_document_prints_it,
+    ),
+    "a code span's marks are taken off in an excerpt": (
+        _a_code_span_is_not_set_aside,
+        test_an_excerpt_quotes_a_context_as_the_document_prints_it,
+    ),
+    "an emphasis inside another stays in an excerpt": (
+        _one_emphasis_is_taken_off_and_not_one_inside_it,
+        test_an_excerpt_quotes_a_context_as_the_document_prints_it,
+    ),
     "a PDF string's parentheses are not escaped": (
         _pdf_marks_unescaped,
         test_a_pdf_report_prints_every_word_within_its_page_and_marks_every_heading,
@@ -19804,6 +20335,22 @@ BROKEN = {
         _a_line_is_read_with_its_spans,
         test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
     ),
+    "a line under no heading is read with its block quote's marks": (
+        _a_line_is_read_with_its_quote_s_marks,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a line under no heading is read with its link": (
+        _a_line_is_read_with_its_link,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a paragraph's first line is read as typed, a hard line break with it": (
+        _a_paragraph_s_first_line_is_read_as_typed,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a line that holds a link or a quote of the title opens a list": (
+        _a_quote_s_or_a_link_s_line_anywhere_opens_a_list,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
     "a title that ends a reference list is read with its spans": (
         _a_list_s_end_is_read_with_its_spans,
         test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
@@ -20728,6 +21275,34 @@ BROKEN = {
         _g6_reads_a_latex_comment_as_prose,
         test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
     ),
+    "G6 takes no typed numbered marker for a claim's support": (
+        _g6_reads_no_typed_marker,
+        test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
+    ),
+    "G6 takes no typed citation by author and year for a claim's support": (
+        _g6_reads_no_typed_author_year,
+        test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
+    ),
+    "G6 takes no organisation for a citation's author": (
+        _g6_reads_no_organisation_as_an_author,
+        test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
+    ),
+    "G6 takes two capitalised words for an organisation's name": (
+        _g6_takes_two_words_for_an_organisation,
+        test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
+    ),
+    "G6 takes a month cut short for a citation's author": (
+        _g6_takes_a_short_month_for_an_author,
+        test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
+    ),
+    "G6 takes a year in brackets with any words for a citation": (
+        _g6_takes_any_bracketed_year_for_a_citation,
+        test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
+    ),
+    "G6 takes an interval after its value for a citation": (
+        _g6_takes_an_interval_for_a_citation,
+        test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
+    ),
     "in LaTeX, G6 looks for a placeholder in the prose only": (
         _g6_looks_for_a_placeholder_in_the_prose_only,
         test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
@@ -20956,6 +21531,46 @@ BROKEN = {
         _a_long_form_crosses_no_bracket,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
+    "a short form closing a bracket after a separator defines nothing": (
+        _a_bracket_s_last_word_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a short form closing a bracket is spelt from before the bracket": (
+        _a_bracket_s_last_word_is_spelt_from_before_the_bracket,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a short form after a dash defines nothing": (
+        _a_dash_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a number after a dash's short form defines it": (
+        _a_number_after_a_dash_s_short_form_defines_too,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a dash with no space defines": (
+        _a_dash_needs_no_space,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a comma and a number after a dash's short form define it": (
+        _a_comma_and_a_number_after_a_dash_s_short_form_define,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a colon, a bracket or a no-break space before a dash's value defines": (
+        _a_colon_a_bracket_or_a_no_break_space_before_a_value_defines,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a comma after a dash's short form defines nothing": (
+        _a_comma_after_a_dash_s_short_form_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "pandoc's smart dashes are no dashes": (
+        _pandoc_s_smart_dashes_are_no_dashes,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a no-break space before a dash is no space": (
+        _a_no_break_space_is_no_space_before_a_dash,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
     "a time of day is read as words": (
         _a_time_of_day_is_words,
         test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
@@ -20966,6 +21581,18 @@ BROKEN = {
     ),
     "a table's body and a plain line in capitals are headings": (
         _a_table_s_body_and_a_plain_line_in_capitals_are_headings,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a section's name on a plain line in capitals is read as words": (
+        _a_section_s_name_on_a_plain_line_is_words,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "any plain line in capitals is a section's name": (
+        _a_plain_line_in_capitals_is_a_section_s_name,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a section's name is read with its escaped stop": (
+        _a_section_s_name_is_read_with_its_escape,
         test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
     ),
     "a header cell is read line by line": (
@@ -21860,6 +22487,18 @@ BROKEN = {
         _the_header_n_is_a_printed_total,
         test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
     ),
+    "no gap over a column's n is rounding": (
+        _no_gap_over_a_columns_n_is_rounding,
+        test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
+    ),
+    "rounding allows a whole count a category": (
+        _rounding_allows_a_whole_count_a_category,
+        test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
+    ),
+    "rounding leaves out the n's half count": (
+        _rounding_leaves_out_the_ns_half_count,
+        test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
+    ),
     "categories fewer than their column's n are said": (
         _categories_fewer_than_their_n_are_said,
         test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
@@ -22026,6 +22665,14 @@ BROKEN = {
     ),
     "a rounding of a reported number is no match": (
         _a_rounding_is_no_match,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an identifier of the Abstract is looked for among the numbers alone": (
+        _an_identifier_is_looked_for_among_the_numbers_alone,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an identifier of the Abstract is found by its number": (
+        _an_identifier_is_found_by_its_number,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "every line outside the Abstract is where the paper reports": (
@@ -22215,6 +22862,62 @@ BROKEN = {
     "a heading is part of the paragraph under it": (
         _a_heading_is_part_of_the_paragraph_under_it,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a comparator after a binding is not read": (
+        _a_comparator_after_a_binding_is_not_read,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a comparator after a binding holds the value to the side it names": (
+        _a_comparator_after_a_binding_holds_the_side_it_names,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "anything after a sign after a binding is its subject": (
+        _anything_after_a_sign_after_a_binding_is_its_subject,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a comparator is read whatever its subject": (
+        _a_comparator_is_read_whatever_its_subject,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a statistic's symbol may end a word": (
+        _a_statistics_symbol_may_end_a_word,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a statistic's index is not read": (
+        _a_statistics_index_is_not_read,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a symbol inside a tag is a statistic": (
+        _a_symbol_inside_a_tag_is_a_statistic,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a p value written out is not read": (
+        _a_p_value_written_out_is_not_read,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a singular statistic states a set": (
+        _a_singular_statistic_states_a_set,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a plural statistic is one": (
+        _a_plural_statistic_is_one,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a line break after a sign after a binding ends it": (
+        _a_line_break_after_a_sign_after_a_binding_ends_it,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a sign after a binding is read as cased": (
+        _a_sign_after_a_binding_is_read_as_cased,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a comparison beside a binding is strict": (
+        _a_comparison_beside_a_binding_is_strict,
+        test_a_comparison_beside_a_binding_is_held_as_the_emitter_holds_a_display,
+    ),
+    "a comparison beside a binding is held of the print": (
+        _a_comparison_beside_a_binding_is_held_of_the_print,
+        test_a_comparison_beside_a_binding_is_held_as_the_emitter_holds_a_display,
     ),
     "a divisor after a space is not read": (
         _a_divisor_after_a_space_is_not_read,
@@ -23168,6 +23871,18 @@ BROKEN = {
         _the_sections_know_english_titles_only,
         test_a_reference_list_is_known_by_its_title_in_each_language,
     ),
+    "a section knows neither Literature cited nor Reference list": (
+        _the_sections_know_neither_literature_cited_nor_a_reference_list,
+        test_a_reference_list_is_known_by_its_title_in_each_language,
+    ),
+    "a section reads Literature cited and Reference list by their opening words": (
+        _the_sections_read_literature_cited_by_its_opening,
+        test_a_reference_list_is_known_by_its_title_in_each_language,
+    ),
+    "the recycling check knows no Reference list": (
+        _the_recycling_check_knows_no_reference_list,
+        test_a_reference_list_is_known_by_its_title_in_each_language,
+    ),
     "the recycling check knows a reference list's English titles only": (
         _the_recycling_check_knows_english_titles_only,
         test_a_reference_list_is_known_by_its_title_in_each_language,
@@ -23234,6 +23949,30 @@ BROKEN = {
     ),
     "an instruction marked or linked is not read": (
         _an_instruction_marked_or_linked_is_a_link_s_text,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "a placement marker is a slot": (
+        _a_placement_marker_is_a_slot,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "a placement marker needs no number": (
+        _a_marker_needs_no_number,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "a Roman X is a placement marker's number": (
+        _a_roman_x_is_a_markers_number,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "'Fig.' needs a space before its number": (
+        _fig_needs_a_space_before_its_number,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "a placement marker's number has no dot": (
+        _a_markers_number_has_no_dot,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "a placement marker in capitals with a Roman numeral is a slot": (
+        _a_marker_in_capitals_with_a_roman_numeral_is_a_slot,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
     ),
     "Word's prompt is read without what it asks for": (
@@ -23473,6 +24212,18 @@ BROKEN = {
     "the Methods are read by the name G9 had for them": (
         _the_methods_are_read_by_their_old_name,
         test_a_section_g4_counts_present_is_a_section_the_gates_read,
+    ),
+    "a Methods titled Method or Methodology is no Methods": (
+        _the_methods_must_hold_methods,
+        test_a_section_g4_counts_present_is_a_section_the_gates_read,
+    ),
+    "a title the word method is in is a Methods": (
+        _the_word_method_anywhere_is_the_methods,
+        test_a_section_g4_counts_present_is_a_section_the_gates_read,
+    ),
+    "a subsection of the Results the word method is in is a Methods": (
+        _the_word_method_anywhere_is_the_methods,
+        test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "the abstract a profile names is not counted as one": (
         _a_profile_s_abstract_title_is_not_counted,

@@ -262,7 +262,7 @@ def _checks_of_audit(report, items: list[Item]) -> list[tuple[str, str, int]]:
          f"{_n(read.get('tests', 0), 'test')}, {_n(read.get('intervals', 0), 'interval')} and "
          f"{read.get('shares', 0)} n (%) read" if beside else "", len(report.disagreements)),
         ("Table totals and categories against their n", _read(tables, "table"),
-         len(report.sums_off) + len(report.over_n)),
+         len(report.sums_off) + len(report.over_n) + len(report.over_n_rounding)),
         ("Counts held back that a total gives away", _read(tables, "table"),
          len(report.recovered) + len(report.recovered_by_n)),
         ("Flows printed as lists", _read(report.flows_read, "flow"),

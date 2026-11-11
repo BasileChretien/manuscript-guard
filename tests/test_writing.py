@@ -279,6 +279,81 @@ def test_vague_attribution_with_a_citation_is_accepted(project: Path) -> None:
     assert "vague-attribution" not in codes(report)
 
 
+def _vague_in(text: str) -> list[str]:
+    from manuscript_guard.gates.writing import judge_texts
+
+    report, _totals = judge_texts([(Path("main.md"), text)])
+    return [f.message for f in report.findings if f.code == "vague-attribution"]
+
+
+#: A claim and what follows it, as a paper not written with manuscript-guard types its
+#: citation, a .docx `audit` converts among them: 14 of the 16 vague attributions judged on
+#: 52 preprints of the corpus round (2026-11-10) stood beside such a citation.
+TYPED_CITATIONS = [
+    "(Smith et al., 2020)",
+    "(Smith & Jones, 2019; Lee, 2021a)",
+    "(World Health Organization, 2020)",
+    "(e.g., Centers for Disease Control and Prevention, 2019)",
+    "(National Institutes of Health, 2018)",
+    "[12]",
+    "[3, 5-7]",
+    "\\[4\\]",
+]
+
+
+@pytest.mark.parametrize("cited", TYPED_CITATIONS)
+def test_a_claim_beside_a_typed_citation_is_not_vague(cited: str) -> None:
+    claim = f"Prior research has shown that exercise lowers blood pressure {cited}."
+    assert _vague_in(f"# Introduction\n\n{claim}\n") == []
+
+
+#: What a paper writes in brackets that cites nothing: a count, a year alone, a date, a P
+#: value, a month and a year, and an interval after its value, which the audit reads apart
+#: from a citation (`audit._intervals`); two capitalised words and a year, which an
+#: organisation's name is longer than (round 1 of #621), and a month cut short.
+NOT_CITATIONS = ["(n = 2020)", "(2020)", "(in 2020)", "(p < 0.05)", "(January 2020)",
+                 "(since 2019)", "by 64 [55-72]", "(Fall Semester, 2020)", "(Early Phase, 2019)",
+                 "(Jan 2020)", "(Dec 2019)", "(Dec. 2019)", "(Sept 2018)"]  # fmt: skip
+
+
+@pytest.mark.parametrize("written_after", NOT_CITATIONS)
+def test_a_claim_beside_brackets_that_cite_nothing_is_vague(written_after: str) -> None:
+    claim = f"Prior research has shown that exercise lowers blood pressure {written_after}."
+    assert len(_vague_in(f"# Introduction\n\n{claim}\n")) == 1
+
+
+def test_a_place_and_a_year_in_brackets_are_taken_for_a_citation() -> None:
+    """A limit (DESIGN.md, Known gaps): a citation is read by its shape, and a place of three
+    words with a year has an organisation's, so the claim beside it is not reported."""
+    claim = "Prior research has shown that exercise lowers it (New South Wales, 2019)."
+    assert _vague_in(f"# Introduction\n\n{claim}\n") == []
+
+
+@pytest.mark.parametrize("bracketed", ["[0-10]", "[18-65]"])
+def test_a_range_in_brackets_is_taken_for_a_numbered_citation(bracketed: str) -> None:
+    """A limit (DESIGN.md, Known gaps): a range in brackets with no value before it has a
+    numbered citation's shape, so the claim beside it is not reported (round 1 of #621)."""
+    claim = f"Studies have shown that pain falls on a scale of {bracketed} with exercise."
+    assert _vague_in(f"# Introduction\n\n{claim}\n") == []
+
+
+def test_an_unclosed_bracket_of_citations_is_judged_in_time() -> None:
+    """Thirty works by two authors in a bracket that is not closed, or closes on words that
+    cite nothing: each work was read both as two people and as an organisation's name, and
+    the reading tried every way of choosing between them, 2^30 (round 1 of #621)."""
+    import time
+
+    # The rules and the readers are loaded once, before the clock is read.
+    _vague_in("Studies have shown it (Smith, 2020).")
+    for joined in ("&", "and"):
+        for after in ("and others).", "and others."):
+            works = f"Smith {joined} Jones, 2019; " * 30
+            text = f"# Introduction\n\nStudies have shown that X lowers BP ({works}{after}\n"
+            started = time.perf_counter()
+            assert len(_vague_in(text)) == 1, (joined, after)
+            assert time.perf_counter() - started < 1.0, (joined, after)
+
+
 def test_a_structured_abstract_is_not_over_bolded(project: Path) -> None:
     """Journals require those bold labels; counting them would flag their house style."""
     text = (

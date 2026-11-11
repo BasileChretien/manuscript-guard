@@ -330,6 +330,44 @@ def test_a_total_off_categories_over_n_and_a_count_given_away_count_for_strict(
     assert "count-recoverable" not in {f["code"] for f in said["findings"]}
 
 
+WEIGHTED = """# Results
+
+| Characteristic | N = 12,765^1^ | Panel (n = 120) |
+|---|---|---|
+| Age group | | |
+| 18-29 | 2,553 (20.0) | 30 (25.0) |
+| 30-44 | 3,830 (30.0) | 30 (25.0) |
+| 45-59 | 3,829 (30.0) | 30 (25.0) |
+| 60 or over | 2,554 (20.0) | 30 (25.0) |
+"""
+
+
+def test_categories_over_their_n_by_no_more_than_rounding_are_a_note(
+    tmp_path: Path, capsys
+) -> None:
+    """Basile, 2026-11-11, after the corpus of 52 real preprints (slug psych): a survey's
+    weighted, rounded counts put its age groups at 12,766 under "N = 12,765^1^", and the
+    audit failed it, and 23 others like it. One over the n of four categories is a note,
+    which --strict does not count; three over is a failure, as before."""
+    paper = tmp_path / "paper.md"
+    paper.write_text(WEIGHTED, encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    out = capsys.readouterr().out
+    assert "BY NO MORE THAN ROUNDING WEIGHTED COUNTS CAN MAKE" in out
+    assert "the gap may be rounding of weighted counts" in out
+    assert "1 column over its n by no more than rounding" in out
+    assert main(["audit", str(paper), "--json"]) == 0
+    said = json.loads(capsys.readouterr().out)
+    [note] = [f for f in said["findings"] if f["code"] == "over-header-n"]
+    assert (note["severity"], note["counted"], note["line"]) == ("info", False, 6)
+    assert (said["counts"]["over_header_n"], said["counts"]["over_header_n_rounding"]) == (0, 1)
+    # Three over four categories is beyond what rounding can make.
+    paper.write_text(WEIGHTED.replace("2,554 (20.0)", "2,556 (20.0)"), encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+    out = capsys.readouterr().out
+    assert "add up to 12768, more than its n = 12765" in out
+
+
 def test_a_count_only_the_header_n_gives_away_is_listed_and_not_counted(
     tmp_path: Path, capsys
 ) -> None:

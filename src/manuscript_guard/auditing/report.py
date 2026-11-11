@@ -30,7 +30,8 @@ What was read and what was not comes first, then a section for each kind of chec
 `--strict` counts the numbers not found in the outputs, a paper or a stretch of one that
 could not be read, an audit that read no number, and what is exact arithmetic: a total that
 its counts do not add up to (`sum-off`), categories that add up to more than their column's
-n (`over-header-n`), and a count held back that a printed total gives away
+n (`over-header-n`; a note where by no more than rounding weighted counts can make, Basile,
+2026-11-11), and a count held back that a printed total gives away
 (`count-recoverable`), a flow whose arithmetic does not hold under a heading, a caption or a
 paragraph that names a flow (`flow-broken`; under none it is a note, Basile, 2026-10-29), and an
 interval or a test of the Abstract that differs from its counterpart where the paper reports
@@ -38,9 +39,9 @@ interval or a test of the Abstract that differs from its counterpart where the p
 (`blind-document-names-author`, Basile, 2026-10-29). Nothing else is counted: the P worked
 out from a statistic, G6 and G14 (the author, 2026-10-28), G7's findings, a count held back
 that only a column's n gives away, which holds only where none of the column lacks the
-characteristic, a number of the Abstract found nowhere the paper reports (the author,
-2026-10-28), G4's findings and the Document section's counts, the causal words, the cited
-sentences and the self-citation counts (Basile, 2026-10-29).
+characteristic, a number of the Abstract not found in the Methods, the Results or the
+tables (the author, 2026-10-28), G4's findings and the Document section's counts, the
+causal words, the cited sentences and the self-citation counts (Basile, 2026-10-29).
 """
 
 from __future__ import annotations
@@ -57,6 +58,10 @@ MEMBERSHIP = "Numbers in the outputs"
 ARITHMETIC = "Arithmetic"
 SMALL_CELLS = "Small cells recoverable by subtraction"
 ABSTRACT = "Abstract against Results"
+#: Where the Abstract against Results looks for an Abstract's number, as each number not
+#: found says and the heading over them: "found nowhere the paper reports" said more than
+#: was searched, as the main text's Introduction and Discussion are not.
+ABSTRACT_SEARCHED = "the Methods, the Results or the tables"
 WRITING = "Writing (G6)"
 LANGUAGE = "Language (G14)"
 REFERENCES = "References (G7)"
@@ -138,6 +143,11 @@ def items(report) -> list[Item]:
         Item(ARITHMETIC, "audit", "over-header-n", d.message, FAIL, True, d.source, d.line,
              d.context)
         for d in report.over_n
+    ]  # fmt: skip
+    found += [
+        Item(ARITHMETIC, "audit", "over-header-n", d.message, INFO, False, d.source, d.line,
+             d.context)
+        for d in report.over_n_rounding
     ]  # fmt: skip
     found += [
         Item(ARITHMETIC, "audit", "mean-not-assessable", d.message, INFO, False, d.source,
@@ -373,8 +383,8 @@ def _abstract_items(read) -> list[Item]:
     return [
         *(Item(ABSTRACT, "audit", "abstract-conflict", d.message, FAIL, True, d.source,
                d.line, d.context) for d in read.conflicts),
-        *(Item(ABSTRACT, "audit", "abstract-not-found", f"{c.text} in the Abstract is "
-               "found nowhere the paper reports", WARN, False, c.source, c.line, c.context)
+        *(Item(ABSTRACT, "audit", "abstract-not-found", f"{c.text} in the Abstract is not "
+               f"found in {ABSTRACT_SEARCHED}", WARN, False, c.source, c.line, c.context)
           for c in read.not_found),
         *(Item(ABSTRACT, "audit", "abstract-rounded", f"{c.text} in the Abstract is found "
                "only as a rounding of a number the paper reports", INFO, False, c.source,
@@ -407,6 +417,8 @@ def as_json(report, discrimination) -> str:
         "not_compared": report.uncompared,
         "totals_off": len(report.sums_off),
         "over_header_n": len(report.over_n),
+        # Over by no more than rounding weighted counts can make: a note, not counted.
+        "over_header_n_rounding": len(report.over_n_rounding),
         # Apart, as the text says them: --strict counts the first and not the second.
         "recoverable": len(report.recovered),
         "recoverable_by_n": len(report.recovered_by_n),
@@ -582,8 +594,9 @@ def _rendered(found, root: Path | None, show: _Show) -> str:
 
 def _anything_in_arithmetic(report) -> bool:
     """Whether the Arithmetic section says more than that nothing disagrees."""
-    return bool(report.sums_off or report.over_n or report.disagreements or report.whole_numbers
-                or report.flows_read or report.flow_notes)  # fmt: skip
+    return bool(report.sums_off or report.over_n or report.over_n_rounding
+                or report.disagreements or report.whole_numbers or report.flows_read
+                or report.flow_notes)  # fmt: skip
 
 
 def _anything_in_references(report) -> bool:
@@ -870,6 +883,10 @@ def _arithmetic(report, show) -> list[str]:
     over = _listed("CATEGORIES THAT ADD UP TO MORE THAN THEIR COLUMN'S N, their shares to 100 "
                    "(counted by --strict):", report.over_n, show)  # fmt: skip
     lines += ([""] if lines and over else []) + over
+    rounded = _listed("CATEGORIES THAT ADD UP TO MORE THAN THEIR COLUMN'S N BY NO MORE THAN "
+                      "ROUNDING WEIGHTED COUNTS CAN MAKE, half a count for each category and for "
+                      "the n (not counted by --strict):", report.over_n_rounding, show)  # fmt: skip
+    lines += ([""] if lines and rounded else []) + rounded
     if lines and report.disagreements:
         lines.append("")
     if report.disagreements:
@@ -950,7 +967,7 @@ def _abstract(read, show) -> list[str]:
     for heading, found in (
         ("AN INTERVAL OR A TEST THAT DIFFERS FROM ITS COUNTERPART IN ONE NUMBER (counted by "
          "--strict):", read.conflicts),
-        ("NOT FOUND IN THE METHODS, THE RESULTS OR THE TABLES (not counted by --strict):",
+        (f"NOT FOUND IN {ABSTRACT_SEARCHED.upper()} (not counted by --strict):",
          read.not_found),
         ("FOUND ONLY AS A ROUNDING (not counted by --strict):", read.rounded),
     ):

@@ -151,12 +151,27 @@ def names_statement(title: str) -> bool:
     return bool(STATEMENT_TITLE.match(plain(title)))
 
 
+#: The singular, which names the Methods only as the whole title, numbered, marked or not:
+#: "Method", as APA titles it and a machine-learning paper often does, "Methodology", and
+#: "Materials and method" or "Method and materials". Read anywhere in a title, the word took
+#: "Performance of the proposed method" under "Results and discussion" for a Methods, and
+#: the Results over it were no longer the Results (round 1 of #624).
+_METHOD_TITLE = re.compile(
+    r"(?:materials?\s+(?:and|&)\s+)?method(?:ology)?(?:\s+(?:and|&)\s+materials?)?[\s.:]*",
+    re.IGNORECASE,
+)
+
+
 def names_methods(title: str) -> bool:
     """Whether a heading can be the Methods: its title holds "methods", the test G4 has
-    counted a required Methods section present by since it was written. "2. Methods",
-    "**2. Methods**", "Materials & methods", "Patients and methods", "Statistical methods".
-    Which of several such headings is the paper's Methods is `methods_sections`'s to say."""
-    return "methods" in title.lower()
+    counted a required Methods section present by since it was written, or is the singular
+    alone (`_METHOD_TITLE`). "2. Methods", "**2. Methods**", "Materials & methods",
+    "Patients and methods", "Statistical methods", "eMethods 1", "Method", "3. Methodology";
+    not "Methodological notes" nor "Performance of the proposed method". A paper with a
+    "Method" heading had no Methods to the audit and the gates, so a number of its Abstract
+    reported there was not found (cs-lg of the real-paper corpus, 2026-11-11). Which of
+    several such headings is the paper's Methods is `methods_sections`'s to say."""
+    return "methods" in title.lower() or _METHOD_TITLE.fullmatch(plain(title)) is not None
 
 
 def names_abstract(title: str, named: str | None = None) -> bool:

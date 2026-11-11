@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import NamedTuple
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts.project import Project
@@ -82,32 +83,48 @@ def alt_in(sidecar: Path) -> str | None:
     return said if isinstance(said, str) and said.strip() else None
 
 
-def figures_placed(project: Project) -> list[tuple[str, bool, Path]]:
-    """Each figure the manuscript places, with its name, whether only the supplement places
-    it, and its sidecar: each it binds, by its key, with its sidecar in `figures/`, then each
-    file it places by `\\includegraphics` or as an image (`placed_figures.py`), by its path
-    from the project's root, with its sidecar beside it. One sidecar is one figure."""
+class Shown(NamedTuple):
+    """A figure the manuscript places."""
+
+    name: str
+    #: Whether only the supplement places it.
+    supplementary: bool
+    #: Where its alternative text is written.
+    sidecar: Path
+    #: Whether it is bound, `{{figure.key}}` or `\\mg{figure.key}`, so that the build writes
+    #: its alternative text into its picture; a figure placed the ordinary way gets none
+    #: there.
+    bound: bool
+
+
+def figures_placed(project: Project) -> list[Shown]:
+    """Each figure the manuscript places: each it binds, by its key, with its sidecar in
+    `figures/`, then each file it places by `\\includegraphics` or as an image
+    (`placed_figures.py`), by its path from the project's root, with its sidecar beside it.
+    One sidecar is one figure."""
     from manuscript_guard.gates.figure_files import _placed
     from manuscript_guard.gates.placed_figures import placed_files
 
-    found = [(name, supplementary, sidecar_of(project, name))
+    found = [Shown(name, supplementary, sidecar_of(project, name), True)
              for name, supplementary in _placed(project)]  # fmt: skip
-    seen = {sidecar.resolve() for _name, _supplementary, sidecar in found}
+    seen = {shown.sidecar.resolve() for shown in found}
     for placed in placed_files(project):
         if placed.sidecar.resolve() not in seen:
             seen.add(placed.sidecar.resolve())
-            found.append((placed.name, placed.supplementary, placed.sidecar))
+            found.append(Shown(placed.name, placed.supplementary, placed.sidecar, False))
     return found
 
 
-def alt_texts(project: Project) -> list[tuple[str, Path, str]]:
+def alt_texts(project: Project, *, bound_only: bool = False) -> list[tuple[str, Path, str]]:
     """Each figure the manuscript places that has alternative text: its name, its sidecar
-    and the text as written. For the checks that read what the build prints from it."""
+    and the text as written. For the checks that read what is printed from it: the build
+    prints a bound figure's into its picture, and `submit` every figure's into `alt-text.md`.
+    With `bound_only`, those the build prints into the document alone."""
     found = []
-    for name, _supplementary, sidecar in figures_placed(project):
-        raw = alt_in(sidecar)
+    for shown in figures_placed(project):
+        raw = alt_in(shown.sidecar) if shown.bound or not bound_only else None
         if raw is not None:
-            found.append((name, sidecar, raw))
+            found.append((shown.name, shown.sidecar, raw))
     return found
 
 
@@ -163,7 +180,7 @@ def check_figure_alt(project: Project, namespace: dict[str, Value], stage: str) 
     classifier = Classifier.load(project.extra_conventions, project.extra_terms)
     findings: list[Finding] = []
     placed = figures_placed(project)
-    for name, supplementary, sidecar in placed:
+    for name, supplementary, sidecar, _bound in placed:
         own = rules.get("supplementary") if supplementary else None
         held = {**rules, **own} if isinstance(own, dict) else rules
         raw = alt_in(sidecar)
@@ -194,7 +211,7 @@ def check_figure_alt(project: Project, namespace: dict[str, Value], stage: str) 
     if not placed:
         return report
     return report.with_counts(
-        figures_with_alt=sum(1 for _name, _supplementary, sidecar in placed
+        figures_with_alt=sum(1 for _name, _supplementary, sidecar, _bound in placed
                              if alt_in(sidecar) is not None)  # fmt: skip
     )
 

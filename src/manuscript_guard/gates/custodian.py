@@ -112,8 +112,8 @@ def check_small_cells(project: Project, results: Results) -> Report:
 
 def _printing(project: Project) -> list[tuple[Path, list, bool]]:
     """What prints the results: the manuscript's sources, in its format, with their lines,
-    and each figure's alternative text, which the build prints into its picture
-    (`gates/figure_alt.py`), with none."""
+    and each figure's alternative text, which the build prints into a bound figure's picture
+    and `submit` into `alt-text.md` (`gates/figure_alt.py`), with none."""
     from manuscript_guard.gates.figure_alt import alt_texts, literal
 
     found = [(bound.path, bound.placeholders, True) for bound in bound_files(project)]

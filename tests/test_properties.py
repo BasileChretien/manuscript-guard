@@ -10474,6 +10474,19 @@ def _graphicx_tries_the_folders_outermost(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(placed_figures, "resolve_graphic", folders_first)
 
 
+def _a_definitions_body_places_its_picture(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.gates import placed_figures
+
+    included = placed_figures.included
+
+    def with_bodies(source):
+        return included(replace(source, reading=replace(source.reading, bodies=())))
+
+    patch.setattr(placed_figures, "included", with_bodies)
+
+
 def _graphicspath_is_not_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import placed_figures
 
@@ -23005,6 +23018,10 @@ BROKEN = {
     ),
     "graphicspath is not read": (
         _graphicspath_is_not_read,
+        test_each_picture_a_latex_document_places_is_found_as_graphicx_finds_it,
+    ),
+    "a definition's body places its picture": (
+        _a_definitions_body_places_its_picture,
         test_each_picture_a_latex_document_places_is_found_as_graphicx_finds_it,
     ),
     "bold in a table is counted": (

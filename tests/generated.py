@@ -11236,7 +11236,7 @@ def markdown_images(draw: st.DrawFn) -> tuple[str, list[str]]:
 #: own, and those only what TeX does not print names.
 GRAPHICS_FILES = ("figs/g1.pdf", "figs/g1.png", "figs/g2.png", "here.pdf", "figs/here.pdf",
                   "other/g3.png", "figs/g4.pdf", "split.png", "figs/split.pdf", "figs/c1.pdf",
-                  "figs/c2.pdf")  # fmt: skip
+                  "figs/c2.pdf", "figs/c3.pdf")  # fmt: skip
 #: An `\\includegraphics` and the file graphicx finds for it: a name with no extension, the
 #: PDF before the PNG; one with its extension and options; the starred form, found beside the
 #: entry file before under `\\graphicspath`; a folder's file with no extension, whose only
@@ -11252,11 +11252,13 @@ GRAPHICS_PLACED = (
     ("\\includegraphics{split}", "figs/split.pdf"),
 )
 #: What names a picture and places none: in a comment, in an `\\iffalse` block, as a
-#: parameter in a definition's body, and a name no file has.
+#: parameter in a definition's body, in the body of a command never used (round 1 of #630),
+#: and a name no file has.
 GRAPHICS_NOT_PLACED = (
     "% \\includegraphics{c1}",
     "\\iffalse\n\\includegraphics{c2}\n\\fi",
     "\\newcommand{\\fig}[1]{\\includegraphics{#1}}",
+    "\\newcommand{\\logo}{\\includegraphics{c3}}",
     "\\includegraphics{missing}",
 )
 

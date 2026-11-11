@@ -131,15 +131,17 @@ def document_digest(project: Project) -> str:
             digest.update(name.encode("utf-8"))
             digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("ascii"))
 
-    # Each figure's alternative text, which the build writes into its picture from the
+    # Each bound figure's alternative text, which the build writes into its picture from the
     # figure's guard file (`gates/figure_alt.py`). Only where there is one, so a project
-    # without keeps the stamp it had. A manuscript file that cannot be read places no
+    # without keeps the stamp it had. Not a figure placed the ordinary way: the build writes
+    # no guard file's text into it, and the document is the same with or without (round 1
+    # of #630). A manuscript file that cannot be read places no
     # figure here: G0 says why.
     from manuscript_guard.contracts import ContractError
     from manuscript_guard.gates.figure_alt import alt_texts
 
     try:
-        alts = alt_texts(project)
+        alts = alt_texts(project, bound_only=True)
     except ContractError:
         alts = []
     for name, _sidecar, raw in alts:

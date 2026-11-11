@@ -20,7 +20,10 @@ Found as the build finds them:
   project's root, which pandoc runs from. A web address is no file of the paper's, and a
   reference image, `![a][b]`, is not read.
 
-A path that names no file, or one outside the project, is passed over: the build says so.
+A path that names no file is passed over: the build says so. A file the manuscript reaches
+through a link out of the project is checked where the link leads, known by its path through
+the link, and named in a note (`figure-outside-project`). A picture in a definition's body
+places nothing, even where the command is used (Known gaps).
 A file in `figures/` of a figure an analysis emits is that figure, read as it always was.
 
 What a placed figure draws is not traced to the results (G3's number checks read what the
@@ -29,6 +32,7 @@ analysis renders in `figures/`): `figure-untraced`, one note that names each suc
 
 from __future__ import annotations
 
+import os
 import posixpath
 import re
 from dataclasses import dataclass
@@ -67,12 +71,14 @@ _WEB = re.compile(r"^(?:[A-Za-z][A-Za-z0-9+.-]*:|//|#)")
 class Placed:
     """One figure file the paper places, not by a binding."""
 
-    #: The file, as found.
+    #: The file, as found: through a link where the manuscript reaches it through one.
     path: Path
     #: Its path from the project's root, `/` between folders: what it is known by.
     name: str
     #: Whether only the supplement places it.
     supplementary: bool
+    #: Whether the file is outside the project, where a link leads (`figure-outside-project`).
+    outside: bool = False
 
     @property
     def sidecar(self) -> Path:
@@ -84,36 +90,81 @@ def placed_files(project: Project) -> list[Placed]:
     """Each figure file the manuscript places by `\\includegraphics` or as a Markdown image,
     once, one per figure where it places a figure's exports in two formats, a figure an
     analysis emits and the manuscript binds left out."""
-    from manuscript_guard.gates.figure_files import _placed
     from manuscript_guard.gates.figure_review import REVIEWABLE, choose
-    from manuscript_guard.text.reader import LATEX, manuscript_format
 
     manuscript = project.path("manuscript")
     if not manuscript.is_dir():
         return []
-    root = project.root.resolve()
-    found_in = (latex_graphics(manuscript) if manuscript_format(manuscript) == LATEX
-                else _markdown(project, manuscript))  # fmt: skip
-    try:
-        emitted = {name for name, _supplementary in _placed(project)}
-    except (ContractError, OSError):
-        emitted = set()  # a file that cannot be read is named by the check that reads it
+    root = project.root.absolute()
+    real_root = _resolved(root) or root
+    found_in, emitted = _read(project, manuscript)
     figures = _resolved(project.path("figures"))
-    seen: dict[Path, bool] = {}
-    for path, supplementary in found_in:
+    # By the file a path leads to, the first path that leads there kept: the one the records
+    # stand beside, through a link where it goes through one.
+    seen: dict[Path, tuple[Path, bool]] = {}
+    for written, supplementary in found_in:
+        path = Path(os.path.normpath(written))
         found = _resolved(path)
         if found is None or not found.is_file() or found.suffix.lower() not in REVIEWABLE:
             continue
-        if not found.is_relative_to(root):
-            continue
         if found.parent == figures and found.stem in emitted:
             continue
-        seen[found] = seen.get(found, True) and supplementary
-    chosen = choose(list(seen))
-    return [Placed(path, path.relative_to(root).as_posix(),
-                   all(seen[other] for other in seen
-                       if (other.parent, other.stem) == (path.parent, path.stem)))
-            for path in chosen]  # fmt: skip
+        first, only = seen.get(found, (path, True))
+        seen[found] = (first, only and supplementary)
+    links = dict(seen.values())
+    return [Placed(path, _named(path, root),
+                   all(only for other, only in links.items()
+                       if (other.parent, other.stem) == (path.parent, path.stem)),
+                   outside=not _inside(path, real_root))
+            for path in choose(list(links))]  # fmt: skip
+
+
+#: What `_read` read, by what it read: `check` asks for the placed figures from four gates,
+#: and reading the LaTeX documents and the bindings each time took a sixth of its time on a
+#: twin of thirty pictures (round 1 of #630). Kept for the last few manuscripts.
+_CACHE: dict[tuple[str, str], tuple[tuple[tuple[Path, bool], ...], frozenset[str]]] = {}
+_CACHE_SIZE = 4
+#: The suffixes of the files what the manuscript places is read from.
+_SOURCES = {".md", ".tex", ".sty", ".cls"}
+
+
+def _read(
+    project: Project, manuscript: Path
+) -> tuple[tuple[tuple[Path, bool], ...], frozenset[str]]:
+    """Each picture the manuscript names, as a path to try, and the names of the figures it
+    binds; read once for each content of its sources, so a changed file is read again."""
+    from manuscript_guard.gates.figure_files import _placed
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    key = (f"{project.root.absolute()}|{manuscript.absolute()}", _sources_digest(manuscript))
+    if key in _CACHE:
+        return _CACHE[key]
+    found_in = tuple(latex_graphics(manuscript) if manuscript_format(manuscript) == LATEX
+                     else _markdown(project, manuscript))  # fmt: skip
+    try:
+        emitted = frozenset(name for name, _supplementary in _placed(project))
+    except (ContractError, OSError):
+        emitted = frozenset()  # a file that cannot be read is named by the check that reads it
+    while len(_CACHE) >= _CACHE_SIZE:
+        _CACHE.pop(next(iter(_CACHE)))
+    _CACHE[key] = (found_in, emitted)
+    return found_in, emitted
+
+
+def _sources_digest(manuscript: Path) -> str:
+    """A digest of every source file's path and bytes under `manuscript`."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    for path in sorted(manuscript.rglob("*")):
+        if path.suffix.lower() in _SOURCES and path.is_file():
+            try:
+                data = path.read_bytes()
+            except OSError:
+                data = b"\x00unreadable"
+            digest.update(path.relative_to(manuscript).as_posix().encode("utf-8") + b"\x00")
+            digest.update(hashlib.sha256(data).digest())
+    return digest.hexdigest()
 
 
 def _resolved(path: Path) -> Path | None:
@@ -121,6 +172,19 @@ def _resolved(path: Path) -> Path | None:
         return path.resolve()
     except (OSError, RuntimeError, ValueError):
         return None
+
+
+def _named(path: Path, root: Path) -> str:
+    """`path` from the project's root, as written through any link, `/` between folders."""
+    try:
+        return Path(os.path.relpath(path, root)).as_posix()
+    except ValueError:  # another drive
+        return path.name
+
+
+def _inside(path: Path, real_root: Path) -> bool:
+    found = _resolved(path)
+    return found is not None and found.is_relative_to(real_root)
 
 
 def _decoded(match: re.Match[str]) -> str:
@@ -202,11 +266,14 @@ def graphics_folders(texts) -> list[str]:
 
 def included(source) -> list[str]:
     """The path each `\\includegraphics` of a LaTeX file names, where TeX prints it, as
-    written; one built by a command or a parameter, `#1`, is no path."""
+    written: not in what TeX never prints, nor in a definition's body, which prints only
+    where the command is used (round 1 of #630); one built by a command or a parameter,
+    `#1`, is no path."""
     reading = source.reading
     out = []
     for start, end, opened in reading.graphics:
-        if any(begin <= start < finish for begin, finish in reading.unprinted):
+        if any(begin <= start < finish for begin, finish in (*reading.unprinted,
+                                                             *reading.bodies)):  # fmt: skip
             continue
         written = source.text[opened + 1 : end - 1].strip().strip('"').strip()
         if written and not set(written) & set("#\\{}"):
@@ -233,17 +300,39 @@ def resolve_graphic(
     return None
 
 
-def check_untraced(project: Project) -> Report:
+def check_placed(project: Project) -> Report:
     """One note naming each placed figure outside `figures/`, whose numbers are not traced
-    to the results."""
+    to the results, and one naming each the manuscript reaches outside the project, through
+    a link."""
     from manuscript_guard.gates.figure_review import under
 
     figures = project.path("figures")
-    untraced = [placed for placed in placed_files(project) if not under(placed.path, figures)]
-    if not untraced:
-        return Report()
+    placed = placed_files(project)
+    untraced = [found for found in placed if not under(found.path, figures)]
+    outside = [found for found in placed if found.outside]
+    findings = ([_untraced(untraced)] if untraced else []) + (
+        [_outside(outside)] if outside else [])  # fmt: skip
+    return Report(tuple(findings))
+
+
+def _outside(outside: list[Placed]) -> Finding:
+    names = ", ".join(found.name for found in outside)
+    return Finding(
+        gate=GATE,
+        code="figure-outside-project",
+        severity=INFO,
+        message=f"{len(outside)} placed figure(s) are outside the project, where a link in it "
+        f"leads: {names}. Each is reviewed, described and read where the link leads, and its "
+        "review and guard file are kept there, out of the project's history",
+        path=outside[0].path,
+        hint="copy the file into the project, beside the manuscript, so that the paper's "
+        "repository holds what it prints and the records of it",
+    )
+
+
+def _untraced(untraced: list[Placed]) -> Finding:
     names = ", ".join(placed.name for placed in untraced)
-    return Report((Finding(
+    return Finding(
         gate=GATE,
         code="figure-untraced",
         severity=INFO,
@@ -253,4 +342,4 @@ def check_untraced(project: Project) -> Report:
         hint="render a figure from a script that reads the results, into figures/, and place "
         "it by binding, \\mg{figure.key} or {{figure.key}}: G3 then reads what it draws. Its "
         "review, alternative text and colours are checked either way",
-    ),))  # fmt: skip
+    )

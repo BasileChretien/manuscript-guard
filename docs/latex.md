@@ -77,7 +77,8 @@ legend's words.
 A figure placed with `\includegraphics` is reviewed, described and read for its colours as
 one bound with `\mg` is. `check` finds its file as graphicx does: from the entry file's
 folder, then from each folder `\graphicspath` names, and a name written with no extension
-with each extension pdfTeX tries, `.pdf` before `.png`. A figure is known by its path from
+with each extension pdfTeX tries, `.pdf` before `.png`; one in a command's definition is
+not read, even where the command is used. A figure is known by its path from
 the project's root, `manuscript/figs/chart.pdf`: its review is `chart.review.yaml` beside
 it (`manuscript-guard review --record-figure manuscript/figs/chart.pdf --verdict pass --by
 "A. Reader"`), and its alternative text goes under `alt:` in `chart.guard.yaml` beside it. A

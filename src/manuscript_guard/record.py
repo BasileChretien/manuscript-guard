@@ -700,26 +700,38 @@ def write_figure_review(
 
 
 def _figure_named(project, figure: str) -> list[Path]:
-    """The file G10 reads for `figure`: a figure in `figures/` by its name, `forest` or
-    `forest.svg`, and one the manuscript places elsewhere by its name too, or by its path
-    from the project's root, `manuscript/figs/fig1.pdf`, where two figures share a name."""
-    from manuscript_guard.gates.figure_review import reviewable
+    """The file G10 reads for `figure`. A figure in `figures/` as main matched it, by its
+    name, `forest`, `forest.svg` or `km/curve` (round 1 of #630: `km/curve` was read as a
+    path from the project's root, and refused); a figure the manuscript places elsewhere by
+    its path from the project's root, `manuscript/figs/fig1.pdf`, or by its name where no
+    other figure has it. A name with a folder that names a placed file outright is that file;
+    a bare name that an emitted figure and a placed one both have names both."""
+    from manuscript_guard.gates.figure_review import reviewable, under
 
     figures = reviewable(project)
+    names = dict(figures)
+    folder_of = project.path("figures")
     given = Path(figure.replace("\\", "/"))
+    emitted = [path for path, _name in figures
+               if under(path, folder_of) and path.stem == given.stem]  # fmt: skip
+    placed = [path for path, _name in figures
+              if not under(path, folder_of) and path.stem == given.stem]  # fmt: skip
     if len(given.parts) > 1:
         folder = _resolved(project.root / given.parent)
-        found = [path for path, _name in figures
-                 if path.stem == given.stem and _resolved(path.parent) == folder]  # fmt: skip
+        exact = [path for path in placed if _resolved(path.parent) == folder]
+        found = exact or emitted[:1]
+    elif placed and (emitted or len(placed) > 1):
+        both = [*emitted, *placed]
+        named = ", ".join(sorted(names[path] if path in placed
+                                 else Path(os.path.relpath(path, project.root)).as_posix()
+                                 for path in both))  # fmt: skip
+        raise RecordError(f"{len(both)} figures are called {figure!r}: {named}; name the "
+                          "one you read by its path from the project's root")  # fmt: skip
     else:
-        found = [path for path, _name in figures if path.stem == given.stem]
+        found = emitted[:1] or placed
     if not found:
         known = ", ".join(sorted(name for _path, name in figures)) or "none"
         raise RecordError(f"no reviewable figure called {figure!r}; figures here: {known}")
-    if len(found) > 1:
-        named = ", ".join(sorted(name for path, name in figures if path in found))
-        raise RecordError(f"{len(found)} figures are called {figure!r}: {named}; name the "
-                          "one you read by its path from the project's root")  # fmt: skip
     return found
 
 

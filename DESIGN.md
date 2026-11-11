@@ -25498,9 +25498,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - An image in an indented code block is read as placed, and one written by reference,
     `![a][b]`, is not read. Accepted.
   - A picture placed by `\includesvg`, `\includestandalone` or a command of the author's
-    whose path is a parameter is not read; a `\graphicspath` counts for every picture of its
-    document wherever it stands, and an imported file's folder is tried before it.
-    Accepted.
+    is not read: an `\includegraphics` in a definition's body places nothing, even where the
+    command is used, since one in a command the paper never uses was asked for a review
+    (round 1 of #630). A `\graphicspath` counts for every picture of its document wherever
+    it stands, and an imported file's folder is tried before it. Accepted.
+  - A file the manuscript reaches through a link out of the project is checked where the link
+    leads, its records kept there, and named in a note (`figure-outside-project`). A
+    `.webp` is reviewed and described, and its colours are said to be unread, as a PNG's
+    are. Pinned by
+    `tests/test_placed_figures.py::test_a_figure_through_a_link_out_of_the_project_is_checked_and_named`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

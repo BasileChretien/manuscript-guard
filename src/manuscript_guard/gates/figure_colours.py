@@ -93,10 +93,13 @@ def check_figure_colours(project: Project) -> Report:
     rules = figure_rules(project)
     findings: list[Finding] = []
     checked = 0
-    for name, supplementary, sidecar in placed:
+    for name, supplementary, sidecar, _bound in placed:
         # A figure's files are those beside its sidecar with its name, one per format: a
         # placed file's, the file and its exports in other formats beside it.
-        files = _files_of(sidecar.parent, sidecar.name.removesuffix(".guard.yaml"))
+        stem = sidecar.name.removesuffix(".guard.yaml")
+        # A picture in a format no journal's rules name, a `.webp`, is a raster all the
+        # same, and is said to be unread rather than passed over.
+        files = _files_of(sidecar.parent, stem) or _pictures(sidecar.parent, stem)
         # The SVG where there is one, as G3 reads the figure's text from it, else the PDF;
         # the PDF where the SVG cannot be read (round 1 of #398).
         vectors = [p for suffix in (".svg", ".pdf") for p in files if p.suffix.lower() == suffix]
@@ -114,6 +117,20 @@ def check_figure_colours(project: Project) -> Report:
         allowed = _allowed(_declared(sidecar, "allow_colours"))
         findings += _judged(name, vector, colours, grey, allowed, sidecar)
     return Report(tuple(findings)).with_counts(figures_colour_checked=checked)
+
+
+def _pictures(folder: Path, stem: str) -> list[Path]:
+    """The files beside a sidecar with its figure's name that G10 reviews (`REVIEWABLE`)."""
+    import os
+
+    from manuscript_guard.gates.figure_review import REVIEWABLE
+
+    try:
+        return sorted(path for path in folder.iterdir()
+                      if os.path.normcase(path.stem) == os.path.normcase(stem)
+                      and path.suffix.lower() in REVIEWABLE and path.is_file())  # fmt: skip
+    except OSError:
+        return []
 
 
 def colour_findings(path: Path, name: str, *, greyscale: bool = False) -> list[Finding] | None:

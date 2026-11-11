@@ -123,3 +123,151 @@ def test_record_figure_takes_a_placed_figures_path_or_its_name(tmp_path: Path) -
     assert written.path == manuscript / "figs" / "other" / "a.review.yaml"
     with pytest.raises(RecordError, match="no reviewable figure called 'b'"):
         write_figure_review(project, "b", verdict="pass", reviewed_by="A. Reader")
+
+
+# ----------------------------------------------------------- round 1 of #630's review
+
+
+def _link(link: Path, target: Path) -> None:
+    """A link to a folder: a junction on Windows, which needs no privilege, else a symlink
+    (`tests/test_vault.py`, #409)."""
+    import os
+
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+def test_a_definitions_body_places_no_picture(tmp_path: Path) -> None:
+    """Round 1 of #630: a picture in a macro the paper never uses is not printed, and was
+    asked for a review. A definition's body places nothing (Known gaps: nor where it is
+    used)."""
+    root = tmp_path / "p"
+    manuscript = _latex_project(root, "\\newcommand{\\logo}{\\includegraphics{logo}}\nText.\n")
+    _touch(manuscript / "figs" / "logo.pdf")
+    assert placed_files(load_project(root)[0]) == []
+
+
+def test_a_figure_through_a_link_out_of_the_project_is_checked_and_named(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #630: a figure in a shared folder the manuscript reaches through a link was
+    dropped without a word, though pandoc and TeX find it. It is checked where the link
+    leads, known by its path through the link, and named in a note."""
+    from manuscript_guard.gates.placed_figures import check_placed
+
+    shared = tmp_path / "shared"
+    _touch(shared / "chart.pdf")
+    root = tmp_path / "p"
+    _latex_project(root, "\\includegraphics{../linked/chart}\n")
+    try:
+        _link(root / "linked", shared)
+    except OSError:
+        pytest.skip("could not make a link to a folder here")
+    project = load_project(root)[0]
+    [placed] = placed_files(project)
+    assert placed.name == "linked/chart.pdf" and placed.outside
+    said = {f.code: f for f in check_placed(project).findings}
+    assert said["figure-outside-project"].severity == "info"
+    assert "linked/chart.pdf" in said["figure-outside-project"].message
+
+
+def test_a_figures_files_are_found_whatever_the_case_of_their_suffix(tmp_path: Path) -> None:
+    """Round 1 of #630: files were looked up by lower-case suffixes, so on Linux `Chart.PDF`
+    was never found and its colours passed unread."""
+    from manuscript_guard.gates.figure_files import _files_of
+
+    _touch(tmp_path / "Chart.PDF")
+    _touch(tmp_path / "Chart.png", b"\x89PNG\r\n\x1a\n")
+    _touch(tmp_path / "Chart.guard.yaml", b"alt: x\n")
+    assert [path.name for path in _files_of(tmp_path, "Chart")] == ["Chart.png", "Chart.PDF"]
+
+
+def test_a_placed_webp_is_said_to_be_unread_for_its_colours(tmp_path: Path) -> None:
+    """A `.webp` is a raster no journal's artwork rules name: its review and its text are
+    asked for, and its colours are said to be unread, as a PNG's are."""
+    from manuscript_guard.cli import main as cli
+    from manuscript_guard.gates.figure_colours import check_figure_colours
+
+    root = tmp_path / "p"
+    assert cli(["init", str(root)]) == 0
+    main = root / "manuscript" / "main.md"
+    main.write_text("# Results\n\n![A chart.](manuscript/figs/chart.webp)\n", encoding="utf-8")
+    _touch(root / "manuscript" / "figs" / "chart.webp", b"RIFF\x00\x00\x00\x00WEBP")
+    said = [(f.code, f.severity) for f in check_figure_colours(load_project(root)[0]).findings]
+    assert said == [("figure-colours-unread", "info")]
+
+
+def test_record_figure_takes_an_emitted_figure_in_a_folder_by_its_name_there(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #630, a regression: `--record-figure km/curve` for `figures/km/curve.svg`
+    worked on main, and was read as a path from the project's root. An emitted figure is
+    matched as main matched it first; a bare name both an emitted and a placed figure have
+    names both."""
+    from manuscript_guard.record import RecordError, write_figure_review
+
+    root = tmp_path / "p"
+    manuscript = _latex_project(root, "\\includegraphics{curve}\n")
+    _touch(root / "figures" / "km" / "curve.svg", b"<svg xmlns='http://www.w3.org/2000/svg'/>")
+    _touch(manuscript / "figs" / "curve.pdf")
+    project = load_project(root)[0]
+    with pytest.raises(RecordError, match="2 figures are called 'curve'"):
+        write_figure_review(project, "curve", verdict="pass", reviewed_by="A. Reader")
+    written = write_figure_review(project, "km/curve", verdict="pass", reviewed_by="A. Reader")
+    assert written.path == root / "figures" / "km" / "curve.review.yaml"
+    written = write_figure_review(project, "manuscript/figs/curve.pdf", verdict="pass",
+                                  reviewed_by="A. Reader")  # fmt: skip
+    assert written.path == manuscript / "figs" / "curve.review.yaml"
+
+
+def _markdown_placing(project: Path, alt: str | None) -> None:
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text.replace("{{figure.forest}}\n", "{{figure.forest}}\n\n"
+                                 "![Counts by year.](manuscript/figs/chart.svg)\n", 1),
+                    encoding="utf-8")  # fmt: skip
+    _touch(project / "manuscript" / "figs" / "chart.svg",
+           b"<svg xmlns='http://www.w3.org/2000/svg'/>")  # fmt: skip
+    guard = project / "manuscript" / "figs" / "chart.guard.yaml"
+    if alt is None:
+        guard.unlink(missing_ok=True)
+    else:
+        guard.write_text(f"alt: {alt}\n", encoding="utf-8")
+
+
+def test_alt_text_md_does_not_say_the_document_carries_a_placed_figures_text(
+    project: Path,
+) -> None:
+    """Round 1 of #630: `alt-text.md` said the document carries each figure's text in its
+    picture, and a placed figure's is not written there: pandoc writes the image's own
+    description, or nothing."""
+    from manuscript_guard.build.submission import alt_texts
+
+    _markdown_placing(project, "Two lines, one rising.")
+    written = alt_texts(load_project(project)[0])
+    head, _, placed = written.partition("## manuscript/figs/chart.svg")
+    assert "Two lines, one rising." in placed
+    assert "not in the document" in " ".join(placed.split())
+    assert "carries the same text in each picture placed by its binding" in " ".join(
+        head.split()
+    )
+
+
+def test_a_placed_figures_alternative_text_leaves_the_manuscript_digest_alone(
+    project: Path,
+) -> None:
+    """Round 1 of #630: the digest a sealed review is held to took in a placed figure's
+    guard-file text, which the build writes into no picture, so writing it made a sealed
+    review stale with the document unchanged."""
+    from manuscript_guard.gates.review import document_digest
+
+    _markdown_placing(project, None)
+    before = document_digest(load_project(project)[0])
+    (project / "manuscript" / "figs" / "chart.guard.yaml").write_text(
+        "alt: Two lines, one rising.\n", encoding="utf-8"
+    )
+    assert document_digest(load_project(project)[0]) == before

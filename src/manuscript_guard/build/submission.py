@@ -621,21 +621,24 @@ def alt_texts(project: Project) -> str | None:
     placed = figures_placed(project)
     if not placed:
         return None
+    from manuscript_guard.gates.placed_figures import _named
+
     namespace = load_namespace(project)[0]
+    # The build writes a bound figure's text into its picture. A figure placed the ordinary
+    # way gets none of it there: pandoc writes a typed image's own description, or nothing
+    # (round 1 of #630).
     lines = [
         "# Alternative text",
         "",
         "Each figure's alternative text, for a submission system that asks for it apart. The "
-        "document carries the same text in each picture.",
+        "document carries the same text in each picture placed by its binding, and not in a "
+        "figure placed otherwise.",
     ]
-    for name, supplementary, sidecar in placed:
+    for name, supplementary, sidecar, bound in placed:
         stem = sidecar.name.removesuffix(".guard.yaml")
         files = ", ".join(path.name for path in _files_of(sidecar.parent, stem))
         raw = alt_in(sidecar)
-        try:
-            where = sidecar.resolve().relative_to(project.root.resolve()).as_posix()
-        except ValueError:
-            where = sidecar.as_posix()
+        where = _named(sidecar, project.root.absolute())
         lines += [
             "",
             f"## {name}{' (supplementary)' if supplementary else ''}",
@@ -645,6 +648,11 @@ def alt_texts(project: Project) -> str | None:
             printed_alt(raw, namespace) if raw is not None
             else f"None: write it in {where} under `alt:`.",
         ]
+        if not bound:
+            lines += ["", "This text is not in the document: the figure is placed by "
+                      "`\\includegraphics` or as an image typed into the manuscript, not by "
+                      "its binding, and the build writes no guard file's text into it. Put it "
+                      "there yourself where the journal asks for it in the file."]  # fmt: skip
     return "\n".join(lines) + "\n"
 
 

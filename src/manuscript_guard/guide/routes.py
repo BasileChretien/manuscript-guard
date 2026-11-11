@@ -163,7 +163,8 @@ ROUTES: dict[str, Route] = {
            "currency-reply-quote-not-found"),
     **_all("related-outputs", ("related",), "related-"),
     # -- figures --------------------------------------------------------------------------
-    **_all("figure-review", None, "figure-unreviewed", "figure-review-", "figure-alt-"),
+    **_all("figure-review", None, "figure-unreviewed", "figure-review-", "figure-alt-",
+           "figure-outside-project"),
     # A placed figure whose numbers are not traced: rendered from the analysis and bound.
     **_all("results-binding", None, "figure-untraced"),
     **_all("figure-design", ("palettes",), "figure-colours-", "figure-greyscale-confused",

@@ -1772,3 +1772,16 @@ def test_known_words_are_neither_undefined_nor_misspelt(tmp_path: Path) -> None:
     assert not any(word == "'behaviour'" for _code, word in after)
     assert [f for f in found if f.code == "code-name-in-prose" and "hr_adj_main" in f.message]
     assert not [code for code, _word in after if code == "code-name-in-prose"]
+
+
+def test_a_known_word_with_a_stop_inside_it_is_matched(tmp_path: Path) -> None:
+    """G14 reads "L.AS" whole (#612), so `--known L.AS` holds it (#615): a gap closed when
+    both merged (DESIGN.md, "Closed since")."""
+    from manuscript_guard.auditing.gates import run_gates
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Methods\n\nStudents of L.AS were enrolled. The L.AS track was new.\n",
+                     encoding="utf-8")  # fmt: skip
+    said = [(f.code, f.message.split()[0]) for f in run_gates(paper).language]
+    assert ("abbreviation-undefined", "L.AS") in said
+    assert not run_gates(paper, known=("L.AS",)).language

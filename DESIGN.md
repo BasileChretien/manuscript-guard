@@ -16248,12 +16248,12 @@ been sorted yet.
   Pinned by `tests/test_corruption.py::test_same_quantity_under_two_keys_is_said_and_fails_nothing`.
   - `same_as` ties two displays of one value (the author's decision on #628), in R as in
     Python: ".47" declared the same as "0.47" passes, and G8 notes nothing of the pair. A
-    declared pair fails `declared-same-but-differs` where the coarser display is not a
-    rounding of both values, ".52" for 0.5188 beside "0.47" for 0.4712, and
+    declared pair still holds one value: any difference of value fails
+    `declared-same-but-differs`, compared exactly as before, so ".47" for 0.4688 beside
+    "0.47" for 0.4712 fails though the two displays round alike. It fails
     `declared-same-but-displayed-differently` where the displays differ by more than form
     (a leading zero, trailing zeros, one a rounding of the other): by unit text one of them
-    has, or a comparator, so "<0.001" declared the same as "0.0004" fails. Two values the
-    coarser display rounds alike pass as one: ".47" for 0.4712 and "0.47" for 0.4688.
+    has, or a comparator, so "<0.001" declared the same as "0.0004" fails.
     Pinned by `tests/test_corruption.py::test_a_second_display_declared_same_as_passes`,
     `tests/test_corruption.py::test_a_second_display_declared_same_as_fails_when_the_values_part`
     and `tests/test_corruption.py::test_one_estimate_under_two_names_declared_one_fails_when_it_parts`.

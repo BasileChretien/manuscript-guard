@@ -164,10 +164,11 @@ def _check_declared_pairs(results: Results) -> Report:
     pairs someone thought to declare — but a declared pair cannot drift in silence.
 
     A declared pair may be printed two ways (the author's decision on #628): APA's ".47" in
-    the text beside "0.47" with its interval, or a coarser rounding in the abstract. It holds
-    while the coarser display is a rounding of both values, and while the two displays differ
-    only in form: a leading zero, trailing zeros, one a rounding of the other. A pair whose
-    displays differ otherwise, by a unit one of them lacks or a comparator, still fails.
+    the text beside "0.47" with its interval, or a coarser rounding in the abstract. The two
+    still hold one value, exactly, as before: two displays of one value, not two values. The
+    displays may differ only in form: a leading zero, trailing zeros, one a rounding of the
+    other. A pair whose displays differ otherwise, by a unit one of them lacks or a
+    comparator, still fails.
     """
     report = Report()
     declared = 0
@@ -188,14 +189,13 @@ def _check_declared_pairs(results: Results) -> Report:
                 )
             )
             continue
-        if not _values_agree(value, other):
+        if value.value != other.value:
             report = report.with_findings(
                 Finding(
                     gate=GATE,
                     code="declared-same-but-differs",
                     message=f"{key} is declared the same quantity as {value.same_as}, but they "
-                    f"hold {value.value!r} and {other.value!r}, which the coarser of their "
-                    "displays does not round alike",
+                    f"hold {value.value!r} and {other.value!r}",
                     path=value.source,
                     context=f"displays: {value.display} and {other.display}",
                     hint="emit the quantity once and quote the one key; two keys for one "
@@ -246,20 +246,6 @@ def _numbers(value: Value, other: Value) -> tuple[Shown, Shown] | None:
     if shown[0] is None or shown[1] is None or shown[0].compare or shown[1].compare:
         return None
     return shown[0], shown[1]
-
-
-def _values_agree(value: Value, other: Value) -> bool:
-    """Whether the two values of a declared pair are one: equal, or both rounded by the
-    coarser display to the number it states. ".47" for 0.4712 and "0.47" for 0.4688 agree,
-    ".52" for 0.5188 and "0.47" for 0.4712 do not."""
-    if value.value == other.value:
-        return True
-    shown = _numbers(value, other)
-    if shown is None:
-        return False
-    coarser = max(shown, key=lambda s: s.half_unit)
-    return all(abs(float(v.value) - coarser.number) <= _within(coarser, v.value)
-               for v in (value, other))
 
 
 def _same_form(value: Value, other: Value) -> bool:

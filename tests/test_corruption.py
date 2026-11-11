@@ -877,16 +877,15 @@ def test_one_estimate_under_two_names_declared_one_fails_when_it_parts(project: 
     ("APA's form, no leading zero", 0.4712, ".47"),
     ("a coarser rounding", 0.4712, "0.5"),
     ("a finer rounding", 0.4712, "0.4712"),
-    ("trailing zeros", 0.47, "0.470"),
-    ("another run's value the two displays round alike", 0.4688, ".47"),
+    ("trailing zeros", 0.4712, "0.47120"),
 ])
 def test_a_second_display_declared_same_as_passes(
     project: Path, second: str, value: float, display: str
 ) -> None:
     """The author's decision on #628 (PsyArXiv d8hkq_v1, an APA paper: a correlation ".47"
     in the text and "0.47" beside its interval): `same_as` ties two displays of one value.
-    The pair passes where the coarser display rounds both values to what it says and the
-    two displays differ only in form, and G8 notes nothing, the pair being declared."""
+    The pair passes where the two hold one value and their displays differ only in form,
+    and G8 notes nothing, the pair being declared."""
     _add_keys(project, {
         "cor.point": {"value": 0.4712, "display": "0.47", "digits": 2},
         "cor.r": {"value": value, "display": display, "same_as": "cor.point"},
@@ -896,12 +895,16 @@ def test_a_second_display_declared_same_as_passes(
     assert _divergent(project) == [], second
 
 
-@pytest.mark.parametrize(("value", "display"), [(0.5188, ".52"), (0.5588, "0.6")])
+@pytest.mark.parametrize(("value", "display"), [
+    (0.5188, ".52"), (0.5588, "0.6"), (0.4688, ".47"),
+])
 def test_a_second_display_declared_same_as_fails_when_the_values_part(
     project: Path, value: float, display: str
 ) -> None:
-    """".47" declared the same as "0.52" holds another number: the coarser display does not
-    round both values to what it says, and the pair fails."""
+    """".47" declared the same as "0.52" holds another number, and the pair fails. So does
+    one holding another value that the two displays round alike, ".47" for 0.4688 beside
+    "0.47" for 0.4712: `same_as` ties two displays of one value, not two values, and the
+    values are compared exactly, as before #628."""
     _add_keys(project, {
         "cor.point": {"value": 0.4712, "display": "0.47", "digits": 2},
         "cor.r": {"value": value, "display": display, "same_as": "cor.point"},

@@ -197,7 +197,8 @@ expected:
       a short form closing a bracket after a semicolon or a comma is defined by the long
       form before the separator, "(i.e. time to task failure; TTF)", and one after a spaced
       dash, "--" and "---" among them, by the long form before the dash, "Basic Payment
-      Scheme - BPS", unless a number, an equals sign or a comma and a number follows it; a
+      Scheme - BPS", unless a number, an equals sign, or a colon, a comma or an opening
+      bracket and a number follows it, past spaces and no-break spaces; a
       plain line in capitals that is only a section's name, "2. DISCUSSION", is a heading and
       not an abbreviation; a reference list under the headings "Literature cited" and
       "Reference list", read whole, and under a title in a block quote, a link or after a

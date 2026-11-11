@@ -262,16 +262,31 @@ def test_a_short_form_after_a_spaced_dash_is_defined(project: Path, dash: str) -
     assert not report.findings, found(report)
 
 
+@pytest.mark.parametrize(
+    "value",
+    [", 1.52 (95% CI 1.1-2.0)", ": 1.52 (95% CI 1.1-2.0)",
+     " (95% CI 1.1\N{EN DASH}2.0) 1.52", "\N{NO-BREAK SPACE}1.52 (95% CI 1.1-2.0)"],
+)  # fmt: skip
 def test_a_short_form_after_a_dash_with_a_comma_and_a_number_is_a_statistic(
-    project: Path,
+    project: Path, value: str
 ) -> None:
-    """Round 1 of #623: "older people - OR, 1.52" was read as a second definition of OR,
-    as "older people", where it gives the odds ratio's value."""
+    """Rounds 1 and 2 of #623: "older people - OR, 1.52" was read as a second definition of
+    OR, as "older people", where it gives the odds ratio's value; so were the value after a
+    colon, after an interval in brackets and after a no-break space."""
     configured(project, language={"known_abbreviations": ["CI"]})
     report = written(
         project,
         "# Results\n\nThe odds ratio (OR) was computed. The risk was higher in older people "
-        "\N{EN DASH} OR, 1.52 (95% CI 1.1-2.0).\n",
+        "\N{EN DASH} OR" + value + ".\n",
+    )
+    assert not report.findings, found(report)
+
+
+def test_a_short_form_after_a_dash_and_a_comma_before_words_is_defined(project: Path) -> None:
+    report = written(
+        project,
+        "# Methods\n\nFarmers joined the Basic Payment Scheme \N{EN DASH} BPS, which pays "
+        "farmers. The BPS was paid.\n",
     )
     assert not report.findings, found(report)
 

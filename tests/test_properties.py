@@ -2136,7 +2136,9 @@ def _a_dash_defines_nothing(patch: pytest.MonkeyPatch) -> None:
 
 
 #: What `_DASHED` ends with: no statistic after the short form.
-_DASH_STATISTIC = r"(?![ \t]*(?:=|\d|,[ \t]*\d))"
+_DASH_STATISTIC = (
+    r"(?![ \t\N{NO-BREAK SPACE}]*(?:=|(?:[:,(][ \t\N{NO-BREAK SPACE}]*)?\d))"
+)
 
 
 def _dashed_with(patch: pytest.MonkeyPatch, old: str, new: str, count: int = 1) -> None:
@@ -2155,6 +2157,19 @@ def _a_comma_and_a_number_after_a_dash_s_short_form_define(patch: pytest.MonkeyP
     _dashed_with(patch, _DASH_STATISTIC, r"(?![ \t]*(?:=|\d))")
 
 
+def _a_colon_a_bracket_or_a_no_break_space_before_a_value_defines(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    """The rule of round 1 of #623: "- OR: 1.52", "- OR (95% CI ...) 1.52" and a no-break
+    space before the value defined OR."""
+    _dashed_with(patch, _DASH_STATISTIC, r"(?![ \t]*(?:=|\d|,[ \t]*\d))")
+
+
+def _a_comma_after_a_dash_s_short_form_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    """Too wide: "Area Payment Scheme - APS, which pays farmers" is a definition."""
+    _dashed_with(patch, _DASH_STATISTIC, r"(?![ \t\N{NO-BREAK SPACE}]*(?:=|[:,(]|\d))")
+
+
 def _a_dash_needs_no_space(patch: pytest.MonkeyPatch) -> None:
     space = language_gate._DASH_SPACE
     _dashed_with(patch, f"(?<=\\S){space}+", f"{space}*")
@@ -2166,7 +2181,7 @@ def _pandoc_s_smart_dashes_are_no_dashes(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_no_break_space_is_no_space_before_a_dash(patch: pytest.MonkeyPatch) -> None:
-    _dashed_with(patch, "\\N{NO-BREAK SPACE}", "", count=2)
+    _dashed_with(patch, "\\N{NO-BREAK SPACE}", "", count=4)
 
 
 def _a_time_of_day_is_words(patch: pytest.MonkeyPatch) -> None:
@@ -21056,6 +21071,14 @@ BROKEN = {
     ),
     "a comma and a number after a dash's short form define it": (
         _a_comma_and_a_number_after_a_dash_s_short_form_define,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a colon, a bracket or a no-break space before a dash's value defines": (
+        _a_colon_a_bracket_or_a_no_break_space_before_a_value_defines,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a comma after a dash's short form defines nothing": (
+        _a_comma_after_a_dash_s_short_form_defines_nothing,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "pandoc's smart dashes are no dashes": (

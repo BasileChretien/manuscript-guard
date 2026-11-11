@@ -141,12 +141,15 @@ _CLOSES_WITH = re.compile(
 # (an agricultural-policy preprint of the real-paper corpus), a hyphen, an en dash or an em
 # dash, or "--" and "---", which pandoc prints as those; a no-break space is a space. The
 # whole word, not a part of `BPS-based`. And one followed by an equals sign or a number, or
-# by a comma and a number, gives a statistic and defines nothing: "higher in older people -
-# OR, 1.52" is the odds ratio's value (round 1 of #623).
+# by a colon, a comma or an opening bracket and a number, past spaces of either kind, gives
+# a statistic and defines nothing: "higher in older people - OR, 1.52", "- OR: 1.52" and
+# "- OR (95% CI 1.1-2.0) 1.52" are the odds ratio's value (rounds 1 and 2 of #623), where
+# "Basic Payment Scheme - BPS, which pays farmers" defines.
 _DASH_SPACE = r"[ \t\N{NO-BREAK SPACE}]"
 _DASHED = re.compile(
     rf"(?<=\S){_DASH_SPACE}+(?:---?|[-\N{{EN DASH}}\N{{EM DASH}}]){_DASH_SPACE}+"
-    rf"(?P<short>{_PARTS})(?![^\W_]|-[^\W_])(?![ \t]*(?:=|\d|,[ \t]*\d))"
+    rf"(?P<short>{_PARTS})(?![^\W_]|-[^\W_])"
+    rf"(?!{_DASH_SPACE}*(?:=|(?:[:,(]{_DASH_SPACE}*)?\d))"
 )
 #: The brackets a long form opens and closes, round and square: a letter of its short form
 #: is not found inside one it opens (`_inside_a_bracket`).

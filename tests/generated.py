@@ -622,6 +622,8 @@ DEFINING = (
     ("the Single Area Payment -- SAP", "-- SAP", "SAP"),
     ("the Rural Development Programme --- RDP", "--- RDP", "RDP"),
     ("the Young Farmer Scheme\N{NO-BREAK SPACE}\N{EN DASH} YFS", "\N{EN DASH} YFS", "YFS"),
+    # A comma before words, which gives no statistic (round 2 of #623).
+    ("the Area Payment Scheme \N{EN DASH} APS, which pays farmers", "\N{EN DASH} APS", "APS"),
 )  # fmt: skip
 
 #: Brackets that are no definition, though the words before each hold its letters in order:
@@ -649,6 +651,12 @@ NOT_DEFINING = (
     # A comma and a number after the short form: the value, not a definition (round 1 of
     # #623).
     ("the risk was higher in older people \N{EN DASH} OR, 1.52", "OR, 1.52", "OR"),
+    # After a colon, an interval in brackets or a no-break space (round 2 of #623).
+    ("the risk was higher among older people \N{EN DASH} AOR: 1.52", "AOR: 1.52", "AOR"),
+    ("the risk was higher in older women \N{EN DASH} OR (95% CI 1.1 to 2.0) 1.52",
+     "OR (95%", "OR"),
+    ("the odds were higher in older people \N{EN DASH} OR\N{NO-BREAK SPACE}1.52",
+     "OR\N{NO-BREAK SPACE}1.52", "OR"),
     ("the Basic Payment Scheme-BPS", "-BPS", "BPS"),
 )  # fmt: skip
 

@@ -5034,8 +5034,10 @@ before the separator inside the bracket, "(i.e. time to task failure; TTF)"; and
 form after a dash with a space on either side, a hyphen, an en dash or an em dash, or "--"
 and "---" as pandoc's smart dashes are typed, a no-break space counting as a space, its long
 form before the dash, "Basic Payment Scheme – BPS". A dash gives a statistic and no
-definition where an equals sign or a number follows the short form, or a comma and a
-number: "higher in older people – OR, 1.52" is the odds ratio's value. A bracket is read
+definition where an equals sign or a number follows the short form, or a colon, a comma
+or an opening bracket and a number, past spaces and no-break spaces: "higher in older
+people – OR, 1.52", "– OR: 1.52" and "– OR (95% CI 1.1–2.0) 1.52" give the odds ratio's
+value, and "Basic Payment Scheme – BPS, which pays farmers" defines. A bracket is read
 otherwise there, as before: "the signal detection ratio (SDR, 2.4)" defines. A hyphen with
 no space joins a word. The short form in a definition may be anything with two
 capitals, or one that is not the capital of a word (`mL`), or a capital and a digit. A

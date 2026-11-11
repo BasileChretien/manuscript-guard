@@ -253,6 +253,34 @@ def number_in(display: str) -> float | None:
     return float(_number_of(match)[0])
 
 
+@dataclass(frozen=True)
+class Shown:
+    """What a numeric display states, read as `_check_display_matches` reads one: its number,
+    how far a value it is a rounding of may lie from it (half a unit in the last place shown),
+    the comparator before it and the unit text after it."""
+
+    number: float
+    half_unit: float
+    compare: str | None
+    unit: str
+
+
+def shown_in(display: str) -> Shown | None:
+    """What a display states as one number; None for one that is not a number. ".47",
+    "0.47" and "0.470" state 0.47, to within 0.005, 0.005 and 0.0005."""
+    match = _NUMERIC_DISPLAY.match(display)
+    if match is None:
+        return None
+    text, exponent_text = _number_of(match)
+    decimals = len(text.partition(".")[2].split("e")[0])
+    return Shown(
+        number=float(text),
+        half_unit=0.5 * 10 ** (int(exponent_text or 0) - decimals),
+        compare=match.group("compare"),
+        unit=(match.group("unit") or "").strip(),
+    )
+
+
 def _check_display_matches(key: str, value: object, display: str) -> None:
     """An explicit `display` must be a rendering of its own value.
 

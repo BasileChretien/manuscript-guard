@@ -16234,6 +16234,33 @@ been sorted yet.
   display, no `unit` field and a value at nought or one). Closed by reading the kind from
   the number the display grammar matched.
   Pinned by `tests/test_corruption.py::test_one_quantity_written_whole_and_with_decimals_at_nought_or_one_is_not_said`.
+- **G8 fails no pair of keys for holding one value.** Two quoted keys with the same value,
+  unit and kind are a warning written alike (`duplicate-quantity`) and a note written two
+  ways (`divergent-display`), which until 2026-11-11 failed at drafting. Two rebuilds of
+  real papers showed why it cannot fail: two unrelated results equal by chance, a count of
+  2 beside a median ratio of 2.00 (arXiv 2409.10841), and one correlation printed ".47" in
+  an APA text and "0.47" beside its interval under a second key, as the results-binding
+  skill says to emit a second display (PsyArXiv d8hkq_v1). The results file records of a
+  key its value, display, unit and the script that wrote it, and none of these tells one
+  quantity under two names from two that agree: one script writes both, and one line of a
+  loop writes 0.00 for two subgroups. The cost: one estimate emitted twice by mistake and
+  rounded two ways, 3.84 and 3.8, fails nothing unless declared.
+  Pinned by `tests/test_corruption.py::test_same_quantity_under_two_keys_is_said_and_fails_nothing`.
+  - `same_as` ties two displays of one value (the author's decision on #628), in R as in
+    Python: ".47" declared the same as "0.47" passes, and G8 notes nothing of the pair. A
+    declared pair still holds one value: any difference of value fails
+    `declared-same-but-differs`, compared exactly as before, so ".47" for 0.4688 beside
+    "0.47" for 0.4712 fails though the two displays round alike. It fails
+    `declared-same-but-displayed-differently` where the displays differ by more than form
+    (a leading zero, trailing zeros, one a rounding of the other, or one bound behind the
+    same comparator, "<0.001" and "<.001"): by unit text one of them has, another comparator
+    or bound, or a comparator on one side only, so "<0.001" declared the same as "0.0004",
+    "≤0.001" or "<0.01" fails.
+    Pinned by `tests/test_corruption.py::test_a_second_display_declared_same_as_passes`,
+    `tests/test_corruption.py::test_a_second_display_declared_same_as_fails_when_the_values_part`,
+    `tests/test_corruption.py::test_one_estimate_under_two_names_declared_one_fails_when_it_parts`,
+    `tests/test_corruption.py::test_a_p_value_under_one_comparator_in_two_forms_passes` and
+    `tests/test_corruption.py::test_a_p_value_under_another_comparator_or_bound_fails`.
 - **G8 holds only the arithmetic an analysis declares.** `em.relation` and `em.flow` say
   which results are a sum, a difference, a ratio or an order of which, and G8 checks those.
   A subgroup total nobody declared is not checked, and nothing searches the prose for numbers

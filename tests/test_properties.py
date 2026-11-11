@@ -10013,6 +10013,53 @@ def test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it(
         assert f"[@{key}]" in said and "holds no work" not in said, (written, said, bib)
 
 
+from generated import typed_reference_papers  # noqa: E402
+
+from manuscript_guard import typed_references as typed_references_module  # noqa: E402
+from manuscript_guard.typed_references import citations as made_citations  # noqa: E402
+
+
+@holds(60, typed_reference_papers())
+def test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry(
+    drawn: tuple[str, list[tuple[str, str | None]]],
+) -> None:
+    """Decision 5 (the real-paper corpus, PsyArXiv fyxeq_v2 and d8hkq_v1): `init --from`
+    makes each citation typed as text that names exactly one entry of the typed reference
+    list, by all its authors and its year, a pandoc citation of that entry's key: in
+    brackets, under a prefix or none, in the sentence, and a group whose every part does.
+    Nothing is guessed: a citation that names two entries or none stays as typed, and so
+    does a group one of whose parts names none, and each is listed. The list itself is
+    left as typed."""
+    text, cited = drawn
+    made = typed_references_module.read(text)
+    listed = text[text.index("# References") :]
+    assert made.text.endswith(listed), made.text
+    for written, pandoc in cited:
+        if pandoc is None:
+            assert written in made.text, (written, made.text)
+        else:
+            assert pandoc in made.text and written not in made.text, (written, pandoc,
+                                                                      made.text)  # fmt: skip
+    assert len(made.left) == sum(pandoc is None for _t, pandoc in cited), made.left
+    assert made.converted == sum(pandoc.count("@") for _t, pandoc in cited if pandoc)
+
+
+def _two_entries_are_the_first(patch: pytest.MonkeyPatch) -> None:
+    one = made_citations._one
+
+    def first(head, year, by_year, unknown, *, bracketed):
+        return one(head, year, {at: works[:1] for at, works in by_year.items()}, unknown,
+                   bracketed=bracketed)  # fmt: skip
+
+    patch.setattr(made_citations, "_one", first)
+
+
+def _the_first_author_names_a_work(patch: pytest.MonkeyPatch) -> None:
+    named = made_citations.renderings
+    patch.setattr(made_citations, "renderings",
+                  lambda families: (*named(families), families[0]))  # fmt: skip
+
+
 def _a_tex_escape_is_read_as_its_letters(patch: pytest.MonkeyPatch) -> None:
     import unicodedata
 
@@ -20155,6 +20202,14 @@ BROKEN = {
     "a month is a typed citation's name": (
         _a_month_is_a_name,
         test_the_year_of_a_citation_typed_as_text_is_read_with_its_first_author,
+    ),
+    "a typed citation naming two entries is made the first's key": (
+        _two_entries_are_the_first,
+        test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry,
+    ),
+    "a typed citation naming a work's first author alone is made its key": (
+        _the_first_author_names_a_work,
+        test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry,
     ),
     "a TeX escape in a .bib name is read as its letters": (
         _a_tex_escape_is_read_as_its_letters,

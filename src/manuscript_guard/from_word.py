@@ -31,6 +31,11 @@ paragraph holding a note, a mark,
 a link or a picture, which its plain text loses, is in the comment as well; the marks of
 notes raised at its end are left out of the title, and kept there with it. Nothing else is
 read from how a line looks: a name in capitals is a line of the title page like any other.
+
+Once written as Markdown, the paper's typed reference list is read into
+`literature/references.bib`, and each citation typed as text that names exactly one of its
+entries is made `[@key]` (`typed_references`); `convert` does not do it, so the audit reads
+the paper as typed.
 """
 
 from __future__ import annotations
@@ -40,10 +45,12 @@ import re
 import subprocess
 import tempfile
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
+from manuscript_guard import typed_references
 from manuscript_guard.contracts._schema import ContractError
+from manuscript_guard.typed_references import TypedReferences
 
 #: What runs pandoc for this module where it is not the pandoc on PATH: a function of
 #: pandoc's arguments, its standard input and the paper, that returns what pandoc prints and
@@ -105,6 +112,8 @@ class Converted:
     #: In a document with no paragraph in a heading style, the titles of the paragraphs
     #: wholly in bold that name a section, which were made its headings (`bold_headings`).
     bold_headings: tuple[str, ...] = ()
+    #: What `init --from` made of the typed reference list and citations (`typed_references`).
+    references: TypedReferences | None = None
 
 
 def refused(path: Path) -> str | None:
@@ -745,6 +754,8 @@ def what_was_done(docx: Path, converted: Converted) -> str:
                      "or emit it from the analysis:")  # fmt: skip
         lines += [f"    {left}" for left in converted.tables_left]
     lines.append(f"  pictures: {len(converted.media)} in {MEDIA}/")
+    if converted.references is not None:
+        lines += typed_references.said(converted.references)
     return "\n".join(lines)
 
 
@@ -811,11 +822,15 @@ def init_from_word(root: Path, docx: Path, title: str | None = None,
     why = _in_the_way(root, [name for name, _ in converted.media])
     if why is not None:
         raise ContractError(f"{why}, and init --from writes over nothing; nothing was made")
+    typed = typed_references.read(converted.text,
+                                  bib_there=(root / typed_references.BIBLIOGRAPHY).exists())
     created = init_project(
-        root, title if title is not None else converted.title or UNTITLED, text=converted.text,
+        root, title if title is not None else converted.title or UNTITLED, text=typed.text,
         authors=authors_yaml(converted.authors) if converted.authors else None,
         english=english,
     )  # fmt: skip
+    typed = typed_references.write(root, typed, Path(docx).name, created)
+    converted = replace(converted, text=typed.text, references=typed)
     for name, data in converted.media:
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)

@@ -23966,6 +23966,41 @@ Open, recorded as each change landed:
   mark among the title's own pieces, so one that pandoc reads inside bold or italic, or one
   followed by an empty bookmark, is printed as part of the title, "a fall1"; the Title
   paragraph is in the comment, where the author can see it.
+- **`init --from` reads a typed reference entry in two of APA's shapes only.** A journal
+  article, `Smith, J. A., & Jones, B. (2020). Title. *Journal*, *12*(3), 45--67.` with a DOI
+  or an address after it or not, and a book, `Lee, C. (2018). *Title*. Publisher.`, are
+  written to `references.bib`; a chapter, an edition, a report with a number, a group as
+  author, a name with "Jr.", 21 authors and an ellipsis, "n.d." or a day after the year, an
+  article with no volume, italics inside a title, a quotation mark or a brace in a field,
+  and every other style's entry, Vancouver's and Harvard's among them, are not, and each is
+  listed with why; its citations stay typed. Pinned by
+  `tests/test_typed_references.py::test_an_entry_not_read_exactly_is_not_read_and_says_why`.
+- **A title or a publisher ending in an abbreviation of one word loses its stop.** APA ends
+  the title with a stop, and the stop of "Dr." or "Inc." at its end is that one: the field is
+  written "Dr" or "Inc". An abbreviation of two letters or more with stops, "U.S.", is seen,
+  and the entry is not read. Accepted.
+- **`init --from` reads no numbered reference list.** A list whose entries open with "[3]"
+  or "3." is left as typed, with its citations, "[3]" or a superscript, and `init` says so.
+  Pinned by `tests/test_typed_references.py::test_a_numbered_list_is_left_as_typed`.
+- **A typed citation is made a key by its authors and its year alone.** It names an entry
+  where its names are all the entry's in one of APA's forms and its year is the entry's,
+  letter and all; two entries alike, a year without the list's letter, a page or a second
+  year in the brackets ("Smith, 2020, p. 4", "Smith (2020, 2021)"), a possessive ("Smith's
+  (2020)") and a group with any such part stay typed. An entry not read keeps typed every
+  citation that shares its year and one of its names, which may keep one that names another
+  work. Pinned by
+  `tests/test_properties.py::test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry`.
+- **`sync-bib` writes over the `references.bib` that `init --from` wrote.** It writes the
+  file again from what Zotero holds of the keys the manuscript cites, so an entry Zotero does
+  not hold is gone; the file's header says to import it into Zotero first. An entry no
+  citation was made a key of is `reference-uncited` to G7, whose hint is to run `sync-bib`.
+  Accepted.
+- **G2 reads no number in a typed reference list up to where the list is taken to end.** A
+  list under a heading or a title in bold that names one ends at the next heading, at a
+  caption, a table or a title of back matter (`text.reference_lists`); a paragraph of the
+  paper's own after the list with none of these before it is read as an entry, and its
+  numbers are let through. Pinned by
+  `tests/test_corruption.py::test_a_number_in_a_typed_reference_list_passes_and_one_just_after_it_fails`.
 - **G7 names a cited work as the manuscript cites it only where it read the citation.** A
   finding about a use of a key names it `\citep{key}` in LaTeX, by the command the use was
   read in, and `@key` in Markdown. A quotation's finding is read in the printed view, where the

@@ -1421,6 +1421,36 @@ def test_the_year_of_a_citation_typed_as_text_fails_and_its_hint_names_the_key(
 
 
 @pytest.mark.parametrize(
+    "title", ["# References", "## 7. Reference list {-}", "**References**", "**References:**"]
+)
+def test_a_number_in_a_typed_reference_list_passes_and_one_just_after_it_fails(
+    project: Path, title: str
+) -> None:
+    """The real-paper corpus (PsyArXiv d8hkq_v1, rebuilt with `init --from`): G2 failed each
+    year, volume and page of the typed reference list, 169 of them, and told the author to
+    bind each. A list `text.reference_lists` finds, under a heading or a title in bold, holds
+    no claim of the paper's, and its numbers are not read. Where it ends, at a table's caption
+    after it, they are again: 4321 there still fails, and so does one typed in the sentence
+    before the list. A binding typed in the list is still checked."""
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n\nWe counted 8765 more.\n\n"
+        f"{title}\n\nSmith, J. A., & Jones, B. (2020). A title of work. *Journal of Things*, "
+        "*12*(3), 45--67. https://doi.org/10.1000/xyz123\n\n"
+        "Lee, C. (2018). *A book of things*. Publisher. {{results.no_such_key}}\n\n"
+        "Table 9. Counts; 4321 were seen.\n",
+        encoding="utf-8",
+    )
+    report = gate_report(project)
+    failed = {f.message for f in report.failures if f.gate == "G2"}
+    assert "'4321' is not bound to any source" in failed, report.render(project)
+    assert "'8765' is not bound to any source" in failed, report.render(project)
+    for listed in ("2020", "12*(3", "45--67", "2018", "10.1000/xyz123"):
+        assert f"{listed!r} is not bound to any source" not in failed, failed
+    assert any(f.code == "unresolved-binding" for f in report.failures), failed
+
+
+@pytest.mark.parametrize(
     ("typed", "named"),
     [
         ("Fictional (2021)", True),

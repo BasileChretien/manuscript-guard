@@ -11593,6 +11593,116 @@ def names_in_tex(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     return "\n".join(entries), cited
 
 
+# ------------------------------------------- a typed reference list and its citations, init
+
+#: First authors' family names a typed reference list holds, and the letters of each a
+#: Better BibTeX key is written in: a particle, a letter of its own, an accent, a hyphen and
+#: an apostrophe.
+REFERENCE_FAMILIES = (
+    ("Fictional", "fictional"), ("Imaginary", "imaginary"),
+    ("\N{LATIN CAPITAL LETTER O WITH STROKE}deg\N{LATIN SMALL LETTER A WITH RING ABOVE}rd",
+     "odegard"),
+    ("Smith-Jones", "smithjones"), ("van der Berg", "vanderberg"), ("O'Neil", "oneil"),
+    ("Garc\N{LATIN SMALL LETTER I WITH ACUTE}a", "garcia"), ("Notreal", "notreal"),
+    ("Lindqvist", "lindqvist"), ("Moe", "moe"),
+)  # fmt: skip
+#: Co-authors, whose names may be any work's.
+REFERENCE_OTHERS = ("Other", "Second", "Dupont")
+#: How a citation is typed: names one entry in brackets or in the sentence, names two
+#: entries (one first author, one year, no letter), names none, names the first of a work's
+#: two or three authors alone, a group whose every part names one entry, and a group one of
+#: whose parts names none.
+CITED_KINDS = ("bracketed", "narrative", "two entries", "no entry", "first author alone",
+               "group", "group with none")  # fmt: skip
+_REFERENCE_WORDS = ("recovery", "was", "studied", "before", "with", "rest", "after", "work")
+
+
+def _apa_names(families: list[str], *, narrative: bool) -> list[str]:
+    """Every way APA names these authors in a citation."""
+    if len(families) == 1:
+        return [families[0]]
+    if len(families) == 2:
+        return [f"{families[0]} and {families[1]}"] + ([] if narrative else
+                                                       [f"{families[0]} & {families[1]}"])
+    listed = ", ".join(families[:-1])
+    return [f"{families[0]} et al.", f"{listed}, & {families[-1]}", f"{listed}, and {families[-1]}"]
+
+
+@st.composite
+def typed_reference_papers(draw: st.DrawFn) -> tuple[str, list[tuple[str, str | None]]]:
+    """A paper's Markdown as `init --from` writes a Word paper, with a typed APA reference
+    list under `# References` and a citation typed as text of each kind of `CITED_KINDS`, in
+    an order drawn; and each citation with what `typed_references.read` makes of it, its
+    pandoc citation, or None where it stays as typed. Each work is an article, its journal
+    and volume in italics together or apart, or a book; of one, two or three authors, named
+    in each form APA has; under a prefix or none. Every kind in every example, so that a
+    rule broken for one fails under any seed."""
+    firsts = iter(draw(st.permutations(REFERENCE_FAMILIES)))
+    years = iter(draw(st.lists(st.integers(1950, 2025), min_size=9, max_size=9, unique=True)))
+    entries: list[str] = []
+
+    def work(count: int, year: int, family: tuple[str, str] | None = None) -> tuple[list[str], str]:
+        written, stem = family or next(firsts)
+        names = [written, *draw(st.lists(st.sampled_from(REFERENCE_OTHERS), min_size=count - 1,
+                                         max_size=count - 1))]  # fmt: skip
+        initials = [draw(st.sampled_from(("A.", "J. A.", "J.-P.", "Ch."))) for _ in names]
+        people = [f"{name}, {given}" for name, given in zip(names, initials, strict=True)]
+        authors = people[0] if count == 1 else ", ".join(people[:-1]) + f", & {people[-1]}"
+        title = " ".join(draw(st.lists(st.sampled_from(_REFERENCE_WORDS), min_size=1,
+                                       max_size=4))).capitalize()  # fmt: skip
+        volume, first = draw(st.integers(1, 99)), draw(st.integers(1, 900))
+        shape = draw(st.sampled_from((
+            f"{title}. *Journal of Things*, *{volume}*(2), {first}--{first + 9}.",
+            f"{title}. *Journal of Things, {volume}*, {first}--{first + 9}. "
+            f"https://doi.org/10.1000/x{volume}",
+            f"*{title}*. Big Press.",
+        )))  # fmt: skip
+        entries.append(f"{authors} ({year}). {shape}")
+        return names, f"{stem}{year}"
+
+    def cite(count: int) -> tuple[str, str]:
+        names, key = work(count, next(years))
+        prefix = draw(st.sampled_from(("", "see ", "e.g., ")))
+        return f"{prefix}{draw(st.sampled_from(_apa_names(names, narrative=False)))}, " \
+               f"{key[-4:]}", f"{prefix}@{key}"
+
+    sentences: list[tuple[str, str | None]] = []
+    for kind in draw(st.permutations(CITED_KINDS)):
+        if kind == "bracketed":
+            typed, made = cite(draw(st.integers(1, 3)))
+            sentences.append((f"({typed})", f"[{made}]"))
+        elif kind == "narrative":
+            names, key = work(draw(st.integers(1, 3)), next(years))
+            said = draw(st.sampled_from(_apa_names(names, narrative=True)))
+            said = said[0].upper() + said[1:]
+            sentences.append((f"{said} ({key[-4:]})", f"@{key}"))
+        elif kind == "two entries":
+            family, year = next(firsts), next(years)
+            work(1, year, family)
+            work(1, year, family)
+            sentences.append((f"({family[0]}, {year})", None))
+        elif kind == "no entry":
+            sentences.append((f"({next(firsts)[0]}, {next(years)})", None))
+        elif kind == "first author alone":
+            names, key = work(draw(st.integers(2, 3)), next(years))
+            sentences.append((f"({names[0]}, {key[-4:]})", None))
+        else:
+            parts = [cite(draw(st.integers(1, 3))) for _ in range(2)]
+            if kind == "group":
+                sentences.append((f"({'; '.join(t for t, _m in parts)})",
+                                  f"[{'; '.join(m for _t, m in parts)}]"))  # fmt: skip
+            else:
+                # A name no entry has, and a year none is from.
+                missing = f"{REFERENCE_FAMILIES[0][0]}x, 1949"
+                sentences.append((f"({parts[0][0]}; {missing})", None))
+    body = "\n\n".join(
+        f"{' '.join(draw(st.lists(st.sampled_from(_REFERENCE_WORDS), min_size=1, max_size=3)))}"
+        f" {typed}." for typed, _made in sentences
+    )
+    listed = "\n\n".join(draw(st.permutations(entries)))
+    return f"# Introduction\n\n{body}\n\n# References\n\n{listed}\n", sentences
+
+
 # --------------------------------------------- escaped backticks beside an escaped comparison
 
 #: Pieces of a paragraph with backticks and escaped comparisons in them, each closing every
@@ -12868,6 +12978,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "interval order": intervals(),
     "pointers": numbered_displays().map(lambda drawn: {"files": drawn[0]}),
     "typed citations": st.one_of(typed_citations().map(lambda drawn: drawn[0]), texts()),
+    "typed references": st.one_of(typed_reference_papers().map(lambda drawn: drawn[0]), texts()),
     "quoted whole": texts(WHOLE),
     "labels": texts(LABELLED),
     "data dates": texts(DATED),

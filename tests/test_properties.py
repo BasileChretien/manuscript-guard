@@ -2135,19 +2135,38 @@ def _a_dash_defines_nothing(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_dashed", lambda prose: [])
 
 
-def _a_number_after_a_dash_s_short_form_defines_too(patch: pytest.MonkeyPatch) -> None:
+#: What `_DASHED` ends with: no statistic after the short form.
+_DASH_STATISTIC = r"(?![ \t]*(?:=|\d|,[ \t]*\d))"
+
+
+def _dashed_with(patch: pytest.MonkeyPatch, old: str, new: str, count: int = 1) -> None:
+    """`_DASHED` with `old` written `new`, `count` times, as it must stand there."""
     pattern = language_gate._DASHED.pattern
-    statistic = r"(?![ \t]*(?:=|\d))"
-    assert pattern.endswith(statistic)
-    patch.setattr(language_gate, "_DASHED", re.compile(pattern[: -len(statistic)]))
+    assert pattern.count(old) == count, (old, pattern)
+    patch.setattr(language_gate, "_DASHED", re.compile(pattern.replace(old, new)))
+
+
+def _a_number_after_a_dash_s_short_form_defines_too(patch: pytest.MonkeyPatch) -> None:
+    _dashed_with(patch, _DASH_STATISTIC, "")
+
+
+def _a_comma_and_a_number_after_a_dash_s_short_form_define(patch: pytest.MonkeyPatch) -> None:
+    """The rule before round 1 of #623: "older people - OR, 1.52" defined OR."""
+    _dashed_with(patch, _DASH_STATISTIC, r"(?![ \t]*(?:=|\d))")
 
 
 def _a_dash_needs_no_space(patch: pytest.MonkeyPatch) -> None:
-    pattern = language_gate._DASHED.pattern
-    spaced = r"(?<=\S)[ \t]+"
-    assert pattern.startswith(spaced)
-    patch.setattr(language_gate, "_DASHED", re.compile(
-        "[ \\t]*" + pattern[len(spaced) :].replace("][ \\t]+(", "][ \\t]*(", 1)))  # fmt: skip
+    space = language_gate._DASH_SPACE
+    _dashed_with(patch, f"(?<=\\S){space}+", f"{space}*")
+    _dashed_with(patch, f"]){space}+", f"]){space}*")
+
+
+def _pandoc_s_smart_dashes_are_no_dashes(patch: pytest.MonkeyPatch) -> None:
+    _dashed_with(patch, "(?:---?|", "(?:")
+
+
+def _a_no_break_space_is_no_space_before_a_dash(patch: pytest.MonkeyPatch) -> None:
+    _dashed_with(patch, "\\N{NO-BREAK SPACE}", "", count=2)
 
 
 def _a_time_of_day_is_words(patch: pytest.MonkeyPatch) -> None:
@@ -10552,9 +10571,21 @@ def _the_sections_know_neither_literature_cited_nor_a_reference_list(
     from manuscript_guard.text import sections
 
     pattern = sections._REFERENCES.pattern
-    words = r"|literature\s+cited|reference\s+list"
+    words = r"|(?:literature\s+cited|reference\s+list)\W*$"
     assert words in pattern
     patch.setattr(sections, "_REFERENCES", re.compile(pattern.replace(words, ""), re.IGNORECASE))
+
+
+def _the_sections_read_literature_cited_by_its_opening(patch: pytest.MonkeyPatch) -> None:
+    """The rule before round 1 of #623: "Reference list screening" was the list."""
+    from manuscript_guard.text import sections
+
+    pattern = sections._REFERENCES.pattern
+    words = r"|(?:literature\s+cited|reference\s+list)\W*$"
+    assert words in pattern
+    patch.setattr(sections, "_REFERENCES", re.compile(
+        pattern.replace(words, r"|(?:literature\s+cited|reference\s+list)\b"),
+        re.IGNORECASE))  # fmt: skip
 
 
 def _the_recycling_check_knows_no_reference_list(patch: pytest.MonkeyPatch) -> None:
@@ -21023,6 +21054,18 @@ BROKEN = {
         _a_dash_needs_no_space,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
+    "a comma and a number after a dash's short form define it": (
+        _a_comma_and_a_number_after_a_dash_s_short_form_define,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "pandoc's smart dashes are no dashes": (
+        _pandoc_s_smart_dashes_are_no_dashes,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a no-break space before a dash is no space": (
+        _a_no_break_space_is_no_space_before_a_dash,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
     "a time of day is read as words": (
         _a_time_of_day_is_words,
         test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
@@ -23233,6 +23276,10 @@ BROKEN = {
     ),
     "a section knows neither Literature cited nor Reference list": (
         _the_sections_know_neither_literature_cited_nor_a_reference_list,
+        test_a_reference_list_is_known_by_its_title_in_each_language,
+    ),
+    "a section reads Literature cited and Reference list by their opening words": (
+        _the_sections_read_literature_cited_by_its_opening,
         test_a_reference_list_is_known_by_its_title_in_each_language,
     ),
     "the recycling check knows no Reference list": (

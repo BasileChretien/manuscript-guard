@@ -5031,10 +5031,13 @@ also stand in square brackets, "hazard ratio [HR]", which is how a journal write
 definition inside a parenthesis. Two more shapes come from real papers, read by the same
 letters: the short form closing a bracket after a semicolon or a comma, its long form
 before the separator inside the bracket, "(i.e. time to task failure; TTF)"; and the short
-form after a dash with a space on either side, a hyphen, an en dash or an em dash, its long
-form before the dash, "Basic Payment Scheme – BPS". A dash, like a bracket, gives
-a statistic and no definition where an equals sign or a number follows the short form;
-a hyphen with no space joins a word. The short form in a definition may be anything with two
+form after a dash with a space on either side, a hyphen, an en dash or an em dash, or "--"
+and "---" as pandoc's smart dashes are typed, a no-break space counting as a space, its long
+form before the dash, "Basic Payment Scheme – BPS". A dash gives a statistic and no
+definition where an equals sign or a number follows the short form, or a comma and a
+number: "higher in older people – OR, 1.52" is the odds ratio's value. A bracket is read
+otherwise there, as before: "the signal detection ratio (SDR, 2.4)" defines. A hyphen with
+no space joins a word. The short form in a definition may be anything with two
 capitals, or one that is not the capital of a word (`mL`), or a capital and a digit. A
 plural defines its singular: `RORs` defines `ROR`, and `mAbs` after "monoclonal antibodies"
 defines `mAb`.
@@ -19539,11 +19542,18 @@ Open, recorded as each change landed:
   own, an appendix of plain paragraphs, is passed over with it. The line has to open a
   paragraph, which the audit does not ask: the word alone on a line inside a paragraph is a
   hard wrap, and an item of a list, beside another item ("3. References" after "2.
-  Registries", "1. References" over "2. Registries"), an indented line, a line in a block
-  quote and one ending in a full stop ("**References.**") open none. So "6. References"
+  Registries", "1. References" over "2. Registries"), an indented line and one ending in a
+  full stop ("**References.**") open none. So "6. References"
   written by hand over entries numbered "1." opens none either, as pandoc prints it as the
   list's sixth item; `6\. References`, as pandoc writes a numbered title from Word, opens
   one. A list carried on into the next file of the manuscript is read there as prose.
+- **The audit cuts a Markdown paper at a link to the references a hard wrap left alone on
+  a line.** The audit takes a bibliography's title on any line, not only on a paragraph's
+  first, and in Markdown a link is read by its words, as pandoc prints it. So "listed in
+  the" over `[References](#refs)` over "with 77 cases." cuts the paper at the second line,
+  and the numbers after it are not audited, where `check` opens no list there. The audit
+  names the cut under "Not audited". Pinned by
+  `tests/test_audit.py::test_a_link_to_the_references_alone_on_a_wrapped_line_cuts_the_paper`.
 - **A header pandoc cannot read is read as prose until it is fixed.** A `---` block at the
   top that is not YAML at all, such as one opening on an HTML comment or one never closed
   before a later rule, stops G2 and the build, which name the YAML's error. Meanwhile the

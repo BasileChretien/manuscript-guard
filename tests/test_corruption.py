@@ -26991,8 +26991,9 @@ def test_a_section_s_name_on_a_plain_line_hides_no_undefined_abbreviation(
     [
         # A bracket's last word whose letters are not before its separator.
         "Signals were sought in each stratum (see the appendix; PRR).",
-        # A statistic after a dash.
+        # A statistic after a dash, and one after a dash and a comma (round 1 of #623).
         "The proportional reporting ratio fell \N{EN DASH} PRR 2 in each stratum.",
+        "The proportional reporting ratio fell \N{EN DASH} PRR, 2.1 in each stratum.",
     ],
 )
 def test_a_bracket_s_end_or_a_dash_that_defines_nothing_leaves_it_undefined(

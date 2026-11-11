@@ -245,15 +245,33 @@ def test_a_short_form_closing_a_bracket_after_a_separator_is_defined(
 
 
 @pytest.mark.parametrize(
-    "dash", ["-", "\N{EN DASH}", "\N{EM DASH}"],
+    "dash",
+    [" - ", " \N{EN DASH} ", " \N{EM DASH} ",
+     # Pandoc's smart dashes as typed, and a no-break space before the dash, as Word keeps
+     # a dash on the line of the word before it.
+     " -- ", " --- ", "\N{NO-BREAK SPACE}\N{EN DASH} ", "\N{NO-BREAK SPACE}- "],
 )  # fmt: skip
 def test_a_short_form_after_a_spaced_dash_is_defined(project: Path, dash: str) -> None:
     """An agricultural-policy preprint of the real-paper corpus: "the Basic Income Support
     for Sustainability - BISS", with no bracket."""
     report = written(
         project,
-        f"# Methods\n\nFarmers received the Basic Income Support for Sustainability {dash} "
+        f"# Methods\n\nFarmers received the Basic Income Support for Sustainability{dash}"
         "BISS from the state. The BISS was paid.\n",
+    )
+    assert not report.findings, found(report)
+
+
+def test_a_short_form_after_a_dash_with_a_comma_and_a_number_is_a_statistic(
+    project: Path,
+) -> None:
+    """Round 1 of #623: "older people - OR, 1.52" was read as a second definition of OR,
+    as "older people", where it gives the odds ratio's value."""
+    configured(project, language={"known_abbreviations": ["CI"]})
+    report = written(
+        project,
+        "# Results\n\nThe odds ratio (OR) was computed. The risk was higher in older people "
+        "\N{EN DASH} OR, 1.52 (95% CI 1.1-2.0).\n",
     )
     assert not report.findings, found(report)
 
@@ -1592,6 +1610,18 @@ def test_a_reference_list_under_each_title_word_writes_is_not_read(
         f"# Methods\n\n{PLAIN}\n\n{title}\n\nSmith J. The NHANES data. BMJ. 2020;1:1-2.\n",
     )
     assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    "heading", ["## Reference list screening", "## Literature cited by the trials"],
+)  # fmt: skip
+def test_a_heading_that_only_opens_with_a_list_s_title_is_read(
+    project: Path, heading: str
+) -> None:
+    """Round 1 of #623: "Reference list screening", a systematic review's subsection, was
+    taken for the reference list by its opening words, and its prose was not read."""
+    report = written(project, f"# Methods\n\n{heading}\n\nThe NHANES data were read.\n")
+    assert sorted(f.message.split()[0] for f in report.findings) == ["NHANES"], found(report)
 
 
 @pytest.mark.parametrize(

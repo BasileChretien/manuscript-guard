@@ -139,11 +139,14 @@ _CLOSES_WITH = re.compile(
 # A short form after a dash with a space on either side, its long form before the dash:
 # "Basic Income Support for Sustainability - BISS", "Basic Payment Scheme \N{EN DASH} BPS"
 # (an agricultural-policy preprint of the real-paper corpus), a hyphen, an en dash or an em
-# dash. The whole word, not a part of `BPS-based`; and, as in a bracket, one followed by an
-# equals sign or a number gives a statistic and defines nothing.
+# dash, or "--" and "---", which pandoc prints as those; a no-break space is a space. The
+# whole word, not a part of `BPS-based`. And one followed by an equals sign or a number, or
+# by a comma and a number, gives a statistic and defines nothing: "higher in older people -
+# OR, 1.52" is the odds ratio's value (round 1 of #623).
+_DASH_SPACE = r"[ \t\N{NO-BREAK SPACE}]"
 _DASHED = re.compile(
-    rf"(?<=\S)[ \t]+[-\N{{EN DASH}}\N{{EM DASH}}][ \t]+(?P<short>{_PARTS})"
-    r"(?![^\W_]|-[^\W_])(?![ \t]*(?:=|\d))"
+    rf"(?<=\S){_DASH_SPACE}+(?:---?|[-\N{{EN DASH}}\N{{EM DASH}}]){_DASH_SPACE}+"
+    rf"(?P<short>{_PARTS})(?![^\W_]|-[^\W_])(?![ \t]*(?:=|\d|,[ \t]*\d))"
 )
 #: The brackets a long form opens and closes, round and square: a letter of its short form
 #: is not found inside one it opens (`_inside_a_bracket`).

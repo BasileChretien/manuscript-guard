@@ -65,14 +65,16 @@ __all__ = [
 # required-section check, no abstract, and every `methods_only` rule silently inapplicable.
 
 # An English title is read by its opening word, as it always was: "References and notes"
-# is the list, and so are "Literature cited" and "Reference list", which the audit knew and
-# this did not: the list under either was prose to G14 (the real-paper corpus). A title in
-# another language is read whole, with only punctuation after it, as the audit and the
-# recycling check read every title: German "Literatur" opens "Literatur und
+# is the list. "Literature cited" and "Reference list", which the audit knew and this did
+# not (the list under either was prose to G14 on the real-paper corpus), are read whole, as
+# the audit and the recycling check read them: "Reference list screening" is a systematic
+# review's subsection (round 1 of #623). A title in another language is read whole too,
+# with only punctuation after it: German "Literatur" opens "Literatur und
 # Forschungsstand", a review of the literature, and Italian's "Bibliografia" opens a section
 # on how the literature was searched.
 _REFERENCES = re.compile(
-    r"^\s*(?:(?:references|bibliography|works\s+cited|literature\s+cited|reference\s+list)\b"
+    r"^\s*(?:(?:references|bibliography|works\s+cited)\b"
+    r"|(?:literature\s+cited|reference\s+list)\W*$"
     rf"|(?:{REFERENCE_WORDS_ELSEWHERE})\W*$)",
     re.IGNORECASE,
 )

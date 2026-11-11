@@ -618,6 +618,10 @@ DEFINING = (
     ("the Basic Income Support for Sustainability - BISS", "- BISS", "BISS"),
     ("the Basic Payment Scheme \N{EN DASH} BPS", "\N{EN DASH} BPS", "BPS"),
     ("the Common Agricultural Policy \N{EM DASH} CAP", "\N{EM DASH} CAP", "CAP"),
+    # Pandoc's smart dashes as typed, and a no-break space before the dash (round 1 of #623).
+    ("the Single Area Payment -- SAP", "-- SAP", "SAP"),
+    ("the Rural Development Programme --- RDP", "--- RDP", "RDP"),
+    ("the Young Farmer Scheme\N{NO-BREAK SPACE}\N{EN DASH} YFS", "\N{EN DASH} YFS", "YFS"),
 )  # fmt: skip
 
 #: Brackets that are no definition, though the words before each hold its letters in order:
@@ -642,6 +646,9 @@ NOT_DEFINING = (
     ("the proportional reporting ratio (see the appendix; PRR)", "; PRR", "PRR"),
     ("the information component fell \N{EN DASH} IC 0.75", "IC 0.75", "IC"),
     ("the information component fell \N{EN DASH} IC = 0.75", "IC =", "IC"),
+    # A comma and a number after the short form: the value, not a definition (round 1 of
+    # #623).
+    ("the risk was higher in older people \N{EN DASH} OR, 1.52", "OR, 1.52", "OR"),
     ("the Basic Payment Scheme-BPS", "-BPS", "BPS"),
 )  # fmt: skip
 
@@ -3745,6 +3752,8 @@ NOT_REFERENCE_TITLES = (
     "Literature review", "Literaturübersicht", "Pustakawan", "Bibliographic search",
     "Referenced cohorts", "Kaynak", "Riferimenti", "Daftar", "Literatur und Forschungsstand",
     "Referencias teóricas", "Bibliografia e metodi", "Reference listing",
+    # Read whole, as the audit and the recycling check read them (round 1 of #623).
+    "Reference list screening", "Literature cited by the trials",
 )  # fmt: skip
 
 
@@ -10801,7 +10810,10 @@ LIST_ENDS = {
 #: Whole blocks for the readings that pass a reference list over (`INPUTS`).
 REFERENCE_BLOCKS = ("\n\n**References**\n\n", "\n\n**References:**\n\n", "\n\nReferences\n\n",
                     "\n\n> **11. REFERENCES**:\n\n", "\n\n[**References**](#_Ref89712232)\n\n",
-                    "\n\n**\\\nReferences**\n\n")  # fmt: skip
+                    "\n\n**\\\nReferences**\n\n", "\n\n# Literature cited\n\n",
+                    "\n\n# Reference list\n\n",
+                    # A subsection that only opens with a list's title, which is read.
+                    "\n\n## Reference list screening\n\n")  # fmt: skip
 #: Spellings of the other English, and journals whose names are in capitals.
 _OTHER_ENGLISH = ("color", "tumor", "behavior", "center", "fiber")
 _JOURNALS = ("PLoS ONE", "BMC Med", "JAMA Netw Open")

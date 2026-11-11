@@ -751,6 +751,17 @@ def test_a_structured_abstract_is_placed_under_it(titles: tuple[str, ...]) -> No
     assert {level for _title, level in levels[opening:]} == {1}, levels
 
 
+def test_a_pdf_with_no_heading_read_places_none() -> None:
+    """Corpus run of 2026-11-11: a PDF whose headings the reader does not find, 2509.01351's
+    small capitals, stopped `audit` on `zip()`'s length check; it has no heading to place."""
+    from manuscript_guard.auditing.pdf import PdfText, Place
+
+    lines = ["Gains from monetary policy", "We estimate the response of output.", "It falls."]
+    pdf = PdfText(Path("p.pdf"), "test", 1, "\n".join(lines),
+                  tuple(Place(1, at) for at in range(1, len(lines) + 1)), ())
+    assert pdf.placed == ()
+
+
 @needs_pdftotext
 def test_compare_places_a_pdfs_structured_abstract_under_it(tmp_path: Path, capsys) -> None:
     """Round 2, note 3: the PDF's structured abstract's headings sit under its Abstract, as

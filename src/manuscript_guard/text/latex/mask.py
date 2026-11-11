@@ -502,6 +502,13 @@ def _maths_keeps(character: str) -> bool:
     return True
 
 
+def _sets_text(name: str) -> bool:
+    """Whether an environment sets its body as text where maths holds it: a typed table's
+    cells are text inside an equation too, and open maths of their own (corpus run of
+    2026-11-11: 2103.00772 sets its cases as a `tabular` inside an equation)."""
+    return name in TYPED_TABLES
+
+
 def _note_role(kind: str) -> str:
     """How a citation's note or another prose argument is read."""
     return PROSE if kind == "p" else BLANK
@@ -1563,7 +1570,10 @@ class _Reader:
         """How an environment opened where `role` is read is read: a class's front matter is
         passed over, and an abstract or highlights in it, inside environments and groups only,
         `{\\small ...}` say, are read as what holds the front matter is; not in an argument,
-        which is blanked whatever holds it (round 2). A picture is passed over whole."""
+        which is blanked whatever holds it (round 2). A picture is passed over whole. A typed
+        table opened inside maths is read as prose (`_sets_text`)."""
+        if role == MATHS_READ and _sets_text(name):
+            return PROSE
         if name in FRONT_MATTER or name in PICTURES:
             return BLANK
         if name not in READ_IN_FRONT_MATTER:

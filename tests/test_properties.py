@@ -1065,6 +1065,10 @@ def _the_spaces_after_a_control_word_delimit(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_SKIPPED", re.compile(r""))
 
 
+def _a_table_inside_maths_is_maths(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_sets_text", lambda name: False)
+
+
 @holds(40, latex_refusal_trees())
 def test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else(
     drawn: list[tuple[dict[str, str], dict[str, str], list[tuple[str, int]],
@@ -18777,6 +18781,10 @@ def _the_offsets_are_one_off(patch: pytest.MonkeyPatch) -> None:
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a typed table's cells inside maths are maths": (
+        _a_table_inside_maths_is_maths,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
     "a PDF string's parentheses are not escaped": (
         _pdf_marks_unescaped,
         test_a_pdf_report_prints_every_word_within_its_page_and_marks_every_heading,

@@ -5028,7 +5028,13 @@ can be found in order in the long one and the first of them begins a word. That 
 and Hearst's rule (Pac Symp Biocomput 2003;8:451-62), written out here in thirty lines
 because a gate that runs in CI should not take a dependency for them. The short form may
 also stand in square brackets, "hazard ratio [HR]", which is how a journal writes a
-definition inside a parenthesis. The short form in a definition may be anything with two
+definition inside a parenthesis. Two more shapes come from real papers, read by the same
+letters: the short form closing a bracket after a semicolon or a comma, its long form
+before the separator inside the bracket, "(i.e. time to task failure; TTF)"; and the short
+form after a dash with a space on either side, a hyphen, an en dash or an em dash, its long
+form before the dash, "Basic Payment Scheme – BPS". A dash, like a bracket, gives
+a statistic and no definition where an equals sign or a number follows the short form;
+a hyphen with no space joins a word. The short form in a definition may be anything with two
 capitals, or one that is not the capital of a word (`mL`), or a capital and a digit. A
 plural defines its singular: `RORs` defines `ROR`, and `mAbs` after "monoclonal antibodies"
 defines `mAb`.
@@ -5111,8 +5117,12 @@ style was used, and "**ABSTRACT**" or "**TITLE PAGE**" is a paragraph. So in a p
 set entirely in bold whose letters are all capitals, and in a cell of a table's header row
 whose letters are ("MODEL 1"), nothing is reported as undefined; what the manuscript
 defines is still used there. A cell of a grid table's header that runs over several lines
-is read whole. A table's body is not a heading, since its rows name what they count,
-`COPD` and `CKD` in a baseline table, nor is a plain paragraph or a list item in capitals.
+is read whole. A plain paragraph in capitals that is only a section's name, numbered or
+not, "2. DISCUSSION" or "ABSTRACT", is a heading too, as a paper typed in Word has its
+headings in plain capitals; the names are the closed list a title standing alone is read by
+(`text/section_names.py`, `SECTION_NAMES`). A table's body is not a heading, since its rows
+name what they count, `COPD` and `CKD` in a baseline table, nor is any other plain
+paragraph or a list item in capitals.
 A reference list is not read at all. In a contributions, acknowledgements, funding or competing-interests
 section, capitals are people and institutions, so nothing there is reported as undefined,
 and a funder named once with its acronym is not reported as unused. Those sections are
@@ -19509,7 +19519,12 @@ Open, recorded as each change landed:
   that is also underlined, highlighted or in small capitals (`**[References]{.underline}**`)
   or not, as the audit does (`text/reference_lists.py`): G14, the word count and the
   comparison with earlier papers. Brackets before braces that hold no attributes,
-  `[References]{see below}`, or escaped, are text, and open no list.
+  `[References]{see below}`, or escaped, are text, and open no list. Three more shapes
+  Word's conversion writes, found on real papers, open one: a title in a block quote,
+  `> **11. REFERENCES**:`, a title with a bookmark on it, a link,
+  `[**References**](#_Ref89712232)`, each read as pandoc prints it, and a bold title a hard
+  line break opens, `**\` over `References**`, read by the line pandoc prints. A link or a
+  quote in a sentence, "[References](#x) were read", opens none.
   The list ends at the next heading of any level, at a line shaped like a heading that
   pandoc prints as text, at a paragraph all in bold or opening with a bold label
   ("**Funding:** ..."), at a back-matter title alone on its line (a statement's, as G7's
@@ -22318,6 +22333,18 @@ Open, recorded as each change landed:
   - A heading typed in capitals in a plain paragraph, "APPENDIX 1", and a row label in a
     table's body, "TOTAL", are reported as undefined abbreviations.
     Pinned by `tests/test_language.py::test_what_is_not_a_heading_in_capitals_is_still_read`.
+  - A plain paragraph in capitals is read as a heading only where it is a section's name
+    alone, of the closed list a title standing alone is read by (`SECTION_NAMES`), a number
+    before it or none: "2. DISCUSSION" and "ABSTRACT" are headings; "2. STUDY DESIGN",
+    "DISCUSSION ICU" and "3. MRSA" are read as words, and their capitals reported.
+    Pinned by `tests/test_language.py::test_a_line_that_is_more_than_a_section_s_name_is_still_read`.
+  - A definition with a dash is read with the long form first and a space either side of
+    the dash, "Basic Payment Scheme – BPS"; the short form first, "BPS –
+    Basic Payment Scheme", is not, outside a glossary, nor a dash with no space, which is
+    a hyphen joining a word. A short form inside a bracket is read at its start or at its end
+    after a semicolon or a comma, "(i.e. time to task failure; TTF)"; one in its middle,
+    "(as before, TTF, i.e. time to task failure)", defines nothing.
+    Pinned by `tests/test_language.py::test_a_bracket_s_end_or_a_dash_defines_only_by_the_letter_rule`.
   - In a paragraph set entirely in bold with no small letter, and in a cell of a table's
     header row with none, read as headings typed in capitals, nothing is reported as
     undefined. An abbreviation nobody defined that stands only in such places is missed:

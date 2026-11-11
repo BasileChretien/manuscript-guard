@@ -194,11 +194,20 @@ expected:
       (Known gaps, 2026-10-27)
   - reading: abbreviations
     why: >-
-      a stop between two parts of a word joins them as a hyphen does, in the text, in a
-      bracket's short form and in a glossary's entry, so "Licence avec Accès Santé (L.AS)"
-      defines L.AS and "students of L.AS" uses it, where it was an undefined AS; a sentence
-      typed on with no space, "the KAP.The rest", leaves KAP alone; the inputs now hold
-      such words (the author's paper, 2026-11-10)
+      a short form closing a bracket after a semicolon or a comma is defined by the long
+      form before the separator, "(i.e. time to task failure; TTF)", and one after a spaced
+      dash by the long form before the dash, "Basic Payment Scheme - BPS"; a plain line in
+      capitals that is only a section's name, "2. DISCUSSION", is a heading and not an
+      abbreviation; a reference list under "Literature cited", "Reference list", a title in
+      a block quote, a link or after a hard line break is passed over; the inputs now hold
+      each shape (the real-paper corpus, 2026-11-11). The entry it replaces, for #612, is
+      spent
+  - reading: spelling
+    why: >-
+      a reference list under a title in a block quote, `> **11. REFERENCES**:`, a link,
+      `[**References**](#_Ref89712232)`, or a bold title a hard line break opens, is passed
+      over, so the spelling of its entries is not read; the inputs now hold these titles
+      (the real-paper corpus, 2026-11-11)
   - reading: recycled passages
     why: >-
       a citation by author and year in parentheses in the earlier paper, "(Smith et al.,

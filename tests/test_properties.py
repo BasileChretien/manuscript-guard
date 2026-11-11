@@ -2109,12 +2109,68 @@ def _a_long_form_crosses_no_bracket(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_passed_over", lambda before, opened: "")
 
 
+def _a_bracket_s_last_word_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_short_closing", lambda bracket: None)
+
+
+def _a_bracket_s_last_word_is_spelt_from_before_the_bracket(patch: pytest.MonkeyPatch) -> None:
+    """The long form of "(see the appendix; PRR)" looked for before the bracket too, where
+    "the proportional reporting ratio" has its letters."""
+    real = language_gate._short_inside
+
+    def wider(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | None:
+        closing = language_gate._CLOSES_WITH.match(bracket.group(1))
+        if closing is None or not language_gate._may_be_defined(closing.group("short")):
+            return real(prose, bracket)
+        short = closing.group("short")
+        long = language_gate._read_back(short, f"{prose[: bracket.start()]} {closing['before']}")
+        if long is None:
+            return real(prose, bracket)
+        return bracket.start(1) + closing.start("short"), short, long
+
+    patch.setattr(language_gate, "_short_inside", wider)
+
+
+def _a_dash_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_dashed", lambda prose: [])
+
+
+def _a_number_after_a_dash_s_short_form_defines_too(patch: pytest.MonkeyPatch) -> None:
+    pattern = language_gate._DASHED.pattern
+    statistic = r"(?![ \t]*(?:=|\d))"
+    assert pattern.endswith(statistic)
+    patch.setattr(language_gate, "_DASHED", re.compile(pattern[: -len(statistic)]))
+
+
+def _a_dash_needs_no_space(patch: pytest.MonkeyPatch) -> None:
+    pattern = language_gate._DASHED.pattern
+    spaced = r"(?<=\S)[ \t]+"
+    assert pattern.startswith(spaced)
+    patch.setattr(language_gate, "_DASHED", re.compile(
+        "[ \\t]*" + pattern[len(spaced) :].replace("][ \\t]+(", "][ \\t]*(", 1)))  # fmt: skip
+
+
 def _a_time_of_day_is_words(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_CLOCK", re.compile("(?!)"))
 
 
 def _a_heading_in_capitals_is_words(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_in_capitals", lambda prose: [])
+
+
+def _a_section_s_name_on_a_plain_line_is_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_names_a_section", lambda paragraph: False)
+
+
+def _a_plain_line_in_capitals_is_a_section_s_name(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_names_a_section", lambda paragraph: True)
+
+
+def _a_section_s_name_is_read_with_its_escape(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.section_names import section_name_alone
+
+    patch.setattr(language_gate, "_names_a_section",
+                  lambda paragraph: section_name_alone(paragraph) is not None)  # fmt: skip
 
 
 def _a_table_s_body_and_a_plain_line_in_capitals_are_headings(
@@ -9449,6 +9505,31 @@ def _a_line_is_read_with_its_spans(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reference_lists_module, "without_spans", lambda text: text)
 
 
+def _a_line_is_read_with_its_quote_s_marks(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_QUOTED", re.compile("(?!)"))
+
+
+def _a_line_is_read_with_its_link(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_LINK", re.compile("(?P<words>(?!))"))
+
+
+def _a_paragraph_s_first_line_is_read_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_first_printed", lambda lines, number: lines[number])
+
+
+def _a_quote_s_or_a_link_s_line_anywhere_opens_a_list(patch: pytest.MonkeyPatch) -> None:
+    """The marks and the link taken off wherever they stand, so that a sentence that only
+    holds a link to "References", or a quote of one, is the title."""
+    real = reference_lists_module.is_bibliography_heading
+
+    def anywhere(line: str, *, marked: bool = False, markdown: bool = True) -> bool:
+        words = re.sub(r"\[([^\]]*)\]\([^)]*\).*|^>\s*(\w+).*", r"\1\2", line)
+        return real(line, marked=marked, markdown=markdown) or real(words, marked=marked,
+                                                                    markdown=markdown)
+
+    patch.setattr(reference_lists_module, "is_bibliography_heading", anywhere)
+
+
 def _a_list_s_end_is_read_with_its_spans(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reference_lists_module, "_printed", lambda paragraph: paragraph)
 
@@ -10463,6 +10544,26 @@ def _the_recycling_check_knows_english_titles_only(patch: pytest.MonkeyPatch) ->
     from manuscript_guard.gates import recycling
 
     _english_only(patch, recycling)
+
+
+def _the_sections_know_neither_literature_cited_nor_a_reference_list(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.text import sections
+
+    pattern = sections._REFERENCES.pattern
+    words = r"|literature\s+cited|reference\s+list"
+    assert words in pattern
+    patch.setattr(sections, "_REFERENCES", re.compile(pattern.replace(words, ""), re.IGNORECASE))
+
+
+def _the_recycling_check_knows_no_reference_list(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import recycling
+
+    pattern = recycling._REFERENCES.pattern
+    assert r"|reference\s+list" in pattern
+    patch.setattr(recycling, "_REFERENCES",
+                  re.compile(pattern.replace(r"|reference\s+list", ""), re.IGNORECASE))  # fmt: skip
 
 
 def _a_section_takes_a_title_elsewhere_by_its_opening(patch: pytest.MonkeyPatch) -> None:
@@ -19734,6 +19835,22 @@ BROKEN = {
         _a_line_is_read_with_its_spans,
         test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
     ),
+    "a line under no heading is read with its block quote's marks": (
+        _a_line_is_read_with_its_quote_s_marks,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a line under no heading is read with its link": (
+        _a_line_is_read_with_its_link,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a paragraph's first line is read as typed, a hard line break with it": (
+        _a_paragraph_s_first_line_is_read_as_typed,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a line that holds a link or a quote of the title opens a list": (
+        _a_quote_s_or_a_link_s_line_anywhere_opens_a_list,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
     "a title that ends a reference list is read with its spans": (
         _a_list_s_end_is_read_with_its_spans,
         test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
@@ -20886,6 +21003,26 @@ BROKEN = {
         _a_long_form_crosses_no_bracket,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
+    "a short form closing a bracket after a separator defines nothing": (
+        _a_bracket_s_last_word_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a short form closing a bracket is spelt from before the bracket": (
+        _a_bracket_s_last_word_is_spelt_from_before_the_bracket,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a short form after a dash defines nothing": (
+        _a_dash_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a number after a dash's short form defines it": (
+        _a_number_after_a_dash_s_short_form_defines_too,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a dash with no space defines": (
+        _a_dash_needs_no_space,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
     "a time of day is read as words": (
         _a_time_of_day_is_words,
         test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
@@ -20896,6 +21033,18 @@ BROKEN = {
     ),
     "a table's body and a plain line in capitals are headings": (
         _a_table_s_body_and_a_plain_line_in_capitals_are_headings,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a section's name on a plain line in capitals is read as words": (
+        _a_section_s_name_on_a_plain_line_is_words,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "any plain line in capitals is a section's name": (
+        _a_plain_line_in_capitals_is_a_section_s_name,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a section's name is read with its escaped stop": (
+        _a_section_s_name_is_read_with_its_escape,
         test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
     ),
     "a header cell is read line by line": (
@@ -23080,6 +23229,14 @@ BROKEN = {
     ),
     "a section knows a reference list's English titles only": (
         _the_sections_know_english_titles_only,
+        test_a_reference_list_is_known_by_its_title_in_each_language,
+    ),
+    "a section knows neither Literature cited nor Reference list": (
+        _the_sections_know_neither_literature_cited_nor_a_reference_list,
+        test_a_reference_list_is_known_by_its_title_in_each_language,
+    ),
+    "the recycling check knows no Reference list": (
+        _the_recycling_check_knows_no_reference_list,
         test_a_reference_list_is_known_by_its_title_in_each_language,
     ),
     "the recycling check knows a reference list's English titles only": (

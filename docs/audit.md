@@ -131,8 +131,10 @@ conventions and cross-references, and reports every remaining number that appear
 in your outputs.
 
 The bibliography is found by its title in English, Spanish, Portuguese, French, German,
-Italian, Turkish and Indonesian ("References", "Referencias", "Kaynakça", "Daftar pustaka"
-and the like), and otherwise by the shape of its entries: journal articles in the numbered
+Italian, Turkish and Indonesian ("References", "Literature cited", "Reference list",
+"Referencias", "Kaynakça", "Daftar pustaka" and the like), in a Markdown paper also where
+Word's conversion has put the title in a block quote (`> **11. REFERENCES**:`) or made it
+a link to Word's bookmark on it, and otherwise by the shape of its entries: journal articles in the numbered
 and author-year styles, the BMJ's with no full stop before the year, books, chapters, web
 pages and articles online first. A shape can be wrong, so the numbers on a line it accepts
 are still compared, and those not found are listed apart. A title that is a plain paragraph

@@ -6809,31 +6809,47 @@ BOUND_UNITS = (
 
 #: What may stand before a binding and after it, and the comparator G2 reads there with the
 #: side of the number printed it holds the value to (True: below), or None where it reads
-#: none: each sign and its spellings, the two phrases, a sign after the binding, which holds
-#: the value to the other side, and a sign with a line break after it; and a comparison of
-#: two numbers, a phrase turned round, a comment, a tag, a blockquote's marker and arrows,
-#: which compare nothing (PsyArXiv fyxeq_v2's "all Fs < {{results.f}}").
+#: none: each sign and its spellings and the two phrases after each statistic's symbol, in
+#: italics or not, a sign after the binding, which holds the value to the other side, with a
+#: line break on either side of the sign; and a subject that is no statistic, a symbol
+#: inside a word, a comparison of two numbers, a comment, a tag, a blockquote's marker and
+#: arrows, which compare nothing (PsyArXiv fyxeq_v2's "all Fs < {{results.f}}", round 1 of
+#: #629).
 BESIDE_A_BINDING = (
     ("Fs < ", "", ("<", True)),
     ("all ps > ", "", (">", False)),
+    ("all *p*s > ", "", (">", False)),
     ("", " < ts", ("<", False)),
     ("", " > ts", (">", True)),
     ("F \N{LESS-THAN OR EQUAL TO} ", "", ("\N{LESS-THAN OR EQUAL TO}", True)),
-    ("F \N{GREATER-THAN OR EQUAL TO} ", "", ("\N{GREATER-THAN OR EQUAL TO}", False)),
-    ("F <= ", "", ("<=", True)),
+    ("r \N{GREATER-THAN OR EQUAL TO} ", "", ("\N{GREATER-THAN OR EQUAL TO}", False)),
+    ("t <= ", "", ("<=", True)),
     ("", " >= ts", (">=", True)),
-    ("F &lt; ", "", ("&lt;", True)),
-    ("F \\> ", "", ("\\>", False)),
-    ("F less than ", "", ("less than", True)),
-    ("F Greater than or equal to ", "", ("Greater than or equal to", False)),
-    ("F <\n", "", ("<", True)),
-    ("F no less than ", "", None),
+    ("", " &LT; ts", ("&LT;", False)),
+    ("z &lt; ", "", ("&lt;", True)),
+    ("d \\> ", "", ("\\>", False)),
+    ("p less than ", "", ("less than", True)),
+    ("*P* Greater than or equal to ", "", ("Greater than or equal to", False)),
+    ("R2 < ", "", ("<", True)),
+    ("I\N{SUPERSCRIPT TWO} > ", "", (">", False)),
+    ("\N{GREEK SMALL LETTER CHI}^2^ > ", "", (">", False)),
+    ("ds <\n", "", ("<", True)),
+    ("", " <\nts", ("<", False)),
+    ("", " <\n\nts", None),
+    ("incidence was greater than ", "", None),
+    ("the model's t was greater than ", "", None),
+    ("F wasn't less than ", "", None),
+    ("F wasn\N{RIGHT SINGLE QUOTATION MARK}t less than ", "", None),
+    ("was no\nless than ", "", None),
+    ("a threshold of 2.6\n< ", "", None),
+    ("groups > ", "", None),
     ("2.6 < ", "", None),
     ("", " < 2.6", None),
     ("{{results.other}} > ", "", None),
     ("<!-- c -->", "", None),
     ("<sup>", "</sup>", None),
     ("\n> ", "", None),
+    ("\n- > ", "", None),
     ("F -> ", "", None),
     ("F >> ", "", None),
     ("", " <- x", None),

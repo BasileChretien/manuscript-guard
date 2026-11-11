@@ -124,14 +124,18 @@ def test_a_unit_after_a_latex_binding_is_read_only_where_it_is_typed_as_it_print
      ("\\mg{results.f} $<$ ts", ("<", False)),
      # The reader blanks a command, so a comparator typed as one is not read.
      ("all Fs $\\leq$ \\mg{results.f}", None), ("\\mg{results.f} $\\geq$ ts", None),
-     ("all Fs \\textless{} \\mg{results.f}", None)],
+     ("all Fs \\textless{} \\mg{results.f}", None),
+     # And blanks `\not`, so the sign it negates is read as the sign (round 1 of #629).
+     ("all Fs $\\not<$ \\mg{results.f}", ("<", True)),
+     # A symbol in maths with its plural outside reads "F s" in the view, no statistic.
+     ("all $F$s $<$ \\mg{results.f}", None)],
 )  # fmt: skip
 def test_a_comparator_beside_a_latex_binding_is_read_where_its_view_prints_a_sign(
     typed: str, read: tuple[str, bool] | None
 ) -> None:
     """G2 reads a comparison beside a binding in the Markdown view, where `$<$` is a sign
-    and `$\\leq$` and `\\textless` are blanked: those two are not held (DESIGN.md, Known
-    gaps)."""
+    and `$\\leq$` and `\\textless` are blanked: those two are not held, and `$\\not<$` is
+    held as "<" (DESIGN.md, Known gaps)."""
     from manuscript_guard.gates.bound_comparisons import comparisons_at
 
     text = DOC + typed + ".\n" + END

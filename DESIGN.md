@@ -25480,32 +25480,38 @@ What papers converted from Word showed (see "What papers converted from Word sho
     the same way. A quote that is the finding's words alone, a heading "AS", is listed
     wherever two paragraphs hold it, a word as well as a number. Accepted.
 
-- **A comparison beside a binding is read from its signs and two phrases.** G2 fails a value
-  that a comparator typed beside its binding contradicts (`comparison-contradicted`): "<",
-  ">", "≤", "≥" and their spellings ("<=", "&lt;", `\<`) right before a results binding or
-  right after one, and "less than" and "greater than" (with "or equal to") right before one.
-  It holds the value as the emitter holds a comparator display, "<2.53": at the number
-  printed or on the side the sign names, so not strictly, and a sign after the binding holds
-  it to the other side ("{{results.t_min}} < ts" says the ts are above it). The real case
-  was a psychology preprint, PsyArXiv fyxeq_v2, whose "all Fs <", "all ps >" and "< ts"
-  printed 2.53, .260 and 4.27 of 2.532, .2596 and 4.268. Pinned by
+- **A comparison beside a binding is read after a statistic's symbol, or after the binding.**
+  G2 fails a value that a comparator typed beside its binding contradicts
+  (`comparison-contradicted`), in two shapes: a statistic's symbol from a closed list (p, F,
+  t, r, z, d and their plurals, χ², R² and I², italics allowed) right before "<", ">", "≤",
+  "≥", their spellings ("<=", "&lt;", `\<`), "less than" or "greater than" (with "or equal
+  to") and the binding; and a sign right after the binding. It holds the value as the
+  emitter holds a comparator display, "<2.53": at the number printed or on the side the sign
+  names, so not strictly, and a sign after the binding holds it to the other side
+  ("{{results.t_min}} < ts" says the ts are above it). The real case was a psychology
+  preprint, PsyArXiv fyxeq_v2, whose "all Fs <", "all ps >" and "< ts" printed 2.53, .260
+  and 4.27 of 2.532, .2596 and 4.268. Pinned by
   `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
+  - A comparison with any other subject is not read, because there the binding may be the
+    other side of what is compared rather than its bound: "Incidence in exposed patients was
+    greater than {{results.inc_unexposed}}" is true of the two incidences when the binding
+    prints 2.53 of 2.528, and read as a bound it would fail (round 1 of #629). So "the
+    model's t was greater than", "ps were all >", "t(27) <", a symbol in maths with its plural
+    outside, `$F$s`, and a statistic the list leaves out are not read either. Accepted.
   - Other words for a comparison are not read: "below", "above", "under", "over", "more
     than", "fewer than", "at least", "at most", "exceeding". Choosing them is a list of words
     the rule does not settle. Accepted.
-  - A phrase turned round, "no less than" or "not greater than", is not read rather than read
-    the other way. Pinned by
-    `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
   - A comparison of two numbers is not read: "2.6 < {{results.f}}", "{{results.a}} <
     {{results.b}}". Nothing holds two bound values to the comparison typed between them.
     Pinned by
     `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
   - Only a space, an entity of one, a comment or one line break may stand between the sign
     and the binding: a binding in italics, "ps > *{{results.p}}*", or a unit between,
-    "{{results.t}} s < times", is not read. A ">" after a tag opened earlier on its line,
-    "x<y and ps > {{results.p}}", is taken for the tag's end. Accepted.
+    "{{results.t}} s < times", is not read. Accepted.
   - In LaTeX the view is read: `$<$` and `$>$` are signs there, and `$\leq$`, `$\geq$` and
-    `\textless` are blanked by the reader and not read. Pinned by
+    `\textless` are blanked by the reader and not read. `\not` is blanked too, so
+    `all Fs $\not<$ \mg{results.f}` is read as "<", and its value held below the number
+    printed. Pinned by
     `tests/test_latex_bindings.py::test_a_comparator_beside_a_latex_binding_is_read_where_its_view_prints_a_sign`.
   - A value whose display carries a comparator of its own, "<0.001", is held to it by the
     emitter, and a sign typed beside it is not compared; nor is a `{{lit.…}}` value, which is

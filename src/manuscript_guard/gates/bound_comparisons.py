@@ -1,4 +1,4 @@
-"""G2: a comparison typed beside a binding holds of the value emitted, not only of its print.
+"""G2: a comparison of a statistic typed beside a binding holds of the value emitted.
 
 The emitter refuses a display "<2.53" for a value of 2.532: a comparator display says on
 which side of the number the value lies, and the value has to lie there (`contracts/values`,
@@ -8,18 +8,24 @@ went through: "all Fs < {{results.f_max}}" printed "all Fs < 2.53" of 2.532, "al
 4.268, with every gate green (a psychology preprint rebuilt with the R emitter, PsyArXiv
 fyxeq_v2).
 
-So the comparator written right before or right after each results binding is read, and
-the value is held to it as the emitter holds a display's: below the number printed, or at
-it, for "<", "≤" and "less than"; above it, or at it, for ">", "≥" and "greater than". Like
-the display rule the bound is not strict, and the number compared with is the one printed.
-A comparator after the binding says the other side lies beyond the number, so the value is
-held to the opposite side: "{{results.t_min}} < ts" says the ts are above 4.27, and the
-smallest of them is held to 4.27 or more.
+There the binding is the bound of a statistic: every F lies below 2.53. It is not always
+so. "Incidence in the exposed was greater than {{results.inc_unexposed}}" compares two
+incidences, and the binding is the other side of the comparison: 2.528 printed 2.53 is not
+contradicted by it. So a comparison is read in two shapes only, where the binding is the
+bound:
 
-A comparison between two numbers is not read: where the other side of the comparator is a
-typed number or another binding, the sentence compares the two, and neither is a bound on a
-quantity. Nor is "no less than" or "not greater than", nor anything that is no comparator
-but looks like one: an HTML tag, an arrow, a blockquote's marker.
+- a statistic's symbol, from a closed list, right before the sign or the phrase: p, F, t,
+  r, z, d and their plurals, χ², R² and I², italics around the symbol allowed: "all Fs <",
+  "*p* less than";
+- a sign right after the binding: "{{results.t_min}} < ts".
+
+The value is then held to the comparison as the emitter holds a display's: below the
+number printed, or at it, for "<", "≤" and "less than"; above it, or at it, for ">", "≥" and
+"greater than". Like the display rule the bound is not strict, and the number compared with
+is the one printed. A sign after the binding says the other side lies beyond the number, so
+the value is held to the opposite side: "{{results.t_min}} < ts" says the ts are above
+4.27, and the smallest of them is held to 4.27 or more. Where what follows that sign is a
+typed number or another binding, the sentence compares two numbers, and it is not read.
 """
 
 from __future__ import annotations
@@ -41,26 +47,39 @@ _WINDOW = 120
 
 #: Each comparator as it is typed, and whether it says the value is below the number after
 #: it. The entities and the escapes are what pandoc prints as the sign.
-_BELOW = ("<=", "≤", "⩽", "&le;", "&lt;", "\\<", "<")
-_ABOVE = (">=", "≥", "⩾", "&ge;", "&gt;", "\\>", ">")
+_BELOW = ("<=", "\N{LESS-THAN OR EQUAL TO}", "\N{LESS-THAN OR SLANTED EQUAL TO}", "&le;",
+          "&lt;", "\\<", "<")  # fmt: skip
+_ABOVE = (">=", "\N{GREATER-THAN OR EQUAL TO}", "\N{GREATER-THAN OR SLANTED EQUAL TO}", "&ge;",
+          "&gt;", "\\>", ">")  # fmt: skip
 _SIGN = "|".join(sorted(map(re.escape, (*_BELOW, *_ABOVE)), key=len, reverse=True))
-_WORDS = r"(?:less|greater)[ \t ]+than(?:[ \t ]+or[ \t ]+equal[ \t ]+to)?"
-#: A comparator, sign or words, ending right before a binding.
-_BEFORE = re.compile(rf"(?P<op>{_SIGN}|(?<![\w-]){_WORDS}){_GAP}\Z", re.IGNORECASE)
+_SPACE = r"[ \t\N{NO-BREAK SPACE}]+"
+_WORDS = rf"(?:less|greater){_SPACE}than(?:{_SPACE}or{_SPACE}equal{_SPACE}to)?"
+#: Italics around a symbol, as Markdown marks them.
+_ITALIC = r"[*_]{0,2}"
+#: The statistics whose symbol a comparison is read after: one letter, with its plural, and
+#: one with its index, typed, a superscript or pandoc's superscript. A symbol stands alone:
+#: not inside a word, nor after an apostrophe, where "wasn't" ends in a "t".
+_LETTERS = ("p", "P", "F", "t", "r", "z", "d")
+_INDEXED = ("\N{GREEK SMALL LETTER CHI}", "R", "I")
+_ALONE = r"(?<![^\W_])(?<!['\N{RIGHT SINGLE QUOTATION MARK}])"
+_STATISTIC = (
+    rf"{_ALONE}{_ITALIC}(?:"
+    rf"(?:{'|'.join(_LETTERS)})(?:{_ITALIC}s)?"
+    rf"|(?:{'|'.join(_INDEXED)}){_ITALIC}(?:2|\N{{SUPERSCRIPT TWO}}|\^2\^)"
+    rf"){_ITALIC}"
+)
+#: A statistic, then a comparator, sign or words, ending right before a binding. The
+#: symbols are matched as cased, the comparator in any case.
+_BEFORE = re.compile(rf"{_STATISTIC}{_GAP}(?P<op>(?i:{_SIGN}|{_WORDS})){_GAP}\Z")
 #: A sign right after a binding. Words after one ("4.27 less than") compare nothing.
-_AFTER = re.compile(rf"{_GAP}(?P<op>{_SIGN})")
-#: What a sign is part of when it is no comparator: an arrow, a double sign.
-_SIGN_AFTER = re.compile(r"[-=<>]\Z")
-#: A `>` that closes an HTML tag or a comment opened before it on the line.
-_TAG_OPEN = re.compile(r"<[/!A-Za-z][^<>\n]*\Z")
-#: A `>` that is a blockquote's marker: at the start of a line, after others.
-_QUOTE_MARK = re.compile(r"(?:\A|\n)[ \t]*(?:>[ \t]*)*\Z")
-#: A comparison turned round by the word before it: "no less than" is "at least".
-_NEGATED = re.compile(r"(?<!\w)(?:no|not|n't)[ \t ]*\Z", re.IGNORECASE)
-#: The other side of a comparator before a binding, where it is a number or a binding.
-_NUMBER_BEFORE = re.compile(rf"(?:\d|%|\}}\}})[*_]*{_GAP}\Z")
+_AFTER = re.compile(rf"{_GAP}(?P<op>{_SIGN})", re.IGNORECASE)
+#: What may stand between that sign and what it compares: a gap, with one line break.
+_SPACES_AFTER = re.compile(_GAP)
+#: What follows a `<` that opens a tag or makes an arrow or a double sign, and what follows
+#: a `>` that makes a double sign.
+_NO_SIGN_AFTER = {"<": re.compile(r"[/!A-Za-z<\-=]"), ">": re.compile(r"[>=]")}
 #: The other side of a sign after a binding, where it is a number or a binding.
-_NUMBER_AFTER = re.compile(rf"{_GAP}[*_]*(?:[-+−]?\.?\d|\{{\{{|\\mg\{{)")
+_NUMBER_AFTER = re.compile(rf"{_GAP}[*_]*(?:[-+\N{{MINUS SIGN}}]?\.?\d|\{{\{{|\\mg\{{)")
 
 
 @dataclass(frozen=True)
@@ -81,25 +100,13 @@ def _side(op: str) -> bool:
 
 
 def _before(text: str, start: int) -> tuple[str, bool] | None:
-    """The comparator ending right before the binding at `start`, and whether it holds the
-    value below the number printed; None where there is none, or one comparing two numbers."""
+    """The comparator ending right before the binding at `start`, after a statistic's
+    symbol, and whether it holds the value below the number printed; None where there is
+    none."""
     found = _BEFORE.search(text, max(0, start - _WINDOW), start)
     if found is None:
         return None
-    # What stands before the comparator on its line, and no more than a window of it, so
-    # that a file of many bindings is read in one pass.
-    at = found.start()
-    head = text[max(text.rfind("\n", max(0, at - _WINDOW), at) + 1, at - _WINDOW, 0): at]
-    op = found["op"]
-    if op.startswith(("<", ">")) and _SIGN_AFTER.search(head):
-        return None
-    if op == ">" and (_TAG_OPEN.search(head) or _QUOTE_MARK.search(head)):
-        return None
-    if op[0].isalpha() and _NEGATED.search(head):
-        return None
-    if _NUMBER_BEFORE.search(head):
-        return None
-    return op, _side(op)
+    return found["op"], _side(found["op"])
 
 
 def _after(text: str, end: int) -> tuple[str, bool] | None:
@@ -109,11 +116,11 @@ def _after(text: str, end: int) -> tuple[str, bool] | None:
     if found is None:
         return None
     op, tail = found["op"], text[found.end(): found.end() + _WINDOW]
-    if op == "<" and re.match(r"[/!A-Za-z<\-=]", tail):
+    lookalike = _NO_SIGN_AFTER.get(op)
+    if lookalike is not None and lookalike.match(tail):
         return None
-    if op == ">" and tail.startswith((">", "=")):
-        return None
-    if not tail.strip(" \t ") or tail.lstrip(" \t ").startswith(("\n", "\r")):
+    rest = _SPACES_AFTER.match(tail).end()
+    if rest == len(tail) or tail[rest] in "\r\n":
         return None
     if _NUMBER_AFTER.match(tail):
         return None

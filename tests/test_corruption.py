@@ -5254,12 +5254,16 @@ def test_every_spelling_of_one_unit_is_one_unit(written: str, emitted: str) -> N
 # ------------------------------------------- a comparison typed beside a binding
 
 #: Three values as a psychology preprint's analysis emitted them, rounded for print, and a
-#: fourth printed whole (PsyArXiv fyxeq_v2, rebuilt with the R emitter).
+#: fourth printed whole (PsyArXiv fyxeq_v2, rebuilt with the R emitter); an incidence, and
+#: an R² and an I² each on the wrong side of its print for a sign before it.
 _COMPARED = {
     "omnibus.f_max": (2.532, "2.53"),
     "omnibus.p_min": (0.2596, ".260"),
     "contrasts.t_min": (4.268, "4.27"),
     "contrasts.t_max": (4.27, "4.27"),
+    "incidence.unexposed": (2.528, "2.53"),
+    "fit.r2": (0.4204, "0.42"),
+    "fit.i2": (37.96, "38"),
 }
 
 
@@ -5304,6 +5308,12 @@ def _append_paragraph(path: Path, paragraph: str) -> int:
         ("p greater than or equal to {{results.omnibus.p_min}}", True),
         ("{{results.contrasts.t_min}} \N{LESS-THAN OR EQUAL TO} ts", True),
         ("{{results.omnibus.f_max}} > Fs", True),
+        ("{{results.contrasts.t_min}} <\nts", True),
+        ("{{results.contrasts.t_min}} &LT; ts", True),
+        # A statistic with its index, which is no typed number (round 1 of #629).
+        ("R2 < {{results.fit.r2}}", True),
+        ("I2 > {{results.fit.i2}}", True),
+        ("*R*^2^ < {{results.fit.r2}}", True),
         # The value on the side the comparison says, or at the number printed: the bound
         # is not strict, as a display's is not.
         ("all Fs > {{results.omnibus.f_max}}", False),
@@ -5311,16 +5321,28 @@ def _append_paragraph(path: Path, paragraph: str) -> int:
         ("{{results.contrasts.t_min}} > ts", False),
         ("ts \N{GREATER-THAN OR EQUAL TO} {{results.contrasts.t_max}}", False),
         ("ts < {{results.contrasts.t_max}}", False),
+        # Round 1 of #629: where the subject is no statistic's symbol, the binding may be
+        # the other side of what is compared, and nothing is read. Each value below would
+        # be contradicted if the comparison were read.
+        ("Incidence in exposed patients was greater than {{results.incidence.unexposed}}",
+         False),
+        ("the new model's t was greater than {{results.contrasts.t_min}}", False),
+        ("F wasn't less than {{results.omnibus.f_max}}", False),
+        ("F wasn\N{RIGHT SINGLE QUOTATION MARK}t less than {{results.omnibus.f_max}}", False),
+        ("F no less than {{results.omnibus.f_max}}", False),
+        ("was no\nless than {{results.omnibus.f_max}}", False),
+        ("a threshold of 2.6\n< {{results.omnibus.f_max}}", False),
         # Two numbers compared, and no bound on a quantity: not read.
         ("2.6 < {{results.omnibus.f_max}}", False),
-        ("{{results.omnibus.f_max}} < 2.6", False),
-        ("{{results.contrasts.t_max}} < {{results.contrasts.t_min}}", False),
-        # A comparison turned round by its word, and what only looks like a comparator.
-        ("F no less than {{results.omnibus.f_max}}", False),
-        ("<!-- the largest -->{{results.omnibus.f_max}} was the largest F", False),
-        ("> {{results.omnibus.f_max}} was the largest F", False),
-        ("the largest F, <sup>{{results.omnibus.f_max}}</sup>", False),
-        ("F -> {{results.omnibus.f_max}}", False),
+        ("{{results.omnibus.p_min}} < 0.3", False),
+        ("{{results.contrasts.t_min}} < {{results.omnibus.f_max}}", False),
+        # What only looks like a comparator.
+        ("<!-- the smallest -->{{results.omnibus.p_min}} was the smallest p", False),
+        ("\n\n> {{results.omnibus.p_min}} was the smallest p", False),
+        ("\n\n- > {{results.omnibus.p_min}} was the smallest p", False),
+        ("the smallest p, <sup>{{results.omnibus.p_min}}</sup>", False),
+        ("F -> {{results.omnibus.p_min}}", False),
+        ("{{results.contrasts.t_min}} <\n\nts", False),
     ],
 )
 def test_a_comparison_typed_beside_a_binding_holds_of_the_value(
@@ -5332,7 +5354,7 @@ def test_a_comparison_typed_beside_a_binding_holds_of_the_value(
     read it in the sentence. The value is held to the comparison as the emitter holds it."""
     _compared_emitted(project, _COMPARED)
     line = _append_paragraph(main_md(project), f"In the extra analysis, {typed}.")
-    key = re.search(r"results\.([a-z_.]+)", typed)[1]
+    key = re.search(r"results\.([a-z0-9_.]+)", typed)[1]
     assert _comparisons_failed(project, capsys) == ([(f"results.{key}", line)]
                                                     if contradicts else [])  # fmt: skip
 

@@ -1558,7 +1558,10 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
       file, whose uses in the entry file and in a file it inputs are followed by that text,
       each passed over, and a use it does not follow, refused; a space after a control word
       in that text is none of it, `\\def\\x\\relax /{a}` then `\\x\\relax/`;
-    - a comment between a command and its argument, passed over and recorded."""
+    - a comment between a command and its argument, passed over and recorded;
+    - a typed table inside maths, whose cells are text and open maths of their own, read,
+      and `$` inside maths outside one, refused where it stands (corpus run of 2026-11-11:
+      2103.00772 sets its cases as a `tabular` inside an equation)."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
@@ -1655,6 +1658,19 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
             f"{note}{{\\end{{list}}}}\n" + begin + words() + "\n" + end)  # fmt: skip
     comments = [("main.tex", at) for at in range(len(main)) if main[at] == "%"]
     cases.append(({"main.tex": main}, {}, [], [], comments))
+
+    table = draw(st.sampled_from(("tabular", "tabular*", "tabularx", "tabulary")))
+    columns = {"tabular": "{ll}", "tabular*": "{\\linewidth}{ll}",
+               "tabularx": "{\\linewidth}{lX}", "tabulary": "{\\linewidth}{lL}"}[table]  # fmt: skip
+    opens, closes = draw(st.sampled_from((("\\begin{equation}", "\\end{equation}"),
+                                          ("\\[", "\\]"), ("$$", "$$"))))  # fmt: skip
+    cells = f"$x$ & {words()} \\\\ $\\sum y$ & {words()}"
+    main = (head + begin + words() + "\n" + opens + " a = \\left\\{ \\begin{" + table + "}"
+            + columns + " " + cells + " \\end{" + table + "} \\right. " + closes + "\n"
+            + words() + ".\n" + end)  # fmt: skip
+    cases.append(({"main.tex": main}, {}, [], [], []))
+    main = head + begin + words() + "\n" + opens + " a = $x$ " + closes + "\n" + end
+    cases.append(({"main.tex": main}, {}, [("main.tex", main.index("$x$"))], [], []))
     return cases
 
 
@@ -2615,6 +2631,62 @@ def latex_writing(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
         planted.append((key, kind))
         text += _FAR + template.replace("{{", "{").replace("}}", "}").replace("{}", key)
     return text + _FAR + "\\end{document}\n% TODO cut\nXXX patients\n", planted
+
+
+#: What a Markdown paper writes after a claim, as G6 judges it (`gates/writing.py`,
+#: `typed_citations`), `{author}`, `{year}` and `{number}` drawn: a pandoc citation and a
+#: citation typed as text are its support, as a paper not written with manuscript-guard
+#: types them, a .docx `audit` converts among them (corpus round, 2026-11-10); brackets that
+#: cite nothing, an interval after its value among them, are none, and the claim is vague.
+MARKDOWN_CITED_AFTER = (
+    ("[@a{number}]", "cited"),
+    ("({author} et al., {year})", "cited"),
+    ("({author} & Jones, {year}; Lee, {year}a)", "cited"),
+    ("(e.g., {author}, {year})", "cited"),
+    ("(World Health Organization, {year})", "cited"),
+    ("(Centers for Disease Control and Prevention, {year}, {year})", "cited"),
+    ("(National Institutes of Health, {year})", "cited"),
+    # Two capitalised words are no organisation's name, so that no work is read both as
+    # people's and as an organisation's, and a month cut short is no author (round 1 of
+    # #621).
+    ("(Fall Semester, {year})", "vague"),
+    ("(Jan {year})", "vague"),
+    ("(Sept {year})", "vague"),
+    ("[{number}]", "cited"),
+    ("[{number}, {number}-{number}]", "cited"),
+    ("\\[{number}\\]", "cited"),
+    ("({year})", "vague"),
+    ("(in {year})", "vague"),
+    ("(n = {year})", "vague"),
+    ("(p < 0.05)", "vague"),
+    ("(January {year})", "vague"),
+    ("(since {year})", "vague"),
+    ("by 64 [55-72]", "vague"),
+    ("", "vague"),
+)  # fmt: skip
+_CITED_AUTHORS = ("Smith", "García", "O'Brien", "van der Berg", "Nguyen", "WHO")
+
+
+@st.composite
+def markdown_cited_claims(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A Markdown paper with a claim before each of `MARKDOWN_CITED_AFTER`, in an order
+    drawn, each apart from the next by more than G6's citation window; and each claim's word
+    with what G6 makes of it. Every kind is in every paper, so that a rule broken for one
+    is seen in each."""
+    order = draw(st.permutations(range(len(MARKDOWN_CITED_AFTER))))
+    planted: list[tuple[str, str]] = []
+    text = "# Introduction\n\n"
+    for index in order:
+        template, kind = MARKDOWN_CITED_AFTER[index]
+        cited = template.format(
+            author=draw(st.sampled_from(_CITED_AUTHORS)),
+            year=draw(st.integers(1950, 2029)),
+            number=draw(st.integers(1, 120)),
+        )
+        key = f"k{4101 + len(planted)}"
+        planted.append((key, kind))
+        text += f"{_FAR}\nStudies have shown that {key} lowers blood pressure {cited}.\n\n"
+    return text + _FAR, planted
 
 
 #: What a LaTeX document sets out that its text may point at by line, "the stride is set
@@ -12772,6 +12844,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES
     ),
     "residue": texts(tuple(written for written, _rule, _found in RESIDUE) + RESIDUE_LOOKALIKES),
+    "vague attribution": st.one_of(markdown_cited_claims().map(lambda drawn: drawn[0]),
+                                   texts()),  # fmt: skip
     "typed releases": texts(RELEASED),
     "reported tests": texts(REPORTED),
     "reported intervals": texts(ESTIMATES),

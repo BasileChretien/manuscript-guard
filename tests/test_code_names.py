@@ -49,8 +49,8 @@ def test_a_word_with_underscores_is_found_once_where_it_first_stands() -> None:
     assert finding.code == CODE and finding.severity == WARN
     assert finding.line == 5
     assert finding.message == (
-        "'hr_adj_main' is written as a name in code is, with underscores, and the reader has "
-        "never seen it: it is used 2 times, first in the prose"
+        "'hr_adj_main' is written with underscores, the way a name in code is written, and the "
+        "reader has never seen it: it is used 2 times, first in the prose"
     )
     assert "code_names_kept" in finding.hint
 

@@ -12650,6 +12650,24 @@ def test_g6_takes_a_latex_citation_beside_a_claim_for_its_support(project: Path)
     assert not [f for f in _g6_findings(project) if f.code == "vague-attribution"]
 
 
+def test_g6_takes_a_typed_citation_for_a_claims_support_and_brackets_that_cite_nothing_not(
+    project: Path,
+) -> None:
+    """A Markdown paper not written with manuscript-guard, a .docx `audit` converts among
+    them, types its citations: a claim beside "(Smith et al., 2020)" or "[12]" is cited,
+    and one beside "(2020)" or "(p < 0.05)" is still vague (corpus round, 2026-11-10: 14 of
+    16 vague attributions on 52 preprints stood beside a typed citation)."""
+    main = main_md(project)
+    far = "\n\n" + "Words of the paper. " * 20 + "\n\n"
+    claims = [f"Prior research has shown that {what} lowers blood pressure {cited}."
+              for what, cited in (("exercise", "(Smith et al., 2020)"), ("rest", "[12]"),
+                                  ("salt", "(2020)"), ("sleep", "(p < 0.05)"))]  # fmt: skip
+    text = main.read_text(encoding="utf-8") + far + far.join(claims) + "\n"
+    main.write_text(text, encoding="utf-8")
+    found = sorted(f.line for f in _g6_findings(project) if f.code == "vague-attribution")
+    assert found == [text.count("\n", 0, text.index(claim)) + 1 for claim in claims[2:]], found
+
+
 def test_g6_names_the_line_of_a_typed_reference_lists_entry(project: Path) -> None:
     """A placeholder in a typed reference list's sixth entry is named at that entry's line, and
     a Spanish title's "Todo" is no placeholder (rounds 2 and 3 of step 7b)."""

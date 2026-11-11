@@ -144,6 +144,7 @@ from generated import (
     lines,
     linked_lines,
     margin_tables,
+    markdown_cited_claims,
     markdown_claims,
     markdown_for_latex,
     masked_blocks,
@@ -1063,6 +1064,10 @@ def _a_hook_s_body_is_a_definition_s(patch: pytest.MonkeyPatch) -> None:
 
 def _the_spaces_after_a_control_word_delimit(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_SKIPPED", re.compile(r""))
+
+
+def _a_table_inside_maths_is_maths(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_sets_text", lambda name: False)
 
 
 @holds(40, latex_refusal_trees())
@@ -2446,6 +2451,21 @@ def test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations(
         assert found == sorted(lines[key] for key, was in planted if was == kind), (code, text)
 
 
+@holds(40, markdown_cited_claims())
+def test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """A claim beside a pandoc citation, a numbered marker or a citation by author and year
+    typed in brackets, by people or by an organisation, is supported, and each other is
+    vague, on its line: one beside a year, a date, a count or a P value in brackets, an
+    interval after its value, or nothing (corpus round, 2026-11-10)."""
+    text, planted = drawn
+    report, _totals = writing_gate.judge_texts([(Path("main.md"), text)])
+    lines = {key: text.count("\n", 0, text.index(key)) + 1 for key, _kind in planted}
+    found = sorted(f.line for f in report.findings if f.code == "vague-attribution")
+    assert found == sorted(lines[key] for key, kind in planted if kind == "vague"), text
+
+
 @holds(20, latex_listed())
 def test_g6_lets_a_latex_paper_point_at_the_lines_of_what_it_sets_out(
     drawn: list[tuple[str, str, list[int], list[int]]],
@@ -2944,6 +2964,40 @@ def _g6_reads_past_the_documents_end(patch: pytest.MonkeyPatch) -> None:
         self.body_end = -1
 
     patch.setattr(latex_mask._Reader, "_end", broken)
+
+
+def _g6_reads_no_typed_marker(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "marker_spans", lambda hidden, intervals: [])
+
+
+def _g6_reads_no_typed_author_year(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_TYPED_AUTHOR_YEAR", re.compile("(?!)"))
+
+
+def _g6_reads_no_organisation_as_an_author(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_TYPED_AUTHOR_YEAR", recycling_gate._AUTHOR_YEAR)
+
+
+def _g6_takes_two_words_for_an_organisation(patch: pytest.MonkeyPatch) -> None:
+    pattern = writing_gate._TYPED_AUTHOR_YEAR.pattern
+    assert "{2,}" in pattern
+    patch.setattr(writing_gate, "_TYPED_AUTHOR_YEAR", re.compile(pattern.replace("{2,}", "+")))
+
+
+def _g6_takes_a_short_month_for_an_author(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_SHORT_MONTHS", frozenset())
+
+
+def _g6_takes_any_bracketed_year_for_a_citation(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_names_its_authors", lambda cited: True)
+
+
+def _g6_takes_an_interval_for_a_citation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import audit
+
+    patch.setattr(audit, "_intervals", lambda text: [])
 
 
 def _a_floats_words_are_printed(patch: pytest.MonkeyPatch) -> None:
@@ -18924,6 +18978,10 @@ def _the_offsets_are_one_off(patch: pytest.MonkeyPatch) -> None:
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a typed table's cells inside maths are maths": (
+        _a_table_inside_maths_is_maths,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
     "a PDF string's parentheses are not escaped": (
         _pdf_marks_unescaped,
         test_a_pdf_report_prints_every_word_within_its_page_and_marks_every_heading,
@@ -20820,6 +20878,34 @@ BROKEN = {
     "in LaTeX, G6 reads a comment as prose": (
         _g6_reads_a_latex_comment_as_prose,
         test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "G6 takes no typed numbered marker for a claim's support": (
+        _g6_reads_no_typed_marker,
+        test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
+    ),
+    "G6 takes no typed citation by author and year for a claim's support": (
+        _g6_reads_no_typed_author_year,
+        test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
+    ),
+    "G6 takes no organisation for a citation's author": (
+        _g6_reads_no_organisation_as_an_author,
+        test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
+    ),
+    "G6 takes two capitalised words for an organisation's name": (
+        _g6_takes_two_words_for_an_organisation,
+        test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
+    ),
+    "G6 takes a month cut short for a citation's author": (
+        _g6_takes_a_short_month_for_an_author,
+        test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
+    ),
+    "G6 takes a year in brackets with any words for a citation": (
+        _g6_takes_any_bracketed_year_for_a_citation,
+        test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
+    ),
+    "G6 takes an interval after its value for a citation": (
+        _g6_takes_an_interval_for_a_citation,
+        test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
     ),
     "in LaTeX, G6 looks for a placeholder in the prose only": (
         _g6_looks_for_a_placeholder_in_the_prose_only,

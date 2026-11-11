@@ -1175,7 +1175,9 @@ def test_a_glossary_a_sentence_opens_ends_with_its_last_entry(project: Path, aft
     it is shaped."""
     report = written(project, "# Conclusions\n\nIt worked.\n\n" + WORD_GLOSSARY + after
                      + "\n\nThe AIC, the CV and the EBM fell.\n")  # fmt: skip
-    assert found(report) == ["UMC is used once in the main text and not defined there"]
+    assert found(report) == [
+        "UMC is used once in the main text as G14 reads it, and not defined there"
+    ]
 
 
 @pytest.mark.parametrize(
@@ -1190,7 +1192,9 @@ def test_a_paragraph_that_names_abbreviations_opens_no_glossary(
     the line after these is text, and its abbreviation undefined."""
     follows = "UMC: the centre was consulted." if "below" in opening else "The UMC was used."
     report = written(project, f"# Methods\n\n{opening}\n\n{follows}\n")
-    assert found(report) == ["UMC is used once in the main text and not defined there"]
+    assert found(report) == [
+        "UMC is used once in the main text as G14 reads it, and not defined there"
+    ]
 
 
 def test_a_glossary_and_a_first_use_define_one_thing_once(project: Path) -> None:
@@ -1536,7 +1540,9 @@ def test_jama_s_additional_contributions_name_no_initials(project: Path) -> None
     institutions: an undefined "(NIH)" elsewhere is still reported (round 2 of #611)."""
     report = written(project, "# Methods\n\nThe data came from one centre (NIH).\n\n"
                      "## Additional contributions\n\nWe thank the staff of the NIH.\n")  # fmt: skip
-    assert found(report) == ["NIH is used once in the main text and not defined there"]
+    assert found(report) == [
+        "NIH is used once in the main text as G14 reads it, and not defined there"
+    ]
 
 
 def test_what_a_bold_label_cannot_tell_apart(project: Path) -> None:

@@ -1652,7 +1652,8 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
                         "abbreviation-unused",
                         first,
                         short,
-                        f"{short} is defined and not used again in the {scope.name}",
+                        f"{short} is defined and not used again in the {scope.name} as G14 "
+                        "reads it",
                         f"write {first.long!r} out and drop the short form, unless a table "
                         "or a figure uses it: those are not read here",
                     )
@@ -1669,7 +1670,10 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
             if not uses:
                 continue
             times = "once" if len(uses) == 1 else f"{len(uses)} times"
-            message = f"{short} is used {times} in the {scope.name} and not defined there"
+            # As G14 reads it: not a figure's caption or a LaTeX `comment` (DESIGN.md, Known
+            # gaps), so a use or a definition there is not counted (corpus round, 2026-11-10).
+            message = (f"{short} is used {times} in the {scope.name} as G14 reads it, and not "
+                       "defined there")  # fmt: skip
             if scope.name == BODY and short in scopes[ABSTRACT].defined:
                 message += "; the abstract defines it, and is read apart from the paper"
             findings.append(

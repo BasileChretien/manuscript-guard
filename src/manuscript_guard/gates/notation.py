@@ -244,7 +244,8 @@ class _Use:
     #: Whether a bound of an interval is negative, which a dash would read as its sign.
     negative: bool = False
     #: Whether the reading cannot be sure what it read: two or three hyphens against the
-    #: high bound, "-1.2--0.3", are pandoc's dash or a hyphen and the bound's minus sign.
+    #: high bound after a negative or bound low one, "-1.2--0.3", are pandoc's dash or a
+    #: hyphen and the bound's minus sign.
     doubtful: bool = False
 
     @property
@@ -450,7 +451,10 @@ def _read(passages: Iterable[Passage]) -> _Read:
             use = _Use(place, found.start(), passage, found.end() - found.start(),
                        (found.span("join"),),
                        _negative(found["low"]) or _negative(found["high"]),
-                       typed.strip() in ("--", "---") and typed.endswith("-"))  # fmt: skip
+                       # After a positive low bound a minus sign would make the high bound
+                       # the lower, so "1.2--3.4" is pandoc's dash (round 2 of #636).
+                       typed.strip() in ("--", "---") and typed.endswith("-")
+                       and (_negative(found["low"]) or VALUE in found["low"]))  # fmt: skip
             joins.add(_JOINS["t" if join == "to" else join], use)
 
         for found in _PERCENT.finditer(text):

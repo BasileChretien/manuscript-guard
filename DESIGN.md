@@ -5598,9 +5598,11 @@ most are, a space between a number and the unit or word it runs into, and each w
 the other English respelt in the paper's, with its capital. Where the readings are not
 sure there is no edit, and the finding stays for the author: two forms used as often; the
 P's symbol, which is the journal's; a dash beside a negative bound, which would read as its
-sign; two or three hyphens against an interval's high bound, "-1.2--0.3", which may be
-pandoc's dash or a hyphen and the bound's minus sign; a word the list spells two ways; a
-word inside a quotation set inline, somebody else's or a title's; a paper mostly in the
+sign; two or three hyphens against an interval's high bound after a negative or bound low
+one, "-1.2--0.3", which may be pandoc's dash or a hyphen and the bound's minus sign (after
+a positive one, "1.2--3.4", they are the dash); a word the list spells two ways; a word
+inside a quotation set inline, in double marks or single ones, somebody else's or a
+title's (Known gaps says where a mark misleads it); a paper mostly in the
 other English than it declares, whose declaration is likelier wrong; one that declares
 none and has as many words of each; and the two endings of `spelling-mixed`, where the
 list does not pair every word. A join is written as the kept form is typed, set evenly:
@@ -25653,6 +25655,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_corruption.py::test_what_looks_like_a_placeholder_and_is_prose_passes`,
   `tests/test_audit_sections.py::test_categories_over_their_n_by_no_more_than_rounding_are_a_note`,
   `tests/test_margins.py::test_twenty_categories_over_their_n_by_ten_are_rounding`.
+- **G14's edits are held back wherever a quotation or another edit may stand** (rounds 1 and
+  2 of #636). A word after a straight double mark its paragraph has not closed is taken to
+  be quoted, so an inch mark, `a 2" incision`, holds back the respelling of every later
+  word in its paragraph; the finding still counts them. A single mark opens a quotation at a
+  word's start and closes one after a word, so an apostrophe that opens a word, "'tis",
+  holds back the words after it up to the next that closes. An insertion at either end of
+  another edit's change clashes with it, so "colour+5" in an American paper is neither
+  respelt nor spaced. Each only keeps an edit from being offered. Pinned by
+  `tests/test_corrections.py::test_a_stray_double_mark_holds_back_the_respellings_after_it`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

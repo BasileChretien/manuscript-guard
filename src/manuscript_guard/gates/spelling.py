@@ -253,15 +253,33 @@ def spelling_edits(
 
 #: The double marks a quotation is opened and closed with inline, curly.
 _OPENS, _CLOSES = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"
+#: A single mark that opens a quotation, at a word's start, and one that closes it, after a
+#: word: an apostrophe inside a word, "don't", "the study's", is neither, and one after a
+#: plural, "the patients' records", only closes (round 2 of #636).
+_SINGLE_OPENS = re.compile(r"(?<![\w'\N{RIGHT SINGLE QUOTATION MARK}])"
+                           r"['\N{LEFT SINGLE QUOTATION MARK}](?=[^\W\d_])")
+_SINGLE_CLOSES = re.compile(r"(?<=[^\W\d_.,!?])['\N{RIGHT SINGLE QUOTATION MARK}](?![^\W\d_])")
 
 
 def _in_a_quotation(text: str, start: int) -> bool:
-    """Is the word at `start` inside a quotation its paragraph opens with double marks and
-    has not closed, `as "Colour vision in tumour cells" reported`? Its words are somebody
-    else's, or a title's, and an edit keeps them; the finding still counts them (round 1 of
-    #636)."""
-    before = text[text.rfind("\n\n", 0, start) + 1 : start]
-    return before.count('"') % 2 == 1 or before.count(_OPENS) > before.count(_CLOSES)
+    """Is the word at `start` inside a quotation its paragraph sets inline: opened with
+    double marks and not closed before it, `as "Colour vision in tumour cells" reported`, or
+    with a single mark not closed before it and closed after it, `as 'Tumor color' said`?
+    Its words are somebody else's, or a title's, and an edit keeps them; the finding still
+    counts them (rounds 1 and 2 of #636)."""
+    opened = text.rfind("\n\n", 0, start) + 1
+    ended = text.find("\n\n", start)
+    ended = len(text) if ended < 0 else ended
+    before = text[opened:start]
+    if before.count('"') % 2 == 1 or before.count(_OPENS) > before.count(_CLOSES):
+        return True
+    # Read to the paragraph's end: a mark that opens looks at the word after it.
+    opens = [found.start() for found in _SINGLE_OPENS.finditer(text, opened, ended)
+             if found.start() < start]  # fmt: skip
+    if not opens:
+        return False
+    closes = [found.start() for found in _SINGLE_CLOSES.finditer(text, opens[-1], ended)]
+    return bool(closes) and not any(at < start for at in closes)
 
 
 def _one_spelling(instead: str) -> str | None:

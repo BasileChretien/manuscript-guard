@@ -7110,13 +7110,13 @@ AMERICAN_TWO = "anesthetized"
 
 def _spelt_typed(draw: st.DrawFn, own: str, theirs: int, ours: int,
                  accepted: str = "") -> list[tuple[str, str]]:  # fmt: skip
-    """`theirs` uses of words of the other English, at least three, each respelt in `own`
+    """`theirs` uses of words of the other English, at least five, each respelt in `own`
     where the list gives one spelling, and `ours` of words of `own`, as typed. The first
-    opens a sentence and keeps its capital; the second and third stand inside a quotation,
-    in straight marks and in curly ones, and are counted and not respelt (round 1 of
-    #636). One with a capital inside a sentence is a name, one in a variable's name is
-    none, and `accepted`, a word of the other English the paper keeps, is neither counted
-    nor respelt."""
+    opens a sentence and keeps its capital; the next four stand inside a quotation, in
+    double marks and in single ones, straight and curly, one beside a plural's apostrophe,
+    and are counted and not respelt (rounds 1 and 2 of #636). One with a capital inside a
+    sentence is a name, one in a variable's name is none, and `accepted`, a word of the
+    other English the paper keeps, is neither counted nor respelt."""
     mine, other = (BRITISH_ONE, AMERICAN_ONE) if own == "en-GB" else (AMERICAN_ONE, BRITISH_ONE)
     if own == "en-GB":
         # an `-ize` both write counts for neither, and is not respelt
@@ -7127,7 +7127,10 @@ def _spelt_typed(draw: st.DrawFn, own: str, theirs: int, ours: int,
                                        max_size=ours))]  # fmt: skip
     words = draw(st.lists(st.sampled_from(sorted(other)), min_size=theirs, max_size=theirs))
     quoted = {1: ('as "', '" was said'),
-              2: ("as \N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK} was said")}
+              2: ("as \N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK} was said"),
+              3: ("as '", "' was the patients' word"),
+              4: ("as \N{LEFT SINGLE QUOTATION MARK}",
+                  "\N{RIGHT SINGLE QUOTATION MARK} was said")}  # fmt: skip
     for index, word in enumerate(words):
         if index == 0:
             pairs.append((f"seen.\n\n{word.capitalize()} was noted",
@@ -7155,7 +7158,7 @@ def spelling_edited(draw: st.DrawFn) -> list[tuple[str | None, tuple[str, ...], 
     each, and one mostly in the other English than it declares, neither respelt."""
     made = []
     declared = draw(st.sampled_from(("en-GB", "en-US")))
-    theirs = draw(st.integers(3, 4))
+    theirs = draw(st.integers(5, 6))
     pairs = _spelt_typed(draw, "en-GB", theirs, theirs + draw(st.integers(2, 3)), "color")
     pairs.append((f"the {AMERICAN_TWO} rats", f"the {AMERICAN_TWO} rats"))
     made.append(("en-GB", ("color",), *_both_ways(draw, draw(st.permutations(pairs)))))

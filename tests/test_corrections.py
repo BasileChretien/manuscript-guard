@@ -84,6 +84,36 @@ def test_hyphens_that_may_hold_a_high_bound_s_sign_are_not_edited() -> None:
     "-1.2 to 0.3" (round 1 of #636)."""
     found = _notation_corrected("CI 1.2 to 3.4", "CI 0.8 to 1.1", "CI -1.2--0.3", "CI 2.0-3.0")
     assert found == [("CI 2.0-3.0", "CI 2.0 to 3.0")]
+    # After a positive low bound a minus sign would make the high bound the lower: the
+    # hyphens are pandoc's dash (round 2 of #636).
+    found = _notation_corrected("CI 1.2 to 3.4", "CI 0.8 to 1.1", "CI 1.2--3.4")
+    assert found == [("CI 1.2--3.4", "CI 1.2 to 3.4")]
+
+
+def _respelt(text: str, english: str) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.spelling import spelling_edits
+
+    return [(one.old, one.new) for one in corrections(spelling_edits([_passage(text)],
+                                                                     english, ()))]  # fmt: skip
+
+
+def test_a_word_quoted_in_single_marks_keeps_its_spelling_and_an_apostrophe_is_none() -> None:
+    """A title quoted in single marks, straight or curly, is somebody else's; an apostrophe
+    inside a word or after a plural opens no quotation, and the word after it is respelt
+    (round 2 of #636)."""
+    text = ("# Results\n\nAs 'Tumor color in children' reported, the patients' color and "
+            "the study's tumor were seen, and \N{LEFT SINGLE QUOTATION MARK}color"
+            "\N{RIGHT SINGLE QUOTATION MARK} was said. Colour and tumour and centre and "
+            "fibre and labelled.\n")
+    assert _respelt(text, "en-GB") == [("color", "colour"), ("tumor", "tumour")]
+
+
+def test_a_stray_double_mark_holds_back_the_respellings_after_it() -> None:
+    """An inch mark is a straight double mark like any other: the words after it in its
+    paragraph are taken to be quoted, and are not respelt, though the finding counts them;
+    the words before it are (round 2 of #636, a Known gap)."""
+    text = "# Results\n\nThe color seen; a 2\" incision; the color again.\n"
+    assert _respelt(text, "en-GB") == [("color", "colour")]
 
 
 def test_a_space_put_where_another_edit_changes_the_words_is_no_edit() -> None:

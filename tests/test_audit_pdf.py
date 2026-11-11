@@ -597,6 +597,24 @@ def test_an_entry_number_is_not_read_as_a_pmid(tmp_path: Path) -> None:
     assert census.unsent == [(2, "PMID:")]
 
 
+def test_an_entry_whose_identifier_was_held_back_is_not_said_to_have_none(tmp_path: Path) -> None:
+    """The review of #632: a DOI that ends a line its entry runs on past, and a "PMID:" cut
+    short, are listed as not sent; their entries are not named again as having no DOI or
+    PMID, nor counted so. An entry with neither is."""
+    from manuscript_guard.auditing.references import census_of_printed, without_identifier
+    from manuscript_guard.auditing.report import _shown, _unlooked
+
+    text = ("References\n1. Brown L. A note. Drug Saf. 2021;44:1-2. doi:10.1016/j.ds.2021\n"
+            "more of it. Epub.\n2. Green M. A review. PMID:\n3. Clark C. A letter. J X. "
+            "2019;1:2.\n")  # fmt: skip
+    census = census_of_printed(tmp_path / "p.pdf", text, [(0, 5)], "As [1-3] show.\n", [])
+    assert sorted(census.unsent) == [(2, "10.1016/j.ds.2021"), (4, "PMID:")]
+    assert [without_identifier(entry) for entry in census.entries] == [False, False, True]
+    assert _unlooked(census, _shown(None)) == [
+        "    not looked up, having no DOI or PMID to look up: 1 entry",
+        "      line 5: entry 3: Clark C. A letter. J X. 2019;1:2."]
+
+
 def test_a_number_that_skips_tells_no_entry_apart(tmp_path: Path) -> None:
     """Round 2: "1. 2. 4. 5." cited [1] [2] [4] [5] was "cites entries 4, 5 ... it has 2
     entries". The list is not told apart, says why, and nothing is held to its count."""

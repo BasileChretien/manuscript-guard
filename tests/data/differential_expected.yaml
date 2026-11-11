@@ -24,6 +24,13 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: abbreviations
+    why: >-
+      an entry of a list of abbreviations that the text neither uses nor defines is said as
+      the list's, "in the list of abbreviations and not used in the main text", with the hint
+      to take it out of the list, and a use above an entry the text never spells out is told
+      to spell it out where it first appears; a long form is quoted as typed, not by repr
+      (the author's audit, 2026-11-11)
   - reading: mask
     why: >-
       a link's target that is an address is masked after its `(` up to its own `)`, and the
@@ -256,8 +263,3 @@ expected:
       a word with underscores is said to be "written with underscores, the way a name in
       code is written", where the message read "is written as a name in code is, with
       underscores" (corpus round, 2026-11-10)
-  - reading: abbreviations
-    why: >-
-      an abbreviation is said to be used, or not used again, in the main text, the abstract
-      or the supplement "as G14 reads it", which leaves out a figure's caption and a LaTeX
-      `comment`, where the message said it of the whole part (corpus round, 2026-11-10)

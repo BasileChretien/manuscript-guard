@@ -22,7 +22,9 @@ const waiting = new Map();
 // said to be slow, with what to do; the page keeps waiting, as a slow network is no failure.
 const SLOW_AFTER_MS = 90000;
 let slow = null;
+let stepped = false;
 function loadingStep({ at, of, what }) {
+  stepped = true;
   say(`Loading the checker, step ${at} of ${of}: ${what}. About 26 MB the first time, nothing after that.`);
   $("progress").max = of;
   $("progress").value = at - 1;
@@ -59,12 +61,20 @@ function listRequests(title, requests) {
   return `${title}\n${lines.join("\n")}`;
 }
 
-// A worker whose script did not load or failed at its top answers nothing: said, rather than
-// "Loading" for ever.
+// A worker whose script did not load or failed at its top answers nothing, and says no step:
+// said, rather than "Loading" for ever. An error once a step is under way may come from
+// something the start does not wait on, and the start may still answer: it is said, and the
+// page keeps waiting (round 1 of #627).
 worker.onerror = (event) => {
   if (window.mgReady) return;
-  loaded();
-  say(`The checker could not start: ${event.message || "its script did not load"}`);
+  const what = event.message || "its script did not load";
+  if (!stepped) {
+    loaded();
+    say(`The checker could not start: ${what}`);
+    return;
+  }
+  say(`The checker met an error while loading (${what}). It may still start; if nothing `
+    + "changes, reload the page.");
 };
 
 // Which release this page is, at the top, where a reader sees that it moved on.
@@ -134,9 +144,10 @@ function draw(view) {
     add(row, "th", name);
     add(row, "td", said);
   }
-  // `view.strict` says what --strict counts, for a script: the text below keeps it, and the
-  // page, which runs no script, leaves it out. So does each heading: the paper's name only
-  // where there are several, and a check's code (G14) only on pointing at its kind.
+  // What --strict counts, where the view still says it: the table's rows and the sections'
+  // headings name it (round 1 of #627). Each heading below gives the paper's name only where
+  // there are several, and a check's code (G14) only on pointing at its kind.
+  if (view.strict) add(box, "p", view.strict, "small");
   const papers = view.words.filter((paper) => paper.note || paper.kinds.length);
   for (const paper of papers) {
     add(box, "h3", papers.length > 1 ? `Writing and language: ${paper.paper}` : "Writing and language");

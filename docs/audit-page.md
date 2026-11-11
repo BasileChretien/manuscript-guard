@@ -26,8 +26,7 @@ reader has them (`.json`, `.csv`, `.tsv`, `.txt`, `.yaml`). That is everything
 
 The page draws the report: what each check found, in a table; the findings on the words, a
 fold for each kind with every place inside it and the kind's hint; and the other sections
-with something to show. It leaves out what concerns only a script, the line on what
-`--strict` counts, and names a check's code (G14) only on pointing at its kind. The buttons
+with something to show. It names a check's code (G14) only on pointing at its kind. The buttons
 that save the report stand above it. Below it, in a fold, is the text the command line
 prints, word for word, which "Save the report as text" saves. The box "List every place of every finding" gives the
 text every place with its context and hint, and the page every section and every place's

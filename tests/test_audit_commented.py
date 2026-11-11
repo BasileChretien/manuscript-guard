@@ -31,7 +31,7 @@ def docx(path: Path, body: str = PAPER, extra: dict[str, str] | None = None) -> 
 
 
 def test_the_audit_writes_a_copy_with_its_findings_as_comments(tmp_path: Path, capsys) -> None:
-    """The Abstract's 412, found nowhere the paper reports, is a comment over "412", in a copy
+    """The Abstract's 412, not found where the paper reports, is a comment over "412", in a copy
     Word can open: the comments part, its relationship and its content type added."""
     from manuscript_guard.docxtext import comment_ranges, word_comments
 
@@ -153,7 +153,8 @@ def test_a_number_quoted_bare_that_two_paragraphs_hold_is_listed_with_its_place(
 
 
 @pytest.mark.parametrize(("message", "context", "words"), [
-    ("5 in the Abstract is found nowhere the paper reports", "Of 5 patients", "5"),
+    ("5 in the Abstract is not found in the Methods, the Results or the tables",
+     "Of 5 patients", "5"),
     ("AS is used 8 times in the main text", "the AS group", "AS"),
     ("the P value is written 'p' in italics once", "where p was", "p"),
     # A message that opens with a plain word names no word of the quote.

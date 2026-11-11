@@ -53,8 +53,20 @@ artefacts:
   # followed by a space or the bracket, so a title translated into English in brackets,
   # "[Add-on therapy in epilepsy]", is no slot. "[Your ...]" is one in the manuscript only:
   # PubMed's translated titles open so, "[Your diagnosis?]".
+  #
+  # A placement marker is no slot: a table or a figure named with its number where it is to
+  # go, "[Insert Table 1 here]", "[INSERT FIGURE 2]", "[Insert Figure S1 about here]", and
+  # after pandoc's escaping "\[Insert Table 1 here\]". APA and many journals ask for one
+  # where the displays follow the text, and on 52 real preprints it was never a gap (Basile,
+  # 2026-11-11). "[Figure 1 about here]" and a marker on a line of its own, "Insert Table 1
+  # about here", match no rule. Without a number, "[Insert table here]", or with other
+  # words, "[Insert Table 1 data]", it is still a slot. The number may have a dot in it,
+  # "Table 1.1", "Figure S1.2", or be a Roman numeral from I to XIX as IEEE numbers its
+  # tables, "[Insert Table IV here]", and "Fig." may run into it, "[Insert Fig.1 here]"
+  # (round 1 of #625). Not X or XX, which is how a template writes a number still to fill:
+  # "[Insert Table X here]" is a slot.
   - id: placeholder
-    pattern: '(?i)\[(?:insert|add|describe|replace|fill|enter|specify)(?:\s(?:[^\]\n]|\n(?![ \t]*\n)){0,60})?\]'
+    pattern: '(?i)\[(?!insert\s+(?:(?:table|figure|fig\.?)\s+|fig\.)(?:[a-z]?\d+(?:\.\d+)*[a-z]?|XVI{0,3}|XIV|XIX|XI{1,3}|VI{0,3}|IV|IX|I{1,3})(?:\s+(?:about\s+)?here)?[ \t]*\.?[ \t]*\\?\])(?:insert|add|describe|replace|fill|enter|specify)(?:\s(?:[^\]\n]|\n(?![ \t]*\n)){0,60})?\]'
     why: Unfilled placeholder text
     elsewhere: true
   - id: placeholder-your
@@ -64,8 +76,10 @@ artefacts:
     pattern: '(?i)\[(?:placeholder|accession(?:\s+(?:number|code|id))?|repository|doi(?:\s*/\s*accession)?|citation(?:\s+needed)?|reference|url|link)\](?![(\[{]|:[ \t]*<?[a-z][a-z0-9+.-]*://)'
     why: Unfilled placeholder text
     elsewhere: true
+  # A marker in capitals with a Roman numeral, "[INSERT TABLE XIV]", is in capitals and
+  # brackets throughout and says INSERT, and is a marker here too (round 1 of #625).
   - id: placeholder-capitals
-    pattern: '\[(?=[A-Z \t/–-]*\b(?:TO[ \t]+(?:BE[ \t]+)?(?:COMPLETED?|ADDED|CONFIRMED|DETERMINED|DECIDED|FILLED|UPDATED|WRITTEN|CHECKED|VERIFIED|SUPPLIED|PROVIDED)|NEEDED|NEEDS|PLACEHOLDER|INSERT|TBD|TBC|TODO|VERIFY|PENDING|MISSING|FILL)\b)[A-Z][A-Z \t/–-]*\](?![(\[{]|:[ \t]*<?[a-z][a-z0-9+.-]*://)'
+    pattern: '\[(?!INSERT[ \t]+(?:TABLE|FIGURE)[ \t]+(?:XVI{0,3}|XIV|XIX|XI{1,3}|VI{0,3}|IV|IX|I{1,3})(?:[ \t]+(?:ABOUT[ \t]+)?HERE)?[ \t]*\])(?=[A-Z \t/–-]*\b(?:TO[ \t]+(?:BE[ \t]+)?(?:COMPLETED?|ADDED|CONFIRMED|DETERMINED|DECIDED|FILLED|UPDATED|WRITTEN|CHECKED|VERIFIED|SUPPLIED|PROVIDED)|NEEDED|NEEDS|PLACEHOLDER|INSERT|TBD|TBC|TODO|VERIFY|PENDING|MISSING|FILL)\b)[A-Z][A-Z \t/–-]*\](?![(\[{]|:[ \t]*<?[a-z][a-z0-9+.-]*://)'
     why: Unfilled placeholder text
     elsewhere: true
   # Text left to stand in for text, and instructions left for the writer. "Replace later" only

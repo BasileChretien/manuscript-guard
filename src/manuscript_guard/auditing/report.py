@@ -46,6 +46,7 @@ sentences and the self-citation counts (Basile, 2026-10-29).
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -1035,6 +1036,8 @@ def _references(report, show) -> list[str]:
         if len(census.problems) > LISTED:
             lines.append(f"    (+{len(census.problems) - LISTED} more)")
         lines += _looked(looked.get(census.path, []), census.path, show)
+        if report.lookups is not None and style != UNTOLD:
+            lines += _unlooked(census, show)
     if report.lookups is None:
         lines.append(
             "  Nothing was looked up: --lookup asks Crossref and OpenAlex of each DOI, and "
@@ -1159,6 +1162,31 @@ def _at(path: Path | None, line: int | None, paper: Path, show) -> str:
         return ""
     return (f"{show(path)} {show.at(path, line)}: " if path is not None and path != paper
             else f"{show.at(paper, line)}: ")  # fmt: skip
+
+
+#: How much of an entry is quoted where the report names one it could not look up.
+ENTRY_QUOTED = 90
+
+
+def _unlooked(census, show) -> list[str]:
+    """Each entry of `census`'s list that was not looked up for having no DOI and no PMID,
+    at its place, by its number and its first words: an entry left out of the look-up is
+    said, not passed over (the author's audit, 2026-11-11: "we need to check all references,
+    or say which ones were not checked and why"). Every one, as the reader asked for each."""
+    missing = [entry for entry in census.entries if not entry.dois and not entry.pmids]
+    if not missing:
+        return []
+    lines = [f"    not looked up, having no DOI or PMID to look up: "
+             f"{len(missing)} entr{'y' if len(missing) == 1 else 'ies'}"]  # fmt: skip
+    for entry in missing:
+        typed = " ".join(entry.text.split())
+        if entry.number is not None:
+            # "3. Brown L. ..." under "entry 3": the number once.
+            typed = re.sub(rf"^[\[(]?{entry.number}[\].)]?\s+", "", typed)
+        quoted = typed if len(typed) <= ENTRY_QUOTED else typed[:ENTRY_QUOTED].rstrip() + "…"
+        at = show.at(entry.path or census.path, entry.line)
+        lines.append(f"      {at}: {entry.label}" + (f": {quoted}" if quoted else ""))
+    return lines
 
 
 def _looked(looked: list, paper: Path, show) -> list[str]:

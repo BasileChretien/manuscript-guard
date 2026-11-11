@@ -173,7 +173,16 @@ def _references(report) -> str:
     said = "; ".join(parts) or "no reference list read"
     if report.lookups is None:
         return said + "; none looked up in the registries (--lookup)"
-    return said + f"; {_n(len(report.lookups), 'work')} looked up"
+    # The entries nothing could be looked up by, said rather than left out of the count (the
+    # author's audit, 2026-11-11: "we need to check all references, or say which ones were
+    # not checked and why"); the section names each.
+    unlooked = sum(1 for census in told for entry in census.entries
+                   if not entry.dois and not entry.pmids)  # fmt: skip
+    looked = f"; {_n(len(report.lookups), 'work')} looked up"
+    if unlooked:
+        looked += (f", {_n(unlooked, 'entry', 'entries')} not looked up, having no DOI or "
+                   "PMID: see below")  # fmt: skip
+    return said + looked
 
 
 #: What `--strict` fails on, said once under the checks, so that "not counted by --strict"

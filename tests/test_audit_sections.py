@@ -804,6 +804,30 @@ def test_no_retraction_says_how_many_were_asked_and_known(tmp_path: Path, regist
             "known to a registry that answered") in capsys.readouterr().out
 
 
+def test_each_entry_not_looked_up_is_named_with_why(tmp_path: Path, registries, capsys) -> None:
+    """An entry with no DOI and no PMID is not looked up, and the report says which and why,
+    in its line and its section, rather than leaving it out of the count (the author's
+    audit, 2026-11-11: "we need to check all references, or say which ones were not checked
+    and why"). With nothing looked up, nothing is listed: no entry was."""
+    found = {"status": "ok", "message-type": "work",
+             "message": {"DOI": DOI, "type": "journal-article", "title": ["A cohort"]}}
+    registries.answers["crossref"] = (200, found)
+    registries.answers["openalex"] = (200, {"id": "W1", "is_retracted": False,
+                                            "title": "A cohort"})  # fmt: skip
+    paper = tmp_path / "paper.md"
+    paper.write_text(NUMBERED, encoding="utf-8")
+    assert main(["audit", str(paper), "--lookup"]) == 0
+    out = capsys.readouterr().out
+    assert ("4 entries read, 1 with a DOI; 2 works looked up, 2 entries not looked up, having "
+            "no DOI or PMID: see below") in out  # fmt: skip
+    assert ("    not looked up, having no DOI or PMID to look up: 2 entries\n"
+            "      line 9: entry 3: Brown L. A note. Drug Saf. 2021;44:1-2.\n"
+            "      line 10: entry 4: Green M. A review. Pharmacoepidemiol Drug Saf. "
+            "2018;27:3-4.\n") in out  # fmt: skip
+    assert main(["audit", str(paper)]) == 0
+    assert "not looked up, having no DOI" not in capsys.readouterr().out
+
+
 def test_a_retracted_work_is_said_and_kept_only_where_asked(tmp_path: Path, registries,
                                                             capsys) -> None:  # fmt: skip
     paper = tmp_path / "paper.md"

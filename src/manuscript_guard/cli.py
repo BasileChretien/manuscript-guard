@@ -49,6 +49,7 @@ from manuscript_guard.contracts import (
 from manuscript_guard.findings import WARN, Finding, Report, merge_all
 from manuscript_guard.gates import (
     check_ai_use,
+    check_bound_comparisons,
     check_bound_units,
     check_boxes,
     check_citations,
@@ -197,6 +198,7 @@ def _gate_run(
         ("G1", lambda: check_freshness(project, results)),
         ("G2", lambda: check_numbers(project, namespace, results, literature)),
         ("G2", lambda: check_bound_units(project, results)),
+        ("G2", lambda: check_bound_comparisons(project, results)),
         ("G3", lambda: check_figures(project, results)),
         ("G3", lambda: check_figure_alt(project, namespace, chosen)),
         ("G3", lambda: check_figure_colours(project)),

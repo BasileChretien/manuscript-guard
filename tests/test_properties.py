@@ -44,6 +44,7 @@ import pytest
 from generated import (
     ABSTRACT_BACKGROUND,
     AGREED,
+    BESIDE_A_BINDING,
     CAUSAL_PARTS,
     CLAIMED,
     CREDITING,
@@ -207,6 +208,7 @@ from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED
 from manuscript_guard.contracts.project import outside_maths
 from manuscript_guard.contracts.values import RESULTS, Value, number_in
 from manuscript_guard.deposit import counts as deposit_counts
+from manuscript_guard.gates import bound_comparisons as bound_comparisons_gate
 from manuscript_guard.gates import bound_units as bound_units_gate
 from manuscript_guard.gates import data_statement
 from manuscript_guard.gates import interpretation as interpretation_gate
@@ -13811,6 +13813,65 @@ def test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is(
     assert found == expected, text
 
 
+@st.composite
+def _comparisons_planted(
+    draw: st.DrawFn,
+) -> tuple[str, list[tuple[str, int, str, bool, bool]]]:
+    """A binding beside each way of writing a comparator, and what only looks like one, in
+    an order and among words drawn each time, with the comparator that should be read."""
+    parts: list[str] = []
+    found: list[tuple[str, int, str, bool, bool]] = []
+    for index, (before, after, read) in enumerate(draw(st.permutations(BESIDE_A_BINDING))):
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4))
+        parts.append(" ".join(words) + draw(st.sampled_from((" ", "\n", "; "))) + before)
+        key = f"k{index}"
+        if read is not None:
+            found.append((key, len("".join(parts)), *read))
+        parts.append(f"{{{{results.{key}}}}}" + after + draw(st.sampled_from((". ", ", ", "; "))))
+    return "".join(parts), found
+
+
+@holds(150, _comparisons_planted())
+def test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is(
+    planted: tuple[str, list[tuple[str, int, str, bool, bool]]],
+) -> None:
+    """Each sign and its spellings and the two phrases after a statistic before a binding,
+    a sign after one before a statistic, which holds the value to the other side, each with
+    whether the statistic is a plural; not a subject that is no statistic, a symbol inside a
+    word or a tag, a comparison of two numbers, a comment, a blockquote's marker or an
+    arrow."""
+    text, expected = planted
+    found = [(c.key, c.start, c.op, c.below, c.plural)
+             for c in bound_comparisons_gate.comparisons_at(text)]  # fmt: skip
+    assert found == expected, text
+
+
+@st.composite
+def _values_printed(draw: st.DrawFn) -> tuple[float, str, bool]:
+    """A value, its print to some number of places, at it or rounded, and a side."""
+    places = draw(st.integers(0, 4))
+    value = draw(st.integers(-99999, 99999)) / 10 ** draw(st.integers(0, 5))
+    return value, f"{value:.{places}f}", draw(st.booleans())
+
+
+@holds(200, _values_printed())
+def test_a_comparison_beside_a_binding_is_held_as_the_emitter_holds_a_display(
+    printed: tuple[float, str, bool],
+) -> None:
+    """The prose rule is the display rule: a value printed beside "<" is contradicted
+    exactly where the emitter refuses the display "<" and that print, and so beside ">".
+    Not strict, and the number compared with is the one printed."""
+    from manuscript_guard.contracts.values import DisplayError, _check_display_matches
+
+    value, display, below = printed
+    try:
+        _check_display_matches("k", value, ("<" if below else ">") + display)
+        refused = False
+    except DisplayError:
+        refused = True
+    assert bound_comparisons_gate.contradicted(value, display, below) is refused, printed
+
+
 # ---------------------------------------------- a technical sense, counted towards no rate
 
 #: Technical senses of words the vocabulary rate counts, in the singular and the plural.
@@ -16757,6 +16818,98 @@ def _a_citation_key_stops_at_a_colon(patch: pytest.MonkeyPatch) -> None:
 
 def _a_heading_is_part_of_the_paragraph_under_it(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_HEADING", re.compile(r"(?!)"))
+
+
+def _a_comparator_after_a_binding_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(bound_comparisons_gate, "_after", lambda text, end: None)
+
+
+def _a_comparator_after_a_binding_holds_the_side_it_names(patch: pytest.MonkeyPatch) -> None:
+    real = bound_comparisons_gate._after
+
+    def after(text: str, end: int) -> tuple[str, bool, bool] | None:
+        read = real(text, end)
+        return None if read is None else (read[0], not read[1], read[2])
+
+    patch.setattr(bound_comparisons_gate, "_after", after)
+
+
+def _anything_after_a_sign_after_a_binding_is_its_subject(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #629: "{{results.inc}} < the incidence in exposed patients" was read."""
+    gate = bound_comparisons_gate
+    patch.setattr(gate, "_AFTER", re.compile(rf"{gate._GAP}(?P<op>(?i:{gate._SIGN}))(?P<plural>)"))
+
+
+def _a_comparator_is_read_whatever_its_subject(patch: pytest.MonkeyPatch) -> None:
+    """The rule before round 1 of #629, which failed "incidence was greater than" an
+    incidence it was compared with."""
+    gate = bound_comparisons_gate
+    assert gate._BEFORE.pattern.startswith(gate._STATISTIC)
+    pattern = "(?P<plural>)" + gate._BEFORE.pattern[len(gate._STATISTIC):]
+    patch.setattr(gate, "_BEFORE", re.compile(pattern))
+
+
+def _a_statistics_symbol_may_end_a_word(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #629: "wasn't less than" read as the t's comparison."""
+    gate = bound_comparisons_gate
+    assert gate._NOT_IN_A_WORD in gate._BEFORE.pattern
+    patch.setattr(gate, "_BEFORE",
+                  re.compile(gate._BEFORE.pattern.replace(gate._NOT_IN_A_WORD, "")))  # fmt: skip
+
+
+def _a_symbol_inside_a_tag_is_a_statistic(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #629: "<p>{{results.x}}</p>" read as "p >"."""
+    gate = bound_comparisons_gate
+    for name in ("_BEFORE", "_AFTER"):
+        pattern = getattr(gate, name).pattern
+        assert gate._NOT_IN_A_TAG in pattern
+        patch.setattr(gate, name, re.compile(pattern.replace(gate._NOT_IN_A_TAG, "")))
+
+
+def _a_statistics_index_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    gate = bound_comparisons_gate
+    indexed = f"|(?:{'|'.join(gate._INDEXED)})"
+    assert indexed in gate._BEFORE.pattern
+    patch.setattr(gate, "_BEFORE", re.compile(gate._BEFORE.pattern.replace(indexed, "|(?!)")))
+
+
+def _a_p_value_written_out_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    gate = bound_comparisons_gate
+    written = rf"|[pP]{gate._ITALIC}(?:-|{gate._SPACE})values"
+    assert written in gate._BEFORE.pattern
+    patch.setattr(gate, "_BEFORE", re.compile(gate._BEFORE.pattern.replace(written, "")))
+
+
+def _a_singular_statistic_states_a_set(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #629: "(z > {{results.z_crit}})" failed of a critical value printed 1.96."""
+    patch.setattr(bound_comparisons_gate, "_states_a_set", lambda found: True)
+
+
+def _a_plural_statistic_is_one(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(bound_comparisons_gate, "_states_a_set", lambda found: False)
+
+
+def _a_line_break_after_a_sign_after_a_binding_ends_it(patch: pytest.MonkeyPatch) -> None:
+    gate = bound_comparisons_gate
+    patch.setattr(gate, "_AFTER", gate._after_pattern(gap="[ \t\N{NO-BREAK SPACE}]*"))
+
+
+def _a_sign_after_a_binding_is_read_as_cased(patch: pytest.MonkeyPatch) -> None:
+    gate = bound_comparisons_gate
+    patch.setattr(gate, "_AFTER", gate._after_pattern(sign=gate._SIGN))
+
+
+def _a_comparison_beside_a_binding_is_strict(patch: pytest.MonkeyPatch) -> None:
+    def contradicted(value: object, display: str, below: bool) -> bool:
+        shown = number_in(display)
+        return shown is not None and not (value < shown if below else value > shown)
+
+    patch.setattr(bound_comparisons_gate, "contradicted", contradicted)
+
+
+def _a_comparison_beside_a_binding_is_held_of_the_print(patch: pytest.MonkeyPatch) -> None:
+    """The false pass of PsyArXiv fyxeq_v2: the digits printed compared with themselves."""
+    patch.setattr(bound_comparisons_gate, "contradicted", lambda value, display, below: False)
 
 
 def _a_divisor_after_a_space_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -22639,6 +22792,62 @@ BROKEN = {
     "a heading is part of the paragraph under it": (
         _a_heading_is_part_of_the_paragraph_under_it,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a comparator after a binding is not read": (
+        _a_comparator_after_a_binding_is_not_read,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a comparator after a binding holds the value to the side it names": (
+        _a_comparator_after_a_binding_holds_the_side_it_names,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "anything after a sign after a binding is its subject": (
+        _anything_after_a_sign_after_a_binding_is_its_subject,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a comparator is read whatever its subject": (
+        _a_comparator_is_read_whatever_its_subject,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a statistic's symbol may end a word": (
+        _a_statistics_symbol_may_end_a_word,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a statistic's index is not read": (
+        _a_statistics_index_is_not_read,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a symbol inside a tag is a statistic": (
+        _a_symbol_inside_a_tag_is_a_statistic,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a p value written out is not read": (
+        _a_p_value_written_out_is_not_read,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a singular statistic states a set": (
+        _a_singular_statistic_states_a_set,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a plural statistic is one": (
+        _a_plural_statistic_is_one,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a line break after a sign after a binding ends it": (
+        _a_line_break_after_a_sign_after_a_binding_ends_it,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a sign after a binding is read as cased": (
+        _a_sign_after_a_binding_is_read_as_cased,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a comparison beside a binding is strict": (
+        _a_comparison_beside_a_binding_is_strict,
+        test_a_comparison_beside_a_binding_is_held_as_the_emitter_holds_a_display,
+    ),
+    "a comparison beside a binding is held of the print": (
+        _a_comparison_beside_a_binding_is_held_of_the_print,
+        test_a_comparison_beside_a_binding_is_held_as_the_emitter_holds_a_display,
     ),
     "a divisor after a space is not read": (
         _a_divisor_after_a_space_is_not_read,

@@ -25663,6 +25663,54 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_audit_sections.py::test_categories_over_their_n_by_no_more_than_rounding_are_a_note`,
   `tests/test_margins.py::test_twenty_categories_over_their_n_by_ten_are_rounding`.
 
+- **A comparison beside a binding is read beside a statistic's symbol, and fails only for a
+  plural.** G2 reads a comparator typed beside a binding (`comparison-contradicted`) in two
+  shapes: a statistic's symbol from a closed list (p, P, F, t, r, z, d, χ², R² and I², with
+  an "s" for the plural, "p-values" and "P values", italics allowed) right before "<", ">",
+  "≤", "≥", their spellings ("<=", "&lt;", `\<`), "less than" or "greater than" (with "or
+  equal to") and the binding; and a sign right after the binding with such a symbol after
+  it, "all" allowed. It holds the value as the emitter holds a comparator display, "<2.53":
+  at the number printed or on the side the sign names, so not strictly, and a sign after
+  the binding holds it to the other side ("{{results.t_min}} < ts" says the ts are above
+  it). The real case was a psychology preprint, PsyArXiv fyxeq_v2, whose "all Fs <", "all
+  ps >" and "< ts" printed 2.53, .260 and 4.27 of 2.532, .2596 and 4.268. Pinned by
+  `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
+  - A plural states a bound on a set, every F below the binding, and the binding is the
+    set's extreme: a contradiction fails. A single statistic may be compared with a
+    threshold rather than bounded by its own value: "(z > {{results.z_crit}})" is true of a
+    z above 1.96 when the critical value 1.959964 prints "1.96", and "p <
+    {{results.alpha_bonf}}" of a p below a corrected alpha of 0.008333 printed "0.0083".
+    The rule cannot tell a threshold from a bound, so beside a singular a contradiction is a
+    warning with the same message, and a false bound typed beside one symbol, "F <" the
+    largest F rounded down, only warns (round 2 of #629). Pinned by
+    `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
+  - A comparison with any other subject is not read, before the binding or after it,
+    because there the binding may be the other side of what is compared rather than its
+    bound: "Incidence in exposed patients was greater than {{results.inc_unexposed}}" and
+    "{{results.inc_unexposed}} < the incidence in exposed patients" are true of the two
+    incidences when the binding prints 2.53 of 2.528, and read as a bound they would fail
+    (rounds 1 and 2 of #629). So "the model's t was greater than", "ps were all >", "the
+    p-value <", "t(27) <", a symbol in maths with its plural outside, `$F$s`, and a
+    statistic the list leaves out are not read either. Accepted.
+  - Other words for a comparison are not read: "below", "above", "under", "over", "more
+    than", "fewer than", "at least", "at most", "exceeding". Choosing them is a list of words
+    the rule does not settle. Accepted.
+  - A comparison of two numbers is not read: "2.6 < {{results.f}}", "{{results.a}} <
+    {{results.b}}". Nothing holds two bound values to the comparison typed between them.
+    Pinned by
+    `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
+  - Only a space, an entity of one, a comment or one line break may stand between the sign
+    and the binding: a binding in italics, "ps > *{{results.p}}*", or a unit between,
+    "{{results.t}} s < times", is not read. Accepted.
+  - In LaTeX the view is read: `$<$` and `$>$` are signs there, and `$\leq$`, `$\geq$` and
+    `\textless` are blanked by the reader and not read. `\not` is blanked too, so
+    `all Fs $\not<$ \mg{results.f}` is read as "<", and its value held below the number
+    printed. Pinned by
+    `tests/test_latex_bindings.py::test_a_comparator_beside_a_latex_binding_is_read_where_its_view_prints_a_sign`.
+  - A value whose display carries a comparator of its own, "<0.001", is held to it by the
+    emitter, and a sign typed beside it is not compared; nor is a `{{lit.…}}` value, which is
+    typed from its source rather than emitted. Accepted.
+
 Closed since, and why each mattered (an open gap goes above this line):
 
 - **An Abstract's identifier was never found, nor a number under a "Method" heading

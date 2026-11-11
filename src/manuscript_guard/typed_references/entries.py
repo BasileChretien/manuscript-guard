@@ -15,7 +15,8 @@ Anything else is not read: an entry with no author in APA's form (a group, a nam
 "2020, March 3"), a chapter, an edition, a description in brackets, italics inside a title,
 and a field holding a character a `.bib` value does not carry as typed (a quotation mark, a
 brace, a backslash, a tilde, an ellipsis). A title ending in an abbreviation's stop, "in
-the U.S.", is not read either: the stop that ends a title in APA cannot be told from it.
+the U.S.", is not read either: the stop that ends a title in APA cannot be told from it. One
+of a single word, "Dr." or "Inc.", is not seen, and loses its stop (DESIGN.md, Known gaps).
 Nothing is guessed, so an entry not read is not written, and its citations stay typed.
 """
 

@@ -60,7 +60,8 @@ What the emitter holds you to:
 
 - **Rounding is decided here, once.** `display` is fixed at emit time, so one quantity cannot
   be rounded two ways in two sections. There is no formatting option in the manuscript. If a
-  coarser rounding or APA's ".47" is needed somewhere, emit a second key; G8 notes it.
+  coarser rounding or APA's ".47" is needed somewhere, emit a second key `same_as` the
+  first: `em$value("r.apa", r, display = ".47", same_as = "r.point")`.
 - Keys are lower case, dotted: `cohort.n_reports`. Table keys take no dots. A bad key is
   not caught when emitting; the whole fragment then fails the schema at `check`, and none of
   its values load.
@@ -270,7 +271,7 @@ checked like any other.
 | `input-not-fetched` | a warning: the input is a Git LFS or git-annex pointer that cannot be compared with the results (an MD5 key, an LFS extension, or results written before the emitter recorded `raw_sha256`). Fetch it to check it, or re-run where it is fetched |
 | `results-edited`, `no-digest` | re-run through the emitter; never edit the fragment |
 | `duplicate-quantity` | a warning: two quoted keys hold the same value. One quantity? Publish it once. A coincidence? Nothing to do |
-| `divergent-display` | a note: the same value written two ways. A coincidence or a second display: nothing to do (a `unit` on each keeps them apart). One quantity twice by mistake? Publish it once |
+| `divergent-display` | a note: one value written two ways. A coincidence? Nothing to do. A second display? Declare it `same_as` |
 | `declared-same-but-differs` | two keys declared one quantity with `same_as=` have drifted apart |
 | `interval-reversed` | the text quotes the upper bound first; swap the two bindings |
 | `relation-broken`, `flow-broken` | the analysis's own numbers disagree with the arithmetic it declared: find the computation that is wrong, or the declaration that names the wrong keys |

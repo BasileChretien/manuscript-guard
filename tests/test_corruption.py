@@ -861,15 +861,52 @@ def test_one_correlation_in_apa_form_beside_its_interval_fails_nothing(project: 
 def test_one_estimate_under_two_names_declared_one_fails_when_it_parts(project: Path) -> None:
     """The duplicate G8 is for: one estimate emitted under a second name, which a later run
     updates and the other does not. Declared one quantity with `same_as`, the pair fails the
-    moment the two hold other numbers, or are printed two ways."""
+    moment the two hold numbers the coarser display does not round both to, or are printed
+    otherwise than as one rounding of the other: here with a unit one of them lacks."""
     _add_keys(project, {
         "est.main": {"value": 3.8439, "display": "3.84", "digits": 2},
         "est.abstract": {"value": 3.9012, "display": "3.90", "digits": 2,
                          "same_as": "est.main"},
-        "est.summary": {"value": 3.8439, "display": "3.8", "digits": 1, "same_as": "est.main"},
+        "est.summary": {"value": 3.8439, "display": "3.84 a.u.", "same_as": "est.main"},
     })
     found = codes(gate_report(project))
     assert {"declared-same-but-differs", "declared-same-but-displayed-differently"} <= found
+
+
+@pytest.mark.parametrize(("second", "value", "display"), [
+    ("APA's form, no leading zero", 0.4712, ".47"),
+    ("a coarser rounding", 0.4712, "0.5"),
+    ("a finer rounding", 0.4712, "0.4712"),
+    ("trailing zeros", 0.47, "0.470"),
+    ("another run's value the two displays round alike", 0.4688, ".47"),
+])
+def test_a_second_display_declared_same_as_passes(
+    project: Path, second: str, value: float, display: str
+) -> None:
+    """The author's decision on #628 (PsyArXiv d8hkq_v1, an APA paper: a correlation ".47"
+    in the text and "0.47" beside its interval): `same_as` ties two displays of one value.
+    The pair passes where the coarser display rounds both values to what it says and the
+    two displays differ only in form, and G8 notes nothing, the pair being declared."""
+    _add_keys(project, {
+        "cor.point": {"value": 0.4712, "display": "0.47", "digits": 2},
+        "cor.r": {"value": value, "display": display, "same_as": "cor.point"},
+    })
+    report = gate_report(project)
+    assert not {code for code in codes(report) if code.startswith("declared-same")}, second
+    assert _divergent(project) == [], second
+
+
+@pytest.mark.parametrize(("value", "display"), [(0.5188, ".52"), (0.5588, "0.6")])
+def test_a_second_display_declared_same_as_fails_when_the_values_part(
+    project: Path, value: float, display: str
+) -> None:
+    """".47" declared the same as "0.52" holds another number: the coarser display does not
+    round both values to what it says, and the pair fails."""
+    _add_keys(project, {
+        "cor.point": {"value": 0.4712, "display": "0.47", "digits": 2},
+        "cor.r": {"value": value, "display": display, "same_as": "cor.point"},
+    })
+    assert "declared-same-but-differs" in codes(gate_report(project))
 
 
 def test_a_count_and_a_percentage_that_coincide_are_not_one_quantity(project: Path) -> None:

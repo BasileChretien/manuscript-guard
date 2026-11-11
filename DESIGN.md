@@ -16244,9 +16244,19 @@ been sorted yet.
   key its value, display, unit and the script that wrote it, and none of these tells one
   quantity under two names from two that agree: one script writes both, and one line of a
   loop writes 0.00 for two subgroups. The cost: one estimate emitted twice by mistake and
-  rounded two ways, 3.84 and 3.8, fails nothing; `same_as` declares such a pair, which then
-  fails when the two hold other numbers or are printed two ways.
+  rounded two ways, 3.84 and 3.8, fails nothing unless declared.
   Pinned by `tests/test_corruption.py::test_same_quantity_under_two_keys_is_said_and_fails_nothing`.
+  - `same_as` ties two displays of one value (the author's decision on #628), in R as in
+    Python: ".47" declared the same as "0.47" passes, and G8 notes nothing of the pair. A
+    declared pair fails `declared-same-but-differs` where the coarser display is not a
+    rounding of both values, ".52" for 0.5188 beside "0.47" for 0.4712, and
+    `declared-same-but-displayed-differently` where the displays differ by more than form
+    (a leading zero, trailing zeros, one a rounding of the other): by unit text one of them
+    has, or a comparator, so "<0.001" declared the same as "0.0004" fails. Two values the
+    coarser display rounds alike pass as one: ".47" for 0.4712 and "0.47" for 0.4688.
+    Pinned by `tests/test_corruption.py::test_a_second_display_declared_same_as_passes`,
+    `tests/test_corruption.py::test_a_second_display_declared_same_as_fails_when_the_values_part`
+    and `tests/test_corruption.py::test_one_estimate_under_two_names_declared_one_fails_when_it_parts`.
 - **G8 holds only the arithmetic an analysis declares.** `em.relation` and `em.flow` say
   which results are a sum, a difference, a ratio or an order of which, and G8 checks those.
   A subgroup total nobody declared is not checked, and nothing searches the prose for numbers

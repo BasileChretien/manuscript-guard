@@ -22,8 +22,10 @@ ways; only a pair the author declared one quantity (`same_as`) fails when it dis
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 
 from manuscript_guard.contracts.results import Results
+from manuscript_guard.contracts.values import Shown, Value, shown_in
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 
 GATE = "G8"
@@ -58,9 +60,10 @@ def check_consistency(results: Results) -> Report:
     # them once, which would have made the paper wrong. In the other (PsyArXiv d8hkq_v1,
     # APA style) one correlation was printed ".47" in the text and "0.47" beside its
     # interval, under two keys as the results-binding skill says to emit a second display,
-    # and that failed. Nothing the file
-    # records tells these from one quantity emitted twice by mistake: not the script, which
-    # writes both, nor the line, since one line of a loop writes 0.00 for two subgroups.
+    # and that failed. Nothing the file records tells these from one quantity emitted twice
+    # by mistake: not the script, which writes both, nor the line, since one line of a loop
+    # writes 0.00 for two subgroups. A pair the author ties with `same_as` is held by
+    # `_check_declared_pairs` instead, and is not said here (the author's decision on #628).
     by_value: dict[tuple[str, str | None, str | None], list[str]] = defaultdict(list)
 
     for key, value in results.values.items():
@@ -71,12 +74,15 @@ def check_consistency(results: Results) -> Report:
             kind = _kind(value.display) if number in (0.0, 1.0, -1.0) else None
             by_value[(f"{number:.12g}", value.unit, kind)].append(key)
 
+    tied = _declared_together(results)
     collisions = 0
     for (literal, _unit, kind), keys in sorted(by_value.items(),
                                                key=lambda kv: (kv[0][0], kv[0][2] or "")):
         if len(keys) < 2:
             continue
         collisions += 1
+        if len({tied(k) for k in keys}) == 1:
+            continue
         displays = {results.values[k].display for k in keys}
         same_display = len(displays) == 1
         report = report.with_findings(
@@ -98,8 +104,9 @@ def check_consistency(results: Results) -> Report:
                     else "a note: two keys holding one value are not shown by that to be one "
                     "quantity. Two quantities that happen to agree need nothing, and a `unit` "
                     "on each key keeps them apart. One quantity printed two ways on purpose, a "
-                    "coarser rounding or a form without the leading zero, needs nothing either. "
-                    "One quantity emitted twice by mistake: emit it once and quote the one key"
+                    "coarser rounding or a form without the leading zero: declare the second "
+                    "`same_as` the first, and G8 holds the two together. One quantity emitted "
+                    "twice by mistake: emit it once and quote the one key"
                 ),
             )
         )
@@ -155,6 +162,12 @@ def _check_declared_pairs(results: Results) -> Report:
     is about intent: `ror.point`, `ror.ci_low` and `ror.ci_high` share everything a
     heuristic could see and are supposed to differ. The limit is honest — this protects the
     pairs someone thought to declare — but a declared pair cannot drift in silence.
+
+    A declared pair may be printed two ways (the author's decision on #628): APA's ".47" in
+    the text beside "0.47" with its interval, or a coarser rounding in the abstract. It holds
+    while the coarser display is a rounding of both values, and while the two displays differ
+    only in form: a leading zero, trailing zeros, one a rounding of the other. A pair whose
+    displays differ otherwise, by a unit one of them lacks or a comparator, still fails.
     """
     report = Report()
     declared = 0
@@ -175,20 +188,21 @@ def _check_declared_pairs(results: Results) -> Report:
                 )
             )
             continue
-        if value.value != other.value:
+        if not _values_agree(value, other):
             report = report.with_findings(
                 Finding(
                     gate=GATE,
                     code="declared-same-but-differs",
                     message=f"{key} is declared the same quantity as {value.same_as}, but they "
-                    f"hold {value.value!r} and {other.value!r}",
+                    f"hold {value.value!r} and {other.value!r}, which the coarser of their "
+                    "displays does not round alike",
                     path=value.source,
                     context=f"displays: {value.display} and {other.display}",
                     hint="emit the quantity once and quote the one key; two keys for one "
                     "number is how an abstract comes to disagree with its own results",
                 )
             )
-        elif value.display != other.display:
+        elif value.display != other.display and not _same_form(value, other):
             report = report.with_findings(
                 Finding(
                     gate=GATE,
@@ -196,10 +210,73 @@ def _check_declared_pairs(results: Results) -> Report:
                     message=f"{key} and {value.same_as} are the same quantity but are written "
                     f"{value.display!r} and {other.display!r}",
                     path=value.source,
-                    hint="pick one display, or round both with the same `digits`",
+                    hint="two displays of one quantity may differ by a leading zero, trailing "
+                    "zeros or a rounding, and by nothing else: pick one display, or print the "
+                    "unit in both or in neither",
                 )
             )
     return report.with_counts(declared_pairs=declared)
+
+
+def _declared_together(results: Results) -> Callable[[str], str]:
+    """Which keys `same_as` ties together, as a function from a key to one key standing for
+    all those tied to it, either way and through a chain."""
+    parent: dict[str, str] = {}
+
+    def root(key: str) -> str:
+        while parent.get(key, key) != key:
+            key = parent[key]
+        return key
+
+    for key, value in results.values.items():
+        if value.same_as and value.same_as in results.values:
+            first, second = root(key), root(value.same_as)
+            if first != second:
+                parent[first] = second
+    return root
+
+
+def _numbers(value: Value, other: Value) -> tuple[Shown, Shown] | None:
+    """What the two displays state, where both values are numbers and both displays state a
+    number without a comparator; None otherwise."""
+    if not all(isinstance(v.value, (int, float)) and not isinstance(v.value, bool)
+               for v in (value, other)):
+        return None
+    shown = (shown_in(value.display), shown_in(other.display))
+    if shown[0] is None or shown[1] is None or shown[0].compare or shown[1].compare:
+        return None
+    return shown[0], shown[1]
+
+
+def _values_agree(value: Value, other: Value) -> bool:
+    """Whether the two values of a declared pair are one: equal, or both rounded by the
+    coarser display to the number it states. ".47" for 0.4712 and "0.47" for 0.4688 agree,
+    ".52" for 0.5188 and "0.47" for 0.4712 do not."""
+    if value.value == other.value:
+        return True
+    shown = _numbers(value, other)
+    if shown is None:
+        return False
+    coarser = max(shown, key=lambda s: s.half_unit)
+    return all(abs(float(v.value) - coarser.number) <= _within(coarser, v.value)
+               for v in (value, other))
+
+
+def _same_form(value: Value, other: Value) -> bool:
+    """Whether two displays of one value differ only in form: by a leading zero, trailing
+    zeros, or as one a rounding of the other ("0.47", ".47", "0.470", "0.5"), with the same
+    unit text."""
+    shown = _numbers(value, other)
+    if shown is None or shown[0].unit != shown[1].unit:
+        return False
+    finer, coarser = sorted(shown, key=lambda s: s.half_unit)
+    return abs(finer.number - coarser.number) <= _within(coarser, finer.number)
+
+
+def _within(shown: Shown, number: object) -> float:
+    """How far a number may lie from what a display states and still be rounded to it: half
+    a unit in its last place, with the slack `_check_display_matches` gives."""
+    return shown.half_unit + abs(float(number)) * 1e-9
 
 
 def _kind(display: str) -> str:

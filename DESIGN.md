@@ -25480,6 +25480,37 @@ What papers converted from Word showed (see "What papers converted from Word sho
     the same way. A quote that is the finding's words alone, a heading "AS", is listed
     wherever two paragraphs hold it, a word as well as a number. Accepted.
 
+- **A comparison beside a binding is read from its signs and two phrases.** G2 fails a value
+  that a comparator typed beside its binding contradicts (`comparison-contradicted`): "<",
+  ">", "≤", "≥" and their spellings ("<=", "&lt;", `\<`) right before a results binding or
+  right after one, and "less than" and "greater than" (with "or equal to") right before one.
+  It holds the value as the emitter holds a comparator display, "<2.53": at the number
+  printed or on the side the sign names, so not strictly, and a sign after the binding holds
+  it to the other side ("{{results.t_min}} < ts" says the ts are above it). The real case
+  was a psychology preprint, PsyArXiv fyxeq_v2, whose "all Fs <", "all ps >" and "< ts"
+  printed 2.53, .260 and 4.27 of 2.532, .2596 and 4.268. Pinned by
+  `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
+  - Other words for a comparison are not read: "below", "above", "under", "over", "more
+    than", "fewer than", "at least", "at most", "exceeding". Choosing them is a list of words
+    the rule does not settle. Accepted.
+  - A phrase turned round, "no less than" or "not greater than", is not read rather than read
+    the other way. Pinned by
+    `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
+  - A comparison of two numbers is not read: "2.6 < {{results.f}}", "{{results.a}} <
+    {{results.b}}". Nothing holds two bound values to the comparison typed between them.
+    Pinned by
+    `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
+  - Only a space, an entity of one, a comment or one line break may stand between the sign
+    and the binding: a binding in italics, "ps > *{{results.p}}*", or a unit between,
+    "{{results.t}} s < times", is not read. A ">" after a tag opened earlier on its line,
+    "x<y and ps > {{results.p}}", is taken for the tag's end. Accepted.
+  - In LaTeX the view is read: `$<$` and `$>$` are signs there, and `$\leq$`, `$\geq$` and
+    `\textless` are blanked by the reader and not read. Pinned by
+    `tests/test_latex_bindings.py::test_a_comparator_beside_a_latex_binding_is_read_where_its_view_prints_a_sign`.
+  - A value whose display carries a comparator of its own, "<0.001", is held to it by the
+    emitter, and a sign typed beside it is not compared; nor is a `{{lit.…}}` value, which is
+    typed from its source rather than emitted. Accepted.
+
 Closed since, and why each mattered (an open gap goes above this line):
 
 - **A known word with a dot inside was never matched (2026-11-10).** #615 wrote that

@@ -117,6 +117,30 @@ def test_a_unit_after_a_latex_binding_is_read_only_where_it_is_typed_as_it_print
     assert [w.unit for w in found] == ([unit] if unit else [])
 
 
+@pytest.mark.parametrize(
+    ("typed", "read"),
+    [("all Fs < \\mg{results.f}", ("<", True)), ("all Fs $<$ \\mg{results.f}", ("<", True)),
+     ("$F < \\mg{results.f}$", ("<", True)), ("all ts $>$~\\mg{results.f}", (">", False)),
+     ("\\mg{results.f} $<$ ts", ("<", False)),
+     # The reader blanks a command, so a comparator typed as one is not read.
+     ("all Fs $\\leq$ \\mg{results.f}", None), ("\\mg{results.f} $\\geq$ ts", None),
+     ("all Fs \\textless{} \\mg{results.f}", None)],
+)  # fmt: skip
+def test_a_comparator_beside_a_latex_binding_is_read_where_its_view_prints_a_sign(
+    typed: str, read: tuple[str, bool] | None
+) -> None:
+    """G2 reads a comparison beside a binding in the Markdown view, where `$<$` is a sign
+    and `$\\leq$` and `\\textless` are blanked: those two are not held (DESIGN.md, Known
+    gaps)."""
+    from manuscript_guard.gates.bound_comparisons import comparisons_at
+
+    text = DOC + typed + ".\n" + END
+    source = _source(text)
+    good, _ = bindings(source)
+    found = [(c.op, c.below) for c in comparisons_at(markdown_view(source, good))]
+    assert found == ([read] if read else [])
+
+
 def test_a_typed_table_and_a_listing_are_recorded_where_they_stand() -> None:
     text = (DOC + "\\begin{tabular}{ll}a & 7 \\\\\\end{tabular}\n"
             "\\begin{align}x &= 1\\end{align}\n\\begin{lstlisting}[language=R, caption=x]\n"

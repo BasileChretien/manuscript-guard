@@ -44,6 +44,7 @@ import pytest
 from generated import (
     ABSTRACT_BACKGROUND,
     AGREED,
+    BESIDE_A_BINDING,
     CAUSAL_PARTS,
     CLAIMED,
     CREDITING,
@@ -206,6 +207,7 @@ from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED
 from manuscript_guard.contracts.project import outside_maths
 from manuscript_guard.contracts.values import RESULTS, Value, number_in
 from manuscript_guard.deposit import counts as deposit_counts
+from manuscript_guard.gates import bound_comparisons as bound_comparisons_gate
 from manuscript_guard.gates import bound_units as bound_units_gate
 from manuscript_guard.gates import data_statement
 from manuscript_guard.gates import interpretation as interpretation_gate
@@ -13563,6 +13565,60 @@ def test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is(
     assert found == expected, text
 
 
+@st.composite
+def _comparisons_planted(draw: st.DrawFn) -> tuple[str, list[tuple[str, int, str, bool]]]:
+    """A binding beside each way of writing a comparator, and what only looks like one, in
+    an order and among words drawn each time, with the comparator that should be read."""
+    parts: list[str] = []
+    found: list[tuple[str, int, str, bool]] = []
+    for index, (before, after, read) in enumerate(draw(st.permutations(BESIDE_A_BINDING))):
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4))
+        parts.append(" ".join(words) + draw(st.sampled_from((" ", "\n", "; "))) + before)
+        key = f"k{index}"
+        if read is not None:
+            found.append((key, len("".join(parts)), *read))
+        parts.append(f"{{{{results.{key}}}}}" + after + draw(st.sampled_from((". ", ", ", "; "))))
+    return "".join(parts), found
+
+
+@holds(150, _comparisons_planted())
+def test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is(
+    planted: tuple[str, list[tuple[str, int, str, bool]]],
+) -> None:
+    """Each sign and its spellings and the two phrases before a binding, a sign after one,
+    which holds the value to the other side; not a comparison of two numbers, a phrase
+    turned round, a comment, a tag, a blockquote's marker or an arrow."""
+    text, expected = planted
+    found = [(c.key, c.start, c.op, c.below) for c in bound_comparisons_gate.comparisons_at(text)]
+    assert found == expected, text
+
+
+@st.composite
+def _values_printed(draw: st.DrawFn) -> tuple[float, str, bool]:
+    """A value, its print to some number of places, at it or rounded, and a side."""
+    places = draw(st.integers(0, 4))
+    value = draw(st.integers(-99999, 99999)) / 10 ** draw(st.integers(0, 5))
+    return value, f"{value:.{places}f}", draw(st.booleans())
+
+
+@holds(200, _values_printed())
+def test_a_comparison_beside_a_binding_is_held_as_the_emitter_holds_a_display(
+    printed: tuple[float, str, bool],
+) -> None:
+    """The prose rule is the display rule: a value printed beside "<" is contradicted
+    exactly where the emitter refuses the display "<" and that print, and so beside ">".
+    Not strict, and the number compared with is the one printed."""
+    from manuscript_guard.contracts.values import DisplayError, _check_display_matches
+
+    value, display, below = printed
+    try:
+        _check_display_matches("k", value, ("<" if below else ">") + display)
+        refused = False
+    except DisplayError:
+        refused = True
+    assert bound_comparisons_gate.contradicted(value, display, below) is refused, printed
+
+
 # ---------------------------------------------- a technical sense, counted towards no rate
 
 #: Technical senses of words the vocabulary rate counts, in the singular and the plural.
@@ -16450,6 +16506,47 @@ def _a_citation_key_stops_at_a_colon(patch: pytest.MonkeyPatch) -> None:
 
 def _a_heading_is_part_of_the_paragraph_under_it(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_HEADING", re.compile(r"(?!)"))
+
+
+def _a_comparator_after_a_binding_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(bound_comparisons_gate, "_after", lambda text, end: None)
+
+
+def _a_comparator_after_a_binding_holds_the_side_it_names(patch: pytest.MonkeyPatch) -> None:
+    real = bound_comparisons_gate._after
+
+    def after(text: str, end: int) -> tuple[str, bool] | None:
+        read = real(text, end)
+        return None if read is None else (read[0], not read[1])
+
+    patch.setattr(bound_comparisons_gate, "_after", after)
+
+
+def _the_other_side_of_a_comparator_is_not_looked_at(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(bound_comparisons_gate, "_NUMBER_BEFORE", re.compile(r"(?!)"))
+    patch.setattr(bound_comparisons_gate, "_NUMBER_AFTER", re.compile(r"(?!)"))
+
+
+def _a_phrase_turned_round_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(bound_comparisons_gate, "_NEGATED", re.compile(r"(?!)"))
+
+
+def _an_arrow_or_a_tag_is_a_comparator(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(bound_comparisons_gate, "_SIGN_AFTER", re.compile(r"(?!)"))
+    patch.setattr(bound_comparisons_gate, "_TAG_OPEN", re.compile(r"(?!)"))
+
+
+def _a_comparison_beside_a_binding_is_strict(patch: pytest.MonkeyPatch) -> None:
+    def contradicted(value: object, display: str, below: bool) -> bool:
+        shown = number_in(display)
+        return shown is not None and not (value < shown if below else value > shown)
+
+    patch.setattr(bound_comparisons_gate, "contradicted", contradicted)
+
+
+def _a_comparison_beside_a_binding_is_held_of_the_print(patch: pytest.MonkeyPatch) -> None:
+    """The false pass of PsyArXiv fyxeq_v2: the digits printed compared with themselves."""
+    patch.setattr(bound_comparisons_gate, "contradicted", lambda value, display, below: False)
 
 
 def _a_divisor_after_a_space_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -22145,6 +22242,34 @@ BROKEN = {
     "a heading is part of the paragraph under it": (
         _a_heading_is_part_of_the_paragraph_under_it,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a comparator after a binding is not read": (
+        _a_comparator_after_a_binding_is_not_read,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a comparator after a binding holds the value to the side it names": (
+        _a_comparator_after_a_binding_holds_the_side_it_names,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "the other side of a comparator is not looked at": (
+        _the_other_side_of_a_comparator_is_not_looked_at,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a comparison phrase turned round is read": (
+        _a_phrase_turned_round_is_read,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "an arrow or a tag is a comparator": (
+        _an_arrow_or_a_tag_is_a_comparator,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a comparison beside a binding is strict": (
+        _a_comparison_beside_a_binding_is_strict,
+        test_a_comparison_beside_a_binding_is_held_as_the_emitter_holds_a_display,
+    ),
+    "a comparison beside a binding is held of the print": (
+        _a_comparison_beside_a_binding_is_held_of_the_print,
+        test_a_comparison_beside_a_binding_is_held_as_the_emitter_holds_a_display,
     ),
     "a divisor after a space is not read": (
         _a_divisor_after_a_space_is_not_read,

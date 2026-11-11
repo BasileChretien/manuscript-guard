@@ -5251,6 +5251,115 @@ def test_every_spelling_of_one_unit_is_one_unit(written: str, emitted: str) -> N
     assert same_unit(written, "kg") is False
 
 
+# ------------------------------------------- a comparison typed beside a binding
+
+#: Three values as a psychology preprint's analysis emitted them, rounded for print, and a
+#: fourth printed whole (PsyArXiv fyxeq_v2, rebuilt with the R emitter).
+_COMPARED = {
+    "omnibus.f_max": (2.532, "2.53"),
+    "omnibus.p_min": (0.2596, ".260"),
+    "contrasts.t_min": (4.268, "4.27"),
+    "contrasts.t_max": (4.27, "4.27"),
+}
+
+
+def _compared_emitted(root: Path, values: dict[str, tuple[float, str]]) -> None:
+    fragment = next((root / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    for key, (value, display) in values.items():
+        document["values"][key] = {"value": value, "display": display}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def _comparisons_failed(root: Path, capsys) -> list[tuple[str, int]]:
+    from manuscript_guard.cli import main
+
+    capsys.readouterr()
+    main(["check", str(root), "--json"])
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    return [(f["message"].split()[0], f["line"]) for f in findings
+            if f["code"] == "comparison-contradicted" and f["severity"] == "fail"]  # fmt: skip
+
+
+def _append_paragraph(path: Path, paragraph: str) -> int:
+    """`paragraph` at the end of the file, and the line it is on."""
+    text = path.read_text(encoding="utf-8").rstrip("\n") + "\n\n"
+    path.write_text(text + paragraph + "\n", encoding="utf-8")
+    return text.count("\n") + 1
+
+
+@pytest.mark.parametrize(
+    ("typed", "contradicts"),
+    [
+        # The preprint's three: the value at full precision is on the wrong side.
+        ("all Fs < {{results.omnibus.f_max}}", True),
+        ("all *p*s > {{results.omnibus.p_min}}", True),
+        ("{{results.contrasts.t_min}} < ts", True),
+        # Each comparator as it is spelt, before the binding and after it.
+        ("Fs \N{LESS-THAN OR EQUAL TO} {{results.omnibus.f_max}}", True),
+        ("Fs &lt; {{results.omnibus.f_max}}", True),
+        ("Fs \\< {{results.omnibus.f_max}}", True),
+        ("F less than {{results.omnibus.f_max}}", True),
+        ("p greater than or equal to {{results.omnibus.p_min}}", True),
+        ("{{results.contrasts.t_min}} \N{LESS-THAN OR EQUAL TO} ts", True),
+        ("{{results.omnibus.f_max}} > Fs", True),
+        # The value on the side the comparison says, or at the number printed: the bound
+        # is not strict, as a display's is not.
+        ("all Fs > {{results.omnibus.f_max}}", False),
+        ("all ps < {{results.omnibus.p_min}}", False),
+        ("{{results.contrasts.t_min}} > ts", False),
+        ("ts \N{GREATER-THAN OR EQUAL TO} {{results.contrasts.t_max}}", False),
+        ("ts < {{results.contrasts.t_max}}", False),
+        # Two numbers compared, and no bound on a quantity: not read.
+        ("2.6 < {{results.omnibus.f_max}}", False),
+        ("{{results.omnibus.f_max}} < 2.6", False),
+        ("{{results.contrasts.t_max}} < {{results.contrasts.t_min}}", False),
+        # A comparison turned round by its word, and what only looks like a comparator.
+        ("F no less than {{results.omnibus.f_max}}", False),
+        ("<!-- the largest -->{{results.omnibus.f_max}} was the largest F", False),
+        ("> {{results.omnibus.f_max}} was the largest F", False),
+        ("the largest F, <sup>{{results.omnibus.f_max}}</sup>", False),
+        ("F -> {{results.omnibus.f_max}}", False),
+    ],
+)
+def test_a_comparison_typed_beside_a_binding_holds_of_the_value(
+    project: Path, capsys, typed: str, contradicts: bool
+) -> None:
+    """A real preprint's "all Fs < {{results...}}" printed "all Fs < 2.53" of an F of 2.532,
+    its "all ps > ..." ".260" of .2596, and "... < ts" "4.27" of 4.268, and `check` passed:
+    the emitter refuses the same claim written as a display ("<2.53" of 2.532), and nothing
+    read it in the sentence. The value is held to the comparison as the emitter holds it."""
+    _compared_emitted(project, _COMPARED)
+    line = _append_paragraph(main_md(project), f"In the extra analysis, {typed}.")
+    key = re.search(r"results\.([a-z_.]+)", typed)[1]
+    assert _comparisons_failed(project, capsys) == ([(f"results.{key}", line)]
+                                                    if contradicts else [])  # fmt: skip
+
+
+def test_a_comparison_beside_a_binding_in_the_supplement_is_held_too(
+    project: Path, capsys
+) -> None:
+    """The supplement is checked like the rest of the manuscript."""
+    _compared_emitted(project, _COMPARED)
+    supplement = project / "manuscript" / "supplementary" / "appendix.md"
+    supplement.parent.mkdir(parents=True, exist_ok=True)
+    supplement.write_text("# Appendix\n\nAll Fs < {{results.omnibus.f_max}}.\n", "utf-8")
+    assert _comparisons_failed(project, capsys) == [("results.omnibus.f_max", 3)]
+
+
+def test_the_message_names_the_value_its_print_and_the_comparison(project: Path) -> None:
+    from manuscript_guard.gates import check_bound_comparisons
+
+    _compared_emitted(project, _COMPARED)
+    _append_paragraph(main_md(project), "All Fs < {{results.omnibus.f_max}}.")
+    loaded, _ = load_project(project)
+    _, results, _, _ = load_namespace(loaded)
+    [found] = check_bound_comparisons(loaded, results).findings
+    assert found.message == ("results.omnibus.f_max prints '2.53' beside '<', which says the "
+                             "value is below 2.53, or at it, but the value is 2.532")  # fmt: skip
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 

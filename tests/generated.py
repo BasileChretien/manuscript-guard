@@ -6807,6 +6807,44 @@ BOUND_UNITS = (
     "{{results.temp}} \N{DEGREE SIGN}C",
 )  # fmt: skip
 
+#: What may stand before a binding and after it, and the comparator G2 reads there with the
+#: side of the number printed it holds the value to (True: below), or None where it reads
+#: none: each sign and its spellings, the two phrases, a sign after the binding, which holds
+#: the value to the other side, and a sign with a line break after it; and a comparison of
+#: two numbers, a phrase turned round, a comment, a tag, a blockquote's marker and arrows,
+#: which compare nothing (PsyArXiv fyxeq_v2's "all Fs < {{results.f}}").
+BESIDE_A_BINDING = (
+    ("Fs < ", "", ("<", True)),
+    ("all ps > ", "", (">", False)),
+    ("", " < ts", ("<", False)),
+    ("", " > ts", (">", True)),
+    ("F \N{LESS-THAN OR EQUAL TO} ", "", ("\N{LESS-THAN OR EQUAL TO}", True)),
+    ("F \N{GREATER-THAN OR EQUAL TO} ", "", ("\N{GREATER-THAN OR EQUAL TO}", False)),
+    ("F <= ", "", ("<=", True)),
+    ("", " >= ts", (">=", True)),
+    ("F &lt; ", "", ("&lt;", True)),
+    ("F \\> ", "", ("\\>", False)),
+    ("F less than ", "", ("less than", True)),
+    ("F Greater than or equal to ", "", ("Greater than or equal to", False)),
+    ("F <\n", "", ("<", True)),
+    ("F no less than ", "", None),
+    ("2.6 < ", "", None),
+    ("", " < 2.6", None),
+    ("{{results.other}} > ", "", None),
+    ("<!-- c -->", "", None),
+    ("<sup>", "</sup>", None),
+    ("\n> ", "", None),
+    ("F -> ", "", None),
+    ("F >> ", "", None),
+    ("", " <- x", None),
+    ("F = ", "", None),
+)  # fmt: skip
+
+#: Comparators beside bindings, as `texts` writes them into a file: one of each kind above.
+BOUND_COMPARISONS = tuple(
+    before + "{{results.k}}" + after for before, after, _read in BESIDE_A_BINDING
+)
+
 #: A journal's limit as its page may write it, and numbers and words it is not.
 QUOTED_LIMITS = (
     "3500", "3,500", "3 500", "3500-word", "13500", "3500.5", "3,5000", "35000", "four",
@@ -12739,6 +12777,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "plan sections": plan_pairs().map(lambda drawn: drawn[0]),
     "data dictionaries": dictionary_pairs().map(lambda drawn: drawn[0]),
     "units after": texts(BOUND_UNITS),
+    "comparisons beside": texts(BOUND_COMPARISONS),
     "limit stated": st.fixed_dictionaries(
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}
     ),

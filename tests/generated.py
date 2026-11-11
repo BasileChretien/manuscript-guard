@@ -574,9 +574,10 @@ def signs() -> st.SearchStrategy[str]:
 #: the WSE taken after two hours and a risk adjusted for something said in brackets; a
 #: short form after a colon whose letters are found before the bracket, one per word or not,
 #: in the last word or not, and words that hold the letters of a statistic's short form in
-#: order, "and older adults (AOR: 0.41)", read by them as main reads them (a Known gap); and
-#: two whose nearest letter is inside a bracket the long form would open, found again before
-#: it.
+#: order, "and older adults (AOR: 0.41)", read by them as main reads them (a Known gap); two
+#: whose nearest letter is inside a bracket the long form would open, found again before
+#: it; a short form closing a bracket after a semicolon or a comma, its long form before
+#: that; and a short form after a spaced dash of each kind, no bracket at all.
 DEFINING = (
     ("the reporting odds ratio (ROR)", "(ROR", "ROR"),
     ("the PRR (proportional reporting ratio)", "PRR (", "PRR"),
@@ -608,6 +609,21 @@ DEFINING = (
     ("the L.AS (licence with access to health studies)", "L.AS (", "L.AS"),
     # After a sentence typed on with no space (round 1 of #612).
     ("the score rose.ROR (reporting odds ratio)", "ROR (", "ROR"),
+    # A short form closing the bracket after a separator, its long form before that, in
+    # round brackets and in square ones (the real-paper corpus).
+    ("endurance (i.e. time to task failure; TTF)", "; TTF", "TTF"),
+    ("the peak (that is, time to peak, TTP)", ", TTP", "TTP"),
+    ("the signal [i.e. the empirical Bayes mean; EBM]", "; EBM", "EBM"),
+    # A short form after a dash with a space either side: a hyphen, an en dash, an em dash.
+    ("the Basic Income Support for Sustainability - BISS", "- BISS", "BISS"),
+    ("the Basic Payment Scheme \N{EN DASH} BPS", "\N{EN DASH} BPS", "BPS"),
+    ("the Common Agricultural Policy \N{EM DASH} CAP", "\N{EM DASH} CAP", "CAP"),
+    # Pandoc's smart dashes as typed, and a no-break space before the dash (round 1 of #623).
+    ("the Single Area Payment -- SAP", "-- SAP", "SAP"),
+    ("the Rural Development Programme --- RDP", "--- RDP", "RDP"),
+    ("the Young Farmer Scheme\N{NO-BREAK SPACE}\N{EN DASH} YFS", "\N{EN DASH} YFS", "YFS"),
+    # A comma before words, which gives no statistic (round 2 of #623).
+    ("the Area Payment Scheme \N{EN DASH} APS, which pays farmers", "\N{EN DASH} APS", "APS"),
 )  # fmt: skip
 
 #: Brackets that are no definition, though the words before each hold its letters in order:
@@ -627,6 +643,21 @@ NOT_DEFINING = (
      "WSE2"),
     ("a warning score at entry (WSE1) and 40 [12.5%] had a second WSE (WSE2)", "(WSE2",
      "WSE2"),
+    # A short form closing a bracket whose letters are before the bracket and not before
+    # its separator; and a statistic after a dash, and a dash with no space, a hyphen.
+    ("the proportional reporting ratio (see the appendix; PRR)", "; PRR", "PRR"),
+    ("the information component fell \N{EN DASH} IC 0.75", "IC 0.75", "IC"),
+    ("the information component fell \N{EN DASH} IC = 0.75", "IC =", "IC"),
+    # A comma and a number after the short form: the value, not a definition (round 1 of
+    # #623).
+    ("the risk was higher in older people \N{EN DASH} OR, 1.52", "OR, 1.52", "OR"),
+    # After a colon, an interval in brackets or a no-break space (round 2 of #623).
+    ("the risk was higher among older people \N{EN DASH} AOR: 1.52", "AOR: 1.52", "AOR"),
+    ("the risk was higher in older women \N{EN DASH} OR (95% CI 1.1 to 2.0) 1.52",
+     "OR (95%", "OR"),
+    ("the odds were higher in older people \N{EN DASH} OR\N{NO-BREAK SPACE}1.52",
+     "OR\N{NO-BREAK SPACE}1.52", "OR"),
+    ("the Basic Payment Scheme-BPS", "-BPS", "BPS"),
 )  # fmt: skip
 
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as
@@ -653,6 +684,9 @@ NOT_ABBREVIATIONS = (
     "**Competing interests**\n\nPLM and RDS declare none.",
     "**Funding**\nThe EPSRC paid for the first year.",
     "**Funding**  \nof the ESRC, grant 2019/4.", "**Funding**\\\nof the AHRC, grant 2020/7.",
+    # A section's name on a plain line in capitals, numbered or not, a stop escaped as
+    # pandoc writes a numbered Word paragraph (the real-paper corpus).
+    "2. DISCUSSION", "ABSTRACT", "1\\. INTRODUCTION", "IV. RESULTS:",
     # Initials in brackets in a sentence of the paper, which the contributions statement
     # under it names.
     "interviews were run by one author (EF) and checked (GH and EF)\n\n**Author "
@@ -694,6 +728,8 @@ STILL_ABBREVIATIONS = (
     ("the score rose in the KAP.The rest fell", "KAP"),
     # A reference number typed on after the stop, which joins nothing (round 1 of #612).
     ("the rule follows the GDPR.12 here", "GDPR"),
+    # A plain line in capitals that is a number and no section's name.
+    ("3. MRSA", "MRSA"),
 )  # fmt: skip
 
 
@@ -957,6 +993,15 @@ def glossaries_untitled(draw: st.DrawFn) -> dict[str, Any]:
                          ("abbreviation-unused", GLOSSARY_UNUSED[1])]),
     }  # fmt: skip
 
+
+#: A contributions statement and the initials it names in brackets in the paper, which
+#: every input of the `abbreviations` reading ends with, under a heading of its own so that
+#: no section before it hides it: drawn as one block among the pool's, it was in none of
+#: 120 inputs once #623 added blocks, and a rule that stopped reading the initials went
+#: unnoticed (round 3 of #623).
+INITIALS_NAMED = next(
+    block for block in NOT_ABBREVIATIONS if "**Author contributions:** EF" in block
+)
 
 #: The same pieces, as blocks a manuscript of the pool is drawn with.
 ABBREVIATION_BLOCKS = tuple(
@@ -3786,7 +3831,8 @@ def figure_captions(draw: st.DrawFn) -> tuple[str, list[str]]:
 #: A reference list's titles, in English and in the languages `text.section_names` knows,
 #: and titles that open with such a word and name something else.
 REFERENCE_TITLES = (
-    "References", "Bibliography", "Works cited", "Kaynakça", "Kaynaklar", "Referencias",
+    "References", "Bibliography", "Works cited", "Literature cited", "Reference list",
+    "Kaynakça", "Kaynaklar", "Referencias",
     "Bibliografía", "Referências", "Bibliografia", "Références", "Bibliographie", "Literatur",
     "Literaturverzeichnis", "Riferimenti bibliografici", "Daftar pustaka", "Daftar  Pustaka",
     "Pustaka", "Bibliografi",
@@ -3794,7 +3840,9 @@ REFERENCE_TITLES = (
 NOT_REFERENCE_TITLES = (
     "Literature review", "Literaturübersicht", "Pustakawan", "Bibliographic search",
     "Referenced cohorts", "Kaynak", "Riferimenti", "Daftar", "Literatur und Forschungsstand",
-    "Referencias teóricas", "Bibliografia e metodi",
+    "Referencias teóricas", "Bibliografia e metodi", "Reference listing",
+    # Read whole, as the audit and the recycling check read them (round 1 of #623).
+    "Reference list screening", "Literature cited by the trials",
 )  # fmt: skip
 
 
@@ -10868,6 +10916,9 @@ REFERENCE_LINES = (
     "**References**", "**References:**", "References", "__Bibliography__", "*Literature cited*",
     "6\\. References", "**[References]{.underline}**", "[Bibliography]{.smallcaps}",
     "**[[References]{.mark}]{.underline}**",
+    # As Word's conversion writes a title in a block quote, numbered and in capitals, one
+    # with a bookmark on it, a link, and one a hard line break opens (the real-paper corpus).
+    "> **11. REFERENCES**:", "[**References**](#_Ref89712232)", "**\\\nReferences**",
 )  # fmt: skip
 #: Lines that only look like one: a sentence, the word in small letters, the word with a full
 #: stop, brackets that are no span (escaped, or before braces that hold no attributes);
@@ -10878,6 +10929,8 @@ NOT_REFERENCE_LINES = (
     "**References** were read by two pharmacists.", "**references**", "**References.**",
     "**[references]{.underline}**", "[References]{.underline} were read by two pharmacists.",
     "\\[References\\]{.underline}", "[References]{see below}",
+    "[**References**](#_Ref1) were read by two pharmacists.",
+    "> References were read by two pharmacists.",
 )  # fmt: skip
 IN_A_PARAGRAPH = "in a paragraph"
 IN_A_LIST = "in a list"
@@ -10921,7 +10974,12 @@ LIST_ENDS = {
     "a binding": "\n\n{{table.baseline}}\n\n{said}",
 }  # fmt: skip
 #: Whole blocks for the readings that pass a reference list over (`INPUTS`).
-REFERENCE_BLOCKS = ("\n\n**References**\n\n", "\n\n**References:**\n\n", "\n\nReferences\n\n")
+REFERENCE_BLOCKS = ("\n\n**References**\n\n", "\n\n**References:**\n\n", "\n\nReferences\n\n",
+                    "\n\n> **11. REFERENCES**:\n\n", "\n\n[**References**](#_Ref89712232)\n\n",
+                    "\n\n**\\\nReferences**\n\n", "\n\n# Literature cited\n\n",
+                    "\n\n# Reference list\n\n",
+                    # A subsection that only opens with a list's title, which is read.
+                    "\n\n## Reference list screening\n\n")  # fmt: skip
 #: Spellings of the other English, and journals whose names are in capitals.
 _OTHER_ENGLISH = ("color", "tumor", "behavior", "center", "fiber")
 _JOURNALS = ("PLoS ONE", "BMC Med", "JAMA Netw Open")
@@ -11594,7 +11652,7 @@ NAMED_BLOCKS = tuple(
 CONVERTED_BLOCKS = (
     *BOLD_COUNTED,
     *BOLD_NOT_COUNTED,
-    *(f"\n\n# {title}\n\n" for title in REFERENCE_TITLES[3:]),
+    *(f"\n\n# {title}\n\n" for title in REFERENCE_TITLES[5:]),
 )
 
 #: What each reading of `tests/readings.py` is given, by the reading's name.
@@ -12937,7 +12995,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "abbreviations": st.fixed_dictionaries(
         {
-            "text": texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)),
+            "text": texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)).map(
+                lambda text: f"{text}\n\n# Methods\n\n{INITIALS_NAMED}\n"
+            ),
             "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
         }
     ),

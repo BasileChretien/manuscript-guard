@@ -27212,6 +27212,70 @@ def test_a_heading_in_capitals_and_a_time_of_day_hide_no_undefined_abbreviation(
     ]
 
 
+def test_a_section_s_name_on_a_plain_line_hides_no_undefined_abbreviation(
+    project: Path,
+) -> None:
+    """A manuscript typed in Word, its headings plain lines in capitals ("2. DISCUSSION"),
+    and the definition tidied away. The line is a heading, and only the undefined ROR is
+    reported; a plain line that is more than a section's name, "3. PRR", is still read."""
+    mended = with_ror_defined(project)
+    pasted = mended.replace("ratio (ROR) of", "ratio of").replace(
+        "The analysis was run in Python",
+        "2. DISCUSSION\n\nThe analysis was run in Python",
+    )
+    main_md(project).write_text(pasted, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(pasted, ABBREVIATED))
+    ]
+    more = pasted.replace("2. DISCUSSION", "3. PRR")
+    main_md(project).write_text(more, encoding="utf-8")
+    assert language_findings(project) == sorted([
+        ("abbreviation-undefined", line_of(more, ABBREVIATED)),
+        ("abbreviation-undefined", line_of(more, "3. PRR")),
+    ])  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "aside",
+    [
+        # A bracket's last word whose letters are not before its separator.
+        "Signals were sought in each stratum (see the appendix; PRR).",
+        # A statistic after a dash, and one after a dash and a comma (round 1 of #623).
+        "The proportional reporting ratio fell \N{EN DASH} PRR 2 in each stratum.",
+        "The proportional reporting ratio fell \N{EN DASH} PRR, 2.1 in each stratum.",
+    ],
+)
+def test_a_bracket_s_end_or_a_dash_that_defines_nothing_leaves_it_undefined(
+    project: Path, aside: str
+) -> None:
+    """A revision adds a sentence whose bracket ends with a short form, or a dash stands
+    before one, and nothing before it spells it out: PRR is undefined."""
+    mended = with_ror_defined(project)
+    pasted = mended.replace("The analysis was run in Python",
+                            f"{aside}\n\nThe analysis was run in Python")  # fmt: skip
+    main_md(project).write_text(pasted, encoding="utf-8")
+    assert language_findings(project) == [("abbreviation-undefined", line_of(pasted, aside))]
+
+
+def test_a_reference_list_under_a_quoted_title_ends_where_its_entries_do(
+    project: Path,
+) -> None:
+    """A reference list pasted from Word under a title in a block quote, `> **11.
+    REFERENCES**:`, and the figure legends after it. The list is passed over, its journal's
+    name in capitals with it, and the legends after it are read: their undefined PRR is
+    reported."""
+    mended = with_ror_defined(project)
+    pasted = mended.replace(
+        "The analysis was run in Python",
+        "> **11. REFERENCES**:\n\nSmith J. The NHANES data. BMJ. 2020;1:1-2.\n\n"
+        "**Figure legends**\n\nThe PRR by year.\n\nThe analysis was run in Python",
+    )
+    main_md(project).write_text(pasted, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(pasted, "The PRR by year"))
+    ]
+
+
 def test_a_condition_in_a_table_s_body_is_still_undefined(project: Path) -> None:
     """A baseline table pasted into the Methods, its rows the conditions it counts, in
     capitals as conditions are written. A table's body is not a heading: COPD is undefined."""

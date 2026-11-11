@@ -1456,6 +1456,44 @@ def _notation() -> Reading:
     return notation
 
 
+def _corrected(found: list) -> list[dict[str, Any]]:
+    """Corrections as the two sides compare them: what each corrects, where, and how."""
+    return [{"codes": list(one.codes), "line": one.line, "offset": one.offset,
+             "old": one.old, "new": one.new} for one in found]  # fmt: skip
+
+
+@reading("notation edits")
+def _notation_edits() -> Reading:
+    from manuscript_guard.corrections import corrections
+    from manuscript_guard.gates.notation import notation_edits
+    from manuscript_guard.gates.vocabulary import Passage
+
+    def edited(text: str) -> list[dict[str, Any]]:
+        file = _file(text)
+        passage = Passage(file.path, file.text, file.printed, file.line_of)
+        return _corrected(corrections(notation_edits([passage])))
+
+    _file("")
+    return edited
+
+
+@reading("spelling edits")
+def _spelling_edits() -> Reading:
+    from manuscript_guard.corrections import corrections
+    from manuscript_guard.gates.spelling import spelling_edits
+    from manuscript_guard.gates.vocabulary import Passage
+
+    def edited(given: dict[str, Any]) -> list[dict[str, Any]]:
+        file = _file(given["text"])
+        read = getattr(file, "spelt", file.printed)
+        passage = Passage(file.path, file.text, read, file.line_of)
+        return _corrected(corrections(spelling_edits([passage], given["variant"],
+                                                     given["accepted"])))  # fmt: skip
+
+    _file("")
+    return edited
+
+
 @reading("code names")
 def _code_names() -> Reading:
     from manuscript_guard.gates.code_names import Names, Prose, judge_code_names

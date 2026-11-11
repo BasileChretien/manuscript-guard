@@ -6975,6 +6975,184 @@ def run_on_numbers(draw: st.DrawFn) -> str:
     text, _starts = _paragraphs(draw, (f"it was {piece} then" for piece in planted))
     return "# Results\n\n" + text
 
+
+# ----------------------------------------------------------------- G14's edits
+
+#: A sign after P or n as typed, its spaces to be filled: each symbol of a P, an escaped
+#: sign as pandoc writes one, and n.
+SIGN_USES = ("P{b}={a}0.03", "p{b}={a}0.04", "*P*{b}<{a}0.001", "P{b}\\<{a}0.05", "n{b}={a}12",
+             "N{b}={a}40")  # fmt: skip
+#: The spaces either side of the sign in each form; a sign spaced on one side only, either.
+SIGN_GAPS = {"spaced": ((" ", " "),), "closed": (("", ""),), "lopsided": ((" ", ""), ("", " "))}
+#: What joins two bounds in each form, as the form kept is typed.
+INTERVAL_JOINS = {"'to'": " to ", "an en dash": "\N{EN DASH}", "a hyphen": "-",
+                  "a comma": ", "}  # fmt: skip
+#: The bounds of an interval, a negative one first or not.
+BOUNDS = (("1.2", "3.4"), ("0.8", "1.1"), ("{{results.low}}", "{{results.high}}"))
+NEGATIVE = ("-0.3", "0.4")
+#: A number before "%" with its space to be filled.
+PERCENT_USES = ("5{gap}%", "12{gap}%", "{{results.share}}{gap}%")
+#: A number run into its unit or a word, as typed and as the edit writes it; and what is
+#: neither, a panel, a force and a name, which no edit touches.
+SPACED_BY_EDITS = (("5mg", "5 mg"), ("{{results.dose}}mL", "{{results.dose}} mL"),
+                   ("37\N{DEGREE SIGN}C", "37 \N{DEGREE SIGN}C"), ("30min", "30 min"),
+                   ("0.41points", "0.41 points"), ("2ndyear", "2nd year"),
+                   ("rose to+0.77", "rose to +0.77"),
+                   ("{{results.n}}patients", "{{results.n}} patients"),
+                   ("Figure 3g", "Figure 3g"), ("spun at 16,000g", "spun at 16,000g"),
+                   ("p53mutant", "p53mutant"))  # fmt: skip
+
+
+def _both_ways(draw: st.DrawFn, pairs: list[tuple[str, str]]) -> tuple[str, str]:
+    """A manuscript typed and as edited: each pair's sentence a paragraph of its own between
+    paragraphs of plain words, the same words in both."""
+    between = _in_a_row((*_spaced(FILLER), *_PHRASES), few=2, many=6)
+    typed = edited = "# Results\n\n"
+    for said, fixed in pairs:
+        words = draw(between) + "\n\n"
+        typed += f"{words}It was {said} here.\n\n"
+        edited += f"{words}It was {fixed} here.\n\n"
+    return typed, edited
+
+
+def _counts(draw: st.DrawFn, forms: list[str], level: bool) -> dict[str, int]:
+    """How often each form is used: the first more than any other, or, `level`, the first
+    two as often, and no other more."""
+    top = draw(st.integers(2, 3))
+    counts = {forms[0]: top}
+    for index, form in enumerate(forms[1:], start=1):
+        counts[form] = top if level and index == 1 else draw(st.integers(0 if index > 1 else 1,
+                                                                         top - 1))
+    return counts
+
+
+def _signs_typed(draw: st.DrawFn, level: bool) -> list[tuple[str, str]]:
+    forms = draw(st.permutations(["spaced", "closed"]))
+    counts = _counts(draw, forms, level) | {"lopsided": draw(st.integers(1, 2))}
+    kept = None if level else forms[0]
+    pairs = []
+    for form, count in counts.items():
+        for _ in range(count):
+            use = draw(st.sampled_from(SIGN_USES))
+            before, after = draw(st.sampled_from(SIGN_GAPS[form]))
+            spaces = SIGN_GAPS[kept][0] if kept is not None else (before, after)
+            pairs.append((_filled(use, b=before, a=after), _filled(use, b=spaces[0],
+                                                                    a=spaces[1])))
+    return pairs
+
+
+def _filled(use: str, **gaps: str) -> str:
+    """`use` with each `{name}` of `gaps` filled, a binding's braces left as they are."""
+    for name, gap in gaps.items():
+        use = use.replace("{" + name + "}", gap)
+    return use
+
+
+def _intervals_typed(draw: st.DrawFn, level: bool) -> list[tuple[str, str]]:
+    forms = draw(st.permutations(list(INTERVAL_JOINS)))
+    counts = _counts(draw, forms, level)
+    kept = None if level else forms[0]
+    pairs = []
+    for form, count in counts.items():
+        for index in range(count):
+            # Of a form neither kept nor 'to', the first use has a negative bound, which no
+            # dash may be put beside; 'to' beside a negative bound is not read at all.
+            negative = index == 0 and form not in (kept, "'to'")
+            low, high = NEGATIVE if negative else draw(st.sampled_from(BOUNDS))
+            fixed = form
+            if kept is not None and not (negative and kept != "'to'" and kept != "a comma"):
+                fixed = kept
+            pairs.append((f"CI {low}{INTERVAL_JOINS[form]}{high}",
+                          f"CI {low}{INTERVAL_JOINS[fixed]}{high}"))  # fmt: skip
+    pairs.append((f"CI {NEGATIVE[0]} to {NEGATIVE[1]}",) * 2)
+    return pairs
+
+
+def _percents_typed(draw: st.DrawFn, level: bool) -> list[tuple[str, str]]:
+    forms = draw(st.permutations([" ", ""]))
+    counts = _counts(draw, forms, level)
+    kept = None if level else forms[0]
+    return [(_filled(use, gap=gap), _filled(use, gap=gap if kept is None else kept))
+            for gap, count in counts.items() for use in draw(st.lists(
+                st.sampled_from(PERCENT_USES), min_size=count, max_size=count))]  # fmt: skip
+
+
+@st.composite
+def notation_edited(draw: st.DrawFn) -> list[tuple[str, str]]:
+    """Two manuscripts, each typed and as G14's notation edits leave it. In the first each
+    sign after P or n, each interval and each "%" has a form used more than any other, and
+    the rest are edited to it, but for a dash beside a negative bound; in the second two
+    forms of each are used as often, and none is edited. In both every number run into its
+    unit or a word is spaced, and a panel, a force and a name are not."""
+    made = []
+    for level in (False, True):
+        pairs = (_signs_typed(draw, level) + _intervals_typed(draw, level)
+                 + _percents_typed(draw, level) + list(SPACED_BY_EDITS))  # fmt: skip
+        made.append(_both_ways(draw, draw(st.permutations(pairs))))
+    return made
+
+
+#: Words of each English with one spelling in the other, as the list gives it.
+BRITISH_ONE = {"colour": "color", "behaviour": "behavior", "centre": "center",
+               "tumour": "tumor", "fibre": "fiber", "labelled": "labeled",
+               "paediatric": "pediatric", "haemoglobin": "hemoglobin", "anaemia": "anemia",
+               "analysed": "analyzed", "organise": "organize"}  # fmt: skip
+AMERICAN_ONE = {"color": "colour", "behavior": "behaviour", "center": "centre",
+                "tumor": "tumour", "fiber": "fibre", "labeled": "labelled",
+                "modeling": "modelling", "anemia": "anaemia", "analyze": "analyse"}  # fmt: skip
+#: An American word the list gives two British spellings for.
+AMERICAN_TWO = "anesthetized"
+
+
+def _spelt_typed(draw: st.DrawFn, own: str, theirs: int, ours: int) -> list[tuple[str, str]]:
+    """`theirs` uses of words of the other English, each respelt in `own` where the list
+    gives one spelling, and `ours` of words of `own`, as typed. A word of the other English
+    opens a sentence and keeps its capital; one with a capital inside a sentence is a name,
+    one in a variable's name is none, and neither is respelt."""
+    mine, other = (BRITISH_ONE, AMERICAN_ONE) if own == "en-GB" else (AMERICAN_ONE, BRITISH_ONE)
+    if own == "en-GB":
+        # an `-ize` both write counts for neither, and is not respelt
+        mine = {word: spelt for word, spelt in mine.items() if word != "organise"}
+    pairs = [(f"the {word} seen", f"the {word} seen")
+             for word in draw(st.lists(st.sampled_from(sorted(mine)), min_size=ours,
+                                       max_size=ours))]  # fmt: skip
+    words = draw(st.lists(st.sampled_from(sorted(other)), min_size=theirs, max_size=theirs))
+    for index, word in enumerate(words):
+        if index == 0:
+            pairs.append((f"seen.\n\n{word.capitalize()} was noted",
+                          f"seen.\n\n{other[word].capitalize()} was noted"))  # fmt: skip
+        else:
+            pairs.append((f"the {word} seen", f"the {other[word]} seen"))
+    for word in ("Color", "Colour"):
+        pairs.append((f"the {word} Institute", f"the {word} Institute"))
+    pairs.append(("the colour_score and color_score", "the colour_score and color_score"))
+    return pairs
+
+
+@st.composite
+def spelling_edited(draw: st.DrawFn) -> list[tuple[str | None, str, str]]:
+    """Four manuscripts, each with the English it declares, typed and as G14's spelling
+    edits leave it: one that declares the English most of its words are in, its words of
+    the other respelt but one the list gives two spellings for; one that declares none, its
+    fewer words respelt in the English of the more; one that declares none and has as many
+    of each, and one mostly in the other English than it declares, neither respelt."""
+    made = []
+    declared = draw(st.sampled_from(("en-GB", "en-US")))
+    theirs = draw(st.integers(1, 3))
+    pairs = _spelt_typed(draw, "en-GB", theirs, theirs + draw(st.integers(2, 3)))
+    pairs.append((f"the {AMERICAN_TWO} rats", f"the {AMERICAN_TWO} rats"))
+    made.append(("en-GB", *_both_ways(draw, draw(st.permutations(pairs)))))
+    more = draw(st.sampled_from(("en-GB", "en-US")))
+    pairs = _spelt_typed(draw, more, theirs, theirs + draw(st.integers(1, 3)))
+    made.append((None, *_both_ways(draw, draw(st.permutations(pairs)))))
+    pairs = [(typed, typed) for typed, _ in _spelt_typed(draw, more, theirs, theirs)]
+    made.append((None, *_both_ways(draw, draw(st.permutations(pairs)))))
+    other = "en-US" if declared == "en-GB" else "en-GB"
+    many = sorted(BRITISH_ONE if other == "en-GB" else AMERICAN_ONE)[:6]
+    pairs = [(f"the {word} seen",) * 2 for word in many]
+    made.append((declared, *_both_ways(draw, draw(st.permutations(pairs)))))
+    return made
+
 #: A coding dictionary's release typed beside its name and elsewhere, and its name inside a
 #: longer word: what G2 finds typed where it should be bound.
 RELEASED = (
@@ -12922,6 +13100,18 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "notation edits": st.one_of(
+        texts(NOTATED), notation_edited().flatmap(lambda drawn: st.sampled_from(drawn)).map(
+            lambda pair: pair[0])),
+    "spelling edits": st.one_of(
+        st.fixed_dictionaries({
+            "text": texts(SPELT, REFERENCE_BLOCKS),
+            "variant": st.sampled_from(("en-GB", "en-US", None)),
+            "accepted": st.lists(st.sampled_from(("color", "Tumour", "centre")), max_size=2),
+        }),
+        spelling_edited().flatmap(lambda drawn: st.sampled_from(drawn)).map(
+            lambda case: {"text": case[1], "variant": case[0], "accepted": []}),
+    ),  # fmt: skip
     "novelty claims": novelty_claims().map(lambda drawn: drawn[0]),
     "novelty records": novelty_records().map(lambda drawn: drawn[0]),
     "code names": st.one_of(

@@ -6110,6 +6110,155 @@ def _a_unit_s_plural_is_left_to_the_units(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(notation, "_LOWER_UNITS", units | {unit + "s" for unit in units})
 
 
+from generated import notation_edited, spelling_edited  # noqa: E402
+
+
+def _edited(typed: str, edits_of: Callable[[Any], list]) -> tuple[str, str]:
+    """The text as read, and as the corrections of the edits `edits_of` makes leave it,
+    each correction's words being the text's at its place."""
+    from manuscript_guard.corrections import applied, corrections
+
+    read = _file(0, Path("main.md"), typed, [], False)
+    found = corrections(edits_of(read))
+    for one in found:
+        assert read.text[one.offset : one.offset + len(one.old)] == one.old, one
+    return read.text, applied(read.text, found)
+
+
+@holds(40, notation_edited())
+def test_g14_edits_the_notation_to_the_form_the_manuscript_keeps_at_every_place(
+    drawn: list[tuple[str, str]],
+) -> None:
+    """Each sign after P or n, each interval and each "%" not in the form the manuscript
+    uses most is edited to it, wherever it stands; but not a dash beside a negative bound,
+    nor anything of a thing whose two forms are used as often. Every number run into its
+    unit or a word is spaced, and nothing else is touched: a panel, a force, a name, the
+    P's symbol. Edited, the manuscript is edited no further."""
+    from manuscript_guard.gates.notation import notation_edits
+    from manuscript_guard.gates.vocabulary import Passage
+
+    def edits(read: Any) -> list:
+        return notation_edits([Passage(read.path, read.text, read.printed, read.line_of)])
+
+    for as_typed, expected in drawn:
+        text, edited = _edited(as_typed, edits)
+        assert text == as_typed
+        assert edited == expected, (as_typed, edited)
+        assert _edited(edited, edits)[1] == edited
+
+
+def _the_form_used_least_is_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    def least(family, among=None):
+        forms = [(form, uses) for form, uses in family.forms.items()
+                 if among is None or form in among]  # fmt: skip
+        ranked = sorted(forms, key=lambda item: len(item[1]))
+        return ranked[0][0] if len(ranked) > 1 else None
+
+    patch.setattr(notation, "_kept", least)
+
+
+def _of_two_forms_used_as_often_the_first_is_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    def first(family, among=None):
+        forms = [(form, uses) for form, uses in family.forms.items()
+                 if among is None or form in among]  # fmt: skip
+        ranked = sorted(forms, key=lambda item: -len(item[1]))
+        return ranked[0][0] if ranked else None
+
+    patch.setattr(notation, "_kept", first)
+
+
+def _a_dash_is_put_beside_a_negative_bound(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    patch.setattr(notation, "_DASHES", frozenset())
+
+
+def _a_sign_spaced_on_one_side_is_left(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    real = notation._read
+
+    def read(passages):
+        found = real(passages)
+        found.signs.forms.pop("lopsided", None)
+        return found
+
+    patch.setattr(notation, "_read", read)
+
+
+def _a_space_is_put_after_the_unit(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    real = notation._set
+
+    def after(uses, code, news):
+        if code == "notation-unit":
+            uses = [dataclasses.replace(use, pieces=((use.offset + use.length,) * 2,))
+                    for use in uses]  # fmt: skip
+        return real(uses, code, news)
+
+    patch.setattr(notation, "_set", after)
+
+
+@holds(40, spelling_edited())
+def test_g14_respells_a_word_of_the_other_english_where_the_paper_s_own_is_sure(
+    drawn: list[tuple[str | None, str, str]],
+) -> None:
+    """A word of the other English is respelt in the paper's, at every place it stands, with
+    the capital it opens a sentence with, where the list gives one spelling for it: in a
+    paper that declares the English most of its words are in, and in one that declares
+    none, in the English of the more. Not a name, a variable's name or a word with two
+    spellings; and nothing in a paper that declares none and has as many words of each, nor
+    in one mostly in the other English than it declares. Edited, it is edited no further."""
+    from manuscript_guard.gates.spelling import spelling_edits
+    from manuscript_guard.gates.vocabulary import Passage
+
+    for declared, as_typed, expected in drawn:
+
+        def edits(read: Any, declared: str | None = declared) -> list:
+            passage = Passage(read.path, read.text, read.spelt, read.line_of)
+            return spelling_edits([passage], declared, ())
+
+        text, edited = _edited(as_typed, edits)
+        assert text == as_typed
+        assert edited == expected, (declared, as_typed, edited)
+        assert _edited(edited, edits)[1] == edited
+
+
+def _a_respelt_word_loses_its_capital(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import spelling
+
+    patch.setattr(spelling, "_cased", lambda typed, spelt: spelt)
+
+
+def _of_two_spellings_the_first_is_taken(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import spelling
+
+    patch.setattr(spelling, "_one_spelling", lambda instead: instead.split("/")[0])
+
+
+def _a_paper_mostly_in_the_other_english_is_respelt(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import spelling
+
+    patch.setattr(spelling, "_not_as_declared", lambda *counts: False)
+
+
+def _a_level_paper_is_respelt_in_the_first_s_english(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import spelling
+
+    real = spelling._majority
+
+    def surer(spelt):
+        found = real(spelt)
+        return None if found is None else (found[0], False)
+
+    patch.setattr(spelling, "_majority", surer)
+
+
 def _a_bound_value_after_a_word_is_not_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import notation
 
@@ -22435,6 +22584,42 @@ BROKEN = {
     "a number in hexadecimal is a space left out": (
         _hexadecimal_is_a_space_left_out,
         test_a_space_left_out_around_a_number_is_counted_once_and_nothing_else_is,
+    ),
+    "the notation's edits keep the form used least": (
+        _the_form_used_least_is_kept,
+        test_g14_edits_the_notation_to_the_form_the_manuscript_keeps_at_every_place,
+    ),
+    "of two forms used as often the notation's edits keep the first": (
+        _of_two_forms_used_as_often_the_first_is_kept,
+        test_g14_edits_the_notation_to_the_form_the_manuscript_keeps_at_every_place,
+    ),
+    "the notation's edits put a dash beside a negative bound": (
+        _a_dash_is_put_beside_a_negative_bound,
+        test_g14_edits_the_notation_to_the_form_the_manuscript_keeps_at_every_place,
+    ),
+    "the notation's edits leave a sign spaced on one side": (
+        _a_sign_spaced_on_one_side_is_left,
+        test_g14_edits_the_notation_to_the_form_the_manuscript_keeps_at_every_place,
+    ),
+    "the notation's edits put the space after the unit": (
+        _a_space_is_put_after_the_unit,
+        test_g14_edits_the_notation_to_the_form_the_manuscript_keeps_at_every_place,
+    ),
+    "a respelt word loses its capital": (
+        _a_respelt_word_loses_its_capital,
+        test_g14_respells_a_word_of_the_other_english_where_the_paper_s_own_is_sure,
+    ),
+    "of two spellings the respelling takes the first": (
+        _of_two_spellings_the_first_is_taken,
+        test_g14_respells_a_word_of_the_other_english_where_the_paper_s_own_is_sure,
+    ),
+    "a paper mostly in the other English than it declares is respelt": (
+        _a_paper_mostly_in_the_other_english_is_respelt,
+        test_g14_respells_a_word_of_the_other_english_where_the_paper_s_own_is_sure,
+    ),
+    "a paper with as many words of each English is respelt in the first's": (
+        _a_level_paper_is_respelt_in_the_first_s_english,
+        test_g14_respells_a_word_of_the_other_english_where_the_paper_s_own_is_sure,
     ),
     "numbers agree only as printed": (
         _numbers_agree_only_as_printed,

@@ -5588,6 +5588,25 @@ is not a rule.
 The example joins the bounds of its five intervals with "to", sets "%" against its number
 and states no P value with a sign, so it has nothing to report.
 
+**What has one answer is offered as an edit, at every place** (`notation_edits`,
+`spelling_edits`, `corrections.py`). The author asked for a copy of an audited paper with
+the corrections in Word's Track Changes (2026-11-11), and chose the kinds: spelling,
+spacing, intervals and abbreviations. A finding names the first place only. An edit is one
+change at one place, and the readings make one at every place: each sign after P or n
+spaced as the manuscript spaces most of them, each interval joined and each "%" set as
+most are, a space between a number and the unit or word it runs into, and each word of
+the other English respelt in the paper's, with its capital. Where the readings are not
+sure there is no edit, and the finding stays for the author: two forms used as often; the
+P's symbol, which is the journal's; a dash beside a negative bound, which would read as its
+sign; a word the list spells two ways; a paper mostly in the other English than it
+declares, whose declaration is likelier wrong; one that declares none and has as many
+words of each; and the two endings of `spelling-mixed`, where the list does not pair every
+word. The edits of one stretch, or of stretches that overlap, are one correction, and two
+that change the same characters differently are both dropped. An edit's place is the
+passage's text, which for a .docx is the text pandoc converts it to. Held by
+`tests/test_properties.py`, which builds each manuscript with the text its edits must
+leave, and by `tests/test_corrections.py`.
+
 ## A name from the code is no word of the prose
 
 "hr_adj_main was 1.42" and "patients with ckd_flag" are sentences written from the

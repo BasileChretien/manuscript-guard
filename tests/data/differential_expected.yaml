@@ -56,11 +56,16 @@ expected:
       link's target hid it up to the next `)`
   - reading: placeholders
     why: >-
-      a journal template's instruction to its authors, "In this section you can acknowledge
-      any support given ...", "This section may be divided by subheadings", Word's "Click or
-      tap here to enter text.", is found as a placeholder, `placeholder-template`; the inputs
-      now hold such instructions, and a section the authors describe, a form a paper
-      reproduces and PLOS's "Click here for additional data file", which it is not
+      a placement marker, a table or a figure named with its number where it is to go,
+      "[Insert Table 1 here]", "[INSERT FIGURE 2]", also after pandoc's escaping, is no
+      placeholder (Basile, 2026-11-11, after 52 real preprints); the inputs now hold a marker
+      of each form, and an instruction with no number or with other words, which is one still
+  - reading: table margins
+    why: >-
+      categories over their column's n by no more than half a count each, rounded down and
+      at least one, are said as a gap rounding weighted counts may make (Basile, 2026-11-11,
+      a survey's age groups at 12,766 under "N = 12,765"); the inputs now hold such a column
+      beside one over by one more, which is said as before
   - reading: import
     why: >-
       under "would merge into" and "NOT merged into" the import prints each changed

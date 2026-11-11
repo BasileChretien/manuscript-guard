@@ -5452,7 +5452,9 @@ def test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them(
     the total's line, and a line with a dash or an empty cell in it is not read; a row
     whose label starts as a total's does and is none ("Total cholesterol") totals nothing;
     a characteristic's categories whose shares add up to 100 and whose counts add up to more
-    than their column's n are said, and fewer is not. A count held back that a printed total
+    than their column's n are said, and fewer is not; more by no more than half a count a
+    category, rounded down and at least one, is said as rounding (Basile, 2026-11-11). A
+    count held back that a printed total
     gives away is said with its count, from one to below the minimum, or from one with none;
     one only its column's n gives away is said as not explicit; two held back in one line
     with room between them are not."""
@@ -5469,7 +5471,8 @@ def test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them(
 
     found = {
         "off": [line.total.count.line for table in tables for line, _wrong in sums_off(table)],
-        "over": [one.line for table in tables for one in over_n(table)],
+        "over": [one.line for table in tables for one in over_n(table) if not one.rounding],
+        "rounding": [one.line for table in tables for one in over_n(table) if one.rounding],
         "five": held(5),
         "none": held(None),
     }
@@ -5516,6 +5519,18 @@ def _the_header_n_is_a_printed_total(patch: pytest.MonkeyPatch) -> None:
     real = margins._header_lines
     patch.setattr(margins, "_header_lines", lambda rows: [
         replace(line, explicit=True) for line in real(rows)])  # fmt: skip
+
+
+def _no_gap_over_a_columns_n_is_rounding(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import margins
+
+    patch.setattr(margins, "within_rounding", lambda total, n, categories: False)
+
+
+def _rounding_allows_a_whole_count_a_category(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import margins
+
+    patch.setattr(margins, "rounding_allowance", lambda categories: categories)
 
 
 def _categories_fewer_than_their_n_are_said(patch: pytest.MonkeyPatch) -> None:
@@ -15021,6 +15036,26 @@ def _an_instruction_marked_or_linked_is_a_link_s_text(patch: pytest.MonkeyPatch)
     _placeholder_rule(patch, "placeholder", lambda p: p + r"(?![(\[{])")
 
 
+#: The lookahead that keeps a placement marker out of the instruction rule.
+_MARKER = r"(?!insert\s+(?:table|fig(?:ure|\.)?)\s+[a-z]?\d+[a-z]?"
+
+
+def _a_placement_marker_is_a_slot(patch: pytest.MonkeyPatch) -> None:
+    def change(pattern: str) -> str:
+        assert _MARKER in pattern, "the instruction rule no longer leaves markers out this way"
+        return pattern.replace(_MARKER, "(?!(?!)")
+
+    _placeholder_rule(patch, "placeholder", change)
+
+
+def _a_marker_needs_no_number(patch: pytest.MonkeyPatch) -> None:
+    def change(pattern: str) -> str:
+        assert _MARKER in pattern, "the instruction rule no longer leaves markers out this way"
+        return pattern.replace(_MARKER, _MARKER.replace(r"\s+[a-z]?\d+[a-z]?", r"(?:\s+\w+)?"))
+
+    _placeholder_rule(patch, "placeholder", change)
+
+
 def _in_the_template_rule(patch: pytest.MonkeyPatch, written: str, broken: str) -> None:
     def change(pattern: str) -> str:
         assert written in pattern, "the template rule no longer reads this way"
@@ -21790,6 +21825,14 @@ BROKEN = {
         _the_header_n_is_a_printed_total,
         test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
     ),
+    "no gap over a column's n is rounding": (
+        _no_gap_over_a_columns_n_is_rounding,
+        test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
+    ),
+    "rounding allows a whole count a category": (
+        _rounding_allows_a_whole_count_a_category,
+        test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
+    ),
     "categories fewer than their column's n are said": (
         _categories_fewer_than_their_n_are_said,
         test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
@@ -23148,6 +23191,14 @@ BROKEN = {
     ),
     "an instruction marked or linked is not read": (
         _an_instruction_marked_or_linked_is_a_link_s_text,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "a placement marker is a slot": (
+        _a_placement_marker_is_a_slot,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "a placement marker needs no number": (
+        _a_marker_needs_no_number,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
     ),
     "Word's prompt is read without what it asks for": (

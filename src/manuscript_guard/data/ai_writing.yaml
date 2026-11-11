@@ -53,8 +53,16 @@ artefacts:
   # followed by a space or the bracket, so a title translated into English in brackets,
   # "[Add-on therapy in epilepsy]", is no slot. "[Your ...]" is one in the manuscript only:
   # PubMed's translated titles open so, "[Your diagnosis?]".
+  #
+  # A placement marker is no slot: a table or a figure named with its number where it is to
+  # go, "[Insert Table 1 here]", "[INSERT FIGURE 2]", "[Insert Figure S1 about here]", and
+  # after pandoc's escaping "\[Insert Table 1 here\]". APA and many journals ask for one
+  # where the displays follow the text, and on 52 real preprints it was never a gap (Basile,
+  # 2026-11-11). "[Figure 1 about here]" and a marker on a line of its own, "Insert Table 1
+  # about here", match no rule. Without a number, "[Insert table here]", or with other
+  # words, "[Insert Table 1 data]", it is still a slot.
   - id: placeholder
-    pattern: '(?i)\[(?:insert|add|describe|replace|fill|enter|specify)(?:\s(?:[^\]\n]|\n(?![ \t]*\n)){0,60})?\]'
+    pattern: '(?i)\[(?!insert\s+(?:table|fig(?:ure|\.)?)\s+[a-z]?\d+[a-z]?(?:\s+(?:about\s+)?here)?[ \t]*\.?[ \t]*\\?\])(?:insert|add|describe|replace|fill|enter|specify)(?:\s(?:[^\]\n]|\n(?![ \t]*\n)){0,60})?\]'
     why: Unfilled placeholder text
     elsewhere: true
   - id: placeholder-your

@@ -110,6 +110,9 @@ def _arithmetic(report) -> str:
                if report.flows_broken else ""]  # fmt: skip
     counted = [part for part in counted if part]
     said = "; ".join(counted) + (" (counted by --strict)" if counted else "")
+    if report.over_n_rounding:
+        said += ("; " if said else "") + (
+            _n(len(report.over_n_rounding), "column") + " over its n by no more than rounding")
     if report.disagreements:
         said += ("; " if said else "") + (
             f"{_n(len(report.disagreements), 'number')} that may not fit the ones beside it")

@@ -141,6 +141,46 @@ def test_categories_over_their_columns_n_are_said_and_fewer_are_not() -> None:
     assert [(one.line, one.message) for one in found] == [
         (4, "the categories of 'Region' in column 'Cases (n = 120)' add up to 140, more than "
             "its n = 120, and their shares to 100")]  # fmt: skip
+    assert [one.rounding for one in found] == [False]
+
+
+def test_categories_over_their_n_by_no_more_than_rounding_are_said_as_rounding() -> None:
+    """Basile, 2026-11-11, after the corpus of 52 real preprints (slug psych): a survey of 22
+    countries prints weighted counts, each rounded, under "N = 12,765^1^", and the age groups
+    add up to 12,766. Over by no more than half a count a category, rounded down and at
+    least one, is what rounding can make; one more than that is a contradiction still."""
+    text = """
+| Characteristic | N = 12,765^1^ | Panel (n = 120) | Pooled (n = 300) |
+|---|---|---|---|
+| Age group | | | |
+| 18-29 | 2,553 (20.0) | 30 (25.0) | 76 (25.0) |
+| 30-44 | 3,830 (30.0) | 30 (25.0) | 75 (25.0) |
+| 45-59 | 3,829 (30.0) | 30 (25.0) | 75 (25.0) |
+| 60 or over | 2,554 (20.0) | 32 (25.0) | 77 (25.0) |
+"""
+    found = over_n(table(text))
+    # 4 categories: 12,766 and 122 are within 2 of their n, 303 is not.
+    assert [(one.line, one.rounding) for one in found] == [(4, True), (4, True), (4, False)]
+    assert found[0].message == (
+        "the categories of 'Age group' in column 'N = 12,765^1^' add up to 12766, 1 more than "
+        "its n = 12765, and their shares to 100: the gap may be rounding of weighted counts, "
+        "as 4 counts each rounded to a whole number can add up to 2 more")  # fmt: skip
+    assert found[2].message.endswith("add up to 303, more than its n = 300, and their shares "
+                                     "to 100")  # fmt: skip
+
+
+@pytest.mark.parametrize(("categories", "allowed"), [(2, 1), (3, 1), (4, 2), (5, 2), (6, 3)])
+def test_rounding_allows_half_a_count_a_category_and_at_least_one(
+    categories: int, allowed: int
+) -> None:
+    from manuscript_guard.stats.margins import rounding_allowance, within_rounding
+
+    assert rounding_allowance(categories) == allowed
+    assert within_rounding(100 + allowed, 100, categories)
+    assert not within_rounding(100 + allowed + 1, 100, categories)
+    # Fewer is missing data, said nowhere; equal is no gap.
+    assert not within_rounding(99, 100, categories)
+    assert not within_rounding(100, 100, categories)
 
 
 # ---------------------------------------------------------------------- given away

@@ -39,7 +39,10 @@ another, or, where counts are held back, every sum they allow is.
 
 `over_n`: the categories of a characteristic, the rows under a label of their own, whose
 shares in a column add up to 100 (`shares._summed`) and whose counts add up to more than
-the n its header names. Fewer is what missing data look like, and is not said.
+the n its header names. Fewer is what missing data look like, and is not said. More by no
+more than half the number of categories, rounded down and at least one, is what rounding
+weighted counts to whole numbers can make, and is said as such (`within_rounding`): the
+audit gives it as a note, which `--strict` does not count (Basile, 2026-11-11).
 
 `recovered`: each count held back that a line gives away. Each count of a line is a range,
 a printed one a single number; a count's range given the total is the total less the
@@ -144,11 +147,13 @@ class Recovered:
 @dataclass(frozen=True)
 class OverN:
     """Categories whose shares add up to 100 and whose counts add up to more than their
-    column's n."""
+    column's n; `rounding` where by no more than rounding weighted counts can make
+    (`within_rounding`)."""
 
     line: int
     message: str
     context: str
+    rounding: bool = False
 
 
 # ------------------------------------------------------------------------------ a count
@@ -546,19 +551,24 @@ def over_n(table: Table) -> list[OverN]:
     summed = shares._summed(rows)
     head = table[0] if table else ()
     found = []
-    for (run, column), (total, _members, _whole) in sorted(summed.items()):
+    for (run, column), (total, members, _whole) in sorted(summed.items()):
         first = next(row for row in rows if row.run == run)
         n = first.over.get(column)
         if n is None or not _exceeds(total, n):
             continue
         name = next((cell.text for c, cell in shares._columns(head) if c == column), "")
         where = repr(" ".join(name.split())) if name.strip() else f"{column + 1}"
-        found.append(OverN(
-            first.cells[0][1].line,
-            f"the categories of {' '.join(first.group.split())!r} in column {where} add up "
-            f"to {total}, more than its n = {n}, and their shares to 100",
-            first.context,
-        ))  # fmt: skip
+        message = (f"the categories of {' '.join(first.group.split())!r} in column {where} add "
+                   f"up to {total}")  # fmt: skip
+        rounding = within_rounding(total, n, len(members))
+        if rounding:
+            message += (f", {total - n} more than its n = {n}, and their shares to 100: the gap "
+                        f"may be rounding of weighted counts, as {len(members)} counts each "
+                        f"rounded to a whole number can add up to "
+                        f"{rounding_allowance(len(members))} more")  # fmt: skip
+        else:
+            message += f", more than its n = {n}, and their shares to 100"
+        found.append(OverN(first.cells[0][1].line, message, first.context, rounding))
     return found
 
 
@@ -566,6 +576,21 @@ def _exceeds(total: int, n: int) -> bool:
     """Whether categories' counts contradict their column's n: more than it. Fewer is what
     missing data look like."""
     return total > n
+
+
+def rounding_allowance(categories: int) -> int:
+    """How far the counts of `categories` categories may add up beyond their column's n by
+    rounding alone: half a count each, rounded down, and at least one. A table of weighted
+    counts prints each rounded to a whole number, and the n is the weighted total rounded
+    once, so the printed counts can sum to a little more than it (Basile, 2026-11-11, after
+    a 22-country survey whose age groups summed to one to three over each column's n)."""
+    return max(1, categories // 2)
+
+
+def within_rounding(total: int, n: int, categories: int) -> bool:
+    """Whether categories' counts exceed their column's n by no more than rounding weighted
+    counts can explain (`rounding_allowance`): a note, not a contradiction."""
+    return 0 < total - n <= rounding_allowance(categories)
 
 
 __all__ = [
@@ -579,8 +604,10 @@ __all__ = [
     "is_total",
     "over_n",
     "recovered",
+    "rounding_allowance",
     "said",
     "sum_off",
     "sums_off",
     "table_lines",
+    "within_rounding",
 ]

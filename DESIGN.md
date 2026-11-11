@@ -4839,6 +4839,23 @@ words count in capitals only, since "Todo" opens many a Spanish title; in the ma
 they count in any case, as they always did. Each is a failure from drafting, as the other
 artefacts are.
 
+A placement marker is no slot: a table or a figure named with its number where it is to go,
+in brackets, "[Insert Table 1 here]", "[INSERT FIGURE 2]", "[Insert Figure S1 about here]",
+"\[Insert Table 1 here\]" as pandoc escapes it, or on a line of its own, "Insert Table 1
+about here". APA and many journals ask authors for one where the tables and figures follow
+the text, and in the corpus of 52 real preprints every one G6 failed as a placeholder was
+such a marker (Basile, 2026-11-11). The instruction rule leaves out "insert", then "table",
+"figure" or "fig.", a number with a letter before or after it, and "here" or "about here"
+or nothing, up to the closing bracket; "[Figure 1 about here]" and a marker on a line of
+its own match no rule. With no number, "[Insert table here]", or with other words,
+"[Insert Figure 2 legend]", it is a slot still. Round 1 of #625 took in the numbers papers
+print besides "1" and "S1": one with a dot, "Table 1.1", "Figure S1.2"; a Roman numeral
+from I to XIX, as IEEE numbers its tables, "[Insert Table IV here]"; and "Fig." run into
+it, "[Insert Fig.1 here]". The capitals rule leaves out a marker all in capitals with a
+Roman numeral, "[INSERT TABLE XIV]", which is capitals in brackets that say INSERT. X and
+XX are left out, since a template writes a number still to fill as X: "[Insert Table X
+here]" is a slot.
+
 **A journal template's instructions are found by the template's own words.** Papers are
 printed with "In this section you can acknowledge any support given which is not covered by
 the author contribution or funding sections", MDPI's text for the acknowledgements, two of
@@ -9871,7 +9888,14 @@ the total less the others' highs up to the total less their lows, within its own
 range at all is a total the printed counts cannot make, `sum-off`. A range of one value is
 a count held back that the line gives away. Categories whose shares add up to 100
 (`shares._summed`) and whose counts add up to more than their column's header n are the one
-contradiction read of a header n (`over-header-n`); fewer is missing data.
+contradiction read of a header n (`over-header-n`); fewer is missing data. Over by no more
+than (k + 1) / 2 for k categories, rounded down (`within_rounding`), is no contradiction:
+rounding each of k weighted counts to a whole number moves it by half a count at most, and
+rounding the weighted n once moves it by half a count too, so the printed counts can add up
+to (k + 1) / 2 over the printed n, and both are whole. Three counts of 11.5 print 36
+against an n of 34.5 printed 34 (round 1 of #625; k / 2 alone allowed one). The audit says it as a note, which `--strict` does not count, and `--json` counts it apart
+(`over_header_n_rounding`). Basile, 2026-11-11, after a 22-country survey in the corpus of
+52 real preprints whose weighted, rounded tables gave 24 failures, each one to three over.
 
 In `check`, G2's `count-recoverable` (from internal review, as `count-below-minimum`) reads
 each emitted table the manuscript or the supplement binds, each declared sum, and each step
@@ -25523,6 +25547,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
     put on an earlier paragraph that holds that cell's words; a "|" in prose parts a quote
     the same way. A quote that is the finding's words alone, a heading "AS", is listed
     wherever two paragraphs hold it, a word as well as a number. Accepted.
+- **A placement marker passes G6 wherever it stands, and a gap rounding could make is a note
+  in any table.** Basile's rule of 2026-11-11, after the corpus of 52 real preprints, in
+  which both failures were always wrong. A marker, "[Insert Table 1 here]", left in a paper
+  whose tables stand in the text is not said. Categories over their column's n by no more
+  than (k + 1) / 2 for k categories, rounded down, are a note whether or not the table's
+  counts are weighted: the tool cannot tell weighted counts from others. So in a table of
+  unweighted counts, an error that puts the sum that far over is said and not counted by
+  `--strict`, and the bound grows with the categories: two or three over for four or five,
+  ten over for twenty countries. Pinned by
+  `tests/test_corruption.py::test_what_looks_like_a_placeholder_and_is_prose_passes`,
+  `tests/test_audit_sections.py::test_categories_over_their_n_by_no_more_than_rounding_are_a_note`,
+  `tests/test_margins.py::test_twenty_categories_over_their_n_by_ten_are_rounding`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

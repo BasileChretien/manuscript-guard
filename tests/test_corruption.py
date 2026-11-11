@@ -7414,6 +7414,17 @@ def test_none_is_a_correction_with_its_reason(project: Path) -> None:
         "replace this later.",
         "Delete this section.",
         "Add your affiliation here.",
+        # Beside the placement markers that pass (Basile, 2026-11-11): an instruction with no
+        # number, one with other words, and the slots that failed before, fail still.
+        "[Insert table here]",
+        "[Insert Figure 2 legend]",
+        "[Insert reference]",
+        "[INSERT DATA]",
+        "[Insert Table 1 data here]",
+        # Round 1 of #625: an X is how a template writes a number still to fill, so a marker
+        # with X or XX for its number is a slot, though X is ten in Roman numerals.
+        "[Insert Table X here]",
+        "[INSERT FIGURE XX]",
     ],
 )
 def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None:
@@ -7459,6 +7470,29 @@ def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None
         'Respondents could answer yes or no, or state "not applicable".',
         "AB wrote the\ntext for this section and CD the rest.",
         "We screened each title and\nabstract text. Two reviewers read each.",
+        # A placement marker, which APA and many journals ask for where the displays follow
+        # the text (Basile, 2026-11-11, after the corpus of 52 real preprints, in which G6
+        # failed it each time: slugs educ, an education paper's "[Insert Table 1 here]" after
+        # pandoc's escaping, and socio, a sociology PDF's "[INSERT FIGURE 1]").
+        "Results follow.\n\n\\[Insert Table 2 here\\]\n\nThe rest follows.",
+        "[INSERT FIGURE 3]",
+        "[Insert Figure 2 here]",
+        "[Insert Table 1 about here]",
+        "[Insert Fig. S2 here.]",
+        "[Figure 1 about here]",
+        "[Table 3 about here]",
+        "Results follow.\n\nInsert Table 1 about here\n\nThe rest follows.",
+        "Results follow.\n\nINSERT FIGURE 3 ABOUT HERE\n\nThe rest follows.",
+        # Round 1 of #625: a Roman numeral as IEEE numbers its tables, no space after
+        # "Fig.", and a number with a dot in it.
+        "[Insert Table I here]",
+        "[Insert Table XIV about here]",
+        "[Insert Fig.1 here]",
+        "[Insert Table 1.1 here]",
+        "[INSERT FIGURE S1.2]",
+        # All in capitals with a Roman numeral, which the capitals rule read as a slot.
+        "[INSERT TABLE XIV]",
+        "[INSERT FIGURE IV ABOUT HERE]",
     ],
 )
 def test_what_looks_like_a_placeholder_and_is_prose_passes(project: Path, prose: str) -> None:

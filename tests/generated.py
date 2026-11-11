@@ -6805,6 +6805,13 @@ PLACEHOLDERS = (
     ("This is a short text to acknowledge the contributions",
      "This is a short text to acknowledge"),
     ("Sample body text.", "Sample body text"),
+    # Beside the placement markers (Basile, 2026-11-11): one with no number, and one with
+    # other words, are slots still.
+    ("[Insert table here]", "[Insert table here]"),
+    ("[Insert Figure 2 legend]", "[Insert Figure 2 legend]"),
+    # Round 1 of #625: X for a number still to fill, though X is ten in Roman numerals.
+    ("[Insert Table X here]", "[Insert Table X here]"),
+    ("[INSERT FIGURE XX]", "[INSERT FIGURE XX]"),
 )  # fmt: skip
 LOWERED = (("tbd", "tbd"), ("fixme", "fixme"), ("Todo", "Todo"))
 LOOKALIKES = (
@@ -6813,6 +6820,14 @@ LOOKALIKES = (
     "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]", "In this section, you can see the code.",
     "In this section, please indicate how often", 'Please state "yes" or "no".',
     'If none, please state "not applicable".', "Click here for additional data file.",
+    # A placement marker, in each form (Basile, 2026-11-11, on 52 real preprints): a table
+    # or a figure and its number, where it is to go, and after pandoc's escaping.
+    "[Insert Table 1 here]", "[INSERT FIGURE 2]", "[Insert Figure S1 about here]",
+    "\\[Insert Table 3 here\\]", "[insert fig. 4 here.]", "[Figure 1 about here]",
+    "[Table 3 about here]", "Insert Table 1 about here",
+    # Round 1 of #625: a Roman numeral, no space after "Fig.", a number with a dot in it.
+    "[Insert Table IV here]", "[INSERT TABLE XIX]", "[Insert Fig.1 here]",
+    "[Insert Table 1.1 here]", "[Insert Figure S1.2 about here]",
 )  # fmt: skip
 
 #: Words to the reviewers or to a model left in a paper, each a sentence, with the rule of
@@ -7437,24 +7452,28 @@ def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
     """A paper with a table of each kind of `MARGIN_KINDS`, in an order drawn, and what the
     reading of a table's totals finds in it: the line of each total its counts do not add
     up to (`off`), of the first category of each characteristic whose categories add up to
-    more than their column's n (`over`), and each count held back that a total gives away,
-    by its line, its count and whether a printed total gives it, at a minimum of five
-    (`five`) and with none (`none`).
+    more than their column's n by more than rounding weighted counts can make (`over`), and
+    by no more (`rounding`), and each count held back that a total gives away, by its line,
+    its count and whether a printed total gives it, at a minimum of five (`five`) and with
+    none (`none`).
 
     The kinds: a total row, one column of it off, under a characteristic's label and a row
     of counts above that; a total column, one row of it off; a count held back that a total
     row gives away, beside two in another column that it does not; one a total column gives
     away; one of up to nine that a total gives away, which a minimum of five allows, and one
     it gives away as nought; categories adding up to more than their column's n, their
-    shares to 100, beside categories adding up to fewer; a count held back that only the
-    column's n gives away; lines with a dash or an empty cell in them, which are read
-    nowhere; and rows whose label starts as a total's does and that are none."""
+    shares to 100, beside categories adding up to fewer and categories adding up to more by
+    no more than half a count each and half for the n, once as only the n's half count
+    allows; a count held back that only the column's n gives away; lines with a dash or an
+    empty cell in them, which are read nowhere; and rows whose label starts as a total's
+    does and that are none."""
     places = draw(st.integers(0, 2))
     grouped = draw(st.booleans())
     first, second = draw(st.sampled_from(ARMS))
     sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
     lines: list[str] = [draw(sentence).capitalize() + "."]
-    expected: dict[str, list] = {"off": [], "over": [], "five": [], "none": []}
+    expected: dict[str, list] = {"off": [], "over": [], "rounding": [], "five": [],
+                                 "none": []}  # fmt: skip
 
     def count(number: int) -> str:
         return f"{number:,}" if grouped else str(number)
@@ -7573,16 +7592,38 @@ def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
                 else:
                     row(name, count(x), count(y), count(x + y))
         elif kind == "over n":
+            # Over by more than rounding weighted counts can make, which fails; fewer, which
+            # is missing data; over by no more than half a count a category and half for
+            # the n, a note (Basile, 2026-11-11: a survey's weighted, rounded age groups,
+            # "N = 12,765^1^" and 12,766 in them); and over by one more than that, which
+            # fails. The last two columns' n may have a footnote mark after it. Then three
+            # categories two over in the weighted column, which only the n's own half count
+            # allows (round 1 of #625), and at their n in the others.
             n, m = draw(st.integers(40, 2000)), draw(st.integers(40, 2000))
-            table("Characteristic", f"{first} (n = {count(n)})", f"{second} (n = {count(m)})")
-            group(2)
+            w, v = draw(st.integers(40, 20000)), draw(st.integers(40, 20000))
+            mark = draw(st.sampled_from(("", "^1^", "^a^")))
+            table("Characteristic", f"{first} (n = {count(n)})", f"{second} (n = {count(m)})",
+                  f"Weighted (N = {count(w)}{mark})", f"Pooled (N = {count(v)}{mark})")
+            group(4)
             many = draw(st.integers(2, 4))
-            more, fewer = n + draw(st.integers(1, n // 2)), draw(st.integers(1, m - 1))
-            a, b = _split(draw, more, many), _split(draw, fewer, many)
-            at = [row(name, f"{count(x)} ({_printed(x, more, places)})",
-                      f"{count(y)} ({_printed(y, fewer, places)})")
-                  for name, x, y in zip(CATEGORIES, a, b, strict=False)]  # fmt: skip
-            expected["over"].append(at[0])
+            allowed = max(1, (many + 1) // 2)
+            more = n + draw(st.integers(allowed + 1, n // 2))
+            fewer = draw(st.integers(1, m - 1))
+            rounded, beyond = w + draw(st.integers(1, allowed)), v + allowed + 1
+            columns = [_split(draw, total, many) for total in (more, fewer, rounded, beyond)]
+            at = [row(name, *(f"{count(x)} ({_printed(x, total, places)})"
+                              for x, total in zip(cells, (more, fewer, rounded, beyond),
+                                                  strict=True)))
+                  for name, *cells in zip(CATEGORIES, *columns, strict=False)]  # fmt: skip
+            expected["over"] += [at[0], at[0]]
+            expected["rounding"].append(at[0])
+            group(4)
+            sums = (n, m, w + 2, v)
+            columns = [_split(draw, total, 3) for total in sums]
+            at = [row(name, *(f"{count(x)} ({_printed(x, total, places)})"
+                              for x, total in zip(cells, sums, strict=True)))
+                  for name, *cells in zip(CATEGORIES, *columns, strict=False)]  # fmt: skip
+            expected["rounding"].append(at[0])
         elif kind == "by n":
             n = draw(st.integers(40, 2000))
             table("Characteristic", f"{first} (n = {count(n)})", second)

@@ -30,7 +30,8 @@ What was read and what was not comes first, then a section for each kind of chec
 `--strict` counts the numbers not found in the outputs, a paper or a stretch of one that
 could not be read, an audit that read no number, and what is exact arithmetic: a total that
 its counts do not add up to (`sum-off`), categories that add up to more than their column's
-n (`over-header-n`), and a count held back that a printed total gives away
+n (`over-header-n`; a note where by no more than rounding weighted counts can make, Basile,
+2026-11-11), and a count held back that a printed total gives away
 (`count-recoverable`), a flow whose arithmetic does not hold under a heading, a caption or a
 paragraph that names a flow (`flow-broken`; under none it is a note, Basile, 2026-10-29), and an
 interval or a test of the Abstract that differs from its counterpart where the paper reports
@@ -142,6 +143,11 @@ def items(report) -> list[Item]:
         Item(ARITHMETIC, "audit", "over-header-n", d.message, FAIL, True, d.source, d.line,
              d.context)
         for d in report.over_n
+    ]  # fmt: skip
+    found += [
+        Item(ARITHMETIC, "audit", "over-header-n", d.message, INFO, False, d.source, d.line,
+             d.context)
+        for d in report.over_n_rounding
     ]  # fmt: skip
     found += [
         Item(ARITHMETIC, "audit", "mean-not-assessable", d.message, INFO, False, d.source,
@@ -411,6 +417,8 @@ def as_json(report, discrimination) -> str:
         "not_compared": report.uncompared,
         "totals_off": len(report.sums_off),
         "over_header_n": len(report.over_n),
+        # Over by no more than rounding weighted counts can make: a note, not counted.
+        "over_header_n_rounding": len(report.over_n_rounding),
         # Apart, as the text says them: --strict counts the first and not the second.
         "recoverable": len(report.recovered),
         "recoverable_by_n": len(report.recovered_by_n),
@@ -586,8 +594,9 @@ def _rendered(found, root: Path | None, show: _Show) -> str:
 
 def _anything_in_arithmetic(report) -> bool:
     """Whether the Arithmetic section says more than that nothing disagrees."""
-    return bool(report.sums_off or report.over_n or report.disagreements or report.whole_numbers
-                or report.flows_read or report.flow_notes)  # fmt: skip
+    return bool(report.sums_off or report.over_n or report.over_n_rounding
+                or report.disagreements or report.whole_numbers or report.flows_read
+                or report.flow_notes)  # fmt: skip
 
 
 def _anything_in_references(report) -> bool:
@@ -872,6 +881,10 @@ def _arithmetic(report, show) -> list[str]:
     over = _listed("CATEGORIES THAT ADD UP TO MORE THAN THEIR COLUMN'S N, their shares to 100 "
                    "(counted by --strict):", report.over_n, show)  # fmt: skip
     lines += ([""] if lines and over else []) + over
+    rounded = _listed("CATEGORIES THAT ADD UP TO MORE THAN THEIR COLUMN'S N BY NO MORE THAN "
+                      "ROUNDING WEIGHTED COUNTS CAN MAKE, half a count for each category and for "
+                      "the n (not counted by --strict):", report.over_n_rounding, show)  # fmt: skip
+    lines += ([""] if lines and rounded else []) + rounded
     if lines and report.disagreements:
         lines.append("")
     if report.disagreements:

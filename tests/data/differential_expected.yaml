@@ -58,11 +58,21 @@ expected:
       link's target hid it up to the next `)`
   - reading: placeholders
     why: >-
-      a journal template's instruction to its authors, "In this section you can acknowledge
-      any support given ...", "This section may be divided by subheadings", Word's "Click or
-      tap here to enter text.", is found as a placeholder, `placeholder-template`; the inputs
-      now hold such instructions, and a section the authors describe, a form a paper
-      reproduces and PLOS's "Click here for additional data file", which it is not
+      a placement marker, a table or a figure named with its number where it is to go,
+      "[Insert Table 1 here]", "[INSERT FIGURE 2]", also after pandoc's escaping, with a
+      number that has a dot in it, "Table 1.1", a Roman numeral from I to XIX, "[INSERT TABLE
+      XIV]", or "Fig." run into it, "[Insert Fig.1 here]", is no placeholder (Basile,
+      2026-11-11, after 52 real preprints; round 1 of #625); the inputs now hold a marker of
+      each form, and an instruction with no number, with other words, or with X or XX for
+      its number, which is one still
+  - reading: table margins
+    why: >-
+      categories over their column's n by no more than (k + 1) / 2 for k categories,
+      rounded down, are said as a gap rounding weighted counts and the n may make (Basile,
+      2026-11-11, a survey's age groups at 12,766 under "N = 12,765"; round 1 of #625 added
+      the n's half count); the inputs now hold such a column beside one over by one more,
+      which is said as before, and three categories two over, which only the n's half count
+      allows
   - reading: import
     why: >-
       under "would merge into" and "NOT merged into" the import prints each changed

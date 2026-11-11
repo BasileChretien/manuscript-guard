@@ -994,6 +994,15 @@ def glossaries_untitled(draw: st.DrawFn) -> dict[str, Any]:
     }  # fmt: skip
 
 
+#: A contributions statement and the initials it names in brackets in the paper, which
+#: every input of the `abbreviations` reading ends with, under a heading of its own so that
+#: no section before it hides it: drawn as one block among the pool's, it was in none of
+#: 120 inputs once #623 added blocks, and a rule that stopped reading the initials went
+#: unnoticed (round 3 of #623).
+INITIALS_NAMED = next(
+    block for block in NOT_ABBREVIATIONS if "**Author contributions:** EF" in block
+)
+
 #: The same pieces, as blocks a manuscript of the pool is drawn with.
 ABBREVIATION_BLOCKS = tuple(
     f"\n\n{written}\n\n"
@@ -12793,7 +12802,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "abbreviations": st.fixed_dictionaries(
         {
-            "text": texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)),
+            "text": texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)).map(
+                lambda text: f"{text}\n\n# Methods\n\n{INITIALS_NAMED}\n"
+            ),
             "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
         }
     ),

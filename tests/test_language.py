@@ -1074,6 +1074,27 @@ def test_a_glossary_a_sentence_opens_defines_its_entries(project: Path) -> None:
     ]
 
 
+def test_an_entry_of_the_list_is_said_as_one(project: Path) -> None:
+    """The list's entries are said as such (the author's audit, 2026-11-11): a use above an
+    entry the text never spells out is to be spelt out where it first appears, not "defined
+    later at" the list; an entry nothing else uses is to come out of the list, not to be
+    written out in the text. A definition in the text is said as before, its long form as
+    typed, an apostrophe and all."""
+    report = written(project, "# Methods\n\nThe AIC was computed.\n\n# Conclusions\n\nIt "
+                     "worked.\n\n" + WORD_GLOSSARY)  # fmt: skip
+    said = {f.message.split()[0]: f for f in report.findings}
+    assert said["AIC"].message.startswith(
+        "AIC is used here and not spelt out; only the list of abbreviations defines it, at ")
+    assert said["AIC"].hint.startswith("spell it out where it first appears")
+    assert said["CV"].message == ("CV is in the list of abbreviations and used nowhere else "
+                                  "in the main text as G14 reads it")
+    assert said["CV"].hint.startswith("take it out of the list")
+    text = written(project, "# Methods\n\nThe Centre d'Enseignement Universitaire (CEU) "
+                   "met.\n")  # fmt: skip
+    assert text.findings[0].hint.startswith(
+        "write 'Centre d'Enseignement Universitaire' out and drop the short form")
+
+
 @pytest.mark.parametrize(
     "after",
     ["The UMC was consulted.", "Note: the UMC was consulted.", "# Declarations\n\nUMC: the "

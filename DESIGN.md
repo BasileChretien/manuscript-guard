@@ -5195,6 +5195,16 @@ ask for the list and for the expansion at first use as well, so a definition in 
 gives the glossary's meaning again is not reported as given twice; a second one in the text
 is, and one that gives another meaning is reported as two meanings.
 
+The glossary's entries are said as such (the author's audit, 2026-11-11, of a list at the
+end of a paper typed in Word: "MMOPK is used here, and defined later at ... Conclusions,
+paragraph 26", and of an entry nothing used, "write 'Centre ... (Appears in author
+affiliations)' out and drop the short form"). A use above an entry the text never spells out
+is "used here and not spelt out; only the list of abbreviations defines it", with the hint to
+spell it out where it first appears; an entry nothing else uses, and that the text does not
+define, is "in the list of abbreviations and used nowhere else", with the hint to take it out
+of the list. A long form is quoted as typed, where `repr` had doubled the backslash of an
+escape, "d\\'Intérêt".
+
 **A glossary may have no title.** A paper typed in Word often opens its list with a sentence
 and no heading: "List of abbreviations and acronyms used in the text, tables, and figures.",
 then letters' labels in bold, "**A--C**", and an item for each entry (the author's paper,

@@ -42,12 +42,12 @@ expected:
       author did not understand (the author's audit, 2026-11-10)
   - reading: abstract against results
     why: >-
-      an identifier of the Abstract, a word with a number in it ("rs10", "v12", "chr15"),
-      is found where the Methods print it as a word, stops, brackets, emphasis, quotes and a
-      possessive aside, where it was
-      looked for among the bare numbers alone and never found; one whose number alone the
-      Methods give is still not found; the inputs now hold each (pharm-epi of the
-      real-paper corpus, 2026-11-11)
+      a number of the Abstract is looked for in every section but the Abstract, the
+      Introduction, the Discussion and a conclusion, so one reported only under a section of
+      another name, "Participants", "Study design", an appendix, is found, where only the
+      Methods, the Results and the tables were searched; one only in the Introduction or
+      the Conclusions is still not found; the inputs now hold each (Basile, 2026-11-11,
+      after 52 real preprints)
   - reading: reply numbers
     why: >-
       a number in a reply after a link on its line is read and, unbound, reported, where the

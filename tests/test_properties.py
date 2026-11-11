@@ -5977,7 +5977,9 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
     or "rs7012345", is found where the Methods print it, and not where they give its
     number alone (pharm-epi of the real-paper corpus). A number under a subsection of the
     Results and discussion whose title holds "method", "Performance of the proposed method",
-    is found, and the Results over it are still the Results (round 1 of #624). Without an Abstract
+    is found, and the Results over it are still the Results (round 1 of #624). One under a
+    section of another name, "Participants", "Study design", an appendix, is found, and one
+    only in the Introduction or the Conclusions is not (Basile, 2026-11-11). Without an Abstract
     heading, or a Results heading, nothing is compared. The same paper in LaTeX reads
     alike, its last sentence of the Abstract on the line of `!end{abstract}` (round 1 of
     #472)."""
@@ -6008,6 +6010,23 @@ def _a_counterpart_need_not_be_the_only_one(patch: pytest.MonkeyPatch) -> None:
         return None
 
     patch.setattr(abstract, "_counterpart_interval", first)
+
+
+def _an_abstract_number_is_looked_for_in_the_methods_and_results_alone(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    """As before 2026-11-11: a section of another name was not searched."""
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_searched", lambda sections, place, titles: place)
+
+
+def _the_opening_and_the_conclusion_are_searched(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+    from manuscript_guard.text.section_names import names_discussion, names_results
+
+    patch.setattr(abstract, "_argued_or_opening",
+                  lambda title: names_discussion(title) and not names_results(title))
 
 
 def _numbers_agree_only_as_printed(patch: pytest.MonkeyPatch) -> None:
@@ -18563,9 +18582,11 @@ def _a_list_of_modules_read_line_by_line_gives_its_first(patch: pytest.MonkeyPat
 # Imported here, not at the top, to keep clear of the import block other branches edit.
 from generated import (  # noqa: E402
     BOLD_PARAGRAPH_STYLES,
-    bold_blocks,
+    TYPED_PARAGRAPH_STYLES,
     bold_paragraphs,
     placed_papers,
+    typed_blocks,
+    typed_paragraphs,
 )
 
 
@@ -18673,18 +18694,49 @@ def _a_style_s_base_is_read(patch: pytest.MonkeyPatch) -> None:
                   lambda archive, names, what: {**real(archive, names, what), "StrongToo": True})
 
 
-@holds(60, bold_blocks())
-def test_a_paragraph_wholly_in_bold_that_names_a_section_is_made_a_heading(
+@holds(40, typed_paragraphs())
+def test_a_word_paragraph_is_typed_as_a_title_can_be(drawn: tuple[str, list[str]]) -> None:
+    """A paragraph of words outside a table, in no caption style pandoc reads ("caption",
+    "Table Caption", "Image Caption", by name) and not numbered by Word is a line a title can
+    be typed as, in bold or not; one in a table's cell, in a link, in a caption style, Word
+    numbers or with a note's mark is not (`text.docx.DocxText.typed`)."""
+    import tempfile
+    import zipfile
+
+    from manuscript_guard.text.docx import read_docx_text
+
+    body, typed = drawn
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "paper.docx"
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", f"<w:document {_WORD_NAMESPACE}><w:body>"
+                                                  f"{body}</w:body></w:document>")  # fmt: skip
+            archive.writestr("word/styles.xml", f"<w:styles {_WORD_NAMESPACE}>"
+                                                f"{TYPED_PARAGRAPH_STYLES}</w:styles>")  # fmt: skip
+        document = read_docx_text(path)
+    lines = document.body.split("\n")
+    assert sorted(lines[at] for at in document.typed) == typed
+
+
+def _a_caption_is_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import docx as docx_module
+
+    patch.setattr(docx_module, "_caption_styles", lambda archive, names, what: frozenset())
+
+
+@holds(60, typed_blocks())
+def test_a_paragraph_that_names_a_section_alone_is_made_a_heading(
     drawn: tuple[list[dict], list[str]],
 ) -> None:
-    """In a Word paper with no heading style, a paragraph wholly in bold, also underlined,
-    in a span, numbered or with a colon, whose words name a section is made a heading of its
-    name; a bold title that names none, a bold word opening a sentence, a name in italics,
-    in a list's item or in a link stays text (`from_word.bold_headings`)."""
-    from manuscript_guard.from_word import bold_headings
+    """In a Word paper with no heading style, a paragraph whose words name a section is made
+    a heading of its name, in bold or not, also underlined, in a span, in italics, numbered,
+    with a colon, in capitals, half in bold; a bold title that names none, a word in bold or
+    not opening a sentence, a name in a list's item or in a link stays text
+    (`from_word.typed_headings`; the real-paper corpus, 2026-11-11)."""
+    from manuscript_guard.from_word import typed_headings
 
     blocks, titles = drawn
-    made, named = bold_headings(blocks)
+    made, named = typed_headings(blocks)
     assert list(named) == titles
     assert [_text_of_heading(block) for block in made if block["t"] == "Header"] == titles
 
@@ -18701,18 +18753,25 @@ def _any_bold_title_is_a_section_s(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(section_names, "section_name_alone", lambda text: " ".join(text.split()) or None)
 
 
-def _a_paragraph_partly_in_bold_is_a_title(patch: pytest.MonkeyPatch) -> None:
+def _only_a_title_in_bold_is_typed(patch: pytest.MonkeyPatch) -> None:
+    """As before 2026-11-11: a title typed in no bold was text."""
     from manuscript_guard import from_word
 
-    real = from_word._bold_words
-    patch.setattr(from_word, "_bold_words", lambda inlines, bold=False: (
-        None if (found := real(inlines, bold)) is None else [any(found)] * len(found)))
+    real = from_word._words_only
+    patch.setattr(from_word, "_words_only", lambda inlines: real(inlines) and any(
+        node.get("t") == "Strong" for node in inlines))  # fmt: skip
+
+
+def _a_number_before_a_title_is_part_of_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "_ALONE_NUMBER", re.compile("(?!)"))
 
 
 def _a_title_also_underlined_is_none(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import from_word
 
-    patch.setattr(from_word, "_LOOKS", {"Emph": None})
+    patch.setattr(from_word, "_LOOKS", {"Strong": None, "Emph": None})
 
 
 from generated import word_paragraphs  # noqa: E402
@@ -19283,17 +19342,25 @@ BROKEN = {
         _a_style_s_base_is_read,
         test_a_word_paragraph_is_in_bold_as_pandoc_reads_bold,
     ),
-    "any bold title is a section's": (
+    "any typed title is a section's": (
         _any_bold_title_is_a_section_s,
-        test_a_paragraph_wholly_in_bold_that_names_a_section_is_made_a_heading,
+        test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
     ),
-    "a paragraph partly in bold is a title": (
-        _a_paragraph_partly_in_bold_is_a_title,
-        test_a_paragraph_wholly_in_bold_that_names_a_section_is_made_a_heading,
+    "only a title in bold is typed": (
+        _only_a_title_in_bold_is_typed,
+        test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
+    ),
+    "a number before a typed title is part of it": (
+        _a_number_before_a_title_is_part_of_it,
+        test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
     ),
     "a title also underlined is none": (
         _a_title_also_underlined_is_none,
-        test_a_paragraph_wholly_in_bold_that_names_a_section_is_made_a_heading,
+        test_a_paragraph_that_names_a_section_alone_is_made_a_heading,
+    ),
+    "a paragraph in a caption style is typed": (
+        _a_caption_is_typed,
+        test_a_word_paragraph_is_typed_as_a_title_can_be,
     ),
     "a model is named whatever its version": (
         _a_model_s_version_is_dropped,
@@ -22383,6 +22450,14 @@ BROKEN = {
     "a nested item is read at the top of its list": (
         _a_nested_item_is_read_at_the_top,
         test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
+    ),
+    "an Abstract's number is looked for in the Methods and the Results alone": (
+        _an_abstract_number_is_looked_for_in_the_methods_and_results_alone,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "the Introduction and a conclusion are searched for an Abstract's number": (
+        _the_opening_and_the_conclusion_are_searched,
+        test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "an Abstract's interval has a counterpart where it has two": (
         _a_counterpart_need_not_be_the_only_one,

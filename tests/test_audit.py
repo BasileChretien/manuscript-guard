@@ -1238,7 +1238,8 @@ def test_a_reference_list_in_a_docx_with_no_heading_styles_ends_where_check_ends
     tmp_path: Path, kind: str
 ) -> None:
     """With no heading styles the cut ran from "References" to the end of the body, and a
-    caption, a statement or a table after the list was never audited."""
+    caption, a statement or a table after the list was never audited. "References" typed
+    alone on its line is the paper's heading, and the list is placed under it."""
     outputs = tmp_path / "out.json"
     outputs.write_text('{"n": 77}', encoding="utf-8")
     body = (
@@ -1250,8 +1251,8 @@ def test_a_reference_list_in_a_docx_with_no_heading_styles_ends_where_check_ends
 
     report = audit([paper], [outputs])
     assert "9.99" in [c.text for c in report.unmatched], report.not_audited
-    assert report.not_audited == ["paper.docx: before the first heading, paragraphs 2-4, read "
-                                  "as the reference list"]
+    assert report.not_audited == ["paper.docx: References, paragraphs 1-2, read as the "
+                                  "reference list"]
 
 
 def test_a_styled_reference_heading_in_a_docx_still_runs_to_the_next_heading(
@@ -1654,8 +1655,8 @@ def test_a_docx_titled_in_bold_is_placed_by_its_titles_and_says_so(tmp_path: Pat
     assert report.abstract is not None and report.abstract.compared
     (said,) = report.headings
     assert said.startswith("paper.docx: no paragraph is in a heading style, so the 4 paragraphs "
-                           "wholly in bold that name a section (Abstract, Background, Results, "
-                           "References) were read as its headings")  # fmt: skip
+                           "that name a section alone (Abstract, Background, Results, "
+                           "References) were read as its headings, in bold or not")  # fmt: skip
     assert "give its section titles Word's heading styles" in said
     # Said in the text and on the page, under its own heading (the merge of main into #601
     # put it by hand where the page reads the notes).
@@ -1670,14 +1671,93 @@ def test_a_docx_titled_in_bold_is_placed_by_its_titles_and_says_so(tmp_path: Pat
 
 
 def test_a_docx_with_no_heading_is_said_to_be_read_as_one_text(tmp_path: Path) -> None:
-    """A .docx with no heading style and no title in bold that names a section is read as
-    one text, and the report says what that costs, where it said nothing."""
-    plain = TITLED.replace("<w:rPr><w:b/></w:rPr>", "")
-    report = audit([make_docx(tmp_path / "paper.docx", plain)], [])
+    """A .docx with no heading style and no line that names a section alone is read as one
+    text, and the report says what that costs, where it said nothing. A sentence that opens
+    with "Results", and a section's name in a table's cell or in a list Word numbers, are
+    no heading."""
+    numbered = ('<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>'
+                "</w:pPr><w:r><w:t>Methods</w:t></w:r></w:p>")  # fmt: skip
+    body = (para("A study of things") + para("Summary of the study")
+            + para("Of 412 patients, 77 (18.7%) had the event.") + para("Results were clear.")
+            + numbered + f"<w:tbl>{row('ABSTRACT', '9')}</w:tbl>"
+            + para("Of 412 patients, 77 (18.7%) had the event."))  # fmt: skip
+    report = audit([make_docx(tmp_path / "paper.docx", body)], [])
     (said,) = report.headings
-    assert "none wholly in bold names a section, so it was read as one text" in said
+    assert "none on a line of its own names a section, so it was read as one text" in said
     assert "Abstract is not compared with its Results" in said
     assert not (report.abstract and report.abstract.compared)
+
+
+#: A paper converted to Word with no heading style, its titles typed and in no bold, as the
+#: real-paper corpus had them: "ABSTRACT" in capitals as a paragraph, numbered titles in
+#: capitals or not ("1. INTRODUCTION", "3. Results"), and a sentence that opens with the word
+#: "Results", which stays text.
+TYPED = (para("A study of things") + para("ABSTRACT")
+         + para("Of 412 patients, 77 (18.7%) had the event (OR 1.52, 95% CI 1.10-2.10).")
+         + para("1. INTRODUCTION") + para("Drugs cause harm.") + para("2. Methods")
+         + para("We read 412 records.") + para("3. RESULTS")
+         + para("Results were clear: of 412 patients, 77 (18.7%) had the event (OR 1.52, "
+                "95% CI 1.10-2.10).")
+         + para("4. Discussion") + para("It was so."))  # fmt: skip
+
+
+def test_a_docx_whose_titles_are_typed_is_placed_by_them(tmp_path: Path) -> None:
+    """The real-paper corpus (52 preprints, 2026-11-11): a Word paper with no heading style
+    whose titles are typed as plain paragraphs, "ABSTRACT" and "3. RESULTS" among them, had
+    no Abstract to the audit, which said so of 79% of such papers wrongly. A typed title
+    that names a section alone is a heading now, in bold or not, numbered or not, in capitals
+    or not; a sentence that opens with "Results" stays text."""
+    document = read_docx_text(make_docx(tmp_path / "paper.docx", TYPED))
+    lines = document.body.split("\n")
+    from manuscript_guard.text.docx import typed_heading_levels
+
+    assert [lines[at] for at, _level in typed_heading_levels(document)] == [
+        "ABSTRACT", "1. INTRODUCTION", "2. Methods", "3. RESULTS", "4. Discussion"]
+    report = audit([tmp_path / "paper.docx"], [])
+    assert report.abstract is not None and report.abstract.compared
+    assert report.abstract.not_found == [] and report.abstract.conflicts == []
+    (said,) = report.headings
+    assert said.startswith("paper.docx: no paragraph is in a heading style, so the 5 paragraphs "
+                           "that name a section alone (ABSTRACT, INTRODUCTION, Methods, RESULTS, "
+                           "Discussion) were read as its headings")  # fmt: skip
+
+
+def test_a_run_in_label_typed_alone_is_read_as_a_heading(tmp_path: Path) -> None:
+    """A known limit (DESIGN.md, "Known gaps"): a one-word paragraph "Results" typed as a
+    label in the middle of the Methods is a heading, as a title typed alone is, and what
+    follows it is placed under it; nothing tells the two apart in a paper with no heading
+    style."""
+    from manuscript_guard.text.docx import typed_heading_levels
+
+    body = (para("ABSTRACT") + para("It was so.") + para("METHODS") + para("We ran one model.")
+            + para("Results") + para("It fitted.") + para("Its sensitivity was checked."))
+    document = read_docx_text(make_docx(tmp_path / "paper.docx", body))
+    lines = document.body.split("\n")
+    assert [lines[at] for at, _level in typed_heading_levels(document)] == [
+        "ABSTRACT", "METHODS", "Results"]
+
+
+def test_a_typed_title_in_a_caption_a_cell_or_a_heading_styled_paper_is_no_heading(
+    tmp_path: Path,
+) -> None:
+    """A section's name typed in Word's caption style, in a table's cell or in a list Word
+    numbers is no heading, as pandoc sets the caption beside a table as the table's and the
+    others in a list and a cell. In a document with a paragraph in a heading style, the
+    styles alone are read, and a typed "RESULTS" is text."""
+    styles = ('<w:style w:type="paragraph" w:styleId="Legende"><w:name w:val="caption"/>'
+              "</w:style>")  # fmt: skip
+    caption = '<w:p><w:pPr><w:pStyle w:val="Legende"/></w:pPr><w:r><w:t>RESULTS</w:t></w:r></w:p>'
+    body = (para("ABSTRACT") + para("It was so.") + caption
+            + f"<w:tbl>{row('Methods', '9')}</w:tbl>" + para("Of 9, 4 were."))  # fmt: skip
+    document = read_docx_text(make_docx(tmp_path / "caption.docx", body, styles))
+    lines = document.body.split("\n")
+    from manuscript_guard.text.docx import typed_heading_levels
+
+    assert [lines[at] for at, _level in typed_heading_levels(document)] == ["ABSTRACT"]
+    styled = ('<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Introduction</w:t>'
+              "</w:r></w:p>" + para("RESULTS") + para("It was so."))  # fmt: skip
+    document = read_docx_text(make_docx(tmp_path / "styled.docx", styled))
+    assert typed_heading_levels(document) == ()
 
 
 def test_bold_titles_that_cannot_be_placed_place_nothing(tmp_path: Path) -> None:
@@ -1856,9 +1936,9 @@ def test_a_number_of_the_abstract_is_found_under_a_method_heading(
 
 
 def test_a_number_not_found_says_where_it_was_looked_for(tmp_path: Path, capsys) -> None:
-    """The finding said "found nowhere the paper reports", and only the Methods, the Results
-    and the tables are read for it: the Introduction and the Discussion are not. It says
-    what was searched, in the words of the heading over the list."""
+    """The finding said "found nowhere the paper reports", and the Introduction, the
+    Discussion and a conclusion are not read for it. It says what was searched, in the
+    words of the heading over the list."""
     from manuscript_guard.cli import main
 
     paper = tmp_path / "paper.md"
@@ -1869,10 +1949,38 @@ def test_a_number_not_found_says_where_it_was_looked_for(tmp_path: Path, capsys)
 
     report = json.loads(capsys.readouterr().out)
     (found,) = [f for f in report["findings"] if f["code"] == "abstract-not-found"]
-    assert found["message"] == ("41.7 in the Abstract is not found in the Methods, the "
-                                "Results or the tables")  # fmt: skip
+    assert found["message"] == ("41.7 in the Abstract is not found in the tables or any "
+                                "section but the Introduction, the Discussion and a "
+                                "conclusion")  # fmt: skip
     main(["audit", str(paper)])
-    assert "NOT FOUND IN THE METHODS, THE RESULTS OR THE TABLES" in capsys.readouterr().out
+    assert ("NOT FOUND IN THE TABLES OR ANY SECTION BUT THE INTRODUCTION, THE DISCUSSION AND A "
+            "CONCLUSION") in capsys.readouterr().out
+
+
+def test_an_abstract_number_is_found_in_any_section_but_the_opening_and_the_argument(
+    tmp_path: Path,
+) -> None:
+    """The real-paper corpus (52 preprints, 2026-11-11): a paper that reports a number under
+    a section of another name than the Methods or the Results, "Participants", "Study
+    design", "Data analysis and results", an appendix, had its Abstract's number said not
+    found. Every section is searched now but the Abstract, the Introduction, the Discussion
+    and a conclusion; a number only there is still not found."""
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "# A study\n\n## Abstract\n\n"
+        + "".join(f"It was {value} here.\n\n"
+                  for value in ("41.7", "52.3", "63.9", "74.1", "85.6", "96.2", "17.4", "28.8"))
+        + "## Introduction\n\nIt was 96.2 before.\n\n## Participants\n\nIt was 41.7 then.\n\n"
+        "## Study design\n\n### Sampling\n\nIt was 52.3 then.\n\n"
+        "## Data analysis and results\n\nIt was 63.9 then.\n\n## Results\n\nIt was so.\n\n"
+        "## Discussion\n\nIt was 17.4 after.\n\n### Limitations\n\nIt was 85.6 after.\n\n"
+        "## Conclusions\n\nIt was 28.8 after.\n\n## Appendix\n\nIt was 74.1 then.\n",
+        encoding="utf-8",
+    )  # fmt: skip
+    read = audit([paper], []).abstract
+    assert read is not None and read.compared
+    assert sorted(c.text for c in read.found) == ["41.7", "52.3", "63.9", "74.1"]
+    assert sorted(c.text for c in read.not_found) == ["17.4", "28.8", "85.6", "96.2"]
 
 
 #: A paper whose words G14 asks a project to set paper.yaml for: abbreviations used and not

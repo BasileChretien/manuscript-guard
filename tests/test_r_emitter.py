@@ -885,6 +885,43 @@ def test_r_and_python_record_a_level_and_a_spread_alike(tmp_path: Path) -> None:
     assert from_r["ror.ci_low"]["level"] == "95%" and from_r["age.sd"]["spread"] == "sd"
 
 
+SAME_AS_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$value("cor.point", 0.4712, digits = 2)
+em$value("cor.r", 0.4712, display = ".47", same_as = "cor.point")
+res <- tryCatch(em$value("cor.self", 0.4712, digits = 2, same_as = "cor.self"),
+                error = function(e) conditionMessage(e))
+cat(res, "\\n")
+em$write()
+"""
+
+
+def test_r_declares_a_second_display_same_as_its_quantity(tmp_path: Path) -> None:
+    """The author's decision on #628: a second display of one value is declared with
+    `same_as`, and both papers whose rebuild found it were written in R, whose `value()` had
+    no `same_as`. R records it as Python does, and refuses a key declaring itself."""
+    from manuscript_guard.emit import Emitter
+
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "same.R"
+    script.write_text(SAME_AS_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    assert "same_as itself" in out.stdout
+    fragment = next((root / "results").glob("*.json"))
+    from_r = json.loads(fragment.read_text(encoding="utf-8"))["values"]
+    em = Emitter(script, root=root)
+    em.value("cor.point", 0.4712, digits=2)
+    em.value("cor.r", 0.4712, display=".47", same_as="cor.point")
+    assert from_r["cor.r"] == em.document()["values"]["cor.r"]
+    assert "cor.self" not in from_r
+
+
 RAW_R = """
 if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
   cat("MISSING_DEPS\\n"); quit(status = 3)

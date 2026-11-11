@@ -154,12 +154,14 @@ class Planned:
     query: Any = None
 
 
-def cited_keys(project: Project) -> list[str]:
-    """Every citekey the manuscript cites, in order of first use, in its format."""
+def cited_keys(project: Project, *, whole: bool = False) -> list[str]:
+    """Every citekey the manuscript cites, in order of first use, in its format. With
+    `whole`, a LaTeX manuscript with a part its reader refuses raises `CitationsUnknown`
+    (`text/reader.citation_uses`)."""
     from manuscript_guard.text.reader import citation_uses
 
     seen: dict[str, None] = {}
-    for use in citation_uses(project):
+    for use in citation_uses(project, whole=whole):
         seen.setdefault(use.citekey, None)
     return list(seen)
 
@@ -187,8 +189,8 @@ def _stale(record: dict[str, Any] | None, planned: Planned) -> str:
     return ""
 
 
-def plan(project: Project, *, again: bool = False) -> list[Planned]:
-    """What `lookup` would do with each cited reference."""
+def plan(project: Project, *, again: bool = False, whole: bool = False) -> list[Planned]:
+    """What `lookup` would do with each cited reference; `whole` as `cited_keys` takes it."""
     from manuscript_guard.lookup import unidentified
 
     bib = project.path("literature") / BIB_FILE
@@ -196,7 +198,7 @@ def plan(project: Project, *, again: bool = False) -> list[Planned]:
     excused = (project.setting("lookup") or {}).get(NOT_INDEXED) or {}
     planned: list[Planned] = []
     files: dict[str, str] = {}
-    for citekey in cited_keys(project):
+    for citekey in cited_keys(project, whole=whole):
         fields = entries.get(citekey)
         if fields is None:
             planned.append(Planned(citekey, skipped="not in references.bib"))

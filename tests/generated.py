@@ -1513,7 +1513,10 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
       file, whose uses in the entry file and in a file it inputs are followed by that text,
       each passed over, and a use it does not follow, refused; a space after a control word
       in that text is none of it, `\\def\\x\\relax /{a}` then `\\x\\relax/`;
-    - a comment between a command and its argument, passed over and recorded."""
+    - a comment between a command and its argument, passed over and recorded;
+    - a typed table inside maths, whose cells are text and open maths of their own, read,
+      and `$` inside maths outside one, refused where it stands (corpus run of 2026-11-11:
+      2103.00772 sets its cases as a `tabular` inside an equation)."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
@@ -1610,6 +1613,19 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
             f"{note}{{\\end{{list}}}}\n" + begin + words() + "\n" + end)  # fmt: skip
     comments = [("main.tex", at) for at in range(len(main)) if main[at] == "%"]
     cases.append(({"main.tex": main}, {}, [], [], comments))
+
+    table = draw(st.sampled_from(("tabular", "tabular*", "tabularx", "tabulary")))
+    columns = {"tabular": "{ll}", "tabular*": "{\\linewidth}{ll}",
+               "tabularx": "{\\linewidth}{lX}", "tabulary": "{\\linewidth}{lL}"}[table]  # fmt: skip
+    opens, closes = draw(st.sampled_from((("\\begin{equation}", "\\end{equation}"),
+                                          ("\\[", "\\]"), ("$$", "$$"))))  # fmt: skip
+    cells = f"$x$ & {words()} \\\\ $\\sum y$ & {words()}"
+    main = (head + begin + words() + "\n" + opens + " a = \\left\\{ \\begin{" + table + "}"
+            + columns + " " + cells + " \\end{" + table + "} \\right. " + closes + "\n"
+            + words() + ".\n" + end)  # fmt: skip
+    cases.append(({"main.tex": main}, {}, [], [], []))
+    main = head + begin + words() + "\n" + opens + " a = $x$ " + closes + "\n" + end
+    cases.append(({"main.tex": main}, {}, [("main.tex", main.index("$x$"))], [], []))
     return cases
 
 
@@ -2570,6 +2586,62 @@ def latex_writing(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
         planted.append((key, kind))
         text += _FAR + template.replace("{{", "{").replace("}}", "}").replace("{}", key)
     return text + _FAR + "\\end{document}\n% TODO cut\nXXX patients\n", planted
+
+
+#: What a Markdown paper writes after a claim, as G6 judges it (`gates/writing.py`,
+#: `typed_citations`), `{author}`, `{year}` and `{number}` drawn: a pandoc citation and a
+#: citation typed as text are its support, as a paper not written with manuscript-guard
+#: types them, a .docx `audit` converts among them (corpus round, 2026-11-10); brackets that
+#: cite nothing, an interval after its value among them, are none, and the claim is vague.
+MARKDOWN_CITED_AFTER = (
+    ("[@a{number}]", "cited"),
+    ("({author} et al., {year})", "cited"),
+    ("({author} & Jones, {year}; Lee, {year}a)", "cited"),
+    ("(e.g., {author}, {year})", "cited"),
+    ("(World Health Organization, {year})", "cited"),
+    ("(Centers for Disease Control and Prevention, {year}, {year})", "cited"),
+    ("(National Institutes of Health, {year})", "cited"),
+    # Two capitalised words are no organisation's name, so that no work is read both as
+    # people's and as an organisation's, and a month cut short is no author (round 1 of
+    # #621).
+    ("(Fall Semester, {year})", "vague"),
+    ("(Jan {year})", "vague"),
+    ("(Sept {year})", "vague"),
+    ("[{number}]", "cited"),
+    ("[{number}, {number}-{number}]", "cited"),
+    ("\\[{number}\\]", "cited"),
+    ("({year})", "vague"),
+    ("(in {year})", "vague"),
+    ("(n = {year})", "vague"),
+    ("(p < 0.05)", "vague"),
+    ("(January {year})", "vague"),
+    ("(since {year})", "vague"),
+    ("by 64 [55-72]", "vague"),
+    ("", "vague"),
+)  # fmt: skip
+_CITED_AUTHORS = ("Smith", "García", "O'Brien", "van der Berg", "Nguyen", "WHO")
+
+
+@st.composite
+def markdown_cited_claims(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A Markdown paper with a claim before each of `MARKDOWN_CITED_AFTER`, in an order
+    drawn, each apart from the next by more than G6's citation window; and each claim's word
+    with what G6 makes of it. Every kind is in every paper, so that a rule broken for one
+    is seen in each."""
+    order = draw(st.permutations(range(len(MARKDOWN_CITED_AFTER))))
+    planted: list[tuple[str, str]] = []
+    text = "# Introduction\n\n"
+    for index in order:
+        template, kind = MARKDOWN_CITED_AFTER[index]
+        cited = template.format(
+            author=draw(st.sampled_from(_CITED_AUTHORS)),
+            year=draw(st.integers(1950, 2029)),
+            number=draw(st.integers(1, 120)),
+        )
+        key = f"k{4101 + len(planted)}"
+        planted.append((key, kind))
+        text += f"{_FAR}\nStudies have shown that {key} lowers blood pressure {cited}.\n\n"
+    return text + _FAR, planted
 
 
 #: What a LaTeX document sets out that its text may point at by line, "the stride is set
@@ -6733,6 +6805,13 @@ PLACEHOLDERS = (
     ("This is a short text to acknowledge the contributions",
      "This is a short text to acknowledge"),
     ("Sample body text.", "Sample body text"),
+    # Beside the placement markers (Basile, 2026-11-11): one with no number, and one with
+    # other words, are slots still.
+    ("[Insert table here]", "[Insert table here]"),
+    ("[Insert Figure 2 legend]", "[Insert Figure 2 legend]"),
+    # Round 1 of #625: X for a number still to fill, though X is ten in Roman numerals.
+    ("[Insert Table X here]", "[Insert Table X here]"),
+    ("[INSERT FIGURE XX]", "[INSERT FIGURE XX]"),
 )  # fmt: skip
 LOWERED = (("tbd", "tbd"), ("fixme", "fixme"), ("Todo", "Todo"))
 LOOKALIKES = (
@@ -6741,6 +6820,14 @@ LOOKALIKES = (
     "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]", "In this section, you can see the code.",
     "In this section, please indicate how often", 'Please state "yes" or "no".',
     'If none, please state "not applicable".', "Click here for additional data file.",
+    # A placement marker, in each form (Basile, 2026-11-11, on 52 real preprints): a table
+    # or a figure and its number, where it is to go, and after pandoc's escaping.
+    "[Insert Table 1 here]", "[INSERT FIGURE 2]", "[Insert Figure S1 about here]",
+    "\\[Insert Table 3 here\\]", "[insert fig. 4 here.]", "[Figure 1 about here]",
+    "[Table 3 about here]", "Insert Table 1 about here",
+    # Round 1 of #625: a Roman numeral, no space after "Fig.", a number with a dot in it.
+    "[Insert Table IV here]", "[INSERT TABLE XIX]", "[Insert Fig.1 here]",
+    "[Insert Table 1.1 here]", "[Insert Figure S1.2 about here]",
 )  # fmt: skip
 
 #: Words to the reviewers or to a model left in a paper, each a sentence, with the rule of
@@ -7365,24 +7452,28 @@ def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
     """A paper with a table of each kind of `MARGIN_KINDS`, in an order drawn, and what the
     reading of a table's totals finds in it: the line of each total its counts do not add
     up to (`off`), of the first category of each characteristic whose categories add up to
-    more than their column's n (`over`), and each count held back that a total gives away,
-    by its line, its count and whether a printed total gives it, at a minimum of five
-    (`five`) and with none (`none`).
+    more than their column's n by more than rounding weighted counts can make (`over`), and
+    by no more (`rounding`), and each count held back that a total gives away, by its line,
+    its count and whether a printed total gives it, at a minimum of five (`five`) and with
+    none (`none`).
 
     The kinds: a total row, one column of it off, under a characteristic's label and a row
     of counts above that; a total column, one row of it off; a count held back that a total
     row gives away, beside two in another column that it does not; one a total column gives
     away; one of up to nine that a total gives away, which a minimum of five allows, and one
     it gives away as nought; categories adding up to more than their column's n, their
-    shares to 100, beside categories adding up to fewer; a count held back that only the
-    column's n gives away; lines with a dash or an empty cell in them, which are read
-    nowhere; and rows whose label starts as a total's does and that are none."""
+    shares to 100, beside categories adding up to fewer and categories adding up to more by
+    no more than half a count each and half for the n, once as only the n's half count
+    allows; a count held back that only the column's n gives away; lines with a dash or an
+    empty cell in them, which are read nowhere; and rows whose label starts as a total's
+    does and that are none."""
     places = draw(st.integers(0, 2))
     grouped = draw(st.booleans())
     first, second = draw(st.sampled_from(ARMS))
     sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
     lines: list[str] = [draw(sentence).capitalize() + "."]
-    expected: dict[str, list] = {"off": [], "over": [], "five": [], "none": []}
+    expected: dict[str, list] = {"off": [], "over": [], "rounding": [], "five": [],
+                                 "none": []}  # fmt: skip
 
     def count(number: int) -> str:
         return f"{number:,}" if grouped else str(number)
@@ -7501,16 +7592,38 @@ def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
                 else:
                     row(name, count(x), count(y), count(x + y))
         elif kind == "over n":
+            # Over by more than rounding weighted counts can make, which fails; fewer, which
+            # is missing data; over by no more than half a count a category and half for
+            # the n, a note (Basile, 2026-11-11: a survey's weighted, rounded age groups,
+            # "N = 12,765^1^" and 12,766 in them); and over by one more than that, which
+            # fails. The last two columns' n may have a footnote mark after it. Then three
+            # categories two over in the weighted column, which only the n's own half count
+            # allows (round 1 of #625), and at their n in the others.
             n, m = draw(st.integers(40, 2000)), draw(st.integers(40, 2000))
-            table("Characteristic", f"{first} (n = {count(n)})", f"{second} (n = {count(m)})")
-            group(2)
+            w, v = draw(st.integers(40, 20000)), draw(st.integers(40, 20000))
+            mark = draw(st.sampled_from(("", "^1^", "^a^")))
+            table("Characteristic", f"{first} (n = {count(n)})", f"{second} (n = {count(m)})",
+                  f"Weighted (N = {count(w)}{mark})", f"Pooled (N = {count(v)}{mark})")
+            group(4)
             many = draw(st.integers(2, 4))
-            more, fewer = n + draw(st.integers(1, n // 2)), draw(st.integers(1, m - 1))
-            a, b = _split(draw, more, many), _split(draw, fewer, many)
-            at = [row(name, f"{count(x)} ({_printed(x, more, places)})",
-                      f"{count(y)} ({_printed(y, fewer, places)})")
-                  for name, x, y in zip(CATEGORIES, a, b, strict=False)]  # fmt: skip
-            expected["over"].append(at[0])
+            allowed = max(1, (many + 1) // 2)
+            more = n + draw(st.integers(allowed + 1, n // 2))
+            fewer = draw(st.integers(1, m - 1))
+            rounded, beyond = w + draw(st.integers(1, allowed)), v + allowed + 1
+            columns = [_split(draw, total, many) for total in (more, fewer, rounded, beyond)]
+            at = [row(name, *(f"{count(x)} ({_printed(x, total, places)})"
+                              for x, total in zip(cells, (more, fewer, rounded, beyond),
+                                                  strict=True)))
+                  for name, *cells in zip(CATEGORIES, *columns, strict=False)]  # fmt: skip
+            expected["over"] += [at[0], at[0]]
+            expected["rounding"].append(at[0])
+            group(4)
+            sums = (n, m, w + 2, v)
+            columns = [_split(draw, total, 3) for total in sums]
+            at = [row(name, *(f"{count(x)} ({_printed(x, total, places)})"
+                              for x, total in zip(cells, sums, strict=True)))
+                  for name, *cells in zip(CATEGORIES, *columns, strict=False)]  # fmt: skip
+            expected["rounding"].append(at[0])
         elif kind == "by n":
             n = draw(st.integers(40, 2000))
             table("Characteristic", f"{first} (n = {count(n)})", second)
@@ -7866,13 +7979,26 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: against a signed number, a label closed up against its number, a whole number against a
 #: word that opens like its ordinal's suffix ("1201students"); an ordinal against its word,
 #: which gives no number to look for; and an estimate closed up against its interval,
-#: whose bounds are reported and the estimate not (round 1 of #613).
+#: whose bounds are reported and the estimate not (round 1 of #613). And an identifier, a
+#: word with a number in it, printed again in the Methods with a stop or brackets round it,
+#: and one whose number alone the Methods give, which is not found (pharm-epi of the
+#: real-paper corpus, 2026-11-11). And a number reported under a subsection of the Results
+#: whose title holds the word "method" and is no Methods, "Performance of the proposed
+#: method", under a Results titled "Results and discussion", which no Methods may stand
+#: under (round 1 of #624).
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
     "against a word", "after a word", "after a label", "against a suffix's word", "ordinal",
-    "estimate closed up",
+    "estimate closed up", "identifier", "identifier by its number", "under a method",
 )  # fmt: skip
+#: Titles of a subsection of the Results that hold the word "method" and name no Methods.
+METHOD_SUBSECTIONS = ("Performance of the proposed method", "Our method at scale",
+                      "A method for the second cohort")  # fmt: skip
+#: The shapes of an identifier, `{}` its number: a variant, a release, a chromosome, a
+#: GWAS of the OpenGWAS catalogue, a strain, an assembly.
+IDENTIFIER_SHAPES = ("rs{}", "v{}", "chr{}", "ieu-a-{}", "ukb-b-{}", "MPL-{}", "K-{}",
+                     "GRCh{}")  # fmt: skip
 #: How each kind of space left out is typed, `{}` its number, and what it starts at.
 RUN_ON_NUMBERS = {"against a word": ("The value was {}points here.", 900),
                   "after a word": ("The value rose to+{} here.", 1000),
@@ -7970,6 +8096,23 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
             methods.append(f"It was {count} then.")
             looked.append((kind, f"{count}students", "exact"))
             abstract.append((kind, said))
+        elif kind == "identifier":
+            named = draw(st.sampled_from(IDENTIFIER_SHAPES)).format(draw(st.integers(10, 99)))
+            methods.append(draw(st.sampled_from((f"It was {named}.", f"It was ({named}) then.",
+                                                 f"It was {named}, then."))))  # fmt: skip
+            looked.append((kind, named, "exact"))
+            abstract.append((kind, f"The source was {named} here."))
+        elif kind == "identifier by its number":
+            number = 7000000 + draw(st.integers(0, 99999))
+            methods.append(f"It was {number} then.")
+            looked.append((kind, f"rs{number}", "not found"))
+            abstract.append((kind, f"The variant was rs{number} here."))
+        elif kind == "under a method":
+            value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
+            shown = str(value + 1600)
+            subsection = (draw(st.sampled_from(METHOD_SUBSECTIONS)), f"It was {shown} then.")
+            looked.append((kind, shown, "exact"))
+            abstract.append((kind, f"The value was {shown} here."))
         elif kind == "estimate closed up":
             estimate = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
             low, high = estimate + 1300, estimate + 1400
@@ -8020,8 +8163,12 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
         for planted, shown, state in looked:
             if planted == kind:
                 expected["looked"].append([line, shown, state])
-    for heading, part in (("Methods", methods), ("Results", results),
+    # The subsection closes the Results, so that what they report stands over it.
+    results.append(subsection)
+    for heading, part in (("Methods", methods), ("Results and discussion", results),
                           ("Discussion", discussion)):  # fmt: skip
+        part = [f"### {said[0]}\n\n{said[1]}" if isinstance(said, tuple) else said
+                for said in part]  # fmt: skip
         lines += [f"## {heading}", "", *(one for said in part for one in (said, "")), ""]
     expected["conflicts"].sort()
     expected["looked"].sort()
@@ -8050,11 +8197,13 @@ def _abstract_latex(abstract: list, looked: list, methods: list, results: list,
             expected["conflicts"].append([line, kind.split()[0]])
         expected["looked"] += [[line, shown, state] for planted, shown, state in looked
                                if planted == kind]  # fmt: skip
-    for heading, part in (("Methods", methods), ("Results", results),
+    for heading, part in (("Methods", methods), ("Results and discussion", results),
                           ("Discussion", discussion)):  # fmt: skip
         lines += ["", f"{BACKSLASH}section{{{heading}}}", ""]
         for said in part:
-            if said.startswith("|"):
+            if isinstance(said, tuple):
+                lines += [f"{BACKSLASH}subsection{{{said[0]}}}", "", said[1], ""]
+            elif said.startswith("|"):
                 value = said.split("\n")[-1].strip(" |").split("|")[-1].strip()
                 lines += [BACKSLASH + "begin{tabular}{ll}", "Group & Value " + BACKSLASH * 2,
                           f"A & {value} " + BACKSLASH * 2, BACKSLASH + "end{tabular}", ""]
@@ -12714,6 +12863,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES
     ),
     "residue": texts(tuple(written for written, _rule, _found in RESIDUE) + RESIDUE_LOOKALIKES),
+    "vague attribution": st.one_of(markdown_cited_claims().map(lambda drawn: drawn[0]),
+                                   texts()),  # fmt: skip
     "typed releases": texts(RELEASED),
     "reported tests": texts(REPORTED),
     "reported intervals": texts(ESTIMATES),

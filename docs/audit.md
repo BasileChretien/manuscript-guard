@@ -91,7 +91,9 @@ would say.
 it in a temporary folder and the two gates run as `check` runs them. A .docx goes through
 the conversion `init --from` makes, and each place is said as the document's heading and
 paragraph, which the converted text's lines are counted into; without pandoc a .docx is not
-converted, and the report says G6 and G14 were not run on it.
+converted, and the report says G6 and G14 were not run on it. A paper's citations typed as
+text, "[12]" or "(Smith et al., 2020)", are its citations to G6: a claim beside one is
+not a vague attribution.
 `--english british` or `american` declares the paper's English, which G14 holds its spelling
 to; without it G14 holds the paper to the English most of its words are in. `--known` lists
 the words the paper's readers know, names, an author's initials, an institution's acronym
@@ -205,7 +207,11 @@ P, a ratio ("HR" or "Hazard ratio", not the subgroup "HR+"), a mean, or a "%" wi
 "%" or "% (n)". A total its counts do not add up to is listed, `sum-off`, with what they add up to.
 Where a characteristic's categories have shares that add up to 100 and counts that add up to
 more than the n of their column's header, that is listed too, `over-header-n`; fewer is what
-missing data look like, and is not said.
+missing data look like, and is not said. Over by no more than (k + 1) / 2 for k
+categories, rounded down, is a note, which `--strict` does not count: a table of weighted
+counts prints each, and the n, rounded to a whole number, half a count off at most, so
+they can add up to that much more than the n (three or four categories, two over; twenty,
+ten). A larger gap fails as before.
 
 **Small cells recoverable by subtraction.** A count printed "<5" because the data custodian
 forbids printing it is printed all the same where a total and the other counts beside it
@@ -266,8 +272,14 @@ explain is looked for where the paper reports: the Methods, the Results, every t
 every file, and the whole of a file with no Abstract, a supplement, as G8 reads them. A line
 stands under the headings over it: Markdown's, a .docx's heading styles, a LaTeX
 document's as it prints them. A number reported to more places counts as matched as a
-rounding, "53%" in the Abstract for "53.3%" in the Results, and is listed apart; a number
-found nowhere is listed, and not counted by `--strict`. The section ends with what a match
+rounding, "53%" in the Abstract for "53.3%" in the Results, and is listed apart. An
+identifier, a word with a number in it ("v8", "rs75015950", "chr15", "ieu-a-1185"), is
+matched only as printed, the same word there, and never by the number it holds. A number
+not found in the Methods, the Results or the tables is listed, its finding saying so, and
+not counted by `--strict`. The Methods are a heading that holds "methods", or whose whole
+title is "Method", as APA titles it, or "Methodology", numbered or not, alone or with
+"materials" ("Materials and method"); "Performance of the proposed method" and
+"Methodological notes" are not. The section ends with what a match
 is worth against the numbers the paper reports, the roundings counted in. A conflict is an
 exact pairing: an interval of the Abstract with one interval in what the paper reports of
 the same estimate ("OR" and "odds ratio" are one) and level, two of whose three numbers

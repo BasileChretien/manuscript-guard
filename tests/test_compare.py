@@ -20,6 +20,8 @@ from manuscript_guard.comparing.report import NEW_IN_V2, STOOD_IN_V1, compare, r
 from manuscript_guard.comparing.versions import Unreadable, markdown_version, read_version
 
 NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+#: What a number of the Abstract not found says of it: where it was looked for.
+NOT_FOUND = "not found in the Methods, the Results or the tables"
 
 
 def tex(text: str) -> str:
@@ -338,8 +340,8 @@ def test_v2_is_audited_and_each_finding_marked_by_its_sentence(tmp_path: Path) -
     marks = {item.message.split(": ", 1)[1]: mark for item, mark in found.items
              if item.code == "abstract-not-found"}  # fmt: skip
     assert marks == {
-        "4.4 in the Abstract is found nowhere the paper reports": STOOD_IN_V1,
-        "6.6 in the Abstract is found nowhere the paper reports": NEW_IN_V2,
+        f"4.4 in the Abstract is {NOT_FOUND}": STOOD_IN_V1,
+        f"6.6 in the Abstract is {NOT_FOUND}": NEW_IN_V2,
     }
     assert all(not item.counted for item, _mark in found.items)
 
@@ -524,8 +526,8 @@ def test_a_finding_stands_in_v1_only_where_v1_s_audit_has_it(tmp_path: Path) -> 
                 "# Results\n\nMortality was 13%.\n")
     marks = {item.message.split(": ", 1)[1]: mark for item, mark in compare(old, new).items
              if item.code == "abstract-not-found"}  # fmt: skip
-    assert marks == {"12% in the Abstract is found nowhere the paper reports": NEW_IN_V2,
-                     "412 in the Abstract is found nowhere the paper reports": STOOD_IN_V1}
+    assert marks == {f"12% in the Abstract is {NOT_FOUND}": NEW_IN_V2,
+                     f"412 in the Abstract is {NOT_FOUND}": STOOD_IN_V1}
 
 
 def _table(header: str, *rows: str) -> str:

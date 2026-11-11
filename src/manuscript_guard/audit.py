@@ -180,9 +180,11 @@ class AuditReport:
     trees: list = field(default_factory=list)
     #: Each total of a table whose printed counts do not add up to it (`stats.margins`),
     #: and each characteristic whose categories add up to more than their column's n. Exact
-    #: arithmetic: --strict counts them.
+    #: arithmetic: --strict counts them. Categories over their n by no more than rounding
+    #: weighted counts can make are in `over_n_rounding`, a note --strict does not count.
     sums_off: list[Disagreement] = field(default_factory=list)
     over_n: list[Disagreement] = field(default_factory=list)
+    over_n_rounding: list[Disagreement] = field(default_factory=list)
     #: Each count held back that a total beside it gives away, by a printed total
     #: (`recovered`, which --strict counts) or only by its column's n (`recovered_by_n`,
     #: which it does not: the n is their total only where none of the column lacks them).
@@ -1547,8 +1549,9 @@ def _margins(report: AuditReport, path: Path, tables: list[Table]) -> None:
     for table in tables:
         report.sums_off += [Disagreement(path, line.total.count.line, wrong, line.context)
                             for line, wrong in sums_off(table)]  # fmt: skip
-        report.over_n += [Disagreement(path, found.line, found.message, found.context)
-                          for found in over_n(table)]  # fmt: skip
+        for found in over_n(table):
+            listed = report.over_n_rounding if found.rounding else report.over_n
+            listed.append(Disagreement(path, found.line, found.message, found.context))
         for found in recoverable(table, report.minimum):
             listed = report.recovered if found.line.explicit else report.recovered_by_n
             listed.append(Disagreement(path, found.member.count.line, said_recovered(found),

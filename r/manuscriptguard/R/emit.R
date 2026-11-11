@@ -1303,16 +1303,21 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
   # `of`, `over` and `family` say what a statistic that means nothing alone belongs to,
   # mirroring the Python `value()`: a p value names its estimate with `of` and its family of
   # tests with `family`; a share names its numerator with `of` and its denominator with
-  # `over`. G2 warns on a sentence that quotes it without them.
+  # `over`. G2 warns on a sentence that quotes it without them. `same_as` names another key
+  # this one is the same quantity as, as in Python: a second display of one value (APA's
+  # ".47" beside "0.47") declared so, which G8 holds to the first.
   value <- function(key, value, display = NULL, digits = NULL, unit = NULL,
                     quoted = TRUE, note = NULL, bounds = NULL, bound = NULL,
                     level = NULL, of = NULL, over = NULL, family = NULL,
-                    spread = NULL) {
+                    spread = NULL, same_as = NULL) {
     if (!is.null(state$values[[key]])) {
       stop(key, " emitted twice by ", script_path, call. = FALSE)
     }
     if (is.null(bounds) && !is.null(level)) {
       stop(key, " declares a level without being a bound of anything", call. = FALSE)
+    }
+    if (identical(same_as, key)) {
+      stop(key, " declares same_as itself", call. = FALSE)
     }
     if (identical(of, key) || identical(over, key)) {
       stop(key, " declares itself as what it belongs to", call. = FALSE)
@@ -1337,6 +1342,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     if (!is.null(of)) entry$of <- of
     if (!is.null(over)) entry$over <- over
     if (!is.null(family)) entry$family <- family
+    if (!is.null(same_as)) entry$same_as <- same_as
     if (!is.null(spread)) {
       if (!(spread %in% c("sd", "se"))) {
         stop(key, ": spread is one of sd, se, not ", spread, call. = FALSE)

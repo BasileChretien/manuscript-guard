@@ -782,11 +782,20 @@ def test_an_r_figure_that_estimates_while_it_draws_is_warned(
     assert found == said
 
 
-def test_same_quantity_under_two_keys_is_caught(project: Path) -> None:
+def _divergent(project: Path) -> list[tuple[str, str]]:
+    """The divergent-display findings of the project, as (severity, message)."""
+    return [(f.severity, f.message) for f in gate_report(project).findings
+            if f.code == "divergent-display"]
+
+
+def test_same_quantity_under_two_keys_is_said_and_fails_nothing(project: Path) -> None:
     """One quantity, two keys, two roundings — 3.84 in one place and 3.8 in another.
 
-    Both displays are honest renderings of the value, which is what makes this the case G8
-    exists for: nothing is false, and the paper still contradicts itself.
+    Both displays are honest renderings of the value. The pair is said, as a note: the
+    results file records nothing that tells it from two quantities that agree, or from one
+    printed two ways on purpose, so it fails nothing (2026-11-11; Known gaps, "G8 fails no
+    pair of keys for holding one value"). A pair declared one quantity still fails when it
+    parts (`test_one_estimate_under_two_names_declared_one_fails_when_it_parts`).
     """
     fragment = next((project / "results").glob("*.json"))
     document = json.loads(fragment.read_text(encoding="utf-8"))
@@ -795,7 +804,172 @@ def test_same_quantity_under_two_keys_is_caught(project: Path) -> None:
     document["values"]["ror.duplicate"]["digits"] = 1
     fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
     write_digest(fragment)  # the edit is legitimate here; we are testing G8, not G1
-    assert "divergent-display" in codes(gate_report(project))
+    assert "divergent-display" not in codes(gate_report(project))
+    assert [severity for severity, _ in _divergent(project)] == ["info"]
+
+
+def _add_keys(project: Path, keys: dict[str, dict]) -> None:
+    """Add keys to the example's fragment, each a copy of `ror.point` with no unit and the
+    fields given, and sign the fragment again: these tests are of G8, not G1."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    point = document["values"]["ror.point"]
+    for key, fields in keys.items():
+        document["values"][key] = {**{k: v for k, v in point.items() if k != "unit"}, **fields}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def test_two_quantities_that_happen_to_be_equal_fail_nothing(project: Path) -> None:
+    """arXiv 2409.10841, rebuilt with the R emitter: a count of two conditions written "2"
+    and a median ratio of 2.00, and a share written "0.0" beside a difference at "0.00", none of
+    them with a unit, failed at drafting as one quantity written two ways, and the hint said
+    to emit each pair once, which would have made the paper wrong. Equal values are all the
+    record shows, so the pairs are said as notes and nothing fails."""
+    _add_keys(project, {
+        "design.n_conditions": {"value": 2, "display": "2", "digits": 0},
+        "ratio.median_max": {"value": 2, "display": "2.00", "digits": 2},
+        "time.share_equal": {"value": 0, "display": "0.0", "digits": 1},
+        "accuracy.diff_min": {"value": 0, "display": "0.00", "digits": 2},
+    })
+    assert "divergent-display" not in codes(gate_report(project))
+    said = _divergent(project)
+    assert [severity for severity, _ in said] == ["info", "info"], said
+    hint = next(f.hint for f in gate_report(project).findings if f.code == "divergent-display")
+    assert "`unit`" in hint and "pick one display" not in hint
+
+
+def test_one_correlation_in_apa_form_beside_its_interval_fails_nothing(project: Path) -> None:
+    """PsyArXiv d8hkq_v1, an APA paper rebuilt with the R emitter: a correlation printed
+    ".47" in the text and "0.47" beside its interval "[0.21, 0.72]", emitted under two keys
+    as the results-binding skill says to emit a second display, failed `divergent-display`.
+    One quantity printed two ways on purpose is what the skill asks for: a note, no failure.
+    """
+    _add_keys(project, {
+        "cor.r": {"value": 0.4712, "display": ".47", "digits": 2},
+        "cor.point": {"value": 0.4712, "display": "0.47", "digits": 2},
+        "cor.ci_low": {"value": 0.2093, "display": "0.21", "digits": 2,
+                       "bounds": "cor.point", "bound": "low"},
+        "cor.ci_high": {"value": 0.7168, "display": "0.72", "digits": 2,
+                        "bounds": "cor.point", "bound": "high"},
+    })
+    report = gate_report(project)
+    assert not {"divergent-display", "declared-same-but-displayed-differently"} & codes(report)
+    assert [severity for severity, _ in _divergent(project)] == ["info"]
+
+
+def test_one_estimate_under_two_names_declared_one_fails_when_it_parts(project: Path) -> None:
+    """The duplicate G8 is for: one estimate emitted under a second name, which a later run
+    updates and the other does not. Declared one quantity with `same_as`, the pair fails the
+    moment the two hold numbers the coarser display does not round both to, or are printed
+    otherwise than as one rounding of the other: here with a unit one of them lacks."""
+    _add_keys(project, {
+        "est.main": {"value": 3.8439, "display": "3.84", "digits": 2},
+        "est.abstract": {"value": 3.9012, "display": "3.90", "digits": 2,
+                         "same_as": "est.main"},
+        "est.summary": {"value": 3.8439, "display": "3.84 a.u.", "same_as": "est.main"},
+    })
+    found = codes(gate_report(project))
+    assert {"declared-same-but-differs", "declared-same-but-displayed-differently"} <= found
+
+
+@pytest.mark.parametrize(("second", "value", "display"), [
+    ("APA's form, no leading zero", 0.4712, ".47"),
+    ("a coarser rounding", 0.4712, "0.5"),
+    ("a finer rounding", 0.4712, "0.4712"),
+    ("trailing zeros", 0.4712, "0.47120"),
+])
+def test_a_second_display_declared_same_as_passes(
+    project: Path, second: str, value: float, display: str
+) -> None:
+    """The author's decision on #628 (PsyArXiv d8hkq_v1, an APA paper: a correlation ".47"
+    in the text and "0.47" beside its interval): `same_as` ties two displays of one value.
+    The pair passes where the two hold one value and their displays differ only in form,
+    and G8 notes nothing, the pair being declared."""
+    _add_keys(project, {
+        "cor.point": {"value": 0.4712, "display": "0.47", "digits": 2},
+        "cor.r": {"value": value, "display": display, "same_as": "cor.point"},
+    })
+    report = gate_report(project)
+    assert not {code for code in codes(report) if code.startswith("declared-same")}, second
+    assert _divergent(project) == [], second
+
+
+@pytest.mark.parametrize(("value", "display"), [
+    (0.5188, ".52"), (0.5588, "0.6"), (0.4688, ".47"),
+])
+def test_a_second_display_declared_same_as_fails_when_the_values_part(
+    project: Path, value: float, display: str
+) -> None:
+    """".47" declared the same as "0.52" holds another number, and the pair fails. So does
+    one holding another value that the two displays round alike, ".47" for 0.4688 beside
+    "0.47" for 0.4712: `same_as` ties two displays of one value, not two values, and the
+    values are compared exactly, as before #628."""
+    _add_keys(project, {
+        "cor.point": {"value": 0.4712, "display": "0.47", "digits": 2},
+        "cor.r": {"value": value, "display": display, "same_as": "cor.point"},
+    })
+    assert "declared-same-but-differs" in codes(gate_report(project))
+
+
+def _declared_p(project: Path, display: str) -> set[str]:
+    """The failures of a p value of 0.0004 shown "<0.001", beside one declared the same
+    quantity and shown `display`."""
+    _add_keys(project, {
+        "p.main": {"value": 0.0004, "display": "<0.001"},
+        "p.apa": {"value": 0.0004, "display": display, "same_as": "p.main"},
+    })
+    return codes(gate_report(project))
+
+
+@pytest.mark.parametrize("display", ["<.001", "<0.0010", "< 0.001"])
+def test_a_p_value_under_one_comparator_in_two_forms_passes(project: Path, display: str) -> None:
+    """Round 1 of #628: a declared pair shown "<0.001" and APA's "<.001" failed, a display
+    with a comparator being read as no number at all. The same comparator before one number
+    written two ways is a difference of form."""
+    found = _declared_p(project, display)
+    assert not {code for code in found if code.startswith("declared-same")}, found
+
+
+@pytest.mark.parametrize("display", ["≤0.001", "0.0004", "<0.01"])
+def test_a_p_value_under_another_comparator_or_bound_fails(project: Path, display: str) -> None:
+    """Another comparator, a comparator on one side only, or another bound is more than
+    form: "<0.001" and "0.0004" say different things of one value."""
+    assert "declared-same-but-displayed-differently" in _declared_p(project, display)
+
+
+def test_a_group_tied_only_in_part_is_still_noted(project: Path) -> None:
+    """Round 1 of #628: the note is left out only where `same_as` ties every key of the
+    group. Two keys tied, ".47" and "0.47", and a third holding 0.4712 that nothing declares,
+    shown "0.4712", are still said, the third among them."""
+    _add_keys(project, {
+        "cor.point": {"value": 0.4712, "display": "0.47"},
+        "cor.r": {"value": 0.4712, "display": ".47", "same_as": "cor.point"},
+        "cor.other": {"value": 0.4712, "display": "0.4712"},
+    })
+    said = _divergent(project)
+    assert [severity for severity, _ in said] == ["info"], said
+    assert "cor.other" in said[0][1] and "cor.r" in said[0][1]
+
+
+@pytest.mark.parametrize("chain", [
+    {"a.one": "a.two", "a.two": "a.three"},  # a chain
+    {"a.one": "a.two", "a.two": "a.one"},  # a cycle
+])
+def test_keys_tied_through_a_chain_or_a_cycle_are_not_noted(
+    project: Path, chain: dict[str, str]
+) -> None:
+    """Keys tied through a chain of `same_as`, or round a cycle, are one group: no note, and
+    each declared pair is held, so nothing fails."""
+    displays = {"a.one": ".47", "a.two": "0.47", "a.three": "0.5"}
+    _add_keys(project, {
+        key: {"value": 0.4712, "display": displays[key],
+              **({"same_as": chain[key]} if key in chain else {})}
+        for key in sorted({*chain, *chain.values()})
+    })
+    report = gate_report(project)
+    assert _divergent(project) == []
+    assert not {code for code in codes(report) if code.startswith(("declared-same", "same-as"))}
 
 
 def test_a_count_and_a_percentage_that_coincide_are_not_one_quantity(project: Path) -> None:
@@ -2221,8 +2395,9 @@ def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
     tmp_path: Path,
 ) -> None:
     """Task 3: the Abstract's interval held to its one counterpart in the Results, two of its
-    numbers agreeing and the third not, is a conflict --strict counts; an Abstract number
-    found nowhere the paper reports is said and not counted (the author, 2026-10-28)."""
+    numbers agreeing and the third not, is a conflict --strict counts; an Abstract number not
+    found in the Methods, the Results or the tables is said and not counted (the author,
+    2026-10-28)."""
     from manuscript_guard.cli import main
 
     paper = tmp_path / "paper.md"
@@ -2233,6 +2408,23 @@ def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
     assert main(["audit", str(paper), "--strict"]) == 0
     paper.write_text(text.replace("1.2-1.9)", "1.2-1.97)"), encoding="utf-8")
     assert main(["audit", str(paper), "--strict"]) == 1
+
+
+def test_an_abstract_identifier_other_than_the_methods_is_not_found(tmp_path: Path) -> None:
+    """An Abstract that names a data release or a variant the Methods do not, "v7" for the
+    Methods' "v8", is told apart from one that names the Methods' own: each identifier was
+    not found before, the right one with the wrong (pharm-epi of the real-paper corpus,
+    2026-11-11)."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    text = ("# Paper\n\n## Abstract\n\nWe used GTEx v8 and rs75015950.\n\n## Methods\n\nWe "
+            "used GTEx v8. Variant rs75015950 lies on chr15.\n\n## Results\n\nIt was so.\n")
+    paper.write_text(text, encoding="utf-8")
+    assert [c.text for c in audit([paper], None).abstract.not_found] == []
+    paper.write_text(text.replace("GTEx v8 and rs75015950", "GTEx v7 and rs75015951", 1),
+                     encoding="utf-8")  # fmt: skip
+    assert [c.text for c in audit([paper], None).abstract.not_found] == ["v7", "rs75015951"]
 
 
 def _signed_package(root: Path) -> Path:
@@ -7222,6 +7414,17 @@ def test_none_is_a_correction_with_its_reason(project: Path) -> None:
         "replace this later.",
         "Delete this section.",
         "Add your affiliation here.",
+        # Beside the placement markers that pass (Basile, 2026-11-11): an instruction with no
+        # number, one with other words, and the slots that failed before, fail still.
+        "[Insert table here]",
+        "[Insert Figure 2 legend]",
+        "[Insert reference]",
+        "[INSERT DATA]",
+        "[Insert Table 1 data here]",
+        # Round 1 of #625: an X is how a template writes a number still to fill, so a marker
+        # with X or XX for its number is a slot, though X is ten in Roman numerals.
+        "[Insert Table X here]",
+        "[INSERT FIGURE XX]",
     ],
 )
 def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None:
@@ -7267,6 +7470,29 @@ def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None
         'Respondents could answer yes or no, or state "not applicable".',
         "AB wrote the\ntext for this section and CD the rest.",
         "We screened each title and\nabstract text. Two reviewers read each.",
+        # A placement marker, which APA and many journals ask for where the displays follow
+        # the text (Basile, 2026-11-11, after the corpus of 52 real preprints, in which G6
+        # failed it each time: slugs educ, an education paper's "[Insert Table 1 here]" after
+        # pandoc's escaping, and socio, a sociology PDF's "[INSERT FIGURE 1]").
+        "Results follow.\n\n\\[Insert Table 2 here\\]\n\nThe rest follows.",
+        "[INSERT FIGURE 3]",
+        "[Insert Figure 2 here]",
+        "[Insert Table 1 about here]",
+        "[Insert Fig. S2 here.]",
+        "[Figure 1 about here]",
+        "[Table 3 about here]",
+        "Results follow.\n\nInsert Table 1 about here\n\nThe rest follows.",
+        "Results follow.\n\nINSERT FIGURE 3 ABOUT HERE\n\nThe rest follows.",
+        # Round 1 of #625: a Roman numeral as IEEE numbers its tables, no space after
+        # "Fig.", and a number with a dot in it.
+        "[Insert Table I here]",
+        "[Insert Table XIV about here]",
+        "[Insert Fig.1 here]",
+        "[Insert Table 1.1 here]",
+        "[INSERT FIGURE S1.2]",
+        # All in capitals with a Roman numeral, which the capitals rule read as a slot.
+        "[INSERT TABLE XIV]",
+        "[INSERT FIGURE IV ABOUT HERE]",
     ],
 )
 def test_what_looks_like_a_placeholder_and_is_prose_passes(project: Path, prose: str) -> None:
@@ -12650,6 +12876,24 @@ def test_g6_takes_a_latex_citation_beside_a_claim_for_its_support(project: Path)
     assert not [f for f in _g6_findings(project) if f.code == "vague-attribution"]
 
 
+def test_g6_takes_a_typed_citation_for_a_claims_support_and_brackets_that_cite_nothing_not(
+    project: Path,
+) -> None:
+    """A Markdown paper not written with manuscript-guard, a .docx `audit` converts among
+    them, types its citations: a claim beside "(Smith et al., 2020)" or "[12]" is cited,
+    and one beside "(2020)" or "(p < 0.05)" is still vague (corpus round, 2026-11-10: 14 of
+    16 vague attributions on 52 preprints stood beside a typed citation)."""
+    main = main_md(project)
+    far = "\n\n" + "Words of the paper. " * 20 + "\n\n"
+    claims = [f"Prior research has shown that {what} lowers blood pressure {cited}."
+              for what, cited in (("exercise", "(Smith et al., 2020)"), ("rest", "[12]"),
+                                  ("salt", "(2020)"), ("sleep", "(p < 0.05)"))]  # fmt: skip
+    text = main.read_text(encoding="utf-8") + far + far.join(claims) + "\n"
+    main.write_text(text, encoding="utf-8")
+    found = sorted(f.line for f in _g6_findings(project) if f.code == "vague-attribution")
+    assert found == [text.count("\n", 0, text.index(claim)) + 1 for claim in claims[2:]], found
+
+
 def test_g6_names_the_line_of_a_typed_reference_lists_entry(project: Path) -> None:
     """A placeholder in a typed reference list's sixth entry is named at that entry's line, and
     a Spanish title's "Todo" is no placeholder (rounds 2 and 3 of step 7b)."""
@@ -17176,6 +17420,11 @@ def _wrong_alpha_in_the_lock(root: Path) -> None:
         "Section 2: Methods",
         "Laboratory methods",
         "Study design, setting, participants and methods",
+        # the word alone, as APA and a machine-learning paper title it, which neither G4
+        # nor G9 took for the Methods (cs-lg of the real-paper corpus, 2026-11-11)
+        "Method",
+        "3. Method",
+        "Methodology",
     ],
 )
 def test_a_wrong_parameter_is_found_under_any_heading_g4_counts_as_the_methods(

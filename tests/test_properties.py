@@ -18530,9 +18530,170 @@ def _a_title_s_bold_is_kept(patch: pytest.MonkeyPatch) -> None:
         paragraphs._ESCAPED.sub(r"\1", title).split()))  # fmt: skip
 
 
+from generated import commented_documents, word_package  # noqa: E402
+
+_W_MAIN = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+
+def _comment_spans(document: bytes) -> dict[str, tuple[int, int, int]]:
+    """Where each comment's range stands, by its id: its paragraph, from 0, and the range's
+    start and end in the paragraph's text."""
+    import xml.etree.ElementTree as ET
+
+    spans, opened = {}, {}
+    for index, paragraph in enumerate(ET.fromstring(document).iter(_W_MAIN + "p")):
+        at = 0
+        for node in paragraph.iter():
+            if node.tag == _W_MAIN + "commentRangeStart":
+                opened[node.get(_W_MAIN + "id")] = (index, at)
+            elif node.tag == _W_MAIN + "commentRangeEnd":
+                where, start = opened.pop(node.get(_W_MAIN + "id"))
+                spans[node.get(_W_MAIN + "id")] = (where, start, at)
+            elif node.tag == _W_MAIN + "t":
+                at += len(node.text or "")
+    return spans
+
+
+def _comment_texts(comments: bytes) -> dict[str, str]:
+    """Each comment's words by its id, a paragraph to a line."""
+    import xml.etree.ElementTree as ET
+
+    return {comment.get(_W_MAIN + "id"): "\n".join(
+                "".join(t.text or "" for t in paragraph.iter(_W_MAIN + "t"))
+                for paragraph in comment.iter(_W_MAIN + "p"))
+            for comment in ET.fromstring(comments).iter(_W_MAIN + "comment")}  # fmt: skip
+
+
+@holds(40, commented_documents())
+def test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text(
+    drawn: tuple[str, list, list],
+) -> None:
+    """The commented copy of a .docx (`audit --commented`, the author's audit, 2026-11-10)
+    puts each finding's comment on its own words: a word, a number, the one of a word's two
+    places its quote has, a quote with no words of its own, a quote the report cut at both
+    ends, a number quoted bare whose digits an earlier paragraph holds inside a longer one;
+    on the whole paragraph where the words are inside a link; and lists a finding whose
+    words are in no paragraph, or quoted bare in two, in a comment over the first. Its text
+    is the document's, and its root declares every namespace the document's did
+    (`auditing.commented`)."""
+    import tempfile
+    import zipfile
+
+    from manuscript_guard.auditing.commented import Note, write
+    from manuscript_guard.text.docx import read_docx_text
+
+    body, notes, expected = drawn
+    with tempfile.TemporaryDirectory() as folder:
+        source, target = Path(folder) / "paper.docx", Path(folder) / "commented.docx"
+        with zipfile.ZipFile(source, "w") as archive:
+            for name, part in word_package(body).items():
+                archive.writestr(name, part)
+        written = write(source, target, [Note(*note) for note in notes],
+                        date="2026-11-10T00:00:00Z")  # fmt: skip
+        assert read_docx_text(target).body == read_docx_text(source).body
+        with zipfile.ZipFile(target) as archive:
+            document = archive.read("word/document.xml")
+            spans = _comment_spans(document)
+            said = _comment_texts(archive.read("word/comments.xml"))
+    placed = {said[identifier]: span for identifier, span in spans.items()}
+    listing = next((text for text in placed if "no place in the text" in text), "")
+    nowhere = [comment for (_w, _a, comment), where in zip(notes, expected, strict=True)
+               if where is None]
+    assert listing.startswith(f"{len(nowhere)} findings"), listing
+    assert [note.comment for note in written.listed] == nowhere
+    for (_words, _around, comment), where in zip(notes, expected, strict=True):
+        if where is None:
+            assert comment in listing
+        else:
+            assert placed.get(comment) == where, comment
+    first = next(iter(_comment_texts(f"<w:comments xmlns:w='{_W_MAIN[1:-1]}'><w:comment w:id='0'>"
+                                f"{body}</w:comment></w:comments>".encode()).values()))  # fmt: skip
+    assert placed[listing] == (0, 0, len(first.split("\n")[0]))
+    assert b"xmlns:w15=" in document.split(b">", 2)[1]
+
+
+def _the_first_place_of_a_word_is_commented(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import commented
+
+    real = commented._found
+    patch.setattr(commented, "_found", lambda text, old: real(text, old)[:1])
+
+
+def _a_finding_with_no_place_is_dropped(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import commented
+
+    patch.setattr(commented, "_listing", lambda listed: "1 finding of the audit")
+
+
+def _every_comment_covers_its_paragraph(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import commented
+
+    def whole(paragraph, placement, span, ids, comments):
+        identifier = ids.take("comment")
+        commented._whole(paragraph, identifier)
+        comments.append(commented._comment(identifier, placement))
+
+    patch.setattr(commented, "_write_comment", whole)
+
+
+def _the_namespaces_word_declares_are_dropped(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import commented
+
+    patch.setattr(commented, "_declared_again", lambda part, declared: part)
+
+
+def _a_quote_is_found_inside_a_longer_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import commented
+
+    real = commented._quoted
+    patch.setattr(commented, "_quoted", lambda fragment, edged: real(fragment, False))
+
+
+def _the_first_of_two_paragraphs_is_taken(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import commented
+
+    patch.setattr(commented, "_one_of", lambda found: found[0])
+
+
+def _a_quote_with_no_words_is_listed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import commented
+
+    real = commented._span
+    patch.setattr(commented, "_span", lambda text, note, *rest: real(text, note, *rest)
+                  if note.words else None)  # fmt: skip
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "the first of a word's places is commented, not the one quoted": (
+        _the_first_place_of_a_word_is_commented,
+        test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text,
+    ),
+    "a finding with no place in the text is dropped": (
+        _a_finding_with_no_place_is_dropped,
+        test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text,
+    ),
+    "every comment covers its whole paragraph": (
+        _every_comment_covers_its_paragraph,
+        test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text,
+    ),
+    "the namespaces Word declares and does not use are dropped": (
+        _the_namespaces_word_declares_are_dropped,
+        test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text,
+    ),
+    "a bare quote is found inside a longer number": (
+        _a_quote_is_found_inside_a_longer_word,
+        test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text,
+    ),
+    "a bare quote two paragraphs hold is put on the first": (
+        _the_first_of_two_paragraphs_is_taken,
+        test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text,
+    ),
+    "a quote with no words of its own is listed": (
+        _a_quote_with_no_words_is_listed,
+        test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text,
+    ),
     "no heading is read in a Word document's text": (
         _no_heading_is_read,
         test_a_place_in_a_word_document_is_its_heading_and_its_paragraph_under_it,

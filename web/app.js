@@ -129,6 +129,8 @@ $("form").addEventListener("submit", async (event) => {
   // The last report goes before this run starts, so that a run refused or failed leaves none
   // on screen for "Save the report" to save as this one's (round 2 of #527).
   $("result").hidden = true;
+  $("savecommented").hidden = true;
+  commented = null;
   $("report").textContent = "";
   $("view").replaceChildren();
   $("notes").textContent = "";
@@ -148,6 +150,17 @@ $("form").addEventListener("submit", async (event) => {
     draw(result.view);
     $("notes").hidden = !result.err;
     $("notes").textContent = result.err;
+    if (result.commented && result.commented.error) {
+      $("notes").hidden = false;
+      $("notes").textContent += (result.err ? "\n" : "")
+        + `No copy of the paper with comments was made: ${result.commented.error}`;
+    }
+    if (result.commented && result.commented.data) {
+      commented = result.commented;
+      $("savecommented").hidden = false;
+      $("savecommented").textContent = `Save ${commented.name}: the paper with ${commented.placed} `
+        + "finding" + (commented.placed === 1 ? "" : "s") + " as Word comments at their places";
+    }
     $("netlog").textContent += "\n\n" + listRequests(
       `This audit of ${paper.name} sent requests to:`, result.sent);
     say(`Audited ${paper.name} in ${(result.ms / 1000).toFixed(1)} s.`);
@@ -158,6 +171,18 @@ $("form").addEventListener("submit", async (event) => {
   } finally {
     $("run").disabled = false;
   }
+});
+
+// The paper with the findings as Word comments (`web.commented`), from the last audit.
+let commented = null;
+$("savecommented").addEventListener("click", () => {
+  if (!commented) return;
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([commented.data], {
+    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }));
+  link.download = commented.name;
+  link.click();
+  URL.revokeObjectURL(link.href);
 });
 
 $("save").addEventListener("click", () => {

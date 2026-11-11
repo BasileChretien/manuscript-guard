@@ -25,6 +25,12 @@ refused, exit 2. Its tables are lines of text there, so their numbers are compar
 as the text's but no table's arithmetic is checked, and a line is a heading only where it
 holds a section's name alone. A PDF in a folder is not read: name it.
 
+`--commented FILE.docx` also writes a copy of the .docx named first with each finding as a
+Word comment at its place, by "manuscript-guard audit": on the number or the words it is
+about, on its paragraph where those stand in a field or a link, and, for a finding with no
+place in the text, in a list in a comment on the first paragraph. Nothing of the document's
+text changes, and FILE must not exist yet. The page offers the same copy beside the report.
+
 A place in a .docx is its heading and its paragraph under it, "Methods, paragraph 3", as a
 reader finds it in Word: a list's item is a paragraph, a table is one, and what stands before
 the first heading is "before the first heading". `--json` gives it beside the line, as

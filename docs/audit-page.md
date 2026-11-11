@@ -27,9 +27,12 @@ fold for each kind with every place inside it and the kind's hint; and the other
 with something to show. Below, in a fold, is the text the command line prints, word for
 word, which "Save the report" saves. The box "List every place of every finding" gives the
 text every place with its context and hint, and the page every section and every place's
-context (`audit --details`). "English of the paper" is `--english`, and "Words to leave
-alone", split at spaces and commas, is `--known`: names, initials and the field's terms G14
-then neither asks to be defined, reports the spelling of, nor reads as names from code.
+context (`audit --details`). For a .docx, "Save the paper with the findings as Word
+comments" saves a copy of it with each finding as a comment at its place, written from the
+same audit, as `audit --commented` writes it; it is made in the browser like the rest.
+"English of the paper" is `--english`, and "Words to leave alone", split at spaces and
+commas, is `--known`: names, initials and the field's terms G14 then neither asks to be
+defined, reports the spelling of, nor reads as names from code.
 
 It does not read PDFs, which need `pdftotext`, a program a browser cannot start. Nor does it
 read LaTeX projects of several files, figures, or reproducibility packages: the command line

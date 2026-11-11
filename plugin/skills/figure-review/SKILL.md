@@ -25,11 +25,13 @@ Every figure the paper places is reviewed: one the analysis renders into `figure
 manuscript binds, and one placed the ordinary way, with LaTeX's `\includegraphics` (found
 through `\graphicspath`, a name with no extension as graphicx finds it), as a Markdown image,
 or as a picture `init --from` brought from Word into `manuscript/media/`. A placed figure is
-known by its path from the project's root, `manuscript/figs/chart.pdf`, and its records stand
+known by its path from the project's root, `manuscript/<folder>/chart.pdf`, and its records stand
 beside it as an emitted figure's stand beside it in `figures/`: `chart.review.yaml` and
 `chart.guard.yaml`. The numbers a placed figure draws are not traced to the results, so read
 them against `results/` under `values-match-results` with particular care; `check` names
-each such figure in one note (`figure-untraced`).
+each such figure in one note (`figure-untraced`). A figure written or linked outside the
+project is reviewed where it is, its records kept there, out of the project's history, and
+another note names it (`figure-outside-project`): copy the file into the project instead.
 
 ```bash
 manuscript-guard check --json          # which figures need a review

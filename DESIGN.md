@@ -25502,8 +25502,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
     command is used, since one in a command the paper never uses was asked for a review
     (round 1 of #630). A `\graphicspath` counts for every picture of its document wherever
     it stands, and an imported file's folder is tried before it. Accepted.
-  - A file the manuscript reaches through a link out of the project is checked where the link
-    leads, its records kept there, and named in a note (`figure-outside-project`). A
+  - A file written or linked outside the project, by a path from the root of the disk, one
+    that climbs out with `..`, or through a link, is checked where it is, its records kept
+    there, named by its file name alone in what `check` says and in `alt-text.md`, so that no
+    folder of the author's is submitted, and named in a note (`figure-outside-project`). A
     `.webp` is reviewed and described, and its colours are said to be unread, as a PNG's
     are. Pinned by
     `tests/test_placed_figures.py::test_a_figure_through_a_link_out_of_the_project_is_checked_and_named`.

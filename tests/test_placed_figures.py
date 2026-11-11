@@ -271,3 +271,50 @@ def test_a_placed_figures_alternative_text_leaves_the_manuscript_digest_alone(
         "alt: Two lines, one rising.\n", encoding="utf-8"
     )
     assert document_digest(load_project(project)[0]) == before
+
+
+# --------------------------------------------------- the fix-only round of #630's review
+
+
+@pytest.mark.parametrize("how", ["absolute", "climbing"])
+def test_a_figure_written_outside_the_project_is_named_by_its_file_alone(
+    project: Path, tmp_path: Path, how: str
+) -> None:
+    """The fix-only round of #630: a figure path written outside the project, absolutely or
+    with "..", was written into `alt-text.md` and the note as a path that climbs out of the
+    project, the author's own folders with it. Such a file is named by its file name."""
+    from manuscript_guard.build.submission import alt_texts
+    from manuscript_guard.gates.placed_figures import check_placed
+
+    shared = tmp_path / "someone_private_home" / "shared"
+    _touch(shared / "x.svg", b"<svg xmlns='http://www.w3.org/2000/svg'/>")
+    (shared / "x.guard.yaml").write_text("alt: Two lines.\n", encoding="utf-8")
+    target = shared.joinpath("x.svg").as_posix() if how == "absolute" else (
+        Path("..") / "someone_private_home" / "shared" / "x.svg").as_posix()
+    if how == "climbing":
+        assert (project / target).resolve() == (shared / "x.svg").resolve(), target
+    main = project / "manuscript" / "main.md"
+    main.write_text(main.read_text(encoding="utf-8").replace(
+        "{{figure.forest}}\n", f"{{{{figure.forest}}}}\n\n![Two lines.](<{target}>)\n", 1),
+        encoding="utf-8")  # fmt: skip
+    loaded = load_project(project)[0]
+    [placed] = [found for found in placed_files(loaded) if found.path.stem == "x"]
+    assert placed.name == "x.svg" and placed.outside
+    written = alt_texts(loaded)
+    assert "## x.svg" in written and "someone_private_home" not in written, written
+    [note] = [f for f in check_placed(loaded).findings if f.code == "figure-outside-project"]
+    assert "someone_private_home" not in note.message
+    assert "written or linked outside the project" in note.message
+
+
+def test_a_picture_added_after_a_check_is_found_by_the_next(tmp_path: Path) -> None:
+    """The fix-only round of #630: what the manuscript names is read once per content of its
+    sources, and the files it names are found again on each call, so a PDF saved beside the
+    PNG after one check is the picture the next one finds."""
+    root = tmp_path / "p"
+    manuscript = _latex_project(root, "\includegraphics{chart}\n")
+    _touch(manuscript / "figs" / "chart.png", b"\x89PNG\r\n\x1a\n")
+    project = load_project(root)[0]
+    assert [placed.name for placed in placed_files(project)] == ["manuscript/figs/chart.png"]
+    _touch(manuscript / "figs" / "chart.pdf")
+    assert [placed.name for placed in placed_files(project)] == ["manuscript/figs/chart.pdf"]

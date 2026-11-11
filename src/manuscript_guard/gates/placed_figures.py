@@ -20,9 +20,11 @@ Found as the build finds them:
   project's root, which pandoc runs from. A web address is no file of the paper's, and a
   reference image, `![a][b]`, is not read.
 
-A path that names no file is passed over: the build says so. A file the manuscript reaches
-through a link out of the project is checked where the link leads, known by its path through
-the link, and named in a note (`figure-outside-project`). A picture in a definition's body
+A path that names no file is passed over: the build says so. A file written or linked
+outside the project, by a path from the root of the disk, one that climbs out with "..", or
+through a link, is checked where it is, named by its file name alone, so that no folder of
+the author's is written into what is submitted, and named in a note
+(`figure-outside-project`). A picture in a definition's body
 places nothing, even where the command is used (Known gaps).
 A file in `figures/` of a figure an analysis emits is that figure, read as it always was.
 
@@ -64,7 +66,8 @@ _ESCAPED = re.compile(r"\\([!-/:-@\[-`{-~])")
 #: A run of percent escapes, read as the UTF-8 they spell; a gate imports no network module,
 #: `urllib` among them (`tests/test_review_plan.py`).
 _PERCENT = re.compile(r"(?:%[0-9A-Fa-f]{2})+")
-_WEB = re.compile(r"^(?:[A-Za-z][A-Za-z0-9+.-]*:|//|#)")
+#: A web address: a scheme of two letters or more, so that a drive, `C:/`, is a path.
+_WEB = re.compile(r"^(?:[A-Za-z][A-Za-z0-9+.-]+:|//|#)")
 
 
 @dataclass(frozen=True)
@@ -97,8 +100,12 @@ def placed_files(project: Project) -> list[Placed]:
         return []
     root = project.root.absolute()
     real_root = _resolved(root) or root
-    found_in, emitted = _read(project, manuscript)
+    named, emitted = _read(project, manuscript)
     figures = _resolved(project.path("figures"))
+    # Found again on each call, outside what `_read` keeps: a file saved since the last call
+    # is the one graphicx finds now (the fix-only round of #630).
+    found_in = [(path, supplementary) for path, supplementary in
+                (_found(project, manuscript, one) for one in named) if path is not None]
     # By the file a path leads to, the first path that leads there kept: the one the records
     # stand beside, through a link where it goes through one.
     seen: dict[Path, tuple[Path, bool]] = {}
@@ -119,19 +126,23 @@ def placed_files(project: Project) -> list[Placed]:
             for path in choose(list(links))]  # fmt: skip
 
 
+#: What a manuscript names as a picture: a Markdown image's path from the project's root and
+#: whether the supplement holds it, or an `\\includegraphics`'s path as written with whether
+#: the supplement's document holds it, its entry file, the folder its file was imported from
+#: and the document's `\\graphicspath` folders.
+Named = tuple[str, bool] | tuple[str, bool, str, str, tuple[str, ...]]
 #: What `_read` read, by what it read: `check` asks for the placed figures from four gates,
 #: and reading the LaTeX documents and the bindings each time took a sixth of its time on a
-#: twin of thirty pictures (round 1 of #630). Kept for the last few manuscripts.
-_CACHE: dict[tuple[str, str], tuple[tuple[tuple[Path, bool], ...], frozenset[str]]] = {}
+#: twin of thirty pictures (round 1 of #630). Kept for the last few manuscripts: what they
+#: name, not the files that names, which are found on each call.
+_CACHE: dict[tuple[str, str], tuple[tuple[Named, ...], frozenset[str]]] = {}
 _CACHE_SIZE = 4
 #: The suffixes of the files what the manuscript places is read from.
 _SOURCES = {".md", ".tex", ".sty", ".cls"}
 
 
-def _read(
-    project: Project, manuscript: Path
-) -> tuple[tuple[tuple[Path, bool], ...], frozenset[str]]:
-    """Each picture the manuscript names, as a path to try, and the names of the figures it
+def _read(project: Project, manuscript: Path) -> tuple[tuple[Named, ...], frozenset[str]]:
+    """Each picture the manuscript names, as it names it, and the names of the figures it
     binds; read once for each content of its sources, so a changed file is read again."""
     from manuscript_guard.gates.figure_files import _placed
     from manuscript_guard.text.reader import LATEX, manuscript_format
@@ -139,16 +150,24 @@ def _read(
     key = (f"{project.root.absolute()}|{manuscript.absolute()}", _sources_digest(manuscript))
     if key in _CACHE:
         return _CACHE[key]
-    found_in = tuple(latex_graphics(manuscript) if manuscript_format(manuscript) == LATEX
-                     else _markdown(project, manuscript))  # fmt: skip
+    named = tuple(latex_included(manuscript) if manuscript_format(manuscript) == LATEX
+                  else _markdown(manuscript))  # fmt: skip
     try:
         emitted = frozenset(name for name, _supplementary in _placed(project))
     except (ContractError, OSError):
         emitted = frozenset()  # a file that cannot be read is named by the check that reads it
     while len(_CACHE) >= _CACHE_SIZE:
         _CACHE.pop(next(iter(_CACHE)))
-    _CACHE[key] = (found_in, emitted)
-    return found_in, emitted
+    _CACHE[key] = (named, emitted)
+    return named, emitted
+
+
+def _found(project: Project, manuscript: Path, named: Named) -> tuple[Path | None, bool]:
+    """The file a picture the manuscript names is, as the build finds it, or None."""
+    if len(named) == 2:
+        return project.root / named[0], named[1]
+    written, supplementary, entry, imported, folders = named
+    return resolve_graphic(manuscript, entry, imported, list(folders), written), supplementary
 
 
 def _sources_digest(manuscript: Path) -> str:
@@ -175,11 +194,14 @@ def _resolved(path: Path) -> Path | None:
 
 
 def _named(path: Path, root: Path) -> str:
-    """`path` from the project's root, as written through any link, `/` between folders."""
+    """`path` from the project's root, as written through any link, `/` between folders; a
+    path written outside the project by its file name alone, which names none of the
+    author's folders."""
     try:
-        return Path(os.path.relpath(path, root)).as_posix()
+        named = Path(os.path.relpath(path, root)).as_posix()
     except ValueError:  # another drive
         return path.name
+    return path.name if named == ".." or named.startswith("../") else named
 
 
 def _inside(path: Path, real_root: Path) -> bool:
@@ -191,8 +213,8 @@ def _decoded(match: re.Match[str]) -> str:
     return bytes.fromhex(match[0].replace("%", "")).decode("utf-8", errors="replace")
 
 
-def _markdown(project: Project, manuscript: Path) -> list[tuple[Path, bool]]:
-    """Each Markdown image's file, from the project's root, and whether the supplement holds
+def _markdown(manuscript: Path) -> list[tuple[str, bool]]:
+    """Each Markdown image's path, from the project's root, and whether the supplement holds
     it."""
     from manuscript_guard.contracts._schema import read_text
     from manuscript_guard.gates.numbers import is_supplementary, source_files
@@ -204,7 +226,7 @@ def _markdown(project: Project, manuscript: Path) -> list[tuple[Path, bool]]:
         except (ContractError, OSError):
             continue  # a file that cannot be read is named by the check that reads it
         supplementary = is_supplementary(manuscript, path)
-        found += [(project.root / target, supplementary) for target in images(text)]
+        found += [(target, supplementary) for target in images(text)]
     return found
 
 
@@ -236,6 +258,18 @@ def images(text: str) -> list[str]:
 def latex_graphics(manuscript: Path) -> list[tuple[Path, bool]]:
     """Each `\\includegraphics`'s file in the main text's document and in the supplement's,
     and whether it is the supplement's."""
+    found = []
+    for written, supplementary, entry, imported, folders in latex_included(manuscript):
+        hit = resolve_graphic(manuscript, entry, imported, list(folders), written)
+        if hit is not None:
+            found.append((hit, supplementary))
+    return found
+
+
+def latex_included(manuscript: Path) -> list[tuple[str, bool, str, str, tuple[str, ...]]]:
+    """Each `\\includegraphics` of the main text's document and of the supplement's, as
+    written, with whether it is the supplement's, its entry file, the folder its file was
+    imported from and the document's `\\graphicspath` folders: what finds its file."""
     from manuscript_guard.text.latex.structure import ENTRY, SUPPLEMENT_ENTRY, read_document
 
     found = []
@@ -246,12 +280,9 @@ def latex_graphics(manuscript: Path) -> list[tuple[Path, bool]]:
         except (ContractError, OSError):
             continue
         tree = [source for source in document.sources if not source.loose]
-        folders = graphics_folders(source.text for source in tree)
-        for source in tree:
-            for written in included(source):
-                hit = resolve_graphic(manuscript, entry, source.imported, folders, written)
-                if hit is not None:
-                    found.append((hit, supplementary))
+        folders = tuple(graphics_folders(source.text for source in tree))
+        found += [(written, supplementary, entry, source.imported, folders)
+                  for source in tree for written in included(source)]  # fmt: skip
     return found
 
 
@@ -321,9 +352,9 @@ def _outside(outside: list[Placed]) -> Finding:
         gate=GATE,
         code="figure-outside-project",
         severity=INFO,
-        message=f"{len(outside)} placed figure(s) are outside the project, where a link in it "
-        f"leads: {names}. Each is reviewed, described and read where the link leads, and its "
-        "review and guard file are kept there, out of the project's history",
+        message=f"{len(outside)} placed figure(s) are written or linked outside the project: "
+        f"{names}. Each is reviewed, described and read where it is, and its review and guard "
+        "file are kept there, out of the project's history",
         path=outside[0].path,
         hint="copy the file into the project, beside the manuscript, so that the paper's "
         "repository holds what it prints and the records of it",

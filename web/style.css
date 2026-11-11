@@ -1,10 +1,13 @@
 :root {
   --bg: #fbfaf7; --fg: #1d1d1b; --muted: #5d5b55; --line: #d9d6cc; --accent: #1f5f8b;
-  --warn: #8a4b00;
+  --warn: #8a4b00; --field: #ffffff;
+  /* The browser's own controls (a file's button, a menu, a tick box) follow the reader's
+     light or dark setting, as the page does; without it they stay light on a dark page. */
+  color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #161615; --fg: #ecebe6; --muted: #a9a69c; --line: #3a3934; --accent: #7fb6dd;
-    --warn: #e0a868; }
+  :root { --bg: #161615; --fg: #ecebe6; --muted: #a9a69c; --line: #57554d; --accent: #7fb6dd;
+    --warn: #e0a868; --field: #22221f; }
 }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, sans-serif; }
 main { max-width: 46rem; margin: 0 auto; padding: 1.5rem 16px 4rem; }
@@ -14,15 +17,32 @@ a { color: var(--accent); }
 .lead { font-size: 1.05rem; }
 li { margin: .3rem 0; }
 .caution { color: var(--warn); }
-#status { padding: .6rem .8rem; border: 1px solid var(--line); border-radius: 6px; }
-form { display: grid; gap: 1rem; margin: 1.2rem 0; }
-label { display: grid; gap: .35rem; }
-label.tick { grid-template-columns: auto 1fr; align-items: start; gap: .6rem; }
-input[type="file"] { max-width: 100%; }
+.version { color: var(--muted); margin: 0 0 .8rem; }
+#loading { padding: .6rem .8rem; border: 1px solid var(--line); border-radius: 6px; }
+#status { margin: 0; }
+#progress { width: 100%; margin-top: .5rem; accent-color: var(--accent); }
+form { display: grid; gap: 1.2rem; margin: 1.4rem 0; }
+label { display: grid; gap: .3rem; }
+label.tick { grid-template-columns: auto 1fr; align-items: start; gap: .7rem; }
+label.tick > span { display: grid; gap: .2rem; }
+.field { font-weight: 600; }
+.help { color: var(--muted); font-size: .92rem; }
+input[type="file"] { max-width: 100%; font: inherit; color: var(--fg); }
+input[type="file"]::file-selector-button { font: inherit; margin-right: .7rem; padding: .4rem .8rem;
+  border: 1px solid var(--accent); border-radius: 6px; background: transparent; color: var(--accent);
+  cursor: pointer; }
+input[type="text"], select { font: inherit; color: var(--fg); background: var(--field);
+  border: 1px solid var(--line); border-radius: 6px; padding: .45rem .6rem; max-width: 100%; }
+input[type="checkbox"] { width: 1.15rem; height: 1.15rem; margin: .2rem 0 0; accent-color: var(--accent); }
+input:disabled, select:disabled { opacity: .55; }
+input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; }
 button { font: inherit; padding: .45rem .9rem; border: 1px solid var(--accent); border-radius: 6px;
   background: var(--accent); color: var(--bg); cursor: pointer; width: fit-content; }
 button#probe { background: transparent; color: var(--accent); padding: .05rem .5rem; }
 button:disabled { opacity: .5; cursor: default; }
+.actions { display: flex; flex-wrap: wrap; gap: .6rem; margin: .4rem 0 1rem; }
+.actions #save { background: transparent; color: var(--accent); }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; border: 1px solid var(--line);
   border-radius: 6px; padding: .8rem; }
 #notes { color: var(--muted); }
@@ -42,8 +62,9 @@ details.kind, details.section { border: 1px solid var(--line); border-radius: 6p
 details.kind summary, details.section summary { font-weight: 600; }
 details.kind ol { padding-left: 1.4rem; margin: .4rem 0; }
 details.kind .where { color: var(--muted); }
-details.kind .context { font-family: ui-monospace, monospace; font-size: .85rem; color: var(--muted);
-  overflow-wrap: anywhere; }
+details.kind .context { font-size: .9rem; color: var(--muted); overflow-wrap: anywhere;
+  border-left: 3px solid var(--line); padding-left: .6rem; margin: .2rem 0; }
+details.kind li { margin: .5rem 0; }
 .hint { color: var(--muted); font-size: .92rem; }
 #view .small { color: var(--muted); font-size: .9rem; }
 #view .closing { color: var(--muted); margin-top: 1rem; }

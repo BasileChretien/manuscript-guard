@@ -2221,8 +2221,9 @@ def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
     tmp_path: Path,
 ) -> None:
     """Task 3: the Abstract's interval held to its one counterpart in the Results, two of its
-    numbers agreeing and the third not, is a conflict --strict counts; an Abstract number
-    found nowhere the paper reports is said and not counted (the author, 2026-10-28)."""
+    numbers agreeing and the third not, is a conflict --strict counts; an Abstract number not
+    found in the Methods, the Results or the tables is said and not counted (the author,
+    2026-10-28)."""
     from manuscript_guard.cli import main
 
     paper = tmp_path / "paper.md"
@@ -2233,6 +2234,23 @@ def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
     assert main(["audit", str(paper), "--strict"]) == 0
     paper.write_text(text.replace("1.2-1.9)", "1.2-1.97)"), encoding="utf-8")
     assert main(["audit", str(paper), "--strict"]) == 1
+
+
+def test_an_abstract_identifier_other_than_the_methods_is_not_found(tmp_path: Path) -> None:
+    """An Abstract that names a data release or a variant the Methods do not, "v7" for the
+    Methods' "v8", is told apart from one that names the Methods' own: each identifier was
+    not found before, the right one with the wrong (pharm-epi of the real-paper corpus,
+    2026-11-11)."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    text = ("# Paper\n\n## Abstract\n\nWe used GTEx v8 and rs75015950.\n\n## Methods\n\nWe "
+            "used GTEx v8. Variant rs75015950 lies on chr15.\n\n## Results\n\nIt was so.\n")
+    paper.write_text(text, encoding="utf-8")
+    assert [c.text for c in audit([paper], None).abstract.not_found] == []
+    paper.write_text(text.replace("GTEx v8 and rs75015950", "GTEx v7 and rs75015951", 1),
+                     encoding="utf-8")  # fmt: skip
+    assert [c.text for c in audit([paper], None).abstract.not_found] == ["v7", "rs75015951"]
 
 
 def _signed_package(root: Path) -> Path:
@@ -17176,6 +17194,11 @@ def _wrong_alpha_in_the_lock(root: Path) -> None:
         "Section 2: Methods",
         "Laboratory methods",
         "Study design, setting, participants and methods",
+        # the word alone, as APA and a machine-learning paper title it, which neither G4
+        # nor G9 took for the Methods (cs-lg of the real-paper corpus, 2026-11-11)
+        "Method",
+        "3. Method",
+        "Methodology",
     ],
 )
 def test_a_wrong_parameter_is_found_under_any_heading_g4_counts_as_the_methods(

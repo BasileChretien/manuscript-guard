@@ -15,8 +15,11 @@ heading, or none a Results heading, nothing is compared, and the report says so.
 * **Not found.** A number of the Abstract the classifier leaves unexplained, found nowhere
   the paper reports, is said. A rounding of one is a match, "53%" for "53.3%" (the author,
   2026-10-28), and counted apart: the Abstract's number is one the reported number rounds
-  to at its places. A match here is as weak as the audit's against the outputs, and the
-  section ends with what one is worth, the roundings counted in.
+  to at its places. A part with letters in it and no number read in it, "v8", "rs75015950",
+  "chr15", is found only as printed, a whole word where the paper reports: an identifier
+  was otherwise never found, even beside its copy in the Methods (a preprint of the
+  real-paper corpus, pharm-epi, 2026-11-11). A match here is as weak as the audit's against
+  the outputs, and the section ends with what one is worth, the roundings counted in.
 * **Conflict.** An exact pairing only. An interval of the Abstract (`reported_intervals`) of
   the same estimate and level as one interval where the paper reports, two of whose three
   numbers agree with it, estimate, lower bound and upper bound, and whose third does not; or
@@ -273,6 +276,19 @@ def _numbers(text: str) -> list[str]:
     return [found.group(0) for found in _NUMBER.finditer(_OPAQUE.sub(" ", text.replace(NUL, " ")))]
 
 
+#: What a word of the reported text is stripped of at its ends before an Abstract's part is
+#: looked for among them: the stops and brackets typed against a word, "chr15." or "(v8)".
+_WORD_EDGES = ".,;:()[]"
+
+
+def _words(text: str) -> set[str]:
+    """Each word of the reported text, as split at spaces, stripped of `_WORD_EDGES`: where
+    an Abstract's part that holds letters, which `printed_parts` keeps whole ("v8",
+    "rs75015950", "ieu-a-1185"), is looked for, since `_numbers` holds the bare numbers
+    alone."""
+    return {word.strip(_WORD_EDGES) for word in text.replace(NUL, " ").split()} - {""}
+
+
 # ------------------------------------------------------------------------------- reading
 
 
@@ -329,6 +345,7 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
                for number in _numbers(reported)]  # fmt: skip
     exact = {normalise_number(number) for number in printed}
     rounded = {found for number in printed for found in coarser(number)}
+    words = {word for _piece, _abstract, reported, _lines in split for word in _words(reported)}
     read.discrimination = measure_discrimination(exact | {value for value, _at in rounded})
     intervals = [(piece.path, reported, found) for piece, _a, reported, _l in split
                  for found in reported_intervals(reported)]  # fmt: skip
@@ -343,7 +360,7 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
             if not parts:
                 continue  # "2ndyear": a rank typed against its word, no number to look for
             read.numbers += 1
-            states = [_state(part, exact, rounded) for part in parts]
+            states = [_state(part, exact, rounded, words) for part in parts]
             candidate = Candidate(atom.text, normalise_number(atom.text), piece.path,
                                   atom.line, around(atom))  # fmt: skip
             if "" in states:
@@ -356,14 +373,21 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
     return read
 
 
-def _state(part: str, exact: set[str], rounded: set[tuple[str, int]]) -> str:
+def _state(part: str, exact: set[str], rounded: set[tuple[str, int]], words: set[str]) -> str:
+    """Whether one part of an Abstract's atom is found where the paper reports: "exact",
+    "rounded" or "". A number is compared as a number, with the numbers there and their
+    roundings. A part no number is read in, that holds a letter ("v8", "chr15", "PI3K"), is
+    found only as printed, a whole word there (`_words`): never by a digit it holds, and
+    never as a rounding."""
     from manuscript_guard.audit import normalise_number
 
     value = normalise_number(part)
     if value in exact:
         return "exact"
     places = _decimal(part)
-    return "rounded" if places is not None and (value, places[1]) in rounded else ""
+    if places is None:
+        return "exact" if any(c.isalpha() for c in part) and part in words else ""
+    return "rounded" if (value, places[1]) in rounded else ""
 
 
 # ----------------------------------------------------------------------------- conflicts

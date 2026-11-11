@@ -151,12 +151,21 @@ def names_statement(title: str) -> bool:
     return bool(STATEMENT_TITLE.match(plain(title)))
 
 
+#: The word for the Methods as a heading may hold it alone: "Method", as APA titles it and a
+#: machine-learning paper often does, "Methods" and "Methodology".
+_METHOD_WORD = re.compile(r"\bmethod(?:s|ology)?\b", re.IGNORECASE)
+
+
 def names_methods(title: str) -> bool:
     """Whether a heading can be the Methods: its title holds "methods", the test G4 has
-    counted a required Methods section present by since it was written. "2. Methods",
-    "**2. Methods**", "Materials & methods", "Patients and methods", "Statistical methods".
-    Which of several such headings is the paper's Methods is `methods_sections`'s to say."""
-    return "methods" in title.lower()
+    counted a required Methods section present by since it was written, or the word
+    "method" or "methodology" whole. "2. Methods", "**2. Methods**", "Materials & methods",
+    "Patients and methods", "Statistical methods", "eMethods 1", "Method", "3. Methodology";
+    not "Methodological notes". A paper with a "Method" heading had no Methods to the audit
+    and the gates, so a number of its Abstract reported there was not found (cs-lg of the
+    real-paper corpus, 2026-11-11). Which of several such headings is the paper's Methods is
+    `methods_sections`'s to say."""
+    return "methods" in title.lower() or _METHOD_WORD.search(title) is not None
 
 
 def names_abstract(title: str, named: str | None = None) -> bool:

@@ -38,9 +38,9 @@ interval or a test of the Abstract that differs from its counterpart where the p
 (`blind-document-names-author`, Basile, 2026-10-29). Nothing else is counted: the P worked
 out from a statistic, G6 and G14 (the author, 2026-10-28), G7's findings, a count held back
 that only a column's n gives away, which holds only where none of the column lacks the
-characteristic, a number of the Abstract found nowhere the paper reports (the author,
-2026-10-28), G4's findings and the Document section's counts, the causal words, the cited
-sentences and the self-citation counts (Basile, 2026-10-29).
+characteristic, a number of the Abstract not found in the Methods, the Results or the
+tables (the author, 2026-10-28), G4's findings and the Document section's counts, the
+causal words, the cited sentences and the self-citation counts (Basile, 2026-10-29).
 """
 
 from __future__ import annotations
@@ -57,6 +57,10 @@ MEMBERSHIP = "Numbers in the outputs"
 ARITHMETIC = "Arithmetic"
 SMALL_CELLS = "Small cells recoverable by subtraction"
 ABSTRACT = "Abstract against Results"
+#: Where the Abstract against Results looks for an Abstract's number, as each number not
+#: found says and the heading over them: "found nowhere the paper reports" said more than
+#: was searched, as the main text's Introduction and Discussion are not.
+ABSTRACT_SEARCHED = "the Methods, the Results or the tables"
 WRITING = "Writing (G6)"
 LANGUAGE = "Language (G14)"
 REFERENCES = "References (G7)"
@@ -373,8 +377,8 @@ def _abstract_items(read) -> list[Item]:
     return [
         *(Item(ABSTRACT, "audit", "abstract-conflict", d.message, FAIL, True, d.source,
                d.line, d.context) for d in read.conflicts),
-        *(Item(ABSTRACT, "audit", "abstract-not-found", f"{c.text} in the Abstract is "
-               "found nowhere the paper reports", WARN, False, c.source, c.line, c.context)
+        *(Item(ABSTRACT, "audit", "abstract-not-found", f"{c.text} in the Abstract is not "
+               f"found in {ABSTRACT_SEARCHED}", WARN, False, c.source, c.line, c.context)
           for c in read.not_found),
         *(Item(ABSTRACT, "audit", "abstract-rounded", f"{c.text} in the Abstract is found "
                "only as a rounding of a number the paper reports", INFO, False, c.source,
@@ -948,7 +952,7 @@ def _abstract(read, show) -> list[str]:
     for heading, found in (
         ("AN INTERVAL OR A TEST THAT DIFFERS FROM ITS COUNTERPART IN ONE NUMBER (counted by "
          "--strict):", read.conflicts),
-        ("NOT FOUND IN THE METHODS, THE RESULTS OR THE TABLES (not counted by --strict):",
+        (f"NOT FOUND IN {ABSTRACT_SEARCHED.upper()} (not counted by --strict):",
          read.not_found),
         ("FOUND ONLY AS A ROUNDING (not counted by --strict):", read.rounded),
     ):

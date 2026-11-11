@@ -1714,6 +1714,96 @@ def test_the_abstract_reads_the_number_a_space_was_left_out_of(atom: str, parts:
     assert printed_parts(atom) == parts
 
 
+#: The shape of a genetics preprint of the real-paper corpus (pharm-epi, 2026-11-11): its
+#: Abstract names its data release, its GWAS, a variant and its chromosome by identifiers
+#: the Methods print again, one with a stop after it and one in brackets.
+_IDENTIFIED = (
+    "# A study\n\n## Abstract\n\nWe used GTEx v8 and the GWAS ieu-a-1185, and rs75015950 on "
+    "chr15 led, beside MPL-9 and K-12 here.\n\n## Methods\n\nWe used GTEx v8. Variant "
+    "rs75015950 lies on chr15. The GWAS (ieu-a-1185) was read, with MPL-9 and [K-12].\n\n"
+    "## Results\n\nIt was so.\n"
+)
+
+
+def _abstract_of(tmp_path: Path, text: str, suffix: str = ".md"):
+    paper = tmp_path / f"paper{suffix}"
+    paper.write_text(text, encoding="utf-8")
+    read = audit([paper], None).abstract
+    assert read is not None and read.compared, text
+    return read
+
+
+def test_an_identifier_of_the_abstract_is_found_where_the_methods_print_it(
+    tmp_path: Path,
+) -> None:
+    """An atom with letters is read whole, and was looked for among the bare numbers only:
+    "v8", "rs75015950" and "chr15" beside the same words in the Methods were each not
+    found (pharm-epi of the real-paper corpus). Each is found now as printed, a whole word
+    there, its stop and brackets aside."""
+    read = _abstract_of(tmp_path, _IDENTIFIED)
+    assert [c.text for c in read.not_found] == [], [c.text for c in read.not_found]
+    assert {"v8", "rs75015950", "chr15", "ieu-a-1185", "MPL-9", "K-12"} <= {
+        c.text for c in read.found}, [c.text for c in read.found]  # fmt: skip
+
+
+def test_an_identifier_is_not_found_by_its_digits_nor_outside_what_the_paper_reports(
+    tmp_path: Path,
+) -> None:
+    """An identifier is found only as printed: "rs4242" is not found where the Methods give
+    4242 alone, nor "rs1101" where only the Discussion gives it; nor is a number found as a
+    rounding of an identifier's, or as a word: 7.25 is not found beside "v7.3"."""
+    text = (
+        "# A study\n\n## Abstract\n\nVariant rs4242 and rs1101 gave 7.25 here.\n\n"
+        "## Methods\n\nIt was 4242 then, with v7.3.\n\n## Results\n\nIt was so.\n\n"
+        "## Discussion\n\nWe saw rs1101.\n"
+    )
+    read = _abstract_of(tmp_path, text)
+    assert sorted(c.text for c in read.not_found) == ["7.25", "rs1101", "rs4242"], [
+        c.text for c in read.not_found]  # fmt: skip
+    assert read.found == [] and read.rounded == []
+
+
+@pytest.mark.parametrize("title", ["Method", "3. Method", "Methodology", "Proposed method"])
+@pytest.mark.parametrize("suffix", [".md", ".tex"])
+def test_a_number_of_the_abstract_is_found_under_a_method_heading(
+    tmp_path: Path, title: str, suffix: str
+) -> None:
+    """A machine-learning paper of the real-paper corpus (cs-lg, 2026-11-11) titles its
+    Methods "Method", as APA does: a heading without "methods" was no Methods, and the
+    Abstract's numbers reported there were each not found."""
+    if suffix == ".md":
+        text = (f"# A study\n\n## Abstract\n\nIt has 9.2 million weights and ran 5.9 hours."
+                f"\n\n## {title}\n\nIt has 9.2 million weights and ran 5.9 hours.\n\n"
+                "## Results\n\nIt was so.\n")  # fmt: skip
+    else:
+        text = ("\\documentclass{article}\n\\begin{document}\n\\begin{abstract}\nIt has 9.2 "
+                "million weights and ran 5.9 hours.\n\\end{abstract}\n\\section{"
+                f"{title}}}\nIt has 9.2 million weights and ran 5.9 hours.\n\n"
+                "\\section{Results}\nIt was so.\n\\end{document}\n")  # fmt: skip
+    read = _abstract_of(tmp_path, text, suffix)
+    assert read.not_found == [] and read.matched == 2, [c.text for c in read.not_found]
+
+
+def test_a_number_not_found_says_where_it_was_looked_for(tmp_path: Path, capsys) -> None:
+    """The finding said "found nowhere the paper reports", and only the Methods, the Results
+    and the tables are read for it: the Introduction and the Discussion are not. It says
+    what was searched, in the words of the heading over the list."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("# A study\n\n## Abstract\n\nIt was 41.7 here.\n\n## Results\n\nIt was "
+                     "so.\n\n## Discussion\n\nIt was 41.7 here.\n", encoding="utf-8")  # fmt: skip
+    main(["audit", str(paper), "--json"])
+    import json
+
+    report = json.loads(capsys.readouterr().out)
+    (found,) = [f for f in report["findings"] if f["code"] == "abstract-not-found"]
+    assert found["message"] == ("41.7 in the Abstract is not found in the Methods, the "
+                                "Results or the tables")  # fmt: skip
+    main(["audit", str(paper)])
+    assert "NOT FOUND IN THE METHODS, THE RESULTS OR THE TABLES" in capsys.readouterr().out
+
+
 #: A paper whose words G14 asks a project to set paper.yaml for: abbreviations used and not
 #: defined, one word in British spelling and six in American, enough for a paper declared
 #: British to be told it is not (`spelling.MANY`), and a name written as code writes it.

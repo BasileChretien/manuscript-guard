@@ -17794,7 +17794,11 @@ Open, recorded as each change landed:
   the paper's structure allows it. In a paper with no heading G2 reads as the Methods, the
   first such heading is read as them, "Overview of methods" or "Limitations of existing
   methods" at the top level among them, as G4 has always counted either present. A title
-  with only "method" or "methodology" is no Methods to either gate, as it was none to G4.
+  that holds the word "method" or "methodology" whole is a Methods to both, so "A method for
+  signal detection" where the Methods stand is read as them; "Methodological notes" is not.
+  "Method" is no name of the Methods to G2 and G15, which read "Methodology", so G9, which
+  reads a named Methods first, reads "Method" after a heading at its level that only holds
+  the word ("Limitations of existing methods" before it).
   A Methods with a subsection titled only "Results", "Limitations" or "Background" is taken
   for a heading over another part of the paper and is not read. G2 and G15 read
   "Methods", numbered or not, "<anything> and methods", "Methods and <anything>",
@@ -25481,6 +25485,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
     wherever two paragraphs hold it, a word as well as a number. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **An Abstract's identifier was never found, nor a number under a "Method" heading
+  (2026-11-11).** Two preprints of the real-paper corpus. The audit reads an atom with
+  letters whole, "v8", "rs75015950", "chr15", and looked for it among the bare numbers of
+  the Methods, the Results and the tables alone, so each was not found beside the same
+  word in the Methods (pharm-epi); it is looked for now among the words there as well, as
+  printed, stops and brackets aside, and never by the number it holds. And a heading was
+  the Methods only where it held "methods", so a paper whose Methods are titled "Method",
+  as APA titles them, or "Methodology" had none, and the Abstract's numbers reported there
+  were not found (cs-lg). `names_methods` takes the word "method" or "methodology" whole
+  too, for every reader of `methods_sections` (G4, G7, G8, G9, the audit) and G8's
+  supplement. The finding also said "found nowhere the paper reports"; it says now where
+  it was looked for, the Methods, the Results or the tables.
 
 - **A known word with a dot inside was never matched (2026-11-10).** #615 wrote that
   `--known L.AS` could not hold "L.AS", which G14 read as "L" and "AS". #612, merged beside

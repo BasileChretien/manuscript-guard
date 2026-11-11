@@ -7866,13 +7866,20 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: against a signed number, a label closed up against its number, a whole number against a
 #: word that opens like its ordinal's suffix ("1201students"); an ordinal against its word,
 #: which gives no number to look for; and an estimate closed up against its interval,
-#: whose bounds are reported and the estimate not (round 1 of #613).
+#: whose bounds are reported and the estimate not (round 1 of #613). And an identifier, a
+#: word with a number in it, printed again in the Methods with a stop or brackets round it,
+#: and one whose number alone the Methods give, which is not found (pharm-epi of the
+#: real-paper corpus, 2026-11-11).
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
     "against a word", "after a word", "after a label", "against a suffix's word", "ordinal",
-    "estimate closed up",
+    "estimate closed up", "identifier", "identifier by its number",
 )  # fmt: skip
+#: The shapes of an identifier, `{}` its number: a variant, a release, a chromosome, a
+#: GWAS of the OpenGWAS catalogue, a strain, an assembly.
+IDENTIFIER_SHAPES = ("rs{}", "v{}", "chr{}", "ieu-a-{}", "ukb-b-{}", "MPL-{}", "K-{}",
+                     "GRCh{}")  # fmt: skip
 #: How each kind of space left out is typed, `{}` its number, and what it starts at.
 RUN_ON_NUMBERS = {"against a word": ("The value was {}points here.", 900),
                   "after a word": ("The value rose to+{} here.", 1000),
@@ -7970,6 +7977,17 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
             methods.append(f"It was {count} then.")
             looked.append((kind, f"{count}students", "exact"))
             abstract.append((kind, said))
+        elif kind == "identifier":
+            named = draw(st.sampled_from(IDENTIFIER_SHAPES)).format(draw(st.integers(10, 99)))
+            methods.append(draw(st.sampled_from((f"It was {named}.", f"It was ({named}) then.",
+                                                 f"It was {named}, then."))))  # fmt: skip
+            looked.append((kind, named, "exact"))
+            abstract.append((kind, f"The source was {named} here."))
+        elif kind == "identifier by its number":
+            number = 7000000 + draw(st.integers(0, 99999))
+            methods.append(f"It was {number} then.")
+            looked.append((kind, f"rs{number}", "not found"))
+            abstract.append((kind, f"The variant was rs{number} here."))
         elif kind == "estimate closed up":
             estimate = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
             low, high = estimate + 1300, estimate + 1400

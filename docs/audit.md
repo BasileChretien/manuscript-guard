@@ -266,8 +266,13 @@ explain is looked for where the paper reports: the Methods, the Results, every t
 every file, and the whole of a file with no Abstract, a supplement, as G8 reads them. A line
 stands under the headings over it: Markdown's, a .docx's heading styles, a LaTeX
 document's as it prints them. A number reported to more places counts as matched as a
-rounding, "53%" in the Abstract for "53.3%" in the Results, and is listed apart; a number
-found nowhere is listed, and not counted by `--strict`. The section ends with what a match
+rounding, "53%" in the Abstract for "53.3%" in the Results, and is listed apart. An
+identifier, a word with a number in it ("v8", "rs75015950", "chr15", "ieu-a-1185"), is
+matched only as printed, the same word there, and never by the number it holds. A number
+not found in the Methods, the Results or the tables is listed, its finding saying so, and
+not counted by `--strict`. The Methods are a heading that holds "methods", or the word
+"method" or "methodology" whole: "Method", as APA titles it, and "Methodology" are the
+Methods, "Methodological notes" is not. The section ends with what a match
 is worth against the numbers the paper reports, the roundings counted in. A conflict is an
 exact pairing: an interval of the Abstract with one interval in what the paper reports of
 the same estimate ("OR" and "odds ratio" are one) and level, two of whose three numbers

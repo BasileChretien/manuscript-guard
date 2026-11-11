@@ -269,7 +269,7 @@ def test_a_place_a_finding_names_in_a_pdf_is_its_page_and_line(tmp_path: Path, c
     assert main(["audit", str(paper), "--json"]) == 0
     found = json.loads(capsys.readouterr().out)["findings"]
     again = [f["message"] for f in found if f["gate"] == "G14" and "defined again" in f["message"]]
-    assert again == ["SD is defined again; it was defined at paper.pdf, page 1, line 2"], found
+    assert again == ["SD is defined again; it was defined at page 1, line 2"], found
     assert not any("main.md" in json.dumps(f) for f in found), found
 
 

@@ -1650,7 +1650,10 @@ def test_a_docx_titled_in_bold_is_placed_by_its_titles_and_says_so(tmp_path: Pat
 
     measured = measure_discrimination(report.backing_values)
     assert f"How the headings were read:\n  {said}" in render(report, measured, tmp_path)
-    assert ["How the headings were read:", [said]] in view(report, measured, tmp_path)["notes"]
+    # The page and the PDF say it without the command `init --from` (`reader.for_a_reader`).
+    plain = said.replace(", as `init --from` makes them;", ";")
+    assert plain != said
+    assert ["How the headings were read:", [plain]] in view(report, measured, tmp_path)["notes"]
 
 
 def test_a_docx_with_no_heading_is_said_to_be_read_as_one_text(tmp_path: Path) -> None:

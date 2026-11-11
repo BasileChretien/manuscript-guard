@@ -10440,6 +10440,28 @@ author's copy was damaged (2026-11-10). Held by
 `tests/test_properties.py::test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text`
 with five broken rules; on the author's paper Word opens the copy with 49 comments.
 
+**Said for a reader.** The text the command line prints is for a script as much as for a
+person: it says which flag would have run a check, "(--against)", "(--lookup)", and what
+`--strict` counts, "(not counted by --strict)". The page, the PDF and the comments of the
+commented copy are read by someone who runs no script and may never have seen the command
+line, and the author found them "still hard to read and not user friendly" (2026-11-11). So
+the view they are drawn from (`report.view`) and each comment's text go through
+`auditing.reader`: each of the text's phrases for a script is said for a reader or left out,
+"(counted by --strict)" is "(counted as an error)", not that the audit failed, which without
+`--strict` it does not, and a finding's context is quoted without Markdown's marks of
+emphasis, outside its code spans, as the document prints it. Its ends are not marked as cut:
+a gate's context is cut at a character count, or not at all near a paragraph's edge, or is
+no quote (a list of samples), and only the gate can say which. The text keeps every flag:
+the page shows it in a fold, and CI holds it to the command line's word for word. The line
+on what `--strict` counts goes with the phrases that name it, from the page and from the PDF;
+neither heads the findings with the paper's name where one paper was audited, nor a kind with
+its check's code (the page since #627, whose drawing of the view says so and draws the line
+on `--strict` only where the view gives it). A place a
+.docx's or a PDF's finding names in its own paper is said without the paper's name, "defined
+later at Conclusions, paragraph 26", in the text too: the report names the paper above it
+(`gates._relocated`). Held by `tests/test_audit_reader.py`, which audits papers whose text
+names the flags, with a flow and a design given, and finds none in the view or in the PDF.
+
 **Headings, exact.** A PDF marks no heading, and guessing one from a line's shape is a rule
 that reads text. So a line is a heading only where it holds a section's name and nothing else
 from a closed list (`auditing.pdf.HEADINGS`: the parts of a paper, the reference list's
@@ -25547,6 +25569,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     put on an earlier paragraph that holds that cell's words; a "|" in prose parts a quote
     the same way. A quote that is the finding's words alone, a heading "AS", is listed
     wherever two paragraphs hold it, a word as well as a number. Accepted.
+- **A quote on the page and in the PDF is the gate's context, cut where the gate cut it.**
+  Markdown's marks are taken off it, outside its code spans, and its ends are not marked as
+  cut, so a context cut inside a word reads as starting or ending there. A context the gate
+  cut inside a code span has one backtick left, which pairs with the next: what stands
+  between them is taken for code, and its marks stay, "x_y` and **b** and `z`" (round 2 of
+  #631). Pinned by `tests/test_audit_reader.py::test_a_quote_cut_inside_a_code_span_keeps_the_marks_after_it`.
 - **A placement marker passes G6 wherever it stands, and a gap rounding could make is a note
   in any table.** Basile's rule of 2026-11-11, after the corpus of 52 real preprints, in
   which both failures were always wrong. A marker, "[Insert Table 1 here]", left in a paper

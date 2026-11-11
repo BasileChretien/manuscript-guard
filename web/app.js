@@ -18,18 +18,37 @@ const worker = new Worker(URL.createObjectURL(blob), { type: "module" });
 let nextId = 0;
 const waiting = new Map();
 
-// Where the start has got to (worker.js `step`). A step still under way after this long is
-// said to be slow, with what to do; the page keeps waiting, as a slow network is no failure.
+// Where the start has got to: the step it is on (worker.js `step`) and the bytes it has
+// received of those it fetches (worker.js `counted`). The bar and its percentage come from the
+// bytes, held under 97% until the last step, which fetches nothing, and under 99% until the
+// checker answers; with no count of bytes (a manifest from before it), from the steps. The
+// status, which a screen reader says, changes with the step only. A step still under way
+// after this long is said to be slow, with what to do; the page keeps waiting, as a slow
+// network is no failure.
 const SLOW_AFTER_MS = 90000;
+const loading = { at: 0, of: 4, what: "", received: 0, expected: 0, shown: 0 };
+window.mgLoading = loading;
 let slow = null;
 let stepped = false;
 // The error the worker met while loading, if any: the slow note keeps it (round 2 of #627).
 let met = "";
+function showBar() {
+  const { at, of, received, expected } = loading;
+  const share = expected ? Math.min(received / expected, at < of ? 0.97 : 0.99)
+    : Math.max(0, at - 1) / of;
+  loading.shown = Math.max(loading.shown, Math.round(share * 100));
+  $("progress").max = 100;
+  $("progress").value = loading.shown;
+  // A share, not megabytes: the bytes counted are the files' own, several times what the
+  // network carries of them compressed, which is what "about 26 MB" says.
+  $("amount").textContent = `${loading.shown}%`;
+}
 function loadingStep({ at, of, what }) {
   stepped = true;
-  say(`Loading the checker, step ${at} of ${of}: ${what}. About 26 MB the first time, nothing after that.`);
-  $("progress").max = of;
-  $("progress").value = at - 1;
+  Object.assign(loading, { at, of, what });
+  say(`Loading the checker, step ${at} of ${of}: ${what}. The first time only: after that it `
+    + "is in this browser's cache.");
+  showBar();
   clearTimeout(slow);
   slow = setTimeout(() => say(`Still on step ${at} of ${of} (${what}) after ${SLOW_AFTER_MS / 1000} s`
     + (met ? `, after an error (${met})` : "") + ". On a slow network this can take a few "
@@ -39,11 +58,17 @@ function loadingStep({ at, of, what }) {
 const loaded = () => {
   clearTimeout(slow);
   $("progress").hidden = true;
+  $("amount").textContent = "";
 };
 
 worker.onmessage = ({ data }) => {
   if (data.progress) {
     loadingStep(data.progress);
+    return;
+  }
+  if (data.bytes) {
+    Object.assign(loading, data.bytes);
+    if (stepped) showBar();
     return;
   }
   const { resolve, reject } = waiting.get(data.id);
@@ -186,6 +211,75 @@ function draw(view) {
   add(box, "p", view.closing, "closing");
 }
 
+// The paper dropped on its box, as if chosen, once the checker is ready, and refused before.
+// A file dropped where nothing takes it is not opened by the browser in place of the page,
+// which would lose what the reader set; the outputs' box and the words' box take a drop as
+// the browser has them do (round 1 of #633).
+const dropBox = $("paper").closest("label");
+const carriesFiles = (event) => [...(event.dataTransfer?.types || [])].includes("Files");
+// Only a box that can take a drop takes it; a disabled one, while the checker loads, does not
+// (round 2 of #633).
+const takesItsOwn = (target) => target instanceof Element
+  && target.closest("#against:not(:disabled), #known:not(:disabled)");
+for (const name of ["dragenter", "dragover"]) {
+  dropBox.addEventListener(name, (event) => {
+    if (!carriesFiles(event)) return;
+    event.preventDefault();
+    // While the checker loads the drop still fires, so that the page can say why it was not
+    // taken (round 2 of #633).
+    if (!$("paper").disabled) dropBox.classList.add("dropping");
+  });
+}
+dropBox.addEventListener("dragleave", (event) => {
+  if (!dropBox.contains(event.relatedTarget)) dropBox.classList.remove("dropping");
+});
+dropBox.addEventListener("drop", (event) => {
+  dropBox.classList.remove("dropping");
+  if (!carriesFiles(event)) return;
+  event.preventDefault();
+  if ($("paper").disabled) {
+    say("The checker is still loading: drop the paper again once the page says Ready.");
+    return;
+  }
+  const [file] = event.dataTransfer.files;
+  if (!file) return;
+  if (!/\.(docx|md)$/i.test(file.name)) {
+    say(`${file.name} is not a .docx or a .md file: drop or choose the paper itself.`);
+    return;
+  }
+  const chosen = new DataTransfer();
+  chosen.items.add(file);
+  $("paper").files = chosen.files;
+  $("paper").dispatchEvent(new Event("change", { bubbles: true }));
+});
+for (const name of ["dragover", "drop"]) {
+  window.addEventListener(name, (event) => {
+    if (!dropBox.contains(event.target) && !takesItsOwn(event.target)) event.preventDefault();
+  });
+}
+
+// What an audit under way says, beside the button that started it: the paper, and the
+// seconds it has taken, with a bar that moves without a measure, since the audit runs in one
+// call the page cannot look inside. The text a screen reader says is set at the start and at
+// the end, not at each second.
+const running = { timer: null, started: 0 };
+function runStarted(name) {
+  $("running").hidden = false;
+  $("runbar").hidden = false;
+  $("runtext").textContent = `Auditing ${name}…`;
+  running.started = performance.now();
+  $("elapsed").textContent = "";
+  running.timer = setInterval(() => {
+    $("elapsed").textContent = `${Math.round((performance.now() - running.started) / 1000)} s`;
+  }, 1000);
+}
+function runEnded(said) {
+  clearInterval(running.timer);
+  $("runbar").hidden = true;
+  $("elapsed").textContent = "";
+  $("runtext").textContent = said;
+}
+
 $("form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const paper = $("paper").files[0];
@@ -196,12 +290,15 @@ $("form").addEventListener("submit", async (event) => {
   $("result").hidden = true;
   $("savecommented").hidden = true;
   $("savepdf").hidden = true;
+  $("openpdf").hidden = true;
   commented = null;
   pdf = null;
+  if (pdfAddress) URL.revokeObjectURL(pdfAddress);
+  pdfAddress = null;
   $("report").textContent = "";
   $("view").replaceChildren();
   $("notes").textContent = "";
-  say(`Auditing ${paper.name}…`);
+  runStarted(paper.name);
   try {
     const result = await ask("run", {
       paper: await read(paper),
@@ -233,6 +330,7 @@ $("form").addEventListener("submit", async (event) => {
     if (result.pdf && result.pdf.data) {
       pdf = result.pdf;
       $("savepdf").hidden = false;
+      $("openpdf").hidden = false;
     } else if (result.pdf && result.pdf.error) {
       $("notes").hidden = false;
       $("notes").textContent += ($("notes").textContent ? "\n" : "")
@@ -240,18 +338,31 @@ $("form").addEventListener("submit", async (event) => {
     }
     $("netlog").textContent += "\n\n" + listRequests(
       `This audit of ${paper.name} sent requests to:`, result.sent);
-    say(`Audited ${paper.name} in ${(result.ms / 1000).toFixed(1)} s.`);
+    runEnded(`Audited ${paper.name} in ${(result.ms / 1000).toFixed(1)} s: the report is below.`);
+    // The report, where the reader's eyes and a keyboard's focus go next.
+    $("reporthead").scrollIntoView({ block: "start" });
+    $("reporthead").focus({ preventScroll: true });
     window.mgLast = result;
   } catch (error) {
-    say(`The audit could not run: ${error.message}`);
+    // What the checker said, which says why, and where to read more; no guess at the cause,
+    // which may be any file chosen (round 1 of #633).
+    runEnded(`The audit could not run: ${error.message.replace(/[\s.]+$/, "")}. The command `
+      + "line says more: uvx manuscript-guard audit paper.docx");
     window.mgLast = { error: error.message };
   } finally {
     $("run").disabled = false;
   }
 });
 
-// The report as a PDF (`web.report_pdf`), from the last audit.
+// The report as a PDF (`web.report_pdf`), from the last audit: shown in a tab of its own,
+// by the browser's PDF viewer, or saved. Its address lasts until the next audit.
 let pdf = null;
+let pdfAddress = null;
+$("openpdf").addEventListener("click", () => {
+  if (!pdf) return;
+  pdfAddress = pdfAddress || URL.createObjectURL(new Blob([pdf.data], { type: "application/pdf" }));
+  window.open(pdfAddress, "_blank");
+});
 $("savepdf").addEventListener("click", () => {
   if (!pdf) return;
   const link = document.createElement("a");

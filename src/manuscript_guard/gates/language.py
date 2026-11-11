@@ -1552,9 +1552,11 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
             first = definitions[0]
             uses = sorted(scope.used.get(short, ()), key=lambda mark: mark.key)
 
-            if uses and uses[0].key < first.key and listed(first):
+            if uses and uses[0].key < first.key and all(listed(mark) for mark in definitions):
                 # Defined only in the list of abbreviations, after this use: the text owes
-                # the long form at first use as well, as most journals ask.
+                # the long form at first use as well, as most journals ask. Where the text
+                # spells it out too, after the list, it is defined later there, as before
+                # (review of #634).
                 findings.append(
                     finding(
                         "abbreviation-used-before-defined",
@@ -1601,10 +1603,13 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
                         "abbreviation-unused",
                         first,
                         short,
-                        f"{short} is in the list of abbreviations and used nowhere else in "
-                        f"the {scope.name} as G14 reads it",
-                        "take it out of the list, unless the title page, a table or a figure "
-                        "uses it: those are not read here",
+                        # Not "nowhere else": another entry of the list may use it, and the
+                        # list's lines are no uses (review of #634).
+                        f"{short} is in the list of abbreviations and not used in the "
+                        f"{scope.name} as G14 reads it",
+                        "take it out of the list, unless the title page, a table, a figure, "
+                        "another entry of the list or the supplementary material uses it: "
+                        "the title page, tables and figures are not read here",
                     )
                 )
             elif not uses and not first.quiet:

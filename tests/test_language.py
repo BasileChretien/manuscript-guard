@@ -1086,9 +1086,16 @@ def test_an_entry_of_the_list_is_said_as_one(project: Path) -> None:
     assert said["AIC"].message.startswith(
         "AIC is used here and not spelt out; only the list of abbreviations defines it, at ")
     assert said["AIC"].hint.startswith("spell it out where it first appears")
-    assert said["CV"].message == ("CV is in the list of abbreviations and used nowhere else "
-                                  "in the main text as G14 reads it")
+    assert said["CV"].message == ("CV is in the list of abbreviations and not used in the "
+                                  "main text as G14 reads it")
     assert said["CV"].hint.startswith("take it out of the list")
+    # Spelt out in the text after the list too: defined later there, as before (review of
+    # #634).
+    both = written(project, "# Introduction\n\nThe ROR was raised.\n\n# Abbreviations\n\nROR: "
+                   "reporting odds ratio\n\n# Methods\n\nThe reporting odds ratio (ROR) was "
+                   "computed.\n")  # fmt: skip
+    ror = [f.message for f in both.findings if f.code == "abbreviation-used-before-defined"]
+    assert ror == ["ROR is used here, and defined later at manuscript/main.md:7"], ror
     text = written(project, "# Methods\n\nThe Centre d'Enseignement Universitaire (CEU) "
                    "met.\n")  # fmt: skip
     assert text.findings[0].hint.startswith(

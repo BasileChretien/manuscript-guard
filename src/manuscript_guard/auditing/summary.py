@@ -55,6 +55,12 @@ def kinds_of(found: list[Finding]) -> dict[tuple[str, str], list[Finding]]:
     return kinds
 
 
+def counted(found: list[Finding]) -> int:
+    """How many things a kind's findings report: a finding each, but the one on the short
+    forms used and not defined, which counts its forms (`auditing.undefined`)."""
+    return sum(getattr(finding, "counted", 1) for finding in found)
+
+
 def grouped(found: list[Finding], at: Callable[[Path | None, int | None], str]) -> list[str]:
     """G6's and G14's findings by kind, the kinds with most first: a title and a count, a
     line to each of its first `PLACES` places, and its advice once. `at` says a place: a
@@ -63,7 +69,7 @@ def grouped(found: list[Finding], at: Callable[[Path | None, int | None], str]) 
     ordered = sorted(kinds_of(found).items(), key=lambda kind: -len(kind[1]))
     for (gate, code), unordered in ordered:
         mine = sorted(unordered, key=lambda one: (str(one.path), one.line or 0))
-        lines += ["", f"  {KINDS.get(code, code)} ({gate}, {len(mine)})"]
+        lines += ["", f"  {KINDS.get(code, code)} ({gate}, {counted(mine)})"]
         # One hint for the kind where its places share it, as G14's do; each its own where
         # they differ, as G6's rates do.
         shared = len({finding.hint for finding in mine}) == 1
@@ -225,7 +231,7 @@ def kinds(found: list[Finding], at: Callable[[Path | None, int | None], str], *,
         mine = sorted(unordered, key=lambda one: (str(one.path), one.line or 0))
         shared = len({finding.hint for finding in mine}) == 1
         out.append({
-            "title": KINDS.get(code, code), "gate": gate, "code": code, "count": len(mine),
+            "title": KINDS.get(code, code), "gate": gate, "code": code, "count": counted(mine),
             "hint": mine[0].hint if shared else None,
             "places": [{"where": at(finding.path, finding.line) if finding.line else "the paper",
                         "message": finding.message,
@@ -259,4 +265,4 @@ def rows(report) -> list[tuple[str, str]]:
     return rows
 
 
-__all__ = ["KINDS", "PLACES", "checks", "grouped", "kinds", "kinds_of", "rows"]
+__all__ = ["KINDS", "PLACES", "checks", "counted", "grouped", "kinds", "kinds_of", "rows"]

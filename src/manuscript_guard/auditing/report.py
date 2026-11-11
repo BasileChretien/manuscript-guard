@@ -98,13 +98,16 @@ class Item:
     #: What says where its line stands, where that is not its path's: a converted .docx's
     #: text, which G6, G14 and G4 read (`auditing.paragraphs`).
     placer: object = None
+    #: What `--json` gives beside it: for the short forms used and not defined, each form
+    #: with G14's warning on it and its place (`auditing.undefined.listed`).
+    listed: dict | None = None
 
     def as_dict(self) -> dict:
         return {
             "section": self.section, "gate": self.gate, "code": self.code,
             "severity": self.severity, "counted": self.counted, "message": self.message,
             "path": None if self.path is None else str(self.path), "line": self.line,
-            "context": self.context, "hint": self.hint,
+            "context": self.context, "hint": self.hint, **(self.listed or {}),
         }  # fmt: skip
 
 
@@ -394,9 +397,11 @@ def _abstract_items(read) -> list[Item]:
 
 
 def _from_finding(section: str, finding: Finding, placer: object = None) -> Item:
+    from manuscript_guard.auditing.undefined import listed
+
     return Item(section, finding.gate, finding.code, finding.message, finding.severity, False,
                 finding.path, finding.line, finding.context, finding.hint,
-                placer)  # fmt: skip
+                placer, listed(finding) or None)  # fmt: skip
 
 
 def failed(report) -> bool:
@@ -566,7 +571,12 @@ def _shown(root: Path | None, placers: dict | None = None) -> _Show:
 def placed(item_dict: dict, path: Path | None, line: int | None, placers: dict) -> dict:
     """A finding as JSON, its line given as a page and a line where it is a PDF's
     (`auditing.pdf.Place`), as a section and a paragraph where it is a .docx's
-    (`auditing.paragraphs.Paragraph`)."""
+    (`auditing.paragraphs.Paragraph`). Each short form a finding lists, the same, at its
+    own line (`auditing.undefined.listed`)."""
+    if item_dict.get("forms"):
+        item_dict = {**item_dict, "forms": [
+            placed(form, path if form["path"] is None else Path(form["path"]), form["line"],
+                   placers) for form in item_dict["forms"]]}  # fmt: skip
     placer = placers.get(path) if path is not None else None
     place = placer.place(line) if placer is not None else None
     return item_dict if place is None else {**item_dict, **place.as_dict()}
@@ -1021,6 +1031,22 @@ def _gates(report, root: Path | None, show: _Show) -> list[str]:
         found = (*run.writing, *run.language)
         if found:
             lines.append(_rendered(found, root, show.within(run.paper, run.places)))
+        lines += _each_form(run, show.within(run.paper, run.places))
+    return lines
+
+
+def _each_form(run, show: _Show) -> list[str]:
+    """Where each short form the paper uses and does not define is first used, and what G14
+    said of it, which the one finding on them stands for (`auditing.undefined`)."""
+    from manuscript_guard.auditing.undefined import Undefined
+
+    lines: list[str] = []
+    at = _placing(run.paper, show)
+    for finding in run.language:
+        if isinstance(finding, Undefined):
+            lines.append("  Each short form used and not defined, where it is first used:")
+            lines += [f"    {at(warning.path, warning.line)}: {warning.message}"
+                      for _form, warning in finding.forms]  # fmt: skip
     return lines
 
 

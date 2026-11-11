@@ -852,6 +852,29 @@ def statistics_used(draw: st.DrawFn) -> tuple[str, list[str]]:
     return "# Results\n\n" + text, sorted(set(named))
 
 
+#: Short forms the audit's list of journals' style guides holds
+#: (`data/journal_abbreviations.yaml`), and forms of a field, an instrument and an
+#: institution it does not, all reported by G14 when undefined.
+JOURNALS_EXEMPT = ("HIV", "MRI", "EEG", "GABA")
+JOURNALS_NOT = ("SIGNA", "CHUV", "UMCG", "NTNU")
+
+
+@st.composite
+def undefined_forms(draw: st.DrawFn) -> tuple[str, list[str], list[str]]:
+    """A paper using every form of `JOURNALS_EXEMPT` and `JOURNALS_NOT` undefined, each once
+    or more, in an order drawn, after an Abstract whose one form, HR, only the main text
+    defines; with the forms the audit lists, in the order of their first use, HR first, and
+    those it passes over, in theirs."""
+    planted = draw(st.permutations([*JOURNALS_EXEMPT, *JOURNALS_NOT]))
+    again = draw(st.permutations([short for short in planted
+                                  for _time in range(draw(st.integers(0, 2)))]))  # fmt: skip
+    text, _starts = _paragraphs(draw, (f"the {short} was given" for short in [*planted, *again]))
+    paper = ("# Abstract\n\nThe HR rose.\n\n# Methods\n\n" + text
+             + "The hazard ratio (HR) was given, and the HR held.\n")  # fmt: skip
+    return (paper, ["HR", *(short for short in planted if short in JOURNALS_NOT)],
+            [short for short in planted if short in JOURNALS_EXEMPT])  # fmt: skip
+
+
 #: A glossary's entries in each form it is written in, each its own short form: a line with
 #: `=`, `:` or a dash, a list item with the short form in bold, a definition list's term, and
 #: a table's rows.
@@ -13000,6 +13023,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
             ),
             "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
         }
+    ),
+    "audit abbreviations": st.one_of(
+        undefined_forms().map(lambda drawn: drawn[0]),
+        texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)),
     ),
     "tex outside maths": lines(),
     "title": lines(),

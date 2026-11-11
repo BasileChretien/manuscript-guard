@@ -25630,6 +25630,29 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_corruption.py::test_what_looks_like_a_placeholder_and_is_prose_passes`,
   `tests/test_audit_sections.py::test_categories_over_their_n_by_no_more_than_rounding_are_a_note`,
   `tests/test_margins.py::test_twenty_categories_over_their_n_by_ten_are_rounding`.
+- **The audit's one finding on short forms left undefined, and its list.** The author's
+  decision of 2026-11-11, after the corpus of 52 real preprints, in which 354 of the 427
+  `abbreviation-undefined` warnings judges read were false (`auditing.undefined`). The
+  audit says those of one paper in one finding, at the first use of the first form, and
+  passes over the forms on a list of what journals' style guides say needs no definition.
+  Pinned by
+  `tests/test_audit_undefined.py::test_the_short_forms_left_undefined_are_one_finding_at_the_first_use`.
+  - The list of forms journals' style guides say need no definition,
+    `data/journal_abbreviations.yaml`, is the same for every paper audited, of any field: a
+    form on it is passed over in a paper where it means something else. The forms whose
+    second meaning in another field is common are left out, and the file says which; one
+    not known for a second meaning is passed over in any paper. It is the list of three
+    sources read on 2026-11-12, and stays as they were then. Accepted.
+  - Where every form the paper leaves undefined is on the list, there is no finding, so
+    nothing says that forms were passed over. Pinned by
+    `tests/test_audit_undefined.py::test_a_paper_whose_forms_are_all_on_the_list_has_no_finding`.
+  - The page, the PDF and the copy with comments show the one finding, its message naming
+    every form; each form's place is in `--json` and `--details` only, and the copy's
+    comment stands on the first use of the first form alone. Accepted.
+  - The forms are read from G14's message for one form; a warning whose message is
+    another's is left as a warning of its own. Pinned by
+    `tests/test_audit_undefined.py::test_the_finding_reads_what_g14_writes_of_one_form_in_each_part`.
+  - `check` reads no such list, and a project cannot ask it to. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

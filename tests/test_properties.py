@@ -2276,6 +2276,47 @@ def _a_journal_s_ask_is_not_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_asked", ignored)
 
 
+from generated import JOURNALS_EXEMPT, undefined_forms  # noqa: E402
+
+
+@holds(60, undefined_forms())
+def test_the_audit_says_the_short_forms_left_undefined_in_one_finding(
+    drawn: tuple[str, list[str], list[str]],
+) -> None:
+    """The audit makes G14's warnings on the short forms used and not defined one finding,
+    at the first use of the first form it lists: each form once, the one only the Abstract
+    leaves undefined among them, in the order the paper first uses them, with the warning on
+    each; the forms on the list of journals' style guides passed over, counted and named in
+    the order of theirs. The other findings are G14's as they were."""
+    from manuscript_guard.auditing import undefined
+
+    text, listed, passed = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+    file = _file(0, Path("main.md"), text, [], False)
+    found = list(language_gate._judge([file], nothing, Path(".")).findings)
+    audited = undefined.one_finding(found)
+    (one,) = [f for f in audited if f.code == undefined.CODE]
+    assert [form for form, _warning in one.forms] == listed, text
+    assert list(one.passed_over) == passed, text
+    assert one.counted == len(listed) and set(passed) <= set(JOURNALS_EXEMPT)
+    assert (one.line, one.context) == (one.forms[0][1].line, one.forms[0][1].context)
+    assert f"'{listed[0]}'" in one.message and f"({', '.join(passed[:-1])} and {passed[-1]})" \
+        in one.message, one.message  # fmt: skip
+    assert [f for f in audited if f is not one] == [f for f in found if f.code != undefined.CODE]
+
+
+def _the_journals_list_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import undefined
+
+    patch.setattr(undefined, "exempt", lambda: frozenset())
+
+
+def _the_short_forms_are_listed_last_first(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import undefined
+
+    patch.setattr(undefined, "_at", lambda f: (str(f.path or ""), -(f.line or 0), 0))
+
+
 @holds(60, defined_elsewhere())
 def test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text(
     drawn: dict[str, Any],
@@ -21455,6 +21496,14 @@ BROKEN = {
     "a journal's ask for definitions is not read": (
         _a_journal_s_ask_is_not_read,
         test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks,
+    ),
+    "the audit reads no list of journals' style guides": (
+        _the_journals_list_is_not_read,
+        test_the_audit_says_the_short_forms_left_undefined_in_one_finding,
+    ),
+    "the audit lists the short forms left undefined last first": (
+        _the_short_forms_are_listed_last_first,
+        test_the_audit_says_the_short_forms_left_undefined_in_one_finding,
     ),
     "a word with underscores in code is read as a sentence's": (
         _code_is_read_as_prose,

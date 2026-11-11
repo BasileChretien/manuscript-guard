@@ -399,15 +399,39 @@ def test_the_page_says_its_release_from_the_manifest_the_build_writes() -> None:
     assert 'f"https://github.com/BasileChretien/manuscript-guard/tree/v{version}"' in build
 
 
-def test_the_loading_bar_has_a_mark_for_each_step_the_worker_says() -> None:
-    """The worker says each step of its start (worker.js `step`), and the page's bar has one
-    mark for each: a step added in one file and not the other would leave the bar short."""
+def test_the_loading_bar_counts_each_step_the_worker_says() -> None:
+    """The worker says each step of its start (worker.js `step`), in order, and the page
+    counts as many before the first is said: a step added in one file and not the other
+    would leave the steps miscounted. The bar is a percentage."""
     worker = (WEB / "worker.js").read_text(encoding="utf-8")
+    app = (WEB / "app.js").read_text(encoding="utf-8")
     page = (WEB / "index.html").read_text(encoding="utf-8")
     steps = re.search(r"const BOOT_STEPS = \[(.*?)\];", worker, re.S).group(1)
     count = len(re.findall(r'"[^"]+"', steps))
     assert re.findall(r"\bstep\((\d)\)", worker) == [str(at) for at in range(count)]
-    assert f'<progress id="progress" max="{count}" value="0">' in page
+    assert f"const loading = {{ at: 0, of: {count}," in app
+    assert '<progress id="progress" max="100" value="0"' in page
+
+
+def test_the_bar_counts_the_bytes_the_build_says_the_worker_fetches() -> None:
+    """The percentage is of the bytes the worker fetches while it starts, which web/build.py
+    writes to the manifest as `bytes`: every file of Pyodide's but the two the worker imports
+    as modules, the wheel and pandoc.wasm. CI's browser check holds the count to what the
+    browser received; here, that each side names the other's."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("web_build", WEB / "build.py")
+    build = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(build)
+    worker = (WEB / "worker.js").read_text(encoding="utf-8")
+    imported = set(re.findall(r'import\(BASE \+ "pyodide/([^"]+)"\)', worker))
+    # pyodide.mjs imports pyodide.asm.mjs itself.
+    assert imported == {"pyodide.mjs"} and set(build.IMPORTED) == {"pyodide.mjs", "pyodide.asm.mjs"}
+    assert set(build.IMPORTED) <= set(build.PYODIDE_CORE)
+    written = (WEB / "build.py").read_text(encoding="utf-8")
+    assert '"bytes": sum(path.stat().st_size for path in fetching),' in written
+    assert "loading.expected = manifest.bytes || 0;" in worker
+    assert "self.fetch = counted;" in worker and "self.fetch = ownFetch;" in worker
 
 
 # ------------------------------------------------------- the names the page gives a command

@@ -219,7 +219,8 @@ def spelling_edits(
 ) -> list[Edit]:
     """Each word `spelling-variant` reports respelt in the paper's English, at every place
     it stands, where the list gives one spelling for it: "colour" becomes "color", and
-    "Colour" opening a sentence "Color". Nothing where the paper's English is in doubt: a
+    "Colour" opening a sentence "Color". Not a word inside a quotation set inline, which is
+    somebody else's or a title's. Nothing where the paper's English is in doubt: a
     paper mostly in the other English than it declares, whose declaration is likelier
     wrong, or one that declares none and has as many words in each."""
     declared = variant is not None
@@ -242,12 +243,25 @@ def spelling_edits(
     edits = []
     for passage, start, key in theirs:
         spelt = _one_spelling(words[key][1])
-        if spelt is None:
+        if spelt is None or _in_a_quotation(passage.text, start):
             continue
         end = start + len(key)
         edits.append(Edit("spelling-variant", passage, start, end,
                           _cased(passage.text[start:end], spelt), (start, end)))  # fmt: skip
     return edits
+
+
+#: The double marks a quotation is opened and closed with inline, curly.
+_OPENS, _CLOSES = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"
+
+
+def _in_a_quotation(text: str, start: int) -> bool:
+    """Is the word at `start` inside a quotation its paragraph opens with double marks and
+    has not closed, `as "Colour vision in tumour cells" reported`? Its words are somebody
+    else's, or a title's, and an edit keeps them; the finding still counts them (round 1 of
+    #636)."""
+    before = text[text.rfind("\n\n", 0, start) + 1 : start]
+    return before.count('"') % 2 == 1 or before.count(_OPENS) > before.count(_CLOSES)
 
 
 def _one_spelling(instead: str) -> str | None:

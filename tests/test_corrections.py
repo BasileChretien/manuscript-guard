@@ -62,9 +62,41 @@ def test_two_edits_that_say_different_things_of_the_same_words_are_refused() -> 
     p = _at(TEXT, "P=")
     found = corrections([
         Edit("notation-unit", passage, at, at, " ", (at - 1, at + 2)),
-        Edit("notation-space-missing", passage, at, at, " ", (at - 1, at + 2)),
+        # a no-break space, which says something else than the space above
+        Edit("notation-space-missing", passage, at, at, chr(0xA0), (at - 1, at + 2)),
         Edit("spelling-variant", passage, p, p + 1, "p", (p, p + 1)),
-        Edit("notation-sign-spacing", passage, p, p + 2, "P ", (p, p + 6)),
+        Edit("notation-sign-spacing", passage, p, p + 1, "p ", (p, p + 6)),
         Edit("notation-sign-spacing", passage, p + 2, p + 2, " ", (p, p + 6)),
     ])  # fmt: skip
     assert [(c.old, c.new) for c in found] == [("P=0.03", "P= 0.03")]
+
+
+def _notation_corrected(*sentences: str) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.notation import notation_edits
+
+    text = "# Results\n\n" + "".join(f"It was {said} here.\n\n" for said in sentences)
+    return [(one.old, one.new) for one in corrections(notation_edits([_passage(text)]))]
+
+
+def test_hyphens_that_may_hold_a_high_bound_s_sign_are_not_edited() -> None:
+    """"-1.2--0.3" is read as pandoc's en dash and a high bound of 0.3, and may be a hyphen
+    and -0.3: in a paper that joins with "to" it is left, where an edit would have written
+    "-1.2 to 0.3" (round 1 of #636)."""
+    found = _notation_corrected("CI 1.2 to 3.4", "CI 0.8 to 1.1", "CI -1.2--0.3", "CI 2.0-3.0")
+    assert found == [("CI 2.0-3.0", "CI 2.0 to 3.0")]
+
+
+def test_a_space_put_where_another_edit_changes_the_words_is_no_edit() -> None:
+    """In a paper that joins with a hyphen, "CI 0.05 to+0.77" is a join to change and a
+    space to put after the "to" the change takes away: neither is made, where together they
+    wrote "CI 0.05- +0.77" (round 1 of #636)."""
+    found = _notation_corrected("CI 1.2-3.4", "CI 0.8-1.1", "CI 0.05 to+0.77")
+    assert found == []
+
+
+def test_the_join_written_is_the_kept_form_set_evenly() -> None:
+    """The kept form's first use typed with a space on one side of its hyphen, "1.2 -3.4",
+    is not copied: the join written is the hyphen alone, which reads as no minus sign
+    (round 1 of #636)."""
+    found = _notation_corrected("CI 1.2 -3.4", "CI 2.0-3.0", "CI 0.8 to 1.1")
+    assert found == [("CI 0.8 to 1.1", "CI 0.8-1.1")]

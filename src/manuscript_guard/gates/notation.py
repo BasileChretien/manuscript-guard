@@ -243,6 +243,9 @@ class _Use:
     pieces: tuple[tuple[int, int], ...] = ()
     #: Whether a bound of an interval is negative, which a dash would read as its sign.
     negative: bool = False
+    #: Whether the reading cannot be sure what it read: two or three hyphens against the
+    #: high bound, "-1.2--0.3", are pandoc's dash or a hyphen and the bound's minus sign.
+    doubtful: bool = False
 
     @property
     def key(self) -> tuple[int, int]:
@@ -443,9 +446,11 @@ def _read(passages: Iterable[Passage]) -> _Read:
                 and not _LEVEL_BEFORE.search(text[max(0, found.start() - _BACK) : found.start()])
             ):
                 continue  # "a confidence interval of 95%, 5% margin": the level, no bound
+            typed = found["join"]
             use = _Use(place, found.start(), passage, found.end() - found.start(),
                        (found.span("join"),),
-                       _negative(found["low"]) or _negative(found["high"]))  # fmt: skip
+                       _negative(found["low"]) or _negative(found["high"]),
+                       typed.strip() in ("--", "---") and typed.endswith("-"))  # fmt: skip
             joins.add(_JOINS["t" if join == "to" else join], use)
 
         for found in _PERCENT.finditer(text):
@@ -617,7 +622,9 @@ def notation_edits(passages: Iterable[Passage]) -> list[Edit]:
     manuscript spaces most of them, each interval joined and each "%" set as most are, and
     a space between a number and the unit or the word run into it. Nothing of the P's
     symbol, which is the journal's to say, nor where two forms are used as often; and no
-    dash put before or after a negative bound, whose sign it would read as."""
+    dash put before or after a negative bound, whose sign it would read as; and nothing of
+    an interval whose hyphens may hold its high bound's sign, "-1.2--0.3" (round 1 of
+    #636)."""
     read = _read(passages)
     edits: list[Edit] = []
     kept = _kept(read.signs, ("spaced", "closed"))
@@ -654,16 +661,32 @@ def _kept(family: _Family, among: tuple[str, ...] | None = None) -> str | None:
 
 
 def _join_of(uses: list[_Use]) -> str:
-    """What joins the bounds where the kept form first stands, its space as one: " to "."""
+    """What joins the bounds as the kept form is typed where it first stands, set evenly:
+    " to ", ", ", and a dash with a space either side or none, so that a dash typed with a
+    space on one side, "1.2 -3.4", is not copied to read as a minus sign (round 1 of #636)."""
     first = min(uses, key=lambda use: use.key)
     start, end = first.pieces[0]
-    return re.sub(r"\s+", " ", first.passage.text[start:end])
+    typed = first.passage.text[start:end]
+    core = typed.strip()
+    if core == "to":
+        return " to "
+    if core in (",", ";"):
+        return core + " "
+    return f" {core} " if typed[:1].isspace() and typed[-1:].isspace() else core
+
+
+def _sure(use: _Use) -> bool:
+    """Whether the reading is sure enough of what it read to edit it."""
+    return not use.doubtful
 
 
 def _set(uses: Iterable[_Use], code: str, news: tuple[str, ...]) -> list[Edit]:
-    """An edit of each piece of each use to its counterpart in `news`, where it differs."""
+    """An edit of each piece of each use to its counterpart in `news`, where it differs;
+    none of a use the reading is not sure of."""
     edits = []
     for use in uses:
+        if not _sure(use):
+            continue
         within = (use.offset, use.offset + use.length)
         for (start, end), new in zip(use.pieces, news, strict=True):
             if use.passage.text[start:end] != new:

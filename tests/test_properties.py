@@ -6115,13 +6115,14 @@ from generated import notation_edited, spelling_edited  # noqa: E402
 
 def _edited(typed: str, edits_of: Callable[[Any], list]) -> tuple[str, str]:
     """The text as read, and as the corrections of the edits `edits_of` makes leave it,
-    each correction's words being the text's at its place."""
+    the corrections in the order of the text and none over another's words, as `applied`
+    takes them (round 1 of #636)."""
     from manuscript_guard.corrections import applied, corrections
 
     read = _file(0, Path("main.md"), typed, [], False)
     found = corrections(edits_of(read))
-    for one in found:
-        assert read.text[one.offset : one.offset + len(one.old)] == one.old, one
+    for one, after in itertools.pairwise(found):
+        assert one.offset + len(one.old) <= after.offset, (one, after)
     return read.text, applied(read.text, found)
 
 
@@ -6206,27 +6207,40 @@ def _a_space_is_put_after_the_unit(patch: pytest.MonkeyPatch) -> None:
 
 @holds(40, spelling_edited())
 def test_g14_respells_a_word_of_the_other_english_where_the_paper_s_own_is_sure(
-    drawn: list[tuple[str | None, str, str]],
+    drawn: list[tuple[str | None, tuple[str, ...], str, str]],
 ) -> None:
     """A word of the other English is respelt in the paper's, at every place it stands, with
     the capital it opens a sentence with, where the list gives one spelling for it: in a
-    paper that declares the English most of its words are in, and in one that declares
-    none, in the English of the more. Not a name, a variable's name or a word with two
-    spellings; and nothing in a paper that declares none and has as many words of each, nor
-    in one mostly in the other English than it declares. Edited, it is edited no further."""
+    paper that declares the English most of its words are in, British or American, and in
+    one that declares none, in the English of the more. Not a name, a variable's name, a
+    word inside a quotation, one the paper keeps or one with two spellings; and nothing in a
+    paper that declares none and has as many words of each, nor in one mostly in the other
+    English than it declares. Edited, it is edited no further."""
     from manuscript_guard.gates.spelling import spelling_edits
     from manuscript_guard.gates.vocabulary import Passage
 
-    for declared, as_typed, expected in drawn:
+    for declared, kept, as_typed, expected in drawn:
 
-        def edits(read: Any, declared: str | None = declared) -> list:
+        def edits(read: Any, declared: str | None = declared, kept: tuple = kept) -> list:
             passage = Passage(read.path, read.text, read.spelt, read.line_of)
-            return spelling_edits([passage], declared, ())
+            return spelling_edits([passage], declared, kept)
 
         text, edited = _edited(as_typed, edits)
         assert text == as_typed
         assert edited == expected, (declared, as_typed, edited)
         assert _edited(edited, edits)[1] == edited
+
+
+def _hyphens_against_a_high_bound_are_read_as_a_dash(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    patch.setattr(notation, "_sure", lambda use: True)
+
+
+def _a_word_inside_a_quotation_is_respelt(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import spelling
+
+    patch.setattr(spelling, "_in_a_quotation", lambda text, start: False)
 
 
 def _a_respelt_word_loses_its_capital(patch: pytest.MonkeyPatch) -> None:
@@ -22604,6 +22618,14 @@ BROKEN = {
     "the notation's edits put the space after the unit": (
         _a_space_is_put_after_the_unit,
         test_g14_edits_the_notation_to_the_form_the_manuscript_keeps_at_every_place,
+    ),
+    "the notation's edits read hyphens against a high bound as a dash": (
+        _hyphens_against_a_high_bound_are_read_as_a_dash,
+        test_g14_edits_the_notation_to_the_form_the_manuscript_keeps_at_every_place,
+    ),
+    "a word inside a quotation is respelt": (
+        _a_word_inside_a_quotation_is_respelt,
+        test_g14_respells_a_word_of_the_other_english_where_the_paper_s_own_is_sure,
     ),
     "a respelt word loses its capital": (
         _a_respelt_word_loses_its_capital,

@@ -7065,6 +7065,10 @@ def _intervals_typed(draw: st.DrawFn, level: bool) -> list[tuple[str, str]]:
             pairs.append((f"CI {low}{INTERVAL_JOINS[form]}{high}",
                           f"CI {low}{INTERVAL_JOINS[fixed]}{high}"))  # fmt: skip
     pairs.append((f"CI {NEGATIVE[0]} to {NEGATIVE[1]}",) * 2)
+    # Hyphens against a negative high bound, read as pandoc's em dash and a positive bound:
+    # the reading cannot tell, and does not edit (round 1 of #636). One use of a form of its
+    # own, so it outnumbers none.
+    pairs.append(("CI -1.2---0.3",) * 2)
     return pairs
 
 
@@ -7104,53 +7108,68 @@ AMERICAN_ONE = {"color": "colour", "behavior": "behaviour", "center": "centre",
 AMERICAN_TWO = "anesthetized"
 
 
-def _spelt_typed(draw: st.DrawFn, own: str, theirs: int, ours: int) -> list[tuple[str, str]]:
-    """`theirs` uses of words of the other English, each respelt in `own` where the list
-    gives one spelling, and `ours` of words of `own`, as typed. A word of the other English
-    opens a sentence and keeps its capital; one with a capital inside a sentence is a name,
-    one in a variable's name is none, and neither is respelt."""
+def _spelt_typed(draw: st.DrawFn, own: str, theirs: int, ours: int,
+                 accepted: str = "") -> list[tuple[str, str]]:  # fmt: skip
+    """`theirs` uses of words of the other English, at least three, each respelt in `own`
+    where the list gives one spelling, and `ours` of words of `own`, as typed. The first
+    opens a sentence and keeps its capital; the second and third stand inside a quotation,
+    in straight marks and in curly ones, and are counted and not respelt (round 1 of
+    #636). One with a capital inside a sentence is a name, one in a variable's name is
+    none, and `accepted`, a word of the other English the paper keeps, is neither counted
+    nor respelt."""
     mine, other = (BRITISH_ONE, AMERICAN_ONE) if own == "en-GB" else (AMERICAN_ONE, BRITISH_ONE)
     if own == "en-GB":
         # an `-ize` both write counts for neither, and is not respelt
         mine = {word: spelt for word, spelt in mine.items() if word != "organise"}
+    other = {word: spelt for word, spelt in other.items() if word != accepted}
     pairs = [(f"the {word} seen", f"the {word} seen")
              for word in draw(st.lists(st.sampled_from(sorted(mine)), min_size=ours,
                                        max_size=ours))]  # fmt: skip
     words = draw(st.lists(st.sampled_from(sorted(other)), min_size=theirs, max_size=theirs))
+    quoted = {1: ('as "', '" was said'),
+              2: ("as \N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK} was said")}
     for index, word in enumerate(words):
         if index == 0:
             pairs.append((f"seen.\n\n{word.capitalize()} was noted",
                           f"seen.\n\n{other[word].capitalize()} was noted"))  # fmt: skip
+        elif index in quoted:
+            opens, closes = quoted[index]
+            pairs.append((f"{opens}{word} vision{closes}",) * 2)
         else:
             pairs.append((f"the {word} seen", f"the {other[word]} seen"))
     for word in ("Color", "Colour"):
         pairs.append((f"the {word} Institute", f"the {word} Institute"))
     pairs.append(("the colour_score and color_score", "the colour_score and color_score"))
+    if accepted:
+        pairs.append((f"the {accepted} kept", f"the {accepted} kept"))
     return pairs
 
 
 @st.composite
-def spelling_edited(draw: st.DrawFn) -> list[tuple[str | None, str, str]]:
-    """Four manuscripts, each with the English it declares, typed and as G14's spelling
-    edits leave it: one that declares the English most of its words are in, its words of
-    the other respelt but one the list gives two spellings for; one that declares none, its
-    fewer words respelt in the English of the more; one that declares none and has as many
-    of each, and one mostly in the other English than it declares, neither respelt."""
+def spelling_edited(draw: st.DrawFn) -> list[tuple[str | None, tuple[str, ...], str, str]]:
+    """Five manuscripts, each with the English it declares and the spellings it keeps,
+    typed and as G14's spelling edits leave it: two that declare the English most of their
+    words are in, one British and one American, their words of the other respelt but one the
+    list gives two spellings for and one the paper keeps; one that declares none, its fewer
+    words respelt in the English of the more; one that declares none and has as many of
+    each, and one mostly in the other English than it declares, neither respelt."""
     made = []
     declared = draw(st.sampled_from(("en-GB", "en-US")))
-    theirs = draw(st.integers(1, 3))
-    pairs = _spelt_typed(draw, "en-GB", theirs, theirs + draw(st.integers(2, 3)))
+    theirs = draw(st.integers(3, 4))
+    pairs = _spelt_typed(draw, "en-GB", theirs, theirs + draw(st.integers(2, 3)), "color")
     pairs.append((f"the {AMERICAN_TWO} rats", f"the {AMERICAN_TWO} rats"))
-    made.append(("en-GB", *_both_ways(draw, draw(st.permutations(pairs)))))
+    made.append(("en-GB", ("color",), *_both_ways(draw, draw(st.permutations(pairs)))))
+    pairs = _spelt_typed(draw, "en-US", theirs, theirs + draw(st.integers(1, 3)), "tumour")
+    made.append(("en-US", ("tumour",), *_both_ways(draw, draw(st.permutations(pairs)))))
     more = draw(st.sampled_from(("en-GB", "en-US")))
     pairs = _spelt_typed(draw, more, theirs, theirs + draw(st.integers(1, 3)))
-    made.append((None, *_both_ways(draw, draw(st.permutations(pairs)))))
+    made.append((None, (), *_both_ways(draw, draw(st.permutations(pairs)))))
     pairs = [(typed, typed) for typed, _ in _spelt_typed(draw, more, theirs, theirs)]
-    made.append((None, *_both_ways(draw, draw(st.permutations(pairs)))))
+    made.append((None, (), *_both_ways(draw, draw(st.permutations(pairs)))))
     other = "en-US" if declared == "en-GB" else "en-GB"
     many = sorted(BRITISH_ONE if other == "en-GB" else AMERICAN_ONE)[:6]
     pairs = [(f"the {word} seen",) * 2 for word in many]
-    made.append((declared, *_both_ways(draw, draw(st.permutations(pairs)))))
+    made.append((declared, (), *_both_ways(draw, draw(st.permutations(pairs)))))
     return made
 
 #: A coding dictionary's release typed beside its name and elsewhere, and its name inside a
@@ -13110,7 +13129,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
             "accepted": st.lists(st.sampled_from(("color", "Tumour", "centre")), max_size=2),
         }),
         spelling_edited().flatmap(lambda drawn: st.sampled_from(drawn)).map(
-            lambda case: {"text": case[1], "variant": case[0], "accepted": []}),
+            lambda case: {"text": case[2], "variant": case[0], "accepted": list(case[1])}),
     ),  # fmt: skip
     "novelty claims": novelty_claims().map(lambda drawn: drawn[0]),
     "novelty records": novelty_records().map(lambda drawn: drawn[0]),

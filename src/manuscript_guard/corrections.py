@@ -55,10 +55,11 @@ class Correction:
 
 
 def corrections(edits: Iterable[Edit]) -> list[Correction]:
-    """The edits gathered by stretch, in the order of the passages and the text: edits
-    whose stretches overlap are one correction, over their union. Two edits of the same
-    characters, or two insertions at one place, that say different things are both
-    refused: no reading decides what another's edit becomes."""
+    """The edits gathered by stretch: passage by passage, in the order each passage's
+    first edit is given, and within one in the order of its text. Edits whose stretches
+    overlap are one correction, over their union. Two edits that touch the same characters
+    (`_clash`) and say different things are both refused: no reading decides what
+    another's edit becomes."""
     # By file and text, not by passage: the spelling is read in a passage of its own, the
     # same text with other sections hidden, and its edits stand among the notation's.
     by_passage: dict[tuple[Path, str], tuple[Passage, list[Edit]]] = {}
@@ -104,10 +105,21 @@ def _agreed(group: list[Edit]) -> list[Edit]:
         for later, other in enumerate(group[index + 1 :], start=index + 1):
             if one.new == other.new and (one.start, one.end) == (other.start, other.end):
                 continue
-            same_place = one.start == one.end == other.start == other.end
-            if same_place or (one.start < other.end and other.start < one.end):
+            if _clash(one, other):
                 clashing |= {index, later}
     return [edit for index, edit in enumerate(group) if index not in clashing]
+
+
+def _clash(one: Edit, other: Edit) -> bool:
+    """Do two edits touch the same characters? An insertion clashes with one at its place,
+    and with a change it stands at either end of: "to+0.77" in an interval joined with a
+    hyphen is a join to change and a space to put after "to", which the change takes away
+    (round 1 of #636)."""
+    if one.start == one.end:
+        return other.start <= one.start <= other.end
+    if other.start == other.end:
+        return one.start <= other.start <= one.end
+    return one.start < other.end and other.start < one.end
 
 
 def _correction(passage: Passage, edits: list[Edit]) -> Correction:

@@ -11648,6 +11648,9 @@ _READS_LATEX = (
     "check_interpretation",
     # It reads the bindings of the main text and the supplement, `\mg{}` as `{{}}` (item 5).
     "check_controls",
+    # It reads a comparator beside a binding in each document's printed view, `\mg{}` as
+    # `{{}}` (#629).
+    "check_bound_comparisons",
 )  # fmt: skip
 
 

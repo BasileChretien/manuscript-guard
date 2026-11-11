@@ -12509,7 +12509,9 @@ def commented_documents(draw: st.DrawFn) -> tuple[str, list, list]:
 #: A word as a .docx's converted text may type it in a finding's context, and as the
 #: document prints it (`auditing.reader.excerpt`): in bold and in italics by stars, in
 #: italics and in bold by underscores, a name from code with underscores inside it, a star
-#: standing between a number and a word, and a star inside a word.
+#: standing between a number and a word, a star inside a word, a code span whose underscores
+#: would read as bold outside it, in bold around a code span, and a bold inside italics
+#: (round 1 of #631).
 EMPHASES = {
     "bold": ("**{}**", "{}"),
     "italics": ("*{}*", "{}"),
@@ -12518,6 +12520,9 @@ EMPHASES = {
     "code name": ("{}_kept_name", "{}_kept_name"),
     "star alone": ("2 * {}", "2 * {}"),
     "star inside": ("{}*5", "{}*5"),
+    "code span": ("`__{}__`", "`__{}__`"),
+    "bold code span": ("**`{}_x`**", "`{}_x`"),
+    "nested": ("*{} **in** it*", "{} in it"),
 }
 
 

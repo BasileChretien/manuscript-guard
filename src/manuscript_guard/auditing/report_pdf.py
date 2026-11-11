@@ -44,11 +44,11 @@ def written(view: dict, title: str, version: str) -> bytes:
     for name, said in view["checks"]:
         pdf.row(name, said, link=_key(name))
     # What --strict counts is for a script (`view["strict"]`), and the PDF is for a reader;
-    # the paper's name heads its findings only where there are several papers.
-    papers = [paper for paper in view["words"] if paper["note"] or paper["kinds"]]
-    for paper in papers:
-        heading = f"Writing and language: {paper['paper']}" if len(papers) > 1 else (
-            "Writing and language")
+    # the paper's name heads its findings wherever several papers were audited, though only
+    # one has findings (round 1 of #631), since no place under it names the paper again.
+    several = len(view["words"]) > 1
+    for paper in (paper for paper in view["words"] if paper["note"] or paper["kinds"]):
+        heading = f"Writing and language: {paper['paper']}" if several else "Writing and language"
         pdf.heading(heading, 1, key=_key("Writing"))
         if paper["note"]:
             pdf.text(paper["note"])

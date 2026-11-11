@@ -10423,16 +10423,19 @@ commented copy are read by someone who runs no script and may never have seen th
 line, and the author found them "still hard to read and not user friendly" (2026-11-11). So
 the view they are drawn from (`report.view`) and each comment's text go through
 `auditing.reader`: each of the text's phrases for a script is said for a reader or left out,
-"(counted by --strict)" is "(the audit fails on it)", and a finding's context is quoted as
-an excerpt, Markdown's marks of emphasis taken off and its ends marked "…" since it is cut
-without regard to words. The text keeps every flag: the page shows it in a fold, and CI holds
-it to the command line's word for word. The page leaves out the line on what `--strict`
-counts, and the PDF does too; neither heads the findings with the paper's name where there is
-one paper, nor a kind with its check's code. A place a .docx's or a PDF's finding names in its
-own paper is said without the paper's name, "defined later at Conclusions, paragraph 26", in
-the text too: the report names the paper above it (`gates._relocated`). Held by
-`tests/test_audit_reader.py`, which audits a paper whose text names the flags and finds none
-in the view or in the PDF.
+"(counted by --strict)" is "(counted as an error)", not that the audit failed, which without
+`--strict` it does not, and a finding's context is quoted without Markdown's marks of
+emphasis, outside its code spans, as the document prints it. Its ends are not marked as cut:
+a gate's context is cut at a character count, or not at all near a paragraph's edge, or is
+no quote (a list of samples), and only the gate can say which. The text keeps every flag:
+the page shows it in a fold, and CI holds it to the command line's word for word. The line
+on what `--strict` counts goes with the phrases that name it, from the page (since #627, the
+page draws it only where the view gives it) and from the PDF; neither heads the findings with
+the paper's name where one paper was audited, nor a kind with its check's code. A place a
+.docx's or a PDF's finding names in its own paper is said without the paper's name, "defined
+later at Conclusions, paragraph 26", in the text too: the report names the paper above it
+(`gates._relocated`). Held by `tests/test_audit_reader.py`, which audits papers whose text
+names the flags, with a flow and a design given, and finds none in the view or in the PDF.
 
 **Headings, exact.** A PDF marks no heading, and guessing one from a line's shape is a rule
 that reads text. So a line is a heading only where it holds a section's name and nothing else

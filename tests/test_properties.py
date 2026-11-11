@@ -18781,13 +18781,13 @@ from generated import emphasised_contexts  # noqa: E402
 def test_an_excerpt_quotes_a_context_as_the_document_prints_it(drawn: tuple[str, str]) -> None:
     """The page and the PDF quote a finding's context as the .docx prints it (the author's
     audit, 2026-11-11: "**CBL**" was shown): bold and italics typed by stars or by
-    underscores without their marks; a name from code with its underscores, a star between a
-    number and a word, and one inside a word, as they are; the ends marked as cut
-    (`auditing.reader.excerpt`)."""
-    from manuscript_guard.auditing.reader import CUT, excerpt
+    underscores without their marks, around a code span and inside one another too; a name
+    from code with its underscores, a star between a number and a word, one inside a word,
+    and a code span, as they are (`auditing.reader.excerpt`)."""
+    from manuscript_guard.auditing.reader import excerpt
 
     typed, printed = drawn
-    assert excerpt(typed) == f"{CUT}{printed}{CUT}"
+    assert excerpt(typed) == printed
 
 
 def _underscores_mark_nothing(patch: pytest.MonkeyPatch) -> None:
@@ -18809,6 +18809,18 @@ def _a_star_with_a_space_after_it_marks_emphasis(patch: pytest.MonkeyPatch) -> N
     patch.setattr(reader, "_STARRED", re.compile(r"(?<![\w*])(\*\*|\*)(.+?)\1(?![\w*])"))
 
 
+def _a_code_span_is_not_set_aside(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import reader
+
+    patch.setattr(reader, "_CODE", re.compile(r"(?!)(`)"))
+
+
+def _one_emphasis_is_taken_off_and_not_one_inside_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import reader
+
+    patch.setattr(reader, "_NESTED", 1)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -18822,6 +18834,14 @@ BROKEN = {
     ),
     "a star with a space after it marks emphasis in an excerpt": (
         _a_star_with_a_space_after_it_marks_emphasis,
+        test_an_excerpt_quotes_a_context_as_the_document_prints_it,
+    ),
+    "a code span's marks are taken off in an excerpt": (
+        _a_code_span_is_not_set_aside,
+        test_an_excerpt_quotes_a_context_as_the_document_prints_it,
+    ),
+    "an emphasis inside another stays in an excerpt": (
+        _one_emphasis_is_taken_off_and_not_one_inside_it,
         test_an_excerpt_quotes_a_context_as_the_document_prints_it,
     ),
     "a PDF string's parentheses are not escaped": (

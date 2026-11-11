@@ -25,6 +25,13 @@ refused, exit 2. Its tables are lines of text there, so their numbers are compar
 as the text's but no table's arithmetic is checked, and a line is a heading only where it
 holds a section's name alone. A PDF in a folder is not read: name it.
 
+`--pdf FILE.pdf` also writes the report as a PDF, every place and every section in it, as
+`--details` prints them: its sections and each kind of finding on the words are bookmarks,
+each check in its table a link to its section, each place with its message and its quote.
+It is set in the four fonts every PDF reader has, so a character they lack is written as a
+reader would type it ("≥" as ">=", "α" as "alpha"). FILE must not exist yet. The page saves
+the same PDF beside the report.
+
 `--commented FILE.docx` also writes a copy of the .docx named first with each finding as a
 Word comment at its place, by "manuscript-guard audit": on the number or the words it is
 about, on its paragraph where those stand in a field or a link, and, for a finding with no

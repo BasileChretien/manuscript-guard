@@ -12,7 +12,8 @@ program to start and no sockets, so:
   XMLHttpRequest, which a worker may make. `default_transport` hands over to it under Pyodide.
 * `run` runs one command and returns what it printed, for the page to show.
 * `commented` writes the copy of the paper with the last audit's findings as Word comments,
-  as `audit --commented` does, for the page to save.
+  as `audit --commented` does, and `report_pdf` the last audit's report as a PDF, as
+  `audit --pdf` does, for the page to save.
 
 Nothing here starts a process or opens a socket, and only `install` and the transport's
 default touch `js`, which exists only in Pyodide.
@@ -226,7 +227,7 @@ def view(arguments: list[str]) -> dict:
     _AUDITED.clear()
 
     def told(report, discrimination) -> None:
-        _AUDITED.append(report)
+        _AUDITED.append((report, discrimination))
         try:
             made.append(drawn(report, discrimination, Path.cwd(), details=details))
         except Exception as exc:  # noqa: BLE001 - the text is printed whatever the view does
@@ -243,7 +244,8 @@ def view(arguments: list[str]) -> dict:
     return {**result, "view": shown}
 
 
-#: The report of the audit `view` ran last, which `commented` writes its copy from.
+#: The report of the audit `view` ran last, and what a match is worth there, which
+#: `commented` and `report_pdf` write from.
 _AUDITED: list = []
 
 
@@ -264,11 +266,28 @@ def commented(paper: str, target: str) -> dict:
         return {"error": f"{path.name} is not a .docx"}
     date = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     try:
-        written = write(path, Path(target), notes_of(_AUDITED[-1], path), date=date)
+        written = write(path, Path(target), notes_of(_AUDITED[-1][0], path), date=date)
     except (CommentedError, UnsafeDocument, OSError, ValueError) as exc:
         return {"error": str(exc)}
     return {"placed": written.placed, "listed": len(written.listed)}
 
 
-__all__ = ["PandocCall", "commented", "install", "pandoc_options", "run", "runner_for", "view",
-           "xhr_transport"]  # fmt: skip
+def report_pdf(target: str) -> dict:
+    """The report of the audit `view` ran last as a PDF, with every place and every section,
+    written to `target` as `audit --pdf` writes it (`auditing.report_pdf`), from the same
+    audit rather than a second one: how many bytes it holds, or why none was written."""
+    from manuscript_guard.auditing.report_pdf import report_pdf as pdf_of
+
+    if not _AUDITED:
+        return {"error": "no audit was run"}
+    report, discrimination = _AUDITED[-1]
+    try:
+        data = pdf_of(report, discrimination, Path.cwd(), [path.name for path in report.papers])
+        Path(target).write_bytes(data)
+    except (OSError, ValueError) as exc:
+        return {"error": str(exc)}
+    return {"bytes": len(data)}
+
+
+__all__ = ["PandocCall", "commented", "install", "pandoc_options", "report_pdf", "run",
+           "runner_for", "view", "xhr_transport"]  # fmt: skip

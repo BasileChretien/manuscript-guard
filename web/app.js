@@ -130,7 +130,9 @@ $("form").addEventListener("submit", async (event) => {
   // on screen for "Save the report" to save as this one's (round 2 of #527).
   $("result").hidden = true;
   $("savecommented").hidden = true;
+  $("savepdf").hidden = true;
   commented = null;
+  pdf = null;
   $("report").textContent = "";
   $("view").replaceChildren();
   $("notes").textContent = "";
@@ -161,6 +163,14 @@ $("form").addEventListener("submit", async (event) => {
       $("savecommented").textContent = `Save ${commented.name}: the paper with ${commented.placed} `
         + "finding" + (commented.placed === 1 ? "" : "s") + " as Word comments at their places";
     }
+    if (result.pdf && result.pdf.data) {
+      pdf = result.pdf;
+      $("savepdf").hidden = false;
+    } else if (result.pdf && result.pdf.error) {
+      $("notes").hidden = false;
+      $("notes").textContent += ($("notes").textContent ? "\n" : "")
+        + `No PDF of the report was made: ${result.pdf.error}`;
+    }
     $("netlog").textContent += "\n\n" + listRequests(
       `This audit of ${paper.name} sent requests to:`, result.sent);
     say(`Audited ${paper.name} in ${(result.ms / 1000).toFixed(1)} s.`);
@@ -171,6 +181,17 @@ $("form").addEventListener("submit", async (event) => {
   } finally {
     $("run").disabled = false;
   }
+});
+
+// The report as a PDF (`web.report_pdf`), from the last audit.
+let pdf = null;
+$("savepdf").addEventListener("click", () => {
+  if (!pdf) return;
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([pdf.data], { type: "application/pdf" }));
+  link.download = pdf.name;
+  link.click();
+  URL.revokeObjectURL(link.href);
 });
 
 // The paper with the findings as Word comments (`web.commented`), from the last audit.

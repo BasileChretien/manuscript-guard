@@ -108,7 +108,26 @@ os.chdir("/work")`);
   } catch (error) {
     commented = { error: String((error && error.message) || error) };
   }
-  return { ...result, commented, args, ms, sent: requests(), refused: [...refused] };
+  let pdf = null;
+  try {
+    pdf = reportPdf(result, paperName);
+  } catch (error) {
+    pdf = { error: String((error && error.message) || error) };
+  }
+  return { ...result, commented, pdf, args, ms, sent: requests(), refused: [...refused] };
+}
+
+// The report as a PDF with every place and every section, from that very audit
+// (`web.report_pdf`, as `audit --pdf` writes it): its name and its bytes; or null.
+function reportPdf(result, paperName) {
+  if (!result.view) return null;
+  const said = JSON.parse(py.runPython(`import json, os
+from manuscript_guard import web
+os.makedirs("/out", exist_ok=True)
+json.dumps(web.report_pdf("/out/report.pdf"))`));
+  if (said.error) return { error: said.error };
+  return { name: paperName.replace(/\.[^.]*$/, "") + " (audit report).pdf",
+    data: py.FS.readFile("/out/report.pdf") };
 }
 
 // The paper with the audit's findings as Word comments at their places, for a .docx the audit

@@ -10377,6 +10377,21 @@ said as "'p' in italics". A G6 phrasing finding no longer opens with its rule's 
 each side (`audit.around`): the line's first 140 characters were quoted, and in a .docx,
 whose Abstract is a paragraph to a line, the number was often past them.
 
+**A PDF report.** "The best would be an interactive pdf", the author wrote of the text
+report (2026-11-10), and chose that the package write it itself, with no dependency, over
+fpdf2 (LGPL, Pillow and fontTools, a font to ship) and over an HTML page the browser prints:
+the page runs under Pyodide, where the package installs nothing a PDF library needs.
+`audit --pdf FILE.pdf`, and the page's "Save the report as a PDF" from the same audit
+(`web.report_pdf`), write the report's view with every place and every section
+(`auditing.report_pdf`, the view `--details` gives the page) through `pdfwriter`: pages of
+A4, the four standard fonts in their Windows-1252 encoding, lines broken at spaces by
+Adobe's metrics and a word wider than the column at its edge, a bookmark for every heading,
+nested by level, and a link from each check in the table to its section. A character the
+encoding lacks is written as a reader would type it, its letters without their marks, or
+"?" (`pdfwriter.printable`); a string's parentheses and backslashes are escaped. Held by
+`tests/test_properties.py::test_a_pdf_report_prints_every_word_within_its_page_and_marks_every_heading`,
+which reads the PDF strictly with pypdf, with five broken rules.
+
 **A commented copy.** The author asked for a report he could work in rather than read beside
 the paper (2026-11-10, "an interactive" one). `audit --commented FILE.docx`, and the page's
 "Save the paper with the findings as Word comments" from the same audit (`web.commented`),
@@ -25427,6 +25442,22 @@ What papers converted from Word showed (see "What papers converted from Word sho
   heading before. Accepted.
   - A paragraph whose only text is bars, "|", just above a table is counted as the table's,
     one paragraph too few after it (fix round of #616). Accepted.
+
+- **A PDF report is set in the standard fonts and marks no structure.** A character
+  Windows-1252 lacks is written as ASCII or "?", so a quote in Greek, Cyrillic or Chinese
+  loses its words, and a heading's bookmark keeps them. The PDF is not tagged: a screen
+  reader reads it as running text, with no headings or table, and its reading order is the
+  order it is set in. A quote a gate takes from the text pandoc converts a .docx to keeps
+  Markdown's marks of emphasis, "**CEMU**", and its cuts inside a word. Accepted.
+  - Lines are measured by the metrics the writer holds, the regular font's for the bold's
+    quotation marks, and the property holds them to the margins by the same metrics; a
+    word wider than the column is cut by measuring each of its beginnings, slow past some
+    thousands of characters (round 1 of #618). Accepted.
+  - A mark no letter takes prints "?", so Python's lower case of "İ", "i" and U+0307,
+    prints "i?"; a sign printed as "not" and itself is glued to a word typed against it,
+    "pnot <=0.05"; and a heading is kept with the next level's only where that one takes a
+    line, so a kind's title of two lines can leave "Writing and language" at a page's foot
+    (fix rounds of #618). Accepted.
 
 - **A commented copy places a finding by its quote.** `audit --commented` comments the first
   paragraph that holds a finding's quote, so a quote that two paragraphs hold word for word

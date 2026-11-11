@@ -25658,12 +25658,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
 - **G14's edits are held back wherever a quotation or another edit may stand** (rounds 1 and
   2 of #636). A word after a straight double mark its paragraph has not closed is taken to
   be quoted, so an inch mark, `a 2" incision`, holds back the respelling of every later
-  word in its paragraph; the finding still counts them. A single mark opens a quotation at a
-  word's start and closes one after a word, so an apostrophe that opens a word, "'tis",
-  holds back the words after it up to the next that closes. An insertion at either end of
-  another edit's change clashes with it, so "colour+5" in an American paper is neither
-  respelt nor spaced. Each only keeps an edit from being offered. Pinned by
-  `tests/test_corrections.py::test_a_stray_double_mark_holds_back_the_respellings_after_it`.
+  word in its paragraph; the finding still counts them. Single marks are read loosely: a
+  word with a mark before it in its paragraph that may open a quotation, one at the start of
+  what follows it, and one after it that may close one, at the end of what stands before
+  it, is taken to be quoted. So "'tis" with a plural's apostrophe later in the paragraph,
+  "the patients' choice", holds back every respelling between them. An insertion at either
+  end of another edit's change clashes with it, so "colour+5" in an American paper is
+  neither respelt nor spaced. Each only keeps an edit from being offered. Pinned by
+  `tests/test_corrections.py::test_a_stray_double_mark_holds_back_the_respellings_after_it`,
+  `tests/test_corrections.py::test_an_apostrophe_opening_a_word_quotes_up_to_a_mark_that_may_close`,
+  `tests/test_corrections.py::test_a_space_put_after_a_respelt_word_is_no_edit_of_either`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

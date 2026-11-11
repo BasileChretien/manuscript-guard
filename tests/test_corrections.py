@@ -98,14 +98,44 @@ def _respelt(text: str, english: str) -> list[tuple[str, str]]:
 
 
 def test_a_word_quoted_in_single_marks_keeps_its_spelling_and_an_apostrophe_is_none() -> None:
-    """A title quoted in single marks, straight or curly, is somebody else's; an apostrophe
-    inside a word or after a plural opens no quotation, and the word after it is respelt
-    (round 2 of #636)."""
-    text = ("# Results\n\nAs 'Tumor color in children' reported, the patients' color and "
-            "the study's tumor were seen, and \N{LEFT SINGLE QUOTATION MARK}color"
-            "\N{RIGHT SINGLE QUOTATION MARK} was said. Colour and tumour and centre and "
-            "fibre and labelled.\n")
-    assert _respelt(text, "en-GB") == [("color", "colour"), ("tumor", "tumour")]
+    """A title quoted in single marks, straight or curly, is somebody else's, ended by a
+    question mark, opened on a figure or holding a plural's apostrophe; an apostrophe inside
+    a word or after a plural opens no quotation, and the words after it are respelt (rounds
+    2 and 3 of #636)."""
+    paragraphs = (
+        "As 'Does tumor color matter?' asked, we looked.",
+        "As '2020 tumor color survey' said.",
+        "As 'The parents' tumor color choices' reported.",
+        "As \N{LEFT SINGLE QUOTATION MARK}Tumor color\N{RIGHT SINGLE QUOTATION MARK} said.",
+        "The patients' color and the study's tumor and the color we don't know.",
+        "Colour and tumour and centre and fibre and labelled.",
+    )
+    text = "# Results\n\n" + "\n\n".join(paragraphs) + "\n"
+    assert _respelt(text, "en-GB") == [("color", "colour"), ("tumor", "tumour"),
+                                       ("color", "colour")]  # fmt: skip
+
+
+def test_an_apostrophe_opening_a_word_quotes_up_to_a_mark_that_may_close() -> None:
+    """"'Tis" may open a quotation: with a plural's apostrophe after it in its paragraph,
+    the words between are held back; with none, they are respelt (round 3 of #636, a Known
+    gap)."""
+    assert _respelt("# Results\n\n'Tis said the color was the patients' choice.\n",
+                    "en-GB") == []  # fmt: skip
+    assert _respelt("# Results\n\n'Tis said the color was seen.\n", "en-GB") == [
+        ("color", "colour")]
+
+
+def test_a_space_put_after_a_respelt_word_is_no_edit_of_either() -> None:
+    """"colour+5" in an American paper is a word to respell and a space to put after it,
+    at the end of the respelling: neither is made (round 3 of #636, a Known gap)."""
+    from manuscript_guard.gates.notation import notation_edits
+    from manuscript_guard.gates.spelling import spelling_edits
+
+    passage = _passage("# Results\n\nIt was colour+5 here, and color and center.\n")
+    edits = notation_edits([passage]) + spelling_edits([passage], "en-US", ())
+    assert [(one.code, one.new) for one in edits] == [("notation-space-missing", " "),
+                                                      ("spelling-variant", "color")]  # fmt: skip
+    assert corrections(edits) == []
 
 
 def test_a_stray_double_mark_holds_back_the_respellings_after_it() -> None:

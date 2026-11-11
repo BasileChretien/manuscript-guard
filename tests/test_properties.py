@@ -6237,6 +6237,13 @@ def _hyphens_against_a_high_bound_are_read_as_a_dash(patch: pytest.MonkeyPatch) 
     patch.setattr(notation, "_sure", lambda use: True)
 
 
+def _hyphens_after_a_positive_low_bound_are_doubtful(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import notation
+
+    patch.setattr(notation, "_doubtful", lambda join, low: join.strip() in ("--", "---")
+                  and join.endswith("-"))  # fmt: skip
+
+
 def _a_word_inside_a_quotation_is_respelt(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import spelling
 
@@ -22621,6 +22628,10 @@ BROKEN = {
     ),
     "the notation's edits read hyphens against a high bound as a dash": (
         _hyphens_against_a_high_bound_are_read_as_a_dash,
+        test_g14_edits_the_notation_to_the_form_the_manuscript_keeps_at_every_place,
+    ),
+    "the notation's edits doubt hyphens after a positive low bound": (
+        _hyphens_after_a_positive_low_bound_are_doubtful,
         test_g14_edits_the_notation_to_the_form_the_manuscript_keeps_at_every_place,
     ),
     "a word inside a quotation is respelt": (

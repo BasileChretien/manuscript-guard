@@ -7052,18 +7052,35 @@ def _intervals_typed(draw: st.DrawFn, level: bool) -> list[tuple[str, str]]:
     forms = draw(st.permutations(list(INTERVAL_JOINS)))
     counts = _counts(draw, forms, level)
     kept = None if level else forms[0]
+    # The en dash typed as itself or as pandoc types it, "--", the same in every use where
+    # the paper keeps it. Where it does not, its first two uses are typed "--", the first
+    # against a negative low bound, where it may be a hyphen and the high bound's sign and
+    # is not edited, the second after a positive one, where it is the dash and is (round 3
+    # of #636).
+    dash = draw(st.sampled_from(("\N{EN DASH}", "--")))
+    apart = kept not in (None, "an en dash")
+    if apart:
+        counts[kept], counts["an en dash"] = max(counts[kept], 3), 2
     pairs = []
     for form, count in counts.items():
         for index in range(count):
             # Of a form neither kept nor 'to', the first use has a negative bound, which no
             # dash may be put beside; 'to' beside a negative bound is not read at all.
             negative = index == 0 and form not in (kept, "'to'")
-            low, high = NEGATIVE if negative else draw(st.sampled_from(BOUNDS))
+            # A bound value after "--" is doubtful too, so the en dash the paper does not
+            # keep is drawn with figures.
+            figures = BOUNDS[:2] if form == "an en dash" and apart else BOUNDS
+            low, high = NEGATIVE if negative else draw(st.sampled_from(figures))
+            typed = INTERVAL_JOINS[form] if form != "an en dash" else (
+                "--" if apart and index < 2 else dash)  # fmt: skip
+            doubtful = typed == "--" and (negative or low.startswith("{{"))
             fixed = form
-            if kept is not None and not (negative and kept != "'to'" and kept != "a comma"):
+            if kept is not None and not doubtful and not (
+                    negative and kept not in ("'to'", "a comma")):  # fmt: skip
                 fixed = kept
-            pairs.append((f"CI {low}{INTERVAL_JOINS[form]}{high}",
-                          f"CI {low}{INTERVAL_JOINS[fixed]}{high}"))  # fmt: skip
+            written = typed if fixed == form else (
+                dash if fixed == "an en dash" else INTERVAL_JOINS[fixed])  # fmt: skip
+            pairs.append((f"CI {low}{typed}{high}", f"CI {low}{written}{high}"))
     pairs.append((f"CI {NEGATIVE[0]} to {NEGATIVE[1]}",) * 2)
     # Hyphens against a negative high bound, read as pandoc's em dash and a positive bound:
     # the reading cannot tell, and does not edit (round 1 of #636). One use of a form of its
@@ -7128,7 +7145,7 @@ def _spelt_typed(draw: st.DrawFn, own: str, theirs: int, ours: int,
     words = draw(st.lists(st.sampled_from(sorted(other)), min_size=theirs, max_size=theirs))
     quoted = {1: ('as "', '" was said'),
               2: ("as \N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK} was said"),
-              3: ("as '", "' was the patients' word"),
+              3: ("as 'which ", "?' was the patients' word"),
               4: ("as \N{LEFT SINGLE QUOTATION MARK}",
                   "\N{RIGHT SINGLE QUOTATION MARK} was said")}  # fmt: skip
     for index, word in enumerate(words):

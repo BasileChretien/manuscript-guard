@@ -240,4 +240,52 @@ def rows(report) -> list[tuple[str, str]]:
     return rows
 
 
-__all__ = ["KINDS", "PLACES", "checks", "grouped", "kinds", "kinds_of", "rows"]
+#: Where each check stands, as the PDF's summary colours it: nothing found, something for a
+#: reader to look at, something `--strict` counts, or not run.
+CLEAR, LOOK, COUNTED, NOT_RUN = "clear", "look", "counted", "not run"
+
+
+def standings(report) -> dict[str, str]:
+    """Where each check of `rows` stands (`CLEAR`, `LOOK`, `COUNTED` or `NOT_RUN`), from what
+    it found, not from its line's words: the PDF's summary draws each check in its colour."""
+    from manuscript_guard.auditing.report import MEMBERSHIP
+
+    def of(counted: bool, looked: bool) -> str:
+        return COUNTED if counted else LOOK if looked else CLEAR
+
+    out = {MEMBERSHIP: NOT_RUN if not report.compared else of(bool(report.unmatched), False),
+           "Arithmetic": of(bool(report.sums_off or report.over_n or report.flows_broken),
+                            bool(report.over_n_rounding or report.disagreements)),
+           "Small cells": of(bool(report.recovered), bool(report.recovered_by_n))}  # fmt: skip
+    read = report.abstract
+    if read is not None:
+        out["Abstract against Results"] = (NOT_RUN if not read.compared else of(
+            bool(read.conflicts), bool(read.not_found or read.rounded)))
+    if report.gates:
+        found = any(run.writing or run.language or run.note for run in report.gates)
+        out["Writing and language"] = of(False, found)
+    if report.references:
+        problems = any(census.problems or census.note or census.unsent
+                       for census in report.references)  # fmt: skip
+        looked = any(one.problems for one in report.lookups or [])
+        out["References"] = of(False, problems or looked)
+    # The sections a flag adds, by what the report says in them: counted, or to look at.
+    from manuscript_guard.auditing import report as sections
+    from manuscript_guard.auditing.report import items
+
+    said = None
+    for name, section, present in (
+            ("Journal", sections.JOURNAL, report.journal), ("Causal words", sections.CAUSAL,
+            report.causal), ("Cited sentences", sections.CITED, report.cited),
+            ("Self-citation", sections.SELF_CITATION, report.self_citation),
+            ("Package", sections.PACKAGE, report.package)):  # fmt: skip
+        if present is not None:
+            said = items(report) if said is None else said
+            mine = [item for item in said if item.section in (section, sections.DOCUMENT)
+                    and (item.section == section or name == "Journal")]  # fmt: skip
+            out[name] = of(any(item.counted for item in mine), bool(mine))
+    return out
+
+
+__all__ = ["CLEAR", "COUNTED", "KINDS", "LOOK", "NOT_RUN", "PLACES", "checks", "grouped",
+           "kinds", "kinds_of", "rows", "standings"]  # fmt: skip

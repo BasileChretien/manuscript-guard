@@ -47,7 +47,12 @@ def test_the_audit_writes_its_report_as_a_pdf(tmp_path: Path, capsys) -> None:
     assert any(title.startswith("Writing and language") for _depth, title in titles)
     assert any(title.startswith("Abstract against Results") for _depth, title in titles)
     links = [annot.get_object() for page in reader.pages for annot in page.get("/Annots") or []]
-    assert links and all(link["/Subtype"] == "/Link" and "/Dest" in link for link in links)
+    # Each link goes to a place in the document, or out to the project's page (the foot of
+    # every page, and the closing's "how to use it fully").
+    assert links and all(link["/Subtype"] == "/Link" and ("/Dest" in link or (
+        link["/A"]["/S"] == "/URI" and link["/A"]["/URI"].startswith("https://")))
+        for link in links)  # fmt: skip
+    assert any("/Dest" in link for link in links)
     text = "".join(page.extract_text() for page in reader.pages)
     # The Abstract's 412, not found in the Methods, the Results or the tables, with its quote.
     assert "Of the patients, 412 improved." in text
@@ -56,6 +61,67 @@ def test_the_audit_writes_its_report_as_a_pdf(tmp_path: Path, capsys) -> None:
     # The title's bookmark holds the checks' table's, and no other.
     top = reader.trailer["/Root"]["/Outlines"]["/First"].get_object()
     assert top["/Count"] == 1
+
+
+def test_the_pdf_is_framed_says_where_each_check_stands_and_how_to_use_the_tool(
+    tmp_path: Path, capsys
+) -> None:
+    """The author, 2026-11-11: "Make the pdf interactive and visually appealing", "Add a line
+    at the bottom 'made with manuscript-guard'", and "only a few gates were checked, see this
+    link to see how use fully this programme". Every page's foot says it was made with
+    manuscript-guard, links to the project and gives its number of all; every page but the
+    first has the title at its top; each check's tile says where it stands and links to its
+    section; each section links back to the summary; and the closing says how few gates an
+    audit runs, with the link."""
+    from manuscript_guard import __version__
+    from manuscript_guard.auditing.report_pdf import HOME, STANDING
+    from manuscript_guard.gates import GATES
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(PAPER + "\n".join(f"\nThe XYZ was seen again in case {n}." for n in
+                                       range(60)), encoding="utf-8")  # fmt: skip
+    target = tmp_path / "report.pdf"
+    assert main(["audit", str(paper), "--pdf", str(target)]) == 0
+    capsys.readouterr()
+    reader = pypdf.PdfReader(io.BytesIO(target.read_bytes()), strict=True)
+    pages = [" ".join(page.extract_text().split()) for page in reader.pages]
+    assert len(pages) > 1
+    for at, text in enumerate(pages, 1):
+        assert f"Made with manuscript-guard {__version__}" in text, at
+        assert f"Page {at} of {len(pages)}" in text, at
+        assert "Audit of paper.md" in text, at
+    first = pages[0]
+    assert STANDING["not run"][1] in first and STANDING["look"][1] in first
+    assert "Back to the summary" in " ".join(pages)
+    assert f"three of manuscript-guard's {len(GATES)} gates" in " ".join(pages)
+    out = [annot.get_object()["/A"]["/URI"] for page in reader.pages
+           for annot in page.get("/Annots") or [] if "/A" in annot.get_object()]  # fmt: skip
+    assert len(out) >= len(pages) + 1 and set(out) == {HOME}
+    places = {annot.get_object()["/Dest"][0].get_object()["/Type"] for page in reader.pages
+              for annot in page.get("/Annots") or [] if "/Dest" in annot.get_object()}
+    assert places == {"/Page"}
+
+
+def test_where_each_check_stands_is_read_from_what_it_found() -> None:
+    """A check's tile is coloured by what it found, not by its line's words: not run without
+    outputs, counted where --strict counts what it found, to look at where a reader has
+    something to read, and clear where it found nothing."""
+    from types import SimpleNamespace
+
+    from manuscript_guard.auditing.summary import CLEAR, COUNTED, LOOK, NOT_RUN, standings
+
+    nothing = SimpleNamespace(compared=False, unmatched=[], sums_off=[], over_n=[],
+                              flows_broken=[], over_n_rounding=[], disagreements=[],
+                              recovered=[], recovered_by_n=[], abstract=None, gates=[],
+                              references=[], lookups=None, journal=None, causal=None,
+                              cited=None, self_citation=None, package=None)  # fmt: skip
+    said = standings(nothing)
+    assert said == {"Numbers in the outputs": NOT_RUN, "Arithmetic": CLEAR,
+                    "Small cells": CLEAR}  # fmt: skip
+    worse = SimpleNamespace(**{**vars(nothing), "compared": True, "unmatched": [1],
+                               "over_n_rounding": [1], "recovered_by_n": [1]})
+    assert standings(worse) == {"Numbers in the outputs": COUNTED, "Arithmetic": LOOK,
+                                "Small cells": LOOK}  # fmt: skip
 
 
 def test_a_bookmark_counts_every_level_under_it() -> None:

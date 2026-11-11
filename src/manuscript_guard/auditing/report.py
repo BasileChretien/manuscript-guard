@@ -758,7 +758,7 @@ def view(report, discrimination, root: Path | None = None, *, details: bool = Fa
     line. The same content as `render`, every place of the words' findings in its fold, said
     for a reader, who runs no script and types no flag (`reader.readable`)."""
     from manuscript_guard.auditing.reader import readable
-    from manuscript_guard.auditing.summary import STRICT, kinds, rows
+    from manuscript_guard.auditing.summary import STRICT, kinds, rows, standings
 
     show = _shown(root, report.placers)
     words = []
@@ -772,6 +772,8 @@ def view(report, discrimination, root: Path | None = None, *, details: bool = Fa
         "header": _header(report),
         "notes": [[heading, said] for heading, said in _notes(report)],
         "checks": [[name, said] for name, said in rows(report)],
+        # Where each check stands, by its name: what the PDF colours its tile by.
+        "standing": standings(report),
         "strict": STRICT,
         "words": words,
         "sections": [[heading, "\n".join(said)] for heading, said

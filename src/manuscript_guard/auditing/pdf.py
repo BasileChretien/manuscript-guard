@@ -150,7 +150,8 @@ class PdfText:
         same way)."""
         lines = self.text.split("\n")
         starts = [line for line, _title in self.headings]
-        ends = [*starts[1:], len(lines) + 1]
+        # With no heading read there is none to place (corpus run of 2026-11-11, 2509.01351).
+        ends = [*starts[1:], len(lines) + 1] if starts else []
         worded = [any(lines[k].strip() for k in range(start, end - 1))
                   for start, end in zip(starts, ends, strict=True)]  # fmt: skip
         levels = section_levels([title for _line, title in self.headings], worded)

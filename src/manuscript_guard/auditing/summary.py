@@ -178,12 +178,20 @@ def _references(report) -> str:
     # not checked and why"); the section names each.
     from manuscript_guard.auditing.references import without_identifier
 
-    unlooked = sum(1 for census in told for entry in census.entries
-                   if without_identifier(entry))  # fmt: skip
+    entries = [entry for census in told for entry in census.entries]
+    unlooked = sum(1 for entry in entries if without_identifier(entry))
+    # And those whose identifier was held back, the section's "not looked up: it may
+    # continue on the next line" (round 2 of #632).
+    held = sum(1 for entry in entries if entry.held_back and not entry.dois and not entry.pmids)
     looked = f"; {_n(len(report.lookups), 'work')} looked up"
-    if unlooked:
-        looked += (f", {_n(unlooked, 'entry', 'entries')} not looked up, having no DOI or "
-                   "PMID: see below")  # fmt: skip
+    reasons = ([f"{_n(unlooked, 'entry', 'entries')} not looked up, having no DOI or PMID"]
+               if unlooked else [])  # fmt: skip
+    if held:
+        reasons.append(f"{_n(held, 'entry', 'entries')} not looked up, "
+                       f"{'its' if held == 1 else 'their'} DOI or PMID perhaps running on to the "
+                       "next line")  # fmt: skip
+    if reasons:
+        looked += ", " + " and ".join(reasons) + ": see below"
     return said + looked
 
 

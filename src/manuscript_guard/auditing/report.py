@@ -1185,7 +1185,11 @@ def _unlooked(census, show) -> list[str]:
     for entry in missing:
         # "3. Brown L. ..." under "entry 3": the number once, typed as it may be ("1." on
         # every item of a Markdown list, "3\.").
-        typed = _LIST_NUMBER.sub("", " ".join(entry.text.split()), count=1)
+        typed = " ".join(entry.text.split())
+        if entry.number is not None:
+            # Only a numbered list's entry is typed with its number (round 2 of #632: an
+            # unnumbered entry may open on its year).
+            typed = _LIST_NUMBER.sub("", typed, count=1)
         quoted = typed if len(typed) <= ENTRY_QUOTED else typed[:ENTRY_QUOTED].rstrip() + "…"
         lines.append(f"      {_at(entry.path, entry.line, census.path, show)}{entry.label}"
                      + (f": {quoted}" if quoted else ""))  # fmt: skip

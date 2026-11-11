@@ -321,11 +321,17 @@ def _flagged(name: str, present, mine: list) -> str:
     if getattr(present, "note", None) or (name == "Causal words" and not present.read):
         return NOT_RUN
     looked = any(item.severity != INFO or item.code in _TO_LOOK_AT for item in mine)
-    if name == "Cited sentences":
-        # Its file of rows, one for each work cited, is for a reader to go through.
-        looked = looked or bool(present.rows)
+    if name == "Journal":
+        # A blind review, and a document nobody searched for the authors' names (round 3).
+        looked = looked or present.unsearched
+    elif name == "Cited sentences":
+        # Its file of rows, one for each work cited, is for a reader to go through; and the
+        # citations by author and year, or by pandoc key, are listed nowhere (round 3).
+        looked = looked or bool(present.rows or present.author_year or present.pandoc)
     elif name == "Self-citation":
+        # Entries no registry gave an author list or a journal for count for nobody (round 3).
         looked = bool(present.authors_note or present.unlooked or present.in_journal
+                      or present.no_people or (present.journal and present.no_journal)
                       or any(listed for _author, listed in present.authors))  # fmt: skip
     return LOOK if looked else CLEAR
 

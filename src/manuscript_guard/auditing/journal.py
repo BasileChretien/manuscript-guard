@@ -59,6 +59,9 @@ class JournalRun:
     #: What the blinding check said where it did not look: --authors given and a review not
     #: blind, a blind review and no --authors, or a document it could not read.
     blind_note: str = ""
+    #: Whether the review is blind and a document was not searched for the authors' names:
+    #: no --authors, or a document it could not read (round 3 of #635).
+    unsearched: bool = False
     #: How the journal's review is blinded, where the authors were looked for; None where
     #: they were not, a review that is not blind among them.
     looked: str | None = None
@@ -252,6 +255,7 @@ def look_for_authors(run: JournalRun, papers: list[tuple[Path, object]], profile
         run.blind_note = (f"the journal's review is {kind}-blind, and the authors were not "
                           "looked for: --authors names them; the names Word keeps are listed "
                           "in the Document section")  # fmt: skip
+        run.unsearched = True
         return
     run.looked = kind
     unread = []
@@ -265,6 +269,7 @@ def look_for_authors(run: JournalRun, papers: list[tuple[Path, object]], profile
         run.named += [replace(f, gate="audit", hint=NAMED_HINT) for f in
                       found_in(places, wanted, kind, paper).findings]  # fmt: skip
     run.blind_note = "; ".join(unread)
+    run.unsearched = bool(unread)
 
 
 #: What a tracked change deleted is called among the places a name is looked for.

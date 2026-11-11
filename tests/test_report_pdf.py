@@ -168,6 +168,11 @@ def test_a_flag_s_tile_is_not_run_counted_or_to_look_at_as_its_section_is() -> N
     assert journal(manual=[("a cover letter", "")]) == LOOK
     named = Finding("audit", "author-named", "Ada Lovelace is named", path=paper)
     assert journal(named=[named]) == journal(note="G4 could not run", named=[named]) == COUNTED
+    # A blind review whose authors nobody looked for is to look at; a review that is not
+    # blind, with its note of why nobody looked, is clear (round 3).
+    blind = "the journal's review is double-blind, and the authors were not looked for"
+    assert journal(blind_note=blind, unsearched=True) == LOOK
+    assert journal(blind_note="the profile says the journal's review is open") == CLEAR
 
     def causal(**given) -> str:
         read = CausalRead("observational", **given)
@@ -187,6 +192,8 @@ def test_a_flag_s_tile_is_not_run_counted_or_to_look_at_as_its_section_is() -> N
     assert self_citation(looked=9, authors=[(ada, [])]) == CLEAR
     assert self_citation(looked=9, authors=[(ada, [one])]) == LOOK
     assert self_citation(looked=9, unlooked=2) == LOOK
+    assert self_citation(looked=9, no_people=4, authors=[(ada, [])]) == LOOK
+    assert self_citation(looked=9, journal="BMJ", no_journal=3) == LOOK
 
     def cited(**given) -> str:
         read = CitedRead(**given)
@@ -194,6 +201,7 @@ def test_a_flag_s_tile_is_not_run_counted_or_to_look_at_as_its_section_is() -> N
 
     assert cited() == CLEAR
     assert cited(rows=[Row(paper, 3, "Introduction", "As shown [1].", "[1]", None)]) == LOOK
+    assert cited(author_year=12) == cited(pandoc=3) == LOOK
 
 
 def test_the_closing_names_the_gates_the_audit_ran() -> None:

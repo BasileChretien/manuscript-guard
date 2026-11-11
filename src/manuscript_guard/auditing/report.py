@@ -47,6 +47,7 @@ causal words, the cited sentences and the self-citation counts (Basile, 2026-10-
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -1054,6 +1055,8 @@ def _references(report, show) -> list[str]:
         if len(census.problems) > LISTED:
             lines.append(f"    (+{len(census.problems) - LISTED} more)")
         lines += _looked(looked.get(census.path, []), census.path, show)
+        if report.lookups is not None and style != UNTOLD:
+            lines += _unlooked(census, show)
     if report.lookups is None:
         lines.append(
             "  Nothing was looked up: --lookup asks Crossref and OpenAlex of each DOI, and "
@@ -1178,6 +1181,38 @@ def _at(path: Path | None, line: int | None, paper: Path, show) -> str:
         return ""
     return (f"{show(path)} {show.at(path, line)}: " if path is not None and path != paper
             else f"{show.at(paper, line)}: ")  # fmt: skip
+
+
+#: How much of an entry is quoted where the report names one it could not look up.
+ENTRY_QUOTED = 90
+#: The number an entry is typed with, which the report says as its label.
+_LIST_NUMBER = re.compile(r"^\\?[\[(]?\d{1,4}\\?[\].)]\s+")
+
+
+def _unlooked(census, show) -> list[str]:
+    """Each entry of `census`'s list that was not looked up for having no DOI and no PMID,
+    at its place, by its number and its first words: an entry left out of the look-up is
+    said, not passed over (the author's audit, 2026-11-11: "we need to check all references,
+    or say which ones were not checked and why"). Every one, as the reader asked for each."""
+    from manuscript_guard.auditing.references import BY_PLACE, without_identifier
+
+    missing = [entry for entry in census.entries if without_identifier(entry)]
+    if not missing:
+        return []
+    lines = [f"    not looked up, having no DOI or PMID to look up: "
+             f"{len(missing)} entr{'y' if len(missing) == 1 else 'ies'}"]  # fmt: skip
+    for entry in missing:
+        # "3. Brown L. ..." under "entry 3": the number once, typed as it may be ("1." on
+        # every item of a Markdown list, "3\.").
+        typed = " ".join(entry.text.split())
+        if entry.number is not None and census.style != BY_PLACE:
+            # Only a list whose numbers are typed has its entry's taken off (round 2 of #632:
+            # an unnumbered entry, or one Word numbers, may open on its year).
+            typed = _LIST_NUMBER.sub("", typed, count=1)
+        quoted = typed if len(typed) <= ENTRY_QUOTED else typed[:ENTRY_QUOTED].rstrip() + "…"
+        lines.append(f"      {_at(entry.path, entry.line, census.path, show)}{entry.label}"
+                     + (f": {quoted}" if quoted else ""))  # fmt: skip
+    return lines
 
 
 def _looked(looked: list, paper: Path, show) -> list[str]:

@@ -95,6 +95,15 @@ class Entry:
     #: In a PDF's list whose entries are not told apart, whether its one identifier ends a
     #: line with more of the list after it, where it may run on (`census_of_printed`).
     ends_line: bool = field(default=False, compare=False)
+    #: In a PDF's list told apart, whether an identifier of the entry was held back as one
+    #: that may run on, or was cut short (`Census.unsent`): it is no entry with none.
+    held_back: bool = field(default=False, compare=False)
+
+
+def without_identifier(entry: Entry) -> bool:
+    """Whether a look-up had nothing to ask of `entry`: no DOI and no PMID read, and none
+    held back as not sent, which the report says apart (review of #632)."""
+    return not entry.dois and not entry.pmids and not entry.held_back
 
 
 @dataclass(frozen=True)
@@ -364,7 +373,9 @@ def census_of_printed(
         held = _identifiers_of(parts)
         census.unsent += [(at, said) for at, said, _kind, ends in held if ends]
         told.append(replace(entry, dois=tuple(s for _a, s, k, e in held if k == "doi" and not e),
-                            pmids=tuple(s for _a, s, k, e in held if k == "pmid" and not e)))
+                            pmids=tuple(s for _a, s, k, e in held if k == "pmid" and not e),
+                            held_back=any(ends for *_said, ends in held)
+                            or bool(_cut_short(parts))))  # fmt: skip
     census.entries = tuple(told)
     if told:
         census.style = NUMBERED

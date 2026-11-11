@@ -176,7 +176,26 @@ def _references(report) -> str:
     said = "; ".join(parts) or "no reference list read"
     if report.lookups is None:
         return said + "; none looked up in the registries (--lookup)"
-    return said + f"; {_n(len(report.lookups), 'work')} looked up"
+    # The entries nothing could be looked up by, said rather than left out of the count (the
+    # author's audit, 2026-11-11: "we need to check all references, or say which ones were
+    # not checked and why"); the section names each.
+    from manuscript_guard.auditing.references import without_identifier
+
+    entries = [entry for census in told for entry in census.entries]
+    unlooked = sum(1 for entry in entries if without_identifier(entry))
+    # And those whose identifier was held back, the section's "not looked up: it may
+    # continue on the next line" (round 2 of #632).
+    held = sum(1 for entry in entries if entry.held_back and not entry.dois and not entry.pmids)
+    looked = f"; {_n(len(report.lookups), 'work')} looked up"
+    reasons = ([f"{_n(unlooked, 'entry', 'entries')} not looked up, having no DOI or PMID"]
+               if unlooked else [])  # fmt: skip
+    if held:
+        reasons.append(f"{_n(held, 'entry', 'entries')} not looked up, "
+                       f"{'its' if held == 1 else 'their'} DOI or PMID perhaps running on to the "
+                       "next line")  # fmt: skip
+    if reasons:
+        looked += ", " + " and ".join(reasons) + ": see below"
+    return said + looked
 
 
 #: What `--strict` fails on, said once under the checks, so that "not counted by --strict"

@@ -9866,7 +9866,11 @@ empty list under a final heading had raised. A Markdown list is numbered as pand
 from its first number up, and a number pandoc escaped, `1\.`, as typed. A DOI ends before
 `](` and before a stop or a closing bracket it did not open; one no registry has, and a PMID
 PubMed does not, is reported, and "no registry said a work was retracted" says how many
-entries were asked and how many a registry knew. A table's rules and colours, `\midrule[1pt]`
+entries were asked and how many a registry knew. An entry with no DOI and no PMID cannot be
+asked, and is not passed over: the summary's line counts those not looked up, and the
+section names each at its place, by its number and its first 90 characters (the author's
+audit, 2026-11-11: "we need to check all references, or say which ones were not checked and
+why"; he chose that over a search by title, whose match no rule could vouch for). A table's rules and colours, `\midrule[1pt]`
 and `\rowcolor{gray!20}`, print nothing (`text/latex/commands.py`), where their arguments had
 been read as the cell's text and as the paper's numbers. Under `--json` an audit that did not
 happen, exit 2, prints `{"ok": false, "error": ...}`: `check --json` prints nothing to stdout

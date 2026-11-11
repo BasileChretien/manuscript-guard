@@ -2584,6 +2584,13 @@ MARKDOWN_CITED_AFTER = (
     ("(e.g., {author}, {year})", "cited"),
     ("(World Health Organization, {year})", "cited"),
     ("(Centers for Disease Control and Prevention, {year}, {year})", "cited"),
+    ("(National Institutes of Health, {year})", "cited"),
+    # Two capitalised words are no organisation's name, so that no work is read both as
+    # people's and as an organisation's, and a month cut short is no author (round 1 of
+    # #621).
+    ("(Fall Semester, {year})", "vague"),
+    ("(Jan {year})", "vague"),
+    ("(Sept {year})", "vague"),
     ("[{number}]", "cited"),
     ("[{number}, {number}-{number}]", "cited"),
     ("\\[{number}\\]", "cited"),

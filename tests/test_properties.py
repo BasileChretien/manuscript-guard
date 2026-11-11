@@ -2886,6 +2886,16 @@ def _g6_reads_no_organisation_as_an_author(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(writing_gate, "_TYPED_AUTHOR_YEAR", recycling_gate._AUTHOR_YEAR)
 
 
+def _g6_takes_two_words_for_an_organisation(patch: pytest.MonkeyPatch) -> None:
+    pattern = writing_gate._TYPED_AUTHOR_YEAR.pattern
+    assert "{2,}" in pattern
+    patch.setattr(writing_gate, "_TYPED_AUTHOR_YEAR", re.compile(pattern.replace("{2,}", "+")))
+
+
+def _g6_takes_a_short_month_for_an_author(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_SHORT_MONTHS", frozenset())
+
+
 def _g6_takes_any_bracketed_year_for_a_citation(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(writing_gate, "_names_its_authors", lambda cited: True)
 
@@ -20708,6 +20718,14 @@ BROKEN = {
     ),
     "G6 takes no organisation for a citation's author": (
         _g6_reads_no_organisation_as_an_author,
+        test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
+    ),
+    "G6 takes two capitalised words for an organisation's name": (
+        _g6_takes_two_words_for_an_organisation,
+        test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
+    ),
+    "G6 takes a month cut short for a citation's author": (
+        _g6_takes_a_short_month_for_an_author,
         test_g6_takes_a_citation_typed_beside_a_markdown_claim_for_its_support,
     ),
     "G6 takes a year in brackets with any words for a citation": (

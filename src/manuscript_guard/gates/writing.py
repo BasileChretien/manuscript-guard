@@ -50,7 +50,13 @@ from manuscript_guard.contracts.results import Results
 from manuscript_guard.findings import FAIL, WARN, Finding, Report
 from manuscript_guard.gates.figures import TEXT_FORMATS, _extract_text
 from manuscript_guard.gates.numbers import source_files
-from manuscript_guard.gates.recycling import _CITED_BEFORE, _CITED_YEAR, _ONE_CITED, _is_author_year
+from manuscript_guard.gates.recycling import (
+    _CITED_BEFORE,
+    _CITED_YEAR,
+    _LETTERS,
+    _ONE_CITED,
+    _is_author_year,
+)
 from manuscript_guard.literature.bibfile import read_entries
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import count_words
@@ -624,14 +630,24 @@ def _residue(
 
 #: A work in a citation by author and year whose author is an organisation, which is no one
 #: name: "World Health Organization, 2020", "Centers for Disease Control and Prevention,
-#: 2019". Words with a capital, joined by spaces and the few words in lower case that join
-#: them, and a comma before the year. A word in lower case is no word of the name, so that
-#: none is read two ways; `_names_its_authors` holds the rest to capitals.
+#: 2019". Three words with a capital or more, joined by spaces and the few words in lower
+#: case that join them, which are not counted, and a comma before the year. A word in lower
+#: case is no word of the name, so that within the name none is read two ways; and three
+#: words, where people are one name or two joined by "and" or "&" with no comma between,
+#: so that no work is read both as people's and as an organisation's: within a bracket of
+#: many works, each read two ways was 2^k readings to try (round 1 of #621). Two words and
+#: a year, "(Fall Semester, 2020)", are no citation. `_names_its_authors` holds the rest to
+#: capitals.
 _JOINING = r"(?:of|for|and|on|the|in|&)"
 _ORGANISATION_WORD = r"(?![a-z])[^\W\d_]+(?:-[^\W\d_]+)*"
 _ORGANISATION = (
-    rf"{_ORGANISATION_WORD}(?:\s+(?:{_JOINING}\s+)*{_ORGANISATION_WORD})+"
+    rf"{_ORGANISATION_WORD}(?:\s+(?:{_JOINING}\s+)*{_ORGANISATION_WORD}){{2,}}"
     rf"\s*,\s*{_CITED_YEAR}(?:\s*,\s*{_CITED_YEAR})*"
+)
+#: A month cut short, which a date in brackets names where a citation names its author:
+#: "(Jan 2020)", "(Dec. 2019)" (round 1 of #621). "May" is a month in full.
+_SHORT_MONTHS = frozenset(
+    {"jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec"}
 )
 _ONE_WORK = rf"{_CITED_BEFORE}(?:{_ONE_CITED}|{_ORGANISATION})"
 #: A citation by author and year typed in brackets, as the earlier-papers check reads one
@@ -642,8 +658,11 @@ _JOINING_WORD = re.compile(rf"(?<![^\W\d_]){_JOINING}(?![^\W\d_])")
 
 def _names_its_authors(cited: str) -> bool:
     """Whether a match of `_TYPED_AUTHOR_YEAR` names its authors, as `_is_author_year` holds
-    one by people to it: each name with a capital, no month among them, and no date opened
-    by a word like "since". The words that join an organisation's name are none of it."""
+    one by people to it: each name with a capital, no month among them, in full or cut
+    short, and no date opened by a word like "since". The words that join an
+    organisation's name are none of it."""
+    if any(word.casefold() in _SHORT_MONTHS for word in _LETTERS.findall(cited)):
+        return False
     return _is_author_year(_JOINING_WORD.sub(" ", cited))
 
 

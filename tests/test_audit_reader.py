@@ -120,6 +120,16 @@ def test_a_context_is_quoted_without_markdowns_marks() -> None:
     assert excerpt("well, broadly, briefly") == "well, broadly, briefly"
 
 
+def test_a_quote_cut_inside_a_code_span_keeps_the_marks_after_it() -> None:
+    """A limit (DESIGN.md, Known gaps): a context the gate cut inside a code span has a lone
+    backtick, which pairs with the next, and the marks between them stay (round 2 of #631).
+    A label that holds both kinds of quote is said for a reader all the same."""
+    assert excerpt("x_y` and **b** and `z`") == "x_y` and **b** and `z`"
+    label = "a'b\"c"
+    assert for_a_reader(f"  --whole-numbers {label!r}: no mean was read in a row") == (
+        f"  The label {label!r}, given as whole numbers: no mean was read in a row")
+
+
 def test_the_pdf_names_no_flag_nor_a_checks_code(tmp_path: Path, capsys) -> None:
     """The PDF is for a reader: no line on what --strict counts, no paper's name over its
     findings where it is the only paper, and a kind's heading without the check's code."""

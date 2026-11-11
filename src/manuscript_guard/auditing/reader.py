@@ -30,7 +30,8 @@ _FOR_A_READER: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"Nothing was looked up: --lookup asks"), "Nothing was looked up. A look-up asks"),
     (re.compile(r", and --lookup --dry-run shows what would be sent\."), "."),
     (re.compile(r"Point --against at the analysis outputs"), "Give the analysis outputs"),
-    (re.compile(r"--whole-numbers ('[^']*'|\"[^\"]*\"): "),
+    # The label as `repr` writes it, whatever quotes it holds (round 2 of #631).
+    (re.compile(r"--whole-numbers (.+?): (?=no mean was read)"),
      r"The label \1, given as whole numbers: "),
     (re.compile(r"--dry-run sent nothing"), "nothing was sent"),
     (re.compile(r"--authors names them"), "no authors were given to the audit"),
@@ -47,7 +48,8 @@ _FOR_A_READER: tuple[tuple[re.Pattern[str], str], ...] = (
 #: Markdown's marks of emphasis around words, which a .docx's converted text has where the
 #: document prints bold or italics: "**CBL**", "*p*", "_et al._". Not inside a word, so that
 #: a name from code, "code_names_kept", keeps its underscores; nor inside a code span,
-#: "`__init__`", which is quoted as typed (round 1 of #631).
+#: "`__init__`", which is quoted as typed (round 1 of #631). A context the gate cut inside a
+#: code span pairs its lone backtick with the next (DESIGN.md, Known gaps).
 _STARRED = re.compile(r"(?<![\w*])(\*\*|\*)(?=[^\s*])(.+?)(?<=[^\s*])\1(?![\w*])")
 _UNDERSCORED = re.compile(r"(?<![\w_])(__|_)(?=[^\s_])(.+?)(?<=[^\s_])\1(?![\w_])")
 _CODE = re.compile(r"(`+)[^`]+?\1")

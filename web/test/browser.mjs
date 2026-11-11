@@ -156,22 +156,34 @@ try {
     }
     const elsewhere = result.sent.filter((entry) => !entry.url.startsWith(origin));
     if (elsewhere.length) fail(`${one.name}: the audit sent ${elsewhere.map((e) => e.url).join(", ")}`);
-    // The run said it had ended, and its PDF opens in a tab of its own (window.open, stood in
-    // for here) from an address of the browser's, not from anywhere the page sends to.
-    const after = await page.evaluate(() => {
+    // The run said it had ended, and its PDF opens in a tab of its own from an address of the
+    // browser's, not from anywhere the page sends to. In Chrome the tab is opened for real and
+    // must hold a PDF under the page's policy, which a blob: document takes (round 1 of #633);
+    // Firefox's viewer is out of puppeteer's reach, and window.open is stood in for there.
+    const real = browserName === "chrome";
+    const after = await page.evaluate((real) => {
       const shown = { ran: document.getElementById("runtext").textContent,
         moving: !document.getElementById("runbar").hidden,
         pdf: !document.getElementById("openpdf").hidden, opened: null };
-      if (shown.pdf) {
+      if (shown.pdf && !real) {
         const own = window.open;
         window.open = (address) => { shown.opened = address; return null; };
         document.getElementById("openpdf").click();
         window.open = own;
       }
       return shown;
-    });
+    }, real);
     if (!after.ran.startsWith("Audited ") || after.moving) {
       fail(`${one.name}: after the run the page says "${after.ran}"${after.moving ? ", its bar moving" : ""}`);
+    }
+    if (real && after.pdf) {
+      const known = new Set(browser.targets());
+      await page.click("#openpdf");
+      const tab = await browser.waitForTarget((target) => !known.has(target) && target.type() === "page"
+        && target.url().startsWith("blob:"), { timeout: 20000 }).then((target) => target.page(), () => null);
+      const held = tab ? await tab.evaluate(() => document.contentType).catch(() => null) : null;
+      after.opened = held === "application/pdf" ? tab.url() : null;
+      if (tab) await tab.close();
     }
     if (result.pdf && result.pdf.data && !(after.pdf && /^blob:/.test(after.opened || ""))) {
       fail(`${one.name}: the PDF made does not open (${after.pdf ? after.opened : "no button"})`);

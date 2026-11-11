@@ -9,8 +9,8 @@ it to.
 The page is built from each release, so it runs the same version as `pip install
 manuscript-guard`, with the same checks, and says which at its top, with a link to what the
 release changed. CI holds its reports to the command line's, word for word (below). While
-it loads, a bar gives the share of what it fetches that has come, as a percentage and in MB
-(the build writes the total to `manifest.json`), and the page says which of its four steps
+it loads, a bar gives the share of what it fetches that has come, as a percentage (the build
+writes the total to `manifest.json`), and the page says which of its four steps
 it is on; a step still under way after 90 seconds is said to be slow, with what to do, and
 the page keeps waiting. The paper can be chosen or dropped on its box. While the audit runs,
 the page says so beside the button, with the seconds it has taken; when it ends, the report

@@ -211,14 +211,21 @@ function draw(view) {
   add(box, "p", view.closing, "closing");
 }
 
-// The paper dropped on its box, as if chosen; dropped anywhere else, a file is not opened by
-// the browser in place of the page, which would lose what the reader set.
+// The paper dropped on its box, as if chosen, once the checker is ready, and refused before.
+// A file dropped where nothing takes it is not opened by the browser in place of the page,
+// which would lose what the reader set; the outputs' box and the words' box take a drop as
+// the browser has them do (round 1 of #633).
 const dropBox = $("paper").closest("label");
-const willTake = (event) => !$("paper").disabled && [...(event.dataTransfer?.types || [])].includes("Files");
+const carriesFiles = (event) => [...(event.dataTransfer?.types || [])].includes("Files");
+const takesItsOwn = (target) => target instanceof Element && target.closest("#against, #known");
 for (const name of ["dragenter", "dragover"]) {
   dropBox.addEventListener(name, (event) => {
-    if (!willTake(event)) return;
+    if (!carriesFiles(event)) return;
     event.preventDefault();
+    if ($("paper").disabled) {
+      event.dataTransfer.dropEffect = "none";
+      return;
+    }
     dropBox.classList.add("dropping");
   });
 }
@@ -227,8 +234,12 @@ dropBox.addEventListener("dragleave", (event) => {
 });
 dropBox.addEventListener("drop", (event) => {
   dropBox.classList.remove("dropping");
-  if (!willTake(event)) return;
+  if (!carriesFiles(event)) return;
   event.preventDefault();
+  if ($("paper").disabled) {
+    say("The checker is still loading: drop the paper again once the page says Ready.");
+    return;
+  }
   const [file] = event.dataTransfer.files;
   if (!file) return;
   if (!/\.(docx|md)$/i.test(file.name)) {
@@ -242,7 +253,7 @@ dropBox.addEventListener("drop", (event) => {
 });
 for (const name of ["dragover", "drop"]) {
   window.addEventListener(name, (event) => {
-    if (!dropBox.contains(event.target)) event.preventDefault();
+    if (!dropBox.contains(event.target) && !takesItsOwn(event.target)) event.preventDefault();
   });
 }
 
@@ -332,9 +343,10 @@ $("form").addEventListener("submit", async (event) => {
     $("reporthead").focus({ preventScroll: true });
     window.mgLast = result;
   } catch (error) {
-    runEnded(`The audit could not run: ${error.message}. Check that the file chosen is the `
-      + "paper itself, a .docx or a .md; the command line says more: uvx manuscript-guard "
-      + "audit paper.docx");
+    // What the checker said, which says why, and where to read more; no guess at the cause,
+    // which may be any file chosen (round 1 of #633).
+    runEnded(`The audit could not run: ${error.message.replace(/[\s.]+$/, "")}. The command `
+      + "line says more: uvx manuscript-guard audit paper.docx");
     window.mgLast = { error: error.message };
   } finally {
     $("run").disabled = false;

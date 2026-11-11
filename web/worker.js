@@ -30,18 +30,25 @@ function tell(last = false) {
   loading.said = now();
   self.postMessage({ bytes: { received: loading.received, expected: loading.expected } });
 }
+// The answer itself goes on, as fetched, so that the browser keeps what it keeps of it by its
+// address (Chrome's compiled WebAssembly, round 1 of #633); a copy of its body is read to count
+// it. Each copy still being read is awaited before the last count is told.
+const reading = new Set();
 async function counted(input, init) {
   const answer = await ownFetch(input, init);
   if (!answer.body) return answer;
-  const counting = new TransformStream({
-    transform(chunk, controller) {
-      loading.received += chunk.byteLength;
+  const reader = answer.clone().body.getReader();
+  const read = (async () => {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      loading.received += value.byteLength;
       tell();
-      controller.enqueue(chunk);
-    },
-  });
-  return new Response(answer.body.pipeThrough(counting),
-    { status: answer.status, statusText: answer.statusText, headers: answer.headers });
+    }
+  })().catch(() => { /* a copy that fails to read counts no further */ });
+  reading.add(read);
+  read.finally(() => reading.delete(read));
+  return answer;
 }
 
 async function boot() {
@@ -51,6 +58,7 @@ async function boot() {
     return await started();
   } finally {
     self.fetch = ownFetch;
+    await Promise.allSettled([...reading]);
     tell(true);
   }
 }

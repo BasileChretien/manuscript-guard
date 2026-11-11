@@ -11674,10 +11674,11 @@ REFERENCE_FAMILIES = (
 REFERENCE_OTHERS = ("Other", "Second", "Dupont")
 #: How a citation is typed: names one entry in brackets or in the sentence, names two
 #: entries (one first author, one year, no letter), names none, names the first of a work's
-#: two or three authors alone, a group whose every part names one entry, and a group one of
-#: whose parts names none.
+#: two or three authors alone, names in the sentence one co-author more than a work has (round
+#: 1 of #638: "Brown and Lee (2018)" was made "Brown and @lee2018"), a group whose every part
+#: names one entry, and a group one of whose parts names none.
 CITED_KINDS = ("bracketed", "narrative", "two entries", "no entry", "first author alone",
-               "group", "group with none")  # fmt: skip
+               "a name more", "group", "group with none")  # fmt: skip
 _REFERENCE_WORDS = ("recovery", "was", "studied", "before", "with", "rest", "after", "work")
 
 
@@ -11702,18 +11703,19 @@ def typed_reference_papers(draw: st.DrawFn) -> tuple[str, list[tuple[str, str | 
     in each form APA has; under a prefix or none. Every kind in every example, so that a
     rule broken for one fails under any seed."""
     firsts = iter(draw(st.permutations(REFERENCE_FAMILIES)))
-    years = iter(draw(st.lists(st.integers(1950, 2025), min_size=9, max_size=9, unique=True)))
+    years = iter(draw(st.lists(st.integers(1950, 2025), min_size=10, max_size=10, unique=True)))
     entries: list[str] = []
 
-    def work(count: int, year: int, family: tuple[str, str] | None = None) -> tuple[list[str], str]:
+    def work(count: int, year: int, family: tuple[str, str] | None = None,
+             title: str | None = None) -> tuple[list[str], str]:  # fmt: skip
         written, stem = family or next(firsts)
         names = [written, *draw(st.lists(st.sampled_from(REFERENCE_OTHERS), min_size=count - 1,
                                          max_size=count - 1))]  # fmt: skip
         initials = [draw(st.sampled_from(("A.", "J. A.", "J.-P.", "Ch."))) for _ in names]
         people = [f"{name}, {given}" for name, given in zip(names, initials, strict=True)]
         authors = people[0] if count == 1 else ", ".join(people[:-1]) + f", & {people[-1]}"
-        title = " ".join(draw(st.lists(st.sampled_from(_REFERENCE_WORDS), min_size=1,
-                                       max_size=4))).capitalize()  # fmt: skip
+        title = title or " ".join(draw(st.lists(st.sampled_from(_REFERENCE_WORDS), min_size=1,
+                                                max_size=4))).capitalize()  # fmt: skip
         volume, first = draw(st.integers(1, 99)), draw(st.integers(1, 900))
         shape = draw(st.sampled_from((
             f"{title}. *Journal of Things*, *{volume}*(2), {first}--{first + 9}.",
@@ -11737,19 +11739,27 @@ def typed_reference_papers(draw: st.DrawFn) -> tuple[str, list[tuple[str, str | 
             sentences.append((f"({typed})", f"[{made}]"))
         elif kind == "narrative":
             names, key = work(draw(st.integers(1, 3)), next(years))
+            # As the list writes the names: citeproc prints "van der Berg" in lower case,
+            # so one typed in capitals is left as typed (round 1 of #638).
             said = draw(st.sampled_from(_apa_names(names, narrative=True)))
-            said = said[0].upper() + said[1:]
             sentences.append((f"{said} ({key[-4:]})", f"@{key}"))
         elif kind == "two entries":
             family, year = next(firsts), next(years)
-            work(1, year, family)
-            work(1, year, family)
+            # Two works, not one typed twice, which is one entry (round 1 of #638).
+            work(1, year, family, title="One")
+            work(1, year, family, title="Two")
             sentences.append((f"({family[0]}, {year})", None))
         elif kind == "no entry":
             sentences.append((f"({next(firsts)[0]}, {next(years)})", None))
         elif kind == "first author alone":
             names, key = work(draw(st.integers(2, 3)), next(years))
             sentences.append((f"({names[0]}, {key[-4:]})", None))
+        elif kind == "a name more":
+            names, key = work(draw(st.integers(1, 2)), next(years))
+            more = draw(st.sampled_from(REFERENCE_OTHERS))
+            said = draw(st.sampled_from((f"{more} and {names[0]}", f"{more}, {names[0]}"))) \
+                if len(names) == 1 else f"{more}, {names[0]} and {names[1]}"
+            sentences.append((f"{said} ({key[-4:]})", None))
         else:
             parts = [cite(draw(st.integers(1, 3))) for _ in range(2)]
             if kind == "group":

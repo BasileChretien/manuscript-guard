@@ -74,11 +74,15 @@ def read(text: str, *, bib_there: bool = False) -> TypedReferences:
                                "title in bold, so none was read, and every citation stays as "
                                "typed")  # fmt: skip
     lines: list[tuple[int, str]] = []
+    # A work typed alike in two lists, the paper's and its supplement's, is one entry: two
+    # would have two keys, and every citation of it name two (round 1 of #638).
+    seen: set[str] = set()
     for start, end in spans:
         first = text.count("\n", 0, start) + 1
         written = text[start:end].split("\n")
         for number, line in enumerate(written[1:], start=first + 1):
-            if line.strip() and not is_bibliography_heading(line):
+            if line.strip() and not is_bibliography_heading(line) and line.strip() not in seen:
+                seen.add(line.strip())
                 lines.append((number, line))
     if any(_NUMBERED.match(line) for _number, line in lines):
         return TypedReferences(text, said="the reference list numbers its entries, and init "

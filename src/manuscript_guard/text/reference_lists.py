@@ -148,12 +148,38 @@ def reference_lists(text: str) -> list[tuple[int, int]]:
     numbers of these lists through, and `init --from` reads its entries from them: run on to
     the next heading, a table that a paper converted from Word puts after its references
     would be let through with them.
+
+    Here a list also ends at a footnote's definition and at a paragraph that is a section's
+    name alone by the closed list (`section_name_alone`), "Abstract", "**Appendix**" or "3.
+    Conclusion", a title in a paper converted from Word that pandoc did not make a heading.
+    pandoc writes a Word paper's notes after its last section, often the reference list,
+    and run on over them, "We excluded 4321 patients." in a note passed G2 (round 1 of
+    #638). `unmarked_reference_lists`, which G4, G14 and the recycling check read, does not
+    end there yet.
     """
-    return sorted(_lists(text, marked=True) + _lists(text, marked=False))
+    return sorted(_lists(text, marked=True, ends=True) + _lists(text, marked=False, ends=True))
 
 
-def _lists(text: str, *, marked: bool) -> list[tuple[int, int]]:
-    """The reference lists under a heading (`marked`) or under a line that is no heading."""
+#: A footnote's definition, `[^1]:`, at the start of a line.
+_NOTE = re.compile(r"[ ]{0,3}\[\^[^\]\s]+\]:")
+
+
+def _ends_here(lines: list[str], number: int) -> bool:
+    """Whether line `number`, opening a paragraph, ends a reference list for G2 and `init
+    --from`: a footnote's definition, or a section's name alone, in bold or not, that names
+    no reference list."""
+    from manuscript_guard.text.section_names import section_name_alone
+
+    line = lines[number]
+    if _NOTE.match(line):
+        return True
+    printed = _printed(line).strip().strip("*_").strip()
+    return section_name_alone(printed) is not None and not is_bibliography_heading(printed)
+
+
+def _lists(text: str, *, marked: bool, ends: bool = False) -> list[tuple[int, int]]:
+    """The reference lists under a heading (`marked`) or under a line that is no heading.
+    With `ends`, a list ends at a note and a section's name as well (`_ends_here`)."""
     headings = find_headings(text)
     newlines = [found.start() for found in re.finditer("\n", text)]
     offsets = [0, *(index + 1 for index in newlines)]
@@ -171,7 +197,8 @@ def _lists(text: str, *, marked: bool) -> list[tuple[int, int]]:
 
     def runs_to(number: int) -> int:
         while number < len(lines) and number not in breaks and not (
-            _opens_a_paragraph(lines, number, under) and _ends_a_list(lines, number)
+            _opens_a_paragraph(lines, number, under) and (
+                _ends_a_list(lines, number) or (ends and _ends_here(lines, number)))
         ):
             number += 1
         return number

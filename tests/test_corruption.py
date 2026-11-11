@@ -1451,6 +1451,48 @@ def test_a_number_in_a_typed_reference_list_passes_and_one_just_after_it_fails(
 
 
 @pytest.mark.parametrize(
+    "title", ["# References", "## 7. Reference list {-}", "**References**", "**References:**"]
+)
+@pytest.mark.parametrize(
+    "after",
+    ["[^mgnote]: We excluded 4321 patients.", "Abstract\n\nWe excluded 4321 patients.",
+     "**Appendix**\n\nWe excluded 4321 patients.", "3. Conclusion\n\nWe excluded 4321 patients."],
+    ids=["note", "abstract", "appendix in bold", "numbered conclusion"],
+)
+def test_a_note_or_a_section_s_name_after_a_typed_list_ends_it(
+    project: Path, title: str, after: str
+) -> None:
+    """Round 1 of #638: pandoc puts a Word paper's notes after its last section, the
+    reference list, and the list ran on over them: "We excluded 4321 patients." in a note
+    passed G2, where it failed before the list was let through. A footnote's definition ends
+    the list, and so does a line that is a section's name alone (`section_name_alone`)."""
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n\nAs noted.[^mgnote]\n\n"
+        f"{title}\n\nLee, C. (2018). *A book of things*. Publisher.\n\n{after}\n",
+        encoding="utf-8",
+    )
+    failed = {f.message for f in gate_report(project).failures if f.gate == "G2"}
+    assert "'4321' is not bound to any source" in failed, failed
+    assert "'2018' is not bound to any source" not in failed, failed
+
+
+def test_a_paragraph_after_a_typed_list_with_nothing_to_end_it_is_read_as_an_entry(
+    project: Path,
+) -> None:
+    """Known gaps: a paragraph of the paper's own straight after the list, under no heading,
+    caption, note or section's name, is read as one more entry, and its numbers pass."""
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n\n# References\n\n"
+        "Lee, C. (2018). *A book of things*. Publisher.\n\nWe excluded 4321 patients.\n",
+        encoding="utf-8",
+    )
+    failed = {f.message for f in gate_report(project).failures if f.gate == "G2"}
+    assert "'4321' is not bound to any source" not in failed, failed
+
+
+@pytest.mark.parametrize(
     ("typed", "named"),
     [
         ("Fictional (2021)", True),

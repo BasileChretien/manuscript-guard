@@ -24009,19 +24009,27 @@ Open, recorded as each change landed:
   `tests/test_typed_references.py::test_an_entry_not_read_exactly_is_not_read_and_says_why`.
 - **A title or a publisher ending in an abbreviation of one word loses its stop.** APA ends
   the title with a stop, and the stop of "Dr." or "Inc." at its end is that one: the field is
-  written "Dr" or "Inc". An abbreviation of two letters or more with stops, "U.S.", is seen,
-  and the entry is not read. Accepted.
+  written "Dr" or "Inc". An abbreviation with two stops or more, "U.S." or "Ph.D.", is seen
+  at the end of an article's title and of a book's publisher, and the entry is not read.
+  Accepted.
 - **`init --from` reads no numbered reference list.** A list whose entries open with "[3]"
   or "3." is left as typed, with its citations, "[3]" or a superscript, and `init` says so.
   Pinned by `tests/test_typed_references.py::test_a_numbered_list_is_left_as_typed`.
 - **A typed citation is made a key by its authors and its year alone.** It names an entry
   where its names are all the entry's in one of APA's forms and its year is the entry's,
-  letter and all; two entries alike, a year without the list's letter, a page or a second
-  year in the brackets ("Smith, 2020, p. 4", "Smith (2020, 2021)"), a possessive ("Smith's
-  (2020)") and a group with any such part stay typed. An entry not read keeps typed every
-  citation that shares its year and one of its names, which may keep one that names another
-  work. Pinned by
-  `tests/test_properties.py::test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry`.
+  letter and all; two entries alike, a year without the list's letter, a name more before
+  the names in the sentence ("Brown and Lee (2018)"), a page or a second year in the
+  brackets ("Smith, 2020, p. 4", "Smith (2020, 2021)"), a possessive ("Smith's (2020)"), a
+  particle typed in capitals that citeproc prints in lower case ("Van der Berg (2014)") and
+  a group with any such part stay typed. An entry not read keeps typed every citation that
+  shares its year and one of its names, which may keep one that names another work. Pinned
+  by `tests/test_properties.py::test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry`,
+  `tests/test_typed_references.py::test_a_citation_that_names_none_or_two_stays_as_typed_and_is_listed`
+  and `tests/test_typed_references.py::test_an_entry_not_read_that_may_be_the_work_keeps_its_citation_typed`.
+- **A word in capitals before a year in brackets is listed as a citation left typed.** "Data
+  from the UK Biobank (2020)" is listed by `init --from` as a citation that names no entry:
+  no rule tells a work the reference list lacks from a name that is no citation's, and a
+  citation not listed would be one the author never hears of. Accepted.
 - **`sync-bib` writes over the `references.bib` that `init --from` wrote.** It writes the
   file again from what Zotero holds of the keys the manuscript cites, so an entry Zotero does
   not hold is gone; the file's header says to import it into Zotero first. An entry no
@@ -24029,10 +24037,11 @@ Open, recorded as each change landed:
   Accepted.
 - **G2 reads no number in a typed reference list up to where the list is taken to end.** A
   list under a heading or a title in bold that names one ends at the next heading, at a
-  caption, a table or a title of back matter (`text.reference_lists`); a paragraph of the
-  paper's own after the list with none of these before it is read as an entry, and its
-  numbers are let through. Pinned by
-  `tests/test_corruption.py::test_a_number_in_a_typed_reference_list_passes_and_one_just_after_it_fails`.
+  caption, a table or a title of back matter, at a footnote's definition and at a
+  section's name alone by the closed list (`text.reference_lists.reference_lists`); a
+  paragraph of the paper's own after the list with none of these before it, a "Footnotes"
+  title not on that list among them, is read as an entry, and its numbers are let through.
+  Pinned by `tests/test_corruption.py::test_a_paragraph_after_a_typed_list_with_nothing_to_end_it_is_read_as_an_entry`.
 - **G7 names a cited work as the manuscript cites it only where it read the citation.** A
   finding about a use of a key names it `\citep{key}` in LaTeX, by the command the use was
   read in, and `@key` in Markdown. A quotation's finding is read in the printed view, where the

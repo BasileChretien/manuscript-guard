@@ -36,8 +36,13 @@ _ARTICLE = re.compile(
     r"(?:\((?P<number>[^()*]+)\))?, (?P<pages>[A-Za-z]?\d+(?:--[A-Za-z]?\d+)?)\."
     r"(?: (?P<link>\S+))?"
 )
-#: A book's: its title in italics, the publisher and what links to it.
-_BOOK = re.compile(r"\*(?P<title>[^*]+)\*(?P<stop>\.?) (?P<publisher>[^*]+?)\.(?: (?P<link>\S+))?")
+#: A book's: its title in italics, the publisher and what links to it. The publisher holds
+#: no bracket and no stop before a space: "(2nd ed.). Big Press" and "Big Press. Retrieved
+#: from" are no publisher's name (round 1 of #638).
+_BOOK = re.compile(
+    r"\*(?P<title>[^*]+)\*(?P<stop>\.?) (?P<publisher>(?:[^*()\[\].]|\.(?! ))+?)\."
+    r"(?: (?P<link>\S+))?"
+)
 #: Initials as APA writes them: "J.", "J. A.", "J.-P.", "Ch.".
 _INITIALS = re.compile(r"[A-ZÀ-ÖØ-Þ][a-z]?\.(?:[ -][A-ZÀ-ÖØ-Þ][a-z]?\.)*")
 #: A family name: letters, and spaces, hyphens or apostrophes between them.
@@ -50,8 +55,9 @@ _ESCAPE = re.compile(r"\\([!-/:-@\[-`{-~])")
 _MARKUP = re.compile(r"(?<!\\)[*_\[\]<>`^~]")
 #: What a `.bib` value does not carry as typed, once the escapes are read.
 _UNCARRIED = re.compile(r'["\\{}~^]|\.\.\.|…')
-#: A title's last word that is an abbreviation, "U.S." or "e.g.": its stop is the title's.
-_ABBREVIATED = re.compile(r"(?:^|\s)(?:\w\.){2,}$")
+#: A field's last word that is an abbreviation with stops, "U.S.", "e.g." or "Ph.D.": its
+#: stop is the one APA ends the field with.
+_ABBREVIATED = re.compile(r"(?:^|\s)(?:\w+\.){2,}$")
 
 
 @dataclass(frozen=True)
@@ -94,7 +100,12 @@ def read_entry(text: str, line: int) -> Entry | Unread:
                   ("volume", article.group("volume") or article.group("together")),
                   ("number", article.group("number")), ("pages", article.group("pages"))]
         kind, link = "article", article.group("link")
-    elif book is not None and (book.group("stop") or book.group("title")[-1:] in "?!"):
+    elif (
+        book is not None
+        # APA puts no stop after a title that ends in "?" or "!", and one after any other.
+        and bool(book.group("stop")) != (book.group("title")[-1:] in ("?", "!"))
+        and not _ABBREVIATED.search(f"{book.group('publisher')}.")
+    ):
         fields = [("title", book.group("title")), ("publisher", book.group("publisher"))]
         kind, link = "book", book.group("link")
     else:

@@ -86,10 +86,17 @@ def test_each_shape_is_read_as_typed(typed: str, expected: dict[str, str]) -> No
         ("Smith, J. (2020). Rates in the U.S. *J*, *1*, 1--2.", "shape"),
         ("Smith, J. (2020). Rates. *J*, *1*, 1--2. https://doi.org/10.1000/x.", "no DOI"),
         ("Smith, J. (2020). Rates. *J*, *1*, 1--2. [see here](https://x.org)", "shape"),
+        # Round 1 of #638: a publisher took an edition, or what follows a stop, and a stop
+        # an abbreviation ends with was taken for APA's.
+        ("Lee, C. (2018). *Why now?* (2nd ed.). Big Press.", "shape"),
+        ("Lee, C. (2018). *Title*. Big Press. Retrieved from https://x.org/b.", "shape"),
+        ("Lee, C. (2018). *Title*. Press of the U.S.", "shape"),
+        ("Smith, J. (2020). Training for the Ph.D. *J*, *1*, 1--2.", "shape"),
     ],
     ids=["group", "full name", "suffix", "no ampersand", "no date", "a day", "chapter",
          "edition", "italics inside", "quotation marks", "abbreviation", "stop after DOI",
-         "link with words"],  # fmt: skip
+         "link with words", "edition after a question", "retrieved from", "publisher's U.S.",
+         "Ph.D."],  # fmt: skip
 )
 def test_an_entry_not_read_exactly_is_not_read_and_says_why(typed: str, why: str) -> None:
     """Nothing is guessed: an entry any of whose fields is not read exactly is not read."""
@@ -131,7 +138,8 @@ LIST = (
         ("as Smith et al. (2019) said", "as @smith2019 said"),
         ("as Smith and Jones (2020) said", "as @smith2020 said"),
         ("(Green, 2015b; see also Green, 2015a)", "[@green2015b; see also @green2015a]"),
-        ("Van der Berg (2014) said", "@vanderberg2014 said"),
+        ("as van der Berg (2014) said", "as @vanderberg2014 said"),
+        ("(see van der Berg, 2014)", "[see @vanderberg2014]"),
     ],
 )
 def test_a_citation_that_names_one_entry_is_made_its_key(typed: str, made: str) -> None:
@@ -153,6 +161,15 @@ def test_a_citation_that_names_one_entry_is_made_its_key(typed: str, made: str) 
         ("(Smith & Jones, 2020; Table 2)", "not names and a year alone"),
         ("(Smith & Jones, 2020, p. 4)", "not names and a year alone"),
         ("Brown (2021) said", "names 2 entries"),
+        # Round 1 of #638: "Brown and @lee2018" cited the work of Lee alone.
+        ("As Brown and Lee (2018) said", "names no entry"),
+        ("As Brown, Lee (2018) said", "names no entry"),
+        ("Lee's (2018) book", "names no entry"),
+        # A page or a second year after a narrative citation's year is listed, not passed.
+        ("Lee (2018, p. 4) said", "page or a second year"),
+        ("Lee (2018, 2019) said", "page or a second year"),
+        # Citeproc prints "van der Berg (2014)", so the typed capital would be lost.
+        ("Van der Berg (2014) said", "capital"),
     ],
 )
 def test_a_citation_that_names_none_or_two_stays_as_typed_and_is_listed(
@@ -164,6 +181,31 @@ def test_a_citation_that_names_none_or_two_stays_as_typed_and_is_listed(
     written = make_citations(text, _keyed(*LIST), [], [])
     assert written.text == text and written.converted == 0
     assert [(one.line, why in one.why) for one in written.left] == [(2, True)], written.left
+
+
+def test_a_narrative_citation_names_the_entry_of_all_its_names() -> None:
+    """Round 1 of #638: with "Brown & Lee 2018" in the list beside "Lee 2018", "Brown and
+    Lee (2018)" was refused as naming two entries; it names one, all its names."""
+    keyed = _keyed(*LIST, "Brown, A., & Lee, C. (2018). Two. *J*, *1*, 3--4.")
+    written = make_citations("As Brown and Lee (2018) said.", keyed, [], [])
+    assert written.text == "As @brown2018 said." and written.left == (), written
+
+
+def test_one_work_typed_in_two_lists_is_one_entry() -> None:
+    """Round 1 of #638: a work in the main list and in the supplement's had two keys, and its
+    every citation was refused as naming two entries."""
+    text = (f"# Introduction\n\nAs said (Lee, 2018).\n\n# References\n\n{LIST[2]}\n\n"
+            f"# Appendix\n\nMore.\n\n## Bibliography\n\n{LIST[2]}\n")
+    typed = typed_references.read(text)
+    assert [key for key, _entry in typed.entries] == ["lee2018"], typed.entries
+    assert "As said [@lee2018]." in typed.text and typed.left == (), typed
+
+
+def test_a_note_after_the_list_is_no_entry_of_it() -> None:
+    """Round 1 of #638: pandoc puts a Word paper's notes after the reference list, and each
+    was listed as an entry not read."""
+    text = f"# Introduction\n\nAs noted.[^1]\n\n# References\n\n{LIST[2]}\n\n[^1]: Of 2019.\n"
+    assert typed_references.read(text).unread == ()
 
 
 def test_a_year_in_brackets_that_is_no_citation_is_not_listed() -> None:
@@ -191,7 +233,7 @@ def test_renderings_name_every_author_or_the_first_with_et_al() -> None:
     assert renderings(("Smith", "Jones")) == ("Smith & Jones", "Smith and Jones")
     assert "Smith et al." in renderings(("Smith", "Jones", "Moe"))
     assert "Smith, Jones, & Moe" in renderings(("Smith", "Jones", "Moe"))
-    assert "Van der Berg" in renderings(("van der Berg",))
+    assert renderings(("van der Berg",)) == ("van der Berg",)
 
 
 def test_keys_are_better_bibtex_author_year_with_a_letter_for_a_second() -> None:

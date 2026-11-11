@@ -5,9 +5,12 @@ A citation is compared with each entry as APA writes one: "Smith" for one author
 Jones" or "Smith and Jones" for two, "Smith et al." or every name for three or more, "Smith,
 Jones, & Lee" and its forms with "and" or without the last comma, and the year as the list
 gives it, its letter included ("2020a"). The names must be the citation's all, so "Smith &
-Jones" is not the work of Jones alone; a family name the list writes in lower case, "van der
-Berg", may open a sentence in capitals. Before a name in brackets, words in lower case are
-the citation's prefix, "see", "e.g.,", and are kept: `[e.g., @smith2020]`.
+Jones" is not the work of Jones alone, and in the sentence nor are "Brown and Lee (2018)",
+"Brown, Lee (2018)" or "Professor Lee (2018)" (`_names_alone`). A family name the list writes
+in lower case, "van der Berg", is not read in capitals at the start of a sentence: citeproc
+prints it in lower case, so the citation would not print as typed. Before a name in
+brackets, words in lower case are the citation's prefix, "see", "e.g.,", and are kept:
+`[e.g., @smith2020]`.
 
 Read: a group in brackets, "(Smith & Jones, 2020)" or "(e.g., Smith, 2020; Lee, 2018)",
 each of its parts a citation, made `[@smith2020; @lee2018]`; and the narrative "Smith et al.
@@ -18,7 +21,9 @@ entry, where it names two (two works "Smith 2020" with no letter), where an entr
 could not read holds its year and one of its names and so may be the work, and, for a group,
 where one of its parts is any of these or no citation at all: pandoc reads a group whole, so
 a group is made a citation whole or not at all. A page or a second year in the brackets,
-"(Smith, 2020, p. 4)" or "Smith (2020, 2021)", is not read.
+"(Smith, 2020, p. 4)" or "Smith (2020, 2021)", is not read, and is listed. So is a word in
+capitals before a year in brackets that names no entry, "the UK Biobank (2020)": no rule
+tells a work the list lacks from a name that is no citation's (DESIGN.md, Known gaps).
 """
 
 from __future__ import annotations
@@ -36,6 +41,8 @@ _PART = re.compile(rf"(?P<head>.+?),? (?P<year>{YEAR})")
 #: A part that opens as one does, with something after its year: "Smith, 2020, p. 4".
 _OPENS = re.compile(rf"(?P<head>.+?),? (?P<year>{YEAR})(?![\w])")
 _ALONE = re.compile(YEAR)
+#: A year in the sentence's brackets with a page or a second year after it: "2020, p. 4".
+_YEAR_FIRST = re.compile(rf"{YEAR}[,;] .+")
 #: The words before a name in brackets that are the citation's prefix: "see", "e.g.,".
 _PREFIX = re.compile(r"[a-z][a-z.]*,?(?: [a-z][a-z.]*,?)*")
 #: The ways APA joins the last of three names or more to the others.
@@ -62,8 +69,7 @@ class Made:
 
 
 def renderings(families: tuple[str, ...]) -> tuple[str, ...]:
-    """Every way APA names these authors in a citation, and each with its first letter in
-    capitals where a name opens with a particle in lower case."""
+    """Every way APA names these authors in a citation, as the list writes the names."""
     first = families[0]
     if len(families) == 1:
         forms = [first]
@@ -72,7 +78,7 @@ def renderings(families: tuple[str, ...]) -> tuple[str, ...]:
     else:
         listed = ", ".join(families[:-1])
         forms = [f"{first} et al.", *(f"{listed}{join}{families[-1]}" for join in _JOINS)]
-    return tuple(dict.fromkeys([*forms, *(form[0].upper() + form[1:] for form in forms)]))
+    return tuple(forms)
 
 
 def make_citations(text: str, keyed: Iterable[tuple[str, Entry]], unread: Iterable[Unread],
@@ -93,6 +99,8 @@ def make_citations(text: str, keyed: Iterable[tuple[str, Entry]], unread: Iterab
         inside = found.group("inside")
         if _ALONE.fullmatch(inside.strip()):
             made = _narrative(text, found, by_year, unknown, at)
+        elif _YEAR_FIRST.fullmatch(inside.strip()):
+            made = _narrative(text, found, by_year, unknown, at, more=True)
         else:
             made = _bracketed(inside, by_year, unknown)
         if made is None:
@@ -136,20 +144,11 @@ def _one(head: str, year: str, by_year, unknown, *, bracketed: bool):
     """The key and prefix of the one entry `head` and `year` name, or why there is none.
     In brackets, `head` is the part before the year, prefix and names; in the sentence, the
     text before the bracket, which must end with the names."""
-    named: dict[str, tuple[str, str]] = {}
-    for key, entry in by_year.get(year, []):
-        for form in renderings(entry.families):
-            if bracketed:
-                lead = head[: -len(form)].rstrip() if head.endswith(form) else None
-                fits = lead is not None and (not lead or (
-                    head[-len(form) - 1] == " " and _PREFIX.fullmatch(lead) is not None))
-            else:
-                before = head[-len(form) - 1 : -len(form)] if head.endswith(form) else None
-                fits = before is not None and not (before.isalnum() or before in tuple("'’-"))
-                lead = ""
-            if fits and len(form) > len(named.get(key, ("", ""))[1]):
-                named[key] = (lead or "", form)
+    named = _named(head, year, by_year, bracketed=bracketed)
     if not named:
+        if _named(head, year, by_year, bracketed=bracketed, capital=True):
+            return ("it is typed with a capital its entry's name lacks, which the citation "
+                    "pandoc makes would print in lower case")  # fmt: skip
         return "it names no entry of the reference list by its authors and year"
     if len(named) > 1:
         return (f"it names {len(named)} entries of the reference list by its authors and "
@@ -160,6 +159,46 @@ def _one(head: str, year: str, by_year, unknown, *, bracketed: bool):
             return (f"the entry on line {entry.line}, which could not be read, may be the "
                     "work it names")  # fmt: skip
     return key, lead, form
+
+
+def _named(head: str, year: str, by_year, *, bracketed: bool,
+           capital: bool = False) -> dict[str, tuple[str, str]]:  # fmt: skip
+    """The entries `head` and `year` name, each with the prefix and the names it is named
+    by, the longest. With `capital`, by each form with its first letter in capitals."""
+    named: dict[str, tuple[str, str]] = {}
+    for key, entry in by_year.get(year, []):
+        for form in renderings(entry.families):
+            if capital:
+                if form[:1].isupper():
+                    continue
+                form = form[0].upper() + form[1:]
+            if not head.endswith(form):
+                continue
+            lead = head[: -len(form)]
+            if bracketed:
+                fits = not lead or (lead.endswith(" ") and _PREFIX.fullmatch(lead.rstrip()))
+            else:
+                fits = not (lead[-1:].isalnum() or lead[-1:] in tuple("'’-")) and _names_alone(
+                    lead
+                )
+            if fits and len(form) > len(named.get(key, ("", ""))[1]):
+                named[key] = (lead.strip() if bracketed else "", form)
+    return named
+
+
+def _names_alone(before: str) -> bool:
+    """Whether the words before a citation's names in the sentence leave them all its names:
+    they end with no "and", "&" or comma, nor with a word in capitals that does not open the
+    sentence. "Brown and Lee (2018)", "Brown, Lee (2018)" and "Professor Lee (2018)" are not
+    the work of Lee alone (round 1 of #638: the first was made "Brown and @lee2018")."""
+    words = before.split()
+    if not words:
+        return True
+    last = words[-1]
+    if last in ("and", "&") or last.endswith((",", ";")):
+        return False
+    opens = len(words) == 1 or words[-2].endswith((".", "!", "?", ":"))
+    return not (last[:1].isupper() and not opens)
 
 
 def _bracketed(inside: str, by_year, unknown) -> tuple[None, str, int] | str | None:
@@ -183,9 +222,10 @@ def _bracketed(inside: str, by_year, unknown) -> tuple[None, str, int] | str | N
     return None, f"[{'; '.join(cited)}]", len(cited)
 
 
-def _narrative(text: str, found: re.Match, by_year, unknown, at: int):
+def _narrative(text: str, found: re.Match, by_year, unknown, at: int, *, more: bool = False):
     """"Smith et al. (2019)" made `@smith2019`: `(start, written, 1)`, why it is not, or None
-    where the words before the bracket are no names."""
+    where the words before the bracket are no names. With `more`, the brackets hold a page
+    or a second year after the year, and the citation is listed."""
     line_start = text.rfind("\n", 0, found.start()) + 1
     before = text[max(line_start, at) : found.start()]
     if not before[-1:].isspace():
@@ -193,6 +233,8 @@ def _narrative(text: str, found: re.Match, by_year, unknown, at: int):
     stem = before.rstrip()
     if not stem or not _names_like(stem):
         return None
+    if more:
+        return "a page or a second year in its brackets, after the year, is not read"
     one = _one(stem, found.group("inside").strip(), by_year, unknown, bracketed=False)
     if isinstance(one, str):
         return one
@@ -217,7 +259,8 @@ def _names_like(head: str) -> bool:
 def _shown(text: str, found: re.Match) -> str:
     """A citation left as typed, as the listing shows it: the bracket, with the five words
     before it in its sentence where the bracket holds the year alone."""
-    if _ALONE.fullmatch(found.group("inside").strip()):
+    inside = found.group("inside").strip()
+    if _ALONE.fullmatch(inside) or _YEAR_FIRST.fullmatch(inside):
         before = text[text.rfind("\n", 0, found.start()) + 1 : found.start()]
         cut = max(before.rfind(". "), before.rfind(") "), before.rfind("; "))
         words = before[cut + 2 if cut >= 0 else 0 :].split()[-5:]

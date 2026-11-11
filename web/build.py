@@ -38,6 +38,9 @@ WEB = Path(__file__).resolve().parent
 PAGE = ("index.html", "style.css", "app.js", "worker.js", "probe.js")
 PYODIDE_CORE = ("pyodide.mjs", "pyodide.asm.mjs", "pyodide.asm.wasm", "python_stdlib.zip",
                 "pyodide-lock.json")  # fmt: skip
+#: Pyodide's files the worker imports as modules rather than fetches: the bar that counts
+#: what the worker fetches while it starts leaves them out (manifest `bytes`).
+IMPORTED = ("pyodide.mjs", "pyodide.asm.mjs")
 SHIM_LICENCES = ("LICENSE-MIT", "LICENSE-APACHE")
 LANDING = WEB / "landing"
 LANDING_PAGE = ("index.html", "style.css")
@@ -163,11 +166,16 @@ def build(wheel: Path, site: Path, cache: Path) -> dict:
         shutil.copyfile(modules / "@bjorn3" / "browser_wasi_shim" / name,
                         licences / f"browser_wasi_shim-{name}.txt")  # fmt: skip
 
+    # What the worker fetches while it starts, for the page's bar: Pyodide's files but those
+    # it imports, the packages it loads, the wheel and pandoc.wasm (worker.js `counted`).
+    fetching = [*(path for path in (out / "pyodide").iterdir() if path.name not in IMPORTED),
+                out / "wheels" / wheel.name, out / "pandoc" / "pandoc.wasm"]  # fmt: skip
     manifest = {
         "manuscript_guard": version,
         "wheel": f"wheels/{wheel.name}",
         "pyodide": pyodide,
         "load": pins["pyodide"]["load"],
+        "bytes": sum(path.stat().st_size for path in fetching),
         "pandoc": pandoc["version"],
         "sources": {
             "manuscript-guard":

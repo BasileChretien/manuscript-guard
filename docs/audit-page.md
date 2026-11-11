@@ -9,8 +9,12 @@ it to.
 The page is built from each release, so it runs the same version as `pip install
 manuscript-guard`, with the same checks, and says which at its top, with a link to what the
 release changed. CI holds its reports to the command line's, word for word (below). While
-it loads, it says which of its four steps it is on; a step still under way after 90 seconds
-is said to be slow, with what to do, and the page keeps waiting.
+it loads, a bar gives the share of what it fetches that has come, as a percentage (the build
+writes the total to `manifest.json`), and the page says which of its four steps
+it is on; a step still under way after 90 seconds is said to be slow, with what to do, and
+the page keeps waiting. The paper can be chosen or dropped on its box. While the audit runs,
+the page says so beside the button, with the seconds it has taken; when it ends, the report
+is brought into view.
 
 ## What it checks
 
@@ -30,8 +34,8 @@ with something to show. It names a check's code (G14) only on pointing at its ki
 that save the report stand above it. Below it, in a fold, is the text the command line
 prints, word for word, which "Save the report as text" saves. The box "List every place of every finding" gives the
 text every place with its context and hint, and the page every section and every place's
-context (`audit --details`). "Save the report as a PDF, with every place" saves it as
-`audit --pdf` writes it, from the same audit. For a .docx, "Save the paper with the findings as Word
+context (`audit --details`). "Open the report as a PDF" shows it as `audit --pdf` writes
+it, from the same audit, in a tab of its own, and "Save the PDF" saves it. For a .docx, "Save the paper with the findings as Word
 comments" saves a copy of it with each finding as a comment at its place, written from the
 same audit, as `audit --commented` writes it; it is made in the browser like the rest.
 "English of the paper" is `--english`, and "Words to leave alone", split at spaces and

@@ -5210,6 +5210,17 @@ ask for the list and for the expansion at first use as well, so a definition in 
 gives the glossary's meaning again is not reported as given twice; a second one in the text
 is, and one that gives another meaning is reported as two meanings.
 
+The glossary's entries are said as such (the author's audit, 2026-11-11, of a list at the
+end of a paper typed in Word: "MMOPK is used here, and defined later at ... Conclusions,
+paragraph 26", and of an entry nothing used, "write 'Centre ... (Appears in author
+affiliations)' out and drop the short form"). A use above an entry the text never spells out
+is "used here and not spelt out; only the list of abbreviations defines it", with the hint to
+spell it out where it first appears (where the text spells it out after the list, it is
+defined later there, as any); an entry the text does not use, and does not define, is "in the
+list of abbreviations and not used in the main text", with the hint to take it out of the
+list unless the title page, a table, a figure, another entry or the supplement uses it. A long form is quoted as typed, where `repr` had doubled the backslash of an
+escape, "d\\'Intérêt".
+
 **A glossary may have no title.** A paper typed in Word often opens its list with a sentence
 and no heading: "List of abbreviations and acronyms used in the text, tables, and figures.",
 then letters' labels in bold, "**A--C**", and an item for each entry (the author's paper,
@@ -10434,6 +10445,27 @@ encoding lacks is written as a reader would type it, its letters without their m
 "?" (`pdfwriter.printable`); a string's parentheses and backslashes are escaped. Held by
 `tests/test_properties.py::test_a_pdf_report_prints_every_word_within_its_page_and_marks_every_heading`,
 which reads the PDF strictly with pypdf, with five broken rules.
+
+The author then asked for it "interactive and visually appealing ... professional, modern"
+(2026-11-11), with a line saying it was made with manuscript-guard and one saying how few of
+its checks an audit runs, with a link to using it fully. So `pdfwriter` draws shapes as well
+as text, filled and rounded rectangles and lines in colour under the text that follows them,
+links out to an address beside links to a place, and a frame on every page (`Margins`): the
+title at the top of every page but the first, and at the foot "Made with manuscript-guard",
+a link to the project's page, and the page's number of all. The report has a cover band;
+a tile for each check, coloured by where it stands (`summary.standings`: nothing found, to
+look at, counted as an error, not run), read from what the check found and not from its
+line's words, each tile a link to its section; each section under an accent bar with a link
+back to the summary; each kind with its count in a pill and its hint in a box; each place
+with its quote under a rule; and a closing panel saying that an audit reads a finished paper
+through a few of the gates, in part, against all of them for a paper written with the tool,
+with the link. The panel names the gates this audit ran (`report_pdf.gates_run`): G2 always,
+and G4, G6 and G14, or G7, only where they read something, not where they left only a note
+of why not. A tile is clear only where its check found nothing: a check that did not run or
+read nothing is not run, whatever note its section prints, and a section that lists
+something for a reader, a rule to check by hand or the references by an author, is to look
+at. Everything is still the four standard fonts; a heading still is a bookmark. Held by
+`tests/test_report_pdf.py`.
 
 **A commented copy.** The author asked for a report he could work in rather than read beside
 the paper (2026-11-10, "an interactive" one). `audit --commented FILE.docx`, and the page's
@@ -25665,6 +25697,54 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_corruption.py::test_what_looks_like_a_placeholder_and_is_prose_passes`,
   `tests/test_audit_sections.py::test_categories_over_their_n_by_no_more_than_rounding_are_a_note`,
   `tests/test_margins.py::test_twenty_categories_over_their_n_by_ten_are_rounding`.
+
+- **A comparison beside a binding is read beside a statistic's symbol, and fails only for a
+  plural.** G2 reads a comparator typed beside a binding (`comparison-contradicted`) in two
+  shapes: a statistic's symbol from a closed list (p, P, F, t, r, z, d, χ², R² and I², with
+  an "s" for the plural, "p-values" and "P values", italics allowed) right before "<", ">",
+  "≤", "≥", their spellings ("<=", "&lt;", `\<`), "less than" or "greater than" (with "or
+  equal to") and the binding; and a sign right after the binding with such a symbol after
+  it, "all" allowed. It holds the value as the emitter holds a comparator display, "<2.53":
+  at the number printed or on the side the sign names, so not strictly, and a sign after
+  the binding holds it to the other side ("{{results.t_min}} < ts" says the ts are above
+  it). The real case was a psychology preprint, PsyArXiv fyxeq_v2, whose "all Fs <", "all
+  ps >" and "< ts" printed 2.53, .260 and 4.27 of 2.532, .2596 and 4.268. Pinned by
+  `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
+  - A plural states a bound on a set, every F below the binding, and the binding is the
+    set's extreme: a contradiction fails. A single statistic may be compared with a
+    threshold rather than bounded by its own value: "(z > {{results.z_crit}})" is true of a
+    z above 1.96 when the critical value 1.959964 prints "1.96", and "p <
+    {{results.alpha_bonf}}" of a p below a corrected alpha of 0.008333 printed "0.0083".
+    The rule cannot tell a threshold from a bound, so beside a singular a contradiction is a
+    warning with the same message, and a false bound typed beside one symbol, "F <" the
+    largest F rounded down, only warns (round 2 of #629). Pinned by
+    `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
+  - A comparison with any other subject is not read, before the binding or after it,
+    because there the binding may be the other side of what is compared rather than its
+    bound: "Incidence in exposed patients was greater than {{results.inc_unexposed}}" and
+    "{{results.inc_unexposed}} < the incidence in exposed patients" are true of the two
+    incidences when the binding prints 2.53 of 2.528, and read as a bound they would fail
+    (rounds 1 and 2 of #629). So "the model's t was greater than", "ps were all >", "the
+    p-value <", "t(27) <", a symbol in maths with its plural outside, `$F$s`, and a
+    statistic the list leaves out are not read either. Accepted.
+  - Other words for a comparison are not read: "below", "above", "under", "over", "more
+    than", "fewer than", "at least", "at most", "exceeding". Choosing them is a list of words
+    the rule does not settle. Accepted.
+  - A comparison of two numbers is not read: "2.6 < {{results.f}}", "{{results.a}} <
+    {{results.b}}". Nothing holds two bound values to the comparison typed between them.
+    Pinned by
+    `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
+  - Only a space, an entity of one, a comment or one line break may stand between the sign
+    and the binding: a binding in italics, "ps > *{{results.p}}*", or a unit between,
+    "{{results.t}} s < times", is not read. Accepted.
+  - In LaTeX the view is read: `$<$` and `$>$` are signs there, and `$\leq$`, `$\geq$` and
+    `\textless` are blanked by the reader and not read. `\not` is blanked too, so
+    `all Fs $\not<$ \mg{results.f}` is read as "<", and its value held below the number
+    printed. Pinned by
+    `tests/test_latex_bindings.py::test_a_comparator_beside_a_latex_binding_is_read_where_its_view_prints_a_sign`.
+  - A value whose display carries a comparator of its own, "<0.001", is held to it by the
+    emitter, and a sign typed beside it is not compared; nor is a `{{lit.…}}` value, which is
+    typed from its source rather than emitted. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

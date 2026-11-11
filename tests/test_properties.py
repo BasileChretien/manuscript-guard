@@ -18774,9 +18774,56 @@ def _the_offsets_are_one_off(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(pdfwriter._Writer, "_file", file)
 
 
+from generated import emphasised_contexts  # noqa: E402
+
+
+@holds(200, emphasised_contexts())
+def test_an_excerpt_quotes_a_context_as_the_document_prints_it(drawn: tuple[str, str]) -> None:
+    """The page and the PDF quote a finding's context as the .docx prints it (the author's
+    audit, 2026-11-11: "**CBL**" was shown): bold and italics typed by stars or by
+    underscores without their marks; a name from code with its underscores, a star between a
+    number and a word, and one inside a word, as they are; the ends marked as cut
+    (`auditing.reader.excerpt`)."""
+    from manuscript_guard.auditing.reader import CUT, excerpt
+
+    typed, printed = drawn
+    assert excerpt(typed) == f"{CUT}{printed}{CUT}"
+
+
+def _underscores_mark_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import reader
+
+    # Two groups, as `excerpt` puts back the second, and no match.
+    patch.setattr(reader, "_UNDERSCORED", re.compile(r"(?!)(_)(_)"))
+
+
+def _an_underscore_inside_a_word_marks_emphasis(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import reader
+
+    patch.setattr(reader, "_UNDERSCORED", re.compile(r"(__|_)(?=[^\s_])(.+?)(?<=[^\s_])\1"))
+
+
+def _a_star_with_a_space_after_it_marks_emphasis(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import reader
+
+    patch.setattr(reader, "_STARRED", re.compile(r"(?<![\w*])(\*\*|\*)(.+?)\1(?![\w*])"))
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "underscores mark no emphasis in an excerpt": (
+        _underscores_mark_nothing,
+        test_an_excerpt_quotes_a_context_as_the_document_prints_it,
+    ),
+    "an underscore inside a word marks emphasis in an excerpt": (
+        _an_underscore_inside_a_word_marks_emphasis,
+        test_an_excerpt_quotes_a_context_as_the_document_prints_it,
+    ),
+    "a star with a space after it marks emphasis in an excerpt": (
+        _a_star_with_a_space_after_it_marks_emphasis,
+        test_an_excerpt_quotes_a_context_as_the_document_prints_it,
+    ),
     "a PDF string's parentheses are not escaped": (
         _pdf_marks_unescaped,
         test_a_pdf_report_prints_every_word_within_its_page_and_marks_every_heading,

@@ -742,7 +742,9 @@ def view(report, discrimination, root: Path | None = None, *, details: bool = Fa
     """The report as the web page draws it: its first lines, what was not read, what each
     check found, the findings on the words by kind with every place of each, the other
     sections with something to show (every one with `details`), as their text, and its last
-    line. The same content as `render`, every place of the words' findings in its fold."""
+    line. The same content as `render`, every place of the words' findings in its fold, said
+    for a reader, who runs no script and types no flag (`reader.readable`)."""
+    from manuscript_guard.auditing.reader import readable
     from manuscript_guard.auditing.summary import STRICT, kinds, rows
 
     show = _shown(root, report.placers)
@@ -753,7 +755,7 @@ def view(report, discrimination, root: Path | None = None, *, details: bool = Fa
         words.append({"paper": show(run.paper), "note": run.note or None,
                       "converted": run.converted,
                       "kinds": kinds(found, at, details=details)})  # fmt: skip
-    return {
+    return readable({
         "header": _header(report),
         "notes": [[heading, said] for heading, said in _notes(report)],
         "checks": [[name, said] for name, said in rows(report)],
@@ -763,7 +765,7 @@ def view(report, discrimination, root: Path | None = None, *, details: bool = Fa
                      in _sections(report, discrimination, root, show, details=details)
                      if heading != WORDS],  # fmt: skip
         "closing": _closing(report),
-    }
+    })
 
 
 def _header(report) -> list[str]:

@@ -424,7 +424,8 @@ def test_a_place_in_a_latex_tree_or_a_pdf_is_the_papers_own() -> None:
         "not manuscript/main.texts:3 nor my-manuscript/main.tex:3")
     pdf = _relocated({"main.md": Path("/x/paper.pdf")}, (1, 1, 1, 2, 7),
                      lambda line: f"page 1, line {line}")  # fmt: skip
-    assert pdf("defined at manuscript/main.md:5") == "defined at paper.pdf, page 1, line 7"
+    # The paper's own place, without its name again: the report names the paper above it.
+    assert pdf("defined at manuscript/main.md:5") == "defined at page 1, line 7"
 
 
 def test_a_place_in_a_latex_tree_is_named_by_its_path_in_the_tree(tmp_path: Path,

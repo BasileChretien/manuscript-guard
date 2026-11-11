@@ -43,14 +43,13 @@ def written(view: dict, title: str, version: str) -> bytes:
     pdf.heading("What was checked", 2, key="checks")
     for name, said in view["checks"]:
         pdf.row(name, said, link=_key(name))
-    if view.get("strict"):
-        pdf.gap(4)
-        pdf.text(view["strict"], size=8.5, gray=0.35)
-    for paper in view["words"]:
-        if not paper["note"] and not paper["kinds"]:
-            continue
-        pdf.heading(f"Writing and language: {paper['paper']} (not counted by --strict)", 1,
-                    key=_key("Writing"))  # fmt: skip
+    # What --strict counts is for a script (`view["strict"]`), and the PDF is for a reader;
+    # the paper's name heads its findings only where there are several papers.
+    papers = [paper for paper in view["words"] if paper["note"] or paper["kinds"]]
+    for paper in papers:
+        heading = f"Writing and language: {paper['paper']}" if len(papers) > 1 else (
+            "Writing and language")
+        pdf.heading(heading, 1, key=_key("Writing"))
         if paper["note"]:
             pdf.text(paper["note"])
             continue
@@ -71,16 +70,17 @@ def written(view: dict, title: str, version: str) -> bytes:
 
 
 def _kind(pdf: Pdf, kind: dict) -> None:
-    """One kind of finding on the words: its title, gate and count, its hint once where its
-    places share one, and each place, its message, its quote and its own hint."""
-    pdf.heading(f"{kind['title']} ({kind['gate']}, {kind['count']})", 2)
+    """One kind of finding on the words: its title and count, its hint once where its places
+    share one, and each place, its message, its quote and its own hint. The check's code
+    (G14) is left to the text: it names nothing a reader of the PDF can look up there."""
+    pdf.heading(f"{kind['title']} ({kind['count']})", 2)
     if kind.get("hint"):
         pdf.text(f"Hint: {kind['hint']}", kind="oblique", size=9, gray=0.3)
     for place in kind["places"]:
         pdf.gap(3)
         pdf.text(f"{place['where']}: {place['message']}", size=9.5, indent=6)
         if place.get("context"):
-            pdf.text(place["context"], kind="code", size=8, indent=18, gray=0.35)
+            pdf.text(place["context"], size=8.5, indent=18, gray=0.4)
         if place.get("hint"):
             pdf.text(f"Hint: {place['hint']}", kind="oblique", size=8.5, indent=18, gray=0.3)
 

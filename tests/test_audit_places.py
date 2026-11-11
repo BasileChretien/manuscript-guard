@@ -250,7 +250,10 @@ def test_a_docx_s_words_are_placed_by_heading_and_paragraph(tmp_path: Path, caps
                    timeout=120)  # fmt: skip
     report, text = _audited(capsys, str(tmp_path / "paper.docx"))
     assert "Methods, paragraph 3: XYZ" in text, text
-    assert "it was defined at paper.docx, Methods, paragraph 1" in text, text
+    # A place in the paper the finding is on, named without the paper's name again (the
+    # author's audit, 2026-11-11).
+    assert "it was defined at Methods, paragraph 1" in text, text
+    assert "at paper.docx, Methods" not in text
     assert "pandoc converts it to" not in text
     xyz = [f for f in report["findings"] if f["code"] == "abbreviation-undefined"
            and f["message"].startswith("XYZ")]  # fmt: skip

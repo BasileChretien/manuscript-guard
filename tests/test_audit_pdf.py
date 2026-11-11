@@ -622,12 +622,16 @@ def test_an_entry_whose_identifier_was_held_back_is_not_said_to_have_none(tmp_pa
     assert said.endswith("1 entry not looked up, having no DOI or PMID and 2 entries not "
                          "looked up, their DOI or PMID perhaps running on to the next line: "
                          "see below"), said  # fmt: skip
-    from manuscript_guard.auditing.references import Entry
+    from manuscript_guard.auditing.references import BY_PLACE, Entry
 
-    unnumbered = SimpleNamespace(path=tmp_path / "p.md", entries=(
+    unnumbered = SimpleNamespace(path=tmp_path / "p.md", style="not numbered", entries=(
         Entry("entry 2 of the list", 3, text="2019. Another guideline. Geneva."),))
     assert _unlooked(unnumbered, _shown(None))[1] == (
         "      line 3: entry 2 of the list: 2019. Another guideline. Geneva.")
+    # Nor one Word numbers, whose text holds no number (round 3 of #632).
+    by_word = SimpleNamespace(path=tmp_path / "p.md", style=BY_PLACE, entries=(
+        Entry("entry 4", 3, number=4, text="2019. WHO guideline on X."),))
+    assert _unlooked(by_word, _shown(None))[1] == "      line 3: entry 4: 2019. WHO guideline on X."
 
 
 def test_a_number_that_skips_tells_no_entry_apart(tmp_path: Path) -> None:

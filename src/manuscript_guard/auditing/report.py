@@ -1175,7 +1175,7 @@ def _unlooked(census, show) -> list[str]:
     at its place, by its number and its first words: an entry left out of the look-up is
     said, not passed over (the author's audit, 2026-11-11: "we need to check all references,
     or say which ones were not checked and why"). Every one, as the reader asked for each."""
-    from manuscript_guard.auditing.references import without_identifier
+    from manuscript_guard.auditing.references import BY_PLACE, without_identifier
 
     missing = [entry for entry in census.entries if without_identifier(entry)]
     if not missing:
@@ -1186,9 +1186,9 @@ def _unlooked(census, show) -> list[str]:
         # "3. Brown L. ..." under "entry 3": the number once, typed as it may be ("1." on
         # every item of a Markdown list, "3\.").
         typed = " ".join(entry.text.split())
-        if entry.number is not None:
-            # Only a numbered list's entry is typed with its number (round 2 of #632: an
-            # unnumbered entry may open on its year).
+        if entry.number is not None and census.style != BY_PLACE:
+            # Only a list whose numbers are typed has its entry's taken off (round 2 of #632:
+            # an unnumbered entry, or one Word numbers, may open on its year).
             typed = _LIST_NUMBER.sub("", typed, count=1)
         quoted = typed if len(typed) <= ENTRY_QUOTED else typed[:ENTRY_QUOTED].rstrip() + "…"
         lines.append(f"      {_at(entry.path, entry.line, census.path, show)}{entry.label}"

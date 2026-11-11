@@ -50,6 +50,7 @@ from manuscript_guard.contracts.results import Results
 from manuscript_guard.findings import FAIL, WARN, Finding, Report
 from manuscript_guard.gates.figures import TEXT_FORMATS, _extract_text
 from manuscript_guard.gates.numbers import source_files
+from manuscript_guard.gates.recycling import _CITED_BEFORE, _CITED_YEAR, _ONE_CITED, _is_author_year
 from manuscript_guard.literature.bibfile import read_entries
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import count_words
@@ -621,15 +622,59 @@ def _residue(
     return report
 
 
+#: A work in a citation by author and year whose author is an organisation, which is no one
+#: name: "World Health Organization, 2020", "Centers for Disease Control and Prevention,
+#: 2019". Words with a capital, joined by spaces and the few words in lower case that join
+#: them, and a comma before the year. A word in lower case is no word of the name, so that
+#: none is read two ways; `_names_its_authors` holds the rest to capitals.
+_JOINING = r"(?:of|for|and|on|the|in|&)"
+_ORGANISATION_WORD = r"(?![a-z])[^\W\d_]+(?:-[^\W\d_]+)*"
+_ORGANISATION = (
+    rf"{_ORGANISATION_WORD}(?:\s+(?:{_JOINING}\s+)*{_ORGANISATION_WORD})+"
+    rf"\s*,\s*{_CITED_YEAR}(?:\s*,\s*{_CITED_YEAR})*"
+)
+_ONE_WORK = rf"{_CITED_BEFORE}(?:{_ONE_CITED}|{_ORGANISATION})"
+#: A citation by author and year typed in brackets, as the earlier-papers check reads one
+#: (`gates.recycling`), each of its works by people or by an organisation.
+_TYPED_AUTHOR_YEAR = re.compile(rf"\(\s*{_ONE_WORK}(?:\s*;\s*{_ONE_WORK})*\s*\)")
+_JOINING_WORD = re.compile(rf"(?<![^\W\d_]){_JOINING}(?![^\W\d_])")
+
+
+def _names_its_authors(cited: str) -> bool:
+    """Whether a match of `_TYPED_AUTHOR_YEAR` names its authors, as `_is_author_year` holds
+    one by people to it: each name with a capital, no month among them, and no date opened
+    by a word like "since". The words that join an organisation's name are none of it."""
+    return _is_author_year(_JOINING_WORD.sub(" ", cited))
+
+
+def typed_citations(text: str) -> list[int]:
+    """Where each citation typed as text starts, in a paper whose citations are not pandoc's:
+    a bracketed run of numbers, "[12]" or "[3, 5-7]", as G7's census reads one, and not an
+    interval after its value, "64 [55-72]"; and one by author and year in brackets, "(Smith
+    et al., 2020)" or "(World Health Organization, 2020)". Not "(2020)", "(in 2020)", "(n =
+    2020)" or "(p < 0.05)", which cite nothing."""
+    from manuscript_guard.audit import _intervals
+    from manuscript_guard.auditing.references import marker_spans
+
+    found = [start for start, _end, _written, _numbers in marker_spans(text, _intervals(text))]
+    found += [m.start() for m in _TYPED_AUTHOR_YEAR.finditer(text)
+              if _names_its_authors(m.group())]  # fmt: skip
+    return sorted(found)
+
+
 def _vague(
     rules: Rules, path: Path, text: str, prose: str, totals: dict, cited: list[int] | None = None
 ) -> Report:
     """Unsupported appeals to authority, judged against where the citations actually are:
-    `cited` where a LaTeX file's citation commands stand, a Markdown file's found here."""
+    `cited` where a LaTeX file's citation commands stand, a Markdown file's found here, its
+    pandoc citations and those typed as text (`typed_citations`): in a paper not written
+    with manuscript-guard, a .docx `audit` converts among them, its typed citations are its
+    citations (corpus round, 2026-11-10)."""
     report = Report()
     if cited is None:
         cited = [m.start() for m in bracketed(text)]
         cited += [m.start() for m in NARRATIVE.finditer(text)]
+        cited += typed_citations(text)
 
     for rule in rules.vague:
         for match in re.finditer(rule["pattern"], prose):

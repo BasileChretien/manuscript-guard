@@ -82,9 +82,10 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G14's counts, which `check` reports, hold a new one, `notation_spaces_missing`: the
-      numbers typed against a word, "0.41points", "2ndyear", or a word against a signed
-      number, "to+0.77" (the author's Abstract, 2026-11-10)
+      G14 says an abbreviation is used, or not used again, in a part of the paper "as G14
+      reads it", and says a word with underscores is "written with underscores, the way a
+      name in code is written"; G6 takes a citation typed as text beside a claim for its
+      support (corpus round, 2026-11-10)
   - reading: data dates
     why: >-
       the finding says the date was emitted as a string rather than typed, and its hint adds
@@ -192,13 +193,6 @@ expected:
       are no longer loose, and the preamble's `\input name` without braces is followed; the
       inputs now hold placed parts and pictures, inside a figure and under headings
       (Known gaps, 2026-10-27)
-  - reading: abbreviations
-    why: >-
-      a stop between two parts of a word joins them as a hyphen does, in the text, in a
-      bracket's short form and in a glossary's entry, so "Licence avec Accès Santé (L.AS)"
-      defines L.AS and "students of L.AS" uses it, where it was an undefined AS; a sentence
-      typed on with no space, "the KAP.The rest", leaves KAP alone; the inputs now hold
-      such words (the author's paper, 2026-11-10)
   - reading: recycled passages
     why: >-
       a citation by author and year in parentheses in the earlier paper, "(Smith et al.,
@@ -237,3 +231,21 @@ expected:
       refused without one or with another value; a `holds-null` control that gives one is
       refused; the reading reports each control's null, and the inputs draw each of these
       (Basile, 2026-11-09, round 1 of wave 3's PR 3)
+  - reading: vague attribution
+    why: >-
+      a claim in a Markdown text, as a paper `audit` converts is read, is supported by a
+      citation typed as text, a bracketed run of numbers or one by author and year in
+      brackets, an organisation's among them, where only pandoc's were taken; brackets that
+      cite nothing, a year, a date, a count, a P value or an interval after its value, are
+      none (corpus round, 2026-11-10: 14 of 16 vague attributions judged on 52 preprints
+      were false); a new reading, whose inputs hold each kind
+  - reading: code names
+    why: >-
+      a word with underscores is said to be "written with underscores, the way a name in
+      code is written", where the message read "is written as a name in code is, with
+      underscores" (corpus round, 2026-11-10)
+  - reading: abbreviations
+    why: >-
+      an abbreviation is said to be used, or not used again, in the main text, the abstract
+      or the supplement "as G14 reads it", which leaves out a figure's caption and a LaTeX
+      `comment`, where the message said it of the whole part (corpus round, 2026-11-10)

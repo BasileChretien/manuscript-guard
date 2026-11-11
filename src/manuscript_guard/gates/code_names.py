@@ -273,7 +273,7 @@ def _finding(entry: _Found, severity: str) -> Finding:
         hint = (f"write what the value is, and bind the value itself as "
                 f"`{{{{results.{bare}}}}}`")  # fmt: skip
     else:
-        said = f"{entry.name!r} is written as a name in code is, with underscores"
+        said = f"{entry.name!r} is written with underscores, the way a name in code is written"
         hint = (
             "write what it is in words; a subscript is written `C~max~`, or in maths. "
             "Put a function's or a package's name in a code span"

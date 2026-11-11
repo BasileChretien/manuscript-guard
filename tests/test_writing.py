@@ -279,6 +279,53 @@ def test_vague_attribution_with_a_citation_is_accepted(project: Path) -> None:
     assert "vague-attribution" not in codes(report)
 
 
+def _vague_in(text: str) -> list[str]:
+    from manuscript_guard.gates.writing import judge_texts
+
+    report, _totals = judge_texts([(Path("main.md"), text)])
+    return [f.message for f in report.findings if f.code == "vague-attribution"]
+
+
+#: A claim and what follows it, as a paper not written with manuscript-guard types its
+#: citation, a .docx `audit` converts among them: 14 of the 16 vague attributions judged on
+#: 52 preprints of the corpus round (2026-11-10) stood beside such a citation.
+TYPED_CITATIONS = [
+    "(Smith et al., 2020)",
+    "(Smith & Jones, 2019; Lee, 2021a)",
+    "(World Health Organization, 2020)",
+    "(e.g., Centers for Disease Control and Prevention, 2019)",
+    "[12]",
+    "[3, 5-7]",
+    "\\[4\\]",
+]
+
+
+@pytest.mark.parametrize("cited", TYPED_CITATIONS)
+def test_a_claim_beside_a_typed_citation_is_not_vague(cited: str) -> None:
+    claim = f"Prior research has shown that exercise lowers blood pressure {cited}."
+    assert _vague_in(f"# Introduction\n\n{claim}\n") == []
+
+
+#: What a paper writes in brackets that cites nothing: a count, a year alone, a date, a P
+#: value, a month and a year, and an interval after its value, which the audit reads apart
+#: from a citation (`audit._intervals`).
+NOT_CITATIONS = ["(n = 2020)", "(2020)", "(in 2020)", "(p < 0.05)", "(January 2020)",
+                 "(since 2019)", "by 64 [55-72]"]  # fmt: skip
+
+
+@pytest.mark.parametrize("written_after", NOT_CITATIONS)
+def test_a_claim_beside_brackets_that_cite_nothing_is_vague(written_after: str) -> None:
+    claim = f"Prior research has shown that exercise lowers blood pressure {written_after}."
+    assert len(_vague_in(f"# Introduction\n\n{claim}\n")) == 1
+
+
+def test_a_place_and_a_year_in_brackets_are_taken_for_a_citation() -> None:
+    """A limit (DESIGN.md, Known gaps): a citation is read by its shape, and a place with a
+    year has an organisation's, so the claim beside it is not reported."""
+    claim = "Prior research has shown that exercise lowers blood pressure (South Korea, 2019)."
+    assert _vague_in(f"# Introduction\n\n{claim}\n") == []
+
+
 def test_a_structured_abstract_is_not_over_bolded(project: Path) -> None:
     """Journals require those bold labels; counting them would flag their house style."""
     text = (

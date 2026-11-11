@@ -19,6 +19,8 @@ PAPER = (
     + " ".join(f"The {short} was computed." for short in UNDEFINED)
     + "\n\n# Results\n\nOf 412 reports, 77 were serious.\n"
 )
+#: What G14 says of each, in the text it reads.
+UNDEFINED_SAID = "is used once in the main text as G14 reads it, and not defined there"
 
 
 def written(tmp_path: Path, text: str = PAPER) -> Path:
@@ -40,7 +42,7 @@ def test_the_report_says_what_each_check_found_before_its_sections(tmp_path: Pat
     assert "=== Numbers in the outputs ===" not in out and "=== Arithmetic ===" not in out
     assert "=== Small cells" not in out
     assert f"Abbreviations used and not defined (G14, {len(UNDEFINED)})" in out
-    assert out.count("is used once in the main text and not defined there") == PLACES
+    assert out.count(UNDEFINED_SAID) == PLACES
     assert f"and {len(UNDEFINED) - PLACES} more: {DETAILS} lists every place" in out
     assert out.count("define it at first use") == 1
     assert f"Every place of every finding, with its context and what to do: {DETAILS}." in out
@@ -53,7 +55,7 @@ def test_details_print_every_section_and_every_place(tmp_path: Path, capsys) -> 
     out = capsys.readouterr().out
     assert "What was checked:" in out
     assert "=== Numbers in the outputs ===" in out and "=== Arithmetic ===" in out
-    assert out.count("is used once in the main text and not defined there") == len(UNDEFINED)
+    assert out.count(UNDEFINED_SAID) == len(UNDEFINED)
     assert out.count("define it at first use") == len(UNDEFINED)
     assert "Every place of every finding" not in out
 

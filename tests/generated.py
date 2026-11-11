@@ -2572,6 +2572,55 @@ def latex_writing(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     return text + _FAR + "\\end{document}\n% TODO cut\nXXX patients\n", planted
 
 
+#: What a Markdown paper writes after a claim, as G6 judges it (`gates/writing.py`,
+#: `typed_citations`), `{author}`, `{year}` and `{number}` drawn: a pandoc citation and a
+#: citation typed as text are its support, as a paper not written with manuscript-guard
+#: types them, a .docx `audit` converts among them (corpus round, 2026-11-10); brackets that
+#: cite nothing, an interval after its value among them, are none, and the claim is vague.
+MARKDOWN_CITED_AFTER = (
+    ("[@a{number}]", "cited"),
+    ("({author} et al., {year})", "cited"),
+    ("({author} & Jones, {year}; Lee, {year}a)", "cited"),
+    ("(e.g., {author}, {year})", "cited"),
+    ("(World Health Organization, {year})", "cited"),
+    ("(Centers for Disease Control and Prevention, {year}, {year})", "cited"),
+    ("[{number}]", "cited"),
+    ("[{number}, {number}-{number}]", "cited"),
+    ("\\[{number}\\]", "cited"),
+    ("({year})", "vague"),
+    ("(in {year})", "vague"),
+    ("(n = {year})", "vague"),
+    ("(p < 0.05)", "vague"),
+    ("(January {year})", "vague"),
+    ("(since {year})", "vague"),
+    ("by 64 [55-72]", "vague"),
+    ("", "vague"),
+)  # fmt: skip
+_CITED_AUTHORS = ("Smith", "García", "O'Brien", "van der Berg", "Nguyen", "WHO")
+
+
+@st.composite
+def markdown_cited_claims(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A Markdown paper with a claim before each of `MARKDOWN_CITED_AFTER`, in an order
+    drawn, each apart from the next by more than G6's citation window; and each claim's word
+    with what G6 makes of it. Every kind is in every paper, so that a rule broken for one
+    is seen in each."""
+    order = draw(st.permutations(range(len(MARKDOWN_CITED_AFTER))))
+    planted: list[tuple[str, str]] = []
+    text = "# Introduction\n\n"
+    for index in order:
+        template, kind = MARKDOWN_CITED_AFTER[index]
+        cited = template.format(
+            author=draw(st.sampled_from(_CITED_AUTHORS)),
+            year=draw(st.integers(1950, 2029)),
+            number=draw(st.integers(1, 120)),
+        )
+        key = f"k{4101 + len(planted)}"
+        planted.append((key, kind))
+        text += f"{_FAR}\nStudies have shown that {key} lowers blood pressure {cited}.\n\n"
+    return text + _FAR, planted
+
+
 #: What a LaTeX document sets out that its text may point at by line, "the stride is set
 #: (line 8)", and what it is (G6's `unless_listed`, corpus round 2026-10-23): an algorithm in
 #: each environment that holds one, a listing, and an algorithm in a comment, which sets out
@@ -12714,6 +12763,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES
     ),
     "residue": texts(tuple(written for written, _rule, _found in RESIDUE) + RESIDUE_LOOKALIKES),
+    "vague attribution": st.one_of(markdown_cited_claims().map(lambda drawn: drawn[0]),
+                                   texts()),  # fmt: skip
     "typed releases": texts(RELEASED),
     "reported tests": texts(REPORTED),
     "reported intervals": texts(ESTIMATES),

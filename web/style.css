@@ -20,7 +20,24 @@ li { margin: .3rem 0; }
 .version { color: var(--muted); margin: 0 0 .8rem; }
 #loading { padding: .6rem .8rem; border: 1px solid var(--line); border-radius: 6px; }
 #status { margin: 0; }
-#progress { width: 100%; margin-top: .5rem; accent-color: var(--accent); }
+.bar { display: flex; align-items: center; gap: .7rem; margin-top: .5rem; }
+#progress { flex: 1; min-width: 0; accent-color: var(--accent); }
+#progress[hidden] { display: none; }
+#amount { color: var(--muted); font-size: .9rem; font-variant-numeric: tabular-nums;
+  white-space: nowrap; }
+label.drop { border: 2px dashed var(--line); border-radius: 8px; padding: .8rem .9rem;
+  transition: border-color .15s, background-color .15s; }
+label.drop.dropping { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.go { display: flex; flex-wrap: wrap; align-items: center; gap: .8rem; }
+#running { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; color: var(--muted); }
+#running[hidden] { display: none; }
+#runbar { width: 8rem; accent-color: var(--accent); }
+#runbar[hidden] { display: none; }
+#elapsed { font-variant-numeric: tabular-nums; }
+/* Focused by the page when a report is drawn, for a keyboard and a screen reader to start
+   there; a heading is no control, and shows no ring. */
+#reporthead:focus { outline: none; }
+@media (prefers-reduced-motion: reduce) { label.drop { transition: none; } }
 form { display: grid; gap: 1.2rem; margin: 1.4rem 0; }
 label { display: grid; gap: .3rem; }
 label.tick { grid-template-columns: auto 1fr; align-items: start; gap: .7rem; }
@@ -38,11 +55,14 @@ input:disabled, select:disabled { opacity: .55; }
 input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px; }
 button { font: inherit; padding: .45rem .9rem; border: 1px solid var(--accent); border-radius: 6px;
-  background: var(--accent); color: var(--bg); cursor: pointer; width: fit-content; }
+  background: var(--accent); color: var(--bg); cursor: pointer; width: fit-content;
+  touch-action: manipulation; }
+button:hover:not(:disabled) { filter: brightness(1.12); }
+button:active:not(:disabled) { filter: brightness(.95); }
 button#probe { background: transparent; color: var(--accent); padding: .05rem .5rem; }
 button:disabled { opacity: .5; cursor: default; }
 .actions { display: flex; flex-wrap: wrap; gap: .6rem; margin: .4rem 0 1rem; }
-.actions #save { background: transparent; color: var(--accent); }
+.actions #save, .actions #savepdf { background: transparent; color: var(--accent); }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; border: 1px solid var(--line);
   border-radius: 6px; padding: .8rem; }
 #notes { color: var(--muted); }

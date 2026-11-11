@@ -19,11 +19,48 @@ const BOOT_STEPS = ["Python", "the Python packages and manuscript-guard",
   "pandoc, which reads a .docx (16 MB)", "the checker itself"];
 const step = (at) => self.postMessage({ progress: { at: at + 1, of: BOOT_STEPS.length, what: BOOT_STEPS[at] } });
 
+// The bytes the start has received, against those the manifest says it fetches (web/build.py,
+// `bytes`), for the page's percentage: each answer's body counted as it arrives, while the
+// start runs and no longer. A message with no id, as a step's, at most every 100 ms.
+const loading = { received: 0, expected: 0, said: 0 };
+// The browser's own fetch, taken when the start begins.
+let ownFetch = null;
+function tell(last = false) {
+  if (!last && now() - loading.said < 100) return;
+  loading.said = now();
+  self.postMessage({ bytes: { received: loading.received, expected: loading.expected } });
+}
+async function counted(input, init) {
+  const answer = await ownFetch(input, init);
+  if (!answer.body) return answer;
+  const counting = new TransformStream({
+    transform(chunk, controller) {
+      loading.received += chunk.byteLength;
+      tell();
+      controller.enqueue(chunk);
+    },
+  });
+  return new Response(answer.body.pipeThrough(counting),
+    { status: answer.status, statusText: answer.statusText, headers: answer.headers });
+}
+
 async function boot() {
+  ownFetch = self.fetch.bind(self);
+  self.fetch = counted;
+  try {
+    return await started();
+  } finally {
+    self.fetch = ownFetch;
+    tell(true);
+  }
+}
+
+async function started() {
   const timings = {};
   let start = now();
   step(0);
   const manifest = await (await fetch(BASE + "manifest.json")).json();
+  loading.expected = manifest.bytes || 0;
   const { loadPyodide } = await import(BASE + "pyodide/pyodide.mjs");
   py = await loadPyodide({ indexURL: BASE + "pyodide/" });
   timings.python = now() - start;

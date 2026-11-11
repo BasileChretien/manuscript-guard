@@ -11,6 +11,8 @@
      cannot stop. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src blob:; connect-src 'self' https://api.crossref.org https://api.openalex.org https://api.datacite.org https://doi.org https://eutils.ncbi.nlm.nih.gov; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
 <title>Paper audit</title>
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161615" media="(prefers-color-scheme: dark)">
 <link rel="stylesheet" href="style.css">
 <script type="module" src="app.js"></script>
 </head>
@@ -28,22 +30,25 @@
   <div id="loading">
     <p id="status" role="status">Loading the checker: about 26 MB the first time, nothing
       after that.</p>
-    <progress id="progress" max="4" value="0">Loading</progress>
+    <div class="bar">
+      <progress id="progress" max="100" value="0" aria-label="Loading the checker">0%</progress>
+      <span id="amount" aria-hidden="true"></span>
+    </div>
   </div>
 
   <form id="form">
-    <label><span class="field">The paper</span>
-      <span class="help">A .docx or .md file.</span>
-      <input id="paper" type="file" accept=".docx,.md" required disabled></label>
+    <label class="drop"><span class="field">The paper</span>
+      <span class="help">A .docx or .md file: choose it, or drop it on this box.</span>
+      <input id="paper" name="paper" type="file" accept=".docx,.md" required disabled></label>
     <label><span class="field">The analysis outputs, if you have them</span>
       <span class="help">.json, .csv, .tsv, .txt or .yaml, to compare the paper's numbers
         with. Without them the audit still reads the numbers against each other, the words
         and the reference list.</span>
-      <input id="against" type="file" multiple accept=".json,.csv,.tsv,.txt,.yaml,.yml,.md"
-        disabled></label>
+      <input id="against" name="against" type="file" multiple
+        accept=".json,.csv,.tsv,.txt,.yaml,.yml,.md" disabled></label>
     <label><span class="field">English of the paper</span>
       <span class="help">Its spelling is held to it.</span>
-      <select id="english" disabled>
+      <select id="english" name="english" disabled>
         <option value="">The one most of its words are in</option>
         <option value="american">American</option>
         <option value="british">British</option>
@@ -52,7 +57,8 @@
       <span class="help">Names, an author's initials, an institution's acronym, your field's
         terms, separated by spaces or commas (CD, CHU, QR, licence). They are not reported as
         abbreviations to define, nor for their spelling.</span>
-      <input id="known" type="text" autocomplete="off" spellcheck="false" disabled></label>
+      <input id="known" name="known" type="text" autocomplete="off" spellcheck="false"
+        placeholder="CD, CHU, QR, licence…" disabled></label>
     <label class="tick"><input id="lookup" type="checkbox" disabled>
       <span><span class="field">Check the reference list for retracted and unregistered
         works</span>
@@ -63,13 +69,21 @@
         <span class="help">With its context and what to do. Without it the report says what
           each check found in a line, and groups the findings on the words by kind with their
           first places. The PDF always has every place.</span></span></label>
-    <button id="run" type="submit" disabled>Audit</button>
+    <div class="go">
+      <button id="run" type="submit" disabled>Audit</button>
+      <div id="running" hidden>
+        <span id="runtext" role="status"></span>
+        <progress id="runbar" aria-label="Auditing" hidden></progress>
+        <span id="elapsed" aria-hidden="true"></span>
+      </div>
+    </div>
   </form>
 
   <section id="result" hidden>
-    <h2>Report</h2>
+    <h2 id="reporthead" tabindex="-1">Report</h2>
     <div class="actions">
-      <button id="savepdf" type="button" hidden>Save the report as a PDF, with every place</button>
+      <button id="openpdf" type="button" hidden>Open the report as a PDF</button>
+      <button id="savepdf" type="button" hidden>Save the PDF</button>
       <button id="savecommented" type="button" hidden>Save the paper with the findings as Word
         comments</button>
       <button id="save" type="button">Save the report as text</button>

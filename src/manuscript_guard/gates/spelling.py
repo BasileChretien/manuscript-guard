@@ -256,8 +256,10 @@ _OPENS, _CLOSES = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION M
 #: A single mark that may open a quotation, at the start of what follows it, and one that
 #: may close one, at the end of what stands before it: an apostrophe inside a word, "don't",
 #: "the study's", is neither. One after a plural, "the patients' records", may close, and
-#: one opening a word, "'tis", may open (round 3 of #636).
-_SINGLE_OPENS = re.compile(r"(?<!\S)['\N{LEFT SINGLE QUOTATION MARK}](?=\S)")
+#: one opening a word, "'tis", may open, as may one after a bracket, a mark of emphasis or
+#: a dash, "('tumor color')" (rounds 3 and 4 of #636).
+_SINGLE_OPENS = re.compile(r"(?<![\w'\N{RIGHT SINGLE QUOTATION MARK}])"
+                           r"['\N{LEFT SINGLE QUOTATION MARK}](?=\S)")
 _SINGLE_CLOSES = re.compile(r"(?<=\S)['\N{RIGHT SINGLE QUOTATION MARK}](?!\w)")
 
 

@@ -107,6 +107,8 @@ def test_a_word_quoted_in_single_marks_keeps_its_spelling_and_an_apostrophe_is_n
         "As '2020 tumor color survey' said.",
         "As 'The parents' tumor color choices' reported.",
         "As \N{LEFT SINGLE QUOTATION MARK}Tumor color\N{RIGHT SINGLE QUOTATION MARK} said.",
+        # after a bracket and a mark of emphasis (round 4 of #636)
+        "As reported ('tumor color in children'), we looked, and *'tumor color'* too.",
         "The patients' color and the study's tumor and the color we don't know.",
         "Colour and tumour and centre and fibre and labelled.",
     )

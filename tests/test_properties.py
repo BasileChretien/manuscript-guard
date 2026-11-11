@@ -6244,6 +6244,13 @@ def _hyphens_after_a_positive_low_bound_are_doubtful(patch: pytest.MonkeyPatch) 
                   and join.endswith("-"))  # fmt: skip
 
 
+def _a_single_mark_after_a_bracket_opens_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import spelling
+
+    patch.setattr(spelling, "_SINGLE_OPENS", re.compile(
+        "(?<!\\S)['\N{LEFT SINGLE QUOTATION MARK}](?=\\S)"))  # fmt: skip
+
+
 def _a_word_inside_a_quotation_is_respelt(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import spelling
 
@@ -22633,6 +22640,10 @@ BROKEN = {
     "the notation's edits doubt hyphens after a positive low bound": (
         _hyphens_after_a_positive_low_bound_are_doubtful,
         test_g14_edits_the_notation_to_the_form_the_manuscript_keeps_at_every_place,
+    ),
+    "a single mark after a bracket opens no quotation": (
+        _a_single_mark_after_a_bracket_opens_nothing,
+        test_g14_respells_a_word_of_the_other_english_where_the_paper_s_own_is_sure,
     ),
     "a word inside a quotation is respelt": (
         _a_word_inside_a_quotation_is_respelt,

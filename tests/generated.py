@@ -7146,8 +7146,8 @@ def _spelt_typed(draw: st.DrawFn, own: str, theirs: int, ours: int,
     quoted = {1: ('as "', '" was said'),
               2: ("as \N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK} was said"),
               3: ("as 'which ", "?' was the patients' word"),
-              4: ("as \N{LEFT SINGLE QUOTATION MARK}",
-                  "\N{RIGHT SINGLE QUOTATION MARK} was said")}  # fmt: skip
+              4: ("as (\N{LEFT SINGLE QUOTATION MARK}",
+                  "\N{RIGHT SINGLE QUOTATION MARK}) was said")}  # fmt: skip
     for index, word in enumerate(words):
         if index == 0:
             pairs.append((f"seen.\n\n{word.capitalize()} was noted",

@@ -25662,7 +25662,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
   word with a mark before it in its paragraph that may open a quotation, one at the start of
   what follows it, and one after it that may close one, at the end of what stands before
   it, is taken to be quoted. So "'tis" with a plural's apostrophe later in the paragraph,
-  "the patients' choice", holds back every respelling between them. An insertion at either
+  "the patients' choice", holds back every respelling between them, and so does a
+  quotation closed before a word, "'cleaned'", with such an apostrophe after it (round 4
+  of #636). An insertion at either
   end of another edit's change clashes with it, so "colour+5" in an American paper is
   neither respelt nor spaced. Each only keeps an edit from being offered. Pinned by
   `tests/test_corrections.py::test_a_stray_double_mark_holds_back_the_respellings_after_it`,

@@ -217,16 +217,17 @@ function draw(view) {
 // the browser has them do (round 1 of #633).
 const dropBox = $("paper").closest("label");
 const carriesFiles = (event) => [...(event.dataTransfer?.types || [])].includes("Files");
-const takesItsOwn = (target) => target instanceof Element && target.closest("#against, #known");
+// Only a box that can take a drop takes it; a disabled one, while the checker loads, does not
+// (round 2 of #633).
+const takesItsOwn = (target) => target instanceof Element
+  && target.closest("#against:not(:disabled), #known:not(:disabled)");
 for (const name of ["dragenter", "dragover"]) {
   dropBox.addEventListener(name, (event) => {
     if (!carriesFiles(event)) return;
     event.preventDefault();
-    if ($("paper").disabled) {
-      event.dataTransfer.dropEffect = "none";
-      return;
-    }
-    dropBox.classList.add("dropping");
+    // While the checker loads the drop still fires, so that the page can say why it was not
+    // taken (round 2 of #633).
+    if (!$("paper").disabled) dropBox.classList.add("dropping");
   });
 }
 dropBox.addEventListener("dragleave", (event) => {

@@ -34,10 +34,12 @@ function tell(last = false) {
 // address (Chrome's compiled WebAssembly, round 1 of #633); a copy of its body is read to count
 // it. Each copy still being read is awaited before the last count is told.
 const reading = new Set();
+const readers = new Set();
 async function counted(input, init) {
   const answer = await ownFetch(input, init);
   if (!answer.body) return answer;
   const reader = answer.clone().body.getReader();
+  readers.add(reader);
   const read = (async () => {
     for (;;) {
       const { done, value } = await reader.read();
@@ -55,10 +57,16 @@ async function boot() {
   ownFetch = self.fetch.bind(self);
   self.fetch = counted;
   try {
-    return await started();
+    const value = await started();
+    await Promise.allSettled([...reading]);
+    return value;
+  } catch (error) {
+    // A start that failed says so at once: the copies still being counted are let go, not
+    // waited for to the end of their files (round 2 of #633).
+    for (const reader of readers) reader.cancel().catch(() => { /* gone already */ });
+    throw error;
   } finally {
     self.fetch = ownFetch;
-    await Promise.allSettled([...reading]);
     tell(true);
   }
 }

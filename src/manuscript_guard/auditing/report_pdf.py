@@ -346,9 +346,16 @@ def report_pdf(report, discrimination, root: Path | None, paper_names: list[str]
 
     drawn = view(report, discrimination, root, details=True)
     names = ", ".join(paper_names) or "the paper"
-    # The gates the audit ran: G2's rule on the counts held back, always; G6 and G14 on the
-    # words, G7 on the reference list and G4 under --journal, where each ran.
-    ran = {"G2"} | ({"G6", "G14"} if report.gates else set()) | (
-        {"G7"} if report.references else set()) | ({"G4"} if report.journal is not None else set())
-    return written(drawn, f"Audit of {names}", __version__,
-                   ran=tuple(sorted(ran, key=lambda gate: int(gate[1:]))))  # fmt: skip
+    return written(drawn, f"Audit of {names}", __version__, ran=gates_run(report))
+
+
+def gates_run(report) -> tuple[str, ...]:
+    """The gates the audit ran: G2's rule on the counts held back, always; G6 and G14 on the
+    words, G7 on the reference list and G4 under --journal, each where it read something and
+    not where it left only a note of why not (round 2 of #635)."""
+    words = any(run.writing or run.language or not run.note for run in report.gates or [])
+    listed = any(not census.note for census in report.references or [])
+    journal = report.journal is not None and not report.journal.note
+    ran = ["G2"] + (["G4"] if journal else []) + (["G6"] if words else []) + (
+        ["G7"] if listed else []) + (["G14"] if words else [])
+    return tuple(ran)

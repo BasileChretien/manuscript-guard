@@ -283,11 +283,9 @@ def standings(report) -> dict[str, str]:
         looked = any(one.problems for one in report.lookups or [])
         out["References"] = NOT_RUN if not counted else of(
             False, problems or looked or len(counted) < len(report.references))
-    # The sections a flag adds, by what the report says in them: counted, or to look at; a
-    # note of what was read is neither (round 1 of #635).
+    # The sections a flag adds, by what the report says in them (round 1 of #635).
     from manuscript_guard.auditing import report as sections
     from manuscript_guard.auditing.report import items
-    from manuscript_guard.findings import INFO
 
     said = None
     for name, section, present in (
@@ -297,13 +295,39 @@ def standings(report) -> dict[str, str]:
             ("Package", sections.PACKAGE, report.package)):  # fmt: skip
         if present is not None:
             said = items(report) if said is None else said
-            mine = [item for item in said if item.section == section]
-            if name == "Journal" and getattr(present, "note", None) and not mine:
-                out[name] = NOT_RUN
-                continue
-            out[name] = of(any(item.counted for item in mine),
-                           any(item.severity != INFO for item in mine))  # fmt: skip
+            out[name] = _flagged(name, present, [item for item in said
+                                                 if item.section == section])  # fmt: skip
     return out
+
+
+#: The notes of a flag's section that leave a reader something to look at: what G4 did not
+#: check, a rule to check by hand, a file or part not read, and what a dry run would ask.
+_TO_LOOK_AT = frozenset({"journal-not-checked", "journal-manual-rule", "causal-words-not-read",
+                         "cited-not-listed", "would-ask"})  # fmt: skip
+
+
+def _flagged(name: str, present, mine: list) -> str:
+    """Where a flag's section stands: counted where it counts something, not run where it
+    did not run or read nothing, to look at where it lists something for a reader, and clear
+    only where it found nothing (round 2 of #635)."""
+    from manuscript_guard.findings import INFO
+
+    # An author named where the journal reviews blind is filed under the documents, and
+    # counted: the Journal tile shows it.
+    if any(item.counted for item in mine) or getattr(present, "named", None):
+        return COUNTED
+    # G4 could not run, or no self-citation was counted; or no sentence of an Abstract, a
+    # Discussion or a Conclusion was read for causal words.
+    if getattr(present, "note", None) or (name == "Causal words" and not present.read):
+        return NOT_RUN
+    looked = any(item.severity != INFO or item.code in _TO_LOOK_AT for item in mine)
+    if name == "Cited sentences":
+        # Its file of rows, one for each work cited, is for a reader to go through.
+        looked = looked or bool(present.rows)
+    elif name == "Self-citation":
+        looked = bool(present.authors_note or present.unlooked or present.in_journal
+                      or any(listed for _author, listed in present.authors))  # fmt: skip
+    return LOOK if looked else CLEAR
 
 
 __all__ = ["CLEAR", "COUNTED", "KINDS", "LOOK", "NOT_RUN", "PLACES", "checks", "grouped",

@@ -10443,9 +10443,14 @@ look at, counted as an error, not run), read from what the check found and not f
 line's words, each tile a link to its section; each section under an accent bar with a link
 back to the summary; each kind with its count in a pill and its hint in a box; each place
 with its quote under a rule; and a closing panel saying that an audit reads a finished paper
-through three of the gates, in part, against all of them for a paper written with the tool,
-with the link. Everything is still the four standard fonts; a heading still is a bookmark.
-Held by `tests/test_report_pdf.py`.
+through a few of the gates, in part, against all of them for a paper written with the tool,
+with the link. The panel names the gates this audit ran (`report_pdf.gates_run`): G2 always,
+and G4, G6 and G14, or G7, only where they read something, not where they left only a note
+of why not. A tile is clear only where its check found nothing: a check that did not run or
+read nothing is not run, whatever note its section prints, and a section that lists
+something for a reader, a rule to check by hand or the references by an author, is to look
+at. Everything is still the four standard fonts; a heading still is a bookmark. Held by
+`tests/test_report_pdf.py`.
 
 **A commented copy.** The author asked for a report he could work in rather than read beside
 the paper (2026-11-10, "an interactive" one). `audit --commented FILE.docx`, and the page's

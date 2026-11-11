@@ -13566,11 +13566,13 @@ def test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is(
 
 
 @st.composite
-def _comparisons_planted(draw: st.DrawFn) -> tuple[str, list[tuple[str, int, str, bool]]]:
+def _comparisons_planted(
+    draw: st.DrawFn,
+) -> tuple[str, list[tuple[str, int, str, bool, bool]]]:
     """A binding beside each way of writing a comparator, and what only looks like one, in
     an order and among words drawn each time, with the comparator that should be read."""
     parts: list[str] = []
-    found: list[tuple[str, int, str, bool]] = []
+    found: list[tuple[str, int, str, bool, bool]] = []
     for index, (before, after, read) in enumerate(draw(st.permutations(BESIDE_A_BINDING))):
         words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4))
         parts.append(" ".join(words) + draw(st.sampled_from((" ", "\n", "; "))) + before)
@@ -13583,13 +13585,16 @@ def _comparisons_planted(draw: st.DrawFn) -> tuple[str, list[tuple[str, int, str
 
 @holds(150, _comparisons_planted())
 def test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is(
-    planted: tuple[str, list[tuple[str, int, str, bool]]],
+    planted: tuple[str, list[tuple[str, int, str, bool, bool]]],
 ) -> None:
-    """Each sign and its spellings and the two phrases before a binding, a sign after one,
-    which holds the value to the other side; not a comparison of two numbers, a phrase
-    turned round, a comment, a tag, a blockquote's marker or an arrow."""
+    """Each sign and its spellings and the two phrases after a statistic before a binding,
+    a sign after one before a statistic, which holds the value to the other side, each with
+    whether the statistic is a plural; not a subject that is no statistic, a symbol inside a
+    word or a tag, a comparison of two numbers, a comment, a blockquote's marker or an
+    arrow."""
     text, expected = planted
-    found = [(c.key, c.start, c.op, c.below) for c in bound_comparisons_gate.comparisons_at(text)]
+    found = [(c.key, c.start, c.op, c.below, c.plural)
+             for c in bound_comparisons_gate.comparisons_at(text)]  # fmt: skip
     assert found == expected, text
 
 
@@ -16515,15 +16520,17 @@ def _a_comparator_after_a_binding_is_not_read(patch: pytest.MonkeyPatch) -> None
 def _a_comparator_after_a_binding_holds_the_side_it_names(patch: pytest.MonkeyPatch) -> None:
     real = bound_comparisons_gate._after
 
-    def after(text: str, end: int) -> tuple[str, bool] | None:
+    def after(text: str, end: int) -> tuple[str, bool, bool] | None:
         read = real(text, end)
-        return None if read is None else (read[0], not read[1])
+        return None if read is None else (read[0], not read[1], read[2])
 
     patch.setattr(bound_comparisons_gate, "_after", after)
 
 
-def _the_other_side_of_a_comparator_is_not_looked_at(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(bound_comparisons_gate, "_NUMBER_AFTER", re.compile(r"(?!)"))
+def _anything_after_a_sign_after_a_binding_is_its_subject(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #629: "{{results.inc}} < the incidence in exposed patients" was read."""
+    gate = bound_comparisons_gate
+    patch.setattr(gate, "_AFTER", re.compile(rf"{gate._GAP}(?P<op>(?i:{gate._SIGN}))(?P<plural>)"))
 
 
 def _a_comparator_is_read_whatever_its_subject(patch: pytest.MonkeyPatch) -> None:
@@ -16531,14 +16538,25 @@ def _a_comparator_is_read_whatever_its_subject(patch: pytest.MonkeyPatch) -> Non
     incidence it was compared with."""
     gate = bound_comparisons_gate
     assert gate._BEFORE.pattern.startswith(gate._STATISTIC)
-    patch.setattr(gate, "_BEFORE", re.compile(gate._BEFORE.pattern[len(gate._STATISTIC):]))
+    pattern = "(?P<plural>)" + gate._BEFORE.pattern[len(gate._STATISTIC):]
+    patch.setattr(gate, "_BEFORE", re.compile(pattern))
 
 
 def _a_statistics_symbol_may_end_a_word(patch: pytest.MonkeyPatch) -> None:
     """Round 1 of #629: "wasn't less than" read as the t's comparison."""
     gate = bound_comparisons_gate
-    assert gate._ALONE in gate._BEFORE.pattern
-    patch.setattr(gate, "_BEFORE", re.compile(gate._BEFORE.pattern.replace(gate._ALONE, "")))
+    assert gate._NOT_IN_A_WORD in gate._BEFORE.pattern
+    patch.setattr(gate, "_BEFORE",
+                  re.compile(gate._BEFORE.pattern.replace(gate._NOT_IN_A_WORD, "")))  # fmt: skip
+
+
+def _a_symbol_inside_a_tag_is_a_statistic(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #629: "<p>{{results.x}}</p>" read as "p >"."""
+    gate = bound_comparisons_gate
+    for name in ("_BEFORE", "_AFTER"):
+        pattern = getattr(gate, name).pattern
+        assert gate._NOT_IN_A_TAG in pattern
+        patch.setattr(gate, name, re.compile(pattern.replace(gate._NOT_IN_A_TAG, "")))
 
 
 def _a_statistics_index_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -16548,17 +16566,30 @@ def _a_statistics_index_is_not_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(gate, "_BEFORE", re.compile(gate._BEFORE.pattern.replace(indexed, "|(?!)")))
 
 
-def _a_tag_or_an_arrow_after_a_binding_is_a_comparator(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(bound_comparisons_gate, "_NO_SIGN_AFTER", {})
+def _a_p_value_written_out_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    gate = bound_comparisons_gate
+    written = rf"|[pP]{gate._ITALIC}(?:-|{gate._SPACE})values"
+    assert written in gate._BEFORE.pattern
+    patch.setattr(gate, "_BEFORE", re.compile(gate._BEFORE.pattern.replace(written, "")))
+
+
+def _a_singular_statistic_states_a_set(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #629: "(z > {{results.z_crit}})" failed of a critical value printed 1.96."""
+    patch.setattr(bound_comparisons_gate, "_states_a_set", lambda found: True)
+
+
+def _a_plural_statistic_is_one(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(bound_comparisons_gate, "_states_a_set", lambda found: False)
 
 
 def _a_line_break_after_a_sign_after_a_binding_ends_it(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(bound_comparisons_gate, "_SPACES_AFTER", re.compile("[ \t\N{NO-BREAK SPACE}]*"))
+    gate = bound_comparisons_gate
+    patch.setattr(gate, "_AFTER", gate._after_pattern(gap="[ \t\N{NO-BREAK SPACE}]*"))
 
 
 def _a_sign_after_a_binding_is_read_as_cased(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(bound_comparisons_gate, "_AFTER",
-                  re.compile(bound_comparisons_gate._AFTER.pattern))  # fmt: skip
+    gate = bound_comparisons_gate
+    patch.setattr(gate, "_AFTER", gate._after_pattern(sign=gate._SIGN))
 
 
 def _a_comparison_beside_a_binding_is_strict(patch: pytest.MonkeyPatch) -> None:
@@ -22276,8 +22307,8 @@ BROKEN = {
         _a_comparator_after_a_binding_holds_the_side_it_names,
         test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
     ),
-    "the other side of a comparator is not looked at": (
-        _the_other_side_of_a_comparator_is_not_looked_at,
+    "anything after a sign after a binding is its subject": (
+        _anything_after_a_sign_after_a_binding_is_its_subject,
         test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
     ),
     "a comparator is read whatever its subject": (
@@ -22292,8 +22323,20 @@ BROKEN = {
         _a_statistics_index_is_not_read,
         test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
     ),
-    "a tag or an arrow after a binding is a comparator": (
-        _a_tag_or_an_arrow_after_a_binding_is_a_comparator,
+    "a symbol inside a tag is a statistic": (
+        _a_symbol_inside_a_tag_is_a_statistic,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a p value written out is not read": (
+        _a_p_value_written_out_is_not_read,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a singular statistic states a set": (
+        _a_singular_statistic_states_a_set,
+        test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
+    ),
+    "a plural statistic is one": (
+        _a_plural_statistic_is_one,
         test_a_comparator_beside_a_binding_is_read_with_its_side_and_no_lookalike_is,
     ),
     "a line break after a sign after a binding ends it": (

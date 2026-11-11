@@ -5254,8 +5254,9 @@ def test_every_spelling_of_one_unit_is_one_unit(written: str, emitted: str) -> N
 # ------------------------------------------- a comparison typed beside a binding
 
 #: Three values as a psychology preprint's analysis emitted them, rounded for print, and a
-#: fourth printed whole (PsyArXiv fyxeq_v2, rebuilt with the R emitter); an incidence, and
-#: an R² and an I² each on the wrong side of its print for a sign before it.
+#: fourth printed whole (PsyArXiv fyxeq_v2, rebuilt with the R emitter); an incidence, an R²
+#: and an I² each on the wrong side of its print for a sign before it; and two thresholds,
+#: a critical z and a corrected alpha, which a single statistic is compared with.
 _COMPARED = {
     "omnibus.f_max": (2.532, "2.53"),
     "omnibus.p_min": (0.2596, ".260"),
@@ -5264,6 +5265,8 @@ _COMPARED = {
     "incidence.unexposed": (2.528, "2.53"),
     "fit.r2": (0.4204, "0.42"),
     "fit.i2": (37.96, "38"),
+    "tests.z_crit": (1.959964, "1.96"),
+    "tests.alpha_bonf": (0.008333, "0.0083"),
 }
 
 
@@ -5276,14 +5279,14 @@ def _compared_emitted(root: Path, values: dict[str, tuple[float, str]]) -> None:
     write_digest(fragment)
 
 
-def _comparisons_failed(root: Path, capsys) -> list[tuple[str, int]]:
+def _comparisons_said(root: Path, capsys) -> list[tuple[str, int, str]]:
     from manuscript_guard.cli import main
 
     capsys.readouterr()
     main(["check", str(root), "--json"])
     findings = json.loads(capsys.readouterr().out)["findings"]
-    return [(f["message"].split()[0], f["line"]) for f in findings
-            if f["code"] == "comparison-contradicted" and f["severity"] == "fail"]  # fmt: skip
+    return [(f["message"].split()[0], f["line"], f["severity"]) for f in findings
+            if f["code"] == "comparison-contradicted"]  # fmt: skip
 
 
 def _append_paragraph(path: Path, paragraph: str) -> int:
@@ -5294,69 +5297,85 @@ def _append_paragraph(path: Path, paragraph: str) -> int:
 
 
 @pytest.mark.parametrize(
-    ("typed", "contradicts"),
+    ("typed", "said"),
     [
-        # The preprint's three: the value at full precision is on the wrong side.
-        ("all Fs < {{results.omnibus.f_max}}", True),
-        ("all *p*s > {{results.omnibus.p_min}}", True),
-        ("{{results.contrasts.t_min}} < ts", True),
-        # Each comparator as it is spelt, before the binding and after it.
-        ("Fs \N{LESS-THAN OR EQUAL TO} {{results.omnibus.f_max}}", True),
-        ("Fs &lt; {{results.omnibus.f_max}}", True),
-        ("Fs \\< {{results.omnibus.f_max}}", True),
-        ("F less than {{results.omnibus.f_max}}", True),
-        ("p greater than or equal to {{results.omnibus.p_min}}", True),
-        ("{{results.contrasts.t_min}} \N{LESS-THAN OR EQUAL TO} ts", True),
-        ("{{results.omnibus.f_max}} > Fs", True),
-        ("{{results.contrasts.t_min}} <\nts", True),
-        ("{{results.contrasts.t_min}} &LT; ts", True),
+        # The preprint's three: the value at full precision is on the wrong side of a bound
+        # on a set of statistics.
+        ("all Fs < {{results.omnibus.f_max}}", "fail"),
+        ("all *p*s > {{results.omnibus.p_min}}", "fail"),
+        ("{{results.contrasts.t_min}} < ts", "fail"),
+        # Each comparator as it is spelt, before the binding and after it, beside a plural.
+        ("all p-values > {{results.omnibus.p_min}}", "fail"),
+        ("P values > {{results.omnibus.p_min}}", "fail"),
+        ("Fs \N{LESS-THAN OR EQUAL TO} {{results.omnibus.f_max}}", "fail"),
+        ("Fs &lt; {{results.omnibus.f_max}}", "fail"),
+        ("Fs \\< {{results.omnibus.f_max}}", "fail"),
+        ("Fs less than {{results.omnibus.f_max}}", "fail"),
+        ("{{results.contrasts.t_min}} \N{LESS-THAN OR EQUAL TO} ts", "fail"),
+        ("{{results.omnibus.f_max}} > all Fs", "fail"),
+        ("{{results.contrasts.t_min}} <\nts", "fail"),
+        ("{{results.contrasts.t_min}} &LT; ts", "fail"),
+        ("R2s < {{results.fit.r2}}", "fail"),
+        # Round 2 of #629: beside a single statistic the binding may be a threshold, and a
+        # contradiction is a warning. Both of these are true sentences.
+        ("the difference was significant (z > {{results.tests.z_crit}})", "warn"),
+        ("p < {{results.tests.alpha_bonf}}", "warn"),
+        ("F less than {{results.omnibus.f_max}}", "warn"),
+        ("p greater than or equal to {{results.omnibus.p_min}}", "warn"),
+        ("{{results.contrasts.t_min}} < t", "warn"),
         # A statistic with its index, which is no typed number (round 1 of #629).
-        ("R2 < {{results.fit.r2}}", True),
-        ("I2 > {{results.fit.i2}}", True),
-        ("*R*^2^ < {{results.fit.r2}}", True),
+        ("R2 < {{results.fit.r2}}", "warn"),
+        ("I2 > {{results.fit.i2}}", "warn"),
+        ("*R*^2^ < {{results.fit.r2}}", "warn"),
         # The value on the side the comparison says, or at the number printed: the bound
         # is not strict, as a display's is not.
-        ("all Fs > {{results.omnibus.f_max}}", False),
-        ("all ps < {{results.omnibus.p_min}}", False),
-        ("{{results.contrasts.t_min}} > ts", False),
-        ("ts \N{GREATER-THAN OR EQUAL TO} {{results.contrasts.t_max}}", False),
-        ("ts < {{results.contrasts.t_max}}", False),
+        ("all Fs > {{results.omnibus.f_max}}", None),
+        ("all ps < {{results.omnibus.p_min}}", None),
+        ("{{results.contrasts.t_min}} > ts", None),
+        ("ts \N{GREATER-THAN OR EQUAL TO} {{results.contrasts.t_max}}", None),
+        ("ts < {{results.contrasts.t_max}}", None),
         # Round 1 of #629: where the subject is no statistic's symbol, the binding may be
         # the other side of what is compared, and nothing is read. Each value below would
         # be contradicted if the comparison were read.
         ("Incidence in exposed patients was greater than {{results.incidence.unexposed}}",
-         False),
-        ("the new model's t was greater than {{results.contrasts.t_min}}", False),
-        ("F wasn't less than {{results.omnibus.f_max}}", False),
-        ("F wasn\N{RIGHT SINGLE QUOTATION MARK}t less than {{results.omnibus.f_max}}", False),
-        ("F no less than {{results.omnibus.f_max}}", False),
-        ("was no\nless than {{results.omnibus.f_max}}", False),
-        ("a threshold of 2.6\n< {{results.omnibus.f_max}}", False),
+         None),
+        ("the new model's t was greater than {{results.contrasts.t_min}}", None),
+        ("F wasn't less than {{results.omnibus.f_max}}", None),
+        ("F wasn\N{RIGHT SINGLE QUOTATION MARK}t less than {{results.omnibus.f_max}}", None),
+        ("F no less than {{results.omnibus.f_max}}", None),
+        ("was no\nless than {{results.omnibus.f_max}}", None),
+        ("a threshold of 2.6\n< {{results.omnibus.f_max}}", None),
+        # Round 2 of #629: so too after the binding.
+        ("{{results.incidence.unexposed}} < the incidence in exposed patients", None),
         # Two numbers compared, and no bound on a quantity: not read.
-        ("2.6 < {{results.omnibus.f_max}}", False),
-        ("{{results.omnibus.p_min}} < 0.3", False),
-        ("{{results.contrasts.t_min}} < {{results.omnibus.f_max}}", False),
-        # What only looks like a comparator.
-        ("<!-- the smallest -->{{results.omnibus.p_min}} was the smallest p", False),
-        ("\n\n> {{results.omnibus.p_min}} was the smallest p", False),
-        ("\n\n- > {{results.omnibus.p_min}} was the smallest p", False),
-        ("the smallest p, <sup>{{results.omnibus.p_min}}</sup>", False),
-        ("F -> {{results.omnibus.p_min}}", False),
-        ("{{results.contrasts.t_min}} <\n\nts", False),
+        ("2.6 < {{results.omnibus.f_max}}", None),
+        ("{{results.omnibus.p_min}} < 0.3", None),
+        ("{{results.contrasts.t_min}} < {{results.omnibus.f_max}}", None),
+        # What only looks like a comparator: an HTML tag is no statistic (round 2 of #629).
+        ("<p>{{results.omnibus.p_min}}</p>", None),
+        ("<P>{{results.omnibus.p_min}}</P>", None),
+        ("the smallest</p>{{results.omnibus.p_min}}", None),
+        ("<!-- the smallest -->{{results.omnibus.p_min}} was the smallest p", None),
+        ("\n\n> {{results.omnibus.p_min}} was the smallest p", None),
+        ("\n\n- > {{results.omnibus.p_min}} was the smallest p", None),
+        ("the smallest p, <sup>{{results.omnibus.p_min}}</sup>", None),
+        ("F -> {{results.omnibus.p_min}}", None),
+        ("{{results.contrasts.t_min}} <\n\nts", None),
     ],
 )
 def test_a_comparison_typed_beside_a_binding_holds_of_the_value(
-    project: Path, capsys, typed: str, contradicts: bool
+    project: Path, capsys, typed: str, said: str | None
 ) -> None:
     """A real preprint's "all Fs < {{results...}}" printed "all Fs < 2.53" of an F of 2.532,
     its "all ps > ..." ".260" of .2596, and "... < ts" "4.27" of 4.268, and `check` passed:
     the emitter refuses the same claim written as a display ("<2.53" of 2.532), and nothing
-    read it in the sentence. The value is held to the comparison as the emitter holds it."""
+    read it in the sentence. The value is held to the comparison as the emitter holds it,
+    failing beside a plural and warning beside a single statistic."""
     _compared_emitted(project, _COMPARED)
     line = _append_paragraph(main_md(project), f"In the extra analysis, {typed}.")
     key = re.search(r"results\.([a-z0-9_.]+)", typed)[1]
-    assert _comparisons_failed(project, capsys) == ([(f"results.{key}", line)]
-                                                    if contradicts else [])  # fmt: skip
+    assert _comparisons_said(project, capsys) == ([(f"results.{key}", line, said)]
+                                                  if said else [])  # fmt: skip
 
 
 def test_a_comparison_beside_a_binding_in_the_supplement_is_held_too(
@@ -5367,7 +5386,7 @@ def test_a_comparison_beside_a_binding_in_the_supplement_is_held_too(
     supplement = project / "manuscript" / "supplementary" / "appendix.md"
     supplement.parent.mkdir(parents=True, exist_ok=True)
     supplement.write_text("# Appendix\n\nAll Fs < {{results.omnibus.f_max}}.\n", "utf-8")
-    assert _comparisons_failed(project, capsys) == [("results.omnibus.f_max", 3)]
+    assert _comparisons_said(project, capsys) == [("results.omnibus.f_max", 3, "fail")]
 
 
 def test_the_message_names_the_value_its_print_and_the_comparison(project: Path) -> None:

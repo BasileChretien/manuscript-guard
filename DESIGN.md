@@ -25480,24 +25480,35 @@ What papers converted from Word showed (see "What papers converted from Word sho
     the same way. A quote that is the finding's words alone, a heading "AS", is listed
     wherever two paragraphs hold it, a word as well as a number. Accepted.
 
-- **A comparison beside a binding is read after a statistic's symbol, or after the binding.**
-  G2 fails a value that a comparator typed beside its binding contradicts
-  (`comparison-contradicted`), in two shapes: a statistic's symbol from a closed list (p, F,
-  t, r, z, d and their plurals, χ², R² and I², italics allowed) right before "<", ">", "≤",
-  "≥", their spellings ("<=", "&lt;", `\<`), "less than" or "greater than" (with "or equal
-  to") and the binding; and a sign right after the binding. It holds the value as the
-  emitter holds a comparator display, "<2.53": at the number printed or on the side the sign
-  names, so not strictly, and a sign after the binding holds it to the other side
-  ("{{results.t_min}} < ts" says the ts are above it). The real case was a psychology
-  preprint, PsyArXiv fyxeq_v2, whose "all Fs <", "all ps >" and "< ts" printed 2.53, .260
-  and 4.27 of 2.532, .2596 and 4.268. Pinned by
+- **A comparison beside a binding is read beside a statistic's symbol, and fails only for a
+  plural.** G2 reads a comparator typed beside a binding (`comparison-contradicted`) in two
+  shapes: a statistic's symbol from a closed list (p, P, F, t, r, z, d, χ², R² and I², with
+  an "s" for the plural, "p-values" and "P values", italics allowed) right before "<", ">",
+  "≤", "≥", their spellings ("<=", "&lt;", `\<`), "less than" or "greater than" (with "or
+  equal to") and the binding; and a sign right after the binding with such a symbol after
+  it, "all" allowed. It holds the value as the emitter holds a comparator display, "<2.53":
+  at the number printed or on the side the sign names, so not strictly, and a sign after
+  the binding holds it to the other side ("{{results.t_min}} < ts" says the ts are above
+  it). The real case was a psychology preprint, PsyArXiv fyxeq_v2, whose "all Fs <", "all
+  ps >" and "< ts" printed 2.53, .260 and 4.27 of 2.532, .2596 and 4.268. Pinned by
   `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
-  - A comparison with any other subject is not read, because there the binding may be the
-    other side of what is compared rather than its bound: "Incidence in exposed patients was
-    greater than {{results.inc_unexposed}}" is true of the two incidences when the binding
-    prints 2.53 of 2.528, and read as a bound it would fail (round 1 of #629). So "the
-    model's t was greater than", "ps were all >", "t(27) <", a symbol in maths with its plural
-    outside, `$F$s`, and a statistic the list leaves out are not read either. Accepted.
+  - A plural states a bound on a set, every F below the binding, and the binding is the
+    set's extreme: a contradiction fails. A single statistic may be compared with a
+    threshold rather than bounded by its own value: "(z > {{results.z_crit}})" is true of a
+    z above 1.96 when the critical value 1.959964 prints "1.96", and "p <
+    {{results.alpha_bonf}}" of a p below a corrected alpha of 0.008333 printed "0.0083".
+    The rule cannot tell a threshold from a bound, so beside a singular a contradiction is a
+    warning with the same message, and a false bound typed beside one symbol, "F <" the
+    largest F rounded down, only warns (round 2 of #629). Pinned by
+    `tests/test_corruption.py::test_a_comparison_typed_beside_a_binding_holds_of_the_value`.
+  - A comparison with any other subject is not read, before the binding or after it,
+    because there the binding may be the other side of what is compared rather than its
+    bound: "Incidence in exposed patients was greater than {{results.inc_unexposed}}" and
+    "{{results.inc_unexposed}} < the incidence in exposed patients" are true of the two
+    incidences when the binding prints 2.53 of 2.528, and read as a bound they would fail
+    (rounds 1 and 2 of #629). So "the model's t was greater than", "ps were all >", "the
+    p-value <", "t(27) <", a symbol in maths with its plural outside, `$F$s`, and a
+    statistic the list leaves out are not read either. Accepted.
   - Other words for a comparison are not read: "below", "above", "under", "over", "more
     than", "fewer than", "at least", "at most", "exceeding". Choosing them is a list of words
     the rule does not settle. Accepted.

@@ -1432,13 +1432,15 @@ def _units_after() -> Reading:
 
 @reading("comparisons beside")
 def _comparisons_beside() -> Reading:
-    """The comparator written right before or right after each results binding, and the
-    side of the number printed it holds the value to, which G2 fails where the value
-    emitted is not there."""
+    """The comparator written right before or right after each results binding beside a
+    statistic, the side of the number printed it holds the value to, and whether the
+    statistic is a plural, which G2 fails where the value emitted is not there, and warns of
+    beside a singular."""
     from manuscript_guard.gates.bound_comparisons import comparisons_at
 
     def compared(text: str) -> list[list[Any]]:
-        return [[found.key, found.start, found.op, found.below] for found in comparisons_at(text)]
+        return [[found.key, found.start, found.op, found.below, found.plural]
+                for found in comparisons_at(text)]  # fmt: skip
 
     return compared
 

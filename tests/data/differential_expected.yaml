@@ -101,10 +101,10 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G14 says an abbreviation is used, or not used again, in a part of the paper "as G14
-      reads it", and says a word with underscores is "written with underscores, the way a
-      name in code is written"; G6 takes a citation typed as text beside a claim for its
-      support (corpus round, 2026-11-10)
+      G2 reads no number of a typed reference list, under a heading or a title in bold that
+      names one, up to where `text.reference_lists` ends it, so its years, volumes, pages
+      and terms are no longer counted or failed (decision 5, 2026-11-11: the real-paper
+      corpus rebuilt with init --from)
   - reading: data dates
     why: >-
       the finding says the date was emitted as a string rather than typed, and its hint adds

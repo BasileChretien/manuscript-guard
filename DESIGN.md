@@ -6142,9 +6142,10 @@ mean), the floor being the `range.min` the data dictionary gives the variable;
 down, a sentence and not a blank. A `variable=` with no entry is G16's `not-in-dictionary`.
 In `audit`, `--non-negative` names the rows, by words of their labels as `--whole-numbers`
 does, and each cell printed as a mean and its SD is held to 0; one less than twice its SD
-is listed with the disagreements. A row's label decides first whether it is read: an SE or
-a change is not, a mean or an SD is, a category is not; otherwise counts and their shares
-under a table that says n (%) are not read. Each row not read is said. A message cites
+is listed with the disagreements. What can be said exactly decides whether a cell is read,
+and what is unsure is said as not read: an SE or a change is not read, a mean or an SD
+named by the label or the cell's header is, a category is not, and in a table that says
+n (%) a cell whose first number is whole may be a count and is not read. A message cites
 Altman and Bland where the floor is 0 and the Handbook where it is another. The limits are
 under "Known gaps".
 
@@ -20877,22 +20878,28 @@ Open, recorded as each change landed:
   sentence are not read. A standard error is seen where the row's label or the table's
   first row over the cell names one (SE, SEM, s.e., s.e.m., "standard error"), and such
   cells are not read and said; one named only in a caption, a note or a second header row
-  is not seen, and the cell is read as a mean and its SD. The label decides first (round 2
-  of #660): one that names a change is not read, one that names a mean or an SD is read
-  whatever the table says, and one that names a category (a comparator, n (%), "%", yes,
-  no, n/N) is not read. In any other row, a count and its share ("5 (12.5)", "5 (12)") is
-  not read where the paragraph just above or below the table, or its first row, says n (%)
-  or holds a "%". A change named only in a column's header is read, and so is a count with
-  its share in a table that says n (%) only further away than the paragraphs next to it,
-  or nowhere. A label is taken as
+  is not seen, and the cell is read as a mean and its SD. What can be said exactly decides
+  (round 3 of #660): a label naming a change is not read; a label, or the cell's own
+  first-row header, naming a mean or an SD is read whatever the caption says; a label
+  naming a category is not read; and in a table that says n (%) ("n (%)", "N (%)",
+  "No. (%)", "n/N (%)" in the paragraph just above or below it, or in its first row) a
+  cell whose first number is whole may be a count, and is not read. A change named only
+  in a column's header is read, and so is a count in a table that says n (%) only further
+  away than the paragraphs next to it, or nowhere, or only by a bare "%" header. A label's
+  HTML tags are taken off before it is read, so "<sup>a</sup>" is no comparator; a "<"
+  before a space or a digit is one. A label is taken as
   one of a variable that cannot be negative because the auditor says so: a variable with
   another floor, a score of 1 to 7, is held to 0, which can only report fewer means.
   Pinned by `tests/test_properties.py::test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero`
   and `tests/test_corruption.py::test_an_se_named_only_in_a_caption_is_not_seen`.
-  - A whole-number mean with a decimal SD, "5 (7.2)", in a row whose label names neither a
-    mean nor a category, in a table that says n (%), is taken for a count and its share,
-    and not read: the two print alike, and only the label tells them apart.
+  - In a table that says n (%), a whole-number mean in a row whose label names neither a
+    mean nor a category, and under no header naming one, is not read and is said as
+    possibly a count, whatever its SD, "5 (7.2)", "4 (9)" or "4 ± 9.5": a count prints
+    alike, and only the label or the header tells them apart.
     Pinned by `tests/test_corruption.py::test_a_whole_number_mean_unmarked_in_a_table_of_counts_is_passed_over`.
+  - A mean of a percentage whose label says only "%", "Body fat, %", with no word for a
+    mean, is passed over as a category: "%" in a label is read as a share's.
+    Pinned by `tests/test_corruption.py::test_a_mean_of_a_percentage_unmarked_is_passed_over_as_a_category`.
 - **Only an equal typed copy fails.** A threshold typed in the Methods fails as a typed
   parameter while it equals one; once the code has moved on it is a warning,
   `threshold-undeclared`, and only in an analysis that declares parameters. A confidence level

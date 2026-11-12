@@ -9404,19 +9404,26 @@ def mean_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Meant]]:
 NON_NEGATIVE_LABELS = (
     "Weight", "Ferritin", "Creatinine", "Viral load", "Length of stay", "Bilirubin",
     "Lactate", "Troponin", "Albumin", "Glucose", "Platelets", "Insulin", "Sodium",
-    "Potassium",
+    "Potassium", "Urea", "Calcium",
 )  # fmt: skip
 #: The kinds of row the first table of `spread_tables` holds one of: a mean less than twice
 #: its SD, one more than twice, one exactly twice, one negative, a whole-number mean with a
 #: decimal SD, a row whose label names a standard error, one whose label names a category,
-#: one whose label names a change, one of counts and their shares, whole and decimal, whose
-#: label names neither, one of medians and ranges, a row nobody names, and a row whose label
-#: holds a named one inside a word.
+#: one whose label names a change, one that names a time to a change, one that names a
+#: number ("No. of"), one of counts and their shares whose label names neither, one of
+#: medians and ranges, a row nobody names, and a row whose label holds a named one inside a
+#: word.
 SPREAD_ROWS = ("skewed", "fine", "twice", "negative", "whole", "se", "category", "change",
-               "counts", "median", "unnamed", "inside")  # fmt: skip
+               "time to", "number of", "counts", "median", "unnamed", "inside")  # fmt: skip
 #: How a label names a change, `{label}` the measure's.
 CHANGE_NAMES = ("Change in {lower}", "{label} change from baseline", "{label}, difference",
-                "\N{GREEK CAPITAL LETTER DELTA} {lower}", "{label} delta")  # fmt: skip
+                "\N{GREEK CAPITAL LETTER DELTA} {lower}", "{label} delta",
+                "{label} from baseline to week 12", "Rate of change in {lower}",
+                "Mean of differences in {lower}")  # fmt: skip
+#: How a label names a time to a change, which is no change: "to" before it, or one word
+#: before it.
+TIME_TO_NAMES = ("Time to change in {lower}, days", "Time to treatment change, {lower}",
+                 "Days to change of {lower} therapy")  # fmt: skip
 #: How a label names a category, `{label}` the measure's.
 CATEGORY_NAMES = ("{label} >= 100", "{label} \N{GREATER-THAN OR EQUAL TO} 100",
                   "{label} > 100", "{label} < 50", "{label} <= 50",
@@ -9426,6 +9433,10 @@ CATEGORY_NAMES = ("{label} >= 100", "{label} \N{GREATER-THAN OR EQUAL TO} 100",
 #: Where the first table says its cells are n (%): a caption above it, one below it, or its
 #: header's first cell.
 SAID_N_PERCENT = ("above", "below", "header")
+#: How the caption of a table after the last one opens, which says n (%) of that table only.
+NEXT_CAPTIONS = ("Table 4. Values are n (%).", "Supplementary Table 4. Values are n (%).",
+                 "**Table 4** Values are n (%).", "Table S4. Values are n (%).",
+                 "Table: Values are n (%).", ": Values are n (%).")  # fmt: skip
 #: How a cell prints a mean and its SD, the SD at `{sd}`; the first three in brackets.
 SPREAD_SHAPES = (" ({sd})", "({sd})", " ( {sd} )", " \N{PLUS-MINUS SIGN} {sd}",
                  "\N{PLUS-MINUS SIGN}{sd}", " +/- {sd}")  # fmt: skip
@@ -9446,18 +9457,19 @@ def _one_dp(units: int) -> str:
 def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Spreaded], list[list]]:
     """A paper with a table of two arms that says its cells are n (%), in a place of
     `SAID_N_PERCENT` drawn, a row of each kind of `SPREAD_ROWS` in an order drawn, each
-    mean and SD printed in a shape of `SPREAD_SHAPES`; then a table whose header names a
-    standard error over its first arm, an SD over its second and a percentage over its
-    third, with a row whose label names nothing and one whose label names a mean (SD), a
-    whole-number mean with a decimal SD under the percentage; a table that says nothing of
-    n (%), whose row is a whole number and a decimal in brackets; and a mean and SD in a
-    sentence, which is not read. With the labels an auditor names, in lower case, one of
-    them in no row; each mean and SD the reading finds (`Spreaded`), in order; and each
-    named row passed over, as its line and why, in order."""
+    mean and SD printed in a shape of `SPREAD_SHAPES`; then a table that says n (%) in its
+    first cell, whose header names a standard error over its first arm, a mean (SD) over its
+    second and a bare "%" over its third, with a row whose label names nothing and one whose
+    label names a mean (SD), whole-number means under the mean (SD) and the "%"; a table
+    that says nothing of n (%), whose row is a whole number and a decimal in brackets, and
+    after it the caption of another table, saying n (%), opened in a way of `NEXT_CAPTIONS`;
+    and a mean and SD in a sentence, which is not read. With the labels an auditor names, in
+    lower case, one of them in no row; each mean and SD the reading finds (`Spreaded`), in
+    order; and each named row passed over, as its line and why, in order."""
     from manuscript_guard.stats.skew import (
         CATEGORY,
         CHANGE,
-        COUNTS,
+        MAYBE_COUNT,
         SE_HEADER,
         SE_LABEL,
     )
@@ -9476,9 +9488,8 @@ def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Spreaded], list
         return printed + draw(st.sampled_from(SPREAD_SHAPES)).format(sd=_one_dp(sd))
 
     def whole(mean: int, sd: int) -> str:
-        """A whole-number mean and a decimal SD in brackets, as a count and its share would
-        print: "5 (7.2)"."""
-        return f"{mean}" + draw(st.sampled_from(SPREAD_SHAPES[:3])).format(sd=_one_dp(sd))
+        """A whole-number mean and a decimal SD, as a count and its share may print."""
+        return f"{mean}" + draw(st.sampled_from(SPREAD_SHAPES)).format(sd=_one_dp(sd))
 
     def share() -> str:
         """A count and its share of 100 or less, whole or decimal: "5 (12)", "6 (14.6)"."""
@@ -9488,7 +9499,7 @@ def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Spreaded], list
 
     def pair(kind: str) -> tuple[int, int]:
         sd = draw(st.integers(1, 99))
-        if kind in ("skewed", "se", "change", "unnamed", "inside"):
+        if kind in ("skewed", "se", "change", "unnamed", "inside", "time to", "number of"):
             return draw(st.integers(0, 2 * sd - 1)), sd
         if kind == "fine":
             return draw(st.integers(2 * sd + 1, 2 * sd + 300)), sd
@@ -9497,12 +9508,18 @@ def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Spreaded], list
         return -draw(st.integers(1, 99)), sd  # negative
 
     def a_whole_mean() -> tuple[int, int]:
-        """A whole-number mean and an SD in tenths of 100 or less, so that it prints as a
-        count and its share would."""
+        """A whole-number mean and an SD in tenths of 100 or less."""
         return draw(st.integers(0, 60)), draw(st.integers(1, 999))
 
     def row(label: str, cells: list[str]) -> None:
         lines.append("| " + " | ".join([label, *cells]) + " |")
+
+    def read(pairs: list[tuple[int, int]]) -> None:
+        expected.extend((len(lines), _one_dp(mean), _one_dp(sd), mean < 2 * sd)
+                        for mean, sd in pairs)  # fmt: skip
+
+    def read_whole(mean: int, sd: int) -> None:
+        expected.append((len(lines), str(mean), _one_dp(sd), 10 * mean < 2 * sd))
 
     def mean_label(label: str) -> str:
         # A footnote marker after the label's words, or one that ends it, as `mean_tables`.
@@ -9515,65 +9532,71 @@ def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Spreaded], list
     first = "Characteristic, n (%) or mean (SD)" if said_where == "header" else "Characteristic"
     lines += [f"| {first} | Treated (n = 40) | Control (n = 41) |", "|---|---|---|"]
     for kind in draw(st.permutations(SPREAD_ROWS)):
+        name, lower = named.get(kind, ""), named.get(kind, "").lower()
         if kind == "median":
             sds = [draw(st.integers(1, 99)) for _arm in range(2)]
-            row(f"{named[kind]}, median (IQR)",
+            row(f"{name}, median (IQR)",
                 [f"{_one_dp(sd)} ({_one_dp(sd)}-{_one_dp(3 * sd)})" for sd in sds])
-            continue
-        if kind in ("category", "counts"):
+        elif kind in ("category", "counts"):
             shape = (draw(st.sampled_from(CATEGORY_NAMES)) if kind == "category"
                      else "{label} above the limit")  # fmt: skip
-            row(shape.format(label=named[kind]), [share(), share()])
-            passed.append([len(lines), CATEGORY if kind == "category" else COUNTS])
-            continue
-        if kind == "whole":
-            pairs = [a_whole_mean() for _arm in range(2)]
-            row(mean_label(named[kind]), [whole(mean, sd) for mean, sd in pairs])
-            expected += [(len(lines), str(mean), _one_dp(sd), 10 * mean < 2 * sd)
-                         for mean, sd in pairs]  # fmt: skip
-            continue
-        pairs = [pair(kind) for _arm in range(2)]
-        cells = [cell(mean, sd) for mean, sd in pairs]
-        if kind == "unnamed":
-            row(draw(st.sampled_from(MEASURES)), cells)
-        elif kind == "inside":
-            row(f"Pro{named['skewed'].lower()}", cells)
-        elif kind == "se":
-            row(f"{named[kind]}, {draw(st.sampled_from(SE_NAMES))}", cells)
-            passed.append([len(lines), SE_LABEL])
-        elif kind == "change":
-            shape = draw(st.sampled_from(CHANGE_NAMES))
-            row(shape.format(label=named[kind], lower=named[kind].lower()), cells)
-            passed.append([len(lines), CHANGE])
+            row(shape.format(label=name), [share(), share()])
+            passed.append([len(lines), CATEGORY if kind == "category" else MAYBE_COUNT])
+        elif kind == "whole":
+            means = [a_whole_mean() for _arm in range(2)]
+            row(mean_label(name), [whole(mean, sd) for mean, sd in means])
+            for mean, sd in means:
+                read_whole(mean, sd)
         else:
-            row(mean_label(named[kind]), cells)
-            expected += [(len(lines), _one_dp(mean), _one_dp(sd), mean < 2 * sd)
-                         for mean, sd in pairs]  # fmt: skip
+            pairs = [pair(kind) for _arm in range(2)]
+            cells = [cell(mean, sd) for mean, sd in pairs]
+            if kind == "unnamed":
+                row(draw(st.sampled_from(MEASURES)), cells)
+            elif kind == "inside":
+                row(f"Pro{named['skewed'].lower()}", cells)
+            elif kind == "se":
+                row(f"{name}, {draw(st.sampled_from(SE_NAMES))}", cells)
+                passed.append([len(lines), SE_LABEL])
+            elif kind == "change":
+                row(draw(st.sampled_from(CHANGE_NAMES)).format(label=name, lower=lower), cells)
+                passed.append([len(lines), CHANGE])
+            elif kind == "time to":
+                # No change, and no mean named: in a table of n (%), read for its points.
+                row(draw(st.sampled_from(TIME_TO_NAMES)).format(lower=lower), cells)
+                read(pairs)
+            elif kind == "number of":
+                row(f"No. of {lower} tests", cells)
+                read(pairs)
+            else:
+                row(mean_label(name), cells)
+                read(pairs)
     if said_where == "below":
         lines += ["", "Values are n (%) or mean (SD)."]
     lines += ["", draw(sentence).capitalize() + ".", ""]
-    # A header naming a standard error over the first arm and a percentage over the third. A
-    # row whose label names nothing loses its first cell to the SE and its third, a count,
-    # to the percentage; one whose label names a mean (SD) loses only its first.
-    lines += ["| Characteristic | Treated, mean (SE) | Control, mean (SD) | Pooled, % |",
+    # A table that says n (%) in its first cell, its header naming an SE over the first arm,
+    # a mean (SD) over the second and a bare "%" over the third. A row whose label names
+    # nothing loses its first cell to the SE and its third, a whole number, as possibly a
+    # count; its second, a whole-number mean under the mean (SD), is read. One whose label
+    # names a mean (SD) loses only its first.
+    lines += ["| Characteristic, n (%) | Treated, mean (SE) | Control, mean (SD) | Missing, % |",
               "|---|---|---|---|"]  # fmt: skip
-    pairs = [pair("skewed"), pair("skewed")]
-    row(named["header"], [*(cell(mean, sd) for mean, sd in pairs), share()])
-    passed += [[len(lines), SE_HEADER], [len(lines), COUNTS]]
-    expected.append((len(lines), _one_dp(pairs[1][0]), _one_dp(pairs[1][1]), True))
-    pairs = [pair("skewed"), pair("skewed")]
-    mean, sd = a_whole_mean()
-    row(mean_label(named["header mean"]),
-        [*(cell(mean, sd) for mean, sd in pairs), whole(mean, sd)])
+    se_pair, (mean, sd) = pair("skewed"), a_whole_mean()
+    row(named["header"], [cell(*se_pair), whole(mean, sd), share()])
+    passed += [[len(lines), SE_HEADER], [len(lines), MAYBE_COUNT]]
+    read_whole(mean, sd)
+    se_pair, pairs, (mean, sd) = pair("skewed"), [pair("skewed")], a_whole_mean()
+    row(mean_label(named["header mean"]), [cell(*se_pair), cell(*pairs[0]), whole(mean, sd)])
     passed.append([len(lines), SE_HEADER])
-    expected += [(len(lines), _one_dp(pairs[1][0]), _one_dp(pairs[1][1]), True),
-                 (len(lines), str(mean), _one_dp(sd), 10 * mean < 2 * sd)]  # fmt: skip
-    # A table that says nothing of n (%): a whole number and a decimal in brackets is read.
+    read(pairs)
+    read_whole(mean, sd)
+    # A table that says nothing of n (%): a whole number and a decimal is read. The caption
+    # after it is another table's, and says nothing of this one.
     lines += ["", draw(sentence).capitalize() + ".", "", "| Characteristic | Cases |",
               "|---|---|"]  # fmt: skip
     mean, sd = a_whole_mean()
     row(named["plain"], [whole(mean, sd)])
-    expected.append((len(lines), str(mean), _one_dp(sd), 10 * mean < 2 * sd))
+    read_whole(mean, sd)
+    lines += ["", draw(st.sampled_from(NEXT_CAPTIONS))]
     mean, sd = pair("skewed")
     lines += ["", f"{draw(sentence).capitalize()} {named['skewed']} {cell(mean, sd)} "
               f"{draw(sentence)}.", ""]  # fmt: skip

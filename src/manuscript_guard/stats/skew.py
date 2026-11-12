@@ -16,10 +16,9 @@ possible value, over the SD, below 2), and a message cites the one it applied.
 
 `check` reads it for a mean whose variable the data dictionary gives a `range.min`, its
 floor (`gates/summaries.py`); `audit --non-negative` for the rows of a table the auditor
-names, with a floor of 0 (`auditing/skew.py`). There a row is passed over, and said, where
-it is not a mean (SD) of the measure named, its label deciding first: a standard error, a
-change, which can be negative, a category, or counts and their shares under a table that
-says n (%) (`table_spreads`).
+names, with a floor of 0 (`auditing/skew.py`). There a cell is read only where it can be
+said to be a mean (SD) of the measure named, and anything unsure is passed over and said
+(`table_spreads`).
 """
 
 from __future__ import annotations
@@ -59,31 +58,34 @@ _SE = re.compile(
     r"(?<![\w.])(?:SEM?|S\.E\.(?:M\.)?|s\.e\.(?:m\.)?)(?![\w])|(?i:\bstandard\s+errors?\b)"
 )
 #: What names a change, which can be negative: the words, "from baseline", or a delta. Not
-#: a time to one, "time to change of therapy", "days to treatment change", nor a span "from
-#: baseline to" an event, which cannot be negative (round 2 of #660).
+#: a time to one, "time to change of therapy", "days to treatment change" (`_TO_ONE`).
 _CHANGE = re.compile(
-    r"(?i:\b(?:change[sd]?|differences?|delta)\b|\bfrom\s+baseline\b(?!\s+to\b))"
+    r"(?i:\b(?:change[sd]?|differences?|delta)\b|\bfrom\s+baseline\b)"
     r"|[\N{GREEK CAPITAL LETTER DELTA}\N{INCREMENT}]"
 )
 #: What stands before a change that makes it the event a time runs to: "to", one word apart
-#: at most ("to change", "to treatment change"), or "of" just before it ("time of change").
-_TO_ONE = re.compile(r"(?i)\b(?:to\s+(?:[\w-]+\s+)?|of\s+)\Z")
+#: at most ("to change", "to treatment change").
+_TO_ONE = re.compile(r"(?i)\bto\s+(?:[\w-]+\s+)?\Z")
 #: What says a table's cells are counts and their shares: n (%), N (%), No. (%) or n/N (%).
+#: A bare "%", "Missing, %", says it of no table.
 _N_PERCENT = re.compile(r"(?<![\w.])(?:[nN]|No\.|n/N)\s*\(\s*%\s*\)")
-#: A count and its share, as such a table prints one: a whole number, and a share of 100 or
-#: less in brackets, whole or not.
-_COUNT_SHARE = re.compile(r"(?P<count>\d+)\s*\(\s*(?P<share>\d+(?:\.\d+)?|\.\d+)\s*\)")
-#: What says a label is of a mean and its SD: "mean", "SD", "± SD".
+#: What says a label, or a column's header, is of a mean and its SD: "mean", "SD", "± SD".
 _MEAN_NAMED = re.compile(r"(?i:\bmean\b)|\bSD\b")
-#: What says a label is a category, whose cells are counts: a comparator, n (%), a "%", yes
-#: or no, n/N.
+#: What says a label is a category, whose cells are counts: a comparator, n (%), a "%", yes,
+#: n/N, or "no" where neither a point nor "of" follows it ("No. of days" is a number).
 _CATEGORY = re.compile(
     r"[<>\N{GREATER-THAN OR EQUAL TO}\N{LESS-THAN OR EQUAL TO}%]"
-    r"|(?i:\b(?:yes|no)\b)|(?<![\w/])n/N(?![\w/])"
+    r"|(?i:\byes\b|\bno\b(?!\s*\.)(?!\s+of\b))|(?<![\w/])n/N(?![\w/])"
 )
-#: A line that opens a table's caption, "Table 2.", "Table S1", "**Table 3**": the caption
-#: of another table, where the paragraph below one is read.
-_CAPTION_OPENS = re.compile(r"^\s*(?:\*\*|__)?Table\s+S?\d+\b", re.IGNORECASE)
+#: An HTML tag in a label, "<sup>a</sup>", taken off before the label is read: its "<" is
+#: no comparator. A "<" before a space or a digit, "< 50", opens no tag.
+_TAG = re.compile(r"</?[A-Za-z][^<>]*>")
+#: A line that opens a table's caption: "Table 2.", "Table S1", "**Table 3**",
+#: "Supplementary Table 2", and pandoc's "Table: ..." and ": ...". Below a table it is
+#: another table's, and the paragraph read there ends before it.
+_CAPTION_OPENS = re.compile(
+    r"^\s*(?:(?:\*\*|__)?(?:Supplementary\s+)?Table\s+S?\d+\b|Table:|:\s)", re.IGNORECASE
+)
 #: How far above or below a table a caption saying n (%) is looked for: its paragraph.
 _CAPTION_LINES = 3
 #: How much of a row the context shows.
@@ -169,7 +171,7 @@ class Passed:
 SE_LABEL = "its label names a standard error, and an SE is not an SD"
 SE_HEADER = "the header over its cells names a standard error, and an SE is not an SD"
 CATEGORY = "its label names a category, so its cells are counts and their shares"
-COUNTS = "its cells are counts and their shares, as the table says n (%)"
+MAYBE_COUNT = "in a table of counts and their shares, it may be a count"
 CHANGE = "its label names a change or a difference, which can be negative"
 
 
@@ -179,23 +181,32 @@ def table_spreads(
     """Each cell shaped as a mean and its SD in a row whose label holds one of `labels`, at
     word edges and in any case, in reading order; and each such row passed over, with why.
 
-    The row's label decides first (round 2 of #660). One that names a standard error or a
-    change is passed over. One that names a mean or an SD is read as means and SDs, whatever
-    the caption or a header says. One that names a category (a comparator, n (%), a "%",
-    yes or no, n/N) holds counts, and is passed over. Any other is read, but where the
-    table says n (%), in the `caption` or a cell of its first row (or a "%" there), a cell
-    that is a whole count and a share of 100 or less, "5 (12.5)" or "5 (12)", is taken for
-    a count and passed over. A cell under a header of the first row that names a standard
-    error is passed over in every row read."""
+    What can be said exactly decides, and what is unsure is said as not read (round 3 of
+    #660), in this order, the label's HTML tags taken off:
+
+    1. a label that names a standard error is not read, nor a cell under a header of the
+       table's first row that names one;
+    2. a label that names a change is not read (`names_a_change`);
+    3. a label that names a mean or an SD is read, whatever the caption says, and so is a
+       cell under a first-row header that names one;
+    4. a label that names a category holds counts, and is not read;
+    5. in a table that says n (%), in the `caption` or a cell of its first row, a cell
+       whose first number has a point is read, since a count is whole, and one whose first
+       number is whole may be a count, and is not read;
+    6. anything else is read.
+    """
     found: list[Spread] = []
     passed: list[Passed] = []
     header = table[0] if table else ()
     se_columns = _columns_naming(header, lambda text: _SE.search(text) is not None)
+    mean_columns = _mean_columns(header)
     counted = _N_PERCENT.search(caption) is not None or any(
-        _N_PERCENT.search(cell.text) or "%" in cell.text for cell in header)
+        _N_PERCENT.search(cell.text) for cell in header)
     for row in table:
         label = row[0].text if row else ""
-        if not any(names(wanted, label) for wanted in labels):
+        # A space for each tag, so that "Weight<sup>a</sup>" keeps "Weight" a word of its own.
+        plain = _TAG.sub(" ", label)
+        if not any(names(wanted, plain) for wanted in labels):
             continue
         shaped = [(column, cell, _CELL.fullmatch(_clean(cell.text)[0]))
                   for column, cell in list(_columns(row))[1:]]  # fmt: skip
@@ -203,17 +214,14 @@ def table_spreads(
         if not shaped:
             continue
         context, line = _context(row), shaped[0][1].line
-        why = _passed_by_label(label)
+        why = SE_LABEL if _SE.search(plain) else CHANGE if names_a_change(plain) else None
         if why is not None:
             passed.append(Passed(line, label, why, context))
             continue
-        left_outs = [(SE_HEADER, lambda column, match: column in se_columns)]
-        if counted and not names_a_mean(label):
-            left_outs.append((COUNTS, lambda column, match: _count_and_share(match)))
-        for reason, left_out in left_outs:
-            if any(left_out(column, match) for column, _cell, match in shaped):
-                passed.append(Passed(line, label, reason, context))
-            shaped = [one for one in shaped if not left_out(one[0], one[2])]
+        whys = [_cell_left_out(column, match, plain, se_columns, mean_columns, counted)
+                for column, _cell, match in shaped]  # fmt: skip
+        passed += [Passed(line, label, why, context) for why in _LEFT_OUT if why in whys]
+        shaped = [one for one, why in zip(shaped, whys, strict=True) if why is None]
         for _column, cell, match in shaped:
             found.append(Spread(
                 line=cell.line, printed=" ".join(cell.text.split()),
@@ -223,41 +231,53 @@ def table_spreads(
     return found, passed
 
 
+def _mean_columns(header) -> set[int]:
+    """The columns under a first-row header that names a mean or an SD: "Mean (SD)"."""
+    return _columns_naming(header, names_a_mean)
+
+
+#: Why a cell of a row read is left out, in the order a row's reasons are said.
+_LEFT_OUT = (SE_HEADER, CATEGORY, MAYBE_COUNT)
+
+
+def _cell_left_out(column: int, match: re.Match[str], label: str, se_columns: set[int],
+                   mean_columns: set[int], counted: bool) -> str | None:  # fmt: skip
+    """Why a cell of a row whose label names no standard error and no change is left out,
+    by rules 1 and 3 to 5 of `table_spreads`; None where it is read."""
+    if column in se_columns:
+        return SE_HEADER
+    if names_a_mean(label) or column in mean_columns:
+        return None
+    if _CATEGORY.search(label):
+        return CATEGORY
+    if counted and _may_be_a_count(match):
+        return MAYBE_COUNT
+    return None
+
+
 def names_a_mean(label: str) -> bool:
-    """Whether a row's label says its cells are a mean and its SD: "mean", "SD"."""
+    """Whether a row's label, or a column's header, says its cells are a mean and its SD:
+    "mean", "SD"."""
     return _MEAN_NAMED.search(label) is not None
 
 
 def names_a_change(label: str) -> bool:
     """Whether a row's label names a change, which can be negative: not a time to one,
-    "days to treatment change", nor "from baseline to" an event (round 2 of #660)."""
+    "days to treatment change" (round 2 of #660); "from baseline to week 12" is one."""
     return any(_TO_ONE.search(label, 0, match.start()) is None
                for match in _CHANGE.finditer(label))  # fmt: skip
 
 
-def _passed_by_label(label: str) -> str | None:
-    """Why a row is passed over whole for its label, in order: a standard error, a change,
-    then a category, unless the label names a mean."""
-    if _SE.search(label):
-        return SE_LABEL
-    if names_a_change(label):
-        return CHANGE
-    if not names_a_mean(label) and _CATEGORY.search(label):
-        return CATEGORY
-    return None
+def _may_be_a_count(match: re.Match[str]) -> bool:
+    """Whether a cell read as a mean and its SD may be a count and its share: its first
+    number is whole, as a count is."""
+    return "." not in match["mean"]
 
 
 def _columns_naming(header, says) -> set[int]:
     """The columns under a header cell, its first column's aside, of which `says` holds."""
     return {each for column, cell in list(_columns(header))[1:] if says(cell.text)
             for each in range(column, column + max(cell.span, 1))}  # fmt: skip
-
-
-def _count_and_share(match: re.Match[str]) -> bool:
-    """Whether a cell read as a mean and its SD is a whole count and a share of 100 or less
-    in round brackets, "5 (12.5)" or "5 (12)", as a table of n (%) prints one."""
-    shaped = _COUNT_SHARE.fullmatch(match.group())
-    return shaped is not None and Decimal(shaped["share"]) <= 100
 
 
 def caption_of(lines: list[str], table: Table) -> str:

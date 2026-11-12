@@ -16517,7 +16517,7 @@ def _never_negative_said(tmp_path: Path, text: str, *labels: str) -> tuple[list,
     return skewed, [(d.line, d.message) for d in report.non_negative_unread]
 
 
-_SKEW_COUNTED = "its cells are counts and their shares, as the table says n (%)"
+_SKEW_COUNTED = "in a table of counts and their shares, it may be a count"
 _SKEW_CATEGORY = "its label names a category, so its cells are counts and their shares"
 
 
@@ -16582,18 +16582,80 @@ def test_a_label_that_names_a_mean_is_read_whatever_the_table_says(
     assert unread == []
 
 
+@pytest.mark.parametrize("cells", ["5 (7.2)", "4 (9)", "4 \N{PLUS-MINUS SIGN} 9.5"])
 def test_a_whole_number_mean_unmarked_in_a_table_of_counts_is_passed_over(
-    tmp_path: Path,
+    tmp_path: Path, cells: str
 ) -> None:
-    """A Known gap (round 2 of #660): in a table that says n (%), a row whose label names
-    neither a mean nor a category, and whose cells are a whole number and a share of 100 or
-    less, "5 (7.2)", is taken for counts; a mean printed with a point is read."""
+    """A Known gap (rounds 2 and 3 of #660): in a table that says n (%), a row whose label
+    names neither a mean nor a category, and whose first number is whole, may be a count:
+    it is not read, and is said so, whatever its SD. A mean printed with a point is read,
+    since a count is whole."""
     text = ("Table 1. Values are n (%) or mean (SD).\n\n| Characteristic | Treated |\n"
-            "|---|---|\n| Length of stay, days | 5 (7.2) |\n| Weight, kg | 7.1 (12.3) |\n")
+            f"|---|---|\n| Length of stay, days | {cells} |\n| Weight, kg | 7.1 (12.3) |\n")
     skewed, unread = _never_negative_said(tmp_path, text, "length of stay", "weight")
     assert skewed == [(6, "7.1 (12.3)")]
     assert unread == [
         (5, f"--non-negative row 'Length of stay, days': not read, as {_SKEW_COUNTED}")]
+
+
+def test_a_mean_of_a_percentage_unmarked_is_passed_over_as_a_category(tmp_path: Path) -> None:
+    """A Known gap (round 3 of #660): "Body fat, %" reported as a mean (SD), with no word
+    saying so, is taken for a category, its "%" for a share's."""
+    text = "| Characteristic | Treated |\n|---|---|\n| Body fat, % | 25.1 (6.2) |\n"
+    skewed, unread = _never_negative_said(tmp_path, text, "body fat")
+    assert skewed == []
+    assert unread == [(3, f"--non-negative row 'Body fat, %': not read, as {_SKEW_CATEGORY}")]
+
+
+def test_a_column_header_naming_a_mean_is_read_whatever_the_caption_says(
+    tmp_path: Path,
+) -> None:
+    """Round 3 of #660: the cell's own column header naming a mean (SD) says what it holds;
+    a bare "%" header, "Missing, %", says nothing of the table's other cells."""
+    text = ("Table 1. Values are n (%) or mean (SD).\n\n| Variable | Mean (SD) | Missing, % |\n"
+            "|---|---|---|\n| Length of stay, days | 5 (7.2) | 4 |\n\n"
+            "| Variable | Mean (SD) | Missing, % |\n|---|---|---|\n"
+            "| Weight, kg | 7 (14.2) | 2 |\n")  # fmt: skip
+    skewed, unread = _never_negative_said(tmp_path, text, "length of stay", "weight")
+    assert skewed == [(5, "5 (7.2)"), (9, "7 (14.2)")] and unread == []
+
+
+@pytest.mark.parametrize(
+    ("label", "name"),
+    [("No. of days in hospital", "days in hospital"), ("Prior lines, no.", "prior lines"),
+     ("Number of visits, no. of patients", "visits")],
+)
+def test_no_followed_by_a_point_or_of_is_no_category(
+    tmp_path: Path, label: str, name: str
+) -> None:
+    """Round 3 of #660: "No." and "no. of" abbreviate "number", and name no category."""
+    text = f"| Characteristic | Treated |\n|---|---|\n| {label} | 4.2 (9.1) |\n"
+    skewed, unread = _never_negative_said(tmp_path, text, name)
+    assert skewed == [(3, "4.2 (9.1)")] and unread == []
+
+
+def test_a_label_s_html_tags_are_no_comparator(tmp_path: Path) -> None:
+    """Round 3 of #660: a label marked up in HTML, "Weight<sup>a</sup>", holds a "<" that
+    named a comparator, and the row was taken for a category."""
+    text = ("| Characteristic | Treated |\n|---|---|\n| Weight<sup>a</sup>, kg | 7.1 (12.3) |\n"
+            "| Weight < 50 kg | 5 (12) |\n")
+    skewed, unread = _never_negative_said(tmp_path, text, "weight")
+    assert skewed == [(3, "7.1 (12.3)")]
+    assert unread == [(4, f"--non-negative row 'Weight < 50 kg': not read, as {_SKEW_CATEGORY}")]
+
+
+@pytest.mark.parametrize(
+    "opens",
+    ["Table: Values are n (%).", ": Values are n (%).", "Supplementary Table 2. Values are n (%).",
+     "Table 2. Values are n (%)."],
+)
+def test_the_scan_below_a_table_stops_at_any_caption(tmp_path: Path, opens: str) -> None:
+    """Round 3 of #660: pandoc's caption lines, "Table: ..." and ": ...", and "Supplementary
+    Table 2" open another table's caption, and the scan below a table read on into them."""
+    text = (f"| Characteristic | Treated |\n|---|---|\n| Weight, kg | 7 (12.5) |\n\n{opens}\n\n"
+            "| Characteristic | Treated |\n|---|---|\n| Ferritin, ng/mL | 6 (12.5) |\n")
+    skewed, unread = _never_negative_said(tmp_path, text, "weight")
+    assert skewed == [(3, "7 (12.5)")] and unread == []
 
 
 def test_a_table_s_caption_is_its_own_and_not_the_next_one_s(tmp_path: Path) -> None:
@@ -16614,7 +16676,11 @@ def test_a_table_s_caption_is_its_own_and_not_the_next_one_s(tmp_path: Path) -> 
     "label",
     ["Weight change from baseline, kg", "Change in weight, kg", "Weight, difference",
      "\N{GREEK CAPITAL LETTER DELTA} weight, kg", "Weight delta, kg",
-     "Weight, change from baseline to week 12"],
+     "Weight, change from baseline to week 12",
+     # Round 3: "from baseline to" a week is a change, as are a rate of change and a mean
+     # of differences.
+     "Weight loss from baseline to week 12, kg", "Rate of change in weight",
+     "Mean of differences in weight, kg"],
 )
 def test_a_change_in_a_named_measure_is_not_read(tmp_path: Path, label: str) -> None:
     """Round 1 of #660: a change can be negative, so a row of changes in the measure the
@@ -16628,13 +16694,10 @@ def test_a_change_in_a_named_measure_is_not_read(tmp_path: Path, label: str) -> 
 
 
 @pytest.mark.parametrize(
-    "label",
-    ["Time to change of therapy, days", "Days to treatment change",
-     "Days from baseline to discharge"],
+    "label", ["Time to change of therapy, days", "Days to treatment change"],
 )
 def test_a_time_to_a_change_is_no_change(tmp_path: Path, label: str) -> None:
-    """Round 2 of #660: a time to a change, or from baseline to an event, cannot be
-    negative, and is read."""
+    """Round 2 of #660: a time to a change cannot be negative, and is read."""
     text = (f"| Characteristic | Treated |\n|---|---|\n| {label}, mean (SD) | 3.0 (2.0) |\n")
     skewed, unread = _never_negative_said(tmp_path, text, "days", "time")
     assert skewed == [(3, "3.0 (2.0)")] and unread == []

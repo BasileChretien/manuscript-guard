@@ -5,12 +5,12 @@ The auditor names the rows whose variable cannot be negative, a weight, a concen
 length of stay, by a word or words of their label, as `--whole-numbers` names its rows. Each
 cell there printed as a mean and its SD, "12.3 (4.5)" or "12.3 ± 4.5", is read, and one whose
 mean is less than twice its SD shows skewed data (`stats/skew.py`): a warning in the
-Arithmetic section, `mean-sd-skewed`, which `--strict` does not count. The row's label
-decides first whether it is read (`stats.skew.table_spreads`): a standard error or a change
-is not, a mean or an SD is, a category is not; in any other row, a count and its share is
-not read where the table says n (%). A cell under a first-row header naming a standard error
-is not read either. Each is said as a note, and a label under which nothing was read is said
-too.
+Arithmetic section, `mean-sd-skewed`, which `--strict` does not count. What can be said
+exactly decides whether a cell is read, and what is unsure is not read and is said
+(`stats.skew.table_spreads` has the rules): a standard error or a change is not read, a mean
+or an SD named by the label or the cell's header is, a category is not, and in a table that
+says n (%) a cell whose first number is whole may be a count. Each row not read is said as a
+note, and a label under which nothing was read is said too.
 """
 
 from __future__ import annotations

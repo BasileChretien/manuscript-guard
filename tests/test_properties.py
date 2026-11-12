@@ -7463,14 +7463,15 @@ def test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero(
     """`audit --non-negative`: in a row whose label holds one the auditor names, at word
     edges and in any case, each cell printed as a mean and its SD, in brackets or after a
     plus-minus sign, a minus sign before a negative mean, is read, and said skewed where the
-    mean is less than twice the SD, exactly twice not. The label decides first: one that
-    names a standard error, a change or a category is passed over and said, and one that
-    names a mean (SD) is read, a whole-number mean under a percentage or a caption saying
-    n (%) too. In a row whose label names neither, a count and its share, whole or decimal,
-    is passed over where the table says n (%), and read where it does not. A cell under a
-    first-row header naming a standard error is passed over and said. A row not named, one
-    whose label holds a named one inside a word, a row of medians and a sentence are not
-    read."""
+    mean is less than twice the SD, exactly twice not. A label naming a standard error or a
+    change (not a time to one) is passed over and said, as is a cell under a first-row
+    header naming a standard error. A label naming a mean (SD), or a cell under a header
+    naming one, is read, a whole-number mean in a table saying n (%) too. A label naming a
+    category is passed over. In a table that says n (%), and only there, a cell of a row
+    naming none of these whose first number is whole may be a count, and is passed over;
+    one with a point is read. The paragraph below a table ends at the next table's
+    caption. A row not named, one whose label holds a named one inside a word, a row of
+    medians and a sentence are not read."""
     from manuscript_guard.stats.skew import caption_of, table_spreads
     from manuscript_guard.text.tables import markdown_tables
 
@@ -7547,10 +7548,28 @@ def _a_change_is_read_as_the_measure(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(skew, "_CHANGE", re.compile(r"(?!)"))
 
 
-def _a_count_and_its_share_is_read_as_a_mean_and_its_sd(patch: pytest.MonkeyPatch) -> None:
+def _a_whole_number_under_n_percent_is_read_as_a_mean(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import skew
 
-    patch.setattr(skew, "_count_and_share", lambda match: False)
+    patch.setattr(skew, "_may_be_a_count", lambda match: False)
+
+
+def _a_time_to_a_change_is_a_change(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    patch.setattr(skew, "_TO_ONE", re.compile(r"(?!)"))
+
+
+def _the_caption_scan_runs_past_a_caption(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    patch.setattr(skew, "_CAPTION_OPENS", re.compile(r"(?!)"))
+
+
+def _a_cell_s_column_header_is_ignored(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    patch.setattr(skew, "_mean_columns", lambda header: set())
 
 
 def _the_table_s_n_percent_overrides_a_label_naming_a_mean(patch: pytest.MonkeyPatch) -> None:
@@ -22736,8 +22755,20 @@ BROKEN = {
         _a_change_is_read_as_the_measure,
         test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
     ),
-    "a count and its share under n (%) is read as a mean and its SD": (
-        _a_count_and_its_share_is_read_as_a_mean_and_its_sd,
+    "a whole number under n (%) is read as a mean and its SD": (
+        _a_whole_number_under_n_percent_is_read_as_a_mean,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "the 'to' exception is dropped: a time to a change is a change": (
+        _a_time_to_a_change_is_a_change,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "the scan below a table runs past the next table's caption": (
+        _the_caption_scan_runs_past_a_caption,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "a cell's column header naming a mean (SD) is ignored": (
+        _a_cell_s_column_header_is_ignored,
         test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
     ),
     "the table's n (%) overrides a label naming mean (SD)": (

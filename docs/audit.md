@@ -322,30 +322,32 @@ one of those, at word edges and in any case, and each cell printed as a mean and
 "12.3 (4.5)", "12.3 ± 4.5" or "12.3 +/- 4.5". A mean less than twice its SD is listed with
 the other disagreements, with the mean, the SD and the floor of 0; exactly twice is not.
 Neither is counted by `--strict`. Some rows and cells under a label you name are not means
-and SDs of that measure, and are not read; each is said. The row's label decides first:
+and SDs of that measure. What can be said exactly decides, and what is unsure is said as
+not read. In this order, a label's HTML tags taken off:
 
-- a label that names a standard error (SE, SEM, s.e., "standard error"): an SE gives the SD
-  only with the n;
-- a label that names a change or a difference ("change", "difference", "from baseline",
-  "delta", Δ), which can be negative; a time to one, "days to treatment change", or "from
-  baseline to discharge", is no change and is read;
-- a label that names a mean or an SD ("mean", "SD", "± SD") is read as means and SDs,
-  whatever the caption or a header says;
-- a label that names a category (a comparator such as ≥ or <, "n (%)", "%", "yes", "no",
-  "n/N") holds counts;
-- any other label is read, but where the table says n (%), in its caption (the paragraph
-  just above or below it, which ends at the next table's "Table 2") or in its first row,
-  a count and its share, "5 (12.5)" or "5 (12)", a whole number and a share of 100 or
-  less, is taken for a count.
-
-In every row read, a cell under a header of the table's first row that names a standard
-error is not read either.
+1. a label that names a standard error (SE, SEM, s.e., "standard error"), or a header of
+   the table's first row over the cell that names one, is not read: an SE gives the SD only
+   with the n;
+2. a label that names a change or a difference ("change", "difference", "from baseline",
+   "delta", Δ) is not read, since a change can be negative; a time to one, "days to
+   treatment change", is read;
+3. a label that names a mean or an SD ("mean", "SD", "± SD"), or the cell's own header in
+   the first row, is read as a mean and its SD, whatever the caption says;
+4. a label that names a category holds counts, and is not read: a comparator such as ≥
+   or <, "n (%)", "%", "yes", "n/N", or "no" with neither a point nor "of" after it ("No.
+   of days" is a number);
+5. in a table that says n (%) ("n (%)", "N (%)", "No. (%)" or "n/N (%)" in its caption, the
+   paragraph just above or below it, which ends at the next table's caption, or in its
+   first row; a bare "%" header, "Missing, %", says nothing), a cell whose first number has
+   a point is read, since a count is whole, and one whose first number is whole may be a
+   count, and is not read;
+6. anything else is read.
 
 A label under which nothing was read is said. Means in sentences are not read, nor an SE
-named only in a caption, a note or a second header row. A whole-number mean, "5 (7.2)",
-in a table that says n (%), is taken for a count unless its label names a mean. A variable
-with another floor, a
-score of 1 to 7, is held to 0 here; `check` holds a project's means to the floor its data
+named only in a caption, a note or a second header row. In a table that says n (%), a
+whole-number mean in a row whose label names no mean is not read, and is said; a mean of a
+percentage whose label says only "%", "Body fat, %", is taken for a category. A variable
+with another floor, a score of 1 to 7, is held to 0 here; `check` holds a project's means to the floor its data
 dictionary gives.
 
 For a paper still being written, bind the numbers instead — then a stale one is impossible

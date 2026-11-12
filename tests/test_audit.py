@@ -1757,7 +1757,10 @@ def test_a_run_in_label_typed_alone_is_read_as_a_heading(tmp_path: Path) -> None
 needs_pandoc = pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 
 
-@needs_pandoc
+MIXED = (bold("Abstract") + para("BACKGROUND") + para("Of 412, 77 had it.") + bold("Results")
+         + para("Of 412, 77 had it.") + para("CONCLUSIONS") + bold("References"))
+
+
 def test_bold_abstract_parts_beside_plain_ones_are_placed_at_one_level(tmp_path: Path) -> None:
     """A known limit (DESIGN.md, "Known gaps"): bold parts of an abstract beside plain ones
     cannot all be placed, and those in bold alone are placed at one level, its own "Results"
@@ -1765,17 +1768,20 @@ def test_bold_abstract_parts_beside_plain_ones_are_placed_at_one_level(tmp_path:
     before: the Abstract is compared with itself, and every number of it is found."""
     from manuscript_guard.text.docx import typed_heading_levels
 
-    mixed = (bold("Abstract") + para("BACKGROUND") + para("Of 412, 77 had it.") + bold("Results")
-             + para("Of 412, 77 had it.") + para("CONCLUSIONS") + bold("References"))
-    document = read_docx_text(_package(tmp_path / "mixed.docx", mixed, ""))
+    document = read_docx_text(_package(tmp_path / "mixed.docx", MIXED, ""))
     lines = document.body.split("\n")
     assert [(lines[at], level) for at, level in typed_heading_levels(document)] == [
         ("Abstract", 1), ("Results", 1), ("References", 1)]
     read = audit([tmp_path / "mixed.docx"], []).abstract
     assert read is not None and read.compared and read.matched == read.numbers > 0
     assert read.not_found == []
-    assert from_word.typed_headings(_blocks(tmp_path / "mixed.docx"))[1] == (
-        "Abstract", "Results", "References")
+
+
+@needs_pandoc
+def test_init_from_makes_bold_abstract_parts_beside_plain_ones_one_level(tmp_path: Path) -> None:
+    made, titles = from_word.typed_headings(_blocks(_package(tmp_path / "m.docx", MIXED, "")))
+    assert titles == ("Abstract", "Results", "References")
+    assert [block["c"][0] for block in made if block["t"] == "Header"] == [1, 1, 1]
 
 
 def _package(path: Path, body: str, styles: str) -> Path:
@@ -1815,6 +1821,8 @@ def test_a_plain_abstract_beside_bold_titles_named_twice_is_no_heading(tmp_path:
     titles = ("Introduction", "Methods", "Results", "Discussion", "References")
     assert tuple(lines[at] for at, _level in typed_heading_levels(document)) == titles
     assert from_word.typed_headings(_blocks(path))[1] == titles
+    comment, end, rest = from_word.convert(path).text.partition("-->")
+    assert end and "ABSTRACT" in comment and "ABSTRACT" not in rest
     read = audit([path], []).abstract
     assert not (read and read.compared)
 

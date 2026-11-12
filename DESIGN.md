@@ -9895,7 +9895,9 @@ entries were asked and how many a registry knew. An entry with no DOI and no PMI
 asked, and is not passed over: the summary's line counts those not looked up, and the
 section names each at its place, by its number and its first 90 characters (the author's
 audit, 2026-11-11: "we need to check all references, or say which ones were not checked and
-why"; he chose that over a search by title, whose match no rule could vouch for). A table's rules and colours, `\midrule[1pt]`
+why"; he chose that over a search by title, whose match no rule could vouch for, and on
+2026-11-12 chose the search with a near-exact match: see "The references with no DOI or PMID,
+sorted, and looked up by their title"). A table's rules and colours, `\midrule[1pt]`
 and `\rowcolor{gray!20}`, print nothing (`text/latex/commands.py`), where their arguments had
 been read as the cell's text and as the paper's numbers. Under `--json` an audit that did not
 happen, exit 2, prints `{"ok": false, "error": ...}`: `check --json` prints nothing to stdout
@@ -10061,6 +10063,66 @@ value could be printed as both, each to its own places: 1.5 and 1.52 do, 1.90 an
 not, and P = 0.03 and P = 0.032 do. Where no file has an Abstract heading, or none a Results
 heading outside it, the section says nothing was compared. `--strict` counts a conflict,
 `abstract-conflict`, and not a number not found (the author, 2026-10-28).
+
+### The references with no DOI or PMID, sorted, and looked up by their title (2026-11-12)
+
+On the author's paper seven entries gave neither a DOI nor a PMID, and the audit listed all
+seven as "not looked up". Some were plainly articles or a book, others web pages and a
+decree. His decision of 2026-11-12, which replaces his choice of 2026-11-11 to make no title
+search, is in three parts, and `auditing/by_title.py` holds them.
+
+**Each entry is sorted by its shape** (`sort`), the first rule that holds: a chapter ("In:"
+after its title, or "In" and its editors), a journal article (a year then a volume, a volume
+and its issue before its pages, a volume and pages after a comma, "vol.", "in press"), a
+legal or official text (a law's opening word, "Arrêté", "Décret", "Loi", "Directive",
+"Regulation" and a few more, not followed by initials as a person called Ley is; or an
+official journal or register of law named, "JORF", "Official Journal of the European
+Union", "Federal Register", Légifrance), a web page by its own marks (an access or citation
+date, "[Internet]", "Available from"), a book (a place and a publisher before the year, an
+edition, an ISBN, a city of the United States with its state, a publisher's name, editors),
+a web page by its address alone, and otherwise not sorted. An article comes before a web
+page, so that one that also gives its address is an article; a page's own marks come before
+a book's, so that "[Internet]. Geneva: Example Agency; 2020" is a page. A web page and a legal
+text are listed as "no DOI expected", with the mark that sorted them; an entry not sorted is
+to be checked by hand.
+
+**An article, a book or a chapter is looked up in Crossref by its title**, with `--lookup`
+only, through the search `lookup` already makes for a reference with no identifier
+(`lookup/unidentified.crossref`, `query.bibliographic` with the title, the first author's
+family name and the year, filtered to the year with one either side, paced in Crossref's list
+pool). What it is looked up by is read from the entry (`cited`): its authors end at the first
+full stop not inside a run of initials ("Ross K. L."), or after "(2019)." where everything
+before it is names, or, where the entry opens with initials as a BibTeX style prints it, at
+the first stop after a word that is none; the title is the part after them, or the quoted
+part; the year the one in brackets, or the first after the title, its address and an access
+date left out. A title whose searched words are fewer than three is not looked up, as
+`lookup` does not look one up (`gates/searched.unsearchable`).
+
+**A work is taken only when it is a near-exact match** (`near_exact`): its title, or its
+title and subtitle joined, the entry's once case, punctuation, accents and tags are folded
+(`fold`; "Børte" is "borte"), the entry's title read as its first part after the authors or as
+that part and the next one or two, so that a title that holds a full stop is still compared
+whole; the family name of the first person the work lists the first word or words of the
+entry, folded the same way; and, where the entry gives a year, one of the work's years that
+year. Crossref's score is not read. A notice, a peer review or a part of a work is never the
+work (`gates/searched._a_work`). Two works that match, with two DOIs, are neither taken. A
+work taken is said as "found by its title: DOI …", and its DOI is then asked of the
+registries as an entry's own DOI is (`by_title.look_up_all`), so a retraction, a withdrawal or
+an expression of concern is said of it like any other. Where none is taken the entry is "an
+article with no DOI given, and none found by its title: check it by hand"; where Crossref did
+not answer, that is said, and the answer is not kept.
+
+`--lookup --dry-run` says what each would ask, the title, the first author and the year, and
+sends nothing; `--lookup-cache` keeps a search's answer under a name made from what was
+searched for, and reads it from there the next time. Without `--lookup` the entries are still
+sorted and listed, each article and book with "looked up in Crossref by its title only when
+the references are looked up (--lookup)", and nothing is asked. Crossref's search is at the
+host the page's Content-Security-Policy already names, `api.crossref.org`, so the page needed
+no change. The summary's line counts the works found by their title among those looked up,
+the entries with no DOI expected and those to check by hand; an entry to check by hand puts
+the References tile at "to look at". The rules read text, so they are held over generated
+entries of every kind in every example (`tests/generated.py::unidentified_entries`, the
+reading "reference sorting").
 
 ## The audit page runs in the reader's browser
 
@@ -25780,6 +25842,48 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `.webp` is reviewed and described, and its colours are said to be unread, as a PNG's
     are. Pinned by
     `tests/test_placed_figures.py::test_a_figure_through_a_link_out_of_the_project_is_checked_and_named`.
+
+- **The audit sorts an entry with no DOI or PMID by its shape, and a shape can mislead.**
+  The rules are marks a style prints (`auditing/by_title.sort`), read in a fixed order, and
+  an entry is what the first one that holds says. Pinned by
+  `tests/test_audit_by_title.py::test_each_shape_is_sorted`.
+  - An article cited with no volume and no pages, its journal's name and nothing after it
+    or a year alone, is not sorted, and is said to be checked by hand; so is a personal
+    communication. Pinned by
+    `tests/test_audit_by_title.py::test_each_shape_is_sorted`.
+  - A report of an agency printed with a place and a publisher before its year is sorted as
+    a book and looked up by its title, and is then most often "none found: check it by
+    hand". A title or a journal that holds a publisher's word, "Press" or "Publishing", or
+    "editors", sorts the entry a book where no mark before it holds. Accepted.
+  - A legal or official text is known only by the words `_LEGAL_OPENING` and `_LEGAL_NAMED`
+    list, from French, European, American, British, German, Spanish and Italian law; one of
+    another country that gives an address is a web page, which no DOI is expected of either,
+    and one that gives none is not sorted. Accepted.
+  - A book or an article that says when it was accessed, with no volume and pages, is a web
+    page, and is not looked up. Accepted.
+- **An article or a book is looked up by the title read from it, and taken only on a
+  near-exact match.** What is read and compared is in `auditing/by_title.py`; a match that
+  is not near-exact is left to a person, never taken on a score. Pinned by
+  `tests/test_audit_by_title.py::test_a_work_is_taken_only_when_near_exact`.
+  - An entry that opens with its title, with no authors, has its title read as its authors
+    and the part after it as its title, and is not found. Accepted.
+  - A title written with "&" where Crossref has "and", a word spelt otherwise, a subtitle
+    left out where Crossref keeps it in its title, a first author Crossref lists second, or
+    a group as the first author, is no match, and the entry is to be checked by hand.
+    Pinned by `tests/test_audit_by_title.py::test_a_work_is_taken_only_when_near_exact`.
+  - Crossref is asked for ten works at most, filtered to the cited year with one either
+    side; one it ranks lower is not seen, and with no year cited no filter is sent.
+    Accepted.
+  - Two works that match, as a book and its new edition under two DOIs, are neither taken.
+    Pinned by `tests/test_audit_by_title.py::test_two_works_of_the_title_are_neither_taken`.
+  - Only Crossref is searched, not PubMed or OpenAlex as `lookup` searches for a reference
+    of a project; a work Crossref does not hold is "none found". Accepted.
+  - A title of fewer than three searched words is not looked up, and is to be checked by
+    hand. Pinned by
+    `tests/test_audit_sections.py::test_each_entry_not_looked_up_is_named_with_why`.
+  - In the file `--cited` writes, an entry found by its title has the registry's title,
+    year and standing, but Europe PMC is not asked for its abstract, which is asked by an
+    identifier the entry types. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

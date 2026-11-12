@@ -9951,6 +9951,150 @@ def _harvard_s_year_needs_its_full_stop(patch: pytest.MonkeyPatch) -> None:
     _without(patch, "_REFERENCE_ENTRY", r"(?:\.|(?=\s+[", r"(?:\.|(?!)(?=\s+[")
 
 
+# --------------------------------- the audit's entries with no DOI or PMID, sorted and matched
+
+from generated import unidentified_entries  # noqa: E402
+
+from manuscript_guard.auditing import by_title as by_title_module  # noqa: E402
+
+
+def _title_read(title: str) -> str:
+    """A title as the entry's first part after its authors reads it: up to a question mark
+    that ends a part, which may end the title or a main title before its subtitle."""
+    cut = re.search(r"[?!](?=\s)", title)
+    return title[: cut.end()] if cut else title
+
+
+@holds(100, unidentified_entries())
+def test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape(
+    drawn: list[tuple[str, str, str | None, str | None, int | None]],
+) -> None:
+    """An article in three styles, one that gives its address too, a book in two, a chapter,
+    a web page with its access date, a legal text by its opening word or by its journal and
+    a bare address are each sorted as what they are (`by_title.sort`); and of an article, a
+    book or a chapter its title, first author and year are read (`by_title.cited`), whatever
+    initials, particles, accents, "U.S." or question mark it holds."""
+    assert [(text, by_title_module.sort(text).kind) for text, *_ in drawn] == [
+        (text, kind) for text, kind, *_ in drawn]  # fmt: skip
+    for text, _kind, title, family, year in drawn:
+        if title is None:
+            continue
+        said = by_title_module.cited(text)
+        assert said is not None, text
+        assert (said.title, said.family, said.year) == (_title_read(title), family, year), text
+        assert title in said.titles, text
+
+
+def _unaccented(text: str) -> str:
+    import unicodedata
+
+    from manuscript_guard.gates.authors import LETTERS
+
+    text = unicodedata.normalize("NFKD", text).translate(LETTERS)
+    text = text.translate({ord("\N{LATIN CAPITAL LETTER O WITH STROKE}"): "O"})
+    return "".join(c for c in text if not unicodedata.combining(c))
+
+
+def _registered(cited: str, family: str, year: int, **changed: Any) -> dict[str, Any]:
+    """Crossref's record of the work whose title is `cited`, as it may print it: the title in
+    capitals, its subtitle apart, its accents off, a curled apostrophe; the family name in
+    title case, unaccented; and an online year before the print one."""
+    main, _colon, subtitle = cited.partition(": ")
+    work = {
+        "doi": "10.5555/registered", "type": "journal-article",
+        "title": _unaccented(main).upper().replace("'", "\N{RIGHT SINGLE QUOTATION MARK}"),
+        "subtitle": _unaccented(subtitle) or None,
+        "authors": [{"family": _unaccented(family).title(), "given": "A"}],
+        "years": {"print": year, "online": year - 1},
+    }  # fmt: skip
+    return {**work, **changed}
+
+
+@holds(100, unidentified_entries())
+def test_a_registered_work_is_taken_for_an_entry_only_when_near_exact(
+    drawn: list[tuple[str, str, str | None, str | None, int | None]],
+) -> None:
+    """Crossref's work is an entry's where its title is the entry's, case, punctuation and
+    accents folded, its first author the entry's first, and one of its years the entry's;
+    not where it is of another year, has another person first, or lacks a word of the title
+    or adds one (`by_title.near_exact`)."""
+    for text, _kind, title, family, year in drawn:
+        if title is None:
+            continue
+        said, opening = by_title_module.cited(text), by_title_module.fold(text)
+        assert by_title_module.near_exact(said, opening, _registered(title, family, year)), text
+        others = (
+            {"years": {"print": year + 2, "online": year + 3}},
+            {"authors": [{"family": "Okafor"}, {"family": family}]},
+            {"title": title.rsplit(" ", 1)[0], "subtitle": None},
+            {"title": title + " revisited", "subtitle": None},
+        )
+        for changed in others:
+            work = _registered(title, family, year, **changed)
+            assert not by_title_module.near_exact(said, opening, work), (text, changed)
+
+
+def _no_access_date_makes_a_web_page(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_WEB", tuple(
+        rule for rule in by_title_module._WEB if rule[0] != "it says when it was accessed"))
+
+
+def _a_law_s_opening_word_makes_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_LEGAL_OPENING", re.compile("(?!)"))
+
+
+def _an_official_journal_makes_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_LEGAL_NAMED", re.compile("(?!)"))
+
+
+def _an_address_makes_a_web_page_first(patch: pytest.MonkeyPatch) -> None:
+    sort = by_title_module.sort
+
+    def first(text: str) -> by_title_module.Sorted:
+        if by_title_module._URL.search(text):
+            return by_title_module.Sorted(by_title_module.WEB)
+        return sort(text)
+
+    patch.setattr(by_title_module, "sort", first)
+
+
+def _no_chapter_is_known(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_CHAPTER", re.compile("(?!)"))
+
+
+def _no_book_is_known(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_BOOK", ())
+
+
+def _an_address_alone_makes_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_URL", re.compile("(?!)"))
+
+
+def _a_stop_after_an_initial_ends_the_authors(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_INITIAL", re.compile("(?!)"))
+
+
+def _a_dotted_abbreviation_ends_a_title(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_abbreviated", lambda before: False)
+
+
+def _accents_are_not_folded(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "fold",
+                  lambda text: " ".join(re.findall(r"[^\W_]+", text.casefold())))
+
+
+def _the_year_is_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_same_year", lambda said, work: True)
+
+
+def _the_first_author_is_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_same_first_author", lambda opening, work: True)
+
+
+def _the_title_is_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_same_title", lambda said, work: True)
+
+
 @holds(100, glued_intervals())
 def test_an_interval_after_a_value_in_any_format_is_told_from_a_citation(
     drawn: tuple[str, list[tuple[int, int]]],
@@ -24801,6 +24945,58 @@ BROKEN = {
     "an import line continued with a backslash is read alone": (
         _a_continued_import_line_is_read_alone,
         test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "an access date makes no web page": (
+        _no_access_date_makes_a_web_page,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a law's opening word makes no legal text": (
+        _a_law_s_opening_word_makes_nothing,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "an official journal makes no legal text": (
+        _an_official_journal_makes_nothing,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "an address makes a web page whatever else the entry gives": (
+        _an_address_makes_a_web_page_first,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a chapter in a book is known by nothing": (
+        _no_chapter_is_known,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a book is known by nothing": (
+        _no_book_is_known,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "an address alone makes no web page": (
+        _an_address_alone_makes_nothing,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a stop after an initial ends the authors": (
+        _a_stop_after_an_initial_ends_the_authors,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a dotted abbreviation ends a title": (
+        _a_dotted_abbreviation_ends_a_title,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "accents are not folded when a title is matched": (
+        _accents_are_not_folded,
+        test_a_registered_work_is_taken_for_an_entry_only_when_near_exact,
+    ),
+    "the year is not compared when a title is matched": (
+        _the_year_is_not_compared,
+        test_a_registered_work_is_taken_for_an_entry_only_when_near_exact,
+    ),
+    "the first author is not compared when a title is matched": (
+        _the_first_author_is_not_compared,
+        test_a_registered_work_is_taken_for_an_entry_only_when_near_exact,
+    ),
+    "the title is not compared when a title is matched": (
+        _the_title_is_not_compared,
+        test_a_registered_work_is_taken_for_an_entry_only_when_near_exact,
     ),
 }
 

@@ -174,6 +174,9 @@ class AuditReport:
     #: What was asked of the registries (`auditing.references.Looked`), with --lookup;
     #: None where nothing was to be.
     lookups: list | None = None
+    #: Each entry with no DOI and no PMID, sorted, and what Crossref's search by its title
+    #: found (`auditing.by_title.Searched`), with --lookup; None without it.
+    titles: list | None = None
     #: G6 and G14 on each paper (`auditing.gates.GateRun`).
     gates: list = field(default_factory=list)
     #: Each LaTeX entry's tree as it was read (`auditing.latex.Tree`).

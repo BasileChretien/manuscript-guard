@@ -11417,6 +11417,100 @@ def audit_entries(draw: st.DrawFn) -> list[tuple[str, bool]]:
     return draw(st.permutations(lines))
 
 
+#: An entry with no DOI and no PMID of each kind the audit sorts one into
+#: (`auditing.by_title.sort`), as `{shape}`, with the kind it is: an article in three styles,
+#: one that also gives its address, a book in two, a chapter, a web page with its access
+#: date, a legal text by its opening word, an official text by its journal, and a bare
+#: address. `{a}` is the first author's family name and `{t}` the title.
+UNIDENTIFIED_ENTRIES = {
+    "an article": ("{a} {i}, {b} {j}. {t}. {journal}. {year};{vol}({issue}):{page}-{end}.",
+                   "article"),
+    "an article in APA style": (
+        "{a}, {d}. {e}., & {b}, {k}. ({year}). {t}. {long}, {vol}({issue}), {page}-{end}.",
+        "article",
+    ),
+    "an article with dotted initials": ("{a} {d}. {e}. {t}. {journal}. {year};{vol}:{page}.",
+                                        "article"),
+    "an article that also gives its address": (
+        "{a} {i}. {t}. {journal}. {year};{vol}:{page}-{end}. https://example.org/{vol}",
+        "article",
+    ),
+    "a book": ("{a} {i}. {t}. {place}: {publisher}; {year}.", "book"),
+    "a book printed in a city of the United States": ("{a} {i}. {t}. {city}. {year}", "book"),
+    "a chapter": (
+        "{a} {i}. {t}. In: {b} {j}, editor. Handbook of reports. {place}: {publisher}; {year}. "
+        "p. {page}-{end}.",
+        "chapter",
+    ),
+    "a web page with its access date": (
+        "{site}. Reports and records. {place}: {publisher}; {year}. Accessed {day} Aug {later}. "
+        "https://example.org/{vol}",
+        "web page",
+    ),
+    "a legal text by its opening word": (
+        "{law} du {day} décembre {year} relatif à la formation. https://www.example.gouv.fr/{vol}",
+        "legal text",
+    ),
+    "an official text by its journal": (
+        "Commission notice on reports. Official Journal of the European Union. C {vol}, {day}.",
+        "legal text",
+    ),
+    "a bare address": ("https://example.org/{site_path}/{vol}", "web page"),
+}
+#: Titles an article or a book is cited by: one with a colon, one with accents, one with a
+#: question mark, one with "U.S.", whose stop ends no title, and one with an apostrophe.
+UNIDENTIFIED_TITLES = (
+    "Ghosts in the classroom: passive disengagement and its implications for teachers",
+    "Barriers to student active learning in higher education",
+    "Les élèves décrocheurs à l'école primaire",
+    "Is hepatic injury under-reported? A review of spontaneous reports",
+    "Renal events after exposure in the U.S. population",
+    "Children's falls in older adults' homes",
+)
+#: First authors' family names: with a stroke and an accent, which fold, with particles,
+#: and with an apostrophe.
+UNIDENTIFIED_FAMILIES = ("Børte", "Østergaard", "van der Berg", "O'Brien", "Dupont", "Ross",
+                         "Lillejord")  # fmt: skip
+
+
+@st.composite
+def unidentified_entries(draw: st.DrawFn) -> list[tuple[str, str, str | None, str | None,
+                                                        int | None]]:  # fmt: skip
+    """Each of `UNIDENTIFIED_ENTRIES`, in an order drawn, each `(text, kind, title, first
+    author, year)`, the last three for an article, a book or a chapter only. Every kind in
+    every example; each title and each family name drawn for one of the seven articles,
+    books and chapters, so that every one stands in every example."""
+    titles = draw(st.permutations(UNIDENTIFIED_TITLES))
+    families = draw(st.permutations(UNIDENTIFIED_FAMILIES))
+    drawn = []
+    for at, (shape, kind) in enumerate(UNIDENTIFIED_ENTRIES.values()):
+        year = draw(st.integers(1970, 2024))
+        fill = {
+            "a": families[at % len(families)], "b": draw(st.sampled_from(_SURNAMES)),
+            "t": titles[at % len(titles)],
+            "i": draw(st.sampled_from(_INITIALS)), "j": draw(st.sampled_from(_INITIALS)),
+            "d": draw(st.sampled_from("JKMH")), "e": draw(st.sampled_from("ABL")),
+            "k": draw(st.sampled_from("JKMH")),
+            "journal": draw(st.sampled_from(_NO_STOP_JOURNALS)),
+            "long": draw(st.sampled_from(_LONG_JOURNALS)),
+            "place": draw(st.sampled_from(("London", "Geneva", "Paris"))),
+            "publisher": draw(st.sampled_from(("Example Press", "Example Agency",
+                                               "Sample House"))),  # fmt: skip
+            "city": draw(st.sampled_from(("Englewood Cliffs, NJ", "Boston, MA", "Chicago, IL"))),
+            "site": draw(st.sampled_from(("Accueil | Moodle.org", "Example Agency", "Factsheet"))),
+            "site_path": draw(st.sampled_from(("pi/ses", "resources", "accueil"))),
+            "law": draw(st.sampled_from(("Arrêté", "Décret", "Ordonnance"))),
+            "year": year, "later": draw(st.integers(2000, 2025)),
+            "vol": draw(st.integers(1, 400)), "issue": draw(st.integers(1, 12)),
+            "page": draw(st.integers(1, 900)), "end": draw(st.integers(1, 99)),
+            "day": draw(st.integers(1, 28)),
+        }  # fmt: skip
+        searched = kind in ("article", "book", "chapter")
+        drawn.append((shape.format(**fill), kind, fill["t"] if searched else None,
+                      fill["a"] if searched else None, year if searched else None))  # fmt: skip
+    return draw(st.permutations(drawn))
+
+
 #: A value and a bracket after it, by the value's format: `{v}` the value as printed and
 #: `{b}` the bracket. Whether the bracket encloses the value is drawn apart.
 INTERVAL_VALUES = ("decimal comma", "thousands", "spaced percent", "no-break percent", "point")
@@ -13371,6 +13465,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "weak sources": weak_source_papers().map(lambda drawn: drawn[1]),
     "latex tables": latex_table_rows().map(lambda drawn: drawn[0]),
     "reference census": numbered_citations().map(lambda drawn: drawn[0]),
+    "reference sorting": unidentified_entries().map(lambda drawn: [one[0] for one in drawn]),
     "whole-number means": mean_tables().map(
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}
     ),

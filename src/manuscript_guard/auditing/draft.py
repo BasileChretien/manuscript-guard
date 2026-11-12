@@ -207,13 +207,15 @@ def _unchecked_of_audit(report) -> list[str]:
                      "were read as the text's.")  # fmt: skip
     if report.abstract is not None and not report.abstract.compared:
         found.append(f"The Abstract against Results: not compared, {report.abstract.why_not}.")
+    titles = getattr(report, "titles", None) or []
     if report.lookups is None:
         found.append("The registries: the references were not looked up (`--lookup`).")
-    elif not report.lookups:
+    elif not report.lookups and not any(one.asked for one in titles):
         found.append("The registries: not asked, since " + (
             "no reference list was read." if all(census.note for census in report.references)
-            else "no reference gives a DOI or a PMID."))  # fmt: skip
-    elif not any(one.came for one in report.lookups):
+            else "no reference gives a DOI or a PMID, nor an article's or a book's title to "
+            "look up."))  # fmt: skip
+    elif not any(one.came for one in [*report.lookups, *titles]):
         # Round 2 of #487: a dry run asked nothing, and was said to have asked.
         found.append("The registries: not looked up (dry run); what would be asked is listed "
                      "under References.")  # fmt: skip

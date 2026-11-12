@@ -2721,11 +2721,11 @@ def _audit(args: argparse.Namespace, package) -> int:
         measure_discrimination,
     )
     from manuscript_guard.auditing import report as sections
+    from manuscript_guard.auditing.by_title import look_up_all
     from manuscript_guard.auditing.gates import run_gates
     from manuscript_guard.auditing.latex import is_entry
     from manuscript_guard.auditing.pdf import NO_PDFTOTEXT, is_pdf
     from manuscript_guard.auditing.pdf import can_read as can_read_pdf
-    from manuscript_guard.auditing.references import look_up
 
     if (args.dry_run or args.lookup_cache) and not args.lookup:
         return _audit_refused(args, "manuscript-guard audit: --dry-run and --lookup-cache go "
@@ -2843,8 +2843,8 @@ def _audit(args: argparse.Namespace, package) -> int:
           for tree in report.trees),
     ]  # fmt: skip
     if args.lookup:
-        report.lookups = look_up(report.references, dry_run=args.dry_run,
-                                 cache=args.lookup_cache)  # fmt: skip
+        report.lookups, report.titles = look_up_all(report.references, dry_run=args.dry_run,
+                                                    cache=args.lookup_cache)  # fmt: skip
     if reader is not None:
         _read_as_reader(report, reader, args.paper[0], papers, english)
         if reader.authors is not None or args.lookup:

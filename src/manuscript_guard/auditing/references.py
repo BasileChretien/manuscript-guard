@@ -20,8 +20,11 @@ Looking up sends each DOI to Crossref and OpenAlex, and to DataCite where Crossr
 know it and then to doi.org where DataCite does not either, and each PMID to PubMed, through
 the transport `lookup` uses; nothing is sent without `--lookup`. What they answer is read as
 G7 reads a record (`gates.lookups._standing`): retracted, withdrawn, under concern, published
-since, and a DOI or a PMID no registry knows. A record is kept only in the folder
-`--lookup-cache` names, and read from there the next time instead of asking again.
+since, and a DOI or a PMID no registry knows. An entry with neither is sorted, and an article
+or a book among them is looked up in Crossref by its title (`auditing.by_title`); the DOI of a
+near-exact match is then asked about as an entry's own (`by_title.look_up_all`). A record is
+kept only in the folder `--lookup-cache` names, and read from there the next time instead of
+asking again.
 """
 
 from __future__ import annotations
@@ -578,6 +581,9 @@ class Looked:
     #: title, the year, the authors and the journal the cited-sentences table and the
     #: self-citation count read. Empty for a dry run.
     answers: Mapping[str, Any] = field(default_factory=dict, compare=False)
+    #: Whether the entry gave no DOI, and Crossref's search by its title found the one asked
+    #: about (`auditing.by_title`).
+    by_title: bool = False
 
 
 #: Who is asked of a DOI, in turn: DataCite only where Crossref does not know it, and doi.org
@@ -670,54 +676,72 @@ def look_up(
 ) -> list[Looked]:
     """Each entry with a DOI or a PMID, asked of the registries, or with `dry_run` only what
     would be asked. A record is written into `cache` and read from it, never elsewhere."""
-    from manuscript_guard.gates.lookups import _standing
     from manuscript_guard.lookup import run
     from manuscript_guard.lookup.http import default_transport
 
     services = services or run.Services()
     credentials = credentials or run.Credentials.from_environment(None)
     ask = run._asker(transport or default_transport, pacer or run.Pacer(), credentials)
-    looked: list[Looked] = []
-    for census in censuses:
-        for entry in census.entries:
-            if not entry.dois and not entry.pmids:
-                continue
-            asked = _asked(entry)
-            if dry_run:
-                looked.append(Looked(census.path, entry, asked))
-                continue
-            wanted = {k: v for k, v in (("doi", entry.dois[:1]), ("pmid", entry.pmids[:1])) if v}
-            wanted = {k: v[0] for k, v in wanted.items()}
-            kept = cache / _kept_name(entry) if cache is not None else None
-            record = _read_kept(kept, wanted) if kept is not None and kept.exists() else None
-            came = "kept"
-            if record is None:
-                came = "asked"
-                planned = run.Planned(entry.label, doi=wanted.get("doi"), pmid=wanted.get("pmid"))
-                record = run.look_up(planned, ask, services, credentials, today or date.today(),
-                                     by_doi=False)
-                run._never_kept(record, credentials)
-                # An answer that did not come is asked for again, never kept as one.
-                if kept is not None and not _unanswered(record):
-                    kept.parent.mkdir(parents=True, exist_ok=True)
-                    kept.write_text(json.dumps(record, indent=2, ensure_ascii=True) + "\n",
-                                    encoding="utf-8")  # fmt: skip
-            answers = record.get("sources", {})
-            where = entry.path or census.path
-            found = _standing(entry.label, {}, answers, where, None)
-            problems = tuple(
-                Problem(f.code, f.message.removeprefix("@") + _may_run_on(entry),
-                        entry.line, where)
-                for f in found
-            ) + tuple(_unknown(entry, answers, where)) + tuple(
-                Problem("lookup-unanswered", f"{entry.label}: {name} did not answer ({why})",
-                        entry.line, where)
-                for name, why in _unanswered(record)
-            )  # fmt: skip
-            known = any(isinstance(answer, dict) and answer.get("status") == "found"
-                        for answer in answers.values())  # fmt: skip
-            looked.append(Looked(census.path, entry, asked, problems, came, known, answers))
-    return looked
+    asking = _Asking(ask, services, credentials, today or date.today(), cache, dry_run)
+    return [_looked_up(census.path, entry, asking)
+            for census in censuses for entry in census.entries
+            if entry.dois or entry.pmids]  # fmt: skip
+
+
+@dataclass(frozen=True)
+class _Asking:
+    """What every entry is asked with: the transport that paces, where, the credentials,
+    the day, the folder kept, and whether only what would be asked is said."""
+
+    ask: Callable
+    services: Any
+    credentials: Any
+    today: date
+    cache: Path | None
+    dry_run: bool
+
+
+def _looked_up(path: Path, entry: Entry, asking: _Asking, *, asked: str = "",
+               by_title: bool = False) -> Looked:  # fmt: skip
+    """One entry with a DOI or a PMID, asked of the registries; `asked` what is said before
+    the registries, for a DOI found by the entry's title."""
+    from manuscript_guard.gates.lookups import _standing
+    from manuscript_guard.lookup import run
+
+    asked = asked + _asked(entry)
+    if asking.dry_run:
+        return Looked(path, entry, asked, by_title=by_title)
+    wanted = {k: v for k, v in (("doi", entry.dois[:1]), ("pmid", entry.pmids[:1])) if v}
+    wanted = {k: v[0] for k, v in wanted.items()}
+    cache = asking.cache
+    kept = cache / _kept_name(entry) if cache is not None else None
+    record = _read_kept(kept, wanted) if kept is not None and kept.exists() else None
+    came = "kept"
+    if record is None:
+        came = "asked"
+        planned = run.Planned(entry.label, doi=wanted.get("doi"), pmid=wanted.get("pmid"))
+        record = run.look_up(planned, asking.ask, asking.services, asking.credentials,
+                             asking.today, by_doi=False)  # fmt: skip
+        run._never_kept(record, asking.credentials)
+        # An answer that did not come is asked for again, never kept as one.
+        if kept is not None and not _unanswered(record):
+            kept.parent.mkdir(parents=True, exist_ok=True)
+            kept.write_text(json.dumps(record, indent=2, ensure_ascii=True) + "\n",
+                            encoding="utf-8")  # fmt: skip
+    answers = record.get("sources", {})
+    where = entry.path or path
+    found = _standing(entry.label, {}, answers, where, None)
+    problems = tuple(
+        Problem(f.code, f.message.removeprefix("@") + _may_run_on(entry), entry.line, where)
+        for f in found
+    ) + tuple(_unknown(entry, answers, where)) + tuple(
+        Problem("lookup-unanswered", f"{entry.label}: {name} did not answer ({why})",
+                entry.line, where)
+        for name, why in _unanswered(record)
+    )  # fmt: skip
+    known = any(isinstance(answer, dict) and answer.get("status") == "found"
+                for answer in answers.values())  # fmt: skip
+    return Looked(path, entry, asked, problems, came, known, answers, by_title)
 
 
 def _unanswered(record: dict[str, Any]) -> list[tuple[str, str]]:

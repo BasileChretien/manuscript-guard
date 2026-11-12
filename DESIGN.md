@@ -25836,7 +25836,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `gates/software_methods.py` ("et al.", "e.g.", "i.e.", "cf.", "v.", "ver.", "vs.",
     "Fig.", "No."), whatever follows the point, unless a block opens there. Another
     abbreviation, "approx." or "ref.", before a capital or a bracket still cuts the sentence,
-    and "No." or "v." that ends a sentence joins it to the next.
+    and "et al.", "No." or "v." ending a sentence before a capital joins it to the next.
     Pinned by `tests/test_corruption.py::test_a_citation_after_an_abbreviation_is_in_the_sentence_that_names_the_package`.
   - A citation by author and year written in the prose, "Bates et al. (2015)", or one
     whose bracket holds more than the work, "(version 1.1-35; Bates et al., 2015)", is not
@@ -25855,14 +25855,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Accepted.
   - The language itself, R or Python, and its version are not held to the Methods.
     Pinned by `tests/test_corruption.py::test_a_package_used_and_not_named_in_the_methods_is_said`.
-  - A Python package is named only by the names its item gives and those the scripts import
+  - A Python package is named only by its item's first name and the names the scripts import
     it by. An item that gives only `sklearn` is not named by "scikit-learn", its
     distribution's name, since nothing here maps one to the other.
     Pinned by `tests/test_corruption.py::test_an_r_package_is_named_with_its_case_and_a_python_one_by_any_of_its_names`.
   - An R package is matched with its case, so "Dplyr" opening a sentence does not name
     dplyr. Pinned by `tests/test_properties.py::test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else`.
-  - Every bare name in backticks in an item is one of its names, so a function written there
-    without brackets, `glm`, names the package where the Methods write it. Accepted.
+  - An item's other name counts only where a script loads a package of that name: `glm` does
+    not, and `numpy` in "`pandas` with `numpy`" or `rstan` in "`brms` with `rstan`" does, so
+    "Arrays were handled with NumPy [3]" names and cites pandas, as on main. Accepted.
   - A package only `em.software()` recorded, which no script loads, is matched as Python in a
     project with scripts in both languages. Accepted.
   - A paper whose Methods G9's reading does not find, in the main text or the supplement, is

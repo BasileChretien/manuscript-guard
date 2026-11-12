@@ -10033,6 +10033,15 @@ def test_a_package_named_by_an_ordinary_word_is_named_wherever_the_word_stands(
     assert _named_said(project) == []
 
 
+def test_a_package_only_the_run_recorded_is_named_by_its_item_s_first_name() -> None:
+    """Round 2 of #659: recorded under its other name, its first name named nothing."""
+    from manuscript_guard.gates.software_methods import judge_named
+
+    plan = "# Plan\n\n## Software\n\n- `sklearn` (`scikit-learn`): a tree\n"
+    found = judge_named(Path("."), plan, {}, ["scikit-learn"], frozenset(), "With sklearn [3].", [])
+    assert found.findings == ()
+
+
 # ------------------------------------------------- the registered protocol
 
 _NCT = "NCT01234567"

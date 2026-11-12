@@ -24,8 +24,8 @@ plan's Deviations is not held to the Methods, as G12 does not hold it to the scr
 A name is found as a word, in prose and in a code span alike. An R package is matched with
 its case, as R loads it: `Matrix` is not `matrix`. A Python package is matched in any case,
 "Matplotlib" or "NumPy" as authors write them, and with `-`, `_` and `.` taken for one
-another, as PyPI compares distribution names (PEP 503). Its names are those its item gives
-and those the scripts import it by, so that `scikit-learn` and `sklearn` both name a
+another, as PyPI compares distribution names (PEP 503). Its names are its item's first name
+and those a script loads, so that `scikit-learn` and `sklearn` both name a
 package whose item gives both.
 """
 
@@ -125,8 +125,9 @@ def _spellings(item: Planned, chosen: list[Load], made: set[str], languages: set
     spelled = [(language, item.names[0]) for language in found] + spelled
     if not spelled:
         language = R if R in languages and PYTHON not in languages else PYTHON
+        kept = any(_norm(name) in made for name in item.names)
         spelled = [(language, name) for index, name in enumerate(item.names)
-                   if _norm(name) in made and (index == 0 or _chosen(name, language, own))]
+                   if index == 0 and kept or _norm(name) in made and _chosen(name, language, own)]
     return tuple(dict.fromkeys(pair for pair in spelled if _chosen(pair[1], pair[0], own)))
 
 
@@ -308,7 +309,7 @@ def judge_cited(root: Path, used: list[Used], main: str | None,
             severity=WARN, path=root / PLAN, line=package.item.line,
             context=" ".join(part.text[low:high].split())[:_CONTEXT],
             hint=f"in a sentence that names it, cite {citing}: a citation in the sentence "
-            "before or after is read as that sentence's",
+            "before is that sentence's, and one typed just after the stop counts for this one",
         ))  # fmt: skip
     return Report(tuple(findings))
 

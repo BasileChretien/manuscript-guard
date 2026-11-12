@@ -419,18 +419,61 @@ def test_a_dash_defines_in_latex_before_a_citation_in_a_list_and_at_a_line_break
     assert "LFA" not in defined
 
 
-def test_a_value_bound_after_a_dash_in_latex_is_a_statistic(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("bound", "longs"),
+    [(" \\mg{results.or}", ["odds ratio"]),
+     # Round 1 of #662: a tie before the binding is a space, and an anchor prints nothing,
+     # so the definition after it stands.
+     ("~\\mg{results.or}", ["odds ratio"]),
+     (" \\mg{method.odds}", ["odds ratio", "older people"])],
+)  # fmt: skip
+def test_a_value_bound_after_a_dash_in_latex_is_a_statistic(
+    tmp_path: Path, bound: str, longs: list[str]
+) -> None:
     """Round 2 of #643: `\\mg{results.or}` after the short form is blanked as a binding is,
     and gives the odds ratio's value, as a number would."""
     (tmp_path / "main.tex").write_text(
         "\\documentclass{article}\n\\begin{document}\n\\section{Results}\n"
-        "The odds ratio (OR) was computed. The risk was higher in older people -- OR "
-        "\\mg{results.or}. It held.\n\\end{document}\n",
+        "The odds ratio (OR) was computed. The risk was higher in older people -- OR"
+        f"{bound}. It held.\n\\end{{document}}\n",
         encoding="utf-8",
     )
-    longs = [long for read in _latex_read(tmp_path, None)
-             for _at, short, long in read.definitions if short == "OR"]  # fmt: skip
-    assert longs == ["odds ratio"], longs
+    read = [long for read in _latex_read(tmp_path, None)
+            for _at, short, long in read.definitions if short == "OR"]  # fmt: skip
+    assert read == longs, read
+
+
+@pytest.mark.parametrize(
+    ("written_as", "short"),
+    [
+        # A lazy continuation, unindented, in an item above.
+        ("- the Farming Fund\nstill paid\n- the Woodland Grant Scheme \N{EN DASH} WGS\n- the "
+         "Woodland Fund", "WGS"),
+        # A list straight under a lead-in line: one paragraph to pandoc, its next item's dash
+        # after the line break.
+        ("The schemes were:\n- Basic Payment Scheme \N{EN DASH} BPS\n- Common Agricultural "
+         "Policy \N{EN DASH} CAP", "BPS"),
+        # A binding that prints no value: an anchor, and a pointer.
+        ("Farmers were paid under the Basic Payment Scheme \N{EN DASH} BPS "
+         "{{method.payments}}.", "BPS"),
+        ("Farmers were paid under the Basic Payment Scheme \N{EN DASH} BPS "
+         "{{ref.table.payments}}.", "BPS"),
+    ],
+)
+def test_a_dash_defines_under_a_lazy_line_a_lead_in_or_before_a_binding_of_no_value(
+    written_as: str, short: str
+) -> None:
+    """Round 1 of #662: each of these defined before #662, and must still."""
+    read = _file(0, Path("main.md"), f"# Methods\n\n{written_as}\n", [], False)
+    assert short in [found for _at, found, _long in read.definitions]
+
+
+def test_a_closing_dash_before_a_bracket_defines_nothing() -> None:
+    """A limit written down in DESIGN.md's Known gaps (round 1 of #662): after a closing dash
+    a word is asked for, as after a comma, so a bracket there ends no clause."""
+    read = _file(0, Path("main.md"), "# Methods\n\nThe Basic Payment Scheme \N{EN DASH} BPS "
+                 "\N{EN DASH} (2015 onwards) replaced it.\n", [], False)  # fmt: skip
+    assert "BPS" not in [short for _at, short, _long in read.definitions]
 
 
 @pytest.mark.parametrize(

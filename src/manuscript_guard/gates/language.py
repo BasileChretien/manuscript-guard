@@ -68,6 +68,7 @@ from manuscript_guard.policy import DRAFTING
 from manuscript_guard.text.blocks import Heading, find_headings
 from manuscript_guard.text.inline import code_spans, equation_spans
 from manuscript_guard.text.masking import NUL, front_matter_end, mask
+from manuscript_guard.text.placeholders import VALUE_NAMESPACES
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
 from manuscript_guard.text.section_names import section_name_alone
 from manuscript_guard.text.sections import Section
@@ -159,7 +160,9 @@ _CITED = (rf"(?:{_ONE_BREAK}(?:\[[\s\d,;\-\N{{EN DASH}}\N{{EM DASH}}]*\]"
           rf"|\^[\d,\-\N{{EN DASH}}]+\^))*")  # fmt: skip
 # What follows a short form that ends its clause, a closing mark and a citation between
 # them allowed: a stop, a semicolon, a closing bracket of either kind or a table cell's bar,
-# a comma or a colon and a word, a closing spaced dash and a word, a hard line break (a
+# a comma or a colon and a word, a closing spaced dash and a word (the dash at the start of
+# the next line too, the line break read as a space: a list straight under a lead-in line,
+# which pandoc reads as one paragraph, has its next item's there), a hard line break (a
 # backslash or two spaces before the line's end, as pandoc reads them, and as LaTeX's `\\`
 # is left), or the end of the paragraph or of the text. A single line break inside a
 # paragraph is read as a space. "Basic Payment Scheme - BPS, which pays farmers", "... - BPS
@@ -170,16 +173,27 @@ _CITED = (rf"(?:{_ONE_BREAK}(?:\[[\s\d,;\-\N{{EN DASH}}\N{{EM DASH}}]*\]"
 _CLAUSE_ENDS = re.compile(
     rf"{_MARKS}{_CITED}"
     rf"(?:{_ONE_BREAK}(?:\.(?!\d)|[;)\]|]|[,:]{_ONE_BREAK}{_MARKS}[^\W\d_])"
-    rf"|{_DASH_SPACE}+{_DASH}{_DASH_SPACE}{_ONE_BREAK}{_MARKS}[^\W\d_]"
+    rf"|(?:{_DASH_SPACE}+|{_LINE_GAP}\n{_DASH_SPACE}*){_DASH}{_DASH_SPACE}{_ONE_BREAK}{_MARKS}"
+    rf"[^\W\d_]"
     rf"|(?:{_DASH_SPACE}*\\| {{2,}})\r?\n"
     rf"|{_LINE_GAP}(?:\Z|\n{_LINE_GAP}(?:\n|\Z)))"
 )
-#: A value bound to the results after the short form, as typed: `{{results.or}}` or LaTeX's
-#: `\mg{results.or}`, after spaces, a colon, a comma or a closing dash. The mask blanks it,
-#: and a binding is where a number would be, so the short form gives a statistic: "- OR
-#: {{results.or}}." defines nothing, as "- OR 1.52." does not (round 2 of #643).
+#: A binding that prints a value, as typed: a namespace of `VALUE_NAMESPACES`, `{{results.or}}`
+#: or `{{lit.key}}`, and LaTeX's `\mg{results.or}`, its optional argument allowed. An anchor,
+#: `{{method.step}}`, prints nothing, and a pointer, `{{ref.table.key}}`, prints "Table 2":
+#: neither is a value.
+_VALUE_BINDING = "(?:" + "|".join(VALUE_NAMESPACES) + r")\."
+#: Spaces as typed, a LaTeX tie among them, which the mask reads as a space, on one line and
+#: across at most one line break.
+_TYPED_GAP = r"[ \t\r~\N{NO-BREAK SPACE}]*"
+_TYPED_BREAK = rf"{_TYPED_GAP}(?:\n{_TYPED_GAP})?"
+#: A value bound to the results after the short form, after spaces, a colon, a comma or a
+#: closing dash. The mask blanks it, and a binding is where a number would be, so the short
+#: form gives a statistic: "- OR {{results.or}}." defines nothing, as "- OR 1.52." does not
+#: (round 2 of #643).
 _BOUND = re.compile(
-    rf"{_MARKS}(?:{_DASH_SPACE}*(?:[:,]|{_DASH}))?{_ONE_BREAK}(?:\{{\{{|\\mg(?![A-Za-z]))"
+    rf"{_MARKS}(?:{_TYPED_GAP}(?:[:,]|{_DASH}))?{_TYPED_BREAK}"
+    rf"(?:\{{\{{\s*|\\mg(?![A-Za-z])\s*(?:\[[^\]\n]*\]\s*)?\{{\s*){_VALUE_BINDING}"
 )
 #: The end of a line, after a closing mark and a citation: where a list item's ends.
 _LINE_ENDS = re.compile(rf"{_MARKS}{_CITED}{_LINE_GAP}(?:\n|\Z)")
@@ -969,27 +983,26 @@ def _ends_its_clause(prose: str, typed: str, dash: re.Match[str]) -> bool:
 
 
 def _in_a_list_item(typed: str, line: int) -> bool:
-    """Is the line starting at `line` a list item's: opened by a marker, at the start of its
-    block or under the lines of the items above it, each a marker's or indented? A line in
-    the middle of a paragraph that opens "2020) " or "3. " is no list item. `\\item` is one
-    wherever it stands."""
+    """Is the line starting at `line` a list item's: opened by a marker, in a block that
+    opens as a list does, with a marker or indented? The lines between are the items above
+    it, their indented lines and their lazy continuations, unindented, as `_item_ends` reads
+    them. A line in the middle of a paragraph that opens "2020) " or "3. " is no list item.
+    `\\item` is one wherever it stands."""
     marked = _LIST_ITEM.match(typed, line)
     if marked is None:
         return False
     if "\\item" in marked.group(0):
         return True
-    at = line
+    first = line
     for _step in range(_LIST_LOOKBACK):
-        if at == 0:
-            return True
-        above = typed.rfind("\n", 0, at - 1) + 1
-        written = typed[above : at - 1]
+        if first == 0:
+            break
+        above = typed.rfind("\n", 0, first - 1) + 1
+        written = typed[above : first - 1]
         if not written.strip(" \t\r>") or _ENDS_AN_ITEM.match(written):
-            return True
-        if not (_LIST_ITEM.match(written) or written[:1] in " \t"):
-            return False
-        at = above
-    return True
+            break
+        first = above
+    return bool(_LIST_ITEM.match(typed, first)) or typed[first : first + 1] in (" ", "\t")
 
 
 def _item_ends(typed: str, after: int) -> bool:

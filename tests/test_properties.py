@@ -2358,9 +2358,11 @@ def _a_citation_after_a_dash_s_short_form_is_words(patch: pytest.MonkeyPatch) ->
 
 def _a_closing_dash_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
     """Round 1 of #643: "the Single Payment Scheme - SPS - replaced it" defined nothing."""
-    space, dash = language_gate._DASH_SPACE, language_gate._DASH
+    space, dash, gap = language_gate._DASH_SPACE, language_gate._DASH, language_gate._LINE_GAP
     one_break, marks = language_gate._ONE_BREAK, language_gate._MARKS
-    _clause_ends_with(patch, rf"|{space}+{dash}{space}{one_break}{marks}[^\W\d_]", "")
+    _clause_ends_with(
+        patch, rf"|(?:{space}+|{gap}\n{space}*){dash}{space}{one_break}{marks}[^\W\d_]", ""
+    )
 
 
 def _a_hard_line_break_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
@@ -2407,6 +2409,44 @@ def _a_closing_dash_ends_a_dash_s_clause_before_anything(patch: pytest.MonkeyPat
     dash, space = language_gate._DASH, language_gate._DASH_SPACE
     one_break, marks = language_gate._ONE_BREAK, language_gate._MARKS
     _clause_ends_with(patch, rf"{dash}{space}{one_break}{marks}[^\W\d_]", f"{dash}{space}")
+
+
+def _a_closing_dash_on_the_next_line_ends_nothing(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #662: under a lead-in line, "- the Farm Investment Fund - FIF" over the
+    next item defined nothing."""
+    space, dash, gap = language_gate._DASH_SPACE, language_gate._DASH, language_gate._LINE_GAP
+    _clause_ends_with(patch, rf"(?:{space}+|{gap}\n{space}*){dash}", f"{space}+{dash}")
+
+
+def _any_binding_after_a_dash_s_short_form_is_a_value(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #662: an anchor, `{{method.payments}}`, and a pointer, `{{ref.table.x}}`,
+    cancelled the definition before them."""
+    pattern = language_gate._BOUND.pattern
+    value = language_gate._VALUE_BINDING
+    assert pattern.count(value) == 1, pattern
+    patch.setattr(language_gate, "_BOUND", re.compile(pattern.replace(value, r"[a-z]+\.")))
+
+
+def _a_lazy_line_above_an_item_ends_the_list(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #662: the walk up a list stopped, an item's no more, at an unindented
+    continuation line of the item above."""
+    marked, ends = language_gate._LIST_ITEM, language_gate._ENDS_AN_ITEM
+
+    def stopped(typed: str, line: int) -> bool:
+        if not marked.match(typed, line):
+            return False
+        at = line
+        while at > 0:
+            above = typed.rfind("\n", 0, at - 1) + 1
+            written = typed[above : at - 1]
+            if not written.strip(" \t\r>") or ends.match(written):
+                return True
+            if not (marked.match(written) or written[:1] in " \t"):
+                return False
+            at = above
+        return True
+
+    patch.setattr(language_gate, "_in_a_list_item", stopped)
 
 
 def _a_dash_needs_no_space(patch: pytest.MonkeyPatch) -> None:
@@ -22562,6 +22602,18 @@ BROKEN = {
     ),
     "a closing dash ends a dash's clause before anything": (
         _a_closing_dash_ends_a_dash_s_clause_before_anything,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a closing dash on the next line ends no dash's clause": (
+        _a_closing_dash_on_the_next_line_ends_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "any binding after a dash's short form is a value": (
+        _any_binding_after_a_dash_s_short_form_is_a_value,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a lazy line above an item ends the list, a dash's clause with it": (
+        _a_lazy_line_above_an_item_ends_the_list,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "pandoc's smart dashes are no dashes": (

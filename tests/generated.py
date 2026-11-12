@@ -658,6 +658,10 @@ DEFINING = (
      "CPS"),
     ("the Hill Farm Allowance \N{EN DASH} HFA  \nwhich pays farmers", "\N{EN DASH} HFA",
      "HFA"),
+    # A bullet that is no dash, which only the list item's line ends (round 1 of #662: a
+    # dash bullet's line break is read as a space before a closing dash).
+    ("* the Slurry Infrastructure Grant \N{EN DASH} SIG\n* the Slurry Fund", "\N{EN DASH} SIG",
+     "SIG"),
     ("- the Farming Transition Fund \N{EN DASH} FTF\n- the Farming Equipment Fund",
      "\N{EN DASH} FTF", "FTF"),
     # Round 2 of #643: an item over a nested list, and one after an item with a continuation
@@ -666,6 +670,17 @@ DEFINING = (
      "\N{EN DASH} RPA", "RPA"),
     ("- the Farming Fund\n  still paid\n- the Woodland Grant Scheme \N{EN DASH} WGS\n- the "
      "Woodland Fund", "\N{EN DASH} WGS", "WGS"),
+    # Round 1 of #662: an item under a lazy continuation, unindented; a list straight under a
+    # lead-in line, its next item's dash after the line break; and a binding that prints no
+    # value, an anchor and a pointer.
+    ("1. the Forestry Fund\nstill paid\n2. the Tree Health Scheme \N{EN DASH} THS\n3. the "
+     "Tree Fund", "\N{EN DASH} THS", "THS"),
+    ("the schemes were:\n- the Farm Investment Fund \N{EN DASH} FIF\n- the Farm Equipment Fund",
+     "\N{EN DASH} FIF", "FIF"),
+    ("farmers were paid under the Delinked Payment Scheme \N{EN DASH} DPS {{method.payments}}.",
+     "\N{EN DASH} DPS", "DPS"),
+    ("farmers were paid under the Lump Sum Scheme \N{EN DASH} LSS {{ref.table.payments}}.",
+     "\N{EN DASH} LSS", "LSS"),
 )  # fmt: skip
 
 #: A dash definition at the very end of the text, which every example of `bracketed` ends
@@ -729,6 +744,7 @@ NOT_DEFINING = (
     # a closing dash; a list item that goes on into its continuation, indented or not; and a
     # prose line in a paragraph's middle that opens as a list item would.
     ("the risk was higher in older people \N{EN DASH} OR {{results.or}}.", "OR {{", "OR"),
+    ("the risk was lower in older people \N{EN DASH} OR {{lit.cohort.or}}.", "OR {{lit", "OR"),
     ("the risk was higher in older people \N{EN DASH} OR: {{results.or}} in all", "OR:",
      "OR"),
     ("the risk was higher in older people \N{EN DASH} OR, {{results.or}} in all", "OR,",

@@ -323,7 +323,7 @@ manuscript-guard init my-paper --from paper.docx
 This makes a project whose manuscript is the paper, read by pandoc with tracked changes
 accepted, and prints what it did. Converting with `pandoc paper.docx -t markdown` instead
 writes most Word tables as multiline tables, whose lines of dashes `check` refuses at every
-stage; on fifteen real papers it did so for seven. `init --from` changes three things:
+stage; on fifteen real papers it did so for seven. `init --from` changes these things:
 
 - **Tables.** A table whose cells hold only paragraphs is written as a pipe table. A cell's
   paragraphs and line breaks are joined with spaces, a merged cell's text stands in its
@@ -344,6 +344,19 @@ stage; on fifteen real papers it did so for seven. `init --from` changes three t
   bold "Study design" is text. Give the titles Word's heading styles for a reading that
   rests on no list. With neither, nothing is set aside, and the report says the paper was
   read as one text.
+- **The typed references.** The reference list under a heading or a title in bold that
+  names one is read into `literature/references.bib`: each entry of an APA journal article,
+  `Smith, J. A., & Jones, B. (2020). Title. *Journal*, *12*(3), 45--67.`, or book, `Lee, C.
+  (2018). *Title*. Publisher.`, whose every field is read exactly, under a Better BibTeX key,
+  `smith2020`, the list's letter kept, `smith2020a`. Each citation typed as text that names
+  exactly one entry by all its authors and its year, "(Smith & Jones, 2020)", "(e.g., Smith
+  & Jones, 2020; Lee, 2018)" or "Smith et al. (2019)", becomes `[@smith2020]`,
+  `[e.g., @smith2020; @lee2018]` or `@smith2019`. Nothing is guessed: an entry not read is
+  not written, a citation that names two entries or none stays as typed, and `init` lists
+  each with its line and why. A numbered list is left as typed, and so is every citation
+  where `references.bib` is already there. The typed list stays in `main.md`, where G2 does
+  not read its numbers; `sync-bib` writes `references.bib` again from Zotero, so import it
+  there first.
 
 What Word's Title, Author, Date and Abstract styles hold is what pandoc reads as the
 document's metadata. The title goes to `paper.yaml` unless `--title` gives another, each

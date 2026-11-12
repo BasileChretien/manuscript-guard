@@ -372,7 +372,7 @@ def test_the_command_ends_an_answer_of_another_shape_with_a_sentence(
     monkeypatch.setattr(resources, "write_record", _refused)
     assert main(["lookup", str(root), "--resources"]) == 1
     said = capsys.readouterr().out
-    assert "RRID:CVCL_0372: an answer of another shape (" in said and "no answer" not in said
+    assert "RRID:CVCL_0372: an answer of another shape (" in said and "did not come" not in said
 
 
 def _refused(project, record):

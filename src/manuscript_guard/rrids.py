@@ -56,15 +56,11 @@ CELLOSAURUS_LICENCE = "CC BY 4.0"
 _LABEL = r"(?<![A-Za-z0-9_\-])RRID:"
 #: The space after the colon: one space, a tab, a no-break space, or a line break.
 _GAP = r"(?:[ \t  ]|\r?\n)?"
-#: The authority's prefix and what it issued, each part joined by `_`, `:`, `.` or `-`, and
-#: each joining mark followed by a letter or a digit, so a full stop or a comma after it is
-#: not read; a `-` before a part of small letters only ends it, "RRID:CVCL_0030-derived"
-#: being CVCL_0030, where MMRRC_000231-UNC and ZFIN_ZDB-GENO-960809-7 are whole. Or a single
-#: part of letters then digits, SAMN12345678; "RRID: pending" and "RRID:AB" are none
-#: (round 1 of #658: NXR_0.0005 was read as NXR_0, and SAMN12345678 not at all).
-#: Round 2: a dot joins only before a digit, "RRID:SCR_002798.Version 9"; and a word ends it
-#: only of four small letters or more with no `:`, `_` or `-` after it, so an accession typed
-#: in small letters, "zfin_zdb-geno-960809-7", "mmrrc_000231-unc", "wb-strain:…", is whole.
+#: The authority's prefix and its parts, letters or digits, joined by `_`, `:`, a `.` before a
+#: digit (NXR_0.0005, but SCR_002798 in "RRID:SCR_002798.Version 9"), or a `-` that is not
+#: before a word of four small letters or more with no `:`, `_` or `-` after it: CVCL_0030 in
+#: "RRID:CVCL_0030-derived", mmrrc_000231-unc whole. A mark after an RRID is no part of it.
+#: Or one part of letters then digits, SAMN12345678; "RRID: pending" and "RRID:AB" are none.
 _JOIN = r"(?:[_:]|\.(?=[0-9])|-(?![a-z]{4,}(?![A-Za-z0-9_:\-])))"
 _ACCESSION = (rf"(?P<accession>[A-Za-z][A-Za-z0-9]*(?:{_JOIN}[A-Za-z0-9]+)+"
               r"|[A-Za-z]+[0-9][A-Za-z0-9]*)")

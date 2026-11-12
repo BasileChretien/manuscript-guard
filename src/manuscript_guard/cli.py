@@ -5807,8 +5807,8 @@ def _lookup_resources(project, args: argparse.Namespace) -> int:
     up_to_date = sum(1 for one in planned if one.skipped == "up to date")
     print(f"{len(written)} looked up, {up_to_date} up to date; records in literature/rrids/")
     if late:
-        print(f"{len(late)} had an answer that did not come, and nothing was recorded for "
-              "them; `lookup --resources` asks again for those")  # fmt: skip
+        print(f"{len(late)} were not recorded (no answer, or an answer of another shape); "
+              "`lookup --resources` asks again for those")  # fmt: skip
         return 1
     return 0
 

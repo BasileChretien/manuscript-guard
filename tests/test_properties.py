@@ -20693,6 +20693,13 @@ def _any_word_after_a_hyphen_ends_an_rrid(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(rrids, "TYPED", re.compile(rrids._LABEL + rrids._GAP + accession))
 
 
+def _a_dot_before_a_letter_joins_an_rrid(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import rrids  # the old `[_:.]` joiner (round 3 of #658)
+
+    joined = rrids._ACCESSION.replace(r"[_:]|\.(?=[0-9])", "[_:.]")
+    patch.setattr(rrids, "TYPED", re.compile(rrids._LABEL + rrids._GAP + joined))
+
+
 def _an_rrid_in_a_code_span_is_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import masking
 
@@ -20722,6 +20729,10 @@ BROKEN = {
     ),
     "an RRID in a comment is read": (
         _an_rrid_in_a_comment_is_read,
+        test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
+    ),
+    "a dot before a letter joins an RRID's parts": (
+        _a_dot_before_a_letter_joins_an_rrid,
         test_each_typed_rrid_is_read_where_it_stands_as_written_and_nothing_else,
     ),
     "any word of small letters after a hyphen ends an RRID": (

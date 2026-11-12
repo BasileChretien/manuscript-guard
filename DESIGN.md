@@ -26896,8 +26896,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Accepted.
   - An accession whose last part is four small letters or more after a hyphen, with no `:`,
     `_` or `-` after it, is read without it: "RRID:Addgene_12345-abcd" is RRID:Addgene_12345,
-    the rule that leaves "-derived" out; and a word of three, "RRID:CVCL_0030-ish", is read
-    into it. Accepted.
+    the rule that leaves "-derived" out. Such a word with `-`, `_` or `:` after it joins
+    ("RRID:CVCL_0030-cell-derived" is CVCL_0030-cell), and one of three small letters or
+    fewer ("-ish", "-ko", "-wt") or of capitals ("-GFP", "-KO") is read into it. Accepted.
   - A citation number typed straight after an RRID's full stop, "RRID:AB_2298772.12", is read
     into the accession, since a dot before a digit joins its parts. Accepted.
   - A "Problematic cell line" comment whose value is no string, or blank, is dropped, and the

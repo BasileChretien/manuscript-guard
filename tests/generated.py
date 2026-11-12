@@ -14420,8 +14420,8 @@ RRID_ACCESSIONS = (
 #: a line break.
 RRID_GAPS = ("", " ", "\u00a0", "\n")
 #: What may follow an RRID, which is not part of it: a mark, or a word of small letters
-#: after a hyphen, "CVCL_0030-derived cells" (round 1 of #658).
-RRID_TRAILS = ("", ".", ",", ";", ")", ":", "-derived")
+#: after a hyphen, "CVCL_0030-derived cells", or after a stop, ".Version" (rounds 1, 3 of #658).
+RRID_TRAILS = ("", ".", ",", ";", ")", ":", "-derived", ".Version")
 #: The case an accession is written in: as the authority lists it, or in small letters.
 RRID_CASES = ("as listed", "lowered")
 #: The documents an RRID may stand in.

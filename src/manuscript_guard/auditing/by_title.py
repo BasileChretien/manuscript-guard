@@ -45,7 +45,7 @@ import html
 import json
 import re
 import unicodedata
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -67,6 +67,17 @@ FOUND = "found"
 TO_CHECK = "to check by hand"
 EXPECTED = "no DOI expected"
 PENDING = "not yet looked up"
+#: Why an entry is to be checked by hand, each as the summary says it (`reason`).
+NOT_FOUND = "none found by its title"
+AMBIGUOUS = "more than one work of its title found"
+UNANSWERED = "Crossref did not answer"
+UNSEARCHED = "its title too short to look up, or not read"
+UNSORTED = "not sorted"
+REASONS = (NOT_FOUND, AMBIGUOUS, UNANSWERED, UNSEARCHED, UNSORTED)
+#: The code of the note on an entry to check by hand, by why.
+CODES = {NOT_FOUND: "not-found-by-title", AMBIGUOUS: "found-twice-by-title",
+         UNANSWERED: "title-search-unanswered", UNSEARCHED: "title-not-searchable",
+         UNSORTED: "reference-not-sorted"}  # fmt: skip
 
 _URL = re.compile(r"https?://\S+|\bwww\.\S+", re.IGNORECASE)
 _YEAR = r"(?:1[5-9]\d{2}|20\d{2})"
@@ -87,8 +98,9 @@ _ARTICLE: tuple[tuple[str, re.Pattern[str]], ...] = (
 )  # fmt: skip
 _LEGAL_OPENING = re.compile(
     r"^(arr[\u00eae]t[\u00e9e]|d[\u00e9e]cret|loi|ordonnance|circulaire|directive|"
-    r"r[\u00e8e]glement|regulation|gesetz|verordnung|decreto|ley)(?!\w)"
-    # Not a person of that name, "Ley J." or "Loi, K.": a law's word is followed by none.
+    r"r[\u00e8e]glement|regulation|gesetz|verordnung|decreto|ley)(?![\w-])"
+    # Not a person of that name, "Ley J." or "Loi, K.": a law's word is followed by none; nor
+    # a name it begins, "Ley-Cooper A." (round 1 of #650).
     r"(?-i:(?!\s+(?:[A-Z]\.?-?){1,4}[,.\s]))(?!,)",
     re.IGNORECASE,
 )
@@ -146,20 +158,51 @@ def sort(text: str) -> Sorted:
     opening = _LEGAL_OPENING.match(text)
     if opening:
         return Sorted(LEGAL, f'it opens with "{opening.group(1)}"')
+    # A page's and a law's marks outside the title first, then a book's, then theirs inside
+    # it: "How patients accessed care. London: Example Press; 2019." and "The Data
+    # Protection Act 2018 explained. ..." are books (round 1 of #650), and "Commission
+    # notice. Official Journal of the European Union. ..." is read with the journal as its
+    # title.
+    outside = _outside_title(text)
+    found = _legal_or_web(outside)
+    if found is not None:
+        return found
+    # A book's marks are read after the authors, whose initials "MA" or "PA" are no state.
+    after = _URL.sub(" ", text[_authors_end(text):])
+    for why, pattern in _BOOK:
+        if pattern.search(after):
+            return Sorted(BOOK, why)
+    found = _legal_or_web(text)
+    if found is not None:
+        return found
+    if _URL.search(text):
+        return Sorted(WEB, "it gives a web address and nothing a journal or a publisher adds")
+    return Sorted(OTHER)
+
+
+def _legal_or_web(text: str) -> Sorted | None:
+    """A legal text by the official journal or the register `text` names, or a web page by
+    its own marks, or None."""
     named = _LEGAL_NAMED.search(text)
     if named:
         return Sorted(LEGAL, f'it names "{named.group(1)}"')
     for why, pattern in _WEB:
         if pattern.search(text):
             return Sorted(WEB, why)
-    # A book's marks are read after the authors, whose initials "MA" or "PA" are no state.
-    after = _URL.sub(" ", text[_authors_end(text):])
-    for why, pattern in _BOOK:
-        if pattern.search(after):
-            return Sorted(BOOK, why)
-    if _URL.search(text):
-        return Sorted(WEB, "it gives a web address and nothing a journal or a publisher adds")
-    return Sorted(OTHER)
+    return None
+
+
+def _outside_title(text: str) -> str:
+    """`text` with the title `cited` reads in it blanked, or all of it where none is read."""
+    said = cited(text)
+    if said is None:
+        return text
+    at = text.find(said.title, _authors_end(text))
+    if at < 0:
+        at = text.find(said.title)
+    if at < 0:
+        return text
+    return text[:at] + " " + text[at + len(said.title):]
 
 
 # ------------------------------------------------------------------ what it is cited by
@@ -175,6 +218,10 @@ class Cited:
     family: str = ""
     year: int | None = None
     titles: tuple[str, ...] = ()
+    #: The whole entry, folded (`fold`): what a search's answer is not compared with, since
+    #: an entry may open with a given name (round 1 of #650), and what the property that
+    #: says so breaks the rule back to.
+    opening: str = field(default="", compare=False)
 
 
 #: A full stop, a question mark or an exclamation mark that ends a part of the entry.
@@ -185,8 +232,11 @@ _DOTTED = re.compile(r"(?:^|[\s(])(?:[A-Za-z]\.)+[A-Za-z]$")
 _SHORT = frozenset({"vs", "st", "dr", "no", "vol", "ed", "eds", "pp", "p"})
 #: An initial, "K" or "K." or "KL", which a stop after it may sit inside a run of.
 _INITIAL = re.compile(r"(?:[A-Z]\.?-?){1,4}")
-#: An entry that opens with a given name's initials, "K. L. Ross" or "K.L. Ross".
-_GIVEN_FIRST = re.compile(r"(?:[A-Z]\.[\s-]*){1,4}[A-Z][a-z]")
+#: An entry that opens with a given name's initials, "K. L. Ross", "K.L. Ross" or "K. A. van
+#: der Berg", as BibTeX's plain style, IEEE's and abbrv print it.
+_GIVEN_FIRST = re.compile(
+    r"(?:[A-Z]\.[\s-]*){1,4}(?:[a-z]{1,3}\s+){0,3}[A-ZÀ-ÖØ-Þ][a-z'’ß-ÿ]"
+)
 #: The year in brackets after an author-year entry's authors, "(2019)." or "(2019, March).".
 _BRACKET_YEAR = re.compile(rf"\(({_YEAR})[a-z]?(?:,[^)]{{0,30}})?\)[.,]?\s+")
 _PARTICLES = frozenset({"van", "von", "de", "der", "den", "da", "di", "du", "des", "le", "la",
@@ -304,7 +354,7 @@ def _closing(text: str) -> int:
 
 def _without_marks(title: str) -> str:
     """A title without its quotes and without a medium in brackets after it."""
-    title = re.sub(r"\s*\[[^\]]*\]\s*$", "", title.strip()).strip()
+    title = re.sub(r"\s*\[[^\]]*\]\s*$", "", title.strip().rstrip(" ,.")).strip()
     close = _closing(title)
     if close:
         return title[1:close].strip(" ,.")
@@ -344,15 +394,16 @@ def cited(text: str) -> Cited | None:
         later = _ACCESS.sub(" ", _URL.sub(" ", text[after:]))
         found = _A_YEAR.search(later)
         year = int(found.group(1)) if found else None
-    return Cited(title, _first_family(authors), year, titles)
+    return Cited(title, _first_family(authors), year, titles, fold(text))
 
 
 # ------------------------------------------------------------------------- the match
 
 
 def fold(text: str) -> str:
-    """`text` with its tags, case, accents and punctuation folded away: "Børte" and
-    "borte", "Children's" and "childrens'" are one."""
+    """`text` with its tags, case, accents and punctuation folded away, each run of what is
+    not a letter or a digit one space: "Børte" and "borte" are one, and so are "Children's"
+    and "Children’s", both "children s"."""
     from manuscript_guard.gates.authors import LETTERS
     from manuscript_guard.gates.lookups import _TAGS
 
@@ -362,28 +413,34 @@ def fold(text: str) -> str:
     return " ".join(re.findall(r"[^\W_]+", text))
 
 
-def near_exact(said: Cited, opening: str, work: dict[str, Any]) -> bool:
-    """Whether Crossref's `work` is the entry's, read as `said`, whose whole text folded is
-    `opening`: the same title, the same first author's family name, and the same year where
-    the entry gives one."""
-    return (_same_title(said, work) and _same_first_author(opening, work)
+def near_exact(said: Cited, work: dict[str, Any]) -> bool:
+    """Whether Crossref's `work` is the entry read as `said`: the same title, the same first
+    author's family name, and the same year where the entry gives one."""
+    return (_same_title(said, work) and _same_first_author(said, work)
             and _same_year(said, work))  # fmt: skip
 
 
 def _same_title(said: Cited, work: dict[str, Any]) -> bool:
-    """The work's title, or its title and subtitle, one of the entry's, folded."""
+    """The work's title, or its title and subtitle, one of the entry's, folded, without the
+    flag a registry puts before a retracted or withdrawn work's title, "RETRACTED:", as
+    `gates.searched` takes it off (round 1 of #650): the works most worth finding."""
+    from manuscript_guard.gates.searched import _FLAG
+
     wanted = {fold(title) for title in said.titles} - {""}
     whole = ": ".join(t for t in (work.get("title"), work.get("subtitle")) if t)
-    titles = {fold(t) for t in (whole, work.get("title"), work.get("original_title")) if t}
+    titles = {fold(_FLAG.sub("", t)) for t in (whole, work.get("title"),
+                                               work.get("original_title")) if t}  # fmt: skip
     return bool(wanted & titles)
 
 
-def _same_first_author(opening: str, work: dict[str, Any]) -> bool:
-    """The family name of the first person the work lists the first word or words of the
-    entry, folded; a work that lists a group first, or no one, is none."""
+def _same_first_author(said: Cited, work: dict[str, Any]) -> bool:
+    """The family name of the first person the work lists the first author's the entry is
+    read to give (`cited`), folded: where the entry opens with a given name, "K. L. Ross.",
+    its opening is no family name (round 1 of #650). A work that lists a group first, or no
+    one, is none, and so is an entry whose first author was not read."""
     people = [p for p in work.get("authors") or [] if isinstance(p, dict)]
     family = fold(people[0].get("family", "")) if people else ""
-    return bool(family) and (opening == family or opening.startswith(family + " "))
+    return bool(family) and family == fold(said.family)
 
 
 def _same_year(said: Cited, work: dict[str, Any]) -> bool:
@@ -391,7 +448,7 @@ def _same_year(said: Cited, work: dict[str, Any]) -> bool:
     return said.year is None or said.year in set((work.get("years") or {}).values())
 
 
-def matches(said: Cited, opening: str, answer: dict[str, Any]) -> tuple[str, ...]:
+def matches(said: Cited, answer: dict[str, Any]) -> tuple[str, ...]:
     """The DOI of each work of Crossref's search `answer` that is the entry's, each once."""
     from manuscript_guard.gates import searched
 
@@ -399,8 +456,7 @@ def matches(said: Cited, opening: str, answer: dict[str, Any]) -> tuple[str, ...
     for item in answer.get("candidates") or []:
         if not isinstance(item, dict) or not isinstance(item.get("doi"), str):
             continue
-        if searched._a_work(searched._crossref(item), said.title) and near_exact(
-                said, opening, item):  # fmt: skip
+        if searched._a_work(searched._crossref(item), said.title) and near_exact(said, item):
             found.append(item["doi"])
     return tuple(dict.fromkeys(found))
 
@@ -454,7 +510,8 @@ def unasked(census: Any) -> list[Searched]:
     from manuscript_guard.auditing.references import UNTOLD, without_identifier
     from manuscript_guard.gates.searched import unsearchable
 
-    if census.style == UNTOLD:
+    if getattr(census, "note", "") or census.style == UNTOLD:
+        # No list was read, or its "entries" are identifiers.
         return []
     found = []
     for entry in census.entries:
@@ -533,8 +590,7 @@ def search(
                 found.append(replace(one, came=came,
                                      unanswered=str(answer.get("why") or "no reason given")))
                 continue
-            opening = fold(_text(one.entry, census.style))
-            found.append(replace(one, came=came, dois=matches(said, opening, answer)))
+            found.append(replace(one, came=came, dois=matches(said, answer)))
     return found
 
 
@@ -596,14 +652,36 @@ def look_up_all(
 def outcome(one: Searched, looked_up: bool) -> str:
     """What the entry comes to: found, to check by hand, no DOI expected, or not yet looked
     up (no `--lookup`, or a dry run)."""
+    found = reason(one, looked_up)
+    return TO_CHECK if found in REASONS else found
+
+
+def reason(one: Searched, looked_up: bool) -> str:
+    """`outcome`, with why an entry is to be checked by hand said as it is (`REASONS`): not
+    sorted, its title not looked up, Crossref not answering, more than one work of its title,
+    or none (round 1 of #650: all five were "no DOI or PMID found")."""
     kind = one.sorted.kind
     if kind in NO_DOI_EXPECTED:
         return EXPECTED
-    if kind not in SEARCHED or one.unsearched:
-        return TO_CHECK
+    if kind not in SEARCHED:
+        return UNSORTED
+    if one.unsearched:
+        return UNSEARCHED
     if not looked_up or not one.came:
         return PENDING
-    return FOUND if one.doi else TO_CHECK
+    if one.unanswered:
+        return UNANSWERED
+    if one.doi:
+        return FOUND
+    return AMBIGUOUS if one.dois else NOT_FOUND
+
+
+def without_identifier(report: Any) -> list[Searched]:
+    """Each entry with no DOI and no PMID of `report`'s lists: as `--lookup` left them, or,
+    without it, sorted and read with nothing asked (`unasked`)."""
+    if report.lookups is not None and getattr(report, "titles", None) is not None:
+        return list(report.titles)
+    return [one for census in report.references for one in unasked(census)]
 
 
 def said(one: Searched, looked_up: bool) -> str:
@@ -635,7 +713,8 @@ def said(one: Searched, looked_up: bool) -> str:
     return f"{noun} with no DOI given, and none found by its title: check it by hand"
 
 
-__all__ = ["ARTICLE", "BOOK", "CHAPTER", "EXPECTED", "FOUND", "LEGAL", "NO_DOI_EXPECTED",
-           "OTHER", "PENDING", "SEARCHED", "TO_CHECK", "WEB", "Cited", "Searched", "Sorted",
-           "cited", "fold", "look_up_all", "matches", "near_exact", "outcome", "said", "search",
-           "sort", "unasked"]  # fmt: skip
+__all__ = ["AMBIGUOUS", "ARTICLE", "BOOK", "CHAPTER", "CODES", "EXPECTED", "FOUND", "LEGAL",
+           "NOT_FOUND", "NO_DOI_EXPECTED", "OTHER", "PENDING", "REASONS", "SEARCHED", "TO_CHECK",
+           "UNANSWERED", "UNSEARCHED", "UNSORTED", "WEB", "Cited", "Searched", "Sorted", "cited",
+           "fold", "look_up_all", "matches", "near_exact", "outcome", "reason", "said", "search",
+           "sort", "unasked", "without_identifier"]  # fmt: skip

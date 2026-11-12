@@ -11421,10 +11421,19 @@ def audit_entries(draw: st.DrawFn) -> list[tuple[str, bool]]:
 #: (`auditing.by_title.sort`), as `{shape}`, with the kind it is: an article in three styles,
 #: one that also gives its address, a book in two, a chapter, a web page with its access
 #: date, a legal text by its opening word, an official text by its journal, and a bare
-#: address. `{a}` is the first author's family name and `{t}` the title.
+#: address; and (round 1 of #650) an article with its authors' given names first, as
+#: BibTeX's plain style prints it, and a book whose title holds a web page's or a law's words.
+#: `{a}` is the first author's family name and `{t}` the title, or `{w}` for that book, whose
+#: author's name opens with a law's word and a hyphen.
 UNIDENTIFIED_ENTRIES = {
     "an article": ("{a} {i}, {b} {j}. {t}. {journal}. {year};{vol}({issue}):{page}-{end}.",
                    "article"),
+    "an article with its given names first": (
+        "{d}. {e}. {a} and {k}. {b}. {t}. {long}, {vol}({issue}):{page}-{end}, {year}.",
+        "article",
+    ),
+    "a book whose title holds a page's or a law's words": (
+        "Ley-Cooper {i}. {w}. {place}: {publisher}; {year}.", "book"),
     "an article in APA style": (
         "{a}, {d}. {e}., & {b}, {k}. ({year}). {t}. {long}, {vol}({issue}), {page}-{end}.",
         "article",
@@ -11471,6 +11480,10 @@ UNIDENTIFIED_TITLES = (
 #: and with an apostrophe.
 UNIDENTIFIED_FAMILIES = ("Børte", "Østergaard", "van der Berg", "O'Brien", "Dupont", "Ross",
                          "Lillejord")  # fmt: skip
+#: Titles of books with a word a web page's or a law's mark is made of.
+UNIDENTIFIED_BOOK_TITLES = ("How patients accessed care", "Care available at home",
+                            "The Data Protection Act 2018 explained",
+                            "Records retrieved from the archive")  # fmt: skip
 
 
 @st.composite
@@ -11478,16 +11491,20 @@ def unidentified_entries(draw: st.DrawFn) -> list[tuple[str, str, str | None, st
                                                         int | None]]:  # fmt: skip
     """Each of `UNIDENTIFIED_ENTRIES`, in an order drawn, each `(text, kind, title, first
     author, year)`, the last three for an article, a book or a chapter only. Every kind in
-    every example; each title and each family name drawn for one of the seven articles,
-    books and chapters, so that every one stands in every example."""
+    every example; each title and each family name drawn for one of the nine articles,
+    books and chapters, so that every one stands in every example, and a book's title with
+    a page's or a law's words drawn for the book that has one."""
     titles = draw(st.permutations(UNIDENTIFIED_TITLES))
     families = draw(st.permutations(UNIDENTIFIED_FAMILIES))
     drawn = []
-    for at, (shape, kind) in enumerate(UNIDENTIFIED_ENTRIES.values()):
+    # Counted over the shapes that name `{a}` and `{t}`, so that each family name and each
+    # title stands in one of them at least.
+    named = titled = 0
+    for shape, kind in UNIDENTIFIED_ENTRIES.values():
         year = draw(st.integers(1970, 2024))
         fill = {
-            "a": families[at % len(families)], "b": draw(st.sampled_from(_SURNAMES)),
-            "t": titles[at % len(titles)],
+            "a": families[named % len(families)], "b": draw(st.sampled_from(_SURNAMES)),
+            "t": titles[titled % len(titles)],
             "i": draw(st.sampled_from(_INITIALS)), "j": draw(st.sampled_from(_INITIALS)),
             "d": draw(st.sampled_from("JKMH")), "e": draw(st.sampled_from("ABL")),
             "k": draw(st.sampled_from("JKMH")),
@@ -11503,11 +11520,16 @@ def unidentified_entries(draw: st.DrawFn) -> list[tuple[str, str, str | None, st
             "year": year, "later": draw(st.integers(2000, 2025)),
             "vol": draw(st.integers(1, 400)), "issue": draw(st.integers(1, 12)),
             "page": draw(st.integers(1, 900)), "end": draw(st.integers(1, 99)),
-            "day": draw(st.integers(1, 28)),
+            "day": draw(st.integers(1, 28)), "w": draw(st.sampled_from(UNIDENTIFIED_BOOK_TITLES)),
         }  # fmt: skip
         searched = kind in ("article", "book", "chapter")
-        drawn.append((shape.format(**fill), kind, fill["t"] if searched else None,
-                      fill["a"] if searched else None, year if searched else None))  # fmt: skip
+        named += searched and "{a}" in shape
+        titled += searched and "{t}" in shape
+        title = fill["w"] if "{w}" in shape else fill["t"]
+        # That book's author, whose name opens with a law's word and a hyphen.
+        family = "Ley-Cooper" if shape.startswith("Ley-Cooper") else fill["a"]
+        drawn.append((shape.format(**fill), kind, title if searched else None,
+                      family if searched else None, year if searched else None))  # fmt: skip
     return draw(st.permutations(drawn))
 
 

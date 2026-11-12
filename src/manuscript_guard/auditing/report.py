@@ -198,30 +198,32 @@ def items(report) -> list[Item]:
             Item(REFERENCES, "G7", p.code, p.message, WARN, False, p.path, p.line)
             for p in looked.problems
         ]  # fmt: skip
-    found += _title_items(getattr(report, "titles", None) or [])
+    found += _title_items(report)
     return (found + _journal_items(report.journal) + _document_items(report)
             + _causal_items(report.causal) + _cited_items(report.cited)
             + _self_citation_items(report.self_citation)
             + list(getattr(report.package, "found", [])))  # fmt: skip
 
 
-def _title_items(titles: list) -> list[Item]:
-    """What `--lookup` says of an article or a book with no DOI and no PMID: what a dry run
-    would ask of Crossref, and each one Crossref's search by its title did not find, or
-    could not be asked of, a note to check it by hand. One it found is said as the DOI it
-    gave is asked about (`by_title.look_up_all`)."""
+def _title_items(report) -> list[Item]:
+    """What is said of each entry with no DOI and no PMID that a reader is to look at: what
+    a dry run would ask of Crossref, and, with `--lookup` or without it, each one to check by
+    hand, a note with why (`by_title.reason`). The tile counts the same entries (round 1 of
+    #650). One found is said as the DOI it gave is asked about (`by_title.look_up_all`); a
+    web page or a legal text no DOI is expected of is listed in the section only."""
     from manuscript_guard.auditing import by_title
 
+    looked_up = report.lookups is not None
     found = []
-    for one in titles:
+    for one in by_title.without_identifier(report):
         entry, where = one.entry, one.entry.path or one.path
-        if one.asked and not one.came:
+        why = by_title.reason(one, looked_up)
+        if looked_up and one.asked and not one.came:
             found.append(Item(REFERENCES, "G7", "would-ask", f"{entry.label}: would ask "
                               f"{one.asked}", INFO, False, where, entry.line))  # fmt: skip
-        elif (one.came and not one.doi) or (one.sorted.kind in by_title.SEARCHED
-                                            and one.unsearched):  # fmt: skip
-            found.append(Item(REFERENCES, "G7", "not-found-by-title",
-                              f"{entry.label}: {by_title.said(one, True)}", INFO, False,
+        elif why in by_title.REASONS:
+            found.append(Item(REFERENCES, "G7", by_title.CODES[why],
+                              f"{entry.label}: {by_title.said(one, looked_up)}", INFO, False,
                               where, entry.line))  # fmt: skip
     return found
 

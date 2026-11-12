@@ -10075,14 +10075,19 @@ search, is in three parts, and `auditing/by_title.py` holds them.
 after its title, or "In" and its editors), a journal article (a year then a volume, a volume
 and its issue before its pages, a volume and pages after a comma, "vol.", "in press"), a
 legal or official text (a law's opening word, "Arrêté", "Décret", "Loi", "Directive",
-"Regulation" and a few more, not followed by initials as a person called Ley is; or an
-official journal or register of law named, "JORF", "Official Journal of the European
-Union", "Federal Register", Légifrance), a web page by its own marks (an access or citation
-date, "[Internet]", "Available from"), a book (a place and a publisher before the year, an
-edition, an ISBN, a city of the United States with its state, a publisher's name, editors),
-a web page by its address alone, and otherwise not sorted. An article comes before a web
-page, so that one that also gives its address is an article; a page's own marks come before
-a book's, so that "[Internet]. Geneva: Example Agency; 2020" is a page. A web page and a legal
+"Regulation" and a few more, not followed by initials as a person called Ley is, nor by a
+hyphen as Ley-Cooper; or an official journal or register of law named, "JORF", "Official
+Journal of the European Union", "Federal Register", Légifrance), a web page by its own marks
+(an access or citation date, "[Internet]", "Available from"), a book (a place and a publisher
+before the year, an edition, an ISBN, a city of the United States with its state, a
+publisher's name, editors), a web page by its address alone, and otherwise not sorted. An
+article comes before a web page, so that one that also gives its address is an article; a
+page's own marks come before a book's, so that "[Internet]. Geneva: Example Agency; 2020" is a
+page. A law's and a page's marks are read first outside the title the entry is read to give,
+and only after a book's marks inside it: "How patients accessed care. London: Example Press;
+2019." and "The Data Protection Act 2018 explained. London: ..." are books (round 1 of #650),
+and "Commission notice. Official Journal of the European Union. ...", whose second part is
+read as its title, is a legal text. A web page and a legal
 text are listed as "no DOI expected", with the mark that sorted them; an entry not sorted is
 to be checked by hand.
 
@@ -10102,10 +10107,13 @@ date left out. A title whose searched words are fewer than three is not looked u
 title and subtitle joined, the entry's once case, punctuation, accents and tags are folded
 (`fold`; "Børte" is "borte"), the entry's title read as its first part after the authors or as
 that part and the next one or two, so that a title that holds a full stop is still compared
-whole; the family name of the first person the work lists the first word or words of the
-entry, folded the same way; and, where the entry gives a year, one of the work's years that
-year. Crossref's score is not read. A notice, a peer review or a part of a work is never the
-work (`gates/searched._a_work`). Two works that match, with two DOIs, are neither taken. A
+whole, and the flag a registry puts before a retracted or withdrawn work's title,
+"RETRACTED:", taken off as `gates/searched` takes it off; the family name of the first person
+the work lists the first author's the entry is read to give, folded the same way, so that an
+entry with its given names first, "K. L. Ross.", is matched by "Ross" (round 1 of #650: it
+had been held to the entry's opening words, and never matched); and, where the entry gives a
+year, one of the work's years that year. Crossref's score is not read. A notice, a peer review
+or a part of a work is never the work (`gates/searched._a_work`). Two works that match, with two DOIs, are neither taken. A
 work taken is said as "found by its title: DOI …", and its DOI is then asked of the
 registries as an entry's own DOI is (`by_title.look_up_all`), so a retraction, a withdrawal or
 an expression of concern is said of it like any other. Where none is taken the entry is "an
@@ -10119,8 +10127,12 @@ sorted and listed, each article and book with "looked up in Crossref by its titl
 the references are looked up (--lookup)", and nothing is asked. Crossref's search is at the
 host the page's Content-Security-Policy already names, `api.crossref.org`, so the page needed
 no change. The summary's line counts the works found by their title among those looked up,
-the entries with no DOI expected and those to check by hand; an entry to check by hand puts
-the References tile at "to look at". The rules read text, so they are held over generated
+the entries with no DOI expected and those to check by hand, by why each is (`by_title.reason`:
+none found by its title, more than one found, Crossref not answering, a title too short to
+look up or not read, not sorted). Each entry to check by hand is a note of its own, with a
+code for its reason, and puts the References tile at "to look at", with `--lookup` and
+without it; the report draft says how many titles were looked up in Crossref, and, where no
+entry gives a DOI or a PMID and no title was found, says that too. The rules read text, so they are held over generated
 entries of every kind in every example (`tests/generated.py::unidentified_entries`, the
 reading "reference sorting").
 

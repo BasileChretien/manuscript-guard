@@ -10017,12 +10017,17 @@ def test_a_registered_work_is_taken_for_an_entry_only_when_near_exact(
     """Crossref's work is an entry's where its title is the entry's, case, punctuation and
     accents folded, its first author the entry's first, and one of its years the entry's;
     not where it is of another year, has another person first, or lacks a word of the title
-    or adds one (`by_title.near_exact`)."""
+    or adds one (`by_title.near_exact`). The first author is the one the entry is read to
+    give, whose given names may come first, and a retracted work's flag before its title,
+    "RETRACTED:", is no part of the title (round 1 of #650)."""
     for text, _kind, title, family, year in drawn:
         if title is None:
             continue
-        said, opening = by_title_module.cited(text), by_title_module.fold(text)
-        assert by_title_module.near_exact(said, opening, _registered(title, family, year)), text
+        said = by_title_module.cited(text)
+        assert by_title_module.near_exact(said, _registered(title, family, year)), text
+        flagged = _registered(title, family, year)
+        flagged["title"] = "RETRACTED: " + flagged["title"]
+        assert by_title_module.near_exact(said, flagged), text
         others = (
             {"years": {"print": year + 2, "online": year + 3}},
             {"authors": [{"family": "Okafor"}, {"family": family}]},
@@ -10031,7 +10036,7 @@ def test_a_registered_work_is_taken_for_an_entry_only_when_near_exact(
         )
         for changed in others:
             work = _registered(title, family, year, **changed)
-            assert not by_title_module.near_exact(said, opening, work), (text, changed)
+            assert not by_title_module.near_exact(said, work), (text, changed)
 
 
 def _no_access_date_makes_a_web_page(patch: pytest.MonkeyPatch) -> None:
@@ -10088,7 +10093,37 @@ def _the_year_is_not_compared(patch: pytest.MonkeyPatch) -> None:
 
 
 def _the_first_author_is_not_compared(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(by_title_module, "_same_first_author", lambda opening, work: True)
+    patch.setattr(by_title_module, "_same_first_author", lambda said, work: True)
+
+
+def _the_first_author_is_the_entry_s_opening(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it was before round 1 of #650: the family name is held to the first words
+    of the whole entry, which a given name first never matches."""
+
+    def opening(said: by_title_module.Cited, work: dict[str, Any]) -> bool:
+        people = [p for p in work.get("authors") or [] if isinstance(p, dict)]
+        family = by_title_module.fold(people[0].get("family", "")) if people else ""
+        return bool(family) and (said.opening == family
+                                 or said.opening.startswith(family + " "))  # fmt: skip
+
+    patch.setattr(by_title_module, "_same_first_author", opening)
+
+
+def _a_title_s_words_sort_it_before_a_book_s_marks(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_outside_title", lambda text: text)
+
+
+def _a_hyphenated_name_opens_a_law(patch: pytest.MonkeyPatch) -> None:
+    pattern = by_title_module._LEGAL_OPENING
+    assert pattern.pattern.count("(?![\\w-])") == 1
+    patch.setattr(by_title_module, "_LEGAL_OPENING", re.compile(
+        pattern.pattern.replace("(?![\\w-])", "(?!\\w)"), pattern.flags))
+
+
+def _a_retracted_work_s_flag_stays_in_its_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import searched
+
+    patch.setattr(searched, "_FLAG", re.compile("(?!)"))
 
 
 def _the_title_is_not_compared(patch: pytest.MonkeyPatch) -> None:
@@ -24997,6 +25032,22 @@ BROKEN = {
     "the title is not compared when a title is matched": (
         _the_title_is_not_compared,
         test_a_registered_work_is_taken_for_an_entry_only_when_near_exact,
+    ),
+    "the first author is held to the entry's opening when a title is matched": (
+        _the_first_author_is_the_entry_s_opening,
+        test_a_registered_work_is_taken_for_an_entry_only_when_near_exact,
+    ),
+    "a retracted work's flag stays in its title when a title is matched": (
+        _a_retracted_work_s_flag_stays_in_its_title,
+        test_a_registered_work_is_taken_for_an_entry_only_when_near_exact,
+    ),
+    "a title's words sort an entry before a book's marks": (
+        _a_title_s_words_sort_it_before_a_book_s_marks,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a hyphenated name opens a law": (
+        _a_hyphenated_name_opens_a_law,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
     ),
 }
 

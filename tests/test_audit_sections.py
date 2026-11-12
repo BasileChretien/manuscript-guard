@@ -877,8 +877,8 @@ def test_each_entry_not_looked_up_is_named_with_why(tmp_path: Path, registries, 
     paper.write_text(NUMBERED, encoding="utf-8")
     assert main(["audit", str(paper), "--lookup"]) == 0
     out = capsys.readouterr().out
-    assert ("4 entries read, 1 with a DOI; 2 works looked up; 2 entries to check by hand, with "
-            "no DOI or PMID found: see below") in out  # fmt: skip
+    assert ("4 entries read, 1 with a DOI; 2 works looked up; 2 entries to check by hand (its "
+            "title too short to look up, or not read): see below") in out  # fmt: skip
     short = ("        an article with no DOI given, not looked up by its title, as its title has "
              "too few words to search for: check it by hand\n")  # fmt: skip
     assert ("    with no DOI or PMID given: 2 entries\n"
@@ -892,7 +892,9 @@ def test_each_entry_not_looked_up_is_named_with_why(tmp_path: Path, registries, 
     out = capsys.readouterr().out
     assert registries.seen == []
     assert "line 9: entry 3: Brown L. A note." in out
-    assert "none looked up in the registries (--lookup); 2 entries with no DOI or PMID" in out
+    assert ("none looked up in the registries (--lookup); of the 2 entries with no DOI or PMID, "
+            "2 entries to check by hand (its title too short to look up, or not read): see "
+            "below") in out  # fmt: skip
     # Every item typed "1.", as Markdown allows: entry 3's text opens "1.", said once.
     paper.write_text(re.sub(r"(?m)^\d\. ", "1. ", NUMBERED), encoding="utf-8")
     assert main(["audit", str(paper), "--lookup"]) == 0

@@ -150,6 +150,17 @@ def test_the_author_s_seven_entries_are_sorted_by_their_shape(tmp_path: Path) ->
     # An article with no volume and no pages is not sorted (DESIGN.md, Known gaps).
     ("Ross KL. Ghosts in the classroom. Teachers College Record.", by_title.OTHER),
     ("Ross KL. Ghosts in the classroom. Teachers College Record. 2019.", by_title.OTHER),
+    # A book whose title holds a page's or a law's words is a book, and a name a law's word
+    # opens, with a hyphen, is a person's (round 1 of #650).
+    ("Smith J. How patients accessed care. London: Example Press; 2019.", by_title.BOOK),
+    ("Smith J. Care available at home. London: Example Press; 2019.", by_title.BOOK),
+    ("Jones R. The Data Protection Act 2018 explained. London: Example Press; 2019.",
+     by_title.BOOK),
+    ("Ley-Cooper A. A book. London: Example Press; 2010.", by_title.BOOK),
+    # And a law named outside a title is a law still, a page marked so a page.
+    ("Data Protection Act 2018. https://www.legislation.gov.uk/ukpga/2018/12", by_title.LEGAL),
+    ("Commission notice on reports. Official Journal of the European Union. C 12, 5.",
+     by_title.LEGAL),
 ])  # fmt: skip
 def test_each_shape_is_sorted(text: str, kind: str) -> None:
     assert by_title.sort(text).kind == kind
@@ -177,10 +188,8 @@ def test_a_title_is_read_past_initials_and_an_abbreviation() -> None:
 # ---------------------------------------------------------------------- the near match
 
 
-def _cited() -> tuple[by_title.Cited, str]:
-    text = ("Børte K, Nesje K. Barriers to student active learning: a review. Teach High Educ. "
+BARRIERS = ("Børte K, Nesje K. Barriers to student active learning: a review. Teach High Educ. "
             "2023;28(3):597-615.")  # fmt: skip
-    return by_title.cited(text), by_title.fold(text)
 
 
 def _work(**changed) -> dict:
@@ -189,21 +198,30 @@ def _work(**changed) -> dict:
     return {**work, **changed}
 
 
-@pytest.mark.parametrize(("changed", "taken"), [
-    ({}, True),
-    ({"years": {"print": 2022, "online": 2023}}, True),
-    ({"years": {"issued": 2021}}, False),
-    ({"authors": [{"family": "Nesje"}, {"family": "Børte"}]}, False),
-    ({"authors": [{"group": "Example Group"}]}, False),
-    ({"authors": []}, False),
-    ({"subtitle": "A systematic review"}, False),
-    ({"title": "Barriers to active learning", "subtitle": "A review"}, False),
+@pytest.mark.parametrize(("text", "changed", "taken"), [
+    (BARRIERS, {}, True),
+    (BARRIERS, {"years": {"print": 2022, "online": 2023}}, True),
+    (BARRIERS, {"years": {"issued": 2021}}, False),
+    (BARRIERS, {"authors": [{"family": "Nesje"}, {"family": "Børte"}]}, False),
+    (BARRIERS, {"authors": [{"group": "Example Group"}]}, False),
+    (BARRIERS, {"authors": []}, False),
+    (BARRIERS, {"subtitle": "A systematic review"}, False),
+    (BARRIERS, {"title": "Barriers to active learning", "subtitle": "A review"}, False),
+    # The flag a registry puts before a retracted work's title is no part of it.
+    (BARRIERS, {"title": "RETRACTED: Barriers to student active learning"}, True),
+    # "&" is not "and", and a subtitle the entry leaves out is a word the title lacks.
+    ("Børte K. Barriers & enablers of active learning. Teach High Educ. 2023;28:5-6.",
+     {"title": "Barriers and enablers of active learning", "subtitle": None}, False),
+    ("Børte K. Barriers to student active learning. Teach High Educ. 2023;28:5-6.",
+     {"title": "Barriers to student active learning: a review", "subtitle": None}, False),
+    # The first author is the one the entry is read to give, its given name first.
+    ("K. Børte and K. Nesje. Barriers to student active learning: a review. Teach High "
+     "Educ, 28(3):597-615, 2023.", {}, True),
 ])  # fmt: skip
-def test_a_work_is_taken_only_when_near_exact(changed: dict, taken: bool) -> None:
+def test_a_work_is_taken_only_when_near_exact(text: str, changed: dict, taken: bool) -> None:
     """The same title, case, punctuation and accents folded; the same first author; and one
     of the work's years the cited one."""
-    said, opening = _cited()
-    assert by_title.near_exact(said, opening, _work(**changed)) is taken
+    assert by_title.near_exact(by_title.cited(text), _work(**changed)) is taken
 
 
 # ------------------------------------------------------------------------ the audit
@@ -231,8 +249,8 @@ def test_an_article_found_by_its_title_is_looked_up_by_its_doi(tmp_path: Path, r
     assert len(registries.searched) == 3
     assert not any("moodle" in shown or "Parcoursup" in shown for shown in registries.seen)
     assert ("8 entries read, 1 with a DOI; 2 works looked up, 1 of them found by title; 4 "
-            "entries with no DOI expected and 2 entries to check by hand, with no DOI or PMID "
-            "found: see below") in out  # fmt: skip
+            "entries with no DOI expected and 2 entries to check by hand (none found by its "
+            "title): see below") in out  # fmt: skip
 
 
 def test_the_json_findings_name_the_entries_to_check(tmp_path: Path, registries, capsys) -> None:
@@ -306,6 +324,80 @@ def test_a_title_kept_is_not_asked_again(tmp_path: Path, registries, capsys) -> 
     assert main(["audit", str(paper), "--lookup", "--lookup-cache", str(kept), "--details"]) == 0
     assert registries.seen == []
     assert f"found by its title: DOI {ROSS}" in capsys.readouterr().out
+
+
+#: A list in BibTeX's plain style, the given names first: entry 1 is the article Crossref
+#: has (round 1 of #650: it was never found, its first author held to "K L Ross").
+GIVEN_FIRST = (
+    "# Results\n\nIt rose [1, 2].\n\n# References\n\n"
+    "1. K. L. Ross. Ghosts in the classroom: Passive disengagement and its implications for "
+    "teachers. Teachers and Teaching, 25(3):312-325, 2019.\n"
+    "2. A. Smith. Personal communication. 2019.\n"
+)
+
+
+def test_an_entry_with_its_given_name_first_is_found(tmp_path: Path, registries, capsys) -> None:
+    assert main(["audit", str(_paper(tmp_path, GIVEN_FIRST)), "--lookup", "--details"]) == 0
+    assert f"found by its title: DOI {ROSS}" in _section(capsys.readouterr().out)
+
+
+def test_each_reason_to_check_by_hand_is_counted_as_it_is(tmp_path: Path, registries,
+                                                          capsys) -> None:  # fmt: skip
+    """Round 1 of #650: not sorted, two works of the title and no answer were each counted
+    as "with no DOI or PMID found"."""
+    registries.items = [GHOSTS, {**GHOSTS, "DOI": "10.1080/other"}]
+    assert main(["audit", str(_paper(tmp_path, GIVEN_FIRST)), "--lookup"]) == 0
+    assert ("2 entries read, 0 with a DOI; 0 works looked up; 1 entry to check by hand (more "
+            "than one work of its title found) and 1 entry to check by hand (not sorted): see "
+            "below") in capsys.readouterr().out  # fmt: skip
+    registries.search_status = 503
+    assert main(["audit", str(_paper(tmp_path, GIVEN_FIRST)), "--lookup"]) == 0
+    assert ("1 entry to check by hand (Crossref did not answer) and 1 entry to check by hand "
+            "(not sorted): see below") in capsys.readouterr().out  # fmt: skip
+
+
+@pytest.mark.parametrize("lookup", [False, True])
+def test_an_entry_not_sorted_is_a_note_and_turns_the_tile(tmp_path: Path, registries, capsys,
+                                                         lookup: bool) -> None:  # fmt: skip
+    """With --lookup and without it, the entry to check by hand is a note of its own and the
+    References tile is "to look at" (round 1 of #650: one held without the other)."""
+    from manuscript_guard.audit import audit as run_audit
+    from manuscript_guard.auditing.summary import LOOK, standings
+
+    paper = _paper(tmp_path, GIVEN_FIRST)
+    assert main(["audit", str(paper), "--json", *(["--lookup"] if lookup else [])]) == 0
+    said = json.loads(capsys.readouterr().out)["findings"]
+    assert [(f["code"], f["line"]) for f in said if f["code"] == "reference-not-sorted"] == [
+        ("reference-not-sorted", 8)]
+    report = run_audit([paper], None)
+    if lookup:
+        from manuscript_guard.auditing.by_title import look_up_all
+
+        report.lookups, report.titles = look_up_all(report.references)
+    assert standings(report)["References"] == LOOK
+
+
+def test_the_draft_says_the_titles_searched_where_none_was_found(tmp_path: Path, registries,
+                                                                 capsys) -> None:  # fmt: skip
+    """Round 1 of #650: with no DOI typed and no title found, the draft said nothing of the
+    searches."""
+    registries.items = []
+    target = tmp_path / "draft.md"
+    assert main(["audit", str(_paper(tmp_path, GIVEN_FIRST)), "--lookup", "--report-draft",
+                 str(target)]) == 0  # fmt: skip
+    capsys.readouterr()
+    text = target.read_text(encoding="utf-8")
+    assert ("The registries: no reference gives a DOI or a PMID, and of the 1 title looked up "
+            "in Crossref none was found") in text  # fmt: skip
+    assert "none found by its title: check it by hand" in text.split("## Further findings")[1]
+    # Found, the search is a check that ran and left nothing to look at.
+    registries.items = [GHOSTS]
+    target.unlink()
+    assert main(["audit", str(_paper(tmp_path, GIVEN_FIRST)), "--lookup", "--report-draft",
+                 str(target)]) == 0  # fmt: skip
+    capsys.readouterr()
+    assert ("- Titles in Crossref (--lookup): 1 title looked up in Crossref, and it reported "
+            "nothing.") in target.read_text(encoding="utf-8")  # fmt: skip
 
 
 def test_a_bibitem_is_sorted_with_its_tex_taken_out(tmp_path: Path) -> None:

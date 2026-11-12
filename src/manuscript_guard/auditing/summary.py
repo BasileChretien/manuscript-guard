@@ -180,14 +180,11 @@ def _references(report) -> str:
     from manuscript_guard.auditing import by_title
 
     looked_up = report.lookups is not None
-    titles = getattr(report, "titles", None) if looked_up else None
-    if titles is None:
-        titles = [one for census in told for one in by_title.unasked(census)]
-    outcomes = [by_title.outcome(one, looked_up) for one in titles]
+    titles = by_title.without_identifier(report)
+    reasons = _unidentified_said([by_title.reason(one, looked_up) for one in titles])
     if not looked_up:
-        unsorted = (f"; {_n(len(titles), 'entry', 'entries')} with no DOI or PMID, "
-                    f"{outcomes.count(by_title.EXPECTED)} of them with none expected: see "
-                    "below") if titles else ""  # fmt: skip
+        unsorted = (f"; of the {_n(len(titles), 'entry', 'entries')} with no DOI or PMID, "
+                    f"{_listed(reasons)}: see below") if titles else ""  # fmt: skip
         return said + "; none looked up in the registries (--lookup)" + unsorted
     entries = [entry for census in told for entry in census.entries]
     # And those whose identifier was held back, the section's "not looked up: it may
@@ -197,19 +194,30 @@ def _references(report) -> str:
     by_its_title = sum(1 for one in report.lookups if getattr(one, "by_title", False))
     if by_its_title:
         looked += f", {by_its_title} of them found by title"
-    reasons = [f"{_n(count, 'entry', 'entries')} {what}" for count, what in (
-        (outcomes.count(by_title.PENDING), "to be looked up by title"),
-        (outcomes.count(by_title.EXPECTED), "with no DOI expected"),
-        (outcomes.count(by_title.TO_CHECK), "to check by hand, with no DOI or PMID found"),
-    ) if count]  # fmt: skip
     if held:
         reasons.append(f"{_n(held, 'entry', 'entries')} not looked up, "
                        f"{'its' if held == 1 else 'their'} DOI or PMID perhaps running on to the "
                        "next line")  # fmt: skip
     if reasons:
-        listed = ", ".join(reasons[:-1]) + " and " + reasons[-1] if len(reasons) > 1 else reasons[0]
-        looked += "; " + listed + ": see below"
+        looked += "; " + _listed(reasons) + ": see below"
     return said + looked
+
+
+def _unidentified_said(reasons: list[str]) -> list[str]:
+    """The entries with no DOI and no PMID counted by what came of each (`by_title.reason`),
+    each reason to check one by hand said as it is (round 1 of #650)."""
+    from manuscript_guard.auditing import by_title
+
+    said = [(by_title.PENDING, "to be looked up by title"),
+            (by_title.EXPECTED, "with no DOI expected")]  # fmt: skip
+    said += [(why, f"to check by hand ({why})") for why in by_title.REASONS]
+    return [f"{_n(reasons.count(kind), 'entry', 'entries')} {what}"
+            for kind, what in said if reasons.count(kind)]  # fmt: skip
+
+
+def _listed(parts: list[str]) -> str:
+    """"a", "a and b", "a, b and c"."""
+    return ", ".join(parts[:-1]) + " and " + parts[-1] if len(parts) > 1 else "".join(parts)
 
 
 #: What `--strict` fails on, said once under the checks, so that "not counted by --strict"
@@ -318,8 +326,10 @@ def standings(report) -> dict[str, str]:
         # sorted, is for a reader to check by hand (the author's decision of 2026-11-12).
         from manuscript_guard.auditing import by_title
 
-        looked = looked or any(by_title.outcome(one, True) == by_title.TO_CHECK
-                               for one in getattr(report, "titles", None) or [])  # fmt: skip
+        # With --lookup or without it, as the notes say each (round 1 of #650).
+        looked = looked or any(
+            by_title.outcome(one, report.lookups is not None) == by_title.TO_CHECK
+            for one in by_title.without_identifier(report))  # fmt: skip
         out["References"] = NOT_RUN if not counted else of(
             False, problems or looked or len(counted) < len(report.references))
     # The sections a flag adds, by what the report says in them (round 1 of #635).

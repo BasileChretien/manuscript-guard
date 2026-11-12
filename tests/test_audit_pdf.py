@@ -619,9 +619,9 @@ def test_an_entry_whose_identifier_was_held_back_is_not_said_to_have_none(tmp_pa
     from manuscript_guard.auditing.summary import _references
 
     said = _references(SimpleNamespace(references=[census], lookups=[]))
-    assert said.endswith("1 entry to check by hand, with no DOI or PMID found and 2 entries "
-                         "not looked up, their DOI or PMID perhaps running on to the next "
-                         "line: see below"), said  # fmt: skip
+    assert said.endswith("1 entry to check by hand (its title too short to look up, or not "
+                         "read) and 2 entries not looked up, their DOI or PMID perhaps running "
+                         "on to the next line: see below"), said  # fmt: skip
     from manuscript_guard.auditing.references import BY_PLACE, Entry
 
     unnumbered = SimpleNamespace(path=tmp_path / "p.md", style="not numbered", entries=(

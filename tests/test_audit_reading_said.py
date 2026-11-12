@@ -267,6 +267,17 @@ def test_a_file_input_past_a_stop_through_another_is_said_not_followed(
     assert "no entry inputs it" in stray, stray
 
 
+def test_an_input_on_the_line_of_a_stop_is_said_not_followed(tmp_path: Path) -> None:
+    """Round 4 of #637: the inputs past a stop were read from the next line, so one on the
+    stop's own line was said to be input by no entry."""
+    (tmp_path / "sections.tex").write_text("We read 4100 reports.\n", encoding="utf-8")
+    paper = tmp_path / "paper.tex"
+    paper.write_text("\\documentclass{article}\n\\begin{document}\n"
+                     "\\catcode`\\@=11 \\input{sections}\n\\end{document}\n", encoding="utf-8")
+    said = audit([paper], None, found_tex=[tmp_path / "sections.tex"]).passed_over
+    assert any("paper.tex was not read past line 3" in one for one in said), said
+
+
 def test_a_declaration_past_a_stop_still_decodes_the_file(tmp_path: Path) -> None:
     """Final check of round 2 of #637, finding 3: a declaration past where the reader
     stopped did not count, so the title of a Latin-1 file before it read "?tude". TeX applies

@@ -1152,6 +1152,11 @@ _LATEX_SIGNS = (
     "\\makeatletter", "\\ifx", "\n", "\r\n", " ", "12", "\\begin{comment}", "\\url{",
 )  # fmt: skip
 _PREAMBLE = "\\documentclass{article}\n\\begin{document}\n"
+#: A preamble that defines a known command again, read, its uses in the body refused where
+#: they print, and adds to one through `\\expandafter`, passed over (2026-11-11).
+_PREAMBLE_DEFINING = ("\\documentclass{article}\n\\renewcommand{\\emph}[1]{\\textit{#1}}\n"
+                      "\\expandafter\\def\\expandafter\\normalsize\\expandafter{\\normalsize}\n"
+                      "\\begin{document}\n")  # fmt: skip
 
 
 @st.composite
@@ -1210,7 +1215,7 @@ def latex_texts() -> st.SearchStrategy[str]:
     bare signs once each. Some open with a preamble and `\\begin{document}`."""
     pool = (*_spaced(FILLER) * 2, *_spaced(_NUMBERS), *_LATEX_WHOLE * 3, *_LATEX_SIGNS)
     return st.tuples(
-        st.sampled_from(("", "", _PREAMBLE)), _in_a_row(pool, few=20, many=70)
+        st.sampled_from(("", "", _PREAMBLE, _PREAMBLE_DEFINING)), _in_a_row(pool, few=20, many=70)
     ).map("".join)
 
 
@@ -1528,8 +1533,10 @@ def latex_hooked_uses(draw: st.DrawFn) -> tuple[str, int]:
 
 #: A small LaTeX manuscript and what the reader owes it: its files, the author's packages,
 #: each refusal by file and offset, the spans it blanks, and the comments it records.
-LatexCase = tuple[dict[str, str], dict[str, str], list[tuple[str, int]],
-                  list[tuple[str, int, int]], list[tuple[str, int]]]  # fmt: skip
+#: A manuscript, its packages, the refusals, the stretches hidden and the comments; and, as a
+#: sixth, for one read as `audit` reads a folder (`auditing.latex.read_latex`), the codec
+#: each file is written in where it is not UTF-8.
+LatexCase = tuple  # fmt: skip
 #: Commands of a package that LaTeX does not give, with the packages that give each,
 #: written out apart from the reader (2026-10-23).
 LATEX_PACKAGE_COMMANDS = {"unit": ("siunitx", "units"), "qty": ("siunitx", "physics"),
@@ -1547,13 +1554,18 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
       #442);
     - a conditional in a typed reference list's header, read, and one in its entries, refused;
     - `\\providecommand` of a command the reader knows, in the preamble or the body, which
-      defines nothing; `\\renewcommand` of one, and a `\\def` after a `\\providecommand`,
-      refused at the command;
+      defines nothing; `\\renewcommand`, `\\def` or `\\def` after a `\\providecommand` of one,
+      in the preamble, a file input from it or the author's package, read, and each use
+      refused where it prints, in the entry file and in a file it inputs; in the body,
+      refused at the command (Basile, 2026-11-11);
     - an article's own command named as a package's, read as an unknown one where no file of
-      the tree loads the package, and refused where the same file, the author's package or a
-      file input from the preamble loads it;
+      the tree loads the package, and refused where it prints where the same file, the
+      author's package or a file input from the preamble loads it;
     - an input encoding other than UTF-8, accepted in a tree all of ASCII, and refused where
-      the file that sets it or another file of the tree is not ASCII;
+      the file that sets it or another file of the tree is not ASCII; read as `audit` reads
+      a folder that declares latin1, latin9, cp1252 or ansinew, accepted, and latin2 not;
+    - Scientific WorkPlace's preamble `\\expandafter\\def\\expandafter\\normalsize...`, passed
+      over, and `\\expandafter` that builds a name or stands in the body, refused;
     - a `\\def` with a parameter text and no parameter, in the author's package or the entry
       file, whose uses in the entry file and in a file it inputs are followed by that text,
       each passed over, and a use it does not follow, refused; a space after a control word
@@ -1594,11 +1606,80 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
     main = (head + provide + begin + words() + "\n" + end if draw(st.booleans())
             else head + begin + words() + "\n" + provide + end)  # fmt: skip
     cases.append(({"main.tex": main}, {}, [], [], []))
+    # A known command defined again: in the preamble, a file input from it or the author's
+    # package, read, and each use refused where it prints, in the entry file and in a file
+    # it inputs; in the body, refused at the definition (Basile, 2026-11-11).
     definer = draw(st.sampled_from(("renewcommand", "newcommand", "DeclareRobustCommand")))
-    main = head + f"\\{definer}{{\\{known}}}[1]{{#1}}\n" + begin + words() + "\n" + end
-    cases.append(({"main.tex": main}, {}, [("main.tex", main.index("{\\" + known))], [], []))
-    main = head + "\\providecommand{\\x}{1}\\def\\" + known + "{2}\n" + begin + end
-    cases.append(({"main.tex": main}, {}, [("main.tex", main.index("\\" + known))], [], []))
+    defined = draw(st.sampled_from((f"\\{definer}{{\\{known}}}[1]{{#1}}\n",
+                                    f"\\{definer}\\{known}[1]{{#1}}\n",
+                                    f"\\def\\{known}#1{{#1}}\n",
+                                    f"\\providecommand{{\\x}}{{1}}\\def\\{known}{{2}}\n")))
+    main = head + defined + begin + words() + "\n" + end
+    cases.append(({"main.tex": main}, {}, [], [], []))
+    for where in ("file", "package", "input"):
+        preamble = {"file": defined, "package": "\\usepackage{mine}\n",
+                    "input": "\\input{commands}\n"}[where]  # fmt: skip
+        main = head + preamble + begin + words() + " "
+        at = len(main)
+        main += f"\\{known}{{{words()}}} {words()}.\n\\input{{part}}\n" + end
+        part = words() + f" \\{known}{{k}}.\n"
+        files = {"main.tex": main, "part.tex": part,
+                 **({"commands.tex": defined} if where == "input" else {})}  # fmt: skip
+        packages = {"mine.sty": defined} if where == "package" else {}
+        # The file past the refusal is input by nothing the reader read, and is refused
+        # where it prints as a loose file.
+        refused = [("main.tex", at), ("part.tex", part.index("\\" + known))]
+        cases.append((files, packages, refused, [], []))
+        # The use in the file the entry inputs, where the entry uses it nowhere.
+        quiet = main[:at] + main[main.index(".\n\\input", at) + 1 :]
+        cases.append(({**files, "main.tex": quiet}, packages,
+                      [("part.tex", part.index("\\" + known))], [], []))  # fmt: skip
+    # The two forms read as before (Basile, 2026-11-12): a heading restyled through LaTeX's
+    # own `\@startsection`, in the author's package or past `\makeatletter`, and a
+    # cross-reference defined as another of its argument; and each with one thing more,
+    # refused where it is used.
+    level = draw(st.sampled_from(("section", "subsection", "paragraph")))
+    groups = draw(st.sampled_from(("{1}{\\z@}{-1ex}{1ex}{\\bfseries}",
+                                   "{2}{0pt}%\n  {-2.0ex \\@plus -0.5ex}{1.5ex}%\n"
+                                   "  {\\normalfont\\large\\bfseries}")))  # fmt: skip
+    definer = draw(st.sampled_from((f"\\renewcommand{{\\{level}}}", f"\\renewcommand\\{level}",
+                                    f"\\def\\{level}")))  # fmt: skip
+    restyled = f"{definer}{{\\@startsection{{{level}}}{groups}}}\n"
+    reference = draw(st.sampled_from(("equation~", "Eq.~", "", "eq. ")))
+    parens = draw(st.booleans())
+    inner = draw(st.sampled_from(("ref", "eqref")))
+    referred = f"\\{inner}{{#1}}"
+    again = draw(st.sampled_from(("\\def\\autoref#1", "\\renewcommand{\\autoref}[1]")))
+    cross = f"{again}{{{reference}{f'({referred})' if parens else referred}}}\n"
+    uses = f"\\{level}{{{words()}}}\n{words()} \\autoref{{e1}} {words()}.\n"
+    for where in ("package", "preamble"):
+        preamble = ("\\usepackage{mine}\n" if where == "package" else
+                    "\\makeatletter\n" + restyled + "\\makeatother\n")  # fmt: skip
+        main = head + preamble + "\\input{refs}\n" + begin + uses + "\\input{part}\n" + end
+        files = {"main.tex": main, "refs.tex": cross, "part.tex": uses}
+        packages = {"mine.sty": restyled} if where == "package" else {}
+        cases.append((files, packages, [], [], []))
+    # One thing more in each: a font switch round `\@startsection`, a parameter, another
+    # name; and a second command in the cross-reference's body.
+    spoilt = draw(st.sampled_from((restyled.replace("{\\@start", "{\\bfseries\\@start"),
+                                   restyled.replace(definer, definer + "[1]")
+                                   if definer.startswith("\\renew") else
+                                   restyled.replace(definer, definer + "#1"),
+                                   restyled.replace(f"{{{level}}}", "{chapter}"))))  # fmt: skip
+    main = head + "\\usepackage{mine}\n" + begin + uses + end
+    cases.append(({"main.tex": main}, {"mine.sty": spoilt},
+                  [("main.tex", main.index("\\" + level, len(head + begin)))], [], []))  # fmt: skip
+    worse = cross.replace(referred, f"\\textbf{{{referred}}}")
+    main = head + "\\input{refs}\n" + begin + words() + " \\autoref{e1}.\n" + end
+    cases.append(({"main.tex": main, "refs.tex": worse}, {},
+                  [("main.tex", main.index("\\autoref"))], [], []))  # fmt: skip
+
+    main = head + begin + words() + "\n"
+    # Refused where the command's name stands, or at its braces, `{\url}`.
+    braced = f"{{\\{known}}}" in defined
+    at = len(main) + (defined.index("{\\" + known) if braced else defined.index("\\" + known, 1))
+    main += defined + words() + "\n" + end
+    cases.append(({"main.tex": main}, {}, [("main.tex", at)], [], []))
 
     name = draw(st.sampled_from(sorted(LATEX_PACKAGE_COMMANDS)))
     package = draw(st.sampled_from(LATEX_PACKAGE_COMMANDS[name]))
@@ -1613,7 +1694,8 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
         main = head + preamble + define + begin + used + end
         files = {"main.tex": main, **({"settings.tex": loads} if where == "input" else {})}
         packages = {"macros.sty": loads.replace("usepackage", "RequirePackage")}
-        refused = [("main.tex", main.index("{\\" + name))]
+        # Defined again where a file loads the package, and refused where it prints.
+        refused = [("main.tex", main.index("$\\" + name) + 1)]
         cases.append((files, packages if where == "package" else {}, refused, [], []))
 
     encoding = draw(st.sampled_from(("latin1", "latin9", "ansinew", "cp1252")))
@@ -1627,6 +1709,62 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
                   [("main.tex", main.index(sets))], [], []))  # fmt: skip
     alone = head + sets + begin + accented + end
     cases.append(({"main.tex": alone}, {}, [("main.tex", alone.index(sets))], [], []))
+    # As `audit` reads a folder that declares the encoding: in it, its declarations written
+    # as UTF-8's, and nothing refused (Basile, 2026-11-11). A project's files are UTF-8, as
+    # the submission folder writes them, and are refused as above.
+    codec = {"latin1": "latin_1", "latin9": "iso8859_15"}.get(encoding, "cp1252")
+    cases.append(({"main.tex": main, "part.tex": accented}, {}, [], [], [],
+                  {"main.tex": codec, "part.tex": codec}))  # fmt: skip
+    cases.append(({"main.tex": alone}, {}, [], [], [], {"main.tex": codec}))
+    # One past where the reader stops counts, as TeX reads it: the title before it is read
+    # in it (round 3 of #637: "Étude" read as "?tude").
+    titled = head + "\\title{\N{LATIN CAPITAL LETTER E WITH ACUTE}tude}\n\\catcode`\\@=11\n"
+    cases.append(({"main.tex": titled + sets + begin + accented + end}, {},
+                  [("main.tex", len(titled) - len("\\catcode`\\@=11\n"))], [], [],
+                  {"main.tex": codec}))  # fmt: skip
+    # One in a comment or in what TeX does not print, in a file the tree reaches, counts
+    # for nothing: the tree is UTF-8 (round 3 of #637).
+    unread = (f"% {sets}\\iffalse\n{sets}\\fi\n" if "inputencoding" not in sets else
+              f"\\begin{{comment}}\n{sets}\\end{{comment}}\n% {sets}")  # fmt: skip
+    cases.append(({"main.tex": head + begin + "\\input{part}\n" + end,
+                   "part.tex": unread + accented}, {}, [], [], [], {}))  # fmt: skip
+    # A folder that declares UTF-8 beside it declares two, and is read as UTF-8: the file
+    # that declares the other is refused where it is not ASCII (round 1 of #637).
+    utf8 = head + "\\usepackage[utf8]{inputenc}\n" + begin + accented + "\\input{part}\n" + end
+    mixed = sets + accented
+    cases.append(({"main.tex": utf8, "part.tex": mixed}, {}, [("part.tex", 0)], [], [],
+                  {"part.tex": codec}))  # fmt: skip
+    # A stray draft beside a paper that declares nothing decides nothing: the paper's tree
+    # is UTF-8, and the draft, which nothing inputs, refused where it is not ASCII (round 2
+    # of #637).
+    undeclared = head + begin + accented + end
+    cases.append(({"main.tex": undeclared, "draft.tex": mixed}, {}, [("draft.tex", 0)], [], [],
+                  {"draft.tex": codec}))  # fmt: skip
+    # And one encoding the audit does not read a folder in, refused there too.
+    other = alone.replace(encoding, "latin2")
+    cases.append(({"main.tex": other}, {}, [("main.tex", len(head))], [], [],
+                  {"main.tex": "iso8859_2"}))  # fmt: skip
+
+    # A construct left open, refused where it opens: nothing found past it is kept, its
+    # heading, its citation and its input (round 1 of #637).
+    opened = draw(st.sampled_from(("\\begin{figure}\n", "\\begin{itemize}\n", "{\\bfseries ")))
+    main = head + begin + words() + ".\n"
+    at = len(main)
+    main += (opened + f"\\section{{{words()}}}\n{words()} \\cite{{k}}.\n\\input{{part}}\n"
+             + end)  # fmt: skip
+    cases.append(({"main.tex": main, "part.tex": words() + ".\n"}, {}, [("main.tex", at)], [],
+                  []))  # fmt: skip
+
+    # A Scientific WorkPlace preamble adds to a command through `\expandafter`, which is
+    # passed over there; one that builds a name by `\csname`, and one in the body, are not.
+    swp = ("\\expandafter\\def\\expandafter\\normalsize\\expandafter{\\normalsize"
+           "\\setlength\\abovedisplayskip{6pt}}\n")  # fmt: skip
+    main = head + swp + begin + words() + ".\n" + end
+    cases.append(({"main.tex": main}, {}, [], [], []))
+    built = head + "\\expandafter\\def\\csname x\\endcsname{1}\n" + begin + words() + ".\n" + end
+    cases.append(({"main.tex": built}, {}, [("main.tex", len(head))], [], []))
+    main = head + begin + words() + ".\n" + swp + end
+    cases.append(({"main.tex": main}, {}, [("main.tex", main.index(swp))], [], []))
 
     delimiter = draw(st.sampled_from(("/", ".5", "\\relax", "!!")))
     defined = f"\\def\\eg{delimiter}{{e.g.}}\n"
@@ -11965,6 +12103,134 @@ def names_in_tex(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     return "\n".join(entries), cited
 
 
+# ------------------------------------------- a typed reference list and its citations, init
+
+#: First authors' family names a typed reference list holds, and the letters of each a
+#: Better BibTeX key is written in: a particle, a letter of its own, an accent, a hyphen and
+#: an apostrophe.
+REFERENCE_FAMILIES = (
+    ("Fictional", "fictional"), ("Imaginary", "imaginary"),
+    ("\N{LATIN CAPITAL LETTER O WITH STROKE}deg\N{LATIN SMALL LETTER A WITH RING ABOVE}rd",
+     "odegard"),
+    ("Smith-Jones", "smithjones"), ("van der Berg", "vanderberg"), ("O'Neil", "oneil"),
+    ("Garc\N{LATIN SMALL LETTER I WITH ACUTE}a", "garcia"), ("Notreal", "notreal"),
+    ("Lindqvist", "lindqvist"), ("Moe", "moe"), ("Quist", "quist"), ("Ruiz", "ruiz"),
+)  # fmt: skip
+#: Co-authors, whose names may be any work's.
+REFERENCE_OTHERS = ("Other", "Second", "Dupont")
+#: How a citation is typed: names one entry in brackets or in the sentence, names two
+#: entries (one first author, one year, no letter), names none, names the first of a work's
+#: two or three authors alone, names in the sentence one co-author more than a work has (round
+#: 1 of #638: "Brown and Lee (2018)" was made "Brown and @lee2018"), a group whose every part
+#: names one entry, a group one of whose parts names none, and two narratives side by side,
+#: "Smith (2019) and Lee (2018)" (round 2 of #638: the "and" was read as a name more).
+CITED_KINDS = ("bracketed", "narrative", "two entries", "no entry", "first author alone",
+               "a name more", "group", "group with none", "two narratives")  # fmt: skip
+_REFERENCE_WORDS = ("recovery", "was", "studied", "before", "with", "rest", "after", "work")
+
+
+def _apa_names(families: list[str], *, narrative: bool) -> list[str]:
+    """Every way APA names these authors in a citation."""
+    if len(families) == 1:
+        return [families[0]]
+    if len(families) == 2:
+        return [f"{families[0]} and {families[1]}"] + ([] if narrative else
+                                                       [f"{families[0]} & {families[1]}"])
+    listed = ", ".join(families[:-1])
+    return [f"{families[0]} et al.", f"{listed}, & {families[-1]}", f"{listed}, and {families[-1]}"]
+
+
+@st.composite
+def typed_reference_papers(draw: st.DrawFn) -> tuple[str, list[tuple[str, str | None]]]:
+    """A paper's Markdown as `init --from` writes a Word paper, with a typed APA reference
+    list under `# References` and a citation typed as text of each kind of `CITED_KINDS`, in
+    an order drawn; and each citation with what `typed_references.read` makes of it, its
+    pandoc citation, or None where it stays as typed. Each work is an article, its journal
+    and volume in italics together or apart, or a book; of one, two or three authors, named
+    in each form APA has; under a prefix or none. Every kind in every example, so that a
+    rule broken for one fails under any seed."""
+    firsts = iter(draw(st.permutations(REFERENCE_FAMILIES)))
+    years = iter(draw(st.lists(st.integers(1950, 2025), min_size=12, max_size=12, unique=True)))
+    entries: list[str] = []
+
+    def work(count: int, year: int, family: tuple[str, str] | None = None,
+             title: str | None = None) -> tuple[list[str], str]:  # fmt: skip
+        written, stem = family or next(firsts)
+        names = [written, *draw(st.lists(st.sampled_from(REFERENCE_OTHERS), min_size=count - 1,
+                                         max_size=count - 1))]  # fmt: skip
+        initials = [draw(st.sampled_from(("A.", "J. A.", "J.-P.", "Ch."))) for _ in names]
+        people = [f"{name}, {given}" for name, given in zip(names, initials, strict=True)]
+        authors = people[0] if count == 1 else ", ".join(people[:-1]) + f", & {people[-1]}"
+        title = title or " ".join(draw(st.lists(st.sampled_from(_REFERENCE_WORDS), min_size=1,
+                                                max_size=4))).capitalize()  # fmt: skip
+        volume, first = draw(st.integers(1, 99)), draw(st.integers(1, 900))
+        shape = draw(st.sampled_from((
+            f"{title}. *Journal of Things*, *{volume}*(2), {first}--{first + 9}.",
+            f"{title}. *Journal of Things, {volume}*, {first}--{first + 9}. "
+            f"https://doi.org/10.1000/x{volume}",
+            f"*{title}*. Big Press.",
+        )))  # fmt: skip
+        entries.append(f"{authors} ({year}). {shape}")
+        return names, f"{stem}{year}"
+
+    def cite(count: int) -> tuple[str, str]:
+        names, key = work(count, next(years))
+        prefix = draw(st.sampled_from(("", "see ", "e.g., ")))
+        return f"{prefix}{draw(st.sampled_from(_apa_names(names, narrative=False)))}, " \
+               f"{key[-4:]}", f"{prefix}@{key}"
+
+    sentences: list[tuple[str, str | None]] = []
+    for kind in draw(st.permutations(CITED_KINDS)):
+        if kind == "bracketed":
+            typed, made = cite(draw(st.integers(1, 3)))
+            sentences.append((f"({typed})", f"[{made}]"))
+        elif kind == "narrative":
+            names, key = work(draw(st.integers(1, 3)), next(years))
+            # As the list writes the names: citeproc prints "van der Berg" in lower case,
+            # so one typed in capitals is left as typed (round 1 of #638).
+            said = draw(st.sampled_from(_apa_names(names, narrative=True)))
+            sentences.append((f"{said} ({key[-4:]})", f"@{key}"))
+        elif kind == "two entries":
+            family, year = next(firsts), next(years)
+            # Two works, not one typed twice, which is one entry (round 1 of #638).
+            work(1, year, family, title="One")
+            work(1, year, family, title="Two")
+            sentences.append((f"({family[0]}, {year})", None))
+        elif kind == "no entry":
+            sentences.append((f"({next(firsts)[0]}, {next(years)})", None))
+        elif kind == "first author alone":
+            names, key = work(draw(st.integers(2, 3)), next(years))
+            sentences.append((f"({names[0]}, {key[-4:]})", None))
+        elif kind == "two narratives":
+            said = []
+            for _ in range(2):
+                names, key = work(1, next(years))
+                said.append((f"{names[0]} ({key[-4:]})", f"@{key}"))
+            join = draw(st.sampled_from((" and ", ", ", " & ")))
+            sentences.append((join.join(t for t, _m in said), join.join(m for _t, m in said)))
+        elif kind == "a name more":
+            names, key = work(draw(st.integers(1, 2)), next(years))
+            more = draw(st.sampled_from(REFERENCE_OTHERS))
+            said = draw(st.sampled_from((f"{more} and {names[0]}", f"{more}, {names[0]}"))) \
+                if len(names) == 1 else f"{more}, {names[0]} and {names[1]}"
+            sentences.append((f"{said} ({key[-4:]})", None))
+        else:
+            parts = [cite(draw(st.integers(1, 3))) for _ in range(2)]
+            if kind == "group":
+                sentences.append((f"({'; '.join(t for t, _m in parts)})",
+                                  f"[{'; '.join(m for _t, m in parts)}]"))  # fmt: skip
+            else:
+                # A name no entry has, and a year none is from.
+                missing = f"{REFERENCE_FAMILIES[0][0]}x, 1949"
+                sentences.append((f"({parts[0][0]}; {missing})", None))
+    body = "\n\n".join(
+        f"{' '.join(draw(st.lists(st.sampled_from(_REFERENCE_WORDS), min_size=1, max_size=3)))}"
+        f" {typed}." for typed, _made in sentences
+    )
+    listed = "\n\n".join(draw(st.permutations(entries)))
+    return f"# Introduction\n\n{body}\n\n# References\n\n{listed}\n", sentences
+
+
 # --------------------------------------------- escaped backticks beside an escaped comparison
 
 #: Pieces of a paragraph with backticks and escaped comparisons in them, each closing every
@@ -13240,6 +13506,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "interval order": intervals(),
     "pointers": numbered_displays().map(lambda drawn: {"files": drawn[0]}),
     "typed citations": st.one_of(typed_citations().map(lambda drawn: drawn[0]), texts()),
+    "typed references": st.one_of(typed_reference_papers().map(lambda drawn: drawn[0]), texts()),
     "quoted whole": texts(WHOLE),
     "labels": texts(LABELLED),
     "data dates": texts(DATED),

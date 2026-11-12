@@ -1421,6 +1421,81 @@ def test_the_year_of_a_citation_typed_as_text_fails_and_its_hint_names_the_key(
 
 
 @pytest.mark.parametrize(
+    "title", ["# References", "## 7. Reference list {-}", "**References**", "**References:**"]
+)
+def test_a_number_in_a_typed_reference_list_passes_and_one_just_after_it_fails(
+    project: Path, title: str
+) -> None:
+    """The real-paper corpus (PsyArXiv d8hkq_v1, rebuilt with `init --from`): G2 failed each
+    year, volume and page of the typed reference list, 169 of them, and told the author to
+    bind each. A list `text.reference_lists` finds, under a heading or a title in bold, holds
+    no claim of the paper's, and its numbers are not read. Where it ends, at a table's caption
+    after it, they are again: 4321 there still fails, and so does one typed in the sentence
+    before the list. A binding typed in the list is still checked."""
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n\nWe counted 8765 more.\n\n"
+        f"{title}\n\nSmith, J. A., & Jones, B. (2020). A title of work. *Journal of Things*, "
+        "*12*(3), 45--67. https://doi.org/10.1000/xyz123\n\n"
+        "Lee, C. (2018). *A book of things*. Publisher. {{results.no_such_key}}\n\n"
+        "Table 9. Counts; 4321 were seen.\n",
+        encoding="utf-8",
+    )
+    report = gate_report(project)
+    failed = {f.message for f in report.failures if f.gate == "G2"}
+    assert "'4321' is not bound to any source" in failed, report.render(project)
+    assert "'8765' is not bound to any source" in failed, report.render(project)
+    for listed in ("2020", "12*(3", "45--67", "2018", "10.1000/xyz123"):
+        assert f"{listed!r} is not bound to any source" not in failed, failed
+    assert any(f.code == "unresolved-binding" for f in report.failures), failed
+
+
+@pytest.mark.parametrize(
+    "title", ["# References", "## 7. Reference list {-}", "**References**", "**References:**"]
+)
+@pytest.mark.parametrize(
+    "after",
+    ["[^mgnote]: We excluded 4321 patients.", "Abstract\n\nWe excluded 4321 patients.",
+     "**Appendix**\n\nWe excluded 4321 patients.", "3. Conclusion\n\nWe excluded 4321 patients.",
+     # Round 2 of #638: pandoc's escaped number, and a caption numbered with a letter.
+     "3\\. Conclusion\n\nWe excluded 4321 patients.", "Table A1. We excluded 4321 patients."],
+    ids=["note", "abstract", "appendix in bold", "numbered conclusion", "escaped number",
+         "lettered caption"],
+)
+def test_a_note_or_a_section_s_name_after_a_typed_list_ends_it(
+    project: Path, title: str, after: str
+) -> None:
+    """Round 1 of #638: pandoc puts a Word paper's notes after its last section, the
+    reference list, and the list ran on over them: "We excluded 4321 patients." in a note
+    passed G2, where it failed before the list was let through. A footnote's definition ends
+    the list, and so does a line that is a section's name alone (`section_name_alone`)."""
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n\nAs noted.[^mgnote]\n\n"
+        f"{title}\n\nLee, C. (2018). *A book of things*. Publisher.\n\n{after}\n",
+        encoding="utf-8",
+    )
+    failed = {f.message for f in gate_report(project).failures if f.gate == "G2"}
+    assert "'4321' is not bound to any source" in failed, failed
+    assert "'2018' is not bound to any source" not in failed, failed
+
+
+def test_a_paragraph_after_a_typed_list_with_nothing_to_end_it_is_read_as_an_entry(
+    project: Path,
+) -> None:
+    """Known gaps: a paragraph of the paper's own straight after the list, under no heading,
+    caption, note or section's name, is read as one more entry, and its numbers pass."""
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n\n# References\n\n"
+        "Lee, C. (2018). *A book of things*. Publisher.\n\nWe excluded 4321 patients.\n",
+        encoding="utf-8",
+    )
+    failed = {f.message for f in gate_report(project).failures if f.gate == "G2"}
+    assert "'4321' is not bound to any source" not in failed, failed
+
+
+@pytest.mark.parametrize(
     ("typed", "named"),
     [
         ("Fictional (2021)", True),
@@ -12000,6 +12075,103 @@ def test_what_the_reader_still_refuses_of_those_papers_fails_build(project: Path
     assert ("tex-refused", "main.tex", 2) in found, report.render(project)
     assert ("tex-refused", "a.tex", 1) in found, report.render(project)
     assert ("tex-refused", "b.tex", 1) in found, report.render(project)
+
+
+#: What three of 20 LaTeX preprints of the corpus run of 2026-11-11 held, that the reader
+#: refused, so that the rest of each file was read as typed: ICLR's `math_commands.tex`
+#: defining `\eqref` again, `iclr2021_conference.sty`'s `\addcontentsline`, arxiv.sty's
+#: `\renewcommand\section`, and a Scientific WorkPlace preamble's `\expandafter`.
+_TEMPLATES = {
+    "math_commands.tex": "\\def\\eqref#1{equation~\\ref{#1}}\n",
+    "iclr.sty": "\\def\\addcontentsline#1#2#3{}\n",
+    "arxiv.sty": "\\renewcommand\\section{\\@startsection{section}{1}{\\z@}{-1ex}{1ex}{\\bf}}\n",
+}
+#: What the body may use of them: nothing; the restyled heading and the cross-reference
+#: defined as another, read as before (Basile, 2026-11-12, "Yes, read them"); a command
+#: defined again otherwise, refused where it stands.
+_TEMPLATE_USES = ("", "\\section{Methods}\nAs \\eqref{e1} shows, ",
+                  "See \\addcontentsline{toc}{section}{x}. ")
+_TEMPLATE_PREAMBLE = (
+    "\\documentclass{article}\n\\usepackage{iclr}\n\\usepackage{arxiv}\n\\input{math_commands}\n"
+    "\\expandafter\\def\\expandafter\\normalsize\\expandafter{\\normalsize"
+    "\\setlength\\abovedisplayskip{6pt}}\n\\begin{document}\n"
+)
+
+
+@pytest.mark.parametrize("used", _TEMPLATE_USES, ids=["unused", "restyled", "used"])
+def test_a_template_s_redefinitions_pass_build_and_a_use_of_one_fails_it(
+    project: Path, used: str
+) -> None:
+    """Basile, 2026-11-11: each of those templates' redefinitions, in the preamble, a file
+    input from it or the author's package, passes BUILD, and the build compiles what it did,
+    the definitions written as typed; a use in the body of a command defined again prints
+    the author's definition, not what the gates read, and fails BUILD where it stands; but
+    the heading restyled through `\\@startsection` and the `\\eqref` defined as `\\ref`, which
+    are read as before (2026-11-12)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    for name, text in _TEMPLATES.items():
+        (entry.parent / name).write_text(text, encoding="utf-8")
+    entry.write_text(_TEMPLATE_PREAMBLE + f"{used}Of 4100 reports, 12 were fatal.\n"
+                     "\\end{document}\n", encoding="utf-8")  # fmt: skip
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    found = {(f.code, f.path.name, f.line) for f in report.failures if f.gate == "BUILD"}
+    refused = {("tex-refused", "main.tex", 7)} if "addcontentsline" in used else set()
+    assert found == refused, report.render(project)
+
+
+def test_an_input_the_tree_cannot_follow_fails_build_and_leaves_the_file_read(
+    project: Path,
+) -> None:
+    """Round 1 of #637, finding 1: BUILD's hint said the rest of the file was not read past
+    any `tex-refused`, though past an `\\input` the tree cannot follow it is, and a number
+    there is still judged. The hint says so."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    entry.write_text("\\documentclass{article}\n\\begin{document}\nOf 4100 reports.\n"
+                     "\\input{absent}\nThen 9999 died.\n\\end{document}\n", encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    (refused,) = [f for f in report.failures if f.gate == "BUILD" and f.code == "tex-refused"]
+    assert refused.line == 4 and refused.hint.endswith("the rest of the file is read"), refused
+    lines = {f.line for f in report.findings if f.code == "unclassified-number"}
+    assert 5 in lines, report.render(project)
+
+
+@pytest.mark.parametrize("used", _TEMPLATE_USES, ids=["unused", "restyled", "used"])
+def test_an_audited_template_s_redefinitions_leave_the_paper_read(
+    tmp_path: Path, used: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The corpus run of 2026-11-11: refused at the redefinition, the rest of each file was
+    read as typed, so G6 reported a template's commented-out text, and the summary said
+    "nothing reported". Each is read now, and a number after it compared; a use of a command
+    defined again stops the reading there, and the report says so, with nothing past it
+    reported, a comment's placeholder no more than a number."""
+    import json
+
+    from manuscript_guard.cli import main
+
+    for name, text in _TEMPLATES.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    paper = tmp_path / "paper.tex"
+    paper.write_text(_TEMPLATE_PREAMBLE + f"{used}Of 4100 reports, 12 were fatal.\n"
+                     "% TODO: rerun with the 2019 data\nThen 77 died.\n\\end{document}\n",
+                     encoding="utf-8")  # fmt: skip
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("n,deaths,later\n4100,12,77\n", encoding="utf-8")
+    assert main(["audit", str(paper), "--against", str(outputs), "--json"]) == 0
+    read = json.loads(capsys.readouterr().out)
+    placeholders = [f for f in read["findings"] if f["gate"] == "G6"]
+    stops = "addcontentsline" in used
+    assert placeholders == [] if stops else len(placeholders) == 1, placeholders
+    main(["audit", str(paper), "--against", str(outputs)])
+    said = capsys.readouterr().out
+    if "addcontentsline" in used:
+        assert "paper.tex: not read past line 7" in said, said
+        assert "not read past line 7 of paper.tex" in said, said
+    else:
+        assert "not read past" not in said and "3 numbers found in the outputs" in said, said
 
 
 # --------------------------------------------------------------- G2 on the LaTeX twin

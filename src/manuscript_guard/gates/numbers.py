@@ -41,6 +41,7 @@ from manuscript_guard.gates.typed_citations import hint as typed_hint
 from manuscript_guard.roundtrip import splits_a_paragraph
 from manuscript_guard.text.latex import views as latex_views
 from manuscript_guard.text.masking import (
+    NUL,
     blank_comments,
     fenced_blocks,
     front_matter_abstract,
@@ -49,6 +50,7 @@ from manuscript_guard.text.masking import (
     mask,
 )
 from manuscript_guard.text.placeholders import parse
+from manuscript_guard.text.reference_lists import reference_lists
 from manuscript_guard.text.sections import chain_at, chains_at, footnote_index, heading_index
 from manuscript_guard.text.tokens import find_atoms
 
@@ -439,8 +441,15 @@ def _markdown_read(path: Path, text: str) -> _Read:
     if abstract is not None:
         found = found.with_findings(abstract_in_header(path, *abstract, GATE))
     placeholders, malformed = parse(text)
+    # A reference list typed in the manuscript, under "# References" or "**References**",
+    # holds the years, volumes and pages of other people's papers, not the author's claims:
+    # its numbers are not read, as a LaTeX file's `thebibliography` is not (the real-paper
+    # corpus: a paper converted from Word failed 169 of them, each told to bind it). Where
+    # the list ends, at a table or a caption after it, numbers are read again
+    # (`reference_lists`). A binding typed in it is still one.
+    listed = _outside(reference_lists(text), placeholders)
     return _Read(
-        path, text, mask(text), text, text, placeholders, malformed,
+        path, text, _blanked(mask(text), listed, NUL), text, text, placeholders, malformed,
         chains=lambda offset: chains_at(headings, notes, offset),
         in_table=lambda atom: atom.line_text.lstrip().startswith("|"),
         code=lambda classifier: _fenced_code(path, text, classifier, headings),

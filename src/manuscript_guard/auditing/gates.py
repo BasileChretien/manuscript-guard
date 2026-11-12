@@ -139,6 +139,7 @@ def _stage(paper: Path, tree=None) -> _Staged:
     Raises ValueError with what to say where it cannot be staged."""
     from manuscript_guard.audit import read_text
     from manuscript_guard.contracts._schema import ContractError
+    from manuscript_guard.text.latex.encodings import CODECS, as_utf8
 
     suffix = paper.suffix.lower()
     if suffix == ".pdf":
@@ -178,10 +179,13 @@ def _stage(paper: Path, tree=None) -> _Staged:
                              "copy is given here")  # fmt: skip
         name = "main.tex" if name == entry else name
         files[name], back[name] = source.text, path
+    codec = CODECS.get(getattr(tree, "encoding", None) or "")
     for path in sorted([*tree.folder.rglob("*.sty"), *tree.folder.rglob("*.cls")]):
         name = path.relative_to(tree.folder).as_posix()
         try:
-            files[name] = read_text(path)
+            # In the encoding the tree was read in, its declarations UTF-8's, as the files
+            # of the tree are (`auditing.latex._gathered`).
+            files[name] = as_utf8(read_text(path, codec)) if codec else read_text(path)
         except (OSError, ValueError):
             continue
         back[name] = path

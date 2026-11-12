@@ -15998,6 +15998,14 @@ been sorted yet.
   Pinned by `tests/test_latex_mask.py::test_a_known_command_the_preamble_defines_again_is_read_and_refused_where_used`,
   `tests/test_latex_mask.py::test_a_restyled_heading_and_a_cross_reference_defined_as_another_are_read`
   and `tests/test_audit_reading_said.py::test_a_file_input_past_where_the_reader_stopped_is_said_so`.
+  - A `\subimport{chapters/}{intro}` past a stop is followed without its folder, so what
+    chapters/intro.tex inputs, `\input{methods}`, is looked for at the manuscript's root,
+    and given the advice for a file nothing inputs (check of #637). Accepted.
+  - A file input past the stops of two trees is named with the first stopped tree only,
+    where each that inputs it could be (check of #637). Accepted.
+  - A file reached past a stop that stops in turn has the inputs past its own stop left
+    unfollowed, and they are given the advice for a file nothing inputs (check of #637).
+    Accepted.
 - **A part placed by `\subfile` that defines a known command again in its own preamble has
   its uses refused.** The part's reading reads its own preamble, so a part that repeats
   main's `\renewcommand\section` is refused at its first `\section`, and the rest of the part
@@ -16015,6 +16023,15 @@ been sorted yet.
   are UTF-8 only, as the build writes them.
   Pinned by `tests/test_audit_reading_said.py::test_an_encoding_the_audit_does_not_read_in_is_still_refused`
   and `tests/test_audit_reading_said.py::test_a_stray_latin1_declaration_does_not_decide_a_paper_s_encoding`.
+  - Past a stop the file is read again with no state, as if it began there, so text TeX
+    does not run is read as live: a refused `\begin{minted}` that holds a declaration, an
+    `\iffalse` with no `\fi`, a placed part whose preamble stops. A declaration there
+    counts, so a UTF-8 tree that declares nothing is read as Latin-1 where a refused
+    `minted` holds `[latin1]`, and an input there is named as not followed (check of #637).
+    Accepted.
+  - A declaration past a stop counts even where the preamble declares another: `[latin1]`
+    in the preamble and `\inputencoding{utf8}` in the body past a stop are two, and the file
+    is read as UTF-8, where TeX reads its preamble as Latin-1 (check of #637). Accepted.
 - **A file two audited trees input, in two encodings, is read once, as the first decodes it.**
   `audit` reads a file the trees of two entries input once, so where the two trees declare
   encodings that decode otherwise, the report quotes it as the first tree decoded it, which

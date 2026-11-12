@@ -523,6 +523,8 @@ def _abstract_counts(read) -> dict[str, int]:
     return {"abstract_numbers": read.numbers, "abstract_matched": read.matched,
             "abstract_matched_as_rounding": len(read.rounded),
             "abstract_not_found": len(read.not_found),
+            "abstract_from_counts": len(read.from_counts),
+            "abstract_off_counts": len(read.off_counts),
             "abstract_conflicts": len(read.conflicts)}  # fmt: skip
 
 
@@ -983,7 +985,8 @@ def _abstract(read, show) -> list[str]:
     lines = [f"{read.numbers} number(s) in the Abstract, conventions and references set "
              f"aside, looked for where the paper reports its results ({ABSTRACT_SEARCHED}, "
              f"a file with no Abstract): {read.matched} found, "
-             f"{len(read.rounded)} found only as a rounding, {len(read.not_found)} not found."]
+             f"{len(read.rounded)} found only as a rounding, {_from_counts(read)}"
+             f"{len(read.not_found)} not found."]
     for heading, found in (
         ("AN INTERVAL OR A TEST THAT DIFFERS FROM ITS COUNTERPART IN ONE NUMBER (counted by "
          "--strict):", read.conflicts),
@@ -1000,6 +1003,17 @@ def _abstract(read, show) -> list[str]:
                 "would match by chance, being among those the paper reports, roundings "
                 "counted in")
     return [*lines, "", *worth[:5]]
+
+
+def _from_counts(read) -> str:
+    """The percentages of the Abstract written beside both their counts, as the section's
+    first line counts them: those the counts give, and those they do not, which are listed
+    with the arithmetic."""
+    said = f"{len(read.from_counts)} given by the counts beside them, " if read.from_counts else ""
+    if read.off_counts:
+        said += (f"{len(read.off_counts)} that the counts beside them do not give (listed "
+                 f"under {ARITHMETIC}), ")  # fmt: skip
+    return said
 
 
 @dataclass(frozen=True)

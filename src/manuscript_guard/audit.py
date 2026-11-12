@@ -1348,6 +1348,14 @@ def audit(
     from manuscript_guard.auditing.abstract import against_results
 
     report.abstract = against_results(pieces)
+    # A share of the Abstract its counts beside it do not give is a number that does not fit
+    # the ones beside it, listed with the rest, by paper in the order read and by line.
+    report.read["shares"] = report.read.get("shares", 0) + report.abstract.shares
+    if report.abstract.arithmetic:
+        order = {path: at for at, path in enumerate(report.papers)}
+        report.disagreements = sorted(
+            [*report.disagreements, *report.abstract.arithmetic],
+            key=lambda d: (order.get(d.source, len(order)), d.line))  # fmt: skip
     if design is not None or cited:
         # The papers' sentences, not the figures': a PDF may be either (`auditing.pdf`).
         _read_sentences(report, sources[:read], papers, design, cited)

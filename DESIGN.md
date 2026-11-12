@@ -24921,6 +24921,22 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A section of the Introduction's material is not searched wherever it stands, so a
     "Hypotheses" after the Methods, whose numbers may be the study's own, is not, as at the
     base it was not. Accepted.
+  - A percentage of the Abstract written beside both its counts is held to them and not
+    looked for (the author, 2026-11-11), in the shapes `stats.shares.written_shares` names
+    only: "164 of 250", "164 out of 250" or "164/250", up to three words, then the share in
+    brackets; and the share, then its counts in brackets, "n =" before them or not. Counts
+    the sentence gives before its share, "Of 250 patients, 164 (66%)", a count with no
+    denominator, "n = 164 (66%)", a share with no "%" and one with a decimal comma,
+    "65,6%", give no share, and the percentage is looked for as any number is. Pinned by
+    `tests/test_properties.py::test_the_abstract_is_held_to_what_the_paper_reports`.
+  - The counts are taken from where they stand, up to three words before the bracket:
+    "12 of 30 sites enrolled patients (40%)" is read as 12 of 30, whatever the 40% is of.
+    Accepted.
+  - A percentage its counts give is explained by them, whatever the paper reports: it is
+    not compared with the share the Results print for the same counts. Accepted.
+  - A share written in a sentence anywhere but the Abstract, "164 of 250 (75%)" in the
+    Results, is not held to its counts: only a table's n (%) and the Abstract's are.
+    Accepted.
 
 - **A LaTeX paper's numbers in user macros, and its `csvautotabular` and `pgfplotstable`
   tables, are not read** by the flows or by the Abstract against Results, as by the rest of

@@ -36,6 +36,16 @@ its denominator against the share printed, within half a unit of its last printe
 
 A share off from its denominator says which denominators it fits: 54.2 is 640 of 1179 to
 1182, which is what a share of those with data looks like.
+
+A share a sentence writes with both its counts is read too (`written_shares`), for the
+audit's Abstract: "164 of 250 (66%)", "164 out of 250 (66%)", "164/250 (65.6%)", with up
+to three words between the counts and the bracket, "164 of 250 patients (66%)"; and
+"66% (164/250)", "66% (164 of 250)", "66% (n = 164/250)". The bracket may go on after the
+share, "(66%, 95% CI 60-72)". The "%" is needed: a number in brackets in a sentence is as
+often anything else. A count with no denominator beside it, "n = 164 (66%)", gives no
+share to check. The share is held to its counts as a table's is: within half a unit of its
+last printed place, so a share exactly half way, 1 of 8 printed "12%" or "13%", fits
+either way, and one cut short, 164 of 250 printed "65%", does not.
 """
 
 from __future__ import annotations
@@ -354,6 +364,47 @@ def _uncertain(row: _Row, cell: TableCell) -> str | None:
         return "the label of the rows it falls under carries a footnote marker or an n of " \
             "its own"  # fmt: skip
     return None
+
+
+# ----------------------------------------------------------------------- in a sentence
+
+#: A count in a sentence: its thousands parted by a comma or a narrow space, never by a
+#: plain one, which parts two numbers there, "In 2019 164 of 250".
+_SENTENCE_COUNT = (r"(?:\d{1,3}(?:[,\N{NO-BREAK SPACE}\N{THIN SPACE}\N{NARROW NO-BREAK SPACE}]"
+                   r"\d{3})+(?![\d.])|\d+(?![\d.]|,\d))")  # fmt: skip
+#: A count and its denominator: "164 of 250", "164 out of 250", "164/250".
+_OF = r"(?:\s*/\s*|\s+(?:out\s+)?of\s+)"
+_PERCENT = r"(?P<percent>\d{1,3}(?:\.\d+)?)\s*%"
+#: What closes the bracket a share is in, or goes on in it: "(66%)", "(66%, 95% CI ...)".
+_CLOSE = r"\s*(?P<close>[)\],;])"
+#: The counts, then the share in brackets: "164 of 250 patients (66%)".
+_COUNTS_FIRST = re.compile(
+    rf"(?<![\w.,/])(?P<count>{_SENTENCE_COUNT}){_OF}(?P<over>{_SENTENCE_COUNT})"
+    rf"(?:\s+[A-Za-z][A-Za-z'-]*){{0,3}}\s*(?P<open>[(\[])\s*{_PERCENT}{_CLOSE}"
+)
+#: The share, then its counts in brackets: "66% (164/250)", "66% (n = 164/250)".
+_SHARE_FIRST = re.compile(
+    rf"(?<![\w.,])(?P<percent>\d{{1,3}}(?:\.\d+)?)\s*%\s*(?P<open>[(\[])\s*(?:[nN]\s*=\s*)?"
+    rf"(?P<count>{_SENTENCE_COUNT}){_OF}(?P<over>{_SENTENCE_COUNT}){_CLOSE}"
+)
+
+
+def written_shares(text: str) -> list[tuple[Share, int]]:
+    """Each share `text` writes in a sentence with both its counts, in reading order, and
+    the offset its percentage starts at."""
+    found = []
+    for pattern in (_COUNTS_FIRST, _SHARE_FIRST):
+        for match in pattern.finditer(text):
+            printed = " ".join(text[match.start() : match.start("close")].split())
+            printed += match["close"] if match["close"] in ")]" else \
+                {"(": ")", "[": "]"}[match["open"]]  # fmt: skip
+            found.append((Share(
+                line=text.count("\n", 0, match.start()) + 1, printed=printed,
+                count=_whole(match["count"]), percent=match["percent"],
+                over=_whole(match["over"]), own=True, row_total=None, run_total=None,
+                label="", uncertain=None, context=printed,
+            ), match.start("percent")))  # fmt: skip
+    return sorted(found, key=lambda one: one[1])
 
 
 # --------------------------------------------------------------------------- arithmetic

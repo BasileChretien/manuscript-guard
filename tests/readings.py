@@ -1727,7 +1727,8 @@ def _flows() -> Reading:
 def _abstract_against_results() -> Reading:
     """What `audit` says of a Markdown paper's Abstract against what it and its supplement
     report: whether they were compared, each conflict, each number not found and each found
-    only as a rounding, by line, and what a match is worth there."""
+    only as a rounding, each percentage its counts beside it give and each they do not, with
+    the arithmetic finding of each, by line, and what a match is worth there."""
     from manuscript_guard.audit import audit
     from manuscript_guard.auditing.abstract import against_results  # noqa: F401 - newer than it
 
@@ -1744,6 +1745,13 @@ def _abstract_against_results() -> Reading:
                 "conflicts": [[d.source.name, d.line, d.message] for d in found.conflicts],
                 "not found": [[c.source.name, c.line, c.text] for c in found.not_found],
                 "rounded": [[c.source.name, c.line, c.text] for c in found.rounded],
+                # Newer than the reading: a base without them reads none.
+                "from counts": [[c.source.name, c.line, c.text]
+                                for c in getattr(found, "from_counts", [])],
+                "off counts": [[c.source.name, c.line, c.text]
+                               for c in getattr(found, "off_counts", [])],
+                "arithmetic": [[d.source.name, d.line, d.message]
+                               for d in getattr(found, "arithmetic", [])],
                 "worth": None if worth is None else [worth.small_integers,
                                                      worth.medium_integers, worth.two_decimals],
             }  # fmt: skip

@@ -2705,6 +2705,36 @@ def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
     assert main(["audit", str(paper), "--strict"]) == 1
 
 
+def test_an_abstract_share_its_counts_do_not_give_is_a_number_that_does_not_fit(
+    tmp_path: Path,
+) -> None:
+    """The author's decision of 2026-11-11: the Abstract's "164 out of 250 (66%)" is given by
+    its counts, where it was said not found; changed to 75%, it is listed with the numbers
+    that do not fit the ones beside them, and is neither found nor not found. "n = 164
+    (66.4%)" has no denominator, and its percentage is still not found."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+
+    def read(share: str):
+        paper.write_text(f"# Paper\n\n## Abstract\n\nOf them, {share} answered; n = 164 "
+                         "(66.4%) agreed.\n\n## Methods\n\nWe asked 250 people.\n\n"
+                         "## Results\n\nIn all 164 answered.\n", encoding="utf-8")  # fmt: skip
+        return audit([paper], None)
+
+    report = read("164 out of 250 (66%)")
+    assert [c.text for c in report.abstract.from_counts] == ["66%"]
+    assert [c.text for c in report.abstract.not_found] == ["66.4%"]
+    assert report.disagreements == []
+    report = read("164 out of 250 (75%)")
+    assert [c.text for c in report.abstract.off_counts] == ["75%"]
+    assert [c.text for c in report.abstract.not_found] == ["66.4%"]
+    [said] = report.disagreements
+    assert said.line == 5
+    assert said.message == ("in the Abstract, n (%) 164 out of 250 (75%): 164 of 250 is "
+                            "65.6%, not 75; 75% is 164 of 218 to 220")  # fmt: skip
+
+
 def test_an_abstract_number_changed_under_a_section_of_its_own_name_is_not_found(
     tmp_path: Path,
 ) -> None:

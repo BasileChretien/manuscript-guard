@@ -207,7 +207,9 @@ in a row whose label ends on a unit in percent ("Oxygen saturation, %"). A share
 up to 100, and a share of its categories' own total, where they do, are not listed: a
 subtype of another row, or a share of those with data. A row whose label carries a footnote
 marker is listed as uncertain, since a note may give it another denominator. Pipe tables are
-read in Markdown, and every table in a .docx.
+read in Markdown, and every table in a .docx. A share the Abstract writes in a sentence
+beside both its counts is held to them the same way (see the Abstract against Results); one
+in a sentence anywhere else is not read.
 
 **Totals.** A row labelled Total, Totals, All or Overall, in any case and with nothing after the
 word but an n ("Total (n = 1,200)"), an "n (%)", footnote marks and punctuation, totals the
@@ -305,7 +307,15 @@ rounding, "53%" in the Abstract for "53.3%" in the Results, and is listed apart.
 identifier, a word with a number in it ("v8", "rs75015950", "chr15", "ieu-a-1185"), is
 matched only as printed, the same word there, and never by the number it holds. A number
 not found there is listed, its finding saying where it was looked for, and
-not counted by `--strict`. The Methods are a heading that holds "methods", or whose whole
+not counted by `--strict`. A percentage the Abstract writes beside both its counts, "164
+out of 250 (66%)", "164 of 250 (66%)", "164/250 (65.6%)", "164 of 250 patients (66%)",
+"66% (164/250)" or "66% (n = 164/250)", is held to them as a table's n (%) is to its
+denominator, half a unit in its last printed place allowed, and is not looked for: one its
+counts give is counted as given by them, and one they do not give, "164 out of 250 (75%)",
+is listed under Arithmetic with the other numbers that do not fit the ones beside them, not
+counted by `--strict`. The counts are looked for as any number is. A count with no
+denominator beside it, "n = 164 (66%)", gives no share, and its percentage is looked for.
+The Methods are a heading that holds "methods", or whose whole
 title is "Method", as APA titles it, or "Methodology", numbered or not, alone or with
 "materials" ("Materials and method"); "Performance of the proposed method" and
 "Methodological notes" are not. The section ends with what a match

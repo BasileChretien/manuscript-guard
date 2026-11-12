@@ -6222,7 +6222,8 @@ def _abstract_found(read) -> dict[str, list]:
     conflicts = sorted([d.line, "interval" if " CI " in d.message else "test"]
                        for d in read.conflicts)  # fmt: skip
     states = {(c.line, c.text): state for state, listed in (
-        ("exact", read.found), ("rounded", read.rounded), ("not found", read.not_found))
+        ("exact", read.found), ("rounded", read.rounded), ("not found", read.not_found),
+        ("counts", read.from_counts), ("off", read.off_counts))
         for c in listed}  # fmt: skip
     return {"conflicts": conflicts, "looked": states}
 
@@ -6242,10 +6243,13 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
     Results and discussion whose title holds "method", "Performance of the proposed method",
     is found, and the Results over it are still the Results (round 1 of #624). One under a
     section of another name, "Participants", "Study design", an appendix, is found, and one
-    only in the Introduction or the Conclusions is not (Basile, 2026-11-11). Without an Abstract
-    heading, or a Results heading, nothing is compared. The same paper in LaTeX reads
-    alike, its last sentence of the Abstract on the line of `!end{abstract}` (round 1 of
-    #472)."""
+    only in the Introduction or the Conclusions is not (Basile, 2026-11-11). A percentage
+    beside both its counts, "164 out of 250 (66%)", "66% (n = 164/250)", is given by them
+    where it is their share rounded to its places, and is an arithmetic finding where it is
+    not; one beside a count with no denominator is looked for as any number is (the author,
+    2026-11-11). Without an Abstract heading, or a Results heading, nothing is compared. The
+    same paper in LaTeX reads alike, its last sentence of the Abstract on the line of
+    `!end{abstract}` (round 1 of #472)."""
     paper, supplement, expected, latex, supplement_tex, in_latex = drawn
     for text, extra, suffix, wanted in ((paper, supplement, ".md", expected),
                                         (latex, supplement_tex, ".tex", in_latex)):
@@ -6255,8 +6259,76 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
         looked = sorted([line, shown, found["looked"].get((line, shown), "absent")]
                         for line, shown, _state in wanted["looked"])  # fmt: skip
         assert {"conflicts": found["conflicts"], "looked": looked} == wanted, text
+        off = sorted(line for line, _shown, state in wanted["looked"] if state == "off")
+        assert sorted(d.line for d in read.arithmetic) == off, text
     for heading, other in (("## Abstract", "## Summary of it"), ("## Results", "## Data")):
         assert not _abstract_read(paper.replace(heading, other), supplement).compared
+
+
+def _a_share_is_not_read_beside_its_counts(patch: pytest.MonkeyPatch) -> None:
+    """As before the author's decision of 2026-11-11: "164 out of 250 (66%)" was not found."""
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "written_shares", lambda text: [])
+
+
+def _a_share_off_its_counts_is_given_by_them(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "off", lambda share: False)
+
+
+def _a_share_cut_short_fits_its_counts(patch: pytest.MonkeyPatch) -> None:
+    """Truncated to its places, not rounded: 164 of 250 is "65%"."""
+    from fractions import Fraction
+
+    from manuscript_guard.stats import shares
+
+    def cut(count: int, over: int, percent: str) -> bool:
+        scale = 10 ** shares._places(percent)
+        exact = Fraction(100 * count, over) if over > 0 else None
+        return exact is not None and Fraction(math.floor(exact * scale), scale) == \
+            Fraction(Decimal(percent))  # fmt: skip
+
+    patch.setattr(shares, "_fits", cut)
+
+
+def _rewritten(patch: pytest.MonkeyPatch, old: str, new: str) -> None:
+    """Each pattern of a share beside its counts with `old` written `new`, which one of
+    them at least holds."""
+    from manuscript_guard.stats import shares
+
+    names = [name for name in ("_COUNTS_FIRST", "_SHARE_FIRST")
+             if old in getattr(shares, name).pattern]  # fmt: skip
+    assert names, old
+    for name in names:
+        patch.setattr(shares, name, re.compile(getattr(shares, name).pattern.replace(old, new)))
+
+
+def _a_share_before_its_counts_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_SHARE_FIRST", re.compile(r"(?!)"))
+
+
+def _words_after_the_counts_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    _rewritten(patch, r"(?:\s+[A-Za-z][A-Za-z'-]*){0,3}", "")
+
+
+def _only_out_of_gives_a_denominator(patch: pytest.MonkeyPatch) -> None:
+    _rewritten(patch, r"(?:out\s+)?of", r"out\s+of")
+
+
+def _a_slash_gives_no_denominator(patch: pytest.MonkeyPatch) -> None:
+    _rewritten(patch, r"\s*/\s*|", "")
+
+
+def _a_bracket_that_goes_on_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    _rewritten(patch, r"[)\],;]", r"[)\]]")
+
+
+def _counts_named_n_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    _rewritten(patch, r"(?:[nN]\s*=\s*)?", "")
 
 
 def _a_counterpart_need_not_be_the_only_one(patch: pytest.MonkeyPatch) -> None:
@@ -23741,6 +23813,42 @@ BROKEN = {
     ),
     "a heading over the Methods is no section for an Abstract's number": (
         _a_heading_over_the_methods_is_the_paper_s_title,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an Abstract's share is not read beside its counts": (
+        _a_share_is_not_read_beside_its_counts,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an Abstract's share off its counts is given by them": (
+        _a_share_off_its_counts_is_given_by_them,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an Abstract's share cut short fits its counts": (
+        _a_share_cut_short_fits_its_counts,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an Abstract's share before its counts is not read": (
+        _a_share_before_its_counts_is_not_read,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an Abstract's share after words after its counts is not read": (
+        _words_after_the_counts_are_not_read,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "only out of gives an Abstract's share its denominator": (
+        _only_out_of_gives_a_denominator,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a slash gives an Abstract's share no denominator": (
+        _a_slash_gives_no_denominator,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an Abstract's share in a bracket that goes on is not read": (
+        _a_bracket_that_goes_on_is_not_read,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an Abstract's share before counts named n is not read": (
+        _counts_named_n_are_not_read,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "the Introduction and a conclusion are searched for an Abstract's number": (

@@ -16432,13 +16432,20 @@ been sorted yet.
   paper's tables by the same rule (`gates/baseline.py`, `text/captioned.py`). It is a warning
   at every stage, and nothing stands it down: no emitted table carries a reason, and G2's
   `project-exemption` is for numbers. Accepted.
-  - A caption names such a table only where "baseline" stands before characteristics,
-    demographics or features, with up to three words between ("baseline demographic,
-    clinical, and laboratory characteristics"), and "adjusted for", "by", "according to" or
-    another of the words that qualify an outcome does not stand directly before it; or
-    where characteristics or demographics have "at baseline" or "at randomisation" after
-    them. Every other wording is missed: "Table 1. Participants", "Participants at
-    baseline, by group", "Baseline data", "Characteristics before treatment". Accepted.
+  - A caption names such a table only where "baseline" stands before characteristics or
+    demographics, with up to three words between and no time among them ("baseline
+    demographic, clinical, and laboratory characteristics", not "baseline and follow-up
+    characteristics"), and "adjusted for", "by", "according to" or another of the words that
+    qualify an outcome does not stand up to three words before it; or where
+    characteristics or demographics have "at baseline" or "at randomisation" after them.
+    Every other wording is missed: "Table 1. Participants", "Participants at baseline, by
+    group", "Baseline data", "Characteristics before treatment". Accepted.
+  - A caption that says "baseline features" is not read as one of baseline characteristics,
+    since "Baseline MRI features associated with response" names an analysis. Accepted.
+  - A word holding a digit, and a "/", "&" or "(" between the words, ends the phrase:
+    "Baseline demographic/clinical characteristics", "Baseline HbA1c and clinical
+    characteristics" and "Baseline (pre-randomisation) characteristics" are not read.
+    Accepted.
   - A paragraph beside a table that opens with "Table 1 " and a capital, "Table 1 In the
     intervention group, more were women.", is read as the table's legend, since "Table 1
     Baseline characteristics" is set the same way.

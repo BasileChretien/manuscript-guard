@@ -18936,6 +18936,21 @@ def _baseline_inside_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(baseline, "_NAMES", baseline._names(start=""))
 
 
+def _qualifying_ignored(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_QUALIFIED", re.compile(r"(?!)"))
+
+
+def _only_the_old_adjectives_between(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    adjectives = ("demographic", "sociodemographic", "clinical", "patient", "participant",
+                  "patients'", "participants'")  # fmt: skip
+    patch.setattr(baseline, "_NAMES",
+                  baseline._names(word=baseline._one_of(adjectives) + baseline._END))
+
+
 def _baseline_anywhere_names_the_table(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import baseline
 
@@ -25129,6 +25144,14 @@ BROKEN = {
     ),
     "a caption's baseline is read inside another word": (
         _baseline_inside_a_word,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "what qualifies an outcome is not read before a caption's baseline": (
+        _qualifying_ignored,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "only the listed adjectives stand between baseline and characteristics": (
+        _only_the_old_adjectives_between,
         test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
     ),
     "a caption that holds the word baseline names a table of baseline characteristics": (

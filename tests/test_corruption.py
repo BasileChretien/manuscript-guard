@@ -3657,6 +3657,16 @@ _OUTCOMES_NAMING_BASELINE = (
     # The phrase after what qualifies an outcome (round 2 of #657).
     "Primary and secondary outcomes, adjusted for baseline characteristics",
     "Subgroup analysis of the primary outcome by baseline characteristics",
+    # Words between the qualifier and the phrase, a time inside it, and "features"
+    # (round 3 of #657).
+    "Outcomes at 12 weeks, adjusted for age, sex and baseline characteristics",
+    "Outcomes at 12 weeks, adjusted for prespecified baseline characteristics",
+    "Outcomes at 12 weeks by selected baseline characteristics",
+    "Outcomes based on baseline characteristics",
+    "Changes between baseline and follow-up in clinical characteristics",
+    "Comparison of baseline and follow-up characteristics",
+    "Baseline MRI features associated with response",
+    "Patients with or without baseline high-risk features",
 )
 
 
@@ -3684,15 +3694,18 @@ def test_a_latex_table_of_a_change_from_baseline_passes(project: Path) -> None:
 
 
 def test_a_caption_names_a_table_of_baseline_characteristics_by_what_it_says() -> None:
-    """"Baseline" before characteristics, demographics or features, an adjective or two
-    between; or characteristics or demographics, then "at baseline" or "at randomisation"."""
+    """"Baseline" before characteristics or demographics, up to three words between and no
+    time among them, not after what qualifies an outcome; or characteristics or demographics,
+    then "at baseline" or "at randomisation"."""
     from manuscript_guard.gates.baseline import names_baseline
 
     named = ("Baseline demographic and clinical characteristics of each group",
              "Baseline characteristics and change from baseline",
              "Table 1. Baseline characteristics of the randomised participants",
              "Characteristics of the participants at baseline",
-             "Demographics at randomization", "Baseline patient features",
+             "Demographics at randomization", "Baseline patient demographics",
+             # A qualifier before a colon cuts nothing after it (round 3 of #657).
+             "Table 1. By arm: baseline characteristics",
              "*Baseline* characteristics", "\\textbf{Baseline} characteristics",
              "Characteristics at~baseline", "Characteristics at \\emph{baseline}",
              # Any words, up to three, between (round 2 of #657).

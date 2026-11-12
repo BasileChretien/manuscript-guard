@@ -19,8 +19,8 @@ text and in the supplement alike (`text.captioned`): Markdown pipe and grid tabl
 LaTeX manuscript's tables through its reader. Nothing stands the warning down.
 
 A caption is read for what it names, strictly, case folded (`_NAMES`): "baseline" before
-characteristics, demographics or features, perhaps with up to three words between, but not
-after what qualifies an outcome ("adjusted for baseline characteristics"), or
+characteristics or demographics, perhaps with up to three words between and no time among
+them, but not after what qualifies an outcome ("adjusted for baseline characteristics"), or
 characteristics or demographics "at baseline" or "at randomisation". A table of outcomes says
 the word otherwise ("Change from baseline in HbA1c", "Primary outcome by baseline risk"), and
 names none; nor does "postbaseline". Any other wording of a table of baseline characteristics
@@ -60,24 +60,31 @@ _NOTE = re.compile(rf"[ \t]?(?:\^[^\s^]{{0,3}}\^?|[{re.escape(NOTE_MARKS)}]{{1,3
 _STYLED_P = re.compile(r"\A(?:(?P<mark>\*{1,2}|_{1,2})(?P<p>[Pp])(?P=mark)|\$(?P<math>[Pp])\$)")
 
 #: The words a caption names a table of baseline characteristics in, and nothing else: "baseline"
-#: before one of `NAMED`, with up to `_BETWEEN` words of any kind between, "and" not counted
-#: ("baseline demographic, clinical, and laboratory characteristics"), and none of
-#: `QUALIFYING` before it; or one of `NAMED_AT` with "at" and one of `AT` after it in the
-#: caption ("Characteristics of the participants at baseline").
+#: before one of `NAMED`, with up to `_BETWEEN` words of any kind but a time (`TIMES`) between,
+#: "and" not counted ("baseline demographic, clinical, and laboratory characteristics"), and
+#: none of `QUALIFYING` before it within `_BETWEEN` words; or one of `NAMED_AT` with "at" and
+#: one of `AT` after it in the caption ("Characteristics of the participants at baseline").
 BASELINE = "baseline"
-NAMED = ("characteristics", "demographics", "features")
+NAMED = ("characteristics", "demographics")
 NAMED_AT = ("characteristics", "demographics")
 AT = ("baseline", "randomisation", "randomization")
 _BETWEEN = 3
-#: What, directly before the phrase, makes it what an outcome is adjusted for, split by or
-#: changed from ("adjusted for baseline characteristics", "by baseline characteristics",
+#: What, before the phrase, makes it what an outcome is adjusted for, split by or changed from
+#: ("adjusted for age, sex and baseline characteristics", "by baseline characteristics",
 #: "change from baseline in characteristics"), and no table's name. "Baseline
 #: characteristics by treatment group" has its "by" after the phrase.
 QUALIFYING = ("adjusted for", "adjusting for", "by", "according to", "defined by",
-              "stratified by", "across", "from", "since")  # fmt: skip
+              "stratified by", "across", "from", "since", "based on")  # fmt: skip
+#: Words of a time after baseline, which among the words between make the phrase a change
+#: over time ("baseline and follow-up characteristics"); with them, any word that starts
+#: "post-" (`_TIME`). A word holding a digit is no word between at all (`_WORD`).
+TIMES = ("follow-up", "followup", "week", "weeks", "month", "months", "year", "years", "end",
+         "end-of-treatment", "endpoint", "final", "discharge")  # fmt: skip
 #: A word between: letters, hyphens and apostrophes, straight and curly ("socio-demographic",
-#: "patients’").
-_WORD = r"(?:[^\W\d_]|['\N{RIGHT SINGLE QUOTATION MARK}-])+"
+#: "patients’"), not a time.
+_LETTERS = r"(?:[^\W\d_]|['\N{RIGHT SINGLE QUOTATION MARK}-])+"
+_TIME = r"(?:post-|(?:" + "|".join(re.escape(word) for word in TIMES) + r")(?![\w'-]))"
+_WORD = rf"(?!{_TIME}){_LETTERS}"
 #: Between two words: spaces, a comma, Markdown's emphasis marks, and LaTeX's tie, braces
 #: and a command that opens a group, "at \emph{baseline}".
 _GAP = r"(?:[\s,~{}*_]|\\[A-Za-z]+\{)+"
@@ -89,19 +96,25 @@ def _one_of(words: tuple[str, ...]) -> str:
     return "(?:" + "|".join(re.escape(word).replace(r"\ ", r"\s+") for word in words) + ")"
 
 
-def _names(start: str = _START) -> re.Pattern[str]:
+#: Between two words of the phrase: a gap, and perhaps "and" and another.
+_AND = rf"{_GAP}(?:and{_GAP})?"
+
+
+def _names(start: str = _START, word: str = _WORD) -> re.Pattern[str]:
     """The pattern of a caption that names a table of baseline characteristics, built from the
-    words above; `start` is what may not stand before its first word."""
-    gap = rf"{_GAP}(?:and{_GAP})?"
-    before = (rf"(?P<before>{start}{BASELINE}{_END}(?:{gap}{_WORD}){{0,{_BETWEEN}}}"
-              rf"{gap}{_one_of(NAMED)}{_END})")  # fmt: skip
+    words above; `start` is what may not stand before its first word, and `word` a word
+    between "baseline" and what it names."""
+    before = (rf"(?P<before>{start}{BASELINE}{_END}(?:{_AND}{word}){{0,{_BETWEEN}}}"
+              rf"{_AND}{_one_of(NAMED)}{_END})")  # fmt: skip
     after = rf"(?P<after>{start}{_one_of(NAMED_AT)}{_END}.*?{_START}at{_GAP}{_one_of(AT)}{_END})"
     return re.compile(f"{before}|{after}", re.IGNORECASE | re.DOTALL)
 
 
 _NAMES = _names()
-#: `QUALIFYING` at the end of what stands before the phrase.
-_QUALIFIED = re.compile(rf"{_START}{_one_of(QUALIFYING)}{_GAP}\Z", re.IGNORECASE)
+#: `QUALIFYING` at the end of what stands before the phrase, or up to `_BETWEEN` words before
+#: it, commas and "and" between: "adjusted for age, sex and".
+_QUALIFIED = re.compile(rf"{_START}{_one_of(QUALIFYING)}{_END}(?:{_AND}{_LETTERS}){{0,{_BETWEEN}}}"
+                        rf"{_GAP}\Z", re.IGNORECASE)
 
 #: The documents a manuscript's tables are read in: the main text's, then the supplement's.
 _DOCUMENTS = (False, True)

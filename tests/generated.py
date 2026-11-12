@@ -13005,7 +13005,7 @@ BASELINE_WORDS = ("baseline", "Baseline", "BASELINE", "*baseline*", "_Baseline_"
 BASELINE_LATEX_WORDS = ("baseline", "Baseline", "\\textbf{Baseline}", "\\emph{baseline}")
 BASELINE_CAPTIONS = ("{w} characteristics of the participants", "Characteristics at {w}",
                      "{w} demographic and clinical characteristics",
-                     "Demographics of the groups at {w}", "{w} patient features",
+                     "Demographics of the groups at {w}", "{w} patient demographics",
                      "Characteristics of the participants at randomisation",
                      "{w} characteristics and change from {w}",
                      "{w} demographic and disease characteristics",
@@ -13026,7 +13026,28 @@ BASELINE_OUTCOMES = ("Outcomes at 12 weeks", "Primary outcome at {w} and 12 week
                      "Primary and secondary outcomes, adjusted for {w} characteristics",
                      "Subgroup analysis of the primary outcome by {w} characteristics",
                      "Outcomes according to {w} demographics",
-                     "Events stratified by {w} clinical features")  # fmt: skip
+                     "Events stratified by {w} clinical features",
+                     # Round 3 of #657: words between the qualifier and the phrase, a time
+                     # among the words, and "features".
+                     "Outcomes at 12 weeks, adjusted for age, sex and {w} characteristics",
+                     "Outcomes at 12 weeks, adjusted for prespecified {w} characteristics",
+                     "Outcomes at 12 weeks by selected {w} characteristics",
+                     "Changes between {w} and follow-up in clinical characteristics",
+                     "Comparison of {w} and follow-up characteristics",
+                     "{w} MRI features associated with response",
+                     "Patients with or without {w} high-risk features")  # fmt: skip
+#: One table of outcomes for each of these qualifiers before the phrase, in every example: a
+#: rule that ignores what qualifies the phrase fails each one.
+BASELINE_QUALIFIED = ("Outcomes adjusting for {w} characteristics",
+                      "Outcomes defined by {w} characteristics",
+                      "Outcomes across {w} characteristics",
+                      "Change in the score since {w} characteristics were recorded",
+                      "Outcomes based on {w} characteristics")  # fmt: skip
+#: Captions of tables of baseline characteristics with a word between that no list of
+#: adjectives holds, one in every example: the rule of d621e97 fails each.
+BASELINE_ANY_WORDS = ("{w} demographic and disease characteristics",
+                      "{w} socio-demographic characteristics",
+                      "{w} clinical and laboratory characteristics")  # fmt: skip
 #: How a legend is set after its number: a stop, a colon, or a space before a capital.
 BASELINE_LEGENDS = ("Table S{n}. ", "Table S{n}: ", "**Table S{n}** ", "Table S{n} ")
 #: The designs whose guidelines do not include CONSORT, `other`, and none named.
@@ -13069,13 +13090,15 @@ def baseline_papers(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
         return draw(st.sampled_from(BASELINE_P)) + draw(st.sampled_from(BASELINE_MARKS))
 
     emitted, found_emitted = [], []
-    for kind in ("baseline", "outcomes", "change"):
+    kinds = [("baseline", BASELINE_CAPTIONS, True), ("words", BASELINE_ANY_WORDS, True),
+             ("outcomes", BASELINE_OUTCOMES, False), ("change", BASELINE_CHANGES, False),
+             *((f"qualified{at}", (template,), False)
+               for at, template in enumerate(BASELINE_QUALIFIED))]  # fmt: skip
+    for kind, templates, warned in kinds:
         p = p_value()
-        templates = {"baseline": BASELINE_CAPTIONS, "outcomes": BASELINE_OUTCOMES,
-                     "change": BASELINE_CHANGES}[kind]  # fmt: skip
         key = f"{kind}_{draw(st.integers(1, 9))}"
         emitted.append({"key": key, "caption": caption(templates), "columns": headers(p)})
-        if kind == "baseline":
+        if warned:
             found_emitted.append([f"results/{key}.json", None, [p]])
 
     main: list[str] = ["# Results", "", filler, ""]

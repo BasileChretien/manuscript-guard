@@ -1,6 +1,6 @@
 ---
 name: methods-writer
-description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when pointing Methods text at a step of the code, when check reports methods-drift, methods-never-reconciled, a method-… finding, a G15 model-… or variable-… finding or quality-not-reported, or after the analysis changes. Not for the prose of other sections (use manuscript-writing), nor for putting a result into the text (use results-binding).
+description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when pointing Methods text at a step of the code, when check reports methods-drift, methods-never-reconciled, a method-… finding, a G15 model-… or variable-… finding, quality-not-reported, software-unnamed or software-uncited, or after the analysis changes. Not for the prose of other sections (use manuscript-writing), nor for putting a result into the text (use results-binding).
 ---
 
 # Writing Methods that describe what was done
@@ -29,6 +29,18 @@ For each script, capture what a reader needs to reproduce it:
 - the estimator, and the assumption it rests on
 - every parameter that was chosen rather than estimated
 - software and version
+
+**Name each package the analysis uses, and cite it in the same sentence.** For every item of
+the plan's Software section that a script loads, write its name in the Methods, in the
+sentence that says what it did, and cite there the reference its authors ask for: in R,
+`citation("dplyr")` prints it; for a Python package, its documentation gives it. Add the
+reference to Zotero; do not make one up. "Models were fitted with statsmodels
+[@seabold2010]" does it; a citation in the next sentence does not count for this one. The
+Methods of the supplement count as well. G12 warns of a package used and not named in the
+Methods (`software-unnamed`) and of one named in no sentence that cites
+(`software-uncited`). An R package is matched with its case, as R loads it; a Python one in
+any case. A package left out on purpose is named in backticks under the plan's Deviations,
+with the reason.
 
 **Numbers in the Methods are bindings like any others.** A cohort size, a study period, a
 count excluded at each step — all of those come from `{{results.…}}`. If a number in the

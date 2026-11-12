@@ -130,6 +130,8 @@ ROUTES: dict[str, Route] = {
     **_all("methods-writer", ("methods",), "methods-", "method-", "quality-not-reported"),
     **_all("methods-writer", ("models",), "model-", "models-on-different-rows", "variable-",
            "typed-model-kind", "poisson-binary-variance", "unit-rows-independent"),
+    # G12's, of the Methods: each package the analysis uses, named there and cited.
+    **_all("methods-writer", None, "software-unnamed", "software-uncited"),
     # -- the literature -------------------------------------------------------------------
     **_all("literature-verify", None, "literature-source-missing", "quote-",
            "value-not-in-quote", "quotation-", "statements-without-passage",

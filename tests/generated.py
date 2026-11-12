@@ -12990,6 +12990,100 @@ def software_plans(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
     return given, found
 
 
+# ------------------------------------- the packages used, named and cited in the Methods
+
+#: How a sentence cites, written after the package's name and before its stop: pandoc's,
+#: bracketed and narrative, a number typed in brackets, an author and year typed in brackets.
+SOFTWARE_CITATIONS = (" [@{key}]", ", as @{key} describes", " [{number}]",
+                      " (Fictional et al., 2019)")  # fmt: skip
+#: How the Methods write a package's name, in each language.
+SOFTWARE_NAMINGS = {"r": ("{p}", "`{p}`", "`{p}::fit()`"),
+                    "python": ("{p}", "`{p}`", "`import {p}`")}  # fmt: skip
+#: Each kind of package, and what G12 says of it: named and cited in the main text, once
+#: for each form of citation; named only inside a longer word; named with the citation in
+#: the next sentence; named and cited in the supplement's Methods only; an R package and a
+#: Python one named in another case; named and cited only in the Results; one the Deviations
+#: name; one no script loads; one only the emitter recorded.
+SOFTWARE_KINDS = {
+    **{f"cited {form}": None for form in range(len(SOFTWARE_CITATIONS))},
+    "inside": "software-unnamed", "next": "software-uncited", "supplement": None,
+    "r case": "software-unnamed", "python case": None, "results": "software-unnamed",
+    "deviated": None, "unloaded": None, "recorded": "software-unnamed",
+}  # fmt: skip
+
+
+@st.composite
+def software_methods(draw: st.DrawFn) -> tuple[dict[str, Any], list[list[Any]]]:
+    """A plan whose Software section names one package of every kind in `SOFTWARE_KINDS`,
+    in an order drawn, the scripts that load them, the names the emitter recorded, and a
+    main text and a supplement whose Methods name them; and what G12 says of them, as
+    `[code, severity, path, line]`, the line the item's in the plan."""
+    prefix = draw(st.sampled_from(("qz", "vk", "pm")))
+    kinds = draw(st.permutations(sorted(SOFTWARE_KINDS)))
+    fixed = {"r case": "r", "python case": "python", "recorded": "python"}
+    plan = ["# Analysis plan", "", "## Research question", "", "Whether words were said.", "",
+            "## Software", ""]  # fmt: skip
+    scripts = {"r": [], "python": []}
+    emitted: list[str] = []
+    deviations: list[str] = []
+    methods: list[str] = []
+    supplement: list[str] = []
+    results: list[str] = []
+    found = []
+    for number, kind in enumerate(kinds):
+        language = fixed.get(kind) or draw(st.sampled_from(("r", "python")))
+        name = prefix + chr(ord("a") + number // 26) + chr(ord("a") + number % 26)
+        if language == "r" and draw(st.booleans()):
+            name += ".x" + chr(ord("a") + number % 26)
+        line = len(plan) + 1
+        plan.append(f"- `{name}` 1.{number}.0: {draw(st.sampled_from(FILLER))}")
+        if SOFTWARE_KINDS[kind]:
+            found.append([SOFTWARE_KINDS[kind], "warn", "design/plan.md", line])
+        if kind == "recorded":
+            emitted.append(name)
+        elif kind != "unloaded":
+            scripts[language].append(f"library({name})" if language == "r" else f"import {name}")
+        form = draw(st.integers(0, len(SOFTWARE_CITATIONS) - 1))
+        if kind.startswith("cited "):
+            form = int(kind.split()[1])
+        cited = SOFTWARE_CITATIONS[form].format(key=f"fictional2019{chr(97 + number % 26)}",
+                                                number=number + 1)  # fmt: skip
+        named = draw(st.sampled_from(SOFTWARE_NAMINGS[language])).format(p=name)
+        if kind.startswith("cited ") or kind == "deviated" and draw(st.booleans()):
+            methods.append(f"Models were fitted with {named}{cited}.")
+        elif kind == "inside":
+            methods.append(f"The {name}ed tables were kept{cited}.")
+        elif kind == "next":
+            methods.append(f"Tables were drawn with {named}. Their layout follows earlier "
+                           f"work{cited}.")  # fmt: skip
+        elif kind == "supplement":
+            supplement.append(f"Weights were computed with {named}{cited}.")
+        elif kind in ("r case", "python case"):
+            other = draw(st.sampled_from((name.upper(), name.capitalize())))
+            methods.append(f"Curves were smoothed with {other}{cited}.")
+        elif kind == "results":
+            results.append(f"Counts were made with {named}{cited}.")
+        if kind == "deviated":
+            deviations.append(f"`{name}` was set aside after the plan was agreed.")
+    # Each sentence in the Methods' own text or in a subsection of them, as drawn.
+    under = draw(st.lists(st.booleans(), min_size=len(methods), max_size=len(methods)))
+    top = " ".join(s for s, deep in zip(methods, under, strict=True) if not deep) or "Text."
+    below = " ".join(s for s, deep in zip(methods, under, strict=True) if deep) or "Text."
+    main = (f"# Introduction\n\nReports were included.\n\n# Methods\n\n{top}\n\n"
+            f"## Statistical analysis\n\n{below}\n\n# Results\n\n{' '.join(results)}\n")
+    supplementary = (f"# Supplementary methods\n\n{' '.join(supplement)}\n\n"
+                     "## Table S1. Counts\n\nCounts were kept.\n")  # fmt: skip
+    plan += ["", "## Deviations from the plan", ""]
+    plan += [f"{number}. {said}" for number, said in enumerate(deviations, 1)] or ["None."]
+    given = {
+        "plan": "\n".join(plan) + "\n",
+        "scripts": {"analysis/01_fit.R": "\n".join(scripts["r"]) + "\n",
+                    "analysis/02_fit.py": "\n".join(scripts["python"]) + "\n"},
+        "emitted": emitted, "own": [], "main": main, "supplement": [supplementary],
+    }  # fmt: skip
+    return given, sorted(found, key=json.dumps)
+
+
 # --------------------------------------- titles standing alone, placed, and titles in bold
 
 #: Papers whose titles stand alone, a PDF's lines or a Word paper's titles in bold, each a
@@ -13693,4 +13787,5 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         ])
     ),  # fmt: skip
     "software": software_plans().map(lambda drawn: drawn[0]),
+    "software in the methods": software_methods().map(lambda drawn: drawn[0]),
 }

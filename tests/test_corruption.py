@@ -9841,7 +9841,8 @@ def test_a_package_a_script_loads_and_the_plan_does_not_name_is_a_note(project: 
     assert _software_said(project) == []
     # A plan with no Software section names none of what the scripts load.
     start, end = text.index("## Software\n"), text.index("## Sample size")
-    plan.write_bytes((text[:start] + text[end:]).encode())
+    # The example's Deviations name its packages, for the Methods' sake: left out here.
+    plan.write_bytes((text[:start] + text[end : text.index(_UNCITED_ENTRY)]).encode())
     said = _software_said(project)
     assert [(code, path) for code, _severity, path, _line in said] == [
         ("plan-package-unnamed", "analysis/01_disproportionality.py"),
@@ -9856,6 +9857,119 @@ def test_a_package_a_script_loads_and_the_plan_does_not_name_is_a_note(project: 
     assert all(message.endswith("and the plan has no Software section") for message in messages)
     assert [message.split(" loads ")[1].split(",")[0] for message in messages] == [
         "pandas", "statsmodels", "vigicaen", "matplotlib"]  # fmt: skip
+
+
+# ------------------------------------------------- the packages used, named in the Methods
+
+#: The example's Deviations entry that stands its three packages down: its references are
+#: invented, so none of them could be cited for a package.
+_UNCITED_ENTRY = "9. The Methods name statsmodels and not pandas or matplotlib"
+_RUN_IN = "with statsmodels\n{{results.software.statsmodels}}."
+
+
+def _named_said(root: Path) -> list[tuple[str, str]]:
+    """What G12 says of the packages used against the Methods, by code and package."""
+    from manuscript_guard.gates.software_methods import check_software_cited
+
+    project, _ = load_project(root)
+    _namespace, results, _literature, _report = load_namespace(project)
+    said = []
+    for f in check_software_cited(project, results).findings:
+        assert (f.severity, f.path.relative_to(root).as_posix()) == ("warn", "design/plan.md")
+        lead = " uses " if f.code == "software-unnamed" else " name "
+        said.append((f.code, f.message.split(lead, 1)[1].split(",", 1)[0]))
+    return said
+
+
+def _without_the_uncited_entry(root: Path) -> None:
+    plan = root / "design" / "plan.md"
+    text = plan.read_bytes().decode("utf-8")
+    plan.write_bytes(text[: text.index(_UNCITED_ENTRY)].encode())
+
+
+def _edited(path: Path, old: str, new: str) -> None:
+    text = path.read_bytes().decode("utf-8")
+    assert old in text, old
+    path.write_bytes(text.replace(old, new, 1).encode())
+
+
+def test_a_package_used_and_not_named_in_the_methods_is_said(project: Path) -> None:
+    """Each package the plan's Software section names and a script loads is named in the
+    Methods, or G12 warns, at every stage; the Deviations name the example's three, whose
+    references are invented. Python itself is the language, and is not held to them."""
+    main = project / "manuscript" / "main.md"
+    assert _named_said(project) == []
+    _without_the_uncited_entry(project)
+    said = [("software-unnamed", "pandas"), ("software-uncited", "statsmodels"),
+            ("software-unnamed", "matplotlib")]  # fmt: skip
+    assert _named_said(project) == said
+    # A name inside another word, or in a comment, or in a binding's key, names nothing.
+    _edited(main, "Reports were included", "The pandasql tables and <!-- matplotlib -->"
+            " {{results.software.python}} were kept. Reports were included")
+    assert _named_said(project) == said
+    # A name in a code span names it as plain text does, a module after a point included.
+    _edited(main, _RUN_IN, _RUN_IN + " Tables were held in `pandas.DataFrame`"
+            " [@fictionalHepaticCohort2021].")
+    assert _named_said(project) == said[1:]
+    # A paper with no Methods a reader finds is not read for its packages.
+    _edited(main, "# Methods\n", "# Approach\n")
+    _edited(project / "manuscript" / "supplementary" / "S1_code_lists.md",
+            "# Supplementary methods\n", "# Supplementary tables\n")
+    assert _named_said(project) == []
+
+
+def test_a_package_named_and_not_cited_in_its_sentence_is_said(project: Path) -> None:
+    """The sentence that names the package carries the citation: one in the next sentence,
+    or inside a comment, is not its, and a typed citation is one."""
+    main = project / "manuscript" / "main.md"
+    _without_the_uncited_entry(project)
+    _edited(main, _RUN_IN, _RUN_IN + " Its methods are described elsewhere"
+            " [@fictionalClassSignal2019].")
+    assert ("software-uncited", "statsmodels") in _named_said(project)
+    _edited(main, _RUN_IN, "with statsmodels <!-- [@fictionalClassSignal2019] -->\n"
+            "{{results.software.statsmodels}}.")
+    assert ("software-uncited", "statsmodels") in _named_said(project)
+    for cited in ("[@fictionalClassSignal2019]", "(Fictional and Fictional, 2019)", "[2]"):
+        text = main.read_bytes().decode("utf-8")
+        start = text.index("The analysis was run")
+        end = text.index("\n\n", start)
+        main.write_bytes((text[:start] + f"The analysis was run with statsmodels {cited}."
+                          + text[end:]).encode())  # fmt: skip
+        assert ("software-uncited", "statsmodels") not in _named_said(project), cited
+        assert ("software-unnamed", "statsmodels") not in _named_said(project), cited
+
+
+def test_a_package_cited_in_the_supplement_s_methods_only_passes(project: Path) -> None:
+    """The supplement's Methods are the Methods too, as G9 reads them; its tables are not."""
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    _without_the_uncited_entry(project)
+    sentence = "The forest plot was drawn with Matplotlib [@fictionalHepaticCohort2021]."
+    _edited(supplement, "## Table S2. The adjusted model\n",
+            f"## Table S2. The adjusted model\n\n{sentence}\n")
+    assert ("software-unnamed", "matplotlib") in _named_said(project)
+    _edited(supplement, "# Supplementary methods\n", f"# Supplementary methods\n\n{sentence}\n")
+    # In any case for a Python package, as authors write "Matplotlib".
+    assert ("software-unnamed", "matplotlib") not in _named_said(project)
+
+
+def test_an_r_package_is_named_with_its_case_and_a_python_one_by_any_of_its_names(
+    project: Path,
+) -> None:
+    """R loads `Matrix` and not `matrix`, so the Methods name it with its case. A Python
+    package is named by its item's names and its import names: `scikit-learn` or `sklearn`
+    where the item gives both, and only `sklearn` where it gives that one."""
+    main, plan = project / "manuscript" / "main.md", project / "design" / "plan.md"
+    (project / "analysis" / "02_model.R").write_bytes(b"library(Matrix)\n")
+    (project / "analysis" / "03_learn.py").write_bytes(b"from sklearn import tree\n")
+    _edited(plan, "- `matplotlib`:", "- `Matrix`: sparse tables\n- `scikit-learn` (`sklearn`):"
+            " a tree\n- `matplotlib`:")
+    _edited(main, _RUN_IN, _RUN_IN + " A sparse matrix [@fictionalHepaticCohort2021]"
+            " held the counts, and Scikit_Learn [@fictionalClassSignal2019] fitted a tree.")
+    assert _named_said(project) == [("software-unnamed", "Matrix")]
+    _edited(main, "A sparse matrix", "A sparse Matrix")
+    assert _named_said(project) == []
+    _edited(plan, "- `scikit-learn` (`sklearn`):", "- `sklearn`:")
+    assert _named_said(project) == [("software-unnamed", "sklearn")]
 
 
 # ------------------------------------------------- the registered protocol
@@ -11729,6 +11843,9 @@ _READS_LATEX = (
     # It reads each figure a document places, `\includegraphics` through `\graphicspath`
     # as a Markdown image is (#630).
     "check_placed",
+    # It reads the Methods as G9 does, a LaTeX document's in its printed view, where a
+    # citation command is written as pandoc's.
+    "check_software_cited",
 )  # fmt: skip
 
 

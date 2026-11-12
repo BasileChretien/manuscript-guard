@@ -19134,6 +19134,58 @@ def _a_list_of_modules_read_line_by_line_gives_its_first(patch: pytest.MonkeyPat
     patch.setattr(software, "_import_list", lambda written: listed(written)[:1])
 
 
+# --------------------------------------------- the packages used, named in the Methods, G12
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import software_methods  # noqa: E402
+
+
+@holds(40, software_methods())
+def test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else(
+    planted: tuple[dict[str, Any], list[list[Any]]],
+) -> None:
+    """Each package the plan's Software section names and the analysis loads or recorded is
+    named as a word in the Methods, the main text's or the supplement's, in a sentence that
+    cites: in any of the four forms a citation takes, in prose or in a code span, an R
+    package with its case and a Python one in any. A name inside a longer word, a citation
+    in the next sentence and a sentence of the Results do not count. Nothing is said of a
+    package the Deviations name, nor of one nothing loads."""
+    given, expected = planted
+    answered = answer(READINGS["software in the methods"](), given)
+    assert "raised" not in answered, answered
+    told = [[f["code"], f["severity"], f["path"], f["line"]]
+            for f in answered["answer"]["findings"]]  # fmt: skip
+    assert sorted(told, key=json.dumps) == expected, given
+
+
+def _a_package_s_name_is_found_inside_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    patch.setattr(software_methods, "_finder", lambda language, spelling: re.compile(
+        re.escape(spelling), 0 if language == software_methods.R else re.IGNORECASE))
+
+
+def _a_citation_in_another_sentence_counts(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    patch.setattr(software_methods, "_sentences", lambda text: [0, len(text)])
+
+
+def _the_supplement_s_methods_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    parts = software_methods._parts
+    patch.setattr(software_methods, "_parts", lambda main, supplement: parts(main, ()))
+
+
+def _an_r_package_is_matched_in_any_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    finder = software_methods._finder
+    patch.setattr(software_methods, "_finder", lambda language, spelling: finder(
+        software_methods.PYTHON, spelling))  # fmt: skip
+
+
 # ----------------------------------------- titles standing alone placed, and titles in bold
 
 # Imported here, not at the top, to keep clear of the import block other branches edit.
@@ -25049,6 +25101,22 @@ BROKEN = {
     "an import line continued with a backslash is read alone": (
         _a_continued_import_line_is_read_alone,
         test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a package's name is found inside a longer word": (
+        _a_package_s_name_is_found_inside_a_word,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
+    ),
+    "a citation in another sentence counts for the package's": (
+        _a_citation_in_another_sentence_counts,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
+    ),
+    "the supplement's Methods are not read for a package": (
+        _the_supplement_s_methods_are_not_read,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
+    ),
+    "an R package is matched in any case": (
+        _an_r_package_is_matched_in_any_case,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
     ),
 }
 

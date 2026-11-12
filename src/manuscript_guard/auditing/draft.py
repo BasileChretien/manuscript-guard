@@ -273,9 +273,12 @@ def _checks_of_audit(report, items: list[Item]) -> list[tuple[str, str, int]]:
                        _read(abstract.numbers, "number", more="of the Abstract read"),
                        len(abstract.conflicts) + len(abstract.not_found)
                        + len(abstract.rounded)))  # fmt: skip
+    from manuscript_guard.auditing.summary import counted
+
     for run in report.gates:
         if not run.note:
-            checks += [(f"{name} on {run.paper.name}", "its words read", len(found))
+            # The short forms left undefined counted as the summary counts them.
+            checks += [(f"{name} on {run.paper.name}", "its words read", counted(found))
                        for name, found in (("Writing (G6)", run.writing),
                                            ("Language (G14)", run.language))]  # fmt: skip
     entries = sum(len(census.entries) for census in report.references)

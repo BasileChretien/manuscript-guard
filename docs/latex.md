@@ -108,10 +108,11 @@ number and a value prints as text.
 The reader reads LaTeX under TeX's default category codes, one pass per file, through the
 include tree that `\input`, `\include`, the import package's `\import` and `\subimport`,
 `\subfile` and `\includestandalone` make; in the preamble, TeX's `\input macros` without
-braces is followed too. What it cannot read exactly, it refuses, naming the line. A conditional in the body,
-`\makeatletter` in the body and a citation command the reader does not know, one whose name
-holds `cite` such as `\mycitep`, are refused: cite with `\cite` or natbib's, biblatex's,
-apacite's or chicago's commands. So
+braces is followed too. What it cannot read exactly, it refuses, naming the line. A conditional in the body
+and `\makeatletter` in the body are refused, and skipped to their end where the file has one
+(below). A citation command the reader does not know, one whose name holds `cite` such as
+`\mycitep`, is refused: cite with `\cite` or natbib's, biblatex's, apacite's or chicago's
+commands. So
 is a command defined with `\def` and delimited parameters, `\def\x#1.{...}`, where the
 document prints it, since what it takes there is not known: define it with `\newcommand`.
 One whose parameter text holds no parameter, `\def\eg/{e.g.\@}`, takes nothing and is read,
@@ -158,7 +159,12 @@ other.
 Past a refusal nothing more of the file is read, so nothing it did not understand, a comment
 or a command, becomes a finding; `check` fails on the refusal, and `audit` says the file was
 not read past that line. Write a number the reader cannot see as a binding, or move the
-construct to the preamble.
+construct to the preamble. Two constructs in the body have a bounded end, and are skipped to
+it rather than stopping the reading: a `\makeatletter` to its `\makeatother`, and a
+conditional, `\ifx`, `\if0\blind` or one `\newif` made, to its matching `\fi`, neither branch
+read. Nothing in the block is read, and the file is read on past it; `check` still fails on
+the block, and `audit` names the lines it skipped. One with no such end in the file stops the
+reading as any refusal does.
 
 ## Building and submitting
 

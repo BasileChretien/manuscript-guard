@@ -103,7 +103,8 @@ def test_a_file_with_no_document_is_body_and_one_whose_document_is_commented_too
         ("\\verb|unclosed 3", "tex-unbalanced", 0),
         ("\\iffalse 3", "tex-unbalanced", 0),
         ("\\catcode`\\@=11 5", "tex-refused", 0),
-        ("x \\ifdefined\\y 1\\fi", "tex-refused", 2),
+        # A conditional or a `\makeatletter` in the body with no end in the file (2026-11-13).
+        ("x \\ifdefined\\y 1", "tex-refused", 2),
         ("\\makeatletter", "tex-refused", 0),
         ("\\lstinputlisting{code.R}", "tex-refused", 0),
         ("\\def\\x[#1]{#1} use \\x[2]", "tex-refused", 19),
@@ -134,6 +135,71 @@ def test_what_is_not_read_exactly_is_refused_and_the_rest_not_read(
     assert [(r.code, r.offset) for r in reading.refusals] == [(code, at)]
     assert set(reading.masked[at:]) <= {NUL, "\n"}
     assert reading.masked[at:].count("\n") == text[at:].count("\n")
+
+
+#: The shapes of the three real papers whose reading stopped at a block in the body (corpus
+#: run of 2026-11-13): tex-stat-ap-B2's bookmark on one line, tex-qbio-pe-B1's definition in
+#: a figure, tex-stat-ap-A1's blind and named title pages, a group in the first.
+_REAL_BLOCKS = (
+    "\\makeatletter \\pdfbookmark[0]{\\@title}{title} \\makeatother",
+    "\\begin{figure}\n\\makeatletter\\long\\def\\@ifdim#1#2#3{#2}\\makeatother\n"
+    "\\caption{Mean of 31 runs}\n\\end{figure}",
+    "\\if0\\blind\n{\\title{\\tit\\thanks{Funded by 32.}}\n\\maketitle\n}\\fi\n"
+    "\\if1\\blind \\title{\\bf \\tit} \\maketitle\n\\fi",
+)  # fmt: skip
+
+
+@pytest.mark.parametrize("block", _REAL_BLOCKS, ids=["bookmark", "figure", "blind"])
+def test_a_bounded_block_in_the_body_is_skipped_and_the_rest_read(block: str) -> None:
+    """Basile, 2026-11-13: a `\\makeatletter` in the body, or a conditional, stopped the
+    reading of three real papers, and with it 61 true findings past it. Each is skipped to
+    its `\\makeatother` or its `\\fi`, nothing in it read, and the file read on past it."""
+    text = f"Of 4100 reports.\n{block}\nThen 77 died, 12 later.\n"
+    reading = read(text, body=True)
+    assert reading.refusals == (), reading.refusals
+    assert reading.masked.endswith("Then 77 died, 12 later.\n"), reading.masked
+    for skipped in reading.skipped:
+        assert skipped.code == "tex-refused" and skipped.end > skipped.offset
+        assert set(reading.masked[skipped.offset : skipped.end]) <= {NUL, "\n"}
+        closer = "\\makeatother" if "makeat" in skipped.message else "\\fi"
+        assert text[: skipped.end].endswith(closer) and skipped.message.endswith(closer)
+    assert len(reading.skipped) == block.count("\\if") + block.count("\\makeatletter")
+    # Neither 32 in a branch nor anything a block holds is read; the figure's caption is.
+    assert "32" not in reading.masked and "title" not in reading.masked.replace("\n", "")
+    assert ("Mean of 31 runs" in reading.masked) == ("caption" in block)
+
+
+@pytest.mark.parametrize(
+    ("block", "skipped"),
+    [
+        # Each conditional inside opens a `\fi` of its own, whatever primitive or `\newif`
+        # made it; `\else` and a `\fi` in a comment close nothing.
+        ("\\ifx\\a\\b 1\\ifnum\\c>2 3\\else 4\\fi\\ifdefined\\d 5\\fi\\fi", True),
+        ("\\ifmine 1 % \\fi\n\\iffalse 2\\fi\\ifcsname e\\endcsname 3\\fi\\fi", True),
+        # A `\newif` inside defines its conditional, which opens nothing.
+        ("\\ifx\\a\\b \\newif\\iffound 1\\fi", True),
+        # No end in the file, or one past a brace that closes a group opened before the
+        # block, or before a group it opens is closed: refused, as before.
+        ("\\ifx\\a\\b 1 \\ifnum\\c>2 3\\fi", False),
+        ("{\\makeatletter 1} \\makeatother", False),
+        ("\\ifx\\a\\b {1 \\fi}", False),
+        ("\\makeatletter 1 \\makeatotherwise", False),
+    ],
+)
+def test_a_block_is_skipped_to_its_matching_end_or_refused(block: str, skipped: bool) -> None:
+    text = f"Of 4100 reports. {block} Then 77 died."
+    at = text.index("\\", text.index("reports"))
+    reading = read(text, body=True)
+    if skipped:
+        assert reading.refusals == () and [s.offset for s in reading.skipped] == [at], block
+        assert reading.skipped[0].end == text.index(" Then")
+        assert reading.masked.endswith(" Then 77 died.")
+    else:
+        assert reading.skipped == () and [r.offset for r in reading.refusals] == [at], block
+        assert set(reading.masked[at:]) <= {NUL, "\n"}
+    # A `\newif` in the body defines a conditional, and is no block.
+    defined = read("\\newif\\iffound Then 77 died.", body=True)
+    assert defined.refusals == defined.skipped == () and "77" in defined.masked
 
 
 def test_a_delimited_definition_is_read_and_each_use_where_it_prints_refused() -> None:
@@ -622,29 +688,37 @@ def test_a_reference_list_bibtex_wrote_is_read_with_its_header() -> None:
         listed = ("\\begin{thebibliography}{9}\n" + header
                   + "\\bibitem[{\\citenamefont{Smith}(2011)}]{a} Smith A. 2011.\n"
                   "\\end{thebibliography}")  # fmt: skip
-        text = "\\begin{document}\nText \\cite{a}.\n" + listed + "\nAfter \\iffalse@ 9\\fi.\n"
+        # `\iffalse@` prints its `\else` branch, which a conditional skipped would not.
+        text = ("\\begin{document}\nText \\cite{a}.\n" + listed
+                + "\nAfter \\iffalse@ 9\\else 8\\fi.\n")  # fmt: skip
         reading = read(text)
-        assert reading.refusals == (), header
+        assert reading.refusals == reading.skipped == (), header
         start = text.index("\\begin{thebibliography}")
         assert reading.references == ((start, start + len(listed)),)
-        assert "Smith A. 2011" in reading.masked and "9" not in reading.masked[-12:]
+        assert "Smith A. 2011" in reading.masked and "9" not in reading.masked[-20:]
+        assert "8" in reading.masked[-20:]
     # Outside a definition's body there, `\catcode` changes what is read, and is refused.
     changed = "\\begin{thebibliography}{9}\n\\catcode`\\@=11\n\\end{thebibliography}"
     assert [r.code for r in read(changed, body=True).refusals] == ["tex-refused"]
     # Round 1 of #442: the header ends at the first `\bibitem`, past which a conditional is
-    # refused; a citation in an entry is one, and one the reader does not know is refused.
+    # not read through: skipped to its `\fi` (2026-11-13); a citation in an entry is one,
+    # and one the reader does not know is refused.
     entries = "\\begin{thebibliography}{9}\n\\bibitem{a} A.\n{} \n\\end{thebibliography}"
-    for entry, refused in (("\\ifx\\a\\b x\\fi", "\\ifx"), ("See \\mycitep{b}", "\\mycitep"),
+    for entry, refused in (("\\ifx\\a\\b x\\fi", ""), ("See \\mycitep{b}", "\\mycitep"),
                            ("See \\citeA{b}", "")):  # fmt: skip
         text = entries.replace("{} ", entry)
         reading = read(text, body=True)
         assert [r.offset for r in reading.refusals] == ([text.index(refused)] if refused
                                                         else []), entry  # fmt: skip
-        if not refused:
+        assert [r.offset for r in reading.skipped] == ([text.index("\\ifx")] if "ifx" in entry
+                                                       else []), entry  # fmt: skip
+        if "cite" in entry and not refused:
             assert [(found.key, found.narrative) for found in reading.cited] == [("b", True)]
-    # Outside the list, the header's commands are refused as before.
-    for outside in ("\\expandafter\\x", "\\ifx\\a\\b\\fi", "\\makeatletter"):
+    # Outside the list, the header's commands are refused as before, or skipped where they
+    # open a block that ends in the file.
+    for outside in ("\\expandafter\\x", "\\ifx\\a\\b", "\\makeatletter"):
         assert [r.code for r in read(outside, body=True).refusals] == ["tex-refused"], outside
+    assert [r.code for r in read("\\ifx\\a\\b\\fi", body=True).skipped] == ["tex-refused"]
 
 
 def test_providecommand_of_a_known_command_defines_nothing_and_renewcommand_is_refused() -> None:

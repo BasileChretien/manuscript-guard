@@ -307,8 +307,10 @@ def environment_spans(source: Any, rules: list[BoxRule]) -> list[tuple[int, int,
 
 def _passed_over(reading: Any):
     """Whether an offset of a file is in what TeX prints nothing of: a comment, an
-    `\\iffalse` block or a definition's body."""
-    spans = [*reading.comments, *reading.unprinted, *reading.bodies]
+    `\\iffalse` block or a definition's body; and in a block the reader skipped, which no
+    check reads."""
+    spans = [*reading.comments, *reading.unprinted, *reading.bodies,
+             *((block.offset, block.end) for block in reading.skipped)]
     return lambda at: any(start <= at < end for start, end in spans)
 
 

@@ -176,12 +176,13 @@ def _words(report) -> str:
         said += ("; " if said else "") + f"not run on {names}: see below"
     # A LaTeX file the reader stopped in was read only to there (Basile, 2026-11-11: "nothing
     # reported" was said of a paper read to its preamble).
-    from manuscript_guard.auditing.latex import stopped
+    from manuscript_guard.auditing.latex import skipped, stopped
 
-    files = stopped(report.trees)
+    # So is one whose block it skipped, read on past it (2026-11-13).
+    files = [*(f"{lines} of {where} skipped" for where, lines in skipped(report.trees)),
+             *(f"not read past line {line} of {where}" for where, line in stopped(report.trees))]
     if files:
-        said = (said or "nothing reported in what was read") + "; " + ", ".join(
-            f"not read past line {line} of {where}" for where, line in files)
+        said = (said or "nothing reported in what was read") + "; " + ", ".join(files)
     return said or "nothing reported"
 
 

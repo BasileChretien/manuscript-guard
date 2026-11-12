@@ -13254,6 +13254,29 @@ def test_an_input_the_tree_cannot_follow_fails_build_and_leaves_the_file_read(
     assert 5 in lines, report.render(project)
 
 
+@pytest.mark.parametrize("block", ["\\makeatletter\\def\\@x{1}\n\\makeatother",
+                                   "\\if0\\blind\n{\\title{Hidden 55}}\n\\fi"],
+                         ids=["makeatletter", "conditional"])  # fmt: skip
+def test_a_block_skipped_in_the_body_fails_build_and_the_gates_read_past_it(
+    project: Path, block: str
+) -> None:
+    """Basile, 2026-11-13 (tex-stat-ap-B2, tex-qbio-pe-B1, tex-stat-ap-A1): a
+    `\\makeatletter` or a conditional in the body stopped the reading, and no gate read the
+    rest of the file. The block is skipped to its end and the file read on: a typed number
+    past it is G2's, none in it is, and BUILD still fails it, its hint saying so."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    entry.write_text("\\documentclass{article}\n\\begin{document}\nOf 4100 reports.\n"
+                     f"{block}\nThen 9999 died.\n\\end{{document}}\n", encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    (refused,) = [f for f in report.failures if f.gate == "BUILD" and f.code == "tex-refused"]
+    assert refused.line == 4 and "nothing in it is read" in refused.hint, refused
+    lines = {f.line for f in report.findings if f.code == "unclassified-number"}
+    then = 5 + block.count("\n")
+    assert then in lines and not lines & set(range(4, then)), report.render(project)
+
+
 @pytest.mark.parametrize("used", _TEMPLATE_USES, ids=["unused", "restyled", "used"])
 def test_an_audited_template_s_redefinitions_leave_the_paper_read(
     tmp_path: Path, used: str, capsys: pytest.CaptureFixture[str]

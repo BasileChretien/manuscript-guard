@@ -285,7 +285,8 @@ def command_read(source):
     listing."""
     reading = source.reading
     skipped = sorted([*reading.comments, *reading.unprinted, *reading.bodies, *reading.code,
-                      *((one.start, one.end) for one in reading.listings)])  # fmt: skip
+                      *((one.start, one.end) for one in reading.listings),
+                      *((block.offset, block.end) for block in reading.skipped)])  # fmt: skip
     masked = reading.masked
 
     def read(at: int) -> bool:

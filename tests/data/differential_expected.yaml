@@ -24,6 +24,32 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: latex refusals
+    why: >-
+      a `\makeatletter` in the body is skipped to its `\makeatother`, and a conditional in
+      the body to its matching `\fi`, and the file read on past it, where the base stopped
+      reading at it; a block skipped is no refusal of the reader's but the tree's, so it is
+      not listed here, and one with no end in the file is refused as before (Basile,
+      2026-11-13, three real papers whose reading stopped at one)
+  - reading: latex bindings
+    why: >-
+      past a `\makeatletter` or a conditional skipped in the body the file is read on, so a
+      binding or a number after one is read where the base read nothing past it (Basile,
+      2026-11-13)
+  - reading: latex printed
+    why: >-
+      past a `\makeatletter` or a conditional skipped in the body the file is read on, so
+      what prints after one is in the view where the base read nothing past it (Basile,
+      2026-11-13)
+  - reading: latex words
+    why: >-
+      past a `\makeatletter` or a conditional skipped in the body the file is read on, so the
+      words after one are read where the base read nothing past it (Basile, 2026-11-13)
+  - reading: latex writing
+    why: >-
+      G6 reads the body as typed but for a block skipped, a `\makeatletter`'s or a
+      conditional's, which it reads nothing of, and reads on past it, where the base read
+      nothing past it (Basile, 2026-11-13)
   - reading: written shares
     why: >-
       new with this pull request: a share a sentence writes beside both its counts, "12 of
@@ -250,14 +276,6 @@ expected:
       command refused where it prints; past any refusal the rest of the file is blanked, not
       read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
       and be honest", after 3 of 20 LaTeX preprints of the corpus run)
-  - reading: latex refusals
-    why: >-
-      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
-      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
-      refused and the rest of the file read as typed; each is read now, and a use of the
-      command refused where it prints; past any refusal the rest of the file is blanked, not
-      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
-      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
   - reading: latex sections
     why: >-
       a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
@@ -266,23 +284,7 @@ expected:
       command refused where it prints; past any refusal the rest of the file is blanked, not
       read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
       and be honest", after 3 of 20 LaTeX preprints of the corpus run)
-  - reading: latex bindings
-    why: >-
-      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
-      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
-      refused and the rest of the file read as typed; each is read now, and a use of the
-      command refused where it prints; past any refusal the rest of the file is blanked, not
-      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
-      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
   - reading: latex citations
-    why: >-
-      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
-      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
-      refused and the rest of the file read as typed; each is read now, and a use of the
-      command refused where it prints; past any refusal the rest of the file is blanked, not
-      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
-      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
-  - reading: latex printed
     why: >-
       a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
       `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
@@ -299,22 +301,6 @@ expected:
       read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
       and be honest", after 3 of 20 LaTeX preprints of the corpus run)
   - reading: latex displays cited
-    why: >-
-      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
-      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
-      refused and the rest of the file read as typed; each is read now, and a use of the
-      command refused where it prints; past any refusal the rest of the file is blanked, not
-      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
-      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
-  - reading: latex writing
-    why: >-
-      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
-      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
-      refused and the rest of the file read as typed; each is read now, and a use of the
-      command refused where it prints; past any refusal the rest of the file is blanked, not
-      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
-      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
-  - reading: latex words
     why: >-
       a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
       `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were

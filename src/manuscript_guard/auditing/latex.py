@@ -161,6 +161,11 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
                 continue
             text = texts[where]
             line = text.count("\n", 0, refusal.offset) + 1
+            if refusal.end >= 0:
+                # A block skipped to its end, and the file read on past it (2026-11-13).
+                read.unreadable.append(f"{where}: {_lines(text, refusal)} skipped, which no "
+                                       f"check read: {refusal.message}")  # fmt: skip
+                continue
             # One the tree makes, an input it cannot follow or an encoding, leaves the file
             # read past it (round 1 of #637: it was said not to be).
             read.unreadable.append(
@@ -242,6 +247,29 @@ def stopped(trees: list[Tree]) -> list[tuple[str, int]]:
             one = (where, texts[where].count("\n", 0, refusal.offset) + 1)
             if one not in said:
                 said.append(one)
+    return said
+
+
+def _lines(text: str, block: Refusal) -> str:
+    """The lines a skipped block runs over, its first to the one its end stands on: "line 4"
+    or "lines 4-9"."""
+    first = text.count("\n", 0, block.offset) + 1
+    last = text.count("\n", 0, max(block.end - 1, block.offset)) + 1
+    return f"line {first}" if first == last else f"lines {first}-{last}"
+
+
+def skipped(trees: list[Tree]) -> list[tuple[str, str]]:
+    """Each block a tree's reader skipped in a file it reads, by the file's path in the folder,
+    with the lines it runs over, once: what the audit's summary says beside where a file
+    stopped, since no check read those lines (2026-11-13)."""
+    said: list[tuple[str, str]] = []
+    for tree in trees:
+        texts = {source.path: source.text for _path, source in tree.files}
+        for where, refusal in tree.document.refusals:
+            if where in texts and refusal.end >= 0:
+                one = (where, _lines(texts[where], refusal))
+                if one not in said:
+                    said.append(one)
     return said
 
 

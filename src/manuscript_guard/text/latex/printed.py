@@ -427,7 +427,8 @@ def _passed_over(reading):
     typed (round 3 of step 13), none empty, which a scan would jump to where it stands and
     stop there (round 4)."""
     listings = [(listing.start, listing.end) for listing in reading.listings]
-    passed = [*reading.comments, *reading.unprinted, *reading.code, *listings]
+    skipped = [(block.offset, block.end) for block in reading.skipped]
+    passed = [*reading.comments, *reading.unprinted, *reading.code, *listings, *skipped]
 
     def read(at: int) -> bool:
         return not any(start <= at < end for start, end in passed)

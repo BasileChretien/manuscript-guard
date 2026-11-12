@@ -14,7 +14,11 @@ blanked; a command not in `commands.py` has its name blanked and its arguments r
 reader cannot read exactly is refused (`Refusal`), and past the first refusal the rest of the
 file is blanked: no gate reads source it did not understand as prose, and what reports on the
 file says it was not read past there (Basile, 2026-11-11, "Read more, and be honest": read as
-typed, its comments and commands were G6's and G14's findings).
+typed, its comments and commands were G6's and G14's findings). Two constructs in the body
+have a bounded end, and are skipped to it rather than refused: a `\\makeatletter` to its
+`\\makeatother`, and a conditional to its matching `\\fi`, neither branch read. Nothing in the
+block is read, and the reading goes on past it (`Reading.skipped`); one with no such end in
+the file is refused as before (Basile, 2026-11-13).
 """
 
 from __future__ import annotations
@@ -115,16 +119,22 @@ _EXPANDED_DEFINITION = re.compile(
 #: The `\\expandafter`s such a definition holds before its name and before its body.
 _EXPANDAFTERS = re.compile(r"(?:\s*\\expandafter(?![A-Za-z@]))*\s*")
 _CONDITIONALS = re.compile(r"\\(?:if[A-Za-z]*|fi|else)(?![A-Za-z])")
+#: A `\\newif` that the conditional's name standing next follows: a definition, no test.
+_NEWIF = re.compile(r"(?<!\\)(?:\\\\)*\\newif\s*\Z")
 _DOCUMENT = re.compile(r"\\begin\s*\{document\}")
 
 
 @dataclass(frozen=True)
 class Refusal:
-    """Why the reader stopped reading a file as LaTeX, and where."""
+    """Why the reader stopped reading a file as LaTeX, and where; or, with an `end`, a block
+    it skipped to its matching end and read on past (`Reading.skipped`)."""
 
     code: str
     offset: int
     message: str
+    #: Where a skipped block ends, past its `\\makeatother` or `\\fi`; -1 where the reader
+    #: stopped, and read nothing more of the file.
+    end: int = -1
 
 
 @dataclass(frozen=True)
@@ -254,6 +264,10 @@ class Reading:
     #: Where the file sets an input encoding other than UTF-8, accepted since it is ASCII: the
     #: tree refuses it where another of its files is not (`structure.py`).
     encodings: tuple[int, ...] = ()
+    #: Each block in the body the reader skipped and read on past, a `\\makeatletter` to its
+    #: `\\makeatother` and a conditional to its `\\fi`, nothing in it read (Basile,
+    #: 2026-11-13): a refusal with its `end`, which the tree adds to its refusals.
+    skipped: tuple[Refusal, ...] = ()
 
 
 #: The level of each sectioning command, as Markdown's `#` counts it; a part stands over a
@@ -524,7 +538,49 @@ def _before(reading: Reading, at: int) -> Reading:
         comments=spans(reading.comments), unprinted=spans(reading.unprinted),
         graphics=spans(reading.graphics),
         encodings=tuple(where for where in reading.encodings if where < at),
+        skipped=tuple(block for block in reading.skipped if block.offset < at),
     )
+
+
+#: A token of a block the reader skips, as TeX's default category codes make one: a control
+#: word or a control symbol, a comment to its line's end, or a brace.
+_BLOCK_TOKEN = re.compile(r"\\(?:[A-Za-z]+|.)|%[^\n]*|[{}]", re.DOTALL)
+
+
+def _opens_conditional(name: str) -> bool:
+    """Whether a control word opens a TeX conditional that a `\\fi` closes: TeX's `\\if…`
+    primitives and those `\\newif` makes, not `\\iff` and `\\ifthenelse`."""
+    return name.startswith("if") and name not in COMMANDS and name not in NOT_CONDITIONALS
+
+
+def _block_end(text: str, start: int, closer: str) -> int:
+    """Where a block opened just before `start` ends, past its `closer`: the first
+    `\\makeatother`, or the `\\fi` that matches, each conditional inside opening a `\\fi` of
+    its own but one `\\newif` names, which it defines. A comment counts for nothing. -1 where
+    the file holds none, or a brace in the block closes a group opened before it, or one it
+    opens is not closed by its end: TeX ends a `\\makeatletter` with the group it stands in,
+    and the reader's groups would no longer be the file's (Basile, 2026-11-13)."""
+    depth, braces, defining = 1, 0, False
+    for token in _BLOCK_TOKEN.finditer(text, start):
+        found = token.group(0)
+        if found == "{":
+            braces += 1
+        elif found == "}":
+            braces -= 1
+            if braces < 0:
+                return -1
+        elif found[0] == "\\":
+            name = found[1:]
+            if closer == "makeatother" and name == closer:
+                return token.end() if braces == 0 else -1
+            if closer == "fi" and name == "fi":
+                depth -= 1
+                if depth == 0:
+                    return token.end() if braces == 0 else -1
+            elif closer == "fi" and _opens_conditional(name) and not defining:
+                depth += 1
+            defining = name == "newif"
+    return -1
 
 
 def _comment_end(text: str, at: int) -> int:
@@ -637,6 +693,7 @@ class _Reader:
         self.pending: tuple[str, ...] = ()
         self.command = ""
         self.refused: Refusal | None = None
+        self.skipped: list[Refusal] = []
         self.letters = _LETTERS_AT if package else _LETTERS
         self.definitions = 0
         self.environments: list[str] = []
@@ -744,7 +801,7 @@ class _Reader:
                  tuple(self.pointers), tuple(self.comments), tuple(self.unprinted),
                  tuple(self.graphics), tuple(self.defined_delimited),
                  tuple(self.defined_own), tuple(self.defined_literal),
-                 tuple(self.encodings))  # fmt: skip
+                 tuple(self.encodings), tuple(self.skipped))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
         # Past the refusal nothing is read, its line breaks kept (`_unread`), and nothing the
@@ -1061,7 +1118,7 @@ class _Reader:
         2026-10-27: a quotation left open before a `\\par` was closed by a `"` after it)."""
         if _PARAGRAPH_END.search(self.text, start, end) is not None:
             return True
-        passed = [*self.comments, *self.unprinted]
+        passed = [*self.comments, *self.unprinted, *((s.offset, s.end) for s in self.skipped)]
         return any(not any(low <= found.start("par") < high for low, high in passed)
                    for found in _PAR.finditer(self.text, start, end))  # fmt: skip
 
@@ -1175,17 +1232,22 @@ class _Reader:
         elif name in ("makeatletter", "makeatother"):
             header = self._list_header()
             if name == "makeatletter" and self.body and not self.loose and not header:
-                self._refuse("tex-refused", at, "\\makeatletter in the body changes how "
-                             "characters are read")  # fmt: skip
+                said = "\\makeatletter in the body changes how characters are read"
+                self._skip_block(at, "makeatother", said)
+                return
             self.letters = _LETTERS_AT if name == "makeatletter" else _LETTERS
         elif name == "iffalse":
             self._skip_false(at)
-        elif name.startswith("if") and name not in COMMANDS and name not in NOT_CONDITIONALS:
+        elif _opens_conditional(name):
             # A reference list's header tests what is loaded, and both branches are read, as
-            # in the preamble (2026-10-23: natbib's `\\ifx\\csname urlstyle\\endcsname`).
-            if self.body and not self.loose and not self._list_header():
+            # in the preamble (2026-10-23: natbib's `\\ifx\\csname urlstyle\\endcsname`). One
+            # `\\newif` names is defined, and opens nothing.
+            if self.body and not self.loose and not self._list_header() and not (
+                    _NEWIF.search(self.text, max(at - 40, 0), at)):  # fmt: skip
                 said = "a conditional in the body prints one branch, and which is not read"
-                self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
+                self._skip_block(at, "fi", f"\\{name} is not read: {said}",
+                                 f"\\{name} in the body opens a conditional, which prints one "
+                                 "of its branches, and neither is read")  # fmt: skip
         elif name in ("input", "include") and not self.definitions:
             self._input(at, end)
         elif name in IMPORTS and not self.definitions:
@@ -1477,6 +1539,21 @@ class _Reader:
                 self.pos = match.end()
                 return
         self._refuse("tex-unbalanced", at, "\\iffalse is not closed by \\fi")
+
+    def _skip_block(self, at: int, closer: str, said: str, skipped: str = "") -> None:
+        """Skip a block in the body that opens at `at` to its matching `closer`, blanked and
+        nothing in it read, `skipped` why (`said` where none is given), and read on past it;
+        where it has no such end in the file, refuse it, `said` why, and read nothing more
+        (Basile, 2026-11-13: the reading stopped at a `\\makeatletter` and an `\\if` in three
+        real papers' bodies, and with it their checks)."""
+        end = _block_end(self.text, self.pos, closer)
+        if end < 0:
+            self._refuse("tex-refused", at, said)
+            return
+        self._blank(at, end)
+        said = f"{skipped or said}, up to its \\{closer}"
+        self.skipped.append(Refusal("tex-refused", at, said, end))
+        self.pos = end
 
     def _verb(self, at: int, end: int) -> None:
         start = end + (self.text[end : end + 1] == "*")

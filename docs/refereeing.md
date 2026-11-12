@@ -94,6 +94,23 @@ cause may be a cited trial's. The rest are warnings, `causal-word-observational`
 describes the analysis. Only those words are read: "reduced the risk" claims an effect, and
 is not.
 
+**P values at baseline.** In a randomised trial, a test of a baseline difference tests a null
+hypothesis the randomisation makes true, and CONSORT advises against it (the 2010 explanation
+and elaboration, item 15; the 2025 one, item 25). Declare the design:
+
+```bash
+manuscript-guard audit paper.docx --design trial
+```
+
+Each table the audit reads as rows of cells is read with its caption: a .docx's table, a
+Markdown pipe or grid table, and a LaTeX `tabular` with its float's caption. One whose caption
+holds the word "baseline" (not "from baseline", "since baseline", "baseline-adjusted" or
+"adjusted for baseline", which caption a table of outcomes) and whose header row has a column
+headed P, P value or P-value, either case and perhaps with a note mark, is a warning,
+`baseline-p-values`, which `--strict` does not count. The report counts the tables read and
+those captioned as of baseline characteristics. A PDF's tables are lines of text, not cells,
+and are not read for this; the report says so.
+
 **Cited sentences.** Whether a cited work says what the sentence says it does is your
 reading, and the tool lays it out for you:
 

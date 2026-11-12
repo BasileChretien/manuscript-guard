@@ -304,6 +304,11 @@ def _reader_checks(report, items: list[Item]) -> list[tuple[str, str, int]]:
         causal = report.causal
         checks.append(("Causal words (--design)", f"{_n(causal.read, 'sentence')} read"
                        if causal.read else "", len(causal.found)))  # fmt: skip
+    if report.baseline is not None:
+        baseline = report.baseline
+        checks.append(("Baseline tables with P values (--design)",
+                       f"{_n(baseline.tables, 'table')} read" if baseline.tables else "",
+                       len(baseline.found)))  # fmt: skip
     if report.package is not None:
         checks += _package_checks(report.package)
     return checks

@@ -116,6 +116,136 @@ def test_a_file_with_no_heading_that_names_a_part_is_said_to_be_unread(
     assert [f["code"] for f in section(report, "Causal words")] == ["causal-words-not-read"]
 
 
+# --------------------------------------------------------- P values at baseline, a trial
+
+#: A trial's paper: its table of baseline characteristics has a column of P values (line 9),
+#: and so do its table of outcomes and its table of a change from baseline, which are not of
+#: baseline characteristics.
+TRIAL = (
+    "# A trial of a drug\n\n## Methods\n\nWe randomised 40 patients.\n\n## Results\n\n"
+    "| Characteristic | Drug | Placebo | P value |\n|---|---|---|---|\n"
+    "| Female | 10 | 11 | 0.62 |\n\nTable: Baseline characteristics of the participants\n\n"
+    "| Outcome | Drug | Placebo | P |\n|---|---|---|---|\n| Death | 1 | 4 | 0.03 |\n\n"
+    "Table: Outcomes at 12 weeks\n\n"
+    "| Score | Drug | Placebo | P |\n|---|---|---|---|\n| Pain | 1 | 2 | 0.04 |\n\n"
+    "Table: Change from baseline in the pain score\n"
+)
+
+
+def _baseline(report: dict) -> list[tuple[str, int | None, str, bool, str | None]]:
+    return [(f["code"], f["line"], f["severity"], f["counted"], f["context"])
+            for f in section(report, "Baseline tables")]  # fmt: skip
+
+
+def test_a_trials_baseline_table_with_p_values_is_a_warning_not_counted(
+    tmp_path: Path, capsys
+) -> None:
+    """CONSORT 2010, item 15, and 2025, item 25: the reader declares the design, and each
+    table captioned as of baseline characteristics with a P column is said; the tables of
+    outcomes and of a change from baseline are not. `--strict` counts none."""
+    paper = str(paper_md(tmp_path, TRIAL))
+    code, report, _err = audited(capsys, paper, "--design", "trial")
+    assert code == 0
+    assert _baseline(report) == [("baseline-p-values", 9, "warn", False,
+                                  "Baseline characteristics of the participants")]
+    (found,) = section(report, "Baseline tables")
+    assert "'P value'" in found["message"] and "item 15" in found["message"]
+    assert "prognostic covariates" in found["hint"]
+    counts = report["counts"]
+    assert (counts["baseline_tables_read"], counts["baseline_tables"],
+            counts["baseline_p_values"]) == (3, 1, 1)  # fmt: skip
+    # A trial's design reads no causal words, and the other design no tables.
+    assert not section(report, "Causal words")
+    _code, observational, _err = audited(capsys, paper, "--design", "observational")
+    assert not _baseline(observational) and "baseline_tables_read" not in observational["counts"]
+    _code, plain, _err = audited(capsys, paper)
+    assert not _baseline(plain) and "baseline_tables_read" not in plain["counts"]
+
+
+def test_the_text_report_lists_each_baseline_table_with_p_values(tmp_path: Path, capsys) -> None:
+    assert main(["audit", str(paper_md(tmp_path, TRIAL)), "--design", "trial"]) == 0
+    out = capsys.readouterr().out
+    assert "=== Baseline tables (--design trial; not counted by --strict) ===" in out
+    assert "3 tables read, 1 captioned as of baseline characteristics." in out
+    assert "A COLUMN OF P VALUES IN A TABLE OF BASELINE CHARACTERISTICS" in out
+    assert main(["audit", str(paper_md(tmp_path, TRIAL))]) == 0
+    assert "Baseline tables" not in capsys.readouterr().out
+
+
+def test_the_page_names_no_flag_of_the_baseline_tables(tmp_path: Path, monkeypatch) -> None:
+    from manuscript_guard import web
+
+    monkeypatch.chdir(tmp_path)
+    paper_md(tmp_path, TRIAL)
+    result = web.view(["audit", "paper.md", "--design", "trial", "--details"])
+    drawn = json.dumps(result["view"], ensure_ascii=False)
+    assert "Baseline tables (the design given: trial)" in drawn
+    assert "--design" not in drawn and "--strict" not in drawn
+
+
+def _word_table(path: Path, caption: str, header: list[str]) -> Path:
+    """A .docx of a legend, a table under it whose first row is `header`, and a paragraph."""
+    def cells(texts: list[str]) -> str:
+        return "<w:tr>" + "".join(f"<w:tc><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:tc>"
+                                  for text in texts) + "</w:tr>"  # fmt: skip
+
+    body = (f"<w:p><w:r><w:t>{caption}</w:t></w:r></w:p><w:tbl>{cells(header)}"
+            f"{cells(['Female', '10', '11', '0.62'])}</w:tbl>"
+            "<w:p><w:r><w:t>The groups were alike.</w:t></w:r></w:p>")
+    document = (f"<?xml version='1.0'?><w:document xmlns:w='{W}'><w:body>{body}</w:body>"
+                "</w:document>")
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(zipfile.ZipInfo("word/document.xml", (2020, 1, 1, 0, 0, 0)), document)
+    return path
+
+
+def test_a_word_tables_legend_is_its_caption(tmp_path: Path, capsys) -> None:
+    paper = _word_table(tmp_path / "trial.docx", "Table 1. Baseline characteristics",
+                        ["Characteristic", "Drug", "Placebo", "p-value"])
+    _code, report, _err = audited(capsys, str(paper), "--design", "trial")
+    assert [(code, context) for code, _line, _s, _c, context in _baseline(report)] == [
+        ("baseline-p-values", "Table 1. Baseline characteristics")]
+    other = _word_table(tmp_path / "other.docx", "Table 2. Outcomes",
+                        ["Outcome", "Drug", "Placebo", "p-value"])
+    _code, report, _err = audited(capsys, str(other), "--design", "trial")
+    assert _baseline(report) == []
+    assert report["counts"]["baseline_tables_read"] == 1
+
+
+def test_a_latex_tables_caption_is_its_floats(tmp_path: Path, capsys) -> None:
+    paper = tmp_path / "main.tex"
+    paper.write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Results}\n\\begin{table}\n"
+        "\\begin{tabular}{lll}\nItem & Drug & $p$ \\\\\n\\hline\nFemale & 10 & 0.62 \\\\\n"
+        "\\end{tabular}\n\\caption{Characteristics at baseline}\n\\end{table}\n"
+        "\\end{document}\n", encoding="utf-8")  # fmt: skip
+    _code, report, _err = audited(capsys, str(paper), "--design", "trial")
+    assert [(code, line, context) for code, line, _s, _c, context in _baseline(report)] == [
+        ("baseline-p-values", 6, "Characteristics at baseline")]
+
+
+def test_a_pdfs_tables_are_said_not_to_be_read_for_p_values_at_baseline() -> None:
+    """A PDF's table is lines of text, with no cells to read a header from."""
+    from types import SimpleNamespace
+
+    from manuscript_guard.auditing.baseline import baseline_tables, items
+
+    pdf = SimpleNamespace(path=Path("paper.pdf"), latex=None, text="", tables=())
+    read = baseline_tables([pdf], "trial")
+    assert (read.tables, read.unread) == (0, [Path("paper.pdf")])
+    assert [item.code for item in items(read)] == ["baseline-tables-not-read"]
+
+
+def test_each_design_audit_takes_is_one_a_check_reads() -> None:
+    from manuscript_guard.auditing import DESIGNS, baseline, causal
+    from manuscript_guard.cli import build_parser
+
+    assert (*causal.DESIGNS, *baseline.DESIGNS) == DESIGNS
+    audit = build_parser()._subparsers._group_actions[0].choices["audit"]
+    (design,) = [action for action in audit._actions if action.dest == "design"]
+    assert tuple(design.choices) == DESIGNS
+
+
 def make_docx(path: Path, paragraphs: list[tuple[str, bool | int]]) -> Path:
     """A .docx of paragraphs, each styled as a heading where its flag says so, of level 1, or
     of the level it gives."""

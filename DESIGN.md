@@ -16426,6 +16426,36 @@ been sorted yet.
   Discussion is read. The figures that gave the reason are those of an automated
   scientist's reports: the note says nothing of how often a person's interpretation is
   wrong, only where it stands.
+- **G8 knows a trial's table of baseline characteristics by one word of its caption and a P
+  header of its first row.** `baseline-p-values` warns where the `study_type` is one whose
+  guidelines include CONSORT (`data/study_types.yaml`), and `audit --design trial` reads a
+  paper's tables by the same rule (`gates/baseline.py`, `text/captioned.py`). It is a warning
+  at every stage, and nothing stands it down: no emitted table carries a reason, and G2's
+  `project-exemption` is for numbers. Accepted.
+  - A caption that does not hold the word, "Characteristics of participants at
+    randomisation" or "Table 1. Participants", is not read as a table of baseline
+    characteristics. Accepted.
+  - The word is not read where it names the time a change is measured from: "from
+    baseline", "since baseline", "baseline-adjusted" and "adjusted for baseline", which
+    caption a trial's table of outcomes. A table of baseline characteristics captioned only
+    so, "Values taken from baseline visits", passes; one that holds the word elsewhere as
+    well warns. Pinned by `tests/test_corruption.py::test_what_is_no_trials_baseline_table_with_p_values_passes`.
+  - A P header is one of six exact headers, P, p, P value, p value, P-value and p-value,
+    perhaps in italics or maths and ending in one note mark. "P Value", "P for trend",
+    "Significance" and "p (χ²)" head no column of P values here.
+    Pinned by `tests/test_corruption.py::test_what_is_no_trials_baseline_table_with_p_values_passes`.
+  - Only a table's first row is its header: a P header in a second header row, under a row
+    of groups spanning the columns, is not read. Accepted.
+  - The LaTeX reader prints `P\textsuperscript{a}` as "Pa", which is no P header; `P$^{a}$`
+    is read. Accepted.
+  - A Markdown simple or multiline table, a grid table with no `+===+` line under a header,
+    and a table typed in HTML are not read; nor is a `longtable` whose `\caption` opens its
+    rows, whose first row is then its caption. Accepted.
+  - An emitted table is read whether or not the manuscript places it, and a typed table's
+    caption is the one pandoc would give it or the legend typed beside it; in a .docx, a
+    table with no legend beside it is captioned by the paragraph before it. Accepted.
+  - `audit` reads no PDF's tables for it, since a PDF's table is lines of text, and says so.
+    Pinned by `tests/test_audit_claims.py::test_a_pdfs_tables_are_said_not_to_be_read_for_p_values_at_baseline`.
 - **G8 compares only values whose units agree.** A count of 56 and a share of 56.0% are two
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and

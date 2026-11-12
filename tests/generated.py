@@ -12990,6 +12990,161 @@ def software_plans(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
     return given, found
 
 
+# ------------------------------ a trial's table of baseline characteristics with P values, G8
+
+#: The headers of a column of P values, as `gates/baseline.py` lists them, and the marks one
+#: may end in, as Markdown types them; and as a LaTeX file types them, which its reader prints.
+BASELINE_P = ("P", "p", "P value", "p value", "P-value", "p-value")
+BASELINE_MARKS = ("", "*", "\N{DAGGER}", "^a^", "\N{SUPERSCRIPT ONE}", " *")
+BASELINE_LATEX_P = ("P", "p", "P value", "p-value", "$P$", "$p$ value", "P value$^{a}$",
+                    "P$^{*}$", "\\textit{P}", "\\emph{p} value", "P$^\\dagger$")  # fmt: skip
+#: Headers that hold a P and head no column of P values.
+BASELINE_DECOYS = ("Ptype", "Group P", "P Value", "P for trend", "Pvalue", "PCR", "Placebo")
+#: The word as captions write it, and the captions it stands in.
+BASELINE_WORDS = ("baseline", "Baseline", "BASELINE", "*baseline*", "_Baseline_")
+BASELINE_LATEX_WORDS = ("baseline", "Baseline", "\\textbf{Baseline}", "\\emph{baseline}")
+BASELINE_CAPTIONS = ("{w} characteristics of the participants", "Characteristics at {w}",
+                     "Participants at {w}, by group", "Demographic and clinical data at {w}")
+#: Captions where the word is inside another word, or names the time a change is measured
+#: from; and captions of tables that are not of baseline characteristics.
+BASELINE_INSIDE = ("Post{w} events by group", "Non{w} visits", "Pre{w} screening")
+BASELINE_CHANGES = ("Change from {w} in the score", "Mean change since {w}",
+                    "{W}-adjusted means at 12 weeks")  # fmt: skip
+BASELINE_OUTCOMES = ("Outcomes at 12 weeks", "Primary and secondary outcomes",
+                     "Adverse events by group")  # fmt: skip
+#: The designs whose guidelines do not include CONSORT, `other`, and none named.
+BASELINE_NOT_TRIALS = ("cohort", "case-control", "self-controlled", "disproportionality",
+                       "systematic-review", "prediction-model", "other", None)  # fmt: skip
+
+
+@st.composite
+def baseline_papers(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The tables a randomised trial's paper emits and types, in Markdown and in LaTeX, in its
+    main text and its supplement; and where G8 warns of a table of baseline characteristics
+    with a column of P values, as `[path, line, headers]`, by format; with a design CONSORT is
+    not the guideline of, for which nothing is said.
+
+    Every example holds each kind once: a table of baseline characteristics with a P column
+    emitted, typed as a pipe table with pandoc's caption after it, as a grid table with it
+    before, and in the supplement under a legend; and with no warning, an emitted table of
+    outcomes with a P column, one of a change from baseline, one whose caption holds the word
+    inside another, and one of baseline characteristics whose header holds a P and is no P
+    header. In LaTeX, a float in the main text and one in the supplement, and a float of
+    outcomes."""
+    filler = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=6)))
+
+    def caption(templates: tuple[str, ...], words: tuple[str, ...] = BASELINE_WORDS) -> str:
+        chosen = draw(st.sampled_from(words))
+        return draw(st.sampled_from(templates)).format(w=chosen, W=chosen.capitalize())
+
+    def inside() -> str:
+        return draw(st.sampled_from(BASELINE_INSIDE)).format(w="baseline")
+
+    def headers(p: str | None) -> list[str]:
+        columns = ["Drug", "Placebo"] + draw(st.sampled_from(([], ["Overall"])))
+        at = draw(st.integers(0, len(columns)))
+        columns.insert(at, p if p is not None else draw(st.sampled_from(BASELINE_DECOYS)))
+        return ["Characteristic", *columns]
+
+    def p_value() -> str:
+        return draw(st.sampled_from(BASELINE_P)) + draw(st.sampled_from(BASELINE_MARKS))
+
+    emitted, found_emitted = [], []
+    for kind in ("baseline", "outcomes", "change"):
+        p = p_value()
+        templates = {"baseline": BASELINE_CAPTIONS, "outcomes": BASELINE_OUTCOMES,
+                     "change": BASELINE_CHANGES}[kind]  # fmt: skip
+        key = f"{kind}_{draw(st.integers(1, 9))}"
+        emitted.append({"key": key, "caption": caption(templates), "columns": headers(p)})
+        if kind == "baseline":
+            found_emitted.append([f"results/{key}.json", None, [p]])
+
+    main: list[str] = ["# Results", "", filler, ""]
+    found_markdown = list(found_emitted)
+
+    def pipe(lines: list[str], row: list[str], said: str, where: str) -> int:
+        if where == "before":
+            lines += [said, ""]
+        found_line = len(lines) + 1
+        lines += ["| " + " | ".join(row) + " |", "|" + "---|" * len(row),
+                  "| " + " | ".join(["half"] * len(row)) + " |", ""]
+        if where == "after":
+            lines += [f"Table: {said}", ""]
+        lines += [filler, ""]
+        return found_line
+
+    def grid(lines: list[str], row: list[str], said: str) -> int:
+        lines += [f": {said}", ""]
+        widths = [len(cell) + 2 for cell in row]
+        border = "+" + "+".join("-" * width for width in widths) + "+"
+        lines.append(border)
+        found_line = len(lines) + 1
+        lines.append("|" + "|".join(f" {cell}".ljust(width) for cell, width in zip(row, widths,
+                                                                                    strict=True))
+                     + "|")  # fmt: skip
+        lines.append("+" + "+".join("=" * width for width in widths) + "+")
+        lines.append("|" + "|".join(" half".ljust(width) for width in widths) + "|")
+        lines += [border, "", filler, ""]
+        return found_line
+
+    p = p_value()
+    line = pipe(main, headers(p), caption(BASELINE_CAPTIONS), "after")
+    found_markdown.append(["manuscript/main.md", line, [p]])
+    p = p_value()
+    line = grid(main, headers(p), caption(BASELINE_CAPTIONS))
+    found_markdown.append(["manuscript/main.md", line, [p]])
+    pipe(main, headers(p_value()), inside(), "after")
+    pipe(main, headers(None), caption(BASELINE_CAPTIONS), "after")
+    supplement = ["# Supplementary tables", "", filler, ""]
+    p = p_value()
+    line = pipe(supplement, headers(p),
+                f"Table S{draw(st.integers(1, 9))}. {caption(BASELINE_CAPTIONS)}", "before")
+    found_markdown.append(["manuscript/supplementary/S1_tables.md", line, [p]])
+
+    def float_(lines: list[str], row: list[str], said: str, above: bool) -> int:
+        lines.append("\\begin{table}" + draw(st.sampled_from(("", "[h]", "[!t]"))))
+        if above:
+            lines.append(f"\\caption{{{said}}}")
+        lines.append("\\begin{tabular}{" + "l" * len(row) + "}")
+        found_line = len(lines) + 1
+        lines += [" & ".join(row) + " \\\\", "\\hline", " & ".join(["half"] * len(row)) + " \\\\",
+                  "\\end{tabular}"]  # fmt: skip
+        if not above:
+            lines.append(f"\\caption{{{said}}}")
+        lines += ["\\end{table}", filler]
+        return found_line
+
+    def latex_p() -> str:
+        return draw(st.sampled_from(BASELINE_LATEX_P))
+
+    found_latex = list(found_emitted)
+    tex = ["\\documentclass{article}", "\\begin{document}", "\\section{Results}", filler]
+    p = latex_p()
+    line = float_(tex, headers(p), caption(BASELINE_CAPTIONS, BASELINE_LATEX_WORDS),
+                  draw(st.booleans()))
+    found_latex.append(["manuscript/main.tex", line, [p]])
+    float_(tex, headers(latex_p()), draw(st.sampled_from(BASELINE_OUTCOMES)), True)
+    tex.append("\\end{document}")
+    supplement_tex = ["\\documentclass{article}", "\\begin{document}", filler]
+    p = latex_p()
+    line = float_(supplement_tex, headers(p), caption(BASELINE_CAPTIONS, BASELINE_LATEX_WORDS),
+                  draw(st.booleans()))
+    found_latex.append(["manuscript/supplementary/main.tex", line, [p]])
+    supplement_tex.append("\\end{document}")
+
+    given = {
+        "emitted": emitted,
+        "markdown": {"main.md": "\n".join(main) + "\n",
+                     "supplementary/S1_tables.md": "\n".join(supplement) + "\n"},
+        "latex": {"main.tex": "\n".join(tex) + "\n",
+                  "supplementary/main.tex": "\n".join(supplement_tex) + "\n"},
+        "other": draw(st.sampled_from(BASELINE_NOT_TRIALS)),
+    }  # fmt: skip
+    found = {"markdown": sorted(found_markdown, key=json.dumps),
+             "latex": sorted(found_latex, key=json.dumps)}
+    return given, found
+
+
 # --------------------------------------- titles standing alone, placed, and titles in bold
 
 #: Papers whose titles stand alone, a PDF's lines or a Word paper's titles in bold, each a
@@ -13693,4 +13848,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         ])
     ),  # fmt: skip
     "software": software_plans().map(lambda drawn: drawn[0]),
+    # Each format of a trial's paper, and the Markdown one under another design.
+    "baseline tables": baseline_papers().flatmap(lambda drawn: st.sampled_from([
+        {"emitted": drawn[0]["emitted"], "files": drawn[0][kind], "study_type": design}
+        for kind, design in (("markdown", "trial"), ("latex", "trial"),
+                             ("markdown", drawn[0]["other"]))])),  # fmt: skip
 }

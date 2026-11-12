@@ -2705,6 +2705,66 @@ def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
     assert main(["audit", str(paper), "--strict"]) == 1
 
 
+def test_an_abstract_share_its_counts_do_not_give_is_a_number_that_does_not_fit(
+    tmp_path: Path,
+) -> None:
+    """The author's decision of 2026-11-11: the Abstract's "164 out of 250 (66%)" is given by
+    its counts, where it was said not found; changed to 75%, it is listed with the numbers
+    that do not fit the ones beside them, and is neither found nor not found. "n = 164
+    (66.4%)" has no denominator, and its percentage is still not found."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+
+    def read(share: str):
+        paper.write_text(f"# Paper\n\n## Abstract\n\nOf them, {share} answered; n = 164 "
+                         "(66.4%) agreed.\n\n## Methods\n\nWe asked 250 people.\n\n"
+                         "## Results\n\nIn all 164 answered.\n", encoding="utf-8")  # fmt: skip
+        return audit([paper], None)
+
+    report = read("164 out of 250 (66%)")
+    assert [c.text for c in report.abstract.from_counts] == ["66%"]
+    assert [c.text for c in report.abstract.not_found] == ["66.4%"]
+    assert report.disagreements == []
+    report = read("164 of 250 (66 %)")  # its sign in an atom of its own (round 2 of #664)
+    assert [c.text for c in report.abstract.from_counts] == ["66"]
+    assert [c.text for c in report.abstract.not_found] == ["66.4%"]
+    report = read("164 out of 250 (75%)")
+    assert [c.text for c in report.abstract.off_counts] == ["75%"]
+    assert [c.text for c in report.abstract.not_found] == ["66.4%"]
+    [said] = report.disagreements
+    assert said.line == 5
+    assert said.message == ("in the Abstract, n (%) 164 out of 250 (75%): 164 of 250 is "
+                            "65.6%, not 75; 75% is 164 of 218 to 220")  # fmt: skip
+    # Closed up, "164/250(75%)" is one atom, listed off its counts and not as not found;
+    # wrapped, the finding and the atom are on the percentage's line (round 1 of #664).
+    for share, line in (("164/250(75%)", 5), ("164 of\n250 (75%)", 6)):
+        report = read(share)
+        assert [c.line for c in report.abstract.off_counts] == [line], share
+        assert [c.text for c in report.abstract.not_found] == ["66.4%"], share
+        assert [d.line for d in report.disagreements] == [line], share
+
+
+def test_a_season_or_a_date_beside_a_percentage_in_the_abstract_is_no_share(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #664: "45% (2019/20)" was read as 2019 of 20, "the 2019/2020 season (45%)"
+    as 2019 of 2020, and each said off its counts, its 45% no longer looked for. A count over
+    its denominator, a share over 100 and a year with the next are no share: the 45% is
+    looked for as before, and nothing is said not to fit."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    for said in ("Coverage was 45% (2019/20).", "It was the 2019/2020 season (45%).",
+                 "It rose on 17/4 (45%).", "Then 30 of 60 (145%) were seen."):
+        paper.write_text(f"# Paper\n\n## Abstract\n\n{said}\n\n## Methods\n\nWe asked them."
+                         "\n\n## Results\n\nCoverage was 45% and 145%.\n", encoding="utf-8")
+        report = audit([paper], None)
+        assert report.disagreements == [], said
+        assert report.abstract.off_counts == report.abstract.from_counts == [], said
+        assert [c.text for c in report.abstract.found if "45" in c.text], said
+
+
 def test_an_abstract_number_changed_under_a_section_of_its_own_name_is_not_found(
     tmp_path: Path,
 ) -> None:
@@ -11796,6 +11856,10 @@ def test_the_r_emitter_s_mean_and_sd_are_read_by_the_same_check(project: Path) -
     script = project / "analysis" / "02_skew.R"
     for reason, said in (("NULL", ["mean-sd-skewed"]), ('"as the trial registered it"', [])):
         script.write_text(
+            # As test_r_emitter's scripts do: a runner with R but not jsonlite or digest
+            # (CI's windows-latest) exits 3, which _run_r skips.
+            'if (!requireNamespace("jsonlite", quietly = TRUE) || '
+            '!requireNamespace("digest", quietly = TRUE)) quit(status = 3)\n'
             "source('" + EMIT_R.as_posix() + "')\n"
             "em <- mg_emitter('" + script.as_posix() + "')\n"
             "em$value('crp.mean', 5, digits = 1, quoted = FALSE, variable = 'crp', "
@@ -33523,6 +33587,37 @@ def test_an_rrid_typed_in_a_latex_manuscript_is_no_number_and_no_abbreviation(
     typed = _RRIDS_TYPED.replace("_", "\\_").replace("RRID: ", "RRID:~")
     entry.write_text(text.replace("\\end{document}", typed + "\n\\end{document}"), "utf-8")
     assert _g2_g14(project) - before == set()
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_correction_the_tracked_copy_cannot_place_stays_a_comment(
+    tmp_path: Path, capsys
+) -> None:
+    """`audit --tracked`: the same sentence twice, its British word corrected at both places.
+    Neither place can be told from the other in the document, so no change is written: the
+    finding is a comment over its word, and the copy reads as the paper."""
+    from generated import word_package
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.docxtext import word_comments
+    from manuscript_guard.safexml import parse_xml
+    from manuscript_guard.tracked import W, _chars
+
+    sentence = "<w:p><w:r><w:t>The colour of the cohort was noted.</w:t></w:r></w:p>"
+    paper = tmp_path / "paper.docx"
+    with zipfile.ZipFile(paper, "w") as archive:
+        for name, part in word_package(sentence * 2).items():
+            archive.writestr(name, part)
+    target = tmp_path / "tracked.docx"
+    assert main(["audit", str(paper), "--english", "american", "--tracked", str(target)]) == 0
+    assert "0 corrections as tracked changes, 2 that could not be placed" in capsys.readouterr().err
+    with zipfile.ZipFile(target) as archive:
+        document = archive.read("word/document.xml")
+    assert b"<w:del " not in document and b"<w:ins " not in document
+    root = parse_xml(document, what="document")
+    assert [_chars(one)[0] for one in root.iter(W + "p")] == [
+        "The colour of the cohort was noted."] * 2
+    assert any("'colour'" in one.text for one in word_comments(target))
 
 
 #: A title page as a Word paper converted by pandoc opens with one, put between the

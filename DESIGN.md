@@ -11038,6 +11038,44 @@ author's copy was damaged (2026-11-10). Held by
 `tests/test_properties.py::test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text`
 with five broken rules; on the author's paper Word opens the copy with 49 comments.
 
+**A copy in Track Changes.** The author's decision of 2026-11-11: `audit --tracked
+FILE.docx` writes one copy of the .docx in which each correction G14 is sure of
+(`gates.language.language_edits` through `corrections.corrections`) is a Word tracked change
+by "manuscript-guard", and every other finding a comment as `--commented` writes it
+(`auditing.tracked_copy`, inside `auditing.commented.write`). They are worked out only where
+the copy is asked for (`run_gates(corrected=True)`, Basile, 2026-11-12: "only when asked"), so
+an audit without `--tracked` reads G14 once, as before. The edits are of the Markdown
+pandoc converts the document to, so each is first given as the document prints it
+(`gates.as_tracked`): pandoc's escapes taken off, its two and three hyphens and three dots
+put back as the en dash, em dash and ellipsis it writes them for (its `smart` extension,
+pandoc 3.9), with up to 40 characters of its line either side, cut at a word and at the
+nearest mark Markdown writes and the document does not print, and without the marks that
+open a heading or an item of a list. One whose own words hold such a mark, or a quotation
+mark pandoc writes straight for either curly one, or a line's end, is left out with why.
+The rest are looked for in every paragraph as Word holds it, across its runs, the words
+around matched across layout space and either curly quotation mark, and in the footnotes
+and endnotes too, which pandoc converts with the body and where nothing is written: found in
+no place, in two, only in a note, or in anything but a plain run, a correction is left out.
+An edit `corrections` refuses, two readings changing the same words otherwise, is a place
+of its finding left out as well (`gates._refused`, round 1 of #666). Each placed one is
+written from difflib's opcodes on its old words and its new, so only the characters that
+change are deleted (each run of them in a `w:del` of its own) and inserted (in the run
+properties of the text they replace, or of the character before them); no paragraph mark
+is deleted, which Word 16 never returns from accepting where it is the last (#396). A
+finding's comment is left out where a placed correction of it stands on its line and holds
+its own words, and no correction of it was left out (`covered`): of a kind said once for a
+word (`spelling-variant`, `abbreviation-unused`), the corrections holding that word; of
+any other, every correction of the kind; one left out because it changes nothing the
+document prints keeps nothing. A run split where a change begins, or copied for the text
+put in, carries no revision id of another: a copied change of formatting is dropped from the
+inserted run, and each revision is given an id of its own (`distinct`). Before the copy is kept it is read back with this
+copy's own revisions accepted and rejected, any the document had left as they stand: each
+paragraph must read as the document's with each correction made, and as the document's.
+Where either does not, no copy is written, and the audit says why. Held by
+`tests/test_properties.py::test_a_tracked_copy_makes_each_correction_where_it_stands_and_nothing_else`
+with six broken rules; in Word 16 over COM (2026-11-12) the copy opens without a word of
+damage, and Accept All and Reject All each leave the text the check expects.
+
 **Said for a reader.** The text the command line prints is for a script as much as for a
 person: it says which flag would have run a check, "(--against)", "(--lookup)", and what
 `--strict` counts, "(not counted by --strict)". The page, the PDF and the comments of the
@@ -25422,6 +25460,29 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A section of the Introduction's material is not searched wherever it stands, so a
     "Hypotheses" after the Methods, whose numbers may be the study's own, is not, as at the
     base it was not. Accepted.
+  - A percentage of the Abstract written beside both its counts is held to them and not
+    looked for (the author, 2026-11-11), in the shapes `stats.shares.written_shares` names
+    only: "164 of 250", "164 out of 250" or "164/250", up to three words, then the share in
+    brackets; and the share, then its counts in brackets, "n =" before them or not. Counts
+    the sentence gives before its share, "Of 250 patients, 164 (66%)", a count with no
+    denominator, "n = 164 (66%)", a share with no "%" and one with a decimal comma,
+    "65,6%", give no share, and the percentage is looked for as any number is; so do a
+    count over its denominator, "45% (2019/20)", "on 17/4 (45%)", a share over 100, and a
+    year with the next, "the 2019/2020 season (45%)" (round 1 of #664). Pinned by
+    `tests/test_properties.py::test_the_abstract_is_held_to_what_the_paper_reports`.
+  - A date whose first number is no more than its second, either order, "on 4/17 (45%)",
+    or a pair of years further apart, "2019/2021 (45%)", reads as a count and its
+    denominator, and its percentage is said off them and not looked for. Accepted.
+  - A season of two two-digit years, "the 19/20 season (45%)", reads as 19 of 20 and is
+    said off its counts: "19/20" can be a real count. Accepted.
+  - The counts are taken from where they stand, up to three words before the bracket:
+    "12 of 30 sites enrolled patients (40%)" is read as 12 of 30, whatever the 40% is of.
+    Accepted.
+  - A percentage its counts give is explained by them, whatever the paper reports: it is
+    not compared with the share the Results print for the same counts. Accepted.
+  - A share written in a sentence anywhere but the Abstract, "164 of 250 (75%)" in the
+    Results, is not held to its counts: only a table's n (%) and the Abstract's are.
+    Accepted.
 
 - **A LaTeX paper's numbers in user macros, and its `csvautotabular` and `pgfplotstable`
   tables, are not read** by the flows or by the Abstract against Results, as by the rest of
@@ -27073,6 +27134,31 @@ What papers converted from Word showed (see "What papers converted from Word sho
     and a `-` or a `:`, "RRID:CVCL_0030-derived-12". "RRID:SCR_002798.v9" leaves the 9 out of
     what G2 covers, so G2 reports it, as main does. Pinned by
     `tests/test_corruption.py::test_a_number_typed_against_an_rrid_is_read_into_it`.
+- **A correction the copy in Track Changes cannot give exactly stays a comment** (`audit
+  --tracked`). One whose words hold a mark Markdown writes and the document does not print
+  (emphasis, a link, a raised or lowered piece, a table's cell), a quotation mark or an
+  apostrophe pandoc writes straight for either curly one, or a line's end is not written,
+  and its finding stays a comment. So is one over a word whose formatting changes inside it,
+  which the converted text writes with emphasis inside the word, and which G14 then does not
+  read as the word at all. Pinned by
+  `tests/test_audit_tracked.py::test_a_correction_the_document_cannot_be_given_exactly_is_left_out`.
+- **A correction is found by its words and 40 characters either side** (`audit --tracked`).
+  Words the document holds in two places with the same words around them, as a sentence
+  repeated in the Abstract and the Results may be, are written in neither, and the finding
+  stays a comment. A correction in a footnote, a text box, a header, a field or a link is not
+  written either. Pinned by
+  `tests/test_audit_tracked.py::test_a_correction_found_in_two_places_is_left_out_and_its_finding_stays_a_comment`
+  and `tests/test_audit_tracked.py::test_a_correction_inside_a_link_is_left_out`.
+- **A notation finding stays a comment where any correction of its kind is left out**
+  (`audit --tracked`). G14 says a notation finding once for a form, "P=0.03", at its first
+  place, and corrects every place written so, whose words are others, "P=0.01": the copy
+  cannot tell which finding a correction at another place belongs to, so one left out keeps
+  every finding of its kind a comment, beside the changes that were written. A word of the
+  other English and an abbreviation are told apart by their word. Accepted.
+- **The copy in Track Changes does not turn Track Changes on** (`audit --tracked`). The
+  changes are in it as Word's own, to accept or reject; what the author types in it after is
+  not tracked unless Track Changes is turned on in Word. The page has no button for this
+  copy yet. Accepted.
 - **The audit sorts an entry with no DOI or PMID by its shape, and a shape can mislead.**
   The rules are marks a style prints (`auditing/by_title.sort`), read in a fixed order, and
   an entry is what the first one that holds says. Pinned by

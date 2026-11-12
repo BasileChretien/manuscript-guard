@@ -9253,7 +9253,14 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: method", under a Results titled "Results and discussion", which no Methods may stand
 #: under (round 1 of #624). And a number reported only under a section of another name
 #: (`OTHER_SECTIONS`), which is found, one only in the Introduction and one only in the
-#: Conclusions, which are not (Basile, 2026-11-11, after 52 real preprints).
+#: Conclusions, which are not (Basile, 2026-11-11, after 52 real preprints). And a
+#: percentage beside both its counts in each shape of `SHARE_SHAPES`, which they give; one
+#: to a place or two, one they give rounded up, and one they do not give, each in a shape
+#: drawn, and one typed closed up against its counts they do not give, "164/250(75%)"; and
+#: (the author, 2026-11-11) one beside a count with no denominator, after counts the
+#: sentence gives first, "Of 250 patients, 164 (66%)", one with no "%" and one with a
+#: decimal comma, none of them found. And what reads as a share and is none
+#: (`NO_SHARE_SHAPES`), its percentage reported, so found (round 1 of #664).
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
@@ -9261,7 +9268,43 @@ ABSTRACT_KINDS = (
     "estimate closed up", "identifier", "identifier by its number", "under a method",
     "other section", "introduction", "conclusion", "references", "note", "statement",
     "summary", "related work", "over the methods", "title page",
+    "share out of", "share of", "share slash", "share after words", "share goes on",
+    "share first", "share first of", "share first n", "share thousands", "share decimal",
+    "share rounded up", "share off", "share closed up", "share without a denominator",
+    "share after its counts", "share without a sign", "share with a decimal comma",
+    "share season", "share season and year", "share count over", "share over a hundred",
 )  # fmt: skip
+#: How each shape of a percentage beside both its counts is written, `{k}` the count, `{n}`
+#: its denominator and `{p}` the percentage: "164 out of 250 (66%)" and the rest.
+SHARE_SHAPES = {
+    "share out of": "{k} out of {n} ({p}%)", "share of": "{k} of {n} ({p}%)",
+    "share slash": "{k}/{n} ({p}%)", "share after words": "{k} of {n} {words} ({p}%)",
+    "share goes on": "{k} of {n} ({p}%, as planned)", "share first": "{p}% ({k}/{n})",
+    "share first of": "{p}% ({k} of {n})", "share first n": "{p}% (n = {k}/{n})",
+    "share thousands": "{k:,} of {n:,} ({p}%)",
+}  # fmt: skip
+#: What reads as a percentage beside its counts and is none, `{y}` a year, `{d}` a day over
+#: twelve and `{m}` a month, `{k}` and `{n}` a count and its denominator, `{p}` the
+#: percentage, and the first tenth each draws its percentage from: a year and the next
+#: shortened, a count over its denominator as well; a year and the next in full; a day and
+#: its month, a count over its denominator; and a share over 100.
+NO_SHARE_SHAPES = {
+    "share season": ("{p}% ({y}/{yy:02d})", 301), "share season and year": (
+        "in the {y}/{next} season ({p}%)", 401),
+    "share count over": ("on {d}/{m} ({p}%)", 501), "share over a hundred": (
+        "{k} of {n} ({p}%)", 1011),
+}  # fmt: skip
+#: The shapes in which a percentage has no counts the reader takes, and the first tenth
+#: each draws its percentage from: a count with no denominator, counts the sentence gives
+#: before its share, a share with no "%", and a decimal comma, `{a}` and `{b}` either side.
+SHARE_UNREAD = {
+    "share without a denominator": ("n = {k} ({p}%)", 101),
+    "share after its counts": ("of {n} patients, {k} ({p}%)", 601),
+    "share without a sign": ("{k} of {n} ({p})", 701),
+    "share with a decimal comma": ("{k} of {n} ({a},{b}%)", 211),
+}  # fmt: skip
+#: The words that may stand between a count's denominator and its share.
+SHARE_WORDS = ("patients", "adults in all", "of the women")
 #: Where each of the kinds a number of the Abstract is not found in stands, and what it
 #: starts at: in the reference list, in a footnote's definition under the Results, in a
 #: statement of the back matter, in a summary of the paper beside its Abstract, in a section
@@ -9314,6 +9357,48 @@ def _tenths(value: Decimal) -> str:
     return str(value.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
 
 
+def _abstract_share(draw: st.DrawFn, kind: str) -> tuple[str, str, str, list[str]]:
+    """A percentage of `abstract_papers` beside its counts, of one of the share kinds of
+    `ABSTRACT_KINDS`: how it is written, the number looked for as printed, what the
+    Abstract against Results makes of it ("counts", "off", "exact" or "not found"), and
+    what the Results report: its counts, and the percentage of what is no share. Each
+    kind's denominators are apart from the others', and so are the tenths of a percentage
+    that is not read beside its counts, none of which a number where the paper reports is
+    or rounds to."""
+    first = ABSTRACT_KINDS.index("share out of")
+    n = 3000 + 100 * (ABSTRACT_KINDS.index(kind) - first) + draw(st.integers(0, 99))
+    k = draw(st.integers(n // 4, 3 * n // 4))
+    if kind == "share rounded up":
+        # The first digit dropped is over a half: the share cut short is off its counts.
+        while 2 * (100 * k % n) <= n:
+            k += 1
+    counts = [f"Of the {n} in all, {k} were seen."]
+    if kind in NO_SHARE_SHAPES or kind in SHARE_UNREAD:
+        shape, base = {**NO_SHARE_SHAPES, **SHARE_UNREAD}[kind]
+        tenths = base + draw(st.integers(0, 88))
+        tenths += tenths % 10 == 0
+        p = Decimal(tenths) / 10
+        y, d = draw(st.integers(2000, 2030)), draw(st.integers(13, 28))
+        written = shape.format(p=p, k=k, n=n, y=y, yy=(y + 1) % 100, next=y + 1, d=d,
+                               m=draw(st.integers(1, 12)), a=tenths // 10, b=tenths % 10)
+        if kind in NO_SHARE_SHAPES:
+            return written, f"{p}%", "exact", [*counts, f"It was {p}% then."]
+        shown = {"share without a sign": f"{p}",
+                 "share with a decimal comma": f"{tenths // 10},{tenths % 10}%"}.get(
+            kind, f"{p}%")  # fmt: skip
+        return written, shown, "not found", counts
+    places = draw(st.integers(1, 2)) if kind == "share decimal" else 0
+    p = (Decimal(100 * k) / n).quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP)
+    if kind in ("share off", "share closed up"):
+        p += draw(st.integers(2, 9)) * draw(st.sampled_from((1, -1)))
+    if kind == "share closed up":
+        # Read as one atom, its counts and its share: "164/250(75%".
+        return f"{k}/{n}({p}%)", f"{k}/{n}({p}%", "off", counts
+    shape = kind if kind in SHARE_SHAPES else draw(st.sampled_from(sorted(SHARE_SHAPES)))
+    written = SHARE_SHAPES[shape].format(k=k, n=n, p=p, words=draw(st.sampled_from(SHARE_WORDS)))
+    return written, f"{p}%", "off" if kind == "share off" else "counts", counts
+
+
 def _test_printed(kind: str, df: int, statistic: Decimal, sign: str, p: str) -> str:
     written = {"t": f"t({df})", "F": f"F(2, {df})", "chi2": f"chi2({df % 9 + 1})"}[kind]
     return f"{written} = {statistic}, P {sign} {p}"
@@ -9326,7 +9411,8 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
     order drawn, each on a line of its own; and what the Abstract against Results finds: the
     line and kind of each conflict, `interval` or `test`, and for each number planted to be
     looked for, its line, its text and whether it is found as printed, as a rounding or not
-    at all."""
+    at all, or, for a percentage beside both its counts, whether they give it ("counts") or
+    not ("off")."""
     abstract: list[tuple[str, str]] = []
     methods: list[str] = []
     results: list[str] = []
@@ -9385,6 +9471,11 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                 printed = _test_printed(test, df, statistic, sign, given)
                 abstract.append((kind, f"We found {printed}."))
                 results.append(f"We found {_test_printed(test, df, statistic, '=', p)}.")
+        elif kind.startswith("share"):
+            written, shown, state, reported = _abstract_share(draw, kind)
+            results += reported
+            looked.append((kind, shown, state))
+            abstract.append((kind, f"Then {written} were seen here."))
         elif kind == "ordinal":
             place = draw(st.integers(2, 9))
             rank = f"{place}{ {2: 'nd', 3: 'rd'}.get(place, 'th') }" + draw(
@@ -15040,6 +15131,159 @@ def commented_documents(draw: st.DrawFn) -> tuple[str, list, list]:
     return body, notes, expected
 
 
+#: What a .docx prints and what pandoc's Markdown writer writes for it, its `smart`
+#: extension on (pandoc 3.9, 2026-11-12): a mark it escapes, a dash or dots it writes as
+#: hyphens and dots, a curly quotation mark it writes straight (`auditing.gates._SMART`).
+TRACKED_MARKS = (
+    ("<", "\\<"), ("*", "\\*"), ("_", "\\_"), ("[", "\\["), ("#", "\\#"), ("--", "\\--"),
+    ("...", "\\..."), ("'", "\\'"), ('"', '\\"'),
+    ("\N{EN DASH}", "--"), ("\N{EM DASH}", "---"), ("\N{HORIZONTAL ELLIPSIS}", "..."),
+    ("\N{RIGHT SINGLE QUOTATION MARK}", "'"), ("\N{LEFT SINGLE QUOTATION MARK}", "'"),
+    ("\N{LEFT DOUBLE QUOTATION MARK}", '"'), ("\N{RIGHT DOUBLE QUOTATION MARK}", '"'),
+)  # fmt: skip
+#: The kinds of correction a `tracked_documents` document holds one of each: a word respelt,
+#: a space put into a word, an en dash made a hyphen and a hyphen an en dash, a space after
+#: an escaped mark taken away, a bracket written out, a word respelt after a curly
+#: quotation mark, one opening a heading and one in a paragraph the document holds twice;
+#: and two the document cannot be given exactly, over a word in italics and over a curly
+#: quotation mark, which are left out (`auditing.gates.as_tracked`).
+TRACKED_KINDS = ("respelt", "spaced", "dash-out", "dash-in", "escaped", "written-out",
+                 "beside-quote", "heading", "twice", "emphasised", "curly")
+#: The kinds that are written as tracked changes.
+TRACKED_PLACED = frozenset(TRACKED_KINDS) - {"twice", "emphasised", "curly"}
+
+
+def _tracked_segment(kind: str, word: Callable[[], str]) -> tuple[list, int, int, str, str, list]:
+    """One correction of `kind`: its pieces, each (printed, written, look); the pieces it
+    changes, from and to; its new words as written and as printed; and the words it keeps."""
+    a, b = word(), word()
+    en = ("\N{EN DASH}", "--", "")
+    if kind in ("respelt", "heading", "twice"):
+        return [(a, a, "")], 0, 1, a[:-1], a[:-1], []
+    if kind == "spaced":
+        return [(a, a, "")], 0, 1, f"{a[:2]} {a[2:]}", f"{a[:2]} {a[2:]}", []
+    if kind == "dash-out":
+        return [(a, a, ""), en, (b, b, "")], 0, 3, f"{a} - {b}", f"{a} - {b}", [a, b]
+    if kind == "dash-in":
+        return ([(a, a, ""), ("-", "-", ""), (b, b, "")], 0, 3, f"{a} -- {b}",
+                f"{a} \N{EN DASH} {b}", [a, b])  # fmt: skip
+    if kind == "escaped":
+        return [(a, a, ""), ("<", "\\<", ""), (b, b, "")], 0, 3, f"{a} \\<{b}", f"{a} <{b}", [a, b]
+    if kind == "written-out":
+        c = word()
+        return ([(a, a, ""), (b, b, ""), (f"({c})", f"({c})", "")], 0, 3, f"{a} {b}",
+                f"{a} {b}", [a, b])  # fmt: skip
+    if kind == "beside-quote":
+        return ([("\N{RIGHT SINGLE QUOTATION MARK}", "'", ""), (a, a, "")], 1, 2, a[:-1],
+                a[:-1], [])  # fmt: skip
+    if kind == "emphasised":
+        return [(a, a, ""), (b, f"*{b}*", "i")], 0, 2, f"{a} {b}", f"{a} {b}", []
+    # "curly"
+    return ([(a, a, ""), ("\N{RIGHT SINGLE QUOTATION MARK}", "'", ""), (b, b, "")], 0, 3,
+            f"{a} '{b}", f"{a} \N{RIGHT SINGLE QUOTATION MARK}{b}", [])  # fmt: skip
+
+
+@st.composite
+def tracked_documents(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
+    """A .docx and the Markdown pandoc converts it to, with one correction of each kind of
+    `TRACKED_KINDS` among filler words, marks of `TRACKED_MARKS` and words in italics, its
+    runs split where drawn; G14's edits of the Markdown, `[start, end, new]`; and what the
+    copy `--tracked` writes is to read as: each paragraph's text as the document has it and
+    with each correction of `TRACKED_PLACED` made, how many are, and the words each keeps.
+    One paragraph is a heading, whose correction opens it, and one stands twice, its
+    correction in the copy drawn."""
+    counted = iter(range(10_000))
+
+    def word() -> str:
+        n = next(counted)
+        return f"{TAGS[n % len(TAGS)]}{n}"
+
+    def filler() -> list:
+        pieces = []
+        for _ in range(draw(st.integers(0, 3))):
+            kind = draw(st.sampled_from(("word", "mark", "italic")))
+            if kind == "mark":
+                pieces.append((*draw(st.sampled_from(TRACKED_MARKS)), ""))
+            else:
+                one = word()
+                pieces.append((one, f"*{one}*", "i") if kind == "italic" else (one, one, ""))
+        return pieces
+
+    kinds = list(draw(st.permutations(TRACKED_KINDS)))
+    loose = [kind for kind in kinds if kind not in ("heading", "twice")]
+    count = draw(st.integers(1, 3))
+    groups = [loose[n::count] for n in range(count)] + [["heading"], ["twice"]]
+    paragraphs: list[tuple[str, list, list]] = []
+    for group in groups:
+        pieces, planted = ([] if group == ["heading"] else filler()), []
+        for kind in group:
+            segment, first, last, new, printed, kept = _tracked_segment(kind, word)
+            planted.append((kind, len(pieces) + first, len(pieces) + last, new, printed, kept))
+            pieces += segment + filler()
+        paragraphs.append((group[0], pieces, planted))
+    # The paragraph twice is the last; its two copies stand where drawn, and which of them
+    # the edit is in is drawn too.
+    copies = [*range(len(paragraphs)), len(paragraphs) - 1]
+    order = [copies[at] for at in draw(st.permutations(range(len(copies))))]
+    edited = draw(st.integers(0, 1))
+    described, markdown, edits, source, accepted, kept = [], [], [], [], [], []
+    placed, twice_seen = 0, 0
+    for index in order:
+        name, pieces, planted = paragraphs[index]
+        copy = twice_seen if name == "twice" else None
+        twice_seen += name == "twice"
+        lead = "# " if name == "heading" else ""
+        written = [one[1] for one in pieces]
+        printed = [one[0] for one in pieces]
+        offset = sum(len(line) + 2 for line in markdown) + len(lead)
+        text = done = " ".join(printed)
+        keeps: list[str] = []
+        for kind, first, last, new, shown, held in reversed(planted):
+            start = offset + len(" ".join(written[:first])) + (1 if first else 0)
+            end = offset + len(" ".join(written[:last]))
+            if copy is None or copy == edited:
+                edits.append([start, end, new])
+            if kind in TRACKED_PLACED:
+                lo = len(" ".join(printed[:first])) + (1 if first else 0)
+                done = done[:lo] + shown + done[len(" ".join(printed[:last])) :]
+                keeps += held
+                placed += 1
+        markdown.append(lead + " ".join(written))
+        source.append(text)
+        accepted.append(done)
+        kept.append(keeps)
+        described.append({"heading": name == "heading", "runs": _tracked_runs(draw, pieces)})
+    given = {"paragraphs": described, "markdown": "\n\n".join(markdown) + "\n",
+             "edits": sorted(edits)}
+    return given, {"source": source, "accepted": accepted, "placed": placed, "kept": kept}
+
+
+def _tracked_runs(draw: st.DrawFn, pieces: list) -> list[list[str]]:
+    """A paragraph's pieces as runs, `[text, look]`: each word in italics a run of its own,
+    the rest split where drawn, inside a word or not."""
+    chunks: list[list[str]] = []
+    for index, (printed, _written, look) in enumerate(pieces):
+        text = printed + (" " if index < len(pieces) - 1 else "")
+        if look:
+            chunks += [[printed, look], [text[len(printed):], ""]]
+        else:
+            chunks.append([text, ""])
+    runs = []
+    for text, look in chunks:
+        if not text:
+            continue
+        if look:
+            runs.append([text, look])
+            continue
+        cuts = sorted(set(draw(st.lists(st.integers(1, max(1, len(text) - 1)), max_size=2))))
+        at = 0
+        for cut in [*cuts, len(text)]:
+            if at < cut <= len(text):
+                runs.append([text[at:cut], ""])
+                at = cut
+    return runs
+
+
 #: A word as a .docx's converted text may type it in a finding's context, and as the
 #: document prints it (`auditing.reader.excerpt`): in bold and in italics by stars, in
 #: italics and in bold by underscores, a name from code with underscores inside it, a star
@@ -15298,6 +15542,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         ),
     ),
     "comment anchored": comment_anchors(),
+    "tracked copy": tracked_documents().map(lambda drawn: drawn[0]),
     "recycled passages": st.fixed_dictionaries(
         {"text": texts(RECYCLED, REFERENCE_BLOCKS), "source": earlier_papers()}
     ),

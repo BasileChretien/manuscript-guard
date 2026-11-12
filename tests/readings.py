@@ -1801,7 +1801,8 @@ def _flows() -> Reading:
 def _abstract_against_results() -> Reading:
     """What `audit` says of a Markdown paper's Abstract against what it and its supplement
     report: whether they were compared, each conflict, each number not found and each found
-    only as a rounding, by line, and what a match is worth there."""
+    only as a rounding, each percentage its counts beside it give and each they do not, with
+    the arithmetic finding of each, by line, and what a match is worth there."""
     from manuscript_guard.audit import audit
     from manuscript_guard.auditing.abstract import against_results  # noqa: F401 - newer than it
 
@@ -1818,6 +1819,13 @@ def _abstract_against_results() -> Reading:
                 "conflicts": [[d.source.name, d.line, d.message] for d in found.conflicts],
                 "not found": [[c.source.name, c.line, c.text] for c in found.not_found],
                 "rounded": [[c.source.name, c.line, c.text] for c in found.rounded],
+                # Newer than the reading: a base without them reads none.
+                "from counts": [[c.source.name, c.line, c.text]
+                                for c in getattr(found, "from_counts", [])],
+                "off counts": [[c.source.name, c.line, c.text]
+                               for c in getattr(found, "off_counts", [])],
+                "arithmetic": [[d.source.name, d.line, d.message]
+                               for d in getattr(found, "arithmetic", [])],
                 "worth": None if worth is None else [worth.small_integers,
                                                      worth.medium_integers, worth.two_decimals],
             }  # fmt: skip
@@ -2880,6 +2888,75 @@ def _comment_anchored() -> Reading:
         return {"refused": found} if isinstance(found, str) else {"span": list(found)}
 
     return anchored
+
+
+def _tracked_document(described: dict[str, Any], path: Path) -> Path:
+    """The .docx a `generated.tracked_documents` input describes: its paragraphs, a heading
+    styled as one, each run `[text, look]` in italics where its look is "i"."""
+    body = []
+    for paragraph in described["paragraphs"]:
+        style = '<w:pPr><w:pStyle w:val="Heading1"/></w:pPr>' if paragraph["heading"] else ""
+        runs = "".join("<w:r>" + ("<w:rPr><w:i/></w:rPr>" if look == "i" else "")
+                       + f'<w:t xml:space="preserve">{_xml_text(text)}</w:t></w:r>'
+                       for text, look in paragraph["runs"])  # fmt: skip
+        body.append(f"<w:p>{style}{runs}</w:p>")
+    office = "application/vnd.openxmlformats-officedocument.wordprocessingml"
+    with zipfile.ZipFile(path, "w") as out:
+        out.writestr("[Content_Types].xml",
+                     '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-'
+                     'types"><Default Extension="xml" ContentType="application/xml"/>'
+                     f'<Override PartName="/word/document.xml" ContentType="{office}.document.'
+                     'main+xml"/></Types>')  # fmt: skip
+        out.writestr("word/document.xml", f'<w:document xmlns:w="{_WML}"><w:body>'
+                                          f'{"".join(body)}</w:body></w:document>')  # fmt: skip
+    return path
+
+
+@reading("tracked copy")
+def _tracked_copy() -> Reading:
+    """The copy `audit --tracked` writes of a .docx: G14's edits of the Markdown it converts
+    to, given as the document prints them (`auditing.gates.as_tracked`) and written into it
+    as tracked changes (`auditing.commented.write`); the copy read with its changes as they
+    stand, all accepted and all rejected, each paragraph's deleted characters, and why each
+    correction not written was not; or why no copy was."""
+    from manuscript_guard.auditing.commented import CommentedError, write
+    from manuscript_guard.auditing.gates import as_tracked
+    from manuscript_guard.auditing.tracked_copy import resolved_texts
+    from manuscript_guard.corrections import Edit
+    from manuscript_guard.gates.vocabulary import Passage
+    from manuscript_guard.safexml import parse_xml
+    from manuscript_guard.tracked import _chars
+
+    w = "{" + _WML + "}"
+
+    def copied(given: dict[str, Any]) -> dict[str, Any]:
+        text = given["markdown"]
+        passage = Passage(Path("manuscript/main.md"), text, text,
+                          lambda offset: text.count("\n", 0, offset) + 1)  # fmt: skip
+        edits = [Edit("spelling-variant", passage, start, end, new, (start, end))
+                 for start, end, new in given["edits"]]  # fmt: skip
+        with tempfile.TemporaryDirectory() as folder:
+            source = _tracked_document(given, Path(folder) / "paper.docx")
+            target = Path(folder) / "tracked.docx"
+            try:
+                made = write(source, target, [], date="2026-11-12T00:00:00Z",
+                             corrections=as_tracked(edits))  # fmt: skip
+            except CommentedError as exc:
+                return {"refused": str(exc)}
+            with zipfile.ZipFile(target) as archive:
+                root = parse_xml(archive.read("word/document.xml"), what="document")
+        taken = {node.get(w + "id") for node in root.iter() if node.tag in (w + "ins", w + "del")}
+        return {
+            "shown": [_chars(paragraph)[0] for paragraph in root.iter(w + "p")],
+            "accepted": resolved_texts(root, taken, accept=True),
+            "rejected": resolved_texts(root, taken, accept=False),
+            "deleted": ["".join(node.text or "" for node in paragraph.iter(w + "delText"))
+                        for paragraph in root.iter(w + "p")],
+            "placed": made.tracked,
+            "left": [why for _one, why in made.untracked],
+        }  # fmt: skip
+
+    return copied
 
 
 @reading("paper.yaml set")

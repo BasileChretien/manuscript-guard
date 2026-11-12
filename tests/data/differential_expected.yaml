@@ -61,13 +61,16 @@ expected:
       author did not understand (the author's audit, 2026-11-10)
   - reading: abstract against results
     why: >-
-      a number of the Abstract is looked for in every section that reports, so one reported
-      only under a section of another name, "Participants", "Study design", an appendix, or
-      directly under a heading over a Methods subsection, is found, where only the Methods,
-      the Results and the tables were searched; one only in the Introduction, a "Related
-      work", the Conclusions, a summary of the paper, a statement, the reference list or a
-      footnote is still not found (round 1 of #641); the inputs now hold each (Basile,
-      2026-11-11, after 52 real preprints)
+      a percentage of the Abstract written beside both its counts, "164 out of 250 (66%)",
+      "164/250 (65.6%)", "164 of 250 patients (66%)", "66% (n = 164/250)", is held to them
+      and not looked for: one they give is listed as given by them ("from counts"), where it
+      was not found, and one they do not give is listed apart ("off counts") with its
+      arithmetic finding, where it was not found; one beside a count with no denominator,
+      "n = 164 (66%)", is not found as before (the author, 2026-11-11), and so is one beside
+      a count over its denominator, a share over 100 or a year and the next, "45%
+      (2019/20)" (round 1 of #664); the reading lists the three, which the base has not,
+      and its inputs now hold each shape. The entry it
+      replaces, for the sections an Abstract's number is looked for in (#641), is spent
   - reading: reply numbers
     why: >-
       a number in a reply after a link on its line is read and, unbound, reported, where the

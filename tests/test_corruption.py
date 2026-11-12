@@ -3654,6 +3654,9 @@ _OUTCOMES_NAMING_BASELINE = (
     "Outcomes at 12 weeks, adjusted for age, sex and baseline score",
     "Outcomes adjusting for baseline values",
     "Post-baseline adverse events",
+    # The phrase after what qualifies an outcome (round 2 of #657).
+    "Primary and secondary outcomes, adjusted for baseline characteristics",
+    "Subgroup analysis of the primary outcome by baseline characteristics",
 )
 
 
@@ -3691,7 +3694,14 @@ def test_a_caption_names_a_table_of_baseline_characteristics_by_what_it_says() -
              "Characteristics of the participants at baseline",
              "Demographics at randomization", "Baseline patient features",
              "*Baseline* characteristics", "\\textbf{Baseline} characteristics",
-             "Characteristics at~baseline", "Characteristics at \\emph{baseline}")  # fmt: skip
+             "Characteristics at~baseline", "Characteristics at \\emph{baseline}",
+             # Any words, up to three, between (round 2 of #657).
+             "Baseline demographic and disease characteristics",
+             "Baseline demographic, clinical, and laboratory characteristics",
+             "Baseline clinical and laboratory characteristics",
+             "Baseline socio-demographic characteristics",
+             f"Baseline patients{chr(0x2019)} characteristics",
+             "Baseline characteristics by treatment group")  # fmt: skip
     not_named = (*_OUTCOMES_NAMING_BASELINE, "Change from~baseline in the score",
                  "Postbaseline characteristics", "Baseline", "Outcomes at 12 weeks",
                  "Participants at baseline, by group", "Change from baseline in characteristics")
@@ -3735,6 +3745,16 @@ def test_a_legend_typed_with_no_stop_after_its_number_is_a_caption(
 
     (table,) = markdown_captioned(f"Some prose.\n\n{legend}\n\n{_PIPE_P}\nMore prose.\n")
     assert table.caption == caption
+
+
+def test_a_paragraph_that_opens_with_a_table_s_number_and_a_capital_is_its_legend() -> None:
+    """Known gaps: "Table 1 In the intervention group ..." beside a table is read as its
+    legend, as "Table 1 Baseline characteristics" is: the two are set alike."""
+    from manuscript_guard.text.captioned import markdown_captioned
+
+    prose = "Table 1 In the intervention group, more were women."
+    (table,) = markdown_captioned(f"{prose}\n\n{_PIPE_P}\nMore prose.\n")
+    assert table.caption == prose
 
 
 def test_the_designs_that_take_consort_are_read_from_the_data_file() -> None:

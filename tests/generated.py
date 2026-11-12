@@ -13007,7 +13007,11 @@ BASELINE_CAPTIONS = ("{w} characteristics of the participants", "Characteristics
                      "{w} demographic and clinical characteristics",
                      "Demographics of the groups at {w}", "{w} patient features",
                      "Characteristics of the participants at randomisation",
-                     "{w} characteristics and change from {w}")  # fmt: skip
+                     "{w} characteristics and change from {w}",
+                     "{w} demographic and disease characteristics",
+                     "{w} demographic, clinical, and laboratory characteristics",
+                     "{w} socio-demographic characteristics",
+                     "{w} characteristics by treatment group")  # fmt: skip
 #: Captions where the word is inside another word; and captions of tables of outcomes, which
 #: hold the word in another sense (round 1 of #657), or do not hold it.
 BASELINE_INSIDE = ("Post{w} characteristics by group", "Non{w} demographics",
@@ -13018,7 +13022,11 @@ BASELINE_CHANGES = ("Change from {w} in the score", "Mean change since {w}",
 BASELINE_OUTCOMES = ("Outcomes at 12 weeks", "Primary outcome at {w} and 12 weeks",
                      "Primary outcome by {w} risk",
                      "Outcomes at 12 weeks, adjusted for age, sex and {w} score",
-                     "Outcomes adjusting for {w} values", "Participants at {w}, by group")
+                     "Outcomes adjusting for {w} values", "Participants at {w}, by group",
+                     "Primary and secondary outcomes, adjusted for {w} characteristics",
+                     "Subgroup analysis of the primary outcome by {w} characteristics",
+                     "Outcomes according to {w} demographics",
+                     "Events stratified by {w} clinical features")  # fmt: skip
 #: How a legend is set after its number: a stop, a colon, or a space before a capital.
 BASELINE_LEGENDS = ("Table S{n}. ", "Table S{n}: ", "**Table S{n}** ", "Table S{n} ")
 #: The designs whose guidelines do not include CONSORT, `other`, and none named.

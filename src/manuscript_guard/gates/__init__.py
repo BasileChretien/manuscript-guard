@@ -62,8 +62,8 @@ GATES = {
     "G14": "abbreviations are defined once, one term is kept for one thing, the "
     "spelling is one English and the notation is one; prose in a script the gates do not "
     "read is said",
-    "G15": "each model is the model its variables call for, and the Methods name the model "
-    "fitted",
+    "G15": "each model is the model its variables call for, each mean and SD the summary "
+    "their variable calls for, and the Methods name the model fitted",
     "G16": "the data were held to the data dictionary, and the paper says what they held",
 }
 

@@ -885,6 +885,73 @@ def test_r_and_python_record_a_level_and_a_spread_alike(tmp_path: Path) -> None:
     assert from_r["ror.ci_low"]["level"] == "95%" and from_r["age.sd"]["spread"] == "sd"
 
 
+SKEW_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$value("crp.mean", 5.1, digits = 1, variable = "crp",
+         skewed_ok = "reported as the trial registered it")
+em$value("crp.sd", 4.2, digits = 1, spread = "sd", of = "crp.mean")
+em$value("los.mean", 6L, variable = "los")
+em$write()
+"""
+
+
+def test_r_and_python_record_a_variable_and_a_reason_for_skew_alike(tmp_path: Path) -> None:
+    """The variable of the data dictionary a mean is of, and the reason its skew is let
+    stand, are written by both emitters as the same JSON for the same call."""
+    from manuscript_guard.emit import Emitter
+
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "skew.R"
+    script.write_text(SKEW_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    fragment = next((root / "results").glob("*.json"))
+    from_r = json.loads(fragment.read_text(encoding="utf-8"))["values"]
+    em = Emitter(script, root=root)
+    em.value("crp.mean", 5.1, digits=1, variable="crp",
+             skewed_ok="reported as the trial registered it")  # fmt: skip
+    em.value("crp.sd", 4.2, digits=1, spread="sd", of="crp.mean")
+    em.value("los.mean", 6, variable="los")
+    from_python = em.document()["values"]
+    assert from_r == from_python
+    assert from_r["crp.mean"]["variable"] == "crp"
+    assert from_r["crp.mean"]["skewed_ok"] == "reported as the trial registered it"
+    assert "skewed_ok" not in from_r["los.mean"] and "variable" not in from_r["crp.sd"]
+
+
+@pytest.mark.parametrize(
+    ("call", "said"),
+    [
+        ('em$value("m", 5, variable = "")', "variable names an entry"),
+        ('em$value("m", 5, variable = 3)', "variable names an entry"),
+        ('em$value("m", 5, variable = c("a", "b"))', "variable names an entry"),
+        ('em$value("m", 5, variable = "crp", skewed_ok = "")', "skewed_ok is a sentence"),
+        ('em$value("m", 5, variable = "crp", skewed_ok = "  ")', "skewed_ok is a sentence"),
+        ('em$value("m", 5, variable = "crp", skewed_ok = 1)', "skewed_ok is a sentence"),
+        ('em$value("m", 5, variable = "crp", skewed_ok = c("a", "b"))',
+         "skewed_ok is a sentence"),
+        ('em$value("m", 5, skewed_ok = "a reason")', "names its variable"),
+    ],
+)
+def test_the_r_emitter_refuses_what_python_refuses_of_a_variable_and_its_skew(
+    tmp_path: Path, call: str, said: str
+) -> None:
+    """A blank variable, and a reason for skew that is blank, not text, or said of a mean
+    that names no variable, are refused by R as by Python (`tests/test_emit.py`)."""
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "bad.R"
+    body = SKEW_R.split("em$value(")[0] + call + "\n"
+    script.write_text(body % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode != 0 and said in out.stderr, out.stderr
+
+
 SAME_AS_R = """
 if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
   cat("MISSING_DEPS\\n"); quit(status = 3)

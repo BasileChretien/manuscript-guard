@@ -25447,9 +25447,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `audit` holds it: `check` binds a project's shares to the analysis, and a share typed
     there is an unbound number already. Accepted.
   - The finding names the heading the share stands under, "in Results, ", "in the
-    Abstract, ", a title with a comma in it quoted; in a .docx it names none, since its
-    place in the report, "Results, paragraph 3", names the section (the coordinator's
-    choice on round 1 of #668, not yet Basile's). A note is named by the heading over its
+    Abstract, ", a title with a comma in it quoted; in a .docx it names none but the
+    Abstract, since its place in the report, "Results, paragraph 3", names the section
+    (the coordinator's choice on round 1 of #668, not yet Basile's). A note is named by the heading over its
     definition as the audit reads headings, the reference list's set apart: a Markdown note
     defined at the end of the file by the last heading before the reference list, wherever
     it is referenced; a .docx's notes are placed as "the notes". Accepted.
@@ -25464,7 +25464,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Accepted.
   - A range written with a slash is no count and its denominator: after "grade", "stage",
     "phase", "type", "class", "level", "step", "line" or "cycle", singular or plural, in
-    any case, and any two numbers in a row up to 10 (round 1 of #668: "Grade 3/4
+    any case, up to 10 ("troponin levels 12/40" is read), and two numbers in a row up to
+    10 before a share, never in brackets after one, "75% (3/4)" (round 1 of #668: "Grade 3/4
     neutropenia (12%)" was said to be 3 of 4). A real share of such numbers, "3/4 (50%)",
     is not held to its counts, and a range after another word, "toxicity 2/4 (10%)", is
     read as one. Accepted.

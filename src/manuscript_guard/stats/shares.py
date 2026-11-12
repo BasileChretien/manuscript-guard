@@ -419,8 +419,10 @@ _SLASH = re.compile(r"\s*/\s*")
 
 def _named_range(text: str, match: re.Match[str]) -> bool:
     """Whether a count and its denominator are written with a slash after a word a range
-    follows: "Grade 3/4 neutropenia (12%)", "phase 1/2 trials (24%)"."""
+    follows, its second number no more than 10, as a grade's, a stage's or a phase's is:
+    "Grade 3/4 neutropenia (12%)", not "troponin levels 12/40 (30%)"."""
     return bool(_SLASH.fullmatch(text, match.end("count"), match.start("over"))) and \
+        _whole(match["over"]) <= 10 and \
         bool(_RANGE_NAMED.search(text, max(0, match.start("count") - 12),
                                  match.start("count")))  # fmt: skip
 
@@ -436,8 +438,9 @@ def _consecutive(text: str, match: re.Match[str]) -> bool:
 
 def _a_range(text: str, match: re.Match[str]) -> bool:
     """Whether what reads as a count and its denominator is a range written with a slash
-    (round 1 of #668: "Grade 3/4 neutropenia (12%)" was said to be 3 of 4, not 12)."""
-    return _named_range(text, match) or _consecutive(text, match)
+    (round 1 of #668: "Grade 3/4 neutropenia (12%)" was said to be 3 of 4, not 12). Counts
+    in brackets after their share, "75% (3/4)", are never a range (round 2)."""
+    return _named_range(text, match) or (match.re is _COUNTS_FIRST and _consecutive(text, match))
 
 
 def written_shares(text: str) -> list[tuple[Share, int]]:

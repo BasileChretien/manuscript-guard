@@ -225,7 +225,7 @@ counts, "12 of 40 patients (30%)", in any section or note, is held to them the s
 in the shapes and with the rounding the Abstract against Results describes, and one that
 does not fit is listed with the heading it stands under, "in Results, n (%) 12 of 40
 patients (50%): ...", or "in the Abstract, "; in a .docx the place given names the
-section, "Results, paragraph 3", and the words name none. A note is named by the heading
+section, "Results, paragraph 3", and the words name none but "in the Abstract, ". A note is named by the heading
 over its definition, the reference list's set apart: a Markdown note defined at the end of
 the file by the last heading before the reference list, and a .docx's notes are placed as
 "the notes". One that fits says nothing. The Abstract's own shares are said in the

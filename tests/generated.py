@@ -7234,7 +7234,16 @@ def _spelt_typed(draw: st.DrawFn, own: str, theirs: int, ours: int,
 WRITTEN_OUT = (("ROR", "reporting odds ratio"), ("PRR", "proportional reporting ratio"),
                ("HR", "hazard ratio"), ("IC", "information component"), ("RR", "risk ratio"),
                ("SDR", "signal detection ratio"), ("EBGM", "empirical Bayes geometric mean"),
-               ("OR", "odds ratio"))  # fmt: skip
+               ("OR", "odds ratio"), ("CFR", "case fatality rate"),
+               ("IQR", "interquartile range"), ("SAE", "serious adverse event"),
+               ("AOR", "adjusted odds ratio"), ("CCI", "Charlson comorbidity index"))  # fmt: skip
+
+#: Abbreviations only the list of abbreviations gives, and the forms an entry of the list is
+#: written in, each read as a definition. Only the two with a bracket look like the text's,
+#: so each list holds one of each (round 1 of #645).
+LISTED_ONLY = (("ADR", "adverse drug reaction"), ("BMI", "body mass index"),
+               ("ICU", "intensive care unit"))  # fmt: skip
+ENTRY_FORMS = ("{0}: {1}", "{0}\t{1}", "{0} ({1})", "{1} ({0})")
 
 
 @st.composite
@@ -7242,9 +7251,12 @@ def abbreviations_written_out(draw: st.DrawFn) -> tuple[str, str]:
     """A manuscript typed and as G14's abbreviation edits leave it. Written out: an
     abbreviation defined and not used again after its long form in round brackets and in
     square ones, before its long form inside a sentence and opening one, where the long form
-    takes the capital, and one defined twice. Left as they are: one used again, one whose
-    bracket holds more, and a funder's among the acknowledgements."""
-    a, b, c, d, e, f, g, h = draw(st.permutations(WRITTEN_OUT))
+    takes the capital, one defined twice, one also listed among the abbreviations, whose
+    entry stays, and one defined in the text and again by a funder, whose sentence stays.
+    Left as they are: one used again, one whose bracket holds more, a funder's, one after
+    "an", which no edit puts right, a link's, and the entries of the list of abbreviations,
+    one in each form an entry is written in, which the list is to drop (round 1 of #645)."""
+    a, b, c, d, e, f, g, h, i, j, k, m, n = draw(st.permutations(WRITTEN_OUT))
     opening = d[1][:1].upper() + d[1][1:]
     pairs = [
         (f"the {a[1]} ({a[0]}) read", f"the {a[1]} read"),
@@ -7255,10 +7267,20 @@ def abbreviations_written_out(draw: st.DrawFn) -> tuple[str, str]:
          f"the {e[1]} and again the {e[1]}"),
         (f"the {f[1]} ({f[0]}) read, and {f[0]} was 2",) * 2,
         (f"the {g[1]} ({g[0]}; a measure) read",) * 2,
+        (f"an {i[0]} ({i[1]}) read",) * 2,
+        (f"the {j[1]} [{j[0]}](https://example.org/{j[0]}) read",) * 2,
+        (f"the {m[1]} ({m[0]}) read", f"the {m[1]} read"),
+        (f"the {n[1]} ({n[0]}) read", f"the {n[1]} read"),
     ]  # fmt: skip
     typed, edited = _both_ways(draw, draw(st.permutations(pairs)))
-    thanks = f"# Acknowledgements\n\nFunded by the {h[1]} ({h[0]}).\n"
-    return typed + thanks, edited + thanks
+    listed = [form.format(*pair)
+              for form, pair in zip(draw(st.permutations(ENTRY_FORMS)), (k, *LISTED_ONLY),
+                                    strict=True)]  # fmt: skip
+    listed.append(draw(st.sampled_from(ENTRY_FORMS)).format(*m))
+    after = ("# Abbreviations\n\n" + "".join(f"{entry}\n\n" for entry in
+                                              draw(st.permutations(listed)))
+             + f"# Acknowledgements\n\nFunded by the {h[1]} ({h[0]}) and the {n[1]} ({n[0]}).\n")
+    return typed + after, edited + after
 
 
 @st.composite

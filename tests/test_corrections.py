@@ -201,3 +201,22 @@ def test_a_project_s_edits_are_g14_s_three_readings_read_as_check_reads_them(
     assert corrections(language_edits(project)) == []
     left = [(f.code, f.message.split(" ")[0]) for f in check_language(project).findings]
     assert left == [("abbreviation-unused", "IC")]
+
+
+def test_the_main_text_s_definition_stays_where_the_supplement_uses_it(tmp_path: Path) -> None:
+    """A short form the main text defines and does not use again, and the supplementary
+    material uses, is not written out: its use there leans on that definition, and would be
+    undefined without it (round 1 of #645)."""
+    from manuscript_guard.contracts.project import Project
+    from manuscript_guard.gates.language import check_language, language_edits
+
+    (tmp_path / "manuscript" / "supplementary").mkdir(parents=True)
+    (tmp_path / "manuscript" / "main.md").write_text(
+        "# Methods\n\nThe reporting odds ratio (ROR) was computed.\n", encoding="utf-8")
+    (tmp_path / "manuscript" / "supplementary" / "s1.md").write_text(
+        "# Supplementary methods\n\nThe ROR was computed for each drug.\n", encoding="utf-8")
+    project = Project(root=tmp_path, paper={"english_variant": "en-US"}, authors=None)
+    codes = [f.code for f in check_language(project).findings]
+    assert "abbreviation-undefined" not in codes
+    assert [one for one in corrections(language_edits(project))
+            if "abbreviation-unused" in one.codes] == []  # fmt: skip

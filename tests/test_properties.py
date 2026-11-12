@@ -6269,8 +6269,9 @@ def test_g14_writes_out_an_abbreviation_defined_and_not_used_again(
     """An abbreviation defined and not used again is written out where it is defined, at
     every place: its bracket dropped after its long form, round or square, or its long form
     put in its place, with the capital of a sentence it opens. Not one used again, one whose
-    bracket holds more, or a funder's among the acknowledgements. Edited, the manuscript is
-    edited no further."""
+    bracket holds more, a funder's among the acknowledgements, one after "an", a link's, or an
+    entry of the list of abbreviations (round 1 of #645). Edited, the manuscript is edited no
+    further."""
     from manuscript_guard.gates import language as language_gate
 
     nothing = language_gate._Known(frozenset(), frozenset())
@@ -6283,6 +6284,24 @@ def test_g14_writes_out_an_abbreviation_defined_and_not_used_again(
     assert text == as_typed
     assert edited == expected, (as_typed, edited)
     assert _edited(edited, edits)[1] == edited
+
+
+def _an_article_before_a_short_form_is_left_wrong(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_after_an_article", lambda text, at: False)
+
+
+def _a_link_s_brackets_are_a_definition_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_runs_on", lambda text, end: False)
+
+
+def _a_list_of_abbreviations_is_written_out(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_in_a_glossary", lambda file, offset: False)
 
 
 def _a_written_out_abbreviation_takes_no_capital(patch: pytest.MonkeyPatch) -> None:
@@ -22932,6 +22951,18 @@ BROKEN = {
     "a word inside a quotation is respelt": (
         _a_word_inside_a_quotation_is_respelt,
         test_g14_respells_a_word_of_the_other_english_where_the_paper_s_own_is_sure,
+    ),
+    "an abbreviation written out after an article that was the short form's": (
+        _an_article_before_a_short_form_is_left_wrong,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a link's brackets are written out as a definition's": (
+        _a_link_s_brackets_are_a_definition_s,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "the list of abbreviations is written out like the text": (
+        _a_list_of_abbreviations_is_written_out,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
     ),
     "a written-out abbreviation takes no capital where it opens a sentence": (
         _a_written_out_abbreviation_takes_no_capital,

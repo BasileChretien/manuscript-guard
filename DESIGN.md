@@ -5610,9 +5610,13 @@ most are, a space between a number and the unit or word it runs into, each word 
 other English respelt in the paper's, with its capital, and each abbreviation defined and
 not used again written out where it is defined: "the reporting odds ratio (ROR)" loses its
 bracket, round or square, and "ROR (reporting odds ratio)" becomes its long form, with the
-capital of a sentence it opens. Only where the bracket holds the one form and nothing
-more, and never an entry of a list of abbreviations, which the list is to drop, nor a
-funder's among the acknowledgements, which nothing is expected to use. Where the readings
+capital of a sentence it opens where its first word is in lower case. Only where the
+bracket holds the one form and nothing more, and never an entry of a list of abbreviations,
+which the list is to drop, nor a definition among the acknowledgements, which nothing is
+expected to use, nor one after "a" or "an", chosen for how the short form is said ("an
+SAE"), nor a bracket that runs on into a link or a span ("[ROR](https://...)"), nor the main
+text's where the supplementary material uses the form and leans on it (round 1 of #645).
+Where the readings
 are not sure there is no edit, and the finding stays for the author: two forms used as
 often; the
 P's symbol, which is the journal's; a dash beside a negative bound, which would read as its
@@ -25706,7 +25710,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   quotation closed before a word, "'cleaned'", with such an apostrophe after it (round 4
   of #636). An insertion at either
   end of another edit's change clashes with it, so "colour+5" in an American paper is
-  neither respelt nor spaced. Each only keeps an edit from being offered. Pinned by
+  neither respelt nor spaced. A short form written out in its long form's place, "TNF
+  (tumour necrosis factor)", is one change over the long form, and a respelling inside the
+  long form clashes with it, so in an American paper neither is offered (round 1 of #645).
+  Each only keeps an edit from being offered. Pinned by
   `tests/test_corrections.py::test_a_stray_double_mark_holds_back_the_respellings_after_it`,
   `tests/test_corrections.py::test_an_apostrophe_opening_a_word_quotes_up_to_a_mark_that_may_close`,
   `tests/test_corrections.py::test_a_space_put_after_a_respelt_word_is_no_edit_of_either`.

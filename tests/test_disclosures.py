@@ -177,6 +177,84 @@ def test_a_section_holds_only_its_own_statement() -> None:
         assert _codes(authors, main) == ["interests-author-missing"], after
 
 
+def test_a_credit_role_or_a_disclosure_item_as_a_label_ends_no_section() -> None:
+    """Round 2 of #653: PLOS writes the roles first ("Funding acquisition: AE."), and
+    ICMJE's form its items ("Grants or contracts from any entity: ..."). Neither is a
+    statement of its own, nor ends the one it stands in; a label of another statement does."""
+    credited = {"authors": [
+        {"given": "Ada", "family": "Example", "credit": ["Conceptualization",
+                                                        "Funding acquisition"]},
+        {"given": "Blaise", "family": "Sample", "credit": ["Writing \N{EN DASH} original draft"]},
+    ]}  # fmt: skip
+    main = ("## Author contributions\n\nConceptualization: AE.\n\nFunding acquisition: AE.\n\n"
+            "Writing \N{EN DASH} original draft: BS.\n")
+    assert _codes(credited, main) == []
+    interested = _authors(ada_competing_interests="Grants from Pharma X.",
+                          blaise_competing_interests="None declared.",
+                          ada_funding=[_ANR])
+    main = ("## Competing interests\n\nGrants or contracts from any entity: AE received grants "
+            f"from Pharma X.\n\n## Funding\n\n{_ANR}.\n")
+    assert _codes(interested, main) == []
+    # "Grants or contracts from any entity: none" is no funding statement that says none.
+    main = ("## Competing interests\n\nAE: grants from Pharma X.\n\nGrants or contracts from "
+            "any entity: none.\n\n## Funding\n\nGrant 99.\n")
+    assert _codes(interested, main) == ["funding-grant-missing"]
+    # A label of another statement still ends the section.
+    main = (f"## Competing interests\n\nNone declared.\n\n**Funding:** {_ANR}. AE received "
+            "grants from Pharma X.\n")
+    assert _codes(interested, main) == ["interests-none-contradicted"]
+
+
+def test_a_financial_interest_in_one_thing_is_no_collective_none() -> None:
+    """Round 2 of #653: "no financial interest in the device" says nothing of competing
+    interests; Springer Nature's and Elsevier's sentences still say none."""
+    authors = _authors(ada_competing_interests="Consulting fees from Pharma X.",
+                       blaise_competing_interests="None declared.")
+    main = ("## Competing interests\n\nAE reports consulting fees from Pharma X. The authors "
+            "have no financial interest in the device used in this study.\n")
+    assert _codes(authors, main) == []
+    for said in _NONE_FORMS[:2] + _NONE_FORMS[-1:]:
+        assert _codes(authors, f"## Competing interests\n\nAE reports fees. {said}\n") == [
+            "interests-none-contradicted"], said
+
+
+def test_initials_name_an_author_only_as_written_in_capitals() -> None:
+    """Round 2 of #653: Ian Smith's initials are "IS", "I.S.", "I. S." or "I-S", never the
+    word "is"; alike for competing interests and for contributions."""
+    authors = {"authors": [{"given": "Ian", "family": "Smith", "competing_interests":
+                            "Grants from Y.", "credit": ["Supervision"]}]}  # fmt: skip
+    for written in ("IS", "I.S.", "I. S.", "I-S"):
+        main = (f"## Competing interests\n\n{written} reports grants from Y.\n\n"
+                f"## Author contributions\n\n{written}: Supervision.\n")
+        assert _codes(authors, main) == [], written
+    main = ("## Competing interests\n\nAE reports fees from Pharma X and is a member of its "
+            "board.\n\n## Author contributions\n\nAE is the guarantor. Supervision.\n")
+    assert _codes(authors, main) == ["credit-author-missing", "interests-author-missing"]
+
+
+def test_every_form_of_a_credit_heading_is_read_and_no_image_credit() -> None:
+    """Round 2 of #653: "CRediT statement" and "CRediT roles" are read as 43383b1 read them."""
+    authors = _authors(ada_credit=["Supervision"])
+    for heading in ("CRediT statement", "CRediT roles", "CRediT role", "CRediT",
+                    "CRediT author statement", "CRediT authorship contribution statement"):
+        assert _codes(authors, f"## {heading}\n\nBS wrote it.\n") == [
+            "credit-author-missing", "credit-role-missing"], heading
+    for legend in ("Image credit: the authors.", "Photo credit: the authors.",
+                   "Picture credit: the authors.", "## Image credits\n\nThe authors."):
+        assert _codes(authors, f"{legend}\n") == [], legend
+
+
+def test_a_label_alone_stops_at_the_next_label_alone() -> None:
+    """Round 2 of #653: "**References**" alone in its paragraph ends the statement above it,
+    whatever it names."""
+    authors = _authors(ada_competing_interests="Fees from Pharma X.",
+                       blaise_competing_interests="None declared.")
+    for after in ("**References**", "**Data availability**", "References:"):
+        main = (f"**Competing interests**\n\nNone declared.\n\n{after}\n\n1. Example A, "
+                "Sample B. A study. J Ex. 2020;1:1-2.\n")
+        assert _codes(authors, main) == ["interests-none-contradicted"], after
+
+
 #: Record values that say none, as journals' forms write them, and what each reads as.
 _NONE_FORMS = (
     "The author has no relevant financial or non-financial interests to disclose.",

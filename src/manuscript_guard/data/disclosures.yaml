@@ -14,10 +14,14 @@ schema: manuscript-guard/disclosures/1
 fragments:
   # What an author may have none of: "competing interests", "conflicts of interest", "known
   # competing financial interests or personal relationships that could have appeared to
-  # influence the work" (Elsevier), "relevant financial or non-financial interests"
-  # (Springer Nature). Not "other competing interests", which leaves out those named.
+  # influence the work" (Elsevier); always with "competing", "conflicting" or "conflict", so
+  # "no financial interest in the device" is none of them (round 2 of #653). Not "other
+  # competing interests", which leaves out those named.
   interest: >-
-    (?:(?:known|potential|relevant|actual|perceived) )*(?:(?:competing|conflicting|financial|non-financial|personal)(?: or non-financial| and non-financial| or personal)? )*(?:interests?|conflicts? of interests?)(?: or personal relationships\b.*)?
+    (?:(?:known|potential|relevant|actual|perceived) )*(?:(?:financial|non-financial|personal) )*(?:(?:competing|conflicting)(?: (?:financial|non-financial|personal))*(?: or (?:non-financial|personal))? interests?|conflicts? of interests?)(?: or personal relationships\b.*)?
+  # Springer Nature's sentence of none, which names no competing interest: "The author has
+  # no relevant financial or non-financial interests to disclose."
+  springer: 'no relevant financial or non-financial interests(?: to disclose)?'
   # Who may say it, and how.
   verb: '(?:declares?|reports?|has|have|states?|discloses?)'
   # What follows a phrase about funding that says nothing of whether there was any: the
@@ -46,12 +50,22 @@ headings:
   ethics: '\bethic(?:s|al)\b|\binstitutional review\b|\birb\b'
   # "Author contributions", "Authors' contributions" (BMC), "Contributors" (The Lancet, the
   # BMJ), "CRediT authorship contribution statement" (Elsevier), "CRediT author statement",
-  # "Authorship", and "CRediT" alone. Not "Image credit" or "Photo credit".
-  contributions: '\bauthor(?:ship|s''|''s|s)? contributions?\b|\bcontribut(?:ors?|orship|ions? of the authors)\b|^credit$|\bcredit author(?:ship)?(?: contribution)? statement\b|^authorship(?: statements?)?$'
+  # "Authorship", "CRediT statement", "CRediT roles" and "CRediT" alone. Not "Image credit",
+  # "Photo credit" or "Picture credit": a heading that opens with CRediT, never one with
+  # credit after another word.
+  contributions: '\bauthor(?:ship|s''|''s|s)? contributions?\b|\bcontribut(?:ors?|orship|ions? of the authors)\b|^credit(?: (?:statements?|roles?|taxonomy))?$|^credit author(?:ship)?(?: contributions?)? statements?$|^authorship(?: statements?)?$'
   # A section that holds the others under its own headings or labels: "Declarations"
   # (Springer Nature, BMC), "Statements and declarations". Its parts are read by their own
   # headings and labels; it is named here so that the Ethics in it are read (`ethics`).
   declarations: '^(?:statements? and )?declarations?(?: and statements?)?$|^ethics declarations$'
+
+# Labels that open no statement and end none, though their words name one: the CRediT roles,
+# which PLOS writes first ("Funding acquisition: AE."), and the items of the ICMJE disclosure
+# form, which a competing interests statement copies ("Grants or contracts from any entity:
+# ..."). Matched against the whole label (round 2 of #653).
+not_statements:
+  - 'conceptuali[sz]ation|data curation|formal analysis|funding acquisition|investigation|methodology|project administration|resources|software|supervision|validation|visuali[sz]ation|writing - original draft|writing - review (?:&|and) editing'
+  - 'grants? or contracts?(?: from any entity)?|royalties or licen[cs]es|consulting fees|payment or honoraria|support for attending meetings(?: and/or travel)?|patents?(?: planned, issued or pending)?|participation on a data safety monitoring board or advisory board|leadership or fiduciary role(?: in other board, society, committee or advocacy group, paid or unpaid)?|stock or stock options|receipt of equipment, materials, drugs, medical writing, gifts or other services|other financial or non-financial interests|support for the present manuscript'
 
 # A funding statement that says the work had none. Read in each place the funding statement
 # is in; a place a funding heading or label opens that says only "None" or "Not applicable"
@@ -93,7 +107,8 @@ none:
   - 'n/?a|not applicable'
   - 'no (?:relevant |financial )*disclosures?'
   - '(?:there (?:are|is) )?no ${interest}(?: (?:to (?:declare|disclose|report)|(?:were|was|are|is) (?:declared|reported)|declared|reported))?'
-  - '(?:i|we|the authors?|all authors|all the authors) ${verb}(?: that (?:they have|there (?:are|is)))? (?:nothing to (?:declare|disclose|report)|no ${interest}|no (?:relevant )?disclosures?)(?: to (?:declare|disclose|report))?'
+  - '(?:there (?:are|is) )?${springer}'
+  - '(?:i|we|the authors?|all authors|all the authors) ${verb}(?: that (?:they have|there (?:are|is)))? (?:nothing to (?:declare|disclose|report)|no ${interest}|${springer}|no (?:relevant )?disclosures?)(?: to (?:declare|disclose|report))?'
 
 # Funding said to be none, as a whole place a funding heading or label opens: "Funding:
 # None." or "Not applicable".
@@ -105,5 +120,5 @@ none_funding:
 # authors" or "the author", so "the other authors", "all other authors" and "the remaining
 # authors", which say it of some of them after those the statement names, are not read.
 collective_none:
-  - '\b(?:the authors|all authors|all the authors|the author)[ ]${verb}(?: that (?:they have|there (?:are|is)))? (?:nothing to (?:declare|disclose|report)|no ${interest}|no (?:relevant )?disclosures?)'
+  - '\b(?:the authors|all authors|all the authors|the author)[ ]${verb}(?: that (?:they have|there (?:are|is)))? (?:nothing to (?:declare|disclose|report)|no ${interest}|${springer}|no (?:relevant )?disclosures?)'
   - '\bthere (?:are|is|were|was) no ${interest}'

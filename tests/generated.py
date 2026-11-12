@@ -6732,7 +6732,10 @@ DECLARED_DASHES = ("-", chr(0x2010), chr(0x2011), chr(0x2013), chr(0x2014), chr(
 DECLARED_FUNDER = "Fondation pour la Recherche M" + chr(0xE9) + "dicale"
 DECLARED_FAMILIES = ("L" + chr(0xE9) + "vy-Strauss", "O'Brien", "van der Berg",
                      "M" + chr(0xFC) + "ller")  # fmt: skip
-DECLARED_ROLES = ("Conceptualization", "Writing " + chr(0x2013) + " original draft",
+#: "Funding acquisition" names funding, and as PLOS writes it first in its paragraph is a
+#: label that is no funding statement (round 2 of #653).
+DECLARED_ROLES = ("Conceptualization", "Funding acquisition",
+                  "Writing " + chr(0x2013) + " original draft",
                   "Writing " + chr(0x2013) + " review & editing")  # fmt: skip
 #: Each heading or label a statement of each kind may stand under, `{}` its words.
 DECLARED_HEADINGS = {
@@ -6783,7 +6786,7 @@ def _grant_typed(draw: st.DrawFn, grant: str) -> str:
 
 def _initials_typed(draw: st.DrawFn, given: str, family: str) -> str:
     letters = [given[0], family[0]]
-    return draw(st.sampled_from(("{}.{}.", "{}{}", "{}. {}."))).format(*letters)
+    return draw(st.sampled_from(("{}.{}.", "{}{}", "{}. {}.", "{}-{}"))).format(*letters)
 
 
 def _role_typed(draw: st.DrawFn, role: str) -> str:
@@ -6807,6 +6810,10 @@ def _headed(draw: st.DrawFn, kind: str, body: str) -> str:
         # The Methods are read by their heading, as G9 reads them, and by no label.
         number = draw(st.sampled_from(("", "", "6. ", "6.1 ", "VI. ")))
         return f"{'#' * draw(st.integers(1, 3))} {number}{title}\n\n{body}"
+    if "\n\n" in body and shape in ("label", "plain label"):
+        # A label that opens a paragraph heads that paragraph alone; a statement of several
+        # stands under a heading or a label of its own.
+        shape = "alone" if shape == "label" else "plain alone"
     if shape == "label":
         return f"**{title}:** {body}"
     if shape == "alone":
@@ -6824,9 +6831,11 @@ def declaration_papers(
     each in a typography drawn under headings or labels drawn, in an order drawn between
     pieces of the pool; and for each near miss, the code it must raise and the paper with it
     in place of the statement it changes: a grant with a digit more, a funder with a word
-    changed, a denial of funding, the family name of the author with an interest changed, a
-    collective none, a role left out, the initials of an author changed, the approval with a
-    digit changed. One of every kind in each example."""
+    changed, a denial of funding, the family name of the author with an interest changed,
+    their initials written as a word in lower case, a collective none, a role left out, the
+    initials of an author changed, the approval with a digit changed. One of every kind in
+    each example. The contributions name the authors first, or, as PLOS writes them, the
+    roles first, one paragraph each (round 2 of #653)."""
     family = draw(st.sampled_from(DECLARED_FAMILIES))
     grant = draw(st.sampled_from(("ANR-20-CE17-0001", "R01-HL123456", "2021-0456-12")))
     approval = draw(st.sampled_from(("CPP Ouest III 2021-A00123-36", "IRB-2019-117")))
@@ -6834,9 +6843,9 @@ def declaration_papers(
         "authors": [
             {"given": "Ada", "family": family, "funding": [f"Agence ({grant})", DECLARED_FUNDER],
              "competing_interests": "Consulting fees from Pharma X.",
-             "credit": list(DECLARED_ROLES[:2])},
+             "credit": list(DECLARED_ROLES[:3])},
             {"given": "Blaise", "family": "Sample", "competing_interests": "None declared.",
-             "credit": [DECLARED_ROLES[2]]},
+             "credit": [DECLARED_ROLES[3]]},
         ],
         "roles": {"ethics_lead": {"author": "Sample", "approval": approval}},
     }  # fmt: skip
@@ -6846,14 +6855,24 @@ def declaration_papers(
     b_initials = _initials_typed(draw, "Blaise", "Sample")
     roles = [_role_typed(draw, role) for role in DECLARED_ROLES]
     approval_dash = draw(st.sampled_from(DECLARED_DASHES))
+    a_initials = _initials_typed(draw, "Ada", family)
+    role_first = draw(st.booleans())
+
+    def contributions(shown: list[str | None], b_name: str) -> str:
+        held = [(shown[0], a_initials), (shown[1], a_initials), (shown[2], a_initials),
+                (shown[3], b_name)]  # fmt: skip
+        if role_first:
+            return "\n\n".join(f"{role}: {who}." for role, who in held if role is not None)
+        first = ", ".join(role for role in shown[:3] if role is not None)
+        return f"{a_initials}: {first}. {b_name}: {shown[3]}."
+
     bodies = {
         "funding": f"Supported by {_grant_typed(draw, grant)} and the "
                    f"{_typed(draw, DECLARED_FUNDER)}.",
         "interests": f"{a_name} received consulting fees from Pharma X. The other authors "
                      "declare no competing interests.",
         "ethics": f"Approved ({_typed(draw, approval.replace('-', approval_dash))}).",
-        "contributions": f"{_initials_typed(draw, 'Ada', family)}: {roles[0]}, {roles[1]}. "
-                         f"{b_initials}: {roles[2]}.",
+        "contributions": contributions(roles, b_initials),
     }  # fmt: skip
     order = draw(st.permutations(list(bodies)))
     # Plain words between the statements: the pool's listings and comments, left open, would
@@ -6876,12 +6895,15 @@ def declaration_papers(
         ("funding-denied", {"funding": draw(st.sampled_from(FUNDING_DENIALS))}),
         ("interests-author-missing", {"interests": f"Ada {other_family} received consulting "
                                       "fees. The other authors declare no competing interests."}),
+        # Ada's initials as a word in lower case, "am" for Ada Müller, name no one.
+        ("interests-author-missing", {"interests": f"Of the authors, {('A' + family[0]).lower()}"
+                                      " received consulting fees. The other authors declare no "
+                                      "competing interests."}),
         ("interests-none-contradicted", {"interests": "The authors declare no competing "
                                          "interests."}),
-        ("credit-role-missing", {"contributions": bodies["contributions"].replace(
-            f", {roles[1]}.", ".")}),
-        ("credit-author-missing", {"contributions": bodies["contributions"].replace(
-            f"{b_initials}:", "C.D.:")}),
+        ("credit-role-missing", {"contributions": contributions(
+            [roles[0], None, roles[2], roles[3]], b_initials)}),
+        ("credit-author-missing", {"contributions": contributions(roles, "C.D.")}),
         ("ethics-approval-missing", {"ethics": "Approved (" + approval.replace("1", "4") + ")."}),
     ]  # fmt: skip
     return authors, paper({}), [(code, paper(changed)) for code, changed in near]

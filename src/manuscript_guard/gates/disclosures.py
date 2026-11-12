@@ -251,6 +251,16 @@ def _label(paragraph: str) -> tuple[str, str] | None:
     return label, rest
 
 
+def _label_kinds(label: str) -> list[str]:
+    """The kinds of statement a label opens: none for a CRediT role ("Funding acquisition:
+    AE.", as PLOS writes the roles first) or an item of the ICMJE form ("Grants or contracts
+    from any entity: ..."), whose words name a statement they are no part of."""
+    folded = fold(re.sub(r"[*_`]", "", label)).rstrip(" .:")
+    if any(_pattern(f"(?:{p})").fullmatch(folded) for p in _data()["not_statements"]):
+        return []
+    return _heading_kinds(label)
+
+
 def _own(enclosed: str, kind: str) -> str:
     """A section's text up to a heading or a label inside it that opens a statement of
     another kind: "# Competing interests" over "## Author contributions", or over a
@@ -259,8 +269,8 @@ def _own(enclosed: str, kind: str) -> str:
     for paragraph in paragraphs(enclosed):
         head = re.match(r"[ \t]*#+[ \t]+(.*)", paragraph)
         labelled = None if head else _label(paragraph)
-        title = head[1] if head else labelled[0] if labelled else None
-        kinds = _heading_kinds(title) if title else []
+        kinds = (_heading_kinds(head[1]) if head
+                 else _label_kinds(labelled[0]) if labelled else [])  # fmt: skip
         if kinds and kind not in kinds:
             break
         kept.append(paragraph)
@@ -269,12 +279,14 @@ def _own(enclosed: str, kind: str) -> str:
 
 def _labelled(printed: str) -> Iterator[tuple[str, str]]:
     """Each label of `printed` with what it heads: the rest of its paragraph, or, where that
-    is blank, the paragraphs after it up to the next heading or label of a statement. "AE:
-    Conceptualization." is a label of no statement, and is read as part of the one above."""
+    is blank, the paragraphs after it up to the next heading, label of a statement, or label
+    alone in its paragraph of whatever kind ("**References**"). "AE: Conceptualization." is a
+    label of no statement, and is read as part of the one above."""
 
-    def heads(paragraph: str) -> bool:
+    def ends(paragraph: str) -> bool:
         labelled = _label(paragraph)
-        return labelled is not None and bool(_heading_kinds(labelled[0]))
+        return labelled is not None and (not labelled[1].strip()
+                                         or bool(_label_kinds(labelled[0])))  # fmt: skip
 
     pieces = paragraphs(printed)
     for index, paragraph in enumerate(pieces):
@@ -285,7 +297,7 @@ def _labelled(printed: str) -> Iterator[tuple[str, str]]:
         if not rest.strip():
             following = []
             for later in pieces[index + 1:]:
-                if later.lstrip().startswith("#") or heads(later):
+                if later.lstrip().startswith("#") or ends(later):
                     break
                 following.append(later)
             rest = "\n\n".join(following)
@@ -313,7 +325,7 @@ def places(text: str, abstract: str | None = None) -> list[Place]:
     for section in methods_sections(sections, abstract):
         found.append(Place("methods", section.title, section.enclosed))
     for label, rest in _labelled(printed):
-        for kind in _heading_kinds(label):
+        for kind in _label_kinds(label):
             found.append(Place(kind, label, rest))
     return found
 
@@ -392,11 +404,26 @@ def author_named(author: dict, text: str) -> bool:
     family = _field(author, "family")
     if family and _in_words(family, text):
         return True
-    letters = re.findall(r"[^\W\d_]", fold(_initials(author)))
+    pattern = _initials_pattern(_initials(author))
+    return bool(pattern and pattern.search(_unaccented(text)))
+
+
+def _unaccented(text: str) -> str:
+    """`text` with its accents taken off and its dashes straight, its case kept."""
+    text = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in text if not unicodedata.combining(c)).translate(_DASHES)
+
+
+def _initials_pattern(initials: str) -> re.Pattern[str] | None:
+    """What finds initials as they are written, case kept, so that Ian Smith's "IS" is never
+    the word "is": "IS", "I.S.", "I. S." and "I-S", each letter as `submit` prints it or in
+    capitals ("A.v." is "A.v." or "AV"), and no letter or digit on either side."""
+    letters = re.findall(r"[^\W\d_]", _unaccented(initials))
     if not letters:
-        return False
-    said = f" {words(text)} "
-    return f" {' '.join(letters)} " in said or f" {''.join(letters)} " in said
+        return None
+    each = [f"[{re.escape(c)}{re.escape(c.upper())}]" for c in letters]
+    between = r"(?:\.[ ]?|\.?-)?"
+    return re.compile(r"(?<![^\W_])" + between.join(each) + r"\.?(?![^\W_])")
 
 
 def _role_words(text: str) -> str:

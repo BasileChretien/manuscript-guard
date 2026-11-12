@@ -3626,6 +3626,18 @@ def _declarations_keep_accents(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(disclosures, "fold", accented)
 
 
+def _declared_initials_in_any_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    cased = disclosures._initials_pattern
+
+    def folded(initials: str) -> re.Pattern[str] | None:
+        found = cased(initials)
+        return None if found is None else re.compile(found.pattern, re.IGNORECASE)
+
+    patch.setattr(disclosures, "_initials_pattern", folded)
+
+
 def _the_other_authors_say_none_for_all(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import disclosures
 
@@ -20150,6 +20162,10 @@ BROKEN = {
     ),
     "a declaration's accents are kept": (
         _declarations_keep_accents,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
+    ),
+    "an author's initials in a declaration are read in any case": (
+        _declared_initials_in_any_case,
         test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
     ),
     "a none of the other authors in a declaration is read as everyone's": (

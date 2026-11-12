@@ -7711,15 +7711,19 @@ come from, starting from the patterns of the journal template's required stateme
 - ethics: a heading with "ethics", "ethical", "institutional review" or "IRB", a
   Declarations section, and the Methods, by the test G9 reads them by;
 - author contributions: Author(s') contributions, Contributors, CRediT author statement,
-  CRediT authorship contribution statement, Authorship, and "CRediT" alone; not "Image
-  credit" or "Photo credit".
+  CRediT authorship contribution statement, CRediT statement, CRediT roles, Authorship, and
+  "CRediT" alone; not "Image credit", "Photo credit" or "Picture credit".
 
 A heading is read by its words, its number taken off ("6.", "6.1", "VI."). A label alone
 in its paragraph, as a conversion from Word writes "**Funding**", heads the paragraphs
-after it, up to the next heading or label of a statement. A section holds only its own
-statement: it ends at a heading or a label inside it that opens a statement of another
-kind, so "# Competing interests" over "## Author contributions" does not read the
-contributions as interests. A Declarations section's parts are read by their own headings
+after it, up to the next heading, the next label of a statement, or the next label alone
+of whatever kind ("**References**"). A section holds only its own statement: it ends at a
+heading or a label inside it that opens a statement of another kind, so "# Competing
+interests" over "## Author contributions" does not read the contributions as interests.
+A CRediT role written first ("Funding acquisition: AE.", as PLOS writes them) and an item
+of the ICMJE form ("Grants or contracts from any entity: ...") are labels of no statement:
+they open none and end none, though their words name funding (round 2 of #653). A
+Declarations section's parts are read by their own headings
 and labels. Comments and fenced listings are blanked first, as G4 reads every required
 statement. A LaTeX
 manuscript is read in its printed view, which writes each sectioning command as a heading,
@@ -7749,7 +7753,10 @@ as G4's `main_text` and the AI-use check read it.
   interests to disclose"; Elsevier's "no known competing financial interests or personal
   relationships that could have appeared to influence the work"). Each author whose record
   declares one is named in the statement, by family name or by the initials `submit` prints
-  ("AE reports ...", as The Lancet writes it). A statement that says none for everyone,
+  ("AE reports ...", as The Lancet writes it), read as written, in capitals, so Ian Smith's
+  "IS" is never the word "is". A collective none needs "competing", "conflicting" or
+  "conflict", or Springer Nature's or Elsevier's sentence: "no financial interest in the
+  device" is none of them. A statement that says none for everyone,
   "None declared." as the whole of it or a sentence such as "The authors declare no
   competing interests", stands only while every record says none: otherwise it is
   `interests-none-contradicted`. "The other authors" and "All other authors declare no
@@ -7763,8 +7770,8 @@ as G4's `main_text` and the AI-use check read it.
   `ethics-approval-denied`, since a paper says it where it says it: the example says it in
   its Data availability.
 - **Author contributions.** Where the manuscript has such a statement, each author with
-  recorded roles is named in it, by family name or by the initials `submit` prints ("A.E.",
-  or "AE"), and each role recorded is in it in CRediT's words, folded: "Writing – original
+  recorded roles is named in it, by family name or by the initials `submit` prints, as
+  written in capitals ("A.E.", "AE", "A. E." or "A-E"), and each role recorded is in it in CRediT's words, folded: "Writing – original
   draft" with any dash, "&" or "and", "-isation" for "-ization". Which author holds which
   role is not read. With no such statement nothing is said: many journals collect CRediT
   on the submission form.
@@ -7798,11 +7805,13 @@ The reading of statements reads text, so it is held over generated inputs:
 `tests/generated.py` draws papers whose declarations give a grant identifier, a funder in
 words, an author with an interest beside one with none, an approval reference and CRediT
 roles, each written in a typography drawn (dashes, case, accents, line breaks, emphasis,
-initials, the author with an interest by name or by initials), under headings drawn,
+initials, the author with an interest by name or by initials, the contributions by author
+or role first), under headings drawn,
 numbered or not, and labels drawn, opening a paragraph or alone in one, with every near
 miss in each example: an
-identifier with a digit more, a funder with a word changed, a family name changed, a role
-left out, a collective none, a denial of funding. `tests/readings.py` gains the reading and
+identifier with a digit more, a funder with a word changed, a family name changed, the
+initials written as a word in lower case, a role left out, a collective none, a denial of
+funding. `tests/readings.py` gains the reading and
 `tests/test_properties.py` the property, with broken rules in `BROKEN` that it must catch
 under a dozen seeds. Each finding has its case in `tests/test_corruption.py`, the LaTeX twin
 and the supplement among them.
@@ -25709,9 +25718,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
     main text or the supplement, so one about another study is read as the paper's.
     Pinned by `tests/test_disclosures.py::test_an_ethics_denial_is_read_anywhere_in_the_manuscript`.
   - Which author holds which CRediT role is not read: a role counts wherever the
-    contributions statement gives it, and an author's initials ("AE") are read as a word
-    wherever they stand in it.
-    Pinned by `tests/test_disclosures.py::test_a_role_counts_whoever_the_statement_gives_it_to`.
+    contributions statement gives it, and an author's initials, in capitals as written
+    ("AE", "A.E."), name them wherever they stand in it or in the competing interests
+    statement, an abbreviation spelt the same among them.
+    Pinned by `tests/test_disclosures.py::test_a_role_counts_whoever_the_statement_gives_it_to`
+    and `tests/test_disclosures.py::test_initials_name_an_author_only_as_written_in_capitals`.
+  - A label alone of more than six words ("**Funding and role of the funding source**",
+    seven) is not read as a label, so what follows it is no statement. Accepted.
+  - Elsevier's sentence of none with an exception added to it ("..., except AE, who reports
+    fees from Pharma X.") is read whole as a statement of none. Accepted.
   - A declaration given only on the journal's submission form, or in the covering letter, is
     not read; with no statement of its kind in the manuscript, a recorded grant or interest
     is a note. Accepted.

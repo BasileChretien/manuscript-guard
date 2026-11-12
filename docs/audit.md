@@ -388,6 +388,14 @@ stage; on fifteen real papers it did so for seven. `init --from` changes these t
   not read its numbers; `sync-bib` writes `references.bib` again from Zotero, so import it
   there first.
 
+Where the title page stays in the text, as when the document opens on its title in a
+heading style, G14 still does not read it for abbreviations: its authors' names, units and
+institutions are not reported, and nothing on it defines a short form. It ends at the first
+section a paper opens on, the Abstract, the Introduction, the Methods, at a letter's
+salutation, or where running prose begins, and is taken for one only where it holds an
+affiliation, an e-mail address, an ORCID iD, authors with their degrees or marks, or a label
+such as "Corresponding author"; where nothing marks it, the opening is read as before.
+
 What Word's Title, Author, Date and Abstract styles hold is what pandoc reads as the
 document's metadata. The title goes to `paper.yaml` unless `--title` gives another, each
 name of an Author paragraph to `authors.yaml` as the paper writes it, for you to split into

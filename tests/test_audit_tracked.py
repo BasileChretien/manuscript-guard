@@ -233,6 +233,95 @@ def test_a_document_s_own_tracked_changes_are_left_as_they_stand(tmp_path: Path)
     assert read(target) == ["The color was odd.", "Hers."]
 
 
+def test_a_place_two_readings_change_otherwise_keeps_its_finding_a_comment(
+    tmp_path: Path,
+) -> None:
+    """ "haemoglobin" respelt in the Abstract, and again inside "HbA1c (glycated
+    haemoglobin)", which is also written out: `corrections` refuses both edits there, so that
+    place has no change, and the finding stays a comment though its first place is placed
+    (round 1 of #666)."""
+    from manuscript_guard.auditing.commented import Note
+    from manuscript_guard.auditing.gates import as_tracked
+    from manuscript_guard.corrections import Edit
+    from manuscript_guard.gates.vocabulary import Passage
+
+    text = ("Its haemoglobin was low.\n\n"
+            "We measured HbA1c (glycated haemoglobin) once.\n")  # fmt: skip
+    passage = Passage(Path("manuscript/main.md"), text, text,
+                      lambda offset: text.count("\n", 0, offset) + 1)  # fmt: skip
+    first, second = text.index("haemoglobin"), text.rindex("haemoglobin")
+    short = text.index("HbA1c (glycated haemoglobin)")
+    long = short + len("HbA1c (glycated haemoglobin)")
+    edits = [
+        Edit("spelling-variant", passage, first, first + 11, "hemoglobin", (first, first + 11)),
+        Edit("spelling-variant", passage, second, second + 11, "hemoglobin",
+             (second, second + 11)),
+        Edit("abbreviation-unused", passage, short, long, "glycated haemoglobin", (short, long)),
+    ]  # fmt: skip
+    corrections = as_tracked(edits)
+    assert sorted(one.left_out for one in corrections) == [
+        "", "another reading changes the same words otherwise",
+        "another reading changes the same words otherwise"]
+    body = para("Its haemoglobin was low.") + para("We measured HbA1c (glycated haemoglobin) once.")
+    said = "'haemoglobin' is the British spelling of 'hemoglobin', used twice"
+    note = Note("haemoglobin", "Its haemoglobin was low.", said, code="spelling-variant", line=1)
+    _source, target, result = written(tmp_path, body, corrections, [note])
+    assert result.tracked == 1
+    assert [one for one in comments(target) if "'haemoglobin'" in one] == [said]
+    assert read(target, accept=True)[0] == "Its hemoglobin was low."
+
+
+def test_a_correction_whose_words_a_footnote_holds_too_is_left_out(tmp_path: Path) -> None:
+    """A footnote's "See the *colour* chart." is converted with the rest, its correction's
+    words cut to the bare word either side: the body's one "colour", in a quotation the
+    readings leave alone, is not taken for it (round 1 of #666)."""
+    from manuscript_guard.auditing.commented import write
+
+    w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    notes = (f'<w:footnotes xmlns:w="{w}"><w:footnote w:id="1"><w:p><w:r><w:t xml:space='
+             '"preserve">See the colour chart.</w:t></w:r></w:p></w:footnote></w:footnotes>')
+    parts = {**word_package(para("They wrote “the colour of it” then.")),
+             "word/footnotes.xml": notes}  # fmt: skip
+    source = tmp_path / "paper.docx"
+    with zipfile.ZipFile(source, "w") as archive:
+        for name, part in parts.items():
+            archive.writestr(name, part)
+    result = write(source, tmp_path / "tracked.docx", [], date=DATE,
+                   corrections=[tracked("colour", "color")])  # fmt: skip
+    assert result.tracked == 0
+    assert result.untracked[0][1] == "its words are in 2 places in the document"
+    only_there = tmp_path / "only.docx"
+    with zipfile.ZipFile(only_there, "w") as archive:
+        for name, part in {**word_package(para("Nothing here.")),
+                           "word/footnotes.xml": notes}.items():  # fmt: skip
+            archive.writestr(name, part)
+    result = write(only_there, tmp_path / "only-tracked.docx", [], date=DATE,
+                   corrections=[tracked("colour", "color")])  # fmt: skip
+    assert "a footnote or an endnote" in result.untracked[0][1]
+
+
+def test_every_revision_of_the_copy_has_an_id_of_its_own(tmp_path: Path) -> None:
+    """A run whose formatting change Word recorded (`w:rPrChange`) is split where a change
+    begins and ends, and copied for the text put in: neither copy keeps its id (round 1 of
+    #666)."""
+    change = ("<w:rPr><w:b/><w:rPrChange w:id='5' w:author='Ada' w:date='2026-01-01T00:00:00Z'>"
+              "<w:rPr/></w:rPrChange></w:rPr>")  # fmt: skip
+    body = (f"<w:p><w:r>{change}<w:t xml:space='preserve'>Its colour was seen (P=0.03) then."
+            "</w:t></w:r></w:p>")
+    _source, target, result = written(tmp_path, body, [
+        tracked("colour", "color", "Its ", " was"),
+        tracked("P=0.03", "P = 0.03", "seen (", ") then", code="notation-sign-spacing"),
+    ])  # fmt: skip
+    assert result.tracked == 2
+    with zipfile.ZipFile(target) as archive:
+        document = archive.read("word/document.xml").decode()
+    ids = re.findall(r"<w:(?:ins|del|rPrChange) [^>]*w:id=\"(\d+)\"", document)
+    assert len(ids) > 4 and len(ids) == len(set(ids)), ids
+    inserted = re.findall(r"<w:ins [^>]*>(.*?)</w:ins>", document)
+    assert inserted and not any("rPrChange" in one for one in inserted)
+    assert read(target, accept=True) == ["Its color was seen (P = 0.03) then."]
+
+
 def test_a_wrong_placement_is_refused_and_no_copy_is_written(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

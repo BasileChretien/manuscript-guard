@@ -10935,8 +10935,11 @@ nearest mark Markdown writes and the document does not print, and without the ma
 open a heading or an item of a list. One whose own words hold such a mark, or a quotation
 mark pandoc writes straight for either curly one, or a line's end, is left out with why.
 The rest are looked for in every paragraph as Word holds it, across its runs, the words
-around matched across layout space and either curly quotation mark: found in no place,
-in two, or in anything but a plain run, a correction is left out. Each placed one is
+around matched across layout space and either curly quotation mark, and in the footnotes
+and endnotes too, which pandoc converts with the body and where nothing is written: found in
+no place, in two, only in a note, or in anything but a plain run, a correction is left out.
+An edit `corrections` refuses, two readings changing the same words otherwise, is a place
+of its finding left out as well (`gates._refused`, round 1 of #666). Each placed one is
 written from difflib's opcodes on its old words and its new, so only the characters that
 change are deleted (each run of them in a `w:del` of its own) and inserted (in the run
 properties of the text they replace, or of the character before them); no paragraph mark
@@ -10944,7 +10947,10 @@ is deleted, which Word 16 never returns from accepting where it is the last (#39
 finding's comment is left out where a placed correction of it stands on its line and holds
 its own words, and no correction of it was left out (`covered`): of a kind said once for a
 word (`spelling-variant`, `abbreviation-unused`), the corrections holding that word; of
-any other, every correction of the kind. Before the copy is kept it is read back with this
+any other, every correction of the kind; one left out because it changes nothing the
+document prints keeps nothing. A run split where a change begins, or copied for the text
+put in, carries no revision id of another: a copied change of formatting is dropped from the
+inserted run, and each revision is given an id of its own (`distinct`). Before the copy is kept it is read back with this
 copy's own revisions accepted and rejected, any the document had left as they stand: each
 paragraph must read as the document's with each correction made, and as the document's.
 Where either does not, no copy is written, and the audit says why. Held by

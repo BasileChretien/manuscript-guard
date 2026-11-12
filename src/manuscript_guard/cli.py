@@ -2456,6 +2456,7 @@ def _write_commented(report, args: argparse.Namespace, *, tracked: bool = False)
     from datetime import datetime, timezone
 
     from manuscript_guard.auditing.commented import CommentedError, notes_of, write
+    from manuscript_guard.auditing.gates import NOTHING_PRINTED
     from manuscript_guard.safexml import UnsafeDocument
 
     paper = args.paper[0]
@@ -2475,7 +2476,8 @@ def _write_commented(report, args: argparse.Namespace, *, tracked: bool = False)
     listed = len(written.listed)
     changes = ""
     if tracked:
-        left = len(written.untracked)
+        # Not those that change nothing the document prints: there was nothing to place.
+        left = sum(why != NOTHING_PRINTED for _one, why in written.untracked)
         changes = (f"{written.tracked} correction{'s' if written.tracked != 1 else ''} as "
                    "tracked changes, "
                    + (f"{left} that could not be placed left to the comments, " if left

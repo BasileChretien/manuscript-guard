@@ -315,6 +315,10 @@ _STRAIGHT = frozenset("'\"")
 #: What opens a line as a heading or an item of a list, which the document prints as
 #: neither.
 _LINE_MARK = re.compile(r"(?:#{1,6}|[-+]|\d{1,9}[.)])[ \t]+")
+#: Why a correction is left out that changes nothing the document prints, "1--2" made an
+#: en dash, which pandoc's two hyphens already are: no change to place, and none the audit
+#: counts as not placed.
+NOTHING_PRINTED = "it changes nothing the document prints"
 #: How many characters of its paragraph each side of a correction find it in the document.
 _AROUND = 40
 
@@ -329,7 +333,8 @@ def as_tracked(edits: list) -> list[Tracked]:
 
     texts = {edit.passage.path: edit.passage.text for edit in edits}
     out = []
-    for one in corrections(edits):
+    made = corrections(edits)
+    for one in made:
         if one.path.name != "main.md":
             continue
         text = texts[one.path]
@@ -341,6 +346,33 @@ def as_tracked(edits: list) -> list[Tracked]:
             continue
         before, after = _around(text, start, end)
         out.append(Tracked(one.codes, old, new, before, after, one.line))
+    return out + _refused(edits)
+
+
+def _refused(edits: list) -> list[Tracked]:
+    """Each edit of `main.md` that `corrections` refuses, as it refuses two that change the
+    same words differently, "haemoglobin" respelt inside "HbA1c (glycated haemoglobin)"
+    written out: a place of its finding with no change written, kept with why so that the
+    finding stays a comment (round 1 of #666). Grouped as `corrections` groups them."""
+    from manuscript_guard.corrections import _agreed, _order, _overlapping
+
+    by_passage: dict[tuple, list] = {}
+    for edit in edits:
+        if edit.passage.path.name == "main.md":
+            by_passage.setdefault((edit.passage.path, edit.passage.text), []).append(edit)
+    out = []
+    for found in by_passage.values():
+        unique = {(e.start, e.end, e.new, e.code, e.within): e for e in found}
+        for group in _overlapping(sorted(unique.values(), key=_order)):
+            kept = {id(edit) for edit in _agreed(group)}
+            for edit in group:
+                if id(edit) in kept:
+                    continue
+                start, end = edit.within
+                out.append(Tracked((edit.code,), edit.passage.text[start:end], "",
+                                   line=edit.passage.line_of(start),
+                                   left_out="another reading changes the same words "
+                                   "otherwise"))  # fmt: skip
     return out
 
 
@@ -353,7 +385,7 @@ def _why_left_out(old: str, new: str, printed_old: str | None, printed_new: str 
             return "its words hold a quotation mark the converted text writes straight"
         return "its words hold a mark the document does not print"
     if not printed_old or printed_old == printed_new:
-        return "it changes nothing the document prints"
+        return NOTHING_PRINTED
     return ""
 
 

@@ -48,6 +48,9 @@ from manuscript_guard.tracked import (
 
 _DOCUMENT = "word/document.xml"
 _COMMENTS = "word/comments.xml"
+#: The parts whose text pandoc converts beside the body's: a tracked change is looked for
+#: in them too, and written in none (`tracked_copy.locate`).
+_NOTES = ("word/footnotes.xml", "word/endnotes.xml")
 _RELATIONSHIPS = "word/_rels/document.xml.rels"
 _TYPES = "[Content_Types].xml"
 _COMMENTS_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"
@@ -368,7 +371,9 @@ def _commented(parts: dict[str, bytes], names: list[str], target: Path, notes: l
     for paragraph in paragraphs:
         _one_text_each(paragraph)
     texts = [_chars(paragraph) for paragraph in paragraphs]
-    changes, untracked = tracked_copy.locate(texts, corrections or [])
+    notes_text = [_chars(one)[0] for part in _NOTES if part in parts and corrections
+                  for one in parse_xml(parts[part], what=part).iter(W + "p")]  # fmt: skip
+    changes, untracked = tracked_copy.locate(texts, corrections or [], notes_text)
     said = tracked_copy.covered(notes, changes, untracked) if corrections is not None else set()
     notes = [note for index, note in enumerate(notes) if index not in said]
     located: list[tuple[int, tuple[int, int], Note]] = []
@@ -400,6 +405,8 @@ def _commented(parts: dict[str, bytes], names: list[str], target: Path, notes: l
         comments.append(_comment(identifier, _placement(Note("", "", _listing(listed)), "",
                                                         date)))  # fmt: skip
     taken = tracked_copy.write_changes(paragraphs, changes, ids, date)
+    if corrections is not None:
+        tracked_copy.distinct(document, ids)
     parts[_DOCUMENT] = _declared_again(_written(document, declared), declared)
     tracked_copy.check(parts[_DOCUMENT], taken, original,
                        tracked_copy.expected(original, changes))  # fmt: skip

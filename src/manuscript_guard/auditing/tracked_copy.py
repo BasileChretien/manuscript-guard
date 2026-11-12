@@ -30,7 +30,8 @@ import re
 from dataclasses import dataclass
 from xml.etree import ElementTree as ET
 
-from manuscript_guard.tracked import _XML, W, _chars
+from manuscript_guard.auditing.gates import NOTHING_PRINTED
+from manuscript_guard.tracked import _REVISIONS, _XML, W, _chars
 
 #: Who the tracked changes are by, as Word shows it beside each.
 AUTHOR = "manuscript-guard"
@@ -77,11 +78,14 @@ def pattern(tracked) -> re.Pattern[str]:
                       + _words(tracked.after))  # fmt: skip
 
 
-def locate(texts: list[tuple[str, list]],
-           corrections: list) -> tuple[list[Placed], list[tuple[object, str]]]:  # fmt: skip
+def locate(texts: list[tuple[str, list]], corrections: list,
+           notes: list[str] = ()) -> tuple[list[Placed], list[tuple[object, str]]]:  # fmt: skip
     """Each correction found once in the paragraphs, each its text and where each of its
     characters is (`tracked._chars`), and in plain runs; and each other one with why it is
-    not."""
+    not. The paragraphs of the footnotes and endnotes, `notes`, are part of the text pandoc
+    converts and are looked in too, though nothing is written there: a correction of a
+    footnote whose words are cut to nothing either side is the bare word, which may stand
+    once in the body (round 1 of #666)."""
     placed: list[Placed] = []
     left: list[tuple[object, str]] = []
     for one in corrections:
@@ -89,10 +93,15 @@ def locate(texts: list[tuple[str, list]],
             left.append((one, one.left_out))
             continue
         found = _places([text for text, _where in texts], pattern(one))
-        if len(found) != 1:
+        elsewhere = len(_places(list(notes), pattern(one)))
+        if len(found) + elsewhere != 1:
             left.append((one, "its words are in no paragraph of the document as Word holds "
-                         "them" if not found else f"its words are in {len(found)} places in "
-                         "the document"))  # fmt: skip
+                         "them" if not found and not elsewhere else "its words are in "
+                         f"{len(found) + elsewhere} places in the document"))  # fmt: skip
+            continue
+        if not found:
+            left.append((one, "its words are in a footnote or an endnote, where no change is "
+                         "written"))  # fmt: skip
             continue
         index, start, end = found[0]
         if any(char.run is None for char in texts[index][1][start:end]):
@@ -142,12 +151,14 @@ def _its(note, tracked) -> bool:
 def covered(notes: list, placed: list[Placed], left: list[tuple[object, str]]) -> set[int]:
     """The notes whose findings are said by the tracked changes alone, by index: a placed
     correction of the note's finding stands on its line and holds its own words, and no
-    correction of the finding was left out, which its comment then has to say."""
+    correction of the finding was left out, which its comment then has to say: none of
+    its places, a correction refused for changing words another changes otherwise among them
+    (`gates._refused`), but one that changes nothing the document prints."""
     out = set()
     for index, note in enumerate(notes):
         if not note.code or note.line is None or not note.words:
             continue
-        if any(_its(note, one) for one, _why in left):
+        if any(_its(note, one) for one, why in left if why != NOTHING_PRINTED):
             continue
         if any(_its(note, one.tracked) and one.tracked.line == note.line
                and _holds(one.tracked.old, note.words) for one in placed):  # fmt: skip
@@ -168,9 +179,10 @@ class _Revisions:
                                      W + "date": self.date})  # fmt: skip
 
 
-def _boundary(paragraph: ET.Element, at: int) -> None:
+def _boundary(paragraph: ET.Element, at: int, revisions: _Revisions) -> None:
     """A run boundary in front of character `at` of the paragraph's text, where it is in a
-    plain run: the run split there."""
+    plain run: the run split there, a change of its formatting recorded in it given an id of
+    its own in the copy (round 1 of #666)."""
     _text, where = _chars(paragraph)
     if at <= 0 or at >= len(where) or where[at].run is None or where[at].offset == 0:
         return
@@ -181,6 +193,9 @@ def _boundary(paragraph: ET.Element, at: int) -> None:
     char.text.text, after_t.text = whole[: char.offset], whole[char.offset :]
     for node in (char.text, after_t):
         node.set(_XML + "space", "preserve")
+    for inner in after.iter():
+        if inner.tag in _REVISIONS and inner.get(W + "id") is not None:
+            inner.set(W + "id", revisions.ids.take("revision"))
     paragraph.insert(list(paragraph).index(char.run) + 1, after)
 
 
@@ -190,8 +205,8 @@ def _change(paragraph: ET.Element, lo: int, hi: int, inserted: str, revisions: _
     `w:del` of its own, and `inserted` put in their place, in the run properties of the
     first; or, where nothing is deleted, put in at `lo` in those of the character before
     it, or of the one after where `lo` `opens` the corrected words."""
-    _boundary(paragraph, lo)
-    _boundary(paragraph, hi)
+    _boundary(paragraph, lo, revisions)
+    _boundary(paragraph, hi, revisions)
     _text, where = _chars(paragraph)
     if hi > lo:
         runs = list(dict.fromkeys(where[at].run for at in range(lo, hi)))
@@ -216,7 +231,12 @@ def _change(paragraph: ET.Element, lo: int, hi: int, inserted: str, revisions: _
     insertion = revisions.element("ins")
     run = ET.SubElement(insertion, W + "r")
     if properties is not None:
-        run.append(copy.deepcopy(properties))
+        copied = copy.deepcopy(properties)
+        # The text put in is new: a change of formatting the run it copies recorded is that
+        # run's, and its id would be two revisions' (round 1 of #666).
+        for change in copied.findall(W + "rPrChange"):
+            copied.remove(change)
+        run.append(copied)
     t = ET.SubElement(run, W + "t")
     t.text = inserted
     t.set(_XML + "space", "preserve")
@@ -240,6 +260,21 @@ def write_changes(paragraphs: list[ET.Element], placed: list[Placed], ids, date:
                 _change(paragraphs[one.index], one.start + i1, one.start + i2, new[j1:j2],
                         revisions, opens=i1 == 0)  # fmt: skip
     return revisions.taken
+
+
+def distinct(document: ET.Element, ids) -> None:
+    """Every revision of the document with an id no other has: a run split where a comment
+    or a change begins (`tracked._split`) carries a change of its formatting into both
+    halves, under one id, and each after the first is given a new one."""
+    seen: set[str] = set()
+    for node in document.iter():
+        identifier = node.get(W + "id") if node.tag in _REVISIONS else None
+        if identifier is None:
+            continue
+        if identifier in seen:
+            identifier = ids.take("revision")
+            node.set(W + "id", identifier)
+        seen.add(identifier)
 
 
 def expected(texts: list[str], placed: list[Placed]) -> list[str]:
@@ -284,5 +319,5 @@ def check(document: bytes, taken: set[str], original: list[str], wanted: list[st
                                "document with its corrections made")  # fmt: skip
 
 
-__all__ = ["AUTHOR", "Placed", "TrackedCopyError", "check", "covered", "expected", "locate",
-           "pattern", "resolved_texts", "write_changes"]
+__all__ = ["AUTHOR", "Placed", "TrackedCopyError", "check", "covered", "distinct", "expected",
+           "locate", "pattern", "resolved_texts", "write_changes"]

@@ -326,6 +326,26 @@ def _belongs(key: str, of: str | None, over: str | None, family: str | None) -> 
     return {name: named for name, named in fields.items() if named is not None}
 
 
+def _of_variable(key: str, variable: object, skewed_ok: object) -> dict:
+    """The variable a value is of and the reason its skew is let stand, checked: the fields
+    `value()` writes for them. The reason is a sentence, and stands down the skew of a mean
+    that names its variable, so it comes with one."""
+    fields: dict = {}
+    if variable is not None:
+        if not isinstance(variable, str) or not variable.strip():
+            raise ValueError(f"{key!r}: variable names an entry of the data dictionary")
+        fields["variable"] = variable
+    if skewed_ok is not None:
+        if not isinstance(skewed_ok, str) or not skewed_ok.strip():
+            raise ValueError(f"{key!r}: skewed_ok is a sentence giving the reason")
+        if variable is None:
+            raise ValueError(
+                f"{key!r}: skewed_ok is said of a mean that names its variable with `variable`"
+            )
+        fields["skewed_ok"] = skewed_ok
+    return fields
+
+
 def input_digest(path: Path) -> str:
     """The digest of a file an analysis READ, ignoring line endings where they are formatting.
 
@@ -1519,6 +1539,8 @@ class Emitter:
         over: str | None = None,
         family: str | None = None,
         spread: str | None = None,
+        variable: str | None = None,
+        skewed_ok: str | None = None,
     ) -> None:
         """Record one value. Raises immediately on a duplicate key or unformattable float.
 
@@ -1544,6 +1566,15 @@ class Emitter:
             em.value("age.sd", 12.3, digits=1, spread="sd", of="age.mean")
 
         G2 warns where the text labels it the other ("SE" beside a standard deviation).
+
+        A mean names the variable of the data dictionary it is of with `variable`, and G15
+        holds it and each SD of it to the variable's floor, its `range.min`: a mean less
+        than twice its SD above the floor shows skewed data, which a median and an
+        interquartile range describe better (Altman and Bland, BMJ 1996;313:1200).
+        `skewed_ok` gives the reason the mean (SD) is reported all the same:
+
+            em.value("crp.mean", 5.1, digits=1, variable="crp",
+                     skewed_ok="reported as the trial registered it; medians in Table S2")
         """
         if key in self._values:
             raise ValueError(f"{key!r} emitted twice by {self.script}")
@@ -1584,6 +1615,7 @@ class Emitter:
             if over is not None or family is not None:
                 raise ValueError(f"{key!r}: a spread names the estimate it is of with `of` alone")
             spec["spread"] = spread
+        spec.update(_of_variable(key, variable, skewed_ok))
         self._values[key] = spec
 
     def correction(self, family: str, method: str, *, reason: str | None = None) -> None:

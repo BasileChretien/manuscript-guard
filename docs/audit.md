@@ -69,7 +69,7 @@ section in full and every finding with its place, its context and its hint, as o
 | Section | What it holds | Counted by `--strict` |
 |---|---|---|
 | Numbers in the outputs | each number against the outputs, and what a match is worth there | a number in no output |
-| Arithmetic | a table's totals and the counts they total, a characteristic's categories and their column's n, a flow printed as a nested list; a P and its statistic, an estimate and its interval, an n (%) and its denominator, a mean of whole numbers and its n | a total off, categories over their n, a flow that does not add up under a heading or caption naming a flow |
+| Arithmetic | a table's totals and the counts they total, a characteristic's categories and their column's n, a flow printed as a nested list; a P and its statistic, an estimate and its interval, an n (%) and its denominator, a mean of whole numbers and its n, a mean and its SD in a row named never negative | a total off, categories over their n, a flow that does not add up under a heading or caption naming a flow |
 | Abstract against Results | each number of the Abstract looked for where the paper reports, and each of its intervals and tests held to its one counterpart there, ending with what a match is worth | an interval or a test that differs from its counterpart |
 | Small cells recoverable by subtraction | each count held back ("<5") that a total beside it gives away, with the count it can only be | one a printed total gives away |
 | Writing (G6) and Language (G14) | what `check` says of the words, on a project made for the paper | no |
@@ -312,6 +312,21 @@ A mean of several items per person is read as a mean of one number each, so a me
 right for its items can be listed: name only rows of one number per person, or quote the
 value in the literature ledger, which takes both (`mean_of_whole_numbers: {n: 28, items:
 3}`).
+
+For a variable that cannot be negative, a mean less than twice its SD shows that the data
+are skewed, and the mean (SD) describes them badly; a median and an interquartile range
+would serve (Altman and Bland, BMJ 1996;313:1200). Nothing in a paper says a variable
+cannot be negative, so this too is read only in the rows you name: `--non-negative weight
+"length of stay"`, which may be given more than once, reads each table row whose label holds
+one of those, at word edges and in any case, and each cell printed as a mean and its SD,
+"12.3 (4.5)", "12.3 ± 4.5" or "12.3 +/- 4.5". A mean less than twice its SD is listed with
+the other disagreements, with the mean, the SD and the floor of 0; exactly twice is not.
+Neither is counted by `--strict`. A row whose label names a standard error (SE, SEM, s.e.,
+"standard error"), or whose cells stand under a header that names one, is not read, since an
+SE gives the SD only with the n, and is said; so is a row whose label names a percentage. A
+label under which nothing was read is said. Means in sentences are not read, nor an SE named
+only in a caption or a note. A variable with another floor, a score of 1 to 7, is held to 0
+here; `check` holds a project's means to the floor its data dictionary gives.
 
 For a paper still being written, bind the numbers instead — then a stale one is impossible
 rather than merely searched for.

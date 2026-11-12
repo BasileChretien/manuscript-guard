@@ -106,6 +106,7 @@ from generated import (
     escaped_backticks,
     figure_captions,
     figures_left_on,
+    floored_means,
     flow_lists,
     generated,
     harvest_cells,
@@ -180,6 +181,7 @@ from generated import (
     signs,
     small_profile_tables,
     sources,
+    spread_tables,
     suggestion_paragraphs,
     supplements,
     tag_paragraphs,
@@ -7449,6 +7451,93 @@ def _a_mean_with_a_minus_sign_or_a_plus_minus_is_not_read(patch: pytest.MonkeyPa
     patch.setattr(granularity, "_MEAN", re.compile(
         r"(?P<mean>-?\d+(?:\.\d+)?)(?:\s*[(\[]\s*\d+(?:\.\d+)?\s*[)\]])?"
     ))  # fmt: skip
+
+
+# ------------------------------------------------ a table's means and SDs of a measure
+
+
+@holds(100, spread_tables())
+def test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero(
+    drawn: tuple[str, list[str], list[tuple[Any, ...]], list[list]],
+) -> None:
+    """`audit --non-negative`: in a row whose label holds one the auditor names, at word
+    edges and in any case, each cell printed as a mean and its SD, in brackets or after a
+    plus-minus sign, a minus sign before a negative mean, is read, and said skewed where the
+    mean is less than twice the SD, exactly twice not. A row whose label names a standard
+    error, or the column under a header that names one, is passed over and said; so is a
+    row whose label names a percentage. A row not named, one whose label holds a named one
+    inside a word, a row of medians and a sentence are not read."""
+    from manuscript_guard.stats.skew import table_spreads
+    from manuscript_guard.text.tables import markdown_tables
+
+    text, labels, expected, passed = drawn
+    found, rows = [], []
+    for table in markdown_tables(text):
+        spreads, passed_over = table_spreads(table, tuple(labels))
+        found += [(s.line, s.mean, s.sd, s.skewed) for s in spreads]
+        rows += [[row.line, row.why] for row in passed_over]
+    assert found == expected, text
+    assert rows == passed, text
+
+
+@holds(100, floored_means())
+def test_a_mean_and_its_sd_are_held_to_the_floor_of_the_mean_s_variable(
+    drawn: tuple[dict[str, dict], dict[str, Any], list[list]],
+) -> None:
+    """G15: each SD of a mean that names its variable is held to the floor the data
+    dictionary gives the variable, and warns where the mean is less than twice the SD above
+    it, exactly twice not, a floor other than zero taken as the distance from it. A reason
+    on the mean stands the warning down; a blank one does not. A standard error, a variable
+    with no floor and a mean that names no variable are not held to one."""
+    from manuscript_guard.contracts.values import RESULTS, Value
+    from manuscript_guard.gates.summaries import held
+
+    values, floors, expected = drawn
+    read = {key: Value(key=key, value=spec["value"], display=spec["display"], origin=RESULTS,
+                       of=spec.get("of"), spread=spec.get("spread"),
+                       variable=spec.get("variable"), skewed_ok=spec.get("skewed_ok"))
+            for key, spec in values.items()}  # fmt: skip
+    found = [[one.sd.key, one.mean.key, one.floor, one.warned] for one in held(read, floors.get)]
+    assert found == expected, values
+
+
+def _a_mean_twice_its_sd_is_skewed(patch: pytest.MonkeyPatch) -> None:
+    from decimal import Decimal
+
+    from manuscript_guard.stats import skew
+
+    def at_most(mean: object, sd: object, floor: object = 0) -> bool | None:
+        parts = [skew._decimal(value) for value in (mean, sd, floor)]
+        if any(part is None for part in parts):
+            return None
+        return parts[0] - parts[2] <= Decimal(skew.TIMES) * parts[1]
+
+    patch.setattr(skew, "skewed", at_most)
+
+
+def _a_floor_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    read = skew.skewed
+    patch.setattr(skew, "skewed", lambda mean, sd, floor=0: read(mean, sd, 0))
+
+
+def _a_never_negative_label_is_matched_inside_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    patch.setattr(skew, "names", lambda label, text: label.lower() in text.lower())
+
+
+def _an_se_in_a_table_is_read_as_an_sd(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    patch.setattr(skew, "_SE", re.compile(r"(?!)"))
+
+
+def _an_se_of_a_mean_is_read_as_its_sd(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import summaries
+
+    patch.setattr(summaries, "READ", frozenset({"sd", "se"}))
 
 
 def _a_named_row_s_own_n_is_taken(patch: pytest.MonkeyPatch) -> None:
@@ -22587,6 +22676,30 @@ BROKEN = {
     "a named label is matched inside a word": (
         _a_named_label_is_matched_inside_a_word,
         test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
+    ),
+    "a mean exactly twice its SD is skewed, in a table": (
+        _a_mean_twice_its_sd_is_skewed,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "a mean exactly twice its SD above its floor is skewed": (
+        _a_mean_twice_its_sd_is_skewed,
+        test_a_mean_and_its_sd_are_held_to_the_floor_of_the_mean_s_variable,
+    ),
+    "a mean is held to zero, not to its variable's floor": (
+        _a_floor_is_not_read,
+        test_a_mean_and_its_sd_are_held_to_the_floor_of_the_mean_s_variable,
+    ),
+    "a never-negative label is matched inside a word": (
+        _a_never_negative_label_is_matched_inside_a_word,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "an SE in a table is read as an SD": (
+        _an_se_in_a_table_is_read_as_an_sd,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "an SE of a mean is read as its SD": (
+        _an_se_of_a_mean_is_read_as_its_sd,
+        test_a_mean_and_its_sd_are_held_to_the_floor_of_the_mean_s_variable,
     ),
     "a footnote marker on a row of means is not seen": (
         _a_mean_s_footnote_marker_is_not_seen,

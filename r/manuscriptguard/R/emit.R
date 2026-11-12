@@ -1305,11 +1305,14 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
   # tests with `family`; a share names its numerator with `of` and its denominator with
   # `over`. G2 warns on a sentence that quotes it without them. `same_as` names another key
   # this one is the same quantity as, as in Python: a second display of one value (APA's
-  # ".47" beside "0.47") declared so, which G8 holds to the first.
+  # ".47" beside "0.47") declared so, which G8 holds to the first. `variable` names the
+  # variable of the data dictionary a mean is of, and G15 holds it and each SD of it to the
+  # variable's floor, its `range.min`; `skewed_ok` is the sentence giving the reason a mean
+  # (SD) of skewed data is reported all the same, as in Python.
   value <- function(key, value, display = NULL, digits = NULL, unit = NULL,
                     quoted = TRUE, note = NULL, bounds = NULL, bound = NULL,
                     level = NULL, of = NULL, over = NULL, family = NULL,
-                    spread = NULL, same_as = NULL) {
+                    spread = NULL, same_as = NULL, variable = NULL, skewed_ok = NULL) {
     if (!is.null(state$values[[key]])) {
       stop(key, " emitted twice by ", script_path, call. = FALSE)
     }
@@ -1351,6 +1354,24 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
         stop(key, ": a spread names the estimate it is of with `of` alone", call. = FALSE)
       }
       entry$spread <- spread
+    }
+    if (!is.null(variable)) {
+      if (!is.character(variable) || length(variable) != 1L || is.na(variable) ||
+          !nzchar(trimws(variable))) {
+        stop(key, ": variable names an entry of the data dictionary", call. = FALSE)
+      }
+      entry$variable <- variable
+    }
+    if (!is.null(skewed_ok)) {
+      if (!is.character(skewed_ok) || length(skewed_ok) != 1L || is.na(skewed_ok) ||
+          !nzchar(trimws(skewed_ok))) {
+        stop(key, ": skewed_ok is a sentence giving the reason", call. = FALSE)
+      }
+      if (is.null(variable)) {
+        stop(key, ": skewed_ok is said of a mean that names its variable with `variable`",
+             call. = FALSE)
+      }
+      entry$skewed_ok <- skewed_ok
     }
     state$values[[key]] <- entry
     invisible(NULL)

@@ -294,7 +294,7 @@ All deterministic, all runnable in CI without Claude.
 | G12 | Methods appropriateness | the analysis plan does not answer the question asked |
 | G13 | Response to reviewers | a point unanswered, or a claimed revision that did not happen |
 | G14 | Abbreviations, terms, spelling, notation and names from the code | at submission, a name from the code in a sentence: a key of the results, a variable of the data dictionary or a word written with underscores (a warning before); otherwise never: it warns when an abbreviation is used before it is defined, defined twice, defined for nothing or never defined, when the manuscript uses a term its author gave up for another, when a word is in the spelling of the English the paper does not declare, when a P value, an interval or a percentage is written in two ways, and when a number runs into its unit |
-| G15 | Models and their variables | a model of an outcome its kind is not for, a variable entered as another kind than it was declared, a reference or a level other than the declared one, an undeclared variable, a fit that did not converge or has a level without events, rows dropped and never stated (warnings: few events for each coefficient, an ordinal variable entered as a trend, a model the Methods name and the analysis did not fit) |
+| G15 | Models and their variables | a model of an outcome its kind is not for, a variable entered as another kind than it was declared, a reference or a level other than the declared one, an undeclared variable, a fit that did not converge or has a level without events, rows dropped and never stated (warnings: few events for each coefficient, an ordinal variable entered as a trend, a model the Methods name and the analysis did not fit, a mean less than twice its SD above the floor its variable's dictionary entry gives) |
 | G16 | The data and their dictionary | at submission: a dictionary nothing was checked against, an entry or a rule no count covers, counts neither the Methods nor the supplement bind (warnings before; a variable the analysis uses with no entry warns, from the analysis stage) |
 
 Plus one code that belongs to no gate: `gate-errored`, raised when a gate itself throws. It
@@ -6130,6 +6130,20 @@ it was read as a row of means and nothing under it was read). The row's own n is
 taken for its means: with two columns it would name one of them. The rows are held over
 generated tables (`mean_tables` in `tests/generated.py`), with a row of every kind in each
 and a pair of means half a unit from a total.
+
+A mean and its SD for a variable that cannot fall below a floor are read the same way in
+`check` and in `audit` (`stats/skew.py`). Altman and Bland (BMJ 1996;313:1200) note that
+for a variable that cannot be negative a mean less than twice its SD shows skewed data, and
+the Cochrane Handbook (section 10.5.3) gives the check from a floor other than zero: the
+mean minus the lowest possible value, over the SD, below 2. In `check`, G15 reads it for a
+mean that names its variable with `variable=` and each SD of it (`spread="sd"`, `of` the
+mean), the floor being the `range.min` the data dictionary gives the variable;
+`mean-sd-skewed` warns at every stage, and `skewed_ok="<reason>"` on the mean stands it
+down, a sentence and not a blank. A `variable=` with no entry is G16's `not-in-dictionary`.
+In `audit`, `--non-negative` names the rows, by words of their labels as `--whole-numbers`
+does, and each cell printed as a mean and its SD is held to 0; one less than twice its SD
+is listed with the disagreements, and a row that gives an SE or a percentage is said and
+not read. The limits are under "Known gaps".
 
 ## A model is read from its fit, and each variable says what it is
 
@@ -20831,6 +20845,40 @@ Open, recorded as each change landed:
   lists, a seven-hash heading among them.
   Pinned by `tests/test_models.py::test_a_model_named_in_a_heading_is_not_read`
   and `tests/test_models.py::test_a_line_shaped_like_a_heading_that_prints_as_text_is_read`.
+- **A mean is held to a floor only where the data dictionary gives one.** G15's
+  `mean-sd-skewed` reads a mean that names its variable (`variable=`) and each SD of it
+  against the `range.min` of the variable's entry. A project with no dictionary, or one that
+  does not read (G12's `dictionary-invalid`), an entry with no `min`, or one whose `min` is
+  a date, holds the mean to nothing and says nothing of it: as G16, a project that keeps no
+  dictionary is not asked for one. A `variable=` that names no entry is G16's
+  `not-in-dictionary`, which G16 asks from the analysis stage, and the mean is held to
+  nothing.
+  Pinned by `tests/test_corruption.py::test_a_mean_whose_variable_has_no_floor_is_not_held_to_one`
+  and `tests/test_corruption.py::test_a_variable_the_dictionary_has_no_entry_for_is_not_in_dictionary`.
+  - A standard error, `spread="se"`, is not read: the n that turns it into an SD is not on
+    the value. Accepted.
+  - Only an SD emitted as a value of its own, `spread="sd"` and `of` the mean's key, is
+    read. A mean and its SD composed into one table cell (`em.cell`), or an SD that names no
+    mean, are not held to the floor. Accepted.
+  - The rule shows skew; it does not show its absence. A mean at least twice its SD above
+    the floor can still be of skewed data, and nothing here says the data are normal
+    (Altman and Bland, BMJ 1996;313:1200). Exactly twice is not reported. Accepted.
+  - The mean and the SD are compared as the analysis emitted them, not as the paper prints
+    them: a mean of 7.94 and an SD of 3.96 are not reported, though printed as 7.9 (4.0)
+    they would be.
+    Accepted.
+- **`audit --non-negative` reads only the rows named, at a floor of 0, in two shapes.** A
+  cell is read where it is a mean and its SD in round brackets, "12.3 (4.5)", or after a
+  plus-minus sign, "12.3 ± 4.5" or "12.3 +/- 4.5", in a row whose label holds a label given,
+  at word edges and in any case. A mean in square brackets, a mean alone, and a mean in a
+  sentence are not read. A standard error is seen where the row's label or the header over
+  the cell names one (SE, SEM, s.e., s.e.m., "standard error"), and such cells are not read
+  and said; one named only in a caption or a note is not seen, and the cell is read as a
+  mean and its SD. A row whose label names a percentage is not read. A label is taken as
+  one of a variable that cannot be negative because the auditor says so: a variable with
+  another floor, a score of 1 to 7, is held to 0, which can only report fewer means.
+  Pinned by `tests/test_properties.py::test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero`
+  and `tests/test_corruption.py::test_an_se_named_only_in_a_caption_is_not_seen`.
 - **Only an equal typed copy fails.** A threshold typed in the Methods fails as a typed
   parameter while it equals one; once the code has moved on it is a warning,
   `threshold-undeclared`, and only in an analysis that declares parameters. A confidence level

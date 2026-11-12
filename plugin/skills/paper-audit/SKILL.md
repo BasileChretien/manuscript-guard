@@ -84,6 +84,13 @@ row the paper does not describe as whole numbers; a mean of a continuous measure
 listed as a misprint. A row whose means are of several items per person is read as one
 number each, and a right mean can be listed: check those by hand against n times the items.
 
+Where a table reports a mean (SD) of a variable that cannot be negative, a weight, a
+concentration, a length of stay, ask the user which rows they are and name them with
+`--non-negative weight "length of stay"`: each mean less than twice its SD is listed as
+skewed data, which a median and IQR would describe (Altman and Bland, BMJ 1996;313:1200).
+Never name a row whose variable can be negative, a change from baseline; a row that gives
+an SE is not read, and says so.
+
 ## 2. Run it
 
 ```bash

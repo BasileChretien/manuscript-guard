@@ -1846,6 +1846,48 @@ def _whole_number_means() -> Reading:
     return read
 
 
+@reading("means and SDs never negative")
+def _means_and_sds_never_negative() -> Reading:
+    """Each mean and SD in a pipe table's rows the auditor names as never negative, as
+    printed, and whether the mean is less than twice the SD; and each named row passed
+    over, with why."""
+    from manuscript_guard.stats.skew import table_spreads
+    from manuscript_guard.text.tables import markdown_tables
+
+    def read(given: dict[str, Any]) -> dict[str, list]:
+        labels = tuple(given["labels"])
+        found: list = []
+        passed: list = []
+        for table in markdown_tables(given["text"]):
+            spreads, rows = table_spreads(table, labels)
+            found += [[s.line, s.printed, s.mean, s.sd, s.label, s.skewed] for s in spreads]
+            passed += [[row.line, row.label, row.why] for row in rows]
+        return {"found": found, "passed": passed}
+
+    return read
+
+
+@reading("means held to a floor")
+def _means_held_to_a_floor() -> Reading:
+    """Each mean that names its variable and each SD of it, as G15 holds them to the floor
+    the data dictionary gives the variable: their keys, the floor, and whether it warns."""
+    from manuscript_guard.contracts.values import RESULTS, Value
+    from manuscript_guard.gates.summaries import held
+
+    def read(given: dict[str, Any]) -> list[list[Any]]:
+        values = {
+            key: Value(key=key, value=spec["value"], display=spec["display"], origin=RESULTS,
+                       of=spec.get("of"), spread=spec.get("spread"),
+                       variable=spec.get("variable"), skewed_ok=spec.get("skewed_ok"))
+            for key, spec in given["values"].items()
+        }  # fmt: skip
+        floors = given["floors"]
+        return [[one.sd.key, one.mean.key, one.floor, one.warned]
+                for one in held(values, floors.get)]  # fmt: skip
+
+    return read
+
+
 @reading("latex tables")
 def _latex_tables() -> Reading:
     """Each table a LaTeX file's author typed, as `audit` reads it: rows of cells, each with

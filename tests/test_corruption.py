@@ -10856,6 +10856,185 @@ def test_the_poisson_hint_says_what_r_can_do(project: Path) -> None:
     assert "sandwich::vcovHC" in hints[0]
 
 
+# ------------------------------------------------- G15: a mean and its SD of skewed data
+
+
+def _with_floor(root: Path, name: str, floor: object) -> None:
+    """The example's dictionary with an entry for `name` whose floor is `floor`."""
+    entry = (f"  - name: {name}\n    label: {name.upper()}\n    definition: A measure that "
+             f"cannot fall below its floor.\n    type: continuous\n"
+             f"    range: {{min: {floor}}}\n")  # fmt: skip
+    _dictionary_edited(root, "rules:", entry + "rules:")
+
+
+def _mean_and_sd(root: Path, mean: object, sd: object, **on_mean: object) -> None:
+    """The example's fragment with a mean, `crp.mean`, its fields `on_mean`, and an SD of it,
+    `crp.sd`: neither quoted, so that G2 asks nothing of them."""
+    spread = on_mean.pop("spread", "sd")
+    fragment = root / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["crp.mean"] = {"value": mean, "display": str(mean), "quoted": False,
+                                      **on_mean}  # fmt: skip
+    document["values"]["crp.sd"] = {"value": sd, "display": str(sd), "quoted": False,
+                                    "spread": spread, "of": "crp.mean"}  # fmt: skip
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def _skew_said(root: Path) -> list:
+    from manuscript_guard.gates.summaries import check_summaries
+
+    project, _ = load_project(root)
+    _namespace, results, _literature, report = load_namespace(project)
+    assert report.ok, report.findings
+    return list(check_summaries(project, results).findings)
+
+
+@pytest.mark.parametrize(
+    ("mean", "sd", "floor", "said"),
+    [
+        (5, 4, 0, 1),        # Altman and Bland's case: 5 is less than 8
+        (9, 4, 0, 0),        # 9 is more than 8
+        (8, 4, 0, 0),        # exactly twice is not less
+        (7.9, 4, 0, 1),
+        (15, 3, 10, 1),      # 5 above the floor is less than 6
+        (15, 3, 0, 0),       # the same numbers above 0 are not skewed
+        (16, 3, 10, 0),      # 6 above the floor is exactly twice
+        (12.5, 1.25, 10, 0),
+        (2.0, 0.6, 0.5, 0),  # a floor that is not whole: 1.5 above it, twice 0.6 is 1.2
+        (1.5, 0.6, 0.5, 1),  # 1.0 above it
+    ],
+)
+def test_a_mean_less_than_twice_its_sd_above_its_floor_is_a_warning(
+    project: Path, mean: float, sd: float, floor: float, said: int
+) -> None:
+    """A mean of a variable that cannot fall below its floor, less than twice its SD above
+    it, shows skewed data (Altman and Bland, BMJ 1996;313:1200), and passed."""
+    _with_floor(project, "crp", floor)
+    _mean_and_sd(project, mean, sd, variable="crp")
+    found = _skew_said(project)
+    warned = [("G15", "mean-sd-skewed", "warn")]
+    assert [(f.gate, f.code, f.severity) for f in found] == warned * said
+
+
+def test_the_skew_warning_gives_the_mean_the_sd_the_floor_and_the_source(project: Path) -> None:
+    _with_floor(project, "crp", 10)
+    _mean_and_sd(project, 15, 3, variable="crp")
+    (finding,) = _skew_said(project)
+    assert finding.message == (
+        "crp.mean (crp, floor 10 in the data dictionary) and its SD crp.sd: the mean 15 is "
+        "less than twice the SD 3 above the floor 10, so the data are skewed and the mean (SD) "
+        "describes them badly (Altman and Bland, BMJ 1996;313:1200)"
+    )
+    assert "median and an interquartile range" in finding.hint and "skewed_ok" in finding.hint
+    assert finding.path == project / "results" / "01_disproportionality.json"
+
+
+@pytest.mark.parametrize(
+    ("reason", "said"),
+    [("reported as the trial registered it; medians in Table S2", 0), ("", 1), ("   ", 1)],
+    ids=["a sentence", "empty", "blank"],
+)
+def test_a_reason_on_the_mean_stands_the_skew_warning_down(
+    project: Path, reason: str, said: int
+) -> None:
+    """`skewed_ok` stands the warning down with a sentence; an empty or a blank one, which no
+    emitter writes but a fragment can hold, stands nothing down."""
+    _with_floor(project, "crp", 0)
+    _mean_and_sd(project, 5, 4, variable="crp", skewed_ok=reason)
+    assert [f.code for f in _skew_said(project)] == ["mean-sd-skewed"] * said
+
+
+@pytest.mark.parametrize("reason", [3, ["a reason"], True])
+def test_a_reason_that_is_no_sentence_stands_nothing_down(project: Path, reason) -> None:
+    """A number or a list as `skewed_ok` is refused by the schema: the fragment does not
+    load, which G0 reports, and so nothing in it is stood down; nor would it be read as a
+    reason (`stands_down`)."""
+    from manuscript_guard.gates.summaries import stands_down
+
+    _with_floor(project, "crp", 0)
+    _mean_and_sd(project, 5, 4, variable="crp", skewed_ok=reason)
+    project_, _ = load_project(project)
+    _namespace, results, _literature, report = load_namespace(project_)
+    assert "schema-violation" in codes(report) and "crp.mean" not in results.values
+    assert not stands_down(reason) and not stands_down("") and stands_down("a reason")
+
+
+def test_an_se_is_not_read_as_an_sd(project: Path) -> None:
+    """A standard error gives the SD only with the n, which the value does not carry
+    (DESIGN.md, Known gaps)."""
+    _with_floor(project, "crp", 0)
+    _mean_and_sd(project, 5, 4, variable="crp", spread="se")
+    assert _skew_said(project) == []
+
+
+def test_a_mean_whose_variable_has_no_floor_is_not_held_to_one(project: Path) -> None:
+    """An entry with no `range.min`, or no dictionary at all, gives no floor, and the mean
+    is held to none (DESIGN.md, Known gaps)."""
+    _dictionary_edited(project, "rules:", "  - name: crp\n    label: CRP\n    definition: "
+                       "A concentration.\n    type: continuous\n    range: {max: 900}\nrules:")
+    _mean_and_sd(project, 5, 4, variable="crp")
+    assert _skew_said(project) == []
+    (project / "design" / "data_dictionary.yaml").unlink()
+    assert _skew_said(project) == []
+
+
+def test_a_variable_the_dictionary_has_no_entry_for_is_not_in_dictionary(project: Path) -> None:
+    """A mean that names a variable the dictionary does not have: G16's `not-in-dictionary`,
+    naming the value, and G15 holds it to no floor."""
+    from manuscript_guard.gates.data_quality import check_data_quality
+
+    _mean_and_sd(project, 5, 4, variable="crp")
+    assert _skew_said(project) == []
+    for stage in ("analysis", "submission"):
+        assert _g16(project, stage) == [("not-in-dictionary", "warn")]
+    project_, _ = load_project(project)
+    (finding,) = check_data_quality(project_, load_namespace(project_)[1], "analysis").findings
+    assert finding.message == ("crp is named by value crp.mean in "
+                               "results/01_disproportionality.json and has no entry in the "
+                               "data dictionary")  # fmt: skip
+
+
+@pytest.mark.parametrize("stage", ["design", "drafting", "submission"])
+def test_the_skew_warning_is_a_warning_at_every_stage(project: Path, stage: str) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    _with_floor(project, "crp", 0)
+    _mean_and_sd(project, 5, 4, variable="crp")
+    report, _project, _stage, _deferred = _run_gates(project, stage=stage)
+    assert [(f.gate, f.severity) for f in report.findings if f.code == "mean-sd-skewed"] == [
+        ("G15", "warn")]
+
+
+def test_the_r_emitter_s_mean_and_sd_are_read_by_the_same_check(project: Path) -> None:
+    """What the R emitter writes for a mean that names its variable, and its SD, is held to
+    the floor as the Python emitter's is; and its reason stands the warning down."""
+    from test_r_emitter import EMIT_R, RSCRIPT, _run_r
+
+    if RSCRIPT is None:
+        pytest.skip("R is not installed")
+    _with_floor(project, "crp", 0)
+    script = project / "analysis" / "02_skew.R"
+    for reason, said in (("NULL", ["mean-sd-skewed"]), ('"as the trial registered it"', [])):
+        script.write_text(
+            "source('" + EMIT_R.as_posix() + "')\n"
+            "em <- mg_emitter('" + script.as_posix() + "')\n"
+            "em$value('crp.mean', 5, digits = 1, quoted = FALSE, variable = 'crp', "
+            f"skewed_ok = {reason})\n"
+            "em$value('crp.sd', 4, digits = 1, quoted = FALSE, spread = 'sd', of = 'crp.mean')\n"
+            "em$write()\n",
+            encoding="utf-8",
+        )
+        out = _run_r(script, project)
+        assert out.returncode == 0, out.stderr
+        found = _skew_said(project)
+        assert [f.code for f in found] == said
+        if said:
+            assert found[0].path.name == "02_skew.json"
+            assert "the mean 5.0 is less than twice the SD 4.0 above the floor 0" in (
+                found[0].message)
+
+
 def test_rows_of_one_unit_taken_as_independent_are_a_warning(project: Path) -> None:
     """Item 14: a model fitted on several rows a patient, with ordinary standard errors,
     passed."""
@@ -11696,6 +11875,8 @@ _NOT_THE_MANUSCRIPT = (
     "check_figure_colours",
     # G1's and G12's of held-out data: the plan, the results and design/first_reads.yaml.
     "check_held_out", "check_held_out_reads",
+    # G15's of a mean and its SD: the results and design/data_dictionary.yaml.
+    "check_summaries",
 )  # fmt: skip
 #: The checks that read LaTeX: they run on a LaTeX manuscript as on any. G12's
 #: registration looks for an identifier and a sentence, which a `.tex` file holds
@@ -16249,6 +16430,96 @@ def test_audit_whole_numbers_on_the_command_line(
     shown = capsys.readouterr().out
     assert "line 5: 3.47 cannot be the mean of 28 whole numbers" in shown
     assert "2 read in the rows named" in shown
+
+
+_NEVER_NEGATIVE = (
+    "# Results\n\n"
+    "| Characteristic | Treated (n = 40) | Control (n = 41) |\n"
+    "|---|---|---|\n"
+    "| CRP, mg/L, mean (SD) | 5.0 (4.0) | 9.0 (4.0) |\n"
+    "| Length of stay, days | 8.0 +/- 4.0 | 3.1 \N{PLUS-MINUS SIGN} 2.2 |\n"
+    "| Ferritin, mean (SE) | 2.0 (1.5) | 3.0 (2.0) |\n"
+    "| Age, years | 5.0 (4.0) | 4.0 (3.0) |\n"
+)
+
+
+def test_an_audited_mean_less_than_twice_its_sd_in_a_named_row_is_said(tmp_path: Path) -> None:
+    """`audit --non-negative` names the rows of a variable that cannot be negative, and each
+    mean (SD) there less than twice its SD is listed with the numbers that do not fit, a
+    warning `--strict` does not count: 5.0 (4.0) is, 9.0 (4.0) and 8.0 +/- 4.0 are not. A row
+    that gives an SE is not read, and is said; a row not named is not read; and a label that
+    names no row is said."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+    from manuscript_guard.auditing.report import failed, items
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(_NEVER_NEGATIVE, encoding="utf-8")
+    named = ("crp", "length of stay", "ferritin", "weight")
+    report = audit([paper], [], non_negative=named)
+    assert [(d.line, d.code, d.message) for d in report.disagreements] == [
+        (5, "mean-sd-skewed", "5.0 (4.0): the mean 5.0 is less than twice the SD 4.0 above "
+            "the floor 0, so the data are skewed and the mean (SD) describes them badly "
+            "(Altman and Bland, BMJ 1996;313:1200)"),
+        (6, "mean-sd-skewed", "3.1 \N{PLUS-MINUS SIGN} 2.2: the mean 3.1 is less than twice "
+            "the SD 2.2 above the floor 0, so the data are skewed and the mean (SD) describes "
+            "them badly (Altman and Bland, BMJ 1996;313:1200)"),
+    ]  # fmt: skip
+    assert report.spreads_read == 4
+    assert [(d.line, d.message) for d in report.non_negative_unread] == [
+        (7, "--non-negative row 'Ferritin, mean (SE)': not read, as its label names a "
+            "standard error, and an SE is not an SD"),
+    ]  # fmt: skip
+    assert report.non_negative_unfound == ["weight"]
+    said = [(i.code, i.severity, i.counted) for i in items(report) if i.section == "Arithmetic"]
+    assert said == [("mean-sd-skewed", "warn", False)] * 2 + [
+        ("non-negative-unread", "info", False), ("non-negative-unfound", "info", False)]
+    # Given no outputs, nothing else is counted either: --strict passes.
+    assert not failed(audit([paper], None, non_negative=named))
+    shown = render(report, measure_discrimination(set()))
+    assert "a mean and its SD of a variable that cannot be negative" in shown
+    assert ("Means and SDs of variables that cannot be negative (--non-negative): 4 read in "
+            "the rows named, 2 with a mean less than twice its SD.") in shown
+    assert "--non-negative 'weight': no mean (SD) was read in a row whose label holds it" in shown
+
+
+def test_an_audit_without_non_negative_reads_no_mean_and_sd(tmp_path: Path) -> None:
+    from manuscript_guard.audit import audit, measure_discrimination, render
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(_NEVER_NEGATIVE, encoding="utf-8")
+    report = audit([paper], [])
+    assert report.disagreements == [] and report.spreads_read == 0
+    assert "cannot be negative" not in render(report, measure_discrimination(set()))
+
+
+def test_an_se_named_only_in_a_caption_is_not_seen(tmp_path: Path) -> None:
+    """A Known gap: an SE is seen where the row's label or the header over the cell names
+    it, not in a caption or a note, and the cell is then read as a mean and its SD."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("Table 1. Values are mean (SE).\n\n| | Treated |\n|---|---|\n"
+                     "| CRP | 2.0 (1.5) |\n| Weight | 7.0 [4.0] |\n", encoding="utf-8")
+    report = audit([paper], [], non_negative=("crp", "weight"))
+    assert [d.line for d in report.disagreements] == [5]
+    # A bracket that is not round is no SD: the cell is not read, and its label is said.
+    assert report.spreads_read == 1 and report.non_negative_unfound == ["weight"]
+
+
+def test_audit_non_negative_on_the_command_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The flag may be given more than once, and each gives one label or more."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(_NEVER_NEGATIVE, encoding="utf-8")
+    assert main(["audit", str(paper), "--strict", "--non-negative", "crp",
+                 "--non-negative", "length of stay", "weight"]) == 0  # fmt: skip
+    shown = capsys.readouterr().out
+    assert "line 5: 5.0 (4.0): the mean 5.0 is less than twice the SD 4.0" in shown
+    assert "4 read in the rows named, 2 with a mean less than twice its SD" in shown
+    assert "--non-negative 'weight': no mean (SD) was read" in shown
 
 
 def _cell(text: str, *, span: int = 1) -> str:

@@ -161,9 +161,9 @@ def reference_lists(text: str) -> list[tuple[int, int]]:
 
 
 #: A footnote's definition, `[^1]:`, at the start of a line; and a caption numbered with
-#: a letter, as an appendix numbers its displays, "Table A1." or "Figure B2:".
+#: a letter, as an appendix numbers its displays, "Table A1.", "Figure B.2:", "Figure A2 Rates".
 _NOTE = re.compile(r"[ ]{0,3}(?:\[\^[^\]\s]+\]:|[*_]{0,3}(?:supplementa(?:ry|l)\s+)?"
-                   r"(?:fig(?:ure)?\.?|table)\s*[a-z][0-9]+\s*\\?[.:|])", re.IGNORECASE)
+                   r"(?:fig(?:ure)?\.?|table)\s*[a-z]\.?[0-9]+(?:\s*\\?[.:|]|\s))", re.IGNORECASE)
 
 
 def _ends_here(lines: list[str], number: int) -> bool:

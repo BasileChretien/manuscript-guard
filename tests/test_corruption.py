@@ -1463,9 +1463,11 @@ def test_a_number_in_a_typed_reference_list_passes_and_one_just_after_it_fails(
      # pandoc 3.9 writes a Word title so numbered.
      "Fig. A2. Rates of 4321 patients.", "TABLE A1 | Counts of 4321 patients.",
      "Supplementary Table A1. We excluded 4321 patients.",
-     "III\\. Results\n\nWe excluded 4321 patients.", "3\\) Conclusion\n\nWe excluded 4321."],
+     "III\\. Results\n\nWe excluded 4321 patients.", "3\\) Conclusion\n\nWe excluded 4321.",
+     "Table A.1. Counts of 4321 patients.", "Figure A2 Rates of 4321 patients."],
     ids=["note", "abstract", "appendix in bold", "numbered conclusion", "escaped number",
-         "lettered caption", "fig.", "caption bar", "supplementary", "roman", "bracketed"],
+         "lettered caption", "fig.", "caption bar", "supplementary", "roman", "bracketed",
+         "dotted appendix number", "no stop"],
 )
 def test_a_note_or_a_section_s_name_after_a_typed_list_ends_it(
     project: Path, title: str, after: str

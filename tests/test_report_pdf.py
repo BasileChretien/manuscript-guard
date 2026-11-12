@@ -59,9 +59,9 @@ def test_the_audit_writes_its_report_as_a_pdf(tmp_path: Path, capsys) -> None:
     assert "Of the patients, 412 improved." in text
     # The report's last line, as the text and the page end with it (round 1 of #618).
     assert "bind the numbers instead" in " ".join(text.split())
-    # The title's bookmark holds the checks' table's, and no other.
+    # The title's bookmark holds the checks' table's and the contents', and no other.
     top = reader.trailer["/Root"]["/Outlines"]["/First"].get_object()
-    assert top["/Count"] == 1
+    assert top["/Count"] == 2
 
 
 def test_the_pdf_is_framed_says_where_each_check_stands_and_how_to_use_the_tool(
@@ -271,6 +271,130 @@ def test_every_line_stands_within_the_page(tmp_path: Path,
     # The text read back is set in the regular, the bold and the oblique fonts, so the widths
     # above were measured in each.
     assert {font for font, *_rest in placed} >= {"F1", "F2", "F3"}
+
+
+def _destinations(reader) -> tuple[dict, callable]:
+    """Each bookmark's place by its title, (page, top), and a function giving each link of a
+    page as the place it goes to, (page, top)."""
+    number = {page.indirect_reference.idnum: at for at, page in enumerate(reader.pages)}
+
+    def bookmarked(items, out):
+        for item in items:
+            if isinstance(item, list):
+                bookmarked(item, out)
+            else:
+                out[item.title] = (reader.get_destination_page_number(item), round(float(item.top)))
+        return out
+
+    def links(page) -> set[tuple[int, int]]:
+        found = set()
+        for annot in page.get("/Annots") or []:
+            annot = annot.get_object()
+            if annot.get("/Subtype") == "/Link" and "/Dest" in annot:
+                dest = annot["/Dest"]
+                found.add((number[dest[0].idnum], round(float(dest[3]))))
+        return found
+
+    return bookmarked(reader.outline, {}), links
+
+
+def _audited_pdf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *names: str):
+    from manuscript_guard import web
+    from manuscript_guard.auditing.report_pdf import written
+
+    monkeypatch.chdir(tmp_path)
+    for name in names:
+        (tmp_path / name).write_text(PAPER + "".join(
+            f"\nThe XYZ was seen again in case {n}.\n" for n in range(80)), encoding="utf-8")
+    view = web.view(["audit", *names, "--details"])["view"]
+    data = written(view, "Audit of " + ", ".join(names), "0")
+    return view, pypdf.PdfReader(io.BytesIO(data), strict=True)
+
+
+def test_the_contents_link_each_kind_and_section_to_the_page_they_print(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The author, 2026-11-12: "make the pdf really interactive". The first page lists each
+    note, each kind of finding and each section, each line a link to where it stands, with
+    the page it prints; each kind links back to the contents, not to the summary beside
+    them; and the title over every page after the first links back to the summary. Each link
+    is held to the place it goes to, its page and its height (round 1 of #646)."""
+    view, reader = _audited_pdf(tmp_path, monkeypatch, "paper.md")
+    pages = reader.pages
+    marks, links = _destinations(reader)
+    first = " ".join(pages[0].extract_text().split())
+    assert "In this report" in first
+    contents, summary = marks["In this report"], marks["What was checked"]
+    assert contents != summary
+    kinds = [kind for paper in view["words"] for kind in paper["kinds"]]
+    assert kinds
+    for kind in kinds:
+        where = marks[f"{kind['title']} ({kind['count']})"]
+        printed = re.search(re.escape(kind["title"]) + r" \d+ (\d+)", first)
+        assert printed and int(printed.group(1)) == where[0] + 1, (kind["title"], where)
+        assert where in links(pages[0])
+        # Back to the contents, from the page the kind stands on.
+        assert contents in links(pages[where[0]])
+    for heading, _text in view["sections"]:
+        assert marks[heading] in links(pages[0]), heading
+    assert len(pages) > 1 and summary[0] == 0
+    assert all(summary in links(page) for page in pages[1:])
+
+
+def test_each_paper_s_words_in_the_contents_go_to_that_paper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two papers audited together: each paper's words have a line of the contents of their
+    own, printing that paper's page and linking there; under one key the second printed the
+    first's (round 1 of #646). The summary's tile goes to the first paper's words."""
+    _view, reader = _audited_pdf(tmp_path, monkeypatch, "first.md", "second.md")
+    marks, links = _destinations(reader)
+    first = " ".join(reader.pages[0].extract_text().split())
+    for name in ("first.md", "second.md"):
+        where = marks[f"Writing and language: {name}"]
+        printed = re.search(r"Writing and language: " + re.escape(name) + r" (\d+)", first)
+        assert printed and int(printed.group(1)) == where[0] + 1, (name, where)
+        assert where in links(reader.pages[0])
+    assert marks["Writing and language: first.md"] != marks["Writing and language: second.md"]
+    # The tile stands in "What was checked", over the contents (round 2 of #646).
+    tops = _tops_of_links_to(reader, reader.pages[0], marks["Writing and language: first.md"])
+    assert marks["In this report"][0] == 0 and any(top > marks["In this report"][1]
+                                                   for top in tops), tops  # fmt: skip
+
+
+def _tops_of_links_to(reader, page, where: tuple[int, int]) -> list[float]:
+    """The top of each area of `page` that links to the place `where`, (page, top)."""
+    number = {one.indirect_reference.idnum: at for at, one in enumerate(reader.pages)}
+    annots = [annot.get_object() for annot in page.get("/Annots") or []]
+    return [float(annot["/Rect"][3]) for annot in annots
+            if annot.get("/Subtype") == "/Link" and "/Dest" in annot
+            and (number[annot["/Dest"][0].idnum], round(float(annot["/Dest"][3]))) == where]
+
+
+def test_the_contents_list_each_note_and_a_paper_with_only_a_note(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A note (what was not read, how the headings were read) and the words of a paper that
+    hold only a note of why they were not read each have a line of the contents, which links
+    to them and prints their page; the summary's tile then goes to that paper's note (round
+    2 of #646)."""
+    from manuscript_guard.auditing.report_pdf import written
+
+    view, _reader = _audited_pdf(tmp_path, monkeypatch, "first.md", "second.md")
+    view["notes"] = [["Could not read:", ["third.md: no such file"]],
+                     ["How the headings were read:", ["first.md: from its typed titles"]]]
+    view["words"][0].update(note="G14 could not read it.", kinds=[])
+    reader = pypdf.PdfReader(io.BytesIO(written(view, "Audit", "0")), strict=True)
+    marks, links = _destinations(reader)
+    first = " ".join(reader.pages[0].extract_text().split())
+    for title in ("Could not read", "How the headings were read",
+                  "Writing and language: first.md"):  # fmt: skip
+        printed = re.search(re.escape(title) + r" (\d+)", first)
+        assert printed and int(printed.group(1)) == marks[title][0] + 1, title
+        assert marks[title] in links(reader.pages[0]), title
+    tops = _tops_of_links_to(reader, reader.pages[0], marks["Writing and language: first.md"])
+    assert marks["In this report"][0] == 0 and any(top > marks["In this report"][1]
+                                                   for top in tops), tops  # fmt: skip
 
 
 def test_a_bookmark_counts_every_level_under_it() -> None:

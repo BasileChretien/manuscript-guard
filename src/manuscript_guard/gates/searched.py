@@ -225,7 +225,8 @@ def _a_work(work: Work, cited_title: str) -> bool:
 #: Adverse Event Reporting System ..." is one title (the measurement of 2026-10-20).
 _SUBTITLE = re.compile(r"(?<=\S)(?:[:?!]|\s[-\u2013\u2014])\s")
 #: The flag a registry puts in front of a retracted work's title.
-_FLAG = re.compile(r"^\s*(?:retracted|withdrawn)\s*:\s*", re.IGNORECASE)
+#: Springer's is "RETRACTED ARTICLE:" (round 2 of #650).
+_FLAG = re.compile(r"^\s*(?:retracted|withdrawn)(?:\s+article)?\s*:\s*", re.IGNORECASE)
 
 
 def main_title(title: str) -> str:

@@ -141,6 +141,18 @@ published since, a DOI or a PMID no registry has, and a registry that did not an
 does in a project. Only where no registry reported anything of any entry does it say how many
 entries were asked and how many a registry knew; an entry answered from the records kept
 counts as asked.
+An entry with neither a DOI nor a PMID is listed at its place and sorted by its shape: a
+journal article, a book or a chapter; a web page or a legal or official text, listed as "no
+DOI expected" with what in it says so (an access date, a web address, "Arrêté", an official
+journal); or not sorted, to check by hand. With `--lookup`, each article, book and chapter is
+looked up in Crossref by its title, its first author and its year, and a work is taken only
+when it is a near-exact match: the same title once case, punctuation and accents are folded,
+the same first author's family name, and the same year where the entry gives one. A work taken
+is shown as "found by its title: DOI …", and that DOI is then looked up for a retraction, a
+withdrawal or an expression of concern like the others. Where Crossref has no such work, or
+two of them, the entry is said to be checked by hand. A title of fewer than three searched
+words is not looked up. Without `--lookup` the entries are sorted and listed, and nothing is
+asked.
 `--lookup --dry-run` lists what would be sent and sends nothing; `--lookup-cache DIR` keeps
 each answer in `DIR` and reads it from there the next time. Without `--lookup-cache` nothing
 is kept.

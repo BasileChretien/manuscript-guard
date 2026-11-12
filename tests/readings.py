@@ -1997,6 +1997,24 @@ def _reference_census() -> Reading:
     return read
 
 
+@reading("reference sorting")
+def _reference_sorting() -> Reading:
+    """What the audit makes of each entry with no DOI and no PMID: its kind and why, and of
+    an article, a book or a chapter what it is looked up by in Crossref, its title, first
+    author, year and the longer titles it may be (`auditing.by_title`)."""
+    from manuscript_guard.auditing.by_title import cited, sort
+
+    def read(entries: list[str]) -> list[Any]:
+        found = []
+        for text in entries:
+            kind, said = sort(text), cited(text)
+            found.append([kind.kind, kind.why] + ([said.title, said.family, said.year,
+                                                    list(said.titles)] if said else [None]))
+        return found
+
+    return read
+
+
 @reading("printed value")
 def _printed_value() -> Reading:
     """Whether a value an earlier output printed is this paper's, as G8 compares one read

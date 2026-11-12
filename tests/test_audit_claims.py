@@ -573,7 +573,10 @@ def registries(monkeypatch: pytest.MonkeyPatch):
     httpd.seen.clear()
     services = lookup.Services(crossref=f"{url}/crossref/", openalex=f"{url}/openalex/doi:",
                                datacite=f"{url}/datacite/", doi_org=f"{url}/doi_org/",
-                               pubmed=f"{url}/pubmed/esummary.fcgi")  # fmt: skip
+                               pubmed=f"{url}/pubmed/esummary.fcgi",
+                               esearch=f"{url}/esearch/esearch.fcgi",
+                               crossref_search=f"{url}/crossref_search",
+                               openalex_search=f"{url}/openalex_search")  # fmt: skip
     monkeypatch.setattr(lookup, "Services", lambda: services)
     found = search.Services(europepmc=f"{url}/europepmc/search")
     monkeypatch.setattr(search, "Services", lambda: found)

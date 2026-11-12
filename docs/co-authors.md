@@ -48,6 +48,23 @@ How far this has been run: on the one real manuscript so far, two rounds of edit
 Word 16 as a co-author would make them were imported, by script rather than by a co-author.
 The word-roundtrip skill has every case `import` refuses, and why.
 
+## Each author's declarations
+
+`authors.yaml` is the record of what each author declares: their grants under `funding`,
+their interests under `competing_interests` ("None declared." where there are none; an
+empty field is not a declaration of none), their CRediT roles under `credit`, and, under
+`roles: ethics_lead:`, the ethics approval's reference as `approval`. Ask each co-author for
+their own entries rather than copying the last paper's.
+
+G4 holds the manuscript's statements to the record. The funding statement gives each grant's
+identifier, or the funder's name where the entry has no number; the competing interests
+statement names each author who declares an interest, and says "None declared" only where
+every record does; the approval's reference is in the Ethics statement, the Declarations or
+the Methods; and an author contributions statement, where the paper has one, names each
+author and each role recorded. Each is a warning while the paper is written and a failure at
+submission, and the hint says whether to change the text or the record. Which author holds
+which role is not checked ([Known gaps](../DESIGN.md#known-gaps)).
+
 ## What no gate can check: the checker
 
 Every gate asks whether a number is the number the analysis produced, or whether a quote is

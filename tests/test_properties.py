@@ -3817,6 +3817,99 @@ def test_a_deposit_is_named_by_its_doi_however_written_and_by_no_other(
         assert names_doi(written, DEPOSIT_DOI) == before, written
 
 
+# ------------------------------------------------- the declarations held to authors.yaml
+
+from generated import declaration_papers  # noqa: E402
+
+
+@holds(100, declaration_papers())
+def test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed(
+    drawn: tuple[dict, str, list[tuple[str, str]]],
+) -> None:
+    """G4 finds each grant, funder, author, role and approval the record holds in the
+    paper's statements however they are typed, under any heading or label of their kind and
+    in any order; and each near miss raises its own finding: a grant with a digit more, a
+    funder with a word changed, a denial, another family name, a collective none, a role
+    left out, other initials, another approval."""
+    from manuscript_guard.gates.disclosures import judge
+
+    authors, paper, near = drawn
+    said = judge(authors, paper).findings
+    assert not said, ([f.message for f in said], paper)
+    for code, changed in near:
+        codes = {f.code for f in judge(authors, changed).findings}
+        assert code in codes, (code, codes, changed)
+
+
+def _grant_found_inside_a_longer_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    loose = disclosures._identifier_pattern
+
+    def unbounded(token: str) -> re.Pattern[str]:
+        found = loose(token).pattern
+        for bound in ("(?<!\\d)", "(?<![^\\W\\d_])"):
+            found = found.removeprefix(bound)
+        for bound in ("(?!\\d)", "(?![^\\W\\d_])"):
+            found = found.removesuffix(bound)
+        return re.compile(found)
+
+    patch.setattr(disclosures, "_identifier_pattern", unbounded)
+
+
+def _declarations_keep_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    def keep_case(text: str) -> str:
+        import unicodedata
+
+        text = unicodedata.normalize("NFKD", text)
+        text = "".join(c for c in text if not unicodedata.combining(c))
+        return " ".join(text.translate(disclosures._DASHES).translate(disclosures._QUOTES)
+                        .split())  # fmt: skip
+
+    patch.setattr(disclosures, "fold", keep_case)
+
+
+def _declarations_keep_dashes(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    patch.setattr(disclosures, "_DASHES", {})
+
+
+def _declarations_keep_accents(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    def accented(text: str) -> str:
+        text = text.translate(disclosures._DASHES).translate(disclosures._QUOTES).casefold()
+        return " ".join(text.split())
+
+    patch.setattr(disclosures, "fold", accented)
+
+
+def _declared_initials_in_any_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    cased = disclosures._initials_pattern
+
+    def folded(initials: str) -> re.Pattern[str] | None:
+        found = cased(initials)
+        return None if found is None else re.compile(found.pattern, re.IGNORECASE)
+
+    patch.setattr(disclosures, "_initials_pattern", folded)
+
+
+def _the_other_authors_say_none_for_all(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    data = dict(disclosures._data())
+    subject = "(?:the authors|all authors|all the authors|the author)"
+    assert subject in data["collective_none"][0]
+    data["collective_none"] = [pattern.replace(subject, "authors?")
+                               for pattern in data["collective_none"]]  # fmt: skip
+    patch.setattr(disclosures, "_data", lambda: data)
+
+
 # ------------------------------------------------- the head over a fetched PDF's title
 
 from generated import PDF_WORK, pdf_first_pages  # noqa: E402
@@ -19960,6 +20053,73 @@ def _a_list_of_modules_read_line_by_line_gives_its_first(patch: pytest.MonkeyPat
     patch.setattr(software, "_import_list", lambda written: listed(written)[:1])
 
 
+# --------------------------------------------- the packages used, named in the Methods, G12
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import software_methods  # noqa: E402
+
+
+@holds(40, software_methods())
+def test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else(
+    planted: tuple[dict[str, Any], list[list[Any]]],
+) -> None:
+    """Each package the plan's Software section names and the analysis loads or recorded is
+    named as a word in the Methods, the main text's or the supplement's, in a sentence that
+    cites: in any of the forms a citation takes, after "et al.", "v." or "i.e." or after
+    the stop, in prose or in a code span, an R package with its case and a Python one in
+    any. A name inside a longer word, a citation
+    in the next sentence and a sentence of the Results do not count. Nothing is said of a
+    package the Deviations name, nor of one nothing loads."""
+    given, expected = planted
+    answered = answer(READINGS["software in the methods"](), given)
+    assert "raised" not in answered, answered
+    told = [[f["code"], f["severity"], f["path"], f["line"]]
+            for f in answered["answer"]["findings"]]  # fmt: skip
+    assert sorted(told, key=json.dumps) == expected, given
+
+
+def _a_package_s_name_is_found_inside_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    patch.setattr(software_methods, "_finder", lambda language, spelling: re.compile(
+        re.escape(spelling), 0 if language == software_methods.R else re.IGNORECASE))
+
+
+def _a_citation_in_another_sentence_counts(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    patch.setattr(software_methods, "_sentences", lambda text: [0, len(text)])
+
+
+def _the_supplement_s_methods_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    parts = software_methods._parts
+    patch.setattr(software_methods, "_parts", lambda main, supplement: parts(main, ()))
+
+
+def _a_sentence_is_cut_at_et_al(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    kept = [word for word in software_methods.ABBREVIATIONS if word != "et al"]
+    patch.setattr(software_methods, "_ABBREVIATED", software_methods._abbreviated(kept))
+
+
+def _a_citation_after_the_stop_is_the_next_sentence_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    patch.setattr(software_methods, "_carries", lambda cited, low, high: any(
+        low <= cite < high for cite in cited))  # fmt: skip
+
+
+def _an_r_package_is_matched_in_any_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    finder = software_methods._finder
+    patch.setattr(software_methods, "_finder", lambda language, spelling: finder(
+        software_methods.PYTHON, spelling))  # fmt: skip
+
+
 # ----------------------------------------- titles standing alone placed, and titles in bold
 
 # Imported here, not at the top, to keep clear of the import block other branches edit.
@@ -21154,6 +21314,30 @@ BROKEN = {
     "a registration is found inside a longer identifier": (
         _registration_found_inside_another,
         test_a_registration_is_found_where_the_manuscript_gives_it_and_no_lookalike_is,
+    ),
+    "a grant identifier in a declaration is found inside a longer number": (
+        _grant_found_inside_a_longer_number,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
+    ),
+    "the declarations are read in the case they are typed": (
+        _declarations_keep_case,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
+    ),
+    "a dash in a declaration is not read as a hyphen": (
+        _declarations_keep_dashes,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
+    ),
+    "a declaration's accents are kept": (
+        _declarations_keep_accents,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
+    ),
+    "an author's initials in a declaration are read in any case": (
+        _declared_initials_in_any_case,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
+    ),
+    "a none of the other authors in a declaration is read as everyone's": (
+        _the_other_authors_say_none_for_all,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
     ),
     "an identifier is read inside a longer word": (
         _identifier_read_inside_a_word,
@@ -26237,6 +26421,30 @@ BROKEN = {
     "a publication of law comes after a book's marks": (
         _a_publication_of_law_comes_after_a_book_s_marks,
         test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a package's name is found inside a longer word": (
+        _a_package_s_name_is_found_inside_a_word,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
+    ),
+    "a citation in another sentence counts for the package's": (
+        _a_citation_in_another_sentence_counts,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
+    ),
+    "the supplement's Methods are not read for a package": (
+        _the_supplement_s_methods_are_not_read,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
+    ),
+    "an R package is matched in any case": (
+        _an_r_package_is_matched_in_any_case,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
+    ),
+    "a sentence is cut at et al.": (
+        _a_sentence_is_cut_at_et_al,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
+    ),
+    "a citation after a sentence's stop is the next sentence's": (
+        _a_citation_after_the_stop_is_the_next_sentence_s,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
     ),
 }
 

@@ -7107,6 +7107,193 @@ def deposit_statements(draw: st.DrawFn) -> tuple[str, list[str], list[str]]:
     return text, [put(written) for written in DOI_NAMED], [put(other) for other in DOI_NOT_NAMED]
 
 
+# ------------------------------------------------- the declarations held to authors.yaml
+
+#: The dashes an author types where the record writes a hyphen.
+DECLARED_DASHES = ("-", chr(0x2010), chr(0x2011), chr(0x2013), chr(0x2014), chr(0x2212))
+#: The record a paper's declarations are held to: a grant with an identifier and a funder in
+#: words, an author with an interest beside one with none, roles of both, and an approval.
+#: The family names have an accent, a hyphen, an apostrophe and particles.
+DECLARED_FUNDER = "Fondation pour la Recherche M" + chr(0xE9) + "dicale"
+DECLARED_FAMILIES = ("L" + chr(0xE9) + "vy-Strauss", "O'Brien", "van der Berg",
+                     "M" + chr(0xFC) + "ller")  # fmt: skip
+#: "Funding acquisition" names funding, and as PLOS writes it first in its paragraph is a
+#: label that is no funding statement (round 2 of #653).
+DECLARED_ROLES = ("Conceptualization", "Funding acquisition",
+                  "Writing " + chr(0x2013) + " original draft",
+                  "Writing " + chr(0x2013) + " review & editing")  # fmt: skip
+#: Each heading or label a statement of each kind may stand under, `{}` its words.
+DECLARED_HEADINGS = {
+    "funding": ("Funding", "Sources of funding", "Financial support", "Acknowledgements"),
+    "interests": ("Competing interests", "Conflicts of interest", "Declaration of interests"),
+    "ethics": ("Ethics", "Ethics approval and consent to participate", "Methods"),
+    "contributions": ("Author contributions", "Contributors", "CRediT author statement"),
+}  # fmt: skip
+#: The ways a funding statement says there was none, each a finding beside a recorded grant.
+FUNDING_DENIALS = (
+    "This work received no funding.", "No funding was received for this work.",
+    "This research did not receive any specific grant from funding agencies.",
+)  # fmt: skip
+
+
+def _typed(draw: st.DrawFn, words: str, *, accents: bool = True) -> str:
+    """`words` as an author may type them: in a case drawn, its accents taken off or kept,
+    an apostrophe curly or straight, a space a line break, emphasised or not."""
+    import unicodedata
+
+    case = draw(st.sampled_from(("as", "upper", "lower")))
+    typed = {"as": words, "upper": words.upper(), "lower": words.lower()}[case]
+    if accents and draw(st.booleans()):
+        typed = "".join(c for c in unicodedata.normalize("NFKD", typed)
+                        if not unicodedata.combining(c))  # fmt: skip
+    if draw(st.booleans()):
+        typed = typed.replace("'", chr(0x2019))
+    spaces = [i for i, c in enumerate(typed) if c == " "]
+    if spaces and draw(st.booleans()):
+        at = draw(st.sampled_from(spaces))
+        typed = typed[:at] + "\n" + typed[at + 1 :]
+    mark = draw(st.sampled_from(("", "", "*", "**")))
+    return f"{mark}{typed}{mark}"
+
+
+def _grant_typed(draw: st.DrawFn, grant: str) -> str:
+    """A grant identifier as typed: its dashes drawn, its case, its parts joined or spaced,
+    in brackets or a link."""
+    dash = draw(st.sampled_from(DECLARED_DASHES))
+    typed = grant.replace("-", dash)
+    if draw(st.booleans()):
+        typed = typed.lower()
+    if draw(st.booleans()):
+        typed = typed.replace(dash, " ")
+    shape = draw(st.sampled_from(("{}", "({})", "[{}](https://example.org/{})", "**{}**")))
+    return shape.format(typed, grant)
+
+
+def _initials_typed(draw: st.DrawFn, given: str, family: str) -> str:
+    letters = [given[0], family[0]]
+    return draw(st.sampled_from(("{}.{}.", "{}{}", "{}. {}.", "{}-{}"))).format(*letters)
+
+
+def _role_typed(draw: st.DrawFn, role: str) -> str:
+    dash = draw(st.sampled_from(DECLARED_DASHES))
+    typed = role.replace(chr(0x2013), dash)
+    if draw(st.booleans()):
+        typed = typed.replace("&", "and")
+    if draw(st.booleans()):
+        typed = typed.replace("ization", "isation")
+    return _typed(draw, typed, accents=False)
+
+
+def _headed(draw: st.DrawFn, kind: str, body: str) -> str:
+    """`body` under a heading of `kind`, numbered or not, or a label: one that opens the
+    paragraph, or one alone in a paragraph of its own, as a conversion from Word writes it
+    (round 1 of #653)."""
+    title = draw(st.sampled_from(DECLARED_HEADINGS[kind]))
+    shape = draw(st.sampled_from(("heading", "heading", "label", "plain label", "alone",
+                                  "plain alone")))  # fmt: skip
+    if shape == "heading" or title == "Methods":
+        # The Methods are read by their heading, as G9 reads them, and by no label.
+        number = draw(st.sampled_from(("", "", "6. ", "6.1 ", "VI. ")))
+        return f"{'#' * draw(st.integers(1, 3))} {number}{title}\n\n{body}"
+    if "\n\n" in body and shape in ("label", "plain label"):
+        # A label that opens a paragraph heads that paragraph alone; a statement of several
+        # stands under a heading or a label of its own.
+        shape = "alone" if shape == "label" else "plain alone"
+    if shape == "label":
+        return f"**{title}:** {body}"
+    if shape == "alone":
+        return f"**{title}**\n\n{body}"
+    if shape == "plain alone":
+        return f"{title}:\n\n{body}"
+    return f"{title}: {body}"
+
+
+@st.composite
+def declaration_papers(
+    draw: st.DrawFn,
+) -> tuple[dict, str, list[tuple[str, str]]]:
+    """A record of every kind G4 holds the declarations to, a paper whose statements give
+    each in a typography drawn under headings or labels drawn, in an order drawn between
+    pieces of the pool; and for each near miss, the code it must raise and the paper with it
+    in place of the statement it changes: a grant with a digit more, a funder with a word
+    changed, a denial of funding, the family name of the author with an interest changed,
+    their initials written as a word in lower case, a collective none, a role left out, the
+    initials of an author changed, the approval with a digit changed. One of every kind in
+    each example. The contributions name the authors first, or, as PLOS writes them, the
+    roles first, one paragraph each (round 2 of #653)."""
+    family = draw(st.sampled_from(DECLARED_FAMILIES))
+    grant = draw(st.sampled_from(("ANR-20-CE17-0001", "R01-HL123456", "2021-0456-12")))
+    approval = draw(st.sampled_from(("CPP Ouest III 2021-A00123-36", "IRB-2019-117")))
+    authors = {
+        "authors": [
+            {"given": "Ada", "family": family, "funding": [f"Agence ({grant})", DECLARED_FUNDER],
+             "competing_interests": "Consulting fees from Pharma X.",
+             "credit": list(DECLARED_ROLES[:3])},
+            {"given": "Blaise", "family": "Sample", "competing_interests": "None declared.",
+             "credit": [DECLARED_ROLES[3]]},
+        ],
+        "roles": {"ethics_lead": {"author": "Sample", "approval": approval}},
+    }  # fmt: skip
+    # The author with an interest, by name or, as The Lancet writes it, by initials.
+    a_name = draw(st.sampled_from(("Ada " + _typed(draw, family),
+                                   _initials_typed(draw, "Ada", family))))  # fmt: skip
+    b_initials = _initials_typed(draw, "Blaise", "Sample")
+    roles = [_role_typed(draw, role) for role in DECLARED_ROLES]
+    approval_dash = draw(st.sampled_from(DECLARED_DASHES))
+    a_initials = _initials_typed(draw, "Ada", family)
+    role_first = draw(st.booleans())
+
+    def contributions(shown: list[str | None], b_name: str) -> str:
+        held = [(shown[0], a_initials), (shown[1], a_initials), (shown[2], a_initials),
+                (shown[3], b_name)]  # fmt: skip
+        if role_first:
+            return "\n\n".join(f"{role}: {who}." for role, who in held if role is not None)
+        first = ", ".join(role for role in shown[:3] if role is not None)
+        return f"{a_initials}: {first}. {b_name}: {shown[3]}."
+
+    bodies = {
+        "funding": f"Supported by {_grant_typed(draw, grant)} and the "
+                   f"{_typed(draw, DECLARED_FUNDER)}.",
+        "interests": f"{a_name} received consulting fees from Pharma X. The other authors "
+                     "declare no competing interests.",
+        "ethics": f"Approved ({_typed(draw, approval.replace('-', approval_dash))}).",
+        "contributions": contributions(roles, b_initials),
+    }  # fmt: skip
+    order = draw(st.permutations(list(bodies)))
+    # Plain words between the statements: the pool's listings and comments, left open, would
+    # hide what follows them, as they hide it from the reader.
+    between = st.lists(st.sampled_from(FILLER), min_size=3, max_size=12)
+    gaps = {kind: " ".join(draw(between)).capitalize() + "." for kind in order}
+
+    def paper(changed: dict[str, str]) -> str:
+        said = {**bodies, **changed}
+        return "".join(f"{gaps[kind]}\n\n{_headed(draw, kind, said[kind])}\n\n"
+                       for kind in order)  # fmt: skip
+
+    more = grant + "7"
+    other_family = "Smith"
+    near = [
+        ("funding-grant-missing", {"funding": f"Supported by {_grant_typed(draw, more)} and "
+                                   f"the {_typed(draw, DECLARED_FUNDER)}."}),
+        ("funding-grant-missing", {"funding": f"Supported by {_grant_typed(draw, grant)} and "
+                                   "the Fondation pour la Recherche Clinique."}),
+        ("funding-denied", {"funding": draw(st.sampled_from(FUNDING_DENIALS))}),
+        ("interests-author-missing", {"interests": f"Ada {other_family} received consulting "
+                                      "fees. The other authors declare no competing interests."}),
+        # Ada's initials as a word in lower case, "am" for Ada Müller, name no one.
+        ("interests-author-missing", {"interests": f"Of the authors, {('A' + family[0]).lower()}"
+                                      " received consulting fees. The other authors declare no "
+                                      "competing interests."}),
+        ("interests-none-contradicted", {"interests": "The authors declare no competing "
+                                         "interests."}),
+        ("credit-role-missing", {"contributions": contributions(
+            [roles[0], None, roles[2], roles[3]], b_initials)}),
+        ("credit-author-missing", {"contributions": contributions(roles, "C.D.")}),
+        ("ethics-approval-missing", {"ethics": "Approved (" + approval.replace("1", "4") + ")."}),
+    ]  # fmt: skip
+    return authors, paper({}), [(code, paper(changed)) for code, changed in near]
+
+
 # --------------------------------------------------- the head over a fetched PDF's title
 
 #: The cited work each first page below is judged against, its DOI and its title.
@@ -13541,6 +13728,105 @@ def software_plans(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
     return given, found
 
 
+# ------------------------------------- the packages used, named and cited in the Methods
+
+#: How a sentence cites, written after the package's name and before its stop: pandoc's,
+#: bracketed and narrative, a number typed in brackets, an author and year typed in brackets;
+#: after an abbreviation a sentence is not cut at, "et al.", "v." and "i.e."; and after the
+#: stop and a space, where the citation is the sentence's it follows (round 1 of #659).
+SOFTWARE_CITATIONS = (" [@{key}]", ", as @{key} describes", " [{number}]",
+                      " (Fictional et al., 2019)", ", described by Bates et al. [{number}]",
+                      ", described by Bates et al. [@{key}]", " (v. 3.4.0) [{number}]",
+                      ", i.e. Linear models [@{key}]",
+                      ", as Bates et al. (2015) describe [{number}]", ". [{number}]")  # fmt: skip
+#: How the Methods write a package's name, in each language.
+SOFTWARE_NAMINGS = {"r": ("{p}", "`{p}`", "`{p}::fit()`"),
+                    "python": ("{p}", "`{p}`", "`import {p}`")}  # fmt: skip
+#: Each kind of package, and what G12 says of it: named and cited in the main text, once
+#: for each form of citation; named only inside a longer word; named with the citation in
+#: the next sentence; named and cited in the supplement's Methods only; an R package and a
+#: Python one named in another case; named and cited only in the Results; one the Deviations
+#: name; one no script loads; one only the emitter recorded.
+SOFTWARE_KINDS = {
+    **{f"cited {form}": None for form in range(len(SOFTWARE_CITATIONS))},
+    "inside": "software-unnamed", "next": "software-uncited", "supplement": None,
+    "r case": "software-unnamed", "python case": None, "results": "software-unnamed",
+    "deviated": None, "unloaded": None, "recorded": "software-unnamed",
+}  # fmt: skip
+
+
+@st.composite
+def software_methods(draw: st.DrawFn) -> tuple[dict[str, Any], list[list[Any]]]:
+    """A plan whose Software section names one package of every kind in `SOFTWARE_KINDS`,
+    in an order drawn, the scripts that load them, the names the emitter recorded, and a
+    main text and a supplement whose Methods name them; and what G12 says of them, as
+    `[code, severity, path, line]`, the line the item's in the plan."""
+    prefix = draw(st.sampled_from(("qz", "vk", "pm")))
+    kinds = draw(st.permutations(sorted(SOFTWARE_KINDS)))
+    fixed = {"r case": "r", "python case": "python", "recorded": "python"}
+    plan = ["# Analysis plan", "", "## Research question", "", "Whether words were said.", "",
+            "## Software", ""]  # fmt: skip
+    scripts = {"r": [], "python": []}
+    emitted: list[str] = []
+    deviations: list[str] = []
+    methods: list[str] = []
+    supplement: list[str] = []
+    results: list[str] = []
+    found = []
+    for number, kind in enumerate(kinds):
+        language = fixed.get(kind) or draw(st.sampled_from(("r", "python")))
+        name = prefix + chr(ord("a") + number // 26) + chr(ord("a") + number % 26)
+        if language == "r" and draw(st.booleans()):
+            name += ".x" + chr(ord("a") + number % 26)
+        line = len(plan) + 1
+        plan.append(f"- `{name}` 1.{number}.0: {draw(st.sampled_from(FILLER))}")
+        if SOFTWARE_KINDS[kind]:
+            found.append([SOFTWARE_KINDS[kind], "warn", "design/plan.md", line])
+        if kind == "recorded":
+            emitted.append(name)
+        elif kind != "unloaded":
+            scripts[language].append(f"library({name})" if language == "r" else f"import {name}")
+        form = draw(st.integers(0, len(SOFTWARE_CITATIONS) - 1))
+        if kind.startswith("cited "):
+            form = int(kind.split()[1])
+        cited = SOFTWARE_CITATIONS[form].format(key=f"fictional2019{chr(97 + number % 26)}",
+                                                number=number + 1)  # fmt: skip
+        named = draw(st.sampled_from(SOFTWARE_NAMINGS[language])).format(p=name)
+        if kind.startswith("cited ") or kind == "deviated" and draw(st.booleans()):
+            methods.append(f"Models were fitted with {named}{cited}.")
+        elif kind == "inside":
+            methods.append(f"The {name}ed tables were kept{cited}.")
+        elif kind == "next":
+            methods.append(f"Tables were drawn with {named}. Their layout follows earlier "
+                           f"work{cited}.")  # fmt: skip
+        elif kind == "supplement":
+            supplement.append(f"Weights were computed with {named}{cited}.")
+        elif kind in ("r case", "python case"):
+            other = draw(st.sampled_from((name.upper(), name.capitalize())))
+            methods.append(f"Curves were smoothed with {other}{cited}.")
+        elif kind == "results":
+            results.append(f"Counts were made with {named}{cited}.")
+        if kind == "deviated":
+            deviations.append(f"`{name}` was set aside after the plan was agreed.")
+    # Each sentence in the Methods' own text or in a subsection of them, as drawn.
+    under = draw(st.lists(st.booleans(), min_size=len(methods), max_size=len(methods)))
+    top = " ".join(s for s, deep in zip(methods, under, strict=True) if not deep) or "Text."
+    below = " ".join(s for s, deep in zip(methods, under, strict=True) if deep) or "Text."
+    main = (f"# Introduction\n\nReports were included.\n\n# Methods\n\n{top}\n\n"
+            f"## Statistical analysis\n\n{below}\n\n# Results\n\n{' '.join(results)}\n")
+    supplementary = (f"# Supplementary methods\n\n{' '.join(supplement)}\n\n"
+                     "## Table S1. Counts\n\nCounts were kept.\n")  # fmt: skip
+    plan += ["", "## Deviations from the plan", ""]
+    plan += [f"{number}. {said}" for number, said in enumerate(deviations, 1)] or ["None."]
+    given = {
+        "plan": "\n".join(plan) + "\n",
+        "scripts": {"analysis/01_fit.R": "\n".join(scripts["r"]) + "\n",
+                    "analysis/02_fit.py": "\n".join(scripts["python"]) + "\n"},
+        "emitted": emitted, "own": [], "main": main, "supplement": [supplementary],
+    }  # fmt: skip
+    return given, sorted(found, key=json.dumps)
+
+
 # --------------------------------------- titles standing alone, placed, and titles in bold
 
 #: Papers whose titles stand alone, a PDF's lines or a Word paper's titles in bold, each a
@@ -14211,6 +14497,13 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "reply numbers": texts(NOTATED),
     "quoted": texts(),
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),
+    "disclosures": st.one_of(
+        declaration_papers().flatmap(lambda drawn: st.sampled_from(
+            [{"authors": drawn[0], "main": drawn[1]}]
+            + [{"authors": drawn[0], "main": text} for _code, text in drawn[2]])),
+        st.tuples(declaration_papers(), texts(), texts()).map(lambda drawn: {
+            "authors": drawn[0][0], "main": drawn[1], "supplement": drawn[2]}),
+    ),  # fmt: skip
     "deposit named": texts(DOI_NAMED + DOI_NOT_NAMED),
     "pdf shown": pdf_first_pages().map(lambda drawn: [text for text, _work in drawn]),
     "vault named": vault_commands().flatmap(
@@ -14326,4 +14619,5 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         ])
     ),  # fmt: skip
     "software": software_plans().map(lambda drawn: drawn[0]),
+    "software in the methods": software_methods().map(lambda drawn: drawn[0]),
 }

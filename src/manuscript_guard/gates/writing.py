@@ -684,6 +684,16 @@ def typed_citations(text: str) -> list[int]:
     return sorted(found)
 
 
+def citation_starts(text: str) -> list[int]:
+    """Where each citation of a Markdown text starts, as an unsupported appeal is judged
+    against them: its pandoc citations, bracketed and narrative, and those typed as text
+    (`typed_citations`). A LaTeX document's printed view writes its citation commands as
+    pandoc's, so they are found here too. G12 reads a package's citation with it."""
+    cited = [m.start() for m in bracketed(text)]
+    cited += [m.start() for m in NARRATIVE.finditer(text)]
+    return cited + typed_citations(text)
+
+
 def _vague(
     rules: Rules, path: Path, text: str, prose: str, totals: dict, cited: list[int] | None = None
 ) -> Report:
@@ -694,9 +704,7 @@ def _vague(
     citations (corpus round, 2026-11-10)."""
     report = Report()
     if cited is None:
-        cited = [m.start() for m in bracketed(text)]
-        cited += [m.start() for m in NARRATIVE.finditer(text)]
-        cited += typed_citations(text)
+        cited = citation_starts(text)
 
     for rule in rules.vague:
         for match in re.finditer(rule["pattern"], prose):

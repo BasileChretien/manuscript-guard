@@ -2323,7 +2323,7 @@ def _the_end_of_the_text_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> Non
 
 def _a_dash_s_clause_is_not_read_past_a_line_break(patch: pytest.MonkeyPatch) -> None:
     """Hard-wrapped text: "- CSS," with "which pays" on the next line defined nothing."""
-    _clause_ends_with(patch, language_gate._ONE_BREAK, language_gate._LINE_GAP, count=3)
+    _clause_ends_with(patch, language_gate._ONE_BREAK, language_gate._LINE_GAP, count=4)
 
 
 def _a_closing_mark_after_a_dash_s_short_form_ends_nothing(patch: pytest.MonkeyPatch) -> None:
@@ -2346,7 +2346,8 @@ def _a_citation_after_a_dash_s_short_form_is_words(patch: pytest.MonkeyPatch) ->
 def _a_closing_dash_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
     """Round 1 of #643: "the Single Payment Scheme - SPS - replaced it" defined nothing."""
     space, dash = language_gate._DASH_SPACE, language_gate._DASH
-    _clause_ends_with(patch, f"|{space}+{dash}{space}", "")
+    one_break, marks = language_gate._ONE_BREAK, language_gate._MARKS
+    _clause_ends_with(patch, rf"|{space}+{dash}{space}{one_break}{marks}[^\W\d_]", "")
 
 
 def _a_hard_line_break_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
@@ -2369,6 +2370,30 @@ def _a_list_item_s_line_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None
     """Round 1 of #643: each item of a list written long form first but the last defined
     nothing."""
     patch.setattr(language_gate, "_LIST_ITEM", re.compile("(?!)"))
+
+
+def _a_bound_value_after_a_dash_s_short_form_is_no_value(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #643: "- OR {{results.or}}." defined OR, the binding blanked by the mask."""
+    patch.setattr(language_gate, "_BOUND", re.compile("(?!)"))
+
+
+def _a_list_item_ends_at_its_first_line(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643's rule: a line with a marker was an item's anywhere, and ended where
+    the line did, its continuation on the next line or not."""
+    marked = language_gate._LIST_ITEM
+
+    def any_marker(typed: str, line: int) -> bool:
+        return bool(marked.match(typed, line))
+
+    patch.setattr(language_gate, "_in_a_list_item", any_marker)
+    patch.setattr(language_gate, "_item_ends", lambda typed, after: True)
+
+
+def _a_closing_dash_ends_a_dash_s_clause_before_anything(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #643's rule: "- OR - 1.52 in all" defined OR."""
+    dash, space = language_gate._DASH, language_gate._DASH_SPACE
+    one_break, marks = language_gate._ONE_BREAK, language_gate._MARKS
+    _clause_ends_with(patch, rf"{dash}{space}{one_break}{marks}[^\W\d_]", f"{dash}{space}")
 
 
 def _a_dash_needs_no_space(patch: pytest.MonkeyPatch) -> None:
@@ -22161,6 +22186,18 @@ BROKEN = {
     ),
     "a list item's line ends no dash's clause": (
         _a_list_item_s_line_ends_no_dash_s_clause,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a bound value after a dash's short form is no value": (
+        _a_bound_value_after_a_dash_s_short_form_is_no_value,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a list item ends at its first line, a dash's clause with it": (
+        _a_list_item_ends_at_its_first_line,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a closing dash ends a dash's clause before anything": (
+        _a_closing_dash_ends_a_dash_s_clause_before_anything,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "pandoc's smart dashes are no dashes": (

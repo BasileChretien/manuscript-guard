@@ -660,6 +660,12 @@ DEFINING = (
      "HFA"),
     ("- the Farming Transition Fund \N{EN DASH} FTF\n- the Farming Equipment Fund",
      "\N{EN DASH} FTF", "FTF"),
+    # Round 2 of #643: an item over a nested list, and one after an item with a continuation
+    # line.
+    ("- the Rural Payments Agency \N{EN DASH} RPA\n  - the Rural Payments Service",
+     "\N{EN DASH} RPA", "RPA"),
+    ("- the Farming Fund\n  still paid\n- the Woodland Grant Scheme \N{EN DASH} WGS\n- the "
+     "Woodland Fund", "\N{EN DASH} WGS", "WGS"),
 )  # fmt: skip
 
 #: A dash definition at the very end of the text, which every example of `bracketed` ends
@@ -718,6 +724,26 @@ NOT_DEFINING = (
     ("the Upland Entry Level \N{EN DASH} UEL \nwhich pays farmers", "UEL \nwhich", "UEL"),
     ("the risk was higher in older people \N{EN DASH} OR: 1.52", "OR: 1.52", "OR"),
     ("the risk was higher in older people \N{EN DASH} OR [2] 1.52", "OR [2]", "OR"),
+    # Round 2 of #643: a value bound to the results where the number would be, after a
+    # space, a colon, a comma and a closing dash, and before the line's end; a number after
+    # a closing dash; a list item that goes on into its continuation, indented or not; and a
+    # prose line in a paragraph's middle that opens as a list item would.
+    ("the risk was higher in older people \N{EN DASH} OR {{results.or}}.", "OR {{", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR: {{results.or}} in all", "OR:",
+     "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR, {{results.or}} in all", "OR,",
+     "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR \N{EN DASH} {{results.or}} in all",
+     "OR \N{EN DASH} {{", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR {{results.or}}\nin all",
+     "OR {{results.or}}\n", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR \N{EN DASH} 1.52 in all",
+     "OR \N{EN DASH} 1.52", "OR"),
+    ("- the risk was higher in older people \N{EN DASH} OR\n  1.52 in all", "OR\n  1.52",
+     "OR"),
+    ("- the risk was higher in older people \N{EN DASH} OR\n1.52 in all", "OR\n1.52 in", "OR"),
+    ("rates rose until\n2020) in older people \N{EN DASH} OR\n- 1.52 in all", "OR\n- 1.52",
+     "OR"),
 )  # fmt: skip
 
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as

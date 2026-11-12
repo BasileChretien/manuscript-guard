@@ -27850,6 +27850,22 @@ def test_a_dash_definition_before_a_citation_or_in_a_list_is_read(
     assert language_findings(project) == []
 
 
+def test_a_bound_value_after_a_dash_is_no_second_definition(project: Path) -> None:
+    """Round 2 of #643: the mask blanks a binding, so "older patients - ROR
+    {{results.ror.point}}." read as the short form ending its clause, a second definition of
+    ROR. A bound value stands where a number would, and a number goes on past the short
+    form."""
+    mended = with_ror_defined(project)
+    bound = mended.replace(
+        "The reporting odds ratio observed here",
+        "The odds were higher in reports from older patients \N{EN DASH} ROR "
+        "{{results.ror.point}}. The reporting odds ratio observed here",
+    )
+    assert bound != mended
+    main_md(project).write_text(bound, encoding="utf-8")
+    assert language_findings(project) == []
+
+
 def test_a_definition_given_again_after_a_dash_is_caught(project: Path) -> None:
     """The definition pasted again with a dash, its short form ending the clause: a second
     definition, as one in brackets is."""

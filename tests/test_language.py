@@ -327,9 +327,17 @@ def test_a_dash_defines_where_its_short_form_ends_the_clause(project: Path, endi
     [(" [95% CI 1.1\N{EN DASH}2.0] 1.52", set()), (" \N{ALMOST EQUAL TO} 1.52", set()),
      (" of 1.52", set()), ("\n1.52", set()), (" .52", set()), (": 1.52", set()),
      (" [2] 1.52", set()),
-     # A limit written down in DESIGN.md's Known gaps (round 1 of #643): a comma and a
-     # letter, and a semicolon, end the clause, so these are read as a second definition.
+     # Round 2 of #643: a value bound to the results where the number would be, after a
+     # space, a colon, a comma, a closing dash or a line break, the binding blanked to two
+     # spaces before the line's end; and a number after a closing dash.
+     (" {{results.or}}", set()), (": {{results.or}}", set()), (", {{results.or}}", set()),
+     (" \N{EN DASH} {{results.or}}", set()), ("\n{{results.or}}", set()),
+     (" {{results.or}}\n", set()), (" \N{EN DASH} 1.52", set()),
+     # A limit written down in DESIGN.md's Known gaps (rounds 1 and 2 of #643): a comma or
+     # a colon and a letter, and a semicolon, end the clause, so these are read as a second
+     # definition.
      (", p < 0.001", {"abbreviation-redefined", "abbreviation-unused"}),
+     (": p < 0.001", {"abbreviation-redefined", "abbreviation-unused"}),
      ("; 95% CI 1.1\N{EN DASH}2.0", {"abbreviation-redefined", "abbreviation-unused"})],
 )  # fmt: skip
 def test_a_statistic_after_a_dash_defines_nothing_whatever_its_shape(
@@ -409,6 +417,48 @@ def test_a_dash_defines_in_latex_before_a_citation_in_a_list_and_at_a_line_break
                for _at, short, _long in read.definitions}  # fmt: skip
     assert {"BPS", "CAP", "SAPS", "YFS"} <= defined, defined
     assert "LFA" not in defined
+
+
+def test_a_value_bound_after_a_dash_in_latex_is_a_statistic(tmp_path: Path) -> None:
+    """Round 2 of #643: `\\mg{results.or}` after the short form is blanked as a binding is,
+    and gives the odds ratio's value, as a number would."""
+    (tmp_path / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Results}\n"
+        "The odds ratio (OR) was computed. The risk was higher in older people -- OR "
+        "\\mg{results.or}. It held.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    longs = [long for read in _latex_read(tmp_path, None)
+             for _at, short, long in read.definitions if short == "OR"]  # fmt: skip
+    assert longs == ["odds ratio"], longs
+
+
+@pytest.mark.parametrize(
+    "written_as",
+    [
+        # A list item hard-wrapped, its next line indented or not.
+        "- the risk was higher in older people \N{EN DASH} OR\n  1.52 in all.",
+        "- the risk was higher in older people \N{EN DASH} OR\n1.52 in all.",
+        # A line in the middle of a paragraph that opens as a list item would.
+        "Rates rose until\n2020) in older people \N{EN DASH} OR\n- 1.52 in all.",
+        "Rates rose in group\n3. in older people \N{EN DASH} OR\n- 1.52 in all.",
+    ],
+)
+def test_a_list_item_goes_on_past_its_line_into_its_continuation(written_as: str) -> None:
+    """Round 2 of #643: a list item ends where its line ends only when the next line is no
+    continuation of it, and a prose line that opens "2020) " or "3. " is no list item."""
+    read = _file(0, Path("main.md"), f"# Results\n\n{written_as}\n", [], False)
+    assert "OR" not in [short for _at, short, _long in read.definitions]
+
+
+def test_a_nested_or_continued_list_item_still_ends_at_its_line() -> None:
+    """The items around a nested list, and an item after one with a continuation line,
+    end where their lines do."""
+    text = ("- the Basic Payment Scheme \N{EN DASH} BPS\n  - the Single Area Payment "
+            "\N{EN DASH} SAP\n- the Common Agricultural Policy \N{EN DASH} CAP\n  still paid\n"
+            "- the Young Farmer Scheme \N{EN DASH} YFS\n- the Area Payment")  # fmt: skip
+    read = _file(0, Path("main.md"), f"# Methods\n\n{text}\n", [], False)
+    assert [short for _at, short, _long in read.definitions] == ["BPS", "SAP", "YFS"]
 
 
 def test_a_dash_short_form_with_words_after_it_is_reported_undefined(project: Path) -> None:

@@ -9422,7 +9422,7 @@ SE_NAMES = ("mean (SE)", "mean (SEM)", "mean \N{PLUS-MINUS SIGN} SE", "mean (s.e
 Spreaded = tuple[int, str, str, bool]
 
 
-def _tenths(units: int) -> str:
+def _one_dp(units: int) -> str:
     """`units` tenths, printed to one place with an ASCII minus: 52 is "5.2"."""
     return str(Decimal(units).scaleb(-1))
 
@@ -9446,8 +9446,8 @@ def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Spreaded], list
     passed: list[list] = []
 
     def cell(mean: int, sd: int) -> str:
-        printed = _tenths(mean).replace("-", "\N{MINUS SIGN}") if mean < 0 else _tenths(mean)
-        return printed + draw(st.sampled_from(SPREAD_SHAPES)).format(sd=_tenths(sd))
+        printed = _one_dp(mean).replace("-", "\N{MINUS SIGN}") if mean < 0 else _one_dp(mean)
+        return printed + draw(st.sampled_from(SPREAD_SHAPES)).format(sd=_one_dp(sd))
 
     def pair(kind: str) -> tuple[int, int]:
         sd = draw(st.integers(1, 99))
@@ -9468,7 +9468,7 @@ def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Spreaded], list
         cells = [cell(mean, sd) for mean, sd in pairs]
         if kind == "median":
             row(f"{named[kind]}, median (IQR)",
-                [f"{_tenths(sd)} ({_tenths(sd)}-{_tenths(3 * sd)})" for _m, sd in pairs])
+                [f"{_one_dp(sd)} ({_one_dp(sd)}-{_one_dp(3 * sd)})" for _m, sd in pairs])
             continue
         if kind == "unnamed":
             row(draw(st.sampled_from(MEASURES)), cells)
@@ -9482,7 +9482,7 @@ def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Spreaded], list
             continue
         if kind == "percent":
             row(f"{named[kind]} above the limit, n (%)",
-                [f"{draw(st.integers(1, 40))} ({_tenths(sd)})" for _m, sd in pairs])
+                [f"{draw(st.integers(1, 40))} ({_one_dp(sd)})" for _m, sd in pairs])
             passed.append([len(lines), PERCENT])
             continue
         # A footnote marker after the label's words, or one that ends it, as `mean_tables`.
@@ -9490,14 +9490,14 @@ def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Spreaded], list
         row(f"{named[kind]}, mean (SD){marker}" if last else f"{named[kind]}{marker}, mean (SD)",
             cells)  # fmt: skip
         for mean, sd in pairs:
-            expected.append((len(lines), _tenths(mean), _tenths(sd), mean < 2 * sd))
+            expected.append((len(lines), _one_dp(mean), _one_dp(sd), mean < 2 * sd))
     lines += ["", draw(sentence).capitalize() + ".", ""]
     # The header names a standard error over the first arm: its cells are not read.
     lines += ["| Characteristic | Treated, mean (SE) | Control, mean (SD) |", "|---|---|---|"]
     pairs = [pair("skewed"), pair("skewed")]
     row(named["header"], [cell(mean, sd) for mean, sd in pairs])
     passed.append([len(lines), SE_HEADER])
-    expected.append((len(lines), _tenths(pairs[1][0]), _tenths(pairs[1][1]), True))
+    expected.append((len(lines), _one_dp(pairs[1][0]), _one_dp(pairs[1][1]), True))
     mean, sd = pair("skewed")
     lines += ["", f"{draw(sentence).capitalize()} {named['skewed']} {cell(mean, sd)} "
               f"{draw(sentence)}.", ""]  # fmt: skip
@@ -9534,7 +9534,7 @@ def floored_means(draw: st.DrawFn) -> tuple[dict[str, dict], dict[str, Any], lis
         else:
             mean = floor + draw(st.integers(0, 2 * sd - 1))
         name, key = f"v{at}", f"v{at}.mean"
-        spec: dict[str, Any] = {"value": mean / 10, "display": _tenths(mean)}
+        spec: dict[str, Any] = {"value": mean / 10, "display": _one_dp(mean)}
         if kind != "no variable":
             spec["variable"] = name
         if kind == "reason":
@@ -9546,7 +9546,7 @@ def floored_means(draw: st.DrawFn) -> tuple[dict[str, dict], dict[str, Any], lis
         floors[name] = None if kind == "no floor" else (
             floor // 10 if floor % 10 == 0 else floor / 10)
         spread = "se" if kind == "se" else "sd"
-        values[f"v{at}.{spread}"] = {"value": sd / 10, "display": _tenths(sd), "spread": spread,
+        values[f"v{at}.{spread}"] = {"value": sd / 10, "display": _one_dp(sd), "spread": spread,
                                      "of": key}  # fmt: skip
         if kind in ("se", "no floor", "no variable"):
             continue

@@ -100,6 +100,7 @@ from manuscript_guard.gates.data_sources import (
 )
 from manuscript_guard.gates.data_statement import check_deposit_doi, check_package_doi
 from manuscript_guard.gates.design_review import check_design_rounds
+from manuscript_guard.gates.disclosures import check_disclosures
 from manuscript_guard.gates.figure_alt import check_figure_alt
 from manuscript_guard.gates.figure_colours import check_figure_colours
 from manuscript_guard.gates.formats import check_format, not_read_in_latex
@@ -222,6 +223,9 @@ def _gate_run(
         # Its own, since the note for a paper whose journal asks for no statement runs with
         # no journal chosen.
         ("G4", lambda: check_ai_use(project, chosen)),
+        # Its own too: the declarations are held to authors.yaml whether or not a journal is
+        # chosen, and a journal that asks for them has G4's required statements as well.
+        ("G4", lambda: check_disclosures(project, chosen)),
         ("G8r", lambda: check_reporting(project)),
         ("G6", lambda: check_writing(project, results, submission=at_submission)),
         ("G9", lambda: check_methods(project, namespace, results)),

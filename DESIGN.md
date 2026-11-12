@@ -7685,6 +7685,109 @@ in the authors schema and in what `init` writes; `review --ai-use` its place in
 that now have an agent name itself `<provider>/<model>` say so where
 `tests/test_plugin.py` reads them.
 
+## The declarations are held to authors.yaml
+
+`authors.yaml` records, per author, the grants (`funding`), the competing interests
+(`competing_interests`) and the CRediT roles (`credit`), and the ethics lead's approval
+reference (`roles.ethics_lead.approval`). `submit` writes declarations from them, as files
+of their own. Nothing held the manuscript's own Funding, Competing interests, Ethics and
+Author contributions text to them, so a paper could say "This work received no funding"
+while the record listed a grant, and every gate passed. Commercial checkers look only for
+the heading. Basile set the scope and the funding rule; the check is G4's, since G4 is the
+gate of the statements a journal asks for, and one of its own (`gates/disclosures.py`),
+placed beside the AI-use check, since it runs with no journal chosen.
+
+### Where each statement is
+
+A statement is the section under a heading that names its kind, or a paragraph that opens
+with a label that does ("**Funding:** ...", "Competing interests: ..."), in the main text
+or the supplement. The headings are in `data/disclosures.yaml`, each with where its forms
+come from, starting from the patterns of the journal template's required statements:
+
+- funding: Funding, Sources of funding, Financial support, Grants, Role of the funding
+  source, and the Acknowledgements, where funding often stands;
+- competing interests: Competing interests, Conflict(s) of interest, Declaration of
+  (competing) interests, Duality of interest, Disclosures;
+- ethics: a heading with "ethics", "ethical", "institutional review" or "IRB", a
+  Declarations section, and the Methods, by the test G9 reads them by;
+- author contributions: Author(s') contributions, Contributors, CRediT author statement.
+
+A Declarations section's parts are read by their own headings and labels. Comments and
+fenced listings are blanked first, as G4 reads every required statement. A LaTeX
+manuscript is read in its printed view, which writes each sectioning command as a heading,
+as G4's `main_text` and the AI-use check read it.
+
+### What is compared
+
+- **Funding.** Each entry of each author's `funding` is in the funding statement. An entry
+  is found by each of its words that holds a digit, its grant identifier: "ANR-20-CE17-0001",
+  "12345". The identifier's runs of letters and digits are found in order, case and dashes
+  folded, a separator optional between a letter and a digit and needed between two runs of
+  one kind the record writes apart; no digit may stand before or after its digits, nor a
+  letter before or after its letters, so "12345" is not found in "123456" and "R01" is
+  found in "R01HL123456". An entry with no such word is found by its words in a row, with
+  accents, case, marks and `&` folded. A statement that says the work had none ("received
+  no funding", "No funding", Elsevier's "did not receive any specific grant", or "None" as
+  the whole statement) while an author's `funding` is not empty is `funding-denied`, one
+  finding that lists the record, and no grant is then reported apart.
+- **Competing interests.** A record declares an interest when it is filled and is not a
+  statement of none ("None declared.", the form `init` writes; "No competing interests";
+  "Nothing to declare"). Each author whose record declares one is named, by family name,
+  in the statement. A statement that says none for everyone, "None declared." as the whole
+  of it or a sentence such as "The authors declare no competing interests", stands only
+  while every record says none: otherwise it is `interests-none-contradicted`. "The other
+  authors declare no competing interests" says it of some of them, and is not read so. An
+  empty field while another author's is filled is `interests-unfilled`: an empty field is
+  not a declaration of none, as `submit` already says.
+- **Ethics.** Where `roles.ethics_lead` gives `approval`, the reference is found as a
+  funding entry is, in an Ethics section, a Declarations section or the Methods, of the main
+  text or the supplement. A sentence anywhere in either that says no approval was needed
+  ("no ethical approval was required", "exempt from ethical review") is
+  `ethics-approval-denied`, since a paper says it where it says it: the example says it in
+  its Data availability.
+- **Author contributions.** Where the manuscript has such a statement, each author with
+  recorded roles is named in it, by family name or by the initials `submit` prints ("A.E.",
+  or "AE"), and each role recorded is in it in CRediT's words, folded: "Writing – original
+  draft" with any dash, "&" or "and", "-isation" for "-ization". Which author holds which
+  role is not read. With no such statement nothing is said: many journals collect CRediT
+  on the submission form.
+
+### The findings
+
+| Code | When | Severity |
+|---|---|---|
+| `funding-grant-missing` | an entry of an author's `funding` is not in the funding statement | warning; a failure at submission |
+| `funding-denied` | the funding statement says there was none, and an author's `funding` is not empty | the same |
+| `funding-not-stated` | an author's `funding` is not empty, and the manuscript has no funding statement | note |
+| `interests-author-missing` | an author whose record declares an interest is not named in the statement | warning; a failure at submission |
+| `interests-none-contradicted` | the statement says no author has an interest, and a record declares one | the same |
+| `interests-unfilled` | an author's `competing_interests` is empty, and another's is filled | the same |
+| `interests-not-stated` | a record declares an interest, and the manuscript has no statement | note |
+| `ethics-approval-missing` | the approval reference is not in an Ethics section, the Declarations or the Methods | warning; a failure at submission |
+| `ethics-approval-denied` | the manuscript says no approval was needed, and the record gives one | the same |
+| `credit-author-missing` | an author with recorded roles is not named in the contributions statement | the same |
+| `credit-role-missing` | a role recorded is not in the contributions statement | the same |
+
+The two notes: with no statement, the record still has something to declare, and a journal
+that asks for the statement has G4's `missing-required-statement` already, while one that
+collects it on its form has the declarations `submit` writes. A note says it without
+failing either. Each hint says what to write, and that authors.yaml is the record, or that
+the record is what is wrong. With no authors.yaml, or none of these fields filled, nothing
+is said. A paper in no project has no authors.yaml, so `audit` does not run the check.
+
+### Tests
+
+The reading of statements reads text, so it is held over generated inputs:
+`tests/generated.py` draws papers whose declarations give a grant identifier, a funder in
+words, an author with an interest beside one with none, an approval reference and CRediT
+roles, each written in a typography drawn (dashes, case, accents, line breaks, emphasis,
+initials), under headings and labels drawn, with every near miss in each example: an
+identifier with a digit more, a funder with a word changed, a family name changed, a role
+left out, a collective none, a denial of funding. `tests/readings.py` gains the reading and
+`tests/test_properties.py` the property, with broken rules in `BROKEN` that it must catch
+under a dozen seeds. Each finding has its case in `tests/test_corruption.py`, the LaTeX twin
+and the supplement among them.
+
 ## A number a summary gives is one the paper reports
 
 An abstract summarises the paper, and a conclusion what it found: neither introduces data.
@@ -25559,6 +25662,41 @@ What papers converted from Word showed (see "What papers converted from Word sho
     the statement, are not read. Accepted.
   - A paper in no project has no records, so `audit --journal` does not run the check and
     says so among what G4 did not check.
+- **The declarations are held to the words of authors.yaml, not to what they mean.** G4's
+  check of the funding, competing interests, ethics and author contributions statements
+  (`gates/disclosures.py`; "The declarations are held to authors.yaml") has these limits,
+  each written down when it was built. Accepted.
+  - A grant entry with a number is found by its number alone, so the right number under the
+    wrong funder passes, and a number written apart from how the record writes it ("12 345"
+    for "12345") is not found.
+    Pinned by `tests/test_disclosures.py::test_a_grant_is_found_by_its_identifier_whatever_funder_it_is_given_under`.
+  - An entry with no number is found only by all its words, in the record's order: "the FRM"
+    or a word left out does not give "Fondation pour la Recherche Médicale".
+    Pinned by `tests/test_disclosures.py::test_a_funder_in_words_is_found_only_as_the_record_writes_it`.
+  - A denial of funding is read by the phrases of `data/disclosures.yaml` only; one in other
+    words is read as a statement that leaves the grant out.
+    Pinned by `tests/test_disclosures.py::test_a_denial_is_read_by_the_listed_phrases_only`.
+  - The headings, labels and phrases are English only: a statement under "Financement" is
+    no funding statement.
+    Pinned by `tests/test_disclosures.py::test_a_statement_under_a_heading_in_another_language_is_not_read`.
+  - An author named in the competing interests statement passes whatever it says of them,
+    "Ada Example declares no competing interests" among it.
+    Pinned by `tests/test_disclosures.py::test_an_author_named_passes_whatever_the_statement_says_of_them`.
+  - A collective none after a clause of its own ("Apart from this, the authors declare no
+    competing interests") is read as one for everyone, and is said to contradict the record
+    of the author the statement named before it.
+    Pinned by `tests/test_disclosures.py::test_a_collective_none_after_the_named_authors_is_read_by_its_words`.
+  - A sentence that says no ethical approval was needed is read wherever it stands in the
+    main text or the supplement, so one about another study is read as the paper's.
+    Pinned by `tests/test_disclosures.py::test_an_ethics_denial_is_read_anywhere_in_the_manuscript`.
+  - Which author holds which CRediT role is not read: a role counts wherever the
+    contributions statement gives it, and an author's initials ("AE") are read as a word
+    wherever they stand in it.
+    Pinned by `tests/test_disclosures.py::test_a_role_counts_whoever_the_statement_gives_it_to`.
+  - A declaration given only on the journal's submission form, or in the covering letter, is
+    not read; with no statement of its kind in the manuscript, a recorded grant or interest
+    is a note. Accepted.
+  - A paper in no project has no authors.yaml, so `audit` does not run the check. Accepted.
 - **The plan's Software section is held to the names a script writes, not to what runs.**
   (`gates/software.py`, "The plan names the software for the data".) Accepted.
   - A package loaded by a name the code computes is not read: `library(pkg, character.only

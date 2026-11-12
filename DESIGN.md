@@ -24927,8 +24927,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     brackets; and the share, then its counts in brackets, "n =" before them or not. Counts
     the sentence gives before its share, "Of 250 patients, 164 (66%)", a count with no
     denominator, "n = 164 (66%)", a share with no "%" and one with a decimal comma,
-    "65,6%", give no share, and the percentage is looked for as any number is. Pinned by
+    "65,6%", give no share, and the percentage is looked for as any number is; so do a
+    count over its denominator, "45% (2019/20)", "on 17/4 (45%)", a share over 100, and a
+    year with the next, "the 2019/2020 season (45%)" (round 1 of #664). Pinned by
     `tests/test_properties.py::test_the_abstract_is_held_to_what_the_paper_reports`.
+  - A date whose day is no more than twelve, "on 5/12 (45%)", or a pair of years further
+    apart, "2019/2021 (45%)", reads as a count and its denominator, and its percentage is
+    said off them and not looked for. Accepted.
   - The counts are taken from where they stand, up to three words before the bracket:
     "12 of 30 sites enrolled patients (40%)" is read as 12 of 30, whatever the 40% is of.
     Accepted.

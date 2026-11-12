@@ -6331,6 +6331,43 @@ def _counts_named_n_are_not_read(patch: pytest.MonkeyPatch) -> None:
     _rewritten(patch, r"(?:[nN]\s*=\s*)?", "")
 
 
+def _thousands_are_not_read_in_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    _rewritten(patch, shares._SENTENCE_COUNT, r"\d+(?![\d.]|,\d)")
+
+
+def _a_count_over_its_denominator_is_a_share(patch: pytest.MonkeyPatch) -> None:
+    """As at the first head of #664: "45% (2019/20)" and "on 17/4 (52%)" were off their
+    counts, and the percentage no longer looked for."""
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_no_share", lambda count, over, percent: (
+        Decimal(percent) > 100 or shares._a_year_pair(count, over)))  # fmt: skip
+
+
+def _a_share_over_a_hundred_is_a_share(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_no_share", lambda count, over, percent: (
+        count > over or shares._a_year_pair(count, over)))  # fmt: skip
+
+
+def _a_year_and_the_next_are_a_share(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_a_year_pair", lambda count, over: False)
+
+
+def _an_atom_closed_up_is_not_its_share(patch: pytest.MonkeyPatch) -> None:
+    """As at the first head of #664: "164/250(75%)" was both not found and off its counts."""
+    from manuscript_guard.auditing import abstract
+
+    real = abstract._off_its_counts
+    patch.setattr(abstract, "_off_its_counts", lambda atom, parts, written: (
+        (None, parts) if len(parts) != 1 else real(atom, parts, written)))  # fmt: skip
+
+
 def _a_counterpart_need_not_be_the_only_one(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import abstract
 
@@ -23849,6 +23886,26 @@ BROKEN = {
     ),
     "an Abstract's share before counts named n is not read": (
         _counts_named_n_are_not_read,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an Abstract's share with thousands in its counts is not read": (
+        _thousands_are_not_read_in_a_sentence,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an Abstract's count over its denominator is a share": (
+        _a_count_over_its_denominator_is_a_share,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an Abstract's share over a hundred is a share": (
+        _a_share_over_a_hundred_is_a_share,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an Abstract's year and the next are a count and its denominator": (
+        _a_year_and_the_next_are_a_share,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an Abstract's share closed up against its counts is not its share": (
+        _an_atom_closed_up_is_not_its_share,
         test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "the Introduction and a conclusion are searched for an Abstract's number": (

@@ -2733,6 +2733,33 @@ def test_an_abstract_share_its_counts_do_not_give_is_a_number_that_does_not_fit(
     assert said.line == 5
     assert said.message == ("in the Abstract, n (%) 164 out of 250 (75%): 164 of 250 is "
                             "65.6%, not 75; 75% is 164 of 218 to 220")  # fmt: skip
+    # Closed up, "164/250(75%)" is one atom, listed off its counts and not as not found;
+    # wrapped, the finding and the atom are on the percentage's line (round 1 of #664).
+    for share, line in (("164/250(75%)", 5), ("164 of\n250 (75%)", 6)):
+        report = read(share)
+        assert [c.line for c in report.abstract.off_counts] == [line], share
+        assert [c.text for c in report.abstract.not_found] == ["66.4%"], share
+        assert [d.line for d in report.disagreements] == [line], share
+
+
+def test_a_season_or_a_date_beside_a_percentage_in_the_abstract_is_no_share(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #664: "45% (2019/20)" was read as 2019 of 20, "the 2019/2020 season (45%)"
+    as 2019 of 2020, and each said off its counts, its 45% no longer looked for. A count over
+    its denominator, a share over 100 and a year with the next are no share: the 45% is
+    looked for as before, and nothing is said not to fit."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    for said in ("Coverage was 45% (2019/20).", "It was the 2019/2020 season (45%).",
+                 "It rose on 17/4 (45%).", "Then 30 of 60 (145%) were seen."):
+        paper.write_text(f"# Paper\n\n## Abstract\n\n{said}\n\n## Methods\n\nWe asked them."
+                         "\n\n## Results\n\nCoverage was 45% and 145%.\n", encoding="utf-8")
+        report = audit([paper], None)
+        assert report.disagreements == [], said
+        assert report.abstract.off_counts == report.abstract.from_counts == [], said
+        assert [c.text for c in report.abstract.found if "45" in c.text], said
 
 
 def test_an_abstract_number_changed_under_a_section_of_its_own_name_is_not_found(

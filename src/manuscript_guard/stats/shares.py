@@ -43,9 +43,11 @@ to three words between the counts and the bracket, "164 of 250 patients (66%)"; 
 "66% (164/250)", "66% (164 of 250)", "66% (n = 164/250)". The bracket may go on after the
 share, "(66%, 95% CI 60-72)". The "%" is needed: a number in brackets in a sentence is as
 often anything else. A count with no denominator beside it, "n = 164 (66%)", gives no
-share to check. The share is held to its counts as a table's is: within half a unit of its
-last printed place, so a share exactly half way, 1 of 8 printed "12%" or "13%", fits
-either way, and one cut short, 164 of 250 printed "65%", does not.
+share to check, and nor does a count over its denominator, "45% (2019/20)", a share over
+100, or a year and the next, "the 2019/2020 season (45%)". The share is held to its
+counts as a table's is: within half a unit of its last printed place, so a share exactly
+half way, 1 of 8 printed "12%" or "13%", fits either way, and one cut short, 164 of 250
+printed "65%", does not.
 """
 
 from __future__ import annotations
@@ -368,8 +370,9 @@ def _uncertain(row: _Row, cell: TableCell) -> str | None:
 
 # ----------------------------------------------------------------------- in a sentence
 
-#: A count in a sentence: its thousands parted by a comma or a narrow space, never by a
-#: plain one, which parts two numbers there, "In 2019 164 of 250".
+#: A count in a sentence: its thousands parted by a comma, a no-break space, a thin space or
+#: a narrow no-break space, never by a plain space, which parts two numbers there, "In 2019
+#: 164 of 250".
 _SENTENCE_COUNT = (r"(?:\d{1,3}(?:[,\N{NO-BREAK SPACE}\N{THIN SPACE}\N{NARROW NO-BREAK SPACE}]"
                    r"\d{3})+(?![\d.])|\d+(?![\d.]|,\d))")  # fmt: skip
 #: A count and its denominator: "164 of 250", "164 out of 250", "164/250".
@@ -389,21 +392,39 @@ _SHARE_FIRST = re.compile(
 )
 
 
+def _a_year_pair(count: int, over: int) -> bool:
+    """Whether a count and its denominator are a year and the next, "2019/2020" or
+    "2019/20": a season, an academic year, a financial year."""
+    return 1900 <= count <= 2099 and over in (count + 1, (count + 1) % 100)
+
+
+def _no_share(count: int, over: int, percent: str) -> bool:
+    """Whether what reads as a count, its denominator and its share is none: a count over
+    its denominator, "45% (2019/20)", a share over 100, or a year and the next, "the
+    2019/2020 season (45%)" (round 1 of #664: each was said off its counts, and its
+    percentage no longer looked for)."""
+    return count > over or Decimal(percent) > 100 or _a_year_pair(count, over)
+
+
 def written_shares(text: str) -> list[tuple[Share, int]]:
     """Each share `text` writes in a sentence with both its counts, in reading order, and
-    the offset its percentage starts at."""
+    the offset its percentage starts at; the line is the percentage's. A count over its
+    denominator, a share over 100 and a year with the next are no share (`_no_share`)."""
     found = []
     for pattern in (_COUNTS_FIRST, _SHARE_FIRST):
         for match in pattern.finditer(text):
+            count, over = _whole(match["count"]), _whole(match["over"])
+            if _no_share(count, over, match["percent"]):
+                continue
             printed = " ".join(text[match.start() : match.start("close")].split())
             printed += match["close"] if match["close"] in ")]" else \
                 {"(": ")", "[": "]"}[match["open"]]  # fmt: skip
+            at = match.start("percent")
             found.append((Share(
-                line=text.count("\n", 0, match.start()) + 1, printed=printed,
-                count=_whole(match["count"]), percent=match["percent"],
-                over=_whole(match["over"]), own=True, row_total=None, run_total=None,
-                label="", uncertain=None, context=printed,
-            ), match.start("percent")))  # fmt: skip
+                line=text.count("\n", 0, at) + 1, printed=printed, count=count,
+                percent=match["percent"], over=over, own=True, row_total=None,
+                run_total=None, label="", uncertain=None, context=printed,
+            ), at))  # fmt: skip
     return sorted(found, key=lambda one: one[1])
 
 

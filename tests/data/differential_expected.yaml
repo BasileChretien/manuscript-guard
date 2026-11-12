@@ -59,8 +59,10 @@ expected:
       and not looked for: one they give is listed as given by them ("from counts"), where it
       was not found, and one they do not give is listed apart ("off counts") with its
       arithmetic finding, where it was not found; one beside a count with no denominator,
-      "n = 164 (66%)", is not found as before (the author, 2026-11-11); the reading lists the
-      three, which the base has not, and its inputs now hold each shape. The entry it
+      "n = 164 (66%)", is not found as before (the author, 2026-11-11), and so is one beside
+      a count over its denominator, a share over 100 or a year and the next, "45%
+      (2019/20)" (round 1 of #664); the reading lists the three, which the base has not,
+      and its inputs now hold each shape. The entry it
       replaces, for the sections an Abstract's number is looked for in (#641), is spent
   - reading: reply numbers
     why: >-

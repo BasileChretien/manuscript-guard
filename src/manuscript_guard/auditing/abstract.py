@@ -488,12 +488,14 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
             if not parts:
                 continue  # "2ndyear": a rank typed against its word, no number to look for
             read.numbers += 1
-            states = [_state(part, exact, rounded, words) for part in parts]
             candidate = Candidate(atom.text, normalise_number(atom.text), piece.path,
                                   atom.line, around(atom))  # fmt: skip
-            off = _off_its_counts(atom, parts, written)
-            if off is not None:
-                (read.off_counts if off else read.from_counts).append(candidate)
+            off, parts = _off_its_counts(atom, parts, written)
+            states = [_state(part, exact, rounded, words) for part in parts]
+            if off:
+                read.off_counts.append(candidate)
+            elif off is not None and "" not in states:
+                read.from_counts.append(candidate)
             elif "" in states:
                 read.not_found.append(candidate)
             elif "rounded" in states:
@@ -521,19 +523,19 @@ def _state(part: str, exact: set[str], rounded: set[tuple[str, int]], words: set
     return "rounded" if (value, places[1]) in rounded else ""
 
 
-def _shares(read: AbstractRead, path: Path, abstract: str) -> dict[int, bool]:
+def _shares(read: AbstractRead, path: Path, abstract: str) -> dict[int, tuple[bool, str]]:
     """Each share one file's Abstract writes beside both its counts (`shares.written_shares`),
-    by the offset its percentage starts at, and whether it is off them; each one off them
-    put in `read` as an arithmetic finding, whether or not its percentage was left for the
-    section to read."""
+    by the offset its percentage starts at: whether it is off them, and its percentage as
+    printed; each one off them put in `read` as an arithmetic finding, whether or not its
+    percentage was left for the section to read."""
     from manuscript_guard.audit import Disagreement
     from manuscript_guard.stats import shares
 
     found = {}
     for share, start in shares.written_shares(abstract):
         read.shares += 1
-        found[start] = shares.off(share)
-        if found[start]:
+        found[start] = (shares.off(share), share.percent)
+        if found[start][0]:
             read.arithmetic.append(Disagreement(path, share.line, "in the Abstract, "
                                                 f"{shares.described(share)}",
                                                 _around(abstract, start, share)))  # fmt: skip
@@ -552,13 +554,26 @@ def _around(text: str, at: int, share) -> str:
                        line_end, text))  # fmt: skip
 
 
-def _off_its_counts(atom: Atom, parts: list[str], written: dict[int, bool]) -> bool | None:
-    """Whether an atom that is a percentage written beside both its counts is off them, or
-    None for any other atom: one number, whose percentage starts within it."""
-    if len(parts) != 1:
-        return None
-    return next((off for start, off in written.items() if atom.start <= start < atom.end),
-                None)  # fmt: skip
+def _off_its_counts(atom: Atom, parts: list[str],
+                    written: dict[int, tuple[bool, str]]
+                    ) -> tuple[bool | None, list[str]]:  # fmt: skip
+    """Whether an atom that holds a percentage written beside both its counts is off them,
+    and its other parts, to be looked for; None and all its parts for any other atom. An
+    atom off its counts is listed so whatever else it holds, as its finding is said: one
+    typed closed up, "164/250(75%)", was both not found and off its counts (round 1 of
+    #664). One they give is given by them where its other parts are found."""
+    from manuscript_guard.audit import normalise_number
+
+    at = next((start for start in written if atom.start <= start < atom.end), None)
+    if at is None:
+        return None, parts
+    off, percent = written[at]
+    others = list(parts)
+    for part in parts:
+        if part.endswith("%") and normalise_number(part) == normalise_number(percent):
+            others.remove(part)
+            break
+    return off, others
 
 
 # ----------------------------------------------------------------------------- conflicts

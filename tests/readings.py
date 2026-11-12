@@ -1950,6 +1950,20 @@ def _abbreviations() -> Reading:
     return abbreviations
 
 
+@reading("abbreviation edits")
+def _abbreviation_edits() -> Reading:
+    from manuscript_guard.corrections import corrections
+    from manuscript_guard.gates.language import _Known, _shipped, abbreviation_edits
+
+    def edited(given: dict[str, Any]) -> list[dict[str, Any]]:
+        exact, lowered = _shipped()
+        known = _Known(exact | set(given.get("known", ())), lowered)
+        return _corrected(corrections(abbreviation_edits([_file(given["text"])], known)))
+
+    _file("")
+    return edited
+
+
 @reading("audit abbreviations")
 def _audit_abbreviations() -> Reading:
     """G14's findings on a paper as the audit gives them: the short forms used and not

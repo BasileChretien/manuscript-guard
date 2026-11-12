@@ -7614,6 +7614,75 @@ def _spelt_typed(draw: st.DrawFn, own: str, theirs: int, ours: int,
     return pairs
 
 
+#: Abbreviations a manuscript may define, each with its long form, which G14 reads as a
+#: definition in either order.
+WRITTEN_OUT = (("ROR", "reporting odds ratio"), ("PRR", "proportional reporting ratio"),
+               ("HR", "hazard ratio"), ("IC", "information component"), ("RR", "risk ratio"),
+               ("SDR", "signal detection ratio"), ("EBGM", "empirical Bayes geometric mean"),
+               ("OR", "odds ratio"), ("CFR", "case fatality rate"),
+               ("IQR", "interquartile range"), ("SAE", "serious adverse event"),
+               ("AOR", "adjusted odds ratio"), ("CCI", "Charlson comorbidity index"))  # fmt: skip
+
+#: Abbreviations only the list of abbreviations gives, and the forms an entry of the list is
+#: written in, each read as a definition. Only the two with a bracket look like the text's,
+#: so each list holds one of each (round 1 of #645).
+LISTED_ONLY = (("ADR", "adverse drug reaction"), ("BMI", "body mass index"),
+               ("ICU", "intensive care unit"))  # fmt: skip
+ENTRY_FORMS = ("{0}: {1}", "{0}\t{1}", "{0} ({1})", "{1} ({0})")
+#: Abbreviations whose long form opens on a word that keeps its own case, and others
+#: defined just before a citation (round 2 of #645).
+KEEPS_ITS_CASE = (("MV", "mRNA vaccine"), ("ES", "eGFR slope"), ("PD", "pH drop"))
+CITED_AFTER = (("NNT", "number needed to treat"), ("GFR", "glomerular filtration rate"),
+               ("MAP", "mean arterial pressure"))  # fmt: skip
+#: What may stand between "an" and the short form it was chosen for: a space, a line
+#: break, a no-break space, a LaTeX tie, a mark of emphasis around the definition, a
+#: quotation mark (round 2 of #645).
+AN_SHAPES = ("an {0} ({1})", "an\n{0} ({1})", "an\N{NO-BREAK SPACE}{0} ({1})", "an~{0} ({1})",
+             "an **{0} ({1})**", "an \N{LEFT DOUBLE QUOTATION MARK}{0} ({1})"
+             "\N{RIGHT DOUBLE QUOTATION MARK}")  # fmt: skip
+
+
+@st.composite
+def abbreviations_written_out(draw: st.DrawFn) -> tuple[str, str]:
+    """A manuscript typed and as G14's abbreviation edits leave it. Written out: an
+    abbreviation defined and not used again after its long form in round brackets and in
+    square ones, before its long form inside a sentence and opening one, where the long form
+    takes the capital unless its first word keeps its own case, one defined twice, one just
+    before a citation, one also listed among the abbreviations, whose entry stays, and one
+    defined in the text and again by a funder, whose sentence stays. Left as they are: one
+    used again, one whose bracket holds more, a funder's, one after "an" in each shape,
+    which no edit puts right, a link's, and the entries of the list of abbreviations, one in
+    each form an entry is written in, which the list is to drop (rounds 1 and 2 of #645)."""
+    a, b, c, d, e, f, g, h, i, j, k, m, n = draw(st.permutations(WRITTEN_OUT))
+    opening = d[1][:1].upper() + d[1][1:]
+    kept, cited = draw(st.sampled_from(KEEPS_ITS_CASE)), draw(st.sampled_from(CITED_AFTER))
+    pairs = [
+        (f"seen.\n\n{kept[0]} ({kept[1]}) read", f"seen.\n\n{kept[1]} read"),
+        (f"the {cited[1]} ({cited[0]})[@smith2020] read", f"the {cited[1]}[@smith2020] read"),
+        *((shape.format(*i) + " read",) * 2 for shape in AN_SHAPES),
+        (f"the {a[1]} ({a[0]}) read", f"the {a[1]} read"),
+        (f"the {b[1]} [{b[0]}] read", f"the {b[1]} read"),
+        (f"then {c[0]} ({c[1]}) read", f"then {c[1]} read"),
+        (f"seen.\n\n{d[0]} ({d[1]}) read", f"seen.\n\n{opening} read"),
+        (f"the {e[1]} ({e[0]}) and again the {e[1]} ({e[0]})",
+         f"the {e[1]} and again the {e[1]}"),
+        (f"the {f[1]} ({f[0]}) read, and {f[0]} was 2",) * 2,
+        (f"the {g[1]} ({g[0]}; a measure) read",) * 2,
+        (f"the {j[1]} [{j[0]}](https://example.org/{j[0]}) read",) * 2,
+        (f"the {m[1]} ({m[0]}) read", f"the {m[1]} read"),
+        (f"the {n[1]} ({n[0]}) read", f"the {n[1]} read"),
+    ]  # fmt: skip
+    typed, edited = _both_ways(draw, draw(st.permutations(pairs)))
+    listed = [form.format(*pair)
+              for form, pair in zip(draw(st.permutations(ENTRY_FORMS)), (k, *LISTED_ONLY),
+                                    strict=True)]  # fmt: skip
+    listed.append(draw(st.sampled_from(ENTRY_FORMS)).format(*m))
+    after = ("# Abbreviations\n\n" + "".join(f"{entry}\n\n" for entry in
+                                              draw(st.permutations(listed)))
+             + f"# Acknowledgements\n\nFunded by the {h[1]} ({h[0]}) and the {n[1]} ({n[0]}).\n")
+    return typed + after, edited + after
+
+
 @st.composite
 def spelling_edited(draw: st.DrawFn) -> list[tuple[str | None, tuple[str, ...], str, str]]:
     """Five manuscripts, each with the English it declares and the spellings it keeps,
@@ -14063,6 +14132,13 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
             "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
         }
     ),
+    "abbreviation edits": st.one_of(
+        st.fixed_dictionaries({
+            "text": texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)),
+            "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
+        }),
+        abbreviations_written_out().map(lambda drawn: {"text": drawn[0], "known": []}),
+    ),  # fmt: skip
     "audit abbreviations": st.one_of(
         undefined_forms().map(lambda drawn: drawn[0][0][1]),
         texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)),

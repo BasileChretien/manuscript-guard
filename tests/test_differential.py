@@ -558,14 +558,15 @@ def test_a_base_that_cannot_make_a_reading_fails_unless_the_change_says_so(
     here: Reader, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The base here is a copy whose `_file` takes an argument this suite's readings do
-    not give. It cannot make the eight readings that go through it, and that is not the
+    not give. It cannot make the nine readings that go through it, and that is not the
     base lacking them: nothing was compared, so the run fails, unless the pull request
     says in `differential_expected.yaml` that it changed what those readings go through.
     A reading that does not go through `_file` is compared as ever."""
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
     with _copy_with(*_ANOTHER_ARGUMENT, tmp_path) as base:
         through_it = {"vocabulary", "spelling", "notation", "code names", "abbreviations",
-                      "audit abbreviations", "notation edits", "spelling edits"}  # fmt: skip
+                      "audit abbreviations", "notation edits", "spelling edits",
+                      "abbreviation edits"}  # fmt: skip
         assert set(base.broken) == through_it, base.broken
         assert all(why.startswith("TypeError: ") for why in base.broken.values()), base.broken
         assert not [why for why in base.absent.values() if not _unavailable(why)], base.absent

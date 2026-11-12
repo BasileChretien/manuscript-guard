@@ -782,6 +782,220 @@ def test_an_r_figure_that_estimates_while_it_draws_is_warned(
     assert found == said
 
 
+def _bars_said(report) -> list[tuple[str, str, str]]:
+    """Each bar finding, as (code, severity, the call it names)."""
+    return [(f.code, f.severity, f.message.split("(")[0]) for f in report.findings
+            if f.code.startswith("figure-bars-")]  # fmt: skip
+
+
+_MEANS, _ERRORS = "figure-bars-of-means", "figure-bars-with-errors"
+
+
+@pytest.mark.parametrize(
+    ("added", "said"),
+    [
+        ('sns.barplot(data=frame, x="arm", y="reports")', [(_MEANS, "warn", "sns.barplot")]),
+        ('sns.barplot(data=frame, x="arm", y="reports", estimator=np.mean)',
+         [(_MEANS, "warn", "sns.barplot")]),
+        # Round 1 of #648: with no interval computed, nothing shows that a group holds more
+        # than one row, and a table of one row a group draws the values given: a note.
+        ('sns.barplot(data=counts, x="drug", y="n", errorbar=None)',
+         [(_MEANS, "info", "sns.barplot")]),
+        ('sns.barplot(data=counts, x="drug", y="n", ci=None)', [(_MEANS, "info", "sns.barplot")]),
+        ('sns.catplot(data=counts, kind="bar", x="drug", y="n", errorbar=None)',
+         [(_MEANS, "info", "sns.catplot")]),
+        ('sns.barplot(data=frame, x="arm", y="reports", errorbar="sd")',
+         [(_MEANS, "warn", "sns.barplot")]),
+        # Known gaps: a summary through a function is not read as a mean.
+        ('sns.barplot(data=frame, x="arm", y="reports", estimator=lambda v: v.mean())', []),
+        ('sns.barplot(data=frame, x="arm", y="reports")\n'
+         'sns.stripplot(data=frame, x="arm", y="reports", jitter=False)', []),
+        ('sns.barplot(data=frame, x="arm", y="reports")\nsns.swarmplot(data=frame, x="arm")', []),
+        ('sns.barplot(data=frame, x="arm", y="reports", estimator="sum")', []),
+        ('sns.catplot(data=frame, kind="bar", x="arm", y="reports")',
+         [(_MEANS, "warn", "sns.catplot")]),
+        ('sns.catplot(data=frame, kind="bar")\nsns.catplot(data=frame, kind="swarm")', []),
+        ("ax.bar(arms, means, yerr=errors)", [(_ERRORS, "info", "ax.bar")]),
+        ("frame.plot.barh(xerr=errors)", [(_ERRORS, "info", "frame.plot.barh")]),
+        ('frame.plot(kind="bar", yerr=errors)', [(_ERRORS, "info", "frame.plot")]),
+        ("ax.bar(arms, means, yerr=errors)\nax.scatter(arms_each, values)", []),
+        # Known gaps: a mean the script computed itself is a bar of given values.
+        ('ax.bar(arms, frame.groupby("arm").reports.mean(), yerr=errors)',
+         [(_ERRORS, "info", "ax.bar")]),
+        ('ax.bar(arms, frame.groupby("arm").reports.mean())', []),
+        # A bar chart of counts, with no error bars, says nothing.
+        ("ax.bar(arms, counts)", []),
+        ("ax.bar(arms, counts, yerr=None)", []),
+        ('sns.countplot(data=frame, x="arm")', []),
+        ('# sns.barplot(data=frame, x="arm", y="reports")', []),
+    ],
+)
+def test_bars_of_means_with_no_points_are_said(project: Path, added: str, said: list) -> None:
+    """A bar the plot draws at the mean of each group, with no points, is a warning: many
+    data sets give the same bar (Weissgerber et al. 2015). A bar drawn from values the script
+    was given, with error bars on it, is a note, since it may be a proportion and its
+    interval. A points layer anywhere in the script stands either down, and a bar of counts
+    says nothing."""
+    script = project / "figures" / "forest.py"
+    script.write_text(script.read_text(encoding="utf-8") + "\n" + added + "\n", encoding="utf-8")
+    assert _bars_said(gate_report(project)) == said
+
+
+@pytest.mark.parametrize(
+    ("script", "said"),
+    [
+        ('ggplot(d, aes(arm, y)) + stat_summary(geom = "bar")', [(_MEANS, "warn", "stat_summary")]),
+        ('ggplot(d, aes(arm, y)) + stat_summary(fun = mean, geom = "col")',
+         [(_MEANS, "warn", "stat_summary")]),
+        ('ggplot(d, aes(arm, y)) + stat_summary(fun = "median", geom = "bar")', []),
+        # Known gaps: a summary through a function is not read as a mean.
+        ('ggplot(d, aes(arm, y)) + stat_summary(fun = function(x) mean(x), geom = "bar")', []),
+        ('ggplot(d, aes(arm, y)) + stat_summary(geom = "pointrange")', []),
+        ('ggplot(d, aes(arm, y)) + stat_summary(geom = "bar") + geom_jitter(width = 0.1)', []),
+        ('ggplot(d, aes(arm, y)) + geom_bar(stat = "summary", fun = "mean")',
+         [(_MEANS, "warn", "geom_bar")]),
+        # A point the plot puts at the mean is no point of the data.
+        ('ggplot(d, aes(arm, y)) + geom_bar(stat = "summary") + geom_point(stat = "summary")',
+         [(_MEANS, "warn", "geom_bar")]),
+        ("ggplot(s, aes(arm, mean)) + geom_col() + geom_errorbar(aes(ymin = lo, ymax = hi))",
+         [(_ERRORS, "info", "geom_col")]),
+        ('ggplot(s, aes(arm, p)) + geom_bar(stat = "identity") + geom_linerange(aes(ymin = lo))',
+         [(_ERRORS, "info", "geom_bar")]),
+        ("ggplot(s, aes(arm, mean)) + geom_col() + geom_errorbar() + geom_beeswarm(data = d)", []),
+        ("ggplot(s, aes(arm, mean)) + geom_col() + geom_errorbar() + geom_quasirandom()", []),
+        # A bar chart of counts, with no error bars, says nothing.
+        ("ggplot(d, aes(arm)) + geom_bar()", []),
+        ("ggplot(s, aes(arm, n)) + geom_col()", []),
+        ("ggplot(s, aes(arm, n)) + geom_col() # + geom_errorbar()", []),
+    ],
+)
+def test_an_r_figure_of_bars_of_means_with_no_points_is_said(
+    tmp_path: Path, script: str, said: list
+) -> None:
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / "bars.R"
+    path.write_text("library(ggplot2)\n" + script + "\n", encoding="utf-8")
+    assert _bars_said(check_figure_source(path, Classifier.load())) == said
+
+
+@pytest.mark.parametrize(
+    ("name", "script", "said"),
+    [
+        # Round 1 of #648: an interval drawn on another plot puts no error bar on a bar.
+        ("bars.R", "p1 <- ggplot(res, aes(ror, drug)) + geom_pointrange(aes(xmin = lo, xmax = hi))"
+         "\np2 <- ggplot(counts, aes(drug, n)) + geom_col()", []),
+        ("bars.R", "p1 <- ggplot(counts, aes(drug, n)) + geom_col()\n"
+         "p2 <- ggplot(res, aes(ror, drug)) + geom_errorbar(aes(xmin = lo, xmax = hi))", []),
+        ("bars.R", "p <- ggplot(s, aes(arm, mean)) +\n  geom_col() + # the bars\n"
+         "  geom_errorbar(aes(ymin = lo, ymax = hi))", [(_ERRORS, "info", "geom_col")]),
+        ("bars.R", "print(ggplot(s, aes(arm, mean)) + geom_col() + geom_errorbar())",
+         [(_ERRORS, "info", "geom_col")]),
+        ("bars.R", "p <- ggplot(s, aes(arm, mean)) + geom_col(); q <- ggplot(r) + geom_errorbar()",
+         []),
+        ("bars.py", "p1 = ggplot(res, aes('ror', 'drug')) + geom_pointrange(aes(xmin='lo'))\n"
+         "p2 = ggplot(counts, aes('drug', 'n')) + geom_col()", []),
+        ("bars.py", "p = (ggplot(s, aes('arm', 'mean'))\n     + geom_col()\n"
+         "     + geom_errorbar(aes(ymin='lo', ymax='hi')))", [(_ERRORS, "info", "geom_col")]),
+        ("bars.py", "plots = [ggplot(s) + geom_col(), ggplot(r) + geom_errorbar()]", []),
+    ],
+)
+def test_an_error_layer_counts_for_the_bars_of_its_own_plot(
+    tmp_path: Path, name: str, script: str, said: list
+) -> None:
+    """A layer of error bars is on a bar only where it is a layer of the same plot: one `+`
+    chain, the one ggplot() or plotnine expression the bar is a layer of."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / name
+    path.write_text(script + "\n", encoding="utf-8")
+    assert _bars_said(check_figure_source(path, Classifier.load())) == said
+
+
+def test_an_error_layer_added_to_the_plot_later_is_not_read(tmp_path: Path) -> None:
+    """Known gaps: a layer added to the plot in a statement of its own, `p <- p +
+    geom_errorbar()`, is another chain, so the bar it is drawn on is not said."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / "bars.R"
+    path.write_text("p2 <- ggplot(s, aes(arm, mean)) + geom_col()\n"
+                    "p2 <- p2 + geom_errorbar(aes(ymin = lo, ymax = hi))\n",
+                    encoding="utf-8")  # fmt: skip
+    assert _bars_said(check_figure_source(path, Classifier.load())) == []
+
+
+@pytest.mark.parametrize(
+    "call",
+    ['stat_summary(geom="bar", fun_y=np.mean)', 'stat_summary(geom="col")',
+     'geom_bar(stat="summary", fun_y=np.mean)', 'geom_bar(stat="summary")'],
+)  # fmt: skip
+def test_a_plotnine_bar_of_means_is_said_to_be_the_mean(tmp_path: Path, call: str) -> None:
+    """Round 1 of #648: with mean_cl_boot the bar is the plain mean and only the interval is
+    bootstrapped, and a call that gives fun_y uses no fun_data at all."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / "bars.py"
+    path.write_text(f"p = ggplot(d, aes('arm', 'y')) + {call}\n", encoding="utf-8")
+    (said,) = [f.message for f in check_figure_source(path, Classifier.load()).findings
+               if f.code == _MEANS]  # fmt: skip
+    assert "a bar at the mean of each group" in said, said
+    assert "bootstrapped mean" not in said and "mean_cl_boot" not in said, said
+    # Round 2: a bar geom draws no interval, so the words name none.
+    assert "interval" not in said and 'geom="bar",' not in said, said
+
+
+@pytest.mark.parametrize(
+    ("reason", "said"),
+    [
+        ('"the bars are proportions, each with its Wilson interval"', []),
+        ('""', [_MEANS, _ERRORS]),
+        ("5", [_MEANS, _ERRORS]),
+        ("\n  - value: barplot\n    why: a list is no reason", [_MEANS, _ERRORS]),
+    ],
+)
+def test_a_reason_beside_the_figure_stands_its_bars_down(
+    tmp_path: Path, reason: str, said: list[str]
+) -> None:
+    """`allow_bars` in the figure's guard file, with a reason, stands down both findings of
+    the script beside it. An empty one, or one that is no sentence, stands down nothing."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / "bars.R"
+    path.write_text("library(ggplot2)\np <- ggplot(d, aes(arm, y)) + stat_summary(geom = 'bar')\n"
+                    "q <- ggplot(s, aes(arm, p)) + geom_col() + geom_errorbar()\n",
+                    encoding="utf-8")  # fmt: skip
+    (tmp_path / "bars.guard.yaml").write_text(f"allow_bars: {reason}\n", encoding="utf-8")
+    found = [code for code, _severity, _call in _bars_said(
+        check_figure_source(path, Classifier.load()))]  # fmt: skip
+    assert found == said
+    if not said:
+        return
+    hint = next(f.hint for f in check_figure_source(path, Classifier.load()).findings
+                if f.code == _MEANS)  # fmt: skip
+    assert "bars.guard.yaml under allow_bars" in hint, hint
+
+
+def test_a_supplementary_figure_s_bars_are_said_too(project: Path) -> None:
+    """A figure the supplement places is read as the paper's are: its script, in figures/,
+    draws bars from plotnine with error bars and no points."""
+    script = project / "figures" / "S1_doses.py"
+    script.write_bytes(
+        b"from plotnine import aes, geom_col, geom_errorbar, ggplot\n"
+        b"plot = ggplot(rates, aes('dose', 'rate')) + geom_col()"
+        b" + geom_errorbar(aes(ymin='low', ymax='high'))\n"
+    )
+    supplement = project / "manuscript" / "supplementary" / "S3_doses.md"
+    supplement.write_bytes(b"# Figure S1\n\n![Reports by dose](../../figures/S1_doses.svg)\n")
+    found = [(f.code, f.path.name, f.line) for f in gate_report(project).findings
+             if f.code.startswith("figure-bars-")]  # fmt: skip
+    assert found == [(_ERRORS, "S1_doses.py", 2)]
+
+
 def _divergent(project: Path) -> list[tuple[str, str]]:
     """The divergent-display findings of the project, as (severity, message)."""
     return [(f.severity, f.message) for f in gate_report(project).findings
@@ -1458,9 +1672,16 @@ def test_a_number_in_a_typed_reference_list_passes_and_one_just_after_it_fails(
     ["[^mgnote]: We excluded 4321 patients.", "Abstract\n\nWe excluded 4321 patients.",
      "**Appendix**\n\nWe excluded 4321 patients.", "3. Conclusion\n\nWe excluded 4321 patients.",
      # Round 2 of #638: pandoc's escaped number, and a caption numbered with a letter.
-     "3\\. Conclusion\n\nWe excluded 4321 patients.", "Table A1. We excluded 4321 patients."],
+     "3\\. Conclusion\n\nWe excluded 4321 patients.", "Table A1. We excluded 4321 patients.",
+     # The final check of #638: each caption's shape, and Roman and bracketed numbers as
+     # pandoc 3.9 writes a Word title so numbered.
+     "Fig. A2. Rates of 4321 patients.", "TABLE A1 | Counts of 4321 patients.",
+     "Supplementary Table A1. We excluded 4321 patients.",
+     "III\\. Results\n\nWe excluded 4321 patients.", "3\\) Conclusion\n\nWe excluded 4321.",
+     "Table A.1. Counts of 4321 patients.", "Figure A2 Rates of 4321 patients."],
     ids=["note", "abstract", "appendix in bold", "numbered conclusion", "escaped number",
-         "lettered caption"],
+         "lettered caption", "fig.", "caption bar", "supplementary", "roman", "bracketed",
+         "dotted appendix number", "no stop"],
 )
 def test_a_note_or_a_section_s_name_after_a_typed_list_ends_it(
     project: Path, title: str, after: str
@@ -2471,8 +2692,7 @@ def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
 ) -> None:
     """Task 3: the Abstract's interval held to its one counterpart in the Results, two of its
     numbers agreeing and the third not, is a conflict --strict counts; an Abstract number not
-    found in the Methods, the Results or the tables is said and not counted (the author,
-    2026-10-28)."""
+    found where the paper reports is said and not counted (the author, 2026-10-28)."""
     from manuscript_guard.cli import main
 
     paper = tmp_path / "paper.md"
@@ -2483,6 +2703,87 @@ def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
     assert main(["audit", str(paper), "--strict"]) == 0
     paper.write_text(text.replace("1.2-1.9)", "1.2-1.97)"), encoding="utf-8")
     assert main(["audit", str(paper), "--strict"]) == 1
+
+
+def test_an_abstract_number_changed_under_a_section_of_its_own_name_is_not_found(
+    tmp_path: Path,
+) -> None:
+    """A number of the Abstract reported under "Participants" is found there, which it was
+    not before (the real-paper corpus, 2026-11-11); changed there, it is not found, and
+    neither is one only the Discussion gives."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+
+    def not_found(participants: str, discussion: str) -> list[str]:
+        paper.write_text("# Paper\n\n## Abstract\n\nWe enrolled 1,284 adults.\n\n"
+                         f"## Participants\n\n{participants}\n\n## Results\n\nIt was so.\n\n"
+                         f"## Discussion\n\n{discussion}\n", encoding="utf-8")  # fmt: skip
+        return [c.text for c in audit([paper], None).abstract.not_found]
+
+    assert not_found("We enrolled 1,284 adults.", "It was so.") == []
+    assert not_found("We enrolled 1,248 adults.", "It was so.") == ["1,284"]
+    assert not_found("We enrolled them.", "We enrolled 1,284 adults.") == ["1,284"]
+
+
+def test_an_abstract_number_only_a_footnote_gives_is_not_found(tmp_path: Path) -> None:
+    """Round 1 of #641: a .docx's footnotes are read after its body, under its last heading,
+    and searched there, so the Abstract's "45 patients" beside the Results' 54 counted as
+    found in a footnote's citation, "Lancet 2019;12:45-67". A note is never where the paper
+    reports."""
+    import zipfile
+
+    from manuscript_guard.audit import audit
+
+    namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+
+    def para(text: str, style: str = "") -> str:
+        styled = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ""
+        return f"<w:p>{styled}<w:r><w:t>{text}</w:t></w:r></w:p>"
+
+    body = (para("Abstract", "Heading1") + para("We followed 45 patients.")
+            + para("Methods", "Heading1") + para("We read the records.")
+            + para("Results", "Heading1")
+            + '<w:p><w:r><w:t>We followed 54 patients.</w:t></w:r><w:r>'
+              '<w:footnoteReference w:id="1"/></w:r></w:p>'
+            + para("References", "Heading1") + para("Doe J. A title. BMJ. 2020;1:2."))
+    notes = (f"<w:footnotes {namespace}><w:footnote w:id=\"1\"><w:p><w:r><w:t>Smith J. "
+             "Lancet 2019;12:45-67.</w:t></w:r></w:p></w:footnote></w:footnotes>")
+    path = tmp_path / "paper.docx"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
+                                              "</w:body></w:document>")  # fmt: skip
+        archive.writestr("word/footnotes.xml", notes)
+    read = audit([path], None).abstract
+    assert read.compared and [c.text for c in read.not_found] == ["45"]
+
+
+def test_a_typed_title_paper_s_abstract_interval_that_differs_fails_an_audit(
+    tmp_path: Path,
+) -> None:
+    """A Word paper with no heading style, its titles typed in capitals and numbered in no
+    bold, had no Abstract to the audit, and a wrong interval in its Abstract was compared
+    with nothing (the real-paper corpus, 2026-11-11). Its typed titles are its headings now,
+    and the conflict is counted by --strict."""
+    import zipfile
+
+    from manuscript_guard.cli import main
+
+    def para(text: str) -> str:
+        return f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>"
+
+    def docx(abstract: str) -> Path:
+        body = (para("ABSTRACT") + para(abstract) + para("2. METHODS") + para("We did it.")
+                + para("3. RESULTS") + para("The odds ratio was 1.52 (95% CI 1.21-1.89)."))
+        path = tmp_path / "paper.docx"
+        namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
+                                                  "</w:body></w:document>")  # fmt: skip
+        return path
+
+    assert main(["audit", str(docx("The OR was 1.5 (95% CI 1.2-1.9).")), "--strict"]) == 0
+    assert main(["audit", str(docx("The OR was 1.5 (95% CI 1.2-1.97).")), "--strict"]) == 1
 
 
 def test_an_abstract_identifier_other_than_the_methods_is_not_found(tmp_path: Path) -> None:
@@ -9841,7 +10142,8 @@ def test_a_package_a_script_loads_and_the_plan_does_not_name_is_a_note(project: 
     assert _software_said(project) == []
     # A plan with no Software section names none of what the scripts load.
     start, end = text.index("## Software\n"), text.index("## Sample size")
-    plan.write_bytes((text[:start] + text[end:]).encode())
+    # The example's Deviations name its packages, for the Methods' sake: left out here.
+    plan.write_bytes((text[:start] + text[end : text.index(_UNCITED_ENTRY)]).encode())
     said = _software_said(project)
     assert [(code, path) for code, _severity, path, _line in said] == [
         ("plan-package-unnamed", "analysis/01_disproportionality.py"),
@@ -9856,6 +10158,189 @@ def test_a_package_a_script_loads_and_the_plan_does_not_name_is_a_note(project: 
     assert all(message.endswith("and the plan has no Software section") for message in messages)
     assert [message.split(" loads ")[1].split(",")[0] for message in messages] == [
         "pandas", "statsmodels", "vigicaen", "matplotlib"]  # fmt: skip
+
+
+# ------------------------------------------------- the packages used, named in the Methods
+
+#: The example's Deviations entry that stands its three packages down: its references are
+#: invented, so none of them could be cited for a package.
+_UNCITED_ENTRY = "9. The Methods name statsmodels and not pandas or matplotlib"
+_RUN_IN = "with statsmodels\n{{results.software.statsmodels}}."
+
+
+def _named_said(root: Path) -> list[tuple[str, str]]:
+    """What G12 says of the packages used against the Methods, by code and package."""
+    from manuscript_guard.gates.software_methods import check_software_cited
+
+    project, _ = load_project(root)
+    _namespace, results, _literature, _report = load_namespace(project)
+    said = []
+    for f in check_software_cited(project, results).findings:
+        assert (f.severity, f.path.relative_to(root).as_posix()) == ("warn", "design/plan.md")
+        lead = " uses " if f.code == "software-unnamed" else " name "
+        said.append((f.code, f.message.split(lead, 1)[1].split(",", 1)[0]))
+    return said
+
+
+def _without_the_uncited_entry(root: Path) -> None:
+    plan = root / "design" / "plan.md"
+    text = plan.read_bytes().decode("utf-8")
+    plan.write_bytes(text[: text.index(_UNCITED_ENTRY)].encode())
+
+
+def _edited(path: Path, old: str, new: str) -> None:
+    text = path.read_bytes().decode("utf-8")
+    assert old in text, old
+    path.write_bytes(text.replace(old, new, 1).encode())
+
+
+def test_a_package_used_and_not_named_in_the_methods_is_said(project: Path) -> None:
+    """Each package the plan's Software section names and a script loads is named in the
+    Methods, or G12 warns, at every stage; the Deviations name the example's three, whose
+    references are invented. Python itself is the language, and is not held to them."""
+    main = project / "manuscript" / "main.md"
+    assert _named_said(project) == []
+    _without_the_uncited_entry(project)
+    said = [("software-unnamed", "pandas"), ("software-uncited", "statsmodels"),
+            ("software-unnamed", "matplotlib")]  # fmt: skip
+    assert _named_said(project) == said
+    # A name inside another word, or in a comment, or in a binding's key, names nothing.
+    _edited(main, "Reports were included", "The pandasql tables and <!-- matplotlib -->"
+            " {{results.software.python}} were kept. Reports were included")
+    assert _named_said(project) == said
+    # A name in a code span names it as plain text does, a module after a point included.
+    _edited(main, _RUN_IN, _RUN_IN + " Tables were held in `pandas.DataFrame`"
+            " [@fictionalHepaticCohort2021].")
+    assert _named_said(project) == said[1:]
+    # A paper with no Methods a reader finds is not read for its packages.
+    _edited(main, "# Methods\n", "# Approach\n")
+    _edited(project / "manuscript" / "supplementary" / "S1_code_lists.md",
+            "# Supplementary methods\n", "# Supplementary tables\n")
+    assert _named_said(project) == []
+
+
+def test_a_package_named_and_not_cited_in_its_sentence_is_said(project: Path) -> None:
+    """The sentence that names the package carries the citation: one in the next sentence,
+    or inside a comment, is not its, and a typed citation is one."""
+    main = project / "manuscript" / "main.md"
+    _without_the_uncited_entry(project)
+    _edited(main, _RUN_IN, _RUN_IN + " Its methods are described elsewhere"
+            " [@fictionalClassSignal2019].")
+    assert ("software-uncited", "statsmodels") in _named_said(project)
+    _edited(main, _RUN_IN, "with statsmodels <!-- [@fictionalClassSignal2019] -->\n"
+            "{{results.software.statsmodels}}.")
+    assert ("software-uncited", "statsmodels") in _named_said(project)
+    for cited in ("[@fictionalClassSignal2019]", "(Fictional and Fictional, 2019)", "[2]"):
+        text = main.read_bytes().decode("utf-8")
+        start = text.index("The analysis was run")
+        end = text.index("\n\n", start)
+        main.write_bytes((text[:start] + f"The analysis was run with statsmodels {cited}."
+                          + text[end:]).encode())  # fmt: skip
+        assert ("software-uncited", "statsmodels") not in _named_said(project), cited
+        assert ("software-unnamed", "statsmodels") not in _named_said(project), cited
+
+
+def test_a_package_cited_in_the_supplement_s_methods_only_passes(project: Path) -> None:
+    """The supplement's Methods are the Methods too, as G9 reads them; its tables are not."""
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    _without_the_uncited_entry(project)
+    sentence = "The forest plot was drawn with Matplotlib [@fictionalHepaticCohort2021]."
+    _edited(supplement, "## Table S2. The adjusted model\n",
+            f"## Table S2. The adjusted model\n\n{sentence}\n")
+    assert ("software-unnamed", "matplotlib") in _named_said(project)
+    _edited(supplement, "# Supplementary methods\n", f"# Supplementary methods\n\n{sentence}\n")
+    # In any case for a Python package, as authors write "Matplotlib".
+    assert ("software-unnamed", "matplotlib") not in _named_said(project)
+
+
+def test_an_r_package_is_named_with_its_case_and_a_python_one_by_any_of_its_names(
+    project: Path,
+) -> None:
+    """R loads `Matrix` and not `matrix`, so the Methods name it with its case. A Python
+    package is named by its item's names and its import names: `scikit-learn` or `sklearn`
+    where the item gives both, and only `sklearn` where it gives that one."""
+    main, plan = project / "manuscript" / "main.md", project / "design" / "plan.md"
+    (project / "analysis" / "02_model.R").write_bytes(b"library(Matrix)\n")
+    (project / "analysis" / "03_learn.py").write_bytes(b"from sklearn import tree\n")
+    _edited(plan, "- `matplotlib`:", "- `Matrix`: sparse tables\n- `scikit-learn` (`sklearn`):"
+            " a tree\n- `matplotlib`:")
+    _edited(main, _RUN_IN, _RUN_IN + " A sparse matrix [@fictionalHepaticCohort2021]"
+            " held the counts, and Scikit_Learn [@fictionalClassSignal2019] fitted a tree.")
+    assert _named_said(project) == [("software-unnamed", "Matrix")]
+    _edited(main, "A sparse matrix", "A sparse Matrix")
+    assert _named_said(project) == []
+    _edited(plan, "- `scikit-learn` (`sklearn`):", "- `sklearn`:")
+    assert _named_said(project) == [("software-unnamed", "sklearn")]
+
+
+def test_the_language_and_base_names_an_item_gives_do_not_name_its_package(
+    project: Path,
+) -> None:
+    """Round 1 of #659: every name of an item was a name of its package, so "R" or "Python"
+    in a cited sentence named brms or statsmodels. Only the names G12 holds to the scripts
+    count: the item's first, and those a script loads that somebody chose (round 1 of #592),
+    never the language, base R or the standard library."""
+    main, plan = project / "manuscript" / "main.md", project / "design" / "plan.md"
+    (project / "analysis" / "02_model.R").write_bytes(b"library(brms)\n")
+    _edited(plan, "- `matplotlib`:", "- `brms` 2.21, under `R` with `stats` and `json`\n"
+            "- `matplotlib`:")
+    _edited(main, _RUN_IN, _RUN_IN + " Analyses were run in R 4.4.1 (R Core Team, 2024) with"
+            " stats and json [@fictionalClassSignal2019].")
+    assert _named_said(project) == [("software-unnamed", "brms")]
+    _without_the_uncited_entry(project)
+    _edited(plan, "- `statsmodels`:", "- `statsmodels` (`Python`):")
+    text = main.read_bytes().decode("utf-8")
+    start = text.index("The analysis was run in Python")
+    main.write_bytes((text[:start] + "The analysis was run in Python 3.11 [5]."
+                      + text[text.index("\n\n", start):]).encode())  # fmt: skip
+    assert ("software-unnamed", "statsmodels") in _named_said(project)
+
+
+def test_a_citation_after_an_abbreviation_is_in_the_sentence_that_names_the_package(
+    project: Path,
+) -> None:
+    """Round 1 of #659: a sentence was cut after "et al.", "v." or "i.e." before a capital,
+    a digit or a bracket, and the citation after the cut was the next sentence's."""
+    main, plan = project / "manuscript" / "main.md", project / "design" / "plan.md"
+    (project / "analysis" / "02_model.R").write_bytes(
+        b"library(lme4)\nlibrary(nlme)\nlibrary(ggplot2)\nlibrary(glmmTMB)\n")
+    _edited(plan, "- `matplotlib`:", "- `lme4`: mixed models\n- `nlme`: mixed models\n"
+            "- `ggplot2`: figures\n- `glmmTMB`: counts\n- `matplotlib`:")
+    _edited(main, _RUN_IN, _RUN_IN + " Models were fitted with lme4, described by Bates et al."
+            " [12]. Others were fitted with nlme, described by Pinheiro et al."
+            " [@fictionalClassSignal2019]. Figures were drawn with ggplot2 (v. 3.4.0) [24]."
+            " Counts were modelled with glmmTMB, i.e. Linear mixed models for counts"
+            " [@fictionalHepaticCohort2021].")
+    assert _named_said(project) == []
+    # A citation typed after the stop and a space counts for the sentence it follows.
+    _edited(main, "drawn with ggplot2 (v. 3.4.0) [24].", "drawn with ggplot2. [24]")
+    assert _named_said(project) == []
+    # The paragraph after a stop is another sentence, whatever ends the paragraph before.
+    _edited(main, "drawn with ggplot2. [24]", "drawn as in [@fictionalClassSignal2019] and Bates"
+            " et al.\n\nggplot2 drew them.")
+    assert _named_said(project) == [("software-uncited", "ggplot2")]
+
+
+def test_a_package_named_by_an_ordinary_word_is_named_wherever_the_word_stands(
+    project: Path,
+) -> None:
+    """Known gaps: a package whose name is a word of English, survival, boot, mice, car, is
+    named by that word in any sense; no reading tells the package from the word."""
+    main, plan = project / "manuscript" / "main.md", project / "design" / "plan.md"
+    (project / "analysis" / "02_model.R").write_bytes(b"library(survival)\n")
+    _edited(plan, "- `matplotlib`:", "- `survival`: Kaplan-Meier curves\n- `matplotlib`:")
+    _edited(main, _RUN_IN, _RUN_IN + " Overall survival was estimated with the Kaplan-Meier"
+            " method [@fictionalHepaticCohort2021].")
+    assert _named_said(project) == []
+
+
+def test_a_package_only_the_run_recorded_is_named_by_its_item_s_first_name() -> None:
+    """Round 2 of #659: recorded under its other name, its first name named nothing."""
+    from manuscript_guard.gates.software_methods import judge_named
+
+    plan = "# Plan\n\n## Software\n\n- `sklearn` (`scikit-learn`): a tree\n"
+    found = judge_named(Path("."), plan, {}, ["scikit-learn"], frozenset(), "With sklearn [3].", [])
+    assert found.findings == ()
 
 
 # ------------------------------------------------- the registered protocol
@@ -11921,6 +12406,8 @@ _READS_LATEX = (
     "check_boxes",
     # It reads the AI-use statement in G4's `main_text`, and the supplement's printed view.
     "check_ai_use",
+    # The declarations held to authors.yaml: read in the same two views.
+    "check_disclosures",
     # It reads the Results and the Discussion in each document's printed view, as
     # `check_reported` does (item 10 of the borrowed checks).
     "check_interpretation",
@@ -11932,6 +12419,9 @@ _READS_LATEX = (
     # It reads each figure a document places, `\includegraphics` through `\graphicspath`
     # as a Markdown image is (#630).
     "check_placed",
+    # It reads the Methods as G9 does, a LaTeX document's in its printed view, where a
+    # citation command is written as pandoc's.
+    "check_software_cited",
 )  # fmt: skip
 
 
@@ -13217,6 +13707,35 @@ def test_g8r_reads_each_item_of_a_list_as_a_sentence_of_its_own(
              for f in check_reporting(load_project(project)[0]).findings
              if f.code == "guideline-claimed-not-declared"]  # fmt: skip
     assert found == ["CONSORT"], found
+
+
+_UNQUOTED_FUNDING = ("This work received no funding.", "Funding came from nowhere.")
+
+
+@pytest.mark.parametrize("latex", [False, True], ids=["markdown", "latex"])
+def test_g5_fails_at_submission_a_checklist_answer_whose_sentence_is_gone(
+    project: Path, latex: bool
+) -> None:
+    """The sentence a checklist's answer quotes is what the item rests on: the example's
+    answers each stand under their heading, in Markdown and in the LaTeX twin, and with the
+    Funding sentence reworded the answer that quotes it fails at submission, naming the
+    heading searched, and only warns from internal review."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.findings import FAIL, WARN
+
+    entry = _twin(project) if latex else main_md(project)
+
+    def told(stage: str) -> list[tuple[str, str, str]]:
+        report, _project, _stage, _deferred = _run_gates(project, stage=stage)
+        return [(f.code, f.severity, f.message) for f in report.findings
+                if f.code.startswith("checklist-quote")]  # fmt: skip
+
+    assert told("submission") == []
+    _replace_once(entry, *_UNQUOTED_FUNDING)
+    said = ("DEMO-OBS 10 (Funding): the quote 'This work received no funding.' is not under "
+            "'Funding'")  # fmt: skip
+    assert told("submission") == [("checklist-quote-not-found", FAIL, said)]
+    assert told("internal-review") == [("checklist-quote-not-found", WARN, said)]
 
 
 _LATEX_QUOTED = (
@@ -28304,6 +28823,67 @@ def test_a_definition_with_an_aside_given_again_is_caught(project: Path) -> None
     ]
 
 
+def test_a_statistic_after_a_dash_is_no_second_definition(project: Path) -> None:
+    """The final check of #623 (from an agricultural-policy preprint of the real-paper
+    corpus): a value given after a dash with its interval in square brackets first, "older
+    people - OR [95% CI ...] 1.52", was read as a second definition of the short form, by
+    the words before the dash. A dash defines only where its short form ends the clause."""
+    mended = with_ror_defined(project)
+    stated = mended.replace(
+        "The reporting odds ratio observed here",
+        "The odds were higher in reports from older patients \N{EN DASH} ROR [95% CI "
+        "1.1\N{EN DASH}2.0] 1.52. The reporting odds ratio observed here",
+    )
+    assert stated != mended
+    main_md(project).write_text(stated, encoding="utf-8")
+    # The interval is written as the example does not write its others, which G14 says.
+    assert language_findings(project) == [("notation-interval", line_of(stated, "ROR [95%"))]
+
+
+@pytest.mark.parametrize(
+    "defined",
+    [
+        # A citation after the short form, as mask leaves it: a bracket of blanks.
+        "Signals were checked against the Uppsala Monitoring Centre \N{EN DASH} UMC "
+        "[@fictionalClassSignal2019]. The UMC holds the reports.\n\n",
+        # A list written long form first, every item but the last followed by the next.
+        "- the Uppsala Monitoring Centre \N{EN DASH} UMC\n- the Summary of Product "
+        "Characteristics \N{EN DASH} SmPC\n- the Individual Case Safety Report \N{EN DASH} "
+        "ICSR\n\nThe UMC, the SmPC and each ICSR were read.\n\n",
+    ],
+    ids=["a citation", "a list"],
+)
+def test_a_dash_definition_before_a_citation_or_in_a_list_is_read(
+    project: Path, defined: str
+) -> None:
+    """Round 1 of #643: a dash definition followed by a citation, and each entry but the last
+    of a list written long form first, were read as defining nothing, and each use of the
+    short form was reported as undefined. A citation is no more words of the sentence, and
+    a list item ends where its line does."""
+    mended = with_ror_defined(project)
+    added = mended.replace(
+        "The reporting odds ratio observed here", f"{defined}The reporting odds ratio observed here"
+    )
+    assert added != mended
+    main_md(project).write_text(added, encoding="utf-8")
+    assert language_findings(project) == []
+
+
+def test_a_definition_given_again_after_a_dash_is_caught(project: Path) -> None:
+    """The definition pasted again with a dash, its short form ending the clause: a second
+    definition, as one in brackets is."""
+    mended = with_ror_defined(project)
+    again = mended.replace(
+        "The reporting odds ratio observed here exceeds",
+        "The reporting odds ratio \N{EN DASH} ROR, observed here, exceeds",
+    )
+    assert again != mended
+    main_md(project).write_text(again, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-redefined", line_of(again, "ratio \N{EN DASH} ROR,"))
+    ]
+
+
 def journal_asks_for(root: Path, rules: dict, quotes: dict) -> None:
     """The example's journal profile, asking for `rules` under `abbreviations:`."""
     path = root / "profiles" / "journals" / "demo-journal.yaml"
@@ -32328,6 +32908,156 @@ def test_a_code_step_edited_in_its_fragment_fails(
     _re_signed(root, field, value)
     assert "results-edited" not in codes(gate_report(root)), "G1 is satisfied, as expected"
     assert caught in _g9_and_load(root)
+
+
+# --------------------------------------------------------------------------------------
+# G4: the manuscript's funding, competing interests, ethics and author contributions held to
+# authors.yaml (DESIGN.md, "The declarations are held to authors.yaml").
+
+
+def _disclosure_findings(root: Path, stage: str | None = None) -> list[tuple[str, str]]:
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.gates.disclosures import GATE
+
+    report, _project, _chosen, _deferred = _run_gates(root, stage=stage)
+    ours = ("funding-", "interests-", "ethics-approval-", "credit-")
+    return sorted((f.code, f.severity) for f in report.findings
+                  if f.gate == GATE and f.code.startswith(ours))  # fmt: skip
+
+
+def _disclosures_recorded(root: Path, family: str, **fields: object) -> None:
+    """`fields` set on the author of authors.yaml called `family`; `roles` on the file."""
+    path = root / "authors.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    roles = fields.pop("roles", None)
+    if roles is not None:
+        document.setdefault("roles", {}).update(roles)
+    for author in document["authors"]:
+        if author["family"] == family:
+            author.update(fields)
+    path.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
+                    encoding="utf-8")  # fmt: skip
+
+
+def _replaced(path: Path, old: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert old in text, (old, path)
+    path.write_text(text.replace(old, new), encoding="utf-8")
+
+
+_GRANT = "Agence Nationale de la Recherche (ANR-20-CE17-0001)"
+
+
+def test_the_example_s_declarations_agree_with_its_authors_yaml(project: Path) -> None:
+    """"This work received no funding" and "None declared." beside a record of no funding and
+    "None declared." for both authors: nothing is said, at any stage."""
+    assert _disclosure_findings(project, "drafting") == []
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_a_funding_statement_that_denies_a_recorded_grant_is_caught(project: Path) -> None:
+    """The example says it received no funding; authors.yaml now lists a grant. A warning
+    while drafting, a failure at submission; the grant given passes."""
+    _disclosures_recorded(project, "Example", funding=[_GRANT])
+    assert _disclosure_findings(project, "drafting") == [("funding-denied", "warn")]
+    assert _disclosure_findings(project, "submission") == [("funding-denied", "fail")]
+    _replaced(main_md(project), "This work received no funding.",
+              "This work was funded by the ANR (ANR\N{EN DASH}20\N{EN DASH}CE17\N{EN DASH}0001).")
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_a_grant_the_funding_statement_leaves_out_is_caught(project: Path) -> None:
+    """A grant identifier with a digit more is another grant; a funder with no identifier is
+    found by its words, with its accents and case folded."""
+    _disclosures_recorded(project, "Example", funding=[_GRANT])
+    _disclosures_recorded(project, "Sample",
+              funding=["Fondation pour la Recherche M\N{LATIN SMALL LETTER E WITH ACUTE}dicale"])
+    _replaced(main_md(project), "This work received no funding.",
+              "Supported by grant ANR-20-CE17-00012 and the FONDATION POUR LA RECHERCHE MEDICALE.")
+    assert _disclosure_findings(project, "submission") == [("funding-grant-missing", "fail")]
+
+
+def test_no_funding_statement_with_a_grant_recorded_is_a_note(project: Path) -> None:
+    _disclosures_recorded(project, "Example", funding=[_GRANT])
+    _replaced(main_md(project), "# Funding\n\nThis work received no funding.\n\n", "")
+    assert _disclosure_findings(project, "submission") == [("funding-not-stated", "info")]
+
+
+def test_none_declared_while_an_author_records_an_interest_is_caught(project: Path) -> None:
+    """The example's "None declared." stands for every author only while every record says
+    none. Naming the author with the interest passes."""
+    _disclosures_recorded(project, "Sample", competing_interests="Consulting fees from Pharma X.")
+    assert _disclosure_findings(project, "drafting") == [("interests-none-contradicted", "warn")]
+    _replaced(main_md(project), "# Competing interests\n\nNone declared.",
+              "# Competing interests\n\nBlaise SAMPLE received consulting fees from Pharma X. "
+              "The other authors declare no competing interests.")
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_an_author_with_an_interest_the_statement_does_not_name_is_caught(project: Path) -> None:
+    _disclosures_recorded(project, "Sample", competing_interests="Consulting fees from Pharma X.")
+    _replaced(main_md(project), "# Competing interests\n\nNone declared.",
+              "# Competing interests\n\nAda Example received consulting fees from Pharma X.")
+    assert _disclosure_findings(project, "submission") == [("interests-author-missing", "fail")]
+
+
+def test_an_empty_competing_interests_field_is_caught(project: Path) -> None:
+    """An empty field is not a declaration of none, so the manuscript's "None declared." is
+    not backed by the record."""
+    _disclosures_recorded(project, "Sample", competing_interests="")
+    assert _disclosure_findings(project, "drafting") == [("interests-unfilled", "warn")]
+
+
+def test_an_ethics_approval_the_manuscript_does_not_give_is_caught(project: Path) -> None:
+    """The example says no ethical approval was required, in its Data availability; the
+    ethics lead records one. Given in the Methods instead, it passes."""
+    lead = {"author": "Sample", "approval": "CPP Ouest III 2021-A00123-36"}
+    _disclosures_recorded(project, "Sample", roles={"ethics_lead": lead})
+    assert _disclosure_findings(project, "drafting") == [("ethics-approval-denied", "warn")]
+    _replaced(main_md(project), " No real patient data were used, and no ethical approval was "
+              "required.", "")
+    assert _disclosure_findings(project, "submission") == [("ethics-approval-missing", "fail")]
+    _replaced(main_md(project), "# Funding", "# Ethics\n\nApproved by the CPP Ouest III "
+              "(2021-A00123-36).\n\n# Funding")
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_an_ethics_approval_given_in_the_supplement_s_methods_passes(project: Path) -> None:
+    _disclosures_recorded(project, "Sample", roles={"ethics_lead": {"name": "R. Lead",
+                                                        "approval": "IRB #2021-0456"}})
+    _replaced(main_md(project), " No real patient data were used, and no ethical approval was "
+              "required.", "")
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(supplement.read_text(encoding="utf-8")
+                          + "\n\n## Supplementary methods\n\nThe IRB approved it (2021-0456).\n",
+                          encoding="utf-8")  # fmt: skip
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_an_author_contributions_statement_held_to_the_credit_roles(project: Path) -> None:
+    """With no such statement nothing is said; with one, an author it does not name and a
+    role it does not give are each caught. Initials and a dash of any kind pass."""
+    assert _disclosure_findings(project, "submission") == []
+    _replaced(main_md(project), "# Competing interests",
+              "# Author contributions\n\nA.E.: conceptualisation, formal analysis, writing "
+              "\N{EM DASH} original draft. Ada Example supervised.\n\n# Competing interests")
+    assert _disclosure_findings(project, "submission") == [
+        ("credit-author-missing", "fail"), ("credit-role-missing", "fail"),
+        ("credit-role-missing", "fail"), ("credit-role-missing", "fail")]
+    _replaced(main_md(project), "Ada Example supervised.",
+              "BS: Methodology, Supervision, Writing - Review and Editing.")
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_the_declarations_of_the_latex_twin_are_held_to_authors_yaml(project: Path) -> None:
+    """The twin's printed view writes `\\section{Funding}` as a heading, so its funding
+    statement is read as the Markdown's is."""
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(Path(__file__).parent / "data" / "latex" / "manuscript",
+                    project / "manuscript")  # fmt: skip
+    assert _disclosure_findings(project, "submission") == []
+    _disclosures_recorded(project, "Example", funding=[_GRANT])
+    assert _disclosure_findings(project, "submission") == [("funding-denied", "fail")]
 
 
 # --------------------------------------------------------------------------------------

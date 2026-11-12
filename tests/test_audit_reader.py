@@ -77,7 +77,7 @@ def test_each_reading_for_a_reader_matches_what_the_text_writes() -> None:
         "not run: no outputs were given to compare the numbers with (--against)":
             "not run: no outputs were given to compare the numbers with",
         f"and 6 more: {summary.DETAILS} lists every place":
-            'and 6 more: the box "List every place of every finding" lists every place',
+            "and 6 more: the PDF of the report lists every place",
         "FLOWS WHOSE ARITHMETIC DOES NOT HOLD, under a name for a flow (counted by --strict):":
             f"FLOWS WHOSE ARITHMETIC DOES NOT HOLD, under a name for a flow {FAILS}:",
         "1 under a heading, a caption or a paragraph that names a flow, whose faults --strict "

@@ -116,10 +116,17 @@ Then fill in, in this order:
 
 1. **`authors.yaml`**: every author's `given` and `family` name and affiliations, taken
    from the author, never from what you know about anyone. The placeholder affiliation
-   passes validation, so nothing will remind you to replace it. ORCID, CRediT roles, funding
-   and competing interests are not enforced by the check. The submission pack reports a
-   missing competing-interests statement per author, and CRediT and funding only when no
-   author has any; a missing ORCID is left out without comment. Ask who the statistician
+   passes validation, so nothing will remind you to replace it. Ask each author for their
+   own `funding` (each grant with its identifier, as "Agence Nationale de la Recherche
+   (ANR-20-CE17-0001)"), `competing_interests` ("None declared." where there are none) and
+   `credit` roles, and the ethics lead for the approval's reference
+   (`roles: {ethics_lead: {author: <them>, approval: <reference>}}`). None of them is
+   required, but once filled G4 holds the manuscript's Funding, Competing interests, Ethics
+   and Author contributions text to them (a warning until submission, a failure there), so
+   never fill one from what you know about anyone: an entry you guess is one the paper is
+   then held to. An empty `competing_interests` beside a filled one is reported, since an
+   empty field is not a declaration of none; a missing ORCID is left out without comment.
+   Ask who the statistician
    is, and write them under `roles:` (`statistician: <family name or ORCID iD>`): a G15
    warning left standing is theirs to sign off, with `manuscript-guard sign --as <them>
    --finding <id>` as its hint says. Never run `sign` for them.

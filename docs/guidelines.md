@@ -30,6 +30,8 @@ licence:
 | STARD-2015 | studies of diagnostic accuracy |
 | CHEERS-2022 | health economic evaluations |
 | ARRIVE-2.0 | in vivo animal experiments |
+| MDAR | papers in the life sciences: their materials, design, analysis and reporting |
+| SAGER-2022-human, SAGER-2022-other | how sex and gender are reported, in studies with human participants and in other studies (animals, cells, the applied sciences); beside the design's own guideline |
 | READUS-PV, READUS-PV-abstracts | disproportionality analyses of spontaneous reports |
 | SANRA (2019) | narrative reviews: a rating scale, which no reporting guideline covers |
 
@@ -42,11 +44,38 @@ manuscript-guard checklist STROBE                       # the completion file to
 `paper.yaml` names the guideline (`reporting_guideline`) and the study's design
 (`study_type`). G5 holds that every item of the checklist says where in the manuscript it is
 addressed, or why it does not apply ("n/a" is not a reason), and warns where the place it
-names is no heading of the manuscript. It warns where a declared design has none of its
+names is no heading of the manuscript.
+
+An item answered with `where` also quotes the sentence there that addresses it, in `quote:`.
+A heading alone is satisfied by any manuscript, since every paper has a Methods; the sentence
+is what a reviewer checks. G5 looks for the quote under the heading `where` names, its
+subsections included, in the main text and in the supplement, and in the caption of the table
+or figure where `where` names one ("Table 1", "Figure S2"). It is found as G7 finds a passage
+in a source: curly quotes, dashes, white space and case folded, whole words, and `...` for
+words left out. Copy it from the Markdown with its bindings as written, or from the built
+document with the values it prints:
+
+```yaml
+- id: '3'
+  where: Methods
+  quote: 'We analysed a synthetic spontaneous reporting database, generated on
+    {{results.dataset.reports.extracted}}'
+```
+
+An item with no quote, or a quote of fewer than four words, is `checklist-quote-missing`; a
+quote not there is `checklist-quote-not-found`, which names the heading searched and, where
+the quote stands under another heading, that one, since `where` is then wrong. Both are notes
+while drafting, warnings from internal review and failures at submission. An item excluded
+with `not_applicable` quotes nothing. `manuscript-guard checklist` writes `quote: ''` beside
+each new item's `where`, and keeps the quotes already written.
+
+G5 warns where a declared design has none of its
 guidelines: a trial is reported with CONSORT, a cohort study with STROBE, RECORD or TARGET, a
 case-control or self-controlled study with STROBE or RECORD, a disproportionality analysis
 with READUS-PV, a systematic review with PRISMA and a prediction model with TRIPOD;
-`study_type: other` is a design none of these is. It warns too when the manuscript says it
+`study_type: other` is a design none of these is. MDAR and SAGER belong to no one design, so
+no design asks for them: a project that follows one names it in `reporting_guideline` beside
+its design's guideline. It warns too when the manuscript says it
 followed a guideline that `paper.yaml` does not name, and when a recipe records that the
 guideline's authors replaced it, as TRIPOD 2015's recipes do for TRIPOD+AI.
 TARGET has no recipe yet.
@@ -56,8 +85,8 @@ document by `transcribe`; a generated checklist is never edited by hand, so it s
 the published document says. A guideline with no recipe can have one written in the
 project's own `profiles/reporting/recipes/` (the reporting-checklist skill says how).
 
-G5 does not judge whether the text at that place does what the item asks. That is a
-reader's question, and the starter panel of a review round has a reporting-guideline
+G5 does not judge whether the sentence quoted does what the item asks: it checks that the
+words are there. That is a reader's question, and the starter panel of a review round has a reporting-guideline
 reviewer for it ([review panel](review-panel.md)).
 
 ## The journal's instructions for authors

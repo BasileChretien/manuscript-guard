@@ -636,7 +636,8 @@ def test_an_abstract_styled_paragraph_under_a_heading_stays_where_it_is(tmp_path
 #: underlined, as many are: a title page, an abstract of one paragraph, the main text under
 #: "Background", a glossary, a "Declarations" over its statements and a reference list. And
 #: what only looks like such a title: a bold title that names no section, a bold word that
-#: opens a sentence, a section's name in bold inside a list item, and one in italics.
+#: opens a sentence, a section's name in bold inside a list item, and one in italics that
+#: opens a sentence.
 TITLED_IN_BOLD = """\
 A study of falls
 
@@ -658,7 +659,7 @@ Falls are common.
 
 - **Results**
 
-*Discussion*
+*Discussion* was planned.
 
 **Methods**
 
@@ -694,17 +695,18 @@ def test_a_word_paper_titled_in_bold_has_its_sections_made_headings(tmp_path: Pa
     not, whose words are a section's name is made a heading, and the title page before the
     first is set aside: read as paragraphs, the title page, the glossary, the statements and
     the reference list were prose to every gate. A bold title that names no section, a bold
-    word opening a sentence, a name inside a list item and one in italics stay text."""
+    word opening a sentence, a name inside a list item and one in italics opening a sentence
+    stay text."""
     converted = from_word.convert(word(tmp_path / "word", TITLED_IN_BOLD))
     quote = "\N{RIGHT SINGLE QUOTATION MARK}"
     titles = ("Abstract", "Background", "Methods", "Results", "List of abbreviations",
               "Declarations", f"Authors{quote} contributions", "References")  # fmt: skip
-    assert converted.bold_headings == titles
+    assert converted.typed_headings == titles
     # Pandoc writes the apostrophe straight, and escaped, in Markdown.
     assert [line.replace("\\", "") for line in _headings(converted.text)] == [
         f"# {title.replace(quote, chr(39))}" for title in titles]
     body = converted.text[converted.text.index("-->") :]
-    assert "UNIEX" not in body and "**Our cohort**" in body and "*Discussion*" in body
+    assert "UNIEX" not in body and "**Our cohort**" in body and "*Discussion* was planned" in body
     assert "**Methods** were those" in body and "**Results**" in body
     assert converted.title_page.startswith("no paragraph is in a heading style, so the 8 ")
 
@@ -722,11 +724,29 @@ def test_a_structured_abstract_titled_in_bold_is_the_abstracts(tmp_path: Path) -
         "# Methods", "# Results"]  # fmt: skip
 
 
+#: A picture as pandoc writes one in a paragraph, its file `media/pic.png` (`_package`).
+PICTURE = (
+    '<w:r><w:drawing><wp:inline><wp:extent cx="12700" cy="12700"/><wp:docPr id="10" '
+    'name="Picture"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/'
+    'drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="11" name="Picture"/>'
+    '<pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rPic"/><a:stretch>'
+    '<a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/>'
+    '<a:ext cx="12700" cy="12700"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+    '</pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>'
+)
+
+
 def _package(path: Path, body: str, styles: str) -> Path:
-    """A .docx of `body` and `styles` with the parts pandoc needs to find them."""
+    """A .docx of `body` and `styles` with the parts pandoc needs to find them, and the
+    picture `PICTURE` points to."""
     import zipfile
 
-    w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    w = " ".join(f'xmlns:{prefix}="{space}"' for prefix, space in (
+        ("w", "http://schemas.openxmlformats.org/wordprocessingml/2006/main"),
+        ("r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships"),
+        ("a", "http://schemas.openxmlformats.org/drawingml/2006/main"),
+        ("pic", "http://schemas.openxmlformats.org/drawingml/2006/picture"),
+        ("wp", "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing")))
     relations = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
     package = "http://schemas.openxmlformats.org/package/2006/relationships"
     main = "application/vnd.openxmlformats-officedocument.wordprocessingml"
@@ -735,6 +755,7 @@ def _package(path: Path, body: str, styles: str) -> Path:
             '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
             '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.'
             'relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
+            '<Default Extension="png" ContentType="image/png"/>'
             f'<Override PartName="/word/document.xml" ContentType="{main}.document.main+xml"/>'
             f'<Override PartName="/word/styles.xml" ContentType="{main}.styles+xml"/></Types>'))
         archive.writestr("_rels/.rels", (
@@ -742,7 +763,9 @@ def _package(path: Path, body: str, styles: str) -> Path:
             f'Type="{relations}/officeDocument" Target="word/document.xml"/></Relationships>'))
         archive.writestr("word/_rels/document.xml.rels", (
             f'<Relationships xmlns="{package}"><Relationship Id="r1" '
-            f'Type="{relations}/styles" Target="styles.xml"/></Relationships>'))
+            f'Type="{relations}/styles" Target="styles.xml"/><Relationship Id="rPic" '
+            f'Type="{relations}/image" Target="media/pic.png"/></Relationships>'))
+        archive.writestr("word/media/pic.png", png())
         archive.writestr("word/document.xml",
                          f"<w:document {w}><w:body>{body}</w:body></w:document>")
         archive.writestr("word/styles.xml", f"<w:styles {w}>{styles}</w:styles>")
@@ -750,28 +773,64 @@ def _package(path: Path, body: str, styles: str) -> Path:
 
 
 @needs_pandoc
-def test_the_audit_and_init_take_the_same_titles_in_bold(tmp_path: Path) -> None:
-    """The audit reads a .docx's bold itself, and `init --from` through pandoc: a title in
-    bold by its run or by its character style is a heading to both, and one bold by a style
-    its character style is based on, in a bold paragraph style, with bold turned off or
-    overruled, half in bold or in a table's cell, to neither. Read otherwise, the audit's
-    sections and G14's would be different ones; this test found pandoc reads no style's base."""
+def test_the_audit_and_init_take_the_same_typed_titles(tmp_path: Path) -> None:
+    """The audit reads a .docx itself, and `init --from` through pandoc: a title typed alone
+    on its line is a heading to both, in bold by its run, by its character style or by none,
+    in plain capitals, numbered as typed, in a bold paragraph style or with bold turned off;
+    with its first line indented or hanging as far as it is indented; and one half in bold
+    with other words, in a table's cell, in a link, in a caption beside a table, "Table
+    Caption" as pandoc writes one or Word's "caption", indented from the left, which pandoc
+    reads as a block quote, or beside a picture, to neither.
+    Read otherwise, the audit's sections and G14's would be different ones; this test found
+    pandoc reads no style's base, and sets a caption beside a table as the table's by the
+    style's name, not its id."""
     from generated import BOLD_PARAGRAPH_STYLES, BOLD_PARAGRAPHS
 
-    from manuscript_guard.text.docx import bold_heading_levels, read_docx_text
+    from manuscript_guard.text.docx import read_docx_text, typed_heading_levels
 
-    names = ("Abstract", "Background", "Methods", "Results", "Discussion", "Conclusions",
-             "Funding", "References", "Acknowledgements")  # fmt: skip
+    table = "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"
+    shapes = {kind: (shape, kind not in ("half", "in a cell", "in a link"))
+              for kind, (shape, _bold) in BOLD_PARAGRAPHS.items()}  # fmt: skip
+    plain = "<w:p><w:r><w:t>{}</w:t></w:r></w:p>"
+    shapes |= {
+        "plain capitals": (plain, True),
+        "numbered as typed": (plain.replace("{}", "2. {}"), True),
+        "a table's caption before it": (
+            '<w:p><w:pPr><w:pStyle w:val="TC"/></w:pPr><w:r><w:t>{}</w:t></w:r></w:p>' + table,
+            False),
+        "Word's caption after a table": (
+            table + '<w:p><w:pPr><w:pStyle w:val="Legende"/></w:pPr><w:r><w:t>{}</w:t></w:r>'
+            "</w:p>", False),
+        # pandoc 3.9.0.2 reads a paragraph indented from the left more than it hangs as a
+        # block quote, and one holding a picture as an image beside words.
+        "indented from the left": (plain.replace("<w:p>", '<w:p><w:pPr><w:ind w:left="720"/>'
+                                                 "</w:pPr>"), False),
+        "hanging as far as indented": (plain.replace(
+            "<w:p>", '<w:p><w:pPr><w:ind w:left="720" w:hanging="720"/></w:pPr>'), True),
+        "first line indented": (plain.replace(
+            "<w:p>", '<w:p><w:pPr><w:ind w:firstLine="720"/></w:pPr>'), True),
+        "with a picture": (plain.replace("<w:p>", "<w:p>" + PICTURE), False),
+    }  # fmt: skip
+    styles = BOLD_PARAGRAPH_STYLES + (
+        '<w:style w:type="paragraph" w:styleId="TC"><w:name w:val="Table Caption"/></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Legende"><w:name w:val="caption"/></w:style>')
+    names = ("Abstract", "Introduction", "Methods", "Results", "Discussion", "Conclusions",
+             "Funding", "References", "Acknowledgements", "Limitations", "Abbreviations",
+             "Appendix", "Declarations", "Ethics", "Tables", "Figures",
+             "Supplementary material")  # fmt: skip
+    typed = [(shape, heading, name.upper() if kind == "plain capitals" else name)
+             for (kind, (shape, heading)), name in zip(shapes.items(), names, strict=True)]
     body = "".join(f"{shape.format(name)}<w:p><w:r><w:t>Words {at}.</w:t></w:r></w:p>"
-                   for at, ((shape, _bold), name)
-                   in enumerate(zip(BOLD_PARAGRAPHS.values(), names, strict=True)))  # fmt: skip
-    paper = _package(tmp_path / "paper.docx", body, BOLD_PARAGRAPH_STYLES)
-    expected = tuple(name for (_shape, bold), name
-                     in zip(BOLD_PARAGRAPHS.values(), names, strict=True) if bold)  # fmt: skip
-    assert from_word.convert(paper).bold_headings == expected
+                   for at, (shape, _heading, name) in enumerate(typed))  # fmt: skip
+    paper = _package(tmp_path / "paper.docx", body, styles)
+    expected = tuple(("2. " if "2. {}" in shape else "") + name
+                     for shape, heading, name in typed if heading)  # fmt: skip
+    converted = from_word.convert(paper)
+    assert converted.typed_headings == expected
+    assert converted.headings == len(expected)
     document = read_docx_text(paper)
     lines = document.body.split("\n")
-    assert tuple(lines[at] for at, _level in bold_heading_levels(document)) == expected
+    assert tuple(lines[at] for at, _level in typed_heading_levels(document)) == expected
 
 
 @needs_pandoc
@@ -794,6 +853,86 @@ def test_a_short_paper_with_only_a_late_bold_title_keeps_its_text(tmp_path: Path
     assert "Jane Doe" not in lancet.text[lancet.text.index("-->") :]
 
 
+#: A Word paper with no heading style whose titles are typed as plain paragraphs, as the
+#: real-paper corpus had them (2026-11-11): "ABSTRACT" in capitals, numbered titles in
+#: capitals, a section's name as a table's caption and in a list's item, and a sentence that
+#: opens with "Results".
+TYPED_TITLES = """\
+A study of things
+
+ABSTRACT
+
+We followed 120 patients.
+
+1\\. INTRODUCTION
+
+Falls are common.
+
+| Group | n |
+|---|---|
+| A | 4 |
+
+: RESULTS
+
+- RESULTS
+
+Results were clear.
+
+3\\. RESULTS
+
+Of 120, 41 fell.
+"""
+
+
+@needs_pandoc
+def test_a_word_paper_with_typed_titles_has_them_made_headings(tmp_path: Path) -> None:
+    """A title typed alone on its line, in no bold, is a heading to `init --from` and to the
+    audit alike: "ABSTRACT", "1. INTRODUCTION", "3. RESULTS". A sentence that opens with
+    "Results", a list's item and a table's caption stay what they are. What `init` prints
+    counts the headings it made, where it said "headings: 0" after making 14 (PsyArXiv
+    fyxeq_v2 of the real-paper corpus)."""
+    from manuscript_guard.text.docx import read_docx_text, typed_heading_levels
+
+    paper = word(tmp_path / "word", TYPED_TITLES)
+    converted = from_word.convert(paper)
+    assert converted.typed_headings == ("ABSTRACT", "1. INTRODUCTION", "3. RESULTS")
+    assert [line.replace("\\", "") for line in _headings(converted.text)] == [
+        "# ABSTRACT", "# 1. INTRODUCTION", "# 3. RESULTS"]
+    body = converted.text[converted.text.index("-->") :]
+    assert "Results were clear." in body and "- RESULTS" in body and ": RESULTS" in body
+    assert "  headings: 3" in from_word.what_was_done(paper, converted).split("\n")
+    # Round 3 of #641: a section's name typed twice, the titles in bold are made headings, as
+    # the audit places them.
+    twice = word(tmp_path / "twice", "**Abstract**\n\nWe read.\n\n**Introduction**\n\nText.\n\n"
+                 "**Methods**\n\nWe read.\n\n**Results**\n\nIt was.\n\n**Discussion**\n\n"
+                 "RESULTS\n\nIt was too.\n\n**References**\n\nDoe J.\n")  # fmt: skip
+    assert from_word.convert(twice).typed_headings == (
+        "Abstract", "Introduction", "Methods", "Results", "Discussion", "References")
+    document = read_docx_text(paper)
+    lines = document.body.split("\n")
+    assert [lines[at] for at, _level in typed_heading_levels(document)] == [
+        "ABSTRACT", "1. INTRODUCTION", "3. RESULTS"]
+
+
+@pytest.mark.parametrize("again", [
+    [{"t": "Str", "c": "ABSTRACT"}],
+    [{"t": "Str", "c": "3."}, {"t": "Space"}, {"t": "Str", "c": "RESULTS"}],
+    [{"t": "Emph", "c": [{"t": "Str", "c": "Methods"}]}],
+], ids=["capitals", "numbered", "italics"])
+def test_a_name_typed_twice_keeps_the_bold_titles(again: list) -> None:
+    """A section's name typed twice, in bold and in another shape, keeps the titles from
+    being placed, and those in bold alone are made headings, as the audit places them."""
+    from generated import TYPED_BLOCKS
+
+    opening = {"t": "Para", "c": [{"t": "Strong", "c": [{"t": "Str", "c": "Introduction"}]}]}
+    titles = [TYPED_BLOCKS[kind][0] for kind in ("in a span", "in bold", "underlined around")]
+    words = {"t": "Para", "c": [{"t": "Str", "c": "Words."}]}
+    blocks = [json.loads(json.dumps(one)) for block in [titles[0], opening, *titles[1:],
+              {"t": "Para", "c": again}] for one in (block, words)]  # fmt: skip
+    assert from_word.typed_headings(blocks)[1] == ("Abstract", "Introduction", "Methods",
+                                                   "Results")  # fmt: skip
+
+
 @needs_pandoc
 def test_titles_in_bold_are_text_where_a_heading_style_is_used(tmp_path: Path) -> None:
     """A document that uses Word's heading styles is read by them alone: a bold line in it is
@@ -801,5 +940,5 @@ def test_titles_in_bold_are_text_where_a_heading_style_is_used(tmp_path: Path) -
     converted = from_word.convert(word(tmp_path / "word", "# Introduction\n\nText.\n\n"
                                        "**Methods**\n\nWe read them.\n"))  # fmt: skip
     assert _headings(converted.text) == ["# Introduction"]
-    assert converted.bold_headings == ()
+    assert converted.typed_headings == ()
     assert "**Methods**" in converted.text

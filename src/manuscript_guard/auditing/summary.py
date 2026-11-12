@@ -299,6 +299,7 @@ def rows(report) -> list[tuple[str, str]]:
     if report.references:
         rows.append(("References", _references(report)))
     for name, present in (("Journal", report.journal), ("Causal words", report.causal),
+                          ("Baseline tables", report.baseline),
                           ("Cited sentences", report.cited),
                           ("Self-citation", report.self_citation),
                           ("Package", report.package)):  # fmt: skip
@@ -362,12 +363,14 @@ def standings(report) -> dict[str, str]:
             False, problems or looked or len(counted) < len(report.references))
     # The sections a flag adds, by what the report says in them (round 1 of #635).
     from manuscript_guard.auditing import report as sections
+    from manuscript_guard.auditing.baseline import SECTION as BASELINE
     from manuscript_guard.auditing.report import items
 
     said = None
     for name, section, present in (
             ("Journal", sections.JOURNAL, report.journal), ("Causal words", sections.CAUSAL,
-            report.causal), ("Cited sentences", sections.CITED, report.cited),
+            report.causal), ("Baseline tables", BASELINE, report.baseline),
+            ("Cited sentences", sections.CITED, report.cited),
             ("Self-citation", sections.SELF_CITATION, report.self_citation),
             ("Package", sections.PACKAGE, report.package)):  # fmt: skip
         if present is not None:
@@ -380,7 +383,7 @@ def standings(report) -> dict[str, str]:
 #: The notes of a flag's section that leave a reader something to look at: what G4 did not
 #: check, a rule to check by hand, a file or part not read, and what a dry run would ask.
 _TO_LOOK_AT = frozenset({"journal-not-checked", "journal-manual-rule", "causal-words-not-read",
-                         "cited-not-listed", "would-ask"})  # fmt: skip
+                         "cited-not-listed", "would-ask", "baseline-tables-not-read"})  # fmt: skip
 
 
 def _flagged(name: str, present, mine: list) -> str:
@@ -396,6 +399,9 @@ def _flagged(name: str, present, mine: list) -> str:
     # G4 could not run, or no self-citation was counted; or no sentence of an Abstract, a
     # Discussion or a Conclusion was read for causal words.
     if getattr(present, "note", None) or (name == "Causal words" and not present.read):
+        return NOT_RUN
+    # No table was read for its caption and its header.
+    if name == "Baseline tables" and not present.tables:
         return NOT_RUN
     looked = any(item.severity != INFO or item.code in _TO_LOOK_AT for item in mine)
     if name == "Journal":

@@ -26,16 +26,19 @@
 expected:
   - reading: abbreviations
     why: >-
-      a short form after a spaced dash defines only where it ends its clause, followed by a
-      stop, a semicolon, a closing bracket or a table cell's bar, a comma or a colon and a
-      word, a closing spaced dash, a hard line break, the end of a list item's line, or the
-      end of its paragraph or text, a citation passed over, in place of #623's list of
-      statistic shapes: "older people – OR [95% CI 1.1–2.0] 1.52", "– OR ≈ 1.52", "– OR of
-      1.52" and the value on the next line define nothing, where each was a second
-      definition of OR (the author, 2026-11-12, after #623's final check; round 1 of #643);
-      the inputs now hold a dash definition with each ending and a statistic after a dash in
-      each of those shapes. The entry it replaces, for the list of abbreviations' entries,
-      is spent
+      the title page that opens a file is not read for abbreviations: its authors' names,
+      departments, units and institutions are reported nowhere, nothing on it defines a short
+      form, and its only uses are of entries of the list of abbreviations; it ends at the
+      first section a paper opens on, at a list of abbreviations, at a letter's
+      salutation, or at running prose, and is found only where it holds a line only a title
+      page holds (Basile, 2026-11-12); the inputs now open on a title page of each kind, or
+      on none
+  - reading: audit abbreviations
+    why: >-
+      the hint of an entry of the list of abbreviations nothing uses no longer names the
+      title page, whose words are now a use of such an entry (Basile, 2026-11-12, "Yes,
+      count it"): "take it out of the list, unless a table, a figure, another entry of the
+      list or the supplementary material uses it: tables and figures are not read here"
   - reading: mask
     why: >-
       a link's target that is an address is masked after its `(` up to its own `)`, and the

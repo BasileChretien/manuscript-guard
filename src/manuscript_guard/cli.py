@@ -85,6 +85,7 @@ from manuscript_guard.gates import (
     source_files,
     sync_bib,
 )
+from manuscript_guard.gates.baseline import check_baseline
 from manuscript_guard.gates.controls import check_controls
 from manuscript_guard.gates.currency import check_currency
 from manuscript_guard.gates.custodian import (
@@ -257,6 +258,8 @@ def _gate_run(
         ("G1", lambda: check_values(project, namespace, results)),
         ("G8", lambda: check_reported(project, results)),
         ("G8", lambda: check_interpretation(project)),
+        # A trial's baseline table with P values, emitted or typed (CONSORT).
+        ("G8", lambda: check_baseline(project, results)),
         ("G8", lambda: check_relations(results)),
         ("G8", lambda: check_recomputed(project, namespace, results)),
         ("G8", lambda: check_related(project, namespace, results, submission=at_submission)),
@@ -6825,6 +6828,8 @@ class _Parser(argparse.ArgumentParser):
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from manuscript_guard.auditing import DESIGNS as audit_designs
+
     parser = _Parser(
         prog="manuscript-guard",
         description="Make every number in a scientific manuscript traceable to its source.",
@@ -6957,11 +6962,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     audit.add_argument(
         "--design",
-        choices=("observational",),
+        choices=audit_designs,
         help="the study's design, which you declare: with observational, each sentence of the "
         "Abstract, the Discussion and the Conclusion that says one thing causes another "
         "(cause, causal, demonstrated that, proved that), with no hedge, negation or "
-        "citation, is a warning",
+        "citation, is a warning; with trial, each table captioned as of baseline "
+        "characteristics that has a column of P values is a warning (CONSORT)",
     )
     audit.add_argument(
         "--cited",

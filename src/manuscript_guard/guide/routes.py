@@ -105,6 +105,9 @@ ROUTES: dict[str, Route] = {
            "ratio-interval-asymmetric", "spread-label-differs", "quality-not-run",
            "entry-unchecked", "rule-unchecked", "manuscript-empty", "p-decision-error",
            "p-inconsistent", "summary-not-reported"),
+    # A trial's table of baseline characteristics with P values: the script that emits it,
+    # or the table typed, drops the column; no command does it.
+    **_all("results-binding", None, "baseline-p-values"),
     # What the results' contract refuses is put right in the script that emits it, so `bind`
     # does nothing for it. The literature's own `duplicate-key` and `no-display` are told
     # apart by the file they name (`route_for`).

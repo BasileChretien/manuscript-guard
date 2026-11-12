@@ -370,7 +370,13 @@ and statistic whose P cannot be the same. Two numbers agree where one value coul
 printed as both: 1.5 and 1.52 agree, 1.90 and 1.89 do not. A conflict is counted by
 `--strict`. Where two intervals or tests could be the counterpart, none is said. Where no
 file has an Abstract heading, or none a Results heading, the section says nothing was
-compared. Each file is placed by its own headings, so a paper split into files has a
+compared. A heading whose whole title, numbered or not, is the Results by another name is a
+Results heading here: "Experiments", "Experiments and results", "Experimental results",
+"Empirical results", "Empirical analysis", "Main results", "Evaluation", "Numerical
+results" or "Simulation results", besides those that open with "Results" or "Findings". Not
+"Experiments on synthetic data", nor "Analysis", "Data analysis" or "Statistical analysis",
+which as often head the Methods; and with none of them, nothing is compared, never the whole
+body. The list is the audit's alone: no gate takes "Experiments" for the Results. Each file is placed by its own headings, so a paper split into files has a
 Discussion in a file of its own read as reported whole, as a supplement is; give the audit
 the paper in one file where it can be.
 

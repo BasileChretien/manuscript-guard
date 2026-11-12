@@ -2235,3 +2235,48 @@ def test_a_known_word_with_a_stop_inside_it_is_matched(tmp_path: Path) -> None:
                      encoding="utf-8")  # fmt: skip
     assert ("abbreviation-undefined", "L.AS") in _found(run_gates(paper))
     assert not run_gates(paper, known=("L.AS",)).language
+
+
+#: The shape of the real-paper corpus's papers whose Abstract was not compared for want of a
+#: Results heading: tex-astro-ga-A2 ("Numerical Results"), tex-cs-lg-A1 ("Experiments and
+#: Results") and tex-stat-ap-B1 ("Empirical analysis"), 2026-11-13.
+_RESULTS_ELSEWHERE = (
+    "@documentclass{article}\n@begin{document}\n@begin{abstract}\n"
+    "The OR was 1.52 (95@% CI 1.21--1.89).\n@end{abstract}\n@section{Introduction}\n"
+    "It matters.\n@section{Model}\nWe fit it.\n@section{HEADING}\n"
+    "The OR was 1.52 (95@% CI 1.21--1.89).\n@section{Conclusions}\nIt held.\n@end{document}\n"
+)
+
+
+@pytest.mark.parametrize("heading", ["Numerical Results", "Experiments and Results",
+                                     "Empirical analysis", "4. Experiments", "Evaluation"])
+def test_a_heading_that_is_the_results_by_another_name_has_the_abstract_compared(
+    tmp_path: Path, heading: str
+) -> None:
+    """Basile, 2026-11-13: a heading whose whole title is one of the names the Results go by
+    in machine learning, statistics and astronomy is the Results to the Abstract against
+    Results, and the Abstract is held to what it reports."""
+    paper = tmp_path / "paper.tex"
+    paper.write_text(_RESULTS_ELSEWHERE.replace("HEADING", heading).replace("@", chr(92)),
+                     encoding="utf-8")  # fmt: skip
+    read = audit([paper], []).abstract
+    assert read is not None and read.compared and read.matched == read.numbers > 0, heading
+
+
+@pytest.mark.parametrize("heading", ["Analysis", "Data analysis", "Statistical analysis",
+                                     "Experimental setup", "Experiments on synthetic data",
+                                     "Simulation studies"])
+def test_a_heading_that_only_resembles_the_results_leaves_the_abstract_uncompared(
+    tmp_path: Path, heading: str
+) -> None:
+    """A title that is none of those names whole, or one as often the Methods' as the
+    Results', is no Results: the Abstract is not compared, the comparison does not fall back
+    to the whole body, and the reason names the headings that would have been read."""
+    from manuscript_guard.auditing.abstract import RESULTS_LIKE
+
+    paper = tmp_path / "paper.tex"
+    paper.write_text(_RESULTS_ELSEWHERE.replace("HEADING", heading).replace("@", chr(92)),
+                     encoding="utf-8")  # fmt: skip
+    read = audit([paper], []).abstract
+    assert read is not None and not read.compared, heading
+    assert all(name in read.why_not.lower() for name in RESULTS_LIKE), read.why_not

@@ -16931,7 +16931,8 @@ been sorted yet.
   heading names and the profile does not either ("Overview") is a section of the paper's
   own, and its own "Results" heading is a Results heading. The paper audit's Abstract
   against the Results (`auditing/abstract.py`) still compares only a paper with a Results
-  heading.
+  heading, or a heading that is the Results by another name (`RESULTS_LIKE`, see the entry
+  on it).
 - **A summary is held to the Results by the words of the claim lists, sentence against
   sentence** (`summary-claim-stronger`, item 3 of the borrowed checks, 2026-11-07). Only the
   words of `data/claim_strength.yaml` are compared, as `claims.compare_pair` compares them:
@@ -27247,6 +27248,21 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - In the file `--cited` writes, an entry found by its title has the registry's title,
     year and standing, but Europe PMC is not asked for its abstract, which is asked by an
     identifier the entry types. Accepted.
+
+- **The Abstract against Results takes the Results by another name from a closed list,
+  in English, by the whole title.** A heading is the Results to it where G8 reads it as
+  them, or where its whole title, numbered, marked or not, is one of
+  `auditing.abstract.RESULTS_LIKE` ("Experiments", "Numerical results", "Empirical
+  analysis" and six more) and it stands where the section searches (Basile, 2026-11-13,
+  after 13 of the real-paper corpus's 52 preprints had no Results heading). A paper whose
+  Results are headed otherwise has its Abstract not compared, and the reason names the
+  list: "Simulation studies" and "Empirical validation on datasets from finance
+  applications" (tex-econ-em-B2), "Inference" (tex-stat-ap-A2), a listed name with words
+  added, "Experiments on synthetic data", and a title in another language. "Analysis",
+  "Data analysis" and "Statistical analysis" are left out, as often the Methods as the
+  Results, and "Simulation studies" holds a study's design as well. The comparison never
+  falls back to the whole body, and no other gate reads the list. Pinned by
+  `tests/test_audit.py::test_a_heading_that_only_resembles_the_results_leaves_the_abstract_uncompared`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

@@ -5324,6 +5324,70 @@ funding or of interests alone names no initials, since their capitals are instit
 often as people, and JAMA's "Additional contributions", its acknowledgements, is one of
 those; Known gaps says where one is read as a contributions statement.
 
+**The title page is not read** (Basile, 2026-11-12, after the audit of his paper reported
+"INSERM U1237", "UMR-S", "CHU de Caen Normandie", "PhIND" and "GIP Cyceron" as used and not
+defined). Its departments, units and institutions need no defining, and nothing on it is a
+definition: "Institut national de la santé et de la recherche médicale (INSERM)" in an
+affiliation does not define the INSERM of the Methods. Its words make one use only, of an
+entry of the list of abbreviations, which covers the title page's units and institutions
+too: an entry only the title page uses is used (Basile, 2026-11-12, "Yes, count it"). A short
+form the text defines and uses nowhere else but on the title page is unused, and its hint
+says that the title page uses it and is not read for abbreviations (round 1 of #654).
+Everything from
+the end of the title page on is read as before. The other readings of G14, the spelling, the
+terms and the notation, still read it.
+
+Not every paper has an abstract, a letter to the editor has none, so the end is not found
+by one word (`text/title_page.py`). The first file of the paper, and the first of the
+supplement, is read from its opening, block by block, a heading or a paragraph, past the
+front matter and a comment `init --from` set aside, and each block is one of five kinds:
+
+- a line only a title page holds: an affiliation, a paragraph naming a department, a
+  faculty, a university, an institute, a hospital, a school, a laboratory, a centre, a unit,
+  a service, Inserm, CNRS or UMR, in English, French ("Département", "Service de"), German
+  ("Abteilung"), Spanish ("Departamento") or Italian ("Dipartimento"), in pieces between its
+  commas of ten words at most, the small words of names aside; an e-mail address; an ORCID
+  iD; authors with a degree after a name ("Jane Doe, MD") or the mark of an affiliation
+  ("MARTIN\\*^1^", "Doe1,2" as a PDF prints it); or a label, "Corresponding author",
+  "Correspondence", "Running title", "Word count", "Keywords", "E-mail", "Affiliations", and
+  in French "Correspondance", "Auteur correspondant", "Mots-clés";
+- a line that may stand on one and says nothing either way: names with no mark, a date,
+  "Received: ...", a note under a mark ("\\*These authors contributed equally");
+- the paper's opening: a heading, a paragraph alone or a run-in label that names a section
+  a paper opens on, the Abstract (or the journal's name for it), Summary, Introduction,
+  Background, Methods and its variants, Results, Discussion, Conclusions, Main text, Letter,
+  Highlights, Key points, Objectives and the like, an abstract's name in French, Spanish,
+  Portuguese, German or Italian ("Résumé", "Resumen", "Zusammenfassung"), and a list of
+  abbreviations, which a journal may ask for on the title page itself ("Abbreviations: Food
+  and Drug Administration (FDA); ...", as Pediatrics has it) and which is read, its entries
+  definitions as ever (round 1 of #654), where the glossary's opening pattern or its titles
+  would open a list, "Abbreviations", "Acronyms", "Glossary", "List of abbreviations" or "List
+  of acronyms", and the French "Abréviations" (rounds 2 and 3), past the title; or a letter's salutation, "Dear Editor,", "To the
+  Editor:", "Sir,", "Dear Sir or Madam,", "Madame, Monsieur,";
+- another heading: one of the back matter, "References", "Funding", or one that names no
+  section, past the first block;
+- prose: a paragraph with a word a sentence is made of and a title page is not, "we",
+  "was", "is", "this", "a", "an" and the like, or "the" twice, or one sentence ending before
+  another; or, with none of those, of eight words or more, three in five of them in small
+  letters, the small words of names aside.
+
+The title page runs from the opening to the first block of the last three kinds. It is the
+title page where it holds a line only a title page holds, one where the paper's opening ends
+it and two where anything else does, and 600 words at most, as `init --from` sets aside. The
+first block is the title: a heading, or a paragraph of three lines and 40 words at most, one
+sentence at most and no stop at its end, which may read as prose, and whose institution,
+"Burnout among nurses of a university hospital", is no affiliation. A first paragraph of more
+than three lines is read a line at a time, as a PDF's lines and a title page typed a line to
+each stand in one paragraph, but only where none of its lines holds a sentence: an opening
+paragraph of prose wrapped over lines is one block. So a paper that opens
+on its Introduction has no title page, nor one whose title alone stands above it, nor one
+whose opening prose names a university ("We taught pharmacology at the University of Rouen
+(UR), France"): those are read whole. Where nothing marks a title page there is none; a
+title page found where there is none would hide real findings in the paper's opening, so
+each rule leans the other way. A LaTeX paper is not read so: the title page its class
+writes, `\author`, `\affil`, `\address` and the rest of `FRONT_MATTER_COMMANDS`, is passed
+over by its reader (above), and nothing here changes how a LaTeX paper is read.
+
 **What may stand undefined is data.** `data/abbreviations.yaml` holds a short list of what
 general English reads as a word or a name, `DNA`, `UK`, `DOI`, and a few unit symbols with
 two capitals together, `MHz`, `GPa`. It is short on purpose. A long list would decide for
@@ -5371,7 +5435,8 @@ is "used here and not spelt out; only the list of abbreviations defines it", wit
 spell it out where it first appears (where the text spells it out after the list, it is
 defined later there, as any); an entry the text does not use, and does not define, is "in the
 list of abbreviations and not used in the main text", with the hint to take it out of the
-list unless the title page, a table, a figure, another entry or the supplement uses it. A long form is quoted as typed, where `repr` had doubled the backslash of an
+list unless a table, a figure, another entry or the supplement uses it; an entry the title
+page uses is used (see "The title page is not read"). A long form is quoted as typed, where `repr` had doubled the backslash of an
 escape, "d\\'Intérêt".
 
 **A glossary may have no title.** A paper typed in Word often opens its list with a sentence
@@ -16800,6 +16865,53 @@ been sorted yet.
   Discussion is read. The figures that gave the reason are those of an automated
   scientist's reports: the note says nothing of how often a person's interpretation is
   wrong, only where it stands.
+- **G8 knows a trial's table of baseline characteristics by what its caption names and a P
+  header of its first row.** `baseline-p-values` warns where the `study_type` is one whose
+  guidelines include CONSORT (`data/study_types.yaml`), and `audit --design trial` reads a
+  paper's tables by the same rule (`gates/baseline.py`, `text/captioned.py`). It is a warning
+  at every stage, and nothing stands it down: no emitted table carries a reason, and G2's
+  `project-exemption` is for numbers. Accepted.
+  - A caption names such a table only where "baseline" stands before characteristics or
+    demographics, with up to three words between and no time among them ("baseline
+    demographic, clinical, and laboratory characteristics", not "baseline and follow-up
+    characteristics"), and "adjusted for", "by", "according to" or another of the words that
+    qualify an outcome does not stand up to three words before it; or where
+    characteristics or demographics have "at baseline" or "at randomisation" after them.
+    Every other wording is missed: "Table 1. Participants", "Participants at baseline, by
+    group", "Baseline data", "Characteristics before treatment". Accepted.
+  - A caption that says "baseline features" is not read as one of baseline characteristics,
+    since "Baseline MRI features associated with response" names an analysis. Accepted.
+  - A word holding a digit, and a "/", "&" or "(" between the words, ends the phrase:
+    "Baseline demographic/clinical characteristics", "Baseline HbA1c and clinical
+    characteristics" and "Baseline (pre-randomisation) characteristics" are not read.
+    Accepted.
+  - A paragraph beside a table that opens with "Table 1 " and a capital, "Table 1 In the
+    intervention group, more were women.", is read as the table's legend, since "Table 1
+    Baseline characteristics" is set the same way.
+    Pinned by `tests/test_corruption.py::test_a_paragraph_that_opens_with_a_table_s_number_and_a_capital_is_its_legend`.
+  - A P header is one of six exact headers, P, p, P value, p value, P-value and p-value,
+    perhaps in italics or maths and ending in one note mark. "P Value", "P for trend",
+    "Significance" and "p (χ²)" head no column of P values here.
+    Pinned by `tests/test_corruption.py::test_what_is_no_trials_baseline_table_with_p_values_passes`.
+  - Only a table's first row is its header: a P header in a second header row, under a row
+    of groups spanning the columns, is not read. Accepted.
+  - The LaTeX reader prints `P\textsuperscript{a}` as "Pa", which is no P header; `P$^{a}$`
+    is read. Accepted.
+  - A Markdown simple or multiline table, a grid table with no `+===+` line under a header,
+    and a table typed in HTML are not read; nor is a `longtable` whose `\caption` opens its
+    rows, whose first row is then its caption. Accepted.
+  - An emitted table is read whether or not the manuscript places it, and a typed table's
+    caption is the one pandoc would give it or the legend typed beside it; in a .docx, a
+    table with no legend beside it is captioned by the paragraph before it. Accepted.
+  - A legend typed between two tables is the first one's where that one has no caption
+    before it, whichever table it was typed for: the tables are read in order and a caption
+    one has taken goes to no other, as pandoc gives its `Table:` captions, but a legend
+    below one table is not told from a legend above the next. Accepted.
+  - In LaTeX, two subtables in one float, each with its own `\caption`, both take the
+    float's first caption, and a `\begin{table}` in a comment is counted as a float's
+    beginning. Accepted.
+  - `audit` reads no PDF's tables for it, since a PDF's table is lines of text, and says so.
+    Pinned by `tests/test_audit_claims.py::test_a_pdfs_tables_are_said_not_to_be_read_for_p_values_at_baseline`.
 - **G8 compares only values whose units agree.** A count of 56 and a share of 56.0% are two
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and
@@ -24747,7 +24859,17 @@ Open, recorded as each change landed:
     bold alone, the plain ones counted as words under the Abstract's, are placed at one
     level, its own "Results" the paper's, so the Abstract is compared with itself, as a
     paper titled in bold alone was read before. Pinned by
-    `tests/test_audit.py::test_a_run_in_label_typed_alone_is_read_as_a_heading`.
+    `tests/test_audit.py::test_bold_abstract_parts_beside_plain_ones_are_placed_at_one_level`,
+    `tests/test_audit.py::test_init_from_makes_bold_abstract_parts_beside_plain_ones_one_level`.
+  - Where a plain title sits among titles in bold and the typed titles cannot be placed,
+    one of their names typed twice, the plain one is no heading where those in bold can be
+    placed (where they cannot, a bold "Results" typed twice, every typed title is a heading
+    of level 1 to `init --from`, the plain one included): a plain "ABSTRACT" before
+    a bold Introduction, Methods, Results, Discussion and References, a plain "RESULTS" in
+    the Discussion, is set aside by `init --from` in the title page's comment, which no gate
+    reads, and the audit compares nothing, as both did before a plain title was read
+    (review of #641). Pinned by
+    `tests/test_audit.py::test_a_plain_abstract_beside_bold_titles_named_twice_is_no_heading`.
 - **`init --from` reads no affiliation, ORCID or e-mail address, and splits no name.** Each
   name from an Author paragraph goes into `authors.yaml` in a comment over an empty entry; the
   rest of the title page is in the comment in `main.md`. Accepted.
@@ -26753,6 +26875,56 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `.webp` is reviewed and described, and its colours are said to be unread, as a PNG's
     are. Pinned by
     `tests/test_placed_figures.py::test_a_figure_through_a_link_out_of_the_project_is_checked_and_named`.
+- **G14 finds a title page by the shape of its lines, and leans towards finding none.**
+  The rules are in "Abbreviations are checked against the manuscript", under "The title page
+  is not read". Where it finds none, the title page is read as before, its units and
+  institutions reported as undefined; where it finds one that is not, the paper's opening
+  is not read for abbreviations. Accepted.
+  - A title that ends in a stop, holds two sentences, or runs over three lines or 40 words
+    is no title, and a paper that opens on one has no title page; so has a PDF whose first
+    line, or first line of its title in sentence case, reads as prose, its lines standing in
+    one paragraph before the first heading, and one whose first paragraph holds a sentence
+    on any line, which is then read as one block. Accepted.
+  - A title page with one line only a title page holds is found only where the paper's
+    opening ends it: ended by prose, by a heading of the back matter or by the end of the
+    file, it needs two, and is otherwise read. Pinned by
+    `tests/test_language.py::test_one_line_of_a_title_page_before_prose_is_read`.
+  - A list of abbreviations whose first entry stands on its label's line, "**Abbreviations:**
+    FDA: Food and Drug Administration", or whose entries run on with commas, "Abbreviations:
+    FDA, Food and Drug Administration; WHO, ...", is no glossary of entries to G14, on the
+    title page or elsewhere: that entry, or every one, defines nothing. The title page reads
+    it as the rest of the paper does. Pinned by
+    `tests/test_language.py::test_a_list_on_the_title_page_is_read_as_with_no_title_page`.
+  - The other languages are read by a few words each: an abstract's name in French,
+    Spanish, Portuguese, German and Italian; a salutation in French, Spanish and German; a
+    label in French, Spanish, German and Italian; an institution's word in those four; and a
+    sentence's words only in English and a few of French. A title page in another language is
+    read as before. Accepted.
+  - Of those words only the French letter's (its service, department and salutation) are
+    held by a test; the rest, and a sentence in Spanish or Italian that names a
+    "Departamento" or a "Dipartimento" in pieces as short as an affiliation's, which none of
+    the words of a sentence marks as prose and so reads as an affiliation, are held by none.
+    Accepted.
+  - Whether a first paragraph of more than three lines is read a line at a time is tested on
+    each line apart: a title page typed a line to each with one line that holds a sentence
+    is read as one block, and so found only where that block is no prose; a prose paragraph
+    none of whose lines holds a sentence alone is read a line at a time. Accepted.
+  - A line of the title page that reads as prose ends the title page there, and what
+    follows it is read: an affiliation with "a" or "we" in it, a funding line "Funding: This
+    work was ...". Accepted.
+  - A sentence that holds none of the words of a sentence, no "the" twice and no second
+    sentence, names an institution and keeps between its commas to ten words, "Students of
+    Rouen University, France, sat exams at CHU Caen in 2021.", reads as an affiliation:
+    after a title and before the paper's first section, it is taken for a title page and
+    not read for abbreviations. Accepted.
+  - "Correspondence" is a title page's label, the corresponding author's, and so not the
+    paper's opening, though The Lancet names a section so. Accepted.
+  - Only the first file of the paper and of the supplement may open on a title page. A
+    title page kept in a file of its own that the build prints after `main.md` is read.
+    Pinned by
+    `tests/test_language.py::test_only_the_first_file_of_the_paper_may_open_on_a_title_page`.
+  - A title page of more than 600 words is read whole, as `init --from` leaves one in the
+    text. Pinned by `tests/test_language.py::test_a_title_page_over_600_words_is_read`.
   - A figure written outside the project is named by its file name alone, so two from
     different folders with one name are named alike: `alt-text.md` then holds two
     "## x.svg". Accepted.

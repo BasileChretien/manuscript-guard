@@ -2059,6 +2059,104 @@ def test_the_initials_a_contributions_statement_names_are_no_abbreviations(
     assert found == [("abbreviation-undefined", short) for short in undefined], text
 
 
+from generated import title_pages  # noqa: E402
+
+
+@holds(40, title_pages())
+def test_the_title_page_is_not_read_for_abbreviations(
+    drawn: dict[str, tuple[str, list[tuple[str, str]]]],
+) -> None:
+    """A title page's capitals, its authors' names, units and institutions, are reported
+    nowhere, and what it spells out defines nothing, wherever it ends: at an Abstract, at
+    another first section, run in from its label or not, at a letter's salutation, where
+    prose begins, and at a list of abbreviations, which is read; and whatever its one line
+    only a title page holds is. Its one use is of an entry of the list of abbreviations, which
+    is then used; a definition the text gives and only the title page uses again is unused.
+    A paper with no title page, opening on a
+    heading or on a title alone, is read whole, and so is one whose opening names a
+    university in a sentence (Basile, 2026-11-12)."""
+    nothing = language_gate._Known(frozenset(), frozenset())
+    for name, (text, expected) in drawn.items():
+        report = language_gate._judge([_file(0, Path("main.md"), text, [], False)], nothing,
+                                      Path("."))  # fmt: skip
+        found = sorted((f.code, f.message.split()[0]) for f in report.findings)
+        assert found == expected, (name, text)
+
+
+def _no_title_page_is_found(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "title_page_end", lambda *args, **kwargs: None)
+
+
+def _only_an_abstract_ends_a_title_page(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_OPENING_NAMES", frozenset({"abstract", "summary"}))
+
+
+def _a_salutation_opens_no_letter(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_SALUTATION", re.compile(r"(?!)"))
+
+
+def _prose_ends_no_title_page(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    real = title_page._paragraph_kind
+
+    def kind(raw: str, joined: str, *, first: bool = False) -> str:
+        found = real(raw, joined, first=first)
+        return title_page.NEUTRAL if found == title_page.PROSE else found
+
+    patch.setattr(title_page, "_paragraph_kind", kind)
+
+
+def _no_word_makes_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_SENTENCE", frozenset())
+    patch.setattr(title_page, "_SENTENCE_OPENING", frozenset())
+
+
+def _an_affiliation_is_no_title_page_line(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_INSTITUTION", re.compile(r"(?!)"))
+
+
+def _an_affiliation_s_pieces_may_be_any_length(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_PIECE_WORDS", 1000)
+
+
+def _title_page_pattern_matches_nothing(name: str) -> Callable[[pytest.MonkeyPatch], None]:
+    def broken(patch: pytest.MonkeyPatch) -> None:
+        from manuscript_guard.text import title_page
+
+        patch.setattr(title_page, name, re.compile(r"(?!)"))
+
+    return broken
+
+
+def _a_list_of_abbreviations_is_the_title_page_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_opens_a_list", lambda text: False)
+
+
+def _a_title_page_s_word_uses_no_list_entry(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_on_title_pages", lambda files: {})
+
+
+def _a_title_s_institution_is_an_affiliation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    real = title_page._paragraph_kind
+    patch.setattr(title_page, "_paragraph_kind",
+                  lambda raw, joined, *, first=False: real(raw, joined))  # fmt: skip
+
+
 def _no_initials_are_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_initials", lambda prose, spans: frozenset())
 
@@ -19738,6 +19836,98 @@ def _a_stop_blanked_with_an_address_is_not_kept(patch: pytest.MonkeyPatch) -> No
 
     patch.setattr(quote_places, "_CLOSING", frozenset())
 
+# ----------------------------- a trial's table of baseline characteristics with P values, G8
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import baseline_papers  # noqa: E402
+
+
+@holds(30, baseline_papers())
+def test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does(
+    planted: tuple[dict[str, Any], dict[str, Any]],
+) -> None:
+    """In a randomised trial, each table captioned as of baseline characteristics with a P
+    header warns, emitted or typed, in Markdown or LaTeX, in the main text or the
+    supplement, at its header row's line, naming its P header; a table of outcomes, of a
+    change from baseline, with the word inside another or with a header that holds a P and is
+    none warns of nothing. Of a paper of another design, or of none, nothing is said."""
+    given, found = planted
+    read = READINGS["baseline tables"]()
+    for kind in ("markdown", "latex"):
+        paper = {"emitted": given["emitted"], "files": given[kind]}
+        answered = answer(read, {**paper, "study_type": "trial"})
+        assert "raised" not in answered, answered
+        told = answered["answer"]
+        assert all(code == "baseline-p-values" and severity == "warn"
+                   for _path, _line, code, severity, _said in told), told  # fmt: skip
+        said = sorted(([path, line] for path, line, *_rest in told), key=json.dumps)
+        expected = sorted(([path, line] for path, line, _headers in found[kind]), key=json.dumps)
+        assert said == expected, given[kind]
+        for path, line, headers in found[kind]:
+            (message,) = [m for p, n, _c, _s, m in told if [p, n] == [path, line]]
+            shown = message.split("column of P values (", 1)[1].split("), and the study", 1)[0]
+            assert shown == " and ".join(repr(_printed(h, kind)) for h in headers), message
+        other = answer(read, {**paper, "study_type": given["other"]})
+        assert other == {"answer": []}, given["other"]
+
+
+def _printed(header: str, kind: str) -> str:
+    """A header as the finding names it: as typed in Markdown, as the LaTeX reader prints it."""
+    if kind == "markdown":
+        return header
+    for written, shown in (("$^{a}$", "^a"), ("$^{*}$", "^*"), ("$^\\dagger$", "^"),
+                           ("\\textit{P}", "P"), ("\\emph{p}", "p"), ("$P$", "P"),
+                           ("$p$", "p")):  # fmt: skip
+        header = header.replace(written, shown)
+    return header
+
+
+def _baseline_inside_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_NAMES", baseline._names(start=""))
+
+
+def _qualifying_ignored(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_QUALIFIED", re.compile(r"(?!)"))
+
+
+def _only_the_old_adjectives_between(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    adjectives = ("demographic", "sociodemographic", "clinical", "patient", "participant",
+                  "patients'", "participants'")  # fmt: skip
+    patch.setattr(baseline, "_NAMES",
+                  baseline._names(word=baseline._one_of(adjectives) + baseline._END))
+
+
+def _baseline_anywhere_names_the_table(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_NAMES", re.compile(r"(?<![^\W_])baseline(?![^\W_])", re.I))
+
+
+def _a_p_header_by_containment(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "p_header",
+                  lambda header: any(p in header for p in baseline.P_HEADERS))  # fmt: skip
+
+
+def _the_supplement_unread(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_DOCUMENTS", (False,))
+
+
+def _any_design_a_trial(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "applies", lambda study_type: True)
+
+
 # ------------------------------------------- the plan's Software section and the loads, G12
 
 # Imported here, not at the top, to keep clear of the import block other branches edit.
@@ -23167,6 +23357,66 @@ BROKEN = {
         _no_initials_are_read,
         test_the_initials_a_contributions_statement_names_are_no_abbreviations,
     ),
+    "no title page is found": (
+        _no_title_page_is_found,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "only an abstract ends a title page": (
+        _only_an_abstract_ends_a_title_page,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a salutation opens no letter": (
+        _a_salutation_opens_no_letter,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "prose ends no title page": (
+        _prose_ends_no_title_page,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "no word makes a sentence of an opening": (
+        _no_word_makes_a_sentence,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "an affiliation is no line of a title page": (
+        _an_affiliation_is_no_title_page_line,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "an affiliation's pieces may be of any length": (
+        _an_affiliation_s_pieces_may_be_any_length,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a title's institution is an affiliation": (
+        _a_title_s_institution_is_an_affiliation,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a run-in label opens no paper": (
+        _title_page_pattern_matches_nothing("_RUN_IN"),
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a degree after a name is no line of a title page": (
+        _title_page_pattern_matches_nothing("_DEGREES"),
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "an affiliation's mark after a name is no line of a title page": (
+        _title_page_pattern_matches_nothing("_MARKED"),
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "an e-mail address is no line of a title page": (
+        _title_page_pattern_matches_nothing("_EMAIL"),
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "an ORCID iD is no line of a title page": (
+        _title_page_pattern_matches_nothing("_ORCID"),
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a title page's word uses no entry of the list of abbreviations": (
+        _a_title_page_s_word_uses_no_list_entry,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a list of abbreviations is the title page's": (
+        _a_list_of_abbreviations_is_the_title_page_s,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
     "every statement's capitals are initials": (
         _every_statement_names_initials,
         test_the_initials_a_contributions_statement_names_are_no_abbreviations,
@@ -26324,6 +26574,34 @@ BROKEN = {
     "an import line continued with a backslash is read alone": (
         _a_continued_import_line_is_read_alone,
         test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a caption's baseline is read inside another word": (
+        _baseline_inside_a_word,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "what qualifies an outcome is not read before a caption's baseline": (
+        _qualifying_ignored,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "only the listed adjectives stand between baseline and characteristics": (
+        _only_the_old_adjectives_between,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "a caption that holds the word baseline names a table of baseline characteristics": (
+        _baseline_anywhere_names_the_table,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "a P header is any header that holds one": (
+        _a_p_header_by_containment,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "the supplement's tables are not read for P values at baseline": (
+        _the_supplement_unread,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "a baseline table's P values warn whatever the study's design": (
+        _any_design_a_trial,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
     ),
     "a package's name is found inside a longer word": (
         _a_package_s_name_is_found_inside_a_word,

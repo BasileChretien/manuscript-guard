@@ -12077,6 +12077,103 @@ def test_what_the_reader_still_refuses_of_those_papers_fails_build(project: Path
     assert ("tex-refused", "b.tex", 1) in found, report.render(project)
 
 
+#: What three of 20 LaTeX preprints of the corpus run of 2026-11-11 held, that the reader
+#: refused, so that the rest of each file was read as typed: ICLR's `math_commands.tex`
+#: defining `\eqref` again, `iclr2021_conference.sty`'s `\addcontentsline`, arxiv.sty's
+#: `\renewcommand\section`, and a Scientific WorkPlace preamble's `\expandafter`.
+_TEMPLATES = {
+    "math_commands.tex": "\\def\\eqref#1{equation~\\ref{#1}}\n",
+    "iclr.sty": "\\def\\addcontentsline#1#2#3{}\n",
+    "arxiv.sty": "\\renewcommand\\section{\\@startsection{section}{1}{\\z@}{-1ex}{1ex}{\\bf}}\n",
+}
+#: What the body may use of them: nothing; the restyled heading and the cross-reference
+#: defined as another, read as before (Basile, 2026-11-12, "Yes, read them"); a command
+#: defined again otherwise, refused where it stands.
+_TEMPLATE_USES = ("", "\\section{Methods}\nAs \\eqref{e1} shows, ",
+                  "See \\addcontentsline{toc}{section}{x}. ")
+_TEMPLATE_PREAMBLE = (
+    "\\documentclass{article}\n\\usepackage{iclr}\n\\usepackage{arxiv}\n\\input{math_commands}\n"
+    "\\expandafter\\def\\expandafter\\normalsize\\expandafter{\\normalsize"
+    "\\setlength\\abovedisplayskip{6pt}}\n\\begin{document}\n"
+)
+
+
+@pytest.mark.parametrize("used", _TEMPLATE_USES, ids=["unused", "restyled", "used"])
+def test_a_template_s_redefinitions_pass_build_and_a_use_of_one_fails_it(
+    project: Path, used: str
+) -> None:
+    """Basile, 2026-11-11: each of those templates' redefinitions, in the preamble, a file
+    input from it or the author's package, passes BUILD, and the build compiles what it did,
+    the definitions written as typed; a use in the body of a command defined again prints
+    the author's definition, not what the gates read, and fails BUILD where it stands; but
+    the heading restyled through `\\@startsection` and the `\\eqref` defined as `\\ref`, which
+    are read as before (2026-11-12)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    for name, text in _TEMPLATES.items():
+        (entry.parent / name).write_text(text, encoding="utf-8")
+    entry.write_text(_TEMPLATE_PREAMBLE + f"{used}Of 4100 reports, 12 were fatal.\n"
+                     "\\end{document}\n", encoding="utf-8")  # fmt: skip
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    found = {(f.code, f.path.name, f.line) for f in report.failures if f.gate == "BUILD"}
+    refused = {("tex-refused", "main.tex", 7)} if "addcontentsline" in used else set()
+    assert found == refused, report.render(project)
+
+
+def test_an_input_the_tree_cannot_follow_fails_build_and_leaves_the_file_read(
+    project: Path,
+) -> None:
+    """Round 1 of #637, finding 1: BUILD's hint said the rest of the file was not read past
+    any `tex-refused`, though past an `\\input` the tree cannot follow it is, and a number
+    there is still judged. The hint says so."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    entry.write_text("\\documentclass{article}\n\\begin{document}\nOf 4100 reports.\n"
+                     "\\input{absent}\nThen 9999 died.\n\\end{document}\n", encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    (refused,) = [f for f in report.failures if f.gate == "BUILD" and f.code == "tex-refused"]
+    assert refused.line == 4 and refused.hint.endswith("the rest of the file is read"), refused
+    lines = {f.line for f in report.findings if f.code == "unclassified-number"}
+    assert 5 in lines, report.render(project)
+
+
+@pytest.mark.parametrize("used", _TEMPLATE_USES, ids=["unused", "restyled", "used"])
+def test_an_audited_template_s_redefinitions_leave_the_paper_read(
+    tmp_path: Path, used: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The corpus run of 2026-11-11: refused at the redefinition, the rest of each file was
+    read as typed, so G6 reported a template's commented-out text, and the summary said
+    "nothing reported". Each is read now, and a number after it compared; a use of a command
+    defined again stops the reading there, and the report says so, with nothing past it
+    reported, a comment's placeholder no more than a number."""
+    import json
+
+    from manuscript_guard.cli import main
+
+    for name, text in _TEMPLATES.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    paper = tmp_path / "paper.tex"
+    paper.write_text(_TEMPLATE_PREAMBLE + f"{used}Of 4100 reports, 12 were fatal.\n"
+                     "% TODO: rerun with the 2019 data\nThen 77 died.\n\\end{document}\n",
+                     encoding="utf-8")  # fmt: skip
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("n,deaths,later\n4100,12,77\n", encoding="utf-8")
+    assert main(["audit", str(paper), "--against", str(outputs), "--json"]) == 0
+    read = json.loads(capsys.readouterr().out)
+    placeholders = [f for f in read["findings"] if f["gate"] == "G6"]
+    stops = "addcontentsline" in used
+    assert placeholders == [] if stops else len(placeholders) == 1, placeholders
+    main(["audit", str(paper), "--against", str(outputs)])
+    said = capsys.readouterr().out
+    if "addcontentsline" in used:
+        assert "paper.tex: not read past line 7" in said, said
+        assert "not read past line 7 of paper.tex" in said, said
+    else:
+        assert "not read past" not in said and "3 numbers found in the outputs" in said, said
+
+
 # --------------------------------------------------------------- G2 on the LaTeX twin
 
 TWIN = Path(__file__).parent / "data" / "latex" / "manuscript"

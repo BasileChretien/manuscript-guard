@@ -123,12 +123,20 @@ splits as one word. `\providecommand` of a command already defined defines
 nothing. A command a package gives, siunitx's `\unit` say, is yours where you define it
 and no file loads that package. A comment between a command and its argument is passed over,
 as TeX passes it. An input encoding other than UTF-8 is refused, unless every file is plain
-ASCII, which reads the same in all of them. A command the
+ASCII, which reads the same in all of them; `audit` reads a paper that declares latin1,
+latin9, cp1252 or ansinew in that encoding. A command the
 reader reads may be let to another it reads the same way, as `\let\footnote=\endnote` lets
 the endnotes package's note stand for the footnote, but not between headings, citations or
 cross-references, which print a level, a kind of citation or a name of their own, nor
-where either is an input, an import, `\texttt` or `\mg`; defined again otherwise, it is
-refused.
+where either is an input, an import, `\texttt` or `\mg`. A command the reader reads that your
+preamble, a file it inputs or your own `.sty` defines again, `\renewcommand\section` or
+`\def\eqref#1{...}`, is read there, and refused where the document uses it, since what it
+prints is your definition; defined again in the body, it is refused where it stands. Two
+forms are read as before: a heading restyled with LaTeX's own `\@startsection` of its name,
+as arxiv.sty does, and a cross-reference defined as another of its argument among plain
+words, as ICLR's `\def\eqref#1{equation~\ref{#1}}`. A
+preamble's `\expandafter` that only redefines a command,
+`\expandafter\def\expandafter\normalsize\expandafter{...}`, is passed over.
 A journal class's front matter in the body, Elsevier's `frontmatter` with its title,
 authors, addresses and keywords, or Wiley's issue and dates, is passed over as a Markdown
 manuscript's YAML header is; an abstract or Elsevier's highlights in it are read. A command
@@ -147,9 +155,10 @@ TeX sets the page in, `\def\bibhang{24pt}` or `\lower.5ex`, is layout, not a num
 paper's; in the text, and in millimetres, centimetres, inches, `bp`, `cc` or `pc`, which a
 paper uses for base pairs, cubic centimetres and parsecs, a length is a number like any
 other.
-Past a refusal the rest of the file is read as typed, so nothing it did not understand is
-hidden. Write a number the reader cannot see as a binding, or move the construct to the
-preamble.
+Past a refusal nothing more of the file is read, so nothing it did not understand, a comment
+or a command, becomes a finding; `check` fails on the refusal, and `audit` says the file was
+not read past that line. Write a number the reader cannot see as a binding, or move the
+construct to the preamble.
 
 ## Building and submitting
 

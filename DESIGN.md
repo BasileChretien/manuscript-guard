@@ -1538,17 +1538,41 @@ and `authorNP` forms, `\nocitemeta`, and chicago's `\citeN`, `\citeANP`, `\short
 citation's note (round 1 of #442: a rule that read only a name's start and end let
 `\shortciteNP` and `\mycitep` pass unread, their keys hidden from G7).
 
+A command the reader reads that the preamble defines again, in the entry file, a file input
+from the preamble or the author's package, `\def\eqref#1{...}`, `\renewcommand\section{...}`,
+`\def\addcontentsline#1#2#3{}`, is read where it is defined, as a definition of delimited
+parameters is, and each use refused where it prints, since what it prints there is the
+author's definition and not what the reader reads it as; the tree tells every file of it.
+Written in the body, the definition is refused where it stands, as before (Basile, 2026-11-11,
+"Read more, and be honest", after ICLR's `math_commands.tex`, `iclr2021_conference.sty` and
+arxiv.sty were refused at the definition in 3 of 20 preprints of the corpus run, and the rest
+of each file read as typed). An `\expandafter` in the preamble, outside any definition's body,
+that only redefines a command, Scientific WorkPlace's
+`\expandafter\def\expandafter\normalsize\expandafter{\normalsize ...}`, is passed over, with
+the `\expandafter`s before the command's name and before its body, and the `\def` read as any
+is; one that builds the name, `\expandafter\def\csname x\endcsname`, is refused. Two
+redefinitions are read as before, their uses not refused (Basile, 2026-11-12, "Yes, read
+them"): a sectioning command, `\part` to `\subparagraph`, whose whole body is one
+`\@startsection{<its own name>}{..}{..}{..}{..}{..}`, with nothing else but spaces and
+comments, no parameter and `@` a letter, a restyle of the heading that is read as the
+heading it was (arxiv.sty, style.sty); and a cross-reference of the reader's, but a range,
+defined with one parameter as plain words, a tie or a space and one `\ref{#1}` or
+`\eqref{#1}` of another name, in parentheses or not, read as the cross-reference it is
+(ICLR's `math_commands.tex`). The words it prints beside the number are read once, at the
+definition (Known gaps).
+
 Refused:
-- a definition, in a file of the author's, of any command the reader reads, `\mg` among them,
-  but `\abstract`, which the reader read as an unknown command before it opened a section and
+- a definition in the body, of any command the reader reads, `\mg` among them, but
+  `\abstract`, which the reader read as an unknown command before it opened a section and
   which an author restyles, pandoc's `\citeproc` and `\citeproctext`, which its template
   defines, `\providecommand` of one, and a package's command where no package that gives it
   is loaded (above);
-- a use of a command defined with delimited parameters, where it prints (above), and a use
-  that what its parameter text holds does not follow;
+- a use, where it prints, of a command the preamble defines again or defines with delimited
+  parameters (above), and a use that what its parameter text holds does not follow;
 - anything that changes how characters are read: `\catcode`, `\makeatletter` in the body,
   `\csname`, `\expandafter`, and `babel` with a language whose shorthands make a character
-  active, but in a reference list's header (above);
+  active, but in a reference list's header and a preamble's `\expandafter` that only
+  redefines (above);
 - in the body, any conditional but a plain `\iffalse` block and `\ifthenelse`, a command whose
   branches are its arguments and are both read, and those of a reference list's header.
 
@@ -1563,12 +1587,27 @@ Refused:
   reads the same in each encoding inputenc knows. A file of ASCII that sets one is accepted
   and the tree refuses it there where another of its files is not ASCII, since TeX reads
   every file of the tree in that encoding (2026-10-23: a paper's `latin9` was refused in a
-  file of ASCII).
+  file of ASCII). A project's files are read as UTF-8, as the submission folder writes them,
+  so this holds for `check` and the build. `audit` reads the files of a paper whose tree,
+  the entry and the files it reaches, declares one of latin1, latin9, cp1252 or ansinew where
+  the reader reads it, and no other that decodes otherwise, in that encoding; a tree that
+  declares none is UTF-8, whatever another file of the folder declares (round 2 of #637), so that the gates read the characters TeX prints, and
+  writes each declaration as UTF-8's at the same length, `[utf8  ]`, every offset kept
+  (`text/latex/encodings.py`; Basile, 2026-11-11). Any other encoding is refused there as
+  here.
 
 **Refused.** Each refusal is a finding under BUILD that fails at every stage, as `unclear-fence`
 does. Beyond those above, `tex-unbalanced` covers a group, an environment or maths left open or
-closed twice. Past a refusal the rest of the file is read as prose, so that nothing the reader did
-not understand is hidden.
+closed twice. Past a refusal nothing more of the file is read: the rest is blanked, its line
+breaks kept, and nothing the reader found past it is kept, a heading, a citation, a binding or
+an input, which a construct left open, refused where it opens, would otherwise keep (round 1
+of #637); so no comment or source the reader did not understand becomes a finding, and
+`audit` says the file was not read past that line, in its notes and in its summary's line for
+G6 and G14 (Basile, 2026-11-11: read as prose, a template's commented-out text was G6's
+findings, and the summary said "nothing reported"). `bind` still names each number typed
+past it, and offers none. A refusal the tree makes, an `\input` it cannot follow, a file that
+inputs itself or an encoding refused for another file, leaves the file read past it, and
+`audit` and BUILD's hint say so (round 1 of #637).
 
 ### Bindings
 
@@ -1780,7 +1819,7 @@ The result is compiled and packed by the code above, and checked three times:
 
 - `babel` with a language whose shorthands make a character active is not refused yet (step
   2): a shorthand changes letters, not digits, so it is left to step 7, which reads words.
-- Only the first refusal of a file is reported: past it the file is read as prose, and the
+- Only the first refusal of a file is reported: past it nothing of the file is read, and the
   next is found once the first is put right.
 - A file whose only `\begin{document}` stands in a `\verb`, a listing or an `\iffalse` opens in
   the preamble; refused, it keeps that reading, and what stands before the refusal is blanked.
@@ -1802,8 +1841,9 @@ The result is compiled and packed by the code above, and checked three times:
   (round 1 of #385).
 - A command whose body uses one defined with delimited parameters, or one let to it, is not
   refused where it is used, though LaTeX prints that use there: only the delimited
-  command's own uses are. One defined again without delimited parameters is still
-  refused where it prints (2026-10-23).
+  command's own uses are. The same holds of a command the preamble defines again: a use of
+  it inside another definition's body is not refused where that one prints (2026-10-23;
+  2026-11-11).
 - A note let to the endnotes package's, `\let\footnote=\endnote`, is read where it is
   typed, under the heading in force there, though LaTeX prints the notes together at the
   end of the document (2026-10-23).
@@ -2047,8 +2087,10 @@ The result is compiled and packed by the code above, and checked three times:
   body, `24 pt` with a space, `24PT` and `24truept` are numbers. A length in points a
   definition prints as text where it is used, `\newcommand{\font}{12pt}`, passes as layout
   (2026-10-23; round 1 of #443).
-- Past a refusal G14 reads a LaTeX file as typed, its commands and comments as words; `check`
-  fails on the refusal already (round 1 of step 7).
+- Past a refusal G14 and G6 read nothing more of a LaTeX file, its comments no more than its
+  prose, and what the file says there is not checked; `check` fails on the refusal already,
+  and `audit` says the file was not read past that line (round 1 of step 7; Basile,
+  2026-11-11).
 - `\~{}` before a number, written for "about", is taken for an accent on the word after it,
   which is then not read (round 1 of step 7).
 - G6 looks for a placeholder in a LaTeX file's body as typed, as in a Markdown file:
@@ -2056,8 +2098,8 @@ The result is compiled and packed by the code above, and checked three times:
   read as the reader reads it, without a definition's body, so a package or a definition
   named for a note does not; nor do `\author`, `\date` or a comment in the preamble, which
   the reader blanks, though Markdown's front matter is read as typed. Past `\end{document}`
-  nothing is read. A phrase G6 reports is not read in a comment, but past a refusal, where
-  the file is read as typed (rounds 1 and 2 of step 7b).
+  nothing is read, nor past a refusal. A phrase G6 reports is not read in a comment (rounds 1
+  and 2 of step 7b).
 - In a LaTeX body as typed, an optional argument that reads as a placeholder fails as one in
   a Markdown raw block does: TikZ's `\draw[fill]`, a description list's `\item[Repository]`
   (round 1 of step 7b).
@@ -2071,8 +2113,8 @@ The result is compiled and packed by the code above, and checked three times:
   line (round 4).
 - G8 reads a LaTeX document's printed view, so a supplementary file nothing inputs reports
   nothing, where Markdown counts every supplementary file; G0 warns of the file
-  (`tex-not-input`). Past a refusal G8's recomputation reads the file as typed, a comment's
-  P value with it (round 1 of step 8).
+  (`tex-not-input`). Past a refusal G8's recomputation reads nothing of the file (round 1 of
+  step 8; 2026-11-11).
 - G8 keeps a line break inside a `\mg`, between the command and its brace, as a line of the
   view, beside the value it puts in: before it where nothing but spaces or a comment follows
   on its line, else after it. A binding split so and alone on its line, or two in a row, still
@@ -15938,6 +15980,46 @@ entry is then rewritten, or moved below the "Closed since" line. `tests/test_doc
 only that each test a tag names is one pytest collects. An entry with neither has not
 been sorted yet.
 
+- **A LaTeX paper is read only to its first use of a command its template defines again,
+  but in two exact forms.** The reader accepts a known command's redefinition in the
+  preamble, a file input from it or the author's package, and refuses each use where it
+  prints (Basile, 2026-11-11). Two forms are read as before (Basile, 2026-11-12, "Yes, read
+  them"): a sectioning command whose whole body is LaTeX's own
+  `\@startsection{<its name>}` and five more groups, with no parameter and `@` a letter
+  where it is written, arxiv.sty's and style.sty's `\renewcommand\section`; and a
+  cross-reference of one parameter, `\eqref` or another the reader reads as one, whose body
+  is plain words, a tie or a space, and one `\ref{#1}` or `\eqref{#1}` of another name,
+  in parentheses or not, ICLR's `\def\eqref#1{equation~\ref{#1}}`. The words such a body
+  prints beside the number, "equation", are not read where it is used, as no macro's body
+  is (above). Anything else, a font switch round `\@startsection`, a parameter, another
+  section's name, a second command in the body, is refused at its first use, and nothing of
+  the file past it is read, nor a file it inputs past there, which `audit` names as not
+  followed rather than as input by no file; `audit` says so.
+  Pinned by `tests/test_latex_mask.py::test_a_known_command_the_preamble_defines_again_is_read_and_refused_where_used`,
+  `tests/test_latex_mask.py::test_a_restyled_heading_and_a_cross_reference_defined_as_another_are_read`
+  and `tests/test_audit_reading_said.py::test_a_file_input_past_where_the_reader_stopped_is_said_so`.
+- **A part placed by `\subfile` that defines a known command again in its own preamble has
+  its uses refused.** The part's reading reads its own preamble, so a part that repeats
+  main's `\renewcommand\section` is refused at its first `\section`, and the rest of the part
+  is not read, though the document that places it passes over that preamble and prints the
+  part under main's definitions (round 1 of #637). Main refused it at the definition instead.
+  Accepted.
+- **`audit` reads a LaTeX paper's tree in one declared encoding, and writes its declarations
+  as UTF-8's.** A tree, the entry and the files it reaches, that declares latin1, latin9,
+  cp1252 or ansinew where the reader reads it is read in it, each file of it, and a file that
+  names none, in a tree that declares one, is read in it as TeX reads it; a tree that declares
+  none is UTF-8 beside a stray draft that declares one (round 2 of #637); a tree that declares
+  two encodings that decode otherwise, or another encoding, is read as UTF-8 and the
+  declaration refused where its file is not ASCII. A
+  quotation of the declaration's line shows `[utf8  ]`, not what is typed. A project's files
+  are UTF-8 only, as the build writes them.
+  Pinned by `tests/test_audit_reading_said.py::test_an_encoding_the_audit_does_not_read_in_is_still_refused`
+  and `tests/test_audit_reading_said.py::test_a_stray_latin1_declaration_does_not_decide_a_paper_s_encoding`.
+- **A file two audited trees input, in two encodings, is read once, as the first decodes it.**
+  `audit` reads a file the trees of two entries input once, so where the two trees declare
+  encodings that decode otherwise, the report quotes it as the first tree decoded it, which
+  the second's reader would see as mojibake (round 3 of #637). TeX fails on one of the two
+  trees, so the folder is not consistent to begin with. Accepted.
 - **A co-author round records answers, and nothing more.** `checker status` says who answered
   what; it cannot say who read anything. Nothing proves the file was opened, that the evidence was
   looked at, or that a `ok` was not a row of clicks. The record is a person's word written down

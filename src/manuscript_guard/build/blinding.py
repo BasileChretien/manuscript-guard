@@ -257,10 +257,13 @@ def check_blinded_latex(project: Project, files: list[Path]) -> Report:
     return _named(latex_places(files), wanted, kind, document)
 
 
-def latex_places(files: list[Path]) -> list[tuple[str, str]]:
+def latex_places(
+    files: list[Path], texts: dict[Path, str] | None = None
+) -> list[tuple[str, str]]:
     """Where in a LaTeX submission's files a name can be, each with the text it holds there:
     each `.tex` and `.sty` read whole, its `thebibliography` left out, and the text of each
-    PDF or SVG picture."""
+    PDF or SVG picture. `texts` gives a file's text as it was read already, `audit`'s in the
+    encoding its folder declares."""
     from manuscript_guard.contracts._schema import read_text
     from manuscript_guard.gates.figures import _extract_text
     from manuscript_guard.text.latex.mask import read
@@ -270,7 +273,7 @@ def latex_places(files: list[Path]) -> list[tuple[str, str]]:
         if path.suffix in (".tex", ".sty"):
             # A reference list typed in `thebibliography` names the authors cited, as the Word
             # check passes the bibliography over (round 2 of step 10).
-            text = read_text(path)
+            text = texts[path] if texts and path in texts else read_text(path)
             listed = read(text).references
             places.append(("the text", "".join(
                 " " if any(start <= at < end for start, end in listed) else character

@@ -31353,6 +31353,21 @@ def test_a_code_name_where_the_prose_is_not_is_not_read(project: Path) -> None:
     assert code_name_findings(project) == []
 
 
+def test_a_code_name_beside_a_table_is_caught_and_one_in_its_cells_is_not(
+    project: Path,
+) -> None:
+    """A table's cells label its rows and columns, and are not read; the sentence under the
+    table is, so a name in it is still caught (decision 13: tex-econ-em-A2's tabulars)."""
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    edited = text.replace(old, old + "\n\n| Series | Loading |\n|---|---|\n| CPI_ALL | 0.5 |\n"
+                          "\nThe series CPI_ALL and hr_adj_main loaded most.")  # fmt: skip
+    assert edited != text
+    main_md(project).write_text(edited, encoding="utf-8")
+    line = line_of(edited, "The series CPI_ALL")
+    assert code_name_findings(project) == [("warn", line, "CPI_ALL"), ("warn", line, "hr_adj_main")]
+
+
 # --------------------------------------------------------------------------------------
 # A language pass that changed more than the words. `check` passes each of these: both
 # bounds are bindings that resolve, a sentence with one citation fewer is a sentence, and a

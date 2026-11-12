@@ -10588,6 +10588,74 @@ def _camel_case_is_not_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(gate, "_CAMEL", re.compile(r"(?!)"))
 
 
+def _a_table_s_cells_are_read_for_a_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import code_names as gate
+
+    patch.setattr(gate, "_celled", lambda view, tables: view)
+
+
+def _a_simple_table_is_no_table_to_the_code_names(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    tables = language._markdown_tables
+
+    def piped(text: str) -> tuple[tuple[int, int], ...]:
+        return tuple((start, end) for start, end in tables(text) if "|" in text[start:end])
+
+    patch.setattr(language, "_markdown_tables", piped)
+
+
+def _a_longtable_is_no_table_to_the_code_names(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import mask
+
+    patch.setattr(mask, "TYPED_TABLES", mask.TYPED_TABLES - {"longtable"})
+
+
+def _optidef_s_problems_are_prose(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import commands, mask
+
+    patch.setattr(mask, "MATHS", mask.MATHS - commands.OPTIMISATION)
+
+
+@holds(40, code_names())
+def test_the_audit_says_the_names_from_the_code_in_one_finding(
+    planted: tuple[dict[str, Any], dict[str, list[list[Any]]]],
+) -> None:
+    """The audit makes G14's warnings on the names from the code one finding, at the first
+    use of the first name it lists: each name once, a word with underscores, a key and a
+    variable among them, in the order G14 gives them, with the warning on each and its line,
+    counted as the names are, its severity G14's. In Markdown and in LaTeX alike."""
+    given, found = planted
+    answered = answer(READINGS["audit code names"](), given)
+    assert "raised" not in answered, answered
+    severity = "fail" if given["stage"] == "submission" else "warn"
+    for form in ("markdown", "latex"):
+        audited = answered["answer"][form]
+        assert len(audited) == 1, (form, audited)
+        one = audited[0]
+        names = [name for name, _kind, _where, _line in found[form]]
+        assert [name for name, _line, _message in one["forms"]] == names, (form, given[form])
+        assert [line for _name, line, _message in one["forms"]] == [
+            line for *_said, line in found[form]], (form, given[form])
+        assert one["line"] == found[form][0][3] and one["severity"] == severity
+        assert one["message"].startswith(f"{len(names)} names are written the way names in "
+                                         f"code are, as G14 reads the paper: '{names[0]}' here")
+        assert "--known" in one["hint"]
+
+
+def _the_audit_reads_only_a_word_with_underscores(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import code_names as audited
+
+    patch.setattr(audited, "_SAID", re.compile(r"^'(?P<name>[^'\s]+)' is written with "))
+
+
+def _the_audit_lists_the_names_sorted(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import code_names as audited
+
+    made = audited._made
+    patch.setattr(audited, "_made", lambda mine: made(sorted(mine, key=lambda pair: pair[0])))
+
+
 # ------------------------------------------------------ claims of novelty or absence, G7
 
 # Imported here, not at the top, to keep clear of the import block other branches edit.
@@ -24234,6 +24302,30 @@ BROKEN = {
     "camelCase is not read": (
         _camel_case_is_not_read,
         test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a table's cells are read for a name from the code": (
+        _a_table_s_cells_are_read_for_a_name,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a simple table is no table to the code names": (
+        _a_simple_table_is_no_table_to_the_code_names,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "a longtable is no table to the code names": (
+        _a_longtable_is_no_table_to_the_code_names,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "optidef's problems are prose": (
+        _optidef_s_problems_are_prose,
+        test_a_name_from_the_code_is_found_where_it_stands_and_nowhere_else,
+    ),
+    "the audit reads only a word with underscores for a name from the code": (
+        _the_audit_reads_only_a_word_with_underscores,
+        test_the_audit_says_the_names_from_the_code_in_one_finding,
+    ),
+    "the audit lists the names from the code sorted": (
+        _the_audit_lists_the_names_sorted,
+        test_the_audit_says_the_names_from_the_code_in_one_finding,
     ),
     "a novelty pattern is read with its case": (
         _novelty_patterns_read_with_their_case,

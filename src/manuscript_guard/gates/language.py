@@ -70,11 +70,12 @@ from manuscript_guard.paths import SHIPPED_RECIPES
 from manuscript_guard.policy import DRAFTING
 from manuscript_guard.text.blocks import Heading, find_headings
 from manuscript_guard.text.inline import code_spans, equation_spans
-from manuscript_guard.text.masking import NUL, front_matter_end, mask
+from manuscript_guard.text.masking import NUL, front_matter_end, kept_breaks, mask
 from manuscript_guard.text.placeholders import VALUE_NAMESPACES
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
 from manuscript_guard.text.section_names import section_name_alone
 from manuscript_guard.text.sections import Section
+from manuscript_guard.text.tables import table_lines
 from manuscript_guard.text.title_page import title_page_end
 
 if TYPE_CHECKING:
@@ -1307,6 +1308,9 @@ class _File:
     #: The text of the code spans, everything else NUL, which the code names are read in
     #: beside `printed`.
     code: str = ""
+    #: Where its tables run, whose cells the code names are not read in: a Markdown table of
+    #: the four kinds pandoc reads (`text.tables.table_lines`), a LaTeX `tabular` and its kin.
+    tables: tuple[tuple[int, int], ...] = ()
     starts: list[int] = field(default_factory=list)
     breaks: list[int] = field(default_factory=list)
     #: The stretch of the file this reads, where a LaTeX file is read in stretches, the text
@@ -1380,9 +1384,23 @@ def _file(
         captions=tuple(glossary.markdown_captions(prose)),
         glossaries=glossaries,
         headed=bool(headings), supplementary=supplementary, code=code,
+        tables=_markdown_tables(text),
         initials=_initials(prose, _contributions(hidden, titled, statements)),
         title_page=title_page,
     )  # fmt: skip
+
+
+def _markdown_tables(text: str) -> tuple[tuple[int, int], ...]:
+    """Where the lines of a Markdown file's tables run, each line from its start to its
+    break: a pipe, a grid, a simple and a multiline table (`text.tables.table_lines`), read
+    from the masked text, so that one in a fenced block or a comment is none."""
+    lines = table_lines(kept_breaks(text, mask(text)))
+    spans, at = [], 0
+    for number, line in enumerate(text.split("\n")):
+        if number in lines:
+            spans.append((at, at + len(line)))
+        at += len(line) + 1
+    return tuple(spans)
 
 
 #: The statements whose capitals are the authors' initials, by a word of the heading or the
@@ -1513,7 +1531,7 @@ def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
                 unread=tuple(span for span in whole.unread if start <= span[0] < end),
                 captions=whole.captions, glossaries=whole.glossaries,
                 supplementary=supplementary, code=_hide(whole.code, outside),
-                initials=whole.initials,
+                tables=source.reading.tables, initials=whole.initials,
             ))  # fmt: skip
     return files
 
@@ -1945,7 +1963,7 @@ def check_language(
     analysis's, read from the project where they are not given."""
     files = _read(project)
     passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
-    prose = [Prose(file.path, file.text, file.printed, file.code, file.line_of)
+    prose = [Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables)
              for file in files]  # fmt: skip
     # A contributions statement names its roles as CRediT spells them and a funding
     # statement is worded by the funder, so the spelling is read without those sections.

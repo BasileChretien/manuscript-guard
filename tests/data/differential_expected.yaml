@@ -24,6 +24,14 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: code names
+    why: >-
+      a name in a table's cell is no name in the prose: a Markdown table of the four kinds
+      pandoc reads, and a LaTeX tabular, tabularx, tabulary or longtable, are not read; and
+      optidef's problems, mini, maxi, argmini and argmaxi with their starred, `!` and `e`
+      forms, are maths (decision 13, 2026-11-13, after tex-econ-em-A2's 98 findings in its
+      tabulars and tex-qbio-pe-A2's `w_{min}`); the generated inputs now hold a name in a
+      pipe table, a simple table, a tabular, a longtable and a `mini!`, which the base reports
   - reading: written shares
     why: >-
       new with this pull request: a share a sentence writes beside both its counts, "12 of
@@ -237,11 +245,6 @@ expected:
       cite nothing, a year, a date, a count, a P value or an interval after its value, are
       none (corpus round, 2026-11-10: 14 of 16 vague attributions judged on 52 preprints
       were false); a new reading, whose inputs hold each kind
-  - reading: code names
-    why: >-
-      a word with underscores is said to be "written with underscores, the way a name in
-      code is written", where the message read "is written as a name in code is, with
-      underscores" (corpus round, 2026-11-10)
   - reading: latex mask
     why: >-
       a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's

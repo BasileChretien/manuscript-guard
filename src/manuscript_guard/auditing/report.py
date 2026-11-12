@@ -104,8 +104,9 @@ class Item:
     #: What says where its line stands, where that is not its path's: a converted .docx's
     #: text, which G6, G14 and G4 read (`auditing.paragraphs`).
     placer: object = None
-    #: What `--json` gives beside it: for the short forms used and not defined, each form
-    #: with G14's warning on it and its place (`auditing.undefined.listed`).
+    #: What `--json` gives beside it: for the short forms used and not defined, and for the
+    #: names from the code, each with G14's warning on it and its place
+    #: (`auditing.undefined.listed`).
     listed: dict | None = None
 
     def as_dict(self) -> dict:
@@ -1121,15 +1122,16 @@ def _gates(report, root: Path | None, show: _Show) -> list[str]:
 
 
 def _each_form(run, show: _Show) -> list[str]:
-    """Where each short form the paper uses and does not define is first used, and what G14
-    said of it, which the one finding on them stands for (`auditing.undefined`)."""
-    from manuscript_guard.auditing.undefined import Undefined
+    """Where each short form the paper uses and does not define is first used, and each name
+    from the code it prints, and what G14 said of it, which the one finding on them stands
+    for (`auditing.undefined`, `auditing.code_names`)."""
+    from manuscript_guard.auditing.undefined import Listed
 
     lines: list[str] = []
     at = _placing(run.paper, show)
     for finding in run.language:
-        if isinstance(finding, Undefined) and finding.forms:
-            lines.append("  Each short form used and not defined, where it is first used:")
+        if isinstance(finding, Listed) and finding.forms:
+            lines.append(f"  {finding.each}")
             lines += [f"    {at(warning.path, warning.line)}: {warning.message}"
                       for _form, warning in finding.forms]  # fmt: skip
     return lines

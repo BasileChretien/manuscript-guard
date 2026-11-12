@@ -1413,7 +1413,9 @@ order is `printed_order`.
 - In `figure` and `table`, the caption is prose, and a typed number in a `tabular` is
   `hand-authored-table`.
 - `equation`, `align`, `gather` and `multline`, their starred forms, `\[`, `$$` and `\(` are
-  maths.
+  maths. So are optidef's problems, `mini`, `maxi`, `argmini` and `argmaxi`, each also with
+  `*`, `!` and `e`, whose variables, objective and constraints optidef.sty sets in an
+  `align` (decision 13, 2026-11-13: tex-qbio-pe-A2's `w_{min}` was read as prose).
 - `abstract`, or `\abstract{…}`, opens a section titled Abstract for every reader, so the
   counts, G4 and G5 find it as they find `# Abstract`. One in the preamble is read as prose
   there, as `\title`'s argument is, since a class such as PNAS's prints it from there. This
@@ -5915,7 +5917,20 @@ folders), a file's name (a dotted word whose last part reads as an extension,
 div's line, an HTML tag, an attribute with an `=`, a TeX command, a reference link's
 definition, and the label of a reference link the file defines (one nothing defines is
 printed as typed). Each of these was checked against what `pandoc -t plain` prints. An underscore escaped as Markdown escapes it, `hr\_adj`, or as LaTeX must,
-`hr\_adj`, is the underscore it prints.
+`hr\_adj`, is the underscore it prints. A table's cells are not read either: a Markdown table
+of the four kinds pandoc reads (`text.tables.table_lines`), and so a Word table converted to
+one, and a LaTeX `tabular`, `tabular*`, `tabularx`, `tabulary` or `longtable`. A name there
+labels a row or a column, the series' mnemonics of a data paper (decision 13, 2026-11-13:
+tex-econ-em-A2's 98 findings were all in its tabulars). An RRID's accession,
+`RRID:SCR_006571`, is an identifier, and G14 reads it nowhere (#663).
+
+**The audit says them in one finding** (decision 13). `audit` makes G14's warnings on a
+paper's names from the code one finding, as it makes the short forms left undefined one
+(#640, `auditing.undefined`), by the same grouping (`auditing.code_names`): the names in
+G14's order, at the first use of the first, with `--known` as its remedy, the summary, the
+page and the referee's draft counting the names. `--json` keeps each name's warning under the
+finding (`forms`), and `--details` lists them. `check` in a project still warns once for each
+name.
 
 **A warning while the paper is written, a failure at submission** (D12.2). Nothing about
 such a word is a question of taste: the version a journal receives should have none. A word
@@ -26961,6 +26976,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
     another's is left as a warning of its own. Pinned by
     `tests/test_audit_undefined.py::test_the_finding_reads_what_g14_writes_of_one_form_in_each_part`.
   - `check` reads no such list, and a project cannot ask it to. Accepted.
+- **Names written as code writes them that are none of the paper's code.** The corpus run's
+  judges found 82% of a sample of `code-name-in-prose` findings false (decision 13,
+  2026-11-13). A table's cells, optidef's problems and an RRID are now set aside exactly;
+  the rest still warns, in `check` once for each and in the audit as one name of its one
+  finding: an ethics committee's reference typed with underscores (`ERN_2022-0244`), a
+  model's checkpoint (`vqnsp_encoder_base_decoder_3x200x12`), a tissue's label as GTEx writes
+  it (`Brain_Cortex`), a physical symbol typed as text and not as maths (`k_B T`), and a
+  configuration file a conversion flattened into prose (`secret_key = "..."`). Each would be
+  told from a name in code only by a guess at its shape or its neighbours, and `--known` (or
+  `code_names_kept:` in a project) is their remedy. Accepted.
 - **G14's edits are held back wherever a quotation or another edit may stand** (rounds 1 and
   2 of #636). A word after a straight double mark its paragraph has not closed is taken to
   be quoted, so an inch mark, `a 2" incision`, holds back the respelling of every later

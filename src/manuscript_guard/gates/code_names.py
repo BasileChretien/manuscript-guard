@@ -24,9 +24,11 @@ the reference list taken out already (`language._hidden`, `text/latex/words.py`)
 view of the code spans has the same places hidden (`language._set_aside`). Here a path or an
 address is set aside too, a word in a run of characters that holds a slash, an `@` or a
 backslash before a letter or a digit, and so is a file's name, a dotted word whose last part
-is an extension; and in Markdown the opening line of a fenced div, an HTML tag, a pandoc
-attribute with an `=` in it, a TeX command, a reference link's definition and the label of a
-reference link the file defines, none of which is printed in the document.
+is an extension; a table's cells, a Markdown table's and a LaTeX `tabular`'s, whose names
+label its rows and columns (decision 13, 2026-11-13); and in Markdown the opening line of a
+fenced div, an HTML tag, a pandoc attribute with an `=` in it, a TeX command, a reference
+link's definition and the label of a reference link the file defines, none of which is
+printed in the document.
 
 **The finding is a warning, and a failure at submission** (D12.2): the version a journal
 receives has no word its reader cannot know. A word that is right with its underscores, a
@@ -97,13 +99,16 @@ SNAKE = "snake"
 class Prose:
     """One manuscript file as this reading takes it: `printed` is the text G14 reads as
     sentences and headings, NUL elsewhere; `code` is the text of its code spans, NUL
-    elsewhere. Both have the file's length, so an offset is the file's."""
+    elsewhere. Both have the file's length, so an offset is the file's. `tables` are where
+    its tables run, whose cells are not read: a Markdown table of the four kinds pandoc
+    reads, a LaTeX `tabular` and its kin (`language._File.tables`)."""
 
     path: Path
     text: str
     printed: str
     code: str
     line_of: Callable[[int], int]
+    tables: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -236,6 +241,16 @@ def _unprinted(printed: str, defined: set[str]) -> str:
     return _UNPRINTED.sub(_blank, printed)
 
 
+def _celled(view: str, tables: Iterable[tuple[int, int]]) -> str:
+    """`view` with each table's text NUL, its line breaks kept: a name in a cell labels a
+    row or a column, and is no word of a sentence (decision 13, 2026-11-13: 98 findings in
+    one paper's tabulars, all false)."""
+    out = list(view)
+    for start, end in tables:
+        out[start:end] = [char if char == "\n" else NUL for char in view[start:end]]
+    return "".join(out)
+
+
 def judge_code_names(passages: Iterable[Prose], names: Names, stage: str | None = None) -> Report:
     """The findings of this reading over the whole manuscript in the order it is read: one
     for each name, at its first use, with how often it is used. A warning, and a failure at
@@ -246,9 +261,10 @@ def judge_code_names(passages: Iterable[Prose], names: Names, stage: str | None 
     # hidden, or in another file, which the build joins to this one (round 3 of #575).
     defined = {_label(hit[1]) for prose in passages for hit in _DEFINITION.finditer(prose.text)}
     for place, prose in enumerate(passages):
+        printed, code = (_celled(view, prose.tables) for view in (prose.printed, prose.code))
         uses = [
             (offset, length, name, kind, label, in_code)
-            for text, in_code in ((_unprinted(prose.printed, defined), False), (prose.code, True))
+            for text, in_code in ((_unprinted(printed, defined), False), (code, True))
             for offset, length, name, kind, label in _names_in(text, names, in_code=in_code)
         ]
         for offset, length, name, kind, label, in_code in sorted(uses, key=lambda use: use[0]):

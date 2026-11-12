@@ -30,7 +30,7 @@ CLOSE = "\\end{document}\n"
 def read(text: str, *, keys=(), labels=None, kept=(), stage=None):
     """The findings of the reading on one Markdown file."""
     file = _file(0, MAIN, text, [], False)
-    prose = Prose(file.path, file.text, file.printed, file.code, file.line_of)
+    prose = Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables)
     names = Names(frozenset(keys), dict(labels or {}), frozenset(kept))
     return judge_code_names([prose], names, stage).findings
 
@@ -317,3 +317,67 @@ def test_a_latex_figure_s_caption_and_reference_list_are_not_read_in_code(projec
         "\\end{thebibliography}\n"
     ) + CLOSE)  # fmt: skip
     assert coded(report) == []
+
+
+# ------------------------------------------------- tables, maths and identifiers (D13)
+#
+# The corpus run of 2026-11-12 audited 52 real preprints, and judges found 82% of a sample of
+# these findings false (Basile's decision 13, 2026-11-13). Each fix below is one the reader
+# can make exactly: a table's cell, maths the reader did not know for maths, an identifier.
+
+#: A pipe table and a simple table, as pandoc writes a Word table where its cells allow; the
+#: header and the body each hold a name (docx-pharm-epi-B1: `beta_exp`, `SE_exp` in a header).
+MARKDOWN_TABLES = (
+    "# Results\n\nThe model held.\n\n"
+    "| SNP | beta_exp | SE_exp |\n|---|---|---|\n| rs1 | 0.2 | 0.1 |\n| p_out | 1 | 2 |\n\n"
+    "  Name        Value\n  ---------- -------\n  CPI_ALL      0.5\n  IOP_MANU     0.8\n\n"
+    "After the tables, hr_adj_main rose.\n"
+)
+
+
+def test_a_name_in_a_markdown_table_s_cell_is_no_name_in_the_prose() -> None:
+    """A name in a cell of a pipe table or a simple table, its header or its body, is not
+    read; the prose after the tables is."""
+    assert named(MARKDOWN_TABLES) == ["hr_adj_main"]
+
+
+def test_a_name_in_a_latex_tabular_s_cell_is_no_name_in_the_prose(project: Path) -> None:
+    """tex-econ-em-A2 typed its series' mnemonics in a tabular's cells, `LIBOR\\_12mth`,
+    `CPI\\_ALL`: 98 findings, all false. A tabular, a `tabularx` and a `longtable`, inside a
+    float or not, are cells; the sentence after them is prose."""
+    report = _latex(project, (
+        "\\documentclass{article}\n\\usepackage{tabularx,longtable}\n\\begin{document}\n"
+        "\\section{Results}\nThe model held.\n"
+        "\\begin{table}\\caption{Series}\n\\begin{tabular}{lll}\n"
+        "IOS & 0,887 & 3 \\\\\nLIBOR\\_12mth & 0,532 & 6 \\\\\n\\end{tabular}\n\\end{table}\n"
+        "\\begin{tabularx}{\\linewidth}{lX}\nCPI\\_ALL & 0,513 \\\\\n\\end{tabularx}\n"
+        "\\begin{longtable}{ll}\nIOP\\_MANU & 0,836 \\\\\n\\end{longtable}\n"
+        "After the tables, hr\\_adj\\_main rose.\n"
+    ) + CLOSE)  # fmt: skip
+    assert [message.split("'")[1] for _name, message in coded(report)] == ["hr_adj_main"]
+
+
+def test_optidef_s_problems_are_maths(project: Path) -> None:
+    """tex-qbio-pe-A2 set its problem in optidef's `mini!`, whose arguments and constraints
+    are maths (optidef.sty sets each environment's body in an `align`); the reader took them
+    for prose and read `w_{min}` as `w_min`. Each of optidef's sixteen problems is maths."""
+    from manuscript_guard.text.latex.commands import MATHS
+
+    names = ("mini", "maxi", "argmini", "argmaxi")
+    for name in [f"{base}{mark}" for base in names for mark in ("", "*", "!", "e")]:
+        assert name in MATHS, name
+    report = _latex(project, OPEN + (
+        "The window is chosen.\n"
+        "\\begin{mini!}[0]\n{w}{\\sum_{t=w}^T y_t}{\\label{eqn:obj}}{}\n"
+        "\\addConstraint{w_{min}\\le}{w\\le w_{max}}{}\n\\end{mini!}\n"
+        "\\begin{argmaxi*}{x}{f_{low}(x)}{}{}\\end{argmaxi*}\n"
+        "After it, hr\\_adj\\_main rose.\n"
+    ) + CLOSE)  # fmt: skip
+    assert [message.split("'")[1] for _name, message in coded(report)] == ["hr_adj_main"]
+
+
+@pytest.mark.parametrize("typed", ["RRID:SCR_006571", "RRID: SCR_006571", "RRID:SCR\\_006571"])
+def test_a_name_right_after_rrid_is_a_resource_s_identifier(typed: str) -> None:
+    """pdf-med-B2 named its software by RRID, `RRID:SCR_006571`: an identifier, no name from
+    the code (#663 hid the accession from G14, and so from this reading)."""
+    assert named(f"PsychoPy ({typed}) ran it, and hr_adj_main rose.\n") == ["hr_adj_main"]

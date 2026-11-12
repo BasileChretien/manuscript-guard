@@ -5275,9 +5275,9 @@ front matter and a comment `init --from` set aside, and each block is one of fiv
   Portuguese, German or Italian ("Résumé", "Resumen", "Zusammenfassung"), and a list of
   abbreviations, which a journal may ask for on the title page itself ("Abbreviations: Food
   and Drug Administration (FDA); ...", as Pediatrics has it) and which is read, its entries
-  definitions as ever (round 1 of #654), wherever G14's glossary would open one: a heading
-  it takes for a glossary's, or a paragraph opening on "Abbreviations", "Acronyms",
-  "Glossary" or "List of abbreviations", by the glossary's own test (round 2); or a letter's salutation, "Dear Editor,", "To the
+  definitions as ever (round 1 of #654), where the glossary's opening pattern or its titles
+  would open a list, "Abbreviations", "Acronyms", "Glossary", "List of abbreviations" or "List
+  of acronyms", and the French "Abréviations" (rounds 2 and 3), past the title; or a letter's salutation, "Dear Editor,", "To the
   Editor:", "Sir,", "Dear Sir or Madam,", "Madame, Monsieur,";
 - another heading: one of the back matter, "References", "Funding", or one that names no
   section, past the first block;

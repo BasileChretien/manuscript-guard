@@ -2184,7 +2184,8 @@ LISTS_ON_THE_TITLE_PAGE = [
 ]
 
 
-@pytest.mark.parametrize("listed", LISTS_ON_THE_TITLE_PAGE[:2])
+@pytest.mark.parametrize("listed", [*LISTS_ON_THE_TITLE_PAGE[:2], "Abréviations : Agence "
+                                    "nationale de sécurité du médicament (ANSM)"])  # fmt: skip
 def test_a_list_of_abbreviations_on_the_title_page_is_read(project: Path, listed: str) -> None:
     """A journal may ask for the list on the title page (Pediatrics): it ends the title page
     and defines its entries, as it did before the title page was set aside (round 1 of
@@ -2192,7 +2193,8 @@ def test_a_list_of_abbreviations_on_the_title_page_is_read(project: Path, listed
     text = (
         "Pharmacology exam success\n\nAna MARTIN\n\n"
         "Department of Pharmacology, CHU de Rouen, Rouen, France\n\n"
-        f"{listed}\n\n# Introduction\n\nThe FDA and the WHO paid for it.\n"
+        f"{listed}\n\n# Introduction\n\nThe "
+        + " and the ".join(re.findall(r"\b[A-Z]{3,}\b", listed)) + " paid for it.\n"
     )
     report = written(project, text)
     assert _named(report) == set(), found(report)

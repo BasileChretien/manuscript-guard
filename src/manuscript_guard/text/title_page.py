@@ -292,7 +292,7 @@ def _kind(block: _Block, abstract_title: str | None, *, first: bool) -> str:
     text = _ESCAPE.sub(r"\1", "\n".join(_LIST_MARK.sub("", line, count=1)
                                         for line in block.text.split("\n")))  # fmt: skip
     joined = " ".join(text.split())
-    named = _named(joined, abstract_title)
+    named = _named(joined, abstract_title, first=first)
     if named is not None:
         return named
     if _SALUTATION.match(joined):
@@ -310,7 +310,7 @@ def _heading_kind(title: str, abstract_title: str | None, *, first: bool) -> str
     any other section where it names one, a line of the title page where it names a label
     of one, "Corresponding author", and else the title where it opens the text."""
     bare = " ".join(plain(title).split())
-    named = _named(bare, abstract_title)
+    named = _named(bare, abstract_title, first=first)
     if named is not None:
         return named
     if _LABEL.match(bare):
@@ -318,13 +318,13 @@ def _heading_kind(title: str, abstract_title: str | None, *, first: bool) -> str
     return NEUTRAL if first else OTHER
 
 
-def _named(text: str, abstract_title: str | None) -> str | None:
+def _named(text: str, abstract_title: str | None, *, first: bool = False) -> str | None:
     """`OPENING` where `text` is a section's name a paper opens on, alone or as a run-in
     label; `OTHER` where it is another section's name alone; None where it is neither.
     The whole name, not its first word: "Abstract word count: 250" is a title page's line,
     which `names_abstract` would take for the Abstract."""
     alone = plain(text).rstrip(" :.")
-    if _opens(alone, abstract_title) or _opens_a_list(text):
+    if _opens(alone, abstract_title) or (not first and _opens_a_list(text)):
         return OPENING
     if section_name_alone(alone) is not None or _key(alone) in SECTION_NAMES:
         return OTHER
@@ -340,11 +340,12 @@ def _opens_a_list(text: str) -> bool:
     a paragraph opening with the words a glossary with no title opens with
     (`glossary.opens_one`), "**Abbreviations and acronyms**", "Glossary of terms". A journal
     may ask for the list on the title page itself (Pediatrics, "Abbreviations: Food and Drug
-    Administration (FDA); ..."): it defines, and is read. The same tests as the glossary's,
-    so that the two cannot part (round 2 of #654)."""
+    Administration (FDA); ..."): it defines, and is read. The title page ends where the
+    glossary's pattern or titles would open a list, "List of acronyms", or "Abréviations"."""
     from manuscript_guard.gates import glossary
 
-    return glossary.is_glossary(plain(text)) or glossary.opens_one(text)
+    return glossary.is_glossary(plain(text)) or glossary.opens_one(text) or bool(
+        re.match(r"[*_\s]*(?:liste\s+des\s+)?abr[ée]viations\b", text, re.IGNORECASE))
 
 
 def _opens(name: str, abstract_title: str | None) -> bool:

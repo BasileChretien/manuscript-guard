@@ -21294,6 +21294,7 @@ Open, recorded as each change landed:
   - A mean of a percentage whose label says only "%", "Body fat, %", with no word for a
     mean, is passed over as a category: "%" in a label is read as a share's.
     Pinned by `tests/test_corruption.py::test_a_mean_of_a_percentage_unmarked_is_passed_over_as_a_category`.
+  - "From baseline" is read as a change even in a duration, "Days from baseline to discharge", which is passed over and said as possibly a change. Accepted.
 - **Only an equal typed copy fails.** A threshold typed in the Methods fails as a typed
   parameter while it equals one; once the code has moved on it is a warning,
   `threshold-undeclared`, and only in an analysis that declares parameters. A confidence level

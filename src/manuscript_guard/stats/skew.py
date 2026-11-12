@@ -68,7 +68,7 @@ _CHANGE = re.compile(
 _TO_ONE = re.compile(r"(?i)\bto\s+(?:[\w-]+\s+)?\Z")
 #: What says a table's cells are counts and their shares: n (%), N (%), No. (%) or n/N (%).
 #: A bare "%", "Missing, %", says it of no table.
-_N_PERCENT = re.compile(r"(?<![\w.])(?:[nN]|No\.|n/N)\s*\(\s*%\s*\)")
+_N_PERCENT = re.compile(r"(?<![\w.])(?:[nN]|No\.?|n/N|Number|Patients|Participants)\s*[(,]\s*%")
 #: What says a label, or a column's header, is of a mean and its SD: "mean", "SD", "± SD".
 _MEAN_NAMED = re.compile(r"(?i:\bmean\b)|\bSD\b")
 #: What says a label is a category, whose cells are counts: a comparator, n (%), a "%", yes,
@@ -79,12 +79,12 @@ _CATEGORY = re.compile(
 )
 #: An HTML tag in a label, "<sup>a</sup>", taken off before the label is read: its "<" is
 #: no comparator. A "<" before a space or a digit, "< 50", opens no tag.
-_TAG = re.compile(r"</?[A-Za-z][^<>]*>")
+_TAG = re.compile(r"</?(?:sup|sub|br|i|b|em|strong|span)\b[^<>]*>", re.IGNORECASE)
 #: A line that opens a table's caption: "Table 2.", "Table S1", "**Table 3**",
 #: "Supplementary Table 2", and pandoc's "Table: ..." and ": ...". Below a table it is
 #: another table's, and the paragraph read there ends before it.
 _CAPTION_OPENS = re.compile(
-    r"^\s*(?:(?:\*\*|__)?(?:Supplementary\s+)?Table\s+S?\d+\b|Table:|:\s)", re.IGNORECASE
+    r"^\s*(?:(?:\*\*|__)?(?:Supplementary\s+)?Table\s+S?\d+\b|(?P<own>Table:|:\s))", re.IGNORECASE
 )
 #: How far above or below a table a caption saying n (%) is looked for: its paragraph.
 _CAPTION_LINES = 3
@@ -172,7 +172,7 @@ SE_LABEL = "its label names a standard error, and an SE is not an SD"
 SE_HEADER = "the header over its cells names a standard error, and an SE is not an SD"
 CATEGORY = "its label names a category, so its cells are counts and their shares"
 MAYBE_COUNT = "in a table of counts and their shares, it may be a count"
-CHANGE = "its label names a change or a difference, which can be negative"
+CHANGE = "its label may name a change or a difference, which can be negative"
 
 
 def table_spreads(
@@ -233,7 +233,7 @@ def table_spreads(
 
 def _mean_columns(header) -> set[int]:
     """The columns under a first-row header that names a mean or an SD: "Mean (SD)"."""
-    return _columns_naming(header, names_a_mean)
+    return _columns_naming(header, lambda text: names_a_mean(text) and not _N_PERCENT.search(text))
 
 
 #: Why a cell of a row read is left out, in the order a row's reasons are said.
@@ -246,7 +246,7 @@ def _cell_left_out(column: int, match: re.Match[str], label: str, se_columns: se
     by rules 1 and 3 to 5 of `table_spreads`; None where it is read."""
     if column in se_columns:
         return SE_HEADER
-    if names_a_mean(label) or column in mean_columns:
+    if names_a_mean(label) or (column in mean_columns and not _CATEGORY.search(label)):
         return None
     if _CATEGORY.search(label):
         return CATEGORY
@@ -302,7 +302,7 @@ def caption_of(lines: list[str], table: Table) -> str:
             break
     below: list[str] = []
     for at in range(last, min(last + _CAPTION_LINES, len(lines))):
-        if _CAPTION_OPENS.match(lines[at]):
+        if (opens := _CAPTION_OPENS.match(lines[at])) and (below or not opens["own"]):
             break
         if not lines[at].strip():
             if below:

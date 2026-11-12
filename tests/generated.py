@@ -10021,7 +10021,7 @@ SAID_N_PERCENT = ("above", "below", "header")
 #: How the caption of a table after the last one opens, which says n (%) of that table only.
 NEXT_CAPTIONS = ("Table 4. Values are n (%).", "Supplementary Table 4. Values are n (%).",
                  "**Table 4** Values are n (%).", "Table S4. Values are n (%).",
-                 "Table: Values are n (%).", ": Values are n (%).")  # fmt: skip
+                 "Table 5. Values are n (%).", "Table 5: Values are n (%).")  # fmt: skip
 #: How a cell prints a mean and its SD, the SD at `{sd}`; the first three in brackets.
 SPREAD_SHAPES = (" ({sd})", "({sd})", " ( {sd} )", " \N{PLUS-MINUS SIGN} {sd}",
                  "\N{PLUS-MINUS SIGN}{sd}", " +/- {sd}")  # fmt: skip

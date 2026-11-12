@@ -17042,7 +17042,7 @@ _SKEW_CATEGORY = "its label names a category, so its cells are counts and their 
 
 @pytest.mark.parametrize(
     "said",
-    ["Values are n (%) or mean (SD).", "Values are No. (%) or mean (SD)."],
+    ["Values are n (%) or mean (SD).", "No. (%)", "Number (%)", "No (%)", "n, %", "Patients (%)"],
 )
 def test_counts_and_their_shares_under_a_caption_saying_n_percent_are_not_read(
     tmp_path: Path, said: str
@@ -17068,12 +17068,12 @@ def test_counts_and_their_shares_under_a_caption_saying_n_percent_are_not_read(
     ["Weight >= 100 kg", "Weight \N{GREATER-THAN OR EQUAL TO} 100 kg", "Weight > 100 kg",
      "Weight < 50 kg", "Weight <= 50 kg", "Weight \N{LESS-THAN OR EQUAL TO} 50 kg",
      "Weight, n (%)", "Weight, %", "Weight loss, yes", "Weight recorded, no",
-     "Weight recorded, n/N"],
+     "Weight recorded, n/N", "Weight <LLN or >ULN"],
 )
 def test_a_label_that_names_a_category_holds_counts(tmp_path: Path, label: str) -> None:
     """Round 2 of #660: a label that names a category holds counts, whatever the table says,
     and whole shares as well as decimal ones."""
-    text = (f"| Characteristic | Treated |\n|---|---|\n| {label} | 5 (12) |\n")
+    text = f"| Characteristic | Treated, mean (SD) |\n|---|---|\n| {label} | 5 (12) |\n"
     skewed, unread = _never_negative_said(tmp_path, text, "weight")
     assert skewed == []
     assert unread == [(3, f"--non-negative row {label!r}: not read, as {_SKEW_CATEGORY}")]
@@ -17109,7 +17109,7 @@ def test_a_whole_number_mean_unmarked_in_a_table_of_counts_is_passed_over(
     names neither a mean nor a category, and whose first number is whole, may be a count:
     it is not read, and is said so, whatever its SD. A mean printed with a point is read,
     since a count is whole."""
-    text = ("Table 1. Values are n (%) or mean (SD).\n\n| Characteristic | Treated |\n"
+    text = ("Table 1. Values are n (%).\n\n| Characteristic | Treated, mean (SD) or n (%) |\n"
             f"|---|---|\n| Length of stay, days | {cells} |\n| Weight, kg | 7.1 (12.3) |\n")
     skewed, unread = _never_negative_said(tmp_path, text, "length of stay", "weight")
     assert skewed == [(6, "7.1 (12.3)")]
@@ -17174,7 +17174,7 @@ def test_the_scan_below_a_table_stops_at_any_caption(tmp_path: Path, opens: str)
     text = (f"| Characteristic | Treated |\n|---|---|\n| Weight, kg | 7 (12.5) |\n\n{opens}\n\n"
             "| Characteristic | Treated |\n|---|---|\n| Ferritin, ng/mL | 6 (12.5) |\n")
     skewed, unread = _never_negative_said(tmp_path, text, "weight")
-    assert skewed == [(3, "7 (12.5)")] and unread == []
+    assert skewed == ([] if opens.startswith(("Table:", ":")) else [(3, "7 (12.5)")])
 
 
 def test_a_table_s_caption_is_its_own_and_not_the_next_one_s(tmp_path: Path) -> None:
@@ -17208,7 +17208,7 @@ def test_a_change_in_a_named_measure_is_not_read(tmp_path: Path, label: str) -> 
             f"| {label} | \N{MINUS SIGN}1.2 (3.0) | 0.4 (2.9) |\n")
     skewed, unread = _never_negative_said(tmp_path, text, "weight")
     assert skewed == []
-    assert unread == [(3, f"--non-negative row {label!r}: not read, as its label names a "
+    assert unread == [(3, f"--non-negative row {label!r}: not read, as its label may name a "
                           "change or a difference, which can be negative")]
 
 

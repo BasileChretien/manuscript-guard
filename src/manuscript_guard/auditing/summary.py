@@ -132,6 +132,10 @@ def _arithmetic(report) -> str:
     if report.disagreements:
         said += ("; " if said else "") + (
             f"{_n(len(report.disagreements), 'number')} that may not fit the ones beside it")
+    if off := len(report.sds_off) + len(report.binary_off):
+        said += ("; " if said else "") + _n(off, "SD") + (
+            " that cannot go with its mean and n" if off == 1 else
+            " that cannot go with their means and n")  # fmt: skip
     return said or "nothing disagrees with the numbers beside it"
 
 
@@ -310,7 +314,8 @@ def standings(report) -> dict[str, str]:
     out = {MEMBERSHIP: NOT_RUN if not report.compared else of(
                bool(report.unmatched), bool(report.reference_like), numbers=True),
            "Arithmetic": of(bool(report.sums_off or report.over_n or report.flows_broken),
-                            bool(report.over_n_rounding or report.disagreements), numbers=True),
+                            bool(report.over_n_rounding or report.disagreements
+                                 or report.sds_off or report.binary_off), numbers=True),
            "Small cells": of(bool(report.recovered), bool(report.recovered_by_n),
                              numbers=True)}  # fmt: skip
     read = report.abstract

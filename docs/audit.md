@@ -338,6 +338,25 @@ right for its items can be listed: name only rows of one number per person, or q
 value in the literature ledger, which takes both (`mean_of_whole_numbers: {n: 28, items:
 3}`).
 
+In those rows an SD printed with a mean, "3.44 (2.47)" or "3.44 ± 2.47", is held to the mean
+and n too (GRIMMER, Anaya 2016, as rsprite2's `GRIMMER_test` does it): the squares of n whole
+numbers add up to a whole number of the parity of their total, so 18 numbers whose mean is
+3.44 can have an SD of 2.45 or 2.48 but not 2.47. One that cannot be is listed under
+Arithmetic as `sd-not-possible`, a warning `--strict` does not count. The SD of a mean that
+cannot be is not held to it; the mean is listed. A spread that the row's label, the header
+over its column or the header's first cell calls something other than an SD, "mean (SE)",
+"median (IQR)", is held to nothing, and so is one where none says what it is but the
+caption or a note does: name only rows whose spread is an SD.
+
+`--binary "male sex" smoker` names the rows whose cells are the means, or proportions, of
+numbers each 0 or 1, with their SD: "0.19 (0.35)". The mean and SD of such numbers follow
+from how many are 1, so each pair is held to the other and to its column's n (DEBIT,
+Heathers and Brown 2019): no count of ones among 163 gives a mean of 0.19 and an SD of
+0.35, since 31 ones give 0.19 and 0.39. The SD is the sample's, over n − 1. A pair that
+cannot be is `binary-not-possible`, a warning `--strict` does not count, and a label under
+which no mean with an SD was read is said. The option takes several labels and can be
+given more than once. A proportion printed as a percentage, "19% (0.39)", is not read.
+
 For a paper still being written, bind the numbers instead — then a stale one is impossible
 rather than merely searched for.
 

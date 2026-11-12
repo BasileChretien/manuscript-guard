@@ -83,6 +83,10 @@ those rows is held to its column's n, and one no whole total gives is listed. Ne
 row the paper does not describe as whole numbers; a mean of a continuous measure would be
 listed as a misprint. A row whose means are of several items per person is read as one
 number each, and a right mean can be listed: check those by hand against n times the items.
+An SD printed with such a mean is held to it too (GRIMMER), unless the label or header calls
+the spread an SE. Rows of numbers each 0 or 1 reported as a mean with its SD ("Male, mean
+(SD) 0.53 (0.50)") are named with `--binary "male sex"`: each mean and SD is held to the
+other and n (DEBIT). Name only rows the paper codes 0/1.
 
 ## 2. Run it
 

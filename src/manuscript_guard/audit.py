@@ -34,6 +34,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from manuscript_guard.auditing.spreads import binary_means, whole_number_sd
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.safexml import COMPOUND_FILE, compound_file_said, is_compound_file
 from manuscript_guard.stats.granularity import described as described_mean
@@ -165,6 +166,18 @@ class AuditReport:
     #: Each label --whole-numbers gave under which no mean was read: no table row's label
     #: holds it, or no cell of those rows is a mean under a column that names its n.
     whole_numbers_unfound: list[str] = field(default_factory=list)
+    #: The SDs of those means held to them by GRIMMER, and each that cannot go with its
+    #: mean and n; the rows --binary named, the means and SDs read in them for DEBIT, each
+    #: pair that cannot be of numbers each 0 or 1, and each label under which none was read;
+    #: and the spreads in either named as no SD, which are held to nothing
+    #: (`auditing.spreads`).
+    sds_read: int = 0
+    sds_off: list[Disagreement] = field(default_factory=list)
+    binary: tuple[str, ...] = ()
+    binary_read: int = 0
+    binary_off: list[Disagreement] = field(default_factory=list)
+    binary_unfound: list[str] = field(default_factory=list)
+    spreads_passed_over: int = 0
     #: Whether outputs were given. Without them no number is compared, and `uncompared`
     #: counts the numbers that would have been.
     compared: bool = True
@@ -1279,6 +1292,7 @@ def audit(
     figures: list[Path] | None = None,
     classifier: Classifier | None = None,
     whole_numbers: tuple[str, ...] = (),
+    binary: tuple[str, ...] = (),
     passed_over: list[Path] | None = None,
     found_tex: list[Path] | None = None,
     minimum: int | None = None,
@@ -1286,7 +1300,8 @@ def audit(
     cited: bool = False,
 ) -> AuditReport:
     """`whole_numbers` names the rows of the papers' tables whose cells are means of whole
-    numbers, which are held to their column's n (`stats/granularity.py`). `passed_over` is
+    numbers, which are held to their column's n (`stats/granularity.py`), and `binary` those
+    whose cells are means and SDs of numbers each 0 or 1 (`auditing.spreads`). `passed_over` is
     each .doc a folder given as a paper held, which is named in the report and not read.
     `backing` None is no outputs given: every number is read and classified, and none is
     compared. A `.tex` among `papers` is an entry (`auditing.latex`); `found_tex` are the
@@ -1305,6 +1320,7 @@ def audit(
     report = AuditReport(
         backing_values=values, backing_files=tuple(used), skipped=skipped,
         whole_numbers=whole_numbers, whole_numbers_unfound=list(whole_numbers),
+        binary=binary, binary_unfound=list(binary),
         passed_over=[doc_passed_over(path) for path in passed_over or []],
         compared=backing is not None, minimum=minimum,
     )  # fmt: skip
@@ -1500,6 +1516,8 @@ def _read_numbers(
         found = sorted(found + _whole_number_means(report, path, list(source.tables)),
                        key=lambda d: d.line)  # fmt: skip
     report.disagreements += found
+    if report.binary:
+        binary_means(report, path, list(source.tables))
     _margins(report, path, list(source.tables))
     scan = source.scan(classifier)
     source_scan = None
@@ -1563,6 +1581,8 @@ def _whole_number_means(report: AuditReport, path: Path, tables: list[Table]) ->
                 label for label in report.whole_numbers_unfound if not names(label, mean.label)
             ]
             verdict = possible(mean.mean, mean.n)
+            if verdict is not False:
+                whole_number_sd(report, path, mean)
             if verdict is True:
                 continue
             uncertain = f" (uncertain: {mean.uncertain})" if mean.uncertain else ""

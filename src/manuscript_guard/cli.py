@@ -2588,8 +2588,8 @@ def _read_as_reader(report, reader: _Reader, main: Path, papers: list[Path],
 
 #: The options that read a paper, refused with `--package` and no paper.
 _READ_A_PAPER = ("against", "figures", "journal", "authors", "design", "cited", "commented",
-                 "pdf", "lookup", "whole_numbers", "minimum_cell_count", "english", "known",
-                 "submission_residue")
+                 "pdf", "lookup", "whole_numbers", "binary", "minimum_cell_count", "english",
+                 "known", "submission_residue")
 
 
 def _flags_given(args: argparse.Namespace, names: tuple[str, ...]) -> list[str]:
@@ -2613,7 +2613,7 @@ AUDITED: Callable[[object, object], None] | None = None
 
 #: The options of `audit` and `compare` the report draft names, in the order they are listed.
 _AUDIT_FLAGS = ("against", "figures", "english", "known", "submission_residue", "lookup",
-                "dry_run", "whole_numbers", "minimum_cell_count", "journal", "authors",
+                "dry_run", "whole_numbers", "binary", "minimum_cell_count", "journal", "authors",
                 "design", "cited", "commented", "pdf", "package", "strict")  # fmt: skip
 _COMPARE_FLAGS = ("response", "comments")
 
@@ -2815,7 +2815,8 @@ def _audit(args: argparse.Namespace, package) -> int:
                 if package is not None and package.results_dir is not None else [])
     against = [*(args.against or []), *packaged] or None
     report = audit(papers, against, figures=figures,
-                   whole_numbers=tuple(args.whole_numbers), passed_over=docs,
+                   whole_numbers=tuple(args.whole_numbers), binary=tuple(args.binary),
+                   passed_over=docs,
                    found_tex=found_tex, minimum=args.minimum_cell_count,
                    design=args.design, cited=args.cited is not None)  # fmt: skip
     report.passed_over += pdfs_said
@@ -6919,7 +6920,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         metavar="LABEL",
         help="the table rows, by a word or words of their label, whose cells are means of "
-        "whole numbers (a Likert-type scale, a count): each is held to its column's n",
+        "whole numbers (a Likert-type scale, a count): each is held to its column's n, and "
+        "an SD printed with it to the mean and n (GRIMMER)",
+    )
+    audit.add_argument(
+        "--binary",
+        nargs="+",
+        action="extend",
+        default=[],
+        metavar="LABEL",
+        help="the table rows, by a word or words of their label, whose cells are means or "
+        "proportions of numbers each 0 or 1 with their SD: each mean and SD is held to the "
+        "other and to its column's n (DEBIT)",
     )
     audit.add_argument(
         "--minimum-cell-count",

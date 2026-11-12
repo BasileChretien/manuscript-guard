@@ -7704,6 +7704,70 @@ def _a_named_row_is_never_read_for_its_n(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(granularity, "table_means", blind)
 
 
+# ---------------------------------------------------- a table's SDs: GRIMMER and DEBIT
+
+from generated import spread_tables  # noqa: E402
+
+
+@holds(100, spread_tables())
+def test_an_sd_in_a_named_row_is_held_to_its_mean_and_its_column_s_n(
+    drawn: tuple[str, list[str], list[str], list[tuple[Any, ...]]],
+) -> None:
+    """An SD printed with a mean in a row named for --whole-numbers, in brackets or after a
+    plus-minus sign, can go with it where some sum of squares of n whole numbers with that
+    total gives it to its places (GRIMMER): an SD of real answers does, rounded down or up,
+    and one between two that such numbers give does not. A mean and SD in a row named for
+    --binary can go together where some count of ones among n gives both (DEBIT): the
+    sample SD does, a wrong one does not, and the SD over n where no count gives it over
+    n - 1 does not. Each is held to its column's n. A spread the row's label, the header
+    over its column or the header's first cell names a standard error is held to nothing,
+    and so is a mean alone; a row nobody names is not read."""
+    text, whole, binary, expected = drawn
+    found = READINGS["spreads of named means"]()({"text": text, "whole": whole,
+                                                  "binary": binary})  # fmt: skip
+    assert [tuple(each) for each in found] == expected, text
+
+
+def _an_sd_is_taken_to_be_rounded_up(patch: pytest.MonkeyPatch) -> None:
+    """A printed SD read as the true one rounded up, a unit below it to itself, rather than
+    rounded to the nearest."""
+    from fractions import Fraction
+
+    from manuscript_guard.stats import granularity
+
+    def rounded_up(printed: str) -> tuple[Fraction, Fraction]:
+        value = Fraction(granularity.Decimal(printed))
+        return value - Fraction(1, 10 ** granularity.places(printed)), value
+
+    patch.setattr(granularity, "_interval", rounded_up)
+
+
+def _a_column_s_n_is_its_neighbour_s(patch: pytest.MonkeyPatch) -> None:
+    """A header's n set over the column after its own."""
+    from manuscript_guard.stats import granularity
+
+    read = granularity._header
+    patch.setattr(granularity, "_header",
+                  lambda cell, column, over: read(cell, column + 1, over))  # fmt: skip
+
+
+def _a_standard_error_is_read_as_an_sd(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import granularity
+
+    patch.setattr(granularity, "_spread_named", lambda text: None)
+
+
+def _a_binary_sd_is_over_n(patch: pytest.MonkeyPatch) -> None:
+    """The population variance of numbers each 0 or 1, k(n - k) / n squared, for the
+    sample's, k(n - k) / (n(n - 1)), which Heathers and Brown's DEBIT uses."""
+    from fractions import Fraction
+
+    from manuscript_guard.stats import granularity
+
+    patch.setattr(granularity, "_binary_variance",
+                  lambda ones, n: Fraction(ones * (n - ones), n * n))  # fmt: skip
+
+
 # ------------------------------------------------------------ a section found by its heading
 
 #: What a paper calls its Methods, as G4 has always read a heading for them: with "methods"
@@ -23286,6 +23350,22 @@ BROKEN = {
     "a row a label names is never read for its n, though it is the header": (
         _a_named_row_is_never_read_for_its_n,
         test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
+    ),
+    "a printed SD is taken to be rounded up, not to the nearest": (
+        _an_sd_is_taken_to_be_rounded_up,
+        test_an_sd_in_a_named_row_is_held_to_its_mean_and_its_column_s_n,
+    ),
+    "an SD is held to the n of the column beside its own": (
+        _a_column_s_n_is_its_neighbour_s,
+        test_an_sd_in_a_named_row_is_held_to_its_mean_and_its_column_s_n,
+    ),
+    "a standard error is read as an SD": (
+        _a_standard_error_is_read_as_an_sd,
+        test_an_sd_in_a_named_row_is_held_to_its_mean_and_its_column_s_n,
+    ),
+    "the SD of numbers each 0 or 1 is taken over n, not n - 1": (
+        _a_binary_sd_is_over_n,
+        test_an_sd_in_a_named_row_is_held_to_its_mean_and_its_column_s_n,
     ),
     "a share is held to its printed value, not half a unit either side": (
         _a_share_is_held_to_its_printed_value,

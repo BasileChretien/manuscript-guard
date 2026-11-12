@@ -52,6 +52,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from manuscript_guard.auditing import spreads
 from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
 
 INPUTS = "Inputs"
@@ -167,6 +168,7 @@ def items(report) -> list[Item]:
              "mean was read in a row whose label holds it", INFO, False)
         for label in report.whole_numbers_unfound
     ]  # fmt: skip
+    found += spreads.items(report)
     found += _flow_items(report)
     found += _abstract_items(report.abstract)
     found += [
@@ -611,7 +613,7 @@ def _anything_in_arithmetic(report) -> bool:
     """Whether the Arithmetic section says more than that nothing disagrees."""
     return bool(report.sums_off or report.over_n or report.over_n_rounding
                 or report.disagreements or report.whole_numbers or report.flows_read
-                or report.flow_notes)  # fmt: skip
+                or report.flow_notes or report.binary)  # fmt: skip
 
 
 def _anything_in_references(report) -> bool:
@@ -945,6 +947,8 @@ def _arithmetic(report, show) -> list[str]:
             f"  --whole-numbers {label!r}: no mean was read in a row whose label holds it"
             for label in report.whole_numbers_unfound
         ]
+    sds = spreads.lines(report, show)
+    lines += ([""] if lines and sds else []) + sds
     flows = _flows(report, show)
     lines += ([""] if lines and flows else []) + flows
     return lines or ["  Nothing read here disagrees with the numbers beside it."]

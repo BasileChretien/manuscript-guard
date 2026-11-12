@@ -166,6 +166,48 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## rsprite2: the GRIMMER test
+
+`sd_possible` in `src/manuscript_guard/stats/granularity.py`, which `audit --whole-numbers`
+and G7 hold an SD printed with a mean of whole numbers to, is a port to Python of
+`GRIMMER_test` of [rsprite2](https://github.com/LukasWallrich/rsprite2) by Lukas Wallrich,
+with Aurélien Allard and Lukas Jung (`R/core-functions.R` at commit
+`78231f75751eb5f34cd53f5d8391a4baf7b2cb3b` of 2026-09-09, version 0.2.1.9002, read on
+2026-11-12; CRAN has 0.2.1, whose `GRIMMER_test` tries one total only). Taken from it: the
+totals the mean allows, centred on its whole part; the bounds on each total's sum of
+squares from the SD's half unit, the lower never below nought; the parity of the sum and its
+least value for the total; both ends of each half unit taken; and one number failing. Its
+floating-point tolerance is not taken: the port works in fractions. The test is Anaya's
+(*PeerJ Preprints* 2016, doi:10.7287/peerj.preprints.2400v1), in the analytic form of
+Allard (2018). The DEBIT test beside it is written from Heathers and Brown's paper; rsprite2
+has none.
+
+rsprite2 is under the MIT licence:
+
+```text
+MIT License
+
+Copyright (c) 2021 rsprite2 authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 # Third-party data
 
 Three files in the package are made from somebody else's work and **are** redistributed. The

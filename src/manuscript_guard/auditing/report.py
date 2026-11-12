@@ -41,8 +41,8 @@ interval or a test of the Abstract that differs from its counterpart where the p
 (`blind-document-names-author`, Basile, 2026-10-29). Nothing else is counted: the P worked
 out from a statistic, G6 and G14 (the author, 2026-10-28), G7's findings, a count held back
 that only a column's n gives away, which holds only where none of the column lacks the
-characteristic, a number of the Abstract not found in the Methods, the Results or the
-tables (the author, 2026-10-28), G4's findings and the Document section's counts, the
+characteristic, a number of the Abstract not found where the paper reports (the author,
+2026-10-28), G4's findings and the Document section's counts, the
 causal words, the cited sentences and the self-citation counts (Basile, 2026-10-29).
 """
 
@@ -63,8 +63,12 @@ SMALL_CELLS = "Small cells recoverable by subtraction"
 ABSTRACT = "Abstract against Results"
 #: Where the Abstract against Results looks for an Abstract's number, as each number not
 #: found says and the heading over them: "found nowhere the paper reports" said more than
-#: was searched, as the main text's Introduction and Discussion are not.
-ABSTRACT_SEARCHED = "the Methods, the Results or the tables"
+#: was searched, as the main text's Introduction and Discussion are not. Every other section
+#: is searched (Basile, 2026-11-11), so a number under "Participants" is found.
+ABSTRACT_SEARCHED = ("the tables or any part of the paper but the Introduction and its "
+                     "material, the Discussion with its limitations, an interpretation, a "
+                     "conclusion or a closing summary, a summary of the paper, the title page, "
+                     "the back matter and the notes")
 WRITING = "Writing (G6)"
 LANGUAGE = "Language (G14)"
 REFERENCES = "References (G7)"
@@ -100,13 +104,16 @@ class Item:
     #: What says where its line stands, where that is not its path's: a converted .docx's
     #: text, which G6, G14 and G4 read (`auditing.paragraphs`).
     placer: object = None
+    #: What `--json` gives beside it: for the short forms used and not defined, each form
+    #: with G14's warning on it and its place (`auditing.undefined.listed`).
+    listed: dict | None = None
 
     def as_dict(self) -> dict:
         return {
             "section": self.section, "gate": self.gate, "code": self.code,
             "severity": self.severity, "counted": self.counted, "message": self.message,
             "path": None if self.path is None else str(self.path), "line": self.line,
-            "context": self.context, "hint": self.hint,
+            "context": self.context, "hint": self.hint, **(self.listed or {}),
         }  # fmt: skip
 
 
@@ -403,9 +410,11 @@ def _abstract_items(read) -> list[Item]:
 
 
 def _from_finding(section: str, finding: Finding, placer: object = None) -> Item:
+    from manuscript_guard.auditing.undefined import listed
+
     return Item(section, finding.gate, finding.code, finding.message, finding.severity, False,
                 finding.path, finding.line, finding.context, finding.hint,
-                placer)  # fmt: skip
+                placer, listed(finding) or None)  # fmt: skip
 
 
 def failed(report) -> bool:
@@ -582,7 +591,12 @@ def _shown(root: Path | None, placers: dict | None = None) -> _Show:
 def placed(item_dict: dict, path: Path | None, line: int | None, placers: dict) -> dict:
     """A finding as JSON, its line given as a page and a line where it is a PDF's
     (`auditing.pdf.Place`), as a section and a paragraph where it is a .docx's
-    (`auditing.paragraphs.Paragraph`)."""
+    (`auditing.paragraphs.Paragraph`). Each short form a finding lists, the same, at its
+    own line (`auditing.undefined.listed`)."""
+    if item_dict.get("forms"):
+        item_dict = {**item_dict, "forms": [
+            placed(form, path if form["path"] is None else Path(form["path"]), form["line"],
+                   placers) for form in item_dict["forms"]]}  # fmt: skip
     placer = placers.get(path) if path is not None else None
     place = placer.place(line) if placer is not None else None
     return item_dict if place is None else {**item_dict, **place.as_dict()}
@@ -629,7 +643,7 @@ def _anything_in_references(report) -> bool:
 
 def _grouped_gates(report, show: _Show) -> list[str]:
     """G6 and G14 on each paper, their findings grouped by kind (`auditing.summary`)."""
-    from manuscript_guard.auditing.summary import grouped, kinds_of
+    from manuscript_guard.auditing.summary import counted, grouped, kinds_of
 
     lines: list[str] = []
     for run in report.gates:
@@ -641,9 +655,12 @@ def _grouped_gates(report, show: _Show) -> list[str]:
             continue
         converted = ("; lines are those of the text pandoc converts it to, as `init --from` "
                      "writes it" if run.converted and run.places is None else "")  # fmt: skip
-        lines.append(f"  {show(run.paper)}: {len(found)} finding{'s' if len(found) != 1 else ''}"
-                     f" in {len(kinds_of(found))} kind{'s' if len(kinds_of(found)) != 1 else ''}"
-                     f"{converted}")  # fmt: skip
+        # The short forms left undefined counted as their kind's line counts them.
+        many = counted(found)
+        kinds = sum(1 for kind in kinds_of(found).values() if counted(kind))
+        said = (f"{many} finding{'s' if many != 1 else ''} in {kinds} kind"
+                f"{'s' if kinds != 1 else ''}" if many else "a note, and no finding to look at")
+        lines.append(f"  {show(run.paper)}: {said}{converted}")
         lines += grouped(found, _placing(run.paper, show.within(run.paper, run.places)))
     return lines
 
@@ -985,8 +1002,8 @@ def _abstract(read, show) -> list[str]:
     if not read.compared:
         return [f"  Not compared: {read.why_not}."]
     lines = [f"{read.numbers} number(s) in the Abstract, conventions and references set "
-             f"aside, looked for where the paper reports its results (the Methods, the "
-             f"Results, its tables, a file with no Abstract): {read.matched} found, "
+             f"aside, looked for where the paper reports its results ({ABSTRACT_SEARCHED}, "
+             f"a file with no Abstract): {read.matched} found, "
              f"{len(read.rounded)} found only as a rounding, {len(read.not_found)} not found."]
     for heading, found in (
         ("AN INTERVAL OR A TEST THAT DIFFERS FROM ITS COUNTERPART IN ONE NUMBER (counted by "
@@ -1031,19 +1048,37 @@ def _small_cells(report, show) -> list[str]:
 
 
 def _gates(report, root: Path | None, show: _Show) -> list[str]:
+    from manuscript_guard.auditing.summary import counted
+
     lines: list[str] = []
     for run in report.gates:
         if run.note:
             lines.append(f"  {run.note}")
             continue
         lines.append(f"  {show(run.paper)}: {len(run.writing)} from G6, "
-                     f"{len(run.language)} from G14"
+                     f"{counted(run.language)} from G14"
                      + ("; lines are those of the text pandoc converts it to, as `init "
                         "--from` writes it" if run.converted and run.places is None
                         else ""))  # fmt: skip
         found = (*run.writing, *run.language)
         if found:
             lines.append(_rendered(found, root, show.within(run.paper, run.places)))
+        lines += _each_form(run, show.within(run.paper, run.places))
+    return lines
+
+
+def _each_form(run, show: _Show) -> list[str]:
+    """Where each short form the paper uses and does not define is first used, and what G14
+    said of it, which the one finding on them stands for (`auditing.undefined`)."""
+    from manuscript_guard.auditing.undefined import Undefined
+
+    lines: list[str] = []
+    at = _placing(run.paper, show)
+    for finding in run.language:
+        if isinstance(finding, Undefined) and finding.forms:
+            lines.append("  Each short form used and not defined, where it is first used:")
+            lines += [f"    {at(warning.path, warning.line)}: {warning.message}"
+                      for _form, warning in finding.forms]  # fmt: skip
     return lines
 
 

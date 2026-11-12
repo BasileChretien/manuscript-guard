@@ -886,6 +886,19 @@ def _data_statement() -> Reading:
     return read
 
 
+@reading("disclosures")
+def _disclosures() -> Reading:
+    from manuscript_guard.gates.disclosures import judge
+
+    def read(given: dict[str, Any]) -> dict[str, Any]:
+        """What G4 says of a manuscript's funding, competing interests, ethics and author
+        contributions statements against an authors.yaml, at submission."""
+        return _told(judge(given["authors"], given["main"], given.get("supplement", ""),
+                           submission=True, path=MAIN))  # fmt: skip
+
+    return read
+
+
 @reading("deposit named")
 def _deposit_named() -> Reading:
     from manuscript_guard.gates.data_statement import names_doi
@@ -1615,6 +1628,24 @@ def _within(path: Path, folder: Path) -> str:
     return path.as_posix()
 
 
+@reading("software in the methods")
+def _software_in_the_methods() -> Reading:
+    """What G12 says of the Methods against the packages a plan's Software section names and
+    the scripts given load or the emitter recorded: the main text's Methods and each of the
+    supplement's, as G9 finds them in the documents given (`gates/software_methods.py`)."""
+    from manuscript_guard.gates.methods import methods_in, supplement_methods_in
+    from manuscript_guard.gates.software_methods import judge_named
+
+    def software_in_the_methods(given: dict[str, Any]) -> dict[str, Any]:
+        supplement = [found for text in given["supplement"]
+                      if (found := supplement_methods_in(text)) is not None]  # fmt: skip
+        return _told(judge_named(Path("."), given["plan"], dict(given["scripts"]),
+                                 list(given["emitted"]), frozenset(given["own"]),
+                                 methods_in(given["main"]), supplement))  # fmt: skip
+
+    return software_in_the_methods
+
+
 @reading("model names")
 def _model_names() -> Reading:
     from manuscript_guard.text.model_names import named
@@ -1993,6 +2024,41 @@ def _abbreviations() -> Reading:
     return abbreviations
 
 
+@reading("abbreviation edits")
+def _abbreviation_edits() -> Reading:
+    from manuscript_guard.corrections import corrections
+    from manuscript_guard.gates.language import _Known, _shipped, abbreviation_edits
+
+    def edited(given: dict[str, Any]) -> list[dict[str, Any]]:
+        exact, lowered = _shipped()
+        known = _Known(exact | set(given.get("known", ())), lowered)
+        return _corrected(corrections(abbreviation_edits([_file(given["text"])], known)))
+
+    _file("")
+    return edited
+
+
+@reading("audit abbreviations")
+def _audit_abbreviations() -> Reading:
+    """G14's findings on a paper as the audit gives them: the short forms used and not
+    defined in one finding, with each form's warning and the forms the list of journals'
+    style guides passes over (`auditing.undefined`)."""
+    from manuscript_guard.auditing.undefined import one_finding
+    from manuscript_guard.gates.language import _judge, _Known, _shipped
+
+    def audited(text: str) -> list[dict[str, Any]]:
+        exact, lowered = _shipped()
+        found = _judge([_file(text)], _Known(exact, lowered), Path("."))
+        return [{"code": f.code, "line": f.line, "message": f.message, "hint": f.hint,
+                 "forms": [[form, warning.line, warning.message]
+                           for form, warning in getattr(f, "forms", ())],
+                 "passed_over": list(getattr(f, "passed_over", ()))}
+                for f in one_finding(list(found.findings))]  # fmt: skip
+
+    _file("")
+    return audited
+
+
 @reading("prose quotations")
 def _prose_quotations() -> Reading:
     """Each quotation of four words or more in a sentence that cites, with the paragraph's
@@ -2041,6 +2107,30 @@ def _finding_places() -> Reading:
             placed[who] = {"anchored": anchored, "places": place_quotes(
                 findings, anchored, printed, written, latex=latex)}  # fmt: skip
         return placed
+
+    return found
+
+
+@reading("checklist quotes")
+def _checklist_quotes() -> Reading:
+    """What G5 finds of each answer of a reporting checklist that quotes the manuscript
+    (`checklist_quotes.read`, `Manuscript.judged`): `given` holds the Markdown files by name,
+    each value binding's display, the emitted tables' captions as `[kind, supplementary,
+    number, text]`, and the items, each a `where` and maybe a `quote`. The files are joined
+    into the main text and the supplement as the build prints them (`documents`). The answer
+    is, item by item, None for no quote, else whether it stands under what `where` names and
+    the parts it stands under instead."""
+    from manuscript_guard.contracts.values import Value
+    from manuscript_guard.gates.checklist_quotes import Caption, documents, read, typed_legends
+
+    def found(given: dict[str, Any]) -> list[Any]:
+        texts = documents(given["files"])
+        namespace = {ref: Value(key=ref, value=None, display=shown, origin="results")
+                     for ref, shown in given["values"].items()}  # fmt: skip
+        captions = [Caption(*caption) for caption in given["captions"]] + typed_legends(texts)
+        manuscript = read(texts, namespace, captions)
+        placed = (manuscript.judged(item["quote"], item["where"]) for item in given["items"])
+        return [None if one is None else [one.under, list(one.elsewhere)] for one in placed]
 
     return found
 

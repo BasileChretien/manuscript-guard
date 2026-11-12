@@ -220,6 +220,8 @@ class Margins:
     color: Rgb = (0.4, 0.4, 0.4)
     rule: Rgb = (0.85, 0.85, 0.85)
     size: float = 7.5
+    #: The place the running title links to, where it is a link: the report's summary.
+    home: str = ""
 
 
 @dataclass
@@ -394,7 +396,8 @@ class Pdf:
             if at and frame.running:
                 top = HEIGHT - MARGIN * 0.45
                 running = fitted(printable(frame.running), "F1", frame.size, WIDTH - 2 * MARGIN)
-                mine.put(running, x=MARGIN, top=top, size=frame.size, color=frame.color)
+                mine.put(running, x=MARGIN, top=top, size=frame.size, color=frame.color,
+                         link=frame.home or None)  # fmt: skip
                 mine.rule(MARGIN, top - frame.size - 5, WIDTH - MARGIN, top - frame.size - 5,
                           frame.rule, 0.5)  # fmt: skip
 

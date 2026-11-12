@@ -1,6 +1,6 @@
 ---
 name: reporting-checklist
-description: Retrieve a reporting guideline's official checklist (STROBE, CONSORT, PRISMA, RECORD, SPIRIT, TRIPOD, ARRIVE and others) and record it so the build can check that every item is addressed. Use when check reports checklist-not-retrieved, or when adopting a new guideline.
+description: Retrieve a reporting guideline's official checklist (STROBE, CONSORT, PRISMA, RECORD, SPIRIT, TRIPOD, ARRIVE and others) and record it so the build can check that every item is addressed, each answer quoting the sentence that addresses it. Use when check reports checklist-not-retrieved, checklist-quote-missing or checklist-quote-not-found, or when adopting a new guideline.
 ---
 
 # Retrieving a reporting checklist
@@ -21,10 +21,15 @@ quote can be checked against its source.
 Recipes ship for STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT-2025, PRISMA-2020,
 PRISMA-2020-abstracts, READUS-PV, READUS-PV-abstracts, TRIPOD-development,
 TRIPOD-validation, TRIPOD-development-validation, TRIPOD+AI, TRIPOD+AI-abstracts, STARD-2015,
-CHEERS-2022, ARRIVE-2.0 and SANRA. Name the guideline in
+CHEERS-2022, ARRIVE-2.0, MDAR, SAGER-2022-human, SAGER-2022-other and SANRA. Name the guideline in
 `paper.yaml` as the recipe is named (`reporting_guideline: [STROBE]`, a list). Extensions hold
 only their own items. RECORD adds to STROBE, so a study that follows RECORD lists both, and
 RECORD-PE adds to RECORD, so one that follows it lists STROBE, RECORD and RECORD-PE.
+MDAR and SAGER sit beside a design's guideline rather than in place of it: a life-sciences
+paper may list ARRIVE-2.0 and MDAR, and SAGER has one checklist for studies with human
+participants (SAGER-2022-human) and one for the rest (SAGER-2022-other). Their items carry the
+numbers SAGER prints; MDAR prints none, so its identifiers are its recipe's (M1 to M7, D1 to
+D6, A1 to A4, R1, by section).
 
 **SANRA is the one that is not a reporting guideline**, and its own paper says so: it is the
 scale an editor or a reviewer scores a narrative review with. It is there because a narrative
@@ -81,7 +86,10 @@ cannot place — within the limits `scale.py`'s rules set, and not on a line tho
 wrongly. Name the guideline: with no name
 the command tries every recipe. The profile records how thoroughly it was verified, which
 differs. A Word table lets every item's full
-text be checked, and a PDF laid out in columns only each item's opening clause.
+text be checked, and a PDF laid out in columns only each item's opening clause. MDAR's and
+SAGER's tables are read from where each word sits on the page, which needs poppler's
+`pdftotext` (Xpdf's is refused), and their text is checked against nothing else: the profile
+says so, so read a new profile against the published checklist once.
 
 **Do not write or edit the profile by hand.** It is generated, the write guard refuses edits
 to `profiles/reporting/*.yaml` where the hooks run, and a hand-edited profile is no longer a
@@ -121,6 +129,31 @@ gate wants a reason a reviewer could read: *"no interventions were assigned"*, n
 
 Re-running `checklist` after a guideline revision preserves the answers already given and
 adds only the new items.
+
+## 4. Quote the sentence that addresses each item
+
+A heading alone is satisfied by any manuscript, since every paper has a Methods. So each item
+answered with `where` also carries `quote:`, the sentence (or four words or more of it) that
+addresses the item, and `check` looks for it under that heading, subsections and the
+supplement included, or in the caption of the table or figure `where` names ("Table 1"). A
+missing quote, or one not there, is a warning from internal review and a failure at
+submission (`checklist-quote-missing`, `checklist-quote-not-found`).
+
+For each item, in order:
+
+1. Read the item's text in the profile and the section `where` names.
+2. **Propose the sentence** that addresses the item, copied from the manuscript as it is
+   written, bindings included (`{{results.n_reports}}`), or from the built document with its
+   values. Show it to the author beside the item's text.
+3. **Write it as `quote:` only once the author agrees.** The author decides whether the
+   sentence does what the item asks; the gate only checks that the words are there.
+4. **Never invent a quote**, reword one to fit the item, or quote a sentence that only comes
+   near it. Where no sentence addresses the item, tell the author the item is not addressed
+   yet and what it asks for, and leave `quote:` empty: the warning is then true, and it is the
+   reminder.
+
+Where `check` says a quote stands under another heading, `where` is the part that is wrong:
+point it at that heading, or quote the sentence under `where` that addresses the item.
 
 ## Which guideline for which design
 

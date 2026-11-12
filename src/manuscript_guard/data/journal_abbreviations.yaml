@@ -1,0 +1,82 @@
+schema: manuscript-guard/journal-abbreviations/1
+
+# Short forms that journals' own style guides say need no definition, which `audit` does
+# not report as used and not defined. Its one finding on the short forms a paper leaves
+# undefined says how many of the paper's it passed over for being here, and by this list.
+#
+# Read by `audit` only. `check` in a project does not read it: a project's journal decides
+# what may stand undefined, and the project lists it under `language: known_abbreviations:`
+# in paper.yaml. `abbreviations.yaml` stays short for that reason; this list is apart from
+# it, and is for a paper audited with no journal declared, whose reader is better served by
+# the warnings that are left than by the ones every reader of the field would set aside.
+#
+# Only what a published style guide says in so many words needs no definition, from a list
+# read on the page itself; each entry names the sources that list it. No entry is from
+# memory, and nothing here is copied from the guides but the letters, their meaning and
+# one short quotation for each source.
+#
+# Left out, though a source lists them, for a common second meaning in another field:
+#   ATP  (Brain)           the Adult Treatment Panel (ATP III) of the lipid guidelines
+#   CNS  (Brain)           coagulase-negative staphylococci, in microbiology
+#   CSF  (Brain)           colony-stimulating factor, in haematology and immunology
+#   CT   (Brain)           chemotherapy, in oncology
+#   PCR  (Brain)           the protein-to-creatinine ratio, in nephrology and obstetrics
+#   PET  (Brain)           polyethylene terephthalate, in materials and environmental science
+#   EMA  (Medical Writing) the exponential moving average, in finance and signal processing
+#   FDA  (Medical Writing) functional data analysis, in statistics
+# COVID-19 is kept as the Cochrane Style Manual writes it. G14 reads the word whole, with
+# its number, and asks no definition of it, so the entry passes nothing over as G14 reads
+# today; "COVID" alone, which G14 does report, is not what the source lists.
+# Brain's single letters A, T, C and G are not here: G14 does not read a single letter as
+# an abbreviation. CONSORT, PRISMA and ANOVA are here as the sources list them, though G14
+# knows them already (the reporting guidelines with a recipe, and
+# `statistical_abbreviations.yaml`), as are DNA, RNA, UK, US, USA, EU and UN
+# (`abbreviations.yaml`).
+#
+# Looked at and not used: the abbreviations page of the Journal of Clinical Investigation
+# (https://www.jci.org/kiosk/publish/abbreviations, read 2026-11-12), a list of standard
+# forms with no sentence saying they need no definition; ASPET's "Abbreviations in ASPET
+# journals" (revised 2016), which asks for nonstandard abbreviations to be defined and does
+# not say the standard ones need not be; and the Editorial Office Appendix of Scientific
+# Style and Format, which gives DNA as an example and no list.
+
+sources:
+  cochrane:
+    name: the Cochrane Style Manual
+    url: https://www.cochrane.org/authors/handbooks-and-manuals/style-manual/abbreviations-acronyms-and-initialisms/common-abbreviations
+    read: 2026-11-12
+    says: "Common abbreviations that do not need to be defined"
+  brain:
+    name: Brain's instructions to authors
+    url: https://academic.oup.com/brain/pages/General_Instructions
+    read: 2026-11-12
+    says: "The following abbreviations do not need to be defined"
+  medical-writing:
+    name: Medical Writing's instructions for authors (EMWA)
+    url: https://emwa.org/emwa-journal/instructions-for-authors/
+    read: 2026-11-12
+    says: "The following abbreviations do not need to be defined"
+
+exempt:
+  AIDS: [cochrane, brain, medical-writing]
+  ANOVA: [brain]
+  CONSORT: [cochrane]
+  COVID-19: [cochrane]
+  DNA: [cochrane, brain, medical-writing]
+  ECG: [brain]
+  EEG: [brain]
+  EMG: [brain]
+  EMWA: [medical-writing]
+  EU: [medical-writing]
+  GABA: [brain]
+  GRADE: [cochrane]
+  HIV: [cochrane, brain, medical-writing]
+  MeSH: [cochrane]
+  MRI: [brain]
+  PRISMA: [cochrane]
+  RNA: [cochrane, brain, medical-writing]
+  UK: [cochrane, medical-writing]
+  UN: [medical-writing]
+  US: [medical-writing]
+  USA: [cochrane, medical-writing]
+  WHO: [medical-writing]

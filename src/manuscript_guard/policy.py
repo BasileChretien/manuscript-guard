@@ -267,6 +267,11 @@ BINDS_AT = {
     "checklist-item-missing": INTERNAL_REVIEW,
     "checklist-item-unanswered": INTERNAL_REVIEW,
     "checklist-non-reason": INTERNAL_REVIEW,
+    # An answer with no quote of the sentence that addresses it, or one not under the heading
+    # it names: G5 notes it while drafting, warns from internal review and fails it at
+    # submission (`gates/reporting.py` reads the stage; Basile, 2026-11-12).
+    "checklist-quote-missing": SUBMISSION,
+    "checklist-quote-not-found": SUBMISSION,
     "methods-drift": INTERNAL_REVIEW,
     # The same reading kept pair by pair: a step and the text pointing at it.
     "method-pair-unread": INTERNAL_REVIEW,
@@ -388,6 +393,17 @@ BINDS_AT = {
     # authors declare: G4 warns, and fails at submission where the journal's profile asks
     # for the statement (Basile, D6.5). Its two notes are notes at every stage.
     "ai-use-model-unnamed": SUBMISSION,
+    # The manuscript's funding, competing interests, ethics and author contributions held to
+    # authors.yaml: G4 warns while the paper is written and fails at submission (Basile). Its
+    # two notes, a record with no statement of its kind, are notes at every stage.
+    **dict.fromkeys(
+        (
+            "funding-grant-missing", "funding-denied", "interests-author-missing",
+            "interests-none-contradicted", "interests-unfilled", "ethics-approval-missing",
+            "ethics-approval-denied", "credit-author-missing", "credit-role-missing",
+        ),
+        SUBMISSION,
+    ),  # fmt: skip
     "response-claims-nothing": SUBMISSION,
     "claimed-change-did-not-happen": SUBMISSION,
             "review-stale": SUBMISSION,

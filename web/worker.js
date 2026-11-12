@@ -134,6 +134,10 @@ function names(files) {
 // A name that starts with "-" would be read as an option; "./" before it is the same file.
 const argument = (name) => (name.startsWith("-") ? "./" + name : name);
 
+// A step of the audit under way, as the page draws it (app.js `stepped`): its key, and how
+// many of its items are done of how many, where it counts them.
+const told = (key, done, total) => self.postMessage({ step: { key, done, total } });
+
 function run({ paper, against, lookup, details, english = "", known = [] }) {
   const [paperName, ...outputNames] = names([paper, ...against]);
   py.runPython(`import os, shutil
@@ -158,24 +162,37 @@ os.chdir("/work")`);
   if (details) args.push("--details");
   performance.clearResourceTimings();
   py.globals.set("ARGS", py.toPy(args));
+  // Each step the audit says as it starts (`auditing.progress`), passed to the page, which
+  // shows what is being done and how long is left: the audit runs in this one call.
+  py.globals.set("TOLD", told);
   const start = now();
   // The text the command line prints, and the report as the page draws it, from one audit.
-  const result = JSON.parse(
-    py.runPython("import json; from manuscript_guard import web; json.dumps(web.view(ARGS))"));
+  const result = JSON.parse(py.runPython(`import json
+from manuscript_guard import web
+from manuscript_guard.auditing import progress
+progress.STEP = TOLD
+try:
+    said = json.dumps(web.view(ARGS))
+finally:
+    progress.STEP = None
+said`));
   py.globals.delete("ARGS");
+  py.globals.delete("TOLD");
   const ms = now() - start;
-  // A copy that could not be written never costs the report (round 1 of #617).
-  let commented = null;
-  try {
-    commented = commentedCopy(result, paperName);
-  } catch (error) {
-    commented = { error: String((error && error.message) || error) };
-  }
+  // A copy or a PDF that could not be written never costs the report (round 1 of #617).
   let pdf = null;
   try {
+    told("pdf", 0, 0);
     pdf = reportPdf(result, paperName);
   } catch (error) {
     pdf = { error: String((error && error.message) || error) };
+  }
+  let commented = null;
+  try {
+    if (/\.docx$/i.test(paperName)) told("copy", 0, 0);
+    commented = commentedCopy(result, paperName);
+  } catch (error) {
+    commented = { error: String((error && error.message) || error) };
   }
   return { ...result, commented, pdf, args, ms, sent: requests(), refused: [...refused] };
 }

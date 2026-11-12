@@ -50,13 +50,14 @@ from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.dictionary import load_dictionary
 from manuscript_guard.contracts.project import PAPER_FILE, Project
 from manuscript_guard.contracts.results import Results, load_results
+from manuscript_guard.corrections import Edit
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates import glossary
 from manuscript_guard.gates.code_names import Names, Prose, judge_code_names
-from manuscript_guard.gates.notation import judge_notation
+from manuscript_guard.gates.notation import judge_notation, notation_edits
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
 from manuscript_guard.gates.scripts import judge_scripts
-from manuscript_guard.gates.spelling import judge_spelling
+from manuscript_guard.gates.spelling import judge_spelling, opens_a_sentence, spelling_edits
 from manuscript_guard.gates.vocabulary import (
     Passage,
     capitals_together,
@@ -140,17 +141,43 @@ _CLOSES_WITH = re.compile(
 # "Basic Income Support for Sustainability - BISS", "Basic Payment Scheme \N{EN DASH} BPS"
 # (an agricultural-policy preprint of the real-paper corpus), a hyphen, an en dash or an em
 # dash, or "--" and "---", which pandoc prints as those; a no-break space is a space. The
-# whole word, not a part of `BPS-based`. And one followed by an equals sign or a number, or
-# by a colon, a comma or an opening bracket and a number, past spaces of either kind, gives
-# a statistic and defines nothing: "higher in older people - OR, 1.52", "- OR: 1.52" and
-# "- OR (95% CI 1.1-2.0) 1.52" are the odds ratio's value (rounds 1 and 2 of #623), where
-# "Basic Payment Scheme - BPS, which pays farmers" defines.
+# whole word, not a part of `BPS-based`. Only a short form that ends its clause defines
+# (`_ends_its_clause`; the author, 2026-11-12, in place of the exceptions of #623).
 _DASH_SPACE = r"[ \t\N{NO-BREAK SPACE}]"
+_DASH = r"(?:---?|[-\N{EN DASH}\N{EM DASH}])"
 _DASHED = re.compile(
-    rf"(?<=\S){_DASH_SPACE}+(?:---?|[-\N{{EN DASH}}\N{{EM DASH}}]){_DASH_SPACE}+"
-    rf"(?P<short>{_PARTS})(?![^\W_]|-[^\W_])"
-    rf"(?!{_DASH_SPACE}*(?:=|(?:[:,(]{_DASH_SPACE}*)?\d))"
+    rf"(?<=\S){_DASH_SPACE}+{_DASH}{_DASH_SPACE}+(?P<short>{_PARTS})(?![^\W_]|-[^\W_])"
 )
+#: Spaces of any kind on one line, and the same across at most one line break.
+_LINE_GAP = r"[ \t\r\N{NO-BREAK SPACE}]*"
+_ONE_BREAK = rf"{_LINE_GAP}(?:\n{_LINE_GAP})?"
+#: A closing quote or emphasis mark, part of the short form's typing.
+_MARKS = rf"[{re.escape(_QUOTES)}]*"
+#: A citation, which is no more words of the sentence: a bracket the mask has blanked,
+#: `[@key]` and `[@a; @b]`, one of numbers, "[12]", "[1, 3-5]", and a superscript number,
+#: "^12^". LaTeX's `~\cite{key}` is blanked whole, so spaces pass over it.
+_CITED = (rf"(?:{_ONE_BREAK}(?:\[[\s\d,;\-\N{{EN DASH}}\N{{EM DASH}}]*\]"
+          rf"|\^[\d,\-\N{{EN DASH}}]+\^))*")  # fmt: skip
+# What follows a short form that ends its clause, a closing mark and a citation between
+# them allowed: a stop, a semicolon, a closing bracket of either kind or a table cell's bar,
+# a comma or a colon and a word, a closing spaced dash, a hard line break (a backslash or
+# two spaces before the line's end, as pandoc reads them, and as LaTeX's `\\` is left), or
+# the end of the paragraph or of the text. A single line break inside a paragraph is read
+# as a space. "Basic Payment Scheme - BPS, which pays farmers", "... - BPS [@ec2013]." and
+# "the Scheme - BPS - replaced it" define; a statistic goes on past its short form, "older
+# people - OR [95% CI ...] 1.52", "- OR of 1.52", "- OR, 1.52", and defines nothing. A stop
+# before a digit is a decimal point. What this misses is in DESIGN.md's Known gaps.
+_CLAUSE_ENDS = re.compile(
+    rf"{_MARKS}{_CITED}"
+    rf"(?:{_ONE_BREAK}(?:\.(?!\d)|[;)\]|]|[,:]{_ONE_BREAK}{_MARKS}[^\W\d_])"
+    rf"|{_DASH_SPACE}+{_DASH}{_DASH_SPACE}"
+    rf"|(?:{_DASH_SPACE}*\\| {{2,}})\r?\n"
+    rf"|{_LINE_GAP}(?:\Z|\n{_LINE_GAP}(?:\n|\Z)))"
+)
+#: The end of a line, after a closing mark and a citation: where a list item's ends.
+_LINE_ENDS = re.compile(rf"{_MARKS}{_CITED}{_LINE_GAP}(?:\n|\Z)")
+#: A list item's line as typed, in a block quote or not: "- ", "* ", "1. ", "2) ", `\item`.
+_LIST_ITEM = re.compile(r"[ \t]*(?:>[ \t]*)*(?:(?:[-*+]|\d{1,9}[.)])[ \t]|\\item(?![A-Za-z]))")
 #: The brackets a long form opens and closes, round and square: a letter of its short form
 #: is not found inside one it opens (`_inside_a_bracket`).
 _OPENING = "(["
@@ -900,18 +927,29 @@ def _short_closing(bracket: re.Match[str]) -> tuple[int, str, str] | None:
     return bracket.start(1) + closing.start("short"), _stem(short, long), long
 
 
-def _dashed(prose: str) -> list[tuple[int, str, str]]:
+def _dashed(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
     """The definitions with a dash: "Basic Payment Scheme - BPS", the long form before the
-    dash in its paragraph."""
+    dash in its paragraph, the short form ending its clause. `typed` is the text as typed,
+    where a list item's marker stands, of the length of `prose`."""
+    lines = typed if typed is not None and len(typed) == len(prose) else prose
     found = []
     for dash in _DASHED.finditer(prose):
         short = dash.group("short")
-        if not _may_be_defined(short):
+        if not _may_be_defined(short) or not _ends_its_clause(prose, lines, dash):
             continue
         long = _read_back(short, _paragraph_before(prose, dash.start()))
         if long is not None:
             found.append((dash.start("short"), _stem(short, long), long))
     return found
+
+
+def _ends_its_clause(prose: str, typed: str, dash: re.Match[str]) -> bool:
+    """Does the short form `dash` found end its clause (`_CLAUSE_ENDS`), or the line of a
+    list item, which ends where its line does?"""
+    if _CLAUSE_ENDS.match(prose, dash.end()):
+        return True
+    line = typed.rfind("\n", 0, dash.start()) + 1
+    return bool(_LIST_ITEM.match(typed, line) and _LINE_ENDS.match(prose, dash.end()))
 
 
 def _paragraph_before(prose: str, end: int) -> str:
@@ -968,13 +1006,13 @@ def _long_after(
     return head, _stem(short, long), long
 
 
-def _definitions(prose: str) -> list[tuple[int, str, str]]:
+def _definitions(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
     """Every definition in `prose`: where its short form stands, the form it defines, and
     the long form. Both orders in round brackets, "reporting odds ratio (ROR)" and "ROR
     (reporting odds ratio)", and the short form in square ones, "hazard ratio [HR]"; in
     either, the short form closing the bracket after a separator with its long form before
     that, "(i.e. time to task failure; TTF)"; and the short form after a dash, "Basic
-    Payment Scheme - BPS"."""
+    Payment Scheme - BPS", read by the text as `typed` too where that is given."""
     found: list[tuple[int, str, str]] = []
     for bracket in _PAREN.finditer(prose):
         if _BLANK_LINE.search(bracket.group(1)):
@@ -991,7 +1029,7 @@ def _definitions(prose: str) -> list[tuple[int, str, str]]:
             found.append(definition)
     # A short form a bracket already defines where it stands is not defined there again.
     bracketed = {at for at, _short, _long in found}
-    return found + [each for each in _dashed(prose) if each[0] not in bracketed]
+    return found + [each for each in _dashed(prose, typed) if each[0] not in bracketed]
 
 
 def _listed_as(form: str, known: _Known) -> bool:
@@ -1285,7 +1323,7 @@ def _assembled(
     listed = [(entry.at, _stem(entry.short, entry.long), entry.long)
               for span in glossaries for entry in glossary.entries(prose, raw, span)
               if _may_be_defined(entry.short)]  # fmt: skip
-    definitions = [*_definitions(prose), *listed]
+    definitions = [*_definitions(prose, raw), *listed]
     restating = frozenset(at for at, _short, _long in definitions
                           if _restates(captions, glossaries, at))  # fmt: skip
     more["code"] = _set_aside(more.get("code", ""), references)
@@ -1688,7 +1726,7 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
                         "the title page, tables and figures are not read here",
                     )
                 )
-            elif not uses and not first.quiet:
+            elif not uses and not first.quiet and not _leaned_on(scopes, scope.name, short):
                 findings.append(
                     finding(
                         "abbreviation-unused",
@@ -1767,6 +1805,109 @@ def check_language(
         .merge(judge_scripts(_whole(files)))
         .merge(_not_read(files))
     )
+
+
+def language_edits(project: Project) -> list[Edit]:
+    """The exact edits G14's readings would make (`corrections.py`), the manuscript read as
+    `check_language` reads it: each abbreviation defined and not used again written out,
+    each word of the other English respelt, and the notation set as the manuscript's own."""
+    files = _read(project)
+    passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
+    spelt = [Passage(file.path, file.text, file.spelt, file.line_of) for file in files]
+    return (abbreviation_edits(files, _known(project))
+            + spelling_edits(spelt, project.english_variant, project.accepted_spellings)
+            + notation_edits(passages))  # fmt: skip
+
+
+def abbreviation_edits(files: list[_File], known: _Known) -> list[Edit]:
+    """Each abbreviation `abbreviation-unused` says is defined and not used again, written
+    out where it is defined, at every place: "the reporting odds ratio (ROR)" becomes "the
+    reporting odds ratio", and "ROR (reporting odds ratio)" becomes "reporting odds ratio",
+    with a capital where it opens a sentence (the author, 2026-11-11). Only where the
+    bracket holds the one form and nothing more; not an entry of a list of abbreviations,
+    which the list is to drop; not a definition among the acknowledgements, where a funder
+    is named in full with its acronym; and not the main text's where the supplementary
+    material uses the form, which the main text's definition serves (round 1 of #645)."""
+    edits = []
+    scopes = _collect(files, known)
+    for name, scope in scopes.items():
+        for short, definitions in scope.defined.items():
+            definitions = sorted(definitions, key=lambda mark: mark.key)
+            if scope.used.get(short) or definitions[0].quiet:
+                continue
+            if _leaned_on(scopes, name, short):
+                continue
+            for mark in definitions:
+                file = files[mark.order]
+                if _kept(file, mark):
+                    continue
+                edit = _written_out(file, mark, short)
+                edits += [edit] if edit is not None else []
+    return edits
+
+
+#: "a" or "an" before a short form, which was chosen for how the short form is said: "an
+#: SAE (serious adverse event)" written out would read "an serious adverse event". Across
+#: a line break, a no-break space, a LaTeX tie or a mark of emphasis or quotation as well
+#: (round 2 of #645).
+_AN_ARTICLE = re.compile(rf"(?<![\w-])an?[\s~{re.escape(_QUOTES)}]+\Z", re.IGNORECASE)
+
+
+def _after_an_article(text: str, at: int) -> bool:
+    """Is the short form at `at` after "a" or "an", which no edit puts right (rounds 1 and
+    2 of #645)?"""
+    return _AN_ARTICLE.search(text, max(0, at - 16), at) is not None
+
+
+def _runs_on(text: str, end: int) -> bool:
+    """Does a square bracket closing just before `end` run on into a link's address, a
+    reference or a span's attributes, "[ROR](https://...)", "[HR]{.smallcaps}" (round 1 of
+    #645)? A round bracket is no link's: "(ROR)[@smith2020]" is a definition and a citation
+    (round 2 of #645)."""
+    return text[end - 1 : end] == "]" and text[end : end + 1] in ("(", "[", "{")
+
+
+def _takes_a_capital(long: str) -> bool:
+    """Does the long form take the capital of a sentence it opens: not where its first word
+    keeps a case of its own, "mRNA vaccine" (round 2 of #645)."""
+    return long.split()[0].islower()
+
+
+def _kept(file: _File, mark: _Definition) -> bool:
+    """Is the definition at `mark` one no edit writes out: a funder's among the
+    acknowledgements, named in full with its acronym, or an entry of a list of
+    abbreviations, which the list is to drop?"""
+    return mark.quiet or _in_a_glossary(file, mark.offset)
+
+
+def _leaned_on(scopes: dict, name: str, short: str) -> bool:
+    """Is the main text's definition of `short` what the supplementary material's use of it
+    leans on, so that it is used after all (rounds 1 and 2 of #645)? Not where the
+    supplementary material defines it itself (round 3 of #645)."""
+    supplement = scopes[SUPPLEMENT]
+    return name == BODY and bool(supplement.used.get(short)) and short not in supplement.defined
+
+
+def _written_out(file: _File, mark: _Definition, short: str) -> Edit | None:
+    """The edit that drops the short form of one definition, or None where it is not one
+    of the two shapes an edit is sure of."""
+    text, at, long = file.text, mark.offset, mark.long
+    end = at + len(short)
+    if text[at:end] != short or not long:
+        return None
+    passage = Passage(file.path, file.text, file.printed, file.line_of)
+    bracket = text[at - 1 : at] + text[end : end + 1]
+    if (bracket in ("()", "[]") and text[at - 2 - len(long) : at - 1] == long + " "
+            and not _runs_on(text, end + 1)):  # fmt: skip
+        return Edit("abbreviation-unused", passage, at - 2, end + 1, "",
+                    (at - 2 - len(long), end + 1))  # fmt: skip
+    after = f" ({long})"
+    if text[end : end + len(after)] == after and not _after_an_article(text, at):
+        opens = opens_a_sentence(text, at) and _takes_a_capital(long)
+        spelt = long[:1].upper() + long[1:] if opens else long
+        return Edit("abbreviation-unused", passage, at, end + len(after), spelt,
+                    (at, end + len(after)))  # fmt: skip
+    return None
 
 
 def _code_names(project: Project, results: Results | None) -> Names:

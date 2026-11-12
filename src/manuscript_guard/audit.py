@@ -55,7 +55,7 @@ from manuscript_guard.stats.shares import described as described_share
 from manuscript_guard.stats.shares import off, table_shares
 from manuscript_guard.text.blocks import Unprinted, heading_shaped, scannable, section_breaks
 from manuscript_guard.text.comments import unclear_comment_lines
-from manuscript_guard.text.docx import NotADocx, bold_heading_levels, is_docx, read_docx_text
+from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text, typed_heading_levels
 from manuscript_guard.text.fences import unclear_fence_lines
 from manuscript_guard.text.masking import NUL, front_matter_end, mask
 from manuscript_guard.text.reference_lists import ends_a_list_alone, is_bibliography_heading
@@ -695,6 +695,21 @@ def strip_bibliography(
     return _blank(text, bibliography_spans(text, headings, cells))
 
 
+def footnote_lines(text: str) -> frozenset[int]:
+    """The 1-based lines of a Markdown text's footnote definitions, "[^1]: ...", each with
+    the blank and indented lines that go on with it, as `_blank` keeps them."""
+    found: set[int] = set()
+    in_note = False
+    for number, line in enumerate(text.split("\n"), 1):
+        if _FOOTNOTE.match(line):
+            in_note = True
+        elif not (in_note and (not line.strip() or line.startswith(("    ", "\t")))):
+            in_note = False
+        if in_note:
+            found.add(number)
+    return frozenset(found)
+
+
 def _blank(text: str, spans: list[tuple[int, int]]) -> str:
     """`text` with the lines in `spans` emptied, except the footnote definitions among them."""
     lines = text.split("\n")
@@ -948,11 +963,11 @@ _ONE_TEXT = ("so it was read as one text: its Abstract is not compared with its 
 
 def _headings_said(path: Path, document, headed: bool) -> str | None:
     """How a .docx's or a Markdown paper's headings were read, where they were not read
-    from Word's heading styles or Markdown's headings: from its titles in bold, by name
-    (`text.docx.bold_heading_levels`), or not at all. Said once, with what to do, since a
-    paper read as one text has every check that reads a section by its name done on the
-    whole of it (Basile, 2026-11-09: the report is to say so)."""
-    from manuscript_guard.text.section_names import section_name_alone
+    from Word's heading styles or Markdown's headings: from its titles typed as lines of
+    their own, by name (`text.docx.typed_heading_levels`), or not at all. Said once, with
+    what to do, since a paper read as one text has every check that reads a section by its
+    name done on the whole of it (Basile, 2026-11-09: the report is to say so)."""
+    from manuscript_guard.text.docx import typed_titles
 
     if document is None:
         return None if headed else (
@@ -961,25 +976,27 @@ def _headings_said(path: Path, document, headed: bool) -> str | None:
     if document.heading_levels:
         return None
     styles = "give its section titles Word's heading styles"
-    lines = document.body.split("\n")
-    titles = [title for at in sorted(document.bold)
-              if (title := section_name_alone(lines[at])) is not None]  # fmt: skip
+    titles = typed_titles(document)
     if not titles:
-        return (f"{path.name}: no paragraph is in a heading style, and none wholly in bold "
-                f"names a section, {_ONE_TEXT}; {styles}")
+        return (f"{path.name}: no paragraph is in a heading style, and none on a line of its "
+                f"own names a section, {_ONE_TEXT}; {styles}")
+    levels = typed_heading_levels(document)
+    if levels is not None:
+        placed = {at for at, _level in levels}
+        titles = [(at, title) for at, title in titles if at in placed]
     one = len(titles) == 1
-    named = (f"the paragraph wholly in bold that names a section ({titles[0]})" if one else
-             f"the {len(titles)} paragraphs wholly in bold that name a section "
-             f"({', '.join(titles)})")  # fmt: skip
-    if bold_heading_levels(document) is None:
+    named = (f"the paragraph that names a section alone ({titles[0][1]})" if one else
+             f"the {len(titles)} paragraphs that name a section alone "
+             f"({', '.join(title for _at, title in titles)})")  # fmt: skip
+    if levels is None:
         from manuscript_guard.auditing.pdf import UNPLACED
 
         return (f"{path.name}: no paragraph is in a heading style, and {named} could not be "
                 f"placed: {UNPLACED}; its lines were placed in no section; {styles}")
     read = "was read as a heading" if one else "were read as its headings"
-    return (f"{path.name}: no paragraph is in a heading style, so {named} {read}, as "
-            f"`init --from` makes them; a bold title that names no section is read as text; "
-            f"{styles} for a reading that rests on no list of names")
+    return (f"{path.name}: no paragraph is in a heading style, so {named} {read}, in bold "
+            f"or not, as `init --from` makes them; a title that names no section is read as "
+            f"text; {styles} for a reading that rests on no list of names")
 
 
 def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
@@ -997,16 +1014,20 @@ def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
         lines = frozenset(cell.line for table in tables for row in table for cell in row)
         lists = markdown_lists(text, hidden)
         boxed = 0
+        notes = footnote_lines(text)
     else:
         body = document.body.split("\n")
-        # A document with no heading style is placed by its titles in bold, where they name
-        # its sections and can be placed (`text.docx.bold_heading_levels`).
-        levels = document.heading_levels or bold_heading_levels(document) or ()
+        # A document with no heading style is placed by its typed titles, where they name
+        # its sections and can be placed (`text.docx.typed_heading_levels`).
+        levels = document.heading_levels or typed_heading_levels(document) or ()
         sections = [Section(body[at], level, "", at + 1) for at, level in levels]
         lines = frozenset(at + 1 for at in document.cells)
         lists = docx_lists(body, dict(document.levels), {at + 1: level for at, level in levels})
         boxed = boxed_counts(document.boxed)
-    place, abstract, results = placed(sections) if sections else (None, False, False)
+        # The notes, read after the body, under its last heading (`read_paper`).
+        last = document.body.count("\n") + 1
+        notes = frozenset(range(last + 1, text.count("\n") + 2)) if document.notes else frozenset()
+    place, abstract, results = placed(sections, notes) if sections else (None, False, False)
     return {"place": place, "abstract": abstract, "results": results, "table_lines": lines,
             "lists": tuple(lists), "boxed": boxed,
             "part": _parts(sections, document), "heading_lines": _heading_lines(
@@ -1278,6 +1299,9 @@ def audit(
     words are read (`auditing.causal`), and a trial's tables of baseline characteristics
     (`auditing.baseline`); `cited` asks for each citation beside its sentence
     (`auditing.cited`)."""
+    from manuscript_guard.auditing.progress import step
+
+    step("read")
     # `rendered=True`: an existing paper has been through citeproc, so its citations are
     # "(Smith 2019)" rather than [@key]. That is the one place the audit-only rules apply.
     classifier = classifier or Classifier.load(rendered=True)
@@ -1296,6 +1320,7 @@ def audit(
     # anything. A .docx and a figure are read a paragraph or an element per line; Markdown
     # and plain text are read as pandoc reads them.
     sources = _read_sources(report, papers, found_tex or [])
+    step("numbers")
     read = len(sources)
     for path in figures or []:
         text = read_figure(path)

@@ -2057,6 +2057,104 @@ def test_the_initials_a_contributions_statement_names_are_no_abbreviations(
     assert found == [("abbreviation-undefined", short) for short in undefined], text
 
 
+from generated import title_pages  # noqa: E402
+
+
+@holds(40, title_pages())
+def test_the_title_page_is_not_read_for_abbreviations(
+    drawn: dict[str, tuple[str, list[tuple[str, str]]]],
+) -> None:
+    """A title page's capitals, its authors' names, units and institutions, are reported
+    nowhere, and what it spells out defines nothing, wherever it ends: at an Abstract, at
+    another first section, run in from its label or not, at a letter's salutation, where
+    prose begins, and at a list of abbreviations, which is read; and whatever its one line
+    only a title page holds is. Its one use is of an entry of the list of abbreviations, which
+    is then used; a definition the text gives and only the title page uses again is unused.
+    A paper with no title page, opening on a
+    heading or on a title alone, is read whole, and so is one whose opening names a
+    university in a sentence (Basile, 2026-11-12)."""
+    nothing = language_gate._Known(frozenset(), frozenset())
+    for name, (text, expected) in drawn.items():
+        report = language_gate._judge([_file(0, Path("main.md"), text, [], False)], nothing,
+                                      Path("."))  # fmt: skip
+        found = sorted((f.code, f.message.split()[0]) for f in report.findings)
+        assert found == expected, (name, text)
+
+
+def _no_title_page_is_found(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "title_page_end", lambda *args, **kwargs: None)
+
+
+def _only_an_abstract_ends_a_title_page(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_OPENING_NAMES", frozenset({"abstract", "summary"}))
+
+
+def _a_salutation_opens_no_letter(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_SALUTATION", re.compile(r"(?!)"))
+
+
+def _prose_ends_no_title_page(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    real = title_page._paragraph_kind
+
+    def kind(raw: str, joined: str, *, first: bool = False) -> str:
+        found = real(raw, joined, first=first)
+        return title_page.NEUTRAL if found == title_page.PROSE else found
+
+    patch.setattr(title_page, "_paragraph_kind", kind)
+
+
+def _no_word_makes_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_SENTENCE", frozenset())
+    patch.setattr(title_page, "_SENTENCE_OPENING", frozenset())
+
+
+def _an_affiliation_is_no_title_page_line(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_INSTITUTION", re.compile(r"(?!)"))
+
+
+def _an_affiliation_s_pieces_may_be_any_length(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_PIECE_WORDS", 1000)
+
+
+def _title_page_pattern_matches_nothing(name: str) -> Callable[[pytest.MonkeyPatch], None]:
+    def broken(patch: pytest.MonkeyPatch) -> None:
+        from manuscript_guard.text import title_page
+
+        patch.setattr(title_page, name, re.compile(r"(?!)"))
+
+    return broken
+
+
+def _a_list_of_abbreviations_is_the_title_page_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    patch.setattr(title_page, "_opens_a_list", lambda text: False)
+
+
+def _a_title_page_s_word_uses_no_list_entry(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_on_title_pages", lambda files: {})
+
+
+def _a_title_s_institution_is_an_affiliation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import title_page
+
+    real = title_page._paragraph_kind
+    patch.setattr(title_page, "_paragraph_kind",
+                  lambda raw, joined, *, first=False: real(raw, joined))  # fmt: skip
+
+
 def _no_initials_are_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_initials", lambda prose, spans: frozenset())
 
@@ -3815,6 +3913,99 @@ def test_a_deposit_is_named_by_its_doi_however_written_and_by_no_other(
     before = names_doi(text, DEPOSIT_DOI)
     for written in others:
         assert names_doi(written, DEPOSIT_DOI) == before, written
+
+
+# ------------------------------------------------- the declarations held to authors.yaml
+
+from generated import declaration_papers  # noqa: E402
+
+
+@holds(100, declaration_papers())
+def test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed(
+    drawn: tuple[dict, str, list[tuple[str, str]]],
+) -> None:
+    """G4 finds each grant, funder, author, role and approval the record holds in the
+    paper's statements however they are typed, under any heading or label of their kind and
+    in any order; and each near miss raises its own finding: a grant with a digit more, a
+    funder with a word changed, a denial, another family name, a collective none, a role
+    left out, other initials, another approval."""
+    from manuscript_guard.gates.disclosures import judge
+
+    authors, paper, near = drawn
+    said = judge(authors, paper).findings
+    assert not said, ([f.message for f in said], paper)
+    for code, changed in near:
+        codes = {f.code for f in judge(authors, changed).findings}
+        assert code in codes, (code, codes, changed)
+
+
+def _grant_found_inside_a_longer_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    loose = disclosures._identifier_pattern
+
+    def unbounded(token: str) -> re.Pattern[str]:
+        found = loose(token).pattern
+        for bound in ("(?<!\\d)", "(?<![^\\W\\d_])"):
+            found = found.removeprefix(bound)
+        for bound in ("(?!\\d)", "(?![^\\W\\d_])"):
+            found = found.removesuffix(bound)
+        return re.compile(found)
+
+    patch.setattr(disclosures, "_identifier_pattern", unbounded)
+
+
+def _declarations_keep_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    def keep_case(text: str) -> str:
+        import unicodedata
+
+        text = unicodedata.normalize("NFKD", text)
+        text = "".join(c for c in text if not unicodedata.combining(c))
+        return " ".join(text.translate(disclosures._DASHES).translate(disclosures._QUOTES)
+                        .split())  # fmt: skip
+
+    patch.setattr(disclosures, "fold", keep_case)
+
+
+def _declarations_keep_dashes(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    patch.setattr(disclosures, "_DASHES", {})
+
+
+def _declarations_keep_accents(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    def accented(text: str) -> str:
+        text = text.translate(disclosures._DASHES).translate(disclosures._QUOTES).casefold()
+        return " ".join(text.split())
+
+    patch.setattr(disclosures, "fold", accented)
+
+
+def _declared_initials_in_any_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    cased = disclosures._initials_pattern
+
+    def folded(initials: str) -> re.Pattern[str] | None:
+        found = cased(initials)
+        return None if found is None else re.compile(found.pattern, re.IGNORECASE)
+
+    patch.setattr(disclosures, "_initials_pattern", folded)
+
+
+def _the_other_authors_say_none_for_all(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    data = dict(disclosures._data())
+    subject = "(?:the authors|all authors|all the authors|the author)"
+    assert subject in data["collective_none"][0]
+    data["collective_none"] = [pattern.replace(subject, "authors?")
+                               for pattern in data["collective_none"]]  # fmt: skip
+    patch.setattr(disclosures, "_data", lambda: data)
 
 
 # ------------------------------------------------- the head over a fetched PDF's title
@@ -6592,6 +6783,111 @@ def _a_word_inside_a_quotation_is_respelt(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import spelling
 
     patch.setattr(spelling, "_in_a_quotation", lambda text, start: False)
+
+
+from generated import abbreviations_written_out  # noqa: E402
+
+
+@holds(40, abbreviations_written_out())
+def test_g14_writes_out_an_abbreviation_defined_and_not_used_again(
+    drawn: tuple[str, str],
+) -> None:
+    """An abbreviation defined and not used again is written out where it is defined, at
+    every place: its bracket dropped after its long form, round or square, or its long form
+    put in its place, with the capital of a sentence it opens unless its first word keeps its
+    own case; before a citation too. Not one used again, one whose bracket holds more, a
+    funder's among the acknowledgements, one after "an" across whatever stands between, a
+    link's, or an entry of the list of abbreviations (rounds 1 and 2 of #645). Edited, the
+    manuscript is edited no further."""
+    from manuscript_guard.gates import language as language_gate
+
+    nothing = language_gate._Known(frozenset(), frozenset())
+
+    def edits(read: Any) -> list:
+        return language_gate.abbreviation_edits([read], nothing)
+
+    as_typed, expected = drawn
+    text, edited = _edited(as_typed, edits)
+    assert text == as_typed
+    assert edited == expected, (as_typed, edited)
+    assert _edited(edited, edits)[1] == edited
+
+
+def _an_article_before_a_short_form_is_left_wrong(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_after_an_article", lambda text, at: False)
+
+
+def _a_link_s_brackets_are_a_definition_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_runs_on", lambda text, end: False)
+
+
+def _a_list_of_abbreviations_is_written_out(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_in_a_glossary", lambda file, offset: False)
+
+
+def _an_article_across_a_break_is_not_seen(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_AN_ARTICLE", re.compile(r"(?<![\w-])an?[ \t]+\Z", re.IGNORECASE))
+
+
+def _a_long_form_s_own_case_takes_a_capital(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_takes_a_capital", lambda long: True)
+
+
+def _a_funder_s_sentence_is_written_out_beside_the_text_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_kept", lambda file, mark: language._in_a_glossary(file, mark.offset))
+
+
+def _a_citation_after_a_round_bracket_is_a_link(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_runs_on", lambda text, end: text[end : end + 1] in ("(", "[", "{"))
+
+
+def _a_written_out_abbreviation_takes_no_capital(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "opens_a_sentence", lambda text, start: False)
+
+
+def _an_abbreviation_used_again_is_written_out(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    real = language._collect
+
+    def unused(files, known):
+        scopes = real(files, known)
+        for scope in scopes.values():
+            scope.used.clear()
+        return scopes
+
+    patch.setattr(language, "_collect", unused)
+
+
+def _a_funder_s_abbreviation_is_written_out(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    real = language._collect
+
+    def loud(files, known):
+        scopes = real(files, known)
+        for scope in scopes.values():
+            for short, marks in scope.defined.items():
+                scope.defined[short] = [dataclasses.replace(mark, quiet=False) for mark in marks]
+        return scopes
+
+    patch.setattr(language, "_collect", loud)
 
 
 def _a_respelt_word_loses_its_capital(patch: pytest.MonkeyPatch) -> None:
@@ -19474,6 +19770,98 @@ def _a_stop_blanked_with_an_address_is_not_kept(patch: pytest.MonkeyPatch) -> No
 
     patch.setattr(quote_places, "_CLOSING", frozenset())
 
+# ----------------------------- a trial's table of baseline characteristics with P values, G8
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import baseline_papers  # noqa: E402
+
+
+@holds(30, baseline_papers())
+def test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does(
+    planted: tuple[dict[str, Any], dict[str, Any]],
+) -> None:
+    """In a randomised trial, each table captioned as of baseline characteristics with a P
+    header warns, emitted or typed, in Markdown or LaTeX, in the main text or the
+    supplement, at its header row's line, naming its P header; a table of outcomes, of a
+    change from baseline, with the word inside another or with a header that holds a P and is
+    none warns of nothing. Of a paper of another design, or of none, nothing is said."""
+    given, found = planted
+    read = READINGS["baseline tables"]()
+    for kind in ("markdown", "latex"):
+        paper = {"emitted": given["emitted"], "files": given[kind]}
+        answered = answer(read, {**paper, "study_type": "trial"})
+        assert "raised" not in answered, answered
+        told = answered["answer"]
+        assert all(code == "baseline-p-values" and severity == "warn"
+                   for _path, _line, code, severity, _said in told), told  # fmt: skip
+        said = sorted(([path, line] for path, line, *_rest in told), key=json.dumps)
+        expected = sorted(([path, line] for path, line, _headers in found[kind]), key=json.dumps)
+        assert said == expected, given[kind]
+        for path, line, headers in found[kind]:
+            (message,) = [m for p, n, _c, _s, m in told if [p, n] == [path, line]]
+            shown = message.split("column of P values (", 1)[1].split("), and the study", 1)[0]
+            assert shown == " and ".join(repr(_printed(h, kind)) for h in headers), message
+        other = answer(read, {**paper, "study_type": given["other"]})
+        assert other == {"answer": []}, given["other"]
+
+
+def _printed(header: str, kind: str) -> str:
+    """A header as the finding names it: as typed in Markdown, as the LaTeX reader prints it."""
+    if kind == "markdown":
+        return header
+    for written, shown in (("$^{a}$", "^a"), ("$^{*}$", "^*"), ("$^\\dagger$", "^"),
+                           ("\\textit{P}", "P"), ("\\emph{p}", "p"), ("$P$", "P"),
+                           ("$p$", "p")):  # fmt: skip
+        header = header.replace(written, shown)
+    return header
+
+
+def _baseline_inside_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_NAMES", baseline._names(start=""))
+
+
+def _qualifying_ignored(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_QUALIFIED", re.compile(r"(?!)"))
+
+
+def _only_the_old_adjectives_between(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    adjectives = ("demographic", "sociodemographic", "clinical", "patient", "participant",
+                  "patients'", "participants'")  # fmt: skip
+    patch.setattr(baseline, "_NAMES",
+                  baseline._names(word=baseline._one_of(adjectives) + baseline._END))
+
+
+def _baseline_anywhere_names_the_table(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_NAMES", re.compile(r"(?<![^\W_])baseline(?![^\W_])", re.I))
+
+
+def _a_p_header_by_containment(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "p_header",
+                  lambda header: any(p in header for p in baseline.P_HEADERS))  # fmt: skip
+
+
+def _the_supplement_unread(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_DOCUMENTS", (False,))
+
+
+def _any_design_a_trial(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "applies", lambda study_type: True)
+
+
 # ------------------------------------------- the plan's Software section and the loads, G12
 
 # Imported here, not at the top, to keep clear of the import block other branches edit.
@@ -19722,6 +20110,73 @@ def _a_list_of_modules_read_line_by_line_gives_its_first(patch: pytest.MonkeyPat
 
     listed = software._import_list
     patch.setattr(software, "_import_list", lambda written: listed(written)[:1])
+
+
+# --------------------------------------------- the packages used, named in the Methods, G12
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import software_methods  # noqa: E402
+
+
+@holds(40, software_methods())
+def test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else(
+    planted: tuple[dict[str, Any], list[list[Any]]],
+) -> None:
+    """Each package the plan's Software section names and the analysis loads or recorded is
+    named as a word in the Methods, the main text's or the supplement's, in a sentence that
+    cites: in any of the forms a citation takes, after "et al.", "v." or "i.e." or after
+    the stop, in prose or in a code span, an R package with its case and a Python one in
+    any. A name inside a longer word, a citation
+    in the next sentence and a sentence of the Results do not count. Nothing is said of a
+    package the Deviations name, nor of one nothing loads."""
+    given, expected = planted
+    answered = answer(READINGS["software in the methods"](), given)
+    assert "raised" not in answered, answered
+    told = [[f["code"], f["severity"], f["path"], f["line"]]
+            for f in answered["answer"]["findings"]]  # fmt: skip
+    assert sorted(told, key=json.dumps) == expected, given
+
+
+def _a_package_s_name_is_found_inside_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    patch.setattr(software_methods, "_finder", lambda language, spelling: re.compile(
+        re.escape(spelling), 0 if language == software_methods.R else re.IGNORECASE))
+
+
+def _a_citation_in_another_sentence_counts(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    patch.setattr(software_methods, "_sentences", lambda text: [0, len(text)])
+
+
+def _the_supplement_s_methods_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    parts = software_methods._parts
+    patch.setattr(software_methods, "_parts", lambda main, supplement: parts(main, ()))
+
+
+def _a_sentence_is_cut_at_et_al(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    kept = [word for word in software_methods.ABBREVIATIONS if word != "et al"]
+    patch.setattr(software_methods, "_ABBREVIATED", software_methods._abbreviated(kept))
+
+
+def _a_citation_after_the_stop_is_the_next_sentence_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    patch.setattr(software_methods, "_carries", lambda cited, low, high: any(
+        low <= cite < high for cite in cited))  # fmt: skip
+
+
+def _an_r_package_is_matched_in_any_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import software_methods
+
+    finder = software_methods._finder
+    patch.setattr(software_methods, "_finder", lambda language, spelling: finder(
+        software_methods.PYTHON, spelling))  # fmt: skip
 
 
 # ----------------------------------------- titles standing alone placed, and titles in bold
@@ -20918,6 +21373,30 @@ BROKEN = {
     "a registration is found inside a longer identifier": (
         _registration_found_inside_another,
         test_a_registration_is_found_where_the_manuscript_gives_it_and_no_lookalike_is,
+    ),
+    "a grant identifier in a declaration is found inside a longer number": (
+        _grant_found_inside_a_longer_number,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
+    ),
+    "the declarations are read in the case they are typed": (
+        _declarations_keep_case,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
+    ),
+    "a dash in a declaration is not read as a hyphen": (
+        _declarations_keep_dashes,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
+    ),
+    "a declaration's accents are kept": (
+        _declarations_keep_accents,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
+    ),
+    "an author's initials in a declaration are read in any case": (
+        _declared_initials_in_any_case,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
+    ),
+    "a none of the other authors in a declaration is read as everyone's": (
+        _the_other_authors_say_none_for_all,
+        test_the_declarations_are_found_however_they_are_typed_and_not_with_one_thing_changed,
     ),
     "an identifier is read inside a longer word": (
         _identifier_read_inside_a_word,
@@ -22812,6 +23291,66 @@ BROKEN = {
         _no_initials_are_read,
         test_the_initials_a_contributions_statement_names_are_no_abbreviations,
     ),
+    "no title page is found": (
+        _no_title_page_is_found,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "only an abstract ends a title page": (
+        _only_an_abstract_ends_a_title_page,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a salutation opens no letter": (
+        _a_salutation_opens_no_letter,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "prose ends no title page": (
+        _prose_ends_no_title_page,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "no word makes a sentence of an opening": (
+        _no_word_makes_a_sentence,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "an affiliation is no line of a title page": (
+        _an_affiliation_is_no_title_page_line,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "an affiliation's pieces may be of any length": (
+        _an_affiliation_s_pieces_may_be_any_length,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a title's institution is an affiliation": (
+        _a_title_s_institution_is_an_affiliation,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a run-in label opens no paper": (
+        _title_page_pattern_matches_nothing("_RUN_IN"),
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a degree after a name is no line of a title page": (
+        _title_page_pattern_matches_nothing("_DEGREES"),
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "an affiliation's mark after a name is no line of a title page": (
+        _title_page_pattern_matches_nothing("_MARKED"),
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "an e-mail address is no line of a title page": (
+        _title_page_pattern_matches_nothing("_EMAIL"),
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "an ORCID iD is no line of a title page": (
+        _title_page_pattern_matches_nothing("_ORCID"),
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a title page's word uses no entry of the list of abbreviations": (
+        _a_title_page_s_word_uses_no_list_entry,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a list of abbreviations is the title page's": (
+        _a_list_of_abbreviations_is_the_title_page_s,
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
     "every statement's capitals are initials": (
         _every_statement_names_initials,
         test_the_initials_a_contributions_statement_names_are_no_abbreviations,
@@ -23927,6 +24466,46 @@ BROKEN = {
     "a word inside a quotation is respelt": (
         _a_word_inside_a_quotation_is_respelt,
         test_g14_respells_a_word_of_the_other_english_where_the_paper_s_own_is_sure,
+    ),
+    "an abbreviation written out after an article that was the short form's": (
+        _an_article_before_a_short_form_is_left_wrong,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a link's brackets are written out as a definition's": (
+        _a_link_s_brackets_are_a_definition_s,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "the list of abbreviations is written out like the text": (
+        _a_list_of_abbreviations_is_written_out,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "an article across a line break or a mark from the short form is not seen": (
+        _an_article_across_a_break_is_not_seen,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a long form's first word that keeps its own case takes a capital": (
+        _a_long_form_s_own_case_takes_a_capital,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a funder's sentence is written out where the text defines the form too": (
+        _a_funder_s_sentence_is_written_out_beside_the_text_s,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a citation after a round bracket is taken for a link's address": (
+        _a_citation_after_a_round_bracket_is_a_link,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a written-out abbreviation takes no capital where it opens a sentence": (
+        _a_written_out_abbreviation_takes_no_capital,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "an abbreviation used again is written out": (
+        _an_abbreviation_used_again_is_written_out,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a funder's abbreviation among the acknowledgements is written out": (
+        _a_funder_s_abbreviation_is_written_out,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
     ),
     "a respelt word loses its capital": (
         _a_respelt_word_loses_its_capital,
@@ -25897,6 +26476,58 @@ BROKEN = {
     "an import line continued with a backslash is read alone": (
         _a_continued_import_line_is_read_alone,
         test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a caption's baseline is read inside another word": (
+        _baseline_inside_a_word,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "what qualifies an outcome is not read before a caption's baseline": (
+        _qualifying_ignored,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "only the listed adjectives stand between baseline and characteristics": (
+        _only_the_old_adjectives_between,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "a caption that holds the word baseline names a table of baseline characteristics": (
+        _baseline_anywhere_names_the_table,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "a P header is any header that holds one": (
+        _a_p_header_by_containment,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "the supplement's tables are not read for P values at baseline": (
+        _the_supplement_unread,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "a baseline table's P values warn whatever the study's design": (
+        _any_design_a_trial,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "a package's name is found inside a longer word": (
+        _a_package_s_name_is_found_inside_a_word,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
+    ),
+    "a citation in another sentence counts for the package's": (
+        _a_citation_in_another_sentence_counts,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
+    ),
+    "the supplement's Methods are not read for a package": (
+        _the_supplement_s_methods_are_not_read,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
+    ),
+    "an R package is matched in any case": (
+        _an_r_package_is_matched_in_any_case,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
+    ),
+    "a sentence is cut at et al.": (
+        _a_sentence_is_cut_at_et_al,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
+    ),
+    "a citation after a sentence's stop is the next sentence's": (
+        _a_citation_after_the_stop_is_the_next_sentence_s,
+        test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else,
     ),
 }
 

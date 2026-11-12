@@ -228,6 +228,9 @@ class AuditReport:
     #: (`auditing.selfcite.SelfCitation`); None where not asked for.
     causal: object = None
     cited: object = None
+    #: The tables of baseline characteristics with P values, `--design trial`
+    #: (`auditing.baseline.BaselineRead`); None where not asked for.
+    baseline: object = None
     self_citation: object = None
     #: Each PDF read, by its path (`auditing.pdf.PdfText`): what its places are said by.
     pdfs: dict = field(default_factory=dict)
@@ -1308,8 +1311,9 @@ def audit(
     compared. A `.tex` among `papers` is an entry (`auditing.latex`); `found_tex` are the
     other `.tex` files of a folder given, read where an entry inputs them. `minimum` is the
     data custodian's, below which a count held back that a total gives away is said.
-    `design` is the study's design the reader declares, whose causal words are read
-    (`auditing.causal`); `cited` asks for each citation beside its sentence
+    `design` is the study's design the reader declares: an observational study's causal
+    words are read (`auditing.causal`), and a trial's tables of baseline characteristics
+    (`auditing.baseline`); `cited` asks for each citation beside its sentence
     (`auditing.cited`)."""
     from manuscript_guard.auditing.progress import step
 
@@ -1365,9 +1369,14 @@ def audit(
     from manuscript_guard.auditing.abstract import against_results
 
     report.abstract = against_results(pieces)
-    if design is not None or cited:
+    from manuscript_guard.auditing import baseline, causal
+
+    if design in causal.DESIGNS or cited:
         # The papers' sentences, not the figures': a PDF may be either (`auditing.pdf`).
         _read_sentences(report, sources[:read], papers, design, cited)
+    if design in baseline.DESIGNS:
+        # The papers' tables, not the figures'.
+        report.baseline = baseline.baseline_tables(sources[:read], design)
     return report
 
 
@@ -1386,12 +1395,12 @@ def _in_order(report: AuditReport, sources: list[_Source], papers: list[Path]) -
 def _read_sentences(report: AuditReport, sources: list[_Source], papers: list[Path],
                     design: str | None, cited: bool) -> None:  # fmt: skip
     """The causal words of `design`, and the cited sentences, of every paper read."""
-    from manuscript_guard.auditing.causal import causal_words
+    from manuscript_guard.auditing.causal import DESIGNS, causal_words
     from manuscript_guard.auditing.cited import cited_sentences
 
     views = [view for source in _in_order(report, sources, papers)
              for view in _views(source)]
-    if design is not None:
+    if design in DESIGNS:
         report.causal = causal_words(views, design)
     if cited:
         report.cited = cited_sentences(views, _lists(report))

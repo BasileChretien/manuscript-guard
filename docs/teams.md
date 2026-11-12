@@ -11,7 +11,7 @@ what it gives you across them, and what stays yours. A student starting a first 
 | File or folder | What it holds |
 |---|---|
 | `paper.yaml` | the stage, the target journal, the reporting guideline and the study design, and the data custodian's rules where there are any |
-| `authors.yaml` | the authors, their affiliations, and who signs off what (below) |
+| `authors.yaml` | the authors, their affiliations, what each declares (funding, competing interests, CRediT roles, the ethics approval), which the manuscript's statements are held to, and who signs off what (below) |
 | `design/plan.md` | the analysis plan, written before the analysis |
 | `results/` | what the analysis writes, never edited by hand |
 | `manuscript/main.md` | the manuscript, its numbers written as bindings to the results |

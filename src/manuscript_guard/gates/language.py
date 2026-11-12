@@ -25,7 +25,9 @@ build.
 Three texts are read apart, because each is read apart. The abstract is indexed and read
 without the paper, so what it uses it must define. The main text does not inherit from the
 abstract. The supplement is read after the paper, so it inherits the main text's
-definitions and is otherwise held to its own.
+definitions and is otherwise held to its own. The title page that opens either is not read
+for abbreviations at all (`text/title_page.py`): its units and institutions need no
+defining.
 
 The gate has three more readings: of the terms the paper keeps to, in
 `gates/vocabulary.py`, of its spelling, in `gates/spelling.py`, and of its notation, in
@@ -50,13 +52,14 @@ from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.dictionary import load_dictionary
 from manuscript_guard.contracts.project import PAPER_FILE, Project
 from manuscript_guard.contracts.results import Results, load_results
+from manuscript_guard.corrections import Edit
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates import glossary
 from manuscript_guard.gates.code_names import Names, Prose, judge_code_names
-from manuscript_guard.gates.notation import judge_notation
+from manuscript_guard.gates.notation import judge_notation, notation_edits
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
 from manuscript_guard.gates.scripts import judge_scripts
-from manuscript_guard.gates.spelling import judge_spelling
+from manuscript_guard.gates.spelling import judge_spelling, opens_a_sentence, spelling_edits
 from manuscript_guard.gates.vocabulary import (
     Passage,
     capitals_together,
@@ -71,6 +74,7 @@ from manuscript_guard.text.masking import NUL, front_matter_end, mask
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
 from manuscript_guard.text.section_names import section_name_alone
 from manuscript_guard.text.sections import Section
+from manuscript_guard.text.title_page import title_page_end
 
 if TYPE_CHECKING:
     from manuscript_guard.text.latex.structure import Source
@@ -799,6 +803,30 @@ def _in_a_glossary(file: _File, offset: int) -> bool:
     return _inside(file.glossaries, offset)
 
 
+def _on_the_title_page(file: _File, offset: int) -> bool:
+    """Whether a word at `offset` is on the title page that opens the file, which G14 does
+    not read for abbreviations: nothing there needs defining, and nothing there is a use or
+    a definition (`text/title_page.py`)."""
+    return offset < file.title_page
+
+
+def _on_title_pages(files: list[_File]) -> dict[str, set[str]]:
+    """The words the files' title pages hold, whole and by their parts, by the text each
+    stands in: the paper's, or the supplement's. A title typed as a heading among them,
+    "# Drug safety in the PACES year" (round 2 of #654). Where one is an entry of that
+    text's list of abbreviations, the title page uses it, the one use it makes (Basile,
+    2026-11-12); where one is a short form that text defines and never uses, its hint says
+    that the title page's use was not counted."""
+    found: dict[str, set[str]] = {}
+    for file in files:
+        for word in _WORD.finditer(file.printed, 0, file.title_page):
+            scope = file.region_at(word.start()).scope
+            if scope is not None:
+                found.setdefault(scope, set()).update((word.group(0),
+                                                       *_JOINS.split(word.group(0))))  # fmt: skip
+    return found
+
+
 def _inside(spans: tuple[tuple[int, int], ...], offset: int) -> bool:
     """`_within` for spans in order and none inside another, by halving."""
     at = bisect_right(spans, (offset, float("inf"))) - 1
@@ -1187,6 +1215,9 @@ class _File:
     supplementary: bool = False
     #: The authors' initials its contributions statement names (`_initials`).
     initials: frozenset[str] = frozenset()
+    #: Where the title page that opens the file ends, 0 where it opens with none
+    #: (`text/title_page.py`): no abbreviation is read before it.
+    title_page: int = 0
 
     def __post_init__(self) -> None:
         self.starts = [region.start for region in self.regions]
@@ -1209,9 +1240,15 @@ def _file(
     chain: list[Section],
     supplementary: bool,
     abstract_title: str | None = None,
+    opens: bool | None = None,
 ) -> _File:
+    """A Markdown file read. `opens` where it is the first file of the paper or of the
+    supplement, which a title page may open; by default, where `order` is 0."""
     headings = find_headings(text)
     hidden, code = _views(text)
+    if opens is None:
+        opens = order == 0
+    title_page = (title_page_end(hidden, headings, abstract_title) or 0) if opens else 0
     # A heading in capitals is not an abbreviation, and one that uses an abbreviation is
     # not where a reader expects it defined: the abbreviations are read without them.
     prose = _hide(hidden, (_heading_span(text, heading) for heading in headings)).replace(
@@ -1232,6 +1269,7 @@ def _file(
         glossaries=glossaries,
         headed=bool(headings), supplementary=supplementary, code=code,
         initials=_initials(prose, _contributions(hidden, titled, statements)),
+        title_page=title_page,
     )  # fmt: skip
 
 
@@ -1480,9 +1518,9 @@ def _read(project: Project) -> list[_File]:
     files: list[_File] = []
     for document, supplementary in ((paper, False), (supplement, True)):
         chain: list[Section] = []
-        for path in document:
+        for at, path in enumerate(document):
             text = read_text(path)
-            files.append(_file(len(files), path, text, chain, supplementary, named))
+            files.append(_file(len(files), path, text, chain, supplementary, named, at == 0))
     return files
 
 
@@ -1494,7 +1532,9 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
     for file in files:
         for offset, short, long in file.definitions:
             region = file.region_at(offset)
-            if region.scope is None:
+            # Nothing on the title page is a definition: its institutions' names are not
+            # the paper's terms (Basile, 2026-11-12).
+            if region.scope is None or _on_the_title_page(file, offset):
                 continue
             defined.add(short)
             defining.add((file.order, offset))
@@ -1514,8 +1554,10 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
             if token.islower() or token.isdigit():
                 continue
             region = file.region_at(word.start())
-            # A glossary's lines are its entries, and none of them is a use.
-            if region.scope is None or _in_a_glossary(file, word.start()):
+            # A glossary's lines are its entries, and none of them is a use; nor is a word
+            # of the title page, its departments, units and institutions.
+            if (region.scope is None or _in_a_glossary(file, word.start())
+                    or _on_the_title_page(file, word.start())):  # fmt: skip
                 continue
             at = bisect_right(starts, word.start()) - 1
             shouted = at >= 0 and word.start() < capitals[at][1]
@@ -1652,6 +1694,7 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
     findings: list[Finding] = []
     everything: set[str] = set()
     defined_anywhere: set[str] = set()
+    title_paged = _on_title_pages(files)
     headless = _headless(files)
     if headless is not None and _says_headless(stage):
         findings.append(headless)
@@ -1710,22 +1753,25 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
             # statements are written; nothing later is expected to use it.
             if not uses and not first.quiet and all(listed(mark) for mark in definitions):
                 # An entry of the list of abbreviations nothing else uses: the list's to drop,
-                # not the text's to write out.
-                findings.append(
-                    finding(
-                        "abbreviation-unused",
-                        first,
-                        short,
-                        # Not "nowhere else": another entry of the list may use it, and the
-                        # list's lines are no uses (review of #634).
-                        f"{short} is in the list of abbreviations and not used in the "
-                        f"{scope.name} as G14 reads it",
-                        "take it out of the list, unless the title page, a table, a figure, "
-                        "another entry of the list or the supplementary material uses it: "
-                        "the title page, tables and figures are not read here",
+                # not the text's to write out. Its use on the title page is one: the list
+                # covers the title page's units and institutions too (Basile, 2026-11-12,
+                # "Yes, count it"). It is the only use the title page makes.
+                if short not in title_paged.get(scope.name, ()):
+                    findings.append(
+                        finding(
+                            "abbreviation-unused",
+                            first,
+                            short,
+                            # Not "nowhere else": another entry of the list may use it, and
+                            # the list's lines are no uses (review of #634).
+                            f"{short} is in the list of abbreviations and not used in the "
+                            f"{scope.name} as G14 reads it",
+                            "take it out of the list, unless a table, a figure, another entry "
+                            "of the list or the supplementary material uses it: tables and "
+                            "figures are not read here",
+                        )
                     )
-                )
-            elif not uses and not first.quiet:
+            elif not uses and not first.quiet and not _leaned_on(scopes, scope.name, short):
                 findings.append(
                     finding(
                         "abbreviation-unused",
@@ -1734,8 +1780,10 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
                         f"{short} is defined and not used again in the {scope.name} as G14 "
                         "reads it",
                         f"write '{first.long}' out and drop the short form, unless a table "
-                        "or a figure uses it: those are not read here",
-                    )
+                        "or a figure uses it: those are not read here"
+                        + ("; the title page uses it, and is not read for abbreviations"
+                           if short in title_paged.get(scope.name, ()) else ""),
+                    )  # fmt: skip
                 )
 
         for short, uses in scope.used.items():
@@ -1804,6 +1852,109 @@ def check_language(
         .merge(judge_scripts(_whole(files)))
         .merge(_not_read(files))
     )
+
+
+def language_edits(project: Project) -> list[Edit]:
+    """The exact edits G14's readings would make (`corrections.py`), the manuscript read as
+    `check_language` reads it: each abbreviation defined and not used again written out,
+    each word of the other English respelt, and the notation set as the manuscript's own."""
+    files = _read(project)
+    passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
+    spelt = [Passage(file.path, file.text, file.spelt, file.line_of) for file in files]
+    return (abbreviation_edits(files, _known(project))
+            + spelling_edits(spelt, project.english_variant, project.accepted_spellings)
+            + notation_edits(passages))  # fmt: skip
+
+
+def abbreviation_edits(files: list[_File], known: _Known) -> list[Edit]:
+    """Each abbreviation `abbreviation-unused` says is defined and not used again, written
+    out where it is defined, at every place: "the reporting odds ratio (ROR)" becomes "the
+    reporting odds ratio", and "ROR (reporting odds ratio)" becomes "reporting odds ratio",
+    with a capital where it opens a sentence (the author, 2026-11-11). Only where the
+    bracket holds the one form and nothing more; not an entry of a list of abbreviations,
+    which the list is to drop; not a definition among the acknowledgements, where a funder
+    is named in full with its acronym; and not the main text's where the supplementary
+    material uses the form, which the main text's definition serves (round 1 of #645)."""
+    edits = []
+    scopes = _collect(files, known)
+    for name, scope in scopes.items():
+        for short, definitions in scope.defined.items():
+            definitions = sorted(definitions, key=lambda mark: mark.key)
+            if scope.used.get(short) or definitions[0].quiet:
+                continue
+            if _leaned_on(scopes, name, short):
+                continue
+            for mark in definitions:
+                file = files[mark.order]
+                if _kept(file, mark):
+                    continue
+                edit = _written_out(file, mark, short)
+                edits += [edit] if edit is not None else []
+    return edits
+
+
+#: "a" or "an" before a short form, which was chosen for how the short form is said: "an
+#: SAE (serious adverse event)" written out would read "an serious adverse event". Across
+#: a line break, a no-break space, a LaTeX tie or a mark of emphasis or quotation as well
+#: (round 2 of #645).
+_AN_ARTICLE = re.compile(rf"(?<![\w-])an?[\s~{re.escape(_QUOTES)}]+\Z", re.IGNORECASE)
+
+
+def _after_an_article(text: str, at: int) -> bool:
+    """Is the short form at `at` after "a" or "an", which no edit puts right (rounds 1 and
+    2 of #645)?"""
+    return _AN_ARTICLE.search(text, max(0, at - 16), at) is not None
+
+
+def _runs_on(text: str, end: int) -> bool:
+    """Does a square bracket closing just before `end` run on into a link's address, a
+    reference or a span's attributes, "[ROR](https://...)", "[HR]{.smallcaps}" (round 1 of
+    #645)? A round bracket is no link's: "(ROR)[@smith2020]" is a definition and a citation
+    (round 2 of #645)."""
+    return text[end - 1 : end] == "]" and text[end : end + 1] in ("(", "[", "{")
+
+
+def _takes_a_capital(long: str) -> bool:
+    """Does the long form take the capital of a sentence it opens: not where its first word
+    keeps a case of its own, "mRNA vaccine" (round 2 of #645)."""
+    return long.split()[0].islower()
+
+
+def _kept(file: _File, mark: _Definition) -> bool:
+    """Is the definition at `mark` one no edit writes out: a funder's among the
+    acknowledgements, named in full with its acronym, or an entry of a list of
+    abbreviations, which the list is to drop?"""
+    return mark.quiet or _in_a_glossary(file, mark.offset)
+
+
+def _leaned_on(scopes: dict, name: str, short: str) -> bool:
+    """Is the main text's definition of `short` what the supplementary material's use of it
+    leans on, so that it is used after all (rounds 1 and 2 of #645)? Not where the
+    supplementary material defines it itself (round 3 of #645)."""
+    supplement = scopes[SUPPLEMENT]
+    return name == BODY and bool(supplement.used.get(short)) and short not in supplement.defined
+
+
+def _written_out(file: _File, mark: _Definition, short: str) -> Edit | None:
+    """The edit that drops the short form of one definition, or None where it is not one
+    of the two shapes an edit is sure of."""
+    text, at, long = file.text, mark.offset, mark.long
+    end = at + len(short)
+    if text[at:end] != short or not long:
+        return None
+    passage = Passage(file.path, file.text, file.printed, file.line_of)
+    bracket = text[at - 1 : at] + text[end : end + 1]
+    if (bracket in ("()", "[]") and text[at - 2 - len(long) : at - 1] == long + " "
+            and not _runs_on(text, end + 1)):  # fmt: skip
+        return Edit("abbreviation-unused", passage, at - 2, end + 1, "",
+                    (at - 2 - len(long), end + 1))  # fmt: skip
+    after = f" ({long})"
+    if text[end : end + len(after)] == after and not _after_an_article(text, at):
+        opens = opens_a_sentence(text, at) and _takes_a_capital(long)
+        spelt = long[:1].upper() + long[1:] if opens else long
+        return Edit("abbreviation-unused", passage, at, end + len(after), spelt,
+                    (at, end + len(after)))  # fmt: skip
+    return None
 
 
 def _code_names(project: Project, results: Results | None) -> Names:

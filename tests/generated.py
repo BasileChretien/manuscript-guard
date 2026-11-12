@@ -12115,6 +12115,7 @@ REFERENCE_FAMILIES = (
     ("Smith-Jones", "smithjones"), ("van der Berg", "vanderberg"), ("O'Neil", "oneil"),
     ("Garc\N{LATIN SMALL LETTER I WITH ACUTE}a", "garcia"), ("Notreal", "notreal"),
     ("Lindqvist", "lindqvist"), ("Moe", "moe"), ("Quist", "quist"), ("Ruiz", "ruiz"),
+    ("Sato", "sato"),
 )  # fmt: skip
 #: Co-authors, whose names may be any work's.
 REFERENCE_OTHERS = ("Other", "Second", "Dupont")
@@ -12125,7 +12126,8 @@ REFERENCE_OTHERS = ("Other", "Second", "Dupont")
 #: names one entry, a group one of whose parts names none, and two narratives side by side,
 #: "Smith (2019) and Lee (2018)" (round 2 of #638: the "and" was read as a name more).
 CITED_KINDS = ("bracketed", "narrative", "two entries", "no entry", "first author alone",
-               "a name more", "group", "group with none", "two narratives")  # fmt: skip
+               "a name more", "group", "group with none", "two narratives",
+               "line break")  # fmt: skip
 _REFERENCE_WORDS = ("recovery", "was", "studied", "before", "with", "rest", "after", "work")
 
 
@@ -12150,7 +12152,7 @@ def typed_reference_papers(draw: st.DrawFn) -> tuple[str, list[tuple[str, str | 
     in each form APA has; under a prefix or none. Every kind in every example, so that a
     rule broken for one fails under any seed."""
     firsts = iter(draw(st.permutations(REFERENCE_FAMILIES)))
-    years = iter(draw(st.lists(st.integers(1950, 2025), min_size=12, max_size=12, unique=True)))
+    years = iter(draw(st.lists(st.integers(1950, 2025), min_size=13, max_size=13, unique=True)))
     entries: list[str] = []
 
     def work(count: int, year: int, family: tuple[str, str] | None = None,
@@ -12208,6 +12210,11 @@ def typed_reference_papers(draw: st.DrawFn) -> tuple[str, list[tuple[str, str | 
                 said.append((f"{names[0]} ({key[-4:]})", f"@{key}"))
             join = draw(st.sampled_from((" and ", ", ", " & ")))
             sentences.append((join.join(t for t, _m in said), join.join(m for _t, m in said)))
+        elif kind == "line break":
+            # A name more on the paragraph's line before (round 2 of #638).
+            names, key = work(1, next(years))
+            more = draw(st.sampled_from(REFERENCE_OTHERS))
+            sentences.append((f"{more} and\n{names[0]} ({key[-4:]})", None))
         elif kind == "a name more":
             names, key = work(draw(st.integers(1, 2)), next(years))
             more = draw(st.sampled_from(REFERENCE_OTHERS))

@@ -162,8 +162,8 @@ def reference_lists(text: str) -> list[tuple[int, int]]:
 
 #: A footnote's definition, `[^1]:`, at the start of a line; and a caption numbered with
 #: a letter, as an appendix numbers its displays, "Table A1." or "Figure B2:".
-_NOTE = re.compile(r"[ ]{0,3}(?:\[\^[^\]\s]+\]:|[*_]{0,3}(?:fig(?:ure)?|table)\s+[a-z][0-9]+[.:])",
-                   re.IGNORECASE)
+_NOTE = re.compile(r"[ ]{0,3}(?:\[\^[^\]\s]+\]:|[*_]{0,3}(?:supplementa(?:ry|l)\s+)?"
+                   r"(?:fig(?:ure)?\.?|table)\s*[a-z][0-9]+\s*\\?[.:|])", re.IGNORECASE)
 
 
 def _ends_here(lines: list[str], number: int) -> bool:
@@ -176,7 +176,10 @@ def _ends_here(lines: list[str], number: int) -> bool:
     line = lines[number]
     if _NOTE.match(line):
         return True
-    printed = re.sub(r"^(\d+)\\\.", r"\1.", _printed(line).strip().strip("*_").strip())
+    # pandoc 3.9 writes a Word title "III. Results" as `III\. Results`, "3) Conclusion" as
+    # `3\) Conclusion`; `section_name_alone` reads a number with a stop.
+    printed = re.sub(r"\\([.()])", r"\1", _printed(line).strip().strip("*_").strip())
+    printed = re.sub(r"^\(?(\d{1,2}|[IVX]{1,5})\)\s", r"\1. ", printed)
     return section_name_alone(printed) is not None and not is_bibliography_heading(printed)
 
 

@@ -10362,6 +10362,10 @@ def _a_citation_s_bracket_is_no_name(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(made_citations, "_CITED_BEFORE", re.compile(r"(?!)"))
 
 
+def _a_citation_s_words_are_read_back_to_its_line(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(made_citations, "_PARAGRAPH", "\n")
+
+
 def _the_first_author_names_a_work(patch: pytest.MonkeyPatch) -> None:
     named = made_citations.renderings
     patch.setattr(made_citations, "renderings",
@@ -20742,6 +20746,10 @@ BROKEN = {
     ),
     "a narrative citation naming no co-author more after another is left typed": (
         _a_citation_s_bracket_is_no_name,
+        test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry,
+    ),
+    "a narrative citation naming a co-author more on the line before is made its key": (
+        _a_citation_s_words_are_read_back_to_its_line,
         test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry,
     ),
     "a typed citation naming a work's first author alone is made its key": (

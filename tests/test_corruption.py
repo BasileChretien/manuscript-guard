@@ -1458,9 +1458,14 @@ def test_a_number_in_a_typed_reference_list_passes_and_one_just_after_it_fails(
     ["[^mgnote]: We excluded 4321 patients.", "Abstract\n\nWe excluded 4321 patients.",
      "**Appendix**\n\nWe excluded 4321 patients.", "3. Conclusion\n\nWe excluded 4321 patients.",
      # Round 2 of #638: pandoc's escaped number, and a caption numbered with a letter.
-     "3\\. Conclusion\n\nWe excluded 4321 patients.", "Table A1. We excluded 4321 patients."],
+     "3\\. Conclusion\n\nWe excluded 4321 patients.", "Table A1. We excluded 4321 patients.",
+     # The final check of #638: each caption's shape, and Roman and bracketed numbers as
+     # pandoc 3.9 writes a Word title so numbered.
+     "Fig. A2. Rates of 4321 patients.", "TABLE A1 | Counts of 4321 patients.",
+     "Supplementary Table A1. We excluded 4321 patients.",
+     "III\\. Results\n\nWe excluded 4321 patients.", "3\\) Conclusion\n\nWe excluded 4321."],
     ids=["note", "abstract", "appendix in bold", "numbered conclusion", "escaped number",
-         "lettered caption"],
+         "lettered caption", "fig.", "caption bar", "supplementary", "roman", "bracketed"],
 )
 def test_a_note_or_a_section_s_name_after_a_typed_list_ends_it(
     project: Path, title: str, after: str

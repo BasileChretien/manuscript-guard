@@ -105,6 +105,9 @@ ROUTES: dict[str, Route] = {
            "ratio-interval-asymmetric", "spread-label-differs", "quality-not-run",
            "entry-unchecked", "rule-unchecked", "manuscript-empty", "p-decision-error",
            "p-inconsistent", "summary-not-reported"),
+    # A trial's table of baseline characteristics with P values: the script that emits it,
+    # or the table typed, drops the column; no command does it.
+    **_all("results-binding", None, "baseline-p-values"),
     # What the results' contract refuses is put right in the script that emits it, so `bind`
     # does nothing for it. The literature's own `duplicate-key` and `no-display` are told
     # apart by the file they name (`route_for`).
@@ -130,6 +133,8 @@ ROUTES: dict[str, Route] = {
     **_all("methods-writer", ("methods",), "methods-", "method-", "quality-not-reported"),
     **_all("methods-writer", ("models",), "model-", "models-on-different-rows", "variable-",
            "typed-model-kind", "poisson-binary-variance", "unit-rows-independent"),
+    # G12's, of the Methods: each package the analysis uses, named there and cited.
+    **_all("methods-writer", None, "software-unnamed", "software-uncited"),
     # -- the literature -------------------------------------------------------------------
     **_all("literature-verify", None, "literature-source-missing", "quote-",
            "value-not-in-quote", "quotation-", "statements-without-passage",
@@ -213,6 +218,10 @@ ROUTES: dict[str, Route] = {
     # The AI-use statement, drafted from what the records show; the skill asks the author
     # for what no record can (`authors.yaml`, `ai_use`). Before `ai-`, the writing's.
     **_all("submission-pack", ("review", "--ai-use"), "ai-use-"),
+    # The declarations held to authors.yaml: the statement is written, or the record put
+    # right, each author's own entries asked of them, as the setup skill has the author fill
+    # authors.yaml. No command fixes either.
+    **_all("project-setup", None, "funding-", "interests-", "ethics-approval-", "credit-"),
     # -- what is said of the paper outside it ---------------------------------------------
     # `communicate check` says these, never `check`: the text, the brief or the graphical
     # abstract is put right and the check run again, as the research-communication skill

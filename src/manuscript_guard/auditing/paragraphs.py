@@ -166,13 +166,13 @@ def of_markdown(text: str) -> Paragraphs:
 
 def of_docx(document, text: str) -> Paragraphs:
     """The places of `text`, a .docx's body then its notes as the audit reads them
-    (`audit.read_paper`): its headings by their styles, or by its titles in bold where it
-    has no heading style (`text.docx.bold_heading_levels`), as the audit places its
+    (`audit.read_paper`): its headings by their styles, or by its typed titles where it
+    has no heading style (`text.docx.typed_heading_levels`), as the audit places its
     Abstract; its tables by their cells."""
-    from manuscript_guard.text.docx import bold_heading_levels
+    from manuscript_guard.text.docx import typed_heading_levels
 
     body = document.body.split("\n")
-    levels = document.heading_levels or bold_heading_levels(document) or ()
+    levels = document.heading_levels or typed_heading_levels(document) or ()
     headings = {at + 1: body[at] for at, _level in levels if at < len(body)}
     notes = len(body) + 1 if document.notes else None
     return counted(text.split("\n"), headings, _tables(body, document.cells), notes)

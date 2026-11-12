@@ -155,3 +155,8 @@ deviation nobody wrote down is indistinguishable from having tried several thing
    and it was replaced the same day by the third comparator and hepatic injury, the pair
    whose ratio the generator's rates put furthest from one, the study's own pair aside. Its
    estimate had been seen by then. None of the planned results moved.
+9. The Methods name statsmodels and not pandas or matplotlib, and cite none of the three
+   (2026-11-12): `pandas`, `statsmodels`, `matplotlib`. The example's references are
+   invented, and none describes a package, so a citation of one here would be false. A
+   real paper names in its Methods each package the analysis uses, and cites there the
+   reference its authors ask for. A record, not a change of the analysis.

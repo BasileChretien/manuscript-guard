@@ -77,6 +77,7 @@ section in full and every finding with its place, its context and its hint, as o
 | Journal (G4), with `--journal` | the main document held to the journal's profile: its limits, abstract, sections, statements, data statement and boxes; what was not checked; the profile's rules no gate checks, as a checklist | no |
 | Document, with `--journal` | each .docx's tracked changes, comments and hidden text, and the names Word keeps; with `--authors`, an author named where the review is blind | an author named where the review is blind |
 | Causal words, with `--design observational` | each sentence of the Abstract, the Discussion and the Conclusion that claims a cause, with no hedge, negation or citation | no |
+| Baseline tables, with `--design trial` | the tables read and those captioned as of baseline characteristics, and each of those with a column of P values, which CONSORT advises against in a randomised trial; a PDF's tables are not read for it | no |
 | Cited sentences, with `--cited FILE` | how many citations were listed in FILE, each beside its sentence and its entry | no |
 | Self-citation, with `--journal` and `--authors` or `--lookup` | the references whose registry record lists an author, and those the journal published, counted | no |
 
@@ -288,14 +289,23 @@ give two counts or more are noted. The shape is all that is read, so a nested li
 subgroups in that shape is read as a flow too.
 
 **Abstract against Results.** Each number of the Abstract that the conventions do not
-explain is looked for where the paper reports: the Methods, the Results, every table of
-every file, and the whole of a file with no Abstract, a supplement, as G8 reads them. A line
-stands under the headings over it: Markdown's, a .docx's heading styles, a LaTeX
-document's as it prints them. A number reported to more places counts as matched as a
+explain is looked for where the paper reports: every section but the Abstract, the Introduction and the sections that hold its material under
+another name ("Related work", "Literature review", "Theoretical framework",
+"Hypotheses"), the Discussion, a conclusion, a summary of the paper ("Author summary",
+"Highlights", an Abstract in another language), the statements, the reference list and
+a "Limitations" or an "Interpretation" of its own,
+so the Methods and the Results and also a "Participants", a "Study design" or an appendix;
+every table of every file; and the whole of a file with no Abstract, a supplement. A
+footnote or an endnote is not searched, in a Markdown paper or a .docx; nor is the title
+page, above the Abstract's heading, nor the text above the first heading. A line stands
+under the headings over it: Markdown's, a .docx's heading styles or its typed titles, a
+LaTeX document's as it prints them. A heading over the Abstract or the Introduction, the
+paper's title, names no section; one over a Methods subsection does, and the words under
+it before that subsection are searched. A number reported to more places counts as matched as a
 rounding, "53%" in the Abstract for "53.3%" in the Results, and is listed apart. An
 identifier, a word with a number in it ("v8", "rs75015950", "chr15", "ieu-a-1185"), is
 matched only as printed, the same word there, and never by the number it holds. A number
-not found in the Methods, the Results or the tables is listed, its finding saying so, and
+not found there is listed, its finding saying where it was looked for, and
 not counted by `--strict`. The Methods are a heading that holds "methods", or whose whole
 title is "Method", as APA titles it, or "Methodology", numbered or not, alone or with
 "materials" ("Materials and method"); "Performance of the proposed method" and
@@ -354,14 +364,17 @@ stage; on fifteen real papers it did so for seven. `init --from` changes these t
   comment at the top of `main.md`, where it is kept and no gate reads it. Only up to 600
   words: a longer run is taken for the paper's own text, an introduction with no heading
   over it, and stays where it is.
-- **Titles typed in bold.** In a paper with no paragraph in a heading style, a paragraph
-  wholly in bold (underlined too or not) whose words are a section's name alone, "Abstract",
-  "2. Methods", "References", "Declarations", is made a heading, and the title page before
-  the first is set aside as above; the audit reads the .docx's sections the same way, and
-  says so in the report. The names are a closed list, the one a PDF's lines are read by: a
-  bold "Study design" is text. Give the titles Word's heading styles for a reading that
-  rests on no list. With neither, nothing is set aside, and the report says the paper was
-  read as one text.
+- **Titles typed as lines of their own.** In a paper with no paragraph in a heading style,
+  a paragraph whose words are a section's name alone, in bold or not, numbered or not, in
+  capitals or not, "Abstract", "ABSTRACT", "2. Methods", "3. RESULTS", "References",
+  "Declarations", is made a heading, and the title page before the first is set aside as
+  above; the audit reads the .docx's sections the same way, and says so in the report. A
+  sentence that opens with "Results", a list's item, a table's cell and a caption beside a
+  table, an indented paragraph and one beside a picture are not titles. The names are a
+  closed list, the one a PDF's lines are read by: a
+  "Study design" or a "2.1 Data" is text. Give the titles Word's heading styles for a
+  reading that rests on no list. With neither, nothing is set aside, and the report says
+  the paper was read as one text. What `init` prints counts the headings it made.
 - **The typed references.** The reference list under a heading or a title in bold that
   names one is read into `literature/references.bib`: each entry of an APA journal article,
   `Smith, J. A., & Jones, B. (2020). Title. *Journal*, *12*(3), 45--67.`, or book, `Lee, C.
@@ -375,6 +388,14 @@ stage; on fifteen real papers it did so for seven. `init --from` changes these t
   where `references.bib` is already there. The typed list stays in `main.md`, where G2 does
   not read its numbers; `sync-bib` writes `references.bib` again from Zotero, so import it
   there first.
+
+Where the title page stays in the text, as when the document opens on its title in a
+heading style, G14 still does not read it for abbreviations: its authors' names, units and
+institutions are not reported, and nothing on it defines a short form. It ends at the first
+section a paper opens on, the Abstract, the Introduction, the Methods, at a letter's
+salutation, or where running prose begins, and is taken for one only where it holds an
+affiliation, an e-mail address, an ORCID iD, authors with their degrees or marks, or a label
+such as "Corresponding author"; where nothing marks it, the opening is read as before.
 
 What Word's Title, Author, Date and Abstract styles hold is what pandoc reads as the
 document's metadata. The title goes to `paper.yaml` unless `--title` gives another, each

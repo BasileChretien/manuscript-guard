@@ -284,3 +284,28 @@ def test_g8_recomputes_the_twins_statistics_as_the_examples(project: Path, tmp_p
     assert [(f.code, f.message) for f in latex.findings] == [
         (f.code, f.message) for f in example.findings
     ]
+
+
+def test_g12_reads_the_twins_methods_for_the_packages_used_as_the_examples(
+    project: Path, tmp_path: Path
+) -> None:
+    """The Methods the twin prints name statsmodels and not pandas or matplotlib, and cite
+    none of them, as the example's do. The example's Deviations name the three, so the plan
+    is read here without that entry."""
+    from manuscript_guard.gates.software_methods import check_software_cited
+
+    plan = project / "design" / "plan.md"
+    text = plan.read_bytes().decode("utf-8")
+    plan.write_bytes(text[: text.index("9. The Methods name statsmodels")].encode())
+    projekt = load_project(project)[0]
+    example = check_software_cited(projekt, load_namespace(projekt)[1])
+    root = tmp_path / "twin"
+    shutil.copytree(project, root)
+    shutil.rmtree(root / "manuscript")
+    shutil.copytree(TWIN, root / "manuscript")
+    twin = load_project(root)[0]
+    latex = check_software_cited(twin, load_namespace(twin)[1])
+    said = [(f.code, f.message, f.line, f.context) for f in example.findings]
+    assert [(f.code, f.message, f.line, f.context) for f in latex.findings] == said
+    assert [code for code, *_rest in said] == [
+        "software-unnamed", "software-uncited", "software-unnamed"]  # fmt: skip

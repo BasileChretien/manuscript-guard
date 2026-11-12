@@ -55,7 +55,7 @@ def test_the_audit_writes_its_report_as_a_pdf(tmp_path: Path, capsys) -> None:
         for link in links)  # fmt: skip
     assert any("/Dest" in link for link in links)
     text = "".join(page.extract_text() for page in reader.pages)
-    # The Abstract's 412, not found in the Methods, the Results or the tables, with its quote.
+    # The Abstract's 412, not found where the paper reports, with its quote.
     assert "Of the patients, 412 improved." in text
     # The report's last line, as the text and the page end with it (round 1 of #618).
     assert "bind the numbers instead" in " ".join(text.split())
@@ -119,7 +119,8 @@ def test_where_each_check_stands_is_read_from_what_it_found() -> None:
                               flows_broken=[], over_n_rounding=[], disagreements=[],
                               recovered=[], recovered_by_n=[], abstract=None, gates=[],
                               references=[], lookups=None, journal=None, causal=None,
-                              cited=None, self_citation=None, package=None, examined=12,
+                              baseline=None, cited=None, self_citation=None, package=None,
+                              examined=12,
                               unreadable=[], reference_like=[])  # fmt: skip
     said = standings(nothing)
     assert said == {"Numbers in the outputs": NOT_RUN, "Arithmetic": CLEAR,

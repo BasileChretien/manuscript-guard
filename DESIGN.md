@@ -24158,13 +24158,18 @@ Open, recorded as each change landed:
     titles text. Where the titles cannot be placed, a structured abstract's parts with no
     Introduction after them, the order of its parts never starting again and no title it
     cannot hold among them, the audit places nothing and says so, and `init --from` makes
-    each a heading of level 1, so the Abstract ends at its first part. Where the titles
-    typed in no bold make them so, a name typed twice, the audit places those in bold alone
-    where it can (round 2 of #641: a second "RESULTS" typed in a Discussion left a paper its
-    bold titles had placed unplaced). The title page is set
-    aside only above a first heading that opens a paper, its Abstract or its Introduction: a
-    short paper whose first typed title is its "References" keeps its text where every gate
-    reads it. A heading is written with the title's own words, its number kept. Accepted.
+    each a heading of level 1, so the Abstract ends at its first part. Where the typed
+    titles cannot be placed for any reason, both readers place those in bold alone where
+    they can (round 2 of #641: a second "RESULTS" typed in a Discussion left a paper its
+    bold titles had placed unplaced). The title page is set aside only above a first heading
+    that opens a paper, its Abstract or its Introduction: a short paper whose first typed
+    title is its "References" keeps its text where every gate reads it. A heading is written
+    with the title's own words, its number kept. Accepted.
+  - An abstract's parts in bold beside parts typed plain cannot be placed, and its titles in
+    bold alone, the plain ones counted as words under the Abstract's, are placed at one
+    level, its own "Results" the paper's, so the Abstract is compared with itself, as a
+    paper titled in bold alone was read before. Pinned by
+    `tests/test_audit.py::test_a_run_in_label_typed_alone_is_read_as_a_heading`.
 - **`init --from` reads no affiliation, ORCID or e-mail address, and splits no name.** Each
   name from an Author paragraph goes into `authors.yaml` in a comment over an empty entry; the
   rest of the title page is in the comment in `main.md`. Accepted.

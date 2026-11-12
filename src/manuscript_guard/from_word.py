@@ -523,6 +523,20 @@ def _words_only(inlines: list) -> bool | None:
     return found
 
 
+def _in_bold(inlines: list, bold: bool = False) -> bool:
+    """Whether every word of `inlines` is in bold, in a Strong."""
+    return all(bold if node.get("t") == "Str" else node.get("t") not in _LOOKS or _in_bold(
+        node["c"][_LOOKS[node["t"]]] if _LOOKS[node["t"]] is not None else node["c"],
+        bold or node["t"] == "Strong") for node in inlines)  # fmt: skip
+
+
+def _levels(blocks: list, found: list, section_levels) -> tuple[int, ...] | None:
+    ends = [at for at, _name, _typed in found[1:]] + [len(blocks)]
+    worded = [_words(blocks[at + 1 : end]) > 0
+              for (at, _name, _typed), end in zip(found, ends, strict=True)]  # fmt: skip
+    return section_levels([name for _at, name, _typed in found], worded)
+
+
 def typed_headings(blocks: list) -> tuple[list, tuple[str, ...]]:
     """`blocks` with each paragraph whose words are a section's name alone
     (`section_name_alone`), in bold or not, numbered or not, in capitals or not, "Abstract",
@@ -550,10 +564,11 @@ def typed_headings(blocks: list) -> tuple[list, tuple[str, ...]]:
             found.append((at, name, typed.rstrip(" :.")))
     if not found:
         return blocks, ()
-    ends = [at for at, _name, _typed in found[1:]] + [len(blocks)]
-    worded = [_words(blocks[at + 1 : end]) > 0
-              for (at, _name, _typed), end in zip(found, ends, strict=True)]  # fmt: skip
-    levels = section_levels([name for _at, name, _typed in found], worded) or (1,) * len(found)
+    levels = _levels(blocks, found, section_levels)
+    bold = [one for one in found if _in_bold(blocks[one[0]]["c"])]
+    if levels is None and bold and (placed := _levels(blocks, bold, section_levels)):
+        found, levels = bold, placed  # as the audit falls back (round 3 of #641)
+    levels = levels or (1,) * len(found)
     out = list(blocks)
     for (at, _name, typed), level in zip(found, levels, strict=True):
         out[at] = _heading(typed, level, identifier="")

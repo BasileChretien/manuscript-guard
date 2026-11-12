@@ -901,6 +901,13 @@ def test_a_word_paper_with_typed_titles_has_them_made_headings(tmp_path: Path) -
     body = converted.text[converted.text.index("-->") :]
     assert "Results were clear." in body and "- RESULTS" in body and ": RESULTS" in body
     assert "  headings: 3" in from_word.what_was_done(paper, converted).split("\n")
+    # Round 3 of #641: a section's name typed twice, the titles in bold are made headings, as
+    # the audit places them.
+    twice = word(tmp_path / "twice", "**Abstract**\n\nWe read.\n\n**Introduction**\n\nText.\n\n"
+                 "**Methods**\n\nWe read.\n\n**Results**\n\nIt was.\n\n**Discussion**\n\n"
+                 "RESULTS\n\nIt was too.\n\n**References**\n\nDoe J.\n")  # fmt: skip
+    assert from_word.convert(twice).typed_headings == (
+        "Abstract", "Introduction", "Methods", "Results", "Discussion", "References")
     document = read_docx_text(paper)
     lines = document.body.split("\n")
     assert [lines[at] for at, _level in typed_heading_levels(document)] == [

@@ -64,8 +64,9 @@ ABSTRACT = "Abstract against Results"
 #: was searched, as the main text's Introduction and Discussion are not. Every other section
 #: is searched (Basile, 2026-11-11), so a number under "Participants" is found.
 ABSTRACT_SEARCHED = ("the tables or any part of the paper but the Introduction and its "
-                     "material, the Discussion with its limitations, a conclusion, a summary of "
-                     "the paper, the title page, the back matter and the notes")
+                     "material, the Discussion with its limitations, an interpretation, a "
+                     "conclusion or a closing summary, a summary of the paper, the title page, "
+                     "the back matter and the notes")
 WRITING = "Writing (G6)"
 LANGUAGE = "Language (G14)"
 REFERENCES = "References (G7)"

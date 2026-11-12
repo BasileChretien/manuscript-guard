@@ -1750,6 +1750,12 @@ def test_a_run_in_label_typed_alone_is_read_as_a_heading(tmp_path: Path) -> None
     report = audit([tmp_path / "twice.docx"], [])
     assert report.abstract is not None and report.abstract.compared
     assert report.abstract.not_found == []
+    # And a known limit: bold parts of an abstract beside plain ones are placed at one level,
+    # its own "Results" the paper's, as a paper titled in bold alone was read before.
+    mixed = (bold("Abstract") + para("BACKGROUND") + para("Of 412, 77 had it.") + bold("Results")
+             + para("Of 412, 77 had it.") + para("CONCLUSIONS") + bold("References"))
+    document = read_docx_text(make_docx(tmp_path / "mixed.docx", mixed))
+    assert [level for _at, level in typed_heading_levels(document)] == [1, 1, 1]
 
 
 def test_a_typed_title_in_a_caption_a_cell_or_a_heading_styled_paper_is_no_heading(
@@ -1975,9 +1981,9 @@ def test_a_number_not_found_says_where_it_was_looked_for(tmp_path: Path, capsys)
     (found,) = [f for f in report["findings"] if f["code"] == "abstract-not-found"]
     assert found["message"] == ("41.7 in the Abstract is not found in the tables or any "
                                 "part of the paper but the Introduction and its material, "
-                                "the Discussion with its limitations, a conclusion, a summary "
-                                "of the paper, the title page, the back matter and the "
-                                "notes")  # fmt: skip
+                                "the Discussion with its limitations, an interpretation, a "
+                                "conclusion or a closing summary, a summary of the paper, the "
+                                "title page, the back matter and the notes")  # fmt: skip
     main(["audit", str(paper)])
     assert ("NOT FOUND IN THE TABLES OR ANY PART OF THE PAPER BUT THE INTRODUCTION AND ITS "
             "MATERIAL") in capsys.readouterr().out

@@ -76,6 +76,11 @@ class Value:
     # passes it over. True where it says a value G2 would not read as a count is one: a
     # harvested count held back ("<2") or written "3.0", whose display G2 then holds.
     count: bool | None = None
+    # The variable of the data dictionary a mean is of, and the reason the author gives for
+    # reporting it with its SD though the data are skewed. G15 holds a mean and its SD to the
+    # variable's floor, `range.min`, and the reason stands that down: a sentence, not a blank.
+    variable: str | None = None
+    skewed_ok: str | None = None
 
     @property
     def namespace(self) -> str:

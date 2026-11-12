@@ -142,7 +142,7 @@ def items(report) -> list[Item]:
         for c in report.reference_like
     ]  # fmt: skip
     found += [
-        Item(ARITHMETIC, "audit", "does-not-fit", d.message, WARN, False, d.source, d.line,
+        Item(ARITHMETIC, "audit", d.code, d.message, WARN, False, d.source, d.line,
              d.context)
         for d in report.disagreements
     ]  # fmt: skip
@@ -171,6 +171,7 @@ def items(report) -> list[Item]:
         for label in report.whole_numbers_unfound
     ]  # fmt: skip
     found += spreads.items(report)
+    found += _non_negative_items(report)
     found += _flow_items(report)
     found += _abstract_items(report.abstract)
     found += [
@@ -214,6 +215,12 @@ def items(report) -> list[Item]:
             + _cited_items(report.cited)
             + _self_citation_items(report.self_citation)
             + list(getattr(report.package, "found", [])))  # fmt: skip
+
+
+def _non_negative_items(report) -> list[Item]:
+    from manuscript_guard.auditing.skew import items as non_negative
+
+    return non_negative(report, Item, ARITHMETIC)
 
 
 def _printed_items(census) -> list[Item]:
@@ -629,7 +636,7 @@ def _anything_in_arithmetic(report) -> bool:
     """Whether the Arithmetic section says more than that nothing disagrees."""
     return bool(report.sums_off or report.over_n or report.over_n_rounding
                 or report.disagreements or report.whole_numbers or report.flows_read
-                or report.flow_notes or report.binary)  # fmt: skip
+                or report.flow_notes or report.binary or report.non_negative)  # fmt: skip
 
 
 def _anything_in_references(report) -> bool:
@@ -936,8 +943,8 @@ def _arithmetic(report, show) -> list[str]:
         lines.append(
             "NUMBERS THAT DO NOT FIT THE ONES BESIDE THEM: a P and its statistic, t and z "
             "read as two-sided; a ratio and its interval; an interval and its P; an n (%) "
-            "and its denominator; a mean of whole numbers and its n (not counted by "
-            "--strict):"
+            "and its denominator; a mean of whole numbers and its n; a mean and its SD of a "
+            "variable that cannot be negative (not counted by --strict):"
         )
         by_paper: dict[Path, list] = {}
         for item in report.disagreements:
@@ -970,9 +977,17 @@ def _arithmetic(report, show) -> list[str]:
         ]
     sds = spreads.lines(report, show)
     lines += ([""] if lines and sds else []) + sds
+    lines += _non_negative_lines(report, show, bool(lines))
     flows = _flows(report, show)
     lines += ([""] if lines and flows else []) + flows
     return lines or ["  Nothing read here disagrees with the numbers beside it."]
+
+
+def _non_negative_lines(report, show, after: bool) -> list[str]:
+    from manuscript_guard.auditing.skew import lines
+
+    said = lines(report, show)
+    return ([""] if said and after else []) + said
 
 
 def _flows(report, show) -> list[str]:

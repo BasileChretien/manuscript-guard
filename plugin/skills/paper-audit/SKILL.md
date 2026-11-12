@@ -88,6 +88,13 @@ the spread an SE. Rows of numbers each 0 or 1 reported as a mean with its SD ("M
 (SD) 0.53 (0.50)") are named with `--binary "male sex"`: each mean and SD is held to the
 other and n (DEBIT). Name only rows the paper codes 0/1.
 
+Where a table reports a mean (SD) of a variable that cannot be negative, a weight, a
+concentration, a length of stay, ask the user which rows they are and name them with
+`--non-negative weight "length of stay"`: each mean less than twice its SD is listed as
+skewed data, which a median and IQR would describe (Altman and Bland, BMJ 1996;313:1200).
+Never name a row whose variable can be negative, a change from baseline; a row that gives
+an SE is not read, and says so.
+
 ## 2. Run it
 
 ```bash

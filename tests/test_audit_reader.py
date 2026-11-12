@@ -30,7 +30,7 @@ PAPER = (
 #: What only a script or its command line needs. `--known` and `--english` are named on
 #: purpose beside the page's box for each, and stay.
 FLAGS = re.compile(r"--strict|--against|--lookup|--details|init --from|--design|--dry-run|"
-                   r"--authors|--whole-numbers|--binary")
+                   r"--authors|--whole-numbers|--binary|--non-negative")
 
 
 def test_the_view_the_page_and_the_pdf_draw_names_no_flag(tmp_path: Path, monkeypatch) -> None:
@@ -40,7 +40,8 @@ def test_the_view_the_page_and_the_pdf_draw_names_no_flag(tmp_path: Path, monkey
     monkeypatch.chdir(tmp_path)
     (tmp_path / "paper.md").write_text(PAPER, encoding="utf-8")
     for given in ([], ["--details"],
-                  ["--details", "--design", "observational", "--whole-numbers", "Age"],
+                  ["--details", "--design", "observational", "--whole-numbers", "Age",
+                   "--non-negative", "Weight"],
                   ["--details", "--binary", "Male"]):
         result = web.view(["audit", "paper.md", *given])
         assert FLAGS.search(result["out"]), "the text names the flags a script gives"
@@ -93,6 +94,15 @@ def test_each_reading_for_a_reader_matches_what_the_text_writes() -> None:
             "a row whose label holds it",
         "Means and SDs of numbers each 0 or 1 (--binary, DEBIT): 2 read in the rows named":
             "Means and SDs of numbers each 0 or 1 (DEBIT): 2 read in the rows named",
+        "Means and SDs of variables that cannot be negative (--non-negative): 2 read in the "
+        "rows named": "Means and SDs of variables that cannot be negative: 2 read in the rows "
+        "named",
+        "  --non-negative 'Age': no mean (SD) was read in a row whose label holds it":
+            "  The label 'Age', given as never negative: no mean (SD) was read in a row whose "
+            "label holds it",
+        "    line 7: --non-negative row 'Ferritin, mean (SE)': not read, as its label names a "
+        "standard error": "    line 7: The row 'Ferritin, mean (SE)', given as never negative: "
+        "not read, as its label names a standard error",
         "not counted: --dry-run sent nothing, so no registry's author list was read":
             "not counted: nothing was sent, so no registry's author list was read",
         "authors not counted: --authors names them":

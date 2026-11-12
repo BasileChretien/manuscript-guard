@@ -7,8 +7,9 @@ range, not among its codes, not matching its pattern, outside the study period o
 where the variable does not apply, and for each rule the rows that break it. This gate
 reads the dictionary and the results and names what is missing from that chain:
 
-* `not-in-dictionary` (a warning): a variable the analysis declares or a model reads that
-  has no entry, so nothing says what it is or what values it may take;
+* `not-in-dictionary` (a warning): a variable the analysis declares, a model reads or a
+  value names (`variable=`) that has no entry, so nothing says what it is or what values it
+  may take;
 * `quality-not-run`: the dictionary lists variables and no result is under `quality.`;
 * `entry-unchecked` and `rule-unchecked`: an entry, or a rule, that no count covers;
 * `quality-not-reported`: there are counts, and neither the Methods nor the supplement binds
@@ -69,6 +70,14 @@ def _used(project: Project, results: Results) -> dict[str, str]:
         for name in model.variables():
             used.setdefault(
                 name, f"is read by model {model.key} in {_shown(project, model.source)}"
+            )
+    # A value that says which variable it is of, `em.value(..., variable="crp")`, G15 reads
+    # the variable's floor for (`gates/summaries.py`).
+    for value in sorted(results.values.values(), key=lambda value: value.key):
+        if value.variable and value.source is not None:
+            used.setdefault(
+                value.variable,
+                f"is named by value {value.key} in {_shown(project, value.source)}",
             )
     return used
 

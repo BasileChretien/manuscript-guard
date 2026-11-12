@@ -123,12 +123,14 @@ class Candidate:
 @dataclass
 class Disagreement:
     """A test statistic whose P, as the paper prints it, does not follow from it, or an
-    estimate whose interval, or the P beside it, does not fit it."""
+    estimate whose interval, or the P beside it, does not fit it; or a mean and its SD that
+    show skewed data, `code` saying which (`auditing.skew`)."""
 
     source: Path
     line: int
     message: str
     context: str
+    code: str = "does-not-fit"
 
 
 @dataclass
@@ -179,6 +181,13 @@ class AuditReport:
     binary_off: list[Disagreement] = field(default_factory=list)
     binary_unfound: list[str] = field(default_factory=list)
     binary_passed_over: list[str] = field(default_factory=list)
+    #: The rows --non-negative named (`audit(non_negative=...)`), whose means and SDs are of
+    #: a variable that cannot be negative; how many were read in them, each named row not
+    #: read and why, and each label under which nothing was (`auditing.skew`).
+    non_negative: tuple[str, ...] = ()
+    spreads_read: int = 0
+    non_negative_unread: list[Disagreement] = field(default_factory=list)
+    non_negative_unfound: list[str] = field(default_factory=list)
     #: Whether outputs were given. Without them no number is compared, and `uncompared`
     #: counts the numbers that would have been.
     compared: bool = True
@@ -1297,6 +1306,7 @@ def audit(
     classifier: Classifier | None = None,
     whole_numbers: tuple[str, ...] = (),
     binary: tuple[str, ...] = (),
+    non_negative: tuple[str, ...] = (),
     passed_over: list[Path] | None = None,
     found_tex: list[Path] | None = None,
     minimum: int | None = None,
@@ -1326,6 +1336,7 @@ def audit(
         backing_values=values, backing_files=tuple(used), skipped=skipped,
         whole_numbers=whole_numbers, whole_numbers_unfound=list(whole_numbers),
         binary=binary, binary_unfound=list(binary),
+        non_negative=non_negative, non_negative_unfound=list(non_negative),
         passed_over=[doc_passed_over(path) for path in passed_over or []],
         compared=backing is not None, minimum=minimum,
     )  # fmt: skip
@@ -1524,6 +1535,11 @@ def _read_numbers(
     found = _disagreements(path, hidden, list(source.tables), report.read)
     if report.whole_numbers:
         found = sorted(found + _whole_number_means(report, path, list(source.tables)),
+                       key=lambda d: d.line)  # fmt: skip
+    if report.non_negative:
+        from manuscript_guard.auditing.skew import non_negative_means
+
+        found = sorted(found + non_negative_means(report, path, list(source.tables), text),
                        key=lambda d: d.line)  # fmt: skip
     report.disagreements += found
     if report.binary:

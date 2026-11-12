@@ -17,8 +17,9 @@ possible value, over the SD, below 2), and a message cites the one it applied.
 `check` reads it for a mean whose variable the data dictionary gives a `range.min`, its
 floor (`gates/summaries.py`); `audit --non-negative` for the rows of a table the auditor
 names, with a floor of 0 (`auditing/skew.py`). There a row is passed over, and said, where
-it is not a mean (SD) of the measure named: a standard error, a percentage, counts and their
-shares under a table that says n (%), or a change, which can be negative.
+it is not a mean (SD) of the measure named, its label deciding first: a standard error, a
+change, which can be negative, a category, or counts and their shares under a table that
+says n (%) (`table_spreads`).
 """
 
 from __future__ import annotations
@@ -57,18 +58,32 @@ _CELL = re.compile(
 _SE = re.compile(
     r"(?<![\w.])(?:SEM?|S\.E\.(?:M\.)?|s\.e\.(?:m\.)?)(?![\w])|(?i:\bstandard\s+errors?\b)"
 )
-#: What names a change, which can be negative: the words, "from baseline", or a delta.
+#: What names a change, which can be negative: the words, "from baseline", or a delta. Not
+#: a time to one, "time to change of therapy", "days to treatment change", nor a span "from
+#: baseline to" an event, which cannot be negative (round 2 of #660).
 _CHANGE = re.compile(
-    r"(?i:\b(?:change[sd]?|differences?|delta)\b|\bfrom\s+baseline\b)"
+    r"(?i:\b(?:change[sd]?|differences?|delta)\b|\bfrom\s+baseline\b(?!\s+to\b))"
     r"|[\N{GREEK CAPITAL LETTER DELTA}\N{INCREMENT}]"
 )
+#: What stands before a change that makes it the event a time runs to: "to", one word apart
+#: at most ("to change", "to treatment change"), or "of" just before it ("time of change").
+_TO_ONE = re.compile(r"(?i)\b(?:to\s+(?:[\w-]+\s+)?|of\s+)\Z")
 #: What says a table's cells are counts and their shares: n (%), N (%), No. (%) or n/N (%).
 _N_PERCENT = re.compile(r"(?<![\w.])(?:[nN]|No\.|n/N)\s*\(\s*%\s*\)")
-#: A count and its share, as such a table prints one: a whole number, and a decimal of 100
-#: or less in brackets.
-_COUNT_SHARE = re.compile(r"(?P<count>\d+)\s*\(\s*(?P<share>\d*\.\d+)\s*\)")
-#: What says a header's column holds means as well: "mean", "SD".
+#: A count and its share, as such a table prints one: a whole number, and a share of 100 or
+#: less in brackets, whole or not.
+_COUNT_SHARE = re.compile(r"(?P<count>\d+)\s*\(\s*(?P<share>\d+(?:\.\d+)?|\.\d+)\s*\)")
+#: What says a label is of a mean and its SD: "mean", "SD", "± SD".
 _MEAN_NAMED = re.compile(r"(?i:\bmean\b)|\bSD\b")
+#: What says a label is a category, whose cells are counts: a comparator, n (%), a "%", yes
+#: or no, n/N.
+_CATEGORY = re.compile(
+    r"[<>\N{GREATER-THAN OR EQUAL TO}\N{LESS-THAN OR EQUAL TO}%]"
+    r"|(?i:\b(?:yes|no)\b)|(?<![\w/])n/N(?![\w/])"
+)
+#: A line that opens a table's caption, "Table 2.", "Table S1", "**Table 3**": the caption
+#: of another table, where the paragraph below one is read.
+_CAPTION_OPENS = re.compile(r"^\s*(?:\*\*|__)?Table\s+S?\d+\b", re.IGNORECASE)
 #: How far above or below a table a caption saying n (%) is looked for: its paragraph.
 _CAPTION_LINES = 3
 #: How much of a row the context shows.
@@ -153,8 +168,7 @@ class Passed:
 #: Why a named row is not read.
 SE_LABEL = "its label names a standard error, and an SE is not an SD"
 SE_HEADER = "the header over its cells names a standard error, and an SE is not an SD"
-PERCENT = "its label names a percentage"
-PERCENT_HEADER = "the header over its cells names a percentage"
+CATEGORY = "its label names a category, so its cells are counts and their shares"
 COUNTS = "its cells are counts and their shares, as the table says n (%)"
 CHANGE = "its label names a change or a difference, which can be negative"
 
@@ -164,26 +178,21 @@ def table_spreads(
 ) -> tuple[list[Spread], list[Passed]]:
     """Each cell shaped as a mean and its SD in a row whose label holds one of `labels`, at
     word edges and in any case, in reading order; and each such row passed over, with why.
-    A row is passed over whole where its label names a standard error, a change or a
-    percentage. A cell is passed over where the header over it names a standard error or a
-    percentage, and where it is a count and its share, "5 (12.5)", and the `caption` or a
-    header says n (%). The header is the table's first row: a second header row is read as
-    a row."""
+
+    The row's label decides first (round 2 of #660). One that names a standard error or a
+    change is passed over. One that names a mean or an SD is read as means and SDs, whatever
+    the caption or a header says. One that names a category (a comparator, n (%), a "%",
+    yes or no, n/N) holds counts, and is passed over. Any other is read, but where the
+    table says n (%), in the `caption` or a cell of its first row (or a "%" there), a cell
+    that is a whole count and a share of 100 or less, "5 (12.5)" or "5 (12)", is taken for
+    a count and passed over. A cell under a header of the first row that names a standard
+    error is passed over in every row read."""
     found: list[Spread] = []
     passed: list[Passed] = []
     header = table[0] if table else ()
     se_columns = _columns_naming(header, lambda text: _SE.search(text) is not None)
-    # A header of "n (%) or mean (SD)" holds means too: its counts are told by their shape.
-    percent_columns = _columns_naming(
-        header, lambda text: "%" in text and _MEAN_NAMED.search(text) is None)
     counted = _N_PERCENT.search(caption) is not None or any(
-        _N_PERCENT.search(cell.text) for cell in header)
-    # What leaves a cell of a named row out, in order, each said once for the row.
-    left_outs = (
-        (SE_HEADER, lambda column, match: column in se_columns),
-        (PERCENT_HEADER, lambda column, match: column in percent_columns),
-        (COUNTS, lambda column, match: counted and _count_and_share(match)),
-    )
+        _N_PERCENT.search(cell.text) or "%" in cell.text for cell in header)
     for row in table:
         label = row[0].text if row else ""
         if not any(names(wanted, label) for wanted in labels):
@@ -194,11 +203,13 @@ def table_spreads(
         if not shaped:
             continue
         context, line = _context(row), shaped[0][1].line
-        why = (SE_LABEL if _SE.search(label) else CHANGE if _CHANGE.search(label)
-               else PERCENT if "%" in label else None)  # fmt: skip
+        why = _passed_by_label(label)
         if why is not None:
             passed.append(Passed(line, label, why, context))
             continue
+        left_outs = [(SE_HEADER, lambda column, match: column in se_columns)]
+        if counted and not names_a_mean(label):
+            left_outs.append((COUNTS, lambda column, match: _count_and_share(match)))
         for reason, left_out in left_outs:
             if any(left_out(column, match) for column, _cell, match in shaped):
                 passed.append(Passed(line, label, reason, context))
@@ -212,6 +223,30 @@ def table_spreads(
     return found, passed
 
 
+def names_a_mean(label: str) -> bool:
+    """Whether a row's label says its cells are a mean and its SD: "mean", "SD"."""
+    return _MEAN_NAMED.search(label) is not None
+
+
+def names_a_change(label: str) -> bool:
+    """Whether a row's label names a change, which can be negative: not a time to one,
+    "days to treatment change", nor "from baseline to" an event (round 2 of #660)."""
+    return any(_TO_ONE.search(label, 0, match.start()) is None
+               for match in _CHANGE.finditer(label))  # fmt: skip
+
+
+def _passed_by_label(label: str) -> str | None:
+    """Why a row is passed over whole for its label, in order: a standard error, a change,
+    then a category, unless the label names a mean."""
+    if _SE.search(label):
+        return SE_LABEL
+    if names_a_change(label):
+        return CHANGE
+    if not names_a_mean(label) and _CATEGORY.search(label):
+        return CATEGORY
+    return None
+
+
 def _columns_naming(header, says) -> set[int]:
     """The columns under a header cell, its first column's aside, of which `says` holds."""
     return {each for column, cell in list(_columns(header))[1:] if says(cell.text)
@@ -220,19 +255,21 @@ def _columns_naming(header, says) -> set[int]:
 
 def _count_and_share(match: re.Match[str]) -> bool:
     """Whether a cell read as a mean and its SD is a whole count and a share of 100 or less
-    in round brackets, "5 (12.5)", as a table of n (%) prints one."""
+    in round brackets, "5 (12.5)" or "5 (12)", as a table of n (%) prints one."""
     shaped = _COUNT_SHARE.fullmatch(match.group())
     return shaped is not None and Decimal(shaped["share"]) <= 100
 
 
 def caption_of(lines: list[str], table: Table) -> str:
     """The paragraph above a table and the one below it, where a caption, or a note saying
-    its cells are n (%), stands: up to `_CAPTION_LINES` lines each way, to a blank line."""
+    its cells are n (%), stands: up to `_CAPTION_LINES` lines each way, to a blank line. The
+    one below stops at a line that opens another table's caption, "Table 2." (round 2 of
+    #660), and the one above at the line that opens this table's."""
     if not table or not table[0]:
         return ""
     first = min(cell.line for cell in table[0])
     last = max(cell.line for row in table for cell in row)
-    above, below = [], []
+    above: list[str] = []
     for at in range(first - 2, max(first - 2 - _CAPTION_LINES, -1), -1):
         if at < 0 or at >= len(lines):
             break
@@ -241,7 +278,12 @@ def caption_of(lines: list[str], table: Table) -> str:
                 break
             continue
         above.insert(0, lines[at])
+        if _CAPTION_OPENS.match(lines[at]):
+            break
+    below: list[str] = []
     for at in range(last, min(last + _CAPTION_LINES, len(lines))):
+        if _CAPTION_OPENS.match(lines[at]):
+            break
         if not lines[at].strip():
             if below:
                 break

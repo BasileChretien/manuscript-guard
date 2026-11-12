@@ -7463,12 +7463,14 @@ def test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero(
     """`audit --non-negative`: in a row whose label holds one the auditor names, at word
     edges and in any case, each cell printed as a mean and its SD, in brackets or after a
     plus-minus sign, a minus sign before a negative mean, is read, and said skewed where the
-    mean is less than twice the SD, exactly twice not. A row whose label names a standard
-    error, or the column under a first-row header that names one, is passed over and said;
-    so is a row whose label names a percentage or a change, a column under a header naming
-    a percentage, and a count and its share where a caption or the header says n (%). A row
-    not named, one whose label holds a named one inside a word, a row of medians and a
-    sentence are not read."""
+    mean is less than twice the SD, exactly twice not. The label decides first: one that
+    names a standard error, a change or a category is passed over and said, and one that
+    names a mean (SD) is read, a whole-number mean under a percentage or a caption saying
+    n (%) too. In a row whose label names neither, a count and its share, whole or decimal,
+    is passed over where the table says n (%), and read where it does not. A cell under a
+    first-row header naming a standard error is passed over and said. A row not named, one
+    whose label holds a named one inside a word, a row of medians and a sentence are not
+    read."""
     from manuscript_guard.stats.skew import caption_of, table_spreads
     from manuscript_guard.text.tables import markdown_tables
 
@@ -7549,6 +7551,12 @@ def _a_count_and_its_share_is_read_as_a_mean_and_its_sd(patch: pytest.MonkeyPatc
     from manuscript_guard.stats import skew
 
     patch.setattr(skew, "_count_and_share", lambda match: False)
+
+
+def _the_table_s_n_percent_overrides_a_label_naming_a_mean(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import skew
+
+    patch.setattr(skew, "names_a_mean", lambda label: False)
 
 
 def _a_floor_written_as_text_is_read(patch: pytest.MonkeyPatch) -> None:
@@ -22730,6 +22738,10 @@ BROKEN = {
     ),
     "a count and its share under n (%) is read as a mean and its SD": (
         _a_count_and_its_share_is_read_as_a_mean_and_its_sd,
+        test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
+    ),
+    "the table's n (%) overrides a label naming mean (SD)": (
+        _the_table_s_n_percent_overrides_a_label_naming_a_mean,
         test_a_mean_and_its_sd_in_a_row_named_never_negative_are_held_to_zero,
     ),
     "a floor written as text is read as a number": (

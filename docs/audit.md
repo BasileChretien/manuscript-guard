@@ -322,20 +322,29 @@ one of those, at word edges and in any case, and each cell printed as a mean and
 "12.3 (4.5)", "12.3 ± 4.5" or "12.3 +/- 4.5". A mean less than twice its SD is listed with
 the other disagreements, with the mean, the SD and the floor of 0; exactly twice is not.
 Neither is counted by `--strict`. Some rows and cells under a label you name are not means
-and SDs of that measure, and are not read; each is said:
+and SDs of that measure, and are not read; each is said. The row's label decides first:
 
-- a row whose label names a standard error (SE, SEM, s.e., "standard error"), or a cell
-  under a header in the table's first row that names one, since an SE gives the SD only
-  with the n;
-- a row whose label names a change or a difference ("change", "difference", "from
-  baseline", "delta", Δ), which can be negative;
-- a row whose label names a percentage, and a cell under a header in the first row that
-  names one without naming a mean or an SD;
-- a count and its share, "5 (12.5)", a whole number and a decimal of 100 or less, where the
-  caption (the paragraph above or below the table) or the first row says n (%).
+- a label that names a standard error (SE, SEM, s.e., "standard error"): an SE gives the SD
+  only with the n;
+- a label that names a change or a difference ("change", "difference", "from baseline",
+  "delta", Δ), which can be negative; a time to one, "days to treatment change", or "from
+  baseline to discharge", is no change and is read;
+- a label that names a mean or an SD ("mean", "SD", "± SD") is read as means and SDs,
+  whatever the caption or a header says;
+- a label that names a category (a comparator such as ≥ or <, "n (%)", "%", "yes", "no",
+  "n/N") holds counts;
+- any other label is read, but where the table says n (%), in its caption (the paragraph
+  just above or below it, which ends at the next table's "Table 2") or in its first row,
+  a count and its share, "5 (12.5)" or "5 (12)", a whole number and a share of 100 or
+  less, is taken for a count.
+
+In every row read, a cell under a header of the table's first row that names a standard
+error is not read either.
 
 A label under which nothing was read is said. Means in sentences are not read, nor an SE
-named only in a caption, a note or a second header row. A variable with another floor, a
+named only in a caption, a note or a second header row. A whole-number mean, "5 (7.2)",
+in a table that says n (%), is taken for a count unless its label names a mean. A variable
+with another floor, a
 score of 1 to 7, is held to 0 here; `check` holds a project's means to the floor its data
 dictionary gives.
 

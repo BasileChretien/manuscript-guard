@@ -11856,6 +11856,10 @@ def test_the_r_emitter_s_mean_and_sd_are_read_by_the_same_check(project: Path) -
     script = project / "analysis" / "02_skew.R"
     for reason, said in (("NULL", ["mean-sd-skewed"]), ('"as the trial registered it"', [])):
         script.write_text(
+            # As test_r_emitter's scripts do: a runner with R but not jsonlite or digest
+            # (CI's windows-latest) exits 3, which _run_r skips.
+            'if (!requireNamespace("jsonlite", quietly = TRUE) || '
+            '!requireNamespace("digest", quietly = TRUE)) quit(status = 3)\n'
             "source('" + EMIT_R.as_posix() + "')\n"
             "em <- mg_emitter('" + script.as_posix() + "')\n"
             "em$value('crp.mean', 5, digits = 1, quoted = FALSE, variable = 'crp', "

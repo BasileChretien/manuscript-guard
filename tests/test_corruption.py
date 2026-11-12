@@ -11731,6 +11731,9 @@ _READS_LATEX = (
     # It reads a comparator beside a binding in each document's printed view, `\mg{}` as
     # `{{}}` (#629).
     "check_bound_comparisons",
+    # It reads each figure a document places, `\includegraphics` through `\graphicspath`
+    # as a Markdown image is (#630).
+    "check_placed",
 )  # fmt: skip
 
 
@@ -18730,6 +18733,159 @@ def test_a_journal_profile_with_a_print_rule_out_of_shape_is_refused(project: Pa
                            "read_on": "2026-10-21", "confirmed": True, "print": "sepia"}
     profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
     assert "schema-violation" in codes(_journal(project))
+
+
+# ------------------------------------------- a figure the paper places the ordinary way
+
+#: What G10 and G3 say of a figure, whose stages are compared.
+_SAID_OF_A_FIGURE = ("figure-unreviewed", "figure-review-", "figure-alt-", "figure-colours-",
+                     "figure-greyscale-")  # fmt: skip
+
+
+def _drawn(path: Path, *marks: str) -> None:
+    """A figure of lines in the colours `marks`, as `_painted` draws one, at `path`: an SVG
+    or a PDF by its suffix."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.suffix == ".svg":
+        body = "".join(f'<path d="M0 {10 * n}L90 {10 * n}" style="fill: none; stroke: {m}"/>'
+                       for n, m in enumerate(marks))  # fmt: skip
+        path.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="100pt" height="80pt" '
+                        f'viewBox="0 0 100 80"><rect width="100" height="80" fill="#ffffff"/>'
+                        f"{body}</svg>", encoding="utf-8")  # fmt: skip
+        return
+    from generated import pdf_document
+
+    def rgb(code: str) -> bytes:
+        return b" ".join(b"%.4f" % (int(code[i : i + 2], 16) / 255) for i in (1, 3, 5))
+
+    ops = [b"%s RG 0 %d m 90 %d l S" % (rgb(m), 10 * n, 10 * n) for n, m in enumerate(marks)]
+    path.write_bytes(pdf_document(b"\n".join(ops)))
+
+
+def _said_of(root: Path, stem: str, stage: str) -> list[tuple[str, str]]:
+    """What `check` says at `stage`, its policy applied, of the figure whose files are named
+    `stem`, by G10 and G3's alternative text and colours."""
+    from manuscript_guard.cli import _run_gates
+
+    report, *_ = _run_gates(root, stage=stage)
+    return sorted((f.code, f.severity) for f in report.findings
+                  if f.code.startswith(_SAID_OF_A_FIGURE) and f.path is not None
+                  and Path(f.path).name.split(".")[0] == stem)  # fmt: skip
+
+
+def _emitted_unread(root: Path, svg: bool) -> None:
+    """The example's emitted figure in red and green, with no review and no alternative
+    text: what an emitted figure is told, for a placed one to be told the same."""
+    _painted(root, _RED, _GREEN, svg=svg)
+    (root / "figures" / "forest.review.yaml").unlink()
+    _alt(root, None)
+
+
+def _latex_placing(root: Path) -> None:
+    """The twin with a results figure placed as arXiv 2409.10841 places its four: in a float,
+    `\\includegraphics` of a name with no extension, found through `\\graphicspath`."""
+    entry = _twin(root)
+    text = entry.read_text(encoding="utf-8")
+    entry.write_text(
+        text.replace("\\begin{document}", "\\graphicspath{{figs/}}\n\\begin{document}", 1)
+        .replace("\\section{Discussion}", "\\begin{figure}\\centering\n"
+                 "\\includegraphics[width=0.9\\linewidth]{chart}\n\\caption{Counts by year.}\n"
+                 "\\end{figure}\n\n\\section{Discussion}", 1),
+        encoding="utf-8",
+    )  # fmt: skip
+    _drawn(root / "manuscript" / "figs" / "chart.pdf", _RED, _GREEN)
+
+
+def _markdown_placing(root: Path) -> None:
+    """The example's main text with a figure typed as an image, its path from the project's
+    root, as pandoc reads it."""
+    path = main_md(root)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("{{figure.forest}}\n", "{{figure.forest}}\n\n"
+                                 "![Counts by year.](manuscript/figs/chart.svg)\n", 1),
+                    encoding="utf-8")  # fmt: skip
+    _drawn(root / "manuscript" / "figs" / "chart.svg", _RED, _GREEN)
+
+
+@pytest.mark.parametrize("stage", ["drafting", "internal-review", "submission"])
+@pytest.mark.parametrize("latex", [True, False], ids=["latex", "markdown"])
+def test_a_placed_figure_is_told_what_an_emitted_one_is_at_each_stage(
+    project: Path, tmp_path: Path, latex: bool, stage: str
+) -> None:
+    """The real-paper corpus, arXiv 2409.10841: a LaTeX paper's four results figures placed
+    with `\\includegraphics` were never reviewed, given alternative text or read for their
+    colours, since G10 and G3 read only a figure the analysis emits and a binding places.
+    Basile, 2026-11-11: every figure file the paper places is read, at the stages an emitted
+    one is, with its severities."""
+    emitted = tmp_path / "emitted"
+    shutil.copytree(project, emitted)
+    if latex:
+        _twin(emitted)
+    _emitted_unread(emitted, svg=not latex)
+    expected = _said_of(emitted, "forest", stage)
+    assert ("figure-unreviewed", "info" if stage == "drafting" else "fail") in expected
+    assert any(code == "figure-alt-missing" for code, _ in expected)
+    assert ("figure-colours-confused", "warn") in expected
+
+    if latex:
+        _twin(project)
+    before = _said_of(project, "forest", stage)
+    (_latex_placing if latex else _markdown_placing)(project)
+    assert _said_of(project, "chart", stage) == expected
+    # The emitted figure is told what it was told before.
+    assert _said_of(project, "forest", stage) == before
+
+
+def test_a_placed_figure_reviewed_and_described_is_told_nothing(project: Path) -> None:
+    """Its review and its alternative text are recorded as an emitted figure's are, beside
+    the file: `review --record-figure` with its path, and `alt:` in its guard file."""
+    from manuscript_guard.record import write_figure_review
+
+    _latex_placing(project)
+    written = write_figure_review(load_project(project)[0], "manuscript/figs/chart.pdf",
+                                  verdict="pass", reviewed_by="A. Reader")  # fmt: skip
+    assert written.path == project / "manuscript" / "figs" / "chart.review.yaml"
+    record = yaml.safe_load(written.path.read_text(encoding="utf-8"))
+    for check in record["checks"]:
+        check["ok"] = True
+    written.path.write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+    (project / "manuscript" / "figs" / "chart.guard.yaml").write_text(
+        "alt: Two lines, one rising and one falling.\n"
+        "allow_colours:\n  - value: '#d62728 #2ca02c'\n    why: each line is labelled\n",
+        encoding="utf-8",
+    )
+    said = _said_of(project, "chart", "submission")
+    assert [code for code, severity in said if severity != "info"] == [], said
+
+
+def test_the_numbers_of_a_placed_figure_are_said_once_to_be_untraced(project: Path) -> None:
+    """What a placed figure draws is not traced to the results, and `check` says so in one
+    note naming each such figure, and no more."""
+    from manuscript_guard.cli import _run_gates
+
+    report, *_ = _run_gates(project, stage="submission")
+    assert "figure-untraced" not in codes(report)
+    _latex_placing(project)
+    report, *_ = _run_gates(project, stage="submission")
+    [found] = [f for f in report.findings if f.code == "figure-untraced"]
+    assert found.severity == "info" and "manuscript/figs/chart.pdf" in found.message
+
+
+def test_a_placed_raster_is_said_to_be_unread_for_its_colours(project: Path) -> None:
+    """A raster's colours are blended at every edge and are not guessed at: a placed PNG, as
+    `init --from` writes a Word paper's pictures into `manuscript/media/`, is a note, as an
+    emitted figure with no SVG or PDF is, and is still asked for its review and its text."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("{{figure.forest}}\n", "{{figure.forest}}\n\n"
+                                 "![](manuscript/media/image1.png)\n", 1),
+                    encoding="utf-8")  # fmt: skip
+    media = project / "manuscript" / "media"
+    media.mkdir()
+    shutil.copyfile(project / "figures" / "forest.png", media / "image1.png")
+    said = _said_of(project, "image1", "internal-review")
+    assert said == [("figure-alt-missing", "warn"), ("figure-colours-unread", "info"),
+                    ("figure-unreviewed", "fail")]  # fmt: skip
 
 
 # ------------------------------------------------- the journal's citation style (item 51)

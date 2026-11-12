@@ -2,9 +2,10 @@
 
 Two series told apart by colour alone can be one series to a reader with protanopia,
 deuteranopia or tritanopia, and to anyone reading a page printed in grey. So each colour a
-figure the manuscript places paints its marks in is read from the figure itself, its SVG or
-its PDF (`gates/figure_svg.py`, `gates/figure_pdf.py`), and taken through what each
-deficiency makes of it and through grey (`colour.py`: Machado et al. 2009, CIEDE2000):
+figure the manuscript places, by its binding or the ordinary way (`placed_figures.py`),
+paints its marks in is read from the figure itself, its SVG or its PDF
+(`gates/figure_svg.py`, `gates/figure_pdf.py`), and taken through what each deficiency
+makes of it and through grey (`colour.py`: Machado et al. 2009, CIEDE2000):
 
 * `figure-colours-confused`: two colours at least `colour.THRESHOLD` apart to normal vision
   are less than it apart to a reader with one of the deficiencies. A warning, never a
@@ -81,24 +82,29 @@ def painted(path: Path) -> list[str] | None:
 
 def check_figure_colours(project: Project) -> Report:
     """Each figure the manuscript places, for the colours it paints."""
-    from manuscript_guard.gates.figure_files import _files_of, _placed, _sidecar
+    from manuscript_guard.gates.figure_alt import figures_placed
+    from manuscript_guard.gates.figure_files import _files_of, _sidecar
     from manuscript_guard.gates.figures import _declared
     from manuscript_guard.gates.journal import figure_rules
 
-    placed = _placed(project)
+    placed = figures_placed(project)
     if not placed:
         return Report()
     rules = figure_rules(project)
     findings: list[Finding] = []
     checked = 0
-    for name, supplementary in placed:
-        files = _files_of(project.path("figures"), name)
+    for name, supplementary, sidecar, _bound in placed:
+        # A figure's files are those beside its sidecar with its name, one per format: a
+        # placed file's, the file and its exports in other formats beside it.
+        stem = sidecar.name.removesuffix(".guard.yaml")
+        # A picture in a format no journal's rules name, a `.webp`, is a raster all the
+        # same, and is said to be unread rather than passed over.
+        files = _files_of(sidecar.parent, stem) or _pictures(sidecar.parent, stem)
         # The SVG where there is one, as G3 reads the figure's text from it, else the PDF;
         # the PDF where the SVG cannot be read (round 1 of #398).
         vectors = [p for suffix in (".svg", ".pdf") for p in files if p.suffix.lower() == suffix]
         vector, colours = next(((p, c) for p in vectors if (c := painted(p)) is not None),
                                (vectors[0] if vectors else None, None))  # fmt: skip
-        sidecar = project.path("figures") / f"{name}.guard.yaml"
         if colours is None:
             if files:
                 findings.append(_unread(name, files[0], vector))
@@ -111,6 +117,20 @@ def check_figure_colours(project: Project) -> Report:
         allowed = _allowed(_declared(sidecar, "allow_colours"))
         findings += _judged(name, vector, colours, grey, allowed, sidecar)
     return Report(tuple(findings)).with_counts(figures_colour_checked=checked)
+
+
+def _pictures(folder: Path, stem: str) -> list[Path]:
+    """The files beside a sidecar with its figure's name that G10 reviews (`REVIEWABLE`)."""
+    import os
+
+    from manuscript_guard.gates.figure_review import REVIEWABLE
+
+    try:
+        return sorted(path for path in folder.iterdir()
+                      if os.path.normcase(path.stem) == os.path.normcase(stem)
+                      and path.suffix.lower() in REVIEWABLE and path.is_file())  # fmt: skip
+    except OSError:
+        return []
 
 
 def colour_findings(path: Path, name: str, *, greyscale: bool = False) -> list[Finding] | None:

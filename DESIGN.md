@@ -12189,6 +12189,56 @@ plan names and once for one it does not; `tests/test_properties.py` holds what i
 for line, against twenty-seven broken rules, each failing under a dozen seeds. The limits are in
 Known gaps.
 
+### Each package used is named in the Methods, and cited there
+
+The plan's Software section and the scripts are not what a reader of the paper sees. The
+Methods are, and a package is credited, and its version found again, through the reference
+its authors ask users to cite. Basile, 2026-11-12: each package the analysis uses is named
+in the Methods, and the sentence that names it cites something.
+
+What `check` says (`gates/software_methods.py`, G12, a check of its own since it reads the
+manuscript):
+
+* A package is used when an item of the Software section names it and a script loads it, or
+  `em.software()` recorded it, as above. Base R, the standard library, the project's own
+  modules, the emitters and the language itself are left out, and so is a package named in
+  backticks under Deviations, which is how a package left out on purpose is said.
+* `software-unnamed`: no sentence of the Methods names it. The Methods are read as G9 reads
+  them: the main text's Methods section with its subsections, and the Methods of each file
+  of the supplement, a LaTeX document's in its printed view.
+* `software-uncited`: sentences name it and none of them carries a citation, read as G6
+  reads one beside an appeal to authority (`citation_starts`): a pandoc citation, bracketed
+  or narrative, a LaTeX citation command, which the printed view writes as pandoc's, and a
+  number in brackets or an author and year typed in brackets.
+* Both warn at every stage and never fail. One sentence that names the package and cites is
+  enough, wherever it stands in the Methods. The finding stands on the item's line in the
+  plan, and an uncited one quotes the first sentence that names the package.
+
+A name is a word. In R it is matched with its case, as R loads it, with a point inside it
+and a hyphen after it ("dplyr-based"). In Python it is matched in any case, since authors
+write "Matplotlib" and "NumPy", with `-`, `_` and `.` taken for one another, as PyPI
+compares distribution names (PEP 503), and with a module after a point (`statsmodels.api`).
+A package's names are those its item gives and those the scripts load it by, so an item that
+gives `scikit-learn` and `sklearn` is named by either. A sentence is cut as the claims are
+(`claims.sentence_spans`), and a stretch with no prose, a list item that is only a code
+span, is a sentence of its own. Comments, the keys of bindings and citation keys name
+nothing. A paper whose Methods the reader does not find is not read for its packages: G4
+holds a paper to its required sections.
+
+The example's Methods name statsmodels and not pandas or matplotlib, and cite none of them:
+its references are invented, and a citation of one for a package would be false. Its
+Deviations name the three and say so, and `tests/test_latex_twin.py` reads the plan without
+that entry, so that the twin is held to the three findings the example would give.
+
+The campaign: `software_methods()` in `tests/generated.py` puts into each example one
+package of every kind (named and cited in the main text, in each form of citation; named
+only inside a longer word; named with a citation in the next sentence only; named and cited
+only in the supplement's Methods; an R package and a Python one named in another case; one
+named and cited only in the Results; one the Deviations name; one planned and not loaded;
+one only the emitter recorded); a form of citation after "et al.", "v." and "i.e.", and one
+typed after the stop, are among the forms. `tests/test_properties.py` holds what is said
+against six broken rules, each failing under a dozen seeds.
+
 ## What a change makes stale
 
 The digests the gates record already form a graph, and each gate reads one edge of it: G1 an
@@ -26151,6 +26201,56 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - Whether the package chosen is the right one for the data is not judged, and no list of
     the packages written for a source is kept: Basile, 2026-11-05, since such a list goes
     stale and favours the fields its authors know.
+
+- **A package is held to the Methods by its name and a citation in its sentence, not by
+  what is cited.** (`gates/software_methods.py`, "Each package used is named in the Methods,
+  and cited there".) Accepted.
+  - Any citation in the sentence stands the package down, whether or not the work cited is
+    the package's reference. Accepted.
+  - A citation in another sentence is not the package's: "We used dplyr. It is described in
+    [@wickham2023]." is `software-uncited`. A citation typed after a sentence's stop and a
+    space, "dplyr. [12]", counts for the sentence it follows and for the one it opens.
+    Pinned by `tests/test_properties.py::test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else`
+    and `tests/test_corruption.py::test_a_package_named_and_not_cited_in_its_sentence_is_said`.
+  - A sentence goes on after the abbreviations `ABBREVIATIONS` lists in
+    `gates/software_methods.py` ("et al.", "e.g.", "i.e.", "cf.", "v.", "ver.", "vs.",
+    "Fig.", "No."), whatever follows the point, unless a block opens there. Another
+    abbreviation, "approx." or "ref.", before a capital or a bracket still cuts the sentence,
+    and "et al.", "No." or "v." ending a sentence before a capital joins it to the next.
+    Pinned by `tests/test_corruption.py::test_a_citation_after_an_abbreviation_is_in_the_sentence_that_names_the_package`.
+  - A citation by author and year written in the prose, "Bates et al. (2015)", or one
+    whose bracket holds more than the work, "(version 1.1-35; Bates et al., 2015)", is not
+    read as a citation, since G6's reading of typed citations takes neither, and the package
+    is `software-uncited`. Accepted.
+  - A package whose name is a word of English, survival, boot, mice or car, is named by
+    that word in any sense: "Overall survival was estimated with the Kaplan-Meier method
+    [12]." names survival, and nothing tells the package from the word.
+    Pinned by `tests/test_corruption.py::test_a_package_named_by_an_ordinary_word_is_named_wherever_the_word_stands`.
+  - An item's other names count only as G12 holds them to the scripts: those a script loads
+    that somebody chose. "`brms`, under `R` with `stats`" is not named by "R" nor "stats".
+    Pinned by `tests/test_corruption.py::test_the_language_and_base_names_an_item_gives_do_not_name_its_package`.
+  - The example's Deviations entry 9 names `pandas`, `statsmodels` and `matplotlib` in
+    backticks, so that its Methods are not held to citing them, and that stands down
+    `planned-package-unloaded` and `plan-package-unnamed` for the three in the example too.
+    Accepted.
+  - The language itself, R or Python, and its version are not held to the Methods.
+    Pinned by `tests/test_corruption.py::test_a_package_used_and_not_named_in_the_methods_is_said`.
+  - A Python package is named only by its item's first name and the names the scripts import
+    it by. An item that gives only `sklearn` is not named by "scikit-learn", its
+    distribution's name, since nothing here maps one to the other.
+    Pinned by `tests/test_corruption.py::test_an_r_package_is_named_with_its_case_and_a_python_one_by_any_of_its_names`.
+  - An R package is matched with its case, so "Dplyr" opening a sentence does not name
+    dplyr. Pinned by `tests/test_properties.py::test_a_package_used_is_named_and_cited_in_the_methods_and_nowhere_else`.
+  - An item's other name counts only where a script loads a package of that name: `glm` does
+    not, and `numpy` in "`pandas` with `numpy`" or `rstan` in "`brms` with `rstan`" does, so
+    "Arrays were handled with NumPy [3]" names and cites pandas, as on main. Accepted.
+  - A package only `em.software()` recorded, which no script loads, is matched as Python in a
+    project with scripts in both languages. Accepted.
+  - A paper whose Methods G9's reading does not find, in the main text or the supplement, is
+    not read, and nothing is said of its packages.
+    Pinned by `tests/test_corruption.py::test_a_package_used_and_not_named_in_the_methods_is_said`.
+  - The finding stands on the plan's item, not on the sentence of the manuscript, since a
+    package unnamed has no sentence. Accepted.
 
 - **A heading in bold is not the Abstract.** `names_abstract` reads a title without its
   number and nothing else, so `# **Abstract**` is not the abstract to G4's counts, G14's

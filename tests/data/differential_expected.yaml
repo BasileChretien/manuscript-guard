@@ -27,8 +27,9 @@ expected:
   - reading: abbreviations
     why: >-
       the title page that opens a file is not read for abbreviations: its authors' names,
-      departments, units and institutions are reported nowhere, and nothing on it defines or
-      uses a short form; it ends at the first section a paper opens on, at a letter's
+      departments, units and institutions are reported nowhere, nothing on it defines a short
+      form, and its only uses are of entries of the list of abbreviations; it ends at the
+      first section a paper opens on, at a list of abbreviations, at a letter's
       salutation, or at running prose, and is found only where it holds a line only a title
       page holds (Basile, 2026-11-12); the inputs now open on a title page of each kind, or
       on none

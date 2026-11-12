@@ -105,6 +105,12 @@ _LETTERS = re.compile(
 )
 
 
+def opens_one(paragraph: str) -> bool:
+    """Whether a paragraph opens with the words a glossary with no title opens with
+    (`_OPENS`); the title page ends at one (`text/title_page.py`)."""
+    return _OPENS.match(paragraph) is not None
+
+
 def is_letters(title: str) -> bool:
     """Whether a paragraph's or a heading's text is a label a glossary groups its entries
     under, a letter or a range of letters: "A--C", "D–I", "L"."""

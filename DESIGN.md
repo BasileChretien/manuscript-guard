@@ -5275,7 +5275,9 @@ front matter and a comment `init --from` set aside, and each block is one of fiv
   Portuguese, German or Italian ("Résumé", "Resumen", "Zusammenfassung"), and a list of
   abbreviations, which a journal may ask for on the title page itself ("Abbreviations: Food
   and Drug Administration (FDA); ...", as Pediatrics has it) and which is read, its entries
-  definitions as ever (round 1 of #654); or a letter's salutation, "Dear Editor,", "To the
+  definitions as ever (round 1 of #654), wherever G14's glossary would open one: a heading
+  it takes for a glossary's, or a paragraph opening on "Abbreviations", "Acronyms",
+  "Glossary" or "List of abbreviations", by the glossary's own test (round 2); or a letter's salutation, "Dear Editor,", "To the
   Editor:", "Sir,", "Dear Sir or Madam,", "Madame, Monsieur,";
 - another heading: one of the back matter, "References", "Funding", or one that names no
   section, past the first block;
@@ -26149,10 +26151,20 @@ What papers converted from Word showed (see "What papers converted from Word sho
     title page or elsewhere: that entry, or every one, defines nothing. The title page reads
     it as the rest of the paper does. Pinned by
     `tests/test_language.py::test_a_list_on_the_title_page_is_read_as_with_no_title_page`.
-  - The other languages are read by a few words each: an abstract's name, a salutation, a
-    label and an institution's word in French, Spanish, German and Italian, and a sentence's
-    words only in English and a few of French. A title page in another language is read as
-    before. Accepted.
+  - The other languages are read by a few words each: an abstract's name in French,
+    Spanish, Portuguese, German and Italian; a salutation in French, Spanish and German; a
+    label in French, Spanish, German and Italian; an institution's word in those four; and a
+    sentence's words only in English and a few of French. A title page in another language is
+    read as before. Accepted.
+  - Of those words only the French letter's (its service, department and salutation) are
+    held by a test; the rest, and a sentence in Spanish or Italian that names a
+    "Departamento" or a "Dipartimento" in pieces as short as an affiliation's, which none of
+    the words of a sentence marks as prose and so reads as an affiliation, are held by none.
+    Accepted.
+  - Whether a first paragraph of more than three lines is read a line at a time is tested on
+    each line apart: a title page typed a line to each with one line that holds a sentence
+    is read as one block, and so found only where that block is no prose; a prose paragraph
+    none of whose lines holds a sentence alone is read a line at a time. Accepted.
   - A line of the title page that reads as prose ends the title page there, and what
     follows it is read: an affiliation with "a" or "we" in it, a funding line "Funding: This
     work was ...". Accepted.

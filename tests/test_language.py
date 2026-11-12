@@ -2250,6 +2250,18 @@ def test_the_title_page_uses_an_entry_of_the_list_of_abbreviations(project: Path
     assert "title page" not in finding.hint
 
 
+def test_a_title_typed_as_a_heading_uses_an_entry_of_its_text_s_list(project: Path) -> None:
+    """A title typed as a heading is the title page's too, and uses the paper's entry; the
+    supplement's title page uses none of the paper's (round 2 of #654)."""
+    page = "# Drug safety in the {} year\n\nAna MARTIN\n\nDepartment of Pharmacology, Rouen\n\n"
+    listed = "# Abbreviations\n\nPACES: first year of health studies\n"
+    report = written(project, page.format("PACES") + "# Introduction\n\nNone.\n\n" + listed)
+    assert _named(report) == set(), found(report)
+    report = written(project, "# Introduction\n\nNone.\n\n" + listed,
+                     supplement=page.format("PACES") + "# Methods\n\nNone.\n")  # fmt: skip
+    assert _named(report) == {"PACES"}, found(report)
+
+
 def test_a_french_letter_s_title_page_is_not_read(project: Path) -> None:
     """A letter in French: its service and department, its salutation (round 1 of #654)."""
     text = (

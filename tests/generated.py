@@ -956,8 +956,10 @@ RUN_IN_OPENINGS = ("**Background:** ", "Background: ", "__Introduction.__ ")
 #: gaps.)
 TITLE_PAGE_LISTS = (
     "Abbreviations: Food and Drug Administration (FDA); World Health Organization (WHO)",
-    "**Abbreviations:**\n\nFDA: Food and Drug Administration\n\nWHO: World Health Organization",
-)
+    *(f"{opener}\n\nFDA: Food and Drug Administration\n\nWHO: World Health Organization"
+      for opener in ("**Abbreviations:**", "**Abbreviations and acronyms**", "Glossary of terms",
+                     "Acronyms and abbreviations:")),
+)  # fmt: skip
 #: The headings an abstract opens under, and a line that is only its name, in bold or not,
 #: and its name run in before its text.
 ABSTRACT_OPENINGS = ("# Abstract", "## ABSTRACT", "**Abstract**", "Abstract", "# Summary",

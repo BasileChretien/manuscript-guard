@@ -2140,12 +2140,11 @@ def _title_page_pattern_matches_nothing(name: str) -> Callable[[pytest.MonkeyPat
 def _a_list_of_abbreviations_is_the_title_page_s(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import title_page
 
-    patch.setattr(title_page, "_OPENING_NAMES",
-                  title_page._OPENING_NAMES - title_page._GLOSSARY_NAMES)  # fmt: skip
+    patch.setattr(title_page, "_opens_a_list", lambda text: False)
 
 
 def _a_title_page_s_word_uses_no_list_entry(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_on_title_pages", lambda files: frozenset())
+    patch.setattr(language_gate, "_on_title_pages", lambda files: {})
 
 
 def _a_title_s_institution_is_an_affiliation(patch: pytest.MonkeyPatch) -> None:

@@ -809,16 +809,21 @@ def _on_the_title_page(file: _File, offset: int) -> bool:
     return offset < file.title_page
 
 
-def _on_title_pages(files: list[_File]) -> frozenset[str]:
-    """The words the files' title pages hold, whole and by their parts. Where one is an entry
-    of the list of abbreviations, the title page uses it, the one use it makes (Basile,
-    2026-11-12); where one is a short form the text defines and never uses, its hint says
+def _on_title_pages(files: list[_File]) -> dict[str, set[str]]:
+    """The words the files' title pages hold, whole and by their parts, by the text each
+    stands in: the paper's, or the supplement's. A title typed as a heading among them,
+    "# Drug safety in the PACES year" (round 2 of #654). Where one is an entry of that
+    text's list of abbreviations, the title page uses it, the one use it makes (Basile,
+    2026-11-12); where one is a short form that text defines and never uses, its hint says
     that the title page's use was not counted."""
-    found: set[str] = set()
+    found: dict[str, set[str]] = {}
     for file in files:
-        for word in _WORD.finditer(file.prose, 0, file.title_page):
-            found.update((word.group(0), *_JOINS.split(word.group(0))))
-    return frozenset(found)
+        for word in _WORD.finditer(file.printed, 0, file.title_page):
+            scope = file.region_at(word.start()).scope
+            if scope is not None:
+                found.setdefault(scope, set()).update((word.group(0),
+                                                       *_JOINS.split(word.group(0))))  # fmt: skip
+    return found
 
 
 def _inside(spans: tuple[tuple[int, int], ...], offset: int) -> bool:
@@ -1750,7 +1755,7 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
                 # not the text's to write out. Its use on the title page is one: the list
                 # covers the title page's units and institutions too (Basile, 2026-11-12,
                 # "Yes, count it"). It is the only use the title page makes.
-                if short not in title_paged:
+                if short not in title_paged.get(scope.name, ()):
                     findings.append(
                         finding(
                             "abbreviation-unused",
@@ -1776,7 +1781,7 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
                         f"write '{first.long}' out and drop the short form, unless a table "
                         "or a figure uses it: those are not read here"
                         + ("; the title page uses it, and is not read for abbreviations"
-                           if short in title_paged else ""),
+                           if short in title_paged.get(scope.name, ()) else ""),
                     )  # fmt: skip
                 )
 

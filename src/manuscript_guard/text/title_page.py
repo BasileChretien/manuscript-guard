@@ -1,9 +1,10 @@
 """Where a manuscript's title page is, so that G14 does not read its abbreviations.
 
 A title page names departments, units and institutions, "INSERM U1237", "UMR-S", "CHU de
-Caen Normandie", none of which a paper defines, and none of which is a use or a definition
-of anything the paper goes on to say (Basile, 2026-11-12). So the abbreviation reading
-passes over it, and reads the paper from where the title page ends, as before.
+Caen Normandie", none of which a paper defines (Basile, 2026-11-12). So the abbreviation
+reading passes over it: nothing on it is a definition, nor a use of one the text gives; its
+words are a use only of an entry of the list of abbreviations, which covers the title page
+too (`gates/language.py`). The paper is read from where the title page ends, as before.
 
 Not every paper has an abstract: a letter has none, and opens with "Dear Editor". So the
 end is not looked for by one word. The text is read from its opening, block by block, a
@@ -69,10 +70,9 @@ PROSE = "prose"
 
 #: The names a paper's own text opens on, of `SECTION_NAMES`: an abstract, the parts of a
 #: structured one, and the Introduction. With the names that open a letter, a summary box
-#: or a structured abstract's first part and are no heading `SECTION_NAMES` reads alone; an
-#: abstract's name in French, Spanish, Portuguese, German and Italian; and a list of
-#: abbreviations, which a journal may ask for on the title page itself (Pediatrics,
-#: "Abbreviations: Food and Drug Administration (FDA); ..."): it defines, and is read.
+#: or a structured abstract's first part and are no heading `SECTION_NAMES` reads alone; and
+#: an abstract's name in French, Spanish, Portuguese, German and Italian. A list of
+#: abbreviations opens the paper too (`_opens_a_list`).
 _OPENING_NAMES = frozenset({
     "abstract", "structured abstract", "summary", "introduction", *ABSTRACT_PARTS,
     "main text", "letter", "research letter", "letter to the editor", "highlights",
@@ -81,11 +81,6 @@ _OPENING_NAMES = frozenset({
     "purpose", "importance", "context", "rationale",
     "résumé", "resumen", "resumo", "zusammenfassung", "riassunto",
 })  # fmt: skip
-_GLOSSARY_NAMES = frozenset({
-    "abbreviations", "list of abbreviations", "abbreviations used", "acronyms",
-    "list of acronyms", "glossary", "abréviations", "liste des abréviations",
-})  # fmt: skip
-_OPENING_NAMES = _OPENING_NAMES | _GLOSSARY_NAMES
 
 #: A label only a title page holds, at the paragraph's start in bold or not, with a colon
 #: after it or the paragraph ending on it: "Corresponding author:", "**Running title**",
@@ -329,7 +324,7 @@ def _named(text: str, abstract_title: str | None) -> str | None:
     The whole name, not its first word: "Abstract word count: 250" is a title page's line,
     which `names_abstract` would take for the Abstract."""
     alone = plain(text).rstrip(" :.")
-    if _opens(alone, abstract_title):
+    if _opens(alone, abstract_title) or _opens_a_list(text):
         return OPENING
     if section_name_alone(alone) is not None or _key(alone) in SECTION_NAMES:
         return OTHER
@@ -337,6 +332,19 @@ def _named(text: str, abstract_title: str | None) -> str | None:
     if label is not None and _opens(label.group("name"), abstract_title):
         return OPENING
     return None
+
+
+def _opens_a_list(text: str) -> bool:
+    """Whether `text`, a heading's title or a paragraph, opens a list of abbreviations as
+    G14's glossary reads one: a heading it takes for a glossary's (`glossary.is_glossary`), or
+    a paragraph opening with the words a glossary with no title opens with
+    (`glossary.opens_one`), "**Abbreviations and acronyms**", "Glossary of terms". A journal
+    may ask for the list on the title page itself (Pediatrics, "Abbreviations: Food and Drug
+    Administration (FDA); ..."): it defines, and is read. The same tests as the glossary's,
+    so that the two cannot part (round 2 of #654)."""
+    from manuscript_guard.gates import glossary
+
+    return glossary.is_glossary(plain(text)) or glossary.opens_one(text)
 
 
 def _opens(name: str, abstract_title: str | None) -> bool:

@@ -658,8 +658,45 @@ DEFINING = (
      "CPS"),
     ("the Hill Farm Allowance \N{EN DASH} HFA  \nwhich pays farmers", "\N{EN DASH} HFA",
      "HFA"),
+    # A bullet that is no dash, which only the list item's line ends (round 1 of #662: a
+    # dash bullet's list is read by the same list rule).
+    ("* the Slurry Infrastructure Grant \N{EN DASH} SIG\n* the Slurry Fund", "\N{EN DASH} SIG",
+     "SIG"),
     ("- the Farming Transition Fund \N{EN DASH} FTF\n- the Farming Equipment Fund",
      "\N{EN DASH} FTF", "FTF"),
+    # Round 2 of #643: an item over a nested list, and one after an item with a continuation
+    # line.
+    ("- the Rural Payments Agency \N{EN DASH} RPA\n  - the Rural Payments Service",
+     "\N{EN DASH} RPA", "RPA"),
+    ("- the Farming Fund\n  still paid\n- the Woodland Grant Scheme \N{EN DASH} WGS\n- the "
+     "Woodland Fund", "\N{EN DASH} WGS", "WGS"),
+    # Round 1 of #662: an item under a lazy continuation, unindented; a list straight under a
+    # lead-in line, the next item of the same kind; and a binding that prints no
+    # value, an anchor and a pointer.
+    ("1. the Forestry Fund\nstill paid\n2. the Tree Health Scheme \N{EN DASH} THS\n3. the "
+     "Tree Fund", "\N{EN DASH} THS", "THS"),
+    ("the schemes were:\n- the Farm Investment Fund \N{EN DASH} FIF\n- the Farm Equipment Fund",
+     "\N{EN DASH} FIF", "FIF"),
+    # Round 2 of #662: under a lead-in line, other markers, a next item opening with a digit,
+    # one of another kind after a colon, none, and a block quote.
+    ("the schemes were:\n* the Small Farms Scheme \N{EN DASH} SFS\n* the Small Farms Fund",
+     "\N{EN DASH} SFS", "SFS"),
+    ("the schemes were:\n1. the Basic Farm Payment \N{EN DASH} BFP\n2. the Farm Fund",
+     "\N{EN DASH} BFP", "BFP"),
+    ("the schemes were:\n1) the Clean Air Grant \N{EN DASH} CAG\n2) the Air Fund",
+     "\N{EN DASH} CAG", "CAG"),
+    ("the schemes were:\n- the Water Quality Grant \N{EN DASH} WQG\n- 2015 reform of the WQG",
+     "\N{EN DASH} WQG", "WQG"),
+    ("the payments were:\n- the Hedgerow Planting Grant \N{EN DASH} HPG\n* the Hedge Fund",
+     "\N{EN DASH} HPG", "HPG"),
+    ("the payments were\n* the Peat Restoration Grant \N{EN DASH} PRG\n* the Peat Fund",
+     "\N{EN DASH} PRG", "PRG"),
+    ("> the schemes were:\n> - the Moorland Payment \N{EN DASH} MP\n> - the Moor Fund",
+     "\N{EN DASH} MP", "MP"),
+    ("farmers were paid under the Delinked Payment Scheme \N{EN DASH} DPS {{method.payments}}.",
+     "\N{EN DASH} DPS", "DPS"),
+    ("farmers were paid under the Lump Sum Scheme \N{EN DASH} LSS {{ref.table.payments}}.",
+     "\N{EN DASH} LSS", "LSS"),
 )  # fmt: skip
 
 #: A dash definition at the very end of the text, which every example of `bracketed` ends
@@ -718,6 +755,27 @@ NOT_DEFINING = (
     ("the Upland Entry Level \N{EN DASH} UEL \nwhich pays farmers", "UEL \nwhich", "UEL"),
     ("the risk was higher in older people \N{EN DASH} OR: 1.52", "OR: 1.52", "OR"),
     ("the risk was higher in older people \N{EN DASH} OR [2] 1.52", "OR [2]", "OR"),
+    # Round 2 of #643: a value bound to the results where the number would be, after a
+    # space, a colon, a comma and a closing dash, and before the line's end; a number after
+    # a closing dash; a list item that goes on into its continuation, indented or not; and a
+    # prose line in a paragraph's middle that opens as a list item would.
+    ("the risk was higher in older people \N{EN DASH} OR {{results.or}}.", "OR {{", "OR"),
+    ("the risk was lower in older people \N{EN DASH} OR {{lit.cohort.or}}.", "OR {{lit", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR: {{results.or}} in all", "OR:",
+     "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR, {{results.or}} in all", "OR,",
+     "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR \N{EN DASH} {{results.or}} in all",
+     "OR \N{EN DASH} {{", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR {{results.or}}\nin all",
+     "OR {{results.or}}\n", "OR"),
+    ("the risk was higher in older people \N{EN DASH} OR \N{EN DASH} 1.52 in all",
+     "OR \N{EN DASH} 1.52", "OR"),
+    ("- the risk was higher in older people \N{EN DASH} OR\n  1.52 in all", "OR\n  1.52",
+     "OR"),
+    ("- the risk was higher in older people \N{EN DASH} OR\n1.52 in all", "OR\n1.52 in", "OR"),
+    ("rates rose until\n2020) in older people \N{EN DASH} OR\n- 1.52 in all", "OR\n- 1.52",
+     "OR"),
 )  # fmt: skip
 
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as

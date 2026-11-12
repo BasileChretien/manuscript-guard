@@ -5187,20 +5187,39 @@ form after a dash with a space on either side, a hyphen, an en dash or an em das
 and "---" as pandoc's smart dashes are typed, a no-break space counting as a space, its long
 form before the dash, "Basic Payment Scheme – BPS". A dash defines only where the short
 form ends its clause: where a stop, a semicolon, a closing bracket of either kind, a table
-cell's bar, a comma or a colon and a word, a closing spaced dash or a hard line break
+cell's bar, a comma, a colon or a closing spaced dash and a word, or a hard line break
 follow it, or the end of its paragraph or of the text does, past spaces and no-break
 spaces, past a closing quote or emphasis mark, "**… – BPS**.", and past a citation, which
 is no more words of the sentence: a bracket the mask has blanked, `[@key]`, one of
 numbers, commas and dashes, "[12]", a superscript number, "^3^", and LaTeX's
 `~\cite{key}`, which its view blanks. A list item's line ends the clause where the line
 ends, so a list written long form first, "- Basic Payment Scheme – BPS" over "- Common
-Agricultural Policy – CAP", defines each entry; `\item` opens such a line in LaTeX. A hard
+Agricultural Policy – CAP", defines each entry; `\item` opens such a line in LaTeX. The
+item ends there only where the next line is no continuation of it: a blank line, another
+item's, a heading, or LaTeX's next `\item` or `\end`. A hard-wrapped item goes on, as a
+paragraph does. A line with a marker is an item's where the next line is an item of the
+same kind, the same bullet or the same delimiter after a number, or in a list that opens
+its block, with a marker or indented, or opens under a lead-in line ending in a colon, the
+lines between being the items above it, their indented lines and their lazy
+continuations; each line is read through a block quote's `>`. So a list straight under a
+lead-in line, "The schemes were:" over "* Basic Payment Scheme – BPS" and "* Common
+Agricultural Policy – CAP", with any marker, defines each entry, and a prose line in the
+middle of a paragraph that opens "2020) " or "3. " is no item (round 2 of #643, rounds 1
+and 2 of #662). A hard
 line break is a backslash or two spaces before the line's end, as pandoc reads them, and as
 LaTeX's view leaves `\\`. "Basic Payment Scheme – BPS, which pays farmers", "… – BPS:
 farmers received it", "… – BPS [@ec2013]." and "… – BPS – replaced the SPS" define. A
 statistic after a dash goes on past its short form, and defines nothing, whatever follows:
 "higher in older people – OR 1.52", "– OR: 1.52", "– OR [95% CI 1.1–2.0] 1.52", "– OR ≈
-1.52" and "– OR of 1.52" give the odds ratio's value, and "– RDP (2014–2020)" is not read.
+1.52", "– OR of 1.52" and "– OR – 1.52" give the odds ratio's value, and "– RDP
+(2014–2020)" is not read. A value bound to the results stands where the number would, and
+is read as one, though the mask blanks it: "– OR {{results.or}}.", "– OR:
+{{results.or}}", "– OR, {{results.or}}", "– OR – {{results.or}}", "– OR {{lit.key}}" and
+LaTeX's "– OR \mg{results.or}" and "– OR~\mg{results.or}", its tie a space, define nothing
+(round 2 of #643). Only a binding that prints a value is one, a namespace of
+`VALUE_NAMESPACES` in `text/placeholders.py`: an anchor, `{{method.step}}`, prints nothing,
+and a pointer, `{{ref.table.key}}`, prints "Table 2", so "– BPS {{method.payments}}."
+defines (round 1 of #662).
 This replaced, on the author's decision of 2026-11-12, the list of statistic shapes #623
 had gathered, which each new shape got past. A single line break inside a paragraph,
 hard-wrapped text, is read as a space: "– OR" with "1.52" on the next line defines nothing,
@@ -23328,12 +23347,23 @@ Open, recorded as each change landed:
     statistic after a dash in any shape is not read as a second definition.
     Pinned by `tests/test_language.py::test_a_dash_definition_that_does_not_end_its_clause_defines_nothing`
     and `tests/test_language.py::test_a_dash_defines_in_latex_before_a_citation_in_a_list_and_at_a_line_break`.
-  - A statistic after a dash whose short form is followed by a comma and a letter, or by a
-    semicolon, is read as a definition, since these end the clause: after "odds ratio (OR)",
-    "higher in older people – OR, p < 0.001" and "– OR; 95% CI 1.1–2.0" are a second
-    definition of OR, `abbreviation-redefined`, as they were before 2026-11-12.
-    Accepted, as the endings are the author's decision (round 1 of #643).
+  - A statistic after a dash whose short form is followed by a comma or a colon and a
+    letter, or by a semicolon, is read as a definition, since these end the clause: after
+    "odds ratio (OR)", "higher in older people – OR, p < 0.001", "– OR: p < 0.001" and "– OR;
+    95% CI 1.1–2.0" are a second definition of OR, `abbreviation-redefined`, as they were
+    before 2026-11-12. Accepted, as the endings are the author's decision (rounds 1 and 2
+    of #643).
     Pinned by `tests/test_language.py::test_a_statistic_after_a_dash_defines_nothing_whatever_its_shape`.
+  - A closing dash followed by a bracket ends no clause: "The Basic Payment Scheme – BPS –
+    (2015 onwards) replaced it." defines nothing, where it defined before #662, and BPS is
+    then reported as undefined. It follows from the author's decision that a dash defines
+    only where the short form ends its clause: after a closing dash a word is asked for, as
+    after a comma, so that "– OR – 1.52" gives the odds ratio's value (round 1 of #662).
+    Pinned by `tests/test_language.py::test_a_closing_dash_before_a_bracket_defines_nothing`.
+  - A prose line shaped like a marker, "2020) ", is an item under a line ending in ":", beside
+    another such line or past the lookback; and "> # Note" in a quoted list stops the walk up,
+    so an item below it is not read. Accepted.
+    Pinned by `tests/test_language.py::test_a_dash_defines_under_a_lazy_line_a_lead_in_or_before_a_binding_of_no_value` and `tests/test_language.py::test_a_dash_definition_that_does_not_end_its_clause_defines_nothing`.
   - In a paragraph set entirely in bold with no small letter, and in a cell of a table's
     header row with none, read as headings typed in capitals, nothing is reported as
     undefined. An abbreviation nobody defined that stands only in such places is missed:

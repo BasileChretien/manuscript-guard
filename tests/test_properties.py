@@ -2358,11 +2358,9 @@ def _a_citation_after_a_dash_s_short_form_is_words(patch: pytest.MonkeyPatch) ->
 
 def _a_closing_dash_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
     """Round 1 of #643: "the Single Payment Scheme - SPS - replaced it" defined nothing."""
-    space, dash, gap = language_gate._DASH_SPACE, language_gate._DASH, language_gate._LINE_GAP
+    space, dash = language_gate._DASH_SPACE, language_gate._DASH
     one_break, marks = language_gate._ONE_BREAK, language_gate._MARKS
-    _clause_ends_with(
-        patch, rf"|(?:{space}+|{gap}\n{space}*){dash}{space}{one_break}{marks}[^\W\d_]", ""
-    )
+    _clause_ends_with(patch, rf"|{space}+{dash}{space}{one_break}{marks}[^\W\d_]", "")
 
 
 def _a_hard_line_break_ends_no_dash_s_clause(patch: pytest.MonkeyPatch) -> None:
@@ -2411,11 +2409,16 @@ def _a_closing_dash_ends_a_dash_s_clause_before_anything(patch: pytest.MonkeyPat
     _clause_ends_with(patch, rf"{dash}{space}{one_break}{marks}[^\W\d_]", f"{dash}{space}")
 
 
-def _a_closing_dash_on_the_next_line_ends_nothing(patch: pytest.MonkeyPatch) -> None:
-    """Round 1 of #662: under a lead-in line, "- the Farm Investment Fund - FIF" over the
-    next item defined nothing."""
-    space, dash, gap = language_gate._DASH_SPACE, language_gate._DASH, language_gate._LINE_GAP
-    _clause_ends_with(patch, rf"(?:{space}+|{gap}\n{space}*){dash}", f"{space}+{dash}")
+def _a_lead_in_line_opens_no_list(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #662: under "the payments were:", an item followed by one of another kind
+    defined nothing."""
+    patch.setattr(language_gate, "_LEAD_IN", "\N{REPLACEMENT CHARACTER}")
+
+
+def _the_next_item_of_its_kind_makes_no_list(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #662: under a lead-in line with no colon, "* the Peat Restoration Grant -
+    PRG" over "* the Peat Fund" defined nothing."""
+    patch.setattr(language_gate, "_kind", lambda marker: object())
 
 
 def _any_binding_after_a_dash_s_short_form_is_a_value(patch: pytest.MonkeyPatch) -> None:
@@ -22604,8 +22607,12 @@ BROKEN = {
         _a_closing_dash_ends_a_dash_s_clause_before_anything,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
-    "a closing dash on the next line ends no dash's clause": (
-        _a_closing_dash_on_the_next_line_ends_nothing,
+    "a lead-in line opens no list, a dash's clause with it": (
+        _a_lead_in_line_opens_no_list,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "the next item of its kind makes no list, a dash's clause with it": (
+        _the_next_item_of_its_kind_makes_no_list,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "any binding after a dash's short form is a value": (

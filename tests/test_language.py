@@ -424,8 +424,7 @@ def test_a_dash_defines_in_latex_before_a_citation_in_a_list_and_at_a_line_break
     [(" \\mg{results.or}", ["odds ratio"]),
      # Round 1 of #662: a tie before the binding is a space, and an anchor prints nothing,
      # so the definition after it stands.
-     ("~\\mg{results.or}", ["odds ratio"]),
-     (" \\mg{method.odds}", ["odds ratio", "older people"])],
+     ("~\\mg{results.or}", ["odds ratio"])],
 )  # fmt: skip
 def test_a_value_bound_after_a_dash_in_latex_is_a_statistic(
     tmp_path: Path, bound: str, longs: list[str]
@@ -443,6 +442,21 @@ def test_a_value_bound_after_a_dash_in_latex_is_a_statistic(
     assert read == longs, read
 
 
+def test_an_anchor_after_a_dash_s_short_form_leaves_its_definition_standing(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #662: `\\mg{method.odds}` prints nothing, so it is no value, and the short
+    form before it ends its clause at the stop."""
+    (tmp_path / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Methods}\n"
+        "Farmers were paid under the Basic Payment Scheme -- BPS \\mg{method.payments}. It "
+        "held.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    assert "BPS" in [short for read in _latex_read(tmp_path, None)
+                     for _at, short, _long in read.definitions]  # fmt: skip
+
+
 @pytest.mark.parametrize(
     ("written_as", "short"),
     [
@@ -453,6 +467,17 @@ def test_a_value_bound_after_a_dash_in_latex_is_a_statistic(
         # after the line break.
         ("The schemes were:\n- Basic Payment Scheme \N{EN DASH} BPS\n- Common Agricultural "
          "Policy \N{EN DASH} CAP", "BPS"),
+        # Round 2 of #662: the same with another marker, a next item opening with a digit,
+        # and in a block quote; and an item long past the lookback.
+        *((f"The schemes were:\n{one} Basic Payment Scheme \N{EN DASH} BPS\n{two} Common "
+           "Agricultural Policy \N{EN DASH} CAP", "BPS")
+          for one, two in (("*", "*"), ("1.", "2."), ("1)", "2)"))),
+        ("The schemes were:\n- Basic Payment Scheme \N{EN DASH} BPS\n- 2015 reform of the CAP",
+         "BPS"),
+        ("> The schemes were:\n> - Basic Payment Scheme \N{EN DASH} BPS\n> - Common "
+         "Agricultural Policy \N{EN DASH} CAP", "BPS"),
+        ("1. the Farming Fund\n" + "still paid\n" * 250 + "2. the Woodland Grant Scheme "
+         "\N{EN DASH} WGS\n* the Woodland Fund", "WGS"),
         # A binding that prints no value: an anchor, and a pointer.
         ("Farmers were paid under the Basic Payment Scheme \N{EN DASH} BPS "
          "{{method.payments}}.", "BPS"),

@@ -5197,14 +5197,15 @@ ends, so a list written long form first, "- Basic Payment Scheme – BPS" over "
 Agricultural Policy – CAP", defines each entry; `\item` opens such a line in LaTeX. The
 item ends there only where the next line is no continuation of it: a blank line, another
 item's, a heading, or LaTeX's next `\item` or `\end`. A hard-wrapped item goes on, as a
-paragraph does. A line with a marker is an item's only in a block that opens as a list
-does, with a marker or indented, the lines between being the items above it, their
-indented lines and their lazy continuations, so a prose line in the middle of a paragraph
-that opens "2020) " or "3. " is none (round 2 of #643). A list straight under a lead-in
-line, "The schemes were:" over "- Basic Payment Scheme – BPS" and "- Common Agricultural
-Policy – CAP", is one paragraph to pandoc and no list to this rule; its line breaks are
-read as spaces, so the next item's dash is a closing spaced dash and its word ends the
-clause, and each entry defines (round 1 of #662). A hard
+paragraph does. A line with a marker is an item's where the next line is an item of the
+same kind, the same bullet or the same delimiter after a number, or in a list that opens
+its block, with a marker or indented, or opens under a lead-in line ending in a colon, the
+lines between being the items above it, their indented lines and their lazy
+continuations; each line is read through a block quote's `>`. So a list straight under a
+lead-in line, "The schemes were:" over "* Basic Payment Scheme – BPS" and "* Common
+Agricultural Policy – CAP", with any marker, defines each entry, and a prose line in the
+middle of a paragraph that opens "2020) " or "3. " is no item (round 2 of #643, rounds 1
+and 2 of #662). A hard
 line break is a backslash or two spaces before the line's end, as pandoc reads them, and as
 LaTeX's view leaves `\\`. "Basic Payment Scheme – BPS, which pays farmers", "… – BPS:
 farmers received it", "… – BPS [@ec2013]." and "… – BPS – replaced the SPS" define. A

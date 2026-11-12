@@ -160,9 +160,7 @@ _CITED = (rf"(?:{_ONE_BREAK}(?:\[[\s\d,;\-\N{{EN DASH}}\N{{EM DASH}}]*\]"
           rf"|\^[\d,\-\N{{EN DASH}}]+\^))*")  # fmt: skip
 # What follows a short form that ends its clause, a closing mark and a citation between
 # them allowed: a stop, a semicolon, a closing bracket of either kind or a table cell's bar,
-# a comma or a colon and a word, a closing spaced dash and a word (the dash at the start of
-# the next line too, the line break read as a space: a list straight under a lead-in line,
-# which pandoc reads as one paragraph, has its next item's there), a hard line break (a
+# a comma or a colon and a word, a closing spaced dash and a word, a hard line break (a
 # backslash or two spaces before the line's end, as pandoc reads them, and as LaTeX's `\\`
 # is left), or the end of the paragraph or of the text. A single line break inside a
 # paragraph is read as a space. "Basic Payment Scheme - BPS, which pays farmers", "... - BPS
@@ -173,8 +171,7 @@ _CITED = (rf"(?:{_ONE_BREAK}(?:\[[\s\d,;\-\N{{EN DASH}}\N{{EM DASH}}]*\]"
 _CLAUSE_ENDS = re.compile(
     rf"{_MARKS}{_CITED}"
     rf"(?:{_ONE_BREAK}(?:\.(?!\d)|[;)\]|]|[,:]{_ONE_BREAK}{_MARKS}[^\W\d_])"
-    rf"|(?:{_DASH_SPACE}+|{_LINE_GAP}\n{_DASH_SPACE}*){_DASH}{_DASH_SPACE}{_ONE_BREAK}{_MARKS}"
-    rf"[^\W\d_]"
+    rf"|{_DASH_SPACE}+{_DASH}{_DASH_SPACE}{_ONE_BREAK}{_MARKS}[^\W\d_]"
     rf"|(?:{_DASH_SPACE}*\\| {{2,}})\r?\n"
     rf"|{_LINE_GAP}(?:\Z|\n{_LINE_GAP}(?:\n|\Z)))"
 )
@@ -199,6 +196,12 @@ _BOUND = re.compile(
 _LINE_ENDS = re.compile(rf"{_MARKS}{_CITED}{_LINE_GAP}(?:\n|\Z)")
 #: A list item's line as typed, in a block quote or not: "- ", "* ", "1. ", "2) ", `\item`.
 _LIST_ITEM = re.compile(r"[ \t]*(?:>[ \t]*)*(?:(?:[-*+]|\d{1,9}[.)])[ \t]|\\item(?![A-Za-z]))")
+#: A Markdown list item's marker, by its kind: a bullet, or a number's delimiter.
+_MARKER = re.compile(r"[ \t]*(?:>[ \t]*)*(?:(?P<bullet>[-*+])|\d{1,9}(?P<delimiter>[.)]))[ \t]")
+#: A block quote's `>` before a line, each with the space after it.
+_QUOTE = re.compile(r"[ \t]*(?:>[ \t]?)+")
+#: How a lead-in line a list stands under ends: "The schemes were:".
+_LEAD_IN = ":"
 #: What opens a line that ends the item above it: a heading, LaTeX's next `\item` or the
 #: list's `\end{...}`. (A list item's line and a blank line do too.)
 _ENDS_AN_ITEM = re.compile(r"[ \t]{0,3}#|[ \t]*\\(?:item|end)(?![A-Za-z])")
@@ -983,26 +986,52 @@ def _ends_its_clause(prose: str, typed: str, dash: re.Match[str]) -> bool:
 
 
 def _in_a_list_item(typed: str, line: int) -> bool:
-    """Is the line starting at `line` a list item's: opened by a marker, in a block that
-    opens as a list does, with a marker or indented? The lines between are the items above
+    """Is the line starting at `line` a list item's: opened by a marker, with the next line
+    an item of the same kind, or in a list that opens its block, with a marker or indented,
+    or opens under a lead-in line ending in a colon? The lines between are the items above
     it, their indented lines and their lazy continuations, unindented, as `_item_ends` reads
-    them. A line in the middle of a paragraph that opens "2020) " or "3. " is no list item.
-    `\\item` is one wherever it stands."""
-    marked = _LIST_ITEM.match(typed, line)
-    if marked is None:
+    them. Each line is read through a block quote's `>`. A line in the middle of a paragraph
+    that opens "2020) " or "3. " is no list item. `\\item` is one wherever it stands."""
+    listed = _LIST_ITEM.match(typed, line)
+    if listed is None:
         return False
-    if "\\item" in marked.group(0):
+    if "\\item" in listed.group(0):
         return True
-    first = line
+    marked = _MARKER.match(typed, line)
+    below = _MARKER.match(_line_at(typed, len(_line_at(typed, line)) + line + 1))
+    if marked is not None and below is not None and _kind(below) == _kind(marked):
+        return True
+    at = line
     for _step in range(_LIST_LOOKBACK):
-        if first == 0:
-            break
-        above = typed.rfind("\n", 0, first - 1) + 1
-        written = typed[above : first - 1]
-        if not written.strip(" \t\r>") or _ENDS_AN_ITEM.match(written):
-            break
-        first = above
-    return bool(_LIST_ITEM.match(typed, first)) or typed[first : first + 1] in (" ", "\t")
+        here = _line_at(typed, at)
+        if at == 0:
+            return _opens_a_list(here)
+        above = typed.rfind("\n", 0, at - 1) + 1
+        written = _QUOTE.sub("", typed[above : at - 1], count=1)
+        if not written.strip(" \t\r") or _ENDS_AN_ITEM.match(written):
+            return _opens_a_list(here)
+        if written.rstrip(" \t\r").endswith(_LEAD_IN) and _MARKER.match(here):
+            return True
+        at = above
+    return True
+
+
+def _line_at(typed: str, start: int) -> str:
+    """The line of `typed` that starts at `start`, without its line break."""
+    stop = typed.find("\n", start)
+    return typed[start:] if stop < 0 else typed[start:stop]
+
+
+def _kind(marker: re.Match[str]) -> str:
+    """The kind of a list item's marker: its bullet, or a number's delimiter."""
+    return marker["bullet"] or marker["delimiter"]
+
+
+def _opens_a_list(written: str) -> bool:
+    """Does the line `written`, the first of its block, open a list: a marker's or indented,
+    read through a block quote's `>`?"""
+    unquoted = _QUOTE.sub("", written, count=1)
+    return bool(_MARKER.match(written)) or unquoted[:1] in (" ", "\t")
 
 
 def _item_ends(typed: str, after: int) -> bool:

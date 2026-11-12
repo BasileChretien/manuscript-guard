@@ -32046,6 +32046,24 @@ def test_an_rrid_typed_in_the_methods_is_no_number_and_no_abbreviation(project: 
     assert _g2_g14(project) - before == set()
 
 
+def test_a_number_typed_against_an_rrid_is_read_into_it() -> None:
+    """The limit Known gaps records (round 1 of #663): a number typed straight after an RRID,
+    with a dot, a hyphen or a colon and no space, is read as a part of its accession, and G2
+    calls it structural with the rest."""
+    from manuscript_guard.classify import STRUCTURAL, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    classifier = Classifier.load()
+    for typed, atom in (("RRID:AB_123.4 mg", "RRID:AB_123.4"),
+                        ("RRID:CVCL_0030-1", "RRID:CVCL_0030-1"),
+                        ("RRID:AB_2298772:500", "RRID:AB_2298772:500")):  # fmt: skip
+        text = f"The antibody {typed} was used.\n"
+        [found] = find_atoms(text, mask(text))
+        assert found.text == atom
+        assert classifier.classify(found, None, classifier.scan(text)).kind == STRUCTURAL
+
+
 def test_a_number_beside_an_rrid_is_still_a_number(project: Path) -> None:
     _in_the_methods(project, "The antibody was diluted 1:500 (RRID:AB_2298772).")
     report = check_numbers(*_numbers_of(project))

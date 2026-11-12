@@ -26190,6 +26190,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
     or one line break between, is read as before: "AB_2298772" alone, "RRIDs: AB_1, AB_2",
     "rrid:AB_1", "**RRID:**AB_1" and "RRID:  AB_1" leave a number to bind and a name from
     the code. Accepted.
+  - A number typed straight after an RRID, with a dot, a hyphen or a colon and no space, is
+    read into its accession, and G2 calls it structural with the rest: "RRID:AB_123.4 mg",
+    "RRID:CVCL_0030-1", "RRID:AB_2298772:500". Pinned by
+    `tests/test_corruption.py::test_a_number_typed_against_an_rrid_is_read_into_it`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

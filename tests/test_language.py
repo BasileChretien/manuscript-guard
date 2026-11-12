@@ -257,7 +257,7 @@ def test_a_short_form_after_a_spaced_dash_is_defined(project: Path, dash: str) -
     report = written(
         project,
         f"# Methods\n\nFarmers received the Basic Income Support for Sustainability{dash}"
-        "BISS from the state. The BISS was paid.\n",
+        "BISS, from the state. The BISS was paid.\n",
     )
     assert not report.findings, found(report)
 
@@ -289,6 +289,69 @@ def test_a_short_form_after_a_dash_and_a_comma_before_words_is_defined(project: 
         "farmers. The BPS was paid.\n",
     )
     assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    "ending",
+    [". It pays farmers.", "; it pays farmers.", ") to pay farmers.", "] to pay farmers.",
+     ", which pays farmers.", ",\nwhich pays farmers.", "**. It pays farmers.",
+     "\N{RIGHT DOUBLE QUOTATION MARK}, which pays farmers.", "\n\nIt pays farmers.", ""],
+)  # fmt: skip
+def test_a_dash_defines_where_its_short_form_ends_the_clause(project: Path, ending: str) -> None:
+    """The author's decision of 2026-11-12: a dash defines where the short form is followed
+    by a stop, a semicolon, a closing bracket, a comma and a word, or the end of its
+    paragraph, a closing quote or emphasis mark between them allowed."""
+    opening = {")": "(", "]": "[", "*": "**", "\N{RIGHT DOUBLE QUOTATION MARK}":
+               "\N{LEFT DOUBLE QUOTATION MARK}"}.get(ending[:1], "")  # fmt: skip
+    report = written(
+        project,
+        f"# Methods\n\nFarmers joined {opening}the Basic Payment Scheme \N{EN DASH} BPS"
+        f"{ending}\n\n# Results\n\nThe BPS was paid.\n",
+    )
+    assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    "value",
+    # The final check of #623 (an agricultural-policy preprint of the real-paper corpus
+    # led there): an interval in square brackets before the value, "≈", "of", and the
+    # value on the next line of the paragraph.
+    [" [95% CI 1.1\N{EN DASH}2.0] 1.52", " \N{ALMOST EQUAL TO} 1.52", " of 1.52", "\n1.52",
+     " .52"],
+)  # fmt: skip
+def test_a_statistic_after_a_dash_defines_nothing_whatever_its_shape(
+    project: Path, value: str
+) -> None:
+    configured(project, language={"known_abbreviations": ["CI"]})
+    report = written(
+        project,
+        "# Results\n\nThe odds ratio (OR) was computed. The risk was higher in older people "
+        "\N{EN DASH} OR" + value + " in all.\n",
+    )
+    assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    "written_as",
+    ["the Basic Payment Scheme \N{EN DASH} BPS was introduced in 2015.",
+     "the Basic Payment Scheme \N{EN DASH} BPS\nwas introduced in 2015.",
+     "the Basic Payment Scheme \N{EN DASH} BPS [12].",
+     "- the Basic Payment Scheme \N{EN DASH} BPS\n- the Common Agricultural Policy",
+     "| the Basic Payment Scheme \N{EN DASH} BPS | 3 |"],
+)  # fmt: skip
+def test_a_dash_definition_that_does_not_end_its_clause_defines_nothing(written_as: str) -> None:
+    """A limit written down in DESIGN.md's Known gaps: a short form after a dash with more
+    after it than the end of its clause is not read as defined there."""
+    assert "BPS" not in [short for _at, short, _long in _definitions(written_as)]
+
+
+def test_a_dash_short_form_with_words_after_it_is_reported_undefined(project: Path) -> None:
+    report = written(
+        project,
+        "# Methods\n\nThe Basic Payment Scheme \N{EN DASH} BPS was introduced. The BPS "
+        "was paid.\n",
+    )
+    assert codes(report) == {"abbreviation-undefined"}, found(report)
 
 
 @pytest.mark.parametrize(

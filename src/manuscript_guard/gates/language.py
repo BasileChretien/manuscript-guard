@@ -140,16 +140,24 @@ _CLOSES_WITH = re.compile(
 # "Basic Income Support for Sustainability - BISS", "Basic Payment Scheme \N{EN DASH} BPS"
 # (an agricultural-policy preprint of the real-paper corpus), a hyphen, an en dash or an em
 # dash, or "--" and "---", which pandoc prints as those; a no-break space is a space. The
-# whole word, not a part of `BPS-based`. And one followed by an equals sign or a number, or
-# by a colon, a comma or an opening bracket and a number, past spaces of either kind, gives
-# a statistic and defines nothing: "higher in older people - OR, 1.52", "- OR: 1.52" and
-# "- OR (95% CI 1.1-2.0) 1.52" are the odds ratio's value (rounds 1 and 2 of #623), where
-# "Basic Payment Scheme - BPS, which pays farmers" defines.
+# whole word, not a part of `BPS-based`. Only a short form that ends its clause defines:
+# one followed by a stop, a semicolon, a closing bracket of either kind, a comma and a word,
+# or the end of its paragraph, a closing quote or emphasis mark between them allowed, and
+# a line break inside the paragraph read as a space. "Basic Payment Scheme - BPS, which
+# pays farmers" and "... - BPS." define; a statistic after a dash goes on, "older people -
+# OR, 1.52", "- OR [95% CI ...] 1.52", "- OR of 1.52", and defines nothing (the author,
+# 2026-11-12, in place of the exceptions of #623). A stop before a digit is a decimal point.
+# What this misses is in DESIGN.md's Known gaps: "- BPS was introduced".
 _DASH_SPACE = r"[ \t\N{NO-BREAK SPACE}]"
+#: Spaces of any kind on one line, and the same across at most one line break.
+_LINE_GAP = r"[ \t\r\N{NO-BREAK SPACE}]*"
+_ONE_BREAK = rf"{_LINE_GAP}(?:\n{_LINE_GAP})?"
 _DASHED = re.compile(
     rf"(?<=\S){_DASH_SPACE}+(?:---?|[-\N{{EN DASH}}\N{{EM DASH}}]){_DASH_SPACE}+"
     rf"(?P<short>{_PARTS})(?![^\W_]|-[^\W_])"
-    rf"(?!{_DASH_SPACE}*(?:=|(?:[:,(]{_DASH_SPACE}*)?\d))"
+    rf"(?=[{re.escape(_QUOTES)}]*"
+    rf"(?:{_ONE_BREAK}(?:\.(?!\d)|[;)\]]|,{_ONE_BREAK}[{re.escape(_QUOTES)}]*[^\W\d_])"
+    rf"|{_LINE_GAP}(?:\Z|\n{_LINE_GAP}(?:\n|\Z))))"
 )
 #: The brackets a long form opens and closes, round and square: a letter of its short form
 #: is not found inside one it opens (`_inside_a_bracket`).

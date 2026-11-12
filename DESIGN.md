@@ -5050,12 +5050,21 @@ letters: the short form closing a bracket after a semicolon or a comma, its long
 before the separator inside the bracket, "(i.e. time to task failure; TTF)"; and the short
 form after a dash with a space on either side, a hyphen, an en dash or an em dash, or "--"
 and "---" as pandoc's smart dashes are typed, a no-break space counting as a space, its long
-form before the dash, "Basic Payment Scheme – BPS". A dash gives a statistic and no
-definition where an equals sign or a number follows the short form, or a colon, a comma
-or an opening bracket and a number, past spaces and no-break spaces: "higher in older
-people – OR, 1.52", "– OR: 1.52" and "– OR (95% CI 1.1–2.0) 1.52" give the odds ratio's
-value, and "Basic Payment Scheme – BPS, which pays farmers" defines. A bracket is read
-otherwise there, as before: "the signal detection ratio (SDR, 2.4)" defines. A hyphen with
+form before the dash, "Basic Payment Scheme – BPS". A dash defines only where the short
+form ends its clause: where a stop, a semicolon, a closing bracket of either kind, or a
+comma and a word follow it, or the end of its paragraph or of the text does, past spaces
+and no-break spaces and past a closing quote or emphasis mark, "**… – BPS**.". "Basic
+Payment Scheme – BPS, which pays farmers" and "… – BPS." define. A statistic after a dash
+goes on past its short form, and defines nothing, whatever follows: "higher in older people
+– OR, 1.52", "– OR: 1.52", "– OR [95% CI 1.1–2.0] 1.52", "– OR ≈ 1.52" and "– OR of
+1.52" give the odds ratio's value, and "– RDP (2014–2020)" is not read. This replaced, on
+the author's decision of 2026-11-12, the list of statistic shapes #623 had gathered, which
+each new shape got past. A single line break inside a paragraph, hard-wrapped text, is
+read as a space: "– OR" with "1.52" on the next line defines nothing, and "– BPS" with
+"which pays" on the next line has a word after it and no comma, so defines nothing. A stop
+before a digit is a decimal point, "– OR .52", and ends nothing. The definitions this
+misses are in Known gaps. A bracket is read otherwise, as before: "the signal detection
+ratio (SDR, 2.4)" defines. A hyphen with
 no space joins a word. The short form in a definition may be anything with two
 capitals, or one that is not the capital of a word (`mL`), or a capital and a digit. A
 plural defines its singular: `RORs` defines `ROR`, and `mAbs` after "monoclonal antibodies"
@@ -22483,6 +22492,14 @@ Open, recorded as each change landed:
     after a semicolon or a comma, "(i.e. time to task failure; TTF)"; one in its middle,
     "(as before, TTF, i.e. time to task failure)", defines nothing.
     Pinned by `tests/test_language.py::test_a_bracket_s_end_or_a_dash_defines_only_by_the_letter_rule`.
+  - A definition with a dash is read only where the short form ends its clause (see "A
+    definition is read by its shape"), so one with more words after it and no comma,
+    "Basic Payment Scheme – BPS was introduced", defines nothing, and BPS is then reported
+    as undefined. So does one before a citation, "– BPS [12].", one closing a list item
+    with the next item on the next line, and one closing a table's cell, "– BPS |", each of
+    which defined before 2026-11-12. Accepted, as the author decided, so that a
+    statistic after a dash in any shape is not read as a second definition.
+    Pinned by `tests/test_language.py::test_a_dash_definition_that_does_not_end_its_clause_defines_nothing`.
   - In a paragraph set entirely in bold with no small letter, and in a cell of a table's
     header row with none, read as headings typed in capitals, nothing is reported as
     undefined. An abbreviation nobody defined that stands only in such places is missed:

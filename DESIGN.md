@@ -1994,8 +1994,11 @@ The result is compiled and packed by the code above, and checked three times:
 - A citation in a hook's body, `\AtBeginDocument{\nocite{smith2019}}`, is not recorded, as one
   in a definition's body is not, and G7 warns that its key is cited nowhere (round 1 of
   step 5).
-- `sync-bib` refuses a LaTeX manuscript the reader refuses anywhere, since the keys after the
-  refusal are not read; `lookup` looks up the keys before it (round 1 of step 5).
+- `sync-bib` and `lookup` refuse a LaTeX manuscript the reader refuses anywhere, since the
+  keys after the refusal are not read (round 1 of step 5; `lookup` since round 1 of #626,
+  where it looked up the keys before the refusal). Either refuses on a refusal after the last
+  citation too, where no key is lost, and on one in the supplement's document, which hides
+  only the supplement's keys after it. Accepted.
 - `\nocite{*}` cites what `literature/references.bib` holds, not a bibliography a class or a
   `\bibliography{}` names elsewhere (step 5).
 - G4 counts an inline formula as one word and a displayed one as none; Markdown's count reads
@@ -2122,6 +2125,11 @@ The result is compiled and packed by the code above, and checked three times:
 - The reader does not refuse a bare `^` or `_` outside maths, which LaTeX stops on: `check`
   reads the paper, and the build names the error at its line (step 9's agreement test passes
   such a file over).
+- A typed table inside maths is read as prose only where it is one of the typed tables
+  (`tabular`, `tabular*`, `tabularx`, `tabulary`, `longtable`; `_sets_text` in
+  `text/latex/mask.py`). A `minipage`, a `tblr`, a `NiceTabular` or an `xltabular` inside an
+  equation is read as maths, so a cell's `$x$` there is refused as "maths is opened inside
+  maths", though TeX sets the cell as text (#620). Accepted.
 - MiKTeX does not honour `openin_any`: under it a manuscript can `\input` a file outside the
   copy, by a path that climbs out of it, and print it. TeX Live refuses that path. A manuscript
   that names a file of its own outside its folders, `\includegraphics{../figures/x}` typed by
@@ -9947,8 +9955,8 @@ contradiction read of a header n (`over-header-n`); fewer is missing data. Over 
 than (k + 1) / 2 for k categories, rounded down (`within_rounding`), is no contradiction:
 rounding each of k weighted counts to a whole number moves it by half a count at most, and
 rounding the weighted n once moves it by half a count too, so the printed counts can add up
-to (k + 1) / 2 over the printed n, and both are whole. Three counts of 11.5 print 36
-against an n of 34.5 printed 34 (round 1 of #625; k / 2 alone allowed one). The audit says it as a note, which `--strict` does not count, and `--json` counts it apart
+to (k + 1) / 2 over the printed n, and both are whole. Rounded half to even, as R and
+Python round, three counts of 11.5 print 36 against an n of 34.5 printed 34 (round 1 of #625; k / 2 alone allowed one). The audit says it as a note, which `--strict` does not count, and `--json` counts it apart
 (`over_header_n_rounding`). Basile, 2026-11-11, after a 22-country survey in the corpus of
 52 real preprints whose weighted, rounded tables gave 24 failures, each one to three over.
 
@@ -16383,6 +16391,18 @@ been sorted yet.
     `tests/test_corruption.py::test_one_estimate_under_two_names_declared_one_fails_when_it_parts`,
     `tests/test_corruption.py::test_a_p_value_under_one_comparator_in_two_forms_passes` and
     `tests/test_corruption.py::test_a_p_value_under_another_comparator_or_bound_fails`.
+  - A bound behind a comparator is compared exactly, and a number without one within its
+    rounding, but no test tells the two apart: "<0.0012" declared the same as "<0.001" fails
+    and would pass if bounds were compared within a rounding, and no case holds it. Nor
+    does a test hold that "<=" and "≤" are one comparator (`_COMPARATOR`). Accepted.
+  - The finding's hint says two displays "may differ by a leading zero, trailing zeros or a
+    rounding, and by nothing else, a comparator and its bound included", which can be read
+    as letting a bound be rounded; a bound may differ in form only. Accepted.
+  - `shown_in` reads "<10⁻⁶" as 10 with the unit "⁻⁶", as a superscript is an exponent
+    only after "× 10": a GWAS bound typed so, declared the same as "<1e-6", fails as
+    another unit, where "<1 × 10⁻⁶" passes. Accepted.
+  - `_same_form` is held by the cases of `tests/test_corruption.py` only, with no
+    generated input and no BROKEN case. Accepted.
 - **G8 holds only the arithmetic an analysis declares.** `em.relation` and `em.flow` say
   which results are a sum, a difference, a ratio or an order of which, and G8 checks those.
   A subgroup total nobody declared is not checked, and nothing searches the prose for numbers
@@ -17957,6 +17977,18 @@ Open, recorded as each change landed:
   reports a number written in the Methods where it could have let it through, and G15
   reads no model's name. `methods-not-found` is said only where the project has analysis
   code, since a case report or a narrative review has no Methods.
+  - A subsection titled "Method", "Methodology" or "Materials and method" alone under
+    "Results and discussion" is still a Methods to `methods_sections`, so to G4, G7, G8, G9
+    and the audit: `NOT_METHODS_SECTIONS` rules out only a title that is a Results-type
+    name and nothing more, "Results" or "3. Discussion", and "Results and discussion" is
+    not one. Under "Results" such a subsection is no Methods (round 1 of #624). Accepted.
+  - The audit looks for an Abstract's identifier among the words of the Methods and the
+    Results stripped of stops, brackets, emphasis, quotes, a possessive and a colon
+    (`_words` in `auditing/abstract.py`, #624). The generated papers print it with a stop,
+    brackets or a comma only, and no BROKEN case strips one shape alone, so "*rs75015950*",
+    "rs75015950's" and "chr15:1234" are held only by the cases of
+    `tests/test_audit.py::test_an_identifier_is_found_in_emphasis_quotes_a_possessive_or_before_a_colon`.
+    Accepted.
 - **A body under an abstract heading of a higher level is the abstract's.** With
   `# Abstract` and the paper's sections at `##`, every section is inside the abstract: G4
   finds none of the required sections, and the word count has the whole body as abstract,
@@ -20291,6 +20323,16 @@ Open, recorded as each change landed:
   leaves the claim beside it vague. Pinned by
   `tests/test_writing.py::test_a_place_and_a_year_in_brackets_are_taken_for_a_citation`
   and `tests/test_writing.py::test_a_range_in_brackets_is_taken_for_a_numbered_citation`.
+  - An organisation of two words and a year, "(Statistics Canada, 2022)" or "(Ministry of
+    Health, 2020)", "of" not counted, is no citation, so a claim beside it is reported
+    vague, as before #621. Two words were let go so that no work reads two ways (round 1
+    of #621). Accepted.
+  - The short months are looked for among every word of the bracket, so a surname that is
+    one, "(Jun and Smith, 2019)", "(Smith and Mar, 2019)", makes it no citation, and the
+    claim beside it is reported vague. Accepted.
+  - "(Dec. 2019)" is no citation because its stop matches no name, not because of the
+    short months: it never reaches `_SHORT_MONTHS`, so it holds nothing of that list.
+    Accepted.
 - **A label is read only beside its binding, and only what is written.** A level or a
   spread's label written in another sentence, or before another binding of the sentence,
   is not read: "the 90% intervals are below" over a list of bounds says nothing of them. A
@@ -24125,6 +24167,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   English title by its opening word, as they did before these languages were added, so
   "References and notes" is the list to them, and so is "Bibliography of the trials
   searched"; the audit and the recycling check take neither.
+  - `Section.is_references` does not take a footnote's mark off a title before it reads the
+    title's end, so "# Reference list[^1]" is not the list to G4's count and G14, where
+    the recycling check takes the mark off and reads it as the list; "# References[^1]",
+    read by its opening word, is the list to both. No regression of #623. Accepted.
 - **An interleukin is a term, and other names with digits are not.** The shipped terms hold
   the interleukins HGNC names, abbreviated with a hyphen and written out with one: "IL4",
   "interleukin 4" and a chemokine such as CXCL10 are numbers to G2 and to the audit alike.
@@ -25732,6 +25778,20 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_corruption.py::test_what_looks_like_a_placeholder_and_is_prose_passes`,
   `tests/test_audit_sections.py::test_categories_over_their_n_by_no_more_than_rounding_are_a_note`,
   `tests/test_margins.py::test_twenty_categories_over_their_n_by_ten_are_rounding`.
+  - The bound is reached only under rounding half to even, as R and Python round: 11.5
+    prints 12 and an n of 34.5 prints 34. Rounded half up, as Excel, SAS and Stata round,
+    the n of 34.5 prints 35: the n is never printed a full half count low, and the counts
+    come to less than (k + 1) / 2 over it. For an odd number k of categories that bound is
+    whole, so a table exactly (k + 1) / 2 over, three categories two over, holds a real
+    error, and it is said as a note. Accepted.
+  - The capitals rule takes a marker by TABLE or FIGURE, not FIG: "[INSERT FIG IV]" fails
+    as a slot, where "[INSERT FIGURE IV]" and "[Insert Fig.4 here]" pass. Accepted.
+  - A Roman number takes no letter after it, as an Arabic one does: "[Insert Table 4a
+    here]" passes and "[Insert Table IVa here]" fails as a slot. Accepted.
+  - X and XX are left out of the Roman numbers, since a template writes a number still to
+    fill as X, so an IEEE paper's tenth table's marker, "[Insert Table X here]", fails as a
+    slot. Pinned by
+    `tests/test_corruption.py::test_a_placeholder_in_the_manuscript_fails[[Insert Table X here]]`.
 - **G14's edits are held back wherever a quotation or another edit may stand** (rounds 1 and
   2 of #636). A word after a straight double mark its paragraph has not closed is taken to
   be quoted, so an inch mark, `a 2" incision`, holds back the respelling of every later
@@ -25795,6 +25855,20 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A value whose display carries a comparator of its own, "<0.001", is held to it by the
     emitter, and a sign typed beside it is not compared; nor is a `{{lit.…}}` value, which is
     typed from its source rather than emitted. Accepted.
+  - A plural compared with a threshold fails a true sentence: "all ps <
+    {{results.alpha_bonf}}" with ps below a corrected alpha of 0.008333 printed "0.0083"
+    fails, as the value is above the number printed. Basile chose the trade-off: fail
+    plurals, warn singulars (round 2 of #629). Accepted.
+  - After a binding, a sign before a word that opens with a symbol in italics, or a symbol
+    and an index, is read as a singular "<": "{{results.a}} < *p*-value", "< *t*-test" and
+    "< t_1" warn as "{{results.a}} < t" would, where "< p-value" is not read. Accepted.
+  - A sign typed against the statistic after a binding is not read, since a letter right
+    after "<" is taken for an HTML tag's: "{{results.t_min}} <ts" and pandoc's escaped
+    "{{results.t_min}} \<ts" compare nothing, where "\< ts" is read. Accepted.
+  - The tag's guard and the p value written out are pinned before a binding only: the
+    generated inputs put "<p>" and "all p-values >" there, and after a binding only "</p>",
+    which no sign before a symbol could read. So "{{results.a}} <p>" read as a comparison,
+    or "{{results.a}} < p-values" not read, would fail no example. Accepted.
 
 - **A figure placed the ordinary way is reviewed, described and read for its colours, and
   its numbers are not traced.** Basile decided on 2026-11-11, after arXiv 2409.10841, that
@@ -25820,11 +25894,23 @@ What papers converted from Word showed (see "What papers converted from Word sho
     it stands, and an imported file's folder is tried before it. Accepted.
   - A file written or linked outside the project, by a path from the root of the disk, one
     that climbs out with `..`, or through a link, is checked where it is, its records kept
-    there, named by its file name alone in what `check` says and in `alt-text.md`, so that no
-    folder of the author's is submitted, and named in a note (`figure-outside-project`). A
+    there, named by its file name alone in the messages of `check` and in `alt-text.md`, so
+    that no folder of the author's is submitted, and named in a note
+    (`figure-outside-project`). The location `check` prints beside a finding, and its
+    `--json`, still give the file's path from the root of the disk. A
     `.webp` is reviewed and described, and its colours are said to be unread, as a PNG's
     are. Pinned by
     `tests/test_placed_figures.py::test_a_figure_through_a_link_out_of_the_project_is_checked_and_named`.
+  - A figure written outside the project is named by its file name alone, so two from
+    different folders with one name are named alike: `alt-text.md` then holds two
+    "## x.svg". Accepted.
+  - In a project opened through a link, a figure written by its real path from the root of
+    the disk is inside the project, where the link leads, and gets no note, though the path
+    is one from the root of the disk and `check` names the figure by its file name alone.
+    Accepted.
+  - `review --record-figure` given a name with a folder that holds no placed file of that
+    name, `other/forest`, reads the emitted `figures/forest` and leaves the folder aside
+    (`_figure_named` falls back to `emitted[:1]`), as before #630. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

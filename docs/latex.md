@@ -28,8 +28,11 @@ Zotero and `sync-bib` or by copying the file there, and have the document name i
 `\bibliography{references}`. Then run `check`: a refusal names a line the reader cannot
 read exactly ("What the reader reads" below). `lookup` asks the registries about each
 reference the `.tex` files cite, the keys G7 reads, by the DOI or PMID of its entry in the
-library; an entry with neither is searched for by its title. A part the reader refuses
-hides the citations after it, so `lookup` refuses the paper until it is put right.
+library. An entry with neither is searched for by its title, unless `paper.yaml` lists it
+under `lookup: not_indexed`, its title cannot be searched for (none, too few words, or
+mostly in another script than Latin), or its DOI or PMID is malformed; `lookup` says which.
+A part the reader refuses hides the citations after it, so `lookup` refuses the paper until
+it is put right, as `sync-bib` does, wherever the part stands, the supplement included.
 
 A `.tex` file that the class or a package you load inputs, such as a list of journals a
 journal's class keeps in its own folder, is the class's: `check` does not read it. One that

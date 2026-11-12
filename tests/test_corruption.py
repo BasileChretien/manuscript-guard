@@ -2692,8 +2692,7 @@ def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
 ) -> None:
     """Task 3: the Abstract's interval held to its one counterpart in the Results, two of its
     numbers agreeing and the third not, is a conflict --strict counts; an Abstract number not
-    found in the Methods, the Results or the tables is said and not counted (the author,
-    2026-10-28)."""
+    found where the paper reports is said and not counted (the author, 2026-10-28)."""
     from manuscript_guard.cli import main
 
     paper = tmp_path / "paper.md"
@@ -2704,6 +2703,87 @@ def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
     assert main(["audit", str(paper), "--strict"]) == 0
     paper.write_text(text.replace("1.2-1.9)", "1.2-1.97)"), encoding="utf-8")
     assert main(["audit", str(paper), "--strict"]) == 1
+
+
+def test_an_abstract_number_changed_under_a_section_of_its_own_name_is_not_found(
+    tmp_path: Path,
+) -> None:
+    """A number of the Abstract reported under "Participants" is found there, which it was
+    not before (the real-paper corpus, 2026-11-11); changed there, it is not found, and
+    neither is one only the Discussion gives."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+
+    def not_found(participants: str, discussion: str) -> list[str]:
+        paper.write_text("# Paper\n\n## Abstract\n\nWe enrolled 1,284 adults.\n\n"
+                         f"## Participants\n\n{participants}\n\n## Results\n\nIt was so.\n\n"
+                         f"## Discussion\n\n{discussion}\n", encoding="utf-8")  # fmt: skip
+        return [c.text for c in audit([paper], None).abstract.not_found]
+
+    assert not_found("We enrolled 1,284 adults.", "It was so.") == []
+    assert not_found("We enrolled 1,248 adults.", "It was so.") == ["1,284"]
+    assert not_found("We enrolled them.", "We enrolled 1,284 adults.") == ["1,284"]
+
+
+def test_an_abstract_number_only_a_footnote_gives_is_not_found(tmp_path: Path) -> None:
+    """Round 1 of #641: a .docx's footnotes are read after its body, under its last heading,
+    and searched there, so the Abstract's "45 patients" beside the Results' 54 counted as
+    found in a footnote's citation, "Lancet 2019;12:45-67". A note is never where the paper
+    reports."""
+    import zipfile
+
+    from manuscript_guard.audit import audit
+
+    namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+
+    def para(text: str, style: str = "") -> str:
+        styled = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ""
+        return f"<w:p>{styled}<w:r><w:t>{text}</w:t></w:r></w:p>"
+
+    body = (para("Abstract", "Heading1") + para("We followed 45 patients.")
+            + para("Methods", "Heading1") + para("We read the records.")
+            + para("Results", "Heading1")
+            + '<w:p><w:r><w:t>We followed 54 patients.</w:t></w:r><w:r>'
+              '<w:footnoteReference w:id="1"/></w:r></w:p>'
+            + para("References", "Heading1") + para("Doe J. A title. BMJ. 2020;1:2."))
+    notes = (f"<w:footnotes {namespace}><w:footnote w:id=\"1\"><w:p><w:r><w:t>Smith J. "
+             "Lancet 2019;12:45-67.</w:t></w:r></w:p></w:footnote></w:footnotes>")
+    path = tmp_path / "paper.docx"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
+                                              "</w:body></w:document>")  # fmt: skip
+        archive.writestr("word/footnotes.xml", notes)
+    read = audit([path], None).abstract
+    assert read.compared and [c.text for c in read.not_found] == ["45"]
+
+
+def test_a_typed_title_paper_s_abstract_interval_that_differs_fails_an_audit(
+    tmp_path: Path,
+) -> None:
+    """A Word paper with no heading style, its titles typed in capitals and numbered in no
+    bold, had no Abstract to the audit, and a wrong interval in its Abstract was compared
+    with nothing (the real-paper corpus, 2026-11-11). Its typed titles are its headings now,
+    and the conflict is counted by --strict."""
+    import zipfile
+
+    from manuscript_guard.cli import main
+
+    def para(text: str) -> str:
+        return f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>"
+
+    def docx(abstract: str) -> Path:
+        body = (para("ABSTRACT") + para(abstract) + para("2. METHODS") + para("We did it.")
+                + para("3. RESULTS") + para("The odds ratio was 1.52 (95% CI 1.21-1.89)."))
+        path = tmp_path / "paper.docx"
+        namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
+                                                  "</w:body></w:document>")  # fmt: skip
+        return path
+
+    assert main(["audit", str(docx("The OR was 1.5 (95% CI 1.2-1.9).")), "--strict"]) == 0
+    assert main(["audit", str(docx("The OR was 1.5 (95% CI 1.2-1.97).")), "--strict"]) == 1
 
 
 def test_an_abstract_identifier_other_than_the_methods_is_not_found(tmp_path: Path) -> None:

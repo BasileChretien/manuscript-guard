@@ -5407,9 +5407,10 @@ of a paper that keeps its bold lines. `check` gives G14 its stage, as it gives G
 theirs; called with none, G14 says nothing of it. A bold line in Markdown is not taken for a
 heading. A Word paper with no paragraph in a heading style is another matter (Basile,
 2026-11-09, after the web audit of such a paper gave mostly false warnings): there, a
-paragraph wholly in bold whose words are a section's name alone, by the closed list a PDF's
-lines are read by (`text.section_names.SECTION_NAMES`), is made a heading by `init --from`
-and read as one by the audit, and the audit's report says how the headings were read.
+paragraph whose words are a section's name alone, by the closed list a PDF's lines are read
+by (`text.section_names.SECTION_NAMES`), is made a heading by `init --from` and read as one
+by the audit, in bold or not (Basile, 2026-11-11), and the audit's report says how the
+headings were read.
 
 **Every finding is a warning, at every stage.** The reading of a definition is good and not
 exact, and a name in capitals is not an abbreviation. The first plan for this gate had an
@@ -10187,8 +10188,19 @@ Results text can share a line with the `\section` after it, round 1 of #472). Ea
 is placed by its own headings: round 1 carried a split paper's headings from one file into
 the next, as G8 does, and took a file for a supplement by its name, which guessed, so round
 2 put it back (see Known gaps). Where the paper reports is
-the Methods, the Results, every table of every file, and the whole of a file whose document
-has no Abstract, a supplement. Each number of the Abstract the classifier leaves unexplained
+every section but the Abstract, the Introduction and the sections that hold its material under
+another name ("Related work", "Literature review", "Theoretical framework",
+"Hypotheses"), the Discussion, a conclusion, a summary of the paper ("Author summary",
+"Highlights", an Abstract in another language), the statements, the reference list and
+a "Limitations" or an "Interpretation" of its own, the Methods and the Results as G8 reads them among
+them (Basile, 2026-11-11: a "Participants" or an appendix was not searched, and its numbers
+were said not found; round 1 of #641 left out the summaries, the material of the
+Introduction, the back matter and the notes, which a wider search took for reports), every
+table of every file, and the whole of a file whose document has no Abstract, a supplement.
+A note is never searched, nor the title page above the Abstract's heading. The names of the
+Introduction's material and of a summary are closed lists
+(`text.section_names.INTRODUCTION_MATERIAL`, `PAPER_SUMMARIES`), read by the audit's
+Abstract against Results alone: G7 and G8 do not read "Related work" as the Introduction. Each number of the Abstract the classifier leaves unexplained
 is looked for in what the paper reports: found as printed, found as a rounding of a number
 printed to more places ("53%" for "53.3%", the author, 2026-10-28), or not found. A number
 a space was left out of is read, as no other number with letters in it is: one typed
@@ -10606,8 +10618,8 @@ lines of a paragraph Word breaks inside (Shift+Enter), which pandoc ends with a 
 "\r\n" after it on Windows, are one; what stands before the first heading is "before the
 first heading", and a document's notes, read after its body or written by pandoc after its
 last paragraph ("[^1]: ..."), "the notes". The headings are those the audit reads for its
-Abstract (a heading style, or a title in bold where the document has none,
-`text.docx.bold_heading_levels`) and, in the converted text, those `split_sections` reads,
+Abstract (a heading style, or a typed title where the document has none,
+`text.docx.typed_heading_levels`) and, in the converted text, those `split_sections` reads,
 their bold, attributes and escapes taken off; a heading with no words is none. The report
 keeps both placers apart, the document's by its path (`AuditReport.places`) and the
 converted text's on each run of the gates (`GateRun.places`, `JournalRun.places`), carried on
@@ -24419,29 +24431,55 @@ Open, recorded as each change landed:
   nothing says so. An abstract in another style, or under a line "Abstract" in bold in a
   paper that uses a heading style elsewhere, stays in the comment, and its numbers are read
   by no gate until it is moved out.
-- **A Word paper's titles in bold are headings only by a closed list of names.** In a paper
+- **A Word paper's typed titles are headings only by a closed list of names.** In a paper
   with no paragraph in a heading style, `init --from` and the audit take as a heading a
-  top-level paragraph wholly in bold, as pandoc reads bold (a run's own `w:b` or its
-  character style's, not a style that one is based on, nor its paragraph style's: pandoc
-  3.9.0.2 reads neither, `tests/test_from_word.py::test_the_audit_and_init_take_the_same_titles_in_bold`
-  holds the two readings together), whose words are a section's name alone from
-  the list a PDF's lines are read by (`text.section_names.SECTION_NAMES`). A bold "Study
-  design and setting" or "Statistical analysis" stays a paragraph, its section run on under
-  the heading before it; a title numbered by Word's own numbering is a list's item to pandoc
-  and a numbered line to the audit, and no heading to either; a title holding a link or a
-  note's mark is none, as pandoc reads the link or the note in it, nor is one in a text box
-  to the audit (a link written as a field, `w:fldSimple` or a HYPERLINK `w:instrText`, is a
-  title to the audit, and what pandoc makes of it and of a text box's bold paragraph is not
-  held by a test, so there the two readers may differ);
-  and a paper that uses a heading style anywhere is read by its styles alone, its bold titles
-  text. Where the titles cannot be placed, a structured abstract's parts with no
-  Introduction after them, the order of its parts never starting again and no title it
-  cannot hold among them, the audit places nothing and says so, and `init --from` makes each
-  a heading of level 1, so the Abstract ends at its first part. The title page is set aside
-  only above a first heading that opens a paper, its Abstract or its Introduction: a short
-  paper whose first title in bold is its "References" keeps its text where every gate reads
-  it. A heading is written with the title's own words, its number kept. Pinned by
-  `tests/test_from_word.py::test_a_word_paper_titled_in_bold_has_its_sections_made_headings`.
+  top-level paragraph of words, in bold or not, numbered as typed or not, in capitals or not
+  (Basile, 2026-11-11, after 52 real preprints: "ABSTRACT" and "3. RESULTS" typed as plain
+  paragraphs left 79% of the Abstracts judged unfound), whose words are a section's name
+  alone from the list a PDF's lines are read by (`text.section_names.SECTION_NAMES`), its
+  first letter a capital. `tests/test_from_word.py::test_the_audit_and_init_take_the_same_typed_titles`
+  holds the two readings together. Pinned by
+  `tests/test_from_word.py::test_a_word_paper_titled_in_bold_has_its_sections_made_headings`,
+  `tests/test_from_word.py::test_a_word_paper_with_typed_titles_has_them_made_headings`.
+  - A "Study design and setting", a "Statistical analysis", a "Participants" or a "2.1
+    Data" stays a paragraph, its section run on under the heading before it, and so does a
+    title in small letters, "results"; the list was kept as it stands. Accepted.
+  - A one-word paragraph that is a section's name, typed as a run-in label in the middle
+    of a section, "Results" over the results of one analysis among several, is a heading
+    to both readers, and what stands under it is placed under it, the Results' or another
+    section's: nothing tells the label from a title in a paper with no heading style.
+    Pinned by `tests/test_audit.py::test_a_run_in_label_typed_alone_is_read_as_a_heading`.
+  - A title numbered by Word's own numbering is a list's item to pandoc and a numbered
+    line to the audit, and no heading to either; a title holding a link or a note's mark
+    is none, as pandoc reads the link or the note in it, nor is one in a text box to the
+    audit (a link written as a field, `w:fldSimple` or a HYPERLINK `w:instrText`, is a title
+    to the audit, and what pandoc makes of it and of a text box's paragraph is not held by a
+    test, so there the two readers may differ). A paragraph indented from the left by its
+    own `w:ind` more than it hangs is a block quote to pandoc and no title to the audit,
+    and so is one that holds a picture; an indent its style gives it is not read by the
+    audit, and what pandoc makes of it is not held by a test. Accepted.
+  - A paragraph in a style pandoc reads as a caption by its name, "caption", "Table
+    Caption" or "Image Caption", is no title to the audit, as pandoc sets one beside a
+    table as the table's caption. One that stands beside no table or picture is a paragraph
+    to pandoc, and `init --from` makes it a heading where it names a section alone, as the
+    audit does not; a caption whose words are a section's name alone and nothing else is
+    rare. Accepted.
+  - A paper that uses a heading style anywhere is read by its styles alone, its typed
+    titles text. Where the titles cannot be placed, a structured abstract's parts with no
+    Introduction after them, the order of its parts never starting again and no title it
+    cannot hold among them, the audit places nothing and says so, and `init --from` makes
+    each a heading of level 1, so the Abstract ends at its first part. Where the typed
+    titles cannot be placed for any reason, both readers place those in bold alone where
+    they can (round 2 of #641: a second "RESULTS" typed in a Discussion left a paper its
+    bold titles had placed unplaced). The title page is set aside only above a first heading
+    that opens a paper, its Abstract or its Introduction: a short paper whose first typed
+    title is its "References" keeps its text where every gate reads it. A heading is written
+    with the title's own words, its number kept. Accepted.
+  - An abstract's parts in bold beside parts typed plain cannot be placed, and its titles in
+    bold alone, the plain ones counted as words under the Abstract's, are placed at one
+    level, its own "Results" the paper's, so the Abstract is compared with itself, as a
+    paper titled in bold alone was read before. Pinned by
+    `tests/test_audit.py::test_a_run_in_label_typed_alone_is_read_as_a_heading`.
 - **`init --from` reads no affiliation, ORCID or e-mail address, and splits no name.** Each
   name from an Author paragraph goes into `authors.yaml` in a comment over an empty entry; the
   rest of the title page is in the comment in `main.md`. Accepted.
@@ -24867,6 +24905,22 @@ What papers converted from Word showed (see "What papers converted from Word sho
     reported (round 2 of #472, finding 11).
   - A table's lines are where the paper reports wherever the table stands, a table in the
     Abstract included. A Word document's footnotes are placed under the body's last heading.
+  - Every section is where the paper reports but the Abstract, the Introduction, the
+    Discussion, a conclusion, a summary of the paper and the back matter, each with what
+    stands under it (Basile, 2026-11-11, after 52 real preprints whose numbers under
+    "Participants" or an appendix were said not found; round 1 of #641). A summary and the
+    Introduction's material under another name are known by closed lists of whole titles
+    (`text.section_names.PAPER_SUMMARIES`, `INTRODUCTION_MATERIAL`): a "Summary box", a
+    "Previous studies" or a "What this paper adds to the field" is searched, and an Abstract's number it
+    repeats is found there. Accepted.
+  - A note is not searched where the audit knows it for one: a footnote's definition in
+    Markdown, and a .docx's footnotes and endnotes, read after its body. A LaTeX paper's
+    `\footnote` is printed in its sentence and searched with it, under the Results or the
+    Methods. Pinned by `tests/test_corruption.py::test_an_abstract_number_only_a_footnote_gives_is_not_found`,
+    `tests/test_audit.py::test_a_latex_footnote_under_the_results_is_searched`.
+  - A section of the Introduction's material is not searched wherever it stands, so a
+    "Hypotheses" after the Methods, whose numbers may be the study's own, is not, as at the
+    base it was not. Accepted.
 
 - **A LaTeX paper's numbers in user macros, and its `csvautotabular` and `pgfplotstable`
   tables, are not read** by the flows or by the Abstract against Results, as by the rest of
@@ -26343,6 +26397,23 @@ What papers converted from Word showed (see "What papers converted from Word sho
   could not be made. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A Word paper whose titles were typed had no Abstract, and an Abstract's number under a
+  section of another name was not found (2026-11-11).** Of the twelve numbers the audit
+  missed on 52 real preprints, half were missed because the Abstract was not found, and
+  `abstract-not-found` was wrong in 79% of the cases judged. A Word paper with no heading
+  style had a heading only where a title was wholly in bold, so "ABSTRACT" typed as a plain
+  paragraph, "3. RESULTS" and "1. INTRODUCTION" were prose to `audit` and to `init --from`;
+  a title typed alone on its line that names a section is a heading now to both, in bold or
+  not (`text.docx.typed_heading_levels`, `from_word.typed_headings`), and what `init`
+  prints counts the headings it made, where it said "headings: 0" after making 14
+  (PsyArXiv fyxeq_v2). And an Abstract's number was looked for in the Methods, the Results
+  and the tables alone, so one under "Participants", "Study design" or an appendix was not
+  found; every section is searched now but the Introduction and its material, the
+  Discussion, a conclusion, a summary of the paper and the back matter, and no note (round 1
+  of #641: searched wider at first, a footnote's citation and an "Author summary" counted as
+  reports), and the finding says so. See "A Word paper's typed titles are headings only by
+  a closed list of names" and "The Abstract is held to the Results by weak membership".
 
 - **An Abstract's identifier was never found, nor a number under a "Method" heading
   (2026-11-11).** Two preprints of the real-paper corpus. The audit reads an atom with

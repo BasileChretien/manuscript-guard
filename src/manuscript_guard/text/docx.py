@@ -69,8 +69,17 @@ _NUMBERED_MARK = "\x18"
 # In front of the line of a body paragraph outside a table, in no heading style and not
 # numbered by Word, every word of which is in bold, as pandoc reads bold (`_run_bold`).
 _BOLD_MARK = "\x17"
+# In front of the line of a body paragraph outside a table and a text box, in no heading
+# style, no caption style and not numbered by Word, that holds words and no link or note's
+# mark: a line a section's title can be typed as (`DocxText.typed`). Before the bold mark.
+_TYPED_MARK = "\x16"
 _MARKS = (_HEADING_MARK, _CELL_MARK, _TABLE_MARK, _ROW_MARK, _COLUMN_MARK, _RAISED,
-          _NOTE_REFERENCE, _NUMBERED_MARK, _BOLD_MARK)  # fmt: skip
+          _NOTE_REFERENCE, _NUMBERED_MARK, _BOLD_MARK, _TYPED_MARK)  # fmt: skip
+#: The names of the paragraph styles pandoc reads as a caption, in small letters: Word's own,
+#: named "caption" in every language as "heading 1" is the heading's, and the two pandoc
+#: writes (3.9.0.2: a paragraph in one beside a table is the table's caption to it, and one
+#: in a style whose id is "Caption" and whose name is another is not).
+_CAPTION_NAMES = frozenset({"caption", "table caption", "image caption"})
 _STRUCTURE = re.compile(f"{_CELL_MARK}({_TABLE_MARK}?)({_ROW_MARK}?)({_COLUMN_MARK}*)")
 _RAISED_TEXT = re.compile(f"{_RAISED}([^{_RAISED}]*){_RAISED}")
 _NOTE_REFERENCES = {W + "footnoteReference", W + "endnoteReference"}
@@ -114,10 +123,19 @@ class DocxText:
     #: boxes is: read for the note that it is not read as one.
     boxed: tuple[str, ...] = ()
     #: Each 0-based line of `body` whose paragraph is outside a table, in no heading style,
-    #: not numbered by Word, and every word of it in bold as pandoc reads bold: what a
-    #: section's title is typed as in a document with no heading style
-    #: (`bold_heading_levels`).
+    #: not numbered by Word, and every word of it in bold as pandoc reads bold. A title in
+    #: bold was the only one read as a heading in a document with no heading style; a title
+    #: typed is now, in bold or not (`typed`, Basile, 2026-11-11).
     bold: frozenset[int] = frozenset()
+    #: Each 0-based line of `body` whose paragraph is outside a table and a text box, in no
+    #: heading style, not in Word's caption style, not numbered by Word, not indented as
+    #: pandoc quotes a paragraph (`_quoted`), and holds words and no link, picture or note's
+    #: mark, bold or not: a line a section's title can be typed as in a document with no
+    #: heading style (`typed_heading_levels`), as `init --from` reads a top-level paragraph of
+    #: words (`from_word.typed_headings`). pandoc sets a caption beside a table as the
+    #: table's, an indented paragraph in a block quote and a picture's paragraph as an image
+    #: beside words, and a list's item and a cell are no paragraph of the text.
+    typed: frozenset[int] = frozenset()
 
     @property
     def text(self) -> str:
@@ -241,6 +259,57 @@ def _bold_styles(archive: zipfile.ZipFile, names: set[str], what: str) -> dict[s
         if style.get(W + "type") == "character" and bold is not None:
             found[style.get(W + "styleId", "")] = _on(bold)
     return found
+
+
+def _caption_styles(archive: zipfile.ZipFile, names: set[str], what: str) -> frozenset[str]:
+    """The ids of the paragraph styles pandoc reads as a caption, by their names
+    (`_CAPTION_NAMES`): it reads a paragraph in one beside a table as the table's caption
+    (3.9.0.2), and goes by the name, not the id, so neither is done here."""
+    if "word/styles.xml" not in names:
+        return frozenset()
+    try:
+        styles = read_part(archive, "word/styles.xml", what=f"{what}:word/styles.xml")
+    except UnsafeDocument:
+        return frozenset()
+    found = set()
+    for style in styles.iter(W + "style"):
+        name = style.find(W + "name")
+        if style.get(W + "type") == "paragraph" and name is not None and \
+                name.get(W + "val", "").strip().casefold() in _CAPTION_NAMES:  # fmt: skip
+            found.add(style.get(W + "styleId", ""))
+    return frozenset(found)
+
+
+def _paragraph_style(paragraph: ET.Element) -> str | None:
+    """The id of the style a paragraph is in, or None for the default."""
+    style = paragraph.find(f"{W}pPr/{W}pStyle")
+    return style.get(W + "val", "") if style is not None else None
+
+
+def _twips(value: str | None) -> int:
+    try:
+        return int(value) if value is not None else 0
+    except ValueError:
+        return 0
+
+
+def _quoted(paragraph: ET.Element) -> bool:
+    """Whether pandoc reads a paragraph as a block quote: indented from the left, by its own
+    `w:ind`, more than it hangs (3.9.0.2: `w:left` or `w:start` 720 is a quote, and so is 720
+    hanging 360; 720 hanging 720, a first line indented and a negative indent are not)."""
+    indent = paragraph.find(f"{W}pPr/{W}ind")
+    if indent is None:
+        return False
+    left = indent.get(W + "left", indent.get(W + "start"))
+    return _twips(left) - _twips(indent.get(W + "hanging")) > 0
+
+
+#: What holds a picture in a paragraph, whose words pandoc reads beside an image: no title's.
+_PICTURES = (W + "drawing", W + "pict", W + "object")
+
+
+def _pictured(paragraph: ET.Element) -> bool:
+    return any(node.tag in _PICTURES for node in paragraph.iter())
 
 
 def _on(toggle: ET.Element) -> bool:
@@ -439,12 +508,14 @@ def _part_text(
     root: ET.Element, headings: dict[str, int] | None = None, fonts: Fonts | None = None,
     numbering: Numbering | None = None, counts: list | None = None,
     levels: list | None = None, bold: dict[str, bool] | None = None,
+    captions: frozenset[str] = frozenset(),
 ) -> str:  # fmt: skip
     """The part's text, a line to a paragraph, with the marks of what its lines are; with
     `numbering`, each line Word numbers outside a table is marked and its count put in
     `counts`, in order, and each heading's level in `levels`; with `bold`, the character
-    styles that are bold or not, each plain line every word of which is in bold is marked
-    (`_BOLD_MARK`)."""
+    styles that are bold or not, each plain line of words is marked (`_TYPED_MARK`) unless
+    it is in one of the caption styles `captions`, and each plain line every word of which
+    is in bold (`_BOLD_MARK`)."""
     headings = headings or {}
     fonts = fonts or Fonts()
     parents = {child: parent for parent in root.iter() for child in parent}
@@ -456,8 +527,10 @@ def _part_text(
     lines: dict[ET.Element, list[str]] = {}
     pieces: list[str | list[str]] = []
     opens = _Opens()
-    # By line, whether every word read on it so far is in bold.
+    # By line, whether every word read on it so far is in bold, and whether every one is a
+    # word outside a link.
     weights: dict[int, bool] = {}
+    worded: dict[int, bool] = {}
 
     for node in root.iter():
         if node.tag in _BREAKS and not _seen(node, parents, hidden):
@@ -495,8 +568,10 @@ def _part_text(
                 if bold is not None and owner is not None and shown.strip():
                     # A link's words are no title's, as pandoc reads a link in one.
                     key = id(lines[owner])
+                    linked = _inside(node, parents, W + "hyperlink")
                     weights[key] = (weights.get(key, True) and _run_bold(parents.get(node), bold)
-                                    and not _inside(node, parents, W + "hyperlink"))  # fmt: skip
+                                    and not linked)  # fmt: skip
+                    worded[key] = worded.get(key, True) and not linked
         elif node.tag in _NOTE_REFERENCES:
             owner, seen = _placed(node, parents, hidden)
             if seen and owner is not None and owner in lines and \
@@ -505,13 +580,22 @@ def _part_text(
             if seen and owner is not None and owner in lines:
                 # Nor a line with a note's mark: pandoc's title holds the note (round 1 of #598).
                 weights[id(lines[owner])] = False
+                worded[id(lines[owner])] = False
 
-    # A plain line, in no heading style, not numbered, in no table and no text box, all in
-    # bold.
+    # A plain line, in no heading style, not numbered, in no table and no text box: typed
+    # where it is in no caption style, by its last paragraph's, whose mark is the one left
+    # (`_line_start`); and all in bold.
+    styled = {id(line): _paragraph_style(owner) for owner, line in lines.items()
+              if owner not in joins}  # fmt: skip
+    quoted = {id(line) for owner, line in lines.items() if owner not in joins and _quoted(owner)}
+    pictured = {id(line) for owner, line in lines.items() if _pictured(owner)}
     for owner, line in lines.items():
-        if weights.get(id(line)) and line[0] == "\n" and not _inside(
-                owner, parents, W + "txbxContent"):  # fmt: skip
-            line[0] = "\n" + _BOLD_MARK
+        if line[0] != "\n" or _inside(owner, parents, W + "txbxContent"):
+            continue
+        typed = (worded.get(id(line)) and styled.get(id(line)) not in captions
+                 and id(line) not in quoted | pictured)  # fmt: skip
+        line[0] = ("\n" + (_TYPED_MARK if typed else "")
+                   + (_BOLD_MARK if weights.get(id(line)) else ""))  # fmt: skip
     return "".join(piece if isinstance(piece, str) else "".join(piece) for piece in pieces)
 
 
@@ -557,7 +641,8 @@ def read_docx_text(path: Path) -> DocxText:
     body_root = root_of(BODY)
     raw = _part_text(body_root, _heading_styles(archive, names, path.name),
                      fonts, Numbering.of(archive, names, path.name), counts, heads,
-                     _bold_styles(archive, names, path.name))  # fmt: skip
+                     _bold_styles(archive, names, path.name),
+                     _caption_styles(archive, names, path.name))  # fmt: skip
     raw, counts = _numbered_lines(raw, counts)
     marked = _tidy(raw)
     lines = marked.split("\n")
@@ -573,7 +658,8 @@ def read_docx_text(path: Path) -> DocxText:
     heading_levels = tuple(zip(heading_lines, heads if len(heads) == len(heading_lines)
                                else [1] * len(heading_lines), strict=True))  # fmt: skip
     cells = frozenset(i for i, line in enumerate(lines) if _CELL_MARK in line[:2])
-    bold = frozenset(i for i, line in enumerate(lines) if line.startswith(_BOLD_MARK))
+    bold = frozenset(i for i, line in enumerate(lines) if _BOLD_MARK in line[:2])
+    typed = frozenset(i for i, line in enumerate(lines) if line.startswith(_TYPED_MARK))
     # The notes keep what they always had, the cell mark of a table in a note among it; the
     # marks the tables are read by go from both.
     notes = _unmarked(_tidy("\n".join(text_of(part) for part in NOTES if part in names)),
@@ -585,24 +671,49 @@ def read_docx_text(path: Path) -> DocxText:
                     heading_levels=heading_levels,
                     levels=tuple((line, count[3]) for line, count in numbering
                                  if count[3] is not None),
-                    boxed=_boxes(body_root, fonts), bold=bold)  # fmt: skip
+                    boxed=_boxes(body_root, fonts), bold=bold, typed=typed)  # fmt: skip
 
 
-def bold_heading_levels(document: DocxText) -> tuple[tuple[int, int], ...] | None:
-    """In a document with no paragraph in a heading style, each line wholly in bold whose
-    words are a section's name alone (`section_name_alone`), by 0-based line, with its level
-    (`section_levels`): the headings `from_word.bold_headings` makes of the same paragraphs.
-    Empty where the document has a heading style or no such line; None where the lines
-    cannot be placed exactly, as a PDF's then are not (`auditing.pdf.UNPLACED`)."""
-    from manuscript_guard.text.section_names import section_levels, section_name_alone
+def typed_titles(document: DocxText) -> list[tuple[int, str]]:
+    """In a document with no paragraph in a heading style, each line a title can be typed
+    as (`DocxText.typed`) whose words are a section's name alone (`section_name_alone`), in
+    bold or not, numbered or not, in capitals or not, "ABSTRACT", "3. RESULTS", by 0-based
+    line, with its name; none in a document with a heading style, read by its styles."""
+    from manuscript_guard.text.section_names import section_name_alone
 
     if document.heading_levels:
-        return ()
+        return []
     lines = document.body.split("\n")
-    found = [(at, title) for at in sorted(document.bold)
-             if (title := section_name_alone(lines[at])) is not None]  # fmt: skip
+    return [(at, title) for at in sorted(document.typed)
+            if (title := section_name_alone(lines[at])) is not None]  # fmt: skip
+
+
+def typed_heading_levels(document: DocxText) -> tuple[tuple[int, int], ...] | None:
+    """Each line of `typed_titles`, by 0-based line, with its level (`section_levels`): the
+    headings `from_word.typed_headings` makes of the same paragraphs. Where they cannot be
+    placed exactly, those wholly in bold alone, where they can be, as a title in bold alone
+    was read before a typed one was (round 2 of #641: a "Results" typed twice left a paper
+    its bold titles placed unplaced). Empty where the document has a heading style or no
+    such line; None where neither can be placed, as a PDF's lines then are not
+    (`auditing.pdf.UNPLACED`): placed at one level, a structured abstract's own "Results"
+    would be the paper's, and the Abstract compared with itself."""
+    found = typed_titles(document)
     if not found:
         return ()
+    bold = [(at, title) for at, title in found if at in document.bold]
+    for titles in (found, bold):
+        levels = _levels(document.body.split("\n"), titles)
+        if levels is not None:
+            return levels
+    return None
+
+
+def _levels(lines: list[str], found: list[tuple[int, str]]
+            ) -> tuple[tuple[int, int], ...] | None:  # fmt: skip
+    from manuscript_guard.text.section_names import section_levels
+
+    if not found:
+        return None
     ends = [at for at, _title in found[1:]] + [len(lines)]
     worded = [any(lines[k].strip() for k in range(at + 1, end))
               for (at, _title), end in zip(found, ends, strict=True)]  # fmt: skip

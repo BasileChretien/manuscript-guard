@@ -45,7 +45,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal
 from fractions import Fraction
 from functools import cache
-from typing import Any, TypeVar
+from typing import Any, NamedTuple, TypeVar
 
 import yaml
 from hypothesis import HealthCheck, Phase, given, seed, settings
@@ -8699,13 +8699,44 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
 #: real-paper corpus, 2026-11-11). And a number reported under a subsection of the Results
 #: whose title holds the word "method" and is no Methods, "Performance of the proposed
 #: method", under a Results titled "Results and discussion", which no Methods may stand
-#: under (round 1 of #624).
+#: under (round 1 of #624). And a number reported only under a section of another name
+#: (`OTHER_SECTIONS`), which is found, one only in the Introduction and one only in the
+#: Conclusions, which are not (Basile, 2026-11-11, after 52 real preprints).
 ABSTRACT_KINDS = (
     "interval conflict", "interval rounded", "interval twice", "interval level",
     "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
     "against a word", "after a word", "after a label", "against a suffix's word", "ordinal",
     "estimate closed up", "identifier", "identifier by its number", "under a method",
+    "other section", "introduction", "conclusion", "references", "note", "statement",
+    "summary", "related work", "over the methods", "title page",
 )  # fmt: skip
+#: Where each of the kinds a number of the Abstract is not found in stands, and what it
+#: starts at: in the reference list, in a footnote's definition under the Results, in a
+#: statement of the back matter, in a summary of the paper beside its Abstract, in a section
+#: that holds the Introduction's material, all not found; and directly under a heading over
+#: a Methods subsection, which is found (round 1 of #641).
+ABSTRACT_ELSEWHERE = {"references": 2100, "note": 2200, "statement": 2300, "summary": 2400,
+                      "related work": 2500, "over the methods": 2600,
+                      "title page": 2700}  # fmt: skip
+#: Titles of a summary of the paper, of a section of the Introduction's material, and of a
+#: statement, as `abstract_papers` draws them.
+PAPER_SUMMARY_TITLES = ("Author summary", "Significance", "Highlights",
+                        "Plain language summary", "Resumen")  # fmt: skip
+INTRODUCTION_MATERIAL_TITLES = ("Related work", "Literature review", "Theoretical framework",
+                                "Hypotheses")  # fmt: skip
+STATEMENT_TITLES = ("Funding", "Acknowledgements", "Data availability")
+
+
+class Apart(NamedTuple):
+    """A part of a paper of `abstract_papers` written one way in Markdown and another in
+    LaTeX: a footnote."""
+
+    markdown: str
+    latex: str
+#: Titles of a section that names no part the Abstract against Results knows, under which a
+#: real paper reports: an Abstract's number there is found.
+OTHER_SECTIONS = ("Participants", "Study design", "Data analysis and results", "Appendix",
+                  "Supplementary analyses")  # fmt: skip
 #: Titles of a subsection of the Results that hold the word "method" and name no Methods.
 METHOD_SUBSECTIONS = ("Performance of the proposed method", "Our method at scale",
                       "A method for the second cohort")  # fmt: skip
@@ -8749,6 +8780,10 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
     results: list[str] = []
     discussion: list[str] = []
     supplement: list[str] = []
+    introduction: list[str] = []
+    elsewhere: list[str] = []
+    after: dict[str, list] = {kind: [] for kind in ABSTRACT_ELSEWHERE}
+    conclusions: list[str] = []
     looked: list[tuple[str, str, str]] = []
     for kind in draw(st.permutations(ABSTRACT_KINDS)):
         short, words = draw(st.sampled_from(ESTIMATE_NAMES))
@@ -8827,6 +8862,29 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
             subsection = (draw(st.sampled_from(METHOD_SUBSECTIONS)), f"It was {shown} then.")
             looked.append((kind, shown, "exact"))
             abstract.append((kind, f"The value was {shown} here."))
+        elif kind in ("other section", "introduction", "conclusion"):
+            value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
+            shown = str(value + {"other section": 1700, "introduction": 1800,
+                                 "conclusion": 1900}[kind])  # fmt: skip
+            {"other section": elsewhere, "introduction": introduction,
+             "conclusion": conclusions}[kind].append(f"It was {shown} then.")
+            looked.append((kind, shown, "exact" if kind == "other section" else "not found"))
+            abstract.append((kind, f"The value was {shown} here."))
+        elif kind in ABSTRACT_ELSEWHERE:
+            value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
+            shown = str(value + ABSTRACT_ELSEWHERE[kind])
+            if kind == "note":
+                # Under the Results in Markdown, where only its being a note keeps it unread;
+                # in LaTeX a note is printed in its sentence, here the Discussion's.
+                results.append(Apart(f"It was so.[^n1]\n\n[^n1]: It was {shown} then.", ""))
+                discussion.append(Apart("", f"It was so.{BACKSLASH}footnote{{It was {shown} "
+                                            "then.}"))  # fmt: skip
+            elif kind == "references":
+                after[kind].append(f"Doe J. A title. BMJ. 2020;1:{shown}.")
+            else:
+                after[kind].append(f"It was {shown} then.")
+            looked.append((kind, shown, "exact" if kind == "over the methods" else "not found"))
+            abstract.append((kind, f"The value was {shown} here."))
         elif kind == "estimate closed up":
             estimate = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
             low, high = estimate + 1300, estimate + 1400
@@ -8879,25 +8937,43 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                 expected["looked"].append([line, shown, state])
     # The subsection closes the Results, so that what they report stands over it.
     results.append(subsection)
-    for heading, part in (("Methods", methods), ("Results and discussion", results),
-                          ("Discussion", discussion)):  # fmt: skip
-        part = [f"### {said[0]}\n\n{said[1]}" if isinstance(said, tuple) else said
+    # The title page, a section of its own before the Abstract (round 2 of #641).
+    front = ("Correspondence", after["title page"])
+    lines[2:2] = [f"## {front[0]}", "", *(one for said in front[1] for one in (said, ""))]
+    expected["looked"] = [[line + 2 + 2 * len(front[1]), shown, state]
+                          for line, shown, state in expected["looked"]]  # fmt: skip
+    expected["conflicts"] = [[line + 2 + 2 * len(front[1]), kind]
+                             for line, kind in expected["conflicts"]]  # fmt: skip
+    parts = ((draw(st.sampled_from(PAPER_SUMMARY_TITLES)), after["summary"]),
+             ("Introduction", introduction),
+             (draw(st.sampled_from(INTRODUCTION_MATERIAL_TITLES)), after["related work"]),
+             ("Design and setting", [*after["over the methods"],
+                                     ("Statistical methods", "It was so.")]),
+             ("Methods", methods), (draw(st.sampled_from(OTHER_SECTIONS)), elsewhere),
+             ("Results and discussion", results), ("Discussion", discussion),
+             ("Conclusions", conclusions),
+             (draw(st.sampled_from(STATEMENT_TITLES)), after["statement"]),
+             ("References", after["references"]))  # fmt: skip
+    for heading, part in parts:
+        part = [said.markdown if isinstance(said, Apart) else
+                f"### {said[0]}\n\n{said[1]}" if isinstance(said, tuple) else said
                 for said in part]  # fmt: skip
         lines += [f"## {heading}", "", *(one for said in part for one in (said, "")), ""]
     expected["conflicts"].sort()
     expected["looked"].sort()
-    latex, in_latex = _abstract_latex(abstract, looked, methods, results, discussion)
+    latex, in_latex = _abstract_latex(abstract, looked, parts, front)
     supplement_tex = "\n".join([BACKSLASH + "documentclass{article}", BACKSLASH +
                                 "begin{document}", *supplement, BACKSLASH + "end{document}"])
     return ("\n".join(lines) + "\n", "\n".join(supplement or ["Nothing."]) + "\n", expected,
             latex, supplement_tex + "\n", in_latex)  # fmt: skip
 
 
-def _abstract_latex(abstract: list, looked: list, methods: list, results: list,
-                    discussion: list) -> tuple[str, dict[str, list]]:  # fmt: skip
+def _abstract_latex(abstract: list, looked: list, parts: tuple[tuple[str, list], ...],
+                    front: tuple[str, list]) -> tuple[str, dict[str, list]]:
     """The paper of `abstract_papers` in LaTeX, its last Abstract sentence on the line of
     `\\end{abstract}`, its table a `tabular`, and what is found in it, by its lines."""
     lines = [BACKSLASH + "documentclass{article}", BACKSLASH + "begin{document}",
+             f"{BACKSLASH}section{{{front[0]}}}", "", *front[1], "",
              BACKSLASH + "begin{abstract}"]  # fmt: skip
     expected: dict[str, list] = {"conflicts": [], "looked": []}
     for index, (kind, said) in enumerate(abstract):
@@ -8911,11 +8987,17 @@ def _abstract_latex(abstract: list, looked: list, methods: list, results: list,
             expected["conflicts"].append([line, kind.split()[0]])
         expected["looked"] += [[line, shown, state] for planted, shown, state in looked
                                if planted == kind]  # fmt: skip
-    for heading, part in (("Methods", methods), ("Results and discussion", results),
-                          ("Discussion", discussion)):  # fmt: skip
+    for heading, part in parts:
+        if heading == "References":
+            lines += ["", BACKSLASH + "begin{thebibliography}{9}",
+                      *(f"{BACKSLASH}bibitem{{r{at}}} {said}" for at, said in enumerate(part)),
+                      BACKSLASH + "end{thebibliography}"]  # fmt: skip
+            continue
         lines += ["", f"{BACKSLASH}section{{{heading}}}", ""]
         for said in part:
-            if isinstance(said, tuple):
+            if isinstance(said, Apart):
+                lines += [said.latex, ""]
+            elif isinstance(said, tuple):
                 lines += [f"{BACKSLASH}subsection{{{said[0]}}}", "", said[1], ""]
             elif said.startswith("|"):
                 value = said.split("\n")[-1].strip(" |").split("|")[-1].strip()
@@ -13367,6 +13449,65 @@ def bold_paragraphs(draw: st.DrawFn) -> tuple[str, list[str]]:
     return body, sorted(bold)
 
 
+#: A Word paragraph of each kind, as `w:p` XML with `{}` for its words, and whether it is a
+#: line a title can be typed as (`text.docx.DocxText.typed`): every shape of
+#: `BOLD_PARAGRAPHS` but a table's cell and a link, bold or not; a plain one; one in a style
+#: whose id is "Caption" and whose name is another, which pandoc reads as no caption; and none
+#: in a style named "caption", "Table Caption" or "Image Caption", numbered by Word, or with
+#: a note's mark.
+TYPED_PARAGRAPHS = {
+    **{kind: (shape, kind not in ("in a cell", "in a link"))
+       for kind, (shape, _bold) in BOLD_PARAGRAPHS.items()},
+    "plain": ("<w:p><w:r><w:t>{}</w:t></w:r></w:p>", True),
+    "id Caption, named otherwise": ('<w:p><w:pPr><w:pStyle w:val="Caption"/></w:pPr><w:r>'
+                                    "<w:t>{}</w:t></w:r></w:p>", True),
+    "Word's caption": ('<w:p><w:pPr><w:pStyle w:val="Legende"/></w:pPr><w:r><w:t>{}</w:t>'
+                       "</w:r></w:p>", False),
+    "pandoc's table caption": ('<w:p><w:pPr><w:pStyle w:val="TableCaption"/></w:pPr><w:r>'
+                               "<w:t>{}</w:t></w:r></w:p>", False),
+    "pandoc's image caption": ('<w:p><w:pPr><w:pStyle w:val="ImageCaption"/></w:pPr><w:r>'
+                               "<w:t>{}</w:t></w:r></w:p>", False),
+    "numbered by Word": ('<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/>'
+                         "</w:numPr></w:pPr><w:r><w:t>{}</w:t></w:r></w:p>", False),
+    "with a note's mark": ('<w:p><w:r><w:t>{}</w:t></w:r><w:r><w:footnoteReference w:id="1"/>'
+                           "</w:r></w:p>", False),
+    # pandoc 3.9.0.2 reads one indented from the left more than it hangs as a block quote,
+    # and one beside a picture as an image beside words (round 2 of #641).
+    "indented from the left": ('<w:p><w:pPr><w:ind w:left="720"/></w:pPr><w:r><w:t>{}</w:t>'
+                               "</w:r></w:p>", False),
+    "hanging as far as indented": ('<w:p><w:pPr><w:ind w:left="720" w:hanging="720"/></w:pPr>'
+                                   "<w:r><w:t>{}</w:t></w:r></w:p>", True),
+    "beside a picture": ("<w:p><w:r><w:drawing/></w:r><w:r><w:t>{}</w:t></w:r></w:p>", False),
+}  # fmt: skip
+#: The styles the paragraphs above name.
+TYPED_PARAGRAPH_STYLES = BOLD_PARAGRAPH_STYLES + (
+    '<w:style w:type="paragraph" w:styleId="Caption"><w:name w:val="Bildunterschrift"/>'
+    "</w:style>"
+    '<w:style w:type="paragraph" w:styleId="Legende"><w:name w:val="caption"/></w:style>'
+    '<w:style w:type="paragraph" w:styleId="TableCaption"><w:name w:val="Table Caption"/>'
+    "</w:style>"
+    '<w:style w:type="paragraph" w:styleId="ImageCaption"><w:name w:val="Image Caption"/>'
+    "</w:style>"
+)
+
+
+@st.composite
+def typed_paragraphs(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A .docx body with a paragraph of every kind of `TYPED_PARAGRAPHS`, twice over in an
+    order drawn, each with words of its own between plain paragraphs; and the words of those
+    a title can be typed as, the plain paragraphs' among them, sorted."""
+    kinds = draw(st.permutations(list(TYPED_PARAGRAPHS) * 2))
+    body, typed = "", []
+    for number, kind in enumerate(kinds):
+        words = f"{draw(st.sampled_from(FILLER)).capitalize()} {number}"
+        shape, is_typed = TYPED_PARAGRAPHS[kind]
+        body += f"<w:p><w:r><w:t>Plain {number}.</w:t></w:r></w:p>" + shape.format(words)
+        typed.append(f"Plain {number}.")
+        if is_typed:
+            typed.append(f"{words} and more" if kind == "half" else words)
+    return body, sorted(typed)
+
+
 def _str(word: str) -> dict:
     return {"t": "Str", "c": word}
 
@@ -13377,11 +13518,14 @@ def _strong(*inlines: dict) -> dict:
 
 _GAP = {"t": "Space"}
 #: A pandoc paragraph of each kind, as Word papers are read, and the heading
-#: `from_word.bold_headings` makes of it, or None: a name in bold; also underlined, inside
-#: the bold or around it; in a span; numbered; with a colon; a bold title that names no
-#: section; a name in bold opening a sentence; a name only half in bold; one in italics
-#: only; one in a list's item; one in a link.
-BOLD_BLOCKS = {
+#: `from_word.typed_headings` makes of it, or None: a name in bold; also underlined, inside
+#: the bold or around it; in a span; numbered; with a colon; a name only half in bold; one
+#: in italics only; one typed plain, in capitals, numbered in capitals (the real-paper
+#: corpus, 2026-11-11); and none of a bold title that names no section, a name in bold
+#: opening a sentence, a plain one opening a sentence, one in a list's item, one in a link.
+#: Each title names its section once, so that they can be placed: a name twice falls back to
+#: the titles in bold (`tests/test_from_word.py::test_a_name_typed_twice_keeps_the_bold_titles`).
+TYPED_BLOCKS = {
     "in bold": ({"t": "Para", "c": [_strong(_str("Methods"))]}, "Methods"),
     "underlined inside": ({"t": "Para", "c": [_strong({"t": "Underline", "c": [
         _str("References")]})]}, "References"),
@@ -13397,8 +13541,15 @@ BOLD_BLOCKS = {
     "opening a sentence": ({"t": "Para", "c": [_strong(_str("Methods")), _GAP, _str("were"),
                                                 _GAP, _str("kept.")]}, None),
     "half in bold": ({"t": "Para", "c": [_strong(_str("Materials")), _GAP, _str("and"), _GAP,
-                                          _str("methods")]}, None),
-    "in italics": ({"t": "Para", "c": [{"t": "Emph", "c": [_str("Conclusions")]}]}, None),
+                                          _str("methods")]}, "Materials and methods"),
+    "in italics": ({"t": "Para", "c": [{"t": "Emph", "c": [_str("Conclusions")]}]},
+                   "Conclusions"),
+    "plain": ({"t": "Para", "c": [_str("Introduction")]}, "Introduction"),
+    "in capitals": ({"t": "Para", "c": [_str("LIMITATIONS")]}, "LIMITATIONS"),
+    "numbered in capitals": ({"t": "Para", "c": [_str("4."), _GAP, _str("ACKNOWLEDGEMENTS")]},
+                             "4. ACKNOWLEDGEMENTS"),
+    "plain opening a sentence": ({"t": "Para", "c": [_str("Results"), _GAP, _str("were"), _GAP,
+                                                      _str("clear.")]}, None),
     "in a list": ({"t": "BulletList", "c": [[{"t": "Plain", "c": [_strong(
         _str("Background"))]}]]}, None),
     "in a link": ({"t": "Para", "c": [_strong({"t": "Link", "c": [["", [], []], [
@@ -13407,16 +13558,16 @@ BOLD_BLOCKS = {
 
 
 @st.composite
-def bold_blocks(draw: st.DrawFn) -> tuple[list[dict], list[str]]:
+def typed_blocks(draw: st.DrawFn) -> tuple[list[dict], list[str]]:
     """Pandoc's blocks of a Word paper with no heading, a block of every kind of
-    `BOLD_BLOCKS` in an order drawn, each after a paragraph of words; and the titles of the
+    `TYPED_BLOCKS` in an order drawn, each after a paragraph of words; and the titles of the
     headings to be made of them, in order."""
     blocks: list[dict] = []
     titles: list[str] = []
-    for kind in draw(st.permutations(list(BOLD_BLOCKS))):
-        block, title = BOLD_BLOCKS[kind]
+    for kind in draw(st.permutations(list(TYPED_BLOCKS))):
+        block, title = TYPED_BLOCKS[kind]
         words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4))
-        # A copy: `bold_headings` makes a new list, and each draw its own blocks.
+        # A copy: `typed_headings` makes a new list, and each draw its own blocks.
         copy = json.loads(json.dumps(block))
         blocks += [{"t": "Para", "c": [_str(word) for word in words]}, copy]
         if title is not None:

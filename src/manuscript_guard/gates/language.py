@@ -213,10 +213,14 @@ _IDENTIFIER = re.compile(r"[A-Za-z]{2,}\d{5,}")
 # underscore escaped as Markdown writes it or as the LaTeX reader leaves it, `_` and a NUL,
 # allowed: "CVCL_0030" names a cell line, and its letters are no abbreviation and its
 # underscore no name from the code. "RRID" itself needs no definition, as "DOI" does
-# (`data/abbreviations.yaml`).
+# (`data/abbreviations.yaml`). The reading is `rrids.py`'s (#658), copied here and in
+# `data/structural.yaml` since that module is not on main: it must change with it until one
+# imports the other. A `.` joins before a digit only; a `-` ends it before a word of four
+# small letters or more with no `:`, `_` or `-` after it.
 _RRID = re.compile(
     r"(?<![A-Za-z0-9_\-])RRID:(?:[^\S\n]|\n)?\x00*(?P<accession>[A-Za-z][A-Za-z0-9]*"
-    r"(?:(?:\\?[_:.]\x00?|-(?![a-z]+(?![A-Za-z0-9])))[A-Za-z0-9]+)+|[A-Za-z]+\d[A-Za-z0-9]*)"
+    r"(?:(?:\\?[_:]\x00?|\.(?=[0-9])|-(?![a-z]{4,}(?![A-Za-z0-9_:\-])))[A-Za-z0-9]+)+"
+    r"|[A-Za-z]+\d[A-Za-z0-9]*)"
 )
 _ARTICLES = ("the ", "a ", "an ")
 

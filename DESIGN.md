@@ -26830,7 +26830,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   "RRID:".** G2 classifies a typed RRID as structural (`data/structural.yaml`, `rrid`), and
   G14 reads neither its accession's letters as an abbreviation nor its underscores as a name
   from the code, "RRID" needing no definition, as "DOI" does. The reading is `rrids.py`'s
-  (#658), copied while that module is not on main. Pinned by
+  (#658) as its round 2 left it, a `.` joining only before a digit and a `-` ending the
+  accession only before a word of four small letters or more with no `:`, `_` or `-` after
+  it; it is copied into `data/structural.yaml` and `gates/language.py` while that module is
+  not on main, and each copy changes with it until one imports the other. Pinned by
   `tests/test_corruption.py::test_an_rrid_typed_in_the_methods_is_no_number_and_no_abbreviation`.
   - An accession typed without "RRID:" in capitals and its colon right before it, one space
     or one line break between, is read as before: "AB_2298772" alone, "RRIDs: AB_1, AB_2",

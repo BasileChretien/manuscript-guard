@@ -158,14 +158,17 @@ structural:
       or a tool, "RRID:AB_2298772", "RRID: CVCL_0030": its digits are an identifier's, as an
       ORCID's are, and measure nothing. Only after "RRID:", so a number beside one, "diluted
       1:500 (RRID:AB_2298772)", is still a number.
-    # The reading of `rrids.py` (#658), copied here since that module is not on main: one
-    # space or one line break after the colon, then parts joined by `_`, `:`, `.` or a `-`
-    # that no word of small letters follows ("RRID:CVCL_0030-derived" ends at the hyphen),
-    # each part letters or digits, or a single part of letters then digits (SAMN12345678).
-    # A word of small letters after it, "-derived", is no part of the RRID but is of the
-    # atom, which the match has to cover: it measures nothing either. A joining mark is never
-    # a letter or a digit, so no two pieces take one character.
-    pattern: '(?<![A-Za-z0-9_-])RRID:(?:[^\S\n]|\n)?(?:[A-Za-z][A-Za-z0-9]*(?:(?:\\?[_:.]|-(?![a-z]+(?![A-Za-z0-9])))[A-Za-z0-9]+)+|[A-Za-z]+\d[A-Za-z0-9]*)(?:-[a-z]+)?'
+    # The reading is `rrids.py`'s (#658), copied here and in `gates/language.py` (`_RRID`)
+    # since that module is not on main: it must change with it until one imports the other.
+    # One space or one line break after the colon, then parts joined by `_`, `:`, a `.`
+    # before a digit (NXR_0.0005), or a `-` that is not before a word of four small letters
+    # or more with no `:`, `_` or `-` after it ("RRID:CVCL_0030-derived" ends at the hyphen,
+    # "RRID:mmrrc_000231-unc" does not), each part letters or digits; or a single part of
+    # letters then digits (SAMN12345678). A word after it, "-derived" or the ".Version" of
+    # "RRID:SCR_002798.Version 9", is no part of the RRID but is of the atom, which the match
+    # has to cover: it measures nothing either. A joining mark is never a letter or a digit,
+    # so no two pieces take one character.
+    pattern: '(?<![A-Za-z0-9_-])RRID:(?:[^\S\n]|\n)?(?:[A-Za-z][A-Za-z0-9]*(?:(?:\\?[_:]|\.(?=[0-9])|-(?![a-z]{4,}(?![A-Za-z0-9_:\-])))[A-Za-z0-9]+)+|[A-Za-z]+\d[A-Za-z0-9]*)(?:-[a-z]+|\.[A-Za-z]+)?'
 
   - id: email-address
     why: >-

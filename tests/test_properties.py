@@ -11798,15 +11798,15 @@ def _g14_rrid_changed(patch: pytest.MonkeyPatch, was: str, now: str) -> None:
 
 
 def _g14_reads_no_hyphen_in_an_rrid(patch: pytest.MonkeyPatch) -> None:
-    _g14_rrid_changed(patch, r"|-(?![a-z]+(?![A-Za-z0-9]))", "")
+    _g14_rrid_changed(patch, r"|-(?![a-z]{4,}(?![A-Za-z0-9_:\-]))", "")
 
 
 def _g14_reads_no_colon_in_an_rrid(patch: pytest.MonkeyPatch) -> None:
-    _g14_rrid_changed(patch, r"[_:.]", r"[_.]")
+    _g14_rrid_changed(patch, r"[_:]", r"[_]")
 
 
 def _g14_reads_no_dot_in_an_rrid(patch: pytest.MonkeyPatch) -> None:
-    _g14_rrid_changed(patch, r"[_:.]", r"[_:]")
+    _g14_rrid_changed(patch, r"|\.(?=[0-9])", "")
 
 
 def _g14_reads_no_latex_underscore_in_an_rrid(patch: pytest.MonkeyPatch) -> None:
@@ -11814,7 +11814,7 @@ def _g14_reads_no_latex_underscore_in_an_rrid(patch: pytest.MonkeyPatch) -> None
 
 
 def _g14_reads_no_escaped_underscore_in_an_rrid(patch: pytest.MonkeyPatch) -> None:
-    _g14_rrid_changed(patch, r"\\?[_:.]", r"[_:.]")
+    _g14_rrid_changed(patch, r"\\?[_:]", r"[_:]")
 
 
 def _rrid_rule_changed(patch: pytest.MonkeyPatch, was: str, now: str) -> None:
@@ -11835,7 +11835,7 @@ def _no_line_break_after_an_rrid_s_colon(patch: pytest.MonkeyPatch) -> None:
 
 
 def _an_rrid_s_escaped_underscore_is_not_read(patch: pytest.MonkeyPatch) -> None:
-    _rrid_rule_changed(patch, r"\\?[_:.]", r"[_:.]")
+    _rrid_rule_changed(patch, r"\\?[_:]", r"[_:]")
 
 
 def _any_number_after_rrid_is_an_identifier(patch: pytest.MonkeyPatch) -> None:

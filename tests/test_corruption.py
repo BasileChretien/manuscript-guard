@@ -32679,6 +32679,17 @@ def test_an_rrid_typed_in_the_methods_is_no_number_and_no_abbreviation(project: 
     assert _g2_g14(project) - before == set()
 
 
+def test_g14_reads_an_rrid_as_rrids_py_does() -> None:
+    """The copy in `gates/language.py` keeps #658's rules: a dot joins only before a digit,
+    and a hyphen ends the accession only before a word of four small letters or more."""
+    from manuscript_guard.gates.language import _RRID
+
+    text = ("Prism (RRID:SCR_002798.Version 9), mice (RRID:mmrrc_000231-unc, n = 4), "
+            "RRID:CVCL_0030-derived cells and RRID:NXR_0.0005.")
+    assert [found.group("accession") for found in _RRID.finditer(text)] == [
+        "SCR_002798", "mmrrc_000231-unc", "CVCL_0030", "NXR_0.0005"]
+
+
 def test_a_number_typed_against_an_rrid_is_read_into_it() -> None:
     """The limit Known gaps records (round 1 of #663): a number typed straight after an RRID,
     with a dot, a hyphen or a colon and no space, is read as a part of its accession, and G2

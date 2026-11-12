@@ -102,7 +102,9 @@ def grouped(found: list[Finding], at: Callable[[Path | None, int | None], str]) 
 QUOTING = frozenset({"G6"})
 #: How the report names the option that lists every place, on the command line and on the
 #: web page, which shows the same text.
-DETAILS = "--details (on the web page, the box \"List every place of every finding\")"
+#: Where every place of every finding is: the page shows the PDF, which lists them all
+#: (2026-11-12: the page draws no text report, and has no box for it).
+DETAILS = "--details (on the web page, the PDF of the report)"
 
 
 def _n(count: int, one: str, many: str | None = None) -> str:
@@ -160,7 +162,9 @@ def _words(report) -> str:
     unread paper beside another's findings is not a paper checked (round 1 of #600)."""
     unread = [run for run in report.gates if run.note]
     found = [finding for run in report.gates for finding in (*run.writing, *run.language)]
-    said = (f"{_n(counted(found), 'finding')} to look at, in {_n(len(kinds_of(found)), 'kind')} "
+    # The kinds of finding, not the note on forms passed over (the final check of #640).
+    many = sum(1 for kind in kinds_of(found).values() if counted(kind))
+    said = (f"{_n(counted(found), 'finding')} to look at, in {_n(many, 'kind')} "
             "(not counted by --strict)" if counted(found) else "")  # fmt: skip
     if unread:
         names = ", ".join(run.paper.name for run in unread)

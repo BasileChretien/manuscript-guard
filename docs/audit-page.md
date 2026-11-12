@@ -12,9 +12,15 @@ release changed. CI holds its reports to the command line's, word for word (belo
 it loads, a bar gives the share of what it fetches that has come, as a percentage (the build
 writes the total to `manifest.json`), and the page says which of its four steps
 it is on; a step still under way after 90 seconds is said to be slow, with what to do, and
-the page keeps waiting. The paper can be chosen or dropped on its box. While the audit runs,
-the page says so beside the button, with the seconds it has taken; when it ends, the report
-is brought into view.
+the page keeps waiting. The paper can be chosen or dropped on its box, and the page says the
+name of the one taken; "Or try it with an example paper" checks a short invented paper that
+ships with the page, so that a first visit sees a report. While the audit runs, the page
+lists its steps (reading the paper, the numbers, the writing, each reference looked up, the
+report, the PDF, the copy with comments), ticks each one done, names the one under way, and
+says how long is left: how long each step usually takes, at the pace this computer has kept so
+far (`auditing.progress`). When it ends, the report is brought into view. The page's look is
+the landing page's, warm and plain (the author, 2026-11-12: the page was "a bit scary and not
+attractive at all"), and what to know about it is under *Questions* at its foot.
 
 ## What it checks
 
@@ -28,16 +34,17 @@ reader has them (`.json`, `.csv`, `.tsv`, `.txt`, `.yaml`). That is everything
 - the reference list (G7), and with the box ticked, whether a cited work was retracted or is
   in no registry.
 
-The page draws the report: what each check found, in a table; the findings on the words, a
-fold for each kind with every place inside it and the kind's hint; and the other sections
-with something to show. It names a check's code (G14) only on pointing at its kind. The buttons
-that save the report stand above it. Below it, in a fold, is the text the command line
-prints, word for word, which "Save the report as text" saves. The box "List every place of every finding" gives the
-text every place with its context and hint, and the page every section and every place's
-context (`audit --details`). "Open the report as a PDF" shows it as `audit --pdf` writes
-it, from the same audit, in a tab of its own, and "Save the PDF" saves it. For a .docx, "Save the paper with the findings as Word
-comments" saves a copy of it with each finding as a comment at its place, written from the
-same audit, as `audit --commented` writes it; it is made in the browser like the rest.
+The page shows the report as the PDF `audit --pdf` writes, from the same audit, inside the
+page, in the browser's own viewer: its summary in colour, every section and every place of
+every finding, with its pages, search and zoom (the author, 2026-11-12: "directly display the
+interactive pdf inside the page", not in a tab of its own, and no text report beside it).
+Above it a sentence says how the checks came out, and "Download the PDF" saves it. A phone,
+which shows a PDF in a page of its own, gets "Open the report" instead. For a .docx,
+"Download your paper with the findings as Word comments" saves a copy of it with each finding
+as a comment at its place, written from the same audit, as `audit --commented` writes it; it
+is made in the browser like the rest. The text the command line prints is still made, and CI
+holds it to the command line's word for word; the page shows it only where the PDF could not be
+made, as the report, with "Download the report as text".
 "English of the paper" is `--english`, and "Words to leave alone", split at spaces and
 commas, is `--known`: names, initials and the field's terms G14 then neither asks to be
 defined, reports the spelling of, nor reads as names from code.
@@ -58,9 +65,10 @@ Three ways, from the simplest:
    its [Content-Security-Policy](https://developer.mozilla.org/docs/Web/HTTP/Guides/CSP), which
    the browser enforces. It lets the page send requests only to the address it was loaded
    from and to the five registries the lookups ask (Crossref, OpenAlex, DataCite, doi.org,
-   PubMed), and to start no worker from a file, load nothing into a frame, and send no form.
-   The page's *Test the rules* button tries seven requests the rules forbid, from the page and
-   from the checker, and shows each one refused.
+   PubMed), to show no frame but a `blob:` address of the browser's own, which the page uses
+   only for the PDF it made itself, to start no worker from a file, and to send no form. The page's *Test the rules*
+   button tries eight requests the rules forbid, from the page and from the checker, a frame
+   from another site among them, and shows each one refused.
 3. **Compare the files.** The page lists every file it loads with its SHA-256 in
    `files.sha256`, and *What this page loaded and sent* lists every request the browser
    recorded: while loading, none to any other host; while auditing, none, or the lookups

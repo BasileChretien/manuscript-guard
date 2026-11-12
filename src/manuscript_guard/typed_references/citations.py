@@ -45,6 +45,8 @@ _ALONE = re.compile(YEAR)
 _YEAR_FIRST = re.compile(rf"{YEAR}[,;] .+")
 #: The end of a citation's year in brackets, as a word before a joining "and" or comma ends.
 _CITED_BEFORE = re.compile(rf"{YEAR}\)[,;]?$")
+#: What a narrative citation's words are read back to: its paragraph's start.
+_PARAGRAPH = "\n\n"
 #: The words before a name in brackets that are the citation's prefix: "see", "e.g.,".
 _PREFIX = re.compile(r"[a-z][a-z.]*,?(?: [a-z][a-z.]*,?)*")
 #: The ways APA joins the last of three names or more to the others.
@@ -236,8 +238,8 @@ def _narrative(text: str, found: re.Match, by_year, unknown, *, more: bool = Fal
     or a second year after the year, and the citation is listed. The words before it are
     read back to the paragraph's start, across a line's break inside it (round 2 of #638:
     "As Brown and" over "Lee (2018)" was made "Brown and @lee2018")."""
-    paragraph = text.rfind("\n\n", 0, found.start())
-    before = text[paragraph + 2 if paragraph >= 0 else 0 : found.start()]
+    paragraph = text.rfind(_PARAGRAPH, 0, found.start())
+    before = text[paragraph + len(_PARAGRAPH) if paragraph >= 0 else 0 : found.start()]
     if not before[-1:].isspace():
         return None
     stem = before.rstrip()

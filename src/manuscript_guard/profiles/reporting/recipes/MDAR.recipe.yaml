@@ -1,0 +1,76 @@
+schema: manuscript-guard/recipe/1
+
+# MDAR, the Materials Design Analysis Reporting checklist for authors, for papers in the life
+# sciences. It is a PDF of a table of three columns: each row's title and text on the left, a
+# box for where it is reported in the middle, and "n/a" on the right. The rows carry no
+# numbers and nothing but the bold of a title sets it apart from the text under it, which
+# pdftotext does not report, so this recipe lists the eighteen titles as the checklist prints
+# them and the rows reader (`reporting/rows.py`) finds each and reads the text under it.
+#
+# The identifiers are this recipe's, not the checklist's: the letter of the section (M for
+# Materials, D for Design, A for Analysis, R for Reporting) and the row's place in it. Each
+# row is one item, with every paragraph under its title, because each row has one box for the
+# place it is reported; "Cell lines" and "Primary cultures" are two paragraphs of M4.
+#
+# The reader takes each word's place from poppler's `pdftotext -bbox`; Xpdf's has no -bbox,
+# and is refused. Read with poppler 24.04.
+#
+# Page 1 is the checklist's introduction and is not read. Page 5 opens its Reporting section
+# with a paragraph on discipline-specific guidelines before the one row, and the reader passes
+# over the text between a heading and the next title.
+
+meta:
+  name: MDAR
+  long_name: "Materials Design Analysis Reporting (MDAR) Checklist for Authors"
+  version: "OSF file of 2026-09-22"
+  applies_to: "Research papers in the life sciences"
+  # The OSF project; the file's own page is https://osf.io/2k3va/files/osfstorage/5ce411ed23fec40019e39f73
+  # (file bj3mu), which the OSF API gives as the file's place on 2026-11-12.
+  source_url: "https://osf.io/2k3va/"
+  retrieved_on: 2026-11-12
+  retrieved_by: "downloaded by the author"
+  licence: >-
+    CC BY 4.0 as the licence of the OSF project the checklist is filed in: the project "MDAR: Towards minimum reporting standards for life scientists" (osf.io/2k3va) records "CC-By Attribution 4.0 International" with the year 2019 and no copyright holder named, read through the OSF API (api.osf.io/v2/nodes/2k3va/, its license relationship) on 2026-11-12. The checklist PDF itself states no licence. The framework paper (Macleod M, et al. PNAS 2021;118(17):e2103238118, doi:10.1073/pnas.2103238118) is an article under CC BY 4.0 in Crossref; this recipe does not read it.
+  licence_url: https://creativecommons.org/licenses/by/4.0/legalcode
+  download_url: https://osf.io/download/bj3mu/
+  sha256: 65b35021805f4db3c5b66e9421545cd1d682b931052b13205ebd752f0ed0dfaf
+
+document: MDAR-checklist-Author.pdf
+format: pdf-rows
+rows: topics
+pages: [2, 3, 4, 5]
+# Where each column starts, in points from the left edge of the A4 page: the section headings
+# ("Materials:") at 52, the titles and their text at 77 to 79, the box at 283 to 285 and
+# "n/a" at 505.
+columns:
+  section: 0
+  text: 70
+  form: 280
+# The instruction above the first section, on page 2.
+start_after: "For all that apply, please note where in the manuscript the required information is provided."
+# Every row's box opens with these words; a row the recipe left out would give the row above
+# it two.
+marker: "indicate where provided"
+items: 18
+topics:
+  - {id: M1, topic: "Newly created materials"}
+  - {id: M2, topic: "Antibodies"}
+  - {id: M3, topic: "DNA and RNA sequences"}
+  - {id: M4, topic: "Cell materials"}
+  - {id: M5, topic: "Experimental animals"}
+  - {id: M6, topic: "Plants and microbes"}
+  - {id: M7, topic: "Human research participants"}
+  - {id: D1, topic: "Study protocol"}
+  - {id: D2, topic: "Laboratory protocol"}
+  - {id: D3, topic: "Experimental study design (statistics details)"}
+  - {id: D4, topic: "Sample definition and in-laboratory replication"}
+  - {id: D5, topic: "Ethics"}
+  - {id: D6, topic: "Dual Use Research of Concern (DURC)"}
+  - {id: A1, topic: "Attrition"}
+  - {id: A2, topic: "Statistics"}
+  - {id: A3, topic: "Data availability"}
+  - {id: A4, topic: "Code availability"}
+  - {id: R1, topic: "Adherence to community standards"}
+
+# Unused by the rows reader, but the recipe schema expects a text column.
+text_column: 0

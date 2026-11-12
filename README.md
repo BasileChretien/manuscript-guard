@@ -238,7 +238,7 @@ for a line left out, and other findings follow from the same edit:
 
 | Guideline | What is checked | Gate |
 |---|---|---|
-| Reporting checklists: CONSORT 2025, SPIRIT 2025, STROBE, RECORD, RECORD-PE, PRISMA 2020, TRIPOD+AI, STARD 2015, CHEERS 2022, ARRIVE 2.0, READUS-PV, and SANRA for a narrative review | each item says where it is addressed, or why it does not apply; a warning where the study design declared has none of its guidelines, and where a guideline's authors have replaced it | G5 |
+| Reporting checklists: CONSORT 2025, SPIRIT 2025, STROBE, RECORD, RECORD-PE, PRISMA 2020, TRIPOD+AI, STARD 2015, CHEERS 2022, ARRIVE 2.0, MDAR, SAGER 2022, READUS-PV, and SANRA for a narrative review | each item says where it is addressed, or why it does not apply; a warning where the study design declared has none of its guidelines, and where a guideline's authors have replaced it | G5 |
 | The journal's instructions for authors | each rule quoted from the journal's stored page: limits, sections, required statements, the data availability statement against the data policy, artwork, the boxes beside the abstract | G4 |
 | ICMJE's recommendations | tables and figures cited in the order of their first citation; an earlier output of the same data disclosed | G2, G8 |
 | The study's registration, at ClinicalTrials.gov, the EU PAS register, OSF or ISRCTN | made before the study started, or said to be retrospective; each registered outcome reported in the registry's words and role, or its absence said | G12 |

@@ -2023,6 +2023,30 @@ def _finding_places() -> Reading:
     return found
 
 
+@reading("checklist quotes")
+def _checklist_quotes() -> Reading:
+    """What G5 finds of each answer of a reporting checklist that quotes the manuscript
+    (`checklist_quotes.read`, `Manuscript.judged`): `given` holds the Markdown files by name,
+    each value binding's display, the emitted tables' captions as `[kind, supplementary,
+    number, text]`, and the items, each a `where` and maybe a `quote`. The files are joined
+    into the main text and the supplement as the build prints them (`documents`). The answer
+    is, item by item, None for no quote, else whether it stands under what `where` names and
+    the parts it stands under instead."""
+    from manuscript_guard.contracts.values import Value
+    from manuscript_guard.gates.checklist_quotes import Caption, documents, read, typed_legends
+
+    def found(given: dict[str, Any]) -> list[Any]:
+        texts = documents(given["files"])
+        namespace = {ref: Value(key=ref, value=None, display=shown, origin="results")
+                     for ref, shown in given["values"].items()}  # fmt: skip
+        captions = [Caption(*caption) for caption in given["captions"]] + typed_legends(texts)
+        manuscript = read(texts, namespace, captions)
+        placed = (manuscript.judged(item["quote"], item["where"]) for item in given["items"])
+        return [None if one is None else [one.under, list(one.elsewhere)] for one in placed]
+
+    return found
+
+
 @reading("passages")
 def _passages() -> Reading:
     """The sentences each entry of a `passages.yaml` belongs to, with the line of each one's

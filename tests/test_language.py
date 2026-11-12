@@ -359,7 +359,8 @@ def test_a_statistic_after_a_dash_defines_nothing_whatever_its_shape(
      "the Basic Payment Scheme \N{EN DASH} BPS \nwas introduced in 2015.",
      # A citation with words in it, a locator or a prefix, is words of the sentence.
      "the Basic Payment Scheme \N{EN DASH} BPS [@ec2013, p. 3].",
-     "the Basic Payment Scheme \N{EN DASH} BPS [see @ec2013]."],
+     "the Basic Payment Scheme \N{EN DASH} BPS [see @ec2013].",
+     "> - A\n> # Note\n> some prose\n> 2020) the Basic Payment Scheme \N{EN DASH} BPS\n> - y"],
 )  # fmt: skip
 def test_a_dash_definition_that_does_not_end_its_clause_defines_nothing(written_as: str) -> None:
     """A limit written down in DESIGN.md's Known gaps: a short form after a dash with more
@@ -463,8 +464,8 @@ def test_an_anchor_after_a_dash_s_short_form_leaves_its_definition_standing(
         # A lazy continuation, unindented, in an item above.
         ("- the Farming Fund\nstill paid\n- the Woodland Grant Scheme \N{EN DASH} WGS\n- the "
          "Woodland Fund", "WGS"),
-        # A list straight under a lead-in line: one paragraph to pandoc, its next item's dash
-        # after the line break.
+        # A list straight under a lead-in line: the next item is of the same kind, or the
+        # list opens under a line ending in a colon.
         ("The schemes were:\n- Basic Payment Scheme \N{EN DASH} BPS\n- Common Agricultural "
          "Policy \N{EN DASH} CAP", "BPS"),
         # Round 2 of #662: the same with another marker, a next item opening with a digit,
@@ -478,6 +479,7 @@ def test_an_anchor_after_a_dash_s_short_form_leaves_its_definition_standing(
          "Agricultural Policy \N{EN DASH} CAP", "BPS"),
         ("1. the Farming Fund\n" + "still paid\n" * 250 + "2. the Woodland Grant Scheme "
          "\N{EN DASH} WGS\n* the Woodland Fund", "WGS"),
+        ("Rates peaked in:\n2020) in older people \N{EN DASH} OR\n- 1.52 in all.", "OR"),  # a gap
         # A binding that prints no value: an anchor, and a pointer.
         ("Farmers were paid under the Basic Payment Scheme \N{EN DASH} BPS "
          "{{method.payments}}.", "BPS"),
@@ -510,6 +512,7 @@ def test_a_closing_dash_before_a_bracket_defines_nothing() -> None:
         # A line in the middle of a paragraph that opens as a list item would.
         "Rates rose until\n2020) in older people \N{EN DASH} OR\n- 1.52 in all.",
         "Rates rose in group\n3. in older people \N{EN DASH} OR\n- 1.52 in all.",
+        ">  Rates rose until\n> 2020) in older people \N{EN DASH} OR\n> - 1.52",
     ],
 )
 def test_a_list_item_goes_on_past_its_line_into_its_continuation(written_as: str) -> None:

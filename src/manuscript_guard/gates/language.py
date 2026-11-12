@@ -202,8 +202,8 @@ _LINE_ENDS = re.compile(rf"{_MARKS}{_CITED}{_LINE_GAP}(?:\n|\Z)")
 _LIST_ITEM = re.compile(r"[ \t]*(?:>[ \t]*)*(?:(?:[-*+]|\d{1,9}[.)])[ \t]|\\item(?![A-Za-z]))")
 #: A Markdown list item's marker, by its kind: a bullet, or a number's delimiter.
 _MARKER = re.compile(r"[ \t]*(?:>[ \t]*)*(?:(?P<bullet>[-*+])|\d{1,9}(?P<delimiter>[.)]))[ \t]")
-#: A block quote's `>` before a line, each with the space after it.
-_QUOTE = re.compile(r"[ \t]*(?:>[ \t]?)+")
+#: A block quote's `>` at a line's start, each with all the spaces after it; or nothing.
+_QUOTE = re.compile(r"(?:[ \t]*>[ \t]*)*")
 #: How a lead-in line a list stands under ends: "The schemes were:".
 _LEAD_IN = ":"
 #: What opens a line that ends the item above it: a heading, LaTeX's next `\item` or the
@@ -1035,7 +1035,7 @@ def _in_a_list_item(typed: str, line: int) -> bool:
         if at == 0:
             return _opens_a_list(here)
         above = typed.rfind("\n", 0, at - 1) + 1
-        written = _QUOTE.sub("", typed[above : at - 1], count=1)
+        written = typed[_QUOTE.match(typed, above).end() : at - 1]
         if not written.strip(" \t\r") or _ENDS_AN_ITEM.match(written):
             return _opens_a_list(here)
         if written.rstrip(" \t\r").endswith(_LEAD_IN) and _MARKER.match(here):
@@ -1058,7 +1058,7 @@ def _kind(marker: re.Match[str]) -> str:
 def _opens_a_list(written: str) -> bool:
     """Does the line `written`, the first of its block, open a list: a marker's or indented,
     read through a block quote's `>`?"""
-    unquoted = _QUOTE.sub("", written, count=1)
+    unquoted = written[_QUOTE.match(written).end() :]
     return bool(_MARKER.match(written)) or unquoted[:1] in (" ", "\t")
 
 

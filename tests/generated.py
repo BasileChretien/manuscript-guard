@@ -659,7 +659,7 @@ DEFINING = (
     ("the Hill Farm Allowance \N{EN DASH} HFA  \nwhich pays farmers", "\N{EN DASH} HFA",
      "HFA"),
     # A bullet that is no dash, which only the list item's line ends (round 1 of #662: a
-    # dash bullet's line break is read as a space before a closing dash).
+    # dash bullet's list is read by the same list rule).
     ("* the Slurry Infrastructure Grant \N{EN DASH} SIG\n* the Slurry Fund", "\N{EN DASH} SIG",
      "SIG"),
     ("- the Farming Transition Fund \N{EN DASH} FTF\n- the Farming Equipment Fund",
@@ -671,7 +671,7 @@ DEFINING = (
     ("- the Farming Fund\n  still paid\n- the Woodland Grant Scheme \N{EN DASH} WGS\n- the "
      "Woodland Fund", "\N{EN DASH} WGS", "WGS"),
     # Round 1 of #662: an item under a lazy continuation, unindented; a list straight under a
-    # lead-in line, its next item's dash after the line break; and a binding that prints no
+    # lead-in line, the next item of the same kind; and a binding that prints no
     # value, an anchor and a pointer.
     ("1. the Forestry Fund\nstill paid\n2. the Tree Health Scheme \N{EN DASH} THS\n3. the "
      "Tree Fund", "\N{EN DASH} THS", "THS"),

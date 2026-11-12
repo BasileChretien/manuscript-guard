@@ -23290,6 +23290,10 @@ Open, recorded as each change landed:
     only where the short form ends its clause: after a closing dash a word is asked for, as
     after a comma, so that "– OR – 1.52" gives the odds ratio's value (round 1 of #662).
     Pinned by `tests/test_language.py::test_a_closing_dash_before_a_bracket_defines_nothing`.
+  - A prose line shaped like a marker, "2020) ", is an item under a line ending in ":", beside
+    another such line or past the lookback; and "> # Note" in a quoted list stops the walk up,
+    so an item below it is not read. Accepted.
+    Pinned by `tests/test_language.py::test_a_dash_defines_under_a_lazy_line_a_lead_in_or_before_a_binding_of_no_value` and `tests/test_language.py::test_a_dash_definition_that_does_not_end_its_clause_defines_nothing`.
   - In a paragraph set entirely in bold with no small letter, and in a cell of a table's
     header row with none, read as headings typed in capitals, nothing is reported as
     undefined. An abbreviation nobody defined that stands only in such places is missed:

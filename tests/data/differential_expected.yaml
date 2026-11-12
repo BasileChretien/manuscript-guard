@@ -33,8 +33,8 @@ expected:
       continuation of it, and a prose line opening "2020) " in a paragraph's middle is no
       list item (round 2 of #643); a binding that prints no value, an anchor or a pointer,
       leaves the definition standing, an item under a lazy continuation is still one, and a
-      list straight under a lead-in line, or in a block quote, defines each entry, with any
-      marker (rounds 1 and 2 of #662); the inputs now hold each of these
+      list under a lead-in line, or in a block quote, defines each entry where the next item is of
+      the same kind, or the list opens under a line ending in a colon (rounds 1 and 2 of #662); the inputs now hold each of these
       shapes, and list items over a nested list and after a continued one, which still
       define. The entry it replaces, for #643 itself, is spent
   - reading: audit abbreviations

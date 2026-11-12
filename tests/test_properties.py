@@ -1284,10 +1284,23 @@ def _what_is_found_past_a_refusal_is_kept(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_before", lambda reading, at: reading)
 
 
-def _a_declaration_unread_counts(patch: pytest.MonkeyPatch) -> None:
+def _a_declaration_in_unprinted_text_counts(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_encodings, "in_tree", lambda document, originals: latex_encodings
                   .declared(originals[source.path] for source in document.sources
                             if not source.loose and source.path in originals))  # fmt: skip
+
+
+def _a_declaration_past_a_stop_does_not_count(patch: pytest.MonkeyPatch) -> None:
+    in_tree = latex_encodings.in_tree
+
+    def broken(document, originals: dict[str, str]) -> str | None:
+        cut = {source.path: originals[source.path][: source.reading.refusals[0].offset]
+               for source in document.sources if source.path in originals
+               and source.reading.refusals}  # fmt: skip
+        return in_tree(document, {**originals, **{path: text.ljust(len(originals[path]))
+                                                  for path, text in cut.items()}})
+
+    patch.setattr(latex_encodings, "in_tree", broken)
 
 
 def _the_encoding_is_the_folder_s(patch: pytest.MonkeyPatch) -> None:
@@ -21227,8 +21240,12 @@ BROKEN = {
         _what_is_found_past_a_refusal_is_kept,
         test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
     ),
-    "in LaTeX, an audited tree counts a declaration in a comment or unprinted": (
-        _a_declaration_unread_counts,
+    "in LaTeX, an audited tree counts a declaration in unprinted text": (
+        _a_declaration_in_unprinted_text_counts,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a declaration past a stop does not count": (
+        _a_declaration_past_a_stop_does_not_count,
         test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
     ),
     "in LaTeX, an audited folder's encoding is decided for the folder": (

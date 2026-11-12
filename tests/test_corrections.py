@@ -162,3 +162,42 @@ def test_the_join_written_is_the_kept_form_set_evenly() -> None:
     (round 1 of #636)."""
     found = _notation_corrected("CI 1.2 -3.4", "CI 2.0-3.0", "CI 0.8 to 1.1")
     assert found == [("CI 0.8 to 1.1", "CI 0.8-1.1")]
+
+
+PROJECT_PAPER = (
+    "# Methods\n\nThe reporting odds ratio (ROR) was computed. PRR (proportional reporting "
+    "ratio) was not. The hazard ratio [HR] was given. The information component (IC; a "
+    "measure) was read.\n\nThe odds ratio (OR) was used: OR was 2.\n\n# Results\n\nThe "
+    "colour was seen; P=0.03 and P = 0.04 and P = 0.05.\n\n# Acknowledgements\n\nFunded by "
+    "the National Institutes of Health (NIH).\n"
+)
+
+
+def test_a_project_s_edits_are_g14_s_three_readings_read_as_check_reads_them(
+    tmp_path: Path,
+) -> None:
+    """`language_edits` reads the manuscript as `check_language` does, and gives the edits of
+    the three readings: each abbreviation defined and not used again written out, in either
+    order and with a sentence's capital, but not one whose bracket holds more, one used
+    again or a funder's; a word of the other English respelt; and a sign spaced as most are.
+    Edited, the manuscript gives no edit, and only the finding no edit was sure of stays."""
+    from manuscript_guard.contracts.project import Project
+    from manuscript_guard.gates.language import check_language, language_edits
+
+    (tmp_path / "manuscript").mkdir()
+    paper = tmp_path / "manuscript" / "main.md"
+    paper.write_text(PROJECT_PAPER, encoding="utf-8", newline="\n")
+    project = Project(root=tmp_path, paper={"english_variant": "en-US"}, authors=None)
+    found = corrections(language_edits(project))
+    assert [(one.codes, one.old, one.new) for one in found] == [
+        (("abbreviation-unused",), "reporting odds ratio (ROR)", "reporting odds ratio"),
+        (("abbreviation-unused",), "PRR (proportional reporting ratio)",
+         "Proportional reporting ratio"),
+        (("abbreviation-unused",), "hazard ratio [HR]", "hazard ratio"),
+        (("spelling-variant",), "colour", "color"),
+        (("notation-sign-spacing",), "P=0.03", "P = 0.03"),
+    ]  # fmt: skip
+    paper.write_text(applied(PROJECT_PAPER, found), encoding="utf-8", newline="\n")
+    assert corrections(language_edits(project)) == []
+    left = [(f.code, f.message.split(" ")[0]) for f in check_language(project).findings]
+    assert left == [("abbreviation-unused", "IC")]

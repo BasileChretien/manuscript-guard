@@ -50,13 +50,14 @@ from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.dictionary import load_dictionary
 from manuscript_guard.contracts.project import PAPER_FILE, Project
 from manuscript_guard.contracts.results import Results, load_results
+from manuscript_guard.corrections import Edit
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates import glossary
 from manuscript_guard.gates.code_names import Names, Prose, judge_code_names
-from manuscript_guard.gates.notation import judge_notation
+from manuscript_guard.gates.notation import judge_notation, notation_edits
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
 from manuscript_guard.gates.scripts import judge_scripts
-from manuscript_guard.gates.spelling import judge_spelling
+from manuscript_guard.gates.spelling import judge_spelling, opens_a_sentence, spelling_edits
 from manuscript_guard.gates.vocabulary import (
     Passage,
     capitals_together,
@@ -1767,6 +1768,60 @@ def check_language(
         .merge(judge_scripts(_whole(files)))
         .merge(_not_read(files))
     )
+
+
+def language_edits(project: Project) -> list[Edit]:
+    """The exact edits G14's readings would make (`corrections.py`), the manuscript read as
+    `check_language` reads it: each abbreviation defined and not used again written out,
+    each word of the other English respelt, and the notation set as the manuscript's own."""
+    files = _read(project)
+    passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
+    spelt = [Passage(file.path, file.text, file.spelt, file.line_of) for file in files]
+    return (abbreviation_edits(files, _known(project))
+            + spelling_edits(spelt, project.english_variant, project.accepted_spellings)
+            + notation_edits(passages))  # fmt: skip
+
+
+def abbreviation_edits(files: list[_File], known: _Known) -> list[Edit]:
+    """Each abbreviation `abbreviation-unused` says is defined and not used again, written
+    out where it is defined, at every place: "the reporting odds ratio (ROR)" becomes "the
+    reporting odds ratio", and "ROR (reporting odds ratio)" becomes "reporting odds ratio",
+    with a capital where it opens a sentence (the author, 2026-11-11). Only where the
+    bracket holds the one form and nothing more; not an entry of a list of abbreviations,
+    which the list is to drop; and not one defined among the acknowledgements, where a
+    funder is named in full with its acronym."""
+    edits = []
+    for scope in _collect(files, known).values():
+        for short, definitions in scope.defined.items():
+            definitions = sorted(definitions, key=lambda mark: mark.key)
+            if scope.used.get(short) or definitions[0].quiet:
+                continue
+            for mark in definitions:
+                file = files[mark.order]
+                if not _in_a_glossary(file, mark.offset):
+                    edit = _written_out(file, mark, short)
+                    edits += [edit] if edit is not None else []
+    return edits
+
+
+def _written_out(file: _File, mark: _Definition, short: str) -> Edit | None:
+    """The edit that drops the short form of one definition, or None where it is not one
+    of the two shapes an edit is sure of."""
+    text, at, long = file.text, mark.offset, mark.long
+    end = at + len(short)
+    if text[at:end] != short or not long:
+        return None
+    passage = Passage(file.path, file.text, file.printed, file.line_of)
+    bracket = text[at - 1 : at] + text[end : end + 1]
+    if bracket in ("()", "[]") and text[at - 2 - len(long) : at - 1] == long + " ":
+        return Edit("abbreviation-unused", passage, at - 2, end + 1, "",
+                    (at - 2 - len(long), end + 1))  # fmt: skip
+    after = f" ({long})"
+    if text[end : end + len(after)] == after:
+        spelt = long[:1].upper() + long[1:] if opens_a_sentence(text, at) else long
+        return Edit("abbreviation-unused", passage, at, end + len(after), spelt,
+                    (at, end + len(after)))  # fmt: skip
+    return None
 
 
 def _code_names(project: Project, results: Results | None) -> Names:

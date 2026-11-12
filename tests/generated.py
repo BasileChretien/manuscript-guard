@@ -7229,6 +7229,38 @@ def _spelt_typed(draw: st.DrawFn, own: str, theirs: int, ours: int,
     return pairs
 
 
+#: Abbreviations a manuscript may define, each with its long form, which G14 reads as a
+#: definition in either order.
+WRITTEN_OUT = (("ROR", "reporting odds ratio"), ("PRR", "proportional reporting ratio"),
+               ("HR", "hazard ratio"), ("IC", "information component"), ("RR", "risk ratio"),
+               ("SDR", "signal detection ratio"), ("EBGM", "empirical Bayes geometric mean"),
+               ("OR", "odds ratio"))  # fmt: skip
+
+
+@st.composite
+def abbreviations_written_out(draw: st.DrawFn) -> tuple[str, str]:
+    """A manuscript typed and as G14's abbreviation edits leave it. Written out: an
+    abbreviation defined and not used again after its long form in round brackets and in
+    square ones, before its long form inside a sentence and opening one, where the long form
+    takes the capital, and one defined twice. Left as they are: one used again, one whose
+    bracket holds more, and a funder's among the acknowledgements."""
+    a, b, c, d, e, f, g, h = draw(st.permutations(WRITTEN_OUT))
+    opening = d[1][:1].upper() + d[1][1:]
+    pairs = [
+        (f"the {a[1]} ({a[0]}) read", f"the {a[1]} read"),
+        (f"the {b[1]} [{b[0]}] read", f"the {b[1]} read"),
+        (f"then {c[0]} ({c[1]}) read", f"then {c[1]} read"),
+        (f"seen.\n\n{d[0]} ({d[1]}) read", f"seen.\n\n{opening} read"),
+        (f"the {e[1]} ({e[0]}) and again the {e[1]} ({e[0]})",
+         f"the {e[1]} and again the {e[1]}"),
+        (f"the {f[1]} ({f[0]}) read, and {f[0]} was 2",) * 2,
+        (f"the {g[1]} ({g[0]}; a measure) read",) * 2,
+    ]  # fmt: skip
+    typed, edited = _both_ways(draw, draw(st.permutations(pairs)))
+    thanks = f"# Acknowledgements\n\nFunded by the {h[1]} ({h[0]}).\n"
+    return typed + thanks, edited + thanks
+
+
 @st.composite
 def spelling_edited(draw: st.DrawFn) -> list[tuple[str | None, tuple[str, ...], str, str]]:
     """Five manuscripts, each with the English it declares and the spellings it keeps,
@@ -13390,6 +13422,13 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
             "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
         }
     ),
+    "abbreviation edits": st.one_of(
+        st.fixed_dictionaries({
+            "text": texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)),
+            "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
+        }),
+        abbreviations_written_out().map(lambda drawn: {"text": drawn[0], "known": []}),
+    ),  # fmt: skip
     "tex outside maths": lines(),
     "title": lines(),
     "title held": st.fixed_dictionaries({"cited": lines(), "registered": lines()}),

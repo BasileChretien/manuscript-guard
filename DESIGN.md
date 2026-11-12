@@ -5600,14 +5600,21 @@ The example joins the bounds of its five intervals with "to", sets "%" against i
 and states no P value with a sign, so it has nothing to report.
 
 **What has one answer is offered as an edit, at every place** (`notation_edits`,
-`spelling_edits`, `corrections.py`). The author asked for a copy of an audited paper with
+`spelling_edits`, `abbreviation_edits`, gathered for a project by `language_edits`;
+`corrections.py`). The author asked for a copy of an audited paper with
 the corrections in Word's Track Changes (2026-11-11), and chose the kinds: spelling,
 spacing, intervals and abbreviations. A finding names the first place only. An edit is one
 change at one place, and the readings make one at every place: each sign after P or n
 spaced as the manuscript spaces most of them, each interval joined and each "%" set as
-most are, a space between a number and the unit or word it runs into, and each word of
-the other English respelt in the paper's, with its capital. Where the readings are not
-sure there is no edit, and the finding stays for the author: two forms used as often; the
+most are, a space between a number and the unit or word it runs into, each word of the
+other English respelt in the paper's, with its capital, and each abbreviation defined and
+not used again written out where it is defined: "the reporting odds ratio (ROR)" loses its
+bracket, round or square, and "ROR (reporting odds ratio)" becomes its long form, with the
+capital of a sentence it opens. Only where the bracket holds the one form and nothing
+more, and never an entry of a list of abbreviations, which the list is to drop, nor a
+funder's among the acknowledgements, which nothing is expected to use. Where the readings
+are not sure there is no edit, and the finding stays for the author: two forms used as
+often; the
 P's symbol, which is the journal's; a dash beside a negative bound, which would read as its
 sign; two or three hyphens against an interval's high bound after a negative or bound low
 one, "-1.2--0.3", which may be pandoc's dash or a hyphen and the bound's minus sign (after
@@ -5619,8 +5626,9 @@ none and has as many words of each; and the two endings of `spelling-mixed`, whe
 list does not pair every word. A join is written as the kept form is typed, set evenly:
 a hyphen typed with a space on one side is not copied. The edits of one stretch, or of
 stretches that overlap, are one correction, and two that touch the same characters
-differently are both dropped: an insertion at either end of another's change touches it. An edit's place is the
-passage's text, which for a .docx is the text pandoc converts it to. Held by
+differently are both dropped: an insertion at either end of another's change touches it.
+An edit's place is the passage's text, which for a .docx is the text pandoc converts it
+to. Held by
 `tests/test_properties.py`, which builds each manuscript with the text its edits must
 leave, and by `tests/test_corrections.py`.
 

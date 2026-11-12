@@ -6259,6 +6259,67 @@ def _a_word_inside_a_quotation_is_respelt(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling, "_in_a_quotation", lambda text, start: False)
 
 
+from generated import abbreviations_written_out  # noqa: E402
+
+
+@holds(40, abbreviations_written_out())
+def test_g14_writes_out_an_abbreviation_defined_and_not_used_again(
+    drawn: tuple[str, str],
+) -> None:
+    """An abbreviation defined and not used again is written out where it is defined, at
+    every place: its bracket dropped after its long form, round or square, or its long form
+    put in its place, with the capital of a sentence it opens. Not one used again, one whose
+    bracket holds more, or a funder's among the acknowledgements. Edited, the manuscript is
+    edited no further."""
+    from manuscript_guard.gates import language as language_gate
+
+    nothing = language_gate._Known(frozenset(), frozenset())
+
+    def edits(read: Any) -> list:
+        return language_gate.abbreviation_edits([read], nothing)
+
+    as_typed, expected = drawn
+    text, edited = _edited(as_typed, edits)
+    assert text == as_typed
+    assert edited == expected, (as_typed, edited)
+    assert _edited(edited, edits)[1] == edited
+
+
+def _a_written_out_abbreviation_takes_no_capital(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "opens_a_sentence", lambda text, start: False)
+
+
+def _an_abbreviation_used_again_is_written_out(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    real = language._collect
+
+    def unused(files, known):
+        scopes = real(files, known)
+        for scope in scopes.values():
+            scope.used.clear()
+        return scopes
+
+    patch.setattr(language, "_collect", unused)
+
+
+def _a_funder_s_abbreviation_is_written_out(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    real = language._collect
+
+    def loud(files, known):
+        scopes = real(files, known)
+        for scope in scopes.values():
+            for short, marks in scope.defined.items():
+                scope.defined[short] = [dataclasses.replace(mark, quiet=False) for mark in marks]
+        return scopes
+
+    patch.setattr(language, "_collect", loud)
+
+
 def _a_respelt_word_loses_its_capital(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import spelling
 
@@ -22871,6 +22932,18 @@ BROKEN = {
     "a word inside a quotation is respelt": (
         _a_word_inside_a_quotation_is_respelt,
         test_g14_respells_a_word_of_the_other_english_where_the_paper_s_own_is_sure,
+    ),
+    "a written-out abbreviation takes no capital where it opens a sentence": (
+        _a_written_out_abbreviation_takes_no_capital,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "an abbreviation used again is written out": (
+        _an_abbreviation_used_again_is_written_out,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a funder's abbreviation among the acknowledgements is written out": (
+        _a_funder_s_abbreviation_is_written_out,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
     ),
     "a respelt word loses its capital": (
         _a_respelt_word_loses_its_capital,

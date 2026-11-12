@@ -24479,7 +24479,14 @@ Open, recorded as each change landed:
     bold alone, the plain ones counted as words under the Abstract's, are placed at one
     level, its own "Results" the paper's, so the Abstract is compared with itself, as a
     paper titled in bold alone was read before. Pinned by
-    `tests/test_audit.py::test_a_run_in_label_typed_alone_is_read_as_a_heading`.
+    `tests/test_audit.py::test_bold_abstract_parts_beside_plain_ones_are_placed_at_one_level`.
+  - Where a plain title sits among titles in bold and the typed titles cannot be placed,
+    one of their names typed twice, the plain one is no heading: a plain "ABSTRACT" before
+    a bold Introduction, Methods, Results, Discussion and References, a plain "RESULTS" in
+    the Discussion, is set aside by `init --from` in the title page's comment, which no gate
+    reads, and the audit compares nothing, as both did before a plain title was read
+    (review of #641). Pinned by
+    `tests/test_audit.py::test_a_plain_abstract_beside_bold_titles_named_twice_is_no_heading`.
 - **`init --from` reads no affiliation, ORCID or e-mail address, and splits no name.** Each
   name from an Author paragraph goes into `authors.yaml` in a comment over an empty entry; the
   rest of the title page is in the comment in `main.md`. Accepted.

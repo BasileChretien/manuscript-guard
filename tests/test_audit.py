@@ -7,11 +7,13 @@ and it must report honestly how little a match is worth.
 
 from __future__ import annotations
 
+import shutil
 import zipfile
 from pathlib import Path
 
 import pytest
 
+from manuscript_guard import from_word
 from manuscript_guard.audit import (
     audit,
     load_backing,
@@ -1750,12 +1752,71 @@ def test_a_run_in_label_typed_alone_is_read_as_a_heading(tmp_path: Path) -> None
     report = audit([tmp_path / "twice.docx"], [])
     assert report.abstract is not None and report.abstract.compared
     assert report.abstract.not_found == []
-    # And a known limit: bold parts of an abstract beside plain ones are placed at one level,
-    # its own "Results" the paper's, as a paper titled in bold alone was read before.
+
+
+needs_pandoc = pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+
+
+@needs_pandoc
+def test_bold_abstract_parts_beside_plain_ones_are_placed_at_one_level(tmp_path: Path) -> None:
+    """A known limit (DESIGN.md, "Known gaps"): bold parts of an abstract beside plain ones
+    cannot all be placed, and those in bold alone are placed at one level, its own "Results"
+    the paper's, by the audit and by `init --from`, as a paper titled in bold alone was read
+    before: the Abstract is compared with itself, and every number of it is found."""
+    from manuscript_guard.text.docx import typed_heading_levels
+
     mixed = (bold("Abstract") + para("BACKGROUND") + para("Of 412, 77 had it.") + bold("Results")
              + para("Of 412, 77 had it.") + para("CONCLUSIONS") + bold("References"))
-    document = read_docx_text(make_docx(tmp_path / "mixed.docx", mixed))
-    assert [level for _at, level in typed_heading_levels(document)] == [1, 1, 1]
+    document = read_docx_text(_package(tmp_path / "mixed.docx", mixed, ""))
+    lines = document.body.split("\n")
+    assert [(lines[at], level) for at, level in typed_heading_levels(document)] == [
+        ("Abstract", 1), ("Results", 1), ("References", 1)]
+    read = audit([tmp_path / "mixed.docx"], []).abstract
+    assert read is not None and read.compared and read.matched == read.numbers > 0
+    assert read.not_found == []
+    assert from_word.typed_headings(_blocks(tmp_path / "mixed.docx"))[1] == (
+        "Abstract", "Results", "References")
+
+
+def _package(path: Path, body: str, styles: str) -> Path:
+    """A .docx with the parts pandoc needs to read it (`test_from_word._package`)."""
+    from test_from_word import _package as package
+
+    return package(path, body, styles)
+
+
+def _blocks(path: Path) -> list:
+    """The blocks pandoc reads in a .docx, as `init --from` reads them."""
+    import json
+    import subprocess
+
+    return json.loads(subprocess.run(["pandoc", str(path), "-f", "docx", "-t", "json"],
+                                     capture_output=True, text=True, check=True,
+                                     timeout=120).stdout)["blocks"]  # fmt: skip
+
+
+@needs_pandoc
+def test_a_plain_abstract_beside_bold_titles_named_twice_is_no_heading(tmp_path: Path) -> None:
+    """A known limit (DESIGN.md, "Known gaps"): a plain "ABSTRACT" among titles in bold, one
+    of whose names is typed again plain, "RESULTS" in the Discussion. The typed titles
+    cannot be placed, so both readers take those in bold alone, and the Abstract is no
+    heading: `init --from` sets it aside in the title page's comment, and the audit
+    compares nothing, as both did before a plain title was read."""
+    body = (para("ABSTRACT") + para("Of 412 patients, 77 had it.") + bold("Introduction")
+            + para("Drugs cause harm.") + bold("Methods") + para("We read 412 records.")
+            + bold("Results") + para("Of 412 patients, 77 had it.") + bold("Discussion")
+            + para("RESULTS") + para("A second study agreed.") + bold("References")
+            + para("1. Doe J. A title. BMJ. 2020;1:2."))  # fmt: skip
+    path = _package(tmp_path / "paper.docx", body, "")
+    document = read_docx_text(path)
+    lines = document.body.split("\n")
+    from manuscript_guard.text.docx import typed_heading_levels
+
+    titles = ("Introduction", "Methods", "Results", "Discussion", "References")
+    assert tuple(lines[at] for at, _level in typed_heading_levels(document)) == titles
+    assert from_word.typed_headings(_blocks(path))[1] == titles
+    read = audit([path], []).abstract
+    assert not (read and read.compared)
 
 
 def test_a_typed_title_in_a_caption_a_cell_or_a_heading_styled_paper_is_no_heading(

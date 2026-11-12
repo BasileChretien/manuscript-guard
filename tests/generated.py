@@ -7629,6 +7629,17 @@ WRITTEN_OUT = (("ROR", "reporting odds ratio"), ("PRR", "proportional reporting 
 LISTED_ONLY = (("ADR", "adverse drug reaction"), ("BMI", "body mass index"),
                ("ICU", "intensive care unit"))  # fmt: skip
 ENTRY_FORMS = ("{0}: {1}", "{0}\t{1}", "{0} ({1})", "{1} ({0})")
+#: Abbreviations whose long form opens on a word that keeps its own case, and others
+#: defined just before a citation (round 2 of #645).
+KEEPS_ITS_CASE = (("MV", "mRNA vaccine"), ("ES", "eGFR slope"), ("PD", "pH drop"))
+CITED_AFTER = (("NNT", "number needed to treat"), ("GFR", "glomerular filtration rate"),
+               ("MAP", "mean arterial pressure"))  # fmt: skip
+#: What may stand between "an" and the short form it was chosen for: a space, a line
+#: break, a no-break space, a LaTeX tie, a mark of emphasis around the definition, a
+#: quotation mark (round 2 of #645).
+AN_SHAPES = ("an {0} ({1})", "an\n{0} ({1})", "an\N{NO-BREAK SPACE}{0} ({1})", "an~{0} ({1})",
+             "an **{0} ({1})**", "an \N{LEFT DOUBLE QUOTATION MARK}{0} ({1})"
+             "\N{RIGHT DOUBLE QUOTATION MARK}")  # fmt: skip
 
 
 @st.composite
@@ -7636,14 +7647,19 @@ def abbreviations_written_out(draw: st.DrawFn) -> tuple[str, str]:
     """A manuscript typed and as G14's abbreviation edits leave it. Written out: an
     abbreviation defined and not used again after its long form in round brackets and in
     square ones, before its long form inside a sentence and opening one, where the long form
-    takes the capital, one defined twice, one also listed among the abbreviations, whose
-    entry stays, and one defined in the text and again by a funder, whose sentence stays.
-    Left as they are: one used again, one whose bracket holds more, a funder's, one after
-    "an", which no edit puts right, a link's, and the entries of the list of abbreviations,
-    one in each form an entry is written in, which the list is to drop (round 1 of #645)."""
+    takes the capital unless its first word keeps its own case, one defined twice, one just
+    before a citation, one also listed among the abbreviations, whose entry stays, and one
+    defined in the text and again by a funder, whose sentence stays. Left as they are: one
+    used again, one whose bracket holds more, a funder's, one after "an" in each shape,
+    which no edit puts right, a link's, and the entries of the list of abbreviations, one in
+    each form an entry is written in, which the list is to drop (rounds 1 and 2 of #645)."""
     a, b, c, d, e, f, g, h, i, j, k, m, n = draw(st.permutations(WRITTEN_OUT))
     opening = d[1][:1].upper() + d[1][1:]
+    kept, cited = draw(st.sampled_from(KEEPS_ITS_CASE)), draw(st.sampled_from(CITED_AFTER))
     pairs = [
+        (f"seen.\n\n{kept[0]} ({kept[1]}) read", f"seen.\n\n{kept[1]} read"),
+        (f"the {cited[1]} ({cited[0]})[@smith2020] read", f"the {cited[1]}[@smith2020] read"),
+        *((shape.format(*i) + " read",) * 2 for shape in AN_SHAPES),
         (f"the {a[1]} ({a[0]}) read", f"the {a[1]} read"),
         (f"the {b[1]} [{b[0]}] read", f"the {b[1]} read"),
         (f"then {c[0]} ({c[1]}) read", f"then {c[1]} read"),
@@ -7652,7 +7668,6 @@ def abbreviations_written_out(draw: st.DrawFn) -> tuple[str, str]:
          f"the {e[1]} and again the {e[1]}"),
         (f"the {f[1]} ({f[0]}) read, and {f[0]} was 2",) * 2,
         (f"the {g[1]} ({g[0]}; a measure) read",) * 2,
-        (f"an {i[0]} ({i[1]}) read",) * 2,
         (f"the {j[1]} [{j[0]}](https://example.org/{j[0]}) read",) * 2,
         (f"the {m[1]} ({m[0]}) read", f"the {m[1]} read"),
         (f"the {n[1]} ({n[0]}) read", f"the {n[1]} read"),

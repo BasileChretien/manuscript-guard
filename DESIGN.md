@@ -5725,8 +5725,11 @@ capital of a sentence it opens where its first word is in lower case. Only where
 bracket holds the one form and nothing more, and never an entry of a list of abbreviations,
 which the list is to drop, nor a definition among the acknowledgements, which nothing is
 expected to use, nor one after "a" or "an", chosen for how the short form is said ("an
-SAE"), nor a bracket that runs on into a link or a span ("[ROR](https://...)"), nor the main
-text's where the supplementary material uses the form and leans on it (round 1 of #645).
+SAE"), whatever space, tie or mark of emphasis or quotation stands between, nor a square
+bracket that runs on into a link, a reference or a span ("[ROR](https://...)"), nor the main
+text's where the supplementary material uses the form and leans on it, which is then not
+reported as unused either (rounds 1 and 2 of #645). A round bracket is no link's: in "the
+number needed to treat (NNT)[@smith2020]" the bracket goes and the citation stays.
 Where the readings
 are not sure there is no edit, and the finding stays for the author: two forms used as
 often; the

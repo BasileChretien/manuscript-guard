@@ -1726,7 +1726,7 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
                         "the title page, tables and figures are not read here",
                     )
                 )
-            elif not uses and not first.quiet:
+            elif not uses and not first.quiet and not _leaned_on(scopes, scope.name, short):
                 findings.append(
                     finding(
                         "abbreviation-unused",
@@ -1835,32 +1835,55 @@ def abbreviation_edits(files: list[_File], known: _Known) -> list[Edit]:
             definitions = sorted(definitions, key=lambda mark: mark.key)
             if scope.used.get(short) or definitions[0].quiet:
                 continue
-            if name == BODY and scopes[SUPPLEMENT].used.get(short):
+            if _leaned_on(scopes, name, short):
                 continue
             for mark in definitions:
                 file = files[mark.order]
-                if mark.quiet or _in_a_glossary(file, mark.offset):
+                if _kept(file, mark):
                     continue
                 edit = _written_out(file, mark, short)
                 edits += [edit] if edit is not None else []
     return edits
 
 
-#: "a" or "an" just before a short form, which was chosen for how the short form is said:
-#: "an SAE (serious adverse event)" written out would read "an serious adverse event".
-_AN_ARTICLE = re.compile(r"(?<![\w-])an?[ \t]+\Z", re.IGNORECASE)
+#: "a" or "an" before a short form, which was chosen for how the short form is said: "an
+#: SAE (serious adverse event)" written out would read "an serious adverse event". Across
+#: a line break, a no-break space, a LaTeX tie or a mark of emphasis or quotation as well
+#: (round 2 of #645).
+_AN_ARTICLE = re.compile(rf"(?<![\w-])an?[\s~{re.escape(_QUOTES)}]+\Z", re.IGNORECASE)
 
 
 def _after_an_article(text: str, at: int) -> bool:
-    """Is the short form at `at` after "a" or "an", which no edit puts right (round 1 of
-    #645)?"""
-    return _AN_ARTICLE.search(text, max(0, at - 6), at) is not None
+    """Is the short form at `at` after "a" or "an", which no edit puts right (rounds 1 and
+    2 of #645)?"""
+    return _AN_ARTICLE.search(text, max(0, at - 16), at) is not None
 
 
 def _runs_on(text: str, end: int) -> bool:
-    """Does a bracket closing at `end` run on into a link's address, a span's attributes or
-    another bracket, "[ROR](https://...)", "[HR]{.smallcaps}" (round 1 of #645)?"""
-    return text[end : end + 1] in ("(", "[", "{")
+    """Does a square bracket closing just before `end` run on into a link's address, a
+    reference or a span's attributes, "[ROR](https://...)", "[HR]{.smallcaps}" (round 1 of
+    #645)? A round bracket is no link's: "(ROR)[@smith2020]" is a definition and a citation
+    (round 2 of #645)."""
+    return text[end - 1 : end] == "]" and text[end : end + 1] in ("(", "[", "{")
+
+
+def _takes_a_capital(long: str) -> bool:
+    """Does the long form take the capital of a sentence it opens: not where its first word
+    keeps a case of its own, "mRNA vaccine" (round 2 of #645)."""
+    return long.split()[0].islower()
+
+
+def _kept(file: _File, mark: _Definition) -> bool:
+    """Is the definition at `mark` one no edit writes out: a funder's among the
+    acknowledgements, named in full with its acronym, or an entry of a list of
+    abbreviations, which the list is to drop?"""
+    return mark.quiet or _in_a_glossary(file, mark.offset)
+
+
+def _leaned_on(scopes: dict, name: str, short: str) -> bool:
+    """Is the main text's definition of `short` what the supplementary material's use of it
+    leans on, so that it is used after all (rounds 1 and 2 of #645)?"""
+    return name == BODY and bool(scopes[SUPPLEMENT].used.get(short))
 
 
 def _written_out(file: _File, mark: _Definition, short: str) -> Edit | None:
@@ -1877,12 +1900,8 @@ def _written_out(file: _File, mark: _Definition, short: str) -> Edit | None:
         return Edit("abbreviation-unused", passage, at - 2, end + 1, "",
                     (at - 2 - len(long), end + 1))  # fmt: skip
     after = f" ({long})"
-    if (text[end : end + len(after)] == after and not _after_an_article(text, at)
-            and not _runs_on(text, end + len(after))):  # fmt: skip
-        # A capital where a sentence opens, unless the long form's first word keeps its own
-        # case, "mRNA sequencing".
-        first = long.split()[0]
-        opens = opens_a_sentence(text, at) and first.islower()
+    if text[end : end + len(after)] == after and not _after_an_article(text, at):
+        opens = opens_a_sentence(text, at) and _takes_a_capital(long)
         spelt = long[:1].upper() + long[1:] if opens else long
         return Edit("abbreviation-unused", passage, at, end + len(after), spelt,
                     (at, end + len(after)))  # fmt: skip

@@ -6529,10 +6529,11 @@ def test_g14_writes_out_an_abbreviation_defined_and_not_used_again(
 ) -> None:
     """An abbreviation defined and not used again is written out where it is defined, at
     every place: its bracket dropped after its long form, round or square, or its long form
-    put in its place, with the capital of a sentence it opens. Not one used again, one whose
-    bracket holds more, a funder's among the acknowledgements, one after "an", a link's, or an
-    entry of the list of abbreviations (round 1 of #645). Edited, the manuscript is edited no
-    further."""
+    put in its place, with the capital of a sentence it opens unless its first word keeps its
+    own case; before a citation too. Not one used again, one whose bracket holds more, a
+    funder's among the acknowledgements, one after "an" across whatever stands between, a
+    link's, or an entry of the list of abbreviations (rounds 1 and 2 of #645). Edited, the
+    manuscript is edited no further."""
     from manuscript_guard.gates import language as language_gate
 
     nothing = language_gate._Known(frozenset(), frozenset())
@@ -6563,6 +6564,30 @@ def _a_list_of_abbreviations_is_written_out(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import language
 
     patch.setattr(language, "_in_a_glossary", lambda file, offset: False)
+
+
+def _an_article_across_a_break_is_not_seen(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_AN_ARTICLE", re.compile(r"(?<![\w-])an?[ \t]+\Z", re.IGNORECASE))
+
+
+def _a_long_form_s_own_case_takes_a_capital(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_takes_a_capital", lambda long: True)
+
+
+def _a_funder_s_sentence_is_written_out_beside_the_text_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_kept", lambda file, mark: language._in_a_glossary(file, mark.offset))
+
+
+def _a_citation_after_a_round_bracket_is_a_link(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import language
+
+    patch.setattr(language, "_runs_on", lambda text, end: text[end : end + 1] in ("(", "[", "{"))
 
 
 def _a_written_out_abbreviation_takes_no_capital(patch: pytest.MonkeyPatch) -> None:
@@ -23560,6 +23585,22 @@ BROKEN = {
     ),
     "the list of abbreviations is written out like the text": (
         _a_list_of_abbreviations_is_written_out,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "an article across a line break or a mark from the short form is not seen": (
+        _an_article_across_a_break_is_not_seen,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a long form's first word that keeps its own case takes a capital": (
+        _a_long_form_s_own_case_takes_a_capital,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a funder's sentence is written out where the text defines the form too": (
+        _a_funder_s_sentence_is_written_out_beside_the_text_s,
+        test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
+    ),
+    "a citation after a round bracket is taken for a link's address": (
+        _a_citation_after_a_round_bracket_is_a_link,
         test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
     ),
     "a written-out abbreviation takes no capital where it opens a sentence": (

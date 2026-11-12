@@ -220,10 +220,17 @@ def _unchecked_of_audit(report) -> list[str]:
         found.append("The registries: not looked up (dry run); what would be asked is listed "
                      "under References.")  # fmt: skip
     elif not report.lookups:
-        # Searched for by title, and none found: said, not passed over (round 1 of #650).
-        searched = sum(1 for one in titles if one.came)
+        # Sent to Crossref by title, and nothing taken: said as the section says each, by why
+        # (round 1 of #650: not passed over; round 2: an unanswered search, or one that found
+        # two works, is no work "not found").
+        from manuscript_guard.auditing import by_title
+
+        sent = [one for one in titles if one.came]
+        reasons = [by_title.reason(one, True) for one in sent]
+        said = "; ".join(f"{why}: {reasons.count(why)}" for why in by_title.REASONS
+                         if reasons.count(why))  # fmt: skip
         found.append(f"The registries: no reference gives a DOI or a PMID, and of the "
-                     f"{_n(searched, 'title')} looked up in Crossref none was found; each is "
+                     f"{_n(len(sent), 'title')} sent to Crossref none was taken ({said}); each is "
                      "listed under References.")  # fmt: skip
     found += [f"The journal's rules read from a project: {what}." for what in
               getattr(report.journal, "skipped", [])]  # fmt: skip
@@ -295,7 +302,10 @@ def _checks_of_audit(report, items: list[Item]) -> list[tuple[str, str, int]]:
                      else f"looked up, {kept} answered from the records kept")  # fmt: skip
         checks.append(("The registries (--lookup)", said,
                        sum(len(one.problems) for one in report.lookups)))  # fmt: skip
-    searched = [one for one in getattr(report, "titles", None) or [] if one.came]
+    # A title Crossref did not answer for was not looked up (round 2 of #650); the note on it
+    # says so.
+    searched = [one for one in getattr(report, "titles", None) or []
+                if one.came and not one.unanswered]  # fmt: skip
     if searched:
         # The titles looked up in Crossref, and those to check by hand among them (round 1
         # of #650: with none found the draft said nothing of the searches).

@@ -10083,11 +10083,17 @@ before the year, an edition, an ISBN, a city of the United States with its state
 publisher's name, editors), a web page by its address alone, and otherwise not sorted. An
 article comes before a web page, so that one that also gives its address is an article; a
 page's own marks come before a book's, so that "[Internet]. Geneva: Example Agency; 2020" is a
-page. A law's and a page's marks are read first outside the title the entry is read to give,
-and only after a book's marks inside it: "How patients accessed care. London: Example Press;
-2019." and "The Data Protection Act 2018 explained. London: ..." are books (round 1 of #650),
-and "Commission notice. Official Journal of the European Union. ...", whose second part is
-read as its title, is a legal text. A web page and a legal
+page. A publication or a register of law, "Official Journal of the European Union", "Federal
+Register", "Journal officiel", Légifrance, makes a legal text wherever it is named, a book's
+marks after it or not. A law's and a page's other marks are read first outside the title the
+entry is read to give; then a title that is a law's name, one that ends with it ("Data
+Protection Act 2018", "Patient Protection and Affordable Care Act of 2010", "Public Law
+111-148"), is a legal text; and only then come a book's marks, and a law's or a page's marks
+inside the title. So "How patients accessed care. London: Example Press; 2019." and "The Data
+Protection Act 2018 explained. London: ..." are books (round 1 of #650), and "United
+Kingdom. Data Protection Act 2018. London: The Stationery Office; 2018." and "Commission
+notice. Official Journal of the European Union. Luxembourg: Publications Office; 2020." are
+legal texts (round 2). A web page and a legal
 text are listed as "no DOI expected", with the mark that sorted them; an entry not sorted is
 to be checked by hand.
 
@@ -10108,7 +10114,8 @@ title and subtitle joined, the entry's once case, punctuation, accents and tags 
 (`fold`; "Børte" is "borte"), the entry's title read as its first part after the authors or as
 that part and the next one or two, so that a title that holds a full stop is still compared
 whole, and the flag a registry puts before a retracted or withdrawn work's title,
-"RETRACTED:", taken off as `gates/searched` takes it off; the family name of the first person
+"RETRACTED:" or Springer's "RETRACTED ARTICLE:", taken off as `gates/searched` takes it off
+(it took off the second too from round 2 of #650); the family name of the first person
 the work lists the first author's the entry is read to give, folded the same way, so that an
 entry with its given names first, "K. L. Ross.", is matched by "Ross" (round 1 of #650: it
 had been held to the entry's opening words, and never matched); and, where the entry gives a
@@ -25867,10 +25874,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
     a book and looked up by its title, and is then most often "none found: check it by
     hand". A title or a journal that holds a publisher's word, "Press" or "Publishing", or
     "editors", sorts the entry a book where no mark before it holds. Accepted.
-  - A legal or official text is known only by the words `_LEGAL_OPENING` and `_LEGAL_NAMED`
-    list, from French, European, American, British, German, Spanish and Italian law; one of
-    another country that gives an address is a web page, which no DOI is expected of either,
-    and one that gives none is not sorted. Accepted.
+  - A legal or official text is known only by the words `_LEGAL_OPENING`,
+    `_LEGAL_PUBLISHED` and `_LEGAL_NAMED` list, from French, European, American, British,
+    German, Spanish and Italian law; one of another country that gives an address is a web
+    page, which no DOI is expected of either, and one that gives none is not sorted.
+    Accepted.
+  - A book whose title names a publication of law, "A history of the Federal Register", is
+    sorted as a legal text and not looked up, since a publication of law counts wherever it
+    is named; one whose title ends with a law's name, "Commentary on the Data Protection Act
+    2018", is a legal text too. Pinned by
+    `tests/test_audit_by_title.py::test_each_shape_is_sorted`.
   - A book or an article that says when it was accessed, with no volume and pages, is a web
     page, and is not looked up. Accepted.
 - **An article or a book is looked up by the title read from it, and taken only on a

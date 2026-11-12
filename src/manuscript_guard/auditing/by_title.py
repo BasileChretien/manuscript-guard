@@ -104,13 +104,21 @@ _LEGAL_OPENING = re.compile(
     r"(?-i:(?!\s+(?:[A-Z]\.?-?){1,4}[,.\s]))(?!,)",
     re.IGNORECASE,
 )
-_LEGAL_NAMED = re.compile(
+#: A publication or a register of law: a legal text wherever it is named, in its title too,
+#: and whatever a book's marks say (round 2 of #650).
+_LEGAL_PUBLISHED = re.compile(
     r"\b(journal officiel|JORF|official journal of the european (?:union|communities)|"
     r"federal register|bundesgesetzblatt|bolet[\u00edi]n oficial|gazzetta ufficiale|"
-    r"l[\u00e9e]gifrance|eur-lex|legislation\.gov\.uk|code de la sant[\u00e9e] publique|"
-    r"code de l'[\u00e9e]ducation|public law \d+|U\.S\.C\.|act(?: of)? (?:1[89]|20)\d{2})(?!\w)",
+    r"l[\u00e9e]gifrance|eur-lex|legislation\.gov\.uk)(?!\w)",
     re.IGNORECASE,
 )
+#: A law's name: a legal text where it is named outside the title, or where the title ends
+#: with it, "Data Protection Act 2018", and not where it is a title's words among others, "The
+#: Data Protection Act 2018 explained" (round 2 of #650).
+_LAW = (r"code de la sant[\u00e9e] publique|code de l'[\u00e9e]ducation|"
+        r"public law \d+(?:[-\u2013]\d+)?|U\.S\.C\.|act(?: of)? (?:1[89]|20)\d{2}")
+_LEGAL_NAMED = re.compile(rf"\b({_LAW})(?!\w)", re.IGNORECASE)
+_LAW_AT_END = re.compile(rf"\b({_LAW})\W*$", re.IGNORECASE)
 _WEB: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("it says when it was accessed", re.compile(
         r"\[cited\b|\b(?:date\s+)?(?:last\s+)?accessed\b|\bconsult[\u00e9e]e?\s+le\b|"
@@ -158,15 +166,24 @@ def sort(text: str) -> Sorted:
     opening = _LEGAL_OPENING.match(text)
     if opening:
         return Sorted(LEGAL, f'it opens with "{opening.group(1)}"')
-    # A page's and a law's marks outside the title first, then a book's, then theirs inside
-    # it: "How patients accessed care. London: Example Press; 2019." and "The Data
-    # Protection Act 2018 explained. ..." are books (round 1 of #650), and "Commission
-    # notice. Official Journal of the European Union. ..." is read with the journal as its
-    # title.
+    # A publication of law named anywhere; a page's and a law's marks outside the title; a
+    # title that is a law's name; then a book's marks, then a page's and a law's inside the
+    # title: "How patients accessed care. London: Example Press; 2019." and "The Data
+    # Protection Act 2018 explained. ..." are books (round 1 of #650), and "United Kingdom.
+    # Data Protection Act 2018. London: The Stationery Office; 2018." and "Commission
+    # notice. Official Journal of the European Union. Luxembourg: ..." are legal texts
+    # (round 2).
+    published = _LEGAL_PUBLISHED.search(text)
+    if published:
+        return Sorted(LEGAL, f'it names "{published.group(1)}"')
     outside = _outside_title(text)
     found = _legal_or_web(outside)
     if found is not None:
         return found
+    said = cited(text)
+    law = _ends_with_law(said.title) if said is not None else None
+    if law:
+        return Sorted(LEGAL, f'its title is a law\'s name, "{law}"')
     # A book's marks are read after the authors, whose initials "MA" or "PA" are no state.
     after = _URL.sub(" ", text[_authors_end(text):])
     for why, pattern in _BOOK:
@@ -178,6 +195,12 @@ def sort(text: str) -> Sorted:
     if _URL.search(text):
         return Sorted(WEB, "it gives a web address and nothing a journal or a publisher adds")
     return Sorted(OTHER)
+
+
+def _ends_with_law(title: str) -> str:
+    """The law's name `title` ends with, "Act of 2010" or "Public Law 111-148", or ""."""
+    found = _LAW_AT_END.search(title)
+    return found.group(1) if found else ""
 
 
 def _legal_or_web(text: str) -> Sorted | None:

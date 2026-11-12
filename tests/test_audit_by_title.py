@@ -161,6 +161,22 @@ def test_the_author_s_seven_entries_are_sorted_by_their_shape(tmp_path: Path) ->
     ("Data Protection Act 2018. https://www.legislation.gov.uk/ukpga/2018/12", by_title.LEGAL),
     ("Commission notice on reports. Official Journal of the European Union. C 12, 5.",
      by_title.LEGAL),
+    # A title that is a law's name, and a publication of law, with a book's marks too, are
+    # legal texts; a title that holds a law's name among other words is a book (round 2).
+    ("United Kingdom. Data Protection Act 2018. London: The Stationery Office; 2018.",
+     by_title.LEGAL),
+    ("US Congress. Patient Protection and Affordable Care Act of 2010. Washington, DC: US "
+     "Government Printing Office; 2010.", by_title.LEGAL),
+    ("Commission notice. Official Journal of the European Union. Luxembourg: Publications "
+     "Office; 2020.", by_title.LEGAL),
+    ("US Congress. Public Law 111-148. Washington, DC: US Government Printing Office; 2010.",
+     by_title.LEGAL),
+    # And so a book about a publication of law, or whose title ends with a law's name, is
+    # filed as a legal text (DESIGN.md, Known gaps).
+    ("Smith J. A history of the Federal Register. London: Example Press; 2019.",
+     by_title.LEGAL),
+    ("Smith J. Commentary on the Data Protection Act 2018. London: Example Press; 2019.",
+     by_title.LEGAL),
 ])  # fmt: skip
 def test_each_shape_is_sorted(text: str, kind: str) -> None:
     assert by_title.sort(text).kind == kind
@@ -188,6 +204,15 @@ def test_a_title_is_read_past_initials_and_an_abbreviation() -> None:
 # ---------------------------------------------------------------------- the near match
 
 
+def test_springer_s_flag_is_no_part_of_a_registered_title() -> None:
+    """Round 2 of #650: `check`'s search by title reads "RETRACTED ARTICLE:" as the flag it
+    is, as it reads "RETRACTED:" and "WITHDRAWN:"."""
+    from manuscript_guard.gates.searched import main_title
+
+    for flag in ("RETRACTED:", "RETRACTED ARTICLE:", "Withdrawn article:", "WITHDRAWN:"):
+        assert main_title(f"{flag} Hepatic injury: a cohort") == "Hepatic injury"
+
+
 BARRIERS = ("Børte K, Nesje K. Barriers to student active learning: a review. Teach High Educ. "
             "2023;28(3):597-615.")  # fmt: skip
 
@@ -209,6 +234,8 @@ def _work(**changed) -> dict:
     (BARRIERS, {"title": "Barriers to active learning", "subtitle": "A review"}, False),
     # The flag a registry puts before a retracted work's title is no part of it.
     (BARRIERS, {"title": "RETRACTED: Barriers to student active learning"}, True),
+    # And Springer's, "RETRACTED ARTICLE:" (round 2 of #650).
+    (BARRIERS, {"title": "RETRACTED ARTICLE: Barriers to student active learning"}, True),
     # "&" is not "and", and a subtitle the entry leaves out is a word the title lacks.
     ("Børte K. Barriers & enablers of active learning. Teach High Educ. 2023;28:5-6.",
      {"title": "Barriers and enablers of active learning", "subtitle": None}, False),
@@ -387,9 +414,25 @@ def test_the_draft_says_the_titles_searched_where_none_was_found(tmp_path: Path,
                  str(target)]) == 0  # fmt: skip
     capsys.readouterr()
     text = target.read_text(encoding="utf-8")
-    assert ("The registries: no reference gives a DOI or a PMID, and of the 1 title looked up "
-            "in Crossref none was found") in text  # fmt: skip
+    assert ("The registries: no reference gives a DOI or a PMID, and of the 1 title sent to "
+            "Crossref none was taken (none found by its title: 1)") in text  # fmt: skip
     assert "none found by its title: check it by hand" in text.split("## Further findings")[1]
+    # Round 2 of #650: Crossref not answering, and two works of the title, are said as they
+    # are, and a title not answered for is not counted as looked up.
+    for change, why in ((("search_status", 503), "Crossref did not answer: 1"),
+                        (("items", [GHOSTS, {**GHOSTS, "DOI": "10.1080/other"}]),
+                         "more than one work of its title found: 1")):  # fmt: skip
+        setattr(registries, *change)
+        target.unlink()
+        assert main(["audit", str(_paper(tmp_path, GIVEN_FIRST)), "--lookup", "--report-draft",
+                     str(target)]) == 0  # fmt: skip
+        capsys.readouterr()
+        text = target.read_text(encoding="utf-8")
+        assert f"of the 1 title sent to Crossref none was taken ({why})" in text, text
+        assert "none found by its title" not in text
+        if change[0] == "search_status":
+            assert "Titles in Crossref" not in text
+            registries.search_status = 200
     # Found, the search is a check that ran and left nothing to look at.
     registries.items = [GHOSTS]
     target.unlink()

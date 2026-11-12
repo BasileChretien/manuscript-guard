@@ -11434,6 +11434,14 @@ UNIDENTIFIED_ENTRIES = {
     ),
     "a book whose title holds a page's or a law's words": (
         "Ley-Cooper {i}. {w}. {place}: {publisher}; {year}.", "book"),
+    # Round 2 of #650: a law's name among a title's words is a book's, a title that is a law's
+    # name is a law's, and a publication of law is a law's, a book's marks after it or not.
+    "a book whose title holds a law's name among its words": (
+        "{a} {i}. The {law_name} explained. {place}: {publisher}; {year}.", "book"),
+    "a law whose title is its name, with a book's marks": (
+        "{country}. {law_name}. {place}: {office}; {year}.", "legal text"),
+    "a publication of law, with a book's marks": (
+        "Commission notice on reports. {gazette}. {place}: {office}; {year}.", "legal text"),
     "an article in APA style": (
         "{a}, {d}. {e}., & {b}, {k}. ({year}). {t}. {long}, {vol}({issue}), {page}-{end}.",
         "article",
@@ -11521,11 +11529,21 @@ def unidentified_entries(draw: st.DrawFn) -> list[tuple[str, str, str | None, st
             "vol": draw(st.integers(1, 400)), "issue": draw(st.integers(1, 12)),
             "page": draw(st.integers(1, 900)), "end": draw(st.integers(1, 99)),
             "day": draw(st.integers(1, 28)), "w": draw(st.sampled_from(UNIDENTIFIED_BOOK_TITLES)),
+            "law_name": draw(st.sampled_from((
+                f"Data Protection Act {year}", f"Patient Protection and Affordable Care Act of "
+                f"{year}", f"Public Law {draw(st.integers(90, 120))}-{draw(st.integers(1, 400))}",
+            ))),
+            "country": draw(st.sampled_from(("United Kingdom", "US Congress", "Ireland"))),
+            "office": draw(st.sampled_from(("The Stationery Office", "Publications Office",
+                                            "US Government Printing Office"))),
+            "gazette": draw(st.sampled_from(("Official Journal of the European Union",
+                                             "Federal Register", "Journal officiel"))),
         }  # fmt: skip
         searched = kind in ("article", "book", "chapter")
         named += searched and "{a}" in shape
         titled += searched and "{t}" in shape
-        title = fill["w"] if "{w}" in shape else fill["t"]
+        title = (fill["w"] if "{w}" in shape else f"The {fill['law_name']} explained"
+                 if "{law_name} explained" in shape else fill["t"])  # fmt: skip
         # That book's author, whose name opens with a law's word and a hyphen.
         family = "Ley-Cooper" if shape.startswith("Ley-Cooper") else fill["a"]
         drawn.append((shape.format(**fill), kind, title if searched else None,

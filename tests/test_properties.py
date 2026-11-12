@@ -10049,7 +10049,28 @@ def _a_law_s_opening_word_makes_nothing(patch: pytest.MonkeyPatch) -> None:
 
 
 def _an_official_journal_makes_nothing(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(by_title_module, "_LEGAL_NAMED", re.compile("(?!)"))
+    patch.setattr(by_title_module, "_LEGAL_PUBLISHED", re.compile("(?!)"))
+
+
+def _a_title_that_is_a_law_s_name_makes_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(by_title_module, "_ends_with_law", lambda title: "")
+
+
+def _a_law_s_name_anywhere_in_a_title_makes_a_law(patch: pytest.MonkeyPatch) -> None:
+    def anywhere(title: str) -> str:
+        found = by_title_module._LEGAL_NAMED.search(title)
+        return found.group(1) if found else ""
+
+    patch.setattr(by_title_module, "_ends_with_law", anywhere)
+
+
+def _a_publication_of_law_comes_after_a_book_s_marks(patch: pytest.MonkeyPatch) -> None:
+    """The publication read as the other law's marks are: outside the title first, and only
+    after a book's marks inside it."""
+    published = by_title_module._LEGAL_PUBLISHED
+    patch.setattr(by_title_module, "_LEGAL_PUBLISHED", re.compile("(?!)"))
+    patch.setattr(by_title_module, "_LEGAL_NAMED", re.compile(
+        f"(?:{published.pattern})|(?:{by_title_module._LEGAL_NAMED.pattern})", re.IGNORECASE))
 
 
 def _an_address_makes_a_web_page_first(patch: pytest.MonkeyPatch) -> None:
@@ -25047,6 +25068,18 @@ BROKEN = {
     ),
     "a hyphenated name opens a law": (
         _a_hyphenated_name_opens_a_law,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a title that is a law's name makes no legal text": (
+        _a_title_that_is_a_law_s_name_makes_nothing,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a law's name anywhere in a title makes a legal text": (
+        _a_law_s_name_anywhere_in_a_title_makes_a_law,
+        test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
+    ),
+    "a publication of law comes after a book's marks": (
+        _a_publication_of_law_comes_after_a_book_s_marks,
         test_an_entry_with_no_identifier_is_sorted_and_read_by_its_shape,
     ),
 }

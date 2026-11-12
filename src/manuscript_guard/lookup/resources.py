@@ -269,9 +269,10 @@ def run(
             record = look_up(one.rrid, ask, services, today or date.today())
             path = write_record(project, record)
         except (NoAnswer, ContractError) as exc:
-            # An answer whose record its schema refuses is no answer either (round 1 of
-            # #658): a traceback ended the command.
-            said(f"{one.rrid}: no answer ({exc}); nothing recorded, asked again next time")
+            # An answer whose record its schema refuses records nothing either (round 1 of
+            # #658): a traceback ended the command. It is said as what it is (round 2).
+            what = "no answer" if isinstance(exc, NoAnswer) else "an answer of another shape"
+            said(f"{one.rrid}: {what} ({exc}); nothing recorded, asked again next time")
             late.append((one, str(exc)))
             continue
         said(f"{one.rrid}: " + summary(record))

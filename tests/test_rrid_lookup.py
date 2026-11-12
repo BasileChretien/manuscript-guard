@@ -191,11 +191,17 @@ def test_a_dotted_accession_and_one_of_one_part_are_read_whole(tmp_path: Path) -
     CVCL_0030-derived was read whole. The sentence's full stop is still left out."""
     text = ("Xenopus laevis (RRID:NXR_0.0005). Biosample RRID:SAMN12345678, and\n"
             "RRID:CVCL_0030-derived cells, mice RRID:MMRRC_000231-UNC and RRID:AB_2298772.\n"
-            "RRID: pending, RRID:AB, RRID:NXR_0.0005. and RRID:ZFIN_ZDB-GENO-960809-7.")
+            "RRID: pending, RRID:AB, RRID:NXR_0.0005. and RRID:ZFIN_ZDB-GENO-960809-7.\n"
+            # Round 2: in small letters, read whole as 820eb0c read them, before a comma too;
+            # a dot joins only before a digit; "-derived." still ends one.
+            "RRID:zfin_zdb-geno-960809-7, RRID:mmrrc_000231-unc, RRID:wb-strain:WBStrain00000001,\n"
+            "RRID:SCR_002798.Version 9 and RRID:CVCL_0030-derived.")
     root = _project(tmp_path / "p", text)
     assert [rrid for rrid, *_rest in _read(root)] == [
         "RRID:NXR_0.0005", "RRID:SAMN12345678", "RRID:CVCL_0030", "RRID:MMRRC_000231-UNC",
         "RRID:AB_2298772", "RRID:NXR_0.0005", "RRID:ZFIN_ZDB-GENO-960809-7",
+        "RRID:zfin_zdb-geno-960809-7", "RRID:mmrrc_000231-unc", "RRID:wb-strain:WBStrain00000001",
+        "RRID:SCR_002798", "RRID:CVCL_0030",
     ]  # fmt: skip
 
 
@@ -361,6 +367,18 @@ def test_the_command_ends_an_answer_of_another_shape_with_a_sentence(
     assert main(["lookup", str(root), "--resources"]) == 1
     said = capsys.readouterr().out
     assert "RRID:CVCL_0372: no answer" in said and "nothing recorded" in said
+    # An answer did come when its record is one the schema refuses (round 2 of #658).
+    monkeypatch.setattr(resources, "default_transport", Table())
+    monkeypatch.setattr(resources, "write_record", _refused)
+    assert main(["lookup", str(root), "--resources"]) == 1
+    said = capsys.readouterr().out
+    assert "RRID:CVCL_0372: an answer of another shape (" in said and "no answer" not in said
+
+
+def _refused(project, record):
+    from manuscript_guard.contracts._schema import ContractError
+
+    raise ContractError(f"the record for {record['rrid']} is not valid: name: ''")
 
 
 def test_an_outage_of_cellosaurus_records_nothing_for_the_cell_line(tmp_path: Path) -> None:

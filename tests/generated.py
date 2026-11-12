@@ -13442,17 +13442,8 @@ RRID_GAPS = ("", " ", "\u00a0", "\n")
 #: What may follow an RRID, which is not part of it: a mark, or a word of small letters
 #: after a hyphen, "CVCL_0030-derived cells" (round 1 of #658).
 RRID_TRAILS = ("", ".", ",", ";", ")", ":", "-derived")
-#: The case an accession is written in: as the authority lists it, or its prefix, up to its
-#: first joining mark, in small letters: "ab_2298772", "wb-STRAIN:WBStrain00000001". A later
-#: part of small letters after a hyphen ends the accession, so only the prefix is lowered.
+#: The case an accession is written in: as the authority lists it, or in small letters.
 RRID_CASES = ("as listed", "lowered")
-
-
-def _lowered(accession: str) -> str:
-    """The accession with its prefix, up to its first joining mark, in small letters."""
-    found = re.match(r"[A-Za-z][A-Za-z0-9]*", accession)
-    end = found.end() if found else 0
-    return accession[:end].lower() + accession[end:]
 #: The documents an RRID may stand in.
 RRID_PARTS = (False, True)
 #: RRIDs that stand in a comment and in code, which are not read. They hold no underscore, so
@@ -13484,7 +13475,7 @@ def rrid_papers(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, str], list, 
     word = st.sampled_from(FILLER)
     lines: dict[bool, list[tuple[str, str, str | None, str]]] = {False: [], True: []}
     for at, written in enumerate(accessions):
-        kept = written if cases[at] == "as listed" else _lowered(written)
+        kept = written if cases[at] == "as listed" else written.lower()
         before = " ".join(draw(st.lists(word, min_size=1, max_size=3)))
         after = " ".join(draw(st.lists(word, min_size=1, max_size=3)))
         lines[parts[at]].append((before, f"RRID:{gaps[at]}", kept + trails[at] + " " + after,

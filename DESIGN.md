@@ -8519,9 +8519,10 @@ check for presence would have to guess which nouns are resources.
 
 **The reading.** `rrids.typed` reads "RRID:" in capitals, a space, a no-break space, a line
 break or nothing after the colon, then the accession: the authority's prefix and what it
-issued, its parts joined by `_`, `:`, `.` or `-`, each joining mark followed by a letter or a
-digit, so that the full stop, comma, colon, semicolon or bracket after it is left out, and a
-hyphen before a part of small letters only ending it ("RRID:CVCL_0030-derived cells"); or a
+issued, its parts joined by `_`, `:`, `.` (before a digit only) or `-`, each joining mark
+followed by a letter or a digit, so that the full stop, comma, colon, semicolon or bracket
+after it is left out, and a hyphen before a word of four small letters or more, with no `:`,
+`_` or `-` after it, ending it ("RRID:CVCL_0030-derived cells"); or a
 single part of letters then digits (`SAMN12345678`). The form is written from the resolver's
 syntax, identifiers.org's `^RRID:[a-zA-Z]+.+$` for the namespace `rrid`, and from the forms
 its authorities issue (`AB_`, `CVCL_`, `SCR_`, `IMSR_JAX:`, `Addgene_`, `MGI:`,
@@ -26061,9 +26062,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     has to follow it: a wrapped line with an indent, "(RRID:" then "  AB_2298772)", one in
     bold, "**RRID:**AB_2298772", and one in a link, "RRID:[AB_2298772](...)", are not read.
     Accepted.
-  - An accession whose last part is of small letters after a hyphen is read without it:
-    "RRID:Addgene_12345-abc" is RRID:Addgene_12345, the rule that leaves "-derived" out.
-    Accepted.
+  - An accession whose last part is four small letters or more after a hyphen, with no `:`,
+    `_` or `-` after it, is read without it: "RRID:Addgene_12345-abcd" is RRID:Addgene_12345,
+    the rule that leaves "-derived" out; and a word of three, "RRID:CVCL_0030-ish", is read
+    into it. Accepted.
+  - A citation number typed straight after an RRID's full stop, "RRID:AB_2298772.12", is read
+    into the accession, since a dot before a digit joins its parts. Accepted.
+  - A "Problematic cell line" comment whose value is no string, or blank, is dropped, and the
+    line is recorded with no problem, as before round 1 of #658. Accepted.
   - The resolver's answer is taken as it gives it: `found` says only that it gave a record,
     and a record whose `curie` is another RRID than the one asked, an old identifier it maps
     to a new one or one written in other case, is kept and not compared. Accepted.

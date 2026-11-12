@@ -13,7 +13,8 @@ namespace `rrid`, read 2026-11-12), the prefix and each part after it joined by 
 `BDSC_`, `WB-STRAIN:`, `MMRRC_…-UCD`, `nif-0000-`, `NXR_0.0005`), or one part of letters
 then digits (`SAMN12345678`). Each joining mark is followed by a letter or a digit, so the
 full stop, comma, colon, semicolon or bracket after an RRID is not part of it, nor is a word
-of small letters after a hyphen, "-derived". The accession keeps its case as written. It
+of four small letters or more after a hyphen, "-derived"; a dot joins only before a digit.
+The accession keeps its case as written. It
 is read in the main text and the supplement, Markdown and LaTeX alike, outside comments and
 code: a Markdown file as `masking.mask` leaves it with its code spans blanked too, a LaTeX
 file as its reader masks it, with its `\\verb` and `\\texttt` blanked and `AB\\_1` read as
@@ -61,7 +62,10 @@ _GAP = r"(?:[ \t  ]|\r?\n)?"
 #: being CVCL_0030, where MMRRC_000231-UNC and ZFIN_ZDB-GENO-960809-7 are whole. Or a single
 #: part of letters then digits, SAMN12345678; "RRID: pending" and "RRID:AB" are none
 #: (round 1 of #658: NXR_0.0005 was read as NXR_0, and SAMN12345678 not at all).
-_JOIN = r"(?:[_:.]|-(?![a-z]+(?![A-Za-z0-9])))"
+#: Round 2: a dot joins only before a digit, "RRID:SCR_002798.Version 9"; and a word ends it
+#: only of four small letters or more with no `:`, `_` or `-` after it, so an accession typed
+#: in small letters, "zfin_zdb-geno-960809-7", "mmrrc_000231-unc", "wb-strain:…", is whole.
+_JOIN = r"(?:[_:]|\.(?=[0-9])|-(?![a-z]{4,}(?![A-Za-z0-9_:\-])))"
 _ACCESSION = (rf"(?P<accession>[A-Za-z][A-Za-z0-9]*(?:{_JOIN}[A-Za-z0-9]+)+"
               r"|[A-Za-z]+[0-9][A-Za-z0-9]*)")
 TYPED = re.compile(_LABEL + _GAP + _ACCESSION)

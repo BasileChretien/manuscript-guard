@@ -810,9 +810,10 @@ def _on_the_title_page(file: _File, offset: int) -> bool:
 
 
 def _on_title_pages(files: list[_File]) -> frozenset[str]:
-    """The words the files' title pages hold, whole and by their parts: where one is a short
-    form the text defines and never uses, its hint says that the title page's use was not
-    counted."""
+    """The words the files' title pages hold, whole and by their parts. Where one is an entry
+    of the list of abbreviations, the title page uses it, the one use it makes (Basile,
+    2026-11-12); where one is a short form the text defines and never uses, its hint says
+    that the title page's use was not counted."""
     found: set[str] = set()
     for file in files:
         for word in _WORD.finditer(file.prose, 0, file.title_page):
@@ -1746,21 +1747,24 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
             # statements are written; nothing later is expected to use it.
             if not uses and not first.quiet and all(listed(mark) for mark in definitions):
                 # An entry of the list of abbreviations nothing else uses: the list's to drop,
-                # not the text's to write out.
-                findings.append(
-                    finding(
-                        "abbreviation-unused",
-                        first,
-                        short,
-                        # Not "nowhere else": another entry of the list may use it, and the
-                        # list's lines are no uses (review of #634).
-                        f"{short} is in the list of abbreviations and not used in the "
-                        f"{scope.name} as G14 reads it",
-                        "take it out of the list, unless the title page, a table, a figure, "
-                        "another entry of the list or the supplementary material uses it: "
-                        "the title page, tables and figures are not read here",
+                # not the text's to write out. Its use on the title page is one: the list
+                # covers the title page's units and institutions too (Basile, 2026-11-12,
+                # "Yes, count it"). It is the only use the title page makes.
+                if short not in title_paged:
+                    findings.append(
+                        finding(
+                            "abbreviation-unused",
+                            first,
+                            short,
+                            # Not "nowhere else": another entry of the list may use it, and
+                            # the list's lines are no uses (review of #634).
+                            f"{short} is in the list of abbreviations and not used in the "
+                            f"{scope.name} as G14 reads it",
+                            "take it out of the list, unless a table, a figure, another entry "
+                            "of the list or the supplementary material uses it: tables and "
+                            "figures are not read here",
+                        )
                     )
-                )
             elif not uses and not first.quiet:
                 findings.append(
                     finding(

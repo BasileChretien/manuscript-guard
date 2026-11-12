@@ -2233,6 +2233,23 @@ def test_a_short_form_only_the_title_page_uses_again_is_said_so(project: Path) -
     assert "title page" not in hints["FDA"]
 
 
+def test_the_title_page_uses_an_entry_of_the_list_of_abbreviations(project: Path) -> None:
+    """The list of abbreviations covers the title page's units and institutions too: an
+    entry only the title page uses is used (Basile, 2026-11-12, "Yes, count it"). An entry
+    nothing uses is still the list's to drop."""
+    text = (
+        "Pharmacology exam success\n\nAna MARTIN\n\n"
+        "Department of Pharmacology, CHU de Rouen, UNICAEN, Rouen, France\n\n"
+        "# Introduction\n\nNothing.\n\n# Abbreviations\n\n"
+        "UNICAEN: Université de Caen Normandie\n\nFDA: Food and Drug Administration\n"
+    )
+    report = written(project, text)
+    assert sorted((f.code, f.message.split()[0]) for f in report.findings) == [
+        ("abbreviation-unused", "FDA")], found(report)
+    (finding,) = report.findings
+    assert "title page" not in finding.hint
+
+
 def test_a_french_letter_s_title_page_is_not_read(project: Path) -> None:
     """A letter in French: its service and department, its salutation (round 1 of #654)."""
     text = (

@@ -5242,11 +5242,13 @@ those; Known gaps says where one is read as a contributions statement.
 **The title page is not read** (Basile, 2026-11-12, after the audit of his paper reported
 "INSERM U1237", "UMR-S", "CHU de Caen Normandie", "PhIND" and "GIP Cyceron" as used and not
 defined). Its departments, units and institutions need no defining, and nothing on it is a
-use or a definition of the paper's short forms: "Institut national de la santé et de la
-recherche médicale (INSERM)" in an affiliation does not define the INSERM of the Methods, and
-an entry of the list of abbreviations the title page alone uses is unused, and so is a short
-form the text defines and uses nowhere else, whose hint says that the title page uses it and
-is not read for abbreviations (round 1 of #654). Everything from
+definition: "Institut national de la santé et de la recherche médicale (INSERM)" in an
+affiliation does not define the INSERM of the Methods. Its words make one use only, of an
+entry of the list of abbreviations, which covers the title page's units and institutions
+too: an entry only the title page uses is used (Basile, 2026-11-12, "Yes, count it"). A short
+form the text defines and uses nowhere else but on the title page is unused, and its hint
+says that the title page uses it and is not read for abbreviations (round 1 of #654).
+Everything from
 the end of the title page on is read as before. The other readings of G14, the spelling, the
 terms and the notation, still read it.
 
@@ -5346,7 +5348,8 @@ is "used here and not spelt out; only the list of abbreviations defines it", wit
 spell it out where it first appears (where the text spells it out after the list, it is
 defined later there, as any); an entry the text does not use, and does not define, is "in the
 list of abbreviations and not used in the main text", with the hint to take it out of the
-list unless the title page, a table, a figure, another entry or the supplement uses it. A long form is quoted as typed, where `repr` had doubled the backslash of an
+list unless a table, a figure, another entry or the supplement uses it; an entry the title
+page uses is used (see "The title page is not read"). A long form is quoted as typed, where `repr` had doubled the backslash of an
 escape, "d\\'Intérêt".
 
 **A glossary may have no title.** A paper typed in Word often opens its list with a sentence

@@ -944,6 +944,10 @@ TITLE_PAGE_ONE_LINE = {
     "email": ("Ana MARTIN and Paul GIRARD", "ana.martin@example.org"),
     "orcid": ("Ana MARTIN and Paul GIRARD", "0000-0002-1825-0097"),
 }
+#: What the title page alone uses again: a definition the text gives, which stays unused,
+#: and an entry of the list of abbreviations, which is used.
+TITLE_PAGE_DEFINED = ("the Unité de Formation et de Recherche (UFR) hosted the data", "UFR")
+TITLE_PAGE_LISTED = ("UNICAEN: Université de Caen Normandie", "UNICAEN")
 #: A first section run in from its label, after a title page of one affiliation.
 RUN_IN_OPENINGS = ("**Background:** ", "Background: ", "__Introduction.__ ")
 #: A list of abbreviations on the title page, which ends it and is read: in one paragraph,
@@ -998,7 +1002,10 @@ def title_pages(draw: st.DrawFn) -> dict[str, tuple[str, list[tuple[str, str]]]]
 
     The title page's capitals are reported nowhere; its spelling out of INSERM defines
     nothing, so the text's INSERM is undefined; the CHU, which the text uses too, is reported
-    where the text uses it. In the papers with no title page, every capital is read."""
+    where the text uses it. In `abstract`, the text defines UFR, which only the title page
+    uses again, and it is unused; the list of abbreviations at its end has UNICAEN, which
+    only the title page uses, and it is used. In the papers with no title page, every
+    capital is read."""
     end = draw(st.sampled_from(("\n", "\n", "\r\n")))
     title = draw(st.sampled_from(TITLE_PAGE_TITLES))
 
@@ -1017,14 +1024,18 @@ def title_pages(draw: st.DrawFn) -> dict[str, tuple[str, list[tuple[str, str]]]]
     abstract = opening + ("" if opening.endswith(" ") else "\n\n") + "the NIH paid for the reports"
     # The title is left to the front matter in some, as a Markdown paper keeps it.
     titled = draw(st.booleans())
+    # The text defines UFR and uses it only on the title page, which is no use of it; the list
+    # of abbreviations at the end has UNICAEN, which the title page alone uses, and that is a
+    # use of an entry of the list (Basile, 2026-11-12, "Yes, count it").
     main = body("the reporting odds ratio (ROR) was computed", "the ROR rose at the CHU",
-                "the INSERM unit paid for the survey")  # fmt: skip
+                "the INSERM unit paid for the survey", TITLE_PAGE_DEFINED[0])  # fmt: skip
     found = {
         "abstract": (
             paper(title if titled else "---\ntitle: Exam success\n---",
                   draw(st.sampled_from(TITLE_PAGE_AUTHORS)), *lines, abstract,
-                  "# Introduction", main),
-            [("abbreviation-undefined", short) for short in ("CHU", "INSERM", "NIH")],
+                  "# Introduction", main, "# Abbreviations", TITLE_PAGE_LISTED[0]),
+            sorted([*(("abbreviation-undefined", short) for short in ("CHU", "INSERM", "NIH")),
+                    ("abbreviation-unused", TITLE_PAGE_DEFINED[1])]),
         ),
         "section": (
             paper(title, TITLE_PAGE_NAMES, TITLE_PAGE_ONE_AFFILIATION,

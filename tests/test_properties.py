@@ -2068,7 +2068,9 @@ def test_the_title_page_is_not_read_for_abbreviations(
     nowhere, and what it spells out defines nothing, wherever it ends: at an Abstract, at
     another first section, run in from its label or not, at a letter's salutation, where
     prose begins, and at a list of abbreviations, which is read; and whatever its one line
-    only a title page holds is. A paper with no title page, opening on a
+    only a title page holds is. Its one use is of an entry of the list of abbreviations, which
+    is then used; a definition the text gives and only the title page uses again is unused.
+    A paper with no title page, opening on a
     heading or on a title alone, is read whole, and so is one whose opening names a
     university in a sentence (Basile, 2026-11-12)."""
     nothing = language_gate._Known(frozenset(), frozenset())
@@ -2140,6 +2142,10 @@ def _a_list_of_abbreviations_is_the_title_page_s(patch: pytest.MonkeyPatch) -> N
 
     patch.setattr(title_page, "_OPENING_NAMES",
                   title_page._OPENING_NAMES - title_page._GLOSSARY_NAMES)  # fmt: skip
+
+
+def _a_title_page_s_word_uses_no_list_entry(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_on_title_pages", lambda files: frozenset())
 
 
 def _a_title_s_institution_is_an_affiliation(patch: pytest.MonkeyPatch) -> None:
@@ -22411,6 +22417,10 @@ BROKEN = {
     ),
     "an ORCID iD is no line of a title page": (
         _title_page_pattern_matches_nothing("_ORCID"),
+        test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a title page's word uses no entry of the list of abbreviations": (
+        _a_title_page_s_word_uses_no_list_entry,
         test_the_title_page_is_not_read_for_abbreviations,
     ),
     "a list of abbreviations is the title page's": (

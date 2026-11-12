@@ -10723,6 +10723,36 @@ author's copy was damaged (2026-11-10). Held by
 `tests/test_properties.py::test_a_comment_stands_on_the_words_of_its_finding_and_changes_no_text`
 with five broken rules; on the author's paper Word opens the copy with 49 comments.
 
+**A copy in Track Changes.** The author's decision of 2026-11-11: `audit --tracked
+FILE.docx` writes one copy of the .docx in which each correction G14 is sure of
+(`gates.language.language_edits` through `corrections.corrections`) is a Word tracked change
+by "manuscript-guard", and every other finding a comment as `--commented` writes it
+(`auditing.tracked_copy`, inside `auditing.commented.write`). The edits are of the Markdown
+pandoc converts the document to, so each is first given as the document prints it
+(`gates.as_tracked`): pandoc's escapes taken off, its two and three hyphens and three dots
+put back as the en dash, em dash and ellipsis it writes them for (its `smart` extension,
+pandoc 3.9), with up to 40 characters of its line either side, cut at a word and at the
+nearest mark Markdown writes and the document does not print, and without the marks that
+open a heading or an item of a list. One whose own words hold such a mark, or a quotation
+mark pandoc writes straight for either curly one, or a line's end, is left out with why.
+The rest are looked for in every paragraph as Word holds it, across its runs, the words
+around matched across layout space and either curly quotation mark: found in no place,
+in two, or in anything but a plain run, a correction is left out. Each placed one is
+written from difflib's opcodes on its old words and its new, so only the characters that
+change are deleted (each run of them in a `w:del` of its own) and inserted (in the run
+properties of the text they replace, or of the character before them); no paragraph mark
+is deleted, which Word 16 never returns from accepting where it is the last (#396). A
+finding's comment is left out where a placed correction of it stands on its line and holds
+its own words, and no correction of it was left out (`covered`): of a kind said once for a
+word (`spelling-variant`, `abbreviation-unused`), the corrections holding that word; of
+any other, every correction of the kind. Before the copy is kept it is read back with this
+copy's own revisions accepted and rejected, any the document had left as they stand: each
+paragraph must read as the document's with each correction made, and as the document's.
+Where either does not, no copy is written, and the audit says why. Held by
+`tests/test_properties.py::test_a_tracked_copy_makes_each_correction_where_it_stands_and_nothing_else`
+with six broken rules; in Word 16 over COM (2026-11-12) the copy opens without a word of
+damage, and Accept All and Reject All each leave the text the check expects.
+
 **Said for a reader.** The text the command line prints is for a script as much as for a
 person: it says which flag would have run a check, "(--against)", "(--lookup)", and what
 `--strict` counts, "(not counted by --strict)". The page, the PDF and the comments of the
@@ -26414,6 +26444,32 @@ What papers converted from Word showed (see "What papers converted from Word sho
   messages spoken, and the time left is not, as a count read aloud each second would drown
   the rest. The text report, which a screen reader reads well, is shown only where the PDF
   could not be made. Accepted.
+
+- **A correction the copy in Track Changes cannot give exactly stays a comment** (`audit
+  --tracked`). One whose words hold a mark Markdown writes and the document does not print
+  (emphasis, a link, a raised or lowered piece, a table's cell), a quotation mark or an
+  apostrophe pandoc writes straight for either curly one, or a line's end is not written,
+  and its finding stays a comment. So is one over a word whose formatting changes inside it,
+  which the converted text writes with emphasis inside the word, and which G14 then does not
+  read as the word at all. Pinned by
+  `tests/test_audit_tracked.py::test_a_correction_the_document_cannot_be_given_exactly_is_left_out`.
+- **A correction is found by its words and 40 characters either side** (`audit --tracked`).
+  Words the document holds in two places with the same words around them, as a sentence
+  repeated in the Abstract and the Results may be, are written in neither, and the finding
+  stays a comment. A correction in a footnote, a text box, a header, a field or a link is not
+  written either. Pinned by
+  `tests/test_audit_tracked.py::test_a_correction_found_in_two_places_is_left_out_and_its_finding_stays_a_comment`
+  and `tests/test_audit_tracked.py::test_a_correction_inside_a_link_is_left_out`.
+- **A notation finding stays a comment where any correction of its kind is left out**
+  (`audit --tracked`). G14 says a notation finding once for a form, "P=0.03", at its first
+  place, and corrects every place written so, whose words are others, "P=0.01": the copy
+  cannot tell which finding a correction at another place belongs to, so one left out keeps
+  every finding of its kind a comment, beside the changes that were written. A word of the
+  other English and an abbreviation are told apart by their word. Accepted.
+- **The copy in Track Changes does not turn Track Changes on** (`audit --tracked`). The
+  changes are in it as Word's own, to accept or reject; what the author types in it after is
+  not tracked unless Track Changes is turned on in Word. The page has no button for this
+  copy yet. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

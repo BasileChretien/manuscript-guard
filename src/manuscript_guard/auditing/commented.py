@@ -13,7 +13,8 @@ words begin and end (`tracked._write_comment`); no text is added, removed or mov
 document read with its comments taken away is the document given. Words that begin or end
 inside a field, a link or anything but a plain run are anchored on their whole paragraph
 instead. The comments part, its relationship and its content type are added where the
-document has none.
+document has none. The copy `--tracked` writes is this one with G14's corrections as
+tracked changes as well, and without the comments they say (`auditing.tracked_copy`).
 
 The paragraph is found by its words, not counted, since the audit's two readers of a .docx
 count its paragraphs apart where one drops one (DESIGN.md, "Known gaps"): among the
@@ -83,6 +84,10 @@ class Note:
     #: Where the report says it is, "Results, paragraph 3", said with it in the list where
     #: its words are found in no paragraph (round 1 of #617).
     place: str = ""
+    #: The finding's code and its line in the text the report read, by which a correction
+    #: written as a tracked change is known to be its (`auditing.tracked_copy.covered`).
+    code: str = ""
+    line: int | None = None
 
 
 @dataclass(frozen=True)
@@ -92,6 +97,10 @@ class Commented:
 
     placed: int
     listed: tuple[Note, ...]
+    #: In the copy `--tracked` writes, how many corrections are tracked changes, and each
+    #: one that is not, with why.
+    tracked: int = 0
+    untracked: tuple[tuple[object, str], ...] = ()
 
 
 def words_of(message: str, context: str | None) -> str:
@@ -212,9 +221,10 @@ def notes_of(report, paper: Path) -> list[Note]:
         placer = item.placer if item.placer is not None else placers.get(item.path)
         where = placer.said(item.line) if placer is not None and item.line else ""
         if item.path is None or item.line is None or not item.context:
-            notes.append(Note("", "", said, where))
+            notes.append(Note("", "", said, where, item.code, item.line))
             continue
-        notes.append(Note(words_of(item.message, item.context), item.context, said, where))
+        notes.append(Note(words_of(item.message, item.context), item.context, said, where,
+                          item.code, item.line))  # fmt: skip
     return notes
 
 
@@ -318,9 +328,12 @@ def _declared_again(part: bytes, declared: list[tuple[str, str]]) -> bytes:
     return part[:end] + missing.encode() + part[end:]
 
 
-def write(source: Path, target: Path, notes: list[Note], *, date: str) -> Commented:
+def write(source: Path, target: Path, notes: list[Note], *, date: str,
+          corrections: list | None = None) -> Commented:  # fmt: skip
     """Copy the .docx `source` to `target` with each note as a Word comment by `AUTHOR` on
-    `date`, at its words where they stand, and the rest listed on the first paragraph."""
+    `date`, at its words where they stand, and the rest listed on the first paragraph. Given
+    `corrections` (`gates.Tracked`), each that is found once is a tracked change as well,
+    and a note all of whose corrections are is no comment (`auditing.tracked_copy`)."""
     try:
         with open_archive(source) as archive:
             names = archive.namelist()
@@ -329,15 +342,24 @@ def write(source: Path, target: Path, notes: list[Note], *, date: str) -> Commen
         raise CommentedError(f"{source.name} cannot be read: {exc}") from None
     if _DOCUMENT not in parts or _TYPES not in parts:
         raise CommentedError(f"{source.name} has no document part: it is not a Word document")
+    from manuscript_guard.auditing.tracked_copy import TrackedCopyError
+
     try:
-        return _commented(parts, names, target, notes, date, source.name)
+        return _commented(parts, names, target, notes, date, source.name, corrections)
+    except TrackedCopyError as exc:
+        raise CommentedError(f"its corrections could not be written as tracked changes: "
+                             f"{exc}") from None  # fmt: skip
     except (ET.ParseError, ValueError) as exc:
         raise CommentedError(f"{source.name} could not be commented: {exc}") from None
 
 
 def _commented(parts: dict[str, bytes], names: list[str], target: Path, notes: list[Note],
-               date: str, name: str) -> Commented:  # fmt: skip
+               date: str, name: str, corrections: list | None) -> Commented:  # fmt: skip
     """`write`, once the document's parts are read."""
+    from manuscript_guard.auditing import tracked_copy
+
+    original = [_chars(one)[0] for one in parse_xml(parts[_DOCUMENT], what=_DOCUMENT)
+                .iter(W + "p")]  # fmt: skip
     _parts_for_comments(parts)
     declared = _namespaces(parts[_DOCUMENT])
     document = parse_xml(parts[_DOCUMENT], what=_DOCUMENT)
@@ -346,6 +368,9 @@ def _commented(parts: dict[str, bytes], names: list[str], target: Path, notes: l
     for paragraph in paragraphs:
         _one_text_each(paragraph)
     texts = [_chars(paragraph) for paragraph in paragraphs]
+    changes, untracked = tracked_copy.locate(texts, corrections or [])
+    said = tracked_copy.covered(notes, changes, untracked) if corrections is not None else set()
+    notes = [note for index, note in enumerate(notes) if index not in said]
     located: list[tuple[int, tuple[int, int], Note]] = []
     listed: list[Note] = []
     for note in notes:
@@ -374,7 +399,10 @@ def _commented(parts: dict[str, bytes], names: list[str], target: Path, notes: l
         _whole(paragraphs[0], identifier)
         comments.append(_comment(identifier, _placement(Note("", "", _listing(listed)), "",
                                                         date)))  # fmt: skip
+    taken = tracked_copy.write_changes(paragraphs, changes, ids, date)
     parts[_DOCUMENT] = _declared_again(_written(document, declared), declared)
+    tracked_copy.check(parts[_DOCUMENT], taken, original,
+                       tracked_copy.expected(original, changes))  # fmt: skip
     kept = _namespaces(parts[_COMMENTS])
     parts[_COMMENTS] = _declared_again(_written(comments, kept), kept)
     names = [*names, *(name for name in parts if name not in names)]
@@ -391,4 +419,4 @@ def _commented(parts: dict[str, bytes], names: list[str], target: Path, notes: l
         except FileExistsError:
             raise CommentedError(f"{target.name} is there already, and was not written "
                                  "over") from None  # fmt: skip
-    return Commented(len(located), tuple(listed))
+    return Commented(len(located), tuple(listed), len(changes), tuple(untracked))

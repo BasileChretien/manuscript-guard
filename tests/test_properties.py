@@ -20372,6 +20372,78 @@ def _one_emphasis_is_taken_off_and_not_one_inside_it(patch: pytest.MonkeyPatch) 
     patch.setattr(reader, "_NESTED", 1)
 
 
+from generated import TRACKED_KINDS, tracked_documents  # noqa: E402
+
+#: Why each correction a `tracked_documents` document holds and the copy cannot is left out.
+_TRACKED_LEFT = sorted(["its words are in 2 places in the document",
+                        "its words hold a mark the document does not print",
+                        "its words hold a quotation mark the converted text writes straight"])
+
+
+@holds(40, tracked_documents())
+def test_a_tracked_copy_makes_each_correction_where_it_stands_and_nothing_else(
+    drawn: tuple[dict[str, Any], dict[str, Any]],
+) -> None:
+    """The copy `audit --tracked` writes (the author's audit, 2026-11-11) holds a correction
+    of each kind of `TRACKED_KINDS` among words, marks pandoc escapes or writes as hyphens,
+    dots and straight quotation marks, and words in italics. With every change rejected it
+    reads as the document; with every change accepted, as the document with each correction
+    the document can be given exactly made where it stands, a dash as a dash and an escaped
+    mark as the mark; the one in a paragraph the document holds twice, the one over italics
+    and the one over a straight quotation mark are left out, each with why; and no word a
+    correction keeps is deleted (`auditing.gates.as_tracked`, `auditing.tracked_copy`)."""
+    given, wanted = drawn
+    assert len(TRACKED_KINDS) == wanted["placed"] + len(_TRACKED_LEFT)
+    found = READINGS["tracked copy"]()(given)
+    assert "refused" not in found, found
+    assert found["rejected"] == wanted["source"], (found["rejected"], wanted["source"])
+    assert found["accepted"] == wanted["accepted"], (found["accepted"], wanted["accepted"])
+    assert (found["placed"], sorted(found["left"])) == (wanted["placed"], _TRACKED_LEFT), found
+    for keeps, deleted in zip(wanted["kept"], found["deleted"], strict=True):
+        # As a word: "bravo1" is no part of "bravo17", deleted in a bracket written out.
+        gone = [word for word in keeps
+                if re.search(rf"(?<![^\W_]){re.escape(word)}(?![^\W_])", deleted)]
+        assert not gone, (keeps, deleted)
+
+
+def _pandoc_s_dashes_are_read_as_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import gates
+
+    patch.setattr(gates, "_SMART", ())
+
+
+def _pandoc_s_escapes_are_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import gates
+
+    patch.setattr(gates, "_ESCAPED", re.compile(r"(?!)\\(.)"))
+
+
+def _what_opens_a_heading_is_read_as_its_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import gates
+
+    patch.setattr(gates, "_LINE_MARK", re.compile(r"(?!)x"))
+
+
+def _a_straight_quotation_mark_is_looked_for_as_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import tracked_copy
+
+    patch.setattr(tracked_copy, "_QUOTES", {})
+
+
+def _the_first_of_two_places_is_taken(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import tracked_copy
+
+    real = tracked_copy._places
+    patch.setattr(tracked_copy, "_places", lambda texts, found: real(texts, found)[:1])
+
+
+def _the_old_words_are_deleted_whole(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import tracked_copy
+
+    patch.setattr(tracked_copy, "_opcodes",
+                  lambda old, new: [("replace", 0, len(old), 0, len(new))])  # fmt: skip
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -25949,6 +26021,30 @@ BROKEN = {
     "an import line continued with a backslash is read alone": (
         _a_continued_import_line_is_read_alone,
         test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "pandoc's dashes and dots are read as typed in a tracked copy": (
+        _pandoc_s_dashes_are_read_as_typed,
+        test_a_tracked_copy_makes_each_correction_where_it_stands_and_nothing_else,
+    ),
+    "pandoc's escapes are kept in a tracked copy": (
+        _pandoc_s_escapes_are_kept,
+        test_a_tracked_copy_makes_each_correction_where_it_stands_and_nothing_else,
+    ),
+    "what opens a heading is read as its words in a tracked copy": (
+        _what_opens_a_heading_is_read_as_its_words,
+        test_a_tracked_copy_makes_each_correction_where_it_stands_and_nothing_else,
+    ),
+    "a straight quotation mark is looked for as typed in a tracked copy": (
+        _a_straight_quotation_mark_is_looked_for_as_typed,
+        test_a_tracked_copy_makes_each_correction_where_it_stands_and_nothing_else,
+    ),
+    "the first of two places is taken for a tracked change": (
+        _the_first_of_two_places_is_taken,
+        test_a_tracked_copy_makes_each_correction_where_it_stands_and_nothing_else,
+    ),
+    "a tracked change deletes the old words whole": (
+        _the_old_words_are_deleted_whole,
+        test_a_tracked_copy_makes_each_correction_where_it_stands_and_nothing_else,
     ),
 }
 

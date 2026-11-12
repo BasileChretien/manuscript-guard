@@ -77,6 +77,24 @@ def for_an_audit(text: str) -> str:
     return text
 
 
+@dataclass(frozen=True)
+class Tracked:
+    """One correction G14 would make in a .docx, as the document prints it: `old` becomes
+    `new`, found by the words of its paragraph just `before` and `after` it; `codes` are the
+    findings it corrects (`corrections.py`), and `line` the line of the converted text it
+    stands on, as theirs is. `left_out` says why it cannot be written as a tracked change,
+    where it cannot: its words are then the converted text's, and its finding stays a
+    comment."""
+
+    codes: tuple[str, ...]
+    old: str
+    new: str
+    before: str = ""
+    after: str = ""
+    line: int = 0
+    left_out: str = ""
+
+
 @dataclass
 class GateRun:
     """G6 and G14 on one paper: their findings, at the paper's paths, or why they did not run."""
@@ -90,6 +108,8 @@ class GateRun:
     #: For a converted .docx, where each line of the converted text stands in the document,
     #: "Methods, paragraph 3" (`auditing.paragraphs`).
     places: object = None
+    #: For a .docx, each correction G14 is sure of, for the copy in Track Changes.
+    corrections: list[Tracked] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -246,13 +266,157 @@ def run_gates(
         # The short forms used and not defined in one finding (`auditing.undefined`), made
         # from G14's warnings in the order it gave them, its reading order, then sorted.
         said = one_finding([put_back(f) for f in language.findings])
+        # Only a .docx is copied with its corrections in Track Changes.
+        corrections = _corrections(project) if staged.converted else []
         return GateRun(
             paper,
             writing=[put_back(f) for f in writing.sorted().findings],
             language=list(Report(tuple(said)).sorted().findings),
             converted=staged.converted,
             places=staged.places,
+            corrections=corrections,
         )
+
+
+def _corrections(project: Project) -> list[Tracked]:
+    """G14's corrections of the converted .docx, as the document prints them; none where
+    reading them raised, which is recorded as a crash and leaves G14's findings as they are,
+    each a comment of the copy."""
+    from manuscript_guard.diagnostics import crashes
+    from manuscript_guard.gates.language import language_edits
+
+    try:
+        return as_tracked(language_edits(project))
+    except Exception as exc:  # noqa: BLE001 - the findings stand without their corrections
+        if crashes.debugging():
+            raise
+        crashes.record(exc, kind=crashes.GATE, name="G14's corrections")
+        return []
+
+
+#: What Markdown writes that a Word document does not print: emphasis, a raised or lowered
+#: piece, a link's or a span's brackets, a code span, an HTML tag, a table's cell marks,
+#: maths, and a backslash that escapes nothing, which ends a line. A correction holding one
+#: is not written, and its finding stays a comment; the words around one are cut at it.
+_UNPRINTED = frozenset("*_^~[]{}`<>|$\\")
+#: What pandoc's Markdown writer, its `smart` extension on, prints for a character of the
+#: document's own: two hyphens for an en dash, three for an em dash, three dots for an
+#: ellipsis. Hyphens and dots of the document's own it writes escaped, "1\--2" (pandoc
+#: 3.9, 2026-11-12).
+_SMART = (("---", "—"), ("--", "–"), ("...", "…"))
+#: A quotation mark or an apostrophe pandoc writes straight, which the document has curly,
+#: opening or closing, or straight where it writes it escaped: the words around a
+#: correction may hold one, which then stands for any of them, and its own words not.
+_STRAIGHT = frozenset("'\"")
+#: What opens a line as a heading or an item of a list, which the document prints as
+#: neither.
+_LINE_MARK = re.compile(r"(?:#{1,6}|[-+]|\d{1,9}[.)])[ \t]+")
+#: How many characters of its paragraph each side of a correction find it in the document.
+_AROUND = 40
+
+
+def as_tracked(edits: list) -> list[Tracked]:
+    """G14's edits of the converted text of a .docx (`main.md`) as the document prints
+    them: each correction's words, and the words of its paragraph either side of it, cut
+    at a word and at a mark the document does not print, with pandoc's escapes taken off
+    and its dashes and dots put back. One the document cannot be given exactly is kept
+    with why (`left_out`), so that its finding stays a comment."""
+    from manuscript_guard.corrections import corrections
+
+    texts = {edit.passage.path: edit.passage.text for edit in edits}
+    out = []
+    for one in corrections(edits):
+        if one.path.name != "main.md":
+            continue
+        text = texts[one.path]
+        start, end = one.offset, one.offset + len(one.old)
+        old, new = _printed(one.old, exact=True), _printed(one.new, exact=True)
+        why = _why_left_out(one.old, one.new, old, new)
+        if why:
+            out.append(Tracked(one.codes, one.old, one.new, line=one.line, left_out=why))
+            continue
+        before, after = _around(text, start, end)
+        out.append(Tracked(one.codes, old, new, before, after, one.line))
+    return out
+
+
+def _why_left_out(old: str, new: str, printed_old: str | None, printed_new: str | None) -> str:
+    """Why a correction cannot be written as the document prints it, or ""."""
+    if "\n" in old or "\n" in new:
+        return "it runs over a line of the converted text"
+    if printed_old is None or printed_new is None:
+        if any(kind == "straight" for words in (old, new) for *_, kind in _pieces(words)):
+            return "its words hold a quotation mark the converted text writes straight"
+        return "its words hold a mark the document does not print"
+    if not printed_old or printed_old == printed_new:
+        return "it changes nothing the document prints"
+    return ""
+
+
+def _around(text: str, start: int, end: int) -> tuple[str, str]:
+    """The words of the line `text[start:end]` stands on, either side of it, as the
+    document prints them: at most `_AROUND` characters, cut at a word where the line runs
+    on and at the mark nearest it that the document does not print, and without what opens
+    the line as a heading or an item of a list."""
+    opened = text.rfind("\n", 0, start) + 1
+    marked = _LINE_MARK.match(text, opened)
+    if marked is not None and marked.end() <= start:
+        opened = marked.end()
+    closed = text.find("\n", end)
+    closed = len(text) if closed < 0 else closed
+    before = text[max(opened, start - _AROUND) : start]
+    if start - _AROUND > opened:
+        space = re.search(r"\s", before)
+        before = before[space.end() :] if space else ""
+    after = text[end : min(closed, end + _AROUND)]
+    if end + _AROUND < closed:
+        space = max(after.rfind(" "), after.rfind("\t"))
+        after = after[:space] if space >= 0 else ""
+    return (_printed(_cut(before, last=True), exact=False) or "",
+            _printed(_cut(after, last=False), exact=False) or "")  # fmt: skip
+
+
+def _pieces(words: str):
+    """Each character the document prints for `words` of the converted text, with where it
+    starts there and what it is: "text", "unprinted" (`_UNPRINTED`), or "straight"
+    (`_STRAIGHT`). An escape is the mark it escapes, and pandoc's dashes and dots
+    (`_SMART`) the one character each stands for."""
+    at = 0
+    while at < len(words):
+        if _ESCAPED.match(words, at):
+            yield at, words[at + 1], "text"
+            at += 2
+            continue
+        smart = next((pair for pair in _SMART if words.startswith(pair[0], at)), None)
+        if smart is not None:
+            yield at, smart[1], "text"
+            at += len(smart[0])
+            continue
+        char = words[at]
+        yield at, char, ("unprinted" if char in _UNPRINTED
+                         else "straight" if char in _STRAIGHT else "text")  # fmt: skip
+        at += 1
+
+
+def _cut(words: str, *, last: bool) -> str:
+    """`words` cut at the mark the document does not print nearest the correction: the
+    words after the last one where they stand before it (`last`), else before the first."""
+    marks = [at for at, _char, kind in _pieces(words) if kind == "unprinted"]
+    if not marks:
+        return words
+    return words[marks[-1] + 1 :] if last else words[: marks[0]]
+
+
+def _printed(words: str, *, exact: bool) -> str | None:
+    """`words` of the converted text as the document prints them, a line's break a space;
+    None where they hold a mark the document does not print, or, `exact`, a quotation mark
+    written straight, which may stand for either curly one."""
+    out = []
+    for _at, char, kind in _pieces(words):
+        if kind == "unprinted" or (exact and kind == "straight"):
+            return None
+        out.append(char)
+    return re.sub(r"[ \t\r\n]+", " ", "".join(out))
 
 
 #: A mark of ASCII punctuation pandoc writes with a backslash in front, "p\<0.05", so that

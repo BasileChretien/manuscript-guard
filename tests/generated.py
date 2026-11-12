@@ -13825,6 +13825,159 @@ def commented_documents(draw: st.DrawFn) -> tuple[str, list, list]:
     return body, notes, expected
 
 
+#: What a .docx prints and what pandoc's Markdown writer writes for it, its `smart`
+#: extension on (pandoc 3.9, 2026-11-12): a mark it escapes, a dash or dots it writes as
+#: hyphens and dots, a curly quotation mark it writes straight (`auditing.gates._SMART`).
+TRACKED_MARKS = (
+    ("<", "\\<"), ("*", "\\*"), ("_", "\\_"), ("[", "\\["), ("#", "\\#"), ("--", "\\--"),
+    ("...", "\\..."), ("'", "\\'"), ('"', '\\"'),
+    ("\N{EN DASH}", "--"), ("\N{EM DASH}", "---"), ("\N{HORIZONTAL ELLIPSIS}", "..."),
+    ("\N{RIGHT SINGLE QUOTATION MARK}", "'"), ("\N{LEFT SINGLE QUOTATION MARK}", "'"),
+    ("\N{LEFT DOUBLE QUOTATION MARK}", '"'), ("\N{RIGHT DOUBLE QUOTATION MARK}", '"'),
+)  # fmt: skip
+#: The kinds of correction a `tracked_documents` document holds one of each: a word respelt,
+#: a space put into a word, an en dash made a hyphen and a hyphen an en dash, a space after
+#: an escaped mark taken away, a bracket written out, a word respelt after a curly
+#: quotation mark, one opening a heading and one in a paragraph the document holds twice;
+#: and two the document cannot be given exactly, over a word in italics and over a curly
+#: quotation mark, which are left out (`auditing.gates.as_tracked`).
+TRACKED_KINDS = ("respelt", "spaced", "dash-out", "dash-in", "escaped", "written-out",
+                 "beside-quote", "heading", "twice", "emphasised", "curly")
+#: The kinds that are written as tracked changes.
+TRACKED_PLACED = frozenset(TRACKED_KINDS) - {"twice", "emphasised", "curly"}
+
+
+def _tracked_segment(kind: str, word: Callable[[], str]) -> tuple[list, int, int, str, str, list]:
+    """One correction of `kind`: its pieces, each (printed, written, look); the pieces it
+    changes, from and to; its new words as written and as printed; and the words it keeps."""
+    a, b = word(), word()
+    en = ("\N{EN DASH}", "--", "")
+    if kind in ("respelt", "heading", "twice"):
+        return [(a, a, "")], 0, 1, a[:-1], a[:-1], []
+    if kind == "spaced":
+        return [(a, a, "")], 0, 1, f"{a[:2]} {a[2:]}", f"{a[:2]} {a[2:]}", []
+    if kind == "dash-out":
+        return [(a, a, ""), en, (b, b, "")], 0, 3, f"{a} - {b}", f"{a} - {b}", [a, b]
+    if kind == "dash-in":
+        return ([(a, a, ""), ("-", "-", ""), (b, b, "")], 0, 3, f"{a} -- {b}",
+                f"{a} \N{EN DASH} {b}", [a, b])  # fmt: skip
+    if kind == "escaped":
+        return [(a, a, ""), ("<", "\\<", ""), (b, b, "")], 0, 3, f"{a} \\<{b}", f"{a} <{b}", [a, b]
+    if kind == "written-out":
+        c = word()
+        return ([(a, a, ""), (b, b, ""), (f"({c})", f"({c})", "")], 0, 3, f"{a} {b}",
+                f"{a} {b}", [a, b])  # fmt: skip
+    if kind == "beside-quote":
+        return ([("\N{RIGHT SINGLE QUOTATION MARK}", "'", ""), (a, a, "")], 1, 2, a[:-1],
+                a[:-1], [])  # fmt: skip
+    if kind == "emphasised":
+        return [(a, a, ""), (b, f"*{b}*", "i")], 0, 2, f"{a} {b}", f"{a} {b}", []
+    # "curly"
+    return ([(a, a, ""), ("\N{RIGHT SINGLE QUOTATION MARK}", "'", ""), (b, b, "")], 0, 3,
+            f"{a} '{b}", f"{a} \N{RIGHT SINGLE QUOTATION MARK}{b}", [])  # fmt: skip
+
+
+@st.composite
+def tracked_documents(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
+    """A .docx and the Markdown pandoc converts it to, with one correction of each kind of
+    `TRACKED_KINDS` among filler words, marks of `TRACKED_MARKS` and words in italics, its
+    runs split where drawn; G14's edits of the Markdown, `[start, end, new]`; and what the
+    copy `--tracked` writes is to read as: each paragraph's text as the document has it and
+    with each correction of `TRACKED_PLACED` made, how many are, and the words each keeps.
+    One paragraph is a heading, whose correction opens it, and one stands twice, its
+    correction in the copy drawn."""
+    counted = iter(range(10_000))
+
+    def word() -> str:
+        n = next(counted)
+        return f"{TAGS[n % len(TAGS)]}{n}"
+
+    def filler() -> list:
+        pieces = []
+        for _ in range(draw(st.integers(0, 3))):
+            kind = draw(st.sampled_from(("word", "mark", "italic")))
+            if kind == "mark":
+                pieces.append((*draw(st.sampled_from(TRACKED_MARKS)), ""))
+            else:
+                one = word()
+                pieces.append((one, f"*{one}*", "i") if kind == "italic" else (one, one, ""))
+        return pieces
+
+    kinds = list(draw(st.permutations(TRACKED_KINDS)))
+    loose = [kind for kind in kinds if kind not in ("heading", "twice")]
+    count = draw(st.integers(1, 3))
+    groups = [loose[n::count] for n in range(count)] + [["heading"], ["twice"]]
+    paragraphs: list[tuple[str, list, list]] = []
+    for group in groups:
+        pieces, planted = ([] if group == ["heading"] else filler()), []
+        for kind in group:
+            segment, first, last, new, printed, kept = _tracked_segment(kind, word)
+            planted.append((kind, len(pieces) + first, len(pieces) + last, new, printed, kept))
+            pieces += segment + filler()
+        paragraphs.append((group[0], pieces, planted))
+    # The paragraph twice is the last; its two copies stand where drawn, and which of them
+    # the edit is in is drawn too.
+    copies = [*range(len(paragraphs)), len(paragraphs) - 1]
+    order = [copies[at] for at in draw(st.permutations(range(len(copies))))]
+    edited = draw(st.integers(0, 1))
+    described, markdown, edits, source, accepted, kept = [], [], [], [], [], []
+    placed, twice_seen = 0, 0
+    for index in order:
+        name, pieces, planted = paragraphs[index]
+        copy = twice_seen if name == "twice" else None
+        twice_seen += name == "twice"
+        lead = "# " if name == "heading" else ""
+        written = [one[1] for one in pieces]
+        printed = [one[0] for one in pieces]
+        offset = sum(len(line) + 2 for line in markdown) + len(lead)
+        text = done = " ".join(printed)
+        keeps: list[str] = []
+        for kind, first, last, new, shown, held in reversed(planted):
+            start = offset + len(" ".join(written[:first])) + (1 if first else 0)
+            end = offset + len(" ".join(written[:last]))
+            if copy is None or copy == edited:
+                edits.append([start, end, new])
+            if kind in TRACKED_PLACED:
+                lo = len(" ".join(printed[:first])) + (1 if first else 0)
+                done = done[:lo] + shown + done[len(" ".join(printed[:last])) :]
+                keeps += held
+                placed += 1
+        markdown.append(lead + " ".join(written))
+        source.append(text)
+        accepted.append(done)
+        kept.append(keeps)
+        described.append({"heading": name == "heading", "runs": _tracked_runs(draw, pieces)})
+    given = {"paragraphs": described, "markdown": "\n\n".join(markdown) + "\n",
+             "edits": sorted(edits)}
+    return given, {"source": source, "accepted": accepted, "placed": placed, "kept": kept}
+
+
+def _tracked_runs(draw: st.DrawFn, pieces: list) -> list[list[str]]:
+    """A paragraph's pieces as runs, `[text, look]`: each word in italics a run of its own,
+    the rest split where drawn, inside a word or not."""
+    chunks: list[list[str]] = []
+    for index, (printed, _written, look) in enumerate(pieces):
+        text = printed + (" " if index < len(pieces) - 1 else "")
+        if look:
+            chunks += [[printed, look], [text[len(printed):], ""]]
+        else:
+            chunks.append([text, ""])
+    runs = []
+    for text, look in chunks:
+        if not text:
+            continue
+        if look:
+            runs.append([text, look])
+            continue
+        cuts = sorted(set(draw(st.lists(st.integers(1, max(1, len(text) - 1)), max_size=2))))
+        at = 0
+        for cut in [*cuts, len(text)]:
+            if at < cut <= len(text):
+                runs.append([text[at:cut], ""])
+                at = cut
+    return runs
+
+
 #: A word as a .docx's converted text may type it in a finding's context, and as the
 #: document prints it (`auditing.reader.excerpt`): in bold and in italics by stars, in
 #: italics and in bold by underscores, a name from code with underscores inside it, a star
@@ -14028,6 +14181,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         ),
     ),
     "comment anchored": comment_anchors(),
+    "tracked copy": tracked_documents().map(lambda drawn: drawn[0]),
     "recycled passages": st.fixed_dictionaries(
         {"text": texts(RECYCLED, REFERENCE_BLOCKS), "source": earlier_papers()}
     ),

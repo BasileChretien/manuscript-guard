@@ -40,6 +40,20 @@ about, on its paragraph where those stand in a field or a link, and, for a findi
 place in the text, in a list in a comment on the first paragraph. Nothing of the document's
 text changes, and FILE must not exist yet. The page offers the same copy beside the report.
 
+`--tracked FILE.docx` writes one copy of the .docx in which each correction G14 is sure of
+is a Word tracked change by "manuscript-guard", to accept or reject in Word: a word
+respelt in the English chosen with `--english`, a sign after P or n spaced as the rest of
+the paper spaces it, an interval joined and a per cent sign set as most are, a space put
+between a number and its unit, and an abbreviation defined and not used again written out.
+Only the characters that change are deleted and inserted, in the formatting of the text
+around them. Every other finding is a comment, as `--commented` writes it, and so is a
+finding one of whose corrections could not be placed: one whose words the document holds
+in more than one place, or in a field, a link or a footnote, or over a word in italics or a
+quotation mark. The audit says how many corrections are tracked changes and how many
+findings are comments. Before it keeps the copy it reads it with every change accepted and
+with every change rejected, and writes none where either is not the paper as it should
+be. FILE must not exist yet, and may not be the file `--commented` writes.
+
 A place in a .docx is its heading and its paragraph under it, "Methods, paragraph 3", as a
 reader finds it in Word: a list's item is a paragraph, a table is one, and what stands before
 the first heading is "before the first heading". `--json` gives it beside the line, as

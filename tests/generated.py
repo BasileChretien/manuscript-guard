@@ -9734,10 +9734,15 @@ BINARY_LABELS = ("Male sex", "Current smoker", "Diabetes", "Employed", "Married"
 #: The kinds of row each first table of `spread_tables` holds one of: of whole numbers, an
 #: SD printed below its true value and one above, an SD no such numbers give, a spread the
 #: label names a standard error, and means alone; of numbers each 0 or 1, a right SD, a
-#: wrong one, the population SD (over n, not n - 1), and a standard error; and a row nobody
-#: names, whose SD would be wrong.
+#: wrong one, the population SD (over n, not n - 1), a standard error, a count and its share,
+#: "85 (52.1)", and a percentage and its SD, "52.1 (50.1)", which are no proportions (round
+#: 1 of #665); and a row nobody names, whose SD would be wrong.
 SPREAD_ROWS = ("down", "up", "wrong", "se", "alone", "binary right", "binary wrong",
-               "binary population", "binary se", "unnamed")  # fmt: skip
+               "binary population", "binary se", "binary count", "binary percent",
+               "unnamed")  # fmt: skip
+#: How a row of counts and their shares labels them, and how a row of percentages does.
+COUNT_LABELS = ("{name}", "{name}, n (%)")
+PERCENT_LABELS = ("{name}", "{name}, %")
 #: How a row of SDs labels them, and how a row of standard errors does.
 SD_LABELS = ("{name}", "{name}, mean (SD)", "{name}, mean \N{PLUS-MINUS SIGN} SD")
 SE_LABELS = ("{name}, mean (SE)", "{name}, mean \N{PLUS-MINUS SIGN} SEM",
@@ -9861,8 +9866,8 @@ def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[str], list[Spre
     whole = list(draw(st.permutations(WHOLE_LABELS)))
     binary = list(draw(st.permutations(BINARY_LABELS)))
     named = dict(zip(("down", "up", "wrong", "se", "alone"), whole, strict=False))
-    named |= dict(zip(("binary right", "binary wrong", "binary population", "binary se"),
-                      binary, strict=False))  # fmt: skip
+    named |= dict(zip(("binary right", "binary wrong", "binary population", "binary se",
+                       "binary count", "binary percent"), binary, strict=True))  # fmt: skip
     sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
     lines: list[str] = [draw(sentence).capitalize() + ".", ""]
     expected: list[Spread] = []
@@ -9898,6 +9903,20 @@ def spread_tables(draw: st.DrawFn) -> tuple[str, list[str], list[str], list[Spre
                          for m, n in zip(means, sizes, strict=True)]  # fmt: skip
         elif kind == "unnamed":
             spread_row(draw(st.sampled_from(MEASURES)), "wrong", "whole", [True, True])
+        elif kind in ("binary count", "binary percent"):
+            # A count and its share, or a percentage and its SD: no proportion, held to
+            # nothing whatever its label (round 1 of #665).
+            labels = COUNT_LABELS if kind == "binary count" else PERCENT_LABELS
+            cells = []
+            for n in sizes:
+                ones = draw(st.integers(1, n - 1))
+                share = _a_mean(100 * ones, n, 1)
+                spread = _root_to(Fraction(10_000 * ones * (n - ones), n * (n - 1)), 1)
+                mean, sd = (str(ones), share) if kind == "binary count" else (share, spread)
+                cells.append((mean, sd, n))
+            row(draw(st.sampled_from(labels)).format(name=named[kind]),
+                [f"{mean} ({sd})" for mean, sd, _n in cells])  # fmt: skip
+            of_binary += [("binary", len(lines), mean, sd, n, None) for mean, sd, n in cells]
         else:
             labels = SE_LABELS if kind.endswith("se") else SD_LABELS
             label = draw(st.sampled_from(labels)).format(name=named[kind])

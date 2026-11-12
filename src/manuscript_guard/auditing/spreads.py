@@ -13,7 +13,9 @@ Two of `audit`'s readings of the rows an auditor names:
   read is said, as `--whole-numbers` says its own.
 
 A spread the row's label, the header over its column or the header's first cell names as no
-SD, "mean (SE)", "median (IQR)", is not held to anything, and counted as passed over.
+SD, "mean (SE)", "median (IQR)", is not held to anything, and counted as passed over with
+its reason; so is a --binary cell that is no proportion, "85 (52.1)", or under a label or a
+header that names a percentage.
 """
 
 from __future__ import annotations
@@ -38,23 +40,52 @@ BINARY_CODE = "binary-not-possible"
 UNFOUND_CODE = "binary-unfound"
 
 
+#: Why a spread is held to nothing, where it is for no reason the table gives.
+_N_UNDER_ONE = "its column's n is under 1"
+_TOO_MANY_TOTALS = "more than 100,000 totals would be tried"
+_TOO_MANY_ONES = "more than 100,000 counts of ones would be tried"
+
+
 def held_sd(mean: Mean) -> bool | None:
     """Whether the SD printed with a mean of whole numbers can go with it and its n
-    (GRIMMER); None where it is held to nothing: no spread is printed, a label or a header
-    names it as no SD, GRIM rules the mean out (said as a mean), or too many totals would
-    be tried."""
-    if mean.spread is None or mean.not_an_sd is not None or possible(mean.mean, mean.n) is False:
-        return None
-    return sd_possible(mean.mean, mean.spread, mean.n)
+    (GRIMMER); None where it is held to nothing (`sd_held`)."""
+    return sd_held(mean)[0]
+
+
+def sd_held(mean: Mean) -> tuple[bool | None, str | None]:
+    """GRIMMER's verdict on the SD printed with a mean of whole numbers, and why it is held
+    to nothing where it is: a label or a header names it as no SD, its n is under 1, or too
+    many totals would be tried. No spread printed, or a mean GRIM rules out, which is said
+    as a mean, is held to nothing for no reason to give."""
+    if mean.spread is None or possible(mean.mean, mean.n) is False:
+        return None, None
+    if mean.not_an_sd is not None:
+        return None, mean.not_an_sd
+    if mean.n < 1:
+        return None, _N_UNDER_ONE
+    verdict = sd_possible(mean.mean, mean.spread, mean.n)
+    return verdict, _TOO_MANY_TOTALS if verdict is None else None
 
 
 def held_binary(mean: Mean) -> bool | None:
     """Whether a mean and the SD printed with it can be those of n numbers each 0 or 1
-    (DEBIT); None where they are held to nothing: no spread is printed, a label or a header
-    names it as no SD, or too many counts would be tried."""
-    if mean.spread is None or mean.not_an_sd is not None:
-        return None
-    return binary_possible(mean.mean, mean.spread, mean.n)
+    (DEBIT); None where they are held to nothing (`binary_held`)."""
+    return binary_held(mean)[0]
+
+
+def binary_held(mean: Mean) -> tuple[bool | None, str | None]:
+    """DEBIT's verdict on a mean and the SD printed with it, and why they are held to
+    nothing where they are: a label or a header names the spread as no SD; the mean is no
+    proportion, a count and its share "85 (52.1)", a percentage and its SD "19.0 (39.2)",
+    or under a label or a header that names a percentage (round 1 of #665); its n is under
+    1; or too many counts of ones would be tried."""
+    if mean.spread is None:
+        return None, None
+    why = mean.not_an_sd or mean.not_a_proportion or (_N_UNDER_ONE if mean.n < 1 else None)
+    if why is not None:
+        return None, why
+    verdict = binary_possible(mean.mean, mean.spread, mean.n)
+    return verdict, _TOO_MANY_ONES if verdict is None else None
 
 
 def whole_number_sd(report, path: Path, mean: Mean) -> None:
@@ -62,11 +93,10 @@ def whole_number_sd(report, path: Path, mean: Mean) -> None:
     its SD, where it prints one, held to it and its n."""
     from manuscript_guard.audit import Disagreement
 
-    if mean.spread is None:
-        return
-    verdict = held_sd(mean)
+    verdict, why = sd_held(mean)
+    if why is not None:
+        report.sds_passed_over.append(why)
     if verdict is None:
-        report.spreads_passed_over += 1
         return
     report.sds_read += 1
     if verdict is False:
@@ -85,9 +115,10 @@ def binary_means(report, path: Path, tables: list[Table]) -> None:
             report.binary_unfound = [
                 label for label in report.binary_unfound if not names(label, mean.label)
             ]
-            verdict = held_binary(mean)
+            verdict, why = binary_held(mean)
+            if why is not None:
+                report.binary_passed_over.append(why)
             if verdict is None:
-                report.spreads_passed_over += 1
                 continue
             report.binary_read += 1
             if verdict is False:
@@ -122,12 +153,13 @@ def lines(report, show) -> list[str]:
     """The text's lines on the SDs, under Arithmetic; none where nothing was named that
     prints one."""
     out: list[str] = []
-    if report.sds_read or report.sds_off:
+    if report.sds_read or report.sds_off or report.sds_passed_over:
         out.append(
             f"SDs of means of whole numbers (GRIMMER): {report.sds_read} held to their mean "
             f"and n, {len(report.sds_off)} of which cannot go with them (not counted by --strict)."
         )
         out += _listed(report.sds_off, show)
+        out += _passed_over(report.sds_passed_over)
     if report.binary:
         out += [""] if out else []
         out.append(
@@ -140,13 +172,19 @@ def lines(report, show) -> list[str]:
             f"  --binary {label!r}: no mean with an SD was read in a row whose label holds it"
             for label in report.binary_unfound
         ]
-    if report.spreads_passed_over:
-        out.append(
-            f"  {report.spreads_passed_over} spread{'' if report.spreads_passed_over == 1 else 's'}"
-            " in the rows named not held to anything: its label or a header names it as no SD,"
-            " or too many totals would be tried."
-        )
+        out += _passed_over(report.binary_passed_over)
     return out
+
+
+def _passed_over(reasons: list[str]) -> list[str]:
+    """How many spreads of the rows named were held to nothing, and why, each reason with
+    how many it holds back."""
+    if not reasons:
+        return []
+    counted = {why: reasons.count(why) for why in dict.fromkeys(reasons)}
+    said = "; ".join(f"{why} ({count})" for why, count in counted.items())
+    return [f"  {len(reasons)} spread{'' if len(reasons) == 1 else 's'} in these rows held to "
+            f"nothing: {said}"]  # fmt: skip
 
 
 def _listed(found: list, show) -> list[str]:

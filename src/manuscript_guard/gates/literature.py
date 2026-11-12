@@ -362,8 +362,8 @@ def _binary_mean(key: str, value, detail: dict) -> Report:
                        f"be those of numbers each 0 or 1 is not assessable: {why or _TOO_MANY}")
 
 
-#: Why a test that would try more than a million totals or counts says nothing.
-_TOO_MANY = "more than a million totals would be tried"
+#: Why a test that would try more than 100,000 totals or counts says nothing.
+_TOO_MANY = "more than 100,000 totals would be tried"
 
 
 def _spread_unread(sd: str | None, quote: str, detail: str) -> str | None:

@@ -7719,7 +7719,8 @@ def test_an_sd_in_a_named_row_is_held_to_its_mean_and_its_column_s_n(
     and one between two that such numbers give does not. A mean and SD in a row named for
     --binary can go together where some count of ones among n gives both (DEBIT): the
     sample SD does, a wrong one does not, and the SD over n where no count gives it over
-    n - 1 does not. Each is held to its column's n. A spread the row's label, the header
+    n - 1 does not; a count and its share, or a percentage and its SD, is no proportion
+    and is held to nothing. Each is held to its column's n. A spread the row's label, the header
     over its column or the header's first cell names a standard error is held to nothing,
     and so is a mean alone; a row nobody names is not read."""
     text, whole, binary, expected = drawn
@@ -7755,6 +7756,14 @@ def _a_standard_error_is_read_as_an_sd(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import granularity
 
     patch.setattr(granularity, "_spread_named", lambda text: None)
+
+
+def _an_n_percent_cell_is_a_binary_mean(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #665: every "number (number)" cell of a row --binary named was read as a
+    mean and its SD, a count and its share among them."""
+    from manuscript_guard.stats import granularity
+
+    patch.setattr(granularity, "_not_a_proportion", lambda mean, label, column, table: None)
 
 
 def _a_binary_sd_is_over_n(patch: pytest.MonkeyPatch) -> None:
@@ -23361,6 +23370,10 @@ BROKEN = {
     ),
     "a standard error is read as an SD": (
         _a_standard_error_is_read_as_an_sd,
+        test_an_sd_in_a_named_row_is_held_to_its_mean_and_its_column_s_n,
+    ),
+    "an n (%) cell is read as a binary mean": (
+        _an_n_percent_cell_is_a_binary_mean,
         test_an_sd_in_a_named_row_is_held_to_its_mean_and_its_column_s_n,
     ),
     "the SD of numbers each 0 or 1 is taken over n, not n - 1": (

@@ -35,9 +35,10 @@ Two tests go further, each on an SD printed with its mean.
   SD's last places are those printed, noughts at the end counted; both ends of half a unit
   either side are taken, for the mean and for the SD; the SD's lower end is never below
   nought; every whole total the mean allows is tried; one number has no SD and fails. Its
-  arithmetic is in floating point with a tolerance, 1e-10; here it is exact, in fractions,
-  so the tolerance has nothing to do and is not kept. Where rsprite2 stops, more than a
-  million totals to try, this says the SD is not assessable. ATTRIBUTION.md has its notice.
+  arithmetic is in floating point with a tolerance, 1e-10; here it is exact, in whole
+  numbers and fractions, so the tolerance has nothing to do and is not kept. rsprite2 stops
+  past a million totals to try; this says the SD is not assessable past 100,000, since G7
+  runs inside `check`. ATTRIBUTION.md has its notice.
 * **DEBIT** (Heathers and Brown, "DEBIT: A Simple Consistency Test For Binary Data", 2019,
   <https://osf.io/5vb3u>, read 2026-11-12; no DOI) holds the mean and SD of n numbers
   each 0 or 1 to each other: k ones among n have the mean k/n and the sample SD
@@ -51,6 +52,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
@@ -82,8 +84,11 @@ _OTHER_NAMED = re.compile(
     r"|(?i:\bstandard\s+errors?\b|\binterquartile\b|\branges?\b|\bconfidence\b"
     r"|\bpercentiles?\b|\bquartiles?\b)"
 )
-#: The most totals, or counts of ones, a test tries: rsprite2's limit on what it enumerates.
-_MOST_TOTALS = 1_000_000
+#: The most totals, or counts of ones, a test tries: a tenth of rsprite2's limit on what it
+#: enumerates, since G7 runs inside `check` (round 1 of #665: a million took seconds).
+_MOST_TOTALS = 100_000
+#: What names a percentage in a label or a header.
+_PERCENT = "%"
 #: How much of a row the context shows.
 _CONTEXT = 160
 #: How far from the n given the sample sizes a mean fits are looked for.
@@ -111,6 +116,10 @@ class Mean:
     #: Why the spread is not read as an SD, where its label or a header names it otherwise:
     #: a standard error, an interquartile range (`_not_an_sd`).
     not_an_sd: str | None = None
+    #: Why the mean is not read as a proportion of numbers each 0 or 1, for DEBIT: it has no
+    #: point or is outside 0 to 1, or its label or a header names a percentage
+    #: (`_not_a_proportion`).
+    not_a_proportion: str | None = None
 
 
 def places(mean: str) -> int:
@@ -221,7 +230,7 @@ def sd_possible(mean: str, sd: str, n: int, items: int = 1) -> bool | None:
     """Whether `sd` can be the SD of `n` people's means of `items` whole numbers each, whose
     mean is `mean`, each rounded to the places printed: rsprite2's `GRIMMER_test` (see the
     module's docstring). False for one person, and where `mean` is no whole total over
-    them; None where `n` or `items` is not a count, or more than a million totals would be
+    them; None where `n` or `items` is not a count, or more than 100,000 totals would be
     tried."""
     if n < 1 or items < 1:
         return None
@@ -230,7 +239,8 @@ def sd_possible(mean: str, sd: str, n: int, items: int = 1) -> bool | None:
     totals = _centred_totals(mean, n * items)
     if totals is None:
         return None
-    return any(_square_sums(total, sd, n, items) is not None for total in totals)
+    bounds = _SquareBounds.of(sd, n, items)
+    return any(_square_sums(total, bounds) is not None for total in bounds.tried(totals))
 
 
 def sd_described(mean: str, sd: str, n: int, items: int = 1) -> str:
@@ -254,7 +264,7 @@ def sd_described(mean: str, sd: str, n: int, items: int = 1) -> str:
 def _centred_totals(mean: str, count: int) -> range | None:
     """The whole totals over `count` within half a unit of `mean`'s last place, of the
     numbers less the whole part of `mean`, as rsprite2 centres them; None where they are
-    more than a million."""
+    more than 100,000."""
     value = Fraction(Decimal(mean))
     low, high = _span(value - math.floor(value), places(mean), count)
     if high - low + 1 > _MOST_TOTALS:
@@ -262,18 +272,89 @@ def _centred_totals(mean: str, count: int) -> range | None:
     return range(low, high + 1)
 
 
-def _square_sums(total: int, sd: str, n: int, items: int) -> tuple[int, int] | None:
-    """The least and the greatest sum of squares of `n` whole sums of `items` numbers each,
-    totalling `total`, whose SD over `items` prints as `sd`: within its half a unit, of the
-    parity of `total`, and no less than the sum of the most even sums; None where there is
-    none. rsprite2's loop body, in fractions."""
-    low_sd, high_sd = _interval(sd)
-    low_sd = max(low_sd, Fraction(0))
-    squared_mean = Fraction(total * total, n)
-    least = math.ceil((n - 1) * (low_sd * items) ** 2 + squared_mean)
-    most = math.floor((n - 1) * (high_sd * items) ** 2 + squared_mean)
+@dataclass(frozen=True)
+class _SquareBounds:
+    """The bounds an SD's half unit puts on a sum of squares of `n` whole sums of `items`
+    numbers, as whole numbers: for a total T, (n - 1)(items * sd)^2 + T^2/n at each end of
+    the SD's interval is (scale * sd_num + T^2 * sd_den) / (n * sd_den). Worked out once,
+    so that each of up to 100,000 totals costs a few whole-number operations rather than
+    fractions (round 1 of #665)."""
+
+    n: int
+    low: int
+    low_den: int
+    high: int
+    high_den: int
+    #: Whether the SD's interval reaches below nought, where no SD lies below it.
+    from_nought: bool
+
+    @classmethod
+    def of(cls, sd: str, n: int, items: int) -> _SquareBounds:
+        low_sd, high_sd = _interval(sd)
+        low, high = max(low_sd, Fraction(0)) ** 2, high_sd**2
+        scale = (n - 1) * items * items * n
+        return cls(n, scale * low.numerator, low.denominator, scale * high.numerator,
+                   high.denominator, low_sd <= 0)  # fmt: skip
+
+    def least(self, total: int) -> int:
+        """The least whole sum of squares at or above the interval's lower end."""
+        return -(-(self.low + total * total * self.low_den) // (self.n * self.low_den))
+
+    def most(self, total: int) -> int:
+        """The greatest whole sum of squares at or below the interval's upper end."""
+        return (self.high + total * total * self.high_den) // (self.n * self.high_den)
+
+    def tried(self, totals: range) -> Iterator[int]:
+        """The totals worth trying: each whose evenest sums can be within the interval, and
+        the first and the last of each run whose cannot, where the SD nearest above the
+        interval may be. The evenest sums of a total T = n * w + o exceed T^2 / n by
+        o(n - o) / n, so they are within the interval only where o(n - o) is at most n times
+        (n - 1)(items * upper end)^2, which is `high / high_den`: a run of remainders in the
+        middle is skipped whole (round 1 of #665)."""
+        n = self.n
+
+        def fits(over: int) -> bool:
+            return over * (n - over) * self.high_den <= self.high
+
+        # The greatest remainder up to n / 2 that fits; those from it to n - it fit.
+        edge = n // 2
+        if not fits(edge):
+            square = max(0, n * n - 4 * (self.high // self.high_den))
+            edge = min(max(0, (n - math.isqrt(square)) // 2), n // 2)
+            while edge < n // 2 and fits(edge + 1):
+                edge += 1
+            while edge > 0 and not fits(edge):
+                edge -= 1
+        total = totals.start
+        while total < totals.stop:
+            over = total % n
+            if fits(over):
+                yield total
+                total += 1
+                continue
+            last = min(total + (n - edge - 1 - over), totals.stop - 1)
+            yield total
+            if last != total:
+                yield last
+            total = last + 1
+
+
+def _evenest(total: int, n: int) -> int:
+    """The least sum of squares of `n` whole numbers totalling `total`: as even as can be."""
     whole, over = divmod(total, n)
-    least = max(least, (n - over) * whole**2 + over * (whole + 1) ** 2)
+    return (n - over) * whole**2 + over * (whole + 1) ** 2
+
+
+def _square_sums(total: int, bounds: _SquareBounds) -> tuple[int, int] | None:
+    """The least and the greatest sum of squares of n whole sums totalling `total` whose SD
+    prints as the SD `bounds` was made from: within its half a unit, of the parity of
+    `total`, and no less than the evenest sums'; None where there is none, as soon as the
+    evenest sums' is past the upper end. rsprite2's loop body, in whole numbers."""
+    most = bounds.most(total)
+    evenest = _evenest(total, bounds.n)
+    if evenest > most:
+        return None
+    least = max(bounds.least(total), evenest)
     least += (total - least) % 2
     return (least, most) if least <= most else None
 
@@ -281,28 +362,28 @@ def _square_sums(total: int, sd: str, n: int, items: int) -> tuple[int, int] | N
 def _nearest_sds(mean: str, sd: str, n: int, items: int) -> tuple[str | None, str | None]:
     """The SDs printed to `sd`'s places nearest below and above it that `n` whole sums of
     `items` numbers with `mean` can have: the sums of squares either side of its interval
-    for each total, of the total's parity and no less than its least."""
+    for each total, of the total's parity and no less than its least. Each SD's square is
+    (sum * n - total^2) / (n(n - 1) items^2), whose denominator is one for every total, so
+    the numerators are compared as whole numbers."""
     totals = _centred_totals(mean, n * items) or range(0)
-    low_sd, high_sd = _interval(sd)
-    below: Fraction | None = None
-    above: Fraction | None = None
-    for total in totals:
-        squared_mean = Fraction(total * total, n)
-        whole, over = divmod(total, n)
-        least = (n - over) * whole**2 + over * (whole + 1) ** 2
-        under = math.ceil((n - 1) * (max(low_sd, Fraction(0)) * items) ** 2 + squared_mean) - 1
+    bounds = _SquareBounds.of(sd, n, items)
+    below: int | None = None
+    above: int | None = None
+    for total in bounds.tried(totals):
+        evenest = _evenest(total, n)
+        under = bounds.least(total) - 1
         under -= (under - total) % 2
-        beyond = math.floor((n - 1) * (high_sd * items) ** 2 + squared_mean) + 1
+        beyond = bounds.most(total) + 1
         beyond += (beyond - total) % 2
-        beyond = max(beyond, least)
-        if low_sd > 0 and under >= least:
-            variance = (under - squared_mean) / ((n - 1) * items * items)
-            below = variance if below is None else max(below, variance)
-        variance = (beyond - squared_mean) / ((n - 1) * items * items)
-        above = variance if above is None else min(above, variance)
-    shown = places(sd)
-    return (None if below is None else _printed_root(below, shown),
-            None if above is None else _printed_root(above, shown))  # fmt: skip
+        beyond = max(beyond, evenest)
+        if not bounds.from_nought and under >= evenest:
+            spread = under * n - total * total
+            below = spread if below is None else max(below, spread)
+        spread = beyond * n - total * total
+        above = spread if above is None else min(above, spread)
+    shown, over = places(sd), n * (n - 1) * items * items
+    return (None if below is None else _printed_root(Fraction(below, over), shown),
+            None if above is None else _printed_root(Fraction(above, over), shown))  # fmt: skip
 
 
 # ---------------------------------------------------------------------- binary data: DEBIT
@@ -313,7 +394,7 @@ def binary_possible(mean: str, sd: str, n: int) -> bool | None:
     each rounded to the places printed: some count of ones k gives k/n and
     sqrt(k(n - k) / (n(n - 1))) within half a unit of each (DEBIT, see the module's
     docstring). False for one number, which has no SD; None where `n` is not a count, or
-    more than a million counts would be tried."""
+    more than 100,000 counts would be tried."""
     if n < 1:
         return None
     if n == 1:
@@ -351,7 +432,7 @@ def binary_described(mean: str, sd: str, n: int) -> str:
 
 def _ones(mean: str, n: int) -> range | None:
     """The counts of ones among `n` whose share is within half a unit of `mean`'s last
-    place; None where they are more than a million."""
+    place; None where they are more than 100,000."""
     low, high = _span(Fraction(Decimal(mean)), places(mean), n)
     low, high = max(low, 0), min(high, n)
     if high - low + 1 > _MOST_TOTALS:
@@ -388,6 +469,10 @@ def table_means(table: Table, labels: tuple[str, ...]) -> list[Mean]:
     # them, call the spread a mean is printed with (`_spread_named`).
     spread_over: dict[int, str] = {}
     spread_of_all = _spread_named(table[0][0].text) if table and table[0] else None
+    # And whether a header over each column, and the header's first cell, names a
+    # percentage, "n (%)": its cells are no proportions for DEBIT (round 1 of #665).
+    percent_over: dict[int, bool] = {}
+    percent_of_all = bool(table and table[0] and "%" in table[0][0].text)
     for at, row in enumerate(table):
         placed = list(_columns(row))
         label = row[0].text if row else ""
@@ -402,6 +487,8 @@ def table_means(table: Table, labels: tuple[str, ...]) -> list[Mean]:
             if shaped is None:
                 _spread_header(cell, column, spread_over)
                 set_here = _header(cell, column, over)
+                if at == 0 or set_here:
+                    _percent_header(cell, column, percent_over)
                 # A mean that names its n is a row of means too, read or not (round 1 of
                 # #336); a cell of the first row, the header, is none, "0.5 (n = 40)" in a
                 # dose table being a header (the post-budget round of #336).
@@ -420,6 +507,9 @@ def table_means(table: Table, labels: tuple[str, ...]) -> list[Mean]:
                 label=label, uncertain=uncertain, context=context,
                 spread=_spread_of(text, shaped),
                 not_an_sd=_not_an_sd(label, spread_over.get(column), spread_of_all),
+                not_a_proportion=_not_a_proportion(
+                    shaped.group("mean"), label, percent_over.get(column, False), percent_of_all
+                ),
             ))  # fmt: skip
     return found
 
@@ -483,6 +573,32 @@ def _spread_header(cell: TableCell, column: int, over: dict[int, str]) -> None:
     if named is not None:
         for each in range(column, column + max(cell.span, 1)):
             over[each] = named
+
+
+def _percent_header(cell: TableCell, column: int, over: dict[int, bool]) -> None:
+    """Whether a header cell, the first row's or one that names an n, says the columns it
+    spans hold percentages: the latest such cell over a column says it. A body cell's
+    "12 (40%)" says nothing of the column."""
+    for each in range(column, column + max(cell.span, 1)):
+        over[each] = "%" in cell.text
+
+
+def _not_a_proportion(mean: str, label: str, column: bool, table: bool) -> str | None:
+    """Why a mean printed with its spread is no proportion of numbers each 0 or 1: a count
+    and its share, "85 (52.1)", has no point, and a percentage and its SD, "19.0 (39.2)",
+    is above 1 (round 1 of #665); or its label, the header over its column or the header's
+    first cell names a percentage. None where it can be one."""
+    value = mean.replace("\N{MINUS SIGN}", "-")
+    if "." not in value:
+        return "the mean has no point, as a count has"
+    if not 0 <= Decimal(value) <= 1:
+        return "the mean is outside 0 to 1"
+    for named, where in ((_PERCENT in label, "the row's label"),
+                         (column, "the header over its column"),
+                         (table, "the table's header")):  # fmt: skip
+        if named:
+            return f"{where} names a percentage"
+    return None
 
 
 def _not_an_sd(label: str, column: str | None, table: str | None) -> str | None:

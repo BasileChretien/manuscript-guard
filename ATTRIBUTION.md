@@ -177,7 +177,8 @@ with Aurélien Allard and Lukas Jung (`R/core-functions.R` at commit
 totals the mean allows, centred on its whole part; the bounds on each total's sum of
 squares from the SD's half unit, the lower never below nought; the parity of the sum and its
 least value for the total; both ends of each half unit taken; and one number failing. Its
-floating-point tolerance is not taken: the port works in fractions. The test is Anaya's
+floating-point tolerance is not taken: the port works in whole numbers and fractions, and
+stops past 100,000 totals where rsprite2 stops past a million. The test is Anaya's
 (*PeerJ Preprints* 2016, doi:10.7287/peerj.preprints.2400v1), in the analytic form of
 Allard (2018). The DEBIT test beside it is written from Heathers and Brown's paper; rsprite2
 has none.

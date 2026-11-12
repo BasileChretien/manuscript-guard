@@ -169,15 +169,16 @@ class AuditReport:
     #: The SDs of those means held to them by GRIMMER, and each that cannot go with its
     #: mean and n; the rows --binary named, the means and SDs read in them for DEBIT, each
     #: pair that cannot be of numbers each 0 or 1, and each label under which none was read;
-    #: and the spreads in either named as no SD, which are held to nothing
+    #: and why each spread of either held to nothing was, one reason a spread
     #: (`auditing.spreads`).
     sds_read: int = 0
     sds_off: list[Disagreement] = field(default_factory=list)
+    sds_passed_over: list[str] = field(default_factory=list)
     binary: tuple[str, ...] = ()
     binary_read: int = 0
     binary_off: list[Disagreement] = field(default_factory=list)
     binary_unfound: list[str] = field(default_factory=list)
-    spreads_passed_over: int = 0
+    binary_passed_over: list[str] = field(default_factory=list)
     #: Whether outputs were given. Without them no number is compared, and `uncompared`
     #: counts the numbers that would have been.
     compared: bool = True

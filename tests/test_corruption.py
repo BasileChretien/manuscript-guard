@@ -16665,7 +16665,7 @@ def test_an_audited_sd_of_whole_numbers_is_held_to_its_mean_and_n(tmp_path: Path
         (5, "an SD of 2.47 cannot go with a mean of 3.44 of 18 whole numbers: the SDs nearest "
             "it that such numbers can have print as 2.45 and 2.48"),
     ]  # fmt: skip
-    assert report.sds_read == 3 and report.spreads_passed_over == 2
+    assert report.sds_read == 3 and len(report.sds_passed_over) == 2
     assert [d.line for d in report.disagreements] == [7]
     [said] = [item for item in items(report) if item.code == "sd-not-possible"]
     assert (said.severity, said.counted, said.line) == ("warn", False, 5)
@@ -16708,6 +16708,80 @@ def test_an_audited_binary_row_is_held_to_its_mean_sd_and_n(tmp_path: Path) -> N
     shown = render(report, measure_discrimination(set()))
     assert "Means and SDs of numbers each 0 or 1 (--binary, DEBIT): 4 read" in shown
     assert "--binary 'diabetes': no mean with an SD was read in a row whose label holds it" in shown
+
+
+@pytest.mark.parametrize(("header", "row"), [
+    # A count and its share, "85 (52.1)", and a share and its SD in percent, "19.0 (39.2)".
+    ("| | Treated (n = 163) |", "| Male sex | 85 (52.1) |"),
+    ("| | Treated (n = 163) |", "| Male sex | 19.0 (39.2) |"),
+    # A proportion under a header, a label or a table that says its numbers are percentages.
+    ("| | Treated (n = 163), n (%) |", "| Male sex | 0.52 (0.40) |"),
+    ("| | Treated (n = 163) |", "| Male sex, n (%) | 0.52 (0.40) |"),
+    ("| Characteristic, n (%) | Treated (n = 163) |", "| Male sex | 0.52 (0.40) |"),
+])  # fmt: skip
+def test_an_n_percent_cell_in_a_binary_row_is_passed_over(
+    tmp_path: Path, header: str, row: str
+) -> None:
+    """Round 1 of #665: --binary read every "number (number)" cell of a named row, so a count
+    and its share, "85 (52.1)", was said to be no mean of 163 numbers each 0 or 1. A mean
+    with no point, one outside 0 to 1, and one under a label or a header that names a
+    percentage are passed over, with the reason, and nothing is listed."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"{header}\n|---|---|\n{row}\n", encoding="utf-8")
+    report = audit([paper], [], binary=("male",))
+    assert report.binary_off == [] and report.binary_read == 0
+    assert len(report.binary_passed_over) == 1 and report.binary_unfound == []
+    shown = render(report, measure_discrimination(set()))
+    assert "1 spread in these rows held to nothing: " in shown
+
+
+def test_a_section_row_naming_its_spread_is_not_carried_down() -> None:
+    """A limit (DESIGN.md, Known gaps): a section row in the stub column that names its
+    spread, "Pain, mean (SE)" over "Week 4" and "Week 8", is not carried down to the rows
+    under it, so their standard errors are held as SDs, and rsprite2's 2.47 of 18 is said
+    not to go with its mean."""
+    from manuscript_guard.auditing.spreads import held_sd
+    from manuscript_guard.stats.granularity import table_means
+    from manuscript_guard.text.tables import markdown_tables
+
+    [table] = markdown_tables("| | Treated (n = 18) |\n|---|---|\n| Pain, mean (SE) | |\n"
+                              "| Week 4 | 3.44 (2.47) |\n| Week 8 | 5.21 (1.6) |\n")  # fmt: skip
+    found = [(m.mean, m.not_an_sd, held_sd(m)) for m in table_means(table, ("week",))]
+    assert found == [("3.44", None, False), ("5.21", None, None)]
+
+
+def test_spreads_held_to_nothing_are_said_under_their_heading(tmp_path: Path) -> None:
+    """Round 1 of #665: where every SD of the rows --whole-numbers named was passed over,
+    the line that said so stood under no heading."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("| | Treated (n = 18) |\n|---|---|\n| Pain, mean (SE) | 3.44 (2.47) |\n",
+                     encoding="utf-8")  # fmt: skip
+    report = audit([paper], [], whole_numbers=("pain",))
+    assert report.sds_read == 0 and len(report.sds_passed_over) == 1
+    shown = render(report, measure_discrimination(set()))
+    heading = "SDs of means of whole numbers (GRIMMER): 0 held to their mean and n"
+    assert heading in shown
+    said = shown[shown.index(heading):]
+    assert said.index("1 spread in these rows held to nothing: the row's label names it as a "
+                      "spread other than an SD (1)") > 0  # fmt: skip
+
+
+def test_the_summary_counts_sds_and_binary_pairs_apart(tmp_path: Path) -> None:
+    """Round 1 of #665: a pair of numbers each 0 or 1 that cannot go together was counted
+    as an SD that cannot go with its mean."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.auditing.summary import _arithmetic
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(_SPREADS_PAPER, encoding="utf-8")
+    report = audit([paper], [], whole_numbers=("pain score",), binary=("male", "smoker"))
+    assert _arithmetic(report).endswith(
+        "1 SD that cannot go with its mean and n; 2 means and SDs of numbers each 0 or 1 that "
+        "cannot go together with their n")
 
 
 def test_audit_binary_on_the_command_line(
@@ -16789,6 +16863,10 @@ def _ledger_spread(project: Path, printed: str, said: str, detail: dict) -> None
          {"mean_of_binary_data": {"n": 163, "sd": "0.35"}}, ["quote-binary-not-possible"]),
         ("0.12", "Of the 163 respondents, in a previous study: 0.12 (SD 0.33).",
          {"mean_of_binary_data": {"n": 163, "sd": "0.33"}}, []),
+        # More than 100,000 totals to try: not assessable, said at once (round 1 of #665).
+        ("3.4", "The 10,000,000 people rated it 3.4 (SD 0.0) on average.",
+         {"mean_of_whole_numbers": {"n": 10_000_000, "sd": "0.0"}},
+         ["quote-mean-not-assessable", "quote-sd-not-assessable"]),
         # An SD YAML reads as a number loses its noughts: refused by the schema.
         ("0.12", "Of the 163 respondents, in a previous study: 0.12 (SD 0.33).",
          {"mean_of_binary_data": {"n": 163, "sd": 0.33}}, ["schema-violation"]),

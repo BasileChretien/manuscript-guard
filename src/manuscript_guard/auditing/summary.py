@@ -132,10 +132,14 @@ def _arithmetic(report) -> str:
     if report.disagreements:
         said += ("; " if said else "") + (
             f"{_n(len(report.disagreements), 'number')} that may not fit the ones beside it")
-    if off := len(report.sds_off) + len(report.binary_off):
+    if off := len(report.sds_off):
         said += ("; " if said else "") + _n(off, "SD") + (
             " that cannot go with its mean and n" if off == 1 else
             " that cannot go with their means and n")  # fmt: skip
+    if off := len(report.binary_off):
+        said += ("; " if said else "") + _n(off, "mean and SD", "means and SDs") + (
+            " of numbers each 0 or 1 that cannot go together with "
+            + ("its n" if off == 1 else "their n"))  # fmt: skip
     return said or "nothing disagrees with the numbers beside it"
 
 

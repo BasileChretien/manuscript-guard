@@ -17384,6 +17384,10 @@ Added by the adversarial review, verified and **not** fixed:
   - Where the label or a header names an SD and another spread, "Pain score (range 0-10),
     mean (SD)", the spread is held to nothing, though it is an SD. Pinned by
     `tests/test_corruption.py::test_a_label_naming_an_sd_and_a_range_holds_its_spread_to_nothing`.
+  - A section row in the stub column that names its spread, "Pain, mean (SE)" over "Week 4"
+    and "Week 8", is not carried down to the rows under it: their standard errors are held
+    as SDs, and one that cannot be is listed (round 1 of #665). Pinned by
+    `tests/test_corruption.py::test_a_section_row_naming_its_spread_is_not_carried_down`.
   - GRIMMER is a necessary condition only, as rsprite2 says of it: an SD it passes may still
     be impossible for the scale's range, which a table does not give, so rsprite2's
     `boundary_test` is not run. Accepted.
@@ -17391,11 +17395,15 @@ Added by the adversarial review, verified and **not** fixed:
     an SD that is right for its items can be listed; the ledger takes `items`. Accepted.
   - DEBIT takes both ends of each half unit, where the paper takes an SD of 0.37 for 0.365 to
     below 0.375: a pair a tie rounds into is passed, never listed. Accepted.
-  - `--binary` reads a mean or a proportion printed as a decimal with its SD; one printed as
-    a percentage, "19% (0.39)", and a mean alone are not read (an n (%) is held to its
-    denominator already). Accepted.
-  - A test that would try more than a million totals or counts of ones, rsprite2's limit,
-    says nothing: in `audit` the spread is counted as passed over, in the ledger it is
+  - `--binary` reads a mean or a proportion printed as a decimal from 0 to 1 with its SD; a
+    mean alone is not read, and a cell whose mean has no point or is outside 0 to 1, or
+    whose label or header names a percentage, is passed over with its reason (round 1 of
+    #665: "85 (52.1)", a count and its share, was said to be no mean of numbers each 0 or
+    1). An n (%) is held to its denominator already. A proportion in a row and column no
+    header calls percentages, typed as a decimal, is read as a mean. Accepted.
+  - A test that would try more than 100,000 totals or counts of ones says nothing, where
+    rsprite2 stops at a million (round 1 of #665: G7 took seconds over a million): in
+    `audit` the spread is counted as passed over, in the ledger it is
     `quote-sd-not-assessable`. Accepted.
   - The ledger's SD is held to be printed in the quote as a number, anywhere in it, not to
     stand beside the mean. Accepted.

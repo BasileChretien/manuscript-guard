@@ -37,12 +37,13 @@ review:
 anything is sent, the command says which files go to which host and how many calls that is,
 and waits for you to type yes. `--dry-run` shows the same statement, writes the exact
 requests under `build/` for you to read, and opens no connection. What a provider keeps or
-does with what it receives is in its terms, not in this toolkit. A model that Ollama runs
-on your own machine sends nothing anywhere. An Ollama cloud model, one whose name ends
-in `-cloud` or `:cloud`, is not one of those: the Ollama server on your machine passes
-the request on to Ollama's own servers, and the same goes for any server on this machine
-that forwards what it receives. The address is `localhost` either way, so check the
-model's name, and what any server at that address does with a request, before you rely
+does with what it receives is set by its terms, not by this toolkit, and [What a provider
+keeps](#what-a-provider-keeps) says what each one's terms said when they were last read. A
+model that Ollama runs on your own machine sends nothing anywhere. An Ollama cloud model,
+one whose name ends in `-cloud` or `:cloud`, is not one of those: the Ollama server on your
+machine passes the request on to Ollama's own servers, and the same goes for any server on
+this machine that forwards what it receives. The address is `localhost` either way, so check
+the model's name, and what any server at that address does with a request, before you rely
 on it.
 
 **Where the data custodian restricts where the manuscript may go,** say so in `paper.yaml`:
@@ -183,6 +184,40 @@ reply becomes its `overridden`, with the reply as the reason and its author as
 `overridden_by`. A refused edit with no reply leaves its finding open, since turning down a
 wording does not answer what the finding says. Nothing in the reader's words changes, so the
 seal still holds.
+
+## What a provider keeps
+
+Once a request has arrived, what the provider keeps of it and what it does with it are set by
+its terms, and the terms change. The table is what each built-in provider's own pages said on
+2026-11-12 of an account that has a key and no agreement beyond the standard terms. An
+agreement your university or company has signed with a provider may say otherwise. Read the
+pages before the first run, and again when you add a provider.
+
+| Provider | Kept by default | Used to train models | Keeping nothing | Its pages |
+|---|---|---|---|---|
+| OpenAI | up to 30 days, in the logs kept to watch for abuse | no, unless you opt in | zero data retention, once OpenAI has approved it | [Data controls](https://developers.openai.com/api/docs/guides/your-data) |
+| Anthropic | deleted within 30 days; a request flagged under the usage policy up to 2 years, and its safety scores up to 7 | no | zero data retention, once Anthropic has approved it | [Retention](https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data), [Commercial Terms](https://www.anthropic.com/legal/commercial-terms) |
+| Gemini | 55 days, for abuse monitoring, paid or not | on a project with no billing account, yes, and human reviewers may read it; with billing, no | none found | [Terms](https://aistudio.google.com/docs/terms), [Usage policies](https://aistudio.google.com/docs/usage-policies) |
+| Mistral | no period given; stored in the EU unless you choose the US endpoint | the help pages give no default for pay-as-you-go; the data processing addendum trains on it "unless Customer is or has opted-out" | zero data retention for chat on pay-as-you-go, on request, at Mistral's discretion | [Commercial terms](https://legal.mistral.ai/terms/commercial-terms-of-service), [Data processing addendum](https://legal.mistral.ai/terms/data-processing-addendum) |
+| DeepSeek | "as long as necessary", on servers in the People's Republic of China | yes; its privacy policy lets you refuse, by writing to it | none found | [Privacy policy](https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html), [Platform terms](https://cdn.deepseek.com/policies/en-US/deepseek-open-platform-terms-of-service.html) |
+| Moonshot (Kimi) | while the account is open, on servers in Singapore | yes, unless an enterprise agreement says not | enterprise accounts only | [Platform terms](https://platform.kimi.ai/docs/agreement/modeluse), [Privacy policy](https://platform.kimi.ai/docs/agreement/userprivacy) |
+| OpenRouter | nothing of the request, unless you turn prompt logging on; the provider it passes the request to keeps what that provider's terms say | not by OpenRouter; some of the providers it passes requests to do | routing to zero-retention endpoints only, which you can require | [Privacy and logging](https://openrouter.ai/docs/features/privacy-and-logging), [Zero data retention](https://openrouter.ai/docs/features/zdr) |
+| Ollama cloud | not kept beyond the request, its privacy policy says; some models are hosted by partners it holds to no logging | no | nothing to ask for, since it says it keeps nothing | [Privacy policy](https://ollama.com/privacy), [Cloud](https://ollama.com/cloud) |
+
+Three things in it are easy to miss.
+
+- A Gemini key from a project with no billing account is the unpaid service. Google uses
+  what it is sent to improve its products, and its human reviewers may read it. Its terms
+  put free use from the European Economic Area, Switzerland and the UK under the paid terms.
+- Zero data retention is agreed account by account. Until the provider has agreed it for
+  yours, a request is kept as the second column says.
+- OpenRouter passes each request on to another provider, whose terms then apply.
+  `review --run` sends no routing instructions, so set it in your OpenRouter account's
+  privacy settings: route to no provider that trains on what it receives, or only to
+  zero-retention endpoints.
+
+Where the data custodian decides which providers the manuscript may go to, the table and its
+pages are what to show them.
 
 ## Comments a co-author left in Word
 

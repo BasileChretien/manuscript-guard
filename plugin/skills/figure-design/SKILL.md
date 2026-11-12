@@ -117,8 +117,11 @@ prints in grey, say) is the one that holds for it.
   the points over the bar (`geom_beeswarm`, `sns.swarmplot`, or a jitter with a seed:
   `position_jitter(seed = 1)`, since an unseeded one is `figure-estimates`), or a box or
   dot plot in its place, and let the author choose. Where the bar is right as it is, the reason
-  goes in the figure's guard file under `allow_bars`, one sentence.
-- `figure-bars-with-errors`: a note. Bars drawn from values the script was given carry error
+  goes in the figure's guard file under `allow_bars`, one sentence. Where the call computes
+  no interval (`errorbar=None`, `ci=None`), it is a note: each bar may be the one value of a
+  table with one row per group, and if so that is the reason to give.
+- `figure-bars-with-errors`: a note. An error layer counts only for the bars of its own plot,
+  the same `+` chain. Bars drawn from values the script was given carry error
   bars, and no points are drawn. A proportion and its interval is right as a bar; say so
   under `allow_bars`. A mean and its spread is better shown with the points.
 

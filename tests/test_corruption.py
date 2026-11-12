@@ -944,6 +944,8 @@ def test_a_plotnine_bar_of_means_is_said_to_be_the_mean(tmp_path: Path, call: st
                if f.code == _MEANS]  # fmt: skip
     assert "a bar at the mean of each group" in said, said
     assert "bootstrapped mean" not in said and "mean_cl_boot" not in said, said
+    # Round 2: a bar geom draws no interval, so the words name none.
+    assert "interval" not in said and 'geom="bar",' not in said, said
 
 
 @pytest.mark.parametrize(

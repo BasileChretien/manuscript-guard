@@ -17458,6 +17458,10 @@ Added by the adversarial review, verified and **not** fixed:
   - A layer of error bars added to the plot in a statement of its own (`p2 <- p2 +
     geom_errorbar()`) stands in another `+` chain, so the bar it is drawn on is not said.
     Pinned by `tests/test_corruption.py::test_an_error_layer_added_to_the_plot_later_is_not_read`.
+    In Python, a backslash before the line break, or a line break inside a dict's braces,
+    also ends the chain, so an error layer written after it is not counted. Accepted.
+  - A quoted `errorbar="None"` is read as `None`, a call that computes no interval: seaborn
+    takes no such string. Accepted.
   - The hint names R and Python layers together, whatever the script's language, and a
     jitter it suggests, unseeded, draws a `figure-estimates` warning of its own. Accepted.
   - A layer of points anywhere in the script stands down every bar in it, even one on

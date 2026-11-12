@@ -51,17 +51,13 @@ python:
     alone: {errorbar: [None], ci: [None]}
   - draws: means
     names: [stat_summary, stat_summary_bin]
-    what: >-
-      draws a bar at the mean of each group with geom="bar", with a bootstrapped interval by
-      default
+    what: draws a bar at the mean of each group with geom="bar" or "col"
     read: plotnine.stat_summary reference page (plotnine 0.15.9), 2026-11-12
     when: {geom: [bar, col]}
     summary: [fun_data, fun_y]
   - draws: means
     names: [geom_bar]
-    what: >-
-      draws a bar at the mean of each group with stat="summary", with a bootstrapped interval
-      by default
+    what: draws a bar at the mean of each group with stat="summary"
     read: plotnine.geom_bar and plotnine.stat_summary reference pages (plotnine 0.15.9), 2026-11-12
     when: {stat: [summary]}
     summary: [fun_data, fun_y]

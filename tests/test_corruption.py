@@ -33505,6 +33505,90 @@ def test_a_journal_s_statement_with_nothing_declared_by_the_authors_is_noted(
     assert _ai_use_findings(project) == [("ai-use-undeclared", "info")]
 
 
+# ---------------------------------------------------------- an RRID is an identifier (G2, G14)
+#
+# An RRID's digits name a resource and measure nothing, as an ORCID's do; and "RRID" is read
+# as a name, as "DOI" is. A number beside one is still a number.
+
+_RRIDS_TYPED = ("Neurons were stained with the antibody (RRID:AB_2298772) in the cell line "
+                "RRID: CVCL_0030, and counted with the software (RRID:SCR_002798).")  # fmt: skip
+
+
+def _g2_g14(root: Path) -> set[tuple[str, str, str]]:
+    from manuscript_guard.cli import _run_gates
+
+    report, *_ = _run_gates(root, stage="submission")
+    return {(f.gate, f.code, f.message) for f in report.findings if f.gate in ("G2", "G14")}
+
+
+def _in_the_methods(root: Path, sentence: str) -> None:
+    path = main_md(root)
+    text = path.read_text(encoding="utf-8")
+    at = text.index("\n# Results")
+    path.write_text(text[:at] + f"\n{sentence}\n" + text[at:], encoding="utf-8")
+
+
+def test_an_rrid_typed_in_the_methods_is_no_number_and_no_abbreviation(project: Path) -> None:
+    before = _g2_g14(project)
+    _in_the_methods(project, _RRIDS_TYPED)
+    assert _g2_g14(project) - before == set()
+
+
+def test_g14_reads_an_rrid_as_rrids_py_does() -> None:
+    """The copy in `gates/language.py` keeps #658's rules: a dot joins only before a digit,
+    and a hyphen ends the accession only before a word of four small letters or more."""
+    from manuscript_guard.gates.language import _RRID
+
+    text = ("Prism (RRID:SCR_002798.Version 9), mice (RRID:mmrrc_000231-unc, n = 4), "
+            "RRID:CVCL_0030-derived cells and RRID:NXR_0.0005.")
+    assert [found.group("accession") for found in _RRID.finditer(text)] == [
+        "SCR_002798", "mmrrc_000231-unc", "CVCL_0030", "NXR_0.0005"]
+
+
+def test_a_number_typed_against_an_rrid_is_read_into_it() -> None:
+    """The limit Known gaps records (round 1 of #663): a number typed straight after an RRID,
+    with a dot, a hyphen or a colon and no space, is read as a part of its accession, and G2
+    calls it structural with the rest."""
+    from manuscript_guard.classify import STRUCTURAL, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    classifier = Classifier.load()
+    for typed, atom in (("RRID:AB_123.4 mg", "RRID:AB_123.4"),
+                        ("RRID:CVCL_0030-1", "RRID:CVCL_0030-1"),
+                        ("RRID:AB_2298772:500", "RRID:AB_2298772:500"),
+                        ("RRID:CVCL_0030-derived-12", "RRID:CVCL_0030-derived-12")):  # fmt: skip
+        text = f"The antibody {typed} was used.\n"
+        [found] = find_atoms(text, mask(text))
+        assert found.text == atom
+        assert classifier.classify(found, None, classifier.scan(text)).kind == STRUCTURAL
+
+
+def test_a_number_beside_an_rrid_is_still_a_number(project: Path) -> None:
+    _in_the_methods(project, "The antibody was diluted 1:500 (RRID:AB_2298772).")
+    report = check_numbers(*_numbers_of(project))
+    said = [f for f in report.failures if f.code == "unclassified-number"]
+    assert [f.message for f in said if "500" in f.message], report.render(project)
+    assert not [f for f in said if "2298772" in f.message]
+
+
+def _numbers_of(root: Path):
+    project, _report = load_project(root)
+    namespace, results, literature, _loaded = load_namespace(project)
+    return project, namespace, results, literature
+
+
+def test_an_rrid_typed_in_a_latex_manuscript_is_no_number_and_no_abbreviation(
+    project: Path,
+) -> None:
+    entry = _as_latex(project)
+    text = entry.read_text(encoding="utf-8")
+    before = _g2_g14(project)
+    typed = _RRIDS_TYPED.replace("_", "\\_").replace("RRID: ", "RRID:~")
+    entry.write_text(text.replace("\\end{document}", typed + "\n\\end{document}"), "utf-8")
+    assert _g2_g14(project) - before == set()
+
+
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 def test_a_correction_the_tracked_copy_cannot_place_stays_a_comment(
     tmp_path: Path, capsys

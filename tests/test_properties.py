@@ -12214,11 +12214,13 @@ def test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_i
     """A paper converted from Word keeps its correspondence line, and `check` and the audit
     alike read "someone1989@example.org", "IL-4" and "interleukin-4" as numbers. An e-mail
     address is structural and an interleukin a term, for `check` and for the audit; a count
-    beside them, and digits round an `@` with no domain, are numbers still."""
+    beside them, and digits round an `@` with no domain, are numbers still. So is an RRID
+    structural, "RRID:AB_2298772", and "1:500" beside it a number."""
     from manuscript_guard.classify import STRUCTURAL, TERM, UNCLASSIFIED
 
     text, kinds = drawn
-    expected = {"address": STRUCTURAL, "name": TERM, "number": UNCLASSIFIED}
+    expected = {"address": STRUCTURAL, "identifier": STRUCTURAL, "name": TERM,
+                "number": UNCLASSIFIED}  # fmt: skip
     atoms = find_atoms(text, mask(text))
     assert sorted(atom.text for atom in atoms) == sorted(kinds), text
     declared = DECLARED_TERMS
@@ -12245,6 +12247,135 @@ def _shipped_with(patch: pytest.MonkeyPatch, structural=None, terms=None) -> Non
 def _an_email_address_is_a_number(patch: pytest.MonkeyPatch) -> None:
     _shipped_with(patch, structural=lambda rules: tuple(
         rule for rule in rules if rule.id != "email-address"))  # fmt: skip
+
+
+def _an_rrid_is_a_number(patch: pytest.MonkeyPatch) -> None:
+    _shipped_with(patch, structural=lambda rules: tuple(
+        rule for rule in rules if rule.id != "rrid"))  # fmt: skip
+
+
+from generated import RRID_BESIDE, rrid_sentences  # noqa: E402
+
+
+def _g14_of_rrids(files: list, root: Path) -> list[tuple[str, str]]:
+    """What G14's abbreviations and code names say of files read: each finding's code and the
+    word its message opens with."""
+    from manuscript_guard.gates.code_names import Names, Prose, judge_code_names
+    from manuscript_guard.gates.language import _judge, _Known, _shipped
+
+    exact, lowered = _shipped()
+    said = list(_judge(files, _Known(exact, lowered), root).findings)
+    prose = [Prose(one.path, one.text, one.printed, one.code, one.line_of) for one in files]
+    said += judge_code_names(prose, Names(), "drafting").findings
+    return sorted((f.code, f.message.split(" ", 1)[0].strip("'")) for f in said
+                  if f.code in ("abbreviation-undefined", "code-name-in-prose"))  # fmt: skip
+
+
+def _hidden_in(files: list, spans: list) -> list[str]:
+    """Each accession's letters and digits that a view of G14's still shows."""
+    shown = []
+    for start, end in spans:
+        for one in files:
+            for view in (one.prose, one.printed):
+                kept = "".join(c for c in view[start:end] if c.isalnum())
+                if kept:
+                    shown.append(kept)
+    return shown
+
+
+@holds(50, rrid_sentences())
+def test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14(
+    drawn: tuple[str, str, list, list],
+) -> None:
+    """Round 1 of #663: an RRID's accession, joined by hyphens, colons, a dot or underscores
+    or of one part, after a space, a line break or nothing, with its underscore escaped, is
+    hidden from G14's views in Markdown and LaTeX alike, and is neither an abbreviation
+    undefined nor a name from the code; a short form and a code name beside it still are."""
+    from manuscript_guard.gates.language import _file, _latex_read
+
+    markdown, latex, spans_md, spans_tex = drawn
+    expected = [("abbreviation-undefined", "HPLC"), ("code-name-in-prose", "dose_mg")]
+    assert RRID_BESIDE == ("HPLC", "dose_mg")
+    read = [_file(0, MAIN, markdown, [], False)]
+    assert _hidden_in(read, spans_md) == [] and "Version" in read[0].printed, markdown
+    assert _g14_of_rrids(read, Path(".")) == expected, markdown
+    folder = Path(tempfile.mkdtemp(prefix="mg-rrid-"))
+    try:
+        (folder / "main.tex").write_text(latex, encoding="utf-8", newline="")
+        read = _latex_read(folder, None)
+        assert _hidden_in(read, spans_tex) == [], latex
+        assert any("Version" in one.printed for one in read), latex
+        assert _g14_of_rrids(read, folder) == expected, latex
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+def _g14_rrid_changed(patch: pytest.MonkeyPatch, was: str, now: str) -> None:
+    """G14's reading of an RRID with one piece of its pattern written otherwise."""
+    from manuscript_guard.gates import language
+
+    assert was in language._RRID.pattern
+    patch.setattr(language, "_RRID", re.compile(language._RRID.pattern.replace(was, now)))
+
+
+def _g14_reads_no_hyphen_in_an_rrid(patch: pytest.MonkeyPatch) -> None:
+    _g14_rrid_changed(patch, r"|-(?![a-z]{4,}(?![A-Za-z0-9_:\-]))", "")
+
+
+def _g14_reads_no_colon_in_an_rrid(patch: pytest.MonkeyPatch) -> None:
+    _g14_rrid_changed(patch, r"[_:]", r"[_]")
+
+
+def _g14_reads_no_dot_in_an_rrid(patch: pytest.MonkeyPatch) -> None:
+    _g14_rrid_changed(patch, r"|\.(?=[0-9])", "")
+
+
+def _g14_reads_no_latex_underscore_in_an_rrid(patch: pytest.MonkeyPatch) -> None:
+    _g14_rrid_changed(patch, r"\x00?", "")
+
+
+def _g14_reads_no_escaped_underscore_in_an_rrid(patch: pytest.MonkeyPatch) -> None:
+    _g14_rrid_changed(patch, r"\\?[_:]", r"[_:]")
+
+
+def _a_word_of_any_length_ends_an_rrid(patch: pytest.MonkeyPatch) -> None:  # G2 and G14
+    _g14_rrid_changed(patch, "{4,}", "+")
+    _rrid_rule_changed(patch, "{4,}", "+")
+
+
+def _a_dot_before_a_letter_joins_an_rrid(patch: pytest.MonkeyPatch) -> None:  # G2 and G14
+    _g14_rrid_changed(patch, r"\.(?=[0-9])", r"\.")
+    _rrid_rule_changed(patch, r"\.(?=[0-9])", r"\.")
+
+
+def _rrid_rule_changed(patch: pytest.MonkeyPatch, was: str, now: str) -> None:
+    """G2's `rrid` rule with one piece of its pattern written otherwise."""
+    from manuscript_guard import classify
+
+    [rule] = [rule for rule in classify._shipped()[1] if rule.id == "rrid"]
+    assert was in rule.pattern.pattern
+    changed = re.compile(rule.pattern.pattern.replace(was, now))
+    _shipped_with(patch, structural=lambda rules: tuple(
+        dataclasses.replace(one, pattern=changed) if one.id == "rrid" else one
+        for one in rules
+    ))  # fmt: skip
+
+
+def _no_line_break_after_an_rrid_s_colon(patch: pytest.MonkeyPatch) -> None:
+    _rrid_rule_changed(patch, r"(?:[^\S\n]|\n)?", r"[^\S\n]?")
+
+
+def _an_rrid_s_escaped_underscore_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    _rrid_rule_changed(patch, r"\\?[_:]", r"[_:]")
+
+
+def _any_number_after_rrid_is_an_identifier(patch: pytest.MonkeyPatch) -> None:
+    # The label's reach widened to the next number on the line: "RRID:AB_1 diluted 1:500".
+    _shipped_with(patch, structural=lambda rules: tuple(
+        dataclasses.replace(rule, pattern=re.compile(r"RRID:[^\n]*\d+(?::\d+)?"))
+        if rule.id == "rrid" else rule
+        for rule in rules
+    ))  # fmt: skip
 
 
 def _any_at_sign_makes_an_address(patch: pytest.MonkeyPatch) -> None:
@@ -26396,6 +26527,50 @@ BROKEN = {
     ),
     "an e-mail address is a number": (
         _an_email_address_is_a_number,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "an RRID is a number": (
+        _an_rrid_is_a_number,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "G14 reads no hyphen in an RRID": (
+        _g14_reads_no_hyphen_in_an_rrid,
+        test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
+    ),
+    "G14 reads no colon in an RRID": (
+        _g14_reads_no_colon_in_an_rrid,
+        test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
+    ),
+    "G14 reads no dot in an RRID": (
+        _g14_reads_no_dot_in_an_rrid,
+        test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
+    ),
+    "G14 reads no underscore the LaTeX reader leaves in an RRID": (
+        _g14_reads_no_latex_underscore_in_an_rrid,
+        test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
+    ),
+    "G14 reads no escaped underscore in an RRID": (
+        _g14_reads_no_escaped_underscore_in_an_rrid,
+        test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
+    ),
+    "a word of any length after a hyphen ends an RRID for G2 and G14": (
+        _a_word_of_any_length_ends_an_rrid,
+        test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
+    ),
+    "a dot before a letter joins an RRID for G2 and G14": (
+        _a_dot_before_a_letter_joins_an_rrid,
+        test_an_rrid_s_accession_is_no_abbreviation_and_no_code_name_to_g14,
+    ),
+    "no line break is read after an RRID's colon": (
+        _no_line_break_after_an_rrid_s_colon,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "an RRID's escaped underscore is not read": (
+        _an_rrid_s_escaped_underscore_is_not_read,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "any number after RRID: is an identifier": (
+        _any_number_after_rrid_is_an_identifier,
         test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
     ),
     "any at sign makes an address": (

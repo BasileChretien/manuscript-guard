@@ -348,6 +348,30 @@ structural:
       - {text: "The study ran 2015-2024 and included 4000 reports.", atom: "4000"}
       - {text: "Reports rose from 1200-1400 over the period.", atom: "1200-1400"}
 
+  rrid:
+    accepts:
+      - {text: "Neurons were stained with anti-NeuN (RRID:AB_2298772).", atom: "RRID:AB_2298772"}
+      # After a space, the classifier's atom is the accession alone.
+      - {text: "HeLa cells, RRID: CVCL_0030, were used.", atom: "CVCL_0030"}
+      - {text: "Images were analysed in Prism (RRID:SCR_002798).", atom: "RRID:SCR_002798"}
+      - {text: "Mice (RRID:IMSR_JAX:000664) were housed apart.", atom: "RRID:IMSR_JAX:000664"}
+      - {text: "Frogs (RRID:NXR_0.0005) were used.", atom: "RRID:NXR_0.0005"}
+      - {text: "The biosample RRID:SAMN12345678 was sequenced.", atom: "RRID:SAMN12345678"}
+      - {text: "Fish (RRID:ZFIN_ZDB-GENO-960809-7) were bred.", atom: "RRID:ZFIN_ZDB-GENO-960809-7"}
+      # The RRID is SCR_002798, as `rrids.py` reads it: a dot joins only before a digit. The
+      # word after the stop is covered only because the atom runs to the space.
+      - {text: "Images were analysed in Prism (RRID:SCR_002798.Version 9).", atom: "RRID:SCR_002798.Version"}
+      # A centre's code of three small letters is part of the RRID, before a comma too.
+      - {text: "Mice (RRID:mmrrc_000231-unc, n = 4) were used.", atom: "RRID:mmrrc_000231-unc"}
+    rejects:
+      # Only what follows "RRID:" is an identifier: a measurement beside one is a number.
+      - {text: "The antibody was diluted 1:500 (RRID:AB_2298772).", atom: "1:500"}
+      - {text: "The antibody (RRID:AB_2298772) diluted 1:500 was used.", atom: "1:500"}
+      - {text: "Prism (RRID:SCR_002798.Version 2) on 12 mice was used.", atom: "12"}
+      - {text: "We used 12 mice (RRID:IMSR_JAX:000664) in each arm.", atom: "12"}
+      - {text: "The ratio was 0.0005 in frogs (RRID:NXR_0.0005).", atom: "0.0005"}
+      - {text: "Each animal received 2.5 mg (RRID:AB_2298772) once.", atom: "2.5"}
+
   email-address:
     accepts:
       - {text: "Correspondence: someone1989@example.org.", atom: "someone1989@example.org"}

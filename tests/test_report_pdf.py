@@ -358,7 +358,8 @@ def test_each_paper_s_words_in_the_contents_go_to_that_paper(
     assert marks["Writing and language: first.md"] != marks["Writing and language: second.md"]
     # The tile stands in "What was checked", over the contents (round 2 of #646).
     tops = _tops_of_links_to(reader, reader.pages[0], marks["Writing and language: first.md"])
-    assert any(top > marks["In this report"][1] for top in tops), tops
+    assert marks["In this report"][0] == 0 and any(top > marks["In this report"][1]
+                                                   for top in tops), tops  # fmt: skip
 
 
 def _tops_of_links_to(reader, page, where: tuple[int, int]) -> list[float]:
@@ -392,7 +393,8 @@ def test_the_contents_list_each_note_and_a_paper_with_only_a_note(
         assert printed and int(printed.group(1)) == marks[title][0] + 1, title
         assert marks[title] in links(reader.pages[0]), title
     tops = _tops_of_links_to(reader, reader.pages[0], marks["Writing and language: first.md"])
-    assert any(top > marks["In this report"][1] for top in tops), tops
+    assert marks["In this report"][0] == 0 and any(top > marks["In this report"][1]
+                                                   for top in tops), tops  # fmt: skip
 
 
 def test_a_bookmark_counts_every_level_under_it() -> None:

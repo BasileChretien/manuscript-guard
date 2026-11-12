@@ -32,6 +32,12 @@ expected:
       salutation, or at running prose, and is found only where it holds a line only a title
       page holds (Basile, 2026-11-12); the inputs now open on a title page of each kind, or
       on none
+  - reading: audit abbreviations
+    why: >-
+      the hint of an entry of the list of abbreviations nothing uses no longer names the
+      title page, whose words are now a use of such an entry (Basile, 2026-11-12, "Yes,
+      count it"): "take it out of the list, unless a table, a figure, another entry of the
+      list or the supplementary material uses it: tables and figures are not read here"
   - reading: mask
     why: >-
       a link's target that is an address is masked after its `(` up to its own `)`, and the

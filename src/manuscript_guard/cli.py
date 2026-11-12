@@ -222,7 +222,7 @@ def _gate_run(
         # Its own, since the note for a paper whose journal asks for no statement runs with
         # no journal chosen.
         ("G4", lambda: check_ai_use(project, chosen)),
-        ("G8r", lambda: check_reporting(project)),
+        ("G8r", lambda: check_reporting(project, namespace, results, chosen)),
         ("G6", lambda: check_writing(project, results, submission=at_submission)),
         ("G9", lambda: check_methods(project, namespace, results)),
         ("G12", lambda: check_design(project, results, chosen).merge(
@@ -2834,7 +2834,10 @@ def _audit(args: argparse.Namespace, package) -> int:
         return _audit_refused(args, "nothing given could be audited:",
                               *(f"  {item}" for item in (*report.unreadable,
                                                          *report.passed_over)))  # fmt: skip
+    from manuscript_guard.auditing.progress import step
+
     read = set(report.papers)
+    step("words")
     report.gates = [
         *(run_gates(path, english=english, residue=args.submission_residue, known=known)
           for path in papers if path.suffix.lower() != ".tex" and path in read),
@@ -2855,6 +2858,7 @@ def _audit(args: argparse.Namespace, package) -> int:
                 sum(len(census.entries) for census in report.references), reader.authors,
                 str(reader.profile.get("name") or "") or None, args.dry_run,
             )  # fmt: skip
+    step("report")
     if args.cited is not None and not _write_cited(report, args):
         return 2
     if args.commented is not None and not _write_commented(report, args):

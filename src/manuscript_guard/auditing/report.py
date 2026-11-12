@@ -39,8 +39,8 @@ interval or a test of the Abstract that differs from its counterpart where the p
 (`blind-document-names-author`, Basile, 2026-10-29). Nothing else is counted: the P worked
 out from a statistic, G6 and G14 (the author, 2026-10-28), G7's findings, a count held back
 that only a column's n gives away, which holds only where none of the column lacks the
-characteristic, a number of the Abstract not found in the Methods, the Results or the
-tables (the author, 2026-10-28), G4's findings and the Document section's counts, the
+characteristic, a number of the Abstract not found where the paper reports (the author,
+2026-10-28), G4's findings and the Document section's counts, the
 causal words, the cited sentences and the self-citation counts (Basile, 2026-10-29).
 """
 
@@ -61,8 +61,12 @@ SMALL_CELLS = "Small cells recoverable by subtraction"
 ABSTRACT = "Abstract against Results"
 #: Where the Abstract against Results looks for an Abstract's number, as each number not
 #: found says and the heading over them: "found nowhere the paper reports" said more than
-#: was searched, as the main text's Introduction and Discussion are not.
-ABSTRACT_SEARCHED = "the Methods, the Results or the tables"
+#: was searched, as the main text's Introduction and Discussion are not. Every other section
+#: is searched (Basile, 2026-11-11), so a number under "Participants" is found.
+ABSTRACT_SEARCHED = ("the tables or any part of the paper but the Introduction and its "
+                     "material, the Discussion with its limitations, an interpretation, a "
+                     "conclusion or a closing summary, a summary of the paper, the title page, "
+                     "the back matter and the notes")
 WRITING = "Writing (G6)"
 LANGUAGE = "Language (G14)"
 REFERENCES = "References (G7)"
@@ -637,9 +641,10 @@ def _grouped_gates(report, show: _Show) -> list[str]:
                      "writes it" if run.converted and run.places is None else "")  # fmt: skip
         # The short forms left undefined counted as their kind's line counts them.
         many = counted(found)
-        lines.append(f"  {show(run.paper)}: {many} finding{'s' if many != 1 else ''}"
-                     f" in {len(kinds_of(found))} kind{'s' if len(kinds_of(found)) != 1 else ''}"
-                     f"{converted}")  # fmt: skip
+        kinds = sum(1 for kind in kinds_of(found).values() if counted(kind))
+        said = (f"{many} finding{'s' if many != 1 else ''} in {kinds} kind"
+                f"{'s' if kinds != 1 else ''}" if many else "a note, and no finding to look at")
+        lines.append(f"  {show(run.paper)}: {said}{converted}")
         lines += grouped(found, _placing(run.paper, show.within(run.paper, run.places)))
     return lines
 
@@ -976,8 +981,8 @@ def _abstract(read, show) -> list[str]:
     if not read.compared:
         return [f"  Not compared: {read.why_not}."]
     lines = [f"{read.numbers} number(s) in the Abstract, conventions and references set "
-             f"aside, looked for where the paper reports its results (the Methods, the "
-             f"Results, its tables, a file with no Abstract): {read.matched} found, "
+             f"aside, looked for where the paper reports its results ({ABSTRACT_SEARCHED}, "
+             f"a file with no Abstract): {read.matched} found, "
              f"{len(read.rounded)} found only as a rounding, {len(read.not_found)} not found."]
     for heading, found in (
         ("AN INTERVAL OR A TEST THAT DIFFERS FROM ITS COUNTERPART IN ONE NUMBER (counted by "

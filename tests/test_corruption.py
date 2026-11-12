@@ -782,6 +782,220 @@ def test_an_r_figure_that_estimates_while_it_draws_is_warned(
     assert found == said
 
 
+def _bars_said(report) -> list[tuple[str, str, str]]:
+    """Each bar finding, as (code, severity, the call it names)."""
+    return [(f.code, f.severity, f.message.split("(")[0]) for f in report.findings
+            if f.code.startswith("figure-bars-")]  # fmt: skip
+
+
+_MEANS, _ERRORS = "figure-bars-of-means", "figure-bars-with-errors"
+
+
+@pytest.mark.parametrize(
+    ("added", "said"),
+    [
+        ('sns.barplot(data=frame, x="arm", y="reports")', [(_MEANS, "warn", "sns.barplot")]),
+        ('sns.barplot(data=frame, x="arm", y="reports", estimator=np.mean)',
+         [(_MEANS, "warn", "sns.barplot")]),
+        # Round 1 of #648: with no interval computed, nothing shows that a group holds more
+        # than one row, and a table of one row a group draws the values given: a note.
+        ('sns.barplot(data=counts, x="drug", y="n", errorbar=None)',
+         [(_MEANS, "info", "sns.barplot")]),
+        ('sns.barplot(data=counts, x="drug", y="n", ci=None)', [(_MEANS, "info", "sns.barplot")]),
+        ('sns.catplot(data=counts, kind="bar", x="drug", y="n", errorbar=None)',
+         [(_MEANS, "info", "sns.catplot")]),
+        ('sns.barplot(data=frame, x="arm", y="reports", errorbar="sd")',
+         [(_MEANS, "warn", "sns.barplot")]),
+        # Known gaps: a summary through a function is not read as a mean.
+        ('sns.barplot(data=frame, x="arm", y="reports", estimator=lambda v: v.mean())', []),
+        ('sns.barplot(data=frame, x="arm", y="reports")\n'
+         'sns.stripplot(data=frame, x="arm", y="reports", jitter=False)', []),
+        ('sns.barplot(data=frame, x="arm", y="reports")\nsns.swarmplot(data=frame, x="arm")', []),
+        ('sns.barplot(data=frame, x="arm", y="reports", estimator="sum")', []),
+        ('sns.catplot(data=frame, kind="bar", x="arm", y="reports")',
+         [(_MEANS, "warn", "sns.catplot")]),
+        ('sns.catplot(data=frame, kind="bar")\nsns.catplot(data=frame, kind="swarm")', []),
+        ("ax.bar(arms, means, yerr=errors)", [(_ERRORS, "info", "ax.bar")]),
+        ("frame.plot.barh(xerr=errors)", [(_ERRORS, "info", "frame.plot.barh")]),
+        ('frame.plot(kind="bar", yerr=errors)', [(_ERRORS, "info", "frame.plot")]),
+        ("ax.bar(arms, means, yerr=errors)\nax.scatter(arms_each, values)", []),
+        # Known gaps: a mean the script computed itself is a bar of given values.
+        ('ax.bar(arms, frame.groupby("arm").reports.mean(), yerr=errors)',
+         [(_ERRORS, "info", "ax.bar")]),
+        ('ax.bar(arms, frame.groupby("arm").reports.mean())', []),
+        # A bar chart of counts, with no error bars, says nothing.
+        ("ax.bar(arms, counts)", []),
+        ("ax.bar(arms, counts, yerr=None)", []),
+        ('sns.countplot(data=frame, x="arm")', []),
+        ('# sns.barplot(data=frame, x="arm", y="reports")', []),
+    ],
+)
+def test_bars_of_means_with_no_points_are_said(project: Path, added: str, said: list) -> None:
+    """A bar the plot draws at the mean of each group, with no points, is a warning: many
+    data sets give the same bar (Weissgerber et al. 2015). A bar drawn from values the script
+    was given, with error bars on it, is a note, since it may be a proportion and its
+    interval. A points layer anywhere in the script stands either down, and a bar of counts
+    says nothing."""
+    script = project / "figures" / "forest.py"
+    script.write_text(script.read_text(encoding="utf-8") + "\n" + added + "\n", encoding="utf-8")
+    assert _bars_said(gate_report(project)) == said
+
+
+@pytest.mark.parametrize(
+    ("script", "said"),
+    [
+        ('ggplot(d, aes(arm, y)) + stat_summary(geom = "bar")', [(_MEANS, "warn", "stat_summary")]),
+        ('ggplot(d, aes(arm, y)) + stat_summary(fun = mean, geom = "col")',
+         [(_MEANS, "warn", "stat_summary")]),
+        ('ggplot(d, aes(arm, y)) + stat_summary(fun = "median", geom = "bar")', []),
+        # Known gaps: a summary through a function is not read as a mean.
+        ('ggplot(d, aes(arm, y)) + stat_summary(fun = function(x) mean(x), geom = "bar")', []),
+        ('ggplot(d, aes(arm, y)) + stat_summary(geom = "pointrange")', []),
+        ('ggplot(d, aes(arm, y)) + stat_summary(geom = "bar") + geom_jitter(width = 0.1)', []),
+        ('ggplot(d, aes(arm, y)) + geom_bar(stat = "summary", fun = "mean")',
+         [(_MEANS, "warn", "geom_bar")]),
+        # A point the plot puts at the mean is no point of the data.
+        ('ggplot(d, aes(arm, y)) + geom_bar(stat = "summary") + geom_point(stat = "summary")',
+         [(_MEANS, "warn", "geom_bar")]),
+        ("ggplot(s, aes(arm, mean)) + geom_col() + geom_errorbar(aes(ymin = lo, ymax = hi))",
+         [(_ERRORS, "info", "geom_col")]),
+        ('ggplot(s, aes(arm, p)) + geom_bar(stat = "identity") + geom_linerange(aes(ymin = lo))',
+         [(_ERRORS, "info", "geom_bar")]),
+        ("ggplot(s, aes(arm, mean)) + geom_col() + geom_errorbar() + geom_beeswarm(data = d)", []),
+        ("ggplot(s, aes(arm, mean)) + geom_col() + geom_errorbar() + geom_quasirandom()", []),
+        # A bar chart of counts, with no error bars, says nothing.
+        ("ggplot(d, aes(arm)) + geom_bar()", []),
+        ("ggplot(s, aes(arm, n)) + geom_col()", []),
+        ("ggplot(s, aes(arm, n)) + geom_col() # + geom_errorbar()", []),
+    ],
+)
+def test_an_r_figure_of_bars_of_means_with_no_points_is_said(
+    tmp_path: Path, script: str, said: list
+) -> None:
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / "bars.R"
+    path.write_text("library(ggplot2)\n" + script + "\n", encoding="utf-8")
+    assert _bars_said(check_figure_source(path, Classifier.load())) == said
+
+
+@pytest.mark.parametrize(
+    ("name", "script", "said"),
+    [
+        # Round 1 of #648: an interval drawn on another plot puts no error bar on a bar.
+        ("bars.R", "p1 <- ggplot(res, aes(ror, drug)) + geom_pointrange(aes(xmin = lo, xmax = hi))"
+         "\np2 <- ggplot(counts, aes(drug, n)) + geom_col()", []),
+        ("bars.R", "p1 <- ggplot(counts, aes(drug, n)) + geom_col()\n"
+         "p2 <- ggplot(res, aes(ror, drug)) + geom_errorbar(aes(xmin = lo, xmax = hi))", []),
+        ("bars.R", "p <- ggplot(s, aes(arm, mean)) +\n  geom_col() + # the bars\n"
+         "  geom_errorbar(aes(ymin = lo, ymax = hi))", [(_ERRORS, "info", "geom_col")]),
+        ("bars.R", "print(ggplot(s, aes(arm, mean)) + geom_col() + geom_errorbar())",
+         [(_ERRORS, "info", "geom_col")]),
+        ("bars.R", "p <- ggplot(s, aes(arm, mean)) + geom_col(); q <- ggplot(r) + geom_errorbar()",
+         []),
+        ("bars.py", "p1 = ggplot(res, aes('ror', 'drug')) + geom_pointrange(aes(xmin='lo'))\n"
+         "p2 = ggplot(counts, aes('drug', 'n')) + geom_col()", []),
+        ("bars.py", "p = (ggplot(s, aes('arm', 'mean'))\n     + geom_col()\n"
+         "     + geom_errorbar(aes(ymin='lo', ymax='hi')))", [(_ERRORS, "info", "geom_col")]),
+        ("bars.py", "plots = [ggplot(s) + geom_col(), ggplot(r) + geom_errorbar()]", []),
+    ],
+)
+def test_an_error_layer_counts_for_the_bars_of_its_own_plot(
+    tmp_path: Path, name: str, script: str, said: list
+) -> None:
+    """A layer of error bars is on a bar only where it is a layer of the same plot: one `+`
+    chain, the one ggplot() or plotnine expression the bar is a layer of."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / name
+    path.write_text(script + "\n", encoding="utf-8")
+    assert _bars_said(check_figure_source(path, Classifier.load())) == said
+
+
+def test_an_error_layer_added_to_the_plot_later_is_not_read(tmp_path: Path) -> None:
+    """Known gaps: a layer added to the plot in a statement of its own, `p <- p +
+    geom_errorbar()`, is another chain, so the bar it is drawn on is not said."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / "bars.R"
+    path.write_text("p2 <- ggplot(s, aes(arm, mean)) + geom_col()\n"
+                    "p2 <- p2 + geom_errorbar(aes(ymin = lo, ymax = hi))\n",
+                    encoding="utf-8")  # fmt: skip
+    assert _bars_said(check_figure_source(path, Classifier.load())) == []
+
+
+@pytest.mark.parametrize(
+    "call",
+    ['stat_summary(geom="bar", fun_y=np.mean)', 'stat_summary(geom="col")',
+     'geom_bar(stat="summary", fun_y=np.mean)', 'geom_bar(stat="summary")'],
+)  # fmt: skip
+def test_a_plotnine_bar_of_means_is_said_to_be_the_mean(tmp_path: Path, call: str) -> None:
+    """Round 1 of #648: with mean_cl_boot the bar is the plain mean and only the interval is
+    bootstrapped, and a call that gives fun_y uses no fun_data at all."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / "bars.py"
+    path.write_text(f"p = ggplot(d, aes('arm', 'y')) + {call}\n", encoding="utf-8")
+    (said,) = [f.message for f in check_figure_source(path, Classifier.load()).findings
+               if f.code == _MEANS]  # fmt: skip
+    assert "a bar at the mean of each group" in said, said
+    assert "bootstrapped mean" not in said and "mean_cl_boot" not in said, said
+    # Round 2: a bar geom draws no interval, so the words name none.
+    assert "interval" not in said and 'geom="bar",' not in said, said
+
+
+@pytest.mark.parametrize(
+    ("reason", "said"),
+    [
+        ('"the bars are proportions, each with its Wilson interval"', []),
+        ('""', [_MEANS, _ERRORS]),
+        ("5", [_MEANS, _ERRORS]),
+        ("\n  - value: barplot\n    why: a list is no reason", [_MEANS, _ERRORS]),
+    ],
+)
+def test_a_reason_beside_the_figure_stands_its_bars_down(
+    tmp_path: Path, reason: str, said: list[str]
+) -> None:
+    """`allow_bars` in the figure's guard file, with a reason, stands down both findings of
+    the script beside it. An empty one, or one that is no sentence, stands down nothing."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / "bars.R"
+    path.write_text("library(ggplot2)\np <- ggplot(d, aes(arm, y)) + stat_summary(geom = 'bar')\n"
+                    "q <- ggplot(s, aes(arm, p)) + geom_col() + geom_errorbar()\n",
+                    encoding="utf-8")  # fmt: skip
+    (tmp_path / "bars.guard.yaml").write_text(f"allow_bars: {reason}\n", encoding="utf-8")
+    found = [code for code, _severity, _call in _bars_said(
+        check_figure_source(path, Classifier.load()))]  # fmt: skip
+    assert found == said
+    if not said:
+        return
+    hint = next(f.hint for f in check_figure_source(path, Classifier.load()).findings
+                if f.code == _MEANS)  # fmt: skip
+    assert "bars.guard.yaml under allow_bars" in hint, hint
+
+
+def test_a_supplementary_figure_s_bars_are_said_too(project: Path) -> None:
+    """A figure the supplement places is read as the paper's are: its script, in figures/,
+    draws bars from plotnine with error bars and no points."""
+    script = project / "figures" / "S1_doses.py"
+    script.write_bytes(
+        b"from plotnine import aes, geom_col, geom_errorbar, ggplot\n"
+        b"plot = ggplot(rates, aes('dose', 'rate')) + geom_col()"
+        b" + geom_errorbar(aes(ymin='low', ymax='high'))\n"
+    )
+    supplement = project / "manuscript" / "supplementary" / "S3_doses.md"
+    supplement.write_bytes(b"# Figure S1\n\n![Reports by dose](../../figures/S1_doses.svg)\n")
+    found = [(f.code, f.path.name, f.line) for f in gate_report(project).findings
+             if f.code.startswith("figure-bars-")]  # fmt: skip
+    assert found == [(_ERRORS, "S1_doses.py", 2)]
+
+
 def _divergent(project: Path) -> list[tuple[str, str]]:
     """The divergent-display findings of the project, as (severity, message)."""
     return [(f.severity, f.message) for f in gate_report(project).findings
@@ -2478,8 +2692,7 @@ def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
 ) -> None:
     """Task 3: the Abstract's interval held to its one counterpart in the Results, two of its
     numbers agreeing and the third not, is a conflict --strict counts; an Abstract number not
-    found in the Methods, the Results or the tables is said and not counted (the author,
-    2026-10-28)."""
+    found where the paper reports is said and not counted (the author, 2026-10-28)."""
     from manuscript_guard.cli import main
 
     paper = tmp_path / "paper.md"
@@ -2490,6 +2703,87 @@ def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
     assert main(["audit", str(paper), "--strict"]) == 0
     paper.write_text(text.replace("1.2-1.9)", "1.2-1.97)"), encoding="utf-8")
     assert main(["audit", str(paper), "--strict"]) == 1
+
+
+def test_an_abstract_number_changed_under_a_section_of_its_own_name_is_not_found(
+    tmp_path: Path,
+) -> None:
+    """A number of the Abstract reported under "Participants" is found there, which it was
+    not before (the real-paper corpus, 2026-11-11); changed there, it is not found, and
+    neither is one only the Discussion gives."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+
+    def not_found(participants: str, discussion: str) -> list[str]:
+        paper.write_text("# Paper\n\n## Abstract\n\nWe enrolled 1,284 adults.\n\n"
+                         f"## Participants\n\n{participants}\n\n## Results\n\nIt was so.\n\n"
+                         f"## Discussion\n\n{discussion}\n", encoding="utf-8")  # fmt: skip
+        return [c.text for c in audit([paper], None).abstract.not_found]
+
+    assert not_found("We enrolled 1,284 adults.", "It was so.") == []
+    assert not_found("We enrolled 1,248 adults.", "It was so.") == ["1,284"]
+    assert not_found("We enrolled them.", "We enrolled 1,284 adults.") == ["1,284"]
+
+
+def test_an_abstract_number_only_a_footnote_gives_is_not_found(tmp_path: Path) -> None:
+    """Round 1 of #641: a .docx's footnotes are read after its body, under its last heading,
+    and searched there, so the Abstract's "45 patients" beside the Results' 54 counted as
+    found in a footnote's citation, "Lancet 2019;12:45-67". A note is never where the paper
+    reports."""
+    import zipfile
+
+    from manuscript_guard.audit import audit
+
+    namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+
+    def para(text: str, style: str = "") -> str:
+        styled = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ""
+        return f"<w:p>{styled}<w:r><w:t>{text}</w:t></w:r></w:p>"
+
+    body = (para("Abstract", "Heading1") + para("We followed 45 patients.")
+            + para("Methods", "Heading1") + para("We read the records.")
+            + para("Results", "Heading1")
+            + '<w:p><w:r><w:t>We followed 54 patients.</w:t></w:r><w:r>'
+              '<w:footnoteReference w:id="1"/></w:r></w:p>'
+            + para("References", "Heading1") + para("Doe J. A title. BMJ. 2020;1:2."))
+    notes = (f"<w:footnotes {namespace}><w:footnote w:id=\"1\"><w:p><w:r><w:t>Smith J. "
+             "Lancet 2019;12:45-67.</w:t></w:r></w:p></w:footnote></w:footnotes>")
+    path = tmp_path / "paper.docx"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
+                                              "</w:body></w:document>")  # fmt: skip
+        archive.writestr("word/footnotes.xml", notes)
+    read = audit([path], None).abstract
+    assert read.compared and [c.text for c in read.not_found] == ["45"]
+
+
+def test_a_typed_title_paper_s_abstract_interval_that_differs_fails_an_audit(
+    tmp_path: Path,
+) -> None:
+    """A Word paper with no heading style, its titles typed in capitals and numbered in no
+    bold, had no Abstract to the audit, and a wrong interval in its Abstract was compared
+    with nothing (the real-paper corpus, 2026-11-11). Its typed titles are its headings now,
+    and the conflict is counted by --strict."""
+    import zipfile
+
+    from manuscript_guard.cli import main
+
+    def para(text: str) -> str:
+        return f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>"
+
+    def docx(abstract: str) -> Path:
+        body = (para("ABSTRACT") + para(abstract) + para("2. METHODS") + para("We did it.")
+                + para("3. RESULTS") + para("The odds ratio was 1.52 (95% CI 1.21-1.89)."))
+        path = tmp_path / "paper.docx"
+        namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", f"<w:document {namespace}><w:body>{body}"
+                                                  "</w:body></w:document>")  # fmt: skip
+        return path
+
+    assert main(["audit", str(docx("The OR was 1.5 (95% CI 1.2-1.9).")), "--strict"]) == 0
+    assert main(["audit", str(docx("The OR was 1.5 (95% CI 1.2-1.97).")), "--strict"]) == 1
 
 
 def test_an_abstract_identifier_other_than_the_methods_is_not_found(tmp_path: Path) -> None:
@@ -13021,6 +13315,35 @@ def test_g8r_reads_each_item_of_a_list_as_a_sentence_of_its_own(
              for f in check_reporting(load_project(project)[0]).findings
              if f.code == "guideline-claimed-not-declared"]  # fmt: skip
     assert found == ["CONSORT"], found
+
+
+_UNQUOTED_FUNDING = ("This work received no funding.", "Funding came from nowhere.")
+
+
+@pytest.mark.parametrize("latex", [False, True], ids=["markdown", "latex"])
+def test_g5_fails_at_submission_a_checklist_answer_whose_sentence_is_gone(
+    project: Path, latex: bool
+) -> None:
+    """The sentence a checklist's answer quotes is what the item rests on: the example's
+    answers each stand under their heading, in Markdown and in the LaTeX twin, and with the
+    Funding sentence reworded the answer that quotes it fails at submission, naming the
+    heading searched, and only warns from internal review."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.findings import FAIL, WARN
+
+    entry = _twin(project) if latex else main_md(project)
+
+    def told(stage: str) -> list[tuple[str, str, str]]:
+        report, _project, _stage, _deferred = _run_gates(project, stage=stage)
+        return [(f.code, f.severity, f.message) for f in report.findings
+                if f.code.startswith("checklist-quote")]  # fmt: skip
+
+    assert told("submission") == []
+    _replace_once(entry, *_UNQUOTED_FUNDING)
+    said = ("DEMO-OBS 10 (Funding): the quote 'This work received no funding.' is not under "
+            "'Funding'")  # fmt: skip
+    assert told("submission") == [("checklist-quote-not-found", FAIL, said)]
+    assert told("internal-review") == [("checklist-quote-not-found", WARN, said)]
 
 
 _LATEX_QUOTED = (

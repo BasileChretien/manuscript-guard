@@ -34,6 +34,14 @@ ITEM_LINE = re.compile(r"^(?P<topic>.{0,34}?)\s{2,}(?P<id>\d{1,2})\s{2,}(?P<text
 TIMEOUT_SECONDS = 120
 
 
+class PdftotextFailed(RecipeError):
+    """pdftotext ran and exited with a failure; `stderr` is all it wrote there."""
+
+    def __init__(self, message: str, *, stderr: str) -> None:
+        super().__init__(message)
+        self.stderr = stderr
+
+
 @dataclass(frozen=True)
 class ColumnRecipe:
     document: str
@@ -57,6 +65,14 @@ def page_text(path: Path, page: int) -> str:
 
     A pdftotext that does not start, or does not finish, is a RecipeError like the rest.
     """
+    return run_pdftotext(path, page, "-layout")
+
+
+def run_pdftotext(path: Path, page: int, *options: str) -> str:
+    """What `pdftotext` writes for one page with these options, in UTF-8 or a RecipeError.
+
+    `page_text` above says why each failure is refused as it is; `rows.py` asks for `-bbox`
+    through the same door, so the two readers fail alike."""
     if shutil.which("pdftotext") is None:
         raise RecipeError(
             "reading a checklist or a scale laid out in a PDF needs poppler's pdftotext; "
@@ -65,7 +81,7 @@ def page_text(path: Path, page: int) -> str:
     pages = ["-f", str(page), "-l", str(page)]
     try:
         finished = subprocess.run(
-            ["pdftotext", "-layout", "-enc", "UTF-8", *pages, str(path), "-"],
+            ["pdftotext", *options, "-enc", "UTF-8", *pages, str(path), "-"],
             capture_output=True,
             timeout=TIMEOUT_SECONDS,
             check=False,
@@ -78,7 +94,7 @@ def page_text(path: Path, page: int) -> str:
         raise RecipeError(f"pdftotext would not run on {path.name}: {exc}") from exc
     if finished.returncode != 0:
         said = finished.stderr.decode("utf-8", errors="replace").strip()
-        raise RecipeError(f"pdftotext failed on {path.name}: {said[:200]}")
+        raise PdftotextFailed(f"pdftotext failed on {path.name}: {said[:200]}", stderr=said)
     try:
         text = finished.stdout.decode("utf-8")
     except UnicodeDecodeError as exc:

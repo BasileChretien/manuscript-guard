@@ -1,6 +1,6 @@
 ---
 name: figure-design
-description: Choose with the author how a figure looks, a layout suited to its kind (forest plot, disproportionality plot, Kaplan-Meier curve, flow diagram, bar or box plot, scatter, heat map) and a palette, artists' or scientific, that readers with a colour-vision deficiency can still read, within the journal's artwork rules, and apply it to the author's own figure script. Use when starting or restyling a figure, when the author asks for a theme, colours or a palette (MetBrewer, MoMAColors, wesanderson, viridis, Okabe-Ito, Crameri), or when check reports figure-colours-confused, figure-greyscale-confused, figure-colours-scale, figure-colours-many or figure-colours-unread. Not for recording what a rendered figure shows; that is figure-review.
+description: Choose with the author how a figure looks, a layout suited to its kind (forest plot, disproportionality plot, Kaplan-Meier curve, flow diagram, bar or box plot, scatter, heat map) and a palette, artists' or scientific, that readers with a colour-vision deficiency can still read, within the journal's artwork rules, and apply it to the author's own figure script. Use when starting or restyling a figure, when the author asks for a theme, colours or a palette (MetBrewer, MoMAColors, wesanderson, viridis, Okabe-Ito, Crameri), or when check reports figure-colours-confused, figure-greyscale-confused, figure-colours-scale, figure-colours-many, figure-colours-unread, figure-bars-of-means or figure-bars-with-errors. Not for recording what a rendered figure shows; that is figure-review.
 ---
 
 # Designing a figure
@@ -31,7 +31,7 @@ Read the figure script and the rendered figure, and ask what is not there:
 | Disproportionality plot (ROR, PRR, IC) | As a forest plot, on a log axis, the signal threshold drawn and labelled from the results, never typed. |
 | Kaplan-Meier curve | Steps per arm told apart by colour *and* line style, censoring marks, the number at risk beneath, the y axis from 0 to 1 or its truncation said; a confidence band drawn light, which `check` reads at the colour it shows over white. |
 | Flow diagram (CONSORT, PRISMA, STROBE) | Boxes and arrows in black and grey, every count bound from the results so G8 can check the arithmetic; no colour needed. |
-| Bar, box or violin plot | Points over the summary where n is small, the error bar said in the legend; colour only for a grouping the axis does not already give. |
+| Bar, box or violin plot | Points over the summary where n is small, the error bar said in the legend; colour only for a grouping the axis does not already give. A bar of means with no points is `figure-bars-of-means`, and a bar with error bars and no points `figure-bars-with-errors`. |
 | Scatter | A colour for a group (qualitative) or a scale for a variable (sequential), with markers that differ by shape as well where groups matter. |
 | Heat map | A sequential map for magnitudes, a diverging one centred on the meaningful middle for differences; viridis, cividis or one of Crameri's, never a rainbow. |
 
@@ -108,6 +108,22 @@ prints in grey, say) is the one that holds for it.
   series has its colours compared.
 - `figure-colours-unread`: the figure is only a raster. Save an SVG or a PDF beside it from
   the same script, and its colours are read from that.
+
+## When check reports bars without points
+
+- `figure-bars-of-means`: the plot draws a bar at the mean of each group (`sns.barplot`,
+  `stat_summary(geom = "bar")`, `geom_bar(stat = "summary")`) and the script draws no point
+  of the data. Many data sets give the same bar (Weissgerber et al., PLoS Biol 2015). Offer
+  the points over the bar (`geom_beeswarm`, `sns.swarmplot`, or a jitter with a seed:
+  `position_jitter(seed = 1)`, since an unseeded one is `figure-estimates`), or a box or
+  dot plot in its place, and let the author choose. Where the bar is right as it is, the reason
+  goes in the figure's guard file under `allow_bars`, one sentence. Where the call computes
+  no interval (`errorbar=None`, `ci=None`), it is a note: each bar may be the one value of a
+  table with one row per group, and if so that is the reason to give.
+- `figure-bars-with-errors`: a note. An error layer counts only for the bars of its own plot,
+  the same `+` chain. Bars drawn from values the script was given carry error
+  bars, and no points are drawn. A proportion and its interval is right as a bar; say so
+  under `allow_bars`. A mean and its spread is better shown with the points.
 
 The palettes are their makers': each collection's licence and notice are in the package's
 `data/palettes_LICENSES.txt` and the repository's ATTRIBUTION.md. Cite the palette where the

@@ -284,7 +284,7 @@ All deterministic, all runnable in CI without Claude.
 | G2 | Number classification | a numeric token is unclassified, or a display value has no bound claim |
 | G3 | Figures | a number in a figure's output or in its source is not traceable to results |
 | G4 | Journal profile | word counts, structure, reference style, required statements |
-| G5 | Reporting checklist | a checklist item is unaddressed |
+| G5 | Reporting checklist | a checklist item is unaddressed, or its quote is not under the heading it names |
 | G6 | AI-writing lint | banned constructions and cadence tells; words to the reviewers left in the paper |
 | G7 | Citation integrity | unpinned or unresolvable citation key; literature claim with no stored source |
 | G8 | Cross-artifact consistency | a quantity differs between abstract, results, table and figure |
@@ -619,6 +619,31 @@ in `data/figure_estimates.yaml`, with what it does as its library's own referenc
 is a warning (`figure-estimates`) unless an argument turns it off (`errorbar=None`), its
 seed or divisor is given (`seed=`, `ddof=`), a seed set in the script settles a random one,
 or the figure's `<name>.guard.yaml` gives a reason under `allow_estimates`.
+
+**Bars of means with no points.** A bar graph of continuous data hides how the data are
+spread: an outlier, two clusters and three observations can each give the same bar
+(Weissgerber, Milic, Winham and Garovic, PLoS Biol 2015;13:e1002128; their review of 703
+physiology papers found small samples of continuous data shown mostly as bars). Barzooka
+finds such bars in a published PDF; a figure's script says how they were drawn. So
+`gates/figure_bars.py` reads the script's calls as `figure_estimates` does, against
+`data/figure_bars.yaml`, which sorts them into four kinds: a bar the plot computes as a mean
+(`sns.barplot`, `catplot(kind="bar")`, `stat_summary(geom = "bar")`, `geom_bar(stat =
+"summary")`, in ggplot2 and plotnine), a bar drawn from the values it is given (`ax.bar`,
+`frame.plot.bar`, `geom_col`, `geom_bar(stat = "identity")`), a layer of error bars
+(`geom_errorbar` and its kin), and a layer of points (`geom_point`, `geom_jitter`,
+`geom_dotplot`, `geom_beeswarm`, `geom_quasirandom`, `geom_sina`, `sns.stripplot`,
+`sns.swarmplot`, `ax.scatter`). A bar of means, with no points anywhere in the script, is a
+warning (`figure-bars-of-means`). Where the call computes no interval (seaborn's
+`errorbar=None`, or `ci=None`), nothing in the script shows that a group holds more than one
+row, and a table of one row a group draws the values it holds, so it is a note under the
+same code. A bar of given values with error bars on it, by its own `yerr=` or `xerr=` or a
+layer of error bars of the same plot, and no points, is a note (`figure-bars-with-errors`):
+it may be a proportion and its interval, which is right (Basile, 2026-11-12). The same plot
+is the one `+` chain, a ggplot() or plotnine expression, the bar is a layer of: an interval
+drawn on another plot in the script puts no error bar on the bar (round 1 of #648). A bar of counts with no error bars says nothing. It is a module of its
+own because it judges the script as a whole, where an estimate is a finding by itself, and a
+reason in the figure's guard file under `allow_bars` stands both down: one sentence, since
+the finding is about the figure and not one call.
 
 **A human or model reading the picture (G10).** Gate G10 requires a current review record
 per figure. See below.
@@ -4677,6 +4702,11 @@ scale rather than as a completed reporting checklist, because those are differen
 analyses of spontaneous reports, and is more directly applicable to signal-detection work
 than STROBE.
 
+Three more were added on 2026-11-12: MDAR (18 items), for papers in the life sciences, and the
+two tables of the EASE SAGER checklist of 2022, for reporting sex and gender (18 items for
+studies with human participants, 13 for other studies). Neither belongs to a design, so
+`study_types.yaml` names neither, and a project lists them beside its design's guideline.
+
 **The repository ships recipes, not transcribed text.** Licences were read on 2026-08-03 and
 are recorded per recipe and in [ATTRIBUTION.md](ATTRIBUTION.md). The picture settles the
 design: RECORD is explicitly CC BY, STROBE and ARRIVE are CC BY through their statement
@@ -4745,6 +4775,18 @@ Rather than let that pass unmarked, every profile now records a `verification` f
 ARRIVE's says `opening clause only (column-laid-out PDF)`. Two different guarantees should
 not look identical in the output.
 
+MDAR and SAGER are Word tables saved as PDFs, and neither the table reader nor the column
+reader can read them. SAGER centres each item's number against its text, so a two-line item's
+number has a line of its own and one item's last line runs straight into the next item's
+first; MDAR prints no numbers, and only the bold of a title, which `pdftotext` does not report,
+sets it apart from its text. The rows reader (`reporting/rows.py`) reads both from where each
+word sits, as poppler's `pdftotext -bbox` gives it: a SAGER number takes the run of lines
+centred on it, and an MDAR row runs from its title, which the recipe lists as printed, to the
+next. What holds the reading is the item count the recipe states and, for MDAR, one form box
+to a row. Nothing compares the text with another reading of the page, and the profile says
+that. When the recipes were written, each item of the three profiles was found, in order, in
+poppler's `-layout` text of the same pages, cut to the text column.
+
 Two smaller decisions fell out of this:
 
 - **`reporting_guideline` is no longer a closed enumeration.** Guidelines are revised,
@@ -4752,6 +4794,49 @@ Two smaller decisions fell out of this:
   rather than about the project.
 - **"n/a" is rejected as a reason.** A checklist item excluded needs a reason a reviewer
   could read — "no interventions were assigned" — because a reviewer does read this file.
+
+### An answer quotes the sentence that addresses it
+
+`where: Methods` satisfied every item of every checklist, since every paper has a Methods. In
+the IICARus randomised trial (Hair, Macleod and Sena, Res Integr Peer Rev 2019;4:12,
+doi:10.1186/s41073-019-0069-3), asking authors to complete an ARRIVE checklist changed
+nothing: of 1,689 PLOS ONE manuscripts randomised, none of those accepted for publication
+(762) met the checklist in full, in either arm. The checklist file is not the reporting; the
+sentence is. SciScore finds such sentences with a classifier.
+Here a person, or an agent the author checks, names the sentence in `quote:`, and G5 checks
+that it is there (`gates/checklist_quotes.py`).
+
+- **Where.** Under each heading `where` names, matched as G5 already matched one (a heading
+  in `where` or `where` in a heading, whatever case), that heading's section with its
+  subsections, in the main text or the supplement, each read as the build prints it: its
+  files joined in `printed_order`, `main.md` first and the rest by name, so that a section
+  carries on into the next file (round 1 of #651). Where `where` names a table or a figure
+  ("Table 1", "Figure S2", "eTable 1", read whole by G2's pointer pattern), in that display's
+  caption too: a legend typed as a paragraph that opens with its pointer, and the caption of
+  a table the analysis emits with one, placed once by its binding in a document whose tables
+  the build numbers (`display_numbers`), under that number. A `where` that names a display
+  with one of these captions is a place, and `checklist-location-unknown` is not said of it;
+  a table emitted with no caption, placed twice, or in a document that also places a table
+  by hand or sends its tables as files has none, and is still said to be no heading.
+- **How.** As a review finding's quote is found in the manuscript (`anchoring.py`), which is
+  as G7 finds a passage in a work's source (`words_in`): typography, white space and case
+  folded, whole words, pieces in order around `...`, Markdown's marks of emphasis and code
+  out of both sides. No second folding was written. Each section is read twice, as written
+  and as the build prints it (each value binding its display, an anchor nothing, through
+  `figure_alt.printed_alt`), and a quote matches one reading whole: an author copies either
+  from the source or from the .docx, and a quote half of each is copied from neither.
+  Comments and front matter print nothing and are read as nothing. A quote holds four words
+  or more (`QUOTE_WORDS`), or it is no quote.
+- **Strictness (Basile, 2026-11-12).** An answered item with no quote, a quote under four
+  words (`checklist-quote-missing`), and a quote not under its heading
+  (`checklist-quote-not-found`) are notes while drafting, warnings from internal review and
+  failures at submission. The not-found message names the headings searched, the quote's
+  first words and, where the words stand under another heading, that one, since `where` is
+  then wrong. An item excluded with `not_applicable` quotes nothing. `checklist` writes
+  `quote: ''` beside each new item's `where` and keeps what is written.
+- **LaTeX.** The two documents as they print in Markdown (`printed_document`, the quoting
+  view), whose headings G5 already read; their captions are not read for a `where` that
+  names a display (Known gaps).
 
 **What the Data availability statement says is the journal's rule, not the tool's.** G4 found
 the statement's heading and read nothing under it. Publishers differ on what it must hold:
@@ -5387,9 +5472,10 @@ of a paper that keeps its bold lines. `check` gives G14 its stage, as it gives G
 theirs; called with none, G14 says nothing of it. A bold line in Markdown is not taken for a
 heading. A Word paper with no paragraph in a heading style is another matter (Basile,
 2026-11-09, after the web audit of such a paper gave mostly false warnings): there, a
-paragraph wholly in bold whose words are a section's name alone, by the closed list a PDF's
-lines are read by (`text.section_names.SECTION_NAMES`), is made a heading by `init --from`
-and read as one by the audit, and the audit's report says how the headings were read.
+paragraph whose words are a section's name alone, by the closed list a PDF's lines are read
+by (`text.section_names.SECTION_NAMES`), is made a heading by `init --from` and read as one
+by the audit, in bold or not (Basile, 2026-11-11), and the audit's report says how the
+headings were read.
 
 **Every finding is a warning, at every stage.** The reading of a definition is good and not
 exact, and a name in capitals is not an abbreviation. The first plan for this gate had an
@@ -5733,14 +5819,29 @@ The example joins the bounds of its five intervals with "to", sets "%" against i
 and states no P value with a sign, so it has nothing to report.
 
 **What has one answer is offered as an edit, at every place** (`notation_edits`,
-`spelling_edits`, `corrections.py`). The author asked for a copy of an audited paper with
+`spelling_edits`, `abbreviation_edits`, gathered for a project by `language_edits`;
+`corrections.py`). The author asked for a copy of an audited paper with
 the corrections in Word's Track Changes (2026-11-11), and chose the kinds: spelling,
 spacing, intervals and abbreviations. A finding names the first place only. An edit is one
 change at one place, and the readings make one at every place: each sign after P or n
 spaced as the manuscript spaces most of them, each interval joined and each "%" set as
-most are, a space between a number and the unit or word it runs into, and each word of
-the other English respelt in the paper's, with its capital. Where the readings are not
-sure there is no edit, and the finding stays for the author: two forms used as often; the
+most are, a space between a number and the unit or word it runs into, each word of the
+other English respelt in the paper's, with its capital, and each abbreviation defined and
+not used again written out where it is defined: "the reporting odds ratio (ROR)" loses its
+bracket, round or square, and "ROR (reporting odds ratio)" becomes its long form, with the
+capital of a sentence it opens where its first word is in lower case. Only where the
+bracket holds the one form and nothing more, and never an entry of a list of abbreviations,
+which the list is to drop, nor a definition among the acknowledgements, which nothing is
+expected to use, nor one after "a" or "an", chosen for how the short form is said ("an
+SAE"), across spaces, line breaks, LaTeX ties and the marks of emphasis and quotation
+`*_"'` and curly quotes, nor a square bracket that runs on into a link, a reference or a
+span ("[ROR](https://...)"), nor the main text's where the supplementary material uses the
+form and does not define it, so leans on it, which is then not reported as unused either
+(rounds 1 to 3 of #645). A round bracket is no link's: in "the
+number needed to treat (NNT)[@smith2020]" the bracket goes and the citation stays.
+Where the readings
+are not sure there is no edit, and the finding stays for the author: two forms used as
+often; the
 P's symbol, which is the journal's; a dash beside a negative bound, which would read as its
 sign; two or three hyphens against an interval's high bound after a negative or bound low
 one, "-1.2--0.3", which may be pandoc's dash or a hyphen and the bound's minus sign (after
@@ -5752,8 +5853,9 @@ none and has as many words of each; and the two endings of `spelling-mixed`, whe
 list does not pair every word. A join is written as the kept form is typed, set evenly:
 a hyphen typed with a space on one side is not copied. The edits of one stretch, or of
 stretches that overlap, are one correction, and two that touch the same characters
-differently are both dropped: an insertion at either end of another's change touches it. An edit's place is the
-passage's text, which for a .docx is the text pandoc converts it to. Held by
+differently are both dropped: an insertion at either end of another's change touches it.
+An edit's place is the passage's text, which for a .docx is the text pandoc converts it
+to. Held by
 `tests/test_properties.py`, which builds each manuscript with the text its edits must
 leave, and by `tests/test_corrections.py`.
 
@@ -10167,8 +10269,19 @@ Results text can share a line with the `\section` after it, round 1 of #472). Ea
 is placed by its own headings: round 1 carried a split paper's headings from one file into
 the next, as G8 does, and took a file for a supplement by its name, which guessed, so round
 2 put it back (see Known gaps). Where the paper reports is
-the Methods, the Results, every table of every file, and the whole of a file whose document
-has no Abstract, a supplement. Each number of the Abstract the classifier leaves unexplained
+every section but the Abstract, the Introduction and the sections that hold its material under
+another name ("Related work", "Literature review", "Theoretical framework",
+"Hypotheses"), the Discussion, a conclusion, a summary of the paper ("Author summary",
+"Highlights", an Abstract in another language), the statements, the reference list and
+a "Limitations" or an "Interpretation" of its own, the Methods and the Results as G8 reads them among
+them (Basile, 2026-11-11: a "Participants" or an appendix was not searched, and its numbers
+were said not found; round 1 of #641 left out the summaries, the material of the
+Introduction, the back matter and the notes, which a wider search took for reports), every
+table of every file, and the whole of a file whose document has no Abstract, a supplement.
+A note is never searched, nor the title page above the Abstract's heading. The names of the
+Introduction's material and of a summary are closed lists
+(`text.section_names.INTRODUCTION_MATERIAL`, `PAPER_SUMMARIES`), read by the audit's
+Abstract against Results alone: G7 and G8 do not read "Related work" as the Introduction. Each number of the Abstract the classifier leaves unexplained
 is looked for in what the paper reports: found as printed, found as a rounding of a number
 printed to more places ("53%" for "53.3%", the author, 2026-10-28), or not found. A number
 a space was left out of is read, as no other number with letters in it is: one typed
@@ -10217,6 +10330,21 @@ The page is held to the command line, not trusted to match it: CI builds it as t
 workflow does and requires each report on the worked example to be the command line's word for
 word, in Node and in Chrome and Firefox, with no request sent and every forbidden one refused.
 Its limits are under Known gaps.
+
+**What a reader sees** (the author, 2026-11-12, testing the live page: "not user friendly",
+"a bit scary and not attractive at all", and a clock where he wanted to see what is being
+done and how long is left). The page wears the landing page's colours and type, says in a
+line what it does and that the paper stays on the computer, shows three steps, and offers an
+invented example paper (`web/example-paper.md`) for a first visit. While a paper is checked
+it lists the steps and the time left: the audit says each step as it starts
+(`auditing.progress`: read, numbers, words, each lookup counted, report), the worker passes
+each to the page and adds the PDF and the copy, and the page times the steps done against how
+long each usually takes. The report is the PDF, shown in the page by the browser's own viewer
+from a `blob:` address, the one kind of frame the policy allows (`frame-src blob:`); the text
+report is shown only where the PDF could not be made, as the report there is then, and CI
+still holds it to the command line's. Only a phone, whose
+browser shows a PDF in a page of its own, opens it there. Where to find every place of every
+finding is the PDF now, so the report names no box for it (`summary.DETAILS`).
 
 The site's root is the project's landing page (`web/landing/`), and the audit page is in
 `audit/` (Basile, 2026-11-06, the plan for a first visit). The landing page runs no script,
@@ -10571,8 +10699,8 @@ lines of a paragraph Word breaks inside (Shift+Enter), which pandoc ends with a 
 "\r\n" after it on Windows, are one; what stands before the first heading is "before the
 first heading", and a document's notes, read after its body or written by pandoc after its
 last paragraph ("[^1]: ..."), "the notes". The headings are those the audit reads for its
-Abstract (a heading style, or a title in bold where the document has none,
-`text.docx.bold_heading_levels`) and, in the converted text, those `split_sections` reads,
+Abstract (a heading style, or a typed title where the document has none,
+`text.docx.typed_heading_levels`) and, in the converted text, those `split_sections` reads,
 their bold, attributes and escapes taken off; a heading with no words is none. The report
 keeps both placers apart, the document's by its path (`AuditReport.places`) and the
 converted text's on each run of the gates (`GateRun.places`, `JournalRun.places`), carried on
@@ -10624,6 +10752,17 @@ read nothing is not run, whatever note its section prints, and a section that li
 something for a reader, a rule to check by hand or the references by an author, is to look
 at. Everything is still the four standard fonts; a heading still is a bookmark. Held by
 `tests/test_report_pdf.py`.
+
+**A report to move around in** (the author, 2026-11-12: "make the pdf really interactive",
+once the page showed it). Under the summary, *In this report* lists each note (what was not
+read, how the headings were read), each paper's words with each kind of finding and its
+count under them, and each other section, each line a link to where it stands with the page
+it prints; each paper's words have a place of their own, as two under one took the first's
+(round 1 of #646). Each kind's heading links back to the contents, and the title over every
+page after the first links back to the summary. The pages a contents gives are only known once the
+report is drawn, so it is drawn twice: the numbers stand in a column of their own width, so
+the second drawing is laid out as the first, and the test reads each printed page against
+the bookmark of the kind it names.
 
 **A commented copy.** The author asked for a report he could work in rather than read beside
 the paper (2026-11-10, "an interactive" one). `audit --commented FILE.docx`, and the page's
@@ -17510,6 +17649,44 @@ Added by the adversarial review, verified and **not** fixed:
   only by its own `seed=`. `geom_smooth`, `stat_summary` and `dropna` have no argument that
   quiets them: each needs a reason under `allow_estimates`, or the computation moved into
   the analysis.
+- **Bars of means are found by the names of the calls that draw them, in a script under
+  `figures/`.** Only the calls in `data/figure_bars.yaml` are read, by the last part of
+  their name and the first token of each argument given by name, as for an estimate; a
+  figure placed from Word or rendered by a script elsewhere has no script that is read.
+  These are its limits: Accepted.
+  - A call through a function of the script's own, or an alias (`bars = sns.barplot`), is
+    not seen: a bar drawn so is not reported, and points drawn so do not stand one down.
+    Accepted.
+  - A mean the script computed itself and drew as a bar (`ax.bar(arms,
+    frame.groupby("arm").y.mean(), yerr=se)`) is only a note, and with no error bars it is
+    nothing: the bar's values are not read for where they came from. Pinned by
+    `tests/test_corruption.py::test_bars_of_means_with_no_points_are_said`.
+  - A summary named through a function, `fun = function(x) mean(x)` or
+    `estimator=lambda v: v.mean()`, is not read as a mean, and a bar of medians or of
+    another summary (`fun = median`) is not reported though it hides the spread as a mean
+    does. Pinned by
+    `tests/test_corruption.py::test_an_r_figure_of_bars_of_means_with_no_points_is_said` and
+    `tests/test_corruption.py::test_bars_of_means_with_no_points_are_said`.
+  - A mean the means list in `data/figure_bars.yaml` does not name (`statistics.fmean`, for
+    one) is not read as a mean, so its bar is not reported. Accepted.
+  - A layer of error bars added to the plot in a statement of its own (`p2 <- p2 +
+    geom_errorbar()`) stands in another `+` chain, so the bar it is drawn on is not said.
+    Pinned by `tests/test_corruption.py::test_an_error_layer_added_to_the_plot_later_is_not_read`.
+    In Python, a backslash before the line break, or a line break inside a dict's braces,
+    also ends the chain, so an error layer written after it is not counted. Accepted.
+  - A quoted `errorbar="None"` is read as `None`, a call that computes no interval: seaborn
+    takes no such string. Accepted.
+  - The hint names R and Python layers together, whatever the script's language, and a
+    jitter it suggests, unseeded, draws a `figure-estimates` warning of its own. Accepted.
+  - A layer of points anywhere in the script stands down every bar in it, even one on
+    another panel or of other data, and a point at each mean (`geom_point(stat =
+    "summary")`) does not. Pinned by
+    `tests/test_corruption.py::test_bars_of_means_with_no_points_are_said` and
+    `tests/test_corruption.py::test_an_r_figure_of_bars_of_means_with_no_points_is_said`.
+  - Not read: base R's `barplot()` with `arrows()`, ggpubr's `ggbarplot(add = "mean_se")`,
+    seaborn's objects interface (`so.Bar()` with `so.Agg()`), and matplotlib's `errorbar()`
+    drawn over a bar as a call of its own (only `yerr=` and `xerr=` on the bar are read, so
+    a forest plot beside a bar of counts is not taken for one with error bars). Accepted.
 - **The source-of-truth invariant does not survive a co-author round in Word, and a real
   paper is the proof.** This toolkit rests on "Markdown is the permanent source of truth and
   the .docx is a disposable build artifact". Run against a submitted pharmacology paper, the
@@ -21047,11 +21224,112 @@ Open, recorded as each change landed:
   statements is on one line, and both builds transcribe it identically.
 
   [scale-219]: https://github.com/BasileChretien/manuscript-guard/pull/219
+- **A table read from where its words sit needs poppler.** `pdf-rows` (`reporting/rows.py`),
+  which reads MDAR and SAGER 2022, asks `pdftotext -bbox` for each word's place. Xpdf's
+  `pdftotext`, which Git for Windows puts on PATH, has no `-bbox` and answers with its usage,
+  so the transcription stops with a sentence that names poppler. Xpdf's `-layout` would not
+  serve either: on SAGER's page 4 it sets item 4c's number against 4b's last line and 5a's
+  against 4c's. Measured with Xpdf 4.00 and poppler 24.04 on 2026-11-12. Pinned by
+  `tests/test_rows.py::test_a_pdftotext_without_bbox_is_refused_in_a_sentence`.
+- **A table read from where its words sit is checked against nothing else.** The items are
+  what the words' places say, held to the item count the recipe states, to each identifier
+  being read once and, for MDAR, to one form box to a row; the profile's `verification` says
+  that no other reading of the page is compared. When the three recipes were written, each of
+  their 49 items was found, in order, in poppler's `-layout` text of the same pages cut to the
+  text column, which is a check made once by hand and not by the reader. What the rules leave
+  through: Accepted.
+
+  - A line that ends in a hyphen joins the next with no space, which is right for MDAR's
+    "step-" and "by-step" and wrong for a suspended hyphen broken after it, "Sex-" and "and
+    gender-based", which neither checklist breaks there. Pinned by
+    `tests/test_rows.py::test_a_suspended_hyphen_at_a_line_end_loses_its_space`.
+  - In `rows: topics`, text between a heading and the next title is passed over as the
+    section's preamble, as MDAR's page 5 needs. A first row left out of the recipe would be
+    passed over with it; its form box is what refuses it. Pinned by
+    `tests/test_rows.py::test_each_row_runs_from_its_title_to_the_next` and
+    `tests/test_rows.py::test_a_first_title_left_out_leaves_a_box_under_a_heading`.
+  - The `form` column is read only for the marker that opens each box, so MDAR's "n/a", the
+    box's second line ("or state if these demographics were not collected") and the page
+    numbers are not read, and a word of an item that started in that column would be lost
+    without a word. None of MDAR's does: its text ends by 273 points and the column starts at
+    280. Accepted.
+  - In `rows: centred-id`, a row Word broke across a page is carried on only where its number
+    stands on the part before the break and nothing but the carried lines is above the next
+    page's first heading; a row whose number fell on the part after the break is refused, as
+    no item's run, rather than read. SAGER's 5b breaks the first way. Pinned by
+    `tests/test_rows.py::test_a_row_broken_across_pages_carries_on_above_the_next_heading` and
+    `tests/test_rows.py::test_a_row_whose_number_fell_after_the_break_is_refused`.
+  - Words are one line where each word's middle is within two points of the middle of the
+    first word put in the line, taking words from the top. A printed line whose words' middles
+    spread wider, as a superscript or a larger font can, is cut in two, and the parts are
+    ordered by their middles, not left to right, so its words may be read in another order.
+    On the pages the three recipes read, the middles of one line's words spread by 1.44 points
+    at most (MDAR's page 3, a title and the box beside it), and two lines' middles stand 5.28
+    points apart at least. Accepted.
+  - In `rows: topics`, a line of a row's text that equals the next title in the recipe is
+    taken as that title, and the row ends there. None of MDAR's text lines equals a title.
+    Accepted.
+  - MDAR's recipe states no `stop_at` and no `ignore`: it needs neither, since its pages carry
+    nothing below the last row but a page number in the `form` column, and no header or foot
+    in the text column. On a revised document a footnote under R1, or a running line in the
+    text column, would join the open row. That the shipped document has none was checked by
+    hand against its pages, and the checksum stops a revised one. Accepted.
+  - A heading is one line. A heading set on two lines would be two headings, and the section
+    of the items under it would be its last line ("abstract" for "Title and" / "abstract").
+    Every section of the three shipped profiles was checked against the pages and is printed
+    on one line: MDAR's Materials, Design, Analysis and Reporting, and SAGER's General, Title,
+    Abstract, Introduction, Methods, Results and Discussion in both tables. Accepted.
+  - SAGER marks with an asterisk the items its footnote says "extend beyond the original SAGER
+    table". The asterisk stays in the item's text and the footnote, below `stop_at`, is not
+    read, so the profile does not say what the asterisk means. Accepted.
+  - MDAR prints no item numbers, so M1 to R1 are the recipe's, by section and place; a reviewer
+    who cites MDAR by title finds the title in the profile's `topic`. Accepted.
 - **Recipes are tuned to one document each.** A guideline that reformats its checklist
   breaks its recipe, loudly — the transcription fails rather than producing something
   plausible, which is the right failure, but it is still work. Accepted.
-- **A completed checklist proves an item was answered, not answered well.** `where: Methods`
-  is checked against the manuscript's headings and nothing more. Accepted.
+- **A completed checklist proves the words are there, not that they are adequate.** An
+  item's `quote:` is held to the manuscript's words under the heading `where` names; whether
+  the sentence does what the item asks is the author's judgement and the reporting-guideline
+  reader's, not G5's. A part of a sentence of four words or more is a quote, so "the
+  denominator is unknown" answers an item on limitations as well as a paragraph would.
+  Accepted.
+- **One sentence may be quoted for two items.** Nothing holds a quote to one item: a
+  sentence that gives the period and the selection of the records answers two items, and
+  one that gives neither can be quoted for both as easily.
+  Pinned by `tests/test_compliance.py::test_one_sentence_may_be_quoted_for_two_items`.
+- **`where` names a heading by containment, so "Methods" names "Supplementary methods".** As
+  G5 has matched `where` to a heading from the start, a heading in `where` or `where` in a
+  heading, whatever case: a quote under the supplement's methods answers `where: Methods`,
+  and a not-found finding lists both headings as searched.
+  Pinned by `tests/test_compliance.py::test_a_quote_under_another_heading_says_which`.
+- **A quote copied across a printed citation, or a printed cross-reference, is not found.**
+  The build prints `[@key]` as "(1)" or "(Smith, 2020)" and `{{ref.table.x}}` as "Table 1";
+  a quote is read against the source as written and against it with each value binding's
+  display, and neither reading prints those. Quote the words either side with `...` between
+  them, or copy the citation as the Markdown writes it.
+  Pinned by `tests/test_compliance.py::test_a_quote_copied_across_a_printed_citation_is_not_found`.
+- **A caption is read for a `where` that names a display only in Markdown, and only where it
+  is numbered.** A legend typed as a paragraph that opens with its pointer is read, and so is
+  the caption of a table the analysis emits with one, placed once by its binding in a
+  document that places no table by hand and sends none as a file, under the number the build
+  gives it. A table emitted with no caption, placed twice or in such a document has none read,
+  and `where` naming it is `checklist-location-unknown`. A table typed by hand with a `Table:`
+  caption line and no pointer is no numbered display's, and a LaTeX manuscript's `\caption`
+  is read only as text under its heading: on a LaTeX manuscript `where: Table 1` names no
+  caption, and a quote of it is not found there. Accepted.
+- **A legend typed as "Figure 1." in a supplementary file is filed as the main text's Figure
+  1.** A typed legend is numbered by its pointer alone, and "Figure 1." says nothing of the
+  supplement, so `where: Figure 1` can be met by the supplement's legend of its own first
+  figure. Accepted.
+- **The printed reading keeps pandoc's escapes and footnote marks.** Only value bindings are
+  replaced by their displays, so `\$`, `\*` and a footnote's `[^1]` stay as written, and a
+  quote copied from the .docx across one of them, where Word shows "$", "*" or a superscript
+  number, is not found. Accepted.
+- **A heading inside an HTML comment or the front matter counts for `where`, and the quote
+  reader does not see it.** The headings `where` is held to are read from the files as they
+  are written, comments and front matter included, while the quote is looked for in what
+  prints: `where` naming such a heading raises no `checklist-location-unknown`, and the
+  finding on its quote says the `where` "names no heading and no caption". Accepted.
 - **Word counts will not match a journal's own counter exactly.** The rule is stated so a
   disagreement is visible; where a journal counts differently there is no way to configure
   it yet. Accepted.
@@ -22327,10 +22605,18 @@ Open, recorded as each change landed:
   as Methods was considered and rejected: an abstract states results in the same block, and
   it is the highest-risk place in the paper for an unbound number. Bind the value, or use
   the project's own `conventions:`.
-- **A reporting checklist's `where:` can only point at a manuscript heading.** RECORD's added
-  items are answered in supplementary tables, appendices and registry records, so the items
-  the extension exists for are the ones that report `checklist-location-unknown`. It is a
-  warning, which is the only reason it is tolerable.
+- **A reporting checklist's `where:` can only point at a manuscript heading, or at a table
+  or a figure whose caption G5 reads.** RECORD's added items are answered in supplementary
+  tables, appendices and registry records. Since `quote:` (2026-11-12) a `where` naming a
+  display is a place where G5 reads a caption for it, in a Markdown manuscript only: a legend
+  typed as a paragraph that opens with the display's pointer, or the caption of a table the
+  analysis emits with one, placed once by its binding in a document that places no table by
+  hand and sends none as a file. A table emitted with no caption, placed twice, or in such a
+  document has no caption read, and neither has an appendix outside the manuscript or a
+  registry record, so those items report `checklist-location-unknown`, and their quote
+  `checklist-quote-not-found`. The first is a warning, which is the only reason it is
+  tolerable; the second fails at submission, so such an item is answered under the heading
+  that cites the table or the record, with the sentence that does.
   Pinned by `tests/test_compliance.py::test_pointing_at_a_section_that_does_not_exist_warns`.
 - **A Bonferroni-corrected or otherwise derived alpha is not a built-in convention.** Only
   the conventional thresholds are. A corrected threshold goes in the project's own
@@ -24226,29 +24512,55 @@ Open, recorded as each change landed:
   nothing says so. An abstract in another style, or under a line "Abstract" in bold in a
   paper that uses a heading style elsewhere, stays in the comment, and its numbers are read
   by no gate until it is moved out.
-- **A Word paper's titles in bold are headings only by a closed list of names.** In a paper
+- **A Word paper's typed titles are headings only by a closed list of names.** In a paper
   with no paragraph in a heading style, `init --from` and the audit take as a heading a
-  top-level paragraph wholly in bold, as pandoc reads bold (a run's own `w:b` or its
-  character style's, not a style that one is based on, nor its paragraph style's: pandoc
-  3.9.0.2 reads neither, `tests/test_from_word.py::test_the_audit_and_init_take_the_same_titles_in_bold`
-  holds the two readings together), whose words are a section's name alone from
-  the list a PDF's lines are read by (`text.section_names.SECTION_NAMES`). A bold "Study
-  design and setting" or "Statistical analysis" stays a paragraph, its section run on under
-  the heading before it; a title numbered by Word's own numbering is a list's item to pandoc
-  and a numbered line to the audit, and no heading to either; a title holding a link or a
-  note's mark is none, as pandoc reads the link or the note in it, nor is one in a text box
-  to the audit (a link written as a field, `w:fldSimple` or a HYPERLINK `w:instrText`, is a
-  title to the audit, and what pandoc makes of it and of a text box's bold paragraph is not
-  held by a test, so there the two readers may differ);
-  and a paper that uses a heading style anywhere is read by its styles alone, its bold titles
-  text. Where the titles cannot be placed, a structured abstract's parts with no
-  Introduction after them, the order of its parts never starting again and no title it
-  cannot hold among them, the audit places nothing and says so, and `init --from` makes each
-  a heading of level 1, so the Abstract ends at its first part. The title page is set aside
-  only above a first heading that opens a paper, its Abstract or its Introduction: a short
-  paper whose first title in bold is its "References" keeps its text where every gate reads
-  it. A heading is written with the title's own words, its number kept. Pinned by
-  `tests/test_from_word.py::test_a_word_paper_titled_in_bold_has_its_sections_made_headings`.
+  top-level paragraph of words, in bold or not, numbered as typed or not, in capitals or not
+  (Basile, 2026-11-11, after 52 real preprints: "ABSTRACT" and "3. RESULTS" typed as plain
+  paragraphs left 79% of the Abstracts judged unfound), whose words are a section's name
+  alone from the list a PDF's lines are read by (`text.section_names.SECTION_NAMES`), its
+  first letter a capital. `tests/test_from_word.py::test_the_audit_and_init_take_the_same_typed_titles`
+  holds the two readings together. Pinned by
+  `tests/test_from_word.py::test_a_word_paper_titled_in_bold_has_its_sections_made_headings`,
+  `tests/test_from_word.py::test_a_word_paper_with_typed_titles_has_them_made_headings`.
+  - A "Study design and setting", a "Statistical analysis", a "Participants" or a "2.1
+    Data" stays a paragraph, its section run on under the heading before it, and so does a
+    title in small letters, "results"; the list was kept as it stands. Accepted.
+  - A one-word paragraph that is a section's name, typed as a run-in label in the middle
+    of a section, "Results" over the results of one analysis among several, is a heading
+    to both readers, and what stands under it is placed under it, the Results' or another
+    section's: nothing tells the label from a title in a paper with no heading style.
+    Pinned by `tests/test_audit.py::test_a_run_in_label_typed_alone_is_read_as_a_heading`.
+  - A title numbered by Word's own numbering is a list's item to pandoc and a numbered
+    line to the audit, and no heading to either; a title holding a link or a note's mark
+    is none, as pandoc reads the link or the note in it, nor is one in a text box to the
+    audit (a link written as a field, `w:fldSimple` or a HYPERLINK `w:instrText`, is a title
+    to the audit, and what pandoc makes of it and of a text box's paragraph is not held by a
+    test, so there the two readers may differ). A paragraph indented from the left by its
+    own `w:ind` more than it hangs is a block quote to pandoc and no title to the audit,
+    and so is one that holds a picture; an indent its style gives it is not read by the
+    audit, and what pandoc makes of it is not held by a test. Accepted.
+  - A paragraph in a style pandoc reads as a caption by its name, "caption", "Table
+    Caption" or "Image Caption", is no title to the audit, as pandoc sets one beside a
+    table as the table's caption. One that stands beside no table or picture is a paragraph
+    to pandoc, and `init --from` makes it a heading where it names a section alone, as the
+    audit does not; a caption whose words are a section's name alone and nothing else is
+    rare. Accepted.
+  - A paper that uses a heading style anywhere is read by its styles alone, its typed
+    titles text. Where the titles cannot be placed, a structured abstract's parts with no
+    Introduction after them, the order of its parts never starting again and no title it
+    cannot hold among them, the audit places nothing and says so, and `init --from` makes
+    each a heading of level 1, so the Abstract ends at its first part. Where the typed
+    titles cannot be placed for any reason, both readers place those in bold alone where
+    they can (round 2 of #641: a second "RESULTS" typed in a Discussion left a paper its
+    bold titles had placed unplaced). The title page is set aside only above a first heading
+    that opens a paper, its Abstract or its Introduction: a short paper whose first typed
+    title is its "References" keeps its text where every gate reads it. A heading is written
+    with the title's own words, its number kept. Accepted.
+  - An abstract's parts in bold beside parts typed plain cannot be placed, and its titles in
+    bold alone, the plain ones counted as words under the Abstract's, are placed at one
+    level, its own "Results" the paper's, so the Abstract is compared with itself, as a
+    paper titled in bold alone was read before. Pinned by
+    `tests/test_audit.py::test_a_run_in_label_typed_alone_is_read_as_a_heading`.
 - **`init --from` reads no affiliation, ORCID or e-mail address, and splits no name.** Each
   name from an Author paragraph goes into `authors.yaml` in a comment over an empty entry; the
   rest of the title page is in the comment in `main.md`. Accepted.
@@ -24674,6 +24986,22 @@ What papers converted from Word showed (see "What papers converted from Word sho
     reported (round 2 of #472, finding 11).
   - A table's lines are where the paper reports wherever the table stands, a table in the
     Abstract included. A Word document's footnotes are placed under the body's last heading.
+  - Every section is where the paper reports but the Abstract, the Introduction, the
+    Discussion, a conclusion, a summary of the paper and the back matter, each with what
+    stands under it (Basile, 2026-11-11, after 52 real preprints whose numbers under
+    "Participants" or an appendix were said not found; round 1 of #641). A summary and the
+    Introduction's material under another name are known by closed lists of whole titles
+    (`text.section_names.PAPER_SUMMARIES`, `INTRODUCTION_MATERIAL`): a "Summary box", a
+    "Previous studies" or a "What this paper adds to the field" is searched, and an Abstract's number it
+    repeats is found there. Accepted.
+  - A note is not searched where the audit knows it for one: a footnote's definition in
+    Markdown, and a .docx's footnotes and endnotes, read after its body. A LaTeX paper's
+    `\footnote` is printed in its sentence and searched with it, under the Results or the
+    Methods. Pinned by `tests/test_corruption.py::test_an_abstract_number_only_a_footnote_gives_is_not_found`,
+    `tests/test_audit.py::test_a_latex_footnote_under_the_results_is_searched`.
+  - A section of the Introduction's material is not searched wherever it stands, so a
+    "Hypotheses" after the Methods, whose numbers may be the study's own, is not, as at the
+    base it was not. Accepted.
 
 - **A LaTeX paper's numbers in user macros, and its `csvautotabular` and `pgfplotstable`
   tables, are not read** by the flows or by the Abstract against Results, as by the rest of
@@ -26033,7 +26361,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   quotation closed before a word, "'cleaned'", with such an apostrophe after it (round 4
   of #636). An insertion at either
   end of another edit's change clashes with it, so "colour+5" in an American paper is
-  neither respelt nor spaced. Each only keeps an edit from being offered. Pinned by
+  neither respelt nor spaced. A short form written out in its long form's place, "TNF
+  (tumour necrosis factor)", is one change over the long form, and a respelling inside the
+  long form clashes with it, so in an American paper neither is offered (round 1 of #645).
+  Each only keeps an edit from being offered. Pinned by
   `tests/test_corrections.py::test_a_stray_double_mark_holds_back_the_respellings_after_it`,
   `tests/test_corrections.py::test_an_apostrophe_opening_a_word_quotes_up_to_a_mark_that_may_close`,
   `tests/test_corrections.py::test_a_space_put_after_a_respelt_word_is_no_edit_of_either`.
@@ -26191,8 +26522,32 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - `review --record-figure` given a name with a folder that holds no placed file of that
     name, `other/forest`, reads the emitted `figures/forest` and leaves the folder aside
     (`_figure_named` falls back to `emitted[:1]`), as before #630. Accepted.
+- **The audit page's report is an untagged PDF** (round 1 of #644). The page shows the report
+  as the PDF `audit --pdf` writes, and the writer marks no structure in it (no tags, no
+  `MarkInfo`): a screen reader reads its text in the browser's viewer, in the order it is
+  drawn, with no headings or lists to move by. The page itself is plain HTML, its steps and
+  messages spoken, and the time left is not, as a count read aloud each second would drown
+  the rest. The text report, which a screen reader reads well, is shown only where the PDF
+  could not be made. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A Word paper whose titles were typed had no Abstract, and an Abstract's number under a
+  section of another name was not found (2026-11-11).** Of the twelve numbers the audit
+  missed on 52 real preprints, half were missed because the Abstract was not found, and
+  `abstract-not-found` was wrong in 79% of the cases judged. A Word paper with no heading
+  style had a heading only where a title was wholly in bold, so "ABSTRACT" typed as a plain
+  paragraph, "3. RESULTS" and "1. INTRODUCTION" were prose to `audit` and to `init --from`;
+  a title typed alone on its line that names a section is a heading now to both, in bold or
+  not (`text.docx.typed_heading_levels`, `from_word.typed_headings`), and what `init`
+  prints counts the headings it made, where it said "headings: 0" after making 14
+  (PsyArXiv fyxeq_v2). And an Abstract's number was looked for in the Methods, the Results
+  and the tables alone, so one under "Participants", "Study design" or an appendix was not
+  found; every section is searched now but the Introduction and its material, the
+  Discussion, a conclusion, a summary of the paper and the back matter, and no note (round 1
+  of #641: searched wider at first, a footnote's citation and an "Author summary" counted as
+  reports), and the finding says so. See "A Word paper's typed titles are headings only by
+  a closed list of names" and "The Abstract is held to the Results by weak membership".
 
 - **An Abstract's identifier was never found, nor a number under a "Method" heading
   (2026-11-11).** Two preprints of the real-paper corpus. The audit reads an atom with

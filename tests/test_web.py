@@ -338,6 +338,8 @@ def test_the_pages_policy_names_the_hosts_lookup_asks_and_no_others() -> None:
     assert policy["script-src"] == ["'self'", "'wasm-unsafe-eval'"]
     # A worker from a file would run under no policy at all (web/worker.js).
     assert policy["worker-src"] == ["blob:"]
+    # The one frame is the report's PDF, made in the page (2026-11-12): nothing from elsewhere.
+    assert policy["frame-src"] == ["blob:"]
     assert policy["form-action"] == ["'none'"] and policy["base-uri"] == ["'none'"]
     # Read before anything is loaded, or what loads first is under no policy.
     assert page.index("Content-Security-Policy") < min(page.index("<script"), page.index("<link"))
@@ -375,16 +377,17 @@ def _fields() -> set[str]:
 
 def test_each_box_the_report_names_is_a_box_on_the_page() -> None:
     """The report sends a reader of the page to a box by its name: "Words to leave alone",
-    "English of the paper", "List every place of every finding". A box renamed on the page
-    and not in the report would send the reader to nothing (the author's audit, 2026-11-11)."""
+    "English of the paper". A box renamed on the page and not in the report would send the
+    reader to nothing (the author's audit, 2026-11-11). Every place of every finding is in
+    the PDF the page shows, which no box asks for (2026-11-12)."""
     from manuscript_guard.auditing import gates, summary
 
     said = [gates.KNOWN, summary.DETAILS, gates.for_an_audit("Set english_variant: en-GB")]
     box = re.compile(r'on the (?:web )?page, (?:the box )?"([^"]+)"')
     named = {name for text in said for name in box.findall(text)}
-    assert named == {"Words to leave alone", "English of the paper",
-                     "List every place of every finding"}  # fmt: skip
+    assert named == {"Words to leave alone", "English of the paper"}
     assert named <= _fields()
+    assert "the PDF of the report" in summary.DETAILS
 
 
 def test_the_page_says_its_release_from_the_manifest_the_build_writes() -> None:
@@ -397,6 +400,41 @@ def test_the_page_says_its_release_from_the_manifest_the_build_writes() -> None:
     assert 'manifest.sources["manuscript-guard"].replace("/tree/", "/releases/tag/")' in app
     assert '"manuscript_guard": version,' in build
     assert 'f"https://github.com/BasileChretien/manuscript-guard/tree/v{version}"' in build
+
+
+PAPER_WITH_A_DOI = (
+    "# Abstract\n\nOf 250 students, 164 (66%) took part.\n\n# Results\n\n164 took part [1].\n\n"
+    "# References\n\n1. Martin L. A study. J Invented Educ. 2021;4:12-19. doi:10.1234/abc.5\n"
+)
+
+
+def test_an_audit_says_each_step_as_it_starts_and_the_page_names_each(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The page shows what a check is doing and how long is left (the author, 2026-11-12), from
+    each step the audit says as it starts (`auditing.progress`): read, numbers, words, each
+    reference looked up with how many of how many, and the report, in that order. The page
+    names every step the audit says and the two it adds itself, the PDF and the copy, which
+    the worker says before making them."""
+    from manuscript_guard.auditing import progress
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(PAPER_WITH_A_DOI, encoding="utf-8")
+    told: list[tuple[str, int, int]] = []
+    monkeypatch.setattr(progress, "STEP", lambda key, done, total: told.append((key, done, total)))
+    assert main(["audit", str(paper), "--lookup", "--dry-run"]) == 0
+    capsys.readouterr()
+    keys = list(dict.fromkeys(key for key, _done, _total in told))
+    assert keys == list(progress.STEPS)
+    assert ("lookup", 0, 1) in told
+    app = (WEB / "app.js").read_text(encoding="utf-8")
+    worker = (WEB / "worker.js").read_text(encoding="utf-8")
+    named = set(re.findall(r"^  (\w+): \[\"", re.search(r"const STEPS = \{(.*?)\n\};", app, re.S)
+                           .group(0), re.M))  # fmt: skip
+    assert named == {*progress.STEPS, "pdf", "copy"}
+    assert 'told("pdf", 0, 0)' in worker and 'told("copy", 0, 0)' in worker
+    assert "progress.STEP = TOLD" in worker
 
 
 def test_the_loading_bar_counts_each_step_the_worker_says() -> None:

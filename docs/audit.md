@@ -40,6 +40,26 @@ about, on its paragraph where those stand in a field or a link, and, for a findi
 place in the text, in a list in a comment on the first paragraph. Nothing of the document's
 text changes, and FILE must not exist yet. The page offers the same copy beside the report.
 
+`--tracked FILE.docx` writes one copy of the .docx in which each correction G14 is sure of
+is a Word tracked change by "manuscript-guard", to accept or reject in Word: a word
+respelt in the English chosen with `--english`, a sign after P or n spaced as the rest of
+the paper spaces it, an interval joined and a per cent sign set as most are, a space put
+between a number and its unit, and an abbreviation defined and not used again written out.
+Only the characters that change are deleted and inserted, in the formatting of the text
+around them. Every other finding is a comment, as `--commented` writes it, and so is a
+finding one of whose corrections is left out, unless it changes nothing the document prints:
+words the document holds in more than one place (its footnotes and endnotes counted), words
+in a field, a link, a footnote or an endnote, words whose own text holds a mark Word does
+not print (a link, emphasis that begins or ends inside them), a quotation mark the
+converted text writes straight or a line's end, and words two corrections change
+differently. The corrections are worked out only for this
+copy: an audit without `--tracked` does not read them. The audit says how many corrections
+are tracked changes, how many could not be placed, and how many findings are comments.
+Before it keeps the copy it reads it with its own changes accepted and with its own changes
+rejected, any the document already had left as they stand, and writes none where either is
+not the paper as it should be. FILE must not exist yet, and may not be the file
+`--commented` writes.
+
 A place in a .docx is its heading and its paragraph under it, "Methods, paragraph 3", as a
 reader finds it in Word: a list's item is a paragraph, a table is one, and what stands before
 the first heading is "before the first heading". `--json` gives it beside the line, as
@@ -141,6 +161,18 @@ published since, a DOI or a PMID no registry has, and a registry that did not an
 does in a project. Only where no registry reported anything of any entry does it say how many
 entries were asked and how many a registry knew; an entry answered from the records kept
 counts as asked.
+An entry with neither a DOI nor a PMID is listed at its place and sorted by its shape: a
+journal article, a book or a chapter; a web page or a legal or official text, listed as "no
+DOI expected" with what in it says so (an access date, a web address, "Arrêté", an official
+journal); or not sorted, to check by hand. With `--lookup`, each article, book and chapter is
+looked up in Crossref by its title, its first author and its year, and a work is taken only
+when it is a near-exact match: the same title once case, punctuation and accents are folded,
+the same first author's family name, and the same year where the entry gives one. A work taken
+is shown as "found by its title: DOI …", and that DOI is then looked up for a retraction, a
+withdrawal or an expression of concern like the others. Where Crossref has no such work, or
+two of them, the entry is said to be checked by hand. A title of fewer than three searched
+words is not looked up. Without `--lookup` the entries are sorted and listed, and nothing is
+asked.
 `--lookup --dry-run` lists what would be sent and sends nothing; `--lookup-cache DIR` keeps
 each answer in `DIR` and reads it from there the next time. Without `--lookup-cache` nothing
 is kept.
@@ -208,7 +240,9 @@ in a row whose label ends on a unit in percent ("Oxygen saturation, %"). A share
 up to 100, and a share of its categories' own total, where they do, are not listed: a
 subtype of another row, or a share of those with data. A row whose label carries a footnote
 marker is listed as uncertain, since a note may give it another denominator. Pipe tables are
-read in Markdown, and every table in a .docx.
+read in Markdown, and every table in a .docx. A share the Abstract writes in a sentence
+beside both its counts is held to them the same way (see the Abstract against Results); one
+in a sentence anywhere else is not read.
 
 **Totals.** A row labelled Total, Totals, All or Overall, in any case and with nothing after the
 word but an n ("Total (n = 1,200)"), an "n (%)", footnote marks and punctuation, totals the
@@ -306,7 +340,15 @@ rounding, "53%" in the Abstract for "53.3%" in the Results, and is listed apart.
 identifier, a word with a number in it ("v8", "rs75015950", "chr15", "ieu-a-1185"), is
 matched only as printed, the same word there, and never by the number it holds. A number
 not found there is listed, its finding saying where it was looked for, and
-not counted by `--strict`. The Methods are a heading that holds "methods", or whose whole
+not counted by `--strict`. A percentage the Abstract writes beside both its counts, "164
+out of 250 (66%)", "164 of 250 (66%)", "164/250 (65.6%)", "164 of 250 patients (66%)",
+"66% (164/250)" or "66% (n = 164/250)", is held to them as a table's n (%) is to its
+denominator, half a unit in its last printed place allowed, and is not looked for: one its
+counts give is counted as given by them, and one they do not give, "164 out of 250 (75%)",
+is listed under Arithmetic with the other numbers that do not fit the ones beside them, not
+counted by `--strict`. The counts are looked for as any number is. A count with no
+denominator beside it, "n = 164 (66%)", gives no share, and its percentage is looked for.
+The Methods are a heading that holds "methods", or whose whole
 title is "Method", as APA titles it, or "Methodology", numbered or not, alone or with
 "materials" ("Materials and method"); "Performance of the proposed method" and
 "Methodological notes" are not. The section ends with what a match

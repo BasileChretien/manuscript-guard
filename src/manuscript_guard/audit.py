@@ -197,6 +197,9 @@ class AuditReport:
     #: What was asked of the registries (`auditing.references.Looked`), with --lookup;
     #: None where nothing was to be.
     lookups: list | None = None
+    #: Each entry with no DOI and no PMID, sorted, and what Crossref's search by its title
+    #: found (`auditing.by_title.Searched`), with --lookup; None without it.
+    titles: list | None = None
     #: G6 and G14 on each paper (`auditing.gates.GateRun`).
     gates: list = field(default_factory=list)
     #: Each LaTeX entry's tree as it was read (`auditing.latex.Tree`).
@@ -1380,6 +1383,14 @@ def audit(
     from manuscript_guard.auditing.abstract import against_results
 
     report.abstract = against_results(pieces)
+    # A share of the Abstract its counts beside it do not give is a number that does not fit
+    # the ones beside it, listed with the rest, by paper in the order read and by line.
+    report.read["shares"] = report.read.get("shares", 0) + report.abstract.shares
+    if report.abstract.arithmetic:
+        order = {path: at for at, path in enumerate(report.papers)}
+        report.disagreements = sorted(
+            [*report.disagreements, *report.abstract.arithmetic],
+            key=lambda d: (order.get(d.source, len(order)), d.line))  # fmt: skip
     from manuscript_guard.auditing import baseline, causal
 
     if design in causal.DESIGNS or cited:

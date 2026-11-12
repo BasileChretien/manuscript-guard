@@ -610,8 +610,8 @@ def test_an_entry_whose_identifier_was_held_back_is_not_said_to_have_none(tmp_pa
     census = census_of_printed(tmp_path / "p.pdf", text, [(0, 5)], "As [1-3] show.\n", [])
     assert sorted(census.unsent) == [(2, "10.1016/j.ds.2021"), (4, "PMID:")]
     assert [without_identifier(entry) for entry in census.entries] == [False, False, True]
-    assert _unlooked(census, _shown(None)) == [
-        "    not looked up, having no DOI or PMID to look up: 1 entry",
+    assert _unlooked(census, _shown(None))[:2] == [
+        "    with no DOI or PMID given: 1 entry",
         "      line 5: entry 3: Clark C. A letter. J X. 2019;1:2."]
     # The summary counts both kinds (round 2 of #632), and an unnumbered entry keeps its year.
     from types import SimpleNamespace
@@ -619,9 +619,9 @@ def test_an_entry_whose_identifier_was_held_back_is_not_said_to_have_none(tmp_pa
     from manuscript_guard.auditing.summary import _references
 
     said = _references(SimpleNamespace(references=[census], lookups=[]))
-    assert said.endswith("1 entry not looked up, having no DOI or PMID and 2 entries not "
-                         "looked up, their DOI or PMID perhaps running on to the next line: "
-                         "see below"), said  # fmt: skip
+    assert said.endswith("1 entry to check by hand (its title too short to look up, or not "
+                         "read) and 2 entries not looked up, their DOI or PMID perhaps running "
+                         "on to the next line: see below"), said  # fmt: skip
     from manuscript_guard.auditing.references import BY_PLACE, Entry
 
     unnumbered = SimpleNamespace(path=tmp_path / "p.md", style="not numbered", entries=(

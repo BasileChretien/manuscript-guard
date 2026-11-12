@@ -15,15 +15,17 @@ numbers where they print, at the `.tex` line they stand on, and its tables cell 
 a folder, every `.tex` with `\documentclass` starts a paper, and is audited as one: so is an
 old draft, a cover letter or a template written in LaTeX, so name the paper's own file to
 audit it alone. A file no paper inputs is named under "Passed over" and not read, and so is
-a file a class or a package inputs. A `thebibliography` is cut as a reference list is, and a
-stretch the LaTeX reader refuses in a file the paper reads is named under "Could not read",
-which `--strict` counts.
+a file a class or a package inputs. A `thebibliography` is cut as a reference list is. Where
+the LaTeX reader refuses a construct in a file the paper reads, nothing of that file past it
+is read by any check: the file is named under "Could not read", which `--strict` counts, and
+the summary's line for the words says it was not read past that line. A paper that declares
+latin1, latin9, cp1252 or ansinew as its input encoding is read in it.
 
 A PDF named is read through `pdftotext`, its running heads, page numbers and margin line
 numbers left out, and each place in it is a page and a line; without `pdftotext` it is
 refused, exit 2. Its tables are lines of text there, so their numbers are compared and read
 as the text's but no table's arithmetic is checked, and a line is a heading only where it
-holds a section's name alone. A PDF in a folder is not read: name it.
+holds a section's name alone; a PDF with no such line is said to be read as one text. A PDF in a folder is not read: name it.
 
 `--pdf FILE.pdf` also writes the report as a PDF, every place and every section in it, as
 `--details` prints them: its sections and each kind of finding on the words are bookmarks,
@@ -332,7 +334,7 @@ manuscript-guard init my-paper --from paper.docx
 This makes a project whose manuscript is the paper, read by pandoc with tracked changes
 accepted, and prints what it did. Converting with `pandoc paper.docx -t markdown` instead
 writes most Word tables as multiline tables, whose lines of dashes `check` refuses at every
-stage; on fifteen real papers it did so for seven. `init --from` changes three things:
+stage; on fifteen real papers it did so for seven. `init --from` changes these things:
 
 - **Tables.** A table whose cells hold only paragraphs is written as a pipe table. A cell's
   paragraphs and line breaks are joined with spaces, a merged cell's text stands in its
@@ -356,6 +358,19 @@ stage; on fifteen real papers it did so for seven. `init --from` changes three t
   "Study design" or a "2.1 Data" is text. Give the titles Word's heading styles for a
   reading that rests on no list. With neither, nothing is set aside, and the report says
   the paper was read as one text. What `init` prints counts the headings it made.
+- **The typed references.** The reference list under a heading or a title in bold that
+  names one is read into `literature/references.bib`: each entry of an APA journal article,
+  `Smith, J. A., & Jones, B. (2020). Title. *Journal*, *12*(3), 45--67.`, or book, `Lee, C.
+  (2018). *Title*. Publisher.`, whose every field is read exactly, under a Better BibTeX key,
+  `smith2020`, the list's letter kept, `smith2020a`. Each citation typed as text that names
+  exactly one entry by all its authors and its year, "(Smith & Jones, 2020)", "(e.g., Smith
+  & Jones, 2020; Lee, 2018)" or "Smith et al. (2019)", becomes `[@smith2020]`,
+  `[e.g., @smith2020; @lee2018]` or `@smith2019`. Nothing is guessed: an entry not read is
+  not written, a citation that names two entries or none stays as typed, and `init` lists
+  each with its line and why. A numbered list is left as typed, and so is every citation
+  where `references.bib` is already there. The typed list stays in `main.md`, where G2 does
+  not read its numbers; `sync-bib` writes `references.bib` again from Zotero, so import it
+  there first.
 
 What Word's Title, Author, Date and Abstract styles hold is what pandoc reads as the
 document's metadata. The title goes to `paper.yaml` unless `--title` gives another, each

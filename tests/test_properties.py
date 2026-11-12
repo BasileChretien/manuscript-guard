@@ -261,6 +261,7 @@ from manuscript_guard.reworded import (
 )
 from manuscript_guard.text import placeholders, tokens
 from manuscript_guard.text.latex import cite as latex_cite
+from manuscript_guard.text.latex import encodings as latex_encodings
 from manuscript_guard.text.latex import mask as latex_mask
 from manuscript_guard.text.latex import printed as latex_print
 from manuscript_guard.text.latex import structure as latex_structure
@@ -758,7 +759,8 @@ def test_the_latex_mask_keeps_every_character_in_its_place(text: str) -> None:
     """The LaTeX reader keeps the Markdown mask's contract: the same length, every line break
     where it was, and each character itself, a NUL, or what TeX prints for it there (a space,
     a quotation mark, or at an escape's backslash the character it stands for). Past a refusal
-    the text is as it was typed, so that nothing the reader did not understand is hidden."""
+    nothing is read: NUL, the line breaks kept, so that no source the reader did not
+    understand is read as prose (Basile, 2026-11-11)."""
     reading = latex_mask.read(text)
     masked = reading.masked
     assert len(masked) == len(text), text
@@ -772,7 +774,7 @@ def test_the_latex_mask_keeps_every_character_in_its_place(text: str) -> None:
         allowed |= {"`": {LEFT_QUOTE}, "'": {RIGHT_QUOTE}, '"': {RIGHT_QUOTE}}.get(was, set())
         assert now in allowed, (at, was, now, text)
     for refusal in reading.refusals:
-        assert masked[refusal.offset :] == text[refusal.offset :], (refusal, text)
+        assert set(masked[refusal.offset :]) <= {NUL, "\r", "\n"}, (refusal, text)
 
 
 @holds(100, latex_planted())
@@ -1083,9 +1085,15 @@ def test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_
     other than UTF-8 in a tree of ASCII, and a definition with a parameter text and no
     parameter are read, the text after each use passed over; and where the package is
     loaded, a file is not ASCII, or the text does not follow a use, the reader refuses where
-    TeX would read otherwise. A comment between a command and its argument is recorded."""
-    for files, packages, refused, hidden, comments in drawn:
-        document = latex_structure.read_tree(files, packages=packages)
+    TeX would read otherwise. A comment between a command and its argument is recorded. A
+    known command the preamble defines again is read, and refused where it prints; and a
+    folder read as `audit` reads one is read in the encoding it declares (2026-11-11)."""
+    for files, packages, refused, hidden, comments, *audited in drawn:
+        if audited:
+            # Written in the codecs drawn and read as `audit` reads a folder (round 3 of #637).
+            document = _audited(files, packages, audited[0])
+        else:
+            document = latex_structure.read_tree(files, packages=packages)
         found = [(path, refusal.offset) for path, refusal in document.refusals]
         assert found == refused, (found, refused, files, packages)
         readings = {source.path: source.reading for source in document.sources}
@@ -1094,6 +1102,36 @@ def test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_
             assert set(seen) <= {NUL, "\n"}, (path, seen, files)
         for path, start in comments:
             assert start in {at for at, _end in readings[path].comments}, (path, start, files)
+        # Past a refusal of the reader nothing of its file is read (2026-11-11).
+        for source in document.sources:
+            for refusal in source.reading.refusals:
+                unread = source.reading.masked[refusal.offset :]
+                assert set(unread) <= {NUL, "\n"}, (source.path, unread, files)
+                # Nor is anything kept that the reader found past it (round 1 of #637).
+                found = [*(h.start for h in source.reading.headings),
+                         *(c.offset for c in source.reading.cited),
+                         *(put.offset for put in source.reading.inputs)]  # fmt: skip
+                assert all(at < refusal.offset for at in found), (source.path, found, files)
+
+
+def _audited(files: dict[str, str], packages: dict[str, str], codecs: dict[str, str]):
+    """The document `audit` reads of `files` and `packages` written in `codecs`, UTF-8 where
+    none is named, the text of each file it reads checked to be the one written, up to where
+    the file is refused: in its tree's encoding, so in the one it was written in."""
+    from manuscript_guard.auditing.latex import read_latex
+
+    with tempfile.TemporaryDirectory() as scratch:
+        folder = Path(scratch)
+        for path, text in {**files, **packages}.items():
+            (folder / path).write_bytes(text.encode(codecs.get(path, "utf-8")))
+        (tree,) = read_latex([folder / "main.tex"]).trees
+    for _path, source in tree.files:
+        cut = min([refusal.offset for where, refusal in tree.document.refusals
+                   if where == source.path], default=len(source.text))  # fmt: skip
+        written = {**files, **packages}[source.path]
+        written = latex_encodings.as_utf8(written) if tree.encoding else written
+        assert source.text[:cut] == written[:cut], (source.path, source.text, codecs)
+    return tree.document
 
 
 def _a_citation_s_name_begins_or_ends_with_cite(patch: pytest.MonkeyPatch) -> None:
@@ -1180,6 +1218,89 @@ def _every_definer_of_a_known_command_provides(patch: pytest.MonkeyPatch) -> Non
 
 def _a_package_s_command_is_always_the_reader_s(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "PACKAGE_COMMANDS", {})
+
+
+def _a_known_command_defined_again_is_refused_at_the_definition(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    defines = latex_mask._Reader._defines
+
+    def broken(self, name: str, at: int) -> None:
+        body, self.body = self.body, True
+        try:
+            defines(self, name, at)
+        finally:
+            self.body = body
+
+    patch.setattr(latex_mask._Reader, "_defines", broken)
+
+
+def _a_known_command_defined_again_is_read_where_it_is_used(patch: pytest.MonkeyPatch) -> None:
+    defines = latex_mask._Reader._defines
+
+    def broken(self, name: str, at: int) -> None:
+        defines(self, name, at)
+        if name in latex_mask.COMMANDS:
+            self.delimited.discard(name)
+
+    patch.setattr(latex_mask._Reader, "_defines", broken)
+
+
+def _a_known_command_defined_again_is_not_told_the_tree(patch: pytest.MonkeyPatch) -> None:
+    defines = latex_mask._Reader._defines
+
+    def broken(self, name: str, at: int) -> None:
+        defines(self, name, at)
+        if name in latex_mask.COMMANDS and name in self.defined_delimited:
+            self.defined_delimited.remove(name)
+
+    patch.setattr(latex_mask._Reader, "_defines", broken)
+
+
+def _a_preamble_s_expandafter_is_refused(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_expands_a_definition", lambda self, name, end: False)
+
+
+def _every_expandafter_in_a_preamble_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_expands_a_definition",
+                  lambda self, name, end: name == "expandafter" and not self.body)  # fmt: skip
+
+
+def _a_declared_encoding_is_kept_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_encodings, "as_utf8", lambda text: text)
+
+
+def _no_redefinition_is_read_as_before(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_read_as_before", lambda name, head, body: False)
+
+
+def _every_heading_and_reference_redefined_is_read_as_before(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(latex_mask, "_read_as_before", lambda name, head, body: True)
+
+
+def _what_is_found_past_a_refusal_is_kept(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_before", lambda reading, at: reading)
+
+
+def _a_declaration_unread_counts(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_encodings, "in_tree", lambda document, originals: latex_encodings
+                  .declared(originals[source.path] for source in document.sources
+                            if not source.loose and source.path in originals))  # fmt: skip
+
+
+def _the_encoding_is_the_folder_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_encodings, "in_tree",
+                  lambda document, originals: latex_encodings.declared(originals.values()))
+
+
+def _a_utf8_declaration_is_not_counted(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_encodings, "_OTHERS", {"utf8": "latin_1", "utf8x": "latin_1"})
+
+
+def _past_a_refusal_the_file_is_read_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_unread", lambda text: text)
 
 
 def _a_package_s_command_is_the_author_s_where_it_is_loaded(patch: pytest.MonkeyPatch) -> None:
@@ -10264,6 +10385,61 @@ def test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it(
         assert read is not None, written
         said = typed_module.hint(read, works, latex=False, otherwise="")
         assert f"[@{key}]" in said and "holds no work" not in said, (written, said, bib)
+
+
+from generated import typed_reference_papers  # noqa: E402
+
+from manuscript_guard import typed_references as typed_references_module  # noqa: E402
+from manuscript_guard.typed_references import citations as made_citations  # noqa: E402
+
+
+@holds(60, typed_reference_papers())
+def test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry(
+    drawn: tuple[str, list[tuple[str, str | None]]],
+) -> None:
+    """Decision 5 (the real-paper corpus, PsyArXiv fyxeq_v2 and d8hkq_v1): `init --from`
+    makes each citation typed as text that names exactly one entry of the typed reference
+    list, by all its authors and its year, a pandoc citation of that entry's key: in
+    brackets, under a prefix or none, in the sentence, and a group whose every part does.
+    Nothing is guessed: a citation that names two entries or none stays as typed, and so
+    does a group one of whose parts names none, and each is listed. The list itself is
+    left as typed."""
+    text, cited = drawn
+    made = typed_references_module.read(text)
+    listed = text[text.index("# References") :]
+    assert made.text.endswith(listed), made.text
+    for written, pandoc in cited:
+        if pandoc is None:
+            assert written in made.text, (written, made.text)
+        else:
+            assert pandoc in made.text and written not in made.text, (written, pandoc,
+                                                                      made.text)  # fmt: skip
+    assert len(made.left) == sum(pandoc is None for _t, pandoc in cited), made.left
+    assert made.converted == sum(pandoc.count("@") for _t, pandoc in cited if pandoc)
+
+
+def _two_entries_are_the_first(patch: pytest.MonkeyPatch) -> None:
+    one = made_citations._one
+
+    def first(head, year, by_year, unknown, *, bracketed):
+        return one(head, year, {at: works[:1] for at, works in by_year.items()}, unknown,
+                   bracketed=bracketed)  # fmt: skip
+
+    patch.setattr(made_citations, "_one", first)
+
+
+def _the_names_need_not_be_all_the_citation_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(made_citations, "_names_alone", lambda before: True)
+
+
+def _a_citation_s_bracket_is_no_name(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(made_citations, "_CITED_BEFORE", re.compile(r"(?!)"))
+
+
+def _the_first_author_names_a_work(patch: pytest.MonkeyPatch) -> None:
+    named = made_citations.renderings
+    patch.setattr(made_citations, "renderings",
+                  lambda families: (*named(families), families[0]))  # fmt: skip
 
 
 def _a_tex_escape_is_read_as_its_letters(patch: pytest.MonkeyPatch) -> None:
@@ -20688,6 +20864,22 @@ BROKEN = {
         _a_month_is_a_name,
         test_the_year_of_a_citation_typed_as_text_is_read_with_its_first_author,
     ),
+    "a typed citation naming two entries is made the first's key": (
+        _two_entries_are_the_first,
+        test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry,
+    ),
+    "a narrative citation naming a co-author more than its work has is made its key": (
+        _the_names_need_not_be_all_the_citation_s,
+        test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry,
+    ),
+    "a narrative citation naming no co-author more after another is left typed": (
+        _a_citation_s_bracket_is_no_name,
+        test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry,
+    ),
+    "a typed citation naming a work's first author alone is made its key": (
+        _the_first_author_names_a_work,
+        test_a_typed_citation_is_made_a_key_where_it_names_exactly_one_entry,
+    ),
     "a TeX escape in a .bib name is read as its letters": (
         _a_tex_escape_is_read_as_its_letters,
         test_a_name_references_bib_writes_in_tex_is_found_as_a_manuscript_types_it,
@@ -20999,6 +21191,62 @@ BROKEN = {
     "in LaTeX, a package's command is the reader's where no package gives it": (
         _a_package_s_command_is_always_the_reader_s,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a known command defined again in the preamble is refused at the definition": (
+        _a_known_command_defined_again_is_refused_at_the_definition,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a known command the preamble defines again is read where it is used": (
+        _a_known_command_defined_again_is_read_where_it_is_used,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a known command defined again is not told the tree": (
+        _a_known_command_defined_again_is_not_told_the_tree,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a preamble's \\expandafter before a \\def is refused": (
+        _a_preamble_s_expandafter_is_refused,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, every \\expandafter in a preamble is passed over": (
+        _every_expandafter_in_a_preamble_is_passed_over,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an audited folder's declared encoding is kept as typed": (
+        _a_declared_encoding_is_kept_as_typed,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, past a refusal the file is read as typed": (
+        _past_a_refusal_the_file_is_read_as_typed,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a restyled heading or a reference defined as another is refused where used": (
+        _no_redefinition_is_read_as_before,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, every heading or reference defined again is read as before": (
+        _every_heading_and_reference_redefined_is_read_as_before,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, what the reader found past a refusal is kept": (
+        _what_is_found_past_a_refusal_is_kept,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an audited tree counts a declaration in a comment or unprinted": (
+        _a_declaration_unread_counts,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an audited folder's encoding is decided for the folder": (
+        _the_encoding_is_the_folder_s,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an audited folder's UTF-8 declaration is not counted": (
+        _a_utf8_declaration_is_not_counted,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, past a refusal the mask keeps the file as typed": (
+        _past_a_refusal_the_file_is_read_as_typed,
+        test_the_latex_mask_keeps_every_character_in_its_place,
     ),
     "in LaTeX, a package's command is the author's where the package is loaded": (
         _a_package_s_command_is_the_author_s_where_it_is_loaded,

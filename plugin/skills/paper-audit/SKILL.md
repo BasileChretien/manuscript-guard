@@ -207,7 +207,11 @@ route is:
    pictures in `manuscript/media/`, and the title page in a comment at the top that no gate
    reads. Read what it prints: a table with a list or another table in a cell is left as a
    grid table, and a comment that holds the abstract hides its numbers until it is moved out.
-   Do not convert with `pandoc paper.docx -t markdown`: it writes most Word tables as
+   A typed APA reference list is read into `literature/references.bib`, and each citation
+   typed as text that names exactly one of its entries, by its authors and year, becomes
+   `[@key]`; what it could not read exactly, entries and citations, is listed with the line
+   and why, and stays as typed for the author to cite by hand. A numbered list is left as
+   typed. Do not convert with `pandoc paper.docx -t markdown`: it writes most Word tables as
    multiline tables, which `check` refuses at every stage. A paper written in LaTeX needs no
    conversion: `manuscript-guard init --latex`, then its files go in `manuscript/`, the
    entry file as `main.tex`, loading `mgvalues`.

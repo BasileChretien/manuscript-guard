@@ -16847,6 +16847,53 @@ been sorted yet.
   Discussion is read. The figures that gave the reason are those of an automated
   scientist's reports: the note says nothing of how often a person's interpretation is
   wrong, only where it stands.
+- **G8 knows a trial's table of baseline characteristics by what its caption names and a P
+  header of its first row.** `baseline-p-values` warns where the `study_type` is one whose
+  guidelines include CONSORT (`data/study_types.yaml`), and `audit --design trial` reads a
+  paper's tables by the same rule (`gates/baseline.py`, `text/captioned.py`). It is a warning
+  at every stage, and nothing stands it down: no emitted table carries a reason, and G2's
+  `project-exemption` is for numbers. Accepted.
+  - A caption names such a table only where "baseline" stands before characteristics or
+    demographics, with up to three words between and no time among them ("baseline
+    demographic, clinical, and laboratory characteristics", not "baseline and follow-up
+    characteristics"), and "adjusted for", "by", "according to" or another of the words that
+    qualify an outcome does not stand up to three words before it; or where
+    characteristics or demographics have "at baseline" or "at randomisation" after them.
+    Every other wording is missed: "Table 1. Participants", "Participants at baseline, by
+    group", "Baseline data", "Characteristics before treatment". Accepted.
+  - A caption that says "baseline features" is not read as one of baseline characteristics,
+    since "Baseline MRI features associated with response" names an analysis. Accepted.
+  - A word holding a digit, and a "/", "&" or "(" between the words, ends the phrase:
+    "Baseline demographic/clinical characteristics", "Baseline HbA1c and clinical
+    characteristics" and "Baseline (pre-randomisation) characteristics" are not read.
+    Accepted.
+  - A paragraph beside a table that opens with "Table 1 " and a capital, "Table 1 In the
+    intervention group, more were women.", is read as the table's legend, since "Table 1
+    Baseline characteristics" is set the same way.
+    Pinned by `tests/test_corruption.py::test_a_paragraph_that_opens_with_a_table_s_number_and_a_capital_is_its_legend`.
+  - A P header is one of six exact headers, P, p, P value, p value, P-value and p-value,
+    perhaps in italics or maths and ending in one note mark. "P Value", "P for trend",
+    "Significance" and "p (χ²)" head no column of P values here.
+    Pinned by `tests/test_corruption.py::test_what_is_no_trials_baseline_table_with_p_values_passes`.
+  - Only a table's first row is its header: a P header in a second header row, under a row
+    of groups spanning the columns, is not read. Accepted.
+  - The LaTeX reader prints `P\textsuperscript{a}` as "Pa", which is no P header; `P$^{a}$`
+    is read. Accepted.
+  - A Markdown simple or multiline table, a grid table with no `+===+` line under a header,
+    and a table typed in HTML are not read; nor is a `longtable` whose `\caption` opens its
+    rows, whose first row is then its caption. Accepted.
+  - An emitted table is read whether or not the manuscript places it, and a typed table's
+    caption is the one pandoc would give it or the legend typed beside it; in a .docx, a
+    table with no legend beside it is captioned by the paragraph before it. Accepted.
+  - A legend typed between two tables is the first one's where that one has no caption
+    before it, whichever table it was typed for: the tables are read in order and a caption
+    one has taken goes to no other, as pandoc gives its `Table:` captions, but a legend
+    below one table is not told from a legend above the next. Accepted.
+  - In LaTeX, two subtables in one float, each with its own `\caption`, both take the
+    float's first caption, and a `\begin{table}` in a comment is counted as a float's
+    beginning. Accepted.
+  - `audit` reads no PDF's tables for it, since a PDF's table is lines of text, and says so.
+    Pinned by `tests/test_audit_claims.py::test_a_pdfs_tables_are_said_not_to_be_read_for_p_values_at_baseline`.
 - **G8 compares only values whose units agree.** A count of 56 and a share of 56.0% are two
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and

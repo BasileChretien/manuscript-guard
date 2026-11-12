@@ -19697,6 +19697,98 @@ def _a_stop_blanked_with_an_address_is_not_kept(patch: pytest.MonkeyPatch) -> No
 
     patch.setattr(quote_places, "_CLOSING", frozenset())
 
+# ----------------------------- a trial's table of baseline characteristics with P values, G8
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import baseline_papers  # noqa: E402
+
+
+@holds(30, baseline_papers())
+def test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does(
+    planted: tuple[dict[str, Any], dict[str, Any]],
+) -> None:
+    """In a randomised trial, each table captioned as of baseline characteristics with a P
+    header warns, emitted or typed, in Markdown or LaTeX, in the main text or the
+    supplement, at its header row's line, naming its P header; a table of outcomes, of a
+    change from baseline, with the word inside another or with a header that holds a P and is
+    none warns of nothing. Of a paper of another design, or of none, nothing is said."""
+    given, found = planted
+    read = READINGS["baseline tables"]()
+    for kind in ("markdown", "latex"):
+        paper = {"emitted": given["emitted"], "files": given[kind]}
+        answered = answer(read, {**paper, "study_type": "trial"})
+        assert "raised" not in answered, answered
+        told = answered["answer"]
+        assert all(code == "baseline-p-values" and severity == "warn"
+                   for _path, _line, code, severity, _said in told), told  # fmt: skip
+        said = sorted(([path, line] for path, line, *_rest in told), key=json.dumps)
+        expected = sorted(([path, line] for path, line, _headers in found[kind]), key=json.dumps)
+        assert said == expected, given[kind]
+        for path, line, headers in found[kind]:
+            (message,) = [m for p, n, _c, _s, m in told if [p, n] == [path, line]]
+            shown = message.split("column of P values (", 1)[1].split("), and the study", 1)[0]
+            assert shown == " and ".join(repr(_printed(h, kind)) for h in headers), message
+        other = answer(read, {**paper, "study_type": given["other"]})
+        assert other == {"answer": []}, given["other"]
+
+
+def _printed(header: str, kind: str) -> str:
+    """A header as the finding names it: as typed in Markdown, as the LaTeX reader prints it."""
+    if kind == "markdown":
+        return header
+    for written, shown in (("$^{a}$", "^a"), ("$^{*}$", "^*"), ("$^\\dagger$", "^"),
+                           ("\\textit{P}", "P"), ("\\emph{p}", "p"), ("$P$", "P"),
+                           ("$p$", "p")):  # fmt: skip
+        header = header.replace(written, shown)
+    return header
+
+
+def _baseline_inside_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_NAMES", baseline._names(start=""))
+
+
+def _qualifying_ignored(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_QUALIFIED", re.compile(r"(?!)"))
+
+
+def _only_the_old_adjectives_between(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    adjectives = ("demographic", "sociodemographic", "clinical", "patient", "participant",
+                  "patients'", "participants'")  # fmt: skip
+    patch.setattr(baseline, "_NAMES",
+                  baseline._names(word=baseline._one_of(adjectives) + baseline._END))
+
+
+def _baseline_anywhere_names_the_table(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_NAMES", re.compile(r"(?<![^\W_])baseline(?![^\W_])", re.I))
+
+
+def _a_p_header_by_containment(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "p_header",
+                  lambda header: any(p in header for p in baseline.P_HEADERS))  # fmt: skip
+
+
+def _the_supplement_unread(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "_DOCUMENTS", (False,))
+
+
+def _any_design_a_trial(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import baseline
+
+    patch.setattr(baseline, "applies", lambda study_type: True)
+
+
 # ------------------------------------------- the plan's Software section and the loads, G12
 
 # Imported here, not at the top, to keep clear of the import block other branches edit.
@@ -26291,6 +26383,34 @@ BROKEN = {
     "an import line continued with a backslash is read alone": (
         _a_continued_import_line_is_read_alone,
         test_a_package_is_held_to_the_plan_where_a_script_loads_it_and_nowhere_else,
+    ),
+    "a caption's baseline is read inside another word": (
+        _baseline_inside_a_word,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "what qualifies an outcome is not read before a caption's baseline": (
+        _qualifying_ignored,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "only the listed adjectives stand between baseline and characteristics": (
+        _only_the_old_adjectives_between,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "a caption that holds the word baseline names a table of baseline characteristics": (
+        _baseline_anywhere_names_the_table,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "a P header is any header that holds one": (
+        _a_p_header_by_containment,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "the supplement's tables are not read for P values at baseline": (
+        _the_supplement_unread,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
+    ),
+    "a baseline table's P values warn whatever the study's design": (
+        _any_design_a_trial,
+        test_a_trials_baseline_table_with_p_values_warns_wherever_it_is_and_nothing_else_does,
     ),
     "a package's name is found inside a longer word": (
         _a_package_s_name_is_found_inside_a_word,

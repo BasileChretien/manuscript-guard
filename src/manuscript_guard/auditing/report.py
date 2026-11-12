@@ -22,6 +22,8 @@ What was read and what was not comes first, then a section for each kind of chec
   and with `--authors` each author named where the journal's review is blind.
 * Causal words, with `--design`: each sentence of the Abstract, the Discussion and the
   Conclusion that claims a cause with no hedge, negation or citation (`auditing.causal`).
+* Baseline tables, with `--design trial`: each table captioned as of baseline
+  characteristics that has a column of P values (`auditing.baseline`).
 * Cited sentences, with `--cited`: how many rows the file holds and what was not read
   (`auditing.cited`); the sentences themselves are in the file only.
 * Self-citation, with `--journal` and `--authors` or `--lookup`: the references whose
@@ -206,7 +208,8 @@ def items(report) -> list[Item]:
             for p in looked.problems
         ]  # fmt: skip
     return (found + _journal_items(report.journal) + _document_items(report)
-            + _causal_items(report.causal) + _cited_items(report.cited)
+            + _causal_items(report.causal) + _baseline_items(report.baseline)
+            + _cited_items(report.cited)
             + _self_citation_items(report.self_citation)
             + list(getattr(report.package, "found", [])))  # fmt: skip
 
@@ -249,6 +252,12 @@ def _causal_items(read) -> list[Item]:
         *(Item(CAUSAL, "audit", "causal-words-not-read", f"{path.name}: {note}", INFO, False,
                path) for path, note in read.notes),
     ]  # fmt: skip
+
+
+def _baseline_items(read) -> list[Item]:
+    from manuscript_guard.auditing.baseline import items as baseline_items
+
+    return baseline_items(read)
 
 
 def _unplaced(path: Path) -> str:
@@ -439,6 +448,7 @@ def as_json(report, discrimination) -> str:
         "reference_entries": sum(len(c.entries) for c in report.references),
         **_reader_counts(report),
         **_package_counts(report.package),
+        **_baseline_counts(report.baseline),
     }
     worth = None
     if discrimination is not None and report.compared:
@@ -481,6 +491,12 @@ def _package_counts(read) -> dict[str, int]:
     if read is None:
         return {}
     from manuscript_guard.auditing.package import counts
+
+    return counts(read)
+
+
+def _baseline_counts(read) -> dict[str, int]:
+    from manuscript_guard.auditing.baseline import counts
 
     return counts(read)
 
@@ -747,6 +763,11 @@ def _sections(
     if report.causal is not None:
         out.append((f"{CAUSAL} (--design {report.causal.design}; not counted by --strict)",
                     _causal(report.causal, show)))  # fmt: skip
+    if report.baseline is not None:
+        from manuscript_guard.auditing.baseline import SECTION, lines
+
+        out.append((f"{SECTION} (--design {report.baseline.design}; not counted by --strict)",
+                    lines(report.baseline, show, _listed)))  # fmt: skip
     if report.cited is not None:
         out.append((f"{CITED} (not counted by --strict)", _cited(report.cited, show)))
     if report.self_citation is not None:

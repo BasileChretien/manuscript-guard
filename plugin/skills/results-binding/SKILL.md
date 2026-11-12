@@ -262,6 +262,7 @@ checked like any other.
 | `ref-number-unknown` | the build cannot number this ref: its kind is also placed by hand or sent as files in that document, or its key is placed twice. Type that pointer |
 | `hand-authored-table` | emit the table |
 | `binding-in-table` | a `{{...}}` in an emitted caption, header or cell. Emit the value it stands for and compose it in with `em.cell` (`em$cell` in R), or move the sentence into the prose |
+| `baseline-p-values` | a warning: a trial's table of baseline characteristics has a P column, which CONSORT advises against. Drop it; where an imbalance matters, adjust for prognostic covariates the plan named |
 | `script-newer`, `input-changed` | re-run the script that wrote the results; where the input is a dataset's, with the date of the new extraction and its pin |
 | `dataset-pin-mismatch`, `dataset-read-differs`, `dataset-value-unrecorded` | the results were computed from other data than the extraction the dataset dates, or a dataset's value was typed into a fragment: re-run the scripts that read the old data, through the emitter |
 | `data-date-not-declared` | a warning: a date of the data emitted as a string. Declare the data with `em.dataset()`; emit a year computed from the data as a number (`int(...)`); a date the study chose is `em.parameter()` |
@@ -274,9 +275,7 @@ checked like any other.
 | `declared-same-but-differs` | two keys declared one quantity with `same_as=` have drifted apart |
 | `comparison-contradicted` | a sign beside the binding ("all Fs <") is false of the value: emit more digits, or type its bound |
 | `interval-reversed` | the text quotes the upper bound first; swap the two bindings |
-| `relation-broken`, `flow-broken` | the analysis's own numbers disagree with the arithmetic it declared: find the computation that is wrong, or the declaration that names the wrong keys |
-| `relation-rounding` | a warning: the printed parts do not give the printed result. Print one more digit, or say each is rounded on its own |
-| `relation-unresolved` | a declared relation names a key nothing emits, or one that is not a number |
+| `relation-broken`, `flow-broken`, `relation-rounding`, `relation-unresolved` | see [references/arithmetic-and-flows.md](references/arithmetic-and-flows.md) |
 | `estimate-outside-interval`, `interval-inverted` | fix the interval in the analysis, with `interval()` |
 | `quoted-alone` | a warning: a p value quoted in a sentence without its estimate, or a share without either of its counts. Quote them together: n/N (%) |
 | `interval-not-quoted-whole` | a warning: the estimate is quoted, and no sentence anywhere quotes both bounds of its interval |

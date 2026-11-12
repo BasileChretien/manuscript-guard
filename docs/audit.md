@@ -77,6 +77,7 @@ section in full and every finding with its place, its context and its hint, as o
 | Journal (G4), with `--journal` | the main document held to the journal's profile: its limits, abstract, sections, statements, data statement and boxes; what was not checked; the profile's rules no gate checks, as a checklist | no |
 | Document, with `--journal` | each .docx's tracked changes, comments and hidden text, and the names Word keeps; with `--authors`, an author named where the review is blind | an author named where the review is blind |
 | Causal words, with `--design observational` | each sentence of the Abstract, the Discussion and the Conclusion that claims a cause, with no hedge, negation or citation | no |
+| Baseline tables, with `--design trial` | the tables read and those captioned as of baseline characteristics, and each of those with a column of P values, which CONSORT advises against in a randomised trial; a PDF's tables are not read for it | no |
 | Cited sentences, with `--cited FILE` | how many citations were listed in FILE, each beside its sentence and its entry | no |
 | Self-citation, with `--journal` and `--authors` or `--lookup` | the references whose registry record lists an author, and those the journal published, counted | no |
 
@@ -397,6 +398,14 @@ stage; on fifteen real papers it did so for seven. `init --from` changes these t
   where `references.bib` is already there. The typed list stays in `main.md`, where G2 does
   not read its numbers; `sync-bib` writes `references.bib` again from Zotero, so import it
   there first.
+
+Where the title page stays in the text, as when the document opens on its title in a
+heading style, G14 still does not read it for abbreviations: its authors' names, units and
+institutions are not reported, and nothing on it defines a short form. It ends at the first
+section a paper opens on, the Abstract, the Introduction, the Methods, at a letter's
+salutation, or where running prose begins, and is taken for one only where it holds an
+affiliation, an e-mail address, an ORCID iD, authors with their degrees or marks, or a label
+such as "Corresponding author"; where nothing marks it, the opening is read as before.
 
 What Word's Title, Author, Date and Abstract styles hold is what pandoc reads as the
 document's metadata. The title goes to `paper.yaml` unless `--title` gives another, each

@@ -3877,6 +3877,278 @@ def test_a_latex_paper_s_unheaded_opening_reports_where_it_has_no_results(
     assert said("\\section{Introduction}\n") == ["results.ror.point"]
 
 
+# ----------------------------- a trial's table of baseline characteristics with P values, G8
+
+#: A table typed in Markdown with a column of P values, its caption pandoc's after it. Its
+#: cells hold words, so that G2 says nothing of them.
+_TYPED_BASELINE = (
+    "\n\n| Characteristic | Drug | Placebo | {header} |\n|---|---|---|---|\n"
+    "| Female | half | half | low |\n\nTable: {caption}\n"
+)
+
+
+def _baseline_said(root: Path) -> list[tuple[str, int | None]]:
+    """Where G8 warns of a table of baseline characteristics with P values: each file, from
+    the project's folder, and line."""
+    from manuscript_guard.gates.baseline import CODE, check_baseline
+
+    project, _report = load_project(root)
+    results = load_namespace(project)[1]
+    found = check_baseline(project, results).findings
+    assert all(f.code == CODE and f.severity == "warn" for f in found), found
+    return [(f.path.relative_to(root).as_posix(), f.line) for f in found]
+
+
+def _emit_baseline(root: Path, caption: str, header: str = "P value") -> None:
+    """The example's table of reports by group, emitted with `caption` and a column headed
+    `header` whose cells are empty."""
+    fragment = root / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    table = document["tables"]["baseline"]
+    table["caption"] = caption
+    table["columns"].append(header)
+    table["align"].append("right")
+    for row in table["rows"]:
+        row.append("")
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def _type_into(path: Path, caption: str, header: str = "P value") -> None:
+    with path.open("a", encoding="utf-8") as typed:
+        typed.write(_TYPED_BASELINE.format(caption=caption, header=header))
+
+
+def test_an_emitted_baseline_table_with_p_values_in_a_trial_warns_at_every_stage(
+    project: Path,
+) -> None:
+    """CONSORT 2010 (item 15) and 2025 (item 25): a test of a baseline difference in a
+    randomised trial tests what the randomisation made true. A warning, never a failure."""
+    from manuscript_guard.cli import _run_gates
+
+    _paper_field(project, "study_type", "trial")
+    _emit_baseline(project, "Baseline characteristics of the reports, by group.")
+    assert _baseline_said(project) == [("results/01_disproportionality.json", None)]
+    for stage in ("drafting", "submission"):
+        report, _project, _stage, _deferred = _run_gates(project, stage=stage)
+        (found,) = [f for f in report.findings if f.code == "baseline-p-values"]
+        assert found.severity == "warn" and found not in report.failures, stage
+        assert "item 15" in found.message and "item 25" in found.message, found.message
+        assert "'P value'" in found.message and "randomised trial" in found.message
+        assert found.hint.startswith("emit the table without the P column")
+        assert "prognostic covariates" in found.hint
+
+
+@pytest.mark.parametrize("header", ["P", "p-value", "*P*", "P value^a^", "P\N{DAGGER}"])
+def test_a_typed_baseline_table_with_p_values_in_a_trial_warns(
+    project: Path, header: str
+) -> None:
+    _paper_field(project, "study_type", "trial")
+    main = main_md(project)
+    _type_into(main, "Baseline characteristics of the participants", header)
+    line = main.read_text(encoding="utf-8").split("\n").index(
+        f"| Characteristic | Drug | Placebo | {header} |") + 1
+    assert _baseline_said(project) == [("manuscript/main.md", line)]
+
+
+def test_a_baseline_table_with_p_values_in_the_supplement_warns(project: Path) -> None:
+    """The supplement is read as the main text is, a grid table as a pipe table is."""
+    _paper_field(project, "study_type", "trial")
+    (project / "manuscript" / "supplementary" / "S3_baseline.md").write_text(
+        "# Baseline\n\n: Characteristics at BASELINE\n\n"
+        "+---------+---------+---------+\n| Item    | Drug    | p       |\n"
+        "+=========+=========+=========+\n| Female  | half    | low     |\n"
+        "+---------+---------+---------+\n",
+        encoding="utf-8",
+    )
+    assert _baseline_said(project) == [("manuscript/supplementary/S3_baseline.md", 6)]
+
+
+def test_a_latex_baseline_table_with_p_values_in_a_trial_warns(project: Path) -> None:
+    """The LaTeX twin: a `tabular` in a `table` float, its caption the float's, in the main
+    text and in the supplement."""
+    _paper_field(project, "study_type", "trial")
+    entry = _as_latex(project)
+    float_ = ("\\begin{table}\n\\caption{Baseline characteristics}\n\\begin{tabular}{lll}\n"
+              "Item & Drug & $p$ \\\\\n\\hline\nFemale & half & low \\\\\n\\end{tabular}\n"
+              "\\end{table}\n")
+    entry.write_text(entry.read_text(encoding="utf-8").replace(
+        "\\end{document}", float_ + "\\end{document}"), encoding="utf-8")
+    supplement = project / "manuscript" / "supplementary" / "main.tex"
+    supplement.parent.mkdir(exist_ok=True)
+    supplement.write_text("\\documentclass{article}\n\\begin{document}\n" + float_
+                          + "\\end{document}\n", encoding="utf-8")  # fmt: skip
+    assert _baseline_said(project) == [("manuscript/main.tex", 7),
+                                       ("manuscript/supplementary/main.tex", 6)]
+
+
+@pytest.mark.parametrize(
+    ("study_type", "caption", "header"),
+    [
+        # The same table in a cohort study, and in a paper that names no design.
+        ("cohort", "Baseline characteristics of the participants", "P value"),
+        (None, "Baseline characteristics of the participants", "P value"),
+        # A trial's table of outcomes, of a change from baseline, of what follows it.
+        ("trial", "Outcomes at 12 weeks", "P value"),
+        ("trial", "Change from baseline in the score at 12 weeks", "P value"),
+        ("trial", "Postbaseline events", "P value"),
+        # A header that holds a P and is none.
+        ("trial", "Baseline characteristics of the participants", "Ptype"),
+        ("trial", "Baseline characteristics of the participants", "P Value"),
+    ],
+)  # fmt: skip
+def test_what_is_no_trials_baseline_table_with_p_values_passes(
+    project: Path, study_type: str | None, caption: str, header: str
+) -> None:
+    if study_type is not None:
+        _paper_field(project, "study_type", study_type)
+    _emit_baseline(project, caption, header)
+    _type_into(main_md(project), caption, header)
+    assert _baseline_said(project) == []
+
+
+#: Captions of a trial's tables of outcomes that hold the word and name no table of baseline
+#: characteristics (round 1 of #657).
+_OUTCOMES_NAMING_BASELINE = (
+    "Primary outcome at baseline and 12 weeks",
+    "Primary outcome by baseline risk",
+    "Outcomes at 12 weeks, adjusted for age, sex and baseline score",
+    "Outcomes adjusting for baseline values",
+    "Post-baseline adverse events",
+    # The phrase after what qualifies an outcome (round 2 of #657).
+    "Primary and secondary outcomes, adjusted for baseline characteristics",
+    "Subgroup analysis of the primary outcome by baseline characteristics",
+    # Words between the qualifier and the phrase, a time inside it, and "features"
+    # (round 3 of #657).
+    "Outcomes at 12 weeks, adjusted for age, sex and baseline characteristics",
+    "Outcomes at 12 weeks, adjusted for prespecified baseline characteristics",
+    "Outcomes at 12 weeks by selected baseline characteristics",
+    "Outcomes based on baseline characteristics",
+    "Changes between baseline and follow-up in clinical characteristics",
+    "Comparison of baseline and follow-up characteristics",
+    "Baseline MRI features associated with response",
+    "Patients with or without baseline high-risk features",
+    "Comparison of baseline and follow up characteristics",
+    "Baseline and six-month characteristics",
+)
+
+
+@pytest.mark.parametrize("caption", _OUTCOMES_NAMING_BASELINE)
+def test_a_trials_table_of_outcomes_whose_caption_names_baseline_passes(
+    project: Path, caption: str
+) -> None:
+    _paper_field(project, "study_type", "trial")
+    _emit_baseline(project, caption, "P")
+    main = main_md(project)
+    with main.open("a", encoding="utf-8") as typed:
+        typed.write(f"\n\n| Outcome | Drug | Placebo | P |\n|---|---|---|---|\n"
+                    f"| Death | few | more | low |\n\nTable: {caption}\n")  # fmt: skip
+    assert _baseline_said(project) == []
+
+
+def test_a_latex_table_of_a_change_from_baseline_passes(project: Path) -> None:
+    _paper_field(project, "study_type", "trial")
+    entry = _as_latex(project)
+    entry.write_text(entry.read_text(encoding="utf-8").replace("\\end{document}", (
+        "\\begin{table}\n\\caption{Change from~baseline in the score}\n\\begin{tabular}{llll}\n"
+        "Outcome & Drug & Placebo & P \\\\\nScore & less & more & low \\\\\n\\end{tabular}\n"
+        "\\end{table}\n\\end{document}")), encoding="utf-8")  # fmt: skip
+    assert _baseline_said(project) == []
+
+
+def test_a_caption_names_a_table_of_baseline_characteristics_by_what_it_says() -> None:
+    """"Baseline" before characteristics or demographics, up to three words between and no
+    time among them, not after what qualifies an outcome; or characteristics or demographics,
+    then "at baseline" or "at randomisation"."""
+    from manuscript_guard.gates.baseline import names_baseline
+
+    named = ("Baseline demographic and clinical characteristics of each group",
+             "Baseline characteristics and change from baseline",
+             "Table 1. Baseline characteristics of the randomised participants",
+             "Characteristics of the participants at baseline",
+             "Demographics at randomization", "Baseline patient demographics",
+             # A qualifier before a colon cuts nothing after it (round 3 of #657).
+             "Table 1. By arm: baseline characteristics", "Baseline post-stroke characteristics",
+             "Balance across arms in baseline characteristics", "Table 1. Participants by "
+             "arm, baseline characteristics", "Comparison across treatment arms of baseline "
+             "characteristics",
+             "*Baseline* characteristics", "\\textbf{Baseline} characteristics",
+             "Characteristics at~baseline", "Characteristics at \\emph{baseline}",
+             # Any words, up to three, between (round 2 of #657).
+             "Baseline demographic and disease characteristics",
+             "Baseline demographic, clinical, and laboratory characteristics",
+             "Baseline clinical and laboratory characteristics",
+             "Baseline socio-demographic characteristics",
+             f"Baseline patients{chr(0x2019)} characteristics",
+             "Baseline characteristics by treatment group")  # fmt: skip
+    not_named = (*_OUTCOMES_NAMING_BASELINE, "Change from~baseline in the score",
+                 "Postbaseline characteristics", "Baseline", "Outcomes at 12 weeks",
+                 "Participants at baseline, by group", "Change from baseline in characteristics")
+    assert [caption for caption in named if not names_baseline(caption)] == []
+    assert [caption for caption in not_named if names_baseline(caption)] == []
+
+
+_PIPE_P = "| A | Drug | P value |\n|---|---|---|\n| x | y | z |\n"
+
+
+def test_pandoc_s_captions_go_to_the_tables_as_pandoc_gives_them() -> None:
+    """Pandoc 3.9 reads a table's caption before it where no table took that one, else the
+    one after it: in either order with nothing between, each table its own (round 1 of
+    #657)."""
+    from manuscript_guard.text.captioned import markdown_captioned
+
+    def captions(text: str) -> list[str]:
+        return [table.caption for table in markdown_captioned(text)]
+
+    assert captions(f"Table: Baseline characteristics\n\n{_PIPE_P}\nTable: Outcomes at 12 "
+                    f"weeks\n\n{_PIPE_P}") == ["Baseline characteristics", "Outcomes at 12 weeks"]
+    assert captions(f"{_PIPE_P}\nTable: Baseline characteristics\n\n{_PIPE_P}\nTable: Outcomes "
+                    "at 12 weeks\n") == ["Baseline characteristics", "Outcomes at 12 weeks"]
+    assert captions(f"{_PIPE_P}\nTable: Baseline characteristics\n\nSome prose.\n\n{_PIPE_P}") == [
+        "Baseline characteristics", ""]
+
+
+@pytest.mark.parametrize(
+    ("legend", "caption"),
+    [("Table 1 Baseline characteristics", "Table 1 Baseline characteristics"),
+     ("**Table 1** Baseline characteristics", "**Table 1** Baseline characteristics"),
+     ("Table 1. Baseline characteristics", "Table 1. Baseline characteristics"),
+     ("Table 1 shows the baseline characteristics.", "")],
+)  # fmt: skip
+def test_a_legend_typed_with_no_stop_after_its_number_is_a_caption(
+    legend: str, caption: str
+) -> None:
+    """BMC's and Springer's "Table 1 Baseline characteristics": a capital after the number
+    opens a legend as a stop does; a small letter goes on a sentence."""
+    from manuscript_guard.text.captioned import markdown_captioned
+
+    (table,) = markdown_captioned(f"Some prose.\n\n{legend}\n\n{_PIPE_P}\nMore prose.\n")
+    assert table.caption == caption
+
+
+def test_a_paragraph_that_opens_with_a_table_s_number_and_a_capital_is_its_legend() -> None:
+    """Known gaps: "Table 1 In the intervention group ..." beside a table is read as its
+    legend, as "Table 1 Baseline characteristics" is: the two are set alike."""
+    from manuscript_guard.text.captioned import markdown_captioned
+
+    prose = "Table 1 In the intervention group, more were women."
+    (table,) = markdown_captioned(f"{prose}\n\n{_PIPE_P}\nMore prose.\n")
+    assert table.caption == prose
+
+
+def test_the_designs_that_take_consort_are_read_from_the_data_file() -> None:
+    from manuscript_guard.gates.baseline import consort_designs
+    from manuscript_guard.gates.design import study_types
+
+    assert consort_designs() == {name for name, kind in study_types().items()
+                                 if "CONSORT" in kind["guidelines"]}  # fmt: skip
+    assert consort_designs() == {"trial"}
+
+
+def test_the_example_is_no_trial_and_has_no_baseline_table_with_p_values(project: Path) -> None:
+    assert _baseline_said(project) == []
+
+
 # --------------------------------------- an earlier output of the same data, and this paper
 #
 # The example stands beside a copy of itself as the abstract it was first presented in. Each
@@ -10202,7 +10474,8 @@ def test_a_package_a_script_loads_and_the_plan_does_not_name_is_a_note(project: 
     assert _software_said(project) == []
     # A plan with no Software section names none of what the scripts load.
     start, end = text.index("## Software\n"), text.index("## Sample size")
-    plan.write_bytes((text[:start] + text[end:]).encode())
+    # The example's Deviations name its packages, for the Methods' sake: left out here.
+    plan.write_bytes((text[:start] + text[end : text.index(_UNCITED_ENTRY)]).encode())
     said = _software_said(project)
     assert [(code, path) for code, _severity, path, _line in said] == [
         ("plan-package-unnamed", "analysis/01_disproportionality.py"),
@@ -10217,6 +10490,189 @@ def test_a_package_a_script_loads_and_the_plan_does_not_name_is_a_note(project: 
     assert all(message.endswith("and the plan has no Software section") for message in messages)
     assert [message.split(" loads ")[1].split(",")[0] for message in messages] == [
         "pandas", "statsmodels", "vigicaen", "matplotlib"]  # fmt: skip
+
+
+# ------------------------------------------------- the packages used, named in the Methods
+
+#: The example's Deviations entry that stands its three packages down: its references are
+#: invented, so none of them could be cited for a package.
+_UNCITED_ENTRY = "9. The Methods name statsmodels and not pandas or matplotlib"
+_RUN_IN = "with statsmodels\n{{results.software.statsmodels}}."
+
+
+def _named_said(root: Path) -> list[tuple[str, str]]:
+    """What G12 says of the packages used against the Methods, by code and package."""
+    from manuscript_guard.gates.software_methods import check_software_cited
+
+    project, _ = load_project(root)
+    _namespace, results, _literature, _report = load_namespace(project)
+    said = []
+    for f in check_software_cited(project, results).findings:
+        assert (f.severity, f.path.relative_to(root).as_posix()) == ("warn", "design/plan.md")
+        lead = " uses " if f.code == "software-unnamed" else " name "
+        said.append((f.code, f.message.split(lead, 1)[1].split(",", 1)[0]))
+    return said
+
+
+def _without_the_uncited_entry(root: Path) -> None:
+    plan = root / "design" / "plan.md"
+    text = plan.read_bytes().decode("utf-8")
+    plan.write_bytes(text[: text.index(_UNCITED_ENTRY)].encode())
+
+
+def _edited(path: Path, old: str, new: str) -> None:
+    text = path.read_bytes().decode("utf-8")
+    assert old in text, old
+    path.write_bytes(text.replace(old, new, 1).encode())
+
+
+def test_a_package_used_and_not_named_in_the_methods_is_said(project: Path) -> None:
+    """Each package the plan's Software section names and a script loads is named in the
+    Methods, or G12 warns, at every stage; the Deviations name the example's three, whose
+    references are invented. Python itself is the language, and is not held to them."""
+    main = project / "manuscript" / "main.md"
+    assert _named_said(project) == []
+    _without_the_uncited_entry(project)
+    said = [("software-unnamed", "pandas"), ("software-uncited", "statsmodels"),
+            ("software-unnamed", "matplotlib")]  # fmt: skip
+    assert _named_said(project) == said
+    # A name inside another word, or in a comment, or in a binding's key, names nothing.
+    _edited(main, "Reports were included", "The pandasql tables and <!-- matplotlib -->"
+            " {{results.software.python}} were kept. Reports were included")
+    assert _named_said(project) == said
+    # A name in a code span names it as plain text does, a module after a point included.
+    _edited(main, _RUN_IN, _RUN_IN + " Tables were held in `pandas.DataFrame`"
+            " [@fictionalHepaticCohort2021].")
+    assert _named_said(project) == said[1:]
+    # A paper with no Methods a reader finds is not read for its packages.
+    _edited(main, "# Methods\n", "# Approach\n")
+    _edited(project / "manuscript" / "supplementary" / "S1_code_lists.md",
+            "# Supplementary methods\n", "# Supplementary tables\n")
+    assert _named_said(project) == []
+
+
+def test_a_package_named_and_not_cited_in_its_sentence_is_said(project: Path) -> None:
+    """The sentence that names the package carries the citation: one in the next sentence,
+    or inside a comment, is not its, and a typed citation is one."""
+    main = project / "manuscript" / "main.md"
+    _without_the_uncited_entry(project)
+    _edited(main, _RUN_IN, _RUN_IN + " Its methods are described elsewhere"
+            " [@fictionalClassSignal2019].")
+    assert ("software-uncited", "statsmodels") in _named_said(project)
+    _edited(main, _RUN_IN, "with statsmodels <!-- [@fictionalClassSignal2019] -->\n"
+            "{{results.software.statsmodels}}.")
+    assert ("software-uncited", "statsmodels") in _named_said(project)
+    for cited in ("[@fictionalClassSignal2019]", "(Fictional and Fictional, 2019)", "[2]"):
+        text = main.read_bytes().decode("utf-8")
+        start = text.index("The analysis was run")
+        end = text.index("\n\n", start)
+        main.write_bytes((text[:start] + f"The analysis was run with statsmodels {cited}."
+                          + text[end:]).encode())  # fmt: skip
+        assert ("software-uncited", "statsmodels") not in _named_said(project), cited
+        assert ("software-unnamed", "statsmodels") not in _named_said(project), cited
+
+
+def test_a_package_cited_in_the_supplement_s_methods_only_passes(project: Path) -> None:
+    """The supplement's Methods are the Methods too, as G9 reads them; its tables are not."""
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    _without_the_uncited_entry(project)
+    sentence = "The forest plot was drawn with Matplotlib [@fictionalHepaticCohort2021]."
+    _edited(supplement, "## Table S2. The adjusted model\n",
+            f"## Table S2. The adjusted model\n\n{sentence}\n")
+    assert ("software-unnamed", "matplotlib") in _named_said(project)
+    _edited(supplement, "# Supplementary methods\n", f"# Supplementary methods\n\n{sentence}\n")
+    # In any case for a Python package, as authors write "Matplotlib".
+    assert ("software-unnamed", "matplotlib") not in _named_said(project)
+
+
+def test_an_r_package_is_named_with_its_case_and_a_python_one_by_any_of_its_names(
+    project: Path,
+) -> None:
+    """R loads `Matrix` and not `matrix`, so the Methods name it with its case. A Python
+    package is named by its item's names and its import names: `scikit-learn` or `sklearn`
+    where the item gives both, and only `sklearn` where it gives that one."""
+    main, plan = project / "manuscript" / "main.md", project / "design" / "plan.md"
+    (project / "analysis" / "02_model.R").write_bytes(b"library(Matrix)\n")
+    (project / "analysis" / "03_learn.py").write_bytes(b"from sklearn import tree\n")
+    _edited(plan, "- `matplotlib`:", "- `Matrix`: sparse tables\n- `scikit-learn` (`sklearn`):"
+            " a tree\n- `matplotlib`:")
+    _edited(main, _RUN_IN, _RUN_IN + " A sparse matrix [@fictionalHepaticCohort2021]"
+            " held the counts, and Scikit_Learn [@fictionalClassSignal2019] fitted a tree.")
+    assert _named_said(project) == [("software-unnamed", "Matrix")]
+    _edited(main, "A sparse matrix", "A sparse Matrix")
+    assert _named_said(project) == []
+    _edited(plan, "- `scikit-learn` (`sklearn`):", "- `sklearn`:")
+    assert _named_said(project) == [("software-unnamed", "sklearn")]
+
+
+def test_the_language_and_base_names_an_item_gives_do_not_name_its_package(
+    project: Path,
+) -> None:
+    """Round 1 of #659: every name of an item was a name of its package, so "R" or "Python"
+    in a cited sentence named brms or statsmodels. Only the names G12 holds to the scripts
+    count: the item's first, and those a script loads that somebody chose (round 1 of #592),
+    never the language, base R or the standard library."""
+    main, plan = project / "manuscript" / "main.md", project / "design" / "plan.md"
+    (project / "analysis" / "02_model.R").write_bytes(b"library(brms)\n")
+    _edited(plan, "- `matplotlib`:", "- `brms` 2.21, under `R` with `stats` and `json`\n"
+            "- `matplotlib`:")
+    _edited(main, _RUN_IN, _RUN_IN + " Analyses were run in R 4.4.1 (R Core Team, 2024) with"
+            " stats and json [@fictionalClassSignal2019].")
+    assert _named_said(project) == [("software-unnamed", "brms")]
+    _without_the_uncited_entry(project)
+    _edited(plan, "- `statsmodels`:", "- `statsmodels` (`Python`):")
+    text = main.read_bytes().decode("utf-8")
+    start = text.index("The analysis was run in Python")
+    main.write_bytes((text[:start] + "The analysis was run in Python 3.11 [5]."
+                      + text[text.index("\n\n", start):]).encode())  # fmt: skip
+    assert ("software-unnamed", "statsmodels") in _named_said(project)
+
+
+def test_a_citation_after_an_abbreviation_is_in_the_sentence_that_names_the_package(
+    project: Path,
+) -> None:
+    """Round 1 of #659: a sentence was cut after "et al.", "v." or "i.e." before a capital,
+    a digit or a bracket, and the citation after the cut was the next sentence's."""
+    main, plan = project / "manuscript" / "main.md", project / "design" / "plan.md"
+    (project / "analysis" / "02_model.R").write_bytes(
+        b"library(lme4)\nlibrary(nlme)\nlibrary(ggplot2)\nlibrary(glmmTMB)\n")
+    _edited(plan, "- `matplotlib`:", "- `lme4`: mixed models\n- `nlme`: mixed models\n"
+            "- `ggplot2`: figures\n- `glmmTMB`: counts\n- `matplotlib`:")
+    _edited(main, _RUN_IN, _RUN_IN + " Models were fitted with lme4, described by Bates et al."
+            " [12]. Others were fitted with nlme, described by Pinheiro et al."
+            " [@fictionalClassSignal2019]. Figures were drawn with ggplot2 (v. 3.4.0) [24]."
+            " Counts were modelled with glmmTMB, i.e. Linear mixed models for counts"
+            " [@fictionalHepaticCohort2021].")
+    assert _named_said(project) == []
+    # A citation typed after the stop and a space counts for the sentence it follows.
+    _edited(main, "drawn with ggplot2 (v. 3.4.0) [24].", "drawn with ggplot2. [24]")
+    assert _named_said(project) == []
+    # The paragraph after a stop is another sentence, whatever ends the paragraph before.
+    _edited(main, "drawn with ggplot2. [24]", "drawn as in [@fictionalClassSignal2019] and Bates"
+            " et al.\n\nggplot2 drew them.")
+    assert _named_said(project) == [("software-uncited", "ggplot2")]
+
+
+def test_a_package_named_by_an_ordinary_word_is_named_wherever_the_word_stands(
+    project: Path,
+) -> None:
+    """Known gaps: a package whose name is a word of English, survival, boot, mice, car, is
+    named by that word in any sense; no reading tells the package from the word."""
+    main, plan = project / "manuscript" / "main.md", project / "design" / "plan.md"
+    (project / "analysis" / "02_model.R").write_bytes(b"library(survival)\n")
+    _edited(plan, "- `matplotlib`:", "- `survival`: Kaplan-Meier curves\n- `matplotlib`:")
+    _edited(main, _RUN_IN, _RUN_IN + " Overall survival was estimated with the Kaplan-Meier"
+            " method [@fictionalHepaticCohort2021].")
+    assert _named_said(project) == []
+
+
+def test_a_package_only_the_run_recorded_is_named_by_its_item_s_first_name() -> None:
+    """Round 2 of #659: recorded under its other name, its first name named nothing."""
+    from manuscript_guard.gates.software_methods import judge_named
+
+    plan = "# Plan\n\n## Software\n\n- `sklearn` (`scikit-learn`): a tree\n"
+    found = judge_named(Path("."), plan, {}, ["scikit-learn"], frozenset(), "With sklearn [3].", [])
+    assert found.findings == ()
 
 
 # ------------------------------------------------- the registered protocol
@@ -12079,6 +12535,8 @@ _READS_LATEX = (
     "check_boxes",
     # It reads the AI-use statement in G4's `main_text`, and the supplement's printed view.
     "check_ai_use",
+    # The declarations held to authors.yaml: read in the same two views.
+    "check_disclosures",
     # It reads the Results and the Discussion in each document's printed view, as
     # `check_reported` does (item 10 of the borrowed checks).
     "check_interpretation",
@@ -12090,6 +12548,12 @@ _READS_LATEX = (
     # It reads each figure a document places, `\includegraphics` through `\graphicspath`
     # as a Markdown image is (#630).
     "check_placed",
+    # It reads each table of each document with its float's caption, a `tabular` as a pipe
+    # table is (`text/captioned.py`).
+    "check_baseline",
+    # It reads the Methods as G9 does, a LaTeX document's in its printed view, where a
+    # citation command is written as pandoc's.
+    "check_software_cited",
 )  # fmt: skip
 
 
@@ -32282,6 +32746,156 @@ def test_a_code_step_edited_in_its_fragment_fails(
 
 
 # --------------------------------------------------------------------------------------
+# G4: the manuscript's funding, competing interests, ethics and author contributions held to
+# authors.yaml (DESIGN.md, "The declarations are held to authors.yaml").
+
+
+def _disclosure_findings(root: Path, stage: str | None = None) -> list[tuple[str, str]]:
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.gates.disclosures import GATE
+
+    report, _project, _chosen, _deferred = _run_gates(root, stage=stage)
+    ours = ("funding-", "interests-", "ethics-approval-", "credit-")
+    return sorted((f.code, f.severity) for f in report.findings
+                  if f.gate == GATE and f.code.startswith(ours))  # fmt: skip
+
+
+def _disclosures_recorded(root: Path, family: str, **fields: object) -> None:
+    """`fields` set on the author of authors.yaml called `family`; `roles` on the file."""
+    path = root / "authors.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    roles = fields.pop("roles", None)
+    if roles is not None:
+        document.setdefault("roles", {}).update(roles)
+    for author in document["authors"]:
+        if author["family"] == family:
+            author.update(fields)
+    path.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
+                    encoding="utf-8")  # fmt: skip
+
+
+def _replaced(path: Path, old: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert old in text, (old, path)
+    path.write_text(text.replace(old, new), encoding="utf-8")
+
+
+_GRANT = "Agence Nationale de la Recherche (ANR-20-CE17-0001)"
+
+
+def test_the_example_s_declarations_agree_with_its_authors_yaml(project: Path) -> None:
+    """"This work received no funding" and "None declared." beside a record of no funding and
+    "None declared." for both authors: nothing is said, at any stage."""
+    assert _disclosure_findings(project, "drafting") == []
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_a_funding_statement_that_denies_a_recorded_grant_is_caught(project: Path) -> None:
+    """The example says it received no funding; authors.yaml now lists a grant. A warning
+    while drafting, a failure at submission; the grant given passes."""
+    _disclosures_recorded(project, "Example", funding=[_GRANT])
+    assert _disclosure_findings(project, "drafting") == [("funding-denied", "warn")]
+    assert _disclosure_findings(project, "submission") == [("funding-denied", "fail")]
+    _replaced(main_md(project), "This work received no funding.",
+              "This work was funded by the ANR (ANR\N{EN DASH}20\N{EN DASH}CE17\N{EN DASH}0001).")
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_a_grant_the_funding_statement_leaves_out_is_caught(project: Path) -> None:
+    """A grant identifier with a digit more is another grant; a funder with no identifier is
+    found by its words, with its accents and case folded."""
+    _disclosures_recorded(project, "Example", funding=[_GRANT])
+    _disclosures_recorded(project, "Sample",
+              funding=["Fondation pour la Recherche M\N{LATIN SMALL LETTER E WITH ACUTE}dicale"])
+    _replaced(main_md(project), "This work received no funding.",
+              "Supported by grant ANR-20-CE17-00012 and the FONDATION POUR LA RECHERCHE MEDICALE.")
+    assert _disclosure_findings(project, "submission") == [("funding-grant-missing", "fail")]
+
+
+def test_no_funding_statement_with_a_grant_recorded_is_a_note(project: Path) -> None:
+    _disclosures_recorded(project, "Example", funding=[_GRANT])
+    _replaced(main_md(project), "# Funding\n\nThis work received no funding.\n\n", "")
+    assert _disclosure_findings(project, "submission") == [("funding-not-stated", "info")]
+
+
+def test_none_declared_while_an_author_records_an_interest_is_caught(project: Path) -> None:
+    """The example's "None declared." stands for every author only while every record says
+    none. Naming the author with the interest passes."""
+    _disclosures_recorded(project, "Sample", competing_interests="Consulting fees from Pharma X.")
+    assert _disclosure_findings(project, "drafting") == [("interests-none-contradicted", "warn")]
+    _replaced(main_md(project), "# Competing interests\n\nNone declared.",
+              "# Competing interests\n\nBlaise SAMPLE received consulting fees from Pharma X. "
+              "The other authors declare no competing interests.")
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_an_author_with_an_interest_the_statement_does_not_name_is_caught(project: Path) -> None:
+    _disclosures_recorded(project, "Sample", competing_interests="Consulting fees from Pharma X.")
+    _replaced(main_md(project), "# Competing interests\n\nNone declared.",
+              "# Competing interests\n\nAda Example received consulting fees from Pharma X.")
+    assert _disclosure_findings(project, "submission") == [("interests-author-missing", "fail")]
+
+
+def test_an_empty_competing_interests_field_is_caught(project: Path) -> None:
+    """An empty field is not a declaration of none, so the manuscript's "None declared." is
+    not backed by the record."""
+    _disclosures_recorded(project, "Sample", competing_interests="")
+    assert _disclosure_findings(project, "drafting") == [("interests-unfilled", "warn")]
+
+
+def test_an_ethics_approval_the_manuscript_does_not_give_is_caught(project: Path) -> None:
+    """The example says no ethical approval was required, in its Data availability; the
+    ethics lead records one. Given in the Methods instead, it passes."""
+    lead = {"author": "Sample", "approval": "CPP Ouest III 2021-A00123-36"}
+    _disclosures_recorded(project, "Sample", roles={"ethics_lead": lead})
+    assert _disclosure_findings(project, "drafting") == [("ethics-approval-denied", "warn")]
+    _replaced(main_md(project), " No real patient data were used, and no ethical approval was "
+              "required.", "")
+    assert _disclosure_findings(project, "submission") == [("ethics-approval-missing", "fail")]
+    _replaced(main_md(project), "# Funding", "# Ethics\n\nApproved by the CPP Ouest III "
+              "(2021-A00123-36).\n\n# Funding")
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_an_ethics_approval_given_in_the_supplement_s_methods_passes(project: Path) -> None:
+    _disclosures_recorded(project, "Sample", roles={"ethics_lead": {"name": "R. Lead",
+                                                        "approval": "IRB #2021-0456"}})
+    _replaced(main_md(project), " No real patient data were used, and no ethical approval was "
+              "required.", "")
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(supplement.read_text(encoding="utf-8")
+                          + "\n\n## Supplementary methods\n\nThe IRB approved it (2021-0456).\n",
+                          encoding="utf-8")  # fmt: skip
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_an_author_contributions_statement_held_to_the_credit_roles(project: Path) -> None:
+    """With no such statement nothing is said; with one, an author it does not name and a
+    role it does not give are each caught. Initials and a dash of any kind pass."""
+    assert _disclosure_findings(project, "submission") == []
+    _replaced(main_md(project), "# Competing interests",
+              "# Author contributions\n\nA.E.: conceptualisation, formal analysis, writing "
+              "\N{EM DASH} original draft. Ada Example supervised.\n\n# Competing interests")
+    assert _disclosure_findings(project, "submission") == [
+        ("credit-author-missing", "fail"), ("credit-role-missing", "fail"),
+        ("credit-role-missing", "fail"), ("credit-role-missing", "fail")]
+    _replaced(main_md(project), "Ada Example supervised.",
+              "BS: Methodology, Supervision, Writing - Review and Editing.")
+    assert _disclosure_findings(project, "submission") == []
+
+
+def test_the_declarations_of_the_latex_twin_are_held_to_authors_yaml(project: Path) -> None:
+    """The twin's printed view writes `\\section{Funding}` as a heading, so its funding
+    statement is read as the Markdown's is."""
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(Path(__file__).parent / "data" / "latex" / "manuscript",
+                    project / "manuscript")  # fmt: skip
+    assert _disclosure_findings(project, "submission") == []
+    _disclosures_recorded(project, "Example", funding=[_GRANT])
+    assert _disclosure_findings(project, "submission") == [("funding-denied", "fail")]
+
+
+# --------------------------------------------------------------------------------------
 # G4: the AI-use statement held to the records of a model's work and to what the authors
 # declare (DESIGN.md, "The AI-use statement names the models the records hold").
 
@@ -32369,3 +32983,44 @@ def test_a_journal_s_statement_with_nothing_declared_by_the_authors_is_noted(
     _ai_use_required(project)
     _ai_use_stated(project, "## Use of AI\n\nNo AI tool was used.")
     assert _ai_use_findings(project) == [("ai-use-undeclared", "info")]
+
+
+#: A title page as a Word paper converted by pandoc opens with one, put between the
+#: example's front matter and its Abstract: authors in capitals with their marks and
+#: degrees, French affiliations with their units and institutions, the corresponding author.
+TITLE_PAGE = (
+    "Ana MARTIN, PharmD^1,2^, Paul GIRARD, MD, PhD^3^\n\n"
+    "1.  Normandie Univ, UNICAEN, INSERM U1237, PhIND, GIP Cyceron, F-14000 Caen, France\n\n"
+    "2.  Department of Pharmacology, CHU de Caen Normandie, F-14000 Caen, France\n\n"
+    "3.  UMR-S 1237, Institut Blood and Brain, Caen, France\n\n"
+    "**Corresponding author**\n\n"
+    "Ana MARTIN, ana.martin@example.org\n\n"
+)
+
+
+def with_title_page(root: Path, text: str, running: str = "") -> str:
+    """`text` with `TITLE_PAGE` above its Abstract, and a running title where one is given."""
+    titled = text.replace("# Abstract", TITLE_PAGE + running + "# Abstract", 1)
+    assert titled != text, "the fixture changed under this test"
+    main_md(root).write_text(titled, encoding="utf-8")
+    return titled
+
+
+def test_a_title_page_above_the_mended_example_adds_nothing(project: Path) -> None:
+    """The title page names institutions and units that no paper defines, and G14 does not
+    read it (Basile, 2026-11-12): read, each of its capitals was an undefined abbreviation."""
+    with_title_page(project, with_ror_defined(project))
+    assert language_findings(project) == []
+
+
+def test_a_definition_only_the_title_page_gives_is_caught(project: Path) -> None:
+    """The Introduction's definition is cut, and ROR is spelt out only in the running title
+    on the title page. Nothing there defines: the Introduction's ROR is undefined."""
+    mended = with_ror_defined(project)
+    cut = mended.replace(DEFINED_USE, UNDEFINED_USE)
+    titled = with_title_page(
+        project, cut, "Running title: Reporting odds ratio (ROR) of hepatic injury\n\n"
+    )
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(titled, "(ROR {{"))
+    ]

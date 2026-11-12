@@ -886,6 +886,19 @@ def _data_statement() -> Reading:
     return read
 
 
+@reading("disclosures")
+def _disclosures() -> Reading:
+    from manuscript_guard.gates.disclosures import judge
+
+    def read(given: dict[str, Any]) -> dict[str, Any]:
+        """What G4 says of a manuscript's funding, competing interests, ethics and author
+        contributions statements against an authors.yaml, at submission."""
+        return _told(judge(given["authors"], given["main"], given.get("supplement", ""),
+                           submission=True, path=MAIN))  # fmt: skip
+
+    return read
+
+
 @reading("deposit named")
 def _deposit_named() -> Reading:
     from manuscript_guard.gates.data_statement import names_doi
@@ -1572,6 +1585,67 @@ def _software() -> Reading:
     return software
 
 
+@reading("baseline tables")
+def _baseline_tables() -> Reading:
+    """What G8 says of the tables of a paper of the design given, by `study_type`: those it
+    emits, each with its key, caption and columns, and those its manuscript files type, by
+    their paths under `manuscript/` (`gates/baseline.py`). Each warning as its file from the
+    project's folder, its line, and its message."""
+    from types import SimpleNamespace
+
+    from manuscript_guard.gates.baseline import judge_baseline
+
+    def baseline(given: dict[str, Any]) -> list[list[Any]]:
+        folder = Path(tempfile.mkdtemp(prefix="mg-reading-"))
+        try:
+            manuscript = folder / "manuscript"
+            for name, text in given["files"].items():
+                path = manuscript / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding="utf-8", newline="")
+            tables = {one["key"]: SimpleNamespace(
+                caption=one["caption"], columns=tuple(one["columns"]),
+                source=Path("results") / f"{one['key']}.json") for one in given["emitted"]}
+            report = judge_baseline(manuscript, given["study_type"], tables)
+            return [[_within(f.path, folder), f.line, f.code, f.severity, f.message]
+                    for f in report.findings]
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+    return baseline
+
+
+def _within(path: Path, folder: Path) -> str:
+    """A path from `folder`, whichever way the temporary folder's name was spelt, or as it is
+    where it is relative already."""
+    if not path.is_absolute():
+        return path.as_posix()
+    for base, under in ((folder, path), (folder.resolve(), path.resolve())):
+        try:
+            return under.relative_to(base).as_posix()
+        except ValueError:
+            continue
+    return path.as_posix()
+
+
+@reading("software in the methods")
+def _software_in_the_methods() -> Reading:
+    """What G12 says of the Methods against the packages a plan's Software section names and
+    the scripts given load or the emitter recorded: the main text's Methods and each of the
+    supplement's, as G9 finds them in the documents given (`gates/software_methods.py`)."""
+    from manuscript_guard.gates.methods import methods_in, supplement_methods_in
+    from manuscript_guard.gates.software_methods import judge_named
+
+    def software_in_the_methods(given: dict[str, Any]) -> dict[str, Any]:
+        supplement = [found for text in given["supplement"]
+                      if (found := supplement_methods_in(text)) is not None]  # fmt: skip
+        return _told(judge_named(Path("."), given["plan"], dict(given["scripts"]),
+                                 list(given["emitted"]), frozenset(given["own"]),
+                                 methods_in(given["main"]), supplement))  # fmt: skip
+
+    return software_in_the_methods
+
+
 @reading("model names")
 def _model_names() -> Reading:
     from manuscript_guard.text.model_names import named
@@ -1956,6 +2030,20 @@ def _abbreviations() -> Reading:
 
     _file("")
     return abbreviations
+
+
+@reading("abbreviation edits")
+def _abbreviation_edits() -> Reading:
+    from manuscript_guard.corrections import corrections
+    from manuscript_guard.gates.language import _Known, _shipped, abbreviation_edits
+
+    def edited(given: dict[str, Any]) -> list[dict[str, Any]]:
+        exact, lowered = _shipped()
+        known = _Known(exact | set(given.get("known", ())), lowered)
+        return _corrected(corrections(abbreviation_edits([_file(given["text"])], known)))
+
+    _file("")
+    return edited
 
 
 @reading("audit abbreviations")

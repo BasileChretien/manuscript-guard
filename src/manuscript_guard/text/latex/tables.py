@@ -61,8 +61,14 @@ _BLANK = " \t\r\n" + NUL
 def latex_tables(source: Source) -> list[Table]:
     """Each table the author typed in `source`, its rows in the order they stand. A table
     inside another's cell is read as a table of its own, and its text is in that cell."""
+    return [table for _span, table in spanned_tables(source)]
+
+
+def spanned_tables(source: Source) -> list[tuple[tuple[int, int], Table]]:
+    """`latex_tables`, each table with where its environment runs in `source`'s text: G8
+    finds a table's caption in the float around it (`text.captioned`)."""
     view = markdown_view(source, bindings(source)[0], blank=NUL)
-    tables: list[Table] = []
+    tables: list[tuple[tuple[int, int], Table]] = []
     for start, end in source.reading.tables:
         opened = _rows_start(source.text, start)
         if opened is None or opened >= end:
@@ -75,7 +81,7 @@ def latex_tables(source: Source) -> list[Table]:
             if any(cell.text for cell in row):
                 rows.append(row)
         if rows:
-            tables.append(tuple(rows))
+            tables.append(((start, end), tuple(rows)))
     return tables
 
 

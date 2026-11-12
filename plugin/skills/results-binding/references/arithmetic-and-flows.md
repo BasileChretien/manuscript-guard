@@ -45,3 +45,11 @@ reasons and arms are named vectors there: `stages = c("Randomised" = 300, ...)`.
   the reports included.
 - **A 2x2 table.** Declare each margin as a sum of its cells, and the total as the sum of all
   four.
+
+## The findings
+
+| Code | Ask |
+|---|---|
+| `relation-broken`, `flow-broken` | the analysis's own numbers disagree with the arithmetic it declared: find the computation that is wrong, or the declaration that names the wrong keys |
+| `relation-rounding` | a warning: the printed parts do not give the printed result. Print one more digit, or say each is rounded on its own |
+| `relation-unresolved` | a declared relation names a key nothing emits, or one that is not a number |

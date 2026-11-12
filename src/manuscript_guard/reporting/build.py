@@ -39,6 +39,13 @@ def load_recipe(path: Path) -> tuple[Recipe, dict]:
             "options",
             "stop_at",
             "table",
+            # The rows reader's (`reporting/rows.py`).
+            "columns",
+            "rows",
+            "start_after",
+            "ignore",
+            "topics",
+            "marker",
         )
     }
     if layout["format"] == "jats-table":
@@ -150,6 +157,15 @@ def build_profile(
         items = transcribe(document, recipe, tables=[body])
         haystack = article_text(document)
         unverified = [item.id for item in items if not contains(haystack, item.text)]
+    elif parse_mode == "pdf-rows":
+        # A table in a PDF read from where its words sit. There is no second reading of the
+        # page to compare the items with, and the profile says so rather than claim a check.
+        from manuscript_guard.reporting.rows import VERIFICATION, RowsRecipe, transcribe_rows
+
+        rows_recipe = RowsRecipe.from_layout(recipe.document, layout)
+        items = transcribe_rows(document, rows_recipe)
+        unverified = []
+        meta = {**meta, "verification": VERIFICATION[rows_recipe.rows]}
     elif str(parse_mode).startswith("pdf"):
         from manuscript_guard.literature.sources import contains
         from manuscript_guard.reporting.columns import ColumnRecipe, transcribe_columns

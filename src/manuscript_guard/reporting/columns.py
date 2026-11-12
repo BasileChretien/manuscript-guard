@@ -57,6 +57,14 @@ def page_text(path: Path, page: int) -> str:
 
     A pdftotext that does not start, or does not finish, is a RecipeError like the rest.
     """
+    return run_pdftotext(path, page, "-layout")
+
+
+def run_pdftotext(path: Path, page: int, *options: str) -> str:
+    """What `pdftotext` writes for one page with these options, in UTF-8 or a RecipeError.
+
+    `page_text` above says why each failure is refused as it is; `rows.py` asks for `-bbox`
+    through the same door, so the two readers fail alike."""
     if shutil.which("pdftotext") is None:
         raise RecipeError(
             "reading a checklist or a scale laid out in a PDF needs poppler's pdftotext; "
@@ -65,7 +73,7 @@ def page_text(path: Path, page: int) -> str:
     pages = ["-f", str(page), "-l", str(page)]
     try:
         finished = subprocess.run(
-            ["pdftotext", "-layout", "-enc", "UTF-8", *pages, str(path), "-"],
+            ["pdftotext", *options, "-enc", "UTF-8", *pages, str(path), "-"],
             capture_output=True,
             timeout=TIMEOUT_SECONDS,
             check=False,

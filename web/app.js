@@ -359,13 +359,16 @@ function showReport(result, paper) {
   }
   // With no PDF there would be no report at all: the text the command line prints is shown
   // in its place, and can be saved (round 1 of #644).
-  const shown = Boolean(pdf);
+  // This run's PDF, never one an earlier run left (round 2 of #644).
+  const shown = Boolean(result.pdf && result.pdf.data);
   $("astext").hidden = shown;
   $("report").textContent = shown ? "" : result.out || "";
   $("done").textContent = `${paper} checked in ${(result.ms / 1000).toFixed(1)} s. `
     + outcome(result.view, shown);
 }
 window.mgShowReport = showReport;  // what web/test/browser.mjs shows a run with no PDF by
+// What web/test/browser.mjs fails a check after a step by (round 2 of #644).
+window.mgRun = { runStarted, stepped, runEnded };
 
 // How the checks came out, in a sentence, from where each stands (`summary.standings`, the
 // colours of the PDF's summary): the PDF below says the rest.
@@ -453,6 +456,12 @@ $("example").addEventListener("click", async () => {
     if (!answer.ok) throw new Error(`the page answered ${answer.status}`);
     file = new File([await answer.blob()], "example-paper.md", { type: "text/markdown" });
   } catch (error) {
+    // No earlier steps or report left beside the message, as if they were this one's
+    // (round 2 of #644).
+    clearReport();
+    $("steps").replaceChildren();
+    $("runbar").hidden = true;
+    $("eta").textContent = "";
     $("running").hidden = false;
     $("runtext").textContent = `The example paper could not be loaded (${error.message}): `
       + "it comes from this page's address, so it needs the network.";

@@ -201,9 +201,7 @@ try {
     const left = await page.evaluate(() => ({
       hidden: document.getElementById("result").hidden,
       report: document.getElementById("pdfview").getAttribute("src") || "",
-      spinning: Boolean(document.querySelector("#steps li.now")),
     }));
-    if (left.spinning) fail("a refused run left a step shown as under way");
     if (!/two of the files chosen are named/.test(refused.error || "")) {
       fail(`two outputs named ${twice[0]}: not refused (${refused.error || "it ran"})`);
     }
@@ -232,6 +230,23 @@ try {
     }
     console.log(`no PDF: ${fallback.shown ? "the report shown as text" : "NO REPORT"}`);
   }
+
+  // A check that fails after a step has started leaves no step shown as under way, and its
+  // message shown (round 2 of #644).
+  if (status.startsWith("Ready")) {
+    const failed = await page.evaluate(() => {
+      window.mgRun.runStarted("paper.md", { lookup: false, docx: false });
+      window.mgRun.stepped({ key: "read", done: 0, total: 0 });
+      window.mgRun.runEnded("The check could not run: a test.", { failed: true });
+      return { spinning: Boolean(document.querySelector("#steps li.now")),
+        shown: !document.getElementById("running").hidden };
+    });
+    if (failed.spinning || !failed.shown) fail(`a failed check: ${JSON.stringify(failed)}`);
+  }
+  // No frame of the PDF's refused by the policy, its event come late or not (round 2 of #644).
+  const lateFrames = await page.evaluate(() => window.mgRefused.filter(
+    (each) => each.rule === "frame-src" && /^blob:/.test(each.url || "")));
+  if (lateFrames.length) fail(`the policy refused a PDF's frame: ${JSON.stringify(lateFrames)}`);
 
   await page.click("#probe");
   const probe = await page.waitForFunction("window.mgProbe").then((handle) => handle.jsonValue());

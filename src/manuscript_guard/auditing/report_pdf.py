@@ -73,22 +73,89 @@ def written(view: dict, title: str, version: str, *, ran: tuple[str, ...] = (),
             on: datetime.date | None = None) -> bytes:  # fmt: skip
     """The PDF of the report whose view is `view`, titled `title`; `ran` names the gates the
     audit ran, which the closing says are few of the tool's; `on` is the day it is dated."""
+    day = on or datetime.date.today()
+    # Drawn twice: the contents give each part's page, which only a drawing says. The page
+    # numbers stand in a column of their own width, so the second drawing is laid out as
+    # the first (the author, 2026-11-12: "make the pdf really interactive").
+    first = _drawn(view, title, version, ran, day, {})
+    pages = {key: page + 1 for key, (page, _top) in first.places.items()}
+    return _drawn(view, title, version, ran, day, pages).bytes()
+
+
+def _drawn(view: dict, title: str, version: str, ran: tuple[str, ...], on: datetime.date,
+           pages: dict[str, int]) -> Pdf:  # fmt: skip
+    """The report drawn, the contents giving each part's page from `pages`, by its key."""
     from manuscript_guard.gates import GATES
 
-    gates = len(GATES)
     pdf = Pdf(title=title, producer=f"manuscript-guard {version}", author="manuscript-guard",
               subject="What manuscript-guard's audit found in a paper",
               frame=Margins(running=title, foot=f"Made with manuscript-guard {version}  ·  "
-                            f"{SHOWN_HOME}", uri=HOME, color=FAINT, rule=LINE))  # fmt: skip
-    _cover(pdf, view, title, version, on or datetime.date.today())
+                            f"{SHOWN_HOME}", uri=HOME, color=FAINT, rule=LINE,
+                            home="checks"))  # fmt: skip
+    _cover(pdf, view, title, version, on)
     _glance(pdf, view)
+    _contents(pdf, view, pages)
     for heading, said in view["notes"]:
         _note(pdf, heading, said)
     _words(pdf, view)
     for heading, text in view["sections"]:
         _section(pdf, heading, text)
-    _closing(pdf, view, gates, ran)
-    return pdf.bytes()
+    _closing(pdf, view, len(GATES), ran)
+    return pdf
+
+
+def _kind_key(paper: int, kind: int) -> str:
+    return f"kind:{paper}:{kind}"
+
+
+def _parts(view: dict) -> list[tuple[str, str, int | None, int]]:
+    """What the contents list, in the order the report has it: each kind of finding on the
+    words, under the paper's name where several papers were audited, and each other section;
+    each with its key, its count where it has one, and how far it is set in."""
+    several = len(view["words"]) > 1
+    parts: list[tuple[str, str, int | None, int]] = []
+    for at, paper in enumerate(view["words"]):
+        if not paper["kinds"]:
+            continue
+        heading = f"Writing and language: {paper['paper']}" if several else "Writing and language"
+        parts.append((heading, _key("Writing"), None, 0))
+        parts += [(kind["title"], _kind_key(at, place), kind["count"], 1)
+                  for place, kind in enumerate(paper["kinds"])]  # fmt: skip
+    parts += [(heading, _key(heading), None, 0) for heading, _text in view["sections"]]
+    return parts
+
+
+def _contents(pdf: Pdf, view: dict, pages: dict[str, int]) -> None:
+    """In this report: each kind of finding and each section, a line that links to it, with
+    its count and its page; what a reader of a long report goes to first."""
+    parts = _parts(view)
+    if not parts:
+        return
+    _heading(pdf, "In this report", key="contents", level=2, back=False)
+    column = 34.0
+    for title, key, count, depth in parts:
+        size, kind = (9.3, "regular") if depth else (9.8, "bold")
+        indent = 14.0 * depth
+        lines = pdf.wrap(title, kind, size, COLUMN - indent - column - 40)
+        step = size * 1.4
+        top = pdf.ensure(step * len(lines) + 2)
+        for at, line in enumerate(lines):
+            pdf.put(line, x=MARGIN + indent, top=top - step * at, kind=kind, size=size,
+                    color=INK, link=key)  # fmt: skip
+        last = top - step * (len(lines) - 1)
+        if count is not None:
+            wide = pdf.measure(lines[-1], kind, size)
+            said = str(count)
+            pill = pdf.measure(said, "bold", 7.5) + 10
+            pdf.rect(MARGIN + indent + wide + 7, last + 0.5, pill, 11.5, SOFT, 5.75)
+            pdf.put(said, x=MARGIN + indent + wide + 12, top=last - 1.5, kind="bold", size=7.5,
+                    color=DEEP)  # fmt: skip
+        page = str(pages.get(key, ""))
+        pdf.put(page, x=WIDTH - MARGIN - pdf.measure(page, "regular", size), top=last, size=size,
+                color=ACCENT, link=key)  # fmt: skip
+        pdf.link_area(MARGIN + indent, top + 1, COLUMN - indent, step * len(lines), key)
+        pdf.y = top - step * len(lines)
+    pdf.gap(6)
 
 
 # ---------------------------------------------------------------------------- the parts
@@ -227,7 +294,9 @@ def _words(pdf: Pdf, view: dict) -> None:
     papers were audited, though only one has findings (round 1 of #631), since no place
     under it names the paper again."""
     several = len(view["words"]) > 1
-    for paper in (paper for paper in view["words"] if paper["note"] or paper["kinds"]):
+    for at, paper in enumerate(view["words"]):
+        if not paper["note"] and not paper["kinds"]:
+            continue
         heading = f"Writing and language: {paper['paper']}" if several else "Writing and language"
         _heading(pdf, heading, key=_key("Writing"))
         if paper["note"]:
@@ -235,21 +304,26 @@ def _words(pdf: Pdf, view: dict) -> None:
             continue
         _flow(pdf, "For a reader to look at, kind by kind: none of these is counted as an error.",
               size=9, color=MUTED)  # fmt: skip
-        for kind in paper["kinds"]:
-            _kind(pdf, kind)
+        for place, kind in enumerate(paper["kinds"]):
+            _kind(pdf, kind, _kind_key(at, place))
 
 
-def _kind(pdf: Pdf, kind: dict) -> None:
+def _kind(pdf: Pdf, kind: dict, key: str | None = None) -> None:
     """One kind of finding on the words: its title and count, its hint once where its places
-    share one, and each place, its message, its quote and its own hint. The check's code
-    (G14) is left to the text: it names nothing a reader of the PDF can look up there."""
+    share one, and each place, its message, its quote and its own hint; the place `key`, which
+    the contents link to, and a link back to them. The check's code (G14) is left to the
+    text: it names nothing a reader of the PDF can look up there."""
     title = kind["title"]
-    lines = pdf.wrap(title, "bold", 11.5, COLUMN - 50)
+    # Room at its right for its count and the link back, which stand on its first line.
+    lines = pdf.wrap(title, "bold", 11.5, COLUMN - 115)
     pdf.gap(10)
     top = pdf.ensure(14 * len(lines) + 60)
-    pdf.bookmark(f"{title} ({kind['count']})", 2)
+    pdf.bookmark(f"{title} ({kind['count']})", 2, key)
     for at, line in enumerate(lines):
         pdf.put(line, x=MARGIN, top=top - 14 * at, kind="bold", size=11.5, color=INK)
+    said = "Back to the contents"
+    pdf.put(said, x=WIDTH - MARGIN - pdf.measure(said, "regular", 7.5), top=top - 3, size=7.5,
+            color=ACCENT, link="contents")  # fmt: skip
     count = str(kind["count"])
     wide = pdf.measure(lines[-1], "bold", 11.5)
     pill = pdf.measure(count, "bold", 8) + 12

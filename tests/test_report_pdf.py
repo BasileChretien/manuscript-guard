@@ -59,9 +59,9 @@ def test_the_audit_writes_its_report_as_a_pdf(tmp_path: Path, capsys) -> None:
     assert "Of the patients, 412 improved." in text
     # The report's last line, as the text and the page end with it (round 1 of #618).
     assert "bind the numbers instead" in " ".join(text.split())
-    # The title's bookmark holds the checks' table's, and no other.
+    # The title's bookmark holds the checks' table's and the contents', and no other.
     top = reader.trailer["/Root"]["/Outlines"]["/First"].get_object()
-    assert top["/Count"] == 1
+    assert top["/Count"] == 2
 
 
 def test_the_pdf_is_framed_says_where_each_check_stands_and_how_to_use_the_tool(
@@ -271,6 +271,60 @@ def test_every_line_stands_within_the_page(tmp_path: Path,
     # The text read back is set in the regular, the bold and the oblique fonts, so the widths
     # above were measured in each.
     assert {font for font, *_rest in placed} >= {"F1", "F2", "F3"}
+
+
+def test_the_contents_link_each_kind_and_section_to_the_page_they_print(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The author, 2026-11-12: "make the pdf really interactive". The first page lists each
+    kind of finding and each section, each line a link to where it stands, with the page it
+    prints; each kind links back to the contents; and the title over every page after the
+    first links back to the summary."""
+    from manuscript_guard import web
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "paper.md").write_text(PAPER + "".join(f"\nThe XYZ was seen again in case {n}.\n"
+                                                       for n in range(80)), encoding="utf-8")
+    view = web.view(["audit", "paper.md", "--details"])["view"]
+    from manuscript_guard.auditing.report_pdf import written
+
+    reader = pypdf.PdfReader(io.BytesIO(written(view, "Audit of paper.md", "0")), strict=True)
+    pages = reader.pages
+    number = {page.indirect_reference.idnum: at for at, page in enumerate(pages)}
+
+    def links(page) -> list[int]:
+        found = []
+        for annot in page.get("/Annots") or []:
+            annot = annot.get_object()
+            if annot.get("/Subtype") == "/Link" and "/Dest" in annot:
+                found.append(number[annot["/Dest"][0].idnum])
+        return found
+
+    first = " ".join(pages[0].extract_text().split())
+    assert "In this report" in first
+
+    def bookmarked(items, out):
+        for item in items:
+            if isinstance(item, list):
+                bookmarked(item, out)
+            else:
+                out[item.title] = reader.get_destination_page_number(item)
+        return out
+
+    # Where each kind's heading is, as its bookmark, "Title (count)", says.
+    marks = bookmarked(reader.outline, {})
+    kinds = [kind for paper in view["words"] for kind in paper["kinds"]]
+    assert kinds
+    for kind in kinds:
+        where = marks[f"{kind['title']} ({kind['count']})"]
+        printed = re.search(re.escape(kind["title"]) + r" \d+ (\d+)", first)
+        assert printed and int(printed.group(1)) == where + 1, (kind["title"], where)
+        assert where in links(pages[0])
+        # Each kind links back to the contents, from the page it stands on.
+        assert marks["In this report"] in links(pages[where])
+    # The title over every page after the first goes back to the summary, on the first.
+    assert len(pages) > 1 and marks["What was checked"] == 0
+    assert all(0 in links(page) for page in pages[1:])
 
 
 def test_a_bookmark_counts_every_level_under_it() -> None:

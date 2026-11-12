@@ -308,6 +308,28 @@ introductory document, which the Centre asks that it be read with. A level there
 to where the likely best evidence lies, not a verdict on one study's quality, and the table's
 note lets a reader grade a level down or up.
 
+## Cellosaurus and the RRID resolver
+
+Not in the package: `manuscript-guard lookup --resources` writes into a paper's project, in
+`literature/rrids/`, what two services said of each Research Resource Identifier the
+manuscript types, and G7 quotes it.
+
+- **Cellosaurus**, of the SIB Swiss Institute of Bioinformatics, for a cell line: its name,
+  its accession, and each comment it files under "Problematic cell line", quoted whole. Its
+  data are under the Creative Commons Attribution 4.0 licence (CC BY 4.0), which each record
+  that quotes it states (`licence: CC BY 4.0`), as the finding that quotes it does.
+  Cellosaurus asks to be cited as: Bairoch A. The Cellosaurus, a cell-line knowledge
+  resource. *J Biomol Tech* 2018;29(2):25–38. doi:10.7171/jbt.18-2902-002.
+  https://www.cellosaurus.org
+- **The RRID resolver**, of SciCrunch (scicrunch.org/resolver), for every RRID: whether it
+  knows it, and for each record it gives the resource's name, its types and the citation it
+  proposes. No licence is stated for its answers; RRIDs.org says the identifiers are free to
+  cite, resolve and reuse (rrids.org, read 2026-11-12).
+
+This repository keeps only the shapes of their answers, in `tests/test_rrid_lookup.py`, with
+the identifiers and names those answers had and a shortened copy of Cellosaurus's comment on
+the KB line (CVCL_0372), under CC BY 4.0 and credited here.
+
 ## The palettes
 
 `src/manuscript_guard/data/palettes.json`, which `manuscript_guard.palettes`, the R package's

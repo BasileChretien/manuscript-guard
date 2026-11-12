@@ -13425,6 +13425,99 @@ def pdf_documents(draw: st.DrawFn) -> list[tuple[str, int, str, int]]:
     return parts
 
 
+# ------------------------------------------------------------------------------- RRIDs
+
+#: One accession of each form the resolver's authorities issue (`rrids.py`): an antibody, a
+#: cell line, a tool, a mouse strain, a plasmid, a mouse gene, a fish genotype, a fly stock, a
+#: worm strain, a mouse line with its centre, and an old identifier of the registry's.
+RRID_ACCESSIONS = (
+    "AB_2298772", "CVCL_0030", "SCR_002798", "IMSR_JAX:000664", "Addgene_12345",
+    "MGI:3840442", "ZFIN_ZDB-GENO-960809-7", "BDSC_8848", "WB-STRAIN:WBStrain00000001",
+    "MMRRC_000006-UCD", "nif-0000-30467",
+)  # fmt: skip
+#: What may stand between "RRID:" and the accession: nothing, a space, a no-break space, or
+#: a line break.
+RRID_GAPS = ("", " ", "\u00a0", "\n")
+#: What may follow an RRID, which is not part of it.
+RRID_TRAILS = ("", ".", ",", ";", ")", ":")
+#: The case an accession is written in: as the authority lists it, or in small letters.
+RRID_CASES = ("as listed", "lowered")
+#: The documents an RRID may stand in.
+RRID_PARTS = (False, True)
+#: RRIDs that stand in a comment and in code, which are not read. They hold no underscore, so
+#: that a LaTeX comment, which the reader does not unescape, would show them if read.
+RRID_UNREAD = ("MGI:9000001", "MGI:9000002")
+
+
+def _each_once(draw: st.DrawFn, kinds: tuple, count: int) -> list:
+    """`count` kinds, every one of `kinds` among them where `count` allows, in an order
+    drawn: a kind drawn first among several is otherwise one some seeds never draw."""
+    first = draw(st.permutations(list(kinds)))
+    rest = [draw(st.sampled_from(kinds)) for _more in range(count - len(kinds))]
+    return draw(st.permutations(first + rest))
+
+
+@st.composite
+def rrid_papers(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, str], list, list]:
+    """A manuscript that types an RRID of each form, in Markdown and as its LaTeX twin, and
+    what each reads: `(markdown files, latex files, markdown read, latex read)`, a read
+    `[rrid, path, line, supplementary]` in file and line order. Every example holds every
+    form, every gap, every trailing mark, both cases and both documents, and a comment and a
+    code span in each document whose RRIDs are not read."""
+    count = len(RRID_ACCESSIONS)
+    accessions = draw(st.permutations(list(RRID_ACCESSIONS)))
+    gaps = _each_once(draw, RRID_GAPS, count)
+    trails = _each_once(draw, RRID_TRAILS, count)
+    cases = _each_once(draw, RRID_CASES, count)
+    parts = _each_once(draw, RRID_PARTS, count)
+    word = st.sampled_from(FILLER)
+    lines: dict[bool, list[tuple[str, str, str | None]]] = {False: [], True: []}
+    for at, written in enumerate(accessions):
+        kept = written if cases[at] == "as listed" else written.lower()
+        before = " ".join(draw(st.lists(word, min_size=1, max_size=3)))
+        after = " ".join(draw(st.lists(word, min_size=1, max_size=3)))
+        lines[parts[at]].append((before, f"RRID:{gaps[at]}", kept + trails[at] + " " + after))
+    for part in RRID_PARTS:
+        for decoy in ("comment", "code"):
+            where = draw(st.integers(0, len(lines[part])))
+            lines[part].insert(where, (decoy, "", None))
+    markdown: dict[str, str] = {}
+    latex: dict[str, str] = {}
+    read_md: list = []
+    read_tex: list = []
+    names = {False: ("main.md", "main.tex"), True: ("supplementary/S1.md",
+                                                   "supplementary/main.tex")}  # fmt: skip
+    for part in RRID_PARTS:
+        md_lines: list[str] = []
+        tex_lines: list[str] = ["\\documentclass{article}", "\\begin{document}"]
+        for before, label, rest in lines[part]:
+            for _filler in range(draw(st.integers(0, 2))):
+                said = " ".join(draw(st.lists(word, min_size=2, max_size=5)))
+                md_lines.append(said)
+                tex_lines.append(said)
+            if rest is None:
+                unread = RRID_UNREAD[0] if before == "comment" else RRID_UNREAD[1]
+                if before == "comment":
+                    md_lines.append(f"the reports <!-- RRID:{unread} --> were")
+                    tex_lines.append(f"the reports % RRID:{unread}")
+                else:
+                    md_lines.append(f"the reports `RRID:{unread}` were")
+                    tex_lines.append(f"the reports \\verb|RRID:{unread}| were")
+                continue
+            accession = rest.split(" ", 1)[0].rstrip(".,;):")
+            rrid = "RRID:" + accession
+            md_name, tex_name = (f"manuscript/{name}" for name in names[part])
+            read_md.append([rrid, md_name, len(md_lines) + 1, part])
+            read_tex.append([rrid, tex_name, len(tex_lines) + 1, part])
+            typed = f"{before} {label}{rest}"
+            md_lines.extend(typed.split("\n"))
+            tex_lines.extend(typed.replace("_", "\\_").split("\n"))
+        tex_lines.append("\\end{document}")
+        markdown[names[part][0]] = "\n".join(md_lines) + "\n"
+        latex[names[part][1]] = "\n".join(tex_lines) + "\n"
+    return markdown, latex, read_md, read_tex
+
+
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "word paragraphs": word_paragraphs().map(lambda drawn: drawn[0]),
     "checker sentences": texts(),
@@ -13523,6 +13616,11 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED
     ),
     "retrospective said": texts(RETROSPECTIVE_SAID + RETROSPECTIVE_NOT),
+    "rrids typed": st.one_of(
+        rrid_papers().map(lambda drawn: drawn[0]),
+        rrid_papers().map(lambda drawn: drawn[1]),
+        texts().map(lambda text: {"main.md": text}),
+    ),
     "registered quote": registered_quotes().map(
         lambda drawn: {"record": drawn[0], "quote": drawn[1]}
     ),

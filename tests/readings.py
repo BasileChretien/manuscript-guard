@@ -1296,6 +1296,30 @@ def _registration_identifiers() -> Reading:
     return NAMED_IN_TEXT.findall
 
 
+@reading("rrids typed")
+def _rrids_typed() -> Reading:
+    from types import SimpleNamespace
+
+    from manuscript_guard.rrids import typed
+
+    def read(files: dict[str, str]) -> list[list[Any]]:
+        """Each RRID a manuscript folder types, as G7 and `lookup --resources` read it: the
+        RRID, the file, its line and whether it is the supplement's. Given as the files of
+        `manuscript/`, Markdown or LaTeX."""
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            manuscript = root / "manuscript"
+            for name, text in files.items():
+                path = manuscript / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(text.encode("utf-8"))
+            project = SimpleNamespace(root=root, path=lambda name: root / name)
+            return [[one.rrid, one.path.relative_to(root).as_posix(), one.line,
+                     one.supplementary] for one in typed(project)]  # fmt: skip
+
+    return read
+
+
 @reading("retrospective said")
 def _retrospective_said() -> Reading:
     from manuscript_guard.gates.registration import says_retrospective

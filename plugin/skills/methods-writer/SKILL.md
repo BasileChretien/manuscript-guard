@@ -1,6 +1,6 @@
 ---
 name: methods-writer
-description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when pointing Methods text at a step of the code, when check reports methods-drift, methods-never-reconciled, a method-… finding, a G15 model-… or variable-… finding or quality-not-reported, or after the analysis changes. Not for the prose of other sections (use manuscript-writing), nor for putting a result into the text (use results-binding).
+description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when pointing Methods text at a step of the code, when check reports methods-drift, methods-never-reconciled, a method-… finding, a G15 model-… or variable-… finding, quality-not-reported, rrid-not-looked-up, rrid-unresolved or cell-line-problematic, or after the analysis changes. Not for the prose of other sections (use manuscript-writing), nor for putting a result into the text (use results-binding).
 ---
 
 # Writing Methods that describe what was done
@@ -211,6 +211,19 @@ computed from the data is emitted as a number, and is not.
 Use the name the source has in `design/data_sources.yaml` where the project keeps one:
 `check` warns of a dataset whose name is none of the sources the record chose
 (`dataset-not-chosen`).
+
+## Naming the resources by their RRIDs
+
+Cite an antibody, a cell line, an organism, a plasmid or a tool as its RRID, typed as the
+resolver writes it: `Anti-NeuN (Millipore Cat# MAB377, RRID:AB_2298772)`. Then run
+`manuscript-guard lookup --resources`, which asks the RRID resolver about each one, and
+Cellosaurus about a cell line, and keeps the answers in `literature/rrids/`. An answer that
+did not come is not recorded and is asked again next time (`rrid-not-looked-up`). An RRID
+the resolver does not know (`rrid-unresolved`) is checked with the author against the
+resource's own page, never guessed. A line Cellosaurus marks problematic
+(`cell-line-problematic`) is the author's to answer: say in the Methods how it was
+authenticated, or change the line. Only the RRIDs typed are checked; ask the author for a
+resource's RRID rather than look one up and type it yourself.
 
 ## Describing a model
 

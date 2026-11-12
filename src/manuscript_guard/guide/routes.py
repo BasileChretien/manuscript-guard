@@ -128,6 +128,9 @@ ROUTES: dict[str, Route] = {
            "claim-", "significance-beyond-interval", "no-effect-from-interval", "file-lost",
            "file-new"),
     **_all("methods-writer", ("methods",), "methods-", "method-", "quality-not-reported"),
+    # The RRIDs the Methods type: `lookup --resources` asks the resolver, and Cellosaurus for a
+    # cell line; a problematic line or an unknown RRID is put right in the Methods.
+    **_all("methods-writer", ("lookup", "--resources"), "rrid-", "cell-line-problematic"),
     **_all("methods-writer", ("models",), "model-", "models-on-different-rows", "variable-",
            "typed-model-kind", "poisson-binary-variance", "unit-rows-independent"),
     # -- the literature -------------------------------------------------------------------

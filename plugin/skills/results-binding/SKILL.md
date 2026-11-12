@@ -1,6 +1,6 @@
 ---
 name: results-binding
-description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, binding-in-table, results-edited, script-newer, input-changed, duplicate-quantity, pointer-to-nothing, display-not-cited, cited-out-of-order, pointer-word-mismatch, ref-number-unknown, caption-names-another, quality-not-run, entry-unchecked or rule-unchecked. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
+description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, binding-in-table, results-edited, script-newer, input-changed, duplicate-quantity, pointer-to-nothing, display-not-cited, cited-out-of-order, pointer-word-mismatch, ref-number-unknown, caption-names-another, quality-not-run, entry-unchecked, rule-unchecked or comparison-contradicted. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
 ---
 
 # Binding the numbers
@@ -258,7 +258,7 @@ checked like any other.
 | `unplaced-table` | an emitted table is never placed with `{{table.key}}` |
 | `pointer-to-nothing`, `display-not-cited`, `cited-out-of-order` | a typed "Table 3" names no table the document places, a table is cited nowhere, or the first citations are not in the order the tables are numbered. Name it with `{{ref.table.key}}` (`bind --pointers` does it), or move the table |
 | `pointer-word-mismatch` | the words around a `{{num.…}}` or `{{ref.…}}` name another kind or the other document ("Figure {{num.table.a}}"). Fix the words, or write the ref whole |
-| `caption-names-another` | a caption beside a table or figure (typed under a figure, above or under a table, or emitted by the analysis with a number) names another one. Write the caption's number as `{{ref.figure.key}}`, or emit the caption without its number |
+| `caption-names-another` | a caption beside a table or figure (typed beside it, or emitted with its number) names another one. Write the caption's number as `{{ref.figure.key}}`, or emit the caption without its number |
 | `ref-number-unknown` | the build cannot number this ref: its kind is also placed by hand or sent as files in that document, or its key is placed twice. Type that pointer |
 | `hand-authored-table` | emit the table |
 | `binding-in-table` | a `{{...}}` in an emitted caption, header or cell. Emit the value it stands for and compose it in with `em.cell` (`em$cell` in R), or move the sentence into the prose |
@@ -272,6 +272,7 @@ checked like any other.
 | `duplicate-quantity` | a warning: two quoted keys hold the same value. One quantity? Publish it once. A coincidence? Nothing to do |
 | `divergent-display` | a note: one value written two ways. A coincidence? Nothing to do. A second display? Declare it `same_as` |
 | `declared-same-but-differs` | two keys declared one quantity with `same_as=` have drifted apart |
+| `comparison-contradicted` | a sign beside the binding ("all Fs <") is false of the value: emit more digits, or type its bound |
 | `interval-reversed` | the text quotes the upper bound first; swap the two bindings |
 | `relation-broken`, `flow-broken` | the analysis's own numbers disagree with the arithmetic it declared: find the computation that is wrong, or the declaration that names the wrong keys |
 | `relation-rounding` | a warning: the printed parts do not give the printed result. Print one more digit, or say each is rounded on its own |

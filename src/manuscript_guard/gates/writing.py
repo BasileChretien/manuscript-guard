@@ -282,7 +282,10 @@ def _latex_typed(source) -> str:
     end = reading.body_end if reading.body_end >= 0 else len(source.text)
     preamble = _blank(reading.masked[:body].replace(NUL, " "), reading.bodies)
     typed = preamble + source.text[body:end] + _blank(source.text[end:], [(0, len(source.text))])
-    return _blank(typed, reading.references)
+    # Past a refusal nothing is read, a comment no more than the rest (Basile, 2026-11-11:
+    # read as typed, a template's commented-out text was G6's findings).
+    unread = [(refusal.offset, len(typed)) for refusal in reading.refusals]
+    return _blank(typed, [*reading.references, *unread])
 
 
 #: Where an entry of a typed reference list opens.

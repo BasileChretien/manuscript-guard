@@ -141,17 +141,43 @@ _CLOSES_WITH = re.compile(
 # "Basic Income Support for Sustainability - BISS", "Basic Payment Scheme \N{EN DASH} BPS"
 # (an agricultural-policy preprint of the real-paper corpus), a hyphen, an en dash or an em
 # dash, or "--" and "---", which pandoc prints as those; a no-break space is a space. The
-# whole word, not a part of `BPS-based`. And one followed by an equals sign or a number, or
-# by a colon, a comma or an opening bracket and a number, past spaces of either kind, gives
-# a statistic and defines nothing: "higher in older people - OR, 1.52", "- OR: 1.52" and
-# "- OR (95% CI 1.1-2.0) 1.52" are the odds ratio's value (rounds 1 and 2 of #623), where
-# "Basic Payment Scheme - BPS, which pays farmers" defines.
+# whole word, not a part of `BPS-based`. Only a short form that ends its clause defines
+# (`_ends_its_clause`; the author, 2026-11-12, in place of the exceptions of #623).
 _DASH_SPACE = r"[ \t\N{NO-BREAK SPACE}]"
+_DASH = r"(?:---?|[-\N{EN DASH}\N{EM DASH}])"
 _DASHED = re.compile(
-    rf"(?<=\S){_DASH_SPACE}+(?:---?|[-\N{{EN DASH}}\N{{EM DASH}}]){_DASH_SPACE}+"
-    rf"(?P<short>{_PARTS})(?![^\W_]|-[^\W_])"
-    rf"(?!{_DASH_SPACE}*(?:=|(?:[:,(]{_DASH_SPACE}*)?\d))"
+    rf"(?<=\S){_DASH_SPACE}+{_DASH}{_DASH_SPACE}+(?P<short>{_PARTS})(?![^\W_]|-[^\W_])"
 )
+#: Spaces of any kind on one line, and the same across at most one line break.
+_LINE_GAP = r"[ \t\r\N{NO-BREAK SPACE}]*"
+_ONE_BREAK = rf"{_LINE_GAP}(?:\n{_LINE_GAP})?"
+#: A closing quote or emphasis mark, part of the short form's typing.
+_MARKS = rf"[{re.escape(_QUOTES)}]*"
+#: A citation, which is no more words of the sentence: a bracket the mask has blanked,
+#: `[@key]` and `[@a; @b]`, one of numbers, "[12]", "[1, 3-5]", and a superscript number,
+#: "^12^". LaTeX's `~\cite{key}` is blanked whole, so spaces pass over it.
+_CITED = (rf"(?:{_ONE_BREAK}(?:\[[\s\d,;\-\N{{EN DASH}}\N{{EM DASH}}]*\]"
+          rf"|\^[\d,\-\N{{EN DASH}}]+\^))*")  # fmt: skip
+# What follows a short form that ends its clause, a closing mark and a citation between
+# them allowed: a stop, a semicolon, a closing bracket of either kind or a table cell's bar,
+# a comma or a colon and a word, a closing spaced dash, a hard line break (a backslash or
+# two spaces before the line's end, as pandoc reads them, and as LaTeX's `\\` is left), or
+# the end of the paragraph or of the text. A single line break inside a paragraph is read
+# as a space. "Basic Payment Scheme - BPS, which pays farmers", "... - BPS [@ec2013]." and
+# "the Scheme - BPS - replaced it" define; a statistic goes on past its short form, "older
+# people - OR [95% CI ...] 1.52", "- OR of 1.52", "- OR, 1.52", and defines nothing. A stop
+# before a digit is a decimal point. What this misses is in DESIGN.md's Known gaps.
+_CLAUSE_ENDS = re.compile(
+    rf"{_MARKS}{_CITED}"
+    rf"(?:{_ONE_BREAK}(?:\.(?!\d)|[;)\]|]|[,:]{_ONE_BREAK}{_MARKS}[^\W\d_])"
+    rf"|{_DASH_SPACE}+{_DASH}{_DASH_SPACE}"
+    rf"|(?:{_DASH_SPACE}*\\| {{2,}})\r?\n"
+    rf"|{_LINE_GAP}(?:\Z|\n{_LINE_GAP}(?:\n|\Z)))"
+)
+#: The end of a line, after a closing mark and a citation: where a list item's ends.
+_LINE_ENDS = re.compile(rf"{_MARKS}{_CITED}{_LINE_GAP}(?:\n|\Z)")
+#: A list item's line as typed, in a block quote or not: "- ", "* ", "1. ", "2) ", `\item`.
+_LIST_ITEM = re.compile(r"[ \t]*(?:>[ \t]*)*(?:(?:[-*+]|\d{1,9}[.)])[ \t]|\\item(?![A-Za-z]))")
 #: The brackets a long form opens and closes, round and square: a letter of its short form
 #: is not found inside one it opens (`_inside_a_bracket`).
 _OPENING = "(["
@@ -901,18 +927,29 @@ def _short_closing(bracket: re.Match[str]) -> tuple[int, str, str] | None:
     return bracket.start(1) + closing.start("short"), _stem(short, long), long
 
 
-def _dashed(prose: str) -> list[tuple[int, str, str]]:
+def _dashed(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
     """The definitions with a dash: "Basic Payment Scheme - BPS", the long form before the
-    dash in its paragraph."""
+    dash in its paragraph, the short form ending its clause. `typed` is the text as typed,
+    where a list item's marker stands, of the length of `prose`."""
+    lines = typed if typed is not None and len(typed) == len(prose) else prose
     found = []
     for dash in _DASHED.finditer(prose):
         short = dash.group("short")
-        if not _may_be_defined(short):
+        if not _may_be_defined(short) or not _ends_its_clause(prose, lines, dash):
             continue
         long = _read_back(short, _paragraph_before(prose, dash.start()))
         if long is not None:
             found.append((dash.start("short"), _stem(short, long), long))
     return found
+
+
+def _ends_its_clause(prose: str, typed: str, dash: re.Match[str]) -> bool:
+    """Does the short form `dash` found end its clause (`_CLAUSE_ENDS`), or the line of a
+    list item, which ends where its line does?"""
+    if _CLAUSE_ENDS.match(prose, dash.end()):
+        return True
+    line = typed.rfind("\n", 0, dash.start()) + 1
+    return bool(_LIST_ITEM.match(typed, line) and _LINE_ENDS.match(prose, dash.end()))
 
 
 def _paragraph_before(prose: str, end: int) -> str:
@@ -969,13 +1006,13 @@ def _long_after(
     return head, _stem(short, long), long
 
 
-def _definitions(prose: str) -> list[tuple[int, str, str]]:
+def _definitions(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
     """Every definition in `prose`: where its short form stands, the form it defines, and
     the long form. Both orders in round brackets, "reporting odds ratio (ROR)" and "ROR
     (reporting odds ratio)", and the short form in square ones, "hazard ratio [HR]"; in
     either, the short form closing the bracket after a separator with its long form before
     that, "(i.e. time to task failure; TTF)"; and the short form after a dash, "Basic
-    Payment Scheme - BPS"."""
+    Payment Scheme - BPS", read by the text as `typed` too where that is given."""
     found: list[tuple[int, str, str]] = []
     for bracket in _PAREN.finditer(prose):
         if _BLANK_LINE.search(bracket.group(1)):
@@ -992,7 +1029,7 @@ def _definitions(prose: str) -> list[tuple[int, str, str]]:
             found.append(definition)
     # A short form a bracket already defines where it stands is not defined there again.
     bracketed = {at for at, _short, _long in found}
-    return found + [each for each in _dashed(prose) if each[0] not in bracketed]
+    return found + [each for each in _dashed(prose, typed) if each[0] not in bracketed]
 
 
 def _listed_as(form: str, known: _Known) -> bool:
@@ -1286,7 +1323,7 @@ def _assembled(
     listed = [(entry.at, _stem(entry.short, entry.long), entry.long)
               for span in glossaries for entry in glossary.entries(prose, raw, span)
               if _may_be_defined(entry.short)]  # fmt: skip
-    definitions = [*_definitions(prose), *listed]
+    definitions = [*_definitions(prose, raw), *listed]
     restating = frozenset(at for at, _short, _long in definitions
                           if _restates(captions, glossaries, at))  # fmt: skip
     more["code"] = _set_aside(more.get("code", ""), references)

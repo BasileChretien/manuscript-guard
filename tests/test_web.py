@@ -511,7 +511,8 @@ def test_the_page_draws_the_report_its_text_is_printed_from(
     assert [name for name, _said in view["checks"]][:2] == ["Numbers in the outputs", "Arithmetic"]
     (kind,) = [kind for paper in view["words"] for kind in paper["kinds"]
                if kind["code"] == "abbreviation-undefined"]  # fmt: skip
-    assert kind["count"] == len(kind["places"]) == len(undefined)
+    # One finding for the ten short forms, counted as ten (`auditing.undefined`).
+    assert kind["count"] == len(undefined) and len(kind["places"]) == 1
     assert kind["hint"] and all(place["hint"] is None for place in kind["places"])
     headings = [heading for heading, _text in view["sections"]]
     assert "Arithmetic" in headings and not any("Language (G14)" in h for h in headings)
@@ -537,7 +538,7 @@ def test_the_page_draws_the_report_its_text_is_printed_from(
                 if kind["code"] == code for place in kind["places"]]  # fmt: skip
 
     assert contexts(view, "ai-phrasing") and all(contexts(view, "ai-phrasing"))
-    assert contexts(view, "abbreviation-undefined") == [None] * len(undefined)
+    assert contexts(view, "abbreviation-undefined") == [None]
     assert all(contexts(full, "abbreviation-undefined"))
     # Under DEBUG a view that cannot be drawn raises, as `main` does; without it, the text is
     # kept. A text that cannot be rendered draws no view either.

@@ -55,9 +55,14 @@ manuscript-guard init my-paper --from paper.docx         # a paper written in Wo
 `--from` writes the Word paper as `manuscript/main.md`: each table a pipe table where its
 cells hold only paragraphs, the pictures in `manuscript/media/`, the title from Word's Title
 style in `paper.yaml`, each name of its Author style in `authors.yaml`, unsplit, and what
-stands before the first heading in a comment at the top, which no gate reads. Read what it
-prints with the authors: the tables it left as grid tables, and whether the comment holds
-an abstract or text that belongs to the paper. A `.doc` is refused; save it as `.docx`.
+stands before the first heading in a comment at the top, which no gate reads. A typed APA
+reference list goes to `literature/references.bib`, entry by entry where each field reads
+exactly, and each typed citation that names exactly one entry by its authors and year
+becomes `[@key]`. Read what it prints with the authors: the tables it left as grid tables,
+whether the comment holds an abstract or text that belongs to the paper, and the entries
+and citations it left as typed, each with its line and why, which they cite by hand. A
+numbered reference list is left as typed. `sync-bib` writes `references.bib` again from
+Zotero, so import the file into Zotero first. A `.doc` is refused; save it as `.docx`.
 
 Ask the authors whether they write the manuscript in Markdown or in LaTeX, and in British
 (`en-GB`) or American (`en-US`) spelling, before running it. Without `--english`, `init`

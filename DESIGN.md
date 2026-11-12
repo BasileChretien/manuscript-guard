@@ -620,6 +620,31 @@ is a warning (`figure-estimates`) unless an argument turns it off (`errorbar=Non
 seed or divisor is given (`seed=`, `ddof=`), a seed set in the script settles a random one,
 or the figure's `<name>.guard.yaml` gives a reason under `allow_estimates`.
 
+**Bars of means with no points.** A bar graph of continuous data hides how the data are
+spread: an outlier, two clusters and three observations can each give the same bar
+(Weissgerber, Milic, Winham and Garovic, PLoS Biol 2015;13:e1002128; their review of 703
+physiology papers found small samples of continuous data shown mostly as bars). Barzooka
+finds such bars in a published PDF; a figure's script says how they were drawn. So
+`gates/figure_bars.py` reads the script's calls as `figure_estimates` does, against
+`data/figure_bars.yaml`, which sorts them into four kinds: a bar the plot computes as a mean
+(`sns.barplot`, `catplot(kind="bar")`, `stat_summary(geom = "bar")`, `geom_bar(stat =
+"summary")`, in ggplot2 and plotnine), a bar drawn from the values it is given (`ax.bar`,
+`frame.plot.bar`, `geom_col`, `geom_bar(stat = "identity")`), a layer of error bars
+(`geom_errorbar` and its kin), and a layer of points (`geom_point`, `geom_jitter`,
+`geom_dotplot`, `geom_beeswarm`, `geom_quasirandom`, `geom_sina`, `sns.stripplot`,
+`sns.swarmplot`, `ax.scatter`). A bar of means, with no points anywhere in the script, is a
+warning (`figure-bars-of-means`). Where the call computes no interval (seaborn's
+`errorbar=None`, or `ci=None`), nothing in the script shows that a group holds more than one
+row, and a table of one row a group draws the values it holds, so it is a note under the
+same code. A bar of given values with error bars on it, by its own `yerr=` or `xerr=` or a
+layer of error bars of the same plot, and no points, is a note (`figure-bars-with-errors`):
+it may be a proportion and its interval, which is right (Basile, 2026-11-12). The same plot
+is the one `+` chain, a ggplot() or plotnine expression, the bar is a layer of: an interval
+drawn on another plot in the script puts no error bar on the bar (round 1 of #648). A bar of counts with no error bars says nothing. It is a module of its
+own because it judges the script as a whole, where an estimate is a finding by itself, and a
+reason in the figure's guard file under `allow_bars` stands both down: one sentence, since
+the finding is about the figure and not one call.
+
 **A human or model reading the picture (G10).** Gate G10 requires a current review record
 per figure. See below.
 
@@ -17516,6 +17541,44 @@ Added by the adversarial review, verified and **not** fixed:
   only by its own `seed=`. `geom_smooth`, `stat_summary` and `dropna` have no argument that
   quiets them: each needs a reason under `allow_estimates`, or the computation moved into
   the analysis.
+- **Bars of means are found by the names of the calls that draw them, in a script under
+  `figures/`.** Only the calls in `data/figure_bars.yaml` are read, by the last part of
+  their name and the first token of each argument given by name, as for an estimate; a
+  figure placed from Word or rendered by a script elsewhere has no script that is read.
+  These are its limits: Accepted.
+  - A call through a function of the script's own, or an alias (`bars = sns.barplot`), is
+    not seen: a bar drawn so is not reported, and points drawn so do not stand one down.
+    Accepted.
+  - A mean the script computed itself and drew as a bar (`ax.bar(arms,
+    frame.groupby("arm").y.mean(), yerr=se)`) is only a note, and with no error bars it is
+    nothing: the bar's values are not read for where they came from. Pinned by
+    `tests/test_corruption.py::test_bars_of_means_with_no_points_are_said`.
+  - A summary named through a function, `fun = function(x) mean(x)` or
+    `estimator=lambda v: v.mean()`, is not read as a mean, and a bar of medians or of
+    another summary (`fun = median`) is not reported though it hides the spread as a mean
+    does. Pinned by
+    `tests/test_corruption.py::test_an_r_figure_of_bars_of_means_with_no_points_is_said` and
+    `tests/test_corruption.py::test_bars_of_means_with_no_points_are_said`.
+  - A mean the means list in `data/figure_bars.yaml` does not name (`statistics.fmean`, for
+    one) is not read as a mean, so its bar is not reported. Accepted.
+  - A layer of error bars added to the plot in a statement of its own (`p2 <- p2 +
+    geom_errorbar()`) stands in another `+` chain, so the bar it is drawn on is not said.
+    Pinned by `tests/test_corruption.py::test_an_error_layer_added_to_the_plot_later_is_not_read`.
+    In Python, a backslash before the line break, or a line break inside a dict's braces,
+    also ends the chain, so an error layer written after it is not counted. Accepted.
+  - A quoted `errorbar="None"` is read as `None`, a call that computes no interval: seaborn
+    takes no such string. Accepted.
+  - The hint names R and Python layers together, whatever the script's language, and a
+    jitter it suggests, unseeded, draws a `figure-estimates` warning of its own. Accepted.
+  - A layer of points anywhere in the script stands down every bar in it, even one on
+    another panel or of other data, and a point at each mean (`geom_point(stat =
+    "summary")`) does not. Pinned by
+    `tests/test_corruption.py::test_bars_of_means_with_no_points_are_said` and
+    `tests/test_corruption.py::test_an_r_figure_of_bars_of_means_with_no_points_is_said`.
+  - Not read: base R's `barplot()` with `arrows()`, ggpubr's `ggbarplot(add = "mean_se")`,
+    seaborn's objects interface (`so.Bar()` with `so.Agg()`), and matplotlib's `errorbar()`
+    drawn over a bar as a call of its own (only `yerr=` and `xerr=` on the bar are read, so
+    a forest plot beside a bar of counts is not taken for one with error bars). Accepted.
 - **The source-of-truth invariant does not survive a co-author round in Word, and a real
   paper is the proof.** This toolkit rests on "Markdown is the permanent source of truth and
   the .docx is a disposable build artifact". Run against a submitted pharmacology paper, the

@@ -38,7 +38,7 @@ _FOR_A_READER: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"or to the one --english chooses\)"), "or to the one chosen for the paper)"),
     (re.compile(r", as `init --from` makes them;"), ";"),
     (re.compile(r", as `init --from` writes it\b"), ""),
-    (re.compile(r'--details \(on the web page, the box ("[^"]+")\)'), r"the box \1"),
+    (re.compile(r"--details \(on the web page, (the PDF of the report)\)"), r"\1"),
     (re.compile(r"give --against the outputs to compare them\b"),
      "give the audit the analysis outputs to compare them with"),
     (re.compile(r"--against names the outputs to compare the numbers with\."),

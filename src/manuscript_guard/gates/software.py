@@ -595,12 +595,16 @@ def check_software(project: Project, results: Results | None, stage: str | None)
         return Report()
     text, _unreadable = _read_plan(path)
     read = scripts(project)
-    emitted = [] if results is None else [
+    return judge_software(project.root, text, read, recorded(results),
+                          own_modules(project.root, read), stage)  # fmt: skip
+
+
+def recorded(results: Results | None) -> list[str]:
+    """The names the emitter's `software()` recorded a version under, `software.<name>`."""
+    return [] if results is None else [
         key.removeprefix("software.") for key, value in results.values.items()
         if value.role == "software" and key.startswith("software.")
     ]  # fmt: skip
-    return judge_software(project.root, text, read, emitted, own_modules(project.root, read),
-                          stage)  # fmt: skip
 
 
 def judge_software(root: Path, text: str, read: dict[str, str], emitted: Iterable[str],

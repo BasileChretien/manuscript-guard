@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 const say = (text) => { $("status").textContent = text; };
 // What the browser refused under the page's policy, as it reported it.
 const pageRefused = [];
+window.mgRefused = pageRefused;  // what web/test/browser.mjs reads
 document.addEventListener("securitypolicyviolation", (event) =>
   pageRefused.push({ rule: event.effectiveDirective, url: event.blockedURI }));
 
@@ -29,7 +30,7 @@ const SLOW_AFTER_MS = 90000;
 const loading = { at: 0, of: 4, what: "", received: 0, expected: 0, shown: 0 };
 window.mgLoading = loading;
 let slow = null;
-let stepped = false;
+let started = false;
 // The error the worker met while loading, if any: the slow note keeps it (round 2 of #627).
 let met = "";
 function showBar() {
@@ -44,7 +45,7 @@ function showBar() {
   $("amount").textContent = `${loading.shown}%`;
 }
 function loadingStep({ at, of, what }) {
-  stepped = true;
+  started = true;
   Object.assign(loading, { at, of, what });
   say(`Loading the checker, step ${at} of ${of}: ${what}. The first time only: after that it `
     + "is in this browser's cache.");
@@ -68,7 +69,11 @@ worker.onmessage = ({ data }) => {
   }
   if (data.bytes) {
     Object.assign(loading, data.bytes);
-    if (stepped) showBar();
+    if (started) showBar();
+    return;
+  }
+  if (data.step) {
+    stepped(data.step);
     return;
   }
   const { resolve, reject } = waiting.get(data.id);
@@ -96,7 +101,7 @@ function listRequests(title, requests) {
 worker.onerror = (event) => {
   if (window.mgReady) return;
   const what = event.message || "its script did not load";
-  if (!stepped) {
+  if (!started) {
     loaded();
     say(`The checker could not start: ${what}`);
     return;
@@ -115,10 +120,10 @@ fetch("manifest.json").then((answer) => answer.json()).then((manifest) => {
   version.append(")");
 }).catch((error) => { $("version").textContent += ` (its version could not be read: ${error.message})`; });
 
-const started = performance.now();
+const booting = performance.now();
 const booted = ask("boot").then((boot) => {
   loaded();
-  const seconds = ((performance.now() - started) / 1000).toFixed(1);
+  const seconds = ((performance.now() - booting) / 1000).toFixed(1);
   const sent = boot.loaded.reduce((sum, r) => sum + (r.sent || 0), 0);
   const m = boot.manifest;
   say(`Ready (${seconds} s). You can turn off your network now: the audit does not need it.`);
@@ -130,7 +135,7 @@ const booted = ask("boot").then((boot) => {
     `Loaded ${boot.loaded.length} files from ${location.host}, ${megabytes(sent)} over the network ` +
     `(nothing if they were already in this browser's cache).\n` +
     listRequests("Requests to any other host while loading:", boot.loaded);
-  for (const id of ["paper", "against", "english", "known", "lookup", "details", "run"]) {
+  for (const id of ["paper", "against", "english", "known", "lookup", "run", "example"]) {
     $(id).disabled = false;
   }
   window.mgReady = true;
@@ -149,66 +154,6 @@ function add(parent, tag, text, kind) {
   if (kind) element.className = kind;
   parent.append(element);
   return element;
-}
-
-// The report as `web.view` gives it: what each check found in a table, the findings on the
-// words a fold for each kind with every place inside, the other sections as their text. The
-// text the command line prints stays below, folded, and is what "Save the report" saves.
-// With no view (a run that made no report), the text is shown open.
-function draw(view) {
-  const box = $("view");
-  box.replaceChildren();
-  $("astext").open = !view;
-  if (!view) return;
-  for (const line of view.header) add(box, "p", line, "headline");
-  for (const [heading, said] of view.notes) {
-    add(box, "h3", heading);
-    const list = add(box, "ul");
-    for (const item of said) add(list, "li", item);
-  }
-  add(box, "h3", "What was checked");
-  const table = add(box, "table", undefined, "checks");
-  for (const [name, said] of view.checks) {
-    const row = add(table, "tr");
-    add(row, "th", name);
-    add(row, "td", said);
-  }
-  // What --strict counts, where the view still says it: the table's rows and the sections'
-  // headings name it (round 1 of #627). Each heading below gives the paper's name only where
-  // there are several, and a check's code (G14) only on pointing at its kind.
-  if (view.strict) add(box, "p", view.strict, "small");
-  const papers = view.words.filter((paper) => paper.note || paper.kinds.length);
-  for (const paper of papers) {
-    // The paper's name wherever several were audited, though only one has findings: no place
-    // under the heading names the paper again (review of #631).
-    add(box, "h3", view.words.length > 1 ? `Writing and language: ${paper.paper}` : "Writing and language");
-    if (paper.note) {
-      add(box, "p", paper.note);
-      continue;
-    }
-    add(box, "p", "For you to look at, kind by kind: open one to see its places.", "small");
-    for (const kind of paper.kinds) {
-      const fold = add(box, "details", undefined, "kind");
-      fold.title = `Checked by ${kind.gate}`;
-      add(fold, "summary", `${kind.title} (${kind.count})`);
-      if (kind.hint) add(fold, "p", `Hint: ${kind.hint}`, "hint");
-      const list = add(fold, "ol");
-      for (const place of kind.places) {
-        const item = add(list, "li");
-        add(item, "span", `${place.where}: `, "where");
-        add(item, "span", (place.failing ? "FAIL: " : "") + place.message);
-        if (place.context) add(item, "div", place.context, "context");
-        if (place.hint) add(item, "div", `Hint: ${place.hint}`, "hint");
-      }
-    }
-  }
-  for (const [heading, text] of view.sections) {
-    const fold = add(box, "details", undefined, "section");
-    fold.open = true;
-    add(fold, "summary", heading);
-    add(fold, "pre", text);
-  }
-  add(box, "p", view.closing, "closing");
 }
 
 // The paper dropped on its box, as if chosen, once the checker is ready, and refused before.
@@ -258,116 +203,296 @@ for (const name of ["dragover", "drop"]) {
   });
 }
 
-// What an audit under way says, beside the button that started it: the paper, and the
-// seconds it has taken, with a bar that moves without a measure, since the audit runs in one
-// call the page cannot look inside. The text a screen reader says is set at the start and at
-// the end, not at each second.
-const running = { timer: null, started: 0 };
-function runStarted(name) {
+// The paper chosen, said in its box, so that the reader sees it was taken.
+$("paper").addEventListener("change", () => {
+  const file = $("paper").files[0];
+  $("chosen").hidden = !file;
+  $("chosen").textContent = file ? `${file.name} (${megabytes(file.size)}), ready to check` : "";
+});
+
+// What a check under way says: each step the audit says as it starts (worker.js `told`,
+// `auditing.progress`), the one under way named, those done ticked, and the time left from
+// how long the steps done took against how long they usually take. The text a screen reader
+// says changes with the step, not with each second.
+const STEPS = {
+  read: ["Reading your paper", 4],
+  numbers: ["Checking the numbers", 2],
+  words: ["Reading the writing and the language", 6],
+  lookup: ["Looking up the references", 0],
+  report: ["Writing your report", 1.5],
+  pdf: ["Making the PDF of the report", 2],
+  copy: ["Making the Word copy with comments", 2],
+};
+// How long one reference takes to look up, before any has been.
+const PER_LOOKUP = 1.2;
+const running = { timer: null, started: 0, order: [], at: {}, now: null, done: 0, total: 0 };
+window.mgRunning = running;
+
+function runStarted(name, { lookup, docx }) {
+  const order = ["read", "numbers", "words", ...(lookup ? ["lookup"] : []), "report", "pdf",
+    ...(docx ? ["copy"] : [])];
+  Object.assign(running, { order, at: {}, now: null, done: 0, total: 0, started: performance.now() });
+  const list = $("steps");
+  list.replaceChildren();
+  for (const key of order) {
+    const item = add(list, "li", STEPS[key][0]);
+    item.dataset.step = key;
+    add(item, "span", "", "count");
+  }
   $("running").hidden = false;
   $("runbar").hidden = false;
-  $("runtext").textContent = `Auditing ${name}…`;
-  running.started = performance.now();
-  $("elapsed").textContent = "";
-  running.timer = setInterval(() => {
-    $("elapsed").textContent = `${Math.round((performance.now() - running.started) / 1000)} s`;
-  }, 1000);
+  $("runbar").value = 0;
+  $("runtext").textContent = `Checking ${name}…`;
+  $("eta").textContent = "working out the time left";
+  // The steps, where the reader can see them: below the button, under the fold on a laptop.
+  $("running").scrollIntoView({ block: "nearest", behavior: scrolling() });
+  running.timer = setInterval(showTimeLeft, 1000);
 }
-function runEnded(said) {
+
+function stepped({ key, done, total }) {
+  if (!STEPS[key] || !running.order.includes(key)) return;
+  const at = performance.now();
+  if (running.now !== key) {
+    if (running.now) running.at[running.now].ended = at;
+    running.at[key] = { started: at };
+    running.now = key;
+    $("runtext").textContent = `${STEPS[key][0]}…`;
+  }
+  if (key === "lookup") Object.assign(running, { done, total });
+  for (const item of $("steps").children) {
+    const step = item.dataset.step;
+    const place = running.order.indexOf(step);
+    const now = running.order.indexOf(running.now);
+    item.className = place < now ? "done" : place === now ? "now" : "";
+    item.querySelector(".count").textContent = step === "lookup" && running.total
+      ? ` ${Math.min(running.done + (step === running.now ? 1 : 0), running.total)} of ${running.total}` : "";
+  }
+  showTimeLeft();
+}
+
+// How long each step is expected to take, the lookups by how many there are.
+const expected = (key) => key === "lookup" ? PER_LOOKUP * (running.total || 20) : STEPS[key][1];
+
+function showTimeLeft() {
+  // Before the first step, nothing is done yet (the paper is still being handed over).
+  if (!running.now) return;
+  const elapsed = (performance.now() - running.started) / 1000;
+  const all = running.order.reduce((sum, key) => sum + expected(key), 0);
+  let behind = 0;
+  for (const key of running.order) {
+    if (key === running.now) {
+      const into = (performance.now() - running.at[key].started) / 1000;
+      behind += key === "lookup" && running.total
+        ? expected(key) * running.done / running.total : Math.min(into, expected(key) * 0.9);
+      break;
+    }
+    behind += expected(key);
+  }
+  $("runbar").value = Math.min(99, Math.round(100 * behind / all));
+  if (!running.now || behind < 1) return;
+  // This computer's pace so far, held between half and four times the usual one.
+  const pace = Math.min(4, Math.max(0.5, elapsed / behind));
+  const left = (all - behind) * pace;
+  $("eta").textContent = left < 4 ? "almost done"
+    : left < 90 ? `about ${Math.ceil(left / 5) * 5} s left`
+      : `about ${Math.round(left / 60)} min left`;
+}
+
+// The check ended: its steps go, and so does the ring of the one under way. Where it failed,
+// the steps' box stays, and its text is set once it is shown, for a screen reader to say it
+// (round 1 of #644).
+function runEnded(said, { failed = false } = {}) {
   clearInterval(running.timer);
+  running.now = null;
+  for (const item of $("steps").children) item.classList.remove("now");
   $("runbar").hidden = true;
-  $("elapsed").textContent = "";
+  $("eta").textContent = "";
+  $("running").hidden = !failed;
   $("runtext").textContent = said;
 }
 
-$("form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const paper = $("paper").files[0];
-  if (!paper) return;
-  $("run").disabled = true;
-  // The last report goes before this run starts, so that a run refused or failed leaves none
-  // on screen for "Save the report" to save as this one's (round 2 of #527).
+// A smooth scroll, unless the reader asked for less motion.
+const scrolling = () => (matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth");
+
+// Whether the browser shows a PDF inside a page: a desktop browser with its viewer on does;
+// a phone opens it in a page of its own, or saves it.
+const showsPdfHere = () => navigator.pdfViewerEnabled !== false
+  && !matchMedia("(pointer: coarse) and (max-width: 48rem)").matches;
+
+// The report as a PDF (`web.report_pdf`), from the last audit: shown in the page by the
+// browser's own viewer, from an address of the browser's own that lasts until the next audit.
+let pdf = null;
+let pdfAddress = null;
+function showReport(result, paper) {
+  $("result").hidden = false;
+  $("notes").hidden = !result.err;
+  $("notes").textContent = result.err;
+  const note = (said) => {
+    $("notes").hidden = false;
+    $("notes").textContent += ($("notes").textContent ? "\n" : "") + said;
+  };
+  if (result.commented && result.commented.error) {
+    note(`No copy of the paper with comments was made: ${result.commented.error}`);
+  }
+  if (result.commented && result.commented.data) {
+    commented = result.commented;
+    $("savecommented").hidden = false;
+    // The file's name is the download's; the button says what is in it.
+    $("savecommented").textContent = `Download your paper with its ${commented.placed} `
+      + "finding" + (commented.placed === 1 ? "" : "s") + " as Word comments";
+    $("savecommented").title = commented.name;
+  }
+  if (result.pdf && result.pdf.data) {
+    pdf = result.pdf;
+    pdfAddress = URL.createObjectURL(new Blob([pdf.data], { type: "application/pdf" }));
+    $("savepdf").hidden = false;
+    if (showsPdfHere()) {
+      $("pdfbox").hidden = false;
+      // At the page's width, with the viewer's own contents and search a click away.
+      $("pdfview").src = pdfAddress + "#view=FitH";
+    } else {
+      $("pdfnote").hidden = false;
+      $("openpdf").hidden = false;
+    }
+  } else if (result.pdf && result.pdf.error) {
+    note(`No PDF of the report was made: ${result.pdf.error}`);
+  }
+  // With no PDF there would be no report at all: the text the command line prints is shown
+  // in its place, and can be saved (round 1 of #644).
+  // This run's PDF, never one an earlier run left (round 2 of #644).
+  const shown = Boolean(result.pdf && result.pdf.data);
+  $("astext").hidden = shown;
+  $("report").textContent = shown ? "" : result.out || "";
+  $("done").textContent = `${paper} checked in ${(result.ms / 1000).toFixed(1)} s. `
+    + outcome(result.view, shown);
+}
+window.mgShowReport = showReport;  // what web/test/browser.mjs shows a run with no PDF by
+// What web/test/browser.mjs fails a check after a step by (round 2 of #644).
+window.mgRun = { runStarted, stepped, runEnded };
+
+// How the checks came out, in a sentence, from where each stands (`summary.standings`, the
+// colours of the PDF's summary): the PDF below says the rest.
+function outcome(view, inPdf = true) {
+  const where = inPdf ? "Every finding and its place is in the report below."
+    : "The PDF of the report could not be made here, so the report is below as text.";
+  if (!view || !view.standing) return where;
+  const states = Object.values(view.standing);
+  const count = (state) => states.filter((each) => each === state).length;
+  const checks = (n) => `${n} check${n === 1 ? "" : "s"}`;
+  const said = [`${count("clear")} of ${checks(states.length)} found nothing`];
+  if (count("look")) said.push(`${checks(count("look"))} found something for you to look at`);
+  if (count("counted")) said.push(`${checks(count("counted"))} found something counted as an error`);
+  if (count("not run")) said.push(`${checks(count("not run"))} could not run`);
+  return `${said.join(", ")}. ${where}`;
+}
+
+// The last report goes before a check starts, so that a check refused or failed leaves none on
+// screen as this one's (round 2 of #527).
+function clearReport() {
   $("result").hidden = true;
-  $("savecommented").hidden = true;
-  $("savepdf").hidden = true;
-  $("openpdf").hidden = true;
+  for (const id of ["savecommented", "savepdf", "openpdf", "pdfbox", "pdfnote", "astext"]) {
+    $(id).hidden = true;
+  }
+  $("report").textContent = "";
   commented = null;
   pdf = null;
+  $("pdfview").removeAttribute("src");
   if (pdfAddress) URL.revokeObjectURL(pdfAddress);
   pdfAddress = null;
-  $("report").textContent = "";
-  $("view").replaceChildren();
   $("notes").textContent = "";
-  runStarted(paper.name);
+  $("done").textContent = "";
+}
+
+async function check(paper) {
+  $("run").disabled = true;
+  $("example").disabled = true;
+  clearReport();
+  const lookup = $("lookup").checked;
+  runStarted(paper.name, { lookup, docx: /\.docx$/i.test(paper.name) });
   try {
     const result = await ask("run", {
       paper: await read(paper),
       against: await Promise.all([...$("against").files].map(read)),
-      lookup: $("lookup").checked,
-      details: $("details").checked,
+      lookup,
+      details: false,
       english: $("english").value,
       // The words to leave alone, as typed: split at spaces, commas and semicolons.
       known: $("known").value.split(/[\s,;]+/).filter(Boolean),
     });
-    $("result").hidden = false;
-    $("report").textContent = result.out;
-    draw(result.view);
-    $("notes").hidden = !result.err;
-    $("notes").textContent = result.err;
-    if (result.commented && result.commented.error) {
-      $("notes").hidden = false;
-      $("notes").textContent += (result.err ? "\n" : "")
-        + `No copy of the paper with comments was made: ${result.commented.error}`;
-    }
-    if (result.commented && result.commented.data) {
-      commented = result.commented;
-      $("savecommented").hidden = false;
-      // The file's name is the download's; the button says what is in it.
-      $("savecommented").textContent = `Save the paper with its ${commented.placed} `
-        + "finding" + (commented.placed === 1 ? "" : "s") + " as Word comments";
-      $("savecommented").title = commented.name;
-    }
-    if (result.pdf && result.pdf.data) {
-      pdf = result.pdf;
-      $("savepdf").hidden = false;
-      $("openpdf").hidden = false;
-    } else if (result.pdf && result.pdf.error) {
-      $("notes").hidden = false;
-      $("notes").textContent += ($("notes").textContent ? "\n" : "")
-        + `No PDF of the report was made: ${result.pdf.error}`;
-    }
+    showReport(result, paper.name);
     $("netlog").textContent += "\n\n" + listRequests(
-      `This audit of ${paper.name} sent requests to:`, result.sent);
-    runEnded(`Audited ${paper.name} in ${(result.ms / 1000).toFixed(1)} s: the report is below.`);
+      `This check of ${paper.name} sent requests to:`, result.sent);
+    runEnded(`Checked ${paper.name} in ${(result.ms / 1000).toFixed(1)} s: your report is below.`);
     // The report, where the reader's eyes and a keyboard's focus go next.
-    $("reporthead").scrollIntoView({ block: "start" });
+    $("reporthead").scrollIntoView({ block: "start", behavior: scrolling() });
     $("reporthead").focus({ preventScroll: true });
     window.mgLast = result;
   } catch (error) {
     // What the checker said, which says why, and where to read more; no guess at the cause,
     // which may be any file chosen (round 1 of #633).
-    runEnded(`The audit could not run: ${error.message.replace(/[\s.]+$/, "")}. The command `
-      + "line says more: uvx manuscript-guard audit paper.docx");
+    runEnded(`The check could not run: ${error.message.replace(/[\s.]+$/, "")}. The command `
+      + "line says more: uvx manuscript-guard audit paper.docx", { failed: true });
     window.mgLast = { error: error.message };
   } finally {
     $("run").disabled = false;
+    $("example").disabled = false;
   }
+}
+
+$("form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const paper = $("paper").files[0];
+  if (paper) await check(paper);
 });
 
-// The report as a PDF (`web.report_pdf`), from the last audit: shown in a tab of its own,
-// by the browser's PDF viewer, or saved. Its address lasts until the next audit.
-let pdf = null;
-let pdfAddress = null;
+// A short paper written for this page, with a few things to find in it, checked as a reader's
+// paper is, so that a first visit sees what a report looks like.
+$("example").addEventListener("click", async () => {
+  // Not fetched at the start: a reader who turned the network off, as the page invites,
+  // is told why nothing happens (round 1 of #644).
+  let file;
+  try {
+    const answer = await fetch("example-paper.md");
+    if (!answer.ok) throw new Error(`the page answered ${answer.status}`);
+    file = new File([await answer.blob()], "example-paper.md", { type: "text/markdown" });
+  } catch (error) {
+    // No earlier steps or report left beside the message, as if they were this one's
+    // (round 2 of #644).
+    clearReport();
+    $("steps").replaceChildren();
+    $("runbar").hidden = true;
+    $("eta").textContent = "";
+    $("running").hidden = false;
+    $("runtext").textContent = `The example paper could not be loaded (${error.message}): `
+      + "it comes from this page's address, so it needs the network.";
+    return;
+  }
+  await check(file);
+});
+
+$("again").addEventListener("click", () => {
+  clearReport();
+  $("form").scrollIntoView({ block: "start", behavior: scrolling() });
+  $("paper").focus();
+});
+
+// Where the browser shows no PDF in a page: the report in a page of its own.
 $("openpdf").addEventListener("click", () => {
-  if (!pdf) return;
-  pdfAddress = pdfAddress || URL.createObjectURL(new Blob([pdf.data], { type: "application/pdf" }));
-  window.open(pdfAddress, "_blank");
+  if (pdfAddress) window.open(pdfAddress, "_blank");
 });
 $("savepdf").addEventListener("click", () => {
   if (!pdf) return;
   const link = document.createElement("a");
   link.href = URL.createObjectURL(new Blob([pdf.data], { type: "application/pdf" }));
   link.download = pdf.name;
+  link.click();
+  URL.revokeObjectURL(link.href);
+});
+
+$("save").addEventListener("click", () => {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([$("report").textContent], { type: "text/plain" }));
+  link.download = "audit-report.txt";
   link.click();
   URL.revokeObjectURL(link.href);
 });
@@ -384,20 +509,14 @@ $("savecommented").addEventListener("click", () => {
   URL.revokeObjectURL(link.href);
 });
 
-$("save").addEventListener("click", () => {
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(new Blob([$("report").textContent], { type: "text/plain" }));
-  link.download = "audit-report.txt";
-  link.click();
-  URL.revokeObjectURL(link.href);
-});
-
 // Tries what the page's policy must refuse, and shows that it did. Nothing is carried. One
 // counts as refused only where the browser reports refusing it under the policy, as in
 // worker.js: an image can fail to load, and a worker to start, for other reasons.
 const ATTEMPTS = {
   "fetch from the page to example.com": "https://example.com/probe-page",
   "image from example.com": "https://example.com/probe-image.ico",
+  // The one frame the page may show is the PDF it made itself, from a blob: address.
+  "frame from example.com": "https://example.com/probe-frame",
   // A worker started from a file would run under no policy (worker.js says why).
   "worker started from a file": new URL("probe.js", location.href).href,
 };
@@ -411,6 +530,14 @@ $("probe").addEventListener("click", async () => {
     image.src = ATTEMPTS["image from example.com"];
   });
   await new Promise((resolve) => {
+    const frame = document.createElement("iframe");
+    frame.hidden = true;
+    frame.onload = () => { frame.remove(); resolve(); };
+    setTimeout(() => { frame.remove(); resolve(); }, 3000);
+    frame.src = ATTEMPTS["frame from example.com"];
+    document.body.append(frame);
+  });
+  await new Promise((resolve) => {
     try {
       const other = new Worker(ATTEMPTS["worker started from a file"]);
       other.onmessage = other.onerror = () => { other.terminate(); resolve(); };
@@ -418,9 +545,13 @@ $("probe").addEventListener("click", async () => {
     } catch { resolve(); }
   });
   const fromWorker = await ask("probe");
+  // Chrome reports a frame from another origin refused by that origin alone,
+  // "https://example.com", not by its address.
+  const refused = (url) => pageRefused.some((report) => report.url
+    && (report.url.startsWith(url)
+      || (report.rule === "frame-src" && report.url === new URL(url).origin)));
   const tried = Object.fromEntries(Object.entries(ATTEMPTS).map(([what, url]) => [what,
-    pageRefused.some((report) => report.url && report.url.startsWith(url))
-      ? "refused by the rules" : "NOT refused by the rules"]));
+    refused(url) ? "refused by the rules" : "NOT refused by the rules"]));
   Object.assign(tried, fromWorker.tried);
   window.mgProbe = { tried, refused: [...pageRefused, ...fromWorker.refused] };
   const held = Object.values(tried).every((how) => how === "refused by the rules");

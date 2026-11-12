@@ -1,9 +1,9 @@
 // The built site in a real browser, served as GitHub Pages serves it (no policy header). The
 // landing page at / loads its style and every picture it names, and asks no other host for
 // anything. The audit page at /audit/ starts under its own Content-Security-Policy, each
-// case's report is the command line's word for word, no audit sends a request anywhere, a run
-// it refuses leaves no report on screen, and "Test the rules" finds every forbidden request
-// refused.
+// case's report is the command line's word for word and its PDF is shown in the page, no
+// audit sends a request anywhere, a run it refuses leaves no report on screen, and "Test the
+// rules" finds every forbidden request refused, a frame from elsewhere among them.
 //
 //   node web/test/browser.mjs <site> <cases> chrome|firefox [executable]
 //
@@ -156,51 +156,51 @@ try {
     }
     const elsewhere = result.sent.filter((entry) => !entry.url.startsWith(origin));
     if (elsewhere.length) fail(`${one.name}: the audit sent ${elsewhere.map((e) => e.url).join(", ")}`);
-    // The run said it had ended, and its PDF opens in a tab of its own from an address of the
-    // browser's, not from anywhere the page sends to. In Chrome the tab is opened for real and
-    // must hold a PDF under the page's policy, which a blob: document takes (round 1 of #633);
-    // Firefox's viewer is out of puppeteer's reach, and window.open is stood in for there.
-    const real = browserName === "chrome";
-    const after = await page.evaluate((real) => {
-      const shown = { ran: document.getElementById("runtext").textContent,
-        moving: !document.getElementById("runbar").hidden,
-        pdf: !document.getElementById("openpdf").hidden, opened: null };
-      if (shown.pdf && !real) {
-        const own = window.open;
-        window.open = (address) => { shown.opened = address; return null; };
-        document.getElementById("openpdf").click();
-        window.open = own;
-      }
-      return shown;
-    }, real);
-    if (!after.ran.startsWith("Audited ") || after.moving) {
-      fail(`${one.name}: after the run the page says "${after.ran}"${after.moving ? ", its bar moving" : ""}`);
+    // The run said it had ended, and its PDF is shown in the page, in a frame whose address is
+    // the browser's own, not anywhere the page sends to (2026-11-12: the PDF inside the page, not
+    // in a tab of its own). In Chrome the frame must hold a PDF under the page's policy, which
+    // a blob: document takes; Firefox's viewer is out of puppeteer's reach, and the frame's
+    // address is what is held there.
+    const after = await page.evaluate(() => ({
+      ran: document.getElementById("runtext").textContent,
+      moving: !document.getElementById("running").hidden,
+      shown: !document.getElementById("pdfbox").hidden,
+      address: document.getElementById("pdfview").getAttribute("src") || "",
+    }));
+    if (!after.ran.startsWith("Checked ") || after.moving) {
+      fail(`${one.name}: after the run the page says "${after.ran}"${after.moving ? ", its steps still shown" : ""}`);
     }
-    if (real && after.pdf) {
-      const known = new Set(browser.targets());
-      await page.click("#openpdf");
-      const tab = await browser.waitForTarget((target) => !known.has(target) && target.type() === "page"
-        && target.url().startsWith("blob:"), { timeout: 20000 }).then((target) => target.page(), () => null);
-      const held = tab ? await tab.evaluate(() => document.contentType).catch(() => null) : null;
-      after.opened = held === "application/pdf" ? tab.url() : null;
-      if (tab) await tab.close();
+    let held = null;
+    if (browserName === "chrome" && after.shown) {
+      const frame = await page.waitForFrame((each) => each.url().startsWith("blob:"), { timeout: 20000 })
+        .catch(() => null);
+      held = frame ? await frame.evaluate(() => document.contentType).catch(() => null) : null;
     }
-    if (result.pdf && result.pdf.data && !(after.pdf && /^blob:/.test(after.opened || ""))) {
-      fail(`${one.name}: the PDF made does not open (${after.pdf ? after.opened : "no button"})`);
+    if (result.pdf && result.pdf.data && !(after.shown && /^blob:/.test(after.address)
+        && (browserName !== "chrome" || held === "application/pdf"))) {
+      fail(`${one.name}: the PDF made is not shown in the page (${after.shown ? `${after.address}, ${held}` : "no frame"})`);
+    }
+    // The frame was not refused by the page's policy, which a browser reports as it refuses
+    // (round 1 of #644): in Firefox, whose viewer puppeteer cannot reach, this is what holds.
+    const framesRefused = await page.evaluate(
+      () => window.mgRefused.filter((each) => each.rule === "frame-src"));
+    if (framesRefused.length) {
+      fail(`${one.name}: the policy refused the PDF's frame: ${JSON.stringify(framesRefused)}`);
     }
     console.log(`${one.name}: ${wrong.length ? "DIFFERENT" : "same report, notes and exit code"}, ` +
       `${(result.ms / 1000).toFixed(1)} s, ${result.sent.length} requests`);
   }
 
   // A run the page refuses, two outputs of one name, after a report is on screen: it leaves
-  // no report for "Save the report" to save as this one's (round 2 of #527).
+  // no report or PDF on screen as this one's (round 2 of #527), and no step shown as under way
+  // (round 1 of #644).
   const one = cases.find((each) => (each.against || []).length);
   if (status.startsWith("Ready") && one) {
     const twice = [one.against[0], one.against[0]];
     const refused = await choose(one.paper, twice);
     const left = await page.evaluate(() => ({
       hidden: document.getElementById("result").hidden,
-      report: document.getElementById("report").textContent,
+      report: document.getElementById("pdfview").getAttribute("src") || "",
     }));
     if (!/two of the files chosen are named/.test(refused.error || "")) {
       fail(`two outputs named ${twice[0]}: not refused (${refused.error || "it ran"})`);
@@ -213,13 +213,50 @@ try {
     fail("no case has an output: the refused run was not tried");
   }
 
+  // A run whose PDF could not be made shows the report as the command line prints it, the
+  // only report there then is, and says so (round 1 of #644).
+  if (status.startsWith("Ready")) {
+    const fallback = await page.evaluate(() => {
+      window.mgShowReport({ out: "The report as text.\n", err: "", ms: 1000, view: null,
+        pdf: { error: "it could not be written" }, commented: null }, "paper.md");
+      return { shown: !document.getElementById("astext").hidden,
+        text: document.getElementById("report").textContent,
+        said: document.getElementById("done").textContent,
+        frame: !document.getElementById("pdfbox").hidden };
+    });
+    if (!fallback.shown || fallback.text !== "The report as text.\n" || fallback.frame
+        || !/report is below as text/.test(fallback.said)) {
+      fail(`a run with no PDF shows no report: ${JSON.stringify(fallback)}`);
+    }
+    console.log(`no PDF: ${fallback.shown ? "the report shown as text" : "NO REPORT"}`);
+  }
+
+  // A check that fails after a step has started leaves no step shown as under way, and its
+  // message shown (round 2 of #644).
+  if (status.startsWith("Ready")) {
+    const failed = await page.evaluate(() => {
+      window.mgRun.runStarted("paper.md", { lookup: false, docx: false });
+      window.mgRun.stepped({ key: "read", done: 0, total: 0 });
+      window.mgRun.runEnded("The check could not run: a test.", { failed: true });
+      return { spinning: Boolean(document.querySelector("#steps li.now")),
+        shown: !document.getElementById("running").hidden };
+    });
+    if (failed.spinning || !failed.shown) fail(`a failed check: ${JSON.stringify(failed)}`);
+  }
+  // No frame of the PDF's refused by the policy, its event come late or not (round 2 of #644).
+  const lateFrames = await page.evaluate(() => window.mgRefused.filter(
+    (each) => each.rule === "frame-src" && /^blob:/.test(each.url || "")));
+  if (lateFrames.length) fail(`the policy refused a PDF's frame: ${JSON.stringify(lateFrames)}`);
+
+  // The button stands under the question "Is my paper uploaded?", which a reader opens first.
+  await page.$eval("#probe", (button) => { button.closest("details").open = true; });
   await page.click("#probe");
   const probe = await page.waitForFunction("window.mgProbe").then((handle) => handle.jsonValue());
   for (const [what, how] of Object.entries(probe.tried)) {
     console.log(`  ${what}: ${how}`);
     if (how !== "refused by the rules") fail(`the rules let through: ${what}`);
   }
-  if (Object.keys(probe.tried).length < 7) fail("Test the rules tried fewer than seven requests");
+  if (Object.keys(probe.tried).length < 8) fail("Test the rules tried fewer than eight requests");
 } finally {
   await browser.close();
   server.close();

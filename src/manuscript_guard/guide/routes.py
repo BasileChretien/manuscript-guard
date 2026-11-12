@@ -130,6 +130,8 @@ ROUTES: dict[str, Route] = {
     **_all("methods-writer", ("methods",), "methods-", "method-", "quality-not-reported"),
     **_all("methods-writer", ("models",), "model-", "models-on-different-rows", "variable-",
            "typed-model-kind", "poisson-binary-variance", "unit-rows-independent"),
+    # G12's, of the Methods: each package the analysis uses, named there and cited.
+    **_all("methods-writer", None, "software-unnamed", "software-uncited"),
     # -- the literature -------------------------------------------------------------------
     **_all("literature-verify", None, "literature-source-missing", "quote-",
            "value-not-in-quote", "quotation-", "statements-without-passage",
@@ -172,6 +174,8 @@ ROUTES: dict[str, Route] = {
            "figure-file-size", "figure-font-", "figure-format", "figure-height",
            "figure-resolution", "figure-shrinks", "figure-text-clipped", "figure-text-small",
            "figure-line-thin", "legend-words"),
+    # Bars of means with no points: the skill advises points over the summary.
+    **_all("figure-design", None, "figure-bars-"),
     # -- the journal and the checklist ----------------------------------------------------
     **_all("journal-profile", ("journal",), "journal-", "no-journal-chosen",
            "over-journal-limit", "near-journal-limit", "missing-", "abstract-headings-missing",
@@ -211,6 +215,10 @@ ROUTES: dict[str, Route] = {
     # The AI-use statement, drafted from what the records show; the skill asks the author
     # for what no record can (`authors.yaml`, `ai_use`). Before `ai-`, the writing's.
     **_all("submission-pack", ("review", "--ai-use"), "ai-use-"),
+    # The declarations held to authors.yaml: the statement is written, or the record put
+    # right, each author's own entries asked of them, as the setup skill has the author fill
+    # authors.yaml. No command fixes either.
+    **_all("project-setup", None, "funding-", "interests-", "ethics-approval-", "credit-"),
     # -- what is said of the paper outside it ---------------------------------------------
     # `communicate check` says these, never `check`: the text, the brief or the graphical
     # abstract is put right and the check run again, as the research-communication skill

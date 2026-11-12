@@ -26180,6 +26180,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
     name, `other/forest`, reads the emitted `figures/forest` and leaves the folder aside
     (`_figure_named` falls back to `emitted[:1]`), as before #630. Accepted.
 
+- **An RRID's digits are an identifier's to G2, and its accession no word to G14, only after
+  "RRID:".** G2 classifies a typed RRID as structural (`data/structural.yaml`, `rrid`), and
+  G14 reads neither its accession's letters as an abbreviation nor its underscores as a name
+  from the code, "RRID" needing no definition, as "DOI" does. The reading is `rrids.py`'s
+  (#658), copied while that module is not on main. Pinned by
+  `tests/test_corruption.py::test_an_rrid_typed_in_the_methods_is_no_number_and_no_abbreviation`.
+  - An accession typed without "RRID:" in capitals and its colon right before it, one space
+    or one line break between, is read as before: "AB_2298772" alone, "RRIDs: AB_1, AB_2",
+    "rrid:AB_1", "**RRID:**AB_1" and "RRID:  AB_1" leave a number to bind and a name from
+    the code. Accepted.
+
 Closed since, and why each mattered (an open gap goes above this line):
 
 - **An Abstract's identifier was never found, nor a number under a "Method" heading

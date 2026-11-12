@@ -205,6 +205,15 @@ _ROMAN = re.compile(r"X{0,3}(?:IX|IV|V?I{0,3})")
 # A registration or accession number: letters, then five digits or more. NCT01234567,
 # CRD42020123456, ISRCTN12345678, GSE12345.
 _IDENTIFIER = re.compile(r"[A-Za-z]{2,}\d{5,}")
+# An RRID's accession, after "RRID:", as `data/structural.yaml`'s `rrid` reads it, an
+# underscore escaped as Markdown writes it or as the LaTeX reader leaves it, `_` and a NUL,
+# allowed: "CVCL_0030" names a cell line, and its letters are no abbreviation and its
+# underscore no name from the code. "RRID" itself needs no definition, as "DOI" does
+# (`data/abbreviations.yaml`).
+_RRID = re.compile(
+    r"(?<![A-Za-z0-9_\-])RRID:(?:[^\S\n]|\n)?\x00*(?P<accession>[A-Za-z][A-Za-z0-9]*"
+    r"(?:(?:\\?[_:.]\x00?|-(?![a-z]+(?![A-Za-z0-9])))[A-Za-z0-9]+)+|[A-Za-z]+\d[A-Za-z0-9]*)"
+)
 _ARTICLES = ("the ", "a ", "an ")
 
 # Sections where capitals are people and institutions, not abbreviations a reader needs
@@ -572,12 +581,17 @@ def _views(text: str) -> tuple[str, str]:
     masked = mask(text)
     code = code_spans(masked)
     unread = [(0, front_matter_end(text)), *(found.span() for found in _IMAGE.finditer(text))]
-    spans = [*code, *equation_spans(masked, code), *unread]
+    spans = [*code, *equation_spans(masked, code), *unread, *_rrids(masked)]
     kept = "".join(
         "\n" if char == NUL and text[index] == "\n" else char
         for index, char in enumerate(masked)
     )
     return _hide(kept, spans), _set_aside(_only(masked, code), unread)
+
+
+def _rrids(text: str) -> list[tuple[int, int]]:
+    """Where each RRID's accession runs, which G14 does not read."""
+    return [found.span("accession") for found in _RRID.finditer(text)]
 
 
 def _only(text: str, spans: Iterable[tuple[int, int]]) -> str:
@@ -1405,10 +1419,12 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
     starts = [region.start for region in regions]
     unread = tuple(span for span in seen.unread
                    if regions[bisect_right(starts, span[0]) - 1].scope is not None)  # fmt: skip
+    # An RRID's accession is read neither as words nor as a name from the code.
+    accessions = _rrids(source.reading.masked)
     return _LatexFile(
-        view=markdown_view(source, bindings(source)[0]),
-        words=seen.text,
-        untitled=_hide(seen.text, titles),
+        view=_hide(markdown_view(source, bindings(source)[0]), accessions),
+        words=_hide(seen.text, accessions),
+        untitled=_hide(seen.text, [*titles, *accessions]),
         regions=regions,
         breaks=[index for index, char in enumerate(source.text) if char == "\n"],
         unread=unread,

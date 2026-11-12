@@ -4224,8 +4224,18 @@ DECLARED_TERMS = ("CO2",)
 SUNK_AFTER_A_CAPITAL = ("HR~2~", "OR~2~")
 NOT_NAMES = (
     "12", "3.4", "12@3.5", "40@lab", *TERM_LOOKALIKES, *RAISED_AFTER_A_CAPITAL,
-    *SUNK_AFTER_A_CAPITAL,
+    *SUNK_AFTER_A_CAPITAL, "1:500",
 )  # fmt: skip
+#: RRIDs, whose digits are an identifier's (structural): one of each form, with and without
+#: a space after the colon, dotted, of one part, and with a word of small letters after it.
+#: Each as typed, and the atom it is read as: the classifier's atom of "RRID: CVCL_0030" is
+#: the accession alone.
+NAMED_RESOURCES = {
+    "RRID:AB_2298772": "RRID:AB_2298772", "RRID: CVCL_0030": "CVCL_0030",
+    "RRID:IMSR_JAX:000664": "RRID:IMSR_JAX:000664", "RRID:NXR_0.0005": "RRID:NXR_0.0005",
+    "RRID:SAMN12345678": "RRID:SAMN12345678", "RRID:MMRRC_000231-UNC": "RRID:MMRRC_000231-UNC",
+    "RRID:CVCL_0372-derived": "RRID:CVCL_0372-derived",
+}  # fmt: skip
 #: Words to put between them: none names a class or a time, which a number after it is a
 #: label of ("cohort 12", "week 12").
 _BETWEEN_NAMES = ("reports", "were", "included", "the", "of", "and", "found", "among")
@@ -4233,10 +4243,11 @@ _BETWEEN_NAMES = ("reports", "were", "included", "the", "of", "and", "found", "a
 
 @st.composite
 def named_numbers(draw: st.DrawFn) -> tuple[str, dict[str, str]]:
-    """Every address, interleukin and number above in a sentence, in an order drawn, with
-    words and a separator drawn between them; and what each is: "address", "name" or
-    "number"."""
+    """Every address, interleukin, RRID and number above in a sentence, in an order drawn,
+    with words and a separator drawn between them; and what each is, by its atom:
+    "address", "identifier", "name" or "number"."""
     planted = [(text, "address") for text in NUMBERED_ADDRESSES]
+    planted += [(text, "identifier") for text in NAMED_RESOURCES]
     planted += [(text, "name") for text in (*INTERLEUKINS, *NAMES_IN_WORDS, *SUNK_NAMES)]
     planted += [(text, "number") for text in NOT_NAMES]
     gaps = st.sampled_from((" ", ", ", "; ", " and ", " (", ") ", ". "))
@@ -4246,7 +4257,8 @@ def named_numbers(draw: st.DrawFn) -> tuple[str, dict[str, str]]:
         filler = " ".join(draw(st.lists(st.sampled_from(_BETWEEN_NAMES), max_size=3)))
         text += f"{draw(gaps)}{filler} {piece}{draw(gaps)}"
     # An atom is cut before the `~` that closes its last subscript.
-    return text.strip() + "\n", {piece.removesuffix("~"): kind for piece, kind in planted}
+    return text.strip() + "\n", {NAMED_RESOURCES.get(piece, piece).removesuffix("~"): kind
+                                 for piece, kind in planted}  # fmt: skip
 
 
 # -------------------------------------------------------------------------- quotations

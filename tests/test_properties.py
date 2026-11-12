@@ -11324,11 +11324,13 @@ def test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_i
     """A paper converted from Word keeps its correspondence line, and `check` and the audit
     alike read "someone1989@example.org", "IL-4" and "interleukin-4" as numbers. An e-mail
     address is structural and an interleukin a term, for `check` and for the audit; a count
-    beside them, and digits round an `@` with no domain, are numbers still."""
+    beside them, and digits round an `@` with no domain, are numbers still. So is an RRID
+    structural, "RRID:AB_2298772", and "1:500" beside it a number."""
     from manuscript_guard.classify import STRUCTURAL, TERM, UNCLASSIFIED
 
     text, kinds = drawn
-    expected = {"address": STRUCTURAL, "name": TERM, "number": UNCLASSIFIED}
+    expected = {"address": STRUCTURAL, "identifier": STRUCTURAL, "name": TERM,
+                "number": UNCLASSIFIED}  # fmt: skip
     atoms = find_atoms(text, mask(text))
     assert sorted(atom.text for atom in atoms) == sorted(kinds), text
     declared = DECLARED_TERMS
@@ -11355,6 +11357,20 @@ def _shipped_with(patch: pytest.MonkeyPatch, structural=None, terms=None) -> Non
 def _an_email_address_is_a_number(patch: pytest.MonkeyPatch) -> None:
     _shipped_with(patch, structural=lambda rules: tuple(
         rule for rule in rules if rule.id != "email-address"))  # fmt: skip
+
+
+def _an_rrid_is_a_number(patch: pytest.MonkeyPatch) -> None:
+    _shipped_with(patch, structural=lambda rules: tuple(
+        rule for rule in rules if rule.id != "rrid"))  # fmt: skip
+
+
+def _any_number_after_rrid_is_an_identifier(patch: pytest.MonkeyPatch) -> None:
+    # The label's reach widened to the next number on the line: "RRID:AB_1 diluted 1:500".
+    _shipped_with(patch, structural=lambda rules: tuple(
+        dataclasses.replace(rule, pattern=re.compile(r"RRID:[^\n]*\d+(?::\d+)?"))
+        if rule.id == "rrid" else rule
+        for rule in rules
+    ))  # fmt: skip
 
 
 def _any_at_sign_makes_an_address(patch: pytest.MonkeyPatch) -> None:
@@ -24724,6 +24740,14 @@ BROKEN = {
     ),
     "an e-mail address is a number": (
         _an_email_address_is_a_number,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "an RRID is a number": (
+        _an_rrid_is_a_number,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "any number after RRID: is an identifier": (
+        _any_number_after_rrid_is_an_identifier,
         test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
     ),
     "any at sign makes an address": (

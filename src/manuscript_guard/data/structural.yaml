@@ -152,6 +152,21 @@ structural:
       measured shares. Every author of a real paper contributed one unexplained number here.
     pattern: '\b\d{4}-\d{4}-\d{4}-\d{3}[\dXx]\b'
 
+  - id: rrid
+    why: >-
+      A Research Resource Identifier names an antibody, a cell line, an organism, a plasmid
+      or a tool, "RRID:AB_2298772", "RRID: CVCL_0030": its digits are an identifier's, as an
+      ORCID's are, and measure nothing. Only after "RRID:", so a number beside one, "diluted
+      1:500 (RRID:AB_2298772)", is still a number.
+    # The reading of `rrids.py` (#658), copied here since that module is not on main: one
+    # space or one line break after the colon, then parts joined by `_`, `:`, `.` or a `-`
+    # that no word of small letters follows ("RRID:CVCL_0030-derived" ends at the hyphen),
+    # each part letters or digits, or a single part of letters then digits (SAMN12345678).
+    # A word of small letters after it, "-derived", is no part of the RRID but is of the
+    # atom, which the match has to cover: it measures nothing either. A joining mark is never
+    # a letter or a digit, so no two pieces take one character.
+    pattern: '(?<![A-Za-z0-9_-])RRID:(?:[^\S\n]|\n)?(?:[A-Za-z][A-Za-z0-9]*(?:(?:\\?[_:.]|-(?![a-z]+(?![A-Za-z0-9])))[A-Za-z0-9]+)+|[A-Za-z]+\d[A-Za-z0-9]*)(?:-[a-z]+)?'
+
   - id: email-address
     why: >-
       An e-mail address is how to reach an author, and a digit in it is part of a name:

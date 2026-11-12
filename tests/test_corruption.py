@@ -32015,3 +32015,57 @@ def test_a_journal_s_statement_with_nothing_declared_by_the_authors_is_noted(
     _ai_use_required(project)
     _ai_use_stated(project, "## Use of AI\n\nNo AI tool was used.")
     assert _ai_use_findings(project) == [("ai-use-undeclared", "info")]
+
+
+# ---------------------------------------------------------- an RRID is an identifier (G2, G14)
+#
+# An RRID's digits name a resource and measure nothing, as an ORCID's do; and "RRID" is read
+# as a name, as "DOI" is. A number beside one is still a number.
+
+_RRIDS_TYPED = ("Neurons were stained with the antibody (RRID:AB_2298772) in the cell line "
+                "RRID: CVCL_0030, and counted with the software (RRID:SCR_002798).")  # fmt: skip
+
+
+def _g2_g14(root: Path) -> set[tuple[str, str, str]]:
+    from manuscript_guard.cli import _run_gates
+
+    report, *_ = _run_gates(root, stage="submission")
+    return {(f.gate, f.code, f.message) for f in report.findings if f.gate in ("G2", "G14")}
+
+
+def _in_the_methods(root: Path, sentence: str) -> None:
+    path = main_md(root)
+    text = path.read_text(encoding="utf-8")
+    at = text.index("\n# Results")
+    path.write_text(text[:at] + f"\n{sentence}\n" + text[at:], encoding="utf-8")
+
+
+def test_an_rrid_typed_in_the_methods_is_no_number_and_no_abbreviation(project: Path) -> None:
+    before = _g2_g14(project)
+    _in_the_methods(project, _RRIDS_TYPED)
+    assert _g2_g14(project) - before == set()
+
+
+def test_a_number_beside_an_rrid_is_still_a_number(project: Path) -> None:
+    _in_the_methods(project, "The antibody was diluted 1:500 (RRID:AB_2298772).")
+    report = check_numbers(*_numbers_of(project))
+    said = [f for f in report.failures if f.code == "unclassified-number"]
+    assert [f.message for f in said if "500" in f.message], report.render(project)
+    assert not [f for f in said if "2298772" in f.message]
+
+
+def _numbers_of(root: Path):
+    project, _report = load_project(root)
+    namespace, results, literature, _loaded = load_namespace(project)
+    return project, namespace, results, literature
+
+
+def test_an_rrid_typed_in_a_latex_manuscript_is_no_number_and_no_abbreviation(
+    project: Path,
+) -> None:
+    entry = _as_latex(project)
+    text = entry.read_text(encoding="utf-8")
+    before = _g2_g14(project)
+    typed = _RRIDS_TYPED.replace("_", "\\_").replace("RRID: ", "RRID:~")
+    entry.write_text(text.replace("\\end{document}", typed + "\n\\end{document}"), "utf-8")
+    assert _g2_g14(project) - before == set()

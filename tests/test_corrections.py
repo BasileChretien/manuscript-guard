@@ -221,3 +221,11 @@ def test_the_main_text_s_definition_stays_where_the_supplement_uses_it(tmp_path:
     assert "abbreviation-undefined" not in codes and "abbreviation-unused" not in codes
     assert [one for one in corrections(language_edits(project))
             if "abbreviation-unused" in one.codes] == []  # fmt: skip
+    # A supplement that defines the form again leans on nothing (round 3 of #645).
+    (tmp_path / "manuscript" / "supplementary" / "s1.md").write_text(
+        "# Supplementary methods\n\nThe reporting odds ratio (ROR) was computed, and the ROR "
+        "for each drug.\n", encoding="utf-8")  # fmt: skip
+    codes = [f.code for f in check_language(project).findings]
+    assert "abbreviation-unused" in codes
+    assert [one.old for one in corrections(language_edits(project))
+            if "abbreviation-unused" in one.codes] == ["reporting odds ratio (ROR)"]  # fmt: skip

@@ -1882,8 +1882,10 @@ def _kept(file: _File, mark: _Definition) -> bool:
 
 def _leaned_on(scopes: dict, name: str, short: str) -> bool:
     """Is the main text's definition of `short` what the supplementary material's use of it
-    leans on, so that it is used after all (rounds 1 and 2 of #645)?"""
-    return name == BODY and bool(scopes[SUPPLEMENT].used.get(short))
+    leans on, so that it is used after all (rounds 1 and 2 of #645)? Not where the
+    supplementary material defines it itself (round 3 of #645)."""
+    supplement = scopes[SUPPLEMENT]
+    return name == BODY and bool(supplement.used.get(short)) and short not in supplement.defined
 
 
 def _written_out(file: _File, mark: _Definition, short: str) -> Edit | None:

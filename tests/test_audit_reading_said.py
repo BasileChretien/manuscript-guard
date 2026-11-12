@@ -179,3 +179,62 @@ def test_the_authors_check_and_the_placed_pictures_read_the_tree_s_encoding(
     places = _places(paper, tree)
     assert not isinstance(places, str), places
     assert any(f"Ren{_E_ACUTE}e Martin" in text for _where, text in places), places
+
+
+@pytest.mark.parametrize("stray", ["cover_letter.tex", "old/draft_v1.tex", "iffalse"])
+def test_a_stray_latin1_declaration_does_not_decide_a_paper_s_encoding(
+    tmp_path: Path, stray: str
+) -> None:
+    """Round 2 of #637, finding 1: the encoding was decided for the folder, so a cover letter
+    or an old draft beside the paper declaring `[latin1]`, or one in an `\\iffalse` block,
+    had a paper that declares nothing, UTF-8, read as "ChrÃ©tien". It is the tree's: the
+    entry and the files it reaches, where the reader reads them."""
+    from manuscript_guard.auditing.journal import _places
+    from manuscript_guard.auditing.latex import read_latex
+
+    hidden = "\\iffalse\n\\usepackage[latin1]{inputenc}\n\\fi\n" if stray == "iffalse" else ""
+    paper = tmp_path / "paper.tex"
+    paper.write_text(f"\\documentclass{{article}}\n{hidden}\\begin{{document}}\n"
+                     f"Chr{_E_ACUTE}tien wrote it.\n\\end{{document}}\n",
+                     encoding="utf-8")  # fmt: skip
+    if stray != "iffalse":
+        (tmp_path / stray).parent.mkdir(exist_ok=True)
+        (tmp_path / stray).write_bytes((f"\\documentclass{{letter}}\n\\usepackage[latin1]"
+                                        f"{{inputenc}}\n\\begin{{document}}\nCaf{_E_ACUTE}.\n"
+                                        "\\end{document}\n").encode("latin_1"))  # fmt: skip
+    (tree,) = read_latex([paper]).trees
+    text = dict(tree.files)[paper].text
+    assert f"Chr{_E_ACUTE}tien" in text and "\N{LATIN CAPITAL LETTER A WITH TILDE}" not in text
+    assert any(f"Chr{_E_ACUTE}tien" in found for _where, found in _places(paper, tree))
+
+
+def test_a_refusal_of_the_tree_in_a_file_the_reader_stopped_in_says_how_far(
+    tmp_path: Path,
+) -> None:
+    """Round 2 of #637, finding 2: an `\\input` the tree cannot follow said the rest of the
+    file was read, beside the note that the same file was not read past a later line."""
+    paper = tmp_path / "paper.tex"
+    paper.write_text("\\documentclass{article}\n\\begin{document}\nOf 4100.\n\n"
+                     "\\input{missing}\nThen 77.\n\n\n\\catcode`\\@=11\n\\end{document}\n",
+                     encoding="utf-8")  # fmt: skip
+    said = audit([paper], None).unreadable
+    (missing,) = [one for one in said if "missing" in one]
+    assert "the rest of the file was read to line 9" in missing, said
+    assert any("not read past line 9" in one for one in said), said
+
+
+def test_a_file_nothing_inputs_beside_a_stopped_paper_keeps_its_advice(tmp_path: Path) -> None:
+    """Round 2 of #637, finding 3: every file nothing read, in a folder where a paper
+    stopped, was said to be input past the stop. Only one whose `\\input` stands past it
+    is; one nothing inputs is said to be input by no entry."""
+    (tmp_path / "methods.tex").write_text("We read 4100 reports.\n", encoding="utf-8")
+    (tmp_path / "stray.tex").write_text("Notes.\n", encoding="utf-8")
+    paper = tmp_path / "paper.tex"
+    paper.write_text("\\documentclass{article}\n\\begin{document}\n\\catcode`\\@=11\n"
+                     "\\input{methods}\n\\end{document}\n", encoding="utf-8")  # fmt: skip
+    found = [tmp_path / "methods.tex", tmp_path / "stray.tex"]
+    said = audit([paper], None, found_tex=found).passed_over
+    (methods,) = [one for one in said if "methods.tex" in one]
+    (stray,) = [one for one in said if "stray.tex" in one]
+    assert "paper.tex was not read past line 3" in methods, methods
+    assert "no entry inputs it" in stray and "not read past" not in stray, stray

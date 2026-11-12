@@ -1588,9 +1588,10 @@ Refused:
   and the tree refuses it there where another of its files is not ASCII, since TeX reads
   every file of the tree in that encoding (2026-10-23: a paper's `latin9` was refused in a
   file of ASCII). A project's files are read as UTF-8, as the submission folder writes them,
-  so this holds for `check` and the build. `audit` reads the files of a folder whose `.tex`
-  and `.sty` files declare one of latin1, latin9, cp1252 or ansinew, and no other that
-  decodes otherwise, in that encoding, so that the gates read the characters TeX prints, and
+  so this holds for `check` and the build. `audit` reads the files of a paper whose tree,
+  the entry and the files it reaches, declares one of latin1, latin9, cp1252 or ansinew where
+  the reader reads it, and no other that decodes otherwise, in that encoding; a tree that
+  declares none is UTF-8, whatever another file of the folder declares (round 2 of #637), so that the gates read the characters TeX prints, and
   writes each declaration as UTF-8's at the same length, `[utf8  ]`, every offset kept
   (`text/latex/encodings.py`; Basile, 2026-11-11). Any other encoding is refused there as
   here.
@@ -15970,16 +15971,17 @@ been sorted yet.
   is not read, though the document that places it passes over that preamble and prints the
   part under main's definitions (round 1 of #637). Main refused it at the definition instead.
   Accepted.
-- **`audit` reads a LaTeX folder in one declared encoding, and writes its declarations as
-  UTF-8's.** A folder whose files declare latin1, latin9, cp1252 or ansinew is read in it,
-  each file of it, and a file that names none, in a tree that declares one, is read in it as
-  TeX reads it; a folder that declares two encodings that decode otherwise, or another
-  encoding, is read as UTF-8 and the declaration refused where its file is not ASCII. A
-  quotation of the declaration's line shows `[utf8  ]`, not what is typed. A folder whose
-  paper declares `[utf8]` beside an old draft's `[latin1]` declares two, and is read as
-  UTF-8 (round 1 of #637: it was read as Latin-1). A project's files
+- **`audit` reads a LaTeX paper's tree in one declared encoding, and writes its declarations
+  as UTF-8's.** A tree, the entry and the files it reaches, that declares latin1, latin9,
+  cp1252 or ansinew where the reader reads it is read in it, each file of it, and a file that
+  names none, in a tree that declares one, is read in it as TeX reads it; a tree that declares
+  none is UTF-8 beside a stray draft that declares one (round 2 of #637); a tree that declares
+  two encodings that decode otherwise, or another encoding, is read as UTF-8 and the
+  declaration refused where its file is not ASCII. A
+  quotation of the declaration's line shows `[utf8  ]`, not what is typed. A project's files
   are UTF-8 only, as the build writes them.
-  Pinned by `tests/test_audit_reading_said.py::test_an_encoding_the_audit_does_not_read_in_is_still_refused`.
+  Pinned by `tests/test_audit_reading_said.py::test_an_encoding_the_audit_does_not_read_in_is_still_refused`
+  and `tests/test_audit_reading_said.py::test_a_stray_latin1_declaration_does_not_decide_a_paper_s_encoding`.
 - **A co-author round records answers, and nothing more.** `checker status` says who answered
   what; it cannot say who read anything. Nothing proves the file was opened, that the evidence was
   looked at, or that a `ok` was not a row of clicks. The record is a person's word written down

@@ -56,6 +56,24 @@ def declared(texts: Iterable[str]) -> str | None:
     return names[0] if names and len(codecs) == 1 else None
 
 
+def in_tree(document, originals: dict[str, str]) -> str | None:
+    """`declared` of the files `document` reads, the entry and those it reaches, their
+    `originals` given by path, as read before each declaration was written as UTF-8's: only
+    where the reader reads them, not in a comment, an `\\iffalse` block or past a refusal
+    (round 2 of #637: decided for the folder, a stray Latin-1 draft beside a paper that
+    declares nothing had the paper misread)."""
+    texts = []
+    for source in document.sources:
+        if source.loose or source.path not in originals:
+            continue
+        reading, text = source.reading, list(originals[source.path])
+        past = [(refusal.offset, len(text)) for refusal in reading.refusals]
+        for start, end in [*reading.comments, *reading.unprinted, *past]:
+            text[start:end] = " " * (end - start)
+        texts.append("".join(text))
+    return declared(texts)
+
+
 #: The encodings inputenc knows that decode as UTF-8 does, by their names there.
 _OTHERS = {"utf8": "utf_8", "utf8x": "utf_8"}
 

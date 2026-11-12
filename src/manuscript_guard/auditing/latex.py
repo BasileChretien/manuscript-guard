@@ -25,7 +25,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.text.latex.mask import NUL, Refusal
-from manuscript_guard.text.latex.structure import SECOND_DOCUMENT, Document, Source, read_tree
+from manuscript_guard.text.latex.structure import (
+    SECOND_DOCUMENT,
+    Document,
+    Source,
+    read_tree,
+    resolve,
+)
 from manuscript_guard.text.latex.tables import latex_tables
 from manuscript_guard.text.latex.views import bindings, markdown_view
 from manuscript_guard.text.tables import Table
@@ -98,11 +104,13 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
     """Each entry's tree, read; `found` the other `.tex` files a folder given held, which are
     passed over where no entry inputs them."""
     from manuscript_guard.audit import UnreadableText, read_text
+    from manuscript_guard.text.latex import encodings
 
     read = LatexRead()
     seen: set[Path] = set()
     classed: set[Path] = set()
     folders: dict[Path, tuple[dict, dict, dict, frozenset, str | None]] = {}
+    decoded: dict[tuple[Path, str], tuple[dict, dict, dict, frozenset, str | None]] = {}
     for entry in entries:
         folder = entry.parent
         if folder not in folders:
@@ -111,6 +119,15 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
         name = entry.relative_to(folder).as_posix()
         if name not in files:
             continue
+        # The encoding the entry's tree declares, read once with each declaration as
+        # UTF-8's so that none stops the reading (round 2 of #637).
+        named = encodings.in_tree(read_tree(
+            {path: encodings.as_utf8(text) for path, text in files.items()}, name,
+            packages={path: encodings.as_utf8(text) for path, text in packages.items()},
+            unreadable=unreadable, classes=classes), {**files, **packages})  # fmt: skip
+        if named:
+            files, packages, classes, unreadable, _encoding = decoded.setdefault(
+                (folder, named), _gathered(folder, read_text, UnreadableText, [], named))
         document = read_tree(files, name, packages=packages, unreadable=unreadable,
                              classes=classes)  # fmt: skip
         mine = []
@@ -128,13 +145,14 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
                 f"{source.text.count(chr(10), 0, end) + 1}, read as the reference list"
                 for start, end in source.reading.references
             ]
-        read.trees.append(Tree(entry, folder, document, tuple(mine), folders[folder][4]))
+        read.trees.append(Tree(entry, folder, document, tuple(mine), named))
         classed.update(folder / path for path in document.classes)
         # A refusal counts only in a file the entry reads. One that holds a document of its
         # own is an entry, or passed over, and so is one nothing inputs: refused there, each
         # was said not to be read though it was, or failed --strict as passed over.
         texts = {source.path: source.text for source in document.sources if not source.loose}
         stops = _stops(document)
+        ends = {where: line for where, line in stopped([read.trees[-1]])}
         for where, refusal in document.refusals:
             if where not in texts or refusal.code == SECOND_DOCUMENT:
                 continue
@@ -147,6 +165,7 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
                 f"read what follows it in the file: {refusal.message}"
                 if (where, refusal) in stops else
                 f"{where}, line {line}: {refusal.message}; the rest of the file was read"
+                + (f" to line {ends[where]}, past which it was not" if where in ends else "")
             )
     for path in sorted({*found, *(p for folder in folders for p in folder.rglob("*.tex"))}):
         if path in seen or path in entries:
@@ -160,9 +179,7 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
             # In an entry's folder it is named already, as what could not be read there.
             if not any(folder in path.parents for folder in folders):
                 read.passed_over.append(said)
-        elif stopped_in := [f"{where} was not read past line {line}" for tree in read.trees
-                            if tree.folder in path.parents
-                            for where, line in stopped([tree])]:  # fmt: skip
+        elif stopped_in := _inputs_past(path, read.trees):
             # The file that inputs it may do so past where its reading stopped (round 1 of
             # #637: the advice was to input it, which the paper did).
             read.passed_over.append(
@@ -176,6 +193,31 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
                 "\\input it from the paper's main file"
             )
     return read
+
+
+#: An input typed in braces, as the reader finds one: an `\\input`, `\\include` or `\\subfile`.
+_TYPED_INPUT = re.compile(r"\\(?:input|include|subfile)(?![A-Za-z@])\s*\{([^{}\n]*)\}")
+
+
+def _inputs_past(path: Path, trees: list[Tree]) -> list[str]:
+    """Where each file a tree stopped in inputs `path` past the line it stopped on, found by
+    its shape, as the reader does not read there (round 2 of #637: a file nothing inputs was
+    said to be input past a stop)."""
+    said = []
+    for tree in trees:
+        files = {source.path: source.text for _path, source in tree.files}
+        for where, refusal in tree.document.refusals:
+            if where not in files or (where, refusal) not in _stops(tree.document):
+                continue
+            if tree.folder not in path.parents:
+                continue
+            entry = tree.entry.relative_to(tree.folder).as_posix()
+            known = {path.relative_to(tree.folder).as_posix(): ""}
+            for found in _TYPED_INPUT.finditer(files[where], refusal.offset):
+                if resolve(entry, found[1], known)[0] is not None:
+                    line = files[where].count("\n", 0, refusal.offset) + 1
+                    said.append(f"{where} was not read past line {line}")
+    return list(dict.fromkeys(said))
 
 
 def _stops(document: Document) -> set[tuple[str, Refusal]]:
@@ -202,19 +244,18 @@ def stopped(trees: list[Tree]) -> list[tuple[str, int]]:
     return said
 
 
-def _gathered(folder: Path, read_text, unreadable_error, said: list[str]):
+def _gathered(folder: Path, read_text, unreadable_error, said: list[str],
+              named: str | None = None):  # fmt: skip
     """The folder's `.tex`, `.sty` and `.cls` files by their path from it, the files that
-    could not be read, which are named, and the input encoding they were read in: the one
-    the `.tex` and `.sty` files declare, if one of `encodings.CODECS`, else UTF-8 (None).
-    Read in it, each declaration of it is written as UTF-8's (`encodings.as_utf8`)."""
+    could not be read, which are named, and the input encoding they were read in: `named`,
+    one of `encodings.CODECS` that an entry's tree declares, else UTF-8 (None). Read in it,
+    each declaration of it is written as UTF-8's (`encodings.as_utf8`)."""
     from manuscript_guard.text.latex import encodings
 
     paths: list[tuple[int, str, Path]] = []
     for which, suffix in enumerate((".tex", ".sty", ".cls")):
         paths += [(which, path.relative_to(folder).as_posix(), path)
                   for path in sorted(folder.rglob(f"*{suffix}")) if path.is_file()]  # fmt: skip
-    named = encodings.declared(_as_bytes_read(path) for which, _name, path in paths
-                               if which < 2)  # fmt: skip
     codec = encodings.CODECS[named] if named else None
     found: list[dict[str, str]] = [{}, {}, {}]
     failed: set[str] = set()
@@ -228,15 +269,6 @@ def _gathered(folder: Path, read_text, unreadable_error, said: list[str]):
             continue
         found[which][name] = encodings.as_utf8(text) if codec else text
     return found[0], found[1], found[2], frozenset(failed), named
-
-
-def _as_bytes_read(path: Path) -> str:
-    """A file's bytes as Latin-1 reads them, every byte a character, for its declarations,
-    which are ASCII; "" where it cannot be opened, which reading it then says."""
-    try:
-        return path.read_bytes().decode("latin_1")
-    except OSError:
-        return ""
 
 
 def _file(path: Path, source: Source) -> LatexFile:

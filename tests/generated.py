@@ -1719,6 +1719,12 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
     mixed = sets + accented
     cases.append(({"main.tex": utf8, "part.tex": mixed}, {}, [("part.tex", 0)], [], [],
                   "audited"))  # fmt: skip
+    # A stray draft beside a paper that declares nothing decides nothing: the paper's tree
+    # is UTF-8, and the draft, which nothing inputs, refused where it is not ASCII (round 2
+    # of #637).
+    undeclared = head + begin + accented + end
+    cases.append(({"main.tex": undeclared, "draft.tex": mixed}, {}, [("draft.tex", 0)], [], [],
+                  "audited"))  # fmt: skip
     # And one encoding the audit does not read a folder in, refused there too.
     other = alone.replace(encoding, "latin2")
     cases.append(({"main.tex": other}, {}, [("main.tex", len(head))], [], [], "audited"))

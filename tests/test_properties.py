@@ -1089,9 +1089,11 @@ def test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_
     known command the preamble defines again is read, and refused where it prints; and a
     folder read as `audit` reads one is read in the encoding it declares (2026-11-11)."""
     for files, packages, refused, hidden, comments, *audited in drawn:
-        if audited and latex_encodings.declared([*files.values(), *packages.values()]):
-            # The audit's files, read in the one encoding they declare, say UTF-8 instead.
-            files = {path: latex_encodings.as_utf8(text) for path, text in files.items()}
+        neutral = {path: latex_encodings.as_utf8(text) for path, text in files.items()}
+        if audited and latex_encodings.in_tree(latex_structure.read_tree(
+                neutral, packages=packages), {**files, **packages}):  # fmt: skip
+            # The audit's files, read in the one encoding their tree declares, say UTF-8.
+            files = neutral
         document = latex_structure.read_tree(files, packages=packages)
         found = [(path, refusal.offset) for path, refusal in document.refusals]
         assert found == refused, (found, refused, files, packages)
@@ -1261,6 +1263,11 @@ def _every_heading_and_reference_redefined_is_read_as_before(
 
 def _what_is_found_past_a_refusal_is_kept(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_before", lambda reading, at: reading)
+
+
+def _the_encoding_is_the_folder_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_encodings, "in_tree",
+                  lambda document, originals: latex_encodings.declared(originals.values()))
 
 
 def _a_utf8_declaration_is_not_counted(patch: pytest.MonkeyPatch) -> None:
@@ -20818,6 +20825,10 @@ BROKEN = {
     ),
     "in LaTeX, what the reader found past a refusal is kept": (
         _what_is_found_past_a_refusal_is_kept,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an audited folder's encoding is decided for the folder": (
+        _the_encoding_is_the_folder_s,
         test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
     ),
     "in LaTeX, an audited folder's UTF-8 declaration is not counted": (
